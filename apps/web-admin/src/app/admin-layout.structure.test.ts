@@ -32,4 +32,12 @@ describe("admin navigation visual hierarchy", () => {
       "items.some((item) => item.path === explicitPath)"
     );
   });
+
+  it("uses the content area as the responsive container and limits page scrolling to the extreme fallback", () => {
+    expect(layoutSource).toContain("container-name: jg-content");
+    expect(layoutSource).toContain("container-type: inline-size");
+    expect(layoutSource).toContain("overflow-x: clip");
+    expect(layoutSource).toContain("@media (max-width: 720px)");
+    expect(layoutSource).toContain("min-width: var(--jg-layout-page-min-width-fallback)");
+  });
 });

@@ -1,5 +1,5 @@
 <template>
-  <section class="project-roster-page">
+  <section class="project-roster-page jg-responsive-ledger">
     <div class="page-head">
       <div>
         <h1>项目花名册</h1>
@@ -15,7 +15,7 @@
     </div>
 
     <t-card
-      class="panel"
+      class="panel jg-table-region jg-table-region--wide"
       :bordered="true"
     >
       <div class="filters">
@@ -35,6 +35,7 @@
         :columns="columns"
         :data="visibleRows"
         :loading="loading"
+        :horizontal-scroll-affixed-bottom="true"
         empty="暂无可查看的项目人员"
       >
         <template #globalPositions="{ row }">
@@ -114,6 +115,7 @@ async function loadRoster() {
 <style scoped>
 .project-roster-page {
   display: grid;
+  min-width: 0;
   gap: 16px;
 }
 
@@ -156,5 +158,17 @@ async function loadRoster() {
 .message {
   margin-top: 12px;
   color: #b42318;
+}
+
+@container jg-page (max-width: 620px) {
+  .page-head {
+    flex-direction: column;
+  }
+
+  .filters,
+  .filters label {
+    width: 100%;
+    min-width: 0;
+  }
 }
 </style>

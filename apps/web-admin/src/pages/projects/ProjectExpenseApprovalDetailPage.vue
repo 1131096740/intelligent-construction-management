@@ -1,5 +1,5 @@
 <template>
-  <section class="project-expense-approval-detail-page">
+  <section class="project-expense-approval-detail-page jg-responsive-detail">
     <div class="page-head">
       <div>
         <h1>项目支出审批详情</h1>
@@ -232,6 +232,7 @@ onMounted(loadDetail);
 .project-expense-approval-detail-page,
 .review-form {
   display: grid;
+  min-width: 0;
   gap: var(--jg-space-lg);
 }
 
@@ -285,7 +286,13 @@ onMounted(loadDetail);
   grid-column: 1 / -1;
 }
 
-@media (max-width: 720px) {
+@container jg-page (max-width: 620px) {
+  .page-head,
+  .review-buttons {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .summary-grid {
     grid-template-columns: 1fr;
   }

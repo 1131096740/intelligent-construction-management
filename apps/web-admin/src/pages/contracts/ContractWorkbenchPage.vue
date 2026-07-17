@@ -1,5 +1,8 @@
 <template>
-  <section class="workbench-page">
+  <section
+    class="workbench-page jg-responsive-workspace"
+    data-jg-scroll-owner="child"
+  >
     <!-- Draft-creation flow for /contracts/new ------------------------------->
     <div
       v-if="isNewDraft"
@@ -1522,7 +1525,7 @@ function initializeDraftFromQuery() {
   justify-content: flex-end;
 }
 
-@media (max-width: 1100px) {
+@container jg-page (max-width: 840px) {
   .alert-action-row,
   .recommendation-head {
     align-items: flex-start;
@@ -1810,8 +1813,8 @@ function initializeDraftFromQuery() {
   font-weight: 600;
 }
 
-/* Responsive collapse under 1100px -----------------------------------------*/
-@media (max-width: 1100px) {
+/* Responsive collapse by the real workbench content width -----------------*/
+@container jg-page (max-width: 1080px) {
   .shell-body {
     grid-template-columns: 1fr;
   }
@@ -1829,7 +1832,7 @@ function initializeDraftFromQuery() {
   }
 }
 
-@media (max-width: 720px) {
+@container jg-page (max-width: 620px) {
   .workbench-summary {
     grid-template-columns: 1fr;
   }

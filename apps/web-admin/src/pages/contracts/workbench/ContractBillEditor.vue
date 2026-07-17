@@ -86,7 +86,7 @@
       </div>
     </t-dialog>
 
-    <div class="table-wrap">
+    <div class="table-wrap jg-workspace-scroll">
       <table class="bill-table">
         <thead>
           <tr>
@@ -429,6 +429,8 @@ function previewRowText(row: Record<string, unknown>): string {
 .bill-editor {
   display: grid;
   gap: 12px;
+  container-name: contract-bill;
+  container-type: inline-size;
 }
 
 .toolbar,
@@ -565,5 +567,13 @@ function previewRowText(row: Record<string, unknown>): string {
 
 .danger {
   color: #b51d2a;
+}
+
+@container contract-bill (max-width: 520px) {
+  .toolbar,
+  .add-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 </style>

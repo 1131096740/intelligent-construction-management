@@ -41,6 +41,56 @@ describe("PermissionGuard", () => {
     };
   }
 
+  it("allows a project-scoped position to open a filtered aggregate ledger", async () => {
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "contract_staff" }])
+      },
+      position: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(["contract_staff", "finance_director"])
+          .mockReturnValueOnce(undefined)
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(contextWithRequest({ user: { id: "contract-staff-1" } }))
+    ).resolves.toBe(true);
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+      where: { userId: "contract-staff-1" }
+    });
+  });
+
+  it("does not use an unrelated project role when a business action has no project context", async () => {
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "contract_staff" }])
+      },
+      position: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("contract.create")
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(contextWithRequest({ user: { id: "contract-staff-1" } }))
+    ).rejects.toThrow("当前账号缺少执行该项目操作所需的岗位权限");
+    expect(prisma.projectMember.findMany).not.toHaveBeenCalled();
+  });
+
   it("allows users whose effective roles can perform the required action", async () => {
     const guard = new PermissionGuard(
       {

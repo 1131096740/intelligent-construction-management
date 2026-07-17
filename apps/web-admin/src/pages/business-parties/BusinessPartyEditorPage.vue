@@ -1,5 +1,5 @@
 <template>
-  <section class="page">
+  <section class="page jg-responsive-flow">
     <div class="page-head">
       <div>
         <h1>{{ party?.name ?? "合作单位详情" }}</h1>
@@ -63,7 +63,7 @@
       <p class="attachment-hint">
         上传法人身份证时请分两条附件记录，并在名称中明确标注“人像面”或“国徽面”；合同生成时两面按同一 A4 页面上下居中处理。
       </p>
-      <t-space>
+      <t-space class="form-actions">
         <t-button @click="addAttachment">
           新增附件
         </t-button>
@@ -80,7 +80,7 @@
     <t-card
       title="版本历史"
       :bordered="true"
-      class="panel"
+      class="panel jg-table-region jg-table-region--standard"
     >
       <t-table
         row-key="id"
@@ -88,6 +88,7 @@
         :columns="columns"
         :data="versions"
         :loading="loading"
+        :horizontal-scroll-affixed-bottom="true"
         empty="暂无版本"
       >
         <template #summary="{ row }">
@@ -247,7 +248,7 @@ onMounted(loadParty);
 </script>
 
 <style scoped>
-.page { color: #151922; }
+.page { min-width: 0; color: #151922; }
 .page-head { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .page-head h1 { margin: 0 0 8px; font-size: 24px; line-height: 1.2; }
 .page-head p, label span, small { margin: 0; color: #767f8d; font-size: 12px; }
@@ -256,9 +257,18 @@ onMounted(loadParty);
 label { display: grid; gap: 4px; }
 .attachment-row { display: grid; grid-template-columns: 150px 1fr 160px 220px 1fr; gap: 8px; align-items: center; margin-bottom: 8px; }
 .attachment-row select { height: 32px; border: 1px solid #dcdfe6; border-radius: 3px; }
+.form-actions { flex-wrap: wrap; }
 .file-id, .attachment-line, .message { font-size: 12px; }
 .attachment-hint { margin: 4px 0 12px; color: #767f8d; font-size: 12px; }
 .success { color: #1b6b3a; }
 .danger { color: #b51d2a; }
-@media (max-width: 1000px) { .page-head, .form-grid, .attachment-row { display: grid; grid-template-columns: 1fr; } }
+@container jg-page (max-width: 1100px) {
+  .attachment-row { grid-template-columns: 140px minmax(180px, 1fr) 150px; }
+}
+@container jg-page (max-width: 840px) {
+  .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container jg-page (max-width: 620px) {
+  .page-head, .form-grid, .attachment-row { display: grid; grid-template-columns: 1fr; }
+}
 </style>

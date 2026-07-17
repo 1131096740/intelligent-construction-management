@@ -37,16 +37,16 @@ Do not dilute Phase 1 with full material issuing, attendance, HR onboarding/offb
 - The project is now in production-equivalent validation, real trial-run preparation, and Web Admin UI governance rollout.
 - Do not expand new major modules unless `PROGRESS.md` says the real trial run is blocked by them.
 - Current priority: real data initialization, historical contract takeover, 3-5 active contract flows, contract master sign-off, permission matrix validation, and Go-Live approval.
-- Mini program, OCR, full OA, invoicing, attendance, HR, safety, and large dashboards stay out of current P0 unless explicitly re-scoped.
+- Mini-program runtime retirement is approved but not yet implemented. Mobile and desktop target the same responsive Web system; OCR, full OA, invoicing, attendance, HR, safety, and large dashboards stay out of current P0 unless explicitly re-scoped.
 
 ## Architecture Decisions
 
 - Web admin is the primary system: `Vue 3 + TypeScript + TDesign Web + Vite`.
-- Mini program is the mobile work client: native WeChat mini program + TDesign mini program.
+- Current repository still contains the legacy native WeChat mini-program skeleton and `/auth/wx-login`, but the approved target architecture is one responsive Web system for desktop and mobile. Retirement must follow the staged plan and production data gate.
 - Backend is the business center: `Node.js + NestJS + PostgreSQL`.
 - Deploy target: Tencent Cloud Lighthouse, HTTPS, PostgreSQL not public, Tencent COS private bucket.
 - Do not use fixed IP allowlists; use strong identity, permissions, private files, audit logs, and backups.
-- Both Web and mini program must call the same backend API. Frontends must not access database or object storage directly.
+- All retained clients must call the same backend API. Frontends must not access database or object storage directly.
 
 ## Core Business Rules
 
@@ -64,7 +64,9 @@ Do not dilute Phase 1 with full material issuing, attendance, HR onboarding/offb
 
 - Contract signing and contract changes require chairman/general manager final approval.
 - Chairman and general manager are an OR-sign node: either one may approve.
+- Major contract changes are initiated by the contract handler (contract staff or contract director), then use contract director -> project manager -> finance director -> chairman/general manager OR-sign; budget director is not a mandatory node.
 - Settlement approval does not go through chairman/general manager.
+- Settlement cost-control review is approved by contract director alone; budget roles remain available for optional review but are not mandatory nodes.
 - All payment approvals require chairman/general manager OR-sign approval.
 - Contract archive files are uploaded by contract staff and confirmed by contract director.
 - Settlement archive files are uploaded by contract staff and confirmed by contract director.
@@ -99,7 +101,7 @@ Use real business positions, not old generic roles:
 - File download must go through backend permission checks and short-lived URLs.
 - Audit log required for login, approval, archive upload/confirmation, payment execution, voucher upload, permission changes, document voiding, and sensitive file download.
 - Sensitive actions require second confirmation.
-- Secrets must not be committed or exposed to Web/mini program clients.
+- Secrets must not be committed or exposed to any client.
 
 ## Frontend UI Governance
 
@@ -133,6 +135,6 @@ Use real business positions, not old generic roles:
 
 ## 进度跟踪
 
-- 项目实时进度以 `PROGRESS.md` 为唯一真相。
+- 项目实时进度以 `PROGRESS.md` 为唯一登记入口；状态结论仍必须与代码、Schema、迁移、测试、Git/部署和生产只读证据交叉核验。
 - 每完成一个子任务，必须在 `PROGRESS.md` 勾选/更新，并随代码一起 commit。
 - 接手开发（CodeX 或 Claude）第一件事：先读 `PROGRESS.md`。

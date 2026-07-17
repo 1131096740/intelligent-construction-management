@@ -1,5 +1,5 @@
 <template>
-  <section class="global-search-page">
+  <section class="global-search-page jg-responsive-ledger">
     <div class="page-head">
       <div>
         <h1>全局搜索</h1>
@@ -67,7 +67,7 @@
     </div>
 
     <t-card
-      class="result-panel"
+      class="result-panel jg-table-region jg-table-region--wide"
       :bordered="true"
     >
       <t-table
@@ -76,6 +76,7 @@
         :columns="visibleGlobalSearchColumns"
         :data="filteredItems"
         :loading="loading"
+        :horizontal-scroll-affixed-bottom="true"
         empty="暂无搜索结果"
       >
         <template #type="{ row }">
@@ -367,7 +368,6 @@ function getPreferenceStorage(): Storage | null {
 
 :deep(.t-card__body) {
   padding: 0;
-  overflow-x: auto;
 }
 
 :deep(.t-table th) {
@@ -375,7 +375,7 @@ function getPreferenceStorage(): Storage | null {
   font-size: 12px;
 }
 
-@media (max-width: 900px) {
+@container jg-page (max-width: 620px) {
   .page-head {
     align-items: flex-start;
     flex-direction: column;

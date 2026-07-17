@@ -80,7 +80,7 @@ interface SettlementApprovalAssignment {
 const MATERIAL_MECHANICAL_SETTLEMENT_NODES: SettlementApprovalNode[] = [
   { name: "物资员", mode: "any", roleKeys: ["material_staff"] },
   { name: "物资主管", mode: "any", roleKeys: ["material_director"] },
-  { name: "合同部主管 + 预算部主管", mode: "all", roleKeys: ["contract_director", "budget_director"] },
+  { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
   { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
   { name: "财务总监", mode: "any", roleKeys: ["finance_director"] }
 ];
@@ -89,7 +89,7 @@ const LABOR_PROFESSIONAL_SETTLEMENT_NODES: SettlementApprovalNode[] = [
   { name: "工长", mode: "any", roleKeys: ["engineering_foreman"] },
   { name: "项目总工", mode: "any", roleKeys: ["engineering_director"] },
   { name: "公司工程技术部部长", mode: "any", roleKeys: ["engineering_department_director"] },
-  { name: "合同部主管 + 预算部主管", mode: "all", roleKeys: ["contract_director", "budget_director"] },
+  { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
   { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
   { name: "财务总监", mode: "any", roleKeys: ["finance_director"] }
 ];

@@ -1,11 +1,11 @@
 <template>
-  <section class="page">
+  <section class="page jg-responsive-ledger">
     <div class="page-head">
       <div>
         <h1>标准条款库</h1>
         <p>当前只展示最新已发布条款；合同部创建后提交，合同主管可复核并发布</p>
       </div>
-      <t-space>
+      <t-space class="jg-responsive-actions">
         <t-input
           v-model="category"
           placeholder="分类筛选，如 付款"
@@ -82,7 +82,7 @@
     <t-card
       title="已发布条款"
       :bordered="true"
-      class="panel"
+      class="panel jg-table-region jg-table-region--wide"
     >
       <t-table
         row-key="standardClauseVersionId"
@@ -90,6 +90,7 @@
         :columns="columns"
         :data="clauses"
         :loading="loading"
+        horizontal-scroll-affixed-bottom
         empty="暂无已发布标准条款"
       >
         <template #versionNo="{ row }">
@@ -247,5 +248,5 @@ label { display: grid; gap: 4px; }
 .message { font-size: 12px; }
 .success { color: #1b6b3a; }
 .danger { color: #b51d2a; }
-@media (max-width: 900px) { .page-head, .form-grid, .publish-grid { display: grid; grid-template-columns: 1fr; } }
+@container jg-page (max-width: 840px) { .page-head, .form-grid, .publish-grid { display: grid; grid-template-columns: 1fr; } }
 </style>

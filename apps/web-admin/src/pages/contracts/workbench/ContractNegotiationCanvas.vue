@@ -423,6 +423,8 @@ function changeTypeLabel(value: ContractDocumentDifferenceReadModel["changeType"
   min-height: 720px;
   background: var(--jg-bg-panel);
   border: var(--jg-border-width-base) solid var(--jg-border);
+  container-name: contract-negotiation;
+  container-type: inline-size;
 }
 
 .canvas-head,
@@ -525,7 +527,7 @@ function changeTypeLabel(value: ContractDocumentDifferenceReadModel["changeType"
   color: var(--jg-text-muted);
 }
 
-@media (max-width: 1100px) {
+@container contract-negotiation (max-width: 720px) {
   .text-comparison {
     grid-template-columns: 1fr;
   }

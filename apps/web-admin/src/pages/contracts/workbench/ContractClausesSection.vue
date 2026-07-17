@@ -435,6 +435,8 @@ function clauseContentRecord(content: unknown): Record<string, unknown> {
 .workbench-section {
   display: grid;
   gap: 16px;
+  container-name: contract-clauses;
+  container-type: inline-size;
 }
 
 .section-title {
@@ -547,7 +549,7 @@ function clauseContentRecord(content: unknown): Record<string, unknown> {
   font-style: normal;
 }
 
-@media (max-width: 900px) {
+@container contract-clauses (max-width: 620px) {
   .clause-head {
     grid-template-columns: 1fr;
   }

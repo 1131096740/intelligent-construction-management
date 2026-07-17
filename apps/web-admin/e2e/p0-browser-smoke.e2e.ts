@@ -1,6 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 
 async function loginWithMockedAuth(page: Page, roleKeys: string[]) {
+  await page.route("**/api/approval-delegations/user-options", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify([]) })
+  );
   await page.route("**/api/auth/login", (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -40,9 +43,6 @@ async function routeCoreDetailMocks(page: Page) {
         }
       })
     })
-  );
-  await page.route("**/api/approval-delegations/user-options", (route) =>
-    route.fulfill({ contentType: "application/json", body: JSON.stringify([]) })
   );
   await page.route("**/api/contract-number-rules", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify([]) })
@@ -115,6 +115,17 @@ async function routeCoreDetailMocks(page: Page) {
         primaryAction: "confirm_archive",
         disabledReasons: ["需要当前处理人操作"],
         chainLinks: [{ label: "审计日志", to: "/audit" }]
+      })
+    })
+  );
+  await page.route("**/api/contracts/contract-version-e2e/change-eligibility", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        eligible: false,
+        reason: "当前样例仅验证合同详情展示。",
+        currentEffective: null,
+        activeChange: null
       })
     })
   );
@@ -432,6 +443,7 @@ test("settlement and payment detail failures do not show static samples", async 
   const phone = process.env.E2E_LIMITED_PHONE;
   const password = process.env.E2E_LIMITED_PASSWORD;
   test.skip(!phone || !password, "Set E2E_LIMITED_PHONE/E2E_LIMITED_PASSWORD for detail permission checks");
+  if (!phone || !password) return;
 
   await page.goto("/login");
   await page.getByPlaceholder("请输入手机号").fill(phone);
@@ -453,6 +465,7 @@ test("temporary-password account is forced through password change when configur
   const tempPassword = process.env.E2E_TEMP_PASSWORD;
   const newPassword = process.env.E2E_NEW_PASSWORD;
   test.skip(!phone || !tempPassword || !newPassword, "Set E2E_TEMP_PHONE/E2E_TEMP_PASSWORD/E2E_NEW_PASSWORD");
+  if (!phone || !tempPassword || !newPassword) return;
 
   await page.goto("/login");
   await page.getByPlaceholder("请输入手机号").fill(phone);

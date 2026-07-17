@@ -1,0 +1,12 @@
+[Unit]
+Description=Check JiangKong production database backup every 15 minutes
+
+[Timer]
+OnCalendar=*-*-* *:00/15:00
+AccuracySec=1min
+RandomizedDelaySec=30s
+Persistent=true
+Unit=jiangkong-db-backup-monitor.service
+
+[Install]
+WantedBy=timers.target

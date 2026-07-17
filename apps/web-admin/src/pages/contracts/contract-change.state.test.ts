@@ -115,8 +115,12 @@ describe("contract change UI state", () => {
 
   it("uses fixed labels and never echoes unknown backend codes", () => {
     expect(CONTRACT_NAME_DRAFT_KEY).toBe("contractName");
-    expect(contractApprovalRouteText(["budget_director", "chairman_or_general_manager"]))
-      .toBe("预算部主管 → 董事长/总经理或签");
+    expect(contractApprovalRouteText([
+      "contract_director",
+      "project_manager",
+      "finance_director",
+      "chairman_or_general_manager"
+    ])).toBe("合同部主管 → 项目经理 → 财务主管 → 董事长/总经理或签");
     expect(contractApprovalRouteText(["internal_role_key"])).not.toContain("internal_role_key");
     expect(contractEnhancedReasonText(["internal_reason_code"])).not.toContain("internal_reason_code");
   });

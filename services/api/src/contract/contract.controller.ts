@@ -42,6 +42,7 @@ export class ContractController {
   }
 
   @Post(":contractVersionId/change-drafts")
+  // 合同变更草稿：合同员或合同部主管作为合同经办人发起。
   @RequireProjectRole("contract.create")
   createChangeDraft(
     @Param("contractVersionId") contractVersionId: string,

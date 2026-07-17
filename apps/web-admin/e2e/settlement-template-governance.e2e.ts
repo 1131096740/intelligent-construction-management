@@ -1,4 +1,19 @@
+import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import {
+  expectHorizontalScrollOwner,
+  expectNoDocumentHorizontalOverflow,
+  expectNoNestedHorizontalScrollers
+} from "./helpers/responsive-assertions";
+
+const responsiveViewports = [
+  { width: 1512, height: 982 },
+  { width: 1440, height: 900 },
+  { width: 1280, height: 800 },
+  { width: 1180, height: 820 },
+  { width: 1024, height: 768 },
+  { width: 900, height: 768 }
+] as const;
 
 const templateId = "settlement-template-1";
 const inspectionReport = {
@@ -124,7 +139,7 @@ async function login(page: Page) {
   await page.getByRole("button", { name: "登录" }).click();
 }
 
-test("全局合同主管可治理结算模板且敏感标识、动作门禁和双视口符合要求", async ({ page }, testInfo) => {
+test("全局合同主管可治理结算模板且敏感标识、动作门禁和响应式约束符合要求", async ({ page }, testInfo) => {
   await mockGovernanceSession(page);
   await page.setViewportSize({ width: 1440, height: 1100 });
   await login(page);
@@ -170,10 +185,32 @@ test("全局合同主管可治理结算模板且敏感标识、动作门禁和�
   await expect(page.getByRole("button", { name: "复制为新草稿" })).toBeVisible();
   await expect(page.getByRole("button", { name: "保存新修订" })).toHaveCount(0);
 
-  await page.setViewportSize({ width: 1100, height: 800 });
-  await expect(page.getByRole("heading", { name: "结算模板治理" })).toBeVisible();
-  await page.screenshot({
-    path: testInfo.outputPath("settlement-template-governance-1100.png"),
-    fullPage: true
-  });
+  const screenshotDir = process.env.UI_RESPONSIVE_SCREENSHOT_DIR ?? testInfo.outputDir;
+  for (const viewport of responsiveViewports) {
+    await page.setViewportSize(viewport);
+    await expect(page.getByRole("heading", { name: "结算模板治理" })).toBeVisible();
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoNestedHorizontalScrollers(page);
+    if (viewport.width <= 1024) {
+      await expectHorizontalScrollOwner(page.locator(".inspection-workspace"));
+    }
+    await page.screenshot({
+      path: path.join(screenshotDir, `settlement-template-editor-${viewport.width}x${viewport.height}.png`),
+      fullPage: true
+    });
+
+    await page.goto("/结算模板库");
+    await expect(page.getByRole("heading", { name: "结算模板库" })).toBeVisible();
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoNestedHorizontalScrollers(page);
+    if (viewport.width <= 1180) {
+      await expectHorizontalScrollOwner(page.locator(".jg-table-region .t-table__content"));
+    }
+    await page.screenshot({
+      path: path.join(screenshotDir, `settlement-template-list-${viewport.width}x${viewport.height}.png`),
+      fullPage: true
+    });
+
+    await page.getByText("治理版本", { exact: true }).click();
+  }
 });

@@ -334,8 +334,10 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
   min-height: 0;
   flex: 1;
   padding: var(--jg-layout-content-padding);
-  overflow-x: auto;
+  overflow-x: clip;
   background: var(--jg-color-bg-page);
+  container-name: jg-content;
+  container-type: inline-size;
 }
 
 .main-shell {
@@ -343,7 +345,7 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
   min-height: 100vh;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 720px) {
   .admin-shell {
     display: block;
   }
@@ -391,6 +393,13 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
 
   .content {
     padding: var(--jg-layout-content-padding-compact);
+  }
+}
+
+@media (max-width: 720px) {
+  .content {
+    min-width: var(--jg-layout-page-min-width-fallback);
+    overflow-x: auto;
   }
 }
 </style>

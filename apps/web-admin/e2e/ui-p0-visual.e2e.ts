@@ -1,15 +1,22 @@
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test, type Page, type Route } from "@playwright/test";
+import {
+  expectNoDocumentHorizontalOverflow,
+  expectNoNestedHorizontalScrollers
+} from "./helpers/responsive-assertions";
 
 const screenshotDir = process.env.UI_P0_SCREENSHOT_DIR
   ? resolve(process.env.UI_P0_SCREENSHOT_DIR)
   : resolve("test-results/ui-p0-screenshots");
 
 const desktopViewports = [
+  { width: 1512, height: 982 },
   { width: 1440, height: 900 },
   { width: 1280, height: 800 },
-  { width: 1024, height: 768 }
+  { width: 1180, height: 820 },
+  { width: 1024, height: 768 },
+  { width: 900, height: 768 }
 ];
 
 const normalWorkItems = {
@@ -474,7 +481,7 @@ test("captures the UI P0 enterprise sample and reproducible states", async ({ pa
   await page.goto("/付款管理/FK-LOAD-001");
   await expect(page.locator(".detail-loading-skeleton")).toBeVisible();
   await capture(page, "payment-detail-loading-1440x900.png");
-  await pendingLoadingRoute?.fulfill({
+  await (pendingLoadingRoute as Route | null)?.fulfill({
     contentType: "application/json",
     body: JSON.stringify(detailBody)
   });
@@ -496,6 +503,8 @@ async function captureRequiredViewports(page: Page, compactPrefix: string, wideP
         requestAnimationFrame(() => requestAnimationFrame(() => resolveFrame()));
       })
     );
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoNestedHorizontalScrollers(page);
     const prefix = viewport.width === 1440 ? widePrefix : compactPrefix;
     await capture(page, `${prefix}-${viewport.width}x${viewport.height}.png`);
   }

@@ -239,6 +239,8 @@ async function submitCreation() {
 
 <style scoped>
 .user-creation-drawer {
+  container-name: organization-drawer;
+  container-type: inline-size;
   display: grid;
   gap: var(--jg-space-md);
 }
@@ -256,5 +258,17 @@ async function submitCreation() {
 
 .drawer-actions {
   justify-content: flex-end;
+}
+
+@container organization-drawer (max-width: 560px) {
+  .temporary-password-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .temporary-password-row :deep(.t-input),
+  .temporary-password-row :deep(.t-input__wrap) {
+    width: 100%;
+  }
 }
 </style>

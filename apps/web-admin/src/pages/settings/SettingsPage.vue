@@ -1,5 +1,5 @@
 <template>
-  <div class="settings-page">
+  <div class="settings-page jg-responsive-flow">
     <t-card
       title="我的账号"
       :bordered="true"
@@ -538,6 +538,8 @@ async function submitEntity() {
 .settings-page {
   display: flex;
   flex-direction: column;
+  width: 100%;
+  min-width: 0;
   gap: 16px;
 }
 
@@ -797,7 +799,7 @@ async function submitEntity() {
   text-align: right;
 }
 
-@media (max-width: 900px) {
+@container jg-page (max-width: 840px) {
   .account-grid {
     grid-template-columns: 1fr;
   }

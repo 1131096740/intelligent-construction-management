@@ -46,4 +46,17 @@ describe("contract change Web closure", () => {
     expect(detail).toContain("历史结算和付款继续引用原合同版本，不会被改写");
     expect(detail).toContain("archiveEffectText(version)");
   });
+
+  it("accepts change amounts in yuan and keeps the API amount fact in cents", () => {
+    expect(detail).toContain("变更金额（元）");
+    expect(detail).toContain('v-model="changeForm.changeAmountYuan"');
+    expect(detail).toContain("yuanTextToCentsText(changeForm.changeAmountYuan.trim())");
+    expect(detail).toContain("changeAmountCents: amountCents");
+    expect(detail).not.toContain("变更金额必须按分填写");
+    const submission = detail.slice(
+      detail.indexOf("async function submitChangeDraft()"),
+      detail.indexOf("function requiredText(")
+    );
+    expect(submission).not.toContain('changeForm.changeAmountYuan = ""');
+  });
 });

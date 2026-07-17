@@ -599,10 +599,10 @@ export class PrivateFileStorage implements OnModuleInit {
 function normalizeDownloadReason(value: string | undefined): string {
   const reason = value?.trim();
   if (!reason) {
-    throw new Error("请填写下载原因，便于留痕审计");
+    throw new BadRequestException("请填写下载原因，便于留痕审计");
   }
   if (reason.length > 200) {
-    throw new Error("下载原因不能超过 200 个字，请精简后重新提交");
+    throw new BadRequestException("下载原因不能超过 200 个字，请精简后重新提交");
   }
   return reason;
 }
@@ -850,11 +850,11 @@ export class FileService {
 
   async readPrivateFile(fileId: string, input: ReadPrivateFileInput) {
     if (!input.actorUserId.trim()) {
-      throw new Error("下载人信息缺失，请重新登录后再下载资料");
+      throw new BadRequestException("下载人信息缺失，请重新登录后再下载资料");
     }
 
     if (Number.isNaN(Date.parse(input.expiresAt)) || Date.parse(input.expiresAt) < Date.now()) {
-      throw new Error("下载链接已过期，请重新申请下载");
+      throw new BadRequestException("下载链接已过期，请重新申请下载");
     }
     const downloadReason = normalizeDownloadReason(input.downloadReason);
 
@@ -867,7 +867,7 @@ export class FileService {
         input.token
       )
     ) {
-      throw new Error("下载链接校验失败，请重新申请下载");
+      throw new BadRequestException("下载链接校验失败，请重新申请下载");
     }
 
     const file = await this.prisma.$transaction(async (tx) => {
@@ -1067,7 +1067,7 @@ export class FileService {
   ) {
     const file = await tx.fileObject.findUnique({ where: { id: fileId } });
     if (!file) {
-      throw new Error("资料文件不存在或已被移除");
+      throw new BadRequestException("资料文件不存在或已被移除");
     }
     await this.assertCanDownloadFileObject(tx, file, actorUserId);
     return file;
@@ -1245,7 +1245,7 @@ export class FileService {
       : null;
 
     if (voidedProjectOwnerContract) {
-      throw new Error("当前账号无权下载该资料");
+      throw new ForbiddenException("当前账号无权下载该资料");
     }
 
     const settlementTemplateVersionClient = (tx as unknown as {
@@ -1284,7 +1284,7 @@ export class FileService {
       ) {
         return;
       }
-      throw new Error("当前账号无权下载该结算模板文件");
+      throw new ForbiddenException("当前账号无权下载该结算模板文件");
     }
 
     const offlineRevisionClient = (tx as unknown as {
@@ -1317,7 +1317,7 @@ export class FileService {
           })
         : null;
       if (contract?.ownerUserId === actorUserId && !contract.voidedAt) return;
-      throw new Error("当前账号无权下载该线下修订稿文件");
+      throw new ForbiddenException("当前账号无权下载该线下修订稿文件");
     }
 
     if (file.uploadedByUserId === actorUserId && !projectOwnerContract) {
@@ -1329,7 +1329,7 @@ export class FileService {
     });
     if (contractArchiveFile) {
       if (contractArchiveFile.status !== "confirmed") {
-        throw new Error("资料尚未归档确认，暂不能下载");
+        throw new BadRequestException("资料尚未归档确认，暂不能下载");
       }
       const version = await tx.contractVersion.findUnique({
         where: { id: contractArchiveFile.contractVersionId }
@@ -1351,7 +1351,7 @@ export class FileService {
     });
     if (settlementArchiveFile) {
       if (settlementArchiveFile.status !== "confirmed") {
-        throw new Error("资料尚未归档确认，暂不能下载");
+        throw new BadRequestException("资料尚未归档确认，暂不能下载");
       }
       const settlement = await tx.settlement.findUnique({
         where: { id: settlementArchiveFile.settlementId }
@@ -1648,7 +1648,7 @@ export class FileService {
       }
     }
 
-    throw new Error("当前账号无权下载该资料");
+    throw new ForbiddenException("当前账号无权下载该资料");
   }
 
   private async resolveApprovalProjectId(

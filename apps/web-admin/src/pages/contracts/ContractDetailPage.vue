@@ -823,12 +823,12 @@
           />
         </label>
         <label class="change-field">
-          <span>变更金额（分）</span>
+          <span>变更金额（元）</span>
           <t-input
-            v-model="changeForm.changeAmountCents"
+            v-model="changeForm.changeAmountYuan"
             :disabled="changeForm.changeDirection === 'unchanged'"
             :maxlength="19"
-            placeholder="请输入非负整数分"
+            placeholder="请输入金额，最多两位小数"
           />
         </label>
         <label class="change-field change-reason">
@@ -884,7 +884,7 @@ import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
 import { CORE_ARCHIVE_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
 import { buildFileUploadSummary } from "../../components/file-upload-summary.config";
-import { centsTextToYuanText } from "../../lib/money";
+import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import { contractDetailChainLinks } from "../business-chain-links.config";
 import type { DetailTone } from "./contract-detail.config";
 import {
@@ -956,7 +956,7 @@ let changeDialogBaseVersionId = "";
 const changeForm = reactive({
   changeType: "supplement" as "change" | "supplement",
   changeDirection: "unchanged" as "increase" | "decrease" | "unchanged",
-  changeAmountCents: "0",
+  changeAmountYuan: "0",
   changeReason: ""
 });
 const changeTypeOptions = [
@@ -1268,7 +1268,7 @@ function routeContractId() {
 function resetChangeForm() {
   changeForm.changeType = "supplement";
   changeForm.changeDirection = "unchanged";
-  changeForm.changeAmountCents = "0";
+  changeForm.changeAmountYuan = "0";
   changeForm.changeReason = "";
 }
 
@@ -1296,7 +1296,7 @@ function changeTypeLabel(value: unknown) {
 }
 
 function onChangeDirection(value: "increase" | "decrease" | "unchanged") {
-  if (value === "unchanged") changeForm.changeAmountCents = "0";
+  if (value === "unchanged") changeForm.changeAmountYuan = "0";
 }
 
 function openChangeDialog() {
@@ -1311,13 +1311,20 @@ function openChangeDialog() {
 async function submitChangeDraft() {
   if (changeSubmitting.value) return;
   const reason = changeForm.changeReason.trim();
-  const amount = changeForm.changeAmountCents.trim();
   if (!reason) return void (changeError.value = "请填写变更原因");
-  if (!isPostgresBigIntText(amount)) return void (changeError.value = "变更金额必须按分填写，且不能超过数据库整数上限");
-  if (changeForm.changeDirection === "unchanged" && amount !== "0") {
+  let amountCents: string;
+  try {
+    amountCents = yuanTextToCentsText(changeForm.changeAmountYuan.trim());
+  } catch {
+    return void (changeError.value = "变更金额必须按元填写，且最多保留两位小数");
+  }
+  if (!isPostgresBigIntText(amountCents)) {
+    return void (changeError.value = "变更金额超出系统可处理范围，请核对后重试");
+  }
+  if (changeForm.changeDirection === "unchanged" && amountCents !== "0") {
     return void (changeError.value = "金额不变时变更金额必须为 0");
   }
-  if (changeForm.changeDirection !== "unchanged" && BigInt(amount) <= 0n) {
+  if (changeForm.changeDirection !== "unchanged" && BigInt(amountCents) <= 0n) {
     return void (changeError.value = "增减金额必须大于 0");
   }
   changeSubmitting.value = true;
@@ -1347,7 +1354,7 @@ async function submitChangeDraft() {
       changeType: capturedChangeType,
       changeReason: reason,
       changeDirection: capturedChangeDirection,
-      changeAmountCents: amount
+      changeAmountCents: amountCents
     });
     if (!submissionIsCurrent()) return;
     const created = normalizeChangeVersion(createdPayload);

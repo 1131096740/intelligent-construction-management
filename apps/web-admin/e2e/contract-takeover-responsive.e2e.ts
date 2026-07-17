@@ -1,4 +1,19 @@
+import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import {
+  expectHorizontalScrollOwner,
+  expectNoDocumentHorizontalOverflow,
+  expectNoNestedHorizontalScrollers
+} from "./helpers/responsive-assertions";
+
+const governanceViewports = [
+  { width: 1512, height: 982 },
+  { width: 1440, height: 900 },
+  { width: 1280, height: 800 },
+  { width: 1180, height: 820 },
+  { width: 1024, height: 768 },
+  { width: 900, height: 768 }
+] as const;
 
 const takeover = {
   id: "takeover-responsive",
@@ -91,7 +106,10 @@ const takeoverWithDownloadableEvidence = {
   ]
 };
 
-async function loginWithMocks(page: Page, takeoverFixture = takeover) {
+async function loginWithMocks(
+  page: Page,
+  takeoverFixture: typeof takeover | typeof takeoverWithDownloadableEvidence = takeover
+) {
   await page.route("**/api/auth/login", (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -116,6 +134,23 @@ async function loginWithMocks(page: Page, takeoverFixture = takeover) {
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify([{ id: "project-1", code: "JGXM-001", name: "响应式验收项目" }])
+    })
+  );
+  await page.route("**/api/me/work-items", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        generatedAt: new Date().toISOString(),
+        visibleProjectCount: 1,
+        queues: { pending: [], blocked: [], started: [] },
+        approvalCenter: {
+          pendingApproval: [],
+          startedByMe: [],
+          handledByMe: [],
+          delegatedToMe: [],
+          overdueReminder: []
+        }
+      })
     })
   );
   await page.route("**/api/approval-delegations/user-options", (route) =>
@@ -184,7 +219,44 @@ test("keeps takeover details and upload controls inside a 1224px desktop viewpor
   expect(runtimeErrors).toEqual([]);
 });
 
-test("stacks takeover evidence controls on a 390px mobile viewport", async ({ page }) => {
+test("keeps the takeover ledger as the only horizontal scroller across six desktop viewports", async ({
+  page
+}, testInfo) => {
+  const runtimeErrors = collectRuntimeErrors(page);
+  await loginWithMocks(page);
+  const screenshotDir = process.env.UI_RESPONSIVE_SCREENSHOT_DIR ?? testInfo.outputDir;
+
+  for (const viewport of governanceViewports) {
+    await page.setViewportSize(viewport);
+    await page.goto("/历史合同接管");
+    await expect(page.getByRole("heading", { name: "历史合同接管" })).toBeVisible();
+    await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
+
+    const ledger = page.locator(".ledger-panel");
+    const detail = page.locator(".detail-panel");
+    const [ledgerBox, detailBox] = await Promise.all([ledger.boundingBox(), detail.boundingBox()]);
+    expect(ledgerBox).not.toBeNull();
+    expect(detailBox).not.toBeNull();
+    if (viewport.width >= 1440) {
+      expect(ledgerBox!.x).toBeLessThan(detailBox!.x);
+    } else {
+      expect(Math.abs(detailBox!.x - ledgerBox!.x)).toBeLessThanOrEqual(1);
+      expect(detailBox!.y).toBeGreaterThan(ledgerBox!.y + ledgerBox!.height);
+    }
+
+    await expectHorizontalScrollOwner(ledger.locator(".t-table__content"));
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoNestedHorizontalScrollers(page);
+    await page.screenshot({
+      path: path.join(screenshotDir, `contract-takeover-${viewport.width}x${viewport.height}.png`),
+      fullPage: true
+    });
+  }
+
+  expect(runtimeErrors).toEqual([]);
+});
+
+test("keeps takeover evidence controls reachable through the final 390px page fallback", async ({ page }) => {
   const runtimeErrors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await loginWithMocks(page);
@@ -200,12 +272,14 @@ test("stacks takeover evidence controls on a 390px mobile viewport", async ({ pa
 
   const uploadButton = detail.getByRole("button", { name: "上传接管资料" });
   await expect(uploadButton).toBeVisible();
+  await page.evaluate(() => window.scrollTo({ left: 0, top: window.scrollY }));
+  await uploadButton.scrollIntoViewIfNeeded();
   const uploadButtonBox = await uploadButton.boundingBox();
   expect(uploadButtonBox).not.toBeNull();
-  expect(uploadButtonBox!.x).toBeGreaterThanOrEqual(0);
-  expect(uploadButtonBox!.x + uploadButtonBox!.width).toBeLessThanOrEqual(390);
+  expect(uploadButtonBox!.x).toBeGreaterThanOrEqual(-1);
+  expect(uploadButtonBox!.x + uploadButtonBox!.width).toBeLessThanOrEqual(720);
   expect(
-    await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)
+    await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
   ).toBe(true);
   expect(runtimeErrors).toEqual([]);
 });

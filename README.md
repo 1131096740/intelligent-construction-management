@@ -6,8 +6,8 @@ Phase 1 MVP 聚焦审批、合同、结算、付款、用印、归档、PDF 与�
 
 当前工程约束与业务边界以 [AGENTS.md](AGENTS.md) 和 [PROGRESS.md](PROGRESS.md) 为准，产品与架构设计以 Obsidian 文档 `obsidian-current/建工智管_第一阶段MVP_产品与架构设计.md` 为当前来源。
 
-当前状态报告见 `obsidian-current/建工智管_项目状态报告_20260709.md`。
+当前状态报告见 [建工智管_项目状态报告_20260715](obsidian-current/建工智管_项目状态报告_20260715.md)，文档的当前/历史边界见 [建工智管_文档有效性索引](obsidian-current/建工智管_文档有效性索引.md)。状态判断必须同时核对仓库实现、测试、迁移、发布和生产证据，不能只引用进度摘要。
 
-前端改造方向以 [企业流程系统前端改造方案](docs/design/建工智管_企业流程系统前端改造方案_20260707.md) 为准；Web 管理端继续使用 Vue 3、TypeScript、TDesign 和 Vite，不引入第二套 UI 组件库。薄设计 token 层已落地到 `apps/web-admin/src/app/design-tokens.css`。Gitee/GitHub 开源后台只作为权限治理、流程待办、密集表单、模板治理和工程纪律参考，不迁移底座，不引入 Flowable 或低代码运行时。
+前端改造方向以 [企业流程系统前端改造方案](docs/design/建工智管_企业流程系统前端改造方案_20260707.md) 为准；Web 管理端继续使用 Vue 3、TypeScript、TDesign 和 Vite，不引入第二套 UI 组件库。项目级 Design Token 已落地到 `apps/web-admin/src/app/design-tokens.css`，P0/P1 样板与响应式治理已形成待发布候选。Gitee/GitHub 开源后台只作为权限治理、流程待办、密集表单、模板治理和工程纪律参考，不迁移底座，不引入 Flowable 或低代码运行时。
 
 合同工作台和合同模板库按一线业务用户重构：业务流和详情页动作组只展示当前账号可办理动作；前端错误、上传提示和模板文案必须中文化；Word/Excel 合同模板面向业务用户只出现中文占位符和中文表头；模板库拆分“使用模式”和“配置模式”，后续以模板版本读模型、版式模板绑定业务模板版本、母版验收包签认为主要优化方向。

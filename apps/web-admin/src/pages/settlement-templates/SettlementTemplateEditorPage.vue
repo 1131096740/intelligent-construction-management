@@ -1,5 +1,5 @@
 <template>
-  <section class="template-editor-page">
+  <section class="template-editor-page jg-responsive-workspace">
     <header class="page-head">
       <div>
         <h1>{{ isCreateMode ? "新建结算模板" : "结算模板治理" }}</h1>
@@ -143,92 +143,94 @@
         message="当前修订尚未完成有效检查和 XLSX/PDF 脱敏预览，不能提交发布。"
         class="governance-alert"
       />
-      <div class="inspection-layout">
-        <div class="inspection-card">
-          <div class="section-head">
-            <strong>模板检查</strong>
-            <t-button
-              variant="outline"
-              :disabled="!governance.canInspect"
-              :loading="busyAction === 'inspect'"
-              @click="inspectCurrent"
+      <div class="inspection-workspace jg-workspace-scroll">
+        <div class="inspection-layout jg-workspace-scroll__content--compact">
+          <div class="inspection-card">
+            <div class="section-head">
+              <strong>模板检查</strong>
+              <t-button
+                variant="outline"
+                :disabled="!governance.canInspect"
+                :loading="busyAction === 'inspect'"
+                @click="inspectCurrent"
+              >
+                执行检查
+              </t-button>
+            </div>
+            <div
+              v-if="currentVersion.inspectionReport"
+              class="report-groups"
             >
-              执行检查
-            </t-button>
-          </div>
-          <div
-            v-if="currentVersion.inspectionReport"
-            class="report-groups"
-          >
-            <div>
-              <span>阻断项</span>
-              <ul v-if="currentVersion.inspectionReport.blockingErrors.length">
-                <li
-                  v-for="item in currentVersion.inspectionReport.blockingErrors"
-                  :key="item"
-                >
-                  {{ item }}
-                </li>
-              </ul>
-              <strong
-                v-else
-                class="success-copy"
-              >未发现阻断项</strong>
+              <div>
+                <span>阻断项</span>
+                <ul v-if="currentVersion.inspectionReport.blockingErrors.length">
+                  <li
+                    v-for="item in currentVersion.inspectionReport.blockingErrors"
+                    :key="item"
+                  >
+                    {{ item }}
+                  </li>
+                </ul>
+                <strong
+                  v-else
+                  class="success-copy"
+                >未发现阻断项</strong>
+              </div>
+              <div v-if="currentVersion.inspectionReport.warnings.length">
+                <span>提醒</span>
+                <ul>
+                  <li
+                    v-for="item in currentVersion.inspectionReport.warnings"
+                    :key="item"
+                  >
+                    {{ item }}
+                  </li>
+                </ul>
+              </div>
             </div>
-            <div v-if="currentVersion.inspectionReport.warnings.length">
-              <span>提醒</span>
-              <ul>
-                <li
-                  v-for="item in currentVersion.inspectionReport.warnings"
-                  :key="item"
-                >
-                  {{ item }}
-                </li>
-              </ul>
-            </div>
+            <span
+              v-else
+              class="muted"
+            >尚未检查当前修订。</span>
           </div>
-          <span
-            v-else
-            class="muted"
-          >尚未检查当前修订。</span>
-        </div>
 
-        <div class="inspection-card">
-          <div class="section-head">
-            <strong>固定脱敏样张</strong>
-            <t-button
-              variant="outline"
-              :disabled="!governance.canPreview"
-              :loading="busyAction === 'preview'"
-              @click="generatePreview"
-            >
-              生成 XLSX/PDF
-            </t-button>
+          <div class="inspection-card">
+            <div class="section-head">
+              <strong>固定脱敏样张</strong>
+              <t-button
+                variant="outline"
+                :disabled="!governance.canPreview"
+                :loading="busyAction === 'preview'"
+                @click="generatePreview"
+              >
+                生成 XLSX/PDF
+              </t-button>
+            </div>
+            <span>{{ previewStatus }}</span>
+            <t-input
+              v-model="downloadReason"
+              label="下载原因"
+              placeholder="例如：发布前核对打印版式"
+            />
+            <t-space>
+              <t-button
+                variant="outline"
+                :disabled="!canDownloadPreview"
+                :loading="busyAction === 'download-xlsx'"
+                @click="downloadPreview('xlsx')"
+              >
+                下载 XLSX 样张
+              </t-button>
+              <t-button
+                variant="outline"
+                :disabled="!canDownloadPreview"
+                :loading="busyAction === 'download-pdf'"
+                @click="downloadPreview('pdf')"
+              >
+                下载 PDF 样张
+              </t-button>
+            </t-space>
           </div>
-          <span>{{ previewStatus }}</span>
-          <t-input
-            v-model="downloadReason"
-            label="下载原因"
-            placeholder="例如：发布前核对打印版式"
-          />
-          <t-space>
-            <t-button
-              variant="outline"
-              :disabled="!canDownloadPreview"
-              :loading="busyAction === 'download-xlsx'"
-              @click="downloadPreview('xlsx')"
-            >
-              下载 XLSX 样张
-            </t-button>
-            <t-button
-              variant="outline"
-              :disabled="!canDownloadPreview"
-              :loading="busyAction === 'download-pdf'"
-              @click="downloadPreview('pdf')"
-            >
-              下载 PDF 样张
-            </t-button>
-          </t-space>
         </div>
       </div>
     </t-card>
@@ -621,6 +623,10 @@ onMounted(async () => {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.inspection-workspace {
+  padding-bottom: var(--jg-space-xs);
+}
+
 .inspection-card {
   display: grid;
   align-content: start;
@@ -650,10 +656,23 @@ onMounted(async () => {
   flex: 1;
 }
 
-@media (max-width: 1100px) {
-  .compatibility-grid,
-  .inspection-layout {
+@container jg-page (max-width: 840px) {
+  .compatibility-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@container jg-page (max-width: 620px) {
+  .page-head,
+  .source-row,
+  .publication-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .source-row :deep(.t-upload),
+  .publication-row > :first-child {
+    width: 100%;
   }
 }
 </style>

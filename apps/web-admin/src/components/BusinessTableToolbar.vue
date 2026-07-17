@@ -33,7 +33,10 @@ withDefaults(defineProps<{
 
 <style scoped>
 .business-table-toolbar {
+  min-width: 0;
   background: var(--jg-color-bg-panel);
+  container-name: jg-table-toolbar;
+  container-type: inline-size;
 }
 
 .business-table-toolbar--plain :deep(.t-card__body) {
@@ -70,5 +73,15 @@ withDefaults(defineProps<{
   flex-wrap: wrap;
   gap: var(--jg-space-md);
   margin-top: var(--jg-space-md);
+}
+
+@container jg-table-toolbar (max-width: 720px) {
+  .business-table-toolbar__header {
+    flex-direction: column;
+  }
+
+  .business-table-toolbar__actions {
+    flex-wrap: wrap;
+  }
 }
 </style>

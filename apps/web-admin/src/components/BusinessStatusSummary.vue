@@ -45,7 +45,10 @@ const normalizedItems = computed(() => normalizeBusinessStatusSummaryItems(props
 
 <style scoped>
 .business-status-summary {
+  min-width: 0;
   background: var(--jg-color-bg-panel);
+  container-name: jg-status-summary;
+  container-type: inline-size;
 }
 
 .business-status-summary :deep(.t-card__body) {
@@ -109,5 +112,26 @@ const normalizedItems = computed(() => normalizeBusinessStatusSummaryItems(props
 
 .business-status-summary__value--danger {
   color: var(--jg-color-danger);
+}
+
+@container jg-status-summary (max-width: 680px) {
+  .business-status-summary--metrics :deep(.t-card__body) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .business-status-summary--metrics .business-status-summary__item {
+    border-right: 0;
+    border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
+  }
+
+  .business-status-summary--metrics .business-status-summary__item:last-child {
+    border-bottom: 0;
+  }
+}
+
+@container jg-status-summary (max-width: 420px) {
+  .business-status-summary--metrics :deep(.t-card__body) {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

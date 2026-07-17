@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Optional } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
   approvalElapsedHours,
@@ -226,7 +226,7 @@ export class PaymentRequestService {
           reason: "takeover_not_confirmed",
           takeoverStatus: takeover.takeoverStatus
         });
-        throw new Error(`历史合同接管尚未主管确认，不能${actionLabel}`);
+        throw new BadRequestException(`历史合同接管尚未主管确认，不能${actionLabel}`);
       }
       if (!takeover.historicalBalanceConfirmedAt) {
         await this.recordHistoricalTakeoverPaymentBlock(tx, {
@@ -239,7 +239,7 @@ export class PaymentRequestService {
           reason: "historical_balance_not_confirmed",
           takeoverStatus: takeover.takeoverStatus
         });
-        throw new Error(`历史余额尚未确认，不能${actionLabel}`);
+        throw new BadRequestException(`历史余额尚未确认，不能${actionLabel}`);
       }
       if (takeover.takeoverLevel === "C") {
         await this.recordHistoricalTakeoverPaymentBlock(tx, {
@@ -252,7 +252,7 @@ export class PaymentRequestService {
           reason: "takeover_level_c",
           takeoverStatus: takeover.takeoverStatus
         });
-        throw new Error(`C级历史接管仍有资料缺口或争议，不能${actionLabel}`);
+        throw new BadRequestException(`C级历史接管仍有资料缺口或争议，不能${actionLabel}`);
       }
       return;
     }
@@ -281,7 +281,7 @@ export class PaymentRequestService {
         sourceType: input.sourceType,
         reason: "takeover_missing"
       });
-      throw new Error(`历史合同接管尚未主管确认，不能${actionLabel}`);
+      throw new BadRequestException(`历史合同接管尚未主管确认，不能${actionLabel}`);
     }
   }
 
@@ -961,7 +961,7 @@ export class PaymentRequestService {
     ];
 
     if (!paymentTermsVersionIds.length) {
-      throw new Error("合同应付款当前可申请金额不足，当前最多可申请 0.00 元");
+      throw new BadRequestException("合同应付款当前可申请金额不足，当前最多可申请 0.00 元");
     }
 
     const [paymentTermsStages, settlementArchiveFiles, contractPaymentRequests, proxyPaidAmountCents] =
@@ -1046,7 +1046,7 @@ export class PaymentRequestService {
     });
 
     if (dbMoneyToBigInt(requestedAmountCents, "付款申请金额") > capacity.remainingCents) {
-      throw new Error(
+      throw new BadRequestException(
         `合同应付款当前可申请金额不足，当前最多可申请 ${formatMoneyCentsAsYuan(
           capacity.remainingCents > 0n ? capacity.remainingCents : 0n
         )} 元`
@@ -1895,7 +1895,7 @@ export class PaymentRequestService {
       }
 
       if (!approvedRoleKey) {
-        throw new Error(`当前账号不能处理“${currentNode.name}”付款审批节点`);
+        throw new ForbiddenException(`当前账号不能处理“${currentNode.name}”付款审批节点`);
       }
 
       const selfReview = await confirmApprovalSelfReview({
@@ -2677,14 +2677,25 @@ export class PaymentRequestService {
       });
 
       if (payment.sourceType === "contract_due" && !payment.settlementId) {
-        await this.createContractDuePaymentExecutionAllocations(
-          tx,
-          payment,
-          execution.id,
-          amountCents,
-          paidAt,
-          actorUserId
-        );
+        try {
+          await this.createContractDuePaymentExecutionAllocations(
+            tx,
+            payment,
+            execution.id,
+            amountCents,
+            paidAt,
+            actorUserId
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "";
+          if (
+            message === "未找到可分摊的有效结算来源，请先核对合同结算和历史期初结算" ||
+            message.startsWith("登记实付金额超过当前可分摊的到期应付款")
+          ) {
+            throw new BadRequestException(message);
+          }
+          throw error;
+        }
       }
 
       await tx.paymentRequest.update({

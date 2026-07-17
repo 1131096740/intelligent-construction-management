@@ -1,5 +1,8 @@
 <template>
-  <section class="takeover-page">
+  <section
+    class="takeover-page jg-responsive-workspace"
+    data-jg-scroll-owner="child"
+  >
     <div class="page-head">
       <div>
         <h1>历史合同接管</h1>
@@ -97,7 +100,7 @@
     <t-card
       v-if="showPrecheckPanel"
       id="takeover-step-precheck"
-      class="panel import-panel"
+      class="panel import-panel jg-table-region jg-table-region--wide"
       :bordered="true"
     >
       <div class="operation-section-title">
@@ -194,6 +197,7 @@
         class="precheck-table"
         :columns="importPrecheckColumns"
         :data="importPrecheckRows"
+        horizontal-scroll-affixed-bottom
       >
         <template #statusLabel="{ row }">
           <t-tag
@@ -214,7 +218,7 @@
 
     <t-card
       id="takeover-step-ready"
-      class="panel batch-panel"
+      class="panel batch-panel jg-table-region jg-table-region--wide"
       :bordered="true"
     >
       <div class="operation-section-title">
@@ -233,6 +237,7 @@
         size="small"
         :columns="importBatchColumns"
         :data="importBatchRows"
+        horizontal-scroll-affixed-bottom
       >
         <template #operation="{ row }">
           <t-space size="small">
@@ -504,7 +509,7 @@
 
     <div class="content-grid">
       <t-card
-        class="panel ledger-panel"
+        class="panel ledger-panel jg-table-region jg-table-region--wide"
         :bordered="true"
       >
         <t-table
@@ -513,6 +518,7 @@
           :columns="contractTakeoverColumns"
           :data="tableRows"
           :loading="loadingTakeovers"
+          horizontal-scroll-affixed-bottom
           empty="暂无历史合同接管记录，请先选择项目并完成导入预检或新增接管草稿"
         >
           <template #takeoverStatusLabel="{ row }">
@@ -2392,10 +2398,6 @@ input[type="date"] {
   background: #b51d2a;
 }
 
-:deep(.t-card__body) {
-  overflow-x: auto;
-}
-
 .form-section {
   display: grid;
   gap: 12px;
@@ -2816,13 +2818,13 @@ input[type="date"] {
   margin: 0;
 }
 
-@media (max-width: 1440px) {
+@container jg-page (max-width: 1120px) {
   .content-grid {
     grid-template-columns: 1fr;
   }
 }
 
-@media (max-width: 1180px) {
+@container jg-page (max-width: 1080px) {
   .toolbar,
   .form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2841,7 +2843,7 @@ input[type="date"] {
   }
 }
 
-@media (max-width: 720px) {
+@container jg-page (max-width: 620px) {
   .page-head,
   .toolbar,
   .form-grid,

@@ -34,6 +34,17 @@ describe("settlement template governance structure", () => {
     expect(editorPage).not.toContain("previewXlsxFileId");
   });
 
+  it("keeps the list table and inspection workspace as the only horizontal scroll owners", () => {
+    expect(listPage).toContain("jg-responsive-ledger");
+    expect(listPage).toContain("jg-table-region--standard");
+    expect(listPage).toContain(':horizontal-scroll-affixed-bottom="true"');
+    expect(editorPage).toContain("jg-responsive-workspace");
+    expect(editorPage).toContain("inspection-workspace jg-workspace-scroll");
+    expect(editorPage).toContain("jg-workspace-scroll__content--compact");
+    expect(listPage).not.toContain("@media (max-width:");
+    expect(editorPage).not.toContain("@media (max-width:");
+  });
+
   it("downloads previews only through an audited ticket helper", () => {
     expect(api).toContain("/download-ticket");
     expect(api).toContain("downloadReason");

@@ -1,4 +1,19 @@
+import path from "node:path";
 import { expect, test } from "@playwright/test";
+import {
+  expectHorizontalScrollOwner,
+  expectNoDocumentHorizontalOverflow,
+  expectNoNestedHorizontalScrollers
+} from "./helpers/responsive-assertions";
+
+const responsiveViewports = [
+  { width: 1512, height: 982 },
+  { width: 1440, height: 900 },
+  { width: 1280, height: 800 },
+  { width: 1180, height: 820 },
+  { width: 1024, height: 768 },
+  { width: 900, height: 768 }
+] as const;
 
 interface DraftLine {
   sourceType: "contract_bill_row" | "manual_adjustment";
@@ -583,45 +598,24 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
   await expect(page.getByText("import-clean", { exact: true })).toHaveCount(0);
   await expect(page.getByText("version-1", { exact: true })).toHaveCount(0);
 
-  const tableShell = page.locator(".table-shell");
-  const horizontalScroll = await tableShell.evaluate((element) => {
-    const shell = element as HTMLElement;
-    const reachable = shell.scrollWidth > shell.clientWidth;
-    shell.scrollLeft = shell.scrollWidth;
-    return { reachable, scrollLeft: shell.scrollLeft };
-  });
-  expect(horizontalScroll.reachable).toBe(true);
-  expect(horizontalScroll.scrollLeft).toBeGreaterThan(0);
-  await tableShell.evaluate((element) => {
-    (element as HTMLElement).scrollLeft = 0;
-  });
-
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  const adjustmentBox = await page.locator(".adjustment-section").boundingBox();
-  const footerBox = await page.locator(".workbench-footer").boundingBox();
-  expect(adjustmentBox).not.toBeNull();
-  expect(footerBox).not.toBeNull();
-  expect(footerBox!.y + footerBox!.height).toBeLessThanOrEqual(1100);
-  expect(adjustmentBox!.y + adjustmentBox!.height).toBeLessThanOrEqual(footerBox!.y);
-  await page.screenshot({
-    path: testInfo.outputPath("settlement-workbench-1440x1100.png"),
-    fullPage: true
-  });
-
-  await page.setViewportSize({ width: 1100, height: 800 });
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  const compactAdjustmentBox = await page.locator(".adjustment-section").boundingBox();
-  const compactFooterBox = await page.locator(".workbench-footer").boundingBox();
-  expect(compactAdjustmentBox).not.toBeNull();
-  expect(compactFooterBox).not.toBeNull();
-  expect(compactFooterBox!.y + compactFooterBox!.height).toBeLessThanOrEqual(800);
-  expect(compactAdjustmentBox!.y + compactAdjustmentBox!.height).toBeLessThanOrEqual(
-    compactFooterBox!.y
-  );
-  await page.screenshot({
-    path: testInfo.outputPath("settlement-workbench-1100.png"),
-    fullPage: true
-  });
+  const screenshotDir = process.env.UI_RESPONSIVE_SCREENSHOT_DIR ?? testInfo.outputDir;
+  for (const viewport of responsiveViewports) {
+    await page.setViewportSize(viewport);
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoNestedHorizontalScrollers(page);
+    await expectHorizontalScrollOwner(page.locator(".table-shell .t-table__content"));
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    const adjustmentBox = await page.locator(".adjustment-section").boundingBox();
+    const footerBox = await page.locator(".workbench-footer").boundingBox();
+    expect(adjustmentBox).not.toBeNull();
+    expect(footerBox).not.toBeNull();
+    expect(footerBox!.y + footerBox!.height).toBeLessThanOrEqual(viewport.height);
+    expect(adjustmentBox!.y + adjustmentBox!.height).toBeLessThanOrEqual(footerBox!.y);
+    await page.screenshot({
+      path: path.join(screenshotDir, `settlement-workbench-${viewport.width}x${viewport.height}.png`),
+      fullPage: true
+    });
+  }
 
   await page.locator(".workbench-footer").getByRole("button", { name: "提交结算" }).click();
   await expect

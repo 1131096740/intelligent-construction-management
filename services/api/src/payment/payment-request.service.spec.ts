@@ -4887,14 +4887,21 @@ describe("PaymentRequestService", () => {
       auth as never
     );
 
-    await expect(
-      paymentService.recordExecution("FK-HT-2026-NO-SOURCE", "cashier-1", {
+    const result = paymentService.recordExecution(
+      "FK-HT-2026-NO-SOURCE",
+      "cashier-1",
+      {
         amountCents: "50000",
         paidAt: "2026-07-03T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
-      })
-    ).rejects.toThrow("未找到可分摊的有效结算来源，请先核对合同结算和历史期初结算");
+      }
+    );
+
+    await expect(result).rejects.toBeInstanceOf(BadRequestException);
+    await expect(result).rejects.toThrow(
+      "未找到可分摊的有效结算来源，请先核对合同结算和历史期初结算"
+    );
     expect(tx.paymentExecutionAllocation.createMany).not.toHaveBeenCalled();
   });
 

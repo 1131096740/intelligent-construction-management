@@ -128,4 +128,14 @@ describe("settlement detail page configuration", () => {
       "结算尚未生效，暂不可创建付款申请；付款比例和账期按绑定的付款条款版本执行。"
     );
   });
+
+  it("clears stale settlement facts and ignores stale responses when the route id changes", () => {
+    const source = readFileSync(new URL("./SettlementDetailPage.vue", import.meta.url), "utf8");
+    expect(source).toContain("() => route.params.settlementId");
+    expect(source).toContain("clearSettlementDetailTransientState()");
+    expect(source).toContain("settlementDetail.value = null");
+    expect(source).toContain("activeTab.value = \"overview\"");
+    expect(source).toContain("settlementId !== routeSettlementId()");
+    expect(source).toContain("void reloadSettlementDetail()");
+  });
 });

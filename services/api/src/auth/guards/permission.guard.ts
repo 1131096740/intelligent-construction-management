@@ -52,7 +52,12 @@ export class PermissionGuard implements CanActivate {
     }
 
     const projectId = await this.extractProjectId(request);
-    const roleScopes = await this.loadRoleScopes(request.user.id, projectId);
+    const includeAnyProjectRole = !projectId && Boolean(requiredPositions?.length) && !requiredAction;
+    const roleScopes = await this.loadRoleScopes(
+      request.user.id,
+      projectId,
+      includeAnyProjectRole
+    );
     const effectiveRoleKeys = resolveEffectiveRoleKeys(
       roleScopes.globalRoleKeys,
       roleScopes.projectRoleKeys
@@ -98,7 +103,11 @@ export class PermissionGuard implements CanActivate {
     return resolveEffectiveRoleKeys(roleScopes.globalRoleKeys, roleScopes.projectRoleKeys);
   }
 
-  private async loadRoleScopes(userId: string, projectId?: string) {
+  private async loadRoleScopes(
+    userId: string,
+    projectId?: string,
+    includeAnyProjectRole = false
+  ) {
     const [globalPositions, userProjectPositions, projectMemberPositions] = await Promise.all([
       this.prisma.userPosition.findMany({
         where: { userId, projectId: null }
@@ -107,11 +116,17 @@ export class PermissionGuard implements CanActivate {
         ? this.prisma.userPosition.findMany({
             where: { userId, projectId }
           })
+        : includeAnyProjectRole
+          ? this.prisma.userPosition.findMany({
+              where: { userId, projectId: { not: null } }
+            })
         : Promise.resolve([]),
       projectId
         ? this.prisma.projectMember.findMany({
             where: { userId, projectId }
           })
+        : includeAnyProjectRole
+          ? this.prisma.projectMember.findMany({ where: { userId } })
         : Promise.resolve([])
     ]);
     const positionIds = Array.from(

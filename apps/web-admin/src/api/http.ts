@@ -33,19 +33,35 @@ export function createApiFetch(
   bridge: AuthBridge,
   fetchImpl?: typeof fetch
 ): (path: string, init?: RequestInit) => Promise<Response> {
+  let refreshInFlight: Promise<boolean> | null = null;
+
+  const refreshOnce = () => {
+    if (!refreshInFlight) {
+      refreshInFlight = bridge.refresh().finally(() => {
+        refreshInFlight = null;
+      });
+    }
+    return refreshInFlight;
+  };
+
   return async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
-    const send = async () => {
+    const accessToken = bridge.getAccessToken();
+    const send = async (token: string | null = bridge.getAccessToken()) => {
       try {
-        return await (fetchImpl ?? fetch)(`/api${path}`, withAuth(init, bridge.getAccessToken()));
+        return await (fetchImpl ?? fetch)(`/api${path}`, withAuth(init, token));
       } catch (error) {
         throw new Error(formatUnknownApiError(error, "网络请求失败"));
       }
     };
 
-    let response = await send();
+    let response = await send(accessToken);
 
     if (response.status === 401) {
-      const refreshed = await bridge.refresh();
+      const currentAccessToken = bridge.getAccessToken();
+      const sessionWasAlreadyRefreshed = Boolean(
+        currentAccessToken && currentAccessToken !== accessToken
+      );
+      const refreshed = sessionWasAlreadyRefreshed || (await refreshOnce());
 
       if (refreshed) {
         response = await send();

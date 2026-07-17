@@ -1,5 +1,5 @@
 <template>
-  <section class="delegation-page">
+  <section class="delegation-page jg-responsive-ledger">
     <div class="page-head">
       <div>
         <h1>审批委托台账</h1>
@@ -64,7 +64,7 @@
     </t-card>
 
     <t-card
-      class="ledger-panel"
+      class="ledger-panel jg-table-region jg-table-region--wide"
       :bordered="true"
     >
       <t-table
@@ -73,6 +73,7 @@
         :columns="columns"
         :data="rows"
         :loading="loading"
+        :horizontal-scroll-affixed-bottom="true"
         empty="暂无委托记录"
       >
         <template #enabled="{ row }">
@@ -241,8 +242,8 @@ onMounted(() => {
 }
 
 .form-fields {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr)) minmax(160px, auto);
   align-items: flex-end;
   gap: 12px;
 }
@@ -250,7 +251,7 @@ onMounted(() => {
 .form-fields label {
   display: grid;
   gap: 4px;
-  min-width: 220px;
+  min-width: 0;
 }
 
 .form-fields span {
@@ -301,5 +302,17 @@ onMounted(() => {
 :deep(.t-table th) {
   background: #f6f8fb;
   font-size: 12px;
+}
+
+@container jg-page (max-width: 840px) {
+  .form-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container jg-page (max-width: 620px) {
+  .form-fields {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

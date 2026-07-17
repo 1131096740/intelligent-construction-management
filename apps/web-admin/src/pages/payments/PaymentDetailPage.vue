@@ -657,7 +657,7 @@
 <script setup lang="ts">
 import type { CoreFlowTone, PaymentDetailReadModel } from "@jiangkong/shared-domain";
 import type { UploadFile } from "tdesign-vue-next";
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   createPrivateFileDownloadTicket,
@@ -740,6 +740,7 @@ const actionMessage = ref("");
 const actionMessageTone = ref<"success" | "danger">("success");
 const paymentVoucherFiles = ref<UploadFile[]>([]);
 const paymentPdfArchiveFiles = ref<UploadFile[]>([]);
+let paymentDetailRequestId = 0;
 const sensitiveAction = reactive<SensitiveActionState>({
   visible: false,
   kind: null,
@@ -925,29 +926,72 @@ function openPrimaryAction() {
 }
 
 async function reloadPaymentDetail() {
-  const paymentId = String(route.params.paymentId ?? "").trim();
+  const requestId = ++paymentDetailRequestId;
+  const paymentId = routePaymentId();
   if (!paymentId) {
     paymentDetail.value = null;
     paymentDetailLoadError.value = "缺少付款编号，无法定位单据。请返回付款台账重新进入。";
+    detailLoading.value = false;
     return false;
   }
 
   detailLoading.value = true;
   try {
     paymentDetailLoadError.value = "";
-    paymentDetail.value = await fetchPaymentDetail(paymentId);
-    const evidenceFileIds = paymentDetail.value.evidenceFiles.map((file) => file.fileId);
+    const detail = await fetchPaymentDetail(paymentId);
+    if (requestId !== paymentDetailRequestId || paymentId !== routePaymentId()) return false;
+    paymentDetail.value = detail;
+    const evidenceFileIds = detail.evidenceFiles.map((file) => file.fileId);
     if (!evidenceFileIds.includes(paymentActionForm.downloadFileId)) {
       paymentActionForm.downloadFileId = evidenceFileIds[0] ?? "";
     }
     return true;
   } catch (error) {
+    if (requestId !== paymentDetailRequestId || paymentId !== routePaymentId()) return false;
+    paymentDetail.value = null;
     const reason = error instanceof Error ? error.message : "未知错误";
     paymentDetailLoadError.value = `未能读取付款详情：${reason}。请确认账号权限和网络状态后重试。`;
     return false;
   } finally {
-    detailLoading.value = false;
+    if (requestId === paymentDetailRequestId) detailLoading.value = false;
   }
+}
+
+watch(
+  () => route.params.paymentId,
+  (next, previous) => {
+    if (next === previous) return;
+    clearPaymentDetailTransientState();
+    void reloadPaymentDetail();
+  },
+  { flush: "sync" }
+);
+
+function routePaymentId() {
+  const value = route.params.paymentId;
+  return typeof value === "string" ? value.trim() : Array.isArray(value) ? String(value[0] ?? "").trim() : "";
+}
+
+function clearPaymentDetailTransientState() {
+  paymentDetailRequestId += 1;
+  paymentDetail.value = null;
+  paymentDetailLoadError.value = "";
+  activeTab.value = "overview";
+  actionMessage.value = "";
+  paymentVoucherFiles.value = [];
+  paymentPdfArchiveFiles.value = [];
+  sensitiveAction.visible = false;
+  sensitiveAction.kind = null;
+  sensitiveAction.error = "";
+  paymentActionForm.approvedAmountYuan = "";
+  paymentActionForm.approvalComment = "";
+  paymentActionForm.selfReviewReason = "";
+  paymentActionForm.executionAmountYuan = "";
+  paymentActionForm.paidAt = toDatetimePickerValue(new Date());
+  paymentActionForm.financeAmountYuan = "";
+  paymentActionForm.occurredAt = toDatetimePickerValue(new Date());
+  paymentActionForm.assignmentUserId = "";
+  paymentActionForm.downloadFileId = "";
 }
 
 function toDatetimePickerValue(date: Date) {

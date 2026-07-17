@@ -238,7 +238,7 @@ export class ContractWorkbenchService {
           ...(thresholdTriggered ? ["cumulative_change_strictly_over_ten_percent"] : [])
         ],
         approvalRoute: unlimitedTriggered || thresholdTriggered
-          ? ["budget_director", "finance_director", "contract_director", "chairman_or_general_manager"]
+          ? ["contract_director", "project_manager", "finance_director", "chairman_or_general_manager"]
           : ["chairman_or_general_manager"],
         changePolicy
       },

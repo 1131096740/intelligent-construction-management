@@ -77,6 +77,8 @@ const selectedReasons = computed(() => selected.value?.reasons.join("；") ?? ""
 }
 
 .template-panel {
+  container-name: settlement-template-recommendation;
+  container-type: inline-size;
   justify-content: space-between;
   flex-wrap: wrap;
   margin-top: var(--jg-space-md);
@@ -106,13 +108,20 @@ const selectedReasons = computed(() => selected.value?.reasons.join("；") ?? ""
 }
 
 .template-choice :deep(.t-select__wrap) {
-  width: 360px;
+  width: min(360px, 100%);
 }
 
-@media (max-width: 1100px) {
+@container settlement-template-recommendation (max-width: 720px) {
   .template-selected,
   .template-choice {
     justify-content: flex-start;
+  }
+
+  .template-copy,
+  .template-selected,
+  .template-choice,
+  .template-choice :deep(.t-select__wrap) {
+    width: 100%;
   }
 }
 </style>

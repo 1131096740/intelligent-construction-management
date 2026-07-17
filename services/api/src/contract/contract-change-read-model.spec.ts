@@ -45,6 +45,13 @@ describe("contractChangeVersionsReadModel", () => {
       afterAmountCents: "1200000",
       historyReferencesStable: true
     });
+    expect(result[0].approvalRoute).toEqual([
+      "contract_director",
+      "project_manager",
+      "finance_director",
+      "chairman_or_general_manager"
+    ]);
+    expect(result[0].approvalRoute).not.toContain("budget_director");
     expect(JSON.stringify(result)).not.toContain("internal-version");
     expect(result[0]).not.toHaveProperty("baseVersionId");
     expect(result[0]).not.toHaveProperty("supersedesVersionId");
