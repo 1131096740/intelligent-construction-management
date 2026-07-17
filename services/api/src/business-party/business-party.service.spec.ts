@@ -1,5 +1,6 @@
 import { PrismaService } from "../database/prisma.service";
 import { BusinessPartyService } from "./business-party.service";
+import { Prisma } from "@prisma/client";
 
 describe("BusinessPartyService", () => {
   const audit = { record: jest.fn() };
@@ -279,7 +280,10 @@ describe("BusinessPartyService", () => {
         draftRevision: 4,
         status: { in: ["draft", "approval_rejected"] }
       },
-      data: { draftRevision: { increment: 1 } }
+      data: {
+        draftRevision: { increment: 1 },
+        readinessSnapshot: Prisma.DbNull
+      }
     });
     expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
       where: {

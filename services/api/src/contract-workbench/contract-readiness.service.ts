@@ -40,6 +40,7 @@ type ReadinessVersion = {
   taxFactSource: string | null;
   taxFactRevision: number;
   taxFactsFrozenAt: Date | null;
+  contractGovernanceVersion?: number | null;
   layoutTemplateVersionId: string | null;
   draftData: Prisma.JsonValue;
   templateSnapshot: Prisma.JsonValue;
@@ -123,6 +124,44 @@ type ReadinessClient = {
   contractDocumentDifference: {
     findFirst(input: unknown): Promise<{ id: string } | null>;
     findMany(input: unknown): Promise<Array<{ id: string; candidate: Prisma.JsonValue | null }>>;
+  };
+  contractVersionAuthorizationLink: {
+    findMany(input: unknown): Promise<Array<{
+      side: string;
+      required: boolean;
+      authorizationId: string | null;
+      reusedFromContractVersionId?: string | null;
+    }>>;
+  };
+  contractAuthorization: {
+    findMany(input: unknown): Promise<Array<{
+      id: string;
+      side: string;
+      status: string;
+      fileId: string;
+      contentSha256: string;
+      pageCount: number;
+    }>>;
+  };
+  fileObject: {
+    findMany(input: unknown): Promise<Array<{
+      id: string;
+      storageStatus: string;
+      mimeType: string;
+      sizeBytes: number;
+      contentSha256: string | null;
+    }>>;
+  };
+  contractFormalFile: {
+    findFirst(input: unknown): Promise<{
+      id: string;
+      fileId: string;
+      contentSha256: string;
+      pageCount: number;
+      sourceRevision: number;
+      status: string;
+      declarationSnapshot: Prisma.JsonValue;
+    } | null>;
   };
 };
 
@@ -630,6 +669,86 @@ export class ContractReadinessService {
       }
     }
 
+    if (version.contractGovernanceVersion === 1) {
+      const links = await tx.contractVersionAuthorizationLink.findMany({
+        where: { contractVersionId: version.id },
+        orderBy: { side: "asc" }
+      });
+      const authorizationIds = links
+        .map((link) => link.authorizationId)
+        .filter((id): id is string => Boolean(id));
+      const authorizations = authorizationIds.length
+        ? await tx.contractAuthorization.findMany({ where: { id: { in: authorizationIds } } })
+        : [];
+      const authorizationFileIds = authorizations.map((authorization) => authorization.fileId);
+      const authorizationFiles = authorizationFileIds.length
+        ? await tx.fileObject.findMany({ where: { id: { in: authorizationFileIds } } })
+        : [];
+      for (const side of ["first_party", "counterparty"] as const) {
+        const link = links.find((item) => item.side === side);
+        const label = side === "first_party" ? "我方" : "乙方";
+        if (!link) {
+          blocking.push({
+            key: `authorization.${side}.selection_missing`,
+            section: "documents",
+            message: `请明确${label}是否需要授权委托书`
+          });
+        } else if (link.required && !link.authorizationId) {
+          blocking.push({
+            key: `authorization.${side}.file_missing`,
+            section: "documents",
+            message: `请关联有效的${label}授权委托书`
+          });
+        } else if (link.required) {
+          const authorization = authorizations.find((item) =>
+            item.id === link.authorizationId &&
+            item.side === side &&
+            item.status === "active" &&
+            item.pageCount > 0 &&
+            /^[0-9a-f]{64}$/u.test(item.contentSha256)
+          );
+          const file = authorization
+            ? authorizationFiles.find((item) => item.id === authorization.fileId)
+            : null;
+          if (
+            !authorization ||
+            !file ||
+            file.storageStatus !== "active" ||
+            file.mimeType !== "application/pdf" ||
+            file.sizeBytes <= 0 ||
+            file.contentSha256 !== authorization.contentSha256
+          ) {
+            blocking.push({
+              key: `authorization.${side}.file_invalid`,
+              section: "documents",
+              message: `${label}授权委托书当前不可用，请重新关联`
+            });
+          }
+        }
+      }
+      const formal = await tx.contractFormalFile.findFirst({
+        where: {
+          contractVersionId: version.id,
+          purpose: "approval_original",
+          status: "active"
+        },
+        orderBy: { createdAt: "desc" }
+      });
+      if (!formal) {
+        blocking.push({
+          key: "document.counterparty_signed_pdf_missing",
+          section: "documents",
+          message: "请上传乙方已签字盖章的完整合同审批 PDF"
+        });
+      } else if (formal.sourceRevision !== version.draftRevision) {
+        blocking.push({
+          key: "document.counterparty_signed_pdf_stale",
+          section: "documents",
+          message: "正式审批文件与当前合同内容不一致，请重新上传"
+        });
+      }
+    }
+
     return { blocking, warnings, checkedRevision: version.draftRevision };
   }
 
@@ -664,6 +783,22 @@ export class ContractReadinessService {
       },
       orderBy: { createdAt: "desc" }
     });
+    const authorizationLinks = version.contractGovernanceVersion === 1
+      ? await tx.contractVersionAuthorizationLink.findMany({
+          where: { contractVersionId: version.id },
+          orderBy: { side: "asc" }
+        })
+      : [];
+    const formalFile = version.contractGovernanceVersion === 1
+      ? await tx.contractFormalFile.findFirst({
+          where: {
+            contractVersionId: version.id,
+            purpose: "approval_original",
+            status: "active"
+          },
+          orderBy: { createdAt: "desc" }
+        })
+      : null;
     return this.toJsonSafe({
       draftRevision: version.draftRevision,
       draftData: version.draftData,
@@ -684,7 +819,23 @@ export class ContractReadinessService {
         taxInclusiveAmountCents: bill.taxInclusiveAmountCents.toString(),
         rows: rows.filter((row) => row.contractBillId === bill.id)
       })),
-      internalReviewDocument: documents[0] ?? null
+      internalReviewDocument: documents[0] ?? null,
+      governance: version.contractGovernanceVersion === 1
+        ? {
+            version: 1,
+            authorizationLinks,
+            formalFile: formalFile
+              ? {
+                  id: formalFile.id,
+                  fileId: formalFile.fileId,
+                  contentSha256: formalFile.contentSha256,
+                  pageCount: formalFile.pageCount,
+                  sourceRevision: formalFile.sourceRevision,
+                  declarationSnapshot: formalFile.declarationSnapshot
+                }
+              : null
+          }
+        : null
     });
   }
 

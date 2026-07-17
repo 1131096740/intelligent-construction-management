@@ -1581,7 +1581,8 @@ describe("ContractWorkbenchService", () => {
         amountCents: 1_000_000n,
         amountAdjustmentReason: "回滚金额",
         layoutTemplateVersionId: "layout-restored",
-        draftRevision: { increment: 1 }
+        draftRevision: { increment: 1 },
+        readinessSnapshot: Prisma.DbNull
       }
     });
     expect(tx.contract.updateMany).toHaveBeenCalledWith(expect.objectContaining({

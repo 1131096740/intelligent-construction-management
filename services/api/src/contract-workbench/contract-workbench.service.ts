@@ -159,7 +159,15 @@ export class ContractWorkbenchService {
     });
     if (!version) throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
 
-    const [bills, checkpoints, parties, documents, paymentTerms] = await Promise.all([
+    const [
+      bills,
+      checkpoints,
+      parties,
+      documents,
+      paymentTerms,
+      authorizationLinks,
+      formalFiles
+    ] = await Promise.all([
       this.prisma.contractBill.findMany({ where: { contractVersionId: version.id } }),
       this.prisma.contractDraftCheckpoint.findMany({
         where: { contractVersionId: version.id },
@@ -180,8 +188,29 @@ export class ContractWorkbenchService {
       this.prisma.paymentTermsVersion.findFirst({
         where: { contractVersionId: version.id },
         select: { id: true, originalText: true }
-      })
+      }),
+      version.contractGovernanceVersion === 1
+        ? this.prisma.contractVersionAuthorizationLink.findMany({
+            where: { contractVersionId: version.id },
+            orderBy: { side: "asc" }
+          })
+        : Promise.resolve([]),
+      version.contractGovernanceVersion === 1
+        ? this.prisma.contractFormalFile.findMany({
+            where: { contractVersionId: version.id, status: "active" },
+            orderBy: { createdAt: "desc" }
+          })
+        : Promise.resolve([])
     ]);
+    const authorizationIds = authorizationLinks
+      .map((link) => link.authorizationId)
+      .filter((id): id is string => Boolean(id));
+    const authorizations = authorizationIds.length
+      ? await this.prisma.contractAuthorization.findMany({
+          where: { id: { in: authorizationIds } },
+          orderBy: { createdAt: "desc" }
+        })
+      : [];
     const paymentStages = paymentTerms
       ? await this.prisma.paymentTermsStage.findMany({
           where: { paymentTermsVersionId: paymentTerms.id },
@@ -253,6 +282,14 @@ export class ContractWorkbenchService {
         changePolicy
       },
       readiness: this.readinessFromSnapshot(version.readinessSnapshot),
+      governance: version.contractGovernanceVersion === 1
+        ? {
+            version: 1,
+            authorizationLinks,
+            authorizations,
+            formalFiles
+          }
+        : null,
       bills: bills.map((bill) => ({
         ...bill,
         rows: rows
@@ -406,7 +443,8 @@ export class ContractWorkbenchService {
           taxFactRevision: { increment: 1 },
           taxFactsFrozenAt: null,
           layoutTemplateVersionId: input.layoutTemplateVersionId ?? null,
-          draftRevision: { increment: 1 }
+          draftRevision: { increment: 1 },
+          readinessSnapshot: Prisma.DbNull
         }
       });
       this.assertCas(updated.count);
@@ -581,7 +619,8 @@ export class ContractWorkbenchService {
                 taxFactsFrozenAt: null
               }
             : {}),
-          draftRevision: { increment: 1 }
+          draftRevision: { increment: 1 },
+          readinessSnapshot: Prisma.DbNull
         }
       });
       this.assertCas(updated.count);
@@ -843,7 +882,8 @@ export class ContractWorkbenchService {
           templateSnapshot: this.toJson(targetTemplate),
           draftData: this.toJson(nextData),
           clauseSnapshot: this.toJson(nextClauses),
-          draftRevision: { increment: 1 }
+          draftRevision: { increment: 1 },
+          readinessSnapshot: Prisma.DbNull
         }
       });
       this.assertCas(updated.count);

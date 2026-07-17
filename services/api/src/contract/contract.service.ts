@@ -43,6 +43,11 @@ import {
   ContractApprovalRouteService,
   type FrozenNewContractApprovalNode
 } from "./contract-approval-route.service";
+import {
+  ContractFormalFileService,
+  ContractGovernanceDenial
+} from "./contract-formal-file.service";
+import { ContractAuthorizationService } from "./contract-authorization.service";
 
 interface ContractApprovalAssignment {
   kind: "transfer" | "delegate";
@@ -122,7 +127,11 @@ export class ContractService {
     @Optional()
     private readonly numbering?: ContractNumberingService,
     @Optional()
-    private readonly approvalRoutes?: ContractApprovalRouteService
+    private readonly approvalRoutes?: ContractApprovalRouteService,
+    @Optional()
+    private readonly formalFiles?: ContractFormalFileService,
+    @Optional()
+    private readonly authorizations?: ContractAuthorizationService
   ) {}
 
   async createDraft(input: CreateContractDraftDto, actorUserId: string) {
@@ -252,6 +261,7 @@ export class ContractService {
           changeType: "original",
           status: "draft",
           taxFactStatus: "draft",
+          contractGovernanceVersion: 1,
           amountCents: 0n,
           amountLimitType: input.amountLimitType ?? "capped",
           businessTemplateVersionId: input.businessTemplateVersionId,
@@ -453,6 +463,7 @@ export class ContractService {
           taxMode: latest.taxMode,
           defaultTaxRatePercent: latest.defaultTaxRatePercent,
           taxFactStatus: "draft",
+          contractGovernanceVersion: 1,
           taxFactSource: latest.taxFactSource,
           taxFactExplanation: latest.taxFactExplanation,
           taxFactEvidenceFileId: latest.taxFactEvidenceFileId,
@@ -1045,6 +1056,33 @@ export class ContractService {
         if (contract.ownerUserId && contract.ownerUserId !== actorUserId) {
           throw new Error("只有合同经办人可以提交该合同审批");
         }
+        const governedCompanySnapshot = version.contractGovernanceVersion === 1 &&
+          contract.ownerUserId &&
+          version.changeType !== "change" &&
+          version.changeType !== "supplement"
+          ? await this.lockCompanyEntityForSubmission(tx, version, contract)
+          : null;
+        let governanceSubmissionSnapshot: Prisma.JsonValue | null = null;
+        if (version.contractGovernanceVersion === 1) {
+          if (!this.formalFiles || !this.authorizations) {
+            throw new Error("合同签前治理服务暂不可用，请稍后重试或联系管理员");
+          }
+          await tx.$queryRaw(Prisma.sql`
+            SELECT a."id" FROM "ContractAuthorization" a
+            WHERE a."originContractVersionId" = ${version.id} FOR UPDATE
+          `);
+          await tx.$queryRaw(Prisma.sql`
+            SELECT f."id" FROM "ContractFormalFile" f
+            WHERE f."contractVersionId" = ${version.id} FOR UPDATE
+          `);
+          const formalFileSnapshot = await this.formalFiles.freeze(tx, version);
+          const authorizationSnapshot = await this.authorizations.freeze(tx, version);
+          governanceSubmissionSnapshot = {
+            version: 1,
+            authorizations: authorizationSnapshot,
+            formalFile: formalFileSnapshot
+          } as unknown as Prisma.JsonValue;
+        }
         await this.assertChangeAmountProjection(tx, version);
         const projectLocks = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>(Prisma.sql`
           SELECT "id", "isActive"
@@ -1084,11 +1122,24 @@ export class ContractService {
           } as unknown as Prisma.JsonValue;
         }
 
-        const companySnapshot = !contract.ownerUserId ||
-          version.changeType === "change" ||
-          version.changeType === "supplement"
-          ? null
-          : await this.lockCompanyEntityForSubmission(tx, version, contract);
+        const companySnapshot = version.contractGovernanceVersion === 1
+          ? governedCompanySnapshot
+          : !contract.ownerUserId ||
+              version.changeType === "change" ||
+              version.changeType === "supplement"
+            ? null
+            : await this.lockCompanyEntityForSubmission(tx, version, contract);
+
+        if (governanceSubmissionSnapshot && input) {
+          const existingTemplate = templateSnapshot as Prisma.JsonObject;
+          templateSnapshot = {
+            ...existingTemplate,
+            submissionSnapshot: {
+              ...((existingTemplate.submissionSnapshot as Prisma.JsonObject | undefined) ?? {}),
+              governance: governanceSubmissionSnapshot
+            }
+          } as unknown as Prisma.JsonValue;
+        }
 
         const frozenNodes = await this.approvalNodesForSubmission(
           tx,
@@ -1167,6 +1218,9 @@ export class ContractService {
             toStatus: "in_approval",
             formalCode,
             draftRevision: version.draftRevision,
+            ...(governanceSubmissionSnapshot
+              ? { governanceSubmissionSnapshot }
+              : {}),
             ...(input
               ? {
                   numberRuleId: input.numberRuleId,
@@ -1211,6 +1265,19 @@ export class ContractService {
             error.meta.code === "40001"))
       ) {
         throw new BadRequestException("合同审批资料正在被更新，请稍后刷新并重新提交");
+      }
+      if (error instanceof ContractGovernanceDenial) {
+        try {
+          await this.prisma.$transaction((tx) => this.audit.record(tx, {
+            actorUserId,
+            action: error.action,
+            businessType: "contract_version",
+            businessId: contractVersionId,
+            metadata: { reason: error.message }
+          }));
+        } catch {
+          // 保留原业务拒绝；审计写入异常由服务日志另行处置。
+        }
       }
       throw error;
     }

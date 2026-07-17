@@ -146,6 +146,18 @@ describe("ContractReadinessService", () => {
         findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([])
       },
+      contractVersionAuthorizationLink: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractAuthorization: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractFormalFile: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
       ...overrides
     };
   }
@@ -611,5 +623,89 @@ describe("ContractReadinessService", () => {
         taxFactRevision: 2
       }
     });
+  });
+
+  it("governed contracts block until both authorization decisions and current signed PDF exist", async () => {
+    const governedTx = tx({
+      contractVersionAuthorizationLink: {
+        findMany: jest.fn().mockResolvedValue([
+          { side: "first_party", required: false, authorizationId: null },
+          { side: "counterparty", required: false, authorizationId: null }
+        ])
+      },
+      contractFormalFile: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "formal-1",
+          fileId: "file-1",
+          contentSha256: "a".repeat(64),
+          pageCount: 2,
+          sourceRevision: 3,
+          status: "active",
+          declarationSnapshot: {}
+        })
+      }
+    });
+    const result = await new ContractReadinessService().check(
+      governedTx as never,
+      { ...version, contractGovernanceVersion: 1 } as never,
+      contract,
+      false
+    );
+
+    expect(result.blocking).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "document.counterparty_signed_pdf_stale" })
+    ]));
+    expect(result.blocking.some((item) => item.key.includes("selection_missing"))).toBe(false);
+  });
+
+  it("does not report readiness when a linked authorization FileObject is unavailable", async () => {
+    const governedTx = tx({
+      contractVersionAuthorizationLink: {
+        findMany: jest.fn().mockResolvedValue([
+          { side: "first_party", required: true, authorizationId: "auth-1" },
+          { side: "counterparty", required: false, authorizationId: null }
+        ])
+      },
+      contractAuthorization: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "auth-1",
+          side: "first_party",
+          status: "active",
+          fileId: "file-auth",
+          contentSha256: "a".repeat(64),
+          pageCount: 1
+        }])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "file-auth",
+          storageStatus: "deleted",
+          mimeType: "application/pdf",
+          sizeBytes: 100,
+          contentSha256: "a".repeat(64)
+        }])
+      },
+      contractFormalFile: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "formal-1",
+          fileId: "file-formal",
+          contentSha256: "b".repeat(64),
+          pageCount: 2,
+          sourceRevision: 4,
+          status: "active",
+          declarationSnapshot: {}
+        })
+      }
+    });
+    const result = await new ContractReadinessService().check(
+      governedTx as never,
+      { ...version, contractGovernanceVersion: 1 } as never,
+      contract,
+      false
+    );
+
+    expect(result.blocking).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "authorization.first_party.file_invalid" })
+    ]));
   });
 });

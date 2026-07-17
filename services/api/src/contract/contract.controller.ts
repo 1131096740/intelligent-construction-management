@@ -7,7 +7,9 @@ import {
   Post,
   Query,
   Res,
-  StreamableFile
+  StreamableFile,
+  Optional,
+  InternalServerErrorException
 } from "@nestjs/common";
 import { CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS } from "@jiangkong/shared-domain";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
@@ -33,6 +35,10 @@ import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
 import { SubmitContractApprovalDto } from "./dto/submit-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 import { CreateContractChangeDraftDto } from "./dto/create-contract-change-draft.dto";
+import { UploadContractFormalFileDto } from "./dto/contract-formal-file.dto";
+import { SetContractAuthorizationDto } from "./dto/contract-authorization.dto";
+import { ContractFormalFileService } from "./contract-formal-file.service";
+import { ContractAuthorizationService } from "./contract-authorization.service";
 
 @Controller("contracts")
 export class ContractController {
@@ -40,7 +46,9 @@ export class ContractController {
     private readonly contracts: ContractService,
     private readonly contractRead: ContractReadService,
     private readonly workbench: ContractWorkbenchService,
-    private readonly projectVisibility: ProjectVisibilityService
+    private readonly projectVisibility: ProjectVisibilityService,
+    @Optional() private readonly formalFiles?: ContractFormalFileService,
+    @Optional() private readonly authorizations?: ContractAuthorizationService
   ) {}
 
   // 创建合同草稿：合同员或合同部主管从已发布模板快照初始化工作台草稿。
@@ -134,6 +142,35 @@ export class ContractController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.workbench.checkReadiness(contractVersionId, user.id);
+  }
+
+  @Post(":contractVersionId/formal-files/approval")
+  @RequireProjectRole("contract.submit")
+  uploadFormalApprovalFile(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: UploadContractFormalFileDto
+  ) {
+    if (!this.formalFiles) throw new InternalServerErrorException("合同正式文件服务暂不可用，请稍后重试");
+    return this.formalFiles.uploadApprovalVersion(contractVersionId, user.id, body);
+  }
+
+  @Post(":contractVersionId/authorizations")
+  @RequireProjectRole("contract.submit")
+  setAuthorization(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: SetContractAuthorizationDto
+  ) {
+    if (!this.authorizations) throw new InternalServerErrorException("合同授权服务暂不可用，请稍后重试");
+    return this.authorizations.setSide(contractVersionId, user.id, body);
+  }
+
+  @Get(":contractVersionId/authorizations/readiness")
+  @RequireProjectRole("contract.submit")
+  authorizationReadiness(@Param("contractVersionId") contractVersionId: string) {
+    if (!this.authorizations) throw new InternalServerErrorException("合同授权服务暂不可用，请稍后重试");
+    return this.authorizations.ready(contractVersionId);
   }
 
   @Post(":contractVersionId/approval")

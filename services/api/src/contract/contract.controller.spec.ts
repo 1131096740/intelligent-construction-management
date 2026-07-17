@@ -18,6 +18,8 @@ const contractBodyRoutes = [
   ["contract.create", ContractController, "create", 0],
   ["contract.createChangeDraft", ContractController, "createChangeDraft", 1],
   ["contract.submitApproval", ContractController, "submitApproval", 2],
+  ["contract.uploadFormalApprovalFile", ContractController, "uploadFormalApprovalFile", 2],
+  ["contract.setAuthorization", ContractController, "setAuthorization", 2],
   ["contract.reviewApproval", ContractController, "reviewApproval", 2],
   ["contract.transferApproval", ContractController, "transferApproval", 2],
   ["contract.delegateApproval", ContractController, "delegateApproval", 2],
@@ -62,6 +64,20 @@ const validContractRouteBodies = [
     changeAmountCents: "100"
   }],
   ["contract.submitApproval", ContractController, "submitApproval", 2, { numberRuleId: "rule-1" }],
+  ["contract.uploadFormalApprovalFile", ContractController, "uploadFormalApprovalFile", 2, {
+    fileId: "file-1",
+    sourceRevision: 1,
+    counterpartySigned: true,
+    counterpartyStamped: true,
+    crossPageSealCompleted: true,
+    documentOrderConfirmed: true,
+    authorizationsBeforeSignaturePageConfirmed: true
+  }],
+  ["contract.setAuthorization", ContractController, "setAuthorization", 2, {
+    side: "first_party",
+    expectedRevision: 1,
+    required: false
+  }],
   ["contract.reviewApproval", ContractController, "reviewApproval", 2, { decision: "approve" }],
   ["contract.transferApproval", ContractController, "transferApproval", 2, { toUserId: "user-2" }],
   ["contract.delegateApproval", ContractController, "delegateApproval", 2, { toUserId: "user-2" }],
@@ -537,6 +553,9 @@ describe("ContractController authorization wiring", () => {
     ["paymentCreateOptions", "payment.create"],
     ["submitApproval", "contract.submit"],
     ["checkReadiness", "contract.submit"],
+    ["uploadFormalApprovalFile", "contract.submit"],
+    ["setAuthorization", "contract.submit"],
+    ["authorizationReadiness", "contract.submit"],
     ["reviewApproval", "contract.approve"],
     ["transferApproval", "contract.approve"],
     ["delegateApproval", "contract.approve"],

@@ -4,6 +4,7 @@ import { ContractReadinessService } from "../contract-workbench/contract-readine
 import { ContractWorkbenchService } from "../contract-workbench/contract-workbench.service";
 import { PrismaService } from "../database/prisma.service";
 import { ContractService } from "./contract.service";
+import { ContractGovernanceDenial } from "./contract-formal-file.service";
 
 describe("ContractService", () => {
   const audit = {
@@ -391,7 +392,8 @@ describe("ContractService", () => {
       data: expect.objectContaining({
         contractId: "contract-1",
         status: "draft",
-        taxFactStatus: "draft"
+        taxFactStatus: "draft",
+        contractGovernanceVersion: 1
       })
     });
     expect(tx.contractBill.createMany).toHaveBeenCalledWith({
@@ -916,6 +918,7 @@ describe("ContractService", () => {
       contractId: "contract-1",
       changeType: "original",
       status: "draft",
+      contractGovernanceVersion: 1,
       draftRevision: 4,
       amountCents: BigInt(5000000),
       pricingNature: "fixed_total",
@@ -1040,6 +1043,21 @@ describe("ContractService", () => {
       }
     ];
     const routes = { freezeNewContractRoute: jest.fn().mockResolvedValue(frozenRoute) };
+    const formalFiles = {
+      freeze: jest.fn().mockResolvedValue({
+        id: "formal-1",
+        fileId: "file-formal-1",
+        contentSha256: "a".repeat(64),
+        pageCount: 3,
+        sourceRevision: 4
+      })
+    };
+    const authorizations = {
+      freeze: jest.fn().mockResolvedValue([
+        { side: "first_party", required: false, authorization: null },
+        { side: "counterparty", required: false, authorization: null }
+      ])
+    };
     const service = new ContractService(
       prisma,
       audit as never,
@@ -1049,7 +1067,9 @@ describe("ContractService", () => {
       undefined,
       readiness as never,
       numbering as never,
-      routes as never
+      routes as never,
+      formalFiles as never,
+      authorizations as never
     );
 
     const result = await service.submitApproval(
@@ -1066,9 +1086,15 @@ describe("ContractService", () => {
     const lockSql = tx.$queryRaw.mock.calls.map(([query]) => query.strings?.join(" ") ?? "");
     expect(lockSql[0]).toContain('FOR UPDATE OF c');
     expect(lockSql[1]).toContain('FROM "ContractVersion"');
-    expect(lockSql[2]).toContain('FROM "Project"');
-    expect(lockSql.findIndex((sql) => sql.includes('FROM "CompanyEntity"')))
-      .toBeGreaterThan(2);
+    expect(lockSql.some((sql) => sql.includes('FROM "ContractAuthorization"'))).toBe(true);
+    expect(lockSql.some((sql) => sql.includes('FROM "ContractFormalFile"'))).toBe(true);
+    const projectLockIndex = lockSql.findIndex((sql) => sql.includes('FROM "Project"'));
+    expect(projectLockIndex).toBeGreaterThan(1);
+    const companyLockIndex = lockSql.findIndex((sql) => sql.includes('FROM "CompanyEntity"'));
+    const authorizationLockIndex = lockSql.findIndex((sql) => sql.includes('FROM "ContractAuthorization"'));
+    expect(companyLockIndex).toBeGreaterThan(1);
+    expect(companyLockIndex).toBeLessThan(authorizationLockIndex);
+    expect(authorizationLockIndex).toBeLessThan(projectLockIndex);
     expect(tx.contractVersion.updateMany).toHaveBeenCalledWith({
       where: {
         id: "contract-version-1",
@@ -1090,7 +1116,10 @@ describe("ContractService", () => {
           checkedRevision: 4
         },
         templateSnapshot: expect.objectContaining({
-          submissionSnapshot: expect.objectContaining({ draftRevision: 4 })
+          submissionSnapshot: expect.objectContaining({
+            draftRevision: 4,
+            governance: expect.objectContaining({ version: 1 })
+          })
         }),
         clauseSnapshot: []
       })
@@ -1148,9 +1177,72 @@ describe("ContractService", () => {
         formalCode: "HT-JGXM-2026-材料-001",
         numberRuleId: "rule-1",
         draftRevision: 4,
+        governanceSubmissionSnapshot: expect.objectContaining({ version: 1 }),
         submissionSnapshot: expect.objectContaining({ draftRevision: 4 })
       }
     });
+    expect(authorizations.freeze).toHaveBeenCalledWith(tx, version);
+    expect(formalFiles.freeze).toHaveBeenCalledWith(tx, version);
+    expect(formalFiles.freeze.mock.invocationCallOrder[0])
+      .toBeLessThan(authorizations.freeze.mock.invocationCallOrder[0]);
+  });
+
+  it("governed submission denial keeps the draft untouched and persists a denial audit", async () => {
+    const version = {
+      id: "contract-version-governed",
+      contractId: "contract-governed",
+      changeType: "supplement",
+      status: "draft",
+      draftRevision: 2,
+      contractGovernanceVersion: 1,
+      amountCents: 1_000n
+    };
+    const tx = {
+      $queryRaw: submitQueryLocks(version),
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-governed",
+          ownerUserId: "owner-1",
+          voidedAt: null,
+          projectId: "project-1"
+        })
+      },
+      contractVersion: { updateMany: jest.fn() },
+      approvalInstance: { create: jest.fn() },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const authorizations = {
+      freeze: jest.fn().mockRejectedValue(new ContractGovernanceDenial(
+        "尚未明确我方是否需要授权委托书",
+        "contract.authorization.submission_denied"
+      ))
+    };
+    const service = new ContractService(
+      prisma,
+      audit as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { freeze: jest.fn() } as never,
+      authorizations as never
+    );
+
+    await expect(service.submitApproval(version.id, "owner-1", {}))
+      .rejects.toThrow("尚未明确我方是否需要授权委托书");
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "contract.authorization.submission_denied",
+      businessId: version.id
+    }));
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
   });
 
   it.each([
@@ -1444,7 +1536,8 @@ describe("ContractService", () => {
         companyEntityVersionId: "entity-version-3",
         companyEntityNameSnapshot: "我方建设公司",
         companyEntityCreditCodeSnapshot: "91350211M000100Y46",
-        companyEntityRegisteredAddressSnapshot: null
+        companyEntityRegisteredAddressSnapshot: null,
+        contractGovernanceVersion: 1
       })
     });
   });

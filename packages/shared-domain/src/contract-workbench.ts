@@ -197,6 +197,7 @@ export interface ContractWorkbenchReadModel {
     versionNo: number;
     status: string;
     draftRevision: number;
+    contractGovernanceVersion?: number | null;
     amountCents: MoneyCents;
     pricingNature: string;
     amountSource: string;
@@ -243,6 +244,38 @@ export interface ContractWorkbenchReadModel {
   };
   checkpoints: ContractDraftCheckpointReadModel[];
   documents: ContractGeneratedDocumentReadModel[];
+  governance?: {
+    version: 1;
+    authorizationLinks: Array<{
+      id: string;
+      side: string;
+      required: boolean;
+      authorizationId: string | null;
+      reusedFromContractVersionId: string | null;
+    }>;
+    authorizations: Array<{
+      id: string;
+      originContractVersionId: string;
+      side: string;
+      grantorName: string;
+      agentName: string;
+      scopeSummary: string;
+      fileId: string;
+      contentSha256: string;
+      pageCount: number;
+      status: string;
+    }>;
+    formalFiles: Array<{
+      id: string;
+      purpose: string;
+      fileId: string;
+      contentSha256: string;
+      pageCount: number;
+      sourceRevision: number;
+      status: string;
+      declarationSnapshot: unknown;
+    }>;
+  } | null;
   readiness: ContractReadinessResult;
 }
 
