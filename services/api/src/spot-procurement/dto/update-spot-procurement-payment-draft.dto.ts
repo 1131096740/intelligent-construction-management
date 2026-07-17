@@ -1,5 +1,9 @@
 import { IsDateString, IsIn, IsOptional } from "class-validator";
 import {
+  SPOT_PROCUREMENT_PAYMENT_METHODS,
+  type SpotProcurementPaymentMethod
+} from "@jiangkong/shared-domain";
+import {
   IsCanonicalMoneyText,
   IsOptionalNonBlankText
 } from "../../validation/static-field-validation";
@@ -8,13 +12,7 @@ const PAYMENT_PATHS = [
   "supplier_direct",
   "handler_reimbursement"
 ] as const;
-export const SPOT_PROCUREMENT_PAYMENT_METHODS = [
-  "cash",
-  "wechat",
-  "alipay",
-  "bank_transfer",
-  "other"
-] as const;
+export { SPOT_PROCUREMENT_PAYMENT_METHODS };
 
 export type SpotProcurementPaymentPath = (typeof PAYMENT_PATHS)[number];
 
@@ -48,7 +46,7 @@ export class UpdateSpotProcurementPaymentDraftDto {
   @IsIn(SPOT_PROCUREMENT_PAYMENT_METHODS, {
     message: "付款方式不正确"
   })
-  paymentMethod?: string | null;
+  paymentMethod?: SpotProcurementPaymentMethod | null;
 
   @IsOptional()
   @IsOptionalNonBlankText({

@@ -47,6 +47,10 @@ describe("permission policy table", () => {
           "general_manager"
         ]
       ],
+      [
+        "spot_procurement.payment.facts.manage",
+        ["finance_staff", "comprehensive_director", "finance_director"]
+      ],
       ["spot_procurement.payment.execute", ["finance_staff"]],
       [
         "spot_procurement.receipt.confirm",
@@ -59,6 +63,36 @@ describe("permission policy table", () => {
         ["material_staff", "material_director"]
       ],
       ["spot_procurement.refund.record", ["finance_staff"]],
+      [
+        "spot_procurement.invoice.append",
+        [
+          "material_staff",
+          "material_director",
+          "finance_staff",
+          "finance_director"
+        ]
+      ],
+      [
+        "spot_procurement.abnormal_termination.request",
+        ["material_staff", "material_director", "finance_staff"]
+      ],
+      [
+        "spot_procurement.abnormal_termination.confirm",
+        ["finance_director"]
+      ],
+      [
+        "spot_procurement.archive.download",
+        [
+          "material_staff",
+          "material_director",
+          "comprehensive_director",
+          "project_manager",
+          "finance_staff",
+          "finance_director",
+          "chairman",
+          "general_manager"
+        ]
+      ],
       ["spot_procurement.balance.execute", ["finance_director"]],
       [
         "spot_procurement.invoice.manage",

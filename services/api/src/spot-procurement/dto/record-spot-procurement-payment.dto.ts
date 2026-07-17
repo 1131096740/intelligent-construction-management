@@ -1,9 +1,12 @@
 import { IsDateString, IsIn, MaxLength } from "class-validator";
 import {
+  SPOT_PROCUREMENT_PAYMENT_METHODS,
+  type SpotProcurementPaymentMethod
+} from "@jiangkong/shared-domain";
+import {
   IsCanonicalMoneyText,
   IsRequiredText
 } from "../../validation/static-field-validation";
-import { SPOT_PROCUREMENT_PAYMENT_METHODS } from "./update-spot-procurement-payment-draft.dto";
 
 export class RecordSpotProcurementPaymentDto {
   @IsCanonicalMoneyText({
@@ -18,7 +21,7 @@ export class RecordSpotProcurementPaymentDto {
   @IsIn(SPOT_PROCUREMENT_PAYMENT_METHODS, {
     message: "实际付款方式不正确"
   })
-  paymentMethod!: (typeof SPOT_PROCUREMENT_PAYMENT_METHODS)[number];
+  paymentMethod!: SpotProcurementPaymentMethod;
 
   @IsRequiredText({
     requiredMessage: "付款凭证不能为空",
