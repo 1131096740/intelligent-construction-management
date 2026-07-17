@@ -63,6 +63,103 @@ export interface SpotProcurementFutureUnavailableReadModel {
   label: string;
 }
 
+export interface SpotProcurementInvoiceCoverageReadModel {
+  available: boolean;
+  status: string;
+  label: string;
+  actualCostCents: string;
+  normalInvoiceCents: string;
+  confirmedNoInvoiceCents: string;
+  confirmedExceptionCents: string;
+  effectiveCoveredCents: string;
+  remainingCents: string;
+  pendingCount: number;
+  inconsistent: boolean;
+}
+
+export interface SpotProcurementInvoiceLedgerReadModel {
+  available: boolean;
+  currentCoordinates: unknown;
+  invoices: Array<Record<string, unknown> & { id: string; fileId: string; status: string }>;
+  allocations: Array<Record<string, unknown> & { id: string; amountCents: string; status: string }>;
+  noInvoiceConfirmations: Array<Record<string, unknown> & { id: string; amountCents: string; status: string; reason: string }>;
+  invoiceExceptions: Array<Record<string, unknown> & { id: string; amountCents: string; status: string; reason: string }>;
+}
+
+export interface SpotProcurementReceiptDetailReadModel {
+  receipt: {
+    id: string;
+    projectId: string;
+    procurementId: string;
+    procurementCode: string;
+    procurementVersionId: string;
+    procurementVersionNo: number;
+    procurementVersionStatus: string;
+    status: string;
+    currentRevisionNo: number;
+    handler: SpotProcurementUserSummary;
+    note: string | null;
+    actualCostCents: string;
+    firstSubmittedAt: string | null;
+    submittedAt: string | null;
+    submittedBy: SpotProcurementUserSummary | null;
+    lockedAt: string | null;
+  };
+  delegation: null | {
+    id: string;
+    delegatorUserId: string;
+    delegateUserId: string;
+    delegateName: string;
+    delegatedAt: string;
+  };
+  latestPdf: null | { documentId: string; fileId: string; templateKey: string; createdAt: string };
+  lines: SpotProcurementReceiptLineReadModel[];
+  photos: SpotProcurementReceiptPhotoReadModel[];
+  reviews: SpotProcurementReceiptReviewReadModel[];
+}
+
+export interface SpotProcurementReceiptLineReadModel {
+  procurementLineId: string;
+  sortOrder: number;
+  materialName: string;
+  specification: string | null;
+  unit: string;
+  approvedQuantity: string;
+  frozenUnitPrice: string;
+  qualifiedQuantity: string | null;
+  unqualifiedQuantity: string | null;
+  unqualifiedReason: string | null;
+  freeGiftQuantity: string | null;
+  replenishmentPending: boolean | null;
+  discrepancyNote: string | null;
+  actualCostCents: string | null;
+}
+
+export interface SpotProcurementReceiptPhotoReadModel {
+  id: string;
+  watermarkedFileId: string;
+  primaryFileId: string;
+  source: "camera" | "album";
+  category: "material_scene" | "delivery_note";
+  note: string | null;
+  appendReason: string | null;
+  uploadedByUserId: string;
+  serverRecordedAt: string;
+  locked: boolean;
+}
+
+export interface SpotProcurementReceiptReviewReadModel {
+  id: string;
+  sequenceNo: number;
+  receiptRevisionNo: number;
+  decision: "approved" | "returned" | "revoked";
+  comment: string | null;
+  reviewedBy: SpotProcurementUserSummary;
+  submissionDelegationId: string | null;
+  targetReviewId: string | null;
+  createdAt: string;
+}
+
 export interface SpotProcurementHandlerOptionReadModel {
   id: string;
   name: string;
@@ -250,7 +347,8 @@ export interface SpotProcurementDetailReadModel {
   payments: SpotProcurementPaymentListItemReadModel[];
   paymentSummary: SpotProcurementPaymentSummaryReadModel;
   receipt: SpotProcurementFutureUnavailableReadModel;
-  invoiceCoverage: SpotProcurementFutureUnavailableReadModel;
+  invoiceCoverage: SpotProcurementInvoiceCoverageReadModel;
+  invoiceLedger: SpotProcurementInvoiceLedgerReadModel;
   discrepancy: SpotProcurementFutureUnavailableReadModel;
   applicationPdf: SpotProcurementApprovalPdfReadModel;
   availableActions: DetailActionReadModel[];
@@ -342,7 +440,8 @@ export interface SpotProcurementPaymentDetailReadModel {
   };
   executions: SpotProcurementPaymentExecutionReadModel[];
   evidenceFiles: EvidenceFileReadModel[];
-  invoiceCoverage: SpotProcurementFutureUnavailableReadModel;
+  invoiceCoverage: SpotProcurementInvoiceCoverageReadModel;
+  invoiceLedger: SpotProcurementInvoiceLedgerReadModel;
   receipt: SpotProcurementFutureUnavailableReadModel;
   paymentPdf: SpotProcurementApprovalPdfReadModel;
   availableActions: DetailActionReadModel[];
@@ -442,6 +541,27 @@ export interface RecordSpotProcurementPaymentExecutionPayload {
   confirmationPassword: string;
 }
 
+export interface UpdateSpotProcurementReceiptDraftPayload {
+  note?: string | null;
+  lines: Array<{
+    procurementLineId: string;
+    qualifiedQuantity: string;
+    unqualifiedQuantity: string;
+    unqualifiedReason?: string;
+    freeGiftQuantity: string;
+    replenishmentPending: boolean;
+    discrepancyNote?: string;
+  }>;
+}
+
+export interface AttachSpotProcurementReceiptPhotoPayload {
+  originalFileId: string;
+  source: "camera" | "album";
+  category: "material_scene" | "delivery_note";
+  note?: string;
+  appendReason?: string;
+}
+
 export interface SpotProcurementWriteReadModel {
   procurementId: string;
   projectId: string;
@@ -522,6 +642,85 @@ export function fetchSpotProcurementPayments(
 export function fetchSpotProcurementPaymentDetail(paymentId: string) {
   return readJson<SpotProcurementPaymentDetailReadModel>(
     `/spot-procurement-payments/${encodeURIComponent(paymentId)}`
+  );
+}
+
+export function fetchSpotProcurementReceipt(procurementId: string) {
+  return readJson<SpotProcurementReceiptDetailReadModel>(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt`
+  );
+}
+
+export function updateSpotProcurementReceiptDraft(
+  procurementId: string,
+  body: UpdateSpotProcurementReceiptDraftPayload
+) {
+  return patchJson<unknown>(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/draft`,
+    body
+  );
+}
+
+export function attachSpotProcurementReceiptPhoto(
+  procurementId: string,
+  body: AttachSpotProcurementReceiptPhotoPayload
+) {
+  return postJson<unknown>(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/photos`,
+    body
+  );
+}
+
+export function deleteSpotProcurementReceiptPhoto(procurementId: string, photoId: string) {
+  return deleteJson<unknown>(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/photos/${encodeURIComponent(photoId)}`
+  );
+}
+
+export function submitSpotProcurementReceipt(procurementId: string) {
+  return postJson<unknown>(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/submission`
+  );
+}
+
+export function createSpotProcurementReceiptDelegation(procurementId: string, delegateUserId: string) {
+  return postJson<unknown>(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/delegations`,
+    { delegateUserId }
+  );
+}
+
+export function reviewSpotProcurementReceipt(
+  procurementId: string,
+  body: { decision: "approved" | "returned"; comment?: string }
+) {
+  return postJson<unknown>(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/review`,
+    body
+  );
+}
+
+export function revokeSpotProcurementReceiptReview(
+  procurementId: string,
+  body: { targetReviewId: string; reason: string; confirmReviewRevocation: true }
+) {
+  return postJson<unknown>(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/review-revocation`,
+    body
+  );
+}
+
+export function createSpotProcurementDiscrepancy(
+  procurementId: string,
+  body: { operation: "initiate" | "confirm"; resolutionType?: "full_refund" | "full_supplier_balance"; note?: string }
+) {
+  return postJson<unknown>(`/spot-procurements/${encodeURIComponent(procurementId)}/discrepancy`, body);
+}
+
+export function creditSpotProcurementSupplierBalance(procurementId: string, confirmationPassword: string) {
+  return postJson<unknown>(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/supplier-balance-credit`,
+    { confirmationPassword }
   );
 }
 
@@ -670,6 +869,12 @@ async function postJson<T>(path: string, body?: unknown): Promise<T> {
 
 async function patchJson<T>(path: string, body: unknown): Promise<T> {
   return writeJson<T>(path, "PATCH", body);
+}
+
+async function deleteJson<T>(path: string): Promise<T> {
+  const response = await apiFetch(path, { method: "DELETE" });
+  await ensureOk(response, "提交零星采购操作失败");
+  return response.json() as Promise<T>;
 }
 
 async function writeJson<T>(

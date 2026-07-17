@@ -124,15 +124,30 @@ describe("spot procurement web pages", () => {
     expect(payment).toContain("result.newDraftPaymentId");
   });
 
-  it("keeps receipt as an honest Stage B placeholder without receipt, batch, or location calls", () => {
-    const receipt = pageSource(
-      "SpotProcurementReceiptWorkbenchPage.vue"
-    );
+  it("connects final receipt, watermark evidence, review and ticket facts without location or batches", () => {
+    const workbench = pageSource("SpotProcurementReceiptWorkbenchPage.vue");
+    const receipt = pageSource("SpotProcurementReceiptPage.vue");
+    const uploader = pageSource("components/ReceiptPhotoUploader.vue");
+    const settlement = pageSource("components/ProcurementSettlementSummary.vue");
+    const coverage = pageSource("components/InvoiceCoveragePanel.vue");
 
-    expect(receipt).toContain("代码阶段 B 完成后开放");
-    expect(receipt).toContain("不会采集定位或展示虚假收货结果");
-    expect(receipt).not.toMatch(/fetch.*Receipt|navigator\.geolocation/iu);
-    expect(receipt).not.toContain("收货批次");
+    expect(workbench).toContain("fetchSpotProcurements");
+    expect(receipt).toContain("fetchSpotProcurementReceipt");
+    expect(receipt).toContain("reviewSpotProcurementReceipt");
+    expect(receipt).toContain("revokeSpotProcurementReceiptReview");
+    expect(receipt).toContain("委托");
+    expect(uploader).toContain("系统拍照");
+    expect(uploader).toContain("相册上传");
+    expect(uploader).toContain("送货单可选");
+    expect(uploader).toContain("watermarkedFileId");
+    expect(uploader).toContain("已提交照片不可删除或替换");
+    expect(settlement).toContain("采购审批金额");
+    expect(settlement).toContain("公司实际付款");
+    expect(coverage).toContain("已确认无票");
+    expect(coverage).toContain("票据异常");
+    expect(`${workbench}\n${receipt}\n${uploader}`).not.toMatch(/navigator\.geolocation/iu);
+    expect(`${workbench}\n${receipt}`).not.toMatch(/createReceiptBatch|fetchReceiptBatches/iu);
+    expect(receipt).toContain("办结后收货、差异、供应商余额和票据事实全部只读");
   });
 
   it("uses the approved shared business components instead of a second UI system", () => {
@@ -140,7 +155,9 @@ describe("spot procurement web pages", () => {
       "SpotProcurementWorkbenchPage.vue",
       "SpotProcurementDetailPage.vue",
       "SpotProcurementPaymentWorkbenchPage.vue",
-      "SpotProcurementPaymentDetailPage.vue"
+      "SpotProcurementPaymentDetailPage.vue",
+      "SpotProcurementReceiptWorkbenchPage.vue",
+      "SpotProcurementReceiptPage.vue"
     ].map(pageSource);
     const combined = sources.join("\n");
 

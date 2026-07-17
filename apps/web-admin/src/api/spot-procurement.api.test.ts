@@ -7,10 +7,12 @@ import {
   fetchSpotProcurementCapabilities,
   fetchSpotProcurementDetail,
   fetchSpotProcurementPaymentDetail,
+  fetchSpotProcurementReceipt,
   fetchSpotProcurementPayments,
   fetchSpotProcurements,
   fetchVatRateOptions,
   recordSpotProcurementPaymentExecution,
+  submitSpotProcurementReceipt,
   reviewSpotProcurement,
   reviewSpotProcurementPayment,
   submitSpotProcurement,
@@ -80,6 +82,15 @@ describe("spot procurement API client", () => {
     expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
       "/spot-procurement-payments?projectId=project%2F1&status=approved_pending_payment",
       "/spot-procurement-payments/payment%2F1"
+    ]);
+  });
+
+  it("connects the final receipt read and submission routes", async () => {
+    await fetchSpotProcurementReceipt("procurement/1");
+    await submitSpotProcurementReceipt("procurement/1");
+    expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
+      "/spot-procurements/procurement%2F1/receipt",
+      "/spot-procurements/procurement%2F1/receipt/submission"
     ]);
   });
 

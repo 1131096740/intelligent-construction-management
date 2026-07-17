@@ -375,6 +375,15 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         meta: { title: "收货确认工作台" }
       },
       {
+        path: "零星采购收货/:procurementId",
+        component: () =>
+          import("../pages/spot-procurement/SpotProcurementReceiptPage.vue"),
+        meta: {
+          title: "零星采购收货详情",
+          activeNavigationPath: "/收货确认工作台"
+        }
+      },
+      {
         path: "资料库",
         component: () => import("../pages/archives/ArchiveListPage.vue")
       },

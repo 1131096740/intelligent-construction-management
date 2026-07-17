@@ -40,6 +40,7 @@ import ProcurementLineEditor, {
   type ProcurementLineDraft
 } from "./components/ProcurementLineEditor.vue";
 import PaymentCompositionCard from "./components/PaymentCompositionCard.vue";
+import InvoiceCoveragePanel from "./components/InvoiceCoveragePanel.vue";
 import {
   activeSpotProcurementAttachmentIds,
   retainedSpotProcurementAttachments
@@ -821,12 +822,23 @@ onMounted(() => {
       >
         <header>
           <h2>收货、差异与票据</h2>
-          <p>相关功能开放前，不把空值误写成“未收货”或“未开票”。</p>
+          <p>最终收货、差异结算和票据覆盖分别保存，不把余额抵扣合并成公司实付。</p>
         </header>
+        <t-button
+          theme="primary"
+          @click="router.push(`/零星采购收货/${detail.procurement.id}`)"
+        >
+          进入收货详情
+        </t-button>
+        <InvoiceCoveragePanel
+          :coverage="detail.invoiceCoverage"
+          :ledger="detail.invoiceLedger"
+        />
         <t-alert
-          theme="info"
-          title="代码阶段 B 完成后开放"
-          :message="detail.receipt.label"
+          v-if="detail.procurement.status === 'closed'"
+          theme="success"
+          title="采购已办结"
+          message="全部条件已满足，采购、收货、差异、余额和票据结果均不可更正。"
         />
       </section>
     </template>

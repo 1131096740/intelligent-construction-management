@@ -39,6 +39,7 @@ import {
   utcDateTimeToDateOnly
 } from "../../lib/date-only";
 import PaymentCompositionCard from "./components/PaymentCompositionCard.vue";
+import InvoiceCoveragePanel from "./components/InvoiceCoveragePanel.vue";
 
 type ConfirmationKind =
   | "review_approve"
@@ -841,10 +842,9 @@ onMounted(() => void loadDetail());
         v-else
         class="detail-panel"
       >
-        <t-alert
-          theme="info"
-          title="代码阶段 B 完成后开放"
-          :message="`${detail.receipt.label}；${detail.invoiceCoverage.label}`"
+        <InvoiceCoveragePanel
+          :coverage="detail.invoiceCoverage"
+          :ledger="detail.invoiceLedger"
         />
       </section>
     </template>
