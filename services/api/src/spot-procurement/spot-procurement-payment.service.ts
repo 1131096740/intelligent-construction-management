@@ -40,6 +40,10 @@ import {
 } from "./dto/update-spot-procurement-payment-draft.dto";
 import { SpotProcurementBalanceService } from "./spot-procurement-balance.service";
 import { SpotProcurementClosureService } from "./spot-procurement-closure.service";
+import {
+  paymentApprovalNodes,
+  type SpotProcurementApprovalNode
+} from "./spot-procurement-approval-nodes";
 import { deriveSpotProcurementPaymentExecutionStatus } from "./spot-procurement-payment-status";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
@@ -160,13 +164,6 @@ type SpotPaymentExecutionRow = {
   createdAt: Date;
 };
 
-type PaymentApprovalNode = {
-  name: string;
-  mode: "any";
-  roleKeys: RoleKey[];
-  approvedRoleKeys?: RoleKey[];
-};
-
 type PreparedPayment = {
   settlementAmountCents: bigint;
   supplierBalanceAmountCents: bigint;
@@ -185,29 +182,6 @@ type PreparedPayment = {
   merchantPaymentProofFileId: string | null;
   balanceOverrideReason: string | null;
 };
-
-const PAYMENT_APPROVAL_NODES: PaymentApprovalNode[] = [
-  {
-    name: "综合部主管审批",
-    mode: "any",
-    roleKeys: ["comprehensive_director"]
-  },
-  {
-    name: "项目经理审批",
-    mode: "any",
-    roleKeys: ["project_manager"]
-  },
-  {
-    name: "财务主管审批",
-    mode: "any",
-    roleKeys: ["finance_director"]
-  },
-  {
-    name: "董事长或总经理审批",
-    mode: "any",
-    roleKeys: ["chairman", "general_manager"]
-  }
-];
 
 @Injectable()
 export class SpotProcurementPaymentService {
@@ -1027,7 +1001,7 @@ export class SpotProcurementPaymentService {
             status: "approval_pending",
             currentNodeIndex: 0,
             frozenNodes:
-              PAYMENT_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
+              paymentApprovalNodes() as unknown as Prisma.InputJsonValue,
             applicantUserId: payment.handlerUserId
           }
         });
@@ -2616,7 +2590,7 @@ export class SpotProcurementPaymentService {
       if (!node || typeof node !== "object" || Array.isArray(node)) {
         throw new ConflictException("付款审批节点快照损坏");
       }
-      return { ...node } as unknown as PaymentApprovalNode;
+      return { ...node } as unknown as SpotProcurementApprovalNode;
     });
     const current = nodes[currentNodeIndex];
     if (!current) {
@@ -2903,7 +2877,7 @@ export class SpotProcurementPaymentService {
             businessId: payment.id,
             status: "approval_pending",
             currentNodeIndex: 0,
-            frozenNodes: PAYMENT_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
+            frozenNodes: paymentApprovalNodes() as unknown as Prisma.InputJsonValue,
             applicantUserId: payment.handlerUserId
           }
         });
