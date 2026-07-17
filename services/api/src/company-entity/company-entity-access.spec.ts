@@ -1,5 +1,9 @@
 import { ForbiddenException } from "@nestjs/common";
 import {
+  COMPANY_ENTITY_MAINTAINER_ROLES as SHARED_COMPANY_ENTITY_MAINTAINER_ROLES,
+  COMPANY_ENTITY_READER_ROLES as SHARED_COMPANY_ENTITY_READER_ROLES
+} from "@jiangkong/shared-domain";
+import {
   COMPANY_ENTITY_MAINTAINER_ROLES,
   COMPANY_ENTITY_READER_ROLES,
   CompanyEntityAccess
@@ -32,6 +36,15 @@ function buildClient({
 }
 
 describe("CompanyEntityAccess", () => {
+  it("re-exports the shared-domain role policy as the single source of truth", () => {
+    expect(COMPANY_ENTITY_MAINTAINER_ROLES).toBe(
+      SHARED_COMPANY_ENTITY_MAINTAINER_ROLES
+    );
+    expect(COMPANY_ENTITY_READER_ROLES).toBe(
+      SHARED_COMPANY_ENTITY_READER_ROLES
+    );
+  });
+
   it.each(COMPANY_ENTITY_MAINTAINER_ROLES)(
     "allows company-level maintainer role %s",
     async (roleKey) => {

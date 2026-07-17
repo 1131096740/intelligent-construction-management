@@ -24,6 +24,8 @@ const VALID_CODE = "91350211M000100Y46";
 const OTHER_VALID_CODE = "91440300708461136T";
 const DUPLICATE_NAME_WARNING =
   "存在同名我方公司主体，请按统一社会信用代码判断是否为同一主体";
+const CONCURRENT_CHANGE_MESSAGE =
+  "我方公司主体资料已发生变化，请刷新列表后重试";
 
 function entityFixture(overrides: Record<string, unknown> = {}) {
   return {
@@ -357,7 +359,34 @@ describe("CompanyEntityService create", () => {
     }
 
     expect(thrown).toBeInstanceOf(ConflictException);
+    expect(thrown).toMatchObject({
+      message:
+        "统一社会信用代码已被其他我方公司主体使用，请核对是否应修改现有主体或改用另一真实主体"
+    });
     expect(String(thrown)).not.toContain("TOP-SECRET");
+  });
+
+  it("maps a version P2002 to a generic actionable conflict", async () => {
+    const { service, tx } = buildHarness();
+    tx.companyEntityVersion.create.mockRejectedValue({
+      code: "P2002",
+      message: "TOP-SECRET CompanyEntityVersion unique detail"
+    });
+
+    let thrown: unknown;
+    try {
+      await service.create("contract-user", {
+        name: "云南某建设有限公司",
+        unifiedSocialCreditCode: VALID_CODE
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(ConflictException);
+    expect(thrown).toMatchObject({ message: CONCURRENT_CHANGE_MESSAGE });
+    expect(String(thrown)).not.toContain("TOP-SECRET");
+    expect(String(thrown)).not.toContain("统一社会信用代码已被");
   });
 
   it("rejects the whole transaction when audit persistence fails", async () => {
@@ -473,6 +502,54 @@ describe("CompanyEntityService update", () => {
     expect(tx.companyEntity.update).not.toHaveBeenCalled();
   });
 
+  it("maps a main entity update P2002 to the guided credit-code conflict", async () => {
+    const { service, tx } = buildHarness();
+    tx.companyEntity.update.mockRejectedValue({
+      code: "P2002",
+      message: "TOP-SECRET CompanyEntity normalized credit index detail"
+    });
+
+    let thrown: unknown;
+    try {
+      await service.update("entity-1", "contract-user", {
+        name: "云南某建设有限公司",
+        unifiedSocialCreditCode: OTHER_VALID_CODE
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(ConflictException);
+    expect(thrown).toMatchObject({
+      message:
+        "统一社会信用代码已被其他我方公司主体使用，请核对是否应修改现有主体或改用另一真实主体"
+    });
+    expect(String(thrown)).not.toContain("TOP-SECRET");
+  });
+
+  it("maps an update-version P2002 to a generic actionable conflict", async () => {
+    const { service, tx } = buildHarness();
+    tx.companyEntityVersion.create.mockRejectedValue({
+      code: "P2002",
+      message: "TOP-SECRET CompanyEntityVersion update detail"
+    });
+
+    let thrown: unknown;
+    try {
+      await service.update("entity-1", "contract-user", {
+        name: "云南某建设有限公司",
+        unifiedSocialCreditCode: VALID_CODE
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(ConflictException);
+    expect(thrown).toMatchObject({ message: CONCURRENT_CHANGE_MESSAGE });
+    expect(String(thrown)).not.toContain("TOP-SECRET");
+    expect(String(thrown)).not.toContain("统一社会信用代码已被");
+  });
+
   it("returns a Chinese next-step 404 when the locked target does not exist", async () => {
     const { service, tx } = buildHarness();
     tx.$queryRaw.mockResolvedValue([]);
@@ -583,6 +660,29 @@ describe("CompanyEntityService status", () => {
     await expect(
       service.updateStatus("entity-1", "contract-user", { isActive: true })
     ).rejects.toThrow("audit unavailable");
+  });
+
+  it("maps a status-version P2002 to a generic actionable conflict", async () => {
+    const { service, tx } = buildHarness();
+    tx.companyEntity.findUnique.mockResolvedValue(entityFixture({ isActive: false }));
+    tx.companyEntityVersion.create.mockRejectedValue({
+      code: "P2002",
+      message: "TOP-SECRET CompanyEntityVersion status detail"
+    });
+
+    let thrown: unknown;
+    try {
+      await service.updateStatus("entity-1", "contract-user", {
+        isActive: true
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(ConflictException);
+    expect(thrown).toMatchObject({ message: CONCURRENT_CHANGE_MESSAGE });
+    expect(String(thrown)).not.toContain("TOP-SECRET");
+    expect(String(thrown)).not.toContain("统一社会信用代码已被");
   });
 });
 

@@ -1,20 +1,15 @@
 import { ForbiddenException, Injectable } from "@nestjs/common";
+import {
+  COMPANY_ENTITY_MAINTAINER_ROLES,
+  COMPANY_ENTITY_READER_ROLES
+} from "@jiangkong/shared-domain";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 
-export const COMPANY_ENTITY_MAINTAINER_ROLES = [
-  "comprehensive_director",
-  "contract_staff",
-  "contract_director"
-] as const;
-
-export const COMPANY_ENTITY_READER_ROLES = [
-  ...COMPANY_ENTITY_MAINTAINER_ROLES,
-  "finance_staff",
-  "finance_director",
-  "chairman",
-  "general_manager"
-] as const;
+export {
+  COMPANY_ENTITY_MAINTAINER_ROLES,
+  COMPANY_ENTITY_READER_ROLES
+} from "@jiangkong/shared-domain";
 
 type CompanyEntityAccessClient = Pick<
   Prisma.TransactionClient,

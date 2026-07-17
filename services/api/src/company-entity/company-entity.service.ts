@@ -45,6 +45,8 @@ const DUPLICATE_NAME_WARNING =
   "存在同名我方公司主体，请按统一社会信用代码判断是否为同一主体";
 const CREDIT_CODE_CONFLICT_MESSAGE =
   "统一社会信用代码已被其他我方公司主体使用，请核对是否应修改现有主体或改用另一真实主体";
+const CONCURRENT_CHANGE_MESSAGE =
+  "我方公司主体资料已发生变化，请刷新列表后重试";
 const COMPANY_ENTITY_NOT_FOUND_MESSAGE =
   "未找到我方公司主体，请刷新列表后重试";
 
@@ -161,14 +163,16 @@ export class CompanyEntityService {
           facts.unifiedSocialCreditCode
         );
         const warning = await this.duplicateNameWarning(tx, facts.name);
-        const entity = await tx.companyEntity.create({
-          data: {
-            ...facts,
-            dataStatus: "complete",
-            currentVersionNo: 1,
-            isActive: true
-          }
-        });
+        const entity = await this.mapMainEntityCreditCodeConflict(() =>
+          tx.companyEntity.create({
+            data: {
+              ...facts,
+              dataStatus: "complete",
+              currentVersionNo: 1,
+              isActive: true
+            }
+          })
+        );
         await tx.companyEntityVersion.create({
           data: {
             companyEntityId: entity.id,
@@ -190,7 +194,7 @@ export class CompanyEntityService {
         return { entity, warning };
       });
     } catch (error) {
-      this.rethrowCreditCodeConflict(error);
+      this.rethrowTransactionConflict(error);
     }
   }
 
@@ -215,14 +219,16 @@ export class CompanyEntityService {
           companyEntityId
         );
         const versionNo = current.currentVersionNo + 1;
-        const entity = await tx.companyEntity.update({
-          where: { id: companyEntityId },
-          data: {
-            ...facts,
-            dataStatus: "complete",
-            currentVersionNo: versionNo
-          }
-        });
+        const entity = await this.mapMainEntityCreditCodeConflict(() =>
+          tx.companyEntity.update({
+            where: { id: companyEntityId },
+            data: {
+              ...facts,
+              dataStatus: "complete",
+              currentVersionNo: versionNo
+            }
+          })
+        );
         await tx.companyEntityVersion.create({
           data: {
             companyEntityId,
@@ -244,7 +250,7 @@ export class CompanyEntityService {
         return { entity, warning };
       });
     } catch (error) {
-      this.rethrowCreditCodeConflict(error);
+      this.rethrowTransactionConflict(error);
     }
   }
 
@@ -258,41 +264,45 @@ export class CompanyEntityService {
       throw new BadRequestException("公司主体状态必须是布尔值，请重新选择");
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const actorRoleKey = await this.access.assertCanMaintain(actorUserId, tx);
-      const current = await this.lockAndLoad(tx, companyEntityId);
-      if (current.isActive === rawIsActive) {
-        return { entity: current, unchanged: true };
-      }
-
-      const versionNo = current.currentVersionNo + 1;
-      const action = rawIsActive ? "enable" : "disable";
-      const entity = await tx.companyEntity.update({
-        where: { id: companyEntityId },
-        data: { isActive: rawIsActive, currentVersionNo: versionNo }
-      });
-      await tx.companyEntityVersion.create({
-        data: {
-          companyEntityId,
-          versionNo,
-          name: current.name,
-          unifiedSocialCreditCode: current.unifiedSocialCreditCode,
-          registeredAddress: current.registeredAddress,
-          isActive: rawIsActive,
-          action,
-          actorUserId,
-          actorRoleKey
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const actorRoleKey = await this.access.assertCanMaintain(actorUserId, tx);
+        const current = await this.lockAndLoad(tx, companyEntityId);
+        if (current.isActive === rawIsActive) {
+          return { entity: current, unchanged: true };
         }
+
+        const versionNo = current.currentVersionNo + 1;
+        const action = rawIsActive ? "enable" : "disable";
+        const entity = await tx.companyEntity.update({
+          where: { id: companyEntityId },
+          data: { isActive: rawIsActive, currentVersionNo: versionNo }
+        });
+        await tx.companyEntityVersion.create({
+          data: {
+            companyEntityId,
+            versionNo,
+            name: current.name,
+            unifiedSocialCreditCode: current.unifiedSocialCreditCode,
+            registeredAddress: current.registeredAddress,
+            isActive: rawIsActive,
+            action,
+            actorUserId,
+            actorRoleKey
+          }
+        });
+        await this.audit.record(tx, {
+          actorUserId,
+          action: `company_entity.${action}`,
+          businessType: "company_entity",
+          businessId: companyEntityId,
+          metadata: { versionNo, actorRoleKey }
+        });
+        return { entity, unchanged: false };
       });
-      await this.audit.record(tx, {
-        actorUserId,
-        action: `company_entity.${action}`,
-        businessType: "company_entity",
-        businessId: companyEntityId,
-        metadata: { versionNo, actorRoleKey }
-      });
-      return { entity, unchanged: false };
-    });
+    } catch (error) {
+      this.rethrowTransactionConflict(error);
+    }
   }
 
   private normalizeFacts(
@@ -415,9 +425,23 @@ export class CompanyEntityService {
     return duplicate ? DUPLICATE_NAME_WARNING : null;
   }
 
-  private rethrowCreditCodeConflict(error: unknown): never {
+  private async mapMainEntityCreditCodeConflict<T>(
+    operation: () => Promise<T>
+  ): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (prismaErrorCode(error) === "P2002") {
+        throw new ConflictException(CREDIT_CODE_CONFLICT_MESSAGE);
+      }
+      throw error;
+    }
+  }
+
+  private rethrowTransactionConflict(error: unknown): never {
+    if (error instanceof ConflictException) throw error;
     if (prismaErrorCode(error) === "P2002") {
-      throw new ConflictException(CREDIT_CODE_CONFLICT_MESSAGE);
+      throw new ConflictException(CONCURRENT_CHANGE_MESSAGE);
     }
     throw error;
   }
