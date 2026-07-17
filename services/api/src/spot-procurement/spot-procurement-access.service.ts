@@ -32,6 +32,12 @@ const PAYMENT_PROJECT_ROLES = new Set<RoleKey>([
   "finance_director"
 ]);
 const RECEIPT_PROJECT_ROLES = new Set<RoleKey>(["material_director"]);
+const INVOICE_EVIDENCE_PROJECT_ROLES = new Set<RoleKey>([
+  "material_staff",
+  "material_director",
+  "finance_staff",
+  "finance_director"
+]);
 const PAYMENT_EXECUTOR_VISIBLE_STATUSES = new Set([
   "approved_pending_payment",
   "partially_paid"
@@ -100,6 +106,19 @@ export class SpotProcurementAccessService {
     });
     if (!receipt) throw new ForbiddenException(RESOURCE_FORBIDDEN_MESSAGE);
     return receipt.projectId;
+  }
+
+  async requireInvoiceAllocationProjectId(
+    allocationId: string
+  ): Promise<string> {
+    const allocation = await this.prisma.invoiceAllocation.findUnique({
+      where: { id: allocationId },
+      select: { projectId: true }
+    });
+    if (!allocation) {
+      throw new ForbiddenException(RESOURCE_FORBIDDEN_MESSAGE);
+    }
+    return allocation.projectId;
   }
 
   async accessibleProcurementIds(
@@ -645,7 +664,10 @@ export class SpotProcurementAccessService {
       voucherBindings,
       refundBindings,
       directPdfBindings,
-      receiptPhotoBindings
+      receiptPhotoBindings,
+      invoiceRecordBindings,
+      noInvoiceBindings,
+      invoiceExceptionBindings
     ] =
       await Promise.all([
         client.spotProcurementAttachment.findMany({
@@ -704,6 +726,43 @@ export class SpotProcurementAccessService {
             OR: [{ originalFileId: fileId }, { watermarkedFileId: fileId }]
           },
           select: { receiptId: true }
+        }),
+        client.invoiceRecord.findMany({
+          where: { fileId },
+          select: {
+            id: true,
+            projectId: true,
+            sourceBusinessType: true,
+            sourceBusinessId: true,
+            sourceProcurementId: true,
+            uploadedByUserId: true,
+            invalidatedByUserId: true
+          },
+          take: 2
+        }),
+        client.noInvoiceConfirmation.findMany({
+          where: { proofFileId: fileId },
+          select: {
+            id: true,
+            projectId: true,
+            procurementId: true,
+            submittedByUserId: true,
+            reviewedByUserId: true,
+            reversedByUserId: true
+          },
+          take: 2
+        }),
+        client.invoiceExceptionConfirmation.findMany({
+          where: { proofFileId: fileId },
+          select: {
+            id: true,
+            projectId: true,
+            procurementId: true,
+            submittedByUserId: true,
+            reviewedByUserId: true,
+            reversedByUserId: true
+          },
+          take: 2
         })
       ]);
     const replacementChain = await this.findReplacementDescendantFileIds(
@@ -740,8 +799,66 @@ export class SpotProcurementAccessService {
       voucherBindings.length > 0 ||
       refundBindings.length > 0 ||
       pdfBindings.length > 0 ||
-      receiptPhotoBindings.length > 0;
+      receiptPhotoBindings.length > 0 ||
+      invoiceRecordBindings.length > 0 ||
+      noInvoiceBindings.length > 0 ||
+      invoiceExceptionBindings.length > 0;
     if (!bound) return "not_spot";
+
+    const evidenceBindings = [
+      ...invoiceRecordBindings.map((binding) => ({
+        kind: "invoice" as const,
+        projectId: binding.projectId,
+        procurementId: binding.sourceProcurementId,
+        sourceBusinessType: binding.sourceBusinessType,
+        sourceBusinessId: binding.sourceBusinessId,
+        participantUserIds: [
+          binding.uploadedByUserId,
+          binding.invalidatedByUserId
+        ]
+      })),
+      ...noInvoiceBindings.map((binding) => ({
+        kind: "no_invoice" as const,
+        projectId: binding.projectId,
+        procurementId: binding.procurementId,
+        sourceBusinessType: null,
+        sourceBusinessId: null,
+        participantUserIds: [
+          binding.submittedByUserId,
+          binding.reviewedByUserId,
+          binding.reversedByUserId
+        ]
+      })),
+      ...invoiceExceptionBindings.map((binding) => ({
+        kind: "invoice_exception" as const,
+        projectId: binding.projectId,
+        procurementId: binding.procurementId,
+        sourceBusinessType: null,
+        sourceBusinessId: null,
+        participantUserIds: [
+          binding.submittedByUserId,
+          binding.reviewedByUserId,
+          binding.reversedByUserId
+        ]
+      }))
+    ];
+    if (evidenceBindings.length > 0) {
+      const hasOtherSpotBinding =
+        attachmentBindings.length > 0 ||
+        directPaymentBindings.length > 0 ||
+        voucherBindings.length > 0 ||
+        refundBindings.length > 0 ||
+        pdfBindings.length > 0 ||
+        receiptPhotoBindings.length > 0;
+      if (evidenceBindings.length !== 1 || hasOtherSpotBinding) {
+        return "denied";
+      }
+      return this.resolveInvoiceEvidenceAccess(
+        client,
+        actorUserId,
+        evidenceBindings[0]
+      );
+    }
 
     const receiptPhotoIds = new Set(
       receiptPhotoBindings.map((binding) => binding.receiptId)
@@ -947,6 +1064,68 @@ export class SpotProcurementAccessService {
       client
     );
     return accessibleReceiptIds.has(receipt.id) ? "allowed" : "denied";
+  }
+
+  private async resolveInvoiceEvidenceAccess(
+    client: AccessClient,
+    actorUserId: string,
+    binding: {
+      kind: "invoice" | "no_invoice" | "invoice_exception";
+      projectId: string;
+      procurementId: string | null;
+      sourceBusinessType: string | null;
+      sourceBusinessId: string | null;
+      participantUserIds: Array<string | null>;
+    }
+  ): Promise<SpotProcurementBusinessAccessDecision> {
+    if (
+      !binding.procurementId ||
+      (binding.kind === "invoice" &&
+        (binding.sourceBusinessType !== "spot_procurement" ||
+          binding.sourceBusinessId !== binding.procurementId))
+    ) {
+      return "denied";
+    }
+
+    const procurements = await client.spotProcurement.findMany({
+      where: { id: { in: [binding.procurementId] } },
+      select: {
+        id: true,
+        projectId: true,
+        applicantUserId: true,
+        handlerUserId: true
+      }
+    });
+    if (
+      procurements.length !== 1 ||
+      procurements[0].projectId !== binding.projectId
+    ) {
+      return "denied";
+    }
+
+    if (binding.participantUserIds.includes(actorUserId)) {
+      return "allowed";
+    }
+
+    const accessibleProcurements = await this.accessibleProcurementIds(
+      [binding.procurementId],
+      actorUserId,
+      client
+    );
+    if (accessibleProcurements.has(binding.procurementId)) {
+      return "allowed";
+    }
+
+    const effectiveRoles = await this.loadEffectiveRoleKeysByProject(
+      client,
+      actorUserId,
+      [binding.projectId]
+    );
+    return (effectiveRoles.get(binding.projectId) ?? []).some((role) =>
+      INVOICE_EVIDENCE_PROJECT_ROLES.has(role)
+    )
+      ? "allowed"
+      : "denied";
   }
 
   private async resolveBoundBusinessAccess(

@@ -354,6 +354,110 @@ describe("SpotProcurementReadService", () => {
     );
   });
 
+  it("projects the shared ticket coverage into procurement and payment reads without double-counting payment attribution", async () => {
+    const fixture = buildFixture();
+    const procurementCoverage = {
+      available: true,
+      status: "partially_covered",
+      label: "尚差 7345 分",
+      actualCostCents: "12345",
+      normalInvoiceCents: "4000",
+      confirmedNoInvoiceCents: "1000",
+      confirmedExceptionCents: "0",
+      effectiveCoveredCents: "5000",
+      remainingCents: "7345",
+      pendingCount: 0
+    };
+    const paymentCoverage = {
+      ...procurementCoverage,
+      paymentAttribution: {
+        normalInvoiceCents: "4000",
+        confirmedNoInvoiceCents: "0",
+        confirmedExceptionCents: "0",
+        attributedCents: "4000",
+        pendingCount: 0,
+        countsTowardProcurementCoverageAgain: false
+      }
+    };
+    const procurementLedgerDetail = {
+      available: true,
+      currentCoordinates: {
+        procurementId: "procurement-1",
+        procurementVersionId: "version-1",
+        receiptId: "receipt-1",
+        receiptRevisionNo: 1
+      },
+      invoices: [{ id: "invoice-1", lines: [] }],
+      allocations: [{ id: "allocation-1", status: "active" }],
+      noInvoiceConfirmations: [
+        { id: "no-invoice-1", status: "pending_review" }
+      ],
+      invoiceExceptions: []
+    };
+    const paymentLedgerDetail = {
+      ...procurementLedgerDetail,
+      paymentId: "payment-1",
+      paymentCurrent: true
+    };
+    const invoiceLedger = {
+      coverageForProcurementIds: jest
+        .fn()
+        .mockResolvedValue(
+          new Map([["procurement-1", procurementCoverage]])
+        ),
+      coverageForPaymentIds: jest
+        .fn()
+        .mockResolvedValue(
+          new Map([["payment-1", paymentCoverage]])
+        ),
+      detailForProcurement: jest
+        .fn()
+        .mockResolvedValue(procurementLedgerDetail),
+      detailForPayment: jest
+        .fn()
+        .mockResolvedValue(paymentLedgerDetail)
+    };
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never,
+      invoiceLedger as never
+    );
+
+    const [procurementList, procurementDetail, paymentDetail] =
+      await Promise.all([
+      service.listProcurements("finance-1", {}),
+      service.getProcurement("procurement-1", "finance-1"),
+      service.getPayment("payment-1", "finance-1")
+      ]);
+
+    expect(procurementList.items[0].invoiceCoverage).toEqual(
+      procurementCoverage
+    );
+    expect(procurementDetail.invoiceLedger).toEqual(
+      procurementLedgerDetail
+    );
+    expect(paymentDetail.invoiceCoverage).toEqual(paymentCoverage);
+    expect(paymentDetail.invoiceLedger).toEqual(paymentLedgerDetail);
+    expect(
+      paymentDetail.invoiceCoverage.paymentAttribution
+        .countsTowardProcurementCoverageAgain
+    ).toBe(false);
+    expect(
+      invoiceLedger.coverageForProcurementIds
+    ).toHaveBeenCalledWith(["procurement-1"]);
+    expect(
+      invoiceLedger.coverageForPaymentIds
+    ).toHaveBeenCalledWith(["payment-1"]);
+    expect(invoiceLedger.detailForProcurement).toHaveBeenCalledWith(
+      "procurement-1"
+    );
+    expect(invoiceLedger.detailForPayment).toHaveBeenCalledWith(
+      "payment-1"
+    );
+  });
+
   it("fails closed before loading procurement details when business access is denied", async () => {
     const fixture = buildFixture();
     fixture.access.resolveProcurementViewAccess.mockResolvedValue("denied");

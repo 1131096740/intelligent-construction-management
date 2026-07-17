@@ -616,6 +616,15 @@ describe("spot procurement core schema", () => {
   )
     ? readFileSync(exclusiveFileBindingMigrationPath, "utf8")
     : "";
+  const invoiceEvidenceExclusiveMigrationPath = join(
+    process.cwd(),
+    "prisma/migrations/20260717150000_invoice_evidence_exclusive_binding/migration.sql"
+  );
+  const invoiceEvidenceExclusiveMigration = existsSync(
+    invoiceEvidenceExclusiveMigrationPath
+  )
+    ? readFileSync(invoiceEvidenceExclusiveMigrationPath, "utf8")
+    : "";
 
   const modelBody = (name: string) =>
     schema.match(new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`))?.[1] ?? "";
@@ -915,6 +924,101 @@ describe("spot procurement core schema", () => {
     );
     expect(exclusiveFileBindingMigration).toContain(
       "exclusive_file_business_binding_guard"
+    );
+  });
+
+  it("promotes all three invoice evidence columns to exclusive file facts", () => {
+    const normalized = normalizeSql(
+      invoiceEvidenceExclusiveMigration
+    );
+    const exclusiveBindings = new Set([
+      "SpotProcurementPaymentExecution.voucherFileId",
+      "SpotProcurementRefund.voucherFileId",
+      "InvoiceRecord.fileId",
+      "NoInvoiceConfirmation.proofFileId",
+      "InvoiceExceptionConfirmation.proofFileId",
+      "SpotProcurementReceiptPhoto.originalFileId",
+      "SpotProcurementReceiptPhoto.watermarkedFileId"
+    ]);
+    const expectedBindings = [
+      ...NON_RECEIPT_FILE_BINDINGS.flatMap(({ table, columns }) =>
+        columns.map((column) => ({
+          table,
+          column,
+          exclusive: exclusiveBindings.has(`${table}.${column}`)
+        }))
+      ),
+      {
+        table: "SpotProcurementReceiptPhoto",
+        column: "originalFileId",
+        exclusive: true
+      },
+      {
+        table: "SpotProcurementReceiptPhoto",
+        column: "watermarkedFileId",
+        exclusive: true
+      }
+    ].sort((left, right) =>
+      `${left.table}.${left.column}`.localeCompare(
+        `${right.table}.${right.column}`
+      )
+    );
+    const actualBindings = Array.from(
+      invoiceEvidenceExclusiveMigration.matchAll(
+        /\('([^']+)', '([^']+)', (TRUE|FALSE)\)/g
+      ),
+      (match) => ({
+        table: match[1],
+        column: match[2],
+        exclusive: match[3] === "TRUE"
+      })
+    ).sort((left, right) =>
+      `${left.table}.${left.column}`.localeCompare(
+        `${right.table}.${right.column}`
+      )
+    );
+    expect(actualBindings).toEqual(expectedBindings);
+    expect(normalized).toMatch(/^BEGIN;[\s\S]*COMMIT;$/u);
+    expect(invoiceEvidenceExclusiveMigration).toContain(
+      "pg_advisory_xact_lock(190731, 13)"
+    );
+    for (const [table, column, trigger] of [
+      ["InvoiceRecord", "fileId", "jg_efb_17"],
+      [
+        "NoInvoiceConfirmation",
+        "proofFileId",
+        "jg_efb_18"
+      ],
+      [
+        "InvoiceExceptionConfirmation",
+        "proofFileId",
+        "jg_efb_19"
+      ]
+    ] as const) {
+      expect(invoiceEvidenceExclusiveMigration).toContain(
+        `('${table}', '${column}', TRUE)`
+      );
+      expect(invoiceEvidenceExclusiveMigration).toContain(
+        `DROP TRIGGER IF EXISTS ${trigger} ON "${table}"`
+      );
+      expect(invoiceEvidenceExclusiveMigration).toContain(
+        `EXECUTE FUNCTION jg_enforce_exclusive_file_business_binding('${column}', 'true')`
+      );
+    }
+    expect(invoiceEvidenceExclusiveMigration).toContain(
+      "IF binding_count > 1 THEN"
+    );
+    expect(invoiceEvidenceExclusiveMigration).toContain(
+      "jg_has_exclusive_file_business_binding"
+    );
+    expect(invoiceEvidenceExclusiveMigration).toContain(
+      'FROM "InvoiceRecord"'
+    );
+    expect(invoiceEvidenceExclusiveMigration).toContain(
+      'FROM "NoInvoiceConfirmation"'
+    );
+    expect(invoiceEvidenceExclusiveMigration).toContain(
+      'FROM "InvoiceExceptionConfirmation"'
     );
   });
 

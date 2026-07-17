@@ -69,6 +69,15 @@ const FILE_ALREADY_BOUND_MESSAGE = "该文件已绑定其他业务记录，不�
 const REFUND_VOUCHER_BINDING = [
   { table: "SpotProcurementRefund", column: "voucherFileId" }
 ] as const;
+const INVOICE_RECORD_FILE_BINDING = [
+  { table: "InvoiceRecord", column: "fileId" }
+] as const;
+const NO_INVOICE_PROOF_BINDING = [
+  { table: "NoInvoiceConfirmation", column: "proofFileId" }
+] as const;
+const INVOICE_EXCEPTION_PROOF_BINDING = [
+  { table: "InvoiceExceptionConfirmation", column: "proofFileId" }
+] as const;
 
 const ARCHIVE_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
   "contract_staff",
@@ -1108,7 +1117,13 @@ export class FileService {
       tx
     );
     if (spotDecision === "allowed") {
-      const [receiptBinding, refundBindings] = await Promise.all([
+      const [
+        receiptBinding,
+        refundBindings,
+        invoiceRecordBindings,
+        noInvoiceBindings,
+        invoiceExceptionBindings
+      ] = await Promise.all([
         tx.spotProcurementReceiptPhoto.findFirst({
           where: {
             OR: [
@@ -1122,8 +1137,46 @@ export class FileService {
           where: { voucherFileId: file.id },
           select: { id: true },
           take: 2
+        }),
+        tx.invoiceRecord.findMany({
+          where: { fileId: file.id },
+          select: { id: true },
+          take: 2
+        }),
+        tx.noInvoiceConfirmation.findMany({
+          where: { proofFileId: file.id },
+          select: { id: true },
+          take: 2
+        }),
+        tx.invoiceExceptionConfirmation.findMany({
+          where: { proofFileId: file.id },
+          select: { id: true },
+          take: 2
         })
       ]);
+      const evidenceBindingExclusions = [
+        ...invoiceRecordBindings.map(() => INVOICE_RECORD_FILE_BINDING),
+        ...noInvoiceBindings.map(() => NO_INVOICE_PROOF_BINDING),
+        ...invoiceExceptionBindings.map(
+          () => INVOICE_EXCEPTION_PROOF_BINDING
+        )
+      ];
+      if (
+        evidenceBindingExclusions.length > 1 ||
+        (evidenceBindingExclusions.length === 1 &&
+          (receiptBinding ||
+            refundBindings.length > 0 ||
+            (await hasNonReceiptBusinessFileBinding(
+              tx,
+              [file.id],
+              evidenceBindingExclusions[0]
+            ))))
+      ) {
+        throw new Error("资料文件存在跨业务绑定冲突，暂不能下载");
+      }
+      if (evidenceBindingExclusions.length === 1) {
+        return;
+      }
       if (
         receiptBinding &&
         (await hasNonReceiptBusinessFileBinding(tx, [file.id]))

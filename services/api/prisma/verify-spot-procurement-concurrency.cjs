@@ -10,6 +10,9 @@ const {
   SpotProcurementBalanceService
 } = require("../dist/spot-procurement/spot-procurement-balance.service");
 const {
+  InvoiceLedgerService
+} = require("../dist/invoice-ledger/invoice-ledger.service");
+const {
   SpotProcurementPaymentService
 } = require("../dist/spot-procurement/spot-procurement-payment.service");
 const {
@@ -34,6 +37,8 @@ const HANDLER_USER_ID = "concurrency-material-staff";
 const MATERIAL_DIRECTOR_USER_ID =
   "concurrency-material-director";
 const FINANCE_USER_ID = "concurrency-finance-staff";
+const FINANCE_DIRECTOR_USER_ID =
+  "concurrency-finance-director";
 const SUPPORT_FILE_ID = "spot-procurement-concurrency-support";
 const ACTIVE_PAYMENT_STATUSES = new Set([
   "approval_pending",
@@ -192,7 +197,7 @@ function fileAccessFor(prisma) {
       await acquireFileBusinessBindingTransactionLock(tx);
       const rows = await tx.$queryRaw(
         Prisma.sql`
-          SELECT "id", "storageStatus"
+          SELECT "id", "uploadedByUserId", "storageStatus"
           FROM "FileObject"
           WHERE "id" = ${fileId}
           FOR UPDATE
@@ -259,7 +264,13 @@ function servicesFor(prisma) {
       tryRefreshLatest: async () => undefined
     }
   );
-  return { balances, payment, receipt };
+  const invoices = new InvoiceLedgerService(
+    prisma,
+    audit,
+    fileAccessFor(prisma),
+    pilot
+  );
+  return { balances, payment, receipt, invoices };
 }
 
 async function seedVerificationFacts() {
@@ -331,6 +342,39 @@ async function seedVerificationFacts() {
         projectId: CASH_SHORT_PROJECT_ID,
         userId: FINANCE_USER_ID,
         positionKey: "finance_staff"
+      }
+    ]
+  });
+  await clientA.user.create({
+    data: {
+      id: FINANCE_DIRECTOR_USER_ID,
+      name: "并发验收财务主管",
+      isActive: true,
+      mustChangePassword: false
+    }
+  });
+  await clientA.projectMember.create({
+    data: {
+      projectId: PROJECT_ID,
+      userId: FINANCE_DIRECTOR_USER_ID,
+      positionKey: "finance_director"
+    }
+  });
+  await clientA.vatRateOption.createMany({
+    data: [
+      {
+        id: "concurrency-vat-13",
+        rateValue: "13",
+        label: "13%",
+        sortOrder: 1,
+        createdByUserId: FINANCE_DIRECTOR_USER_ID
+      },
+      {
+        id: "concurrency-vat-9",
+        rateValue: "9",
+        label: "9%",
+        sortOrder: 2,
+        createdByUserId: FINANCE_DIRECTOR_USER_ID
       }
     ]
   });
@@ -453,6 +497,212 @@ async function createExecutionVoucher(fileId) {
       storageStatus: "active"
     }
   });
+}
+
+async function createTicketFile(
+  fileId,
+  uploadedByUserId = HANDLER_USER_ID
+) {
+  return clientA.fileObject.create({
+    data: {
+      id: fileId,
+      bucket: "local-private",
+      objectKey: `spot-procurement-concurrency/ticket-${fileId}.pdf`,
+      originalName: `${fileId}.pdf`,
+      mimeType: "application/pdf",
+      sizeBytes: 1,
+      uploadedByUserId,
+      storageStatus: "active"
+    }
+  });
+}
+
+async function createTicketReadyProcurement(input) {
+  const totalAmountCents = input.lines.reduce(
+    (total, line) => total + line.actualCostCents,
+    0n
+  );
+  const versionId = `${input.procurementId}-v1`;
+  const receiptId = `${input.procurementId}-receipt`;
+  const paymentId = `${input.procurementId}-payment`;
+  await createApprovedProcurement(clientA, {
+    procurementId: input.procurementId,
+    versionId,
+    code: input.code,
+    supplierKey: `${input.procurementId}-supplier`,
+    supplierName: `${input.procurementId} 供应商`,
+    totalAmountCents
+  });
+  const procurementLines = [];
+  for (let index = 0; index < input.lines.length; index += 1) {
+    const line = input.lines[index];
+    procurementLines.push(
+      await clientA.spotProcurementLine.create({
+        data: {
+          id: `${input.procurementId}-line-${index + 1}`,
+          versionId,
+          sortOrder: index + 1,
+          materialName: `并发票据材料 ${index + 1}`,
+          unit: "项",
+          quantity: "1",
+          invoiceMode: line.invoiceMode,
+          invoiceType:
+            line.invoiceMode === "invoice"
+              ? line.invoiceType ?? "vat_general"
+              : null,
+          vatRateOptionId:
+            line.invoiceMode === "invoice"
+              ? line.vatRateOptionId ?? "concurrency-vat-13"
+              : null,
+          vatRateValueSnapshot:
+            line.invoiceMode === "invoice"
+              ? line.vatRateValue ?? "13"
+              : null,
+          vatRateLabelSnapshot:
+            line.invoiceMode === "invoice"
+              ? line.vatRateLabel ?? "13%"
+              : null,
+          unitPrice: (
+            Number(line.actualCostCents) / 100
+          ).toFixed(2),
+          amountCents: line.actualCostCents
+        }
+      })
+    );
+  }
+  await clientA.spotProcurement.update({
+    where: { id: input.procurementId },
+    data: { actualCostCents: totalAmountCents }
+  });
+  await clientA.spotProcurementPayment.create({
+    data: {
+      id: paymentId,
+      projectId: PROJECT_ID,
+      procurementId: input.procurementId,
+      procurementVersionId: versionId,
+      code: `${input.code}-P`,
+      status: "paid",
+      settlementAmountCents: totalAmountCents,
+      supplierBalanceAmountCents: 0n,
+      companyPaymentAmountCents: totalAmountCents,
+      paidAmountCents: totalAmountCents,
+      payeeNameSnapshot: `${input.procurementId} 供应商`,
+      handlerUserId: HANDLER_USER_ID,
+      createdByUserId: HANDLER_USER_ID,
+      submittedAt: new Date(),
+      approvedAt: new Date()
+    }
+  });
+  const voucherFileId = `${paymentId}-voucher`;
+  await createTicketFile(voucherFileId, FINANCE_USER_ID);
+  await clientA.spotProcurementPaymentExecution.create({
+    data: {
+      paymentId,
+      amountCents: totalAmountCents,
+      paidAt: new Date(),
+      paymentMethod: "bank_transfer",
+      executedByUserId: FINANCE_USER_ID,
+      voucherFileId,
+      idempotencyKey: `${paymentId}-execution`
+    }
+  });
+  const receiptSubmittedAt = new Date();
+  await clientA.$transaction(async (tx) => {
+    await tx.spotProcurementReceipt.create({
+      data: {
+        id: receiptId,
+        projectId: PROJECT_ID,
+        procurementId: input.procurementId,
+        procurementVersionId: versionId,
+        status: "reviewed",
+        currentRevisionNo: 1,
+        handlerUserId: HANDLER_USER_ID,
+        actualCostCents: totalAmountCents,
+        firstSubmittedAt: receiptSubmittedAt,
+        submittedAt: receiptSubmittedAt,
+        submittedByUserId: HANDLER_USER_ID,
+        createdByUserId: HANDLER_USER_ID
+      }
+    });
+    await tx.spotProcurementReceiptRevision.create({
+      data: {
+        id: `${receiptId}-revision-1`,
+        receiptId,
+        revisionNo: 1,
+        procurementId: input.procurementId,
+        procurementVersionId: versionId,
+        handlerUserId: HANDLER_USER_ID,
+        actualCostCents: totalAmountCents,
+        submittedAt: receiptSubmittedAt,
+        submittedByUserId: HANDLER_USER_ID,
+        createdByUserId: HANDLER_USER_ID
+      }
+    });
+  });
+  for (let index = 0; index < procurementLines.length; index += 1) {
+    await clientA.spotProcurementReceiptLine.create({
+      data: {
+        receiptId,
+        receiptRevisionNo: 1,
+        procurementId: input.procurementId,
+        procurementVersionId: versionId,
+        procurementLineId: procurementLines[index].id,
+        approvedQuantitySnapshot: "1",
+        qualifiedQuantity: "1",
+        unqualifiedQuantity: "0",
+        freeGiftQuantity: "0",
+        actualCostCents: input.lines[index].actualCostCents,
+        createdByUserId: HANDLER_USER_ID
+      }
+    });
+  }
+  const review = await clientA.spotProcurementReceiptReview.create({
+    data: {
+      receiptId,
+      receiptRevisionNo: 1,
+      procurementId: input.procurementId,
+      procurementVersionId: versionId,
+      sequenceNo: 1,
+      decision: "approved",
+      comment: "票据并发验收收货复核通过",
+      reviewedByUserId: MATERIAL_DIRECTOR_USER_ID,
+      reviewedByNameSnapshot: "并发验收物资主管"
+    }
+  });
+  return {
+    procurementId: input.procurementId,
+    versionId,
+    receiptId,
+    paymentId,
+    procurementLines,
+    review
+  };
+}
+
+function invoiceInput(input) {
+  return {
+    invoiceType: input.invoiceType ?? "vat_general",
+    invoiceCode: input.invoiceCode,
+    invoiceNumber: input.invoiceNumber,
+    externalIdentifier: input.externalIdentifier,
+    issueDate: "2026-07-17",
+    sellerName: "并发验收供应商",
+    buyerName: "并发验收购买方",
+    totalAmountCents: input.totalAmountCents.toString(),
+    fileId: input.fileId,
+    lines: input.lines.map((line) => ({
+      description: line.description,
+      vatRateOptionId:
+        line.vatRateOptionId ?? "concurrency-vat-13",
+      taxInclusiveAmountCents:
+        line.taxInclusiveAmountCents.toString(),
+      allocations: line.allocations.map((allocation) => ({
+        procurementLineId: allocation.procurementLineId,
+        paymentId: allocation.paymentId,
+        amountCents: allocation.amountCents.toString()
+      }))
+    }))
+  };
 }
 
 async function createExecutionReadyPayment(input) {
@@ -2667,6 +2917,677 @@ async function verifyReceiptCrossColumnFileCompetition() {
   );
 }
 
+async function assertInvoiceAllocationCaches() {
+  const records = await clientA.invoiceRecord.findMany({
+    where: { sourceBusinessType: "spot_procurement" },
+    orderBy: { id: "asc" }
+  });
+  const lines = await clientA.invoiceLine.findMany({
+    where: { invoiceRecordId: { in: records.map((row) => row.id) } },
+    orderBy: { id: "asc" }
+  });
+  const allocations = await clientA.invoiceAllocation.findMany({
+    where: {
+      invoiceLineId: { in: lines.map((row) => row.id) },
+      invalidatedAt: null
+    },
+    orderBy: { id: "asc" }
+  });
+  const activeByLineId = new Map();
+  for (const allocation of allocations) {
+    activeByLineId.set(
+      allocation.invoiceLineId,
+      (activeByLineId.get(allocation.invoiceLineId) ?? 0n) +
+        allocation.amountCents
+    );
+  }
+  const activeByRecordId = new Map();
+  for (const line of lines) {
+    const active = activeByLineId.get(line.id) ?? 0n;
+    assertBigint(
+      line.allocatedAmountCents,
+      active,
+      `发票行 ${line.id} 有效分摊缓存`
+    );
+    activeByRecordId.set(
+      line.invoiceRecordId,
+      (activeByRecordId.get(line.invoiceRecordId) ?? 0n) + active
+    );
+  }
+  for (const record of records) {
+    assertBigint(
+      record.allocatedAmountCents,
+      activeByRecordId.get(record.id) ?? 0n,
+      `发票 ${record.id} 有效分摊缓存`
+    );
+  }
+}
+
+async function verifyInvoiceLedgerConcurrency(
+  servicesA,
+  servicesB
+) {
+  const identityFixtures = await Promise.all(
+    ["a", "b"].map((suffix) =>
+      createTicketReadyProcurement({
+        procurementId: `ticket-invoice-identity-${suffix}`,
+        code: `LXCG-TICKET-IDENTITY-${suffix.toUpperCase()}`,
+        lines: [
+          { invoiceMode: "invoice", actualCostCents: 5_000n }
+        ]
+      })
+    )
+  );
+  await Promise.all([
+    createTicketFile("ticket-invoice-identity-file-a"),
+    createTicketFile("ticket-invoice-identity-file-b")
+  ]);
+  const identityResults = await Promise.allSettled(
+    identityFixtures.map((fixture, index) =>
+      [servicesA, servicesB][
+        index
+      ].invoices.createProcurementInvoice(
+        fixture.procurementId,
+        HANDLER_USER_ID,
+        invoiceInput({
+          invoiceCode:
+            index === 0
+              ? "  ｉｎｖ－ｓｈａｒｅｄ  "
+              : "inv-shared",
+          invoiceNumber:
+            index === 0 ? "２０２６０７１７" : "20260717",
+          totalAmountCents: 5_000n,
+          fileId: `ticket-invoice-identity-file-${index === 0 ? "a" : "b"}`,
+          lines: [
+            {
+              taxInclusiveAmountCents: 5_000n,
+              allocations: [
+                {
+                  procurementLineId:
+                    fixture.procurementLines[0].id,
+                  paymentId: fixture.paymentId,
+                  amountCents: 5_000n
+                }
+              ]
+            }
+          ]
+        })
+      )
+    )
+  );
+  assertOneWinner(
+    identityResults,
+    "不同采购和不同文件的等价发票身份并发竞争"
+  );
+  assert(
+    (await clientA.invoiceRecord.count({
+      where: {
+        invoiceCode: "INV-SHARED",
+        invoiceNumber: "20260717"
+      }
+    })) === 1,
+    "NFKC、空白和大小写等价的发票身份只能形成一条记录"
+  );
+
+  const invoiceLineFixture = await createTicketReadyProcurement({
+    procurementId: "ticket-invoice-line-cap",
+    code: "LXCG-TICKET-LINE-CAP",
+    lines: [
+      { invoiceMode: "invoice", actualCostCents: 10_000n },
+      { invoiceMode: "invoice", actualCostCents: 10_000n }
+    ]
+  });
+  await createTicketFile("ticket-invoice-line-cap-file");
+  const sameInvoiceBase = {
+    invoiceCode: "LINE-CAP",
+    invoiceNumber: "20260717",
+    totalAmountCents: 10_000n,
+    fileId: "ticket-invoice-line-cap-file"
+  };
+  const invoiceLineResults = await runBehindDatabaseLock({
+    blockerClient: clientA,
+    observerClient: clientB,
+    acquireLock: (tx) =>
+      tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "SpotProcurement" WHERE "id" = ${invoiceLineFixture.procurementId} FOR UPDATE`
+      ),
+    queryNeedle: 'FROM "SpotProcurement"',
+    start: () => [
+      servicesA.invoices.createProcurementInvoice(
+        invoiceLineFixture.procurementId,
+        HANDLER_USER_ID,
+        invoiceInput({
+          ...sameInvoiceBase,
+          lines: [
+            {
+              taxInclusiveAmountCents: 10_000n,
+              allocations: [
+                {
+                  procurementLineId:
+                    invoiceLineFixture.procurementLines[0].id,
+                  paymentId: invoiceLineFixture.paymentId,
+                  amountCents: 7_000n
+                }
+              ]
+            }
+          ]
+        })
+      ),
+      servicesB.invoices.createProcurementInvoice(
+        invoiceLineFixture.procurementId,
+        HANDLER_USER_ID,
+        invoiceInput({
+          ...sameInvoiceBase,
+          lines: [
+            {
+              taxInclusiveAmountCents: 10_000n,
+              allocations: [
+                {
+                  procurementLineId:
+                    invoiceLineFixture.procurementLines[1].id,
+                  paymentId: invoiceLineFixture.paymentId,
+                  amountCents: 7_000n
+                }
+              ]
+            }
+          ]
+        })
+      )
+    ]
+  });
+  assertOneWinner(
+    invoiceLineResults,
+    "同一发票行累计超票面并发竞争"
+  );
+
+  const receiptLineFixture = await createTicketReadyProcurement({
+    procurementId: "ticket-receipt-line-cap",
+    code: "LXCG-TICKET-RECEIPT-CAP",
+    lines: [
+      { invoiceMode: "invoice", actualCostCents: 10_000n }
+    ]
+  });
+  await Promise.all([
+    createTicketFile("ticket-receipt-cap-file-a"),
+    createTicketFile("ticket-receipt-cap-file-b")
+  ]);
+  const receiptLineResults = await runBehindDatabaseLock({
+    blockerClient: clientA,
+    observerClient: clientB,
+    acquireLock: (tx) =>
+      tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "SpotProcurement" WHERE "id" = ${receiptLineFixture.procurementId} FOR UPDATE`
+      ),
+    queryNeedle: 'FROM "SpotProcurement"',
+    start: () =>
+      ["a", "b"].map((suffix, index) =>
+        [servicesA, servicesB][index].invoices.createProcurementInvoice(
+          receiptLineFixture.procurementId,
+          HANDLER_USER_ID,
+          invoiceInput({
+            invoiceCode: `RECEIPT-CAP-${suffix.toUpperCase()}`,
+            invoiceNumber: "20260717",
+            totalAmountCents: 7_000n,
+            fileId: `ticket-receipt-cap-file-${suffix}`,
+            lines: [
+              {
+                taxInclusiveAmountCents: 7_000n,
+                allocations: [
+                  {
+                    procurementLineId:
+                      receiptLineFixture.procurementLines[0].id,
+                    paymentId: receiptLineFixture.paymentId,
+                    amountCents: 7_000n
+                  }
+                ]
+              }
+            ]
+          })
+        )
+      )
+  });
+  assertOneWinner(
+    receiptLineResults,
+    "不同发票并发覆盖同一收货行超实际成本"
+  );
+
+  const alternativeFixture = await createTicketReadyProcurement({
+    procurementId: "ticket-allocation-exception",
+    code: "LXCG-TICKET-ALT",
+    lines: [
+      { invoiceMode: "invoice", actualCostCents: 10_000n }
+    ]
+  });
+  await Promise.all([
+    createTicketFile("ticket-allocation-file"),
+    createTicketFile("ticket-exception-proof")
+  ]);
+  const alternativeResults = await runBehindDatabaseLock({
+    blockerClient: clientA,
+    observerClient: clientB,
+    acquireLock: (tx) =>
+      tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "SpotProcurement" WHERE "id" = ${alternativeFixture.procurementId} FOR UPDATE`
+      ),
+    queryNeedle: 'FROM "SpotProcurement"',
+    start: () => [
+      servicesA.invoices.createProcurementInvoice(
+        alternativeFixture.procurementId,
+        HANDLER_USER_ID,
+        invoiceInput({
+          invoiceCode: "ALLOCATION-ALT",
+          invoiceNumber: "20260717",
+          totalAmountCents: 10_000n,
+          fileId: "ticket-allocation-file",
+          lines: [
+            {
+              taxInclusiveAmountCents: 10_000n,
+              allocations: [
+                {
+                  procurementLineId:
+                    alternativeFixture.procurementLines[0].id,
+                  paymentId: alternativeFixture.paymentId,
+                  amountCents: 10_000n
+                }
+              ]
+            }
+          ]
+        })
+      ),
+      servicesB.invoices.createInvoiceException(
+        alternativeFixture.procurementId,
+        HANDLER_USER_ID,
+        {
+          procurementLineId:
+            alternativeFixture.procurementLines[0].id,
+          paymentId: alternativeFixture.paymentId,
+          amountCents: "10000",
+          reason: "供应商最终无法提供冻结条件发票",
+          proofFileId: "ticket-exception-proof"
+        }
+      )
+    ]
+  });
+  assertOneWinner(
+    alternativeResults,
+    "正常发票分摊与待复核票据异常并发竞争"
+  );
+
+  const proofFixtures = await Promise.all(
+    ["a", "b"].map((suffix) =>
+      createTicketReadyProcurement({
+        procurementId: `ticket-proof-exclusive-${suffix}`,
+        code: `LXCG-TICKET-PROOF-${suffix.toUpperCase()}`,
+        lines: [
+          { invoiceMode: "no_invoice", actualCostCents: 5_000n }
+        ]
+      })
+    )
+  );
+  await createTicketFile("ticket-shared-proof");
+  const proofResults = await Promise.allSettled(
+    proofFixtures.map((fixture, index) =>
+      [servicesA, servicesB][
+        index
+      ].invoices.createNoInvoiceConfirmation(
+        fixture.procurementId,
+        HANDLER_USER_ID,
+        {
+          procurementLineId: fixture.procurementLines[0].id,
+          paymentId: fixture.paymentId,
+          amountCents: "5000",
+          reason: "冻结为无票采购",
+          proofFileId: "ticket-shared-proof"
+        }
+      )
+    )
+  );
+  assertOneWinner(
+    proofResults,
+    "同一替代证明跨采购独占绑定"
+  );
+  assert(
+    (await clientA.noInvoiceConfirmation.count({
+      where: { proofFileId: "ticket-shared-proof" }
+    })) === 1,
+    "同一替代证明只能留下一个无票确认事实"
+  );
+
+  const reviewFixture = await createTicketReadyProcurement({
+    procurementId: "ticket-review-race",
+    code: "LXCG-TICKET-REVIEW",
+    lines: [
+      { invoiceMode: "no_invoice", actualCostCents: 5_000n }
+    ]
+  });
+  await createTicketFile("ticket-review-proof");
+  const pending =
+    await servicesA.invoices.createNoInvoiceConfirmation(
+      reviewFixture.procurementId,
+      HANDLER_USER_ID,
+      {
+        procurementLineId: reviewFixture.procurementLines[0].id,
+        paymentId: reviewFixture.paymentId,
+        amountCents: "5000",
+        reason: "冻结为无票采购",
+        proofFileId: "ticket-review-proof"
+      }
+    );
+  const reviewResults = await runBehindDatabaseLock({
+    blockerClient: clientA,
+    observerClient: clientB,
+    acquireLock: (tx) =>
+      tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "SpotProcurement" WHERE "id" = ${reviewFixture.procurementId} FOR UPDATE`
+      ),
+    queryNeedle: 'FROM "SpotProcurement"',
+    start: () => [
+      servicesA.invoices.reviewNoInvoiceConfirmation(
+        reviewFixture.procurementId,
+        pending.id,
+        FINANCE_DIRECTOR_USER_ID,
+        { operation: "confirm", comment: "确认无票" }
+      ),
+      servicesB.invoices.reviewNoInvoiceConfirmation(
+        reviewFixture.procurementId,
+        pending.id,
+        FINANCE_DIRECTOR_USER_ID,
+        { operation: "return", comment: "退回补充证明" }
+      )
+    ]
+  });
+  assertOneWinner(reviewResults, "无票确认与退回状态竞争");
+
+  const allocationReversalFixture =
+    await createTicketReadyProcurement({
+      procurementId: "ticket-allocation-reversal-race",
+      code: "LXCG-TICKET-ALLOCATION-REVERSAL",
+      lines: [
+        { invoiceMode: "invoice", actualCostCents: 10_000n },
+        { invoiceMode: "invoice", actualCostCents: 10_000n }
+      ]
+    });
+  await createTicketFile("ticket-allocation-reversal-file");
+  const reversalInvoiceBase = {
+    invoiceCode: "ALLOCATION-REVERSAL",
+    invoiceNumber: "20260717",
+    totalAmountCents: 10_000n,
+    fileId: "ticket-allocation-reversal-file"
+  };
+  const initialAllocation =
+    await servicesA.invoices.createProcurementInvoice(
+      allocationReversalFixture.procurementId,
+      HANDLER_USER_ID,
+      invoiceInput({
+        ...reversalInvoiceBase,
+        lines: [
+          {
+            taxInclusiveAmountCents: 10_000n,
+            allocations: [
+              {
+                procurementLineId:
+                  allocationReversalFixture.procurementLines[0].id,
+                paymentId: allocationReversalFixture.paymentId,
+                amountCents: 6_000n
+              }
+            ]
+          }
+        ]
+      })
+    );
+  const allocationReversalResults = await runBehindDatabaseLock({
+    blockerClient: clientA,
+    observerClient: clientB,
+    acquireLock: (tx) =>
+      tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "SpotProcurement" WHERE "id" = ${allocationReversalFixture.procurementId} FOR UPDATE`
+      ),
+    queryNeedle: 'FROM "SpotProcurement"',
+    start: () => [
+      servicesA.invoices.reverseAllocation(
+        initialAllocation.allocations[0].id,
+        FINANCE_DIRECTOR_USER_ID,
+        {
+          reason: "并发验收冲销原分摊",
+          confirmReversal: true
+        }
+      ),
+      servicesB.invoices.createProcurementInvoice(
+        allocationReversalFixture.procurementId,
+        HANDLER_USER_ID,
+        invoiceInput({
+          ...reversalInvoiceBase,
+          lines: [
+            {
+              taxInclusiveAmountCents: 10_000n,
+              allocations: [
+                {
+                  procurementLineId:
+                    allocationReversalFixture.procurementLines[1].id,
+                  paymentId: allocationReversalFixture.paymentId,
+                  amountCents: 7_000n
+                }
+              ]
+            }
+          ]
+        })
+      )
+    ]
+  });
+  assert(
+    allocationReversalResults[0].status === "fulfilled",
+    "发票分摊冲销与新增分摊竞态中，冲销必须形成唯一有效结果"
+  );
+  const reversalInvoiceLineId =
+    initialAllocation.invoice.lines[0].id;
+  const activeAfterReversalRace =
+    await clientA.invoiceAllocation.findMany({
+      where: {
+        invoiceLineId: reversalInvoiceLineId,
+        invalidatedAt: null
+      }
+    });
+  assert(
+    activeAfterReversalRace.reduce(
+      (total, row) => total + row.amountCents,
+      0n
+    ) <= 10_000n,
+    "发票分摊冲销与新增分摊竞态后不得穿透发票行上限"
+  );
+  await createTicketFile(
+    "ticket-allocation-reversal-replacement-file"
+  );
+  const replacementAllocation =
+    await servicesA.invoices.createProcurementInvoice(
+      allocationReversalFixture.procurementId,
+      HANDLER_USER_ID,
+      invoiceInput({
+        invoiceCode: "ALLOCATION-REVERSAL-REPLACEMENT",
+        invoiceNumber: "20260717",
+        totalAmountCents: 6_000n,
+        fileId:
+          "ticket-allocation-reversal-replacement-file",
+        lines: [
+          {
+            taxInclusiveAmountCents: 6_000n,
+            allocations: [
+              {
+                procurementLineId:
+                  allocationReversalFixture.procurementLines[0].id,
+                paymentId:
+                  allocationReversalFixture.paymentId,
+                amountCents: 6_000n
+              }
+            ]
+          }
+        ]
+      })
+    );
+  assert(
+    replacementAllocation.allocations.length === 1,
+    "原分摊冲销后必须释放采购行、付款和采购根单额度"
+  );
+
+  const reverseReviewFixture = await createTicketReadyProcurement({
+    procurementId: "ticket-review-reversal-race",
+    code: "LXCG-TICKET-REVIEW-REVERSAL",
+    lines: [
+      { invoiceMode: "no_invoice", actualCostCents: 5_000n }
+    ]
+  });
+  await createTicketFile("ticket-review-reversal-proof");
+  const reversePending =
+    await servicesA.invoices.createNoInvoiceConfirmation(
+      reverseReviewFixture.procurementId,
+      HANDLER_USER_ID,
+      {
+        procurementLineId:
+          reverseReviewFixture.procurementLines[0].id,
+        paymentId: reverseReviewFixture.paymentId,
+        amountCents: "5000",
+        reason: "冻结为无票采购",
+        proofFileId: "ticket-review-reversal-proof"
+      }
+    );
+  await servicesA.invoices.reviewNoInvoiceConfirmation(
+    reverseReviewFixture.procurementId,
+    reversePending.id,
+    FINANCE_DIRECTOR_USER_ID,
+    { operation: "confirm", comment: "先确认无票" }
+  );
+  const reverseReviewResults = await runBehindDatabaseLock({
+    blockerClient: clientA,
+    observerClient: clientB,
+    acquireLock: (tx) =>
+      tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "SpotProcurement" WHERE "id" = ${reverseReviewFixture.procurementId} FOR UPDATE`
+      ),
+    queryNeedle: 'FROM "SpotProcurement"',
+    start: () => [
+      servicesA.invoices.reviewNoInvoiceConfirmation(
+        reverseReviewFixture.procurementId,
+        reversePending.id,
+        FINANCE_DIRECTOR_USER_ID,
+        {
+          operation: "reverse",
+          comment: "并发冲销原因 A",
+          confirmReversal: true
+        }
+      ),
+      servicesB.invoices.reviewNoInvoiceConfirmation(
+        reverseReviewFixture.procurementId,
+        reversePending.id,
+        FINANCE_DIRECTOR_USER_ID,
+        {
+          operation: "reverse",
+          comment: "并发冲销原因 B",
+          confirmReversal: true
+        }
+      )
+    ]
+  });
+  assertOneWinner(reverseReviewResults, "已确认票据事实并发冲销");
+  const reversedConfirmation =
+    await clientA.noInvoiceConfirmation.findUnique({
+      where: { id: reversePending.id }
+    });
+  assert(
+    reversedConfirmation?.status === "reversed",
+    "并发冲销后无票事实必须留下唯一已冲销状态"
+  );
+  await createTicketFile(
+    "ticket-review-reversal-replacement-proof"
+  );
+  const replacementConfirmation =
+    await servicesA.invoices.createNoInvoiceConfirmation(
+      reverseReviewFixture.procurementId,
+      HANDLER_USER_ID,
+      {
+        procurementLineId:
+          reverseReviewFixture.procurementLines[0].id,
+        paymentId: reverseReviewFixture.paymentId,
+        amountCents: "5000",
+        reason: "冲销后补充正确证明",
+        proofFileId:
+          "ticket-review-reversal-replacement-proof"
+      }
+    );
+  await servicesA.invoices.reviewNoInvoiceConfirmation(
+    reverseReviewFixture.procurementId,
+    replacementConfirmation.id,
+    FINANCE_DIRECTOR_USER_ID,
+    {
+      operation: "return",
+      comment: "验证退回会再次释放票据占用"
+    }
+  );
+  const releasedReceiptReview =
+    await servicesA.receipt.revokeReview(
+      reverseReviewFixture.procurementId,
+      MATERIAL_DIRECTOR_USER_ID,
+      {
+        targetReviewId: reverseReviewFixture.review.id,
+        reason: "全部票据占用解除后重新核对收货",
+        confirmReviewRevocation: true
+      }
+    );
+  assert(
+    releasedReceiptReview.status === "review_revoked",
+    "票据冲销或退回解除全部占用后必须允许撤销收货复核"
+  );
+
+  const receiptRaceFixture =
+    await createTicketReadyProcurement({
+      procurementId: "ticket-receipt-revoke-race",
+      code: "LXCG-TICKET-REVOKE",
+      lines: [
+        { invoiceMode: "no_invoice", actualCostCents: 5_000n }
+      ]
+    });
+  await createTicketFile("ticket-revoke-proof");
+  const receiptRaceResults = await runBehindDatabaseLock({
+    blockerClient: clientA,
+    observerClient: clientB,
+    acquireLock: (tx) =>
+      tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "SpotProcurement" WHERE "id" = ${receiptRaceFixture.procurementId} FOR UPDATE`
+      ),
+    queryNeedle: 'FROM "SpotProcurement"',
+    start: () => [
+      servicesA.invoices.createNoInvoiceConfirmation(
+        receiptRaceFixture.procurementId,
+        HANDLER_USER_ID,
+        {
+          procurementLineId:
+            receiptRaceFixture.procurementLines[0].id,
+          paymentId: receiptRaceFixture.paymentId,
+          amountCents: "5000",
+          reason: "冻结为无票采购",
+          proofFileId: "ticket-revoke-proof"
+        }
+      ),
+      servicesB.receipt.revokeReview(
+        receiptRaceFixture.procurementId,
+        MATERIAL_DIRECTOR_USER_ID,
+        {
+          targetReviewId: receiptRaceFixture.review.id,
+          reason: "票据并发验收撤销复核",
+          confirmReviewRevocation: true
+        }
+      )
+    ]
+  });
+  assertOneWinner(
+    receiptRaceResults,
+    "票据写入与收货复核撤销竞争"
+  );
+
+  await assertInvoiceAllocationCaches();
+  console.log(
+    "ok invoice ledger concurrency: invoice/receipt caps, pending reserve, exclusive proof, review state and receipt-revoke race"
+  );
+}
+
 async function main() {
   assertLocalRuntime();
   await Promise.all([clientA.$connect(), clientB.$connect()]);
@@ -2704,9 +3625,10 @@ async function main() {
     reviewedReceiptId
   );
   await verifyReceiptCrossColumnFileCompetition();
+  await verifyInvoiceLedgerConcurrency(servicesA, servicesB);
   await verifyRawP2034Sentinel();
   console.log(
-    "零星采购真实 PostgreSQL 16 并发验收通过：付款提交、余额、实际付款上限、幂等、凭证唯一、项目现金串行、现金不足零写、收货根/修订、最终收货提交、复核/撤销单胜、PDF 唯一当前指针、收货文件跨列竞争、P2034"
+    "零星采购真实 PostgreSQL 16 并发验收通过：付款提交、余额、实际付款上限、幂等、凭证唯一、项目现金串行、现金不足零写、收货根/修订、最终收货提交、复核/撤销单胜、PDF 唯一当前指针、收货文件跨列竞争、票据覆盖账本与 P2034"
   );
 }
 

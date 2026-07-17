@@ -10,6 +10,13 @@ function emptySpotArchivePrisma() {
       findMany: jest.fn().mockResolvedValue([])
     },
     spotProcurementPaymentExecution: { findMany: jest.fn().mockResolvedValue([]) },
+    invoiceRecord: { findMany: jest.fn().mockResolvedValue([]) },
+    invoiceLine: { findMany: jest.fn().mockResolvedValue([]) },
+    invoiceAllocation: { findMany: jest.fn().mockResolvedValue([]) },
+    noInvoiceConfirmation: { findMany: jest.fn().mockResolvedValue([]) },
+    invoiceExceptionConfirmation: {
+      findMany: jest.fn().mockResolvedValue([])
+    },
     pdfDocument: { findMany: jest.fn().mockResolvedValue([]) },
     approvalInstance: { findMany: jest.fn().mockResolvedValue([]) },
     auditLog: { findMany: jest.fn().mockResolvedValue([]) }
@@ -1023,6 +1030,212 @@ describe("ArchiveService", () => {
     ]);
     expect(result.rows.map((row) => row.fileId)).not.toContain(
       "file-receipt-revoked"
+    );
+  });
+
+  it("archives only allocated active invoices and confirmed invoice evidence in visible projects", async () => {
+    const prisma = {
+      ...emptySpotArchivePrisma(),
+      contractArchiveFile: { findMany: jest.fn().mockResolvedValue([]) },
+      settlementArchiveFile: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentExecution: { findMany: jest.fn().mockResolvedValue([]) },
+      archiveRecord: { findMany: jest.fn().mockResolvedValue([]) },
+      contractVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      contract: { findMany: jest.fn().mockResolvedValue([]) },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      invoiceRecord: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "invoice-active",
+            projectId: "project-visible",
+            fileId: "file-invoice-active",
+            sourceProcurementId: "procurement-1",
+            uploadedByUserId: "finance-uploader",
+            createdAt: new Date("2026-07-17T10:00:00.000Z")
+          },
+          {
+            id: "invoice-without-allocation",
+            projectId: "project-visible",
+            fileId: "file-invoice-without-allocation",
+            sourceProcurementId: "procurement-1",
+            uploadedByUserId: "finance-uploader",
+            createdAt: new Date("2026-07-17T13:00:00.000Z")
+          }
+        ])
+      },
+      invoiceLine: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "invoice-line-active",
+            projectId: "project-visible",
+            invoiceRecordId: "invoice-active"
+          },
+          {
+            id: "invoice-line-without-allocation",
+            projectId: "project-visible",
+            invoiceRecordId: "invoice-without-allocation"
+          }
+        ])
+      },
+      invoiceAllocation: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            invoiceLineId: "invoice-line-active",
+            projectId: "project-visible",
+            procurementId: "procurement-1"
+          }
+        ])
+      },
+      noInvoiceConfirmation: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "no-invoice-confirmed",
+            projectId: "project-visible",
+            procurementId: "procurement-1",
+            proofFileId: "file-no-invoice",
+            submittedByUserId: "handler-1",
+            reviewedByUserId: "finance-director",
+            reviewedAt: new Date("2026-07-17T11:00:00.000Z"),
+            createdAt: new Date("2026-07-17T10:30:00.000Z")
+          }
+        ])
+      },
+      invoiceExceptionConfirmation: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "invoice-exception-confirmed",
+            projectId: "project-visible",
+            procurementId: "procurement-1",
+            proofFileId: "file-invoice-exception",
+            submittedByUserId: "handler-1",
+            reviewedByUserId: "finance-director",
+            reviewedAt: new Date("2026-07-17T12:00:00.000Z"),
+            createdAt: new Date("2026-07-17T11:30:00.000Z")
+          }
+        ])
+      },
+      spotProcurement: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "procurement-1",
+            projectId: "project-visible",
+            code: "LXCG-001",
+            supplierNameSnapshot: "甲材料店"
+          }
+        ])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "file-invoice-active",
+            originalName: "增值税发票.pdf",
+            sizeBytes: 1024
+          },
+          {
+            id: "file-no-invoice",
+            originalName: "无票替代证明.jpg",
+            sizeBytes: 2048
+          },
+          {
+            id: "file-invoice-exception",
+            originalName: "票据异常证明.pdf",
+            sizeBytes: 4096
+          }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "finance-uploader", name: "财务甲" },
+          { id: "finance-director", name: "财务主管" }
+        ])
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "project-visible", name: "可见项目" }
+        ])
+      }
+    };
+    const service = new ArchiveService(prisma as never);
+
+    const result = await service.listRecent(20, ["project-visible"]);
+
+    expect(prisma.invoiceRecord.findMany).toHaveBeenCalledWith({
+      where: {
+        status: "active",
+        sourceBusinessType: "spot_procurement",
+        sourceProcurementId: { not: null },
+        projectId: { in: ["project-visible"] }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 80,
+      select: {
+        id: true,
+        projectId: true,
+        fileId: true,
+        sourceProcurementId: true,
+        uploadedByUserId: true,
+        createdAt: true
+      }
+    });
+    expect(prisma.invoiceAllocation.findMany).toHaveBeenCalledWith({
+      where: {
+        invoiceLineId: {
+          in: ["invoice-line-active", "invoice-line-without-allocation"]
+        },
+        invalidatedAt: null,
+        projectId: { in: ["project-visible"] }
+      },
+      select: {
+        invoiceLineId: true,
+        projectId: true,
+        procurementId: true
+      }
+    });
+    expect(prisma.noInvoiceConfirmation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          status: "confirmed",
+          projectId: { in: ["project-visible"] }
+        }
+      })
+    );
+    expect(
+      prisma.invoiceExceptionConfirmation.findMany
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          status: "confirmed",
+          projectId: { in: ["project-visible"] }
+        }
+      })
+    );
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        documentType: "零星采购票据异常证明",
+        businessRef: "LXCG-001",
+        fileId: "file-invoice-exception",
+        archiveStatus: "票据异常已确认",
+        confirmedBy: "财务主管"
+      }),
+      expect.objectContaining({
+        documentType: "零星采购无票替代证明",
+        businessRef: "LXCG-001",
+        fileId: "file-no-invoice",
+        archiveStatus: "无票已确认",
+        confirmedBy: "财务主管"
+      }),
+      expect.objectContaining({
+        documentType: "零星采购发票",
+        businessRef: "LXCG-001",
+        fileId: "file-invoice-active",
+        archiveStatus: "有效发票",
+        confirmedBy: "财务甲"
+      })
+    ]);
+    expect(result.rows.map((row) => row.fileId)).not.toContain(
+      "file-invoice-without-allocation"
     );
   });
 });

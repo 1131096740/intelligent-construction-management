@@ -210,6 +210,10 @@ describe("SpotProcurementReceiptService workflow", () => {
     firstSubmittedAt?: Date | null;
     lockedAt?: Date | null;
     activeDiscrepancy?: boolean;
+    activeTicketFact?:
+      | "allocation"
+      | "no_invoice"
+      | "exception";
   }) {
     const receiptStatus = options?.receiptStatus ?? "draft";
     const revisionSubmittedAt =
@@ -555,6 +559,27 @@ describe("SpotProcurementReceiptService workflow", () => {
         findFirst: jest.fn().mockResolvedValue(
           options?.activeDiscrepancy
             ? { id: "discrepancy-1" }
+            : null
+        )
+      },
+      invoiceAllocation: {
+        findFirst: jest.fn().mockResolvedValue(
+          options?.activeTicketFact === "allocation"
+            ? { id: "allocation-1" }
+            : null
+        )
+      },
+      noInvoiceConfirmation: {
+        findFirst: jest.fn().mockResolvedValue(
+          options?.activeTicketFact === "no_invoice"
+            ? { id: "no-invoice-1" }
+            : null
+        )
+      },
+      invoiceExceptionConfirmation: {
+        findFirst: jest.fn().mockResolvedValue(
+          options?.activeTicketFact === "exception"
+            ? { id: "exception-1" }
             : null
         )
       },
@@ -1902,6 +1927,61 @@ describe("SpotProcurementReceiptService workflow", () => {
       harness.tx.spotProcurementReceiptRevision.create
     ).not.toHaveBeenCalled();
   });
+
+  it.each([
+    "allocation",
+    "no_invoice",
+    "exception"
+  ] as const)(
+    "rejects review revocation while a current %s ticket fact still reserves the receipt",
+    async (activeTicketFact) => {
+      const submittedAt = new Date(
+        "2026-07-17T08:30:00.000Z"
+      );
+      const approvedReview = {
+        id: "review-approved",
+        receiptId: "receipt-1",
+        receiptRevisionNo: 1,
+        procurementId: "procurement-1",
+        procurementVersionId: "version-1",
+        sequenceNo: 1,
+        decision: "approved",
+        comment: "一致",
+        reviewedByUserId: "material-director-1",
+        reviewedByNameSnapshot: "张三",
+        submissionDelegationId: null,
+        targetReviewId: null,
+        createdAt: new Date("2026-07-17T09:00:00.000Z")
+      };
+      const harness = createHarness({
+        receiptStatus: "reviewed",
+        revisionSubmittedAt: submittedAt,
+        materialDirector: true,
+        latestReview: approvedReview,
+        activeTicketFact
+      });
+
+      await expect(
+        harness.service.revokeReview(
+          "procurement-1",
+          "material-director-1",
+          {
+            targetReviewId: "review-approved",
+            reason: "重新核对",
+            confirmReviewRevocation: true
+          }
+        )
+      ).rejects.toThrow(
+        "当前收货复核已形成有效或待复核票据事实"
+      );
+      expect(
+        harness.tx.spotProcurementReceiptReview.create
+      ).not.toHaveBeenCalled();
+      expect(
+        harness.tx.spotProcurementReceiptRevision.create
+      ).not.toHaveBeenCalled();
+    }
+  );
 
   it.each(["reviewed", "locked"] as const)(
     "lets the project material director explicitly retry the current formal receipt PDF from %s",

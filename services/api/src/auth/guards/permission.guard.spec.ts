@@ -1293,15 +1293,51 @@ describe("PermissionGuard", () => {
     expect(access.requireReceiptProjectId).toHaveBeenCalledWith("receipt-1");
   });
 
+  it("resolves allocationId project scope from the persisted invoice allocation", async () => {
+    const access = {
+      requireInvoiceAllocationProjectId: jest
+        .fn()
+        .mockResolvedValue("project-real")
+    };
+    const prisma = buildPrisma("finance_staff");
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("spot_procurement.invoice.manage")
+      } as never,
+      prisma as never,
+      access as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "finance-1" },
+          params: { allocationId: "allocation-1" },
+          body: { projectId: "forged-project" }
+        })
+      )
+    ).resolves.toBe(true);
+    expect(access.requireInvoiceAllocationProjectId).toHaveBeenCalledWith(
+      "allocation-1"
+    );
+  });
+
   it.each([
     ["procurementId", "missing-procurement"],
     ["procurementPaymentId", "missing-payment"],
-    ["receiptId", "future-receipt"]
+    ["receiptId", "future-receipt"],
+    ["allocationId", "missing-allocation"]
   ])("fails closed for a missing %s without using a forged projectId", async (parameter, id) => {
     const access = {
       requireProcurementProjectId: jest.fn().mockRejectedValue(new ForbiddenException()),
       requirePaymentProjectId: jest.fn().mockRejectedValue(new ForbiddenException()),
-      requireReceiptProjectId: jest.fn().mockRejectedValue(new ForbiddenException())
+      requireReceiptProjectId: jest.fn().mockRejectedValue(new ForbiddenException()),
+      requireInvoiceAllocationProjectId: jest
+        .fn()
+        .mockRejectedValue(new ForbiddenException())
     };
     const prisma = buildPrisma("project_manager");
     const guard = new PermissionGuard(

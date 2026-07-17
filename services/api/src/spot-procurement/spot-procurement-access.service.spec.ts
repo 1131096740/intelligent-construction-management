@@ -46,6 +46,35 @@ type AccessFixture = {
     delegateUserId: string;
     revokedAt: Date | null;
   }>;
+  invoiceAllocations?: Array<{ id: string; projectId: string }>;
+  invoiceRecords?: Array<{
+    id: string;
+    fileId: string;
+    projectId: string;
+    sourceBusinessType: string;
+    sourceBusinessId: string;
+    sourceProcurementId: string | null;
+    uploadedByUserId: string;
+    invalidatedByUserId?: string | null;
+  }>;
+  noInvoiceConfirmations?: Array<{
+    id: string;
+    proofFileId: string;
+    projectId: string;
+    procurementId: string;
+    submittedByUserId: string;
+    reviewedByUserId?: string | null;
+    reversedByUserId?: string | null;
+  }>;
+  invoiceExceptionConfirmations?: Array<{
+    id: string;
+    proofFileId: string;
+    projectId: string;
+    procurementId: string;
+    submittedByUserId: string;
+    reviewedByUserId?: string | null;
+    reversedByUserId?: string | null;
+  }>;
   users?: Array<{ id: string; isActive: boolean }>;
   projectPositionUserIds?: string[];
   projectMemberUserIds?: string[];
@@ -260,6 +289,40 @@ function buildPrisma(fixture: AccessFixture = {}) {
                 row.revokedAt === null
             )
           )
+      )
+    },
+    invoiceAllocation: {
+      findUnique: jest.fn(({ where }: { where: { id: string } }) =>
+        Promise.resolve(
+          fixture.invoiceAllocations?.find((row) => row.id === where.id) ?? null
+        )
+      )
+    },
+    invoiceRecord: {
+      findMany: jest.fn(({ where }: { where: { fileId: string } }) =>
+        Promise.resolve(
+          (fixture.invoiceRecords ?? []).filter(
+            (row) => row.fileId === where.fileId
+          )
+        )
+      )
+    },
+    noInvoiceConfirmation: {
+      findMany: jest.fn(({ where }: { where: { proofFileId: string } }) =>
+        Promise.resolve(
+          (fixture.noInvoiceConfirmations ?? []).filter(
+            (row) => row.proofFileId === where.proofFileId
+          )
+        )
+      )
+    },
+    invoiceExceptionConfirmation: {
+      findMany: jest.fn(({ where }: { where: { proofFileId: string } }) =>
+        Promise.resolve(
+          (fixture.invoiceExceptionConfirmations ?? []).filter(
+            (row) => row.proofFileId === where.proofFileId
+          )
+        )
       )
     },
     user: {
@@ -523,6 +586,62 @@ function receiptPdfRefreshFacts(input: {
   };
 }
 
+function invoiceEvidenceFixture(
+  kind: "invoice" | "no_invoice" | "invoice_exception",
+  projectRoleKeys: string[] = []
+): AccessFixture {
+  const fixture: AccessFixture = {
+    procurements: [
+      {
+        id: "procurement-1",
+        projectId: "project-1",
+        applicantUserId: "applicant-1",
+        handlerUserId: "handler-1"
+      }
+    ],
+    projectRoleKeys
+  };
+  if (kind === "invoice") {
+    fixture.invoiceRecords = [
+      {
+        id: "invoice-1",
+        fileId: "invoice-evidence-file",
+        projectId: "project-1",
+        sourceBusinessType: "spot_procurement",
+        sourceBusinessId: "procurement-1",
+        sourceProcurementId: "procurement-1",
+        uploadedByUserId: "evidence-submitter",
+        invalidatedByUserId: null
+      }
+    ];
+  } else if (kind === "no_invoice") {
+    fixture.noInvoiceConfirmations = [
+      {
+        id: "no-invoice-1",
+        proofFileId: "invoice-evidence-file",
+        projectId: "project-1",
+        procurementId: "procurement-1",
+        submittedByUserId: "evidence-submitter",
+        reviewedByUserId: "evidence-reviewer",
+        reversedByUserId: null
+      }
+    ];
+  } else {
+    fixture.invoiceExceptionConfirmations = [
+      {
+        id: "invoice-exception-1",
+        proofFileId: "invoice-evidence-file",
+        projectId: "project-1",
+        procurementId: "procurement-1",
+        submittedByUserId: "evidence-submitter",
+        reviewedByUserId: "evidence-reviewer",
+        reversedByUserId: null
+      }
+    ];
+  }
+  return fixture;
+}
+
 describe("SpotProcurementAccessService", () => {
   it("returns not_spot only when no Spot business record binds the file", async () => {
     const service = new SpotProcurementAccessService(buildPrisma() as never);
@@ -639,7 +758,7 @@ describe("SpotProcurementAccessService", () => {
     }
   );
 
-  it("resolves real procurement, payment, and receipt resources and fails closed when missing", async () => {
+  it("resolves real procurement, payment, receipt, and invoice-allocation resources and fails closed when missing", async () => {
     const prisma = buildPrisma({
       procurements: [
         {
@@ -664,6 +783,9 @@ describe("SpotProcurementAccessService", () => {
           projectId: "project-1",
           handlerUserId: "handler-1"
         }
+      ],
+      invoiceAllocations: [
+        { id: "allocation-1", projectId: "project-1" }
       ]
     });
     const service = new SpotProcurementAccessService(prisma as never);
@@ -671,6 +793,9 @@ describe("SpotProcurementAccessService", () => {
     await expect(service.requireProcurementProjectId("procurement-1")).resolves.toBe("project-1");
     await expect(service.requirePaymentProjectId("payment-1")).resolves.toBe("project-1");
     await expect(service.requireReceiptProjectId("receipt-1")).resolves.toBe("project-1");
+    await expect(
+      service.requireInvoiceAllocationProjectId("allocation-1")
+    ).resolves.toBe("project-1");
     await expect(service.findPaymentProjectId("missing-payment")).resolves.toBeNull();
     await expect(service.requireProcurementProjectId("missing-procurement")).rejects.toBeInstanceOf(
       ForbiddenException
@@ -678,7 +803,86 @@ describe("SpotProcurementAccessService", () => {
     await expect(service.requireReceiptProjectId("missing-receipt")).rejects.toBeInstanceOf(
       ForbiddenException
     );
+    await expect(
+      service.requireInvoiceAllocationProjectId("missing-allocation")
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
+
+  it.each([
+    ["invoice", "evidence-submitter"],
+    ["no_invoice", "evidence-reviewer"],
+    ["invoice_exception", "evidence-submitter"]
+  ] as const)(
+    "allows a direct participant to download %s evidence",
+    async (kind, actorUserId) => {
+      await expect(
+        new SpotProcurementAccessService(
+          buildPrisma(invoiceEvidenceFixture(kind)) as never
+        ).resolveFileDownloadAccess("invoice-evidence-file", actorUserId)
+      ).resolves.toBe("allowed");
+    }
+  );
+
+  it("allows same-project material and finance invoice roles", async () => {
+    for (const roleKey of [
+      "material_staff",
+      "material_director",
+      "finance_staff",
+      "finance_director"
+    ]) {
+      await expect(
+        new SpotProcurementAccessService(
+          buildPrisma(invoiceEvidenceFixture("invoice", [roleKey])) as never
+        ).resolveFileDownloadAccess("invoice-evidence-file", `${roleKey}-1`)
+      ).resolves.toBe("allowed");
+    }
+  });
+
+  it("allows a procurement participant and denies an unrelated user", async () => {
+    const fixture = invoiceEvidenceFixture("no_invoice");
+    const service = new SpotProcurementAccessService(
+      buildPrisma(fixture) as never
+    );
+
+    await expect(
+      service.resolveFileDownloadAccess("invoice-evidence-file", "applicant-1")
+    ).resolves.toBe("allowed");
+    await expect(
+      service.resolveFileDownloadAccess("invoice-evidence-file", "unrelated-user")
+    ).resolves.toBe("denied");
+  });
+
+  it.each(["other_spot_binding", "multiple_evidence", "coordinate_mismatch"])(
+    "fails closed for invoice evidence with %s",
+    async (conflict) => {
+      const fixture = invoiceEvidenceFixture("invoice");
+      if (conflict === "other_spot_binding") {
+        fixture.attachments = [
+          { fileId: "invoice-evidence-file", versionId: "version-1" }
+        ];
+      } else if (conflict === "multiple_evidence") {
+        fixture.noInvoiceConfirmations = [
+          {
+            id: "no-invoice-1",
+            proofFileId: "invoice-evidence-file",
+            projectId: "project-1",
+            procurementId: "procurement-1",
+            submittedByUserId: "evidence-submitter"
+          }
+        ];
+      } else {
+        fixture.invoiceRecords![0].sourceBusinessId = "procurement-other";
+      }
+
+      await expect(
+        new SpotProcurementAccessService(buildPrisma(fixture) as never)
+          .resolveFileDownloadAccess(
+            "invoice-evidence-file",
+            "evidence-submitter"
+          )
+      ).resolves.toBe("denied");
+    }
+  );
 
   it.each([
     ["applicant-1", "allowed"],

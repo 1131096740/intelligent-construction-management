@@ -1659,6 +1659,42 @@ export class SpotProcurementReceiptService {
             "当前收货复核已形成差异结算事实，不能撤销"
           );
         }
+        const [
+          activeInvoiceAllocation,
+          activeNoInvoiceConfirmation,
+          activeInvoiceException
+        ] = await Promise.all([
+          tx.invoiceAllocation.findFirst({
+            where: {
+              receiptId: context.receipt.id,
+              invalidatedAt: null
+            },
+            select: { id: true }
+          }),
+          tx.noInvoiceConfirmation.findFirst({
+            where: {
+              receiptId: context.receipt.id,
+              status: { in: ["pending_review", "confirmed"] }
+            },
+            select: { id: true }
+          }),
+          tx.invoiceExceptionConfirmation.findFirst({
+            where: {
+              receiptId: context.receipt.id,
+              status: { in: ["pending_review", "confirmed"] }
+            },
+            select: { id: true }
+          })
+        ]);
+        if (
+          activeInvoiceAllocation ||
+          activeNoInvoiceConfirmation ||
+          activeInvoiceException
+        ) {
+          throw new ConflictException(
+            "当前收货复核已形成有效或待复核票据事实，请先冲销、退回或解除后再撤销复核"
+          );
+        }
 
         const procurementLines = await this.lockProcurementLines(
           tx,

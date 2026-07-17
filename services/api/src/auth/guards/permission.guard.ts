@@ -190,6 +190,11 @@ export class PermissionGuard implements CanActivate {
       return this.spotAccess.requireReceiptProjectId(receiptId);
     }
 
+    const allocationId = request.params?.allocationId;
+    if (allocationId) {
+      return this.spotAccess.requireInvoiceAllocationProjectId(allocationId);
+    }
+
     const paymentId = request.params?.paymentId;
     if (paymentId) {
       const spotProjectId = await this.spotAccess.findPaymentProjectId(paymentId);

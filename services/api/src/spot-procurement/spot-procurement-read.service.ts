@@ -34,6 +34,7 @@ import {
 } from "../core-flow/detail-actions";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { PrismaService } from "../database/prisma.service";
+import { InvoiceLedgerService } from "../invoice-ledger/invoice-ledger.service";
 import { SpotProcurementAccessService } from "./spot-procurement-access.service";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
@@ -148,7 +149,8 @@ export class SpotProcurementReadService {
     private readonly prisma: PrismaService,
     private readonly projectVisibility: ProjectVisibilityService,
     private readonly access: SpotProcurementAccessService,
-    private readonly pilot: SpotProcurementPilotService
+    private readonly pilot: SpotProcurementPilotService,
+    private readonly invoiceLedger?: InvoiceLedgerService
   ) {}
 
   async capabilities(actorUserId: string, projectId: string) {
@@ -403,6 +405,19 @@ export class SpotProcurementReadService {
       paymentSummary,
       currentPdfExists: Boolean(currentPdf)
     });
+    const invoiceCoverageByProcurementId = this.invoiceLedger
+      ? await this.invoiceLedger.coverageForProcurementIds([
+          procurement.id
+        ])
+      : new Map();
+    const invoiceCoverage =
+      invoiceCoverageByProcurementId.get(procurement.id) ??
+      invoiceCoverageUnavailable();
+    const invoiceLedgerDetail = this.invoiceLedger
+      ? await this.invoiceLedger.detailForProcurement(
+          procurement.id
+        )
+      : invoiceLedgerDetailUnavailable();
 
     return {
       procurement: {
@@ -458,7 +473,8 @@ export class SpotProcurementReadService {
           accessiblePayments.length !== allPayments.length
       },
       receipt: futureUnavailable(),
-      invoiceCoverage: futureUnavailable(),
+      invoiceCoverage,
+      invoiceLedger: invoiceLedgerDetail,
       discrepancy: futureUnavailable(),
       applicationPdf: {
         available: currentApproval?.status === "approved",
@@ -685,6 +701,15 @@ export class SpotProcurementReadService {
         payment.paidAmountCents === actualPaidAmountCents,
       voucherFactConsistent: voucher.status !== "anomaly"
     });
+    const invoiceCoverageByPaymentId = this.invoiceLedger
+      ? await this.invoiceLedger.coverageForPaymentIds([payment.id])
+      : new Map();
+    const invoiceCoverage =
+      invoiceCoverageByPaymentId.get(payment.id) ??
+      invoiceCoverageUnavailable();
+    const invoiceLedgerDetail = this.invoiceLedger
+      ? await this.invoiceLedger.detailForPayment(payment.id)
+      : invoiceLedgerDetailUnavailable();
 
     return {
       payment: {
@@ -816,7 +841,8 @@ export class SpotProcurementReadService {
         fileById,
         userById
       ),
-      invoiceCoverage: futureUnavailable(),
+      invoiceCoverage,
+      invoiceLedger: invoiceLedgerDetail,
       receipt: futureUnavailable(),
       paymentPdf: {
         available: approval?.status === "approved",
@@ -1044,6 +1070,11 @@ export class SpotProcurementReadService {
       payments,
       (payment) => payment.procurementId
     );
+    const invoiceCoverageByProcurementId = this.invoiceLedger
+      ? await this.invoiceLedger.coverageForProcurementIds(
+          rows.map((row) => row.id)
+        )
+      : new Map();
 
     return rows.flatMap((row) => {
       const project = projectById.get(row.projectId);
@@ -1083,7 +1114,9 @@ export class SpotProcurementReadService {
               visiblePayments.length !== allRowPayments.length
           },
           receipt: futureUnavailable(),
-          invoiceCoverage: futureUnavailable(),
+          invoiceCoverage:
+            invoiceCoverageByProcurementId.get(row.id) ??
+            invoiceCoverageUnavailable(),
           status: row.status,
           statusLabel: procurementStatusLabel(row.status),
           approval: approvalSummary(
@@ -1190,6 +1223,11 @@ export class SpotProcurementReadService {
       activeExecutions,
       (execution) => execution.paymentId
     );
+    const invoiceCoverageByPaymentId = this.invoiceLedger
+      ? await this.invoiceLedger.coverageForPaymentIds(
+          rows.map((row) => row.id)
+        )
+      : new Map();
 
     return rows.flatMap((row) => {
       const project = projectById.get(row.projectId);
@@ -1263,7 +1301,9 @@ export class SpotProcurementReadService {
           voucherStatusLabel: voucher.label,
           paymentFactConsistent:
             row.paidAmountCents === actualPaidAmountCents,
-          invoiceCoverage: futureUnavailable(),
+          invoiceCoverage:
+            invoiceCoverageByPaymentId.get(row.id) ??
+            invoiceCoverageUnavailable(),
           createdAt: row.createdAt.toISOString(),
           updatedAt: row.updatedAt.toISOString()
         }
@@ -1911,6 +1951,21 @@ function futureUnavailable() {
     available: false,
     status: "not_available",
     label: "代码阶段 B 完成后开放"
+  } as const;
+}
+
+function invoiceCoverageUnavailable() {
+  return futureUnavailable();
+}
+
+function invoiceLedgerDetailUnavailable() {
+  return {
+    available: false,
+    currentCoordinates: null,
+    invoices: [],
+    allocations: [],
+    noInvoiceConfirmations: [],
+    invoiceExceptions: []
   } as const;
 }
 

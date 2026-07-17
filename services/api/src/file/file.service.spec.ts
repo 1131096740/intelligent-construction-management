@@ -166,6 +166,11 @@ describe("FileService", () => {
       spotProcurementRefund: {
         findMany: jest.fn().mockResolvedValue([])
       },
+      invoiceRecord: { findMany: jest.fn().mockResolvedValue([]) },
+      noInvoiceConfirmation: { findMany: jest.fn().mockResolvedValue([]) },
+      invoiceExceptionConfirmation: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
       $queryRaw: jest.fn().mockResolvedValue([])
     };
 
@@ -203,6 +208,11 @@ describe("FileService", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "photo-1" })
       },
       spotProcurementRefund: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      invoiceRecord: { findMany: jest.fn().mockResolvedValue([]) },
+      noInvoiceConfirmation: { findMany: jest.fn().mockResolvedValue([]) },
+      invoiceExceptionConfirmation: {
         findMany: jest.fn().mockResolvedValue([])
       },
       $queryRaw: jest
@@ -246,6 +256,11 @@ describe("FileService", () => {
       spotProcurementRefund: {
         findMany: jest.fn().mockResolvedValue([{ id: "refund-1" }])
       },
+      invoiceRecord: { findMany: jest.fn().mockResolvedValue([]) },
+      noInvoiceConfirmation: { findMany: jest.fn().mockResolvedValue([]) },
+      invoiceExceptionConfirmation: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
       $queryRaw: jest.fn().mockResolvedValue([])
     };
 
@@ -283,6 +298,11 @@ describe("FileService", () => {
       spotProcurementRefund: {
         findMany: jest.fn().mockResolvedValue([{ id: "refund-1" }])
       },
+      invoiceRecord: { findMany: jest.fn().mockResolvedValue([]) },
+      noInvoiceConfirmation: { findMany: jest.fn().mockResolvedValue([]) },
+      invoiceExceptionConfirmation: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
       $queryRaw: jest
         .fn()
         .mockResolvedValue([{ fileId: "mixed-refund-voucher" }])
@@ -306,6 +326,134 @@ describe("FileService", () => {
       "资料文件存在跨业务绑定冲突，暂不能下载"
     );
   });
+
+  it.each([
+    ["invoice_record", "InvoiceRecord.fileId"],
+    ["no_invoice", "NoInvoiceConfirmation.proofFileId"],
+    [
+      "invoice_exception",
+      "InvoiceExceptionConfirmation.proofFileId"
+    ]
+  ])(
+    "allows an accessible %s evidence file when its exact binding is the only binding",
+    async (kind) => {
+      const access = {
+        resolveFileDownloadAccess: jest.fn().mockResolvedValue("allowed")
+      };
+      const service = new FileService(
+        {} as PrismaService,
+        audit as unknown as AuditService,
+        storage as unknown as PrivateFileStorage,
+        access as unknown as SpotProcurementAccessService
+      );
+      const tx = {
+        spotProcurementReceiptPhoto: {
+          findFirst: jest.fn().mockResolvedValue(null)
+        },
+        spotProcurementRefund: {
+          findMany: jest.fn().mockResolvedValue([])
+        },
+        invoiceRecord: {
+          findMany: jest
+            .fn()
+            .mockResolvedValue(kind === "invoice_record" ? [{ id: "invoice-1" }] : [])
+        },
+        noInvoiceConfirmation: {
+          findMany: jest
+            .fn()
+            .mockResolvedValue(kind === "no_invoice" ? [{ id: "no-invoice-1" }] : [])
+        },
+        invoiceExceptionConfirmation: {
+          findMany: jest
+            .fn()
+            .mockResolvedValue(
+              kind === "invoice_exception"
+                ? [{ id: "invoice-exception-1" }]
+                : []
+            )
+        },
+        $queryRaw: jest.fn().mockResolvedValue([])
+      };
+
+      await expect(
+        (
+          service as unknown as {
+            assertCanDownloadFileObject(
+              client: unknown,
+              file: { id: string },
+              actorUserId: string
+            ): Promise<void>;
+          }
+        ).assertCanDownloadFileObject(
+          tx,
+          { id: "invoice-evidence-file" },
+          "invoice-viewer"
+        )
+      ).resolves.toBeUndefined();
+      expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it.each(["second_evidence_binding", "other_business_binding"])(
+    "fails closed when accessible invoice evidence has %s",
+    async (conflict) => {
+      const access = {
+        resolveFileDownloadAccess: jest.fn().mockResolvedValue("allowed")
+      };
+      const service = new FileService(
+        {} as PrismaService,
+        audit as unknown as AuditService,
+        storage as unknown as PrivateFileStorage,
+        access as unknown as SpotProcurementAccessService
+      );
+      const tx = {
+        spotProcurementReceiptPhoto: {
+          findFirst: jest.fn().mockResolvedValue(null)
+        },
+        spotProcurementRefund: {
+          findMany: jest.fn().mockResolvedValue([])
+        },
+        invoiceRecord: {
+          findMany: jest.fn().mockResolvedValue([{ id: "invoice-1" }])
+        },
+        noInvoiceConfirmation: {
+          findMany: jest
+            .fn()
+            .mockResolvedValue(
+              conflict === "second_evidence_binding"
+                ? [{ id: "no-invoice-1" }]
+                : []
+            )
+        },
+        invoiceExceptionConfirmation: {
+          findMany: jest.fn().mockResolvedValue([])
+        },
+        $queryRaw: jest
+          .fn()
+          .mockResolvedValue(
+            conflict === "other_business_binding"
+              ? [{ fileId: "invoice-evidence-file" }]
+              : []
+          )
+      };
+
+      await expect(
+        (
+          service as unknown as {
+            assertCanDownloadFileObject(
+              client: unknown,
+              file: { id: string },
+              actorUserId: string
+            ): Promise<void>;
+          }
+        ).assertCanDownloadFileObject(
+          tx,
+          { id: "invoice-evidence-file" },
+          "invoice-viewer"
+        )
+      ).rejects.toThrow("资料文件存在跨业务绑定冲突，暂不能下载");
+    }
+  );
 
   it("fails closed outside test when file download secret is missing", () => {
     const previous = {
