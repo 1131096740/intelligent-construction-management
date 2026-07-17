@@ -656,16 +656,30 @@ git commit -m "feat: 冻结合同我方主体版本"
 
 ### Task 7: M54 冻结审批候选人员和动作签名
 
+> **执行校正（2026-07-17 代码审计）**：候选人校验不能只改详情读侧。合同、结算、付款的真实审批写入口和 `/me/work-items` 当前各自重复按“现任岗位”判断，必须统一执行同一冻结语义，否则会出现页面显示无权但直接调用审批接口仍成功。审批单和现有结算 PDF 当前也会回查用户最新签名，必须同时切断这两条漂移路径。Task 7 只建立兼容基础和现有三类审批链路闭环，不提前实现 Task 8/11 的具体业务路线。
+
 **Files:**
 - Create: `services/api/prisma/migrations/20260717120000_approval_assignee_and_signature_snapshots/migration.sql`
 - Modify: `services/api/prisma/schema.prisma`
 - Create: `services/api/src/database/approval-signature-snapshot-schema-verification.spec.ts`
 - Create: `services/api/src/approval/approval-signature-snapshot.ts`
 - Create: `services/api/src/approval/approval-signature-snapshot.spec.ts`
+- Create: `services/api/src/approval/approval-review-identity.ts`
+- Create: `services/api/src/approval/approval-review-identity.spec.ts`
 - Modify: `services/api/src/approval/approval-node-access.ts`
 - Modify: `services/api/src/approval/approval-node-access.spec.ts`
 - Modify: `services/api/src/approval/approval-form.service.ts`
 - Modify: `services/api/src/approval/approval-form.service.spec.ts`
+- Modify: `services/api/src/core-flow/approval-timeline-read.ts`
+- Modify: `services/api/src/core-flow/approval-timeline-read.spec.ts`
+- Modify: `services/api/src/contract/contract.service.ts`
+- Modify: `services/api/src/contract/contract.service.spec.ts`
+- Modify: `services/api/src/settlement/settlement.service.ts`
+- Modify: `services/api/src/settlement/settlement.service.spec.ts`
+- Modify: `services/api/src/payment/payment-request.service.ts`
+- Modify: `services/api/src/payment/payment-request.service.spec.ts`
+- Modify: `services/api/src/me/me.service.ts`
+- Modify: `services/api/src/me/me.service.spec.ts`
 
 - [ ] **Step 1: 写候选人员和签名漂移失败测试**
 
@@ -674,13 +688,15 @@ expect(canActOnFrozenApprovalNode(
   [{ roleKeys: ["finance_director"], candidateUserIds: ["finance-1"] }],
   0, ["finance_director"], "finance-2"
 )).toBe(false);
-expect(renderedSignatureFileIds).toEqual(["signature-at-approval"]);
-expect(renderedSignatureFileIds).not.toContain("current-signature");
+expect(files.getFileBuffer).toHaveBeenCalledWith("signature-at-approval");
+expect(files.getFileBuffer).not.toHaveBeenCalledWith("current-signature");
 ```
+
+还要先写三条端到端单元边界：非冻结同岗位人员不出现在待办且直接审批失败；换签后重新生成/下载审批单和刷新结算 PDF 仍读取审批当时文件；新受治理实例缺少有效签名或 64 位 SHA-256 时批准失败。
 
 - [ ] **Step 2: 运行失败测试**
 
-Run: `pnpm --filter @jiangkong/api test -- --runInBand src/approval/approval-node-access.spec.ts src/approval/approval-signature-snapshot.spec.ts src/approval/approval-form.service.spec.ts src/database/approval-signature-snapshot-schema-verification.spec.ts`
+Run: `pnpm --filter @jiangkong/api test -- --runInBand src/approval/approval-node-access.spec.ts src/approval/approval-review-identity.spec.ts src/approval/approval-signature-snapshot.spec.ts src/approval/approval-form.service.spec.ts src/core-flow/approval-timeline-read.spec.ts src/contract/contract.service.spec.ts src/settlement/settlement.service.spec.ts src/payment/payment-request.service.spec.ts src/me/me.service.spec.ts src/database/approval-signature-snapshot-schema-verification.spec.ts`
 
 Expected: FAIL。
 
@@ -710,35 +726,54 @@ interface FrozenApprovalNode {
 }
 ```
 
-- [ ] **Step 4: 审批动作写入签名快照，审批单优先读快照**
+M54 四列全部可空，无默认值、无历史回填、无 destructive DML。旧 role-only 节点与既有在途实例维持原资格，不补候选人；只有显式存在 `candidateUserIds` 或 `selectedUserId` 的新节点启用人员冻结。迁移验证必须覆盖 M53→M54 顺序、事务边界、nullable、无默认值/回填，并包含删列、加默认值和注入回填 SQL 的变异测试。
+
+- [ ] **Step 4: 统一候选人、指派和常驻委托的审批身份解析**
+
+共享解析器返回 `{ approvedRoleKey, representedUserId }`，并同时服务于详情权限、待办、合同/结算/付款真实 review API：
+
+- `candidateUserIds` 存在时，直接处理人必须同时属于冻结候选人并持有待审批冻结岗位；`selectedUserId` 存在时只允许该人直接处理。
+- 节点 assignment 只允许从冻结候选人产生，使用既有 `fromUserId/fromRoleKey/toUserId` 填写 `representedUserId`。
+- 常驻委托必须返回委托人 ID，且委托人必须是该节点冻结候选人，不能只凭委托人的当前岗位绕过冻结。
+- 旧 role-only 节点继续按原岗位、assignment、常驻委托规则处理，避免改变既有在途实例。
+
+`me.service.ts` 删除重复的候选人判断分支并复用同一纯函数语义；测试同时断言详情、待办和直接 POST 审批三处结果一致。
+
+- [ ] **Step 5: 审批动作在事务内写入签名快照，所有 PDF 只读快照**
 
 ```ts
-const signature = await snapshotApprovalSignature(tx, actorUserId, approvedRoleKey);
+const identity = await resolveApprovalReviewIdentity(/* frozen node + actor + delegation */);
+const signature = await snapshotApprovalSignature(tx, actorUserId, {
+  required: isGovernedFrozenNode(currentNode) && input.decision === "approve"
+});
 await tx.approvalActionLog.create({
   data: {
     approvalInstanceId: instance.id,
     action: "approve",
     actorUserId,
-    approvedRoleKey,
+    approvedRoleKey: identity.approvedRoleKey,
     signatureFileIdSnapshot: signature.fileId,
     signatureSha256Snapshot: signature.sha256,
-    metadata: actionMetadata
+    representedUserId: identity.representedUserId,
+    metadata: existingMetadata
   }
 });
 ```
 
-旧日志无快照时只显示“历史签名未冻结”，不得读取当前签名伪造历史。
+四列在批准动作同一事务中写入；非批准动作至少记录 `approvedRoleKey/representedUserId`，签名列为空。签名摘要直接复制 `FileObject.contentSha256`，不另造哈希；新受治理节点批准时无签名、文件不存在或摘要不是 64 位 SHA-256 均阻断。历史 role-only 节点允许空签名快照继续处理。
 
-- [ ] **Step 5: 运行定向测试和 Prisma 验证**
+`ApprovalFormService` 的归档生成和动态下载、以及现有 `SettlementService.buildSettlementApprovalRows()` 都只能读取日志的 `signatureFileIdSnapshot`，岗位优先读取 `approvedRoleKey`；旧日志无快照时固定显示“历史签名未冻结”，不得回查当前 `User.signatureFileId` 或当前岗位伪造历史。已存在的历史 `PdfDocument` 不覆盖、不重写。审批时间线同样优先读新列，旧日志才退回既有 metadata。
 
-Run: `pnpm --filter @jiangkong/api prisma validate && pnpm --filter @jiangkong/api test -- --runInBand src/approval/approval-node-access.spec.ts src/approval/approval-signature-snapshot.spec.ts src/approval/approval-form.service.spec.ts src/database/approval-signature-snapshot-schema-verification.spec.ts`
+- [ ] **Step 6: 运行定向测试和 Prisma 验证**
 
-Expected: PASS；旧 role-only `frozenNodes` 仍能读取。
+Run: `pnpm --filter @jiangkong/api prisma generate && pnpm --filter @jiangkong/api prisma validate && pnpm --filter @jiangkong/api test -- --runInBand src/approval/approval-node-access.spec.ts src/approval/approval-review-identity.spec.ts src/approval/approval-signature-snapshot.spec.ts src/approval/approval-form.service.spec.ts src/core-flow/approval-timeline-read.spec.ts src/contract/contract.service.spec.ts src/settlement/settlement.service.spec.ts src/payment/payment-request.service.spec.ts src/me/me.service.spec.ts src/database/approval-signature-snapshot-schema-verification.spec.ts && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint`
 
-- [ ] **Step 6: 提交**
+Expected: PASS；非冻结同岗位人三处均无权，冻结候选人及合法指派/委托可处理；旧 role-only `frozenNodes` 仍能读取和处理但不会伪造历史签名。
+
+- [ ] **Step 7: 提交**
 
 ```bash
-git add services/api/prisma/schema.prisma services/api/prisma/migrations/20260717120000_approval_assignee_and_signature_snapshots services/api/src/approval services/api/src/database/approval-signature-snapshot-schema-verification.spec.ts
+git add services/api/prisma/schema.prisma services/api/prisma/migrations/20260717120000_approval_assignee_and_signature_snapshots services/api/src/approval services/api/src/core-flow/approval-timeline-read* services/api/src/contract/contract.service* services/api/src/settlement/settlement.service* services/api/src/payment/payment-request.service* services/api/src/me/me.service* services/api/src/database/approval-signature-snapshot-schema-verification.spec.ts
 git commit -m "feat: 冻结审批人员与签名事实"
 ```
 
