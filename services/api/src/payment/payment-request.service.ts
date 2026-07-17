@@ -10,6 +10,17 @@ import {
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
 import { ApprovalFormService } from "../approval/approval-form.service";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
+import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
+import {
+  isGovernedFrozenApprovalNode,
+  resolveApprovalReviewIdentity,
+  assertActiveApprovalRecipient
+} from "../approval/approval-review-identity";
+import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
+import {
+  lockApprovalReviewRow,
+  supportsApprovalReviewLock
+} from "../approval/approval-review-lock";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -77,6 +88,9 @@ interface PaymentApprovalNode {
   roleKeys: RoleKey[];
   approvedRoleKeys?: RoleKey[];
   assignments?: PaymentApprovalAssignment[];
+  candidateUserIds?: string[];
+  candidateUserIdsByRole?: Partial<Record<RoleKey, string[]>>;
+  selectedUserId?: string;
 }
 
 interface PaymentExecutionLockRow {
@@ -1821,6 +1835,7 @@ export class PaymentRequestService {
 
     let completedInstanceId: string | undefined;
     const result = await this.prisma.$transaction(async (tx) => {
+      if (supportsApprovalReviewLock(tx)) await this.lockPaymentRequestForUpdate(tx, paymentId);
       const payment = await tx.paymentRequest.findFirst({
         where: { OR: [{ id: paymentId }, { code: paymentId }] }
       });
@@ -1832,6 +1847,15 @@ export class PaymentRequestService {
       if (payment.status !== "approval_pending") {
         throw new Error("当前付款申请已离开审批中，不能处理审批");
       }
+
+      await lockApprovalReviewRow(tx, Prisma.sql`
+        SELECT "id" FROM "ApprovalInstance"
+        WHERE "businessType" = 'payment_request'
+          AND "businessId" = ${payment.id}
+          AND "flowType" = 'payment.approve'
+          AND "status" = 'in_progress'
+        FOR UPDATE
+      `);
 
       const instance = await tx.approvalInstance.findFirst({
         where: {
@@ -1854,29 +1878,42 @@ export class PaymentRequestService {
       }
 
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, payment.projectId);
-      let approvedRoleKey =
-        currentNode.roleKeys.find((role) => actorRoleKeys.includes(role)) ??
-        currentNode.assignments?.find((assignment) => assignment.toUserId === actorUserId)
-          ?.fromRoleKey;
-
-      if (!approvedRoleKey) {
-        approvedRoleKey = await this.resolveDelegatedRoleKey(
-          tx,
-          actorUserId,
-          payment.projectId,
-          currentNode.roleKeys
-        );
+      const identityNode = input.decision === "approve"
+        ? currentNode
+        : { ...currentNode, approvedRoleKeys: [] };
+      let identity = resolveApprovalReviewIdentity({
+        node: identityNode,
+        actorUserId,
+        actorRoleKeys
+      });
+      if (!identity) {
+        const delegatorIds = this.delegations
+          ? await this.delegations.activeDelegatorIds(tx, actorUserId)
+          : await activeApprovalDelegatorIds(tx, actorUserId);
+        const activeDelegators = await Promise.all(delegatorIds.map(async (userId) => ({
+          userId,
+          roleKeys: await this.loadActorRoleKeys(tx, userId, payment.projectId)
+        })));
+        identity = resolveApprovalReviewIdentity({ node: identityNode, actorUserId, actorRoleKeys, activeDelegators });
       }
-
-      if (!approvedRoleKey) {
+      if (!identity) {
         throw new ForbiddenException(`当前账号不能处理“${currentNode.name}”付款审批节点`);
       }
+      const approvedRoleKey = identity.approvedRoleKey;
+      const signature = await snapshotApprovalSignature(tx, actorUserId, {
+        required: input.decision === "approve" && isGovernedFrozenApprovalNode(currentNode)
+      });
 
       const selfReview = await confirmApprovalSelfReview({
         applicantUserId: instance.applicantUserId,
         actorUserId,
-        actorRoleKeys,
+        actorRoleKeys: identity.representedUserId === actorUserId &&
+          !identity.viaAssignment
+          ? Array.from(new Set([...actorRoleKeys, approvedRoleKey]))
+          : actorRoleKeys,
         approvedRoleKey,
+        representedUserId: identity.representedUserId,
+        viaAssignment: identity.viaAssignment,
         selfReviewReason: input.selfReviewReason,
         confirmationPassword: input.confirmationPassword,
         confirmPassword: this.auth
@@ -1915,6 +1952,8 @@ export class PaymentRequestService {
             action: "reject_previous",
             actorUserId,
             comment: input.comment?.trim() || undefined,
+            approvedRoleKey,
+            representedUserId: identity.representedUserId,
             ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
           }
         });
@@ -1955,6 +1994,8 @@ export class PaymentRequestService {
             action: "return_to_applicant",
             actorUserId,
             comment: input.comment?.trim() || undefined,
+            approvedRoleKey,
+            representedUserId: identity.representedUserId,
             ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
           }
         });
@@ -2002,6 +2043,8 @@ export class PaymentRequestService {
             action: "reject",
             actorUserId,
             comment: input.comment?.trim() || undefined,
+            approvedRoleKey,
+            representedUserId: identity.representedUserId,
             ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
           }
         });
@@ -2087,6 +2130,14 @@ export class PaymentRequestService {
           action: "approve",
           actorUserId,
           comment: input.comment?.trim() || undefined,
+          approvedRoleKey,
+          representedUserId: identity.representedUserId,
+          ...(isGovernedFrozenApprovalNode(currentNode)
+            ? {
+                signatureFileIdSnapshot: signature.fileId,
+                signatureSha256Snapshot: signature.sha256
+              }
+            : {}),
           ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
         }
       });
@@ -2996,31 +3047,6 @@ export class PaymentRequestService {
     return Array.from(new Set([...positionKeys, ...memberKeys]));
   }
 
-  // 常驻委托台账消费：本人岗位/节点指派都不命中时，看是否有在窗口内的委托人持有该节点角色。
-  private async resolveDelegatedRoleKey(
-    tx: Prisma.TransactionClient,
-    actorUserId: string,
-    projectId: string,
-    nodeRoleKeys: RoleKey[]
-  ): Promise<RoleKey | undefined> {
-    if (!this.delegations) {
-      return undefined;
-    }
-
-    const delegatorIds = await this.delegations.activeDelegatorIds(tx, actorUserId);
-
-    for (const delegatorId of delegatorIds) {
-      const delegatorRoleKeys = await this.loadActorRoleKeys(tx, delegatorId, projectId);
-      const match = nodeRoleKeys.find((role) => delegatorRoleKeys.includes(role));
-
-      if (match) {
-        return match;
-      }
-    }
-
-    return undefined;
-  }
-
   private formatCents(value: bigint) {
     return `${formatMoneyCentsAsYuan(dbMoneyToBigInt(value, "付款金额"))} CNY`;
   }
@@ -3044,6 +3070,7 @@ export class PaymentRequestService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      if (supportsApprovalReviewLock(tx)) await this.lockPaymentRequestForUpdate(tx, paymentId);
       const payment = await tx.paymentRequest.findFirst({
         where: { OR: [{ id: paymentId }, { code: paymentId }] }
       });
@@ -3055,6 +3082,12 @@ export class PaymentRequestService {
       if (payment.status !== "approval_pending") {
         throw new Error("当前付款申请已离开审批中，不能转交或委托审批");
       }
+
+      await lockApprovalReviewRow(tx, Prisma.sql`
+        SELECT "id" FROM "ApprovalInstance" WHERE "businessType" = 'payment_request'
+          AND "businessId" = ${payment.id} AND "flowType" = 'payment.approve'
+          AND "status" = 'in_progress' FOR UPDATE
+      `);
 
       const instance = await tx.approvalInstance.findFirst({
         where: {
@@ -3077,11 +3110,22 @@ export class PaymentRequestService {
       }
 
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, payment.projectId);
-      const fromRoleKey = currentNode.roleKeys.find((role) => actorRoleKeys.includes(role));
-
-      if (!fromRoleKey) {
+      let identity = resolveApprovalReviewIdentity({ node: currentNode, actorUserId, actorRoleKeys });
+      if (!identity) {
+        const delegatorIds = this.delegations
+          ? await this.delegations.activeDelegatorIds(tx, actorUserId)
+          : await activeApprovalDelegatorIds(tx, actorUserId);
+        const activeDelegators = await Promise.all(delegatorIds.map(async (userId) => ({
+          userId,
+          roleKeys: await this.loadActorRoleKeys(tx, userId, payment.projectId)
+        })));
+        identity = resolveApprovalReviewIdentity({ node: currentNode, actorUserId, actorRoleKeys, activeDelegators });
+      }
+      if (!identity) {
         throw new Error(`当前账号不能转交或委托“${currentNode.name}”付款审批节点`);
       }
+      const fromRoleKey = identity.approvedRoleKey;
+      await assertActiveApprovalRecipient(tx, input.toUserId);
 
       const nextNodes = [...nodes];
       const nextAssignments = [
@@ -3089,11 +3133,11 @@ export class PaymentRequestService {
           (assignment) =>
             !(
               assignment.kind === kind &&
-              assignment.fromUserId === actorUserId &&
+              assignment.fromUserId === identity.representedUserId &&
               assignment.fromRoleKey === fromRoleKey
             )
         ),
-        { kind, fromUserId: actorUserId, fromRoleKey, toUserId: input.toUserId }
+        { kind, fromUserId: identity.representedUserId, fromRoleKey, toUserId: input.toUserId }
       ];
       nextNodes[instance.currentNodeIndex] = { ...currentNode, assignments: nextAssignments };
 
@@ -3106,7 +3150,9 @@ export class PaymentRequestService {
         data: {
           approvalInstanceId: instance.id,
           action: kind,
-          actorUserId
+          actorUserId,
+          approvedRoleKey: fromRoleKey,
+          representedUserId: identity.representedUserId
         }
       });
 
@@ -3114,7 +3160,7 @@ export class PaymentRequestService {
         const startsAt = new Date();
         await tx.approvalDelegation.create({
           data: {
-            fromUserId: actorUserId,
+            fromUserId: identity.representedUserId,
             toUserId: input.toUserId,
             startsAt,
             // ponytail: 临时台账窗口；全局委托管理上线后由其维护 endsAt。

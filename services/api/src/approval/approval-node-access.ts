@@ -1,15 +1,16 @@
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { requiresApprovalSelfReviewConfirmation } from "./approval-self-review";
+import {
+  isGovernedFrozenApprovalNode,
+  resolveApprovalReviewIdentity,
+  type ActiveApprovalDelegatorIdentity,
+  type FrozenApprovalNode
+} from "./approval-review-identity";
 
-interface ApprovalNode {
+interface ApprovalNode extends FrozenApprovalNode {
   roleKeys?: unknown;
   approvedRoleKeys?: unknown;
   assignments?: unknown;
-}
-
-interface ApprovalAssignment {
-  toUserId?: unknown;
-  fromRoleKey?: unknown;
 }
 
 export interface ApprovalReviewAccess {
@@ -24,18 +25,31 @@ export function approvalReviewAccessOnFrozenNode(
   roleKeys: RoleKey[],
   userId: string,
   applicantUserId: string,
-  hasDelegatedRole: boolean
+  activeDelegatorsOrLegacyAccess: readonly ActiveApprovalDelegatorIdentity[] | boolean
 ): ApprovalReviewAccess {
-  const canAct =
-    canActOnFrozenApprovalNode(frozenNodes, currentNodeIndex, roleKeys, userId) ||
-    hasDelegatedRole;
+  const node = approvalNodeAt(frozenNodes, currentNodeIndex);
+  const identity = node
+    ? resolveApprovalReviewIdentity({
+        node,
+        actorUserId: userId,
+        actorRoleKeys: roleKeys,
+        activeDelegators: Array.isArray(activeDelegatorsOrLegacyAccess)
+          ? activeDelegatorsOrLegacyAccess
+          : []
+      })
+    : null;
+  const legacyDelegatedAccess =
+    activeDelegatorsOrLegacyAccess === true &&
+    Boolean(node) &&
+    !isGovernedFrozenApprovalNode(node);
+  const canAct = Boolean(identity) || legacyDelegatedAccess;
   const nodeRoleKeys = roleKeysForFrozenApprovalNode(frozenNodes, currentNodeIndex);
   const requiresSelfReviewConfirmation =
-    canAct &&
+    canAct && identity?.viaAssignment !== true &&
     requiresApprovalSelfReviewConfirmation({
       applicantUserId,
       actorUserId: userId,
-      actorRoleKeys: roleKeys,
+      actorRoleKeys: identity ? [identity.approvedRoleKey] : roleKeys,
       nodeRoleKeys
     });
 
@@ -61,17 +75,11 @@ export function canActOnFrozenApprovalNode(
     return false;
   }
 
-  const pendingRoleKeys = pendingRoleKeysForApprovalNode(node);
-  const hasRoleTodo = pendingRoleKeys.some((role) => roleKeys.includes(role as RoleKey));
-  const assignments = Array.isArray(node.assignments) ? (node.assignments as ApprovalAssignment[]) : [];
-  const hasAssignmentTodo = assignments.some(
-    (assignment) =>
-      assignment.toUserId === userId &&
-      typeof assignment.fromRoleKey === "string" &&
-      pendingRoleKeys.includes(assignment.fromRoleKey as RoleKey)
-  );
-
-  return hasRoleTodo || hasAssignmentTodo;
+  return Boolean(resolveApprovalReviewIdentity({
+    node,
+    actorUserId: userId,
+    actorRoleKeys: roleKeys
+  }));
 }
 
 export function pendingRoleKeysForFrozenApprovalNode(
@@ -107,4 +115,9 @@ export function pendingRoleKeysForApprovalNode(node: ApprovalNode): RoleKey[] {
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function approvalNodeAt(frozenNodes: unknown, currentNodeIndex: number): ApprovalNode | null {
+  if (!Array.isArray(frozenNodes)) return null;
+  return (frozenNodes[currentNodeIndex] as ApprovalNode | undefined) ?? null;
 }

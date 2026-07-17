@@ -2032,7 +2032,9 @@ describe("ContractService", () => {
             {
               name: "董事长/总经理",
               mode: "any",
-              roleKeys: ["chairman", "general_manager"]
+              roleKeys: ["chairman", "general_manager"],
+              candidateUserIdsByRole: { chairman: ["chairman-1"], general_manager: [] },
+              candidateUserIds: ["chairman-1"]
             }
           ]
         }),
@@ -2041,7 +2043,12 @@ describe("ContractService", () => {
       approvalActionLog: {
         create: jest.fn()
       },
-      ...approvalRoleTables("chairman")
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: "chairman-1", isActive: true, signatureFileId: "sig-chair" }])
+        .mockResolvedValueOnce([{ id: "sig-chair", contentSha256: "a".repeat(64), storageStatus: "active" }]),
+      ...approvalRoleTables("contract_staff")
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
@@ -2070,7 +2077,12 @@ describe("ContractService", () => {
       data: {
         approvalInstanceId: "approval-instance-1",
         action: "approve",
-        actorUserId: "chairman-1"
+        actorUserId: "chairman-1",
+        comment: undefined,
+        approvedRoleKey: "chairman",
+        representedUserId: "chairman-1",
+        signatureFileIdSnapshot: "sig-chair",
+        signatureSha256Snapshot: "a".repeat(64)
       }
     });
     expect(audit.record).toHaveBeenCalledWith(tx, {
@@ -2370,7 +2382,9 @@ describe("ContractService", () => {
         approvalInstanceId: "approval-instance-1",
         action: "reject",
         actorUserId: "general-manager-1",
-        comment: "合同条款需调整"
+        comment: "合同条款需调整",
+        approvedRoleKey: "general_manager",
+        representedUserId: "general-manager-1"
       }
     });
   });
@@ -2539,7 +2553,12 @@ describe("ContractService", () => {
             {
               name: "董事长/总经理",
               mode: "any",
-              roleKeys: ["chairman", "general_manager"]
+              roleKeys: ["chairman", "general_manager"],
+              candidateUserIdsByRole: {
+                chairman: ["chairman-1"],
+                general_manager: []
+              },
+              candidateUserIds: ["chairman-1"]
             }
           ]
         })
@@ -2640,7 +2659,9 @@ describe("ContractService", () => {
         approvalInstanceId: "approval-instance-1",
         action: "reject_previous",
         actorUserId: "chairman-1",
-        comment: "请上一节点补充说明"
+        comment: "请上一节点补充说明",
+        approvedRoleKey: "chairman",
+        representedUserId: "chairman-1"
       }
     });
     expect(audit.record).toHaveBeenCalledWith(tx, {
@@ -2766,7 +2787,9 @@ describe("ContractService", () => {
         approvalInstanceId: "approval-instance-1",
         action: "return_to_applicant",
         actorUserId: "general-manager-1",
-        comment: "退回申请人补充资料"
+        comment: "退回申请人补充资料",
+        approvedRoleKey: "general_manager",
+        representedUserId: "general-manager-1"
       }
     });
     expect(audit.record).toHaveBeenCalledWith(tx, {
@@ -2843,7 +2866,9 @@ describe("ContractService", () => {
       data: {
         approvalInstanceId: "approval-instance-1",
         action: "transfer",
-        actorUserId: "chairman-1"
+        actorUserId: "chairman-1",
+        approvedRoleKey: "chairman",
+        representedUserId: "chairman-1"
       }
     });
     expect(audit.record).toHaveBeenCalledWith(tx, {
@@ -3038,6 +3063,11 @@ describe("ContractService", () => {
               name: "董事长/总经理",
               mode: "any",
               roleKeys: ["chairman", "general_manager"],
+              candidateUserIdsByRole: {
+                chairman: ["chairman-1"],
+                general_manager: []
+              },
+              candidateUserIds: ["chairman-1"],
               assignments: [
                 {
                   kind: "transfer",
@@ -3054,6 +3084,11 @@ describe("ContractService", () => {
       approvalActionLog: {
         create: jest.fn()
       },
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: "transfer-user-1", isActive: true, signatureFileId: "sig-transfer" }])
+        .mockResolvedValueOnce([{ id: "sig-transfer", contentSha256: "d".repeat(64), storageStatus: "active" }]),
       ...approvalRoleTables("employee")
     };
     const prisma = {

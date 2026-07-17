@@ -8,8 +8,7 @@ import type {
 } from "@jiangkong/shared-domain";
 import {
   approvalReviewAccessOnFrozenNode,
-  type ApprovalReviewAccess,
-  pendingRoleKeysForFrozenApprovalNode
+  type ApprovalReviewAccess
 } from "../approval/approval-node-access";
 import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
@@ -1099,10 +1098,9 @@ export class PaymentReadService {
       return directOrAssignedAccess;
     }
 
-    const hasDelegatedRole = await this.hasDelegatedApprovalRole(
+    const activeDelegators = await this.activeDelegatedApprovalIdentities(
       actorUserId,
-      projectId,
-      pendingRoleKeysForFrozenApprovalNode(instance.frozenNodes, instance.currentNodeIndex)
+      projectId
     );
     return approvalReviewAccessOnFrozenNode(
       instance.frozenNodes,
@@ -1110,31 +1108,26 @@ export class PaymentReadService {
       roleKeys,
       actorUserId,
       instance.applicantUserId,
-      hasDelegatedRole
+      activeDelegators
     );
   }
 
-  private async hasDelegatedApprovalRole(
+  private async activeDelegatedApprovalIdentities(
     actorUserId: string,
-    projectId: string,
-    nodeRoleKeys: RoleKey[]
-  ): Promise<boolean> {
-    if (!nodeRoleKeys.length || !this.projectVisibility) {
-      return false;
-    }
+    projectId: string
+  ): Promise<Array<{ userId: string; roleKeys: RoleKey[] }>> {
+    if (!this.projectVisibility) return [];
 
     const delegatorIds = await activeApprovalDelegatorIds(this.prisma, actorUserId, new Date());
+    const identities: Array<{ userId: string; roleKeys: RoleKey[] }> = [];
     for (const delegatorId of delegatorIds) {
       const delegatorRoleKeys = await this.projectVisibility.effectiveRoleKeys(
         delegatorId,
         projectId
       );
-      if (nodeRoleKeys.some((role) => delegatorRoleKeys.includes(role))) {
-        return true;
-      }
+      identities.push({ userId: delegatorId, roleKeys: delegatorRoleKeys });
     }
-
-    return false;
+    return identities;
   }
 
   private paymentActions(

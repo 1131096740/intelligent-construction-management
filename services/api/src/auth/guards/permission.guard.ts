@@ -16,6 +16,11 @@ import {
   activeApprovalDelegatorIds,
   type ActiveApprovalDelegationClient
 } from "../../approval/active-approval-delegations";
+import {
+  isGovernedFrozenApprovalNode,
+  resolveApprovalReviewIdentity,
+  type FrozenApprovalNode
+} from "../../approval/approval-review-identity";
 import { PrismaService } from "../../database/prisma.service";
 import type { AuthenticatedRequest } from "../auth.types";
 import { REQUIRED_POSITIONS_KEY } from "../decorators/require-positions.decorator";
@@ -73,11 +78,23 @@ export class PermissionGuard implements CanActivate {
     }
 
     if (requiredAction) {
+      const governedApprovalAccess = this.isDelegatedApprovalAction(requiredAction)
+        ? await this.governedApprovalAccess(
+            request,
+            request.user.id,
+            effectiveRoleKeys,
+            projectId
+          )
+        : null;
+      if (governedApprovalAccess === false) {
+        throw new ForbiddenException("当前账号不是该审批节点冻结的处理人");
+      }
       if (!canPerform(requiredAction, effectiveRoleKeys)) {
         const delegatedApprovalAllowed =
-          projectId &&
-          this.isDelegatedApprovalAction(requiredAction) &&
-          (await this.hasDelegatedProjectActionRole(request.user.id, projectId, requiredAction));
+          governedApprovalAccess === true ||
+          (projectId &&
+            this.isDelegatedApprovalAction(requiredAction) &&
+            (await this.hasDelegatedProjectActionRole(request.user.id, projectId, requiredAction)));
         if (!delegatedApprovalAllowed) {
           throw new ForbiddenException("当前账号缺少执行该项目操作所需的岗位权限");
         }
@@ -162,6 +179,68 @@ export class PermissionGuard implements CanActivate {
 
   private isDelegatedApprovalAction(action: BusinessAction) {
     return action === "contract.approve" || action === "settlement.approve" || action === "payment.approve";
+  }
+
+  private async governedApprovalAccess(
+    request: AuthenticatedRequest,
+    userId: string,
+    roleKeys: RoleKey[],
+    projectId?: string
+  ): Promise<boolean | null> {
+    const target = request.params?.contractVersionId
+      ? { businessType: "contract_version", businessId: request.params.contractVersionId }
+      : request.params?.settlementId
+        ? { businessType: "settlement", businessId: request.params.settlementId }
+        : request.params?.paymentId
+          ? await this.resolvePaymentApprovalTarget(request.params.paymentId)
+          : null;
+    if (!target) return null;
+    const approvalClient = this.prisma as unknown as {
+      approvalInstance?: {
+        findFirst(input: unknown): Promise<{
+          frozenNodes: unknown;
+          currentNodeIndex: number;
+        } | null>;
+      };
+    };
+    if (!approvalClient.approvalInstance) return null;
+    const instance = await approvalClient.approvalInstance.findFirst({
+      where: {
+        businessType: target.businessType,
+        businessId: target.businessId,
+        status: "in_progress"
+      },
+      orderBy: { createdAt: "desc" },
+      select: { frozenNodes: true, currentNodeIndex: true }
+    });
+    if (!instance || !Array.isArray(instance.frozenNodes)) return null;
+    const node = instance.frozenNodes[instance.currentNodeIndex] as FrozenApprovalNode | undefined;
+    if (!node || !isGovernedFrozenApprovalNode(node)) return null;
+
+    const delegationClient = this.prisma as Partial<ActiveApprovalDelegationClient>;
+    const delegatorIds = delegationClient.approvalDelegation && delegationClient.user
+      ? await activeApprovalDelegatorIds(delegationClient as ActiveApprovalDelegationClient, userId)
+      : [];
+    const activeDelegators = projectId
+      ? await Promise.all(delegatorIds.map(async (delegatorId) => ({
+          userId: delegatorId,
+          roleKeys: await this.loadEffectiveRoleKeys(delegatorId, projectId)
+        })))
+      : [];
+    return Boolean(resolveApprovalReviewIdentity({
+      node,
+      actorUserId: userId,
+      actorRoleKeys: roleKeys,
+      activeDelegators
+    }));
+  }
+
+  private async resolvePaymentApprovalTarget(paymentId: string) {
+    const payment = await this.prisma.paymentRequest.findFirst({
+      where: { OR: [{ id: paymentId }, { code: paymentId }] },
+      select: { id: true }
+    });
+    return payment ? { businessType: "payment_request", businessId: payment.id } : null;
   }
 
   private async hasDelegatedProjectActionRole(

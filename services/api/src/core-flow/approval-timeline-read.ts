@@ -19,6 +19,8 @@ interface ApprovalTimelinePrisma {
         actorUserId: string;
         comment: string | null;
         metadata: unknown;
+        approvedRoleKey: string | null;
+        representedUserId: string | null;
         createdAt: Date;
       }>
     >;
@@ -102,7 +104,7 @@ export async function approvalTimelineForBusiness(
     actorName: userNameById.get(log.actorUserId) ?? "审批人未读取",
     comment: log.comment ?? null,
     nodeName: metadataString(log.metadata, "nodeName") ?? metadataString(log.metadata, "fromNodeName"),
-    roleName: roleLabel(metadataString(log.metadata, "approvedRoleKey")),
+    roleName: roleLabel(log.approvedRoleKey ?? metadataString(log.metadata, "approvedRoleKey")),
     selfReview: metadataBoolean(log.metadata, "selfReview"),
     selfReviewReason:
       metadataBoolean(log.metadata, "selfReview")

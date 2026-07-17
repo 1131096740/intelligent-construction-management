@@ -2499,7 +2499,13 @@ describe("SettlementService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "approval-instance-1",
           currentNodeIndex: 0,
-          frozenNodes: [{ name: "预算部主管", mode: "any", roleKeys: ["budget_director"] }]
+          frozenNodes: [{
+            name: "预算部主管",
+            mode: "any",
+            roleKeys: ["budget_director"],
+            candidateUserIdsByRole: { budget_director: ["budget-director-1"] },
+            candidateUserIds: ["budget-director-1"]
+          }]
         }),
         update: jest.fn()
       },
@@ -2511,7 +2517,12 @@ describe("SettlementService", () => {
           { id: "budget-director-1", name: "张预算", signatureFileId: null }
         ])
       },
-      ...approvalRoleTables("budget_director")
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: "budget-director-1", isActive: true, signatureFileId: "sig-budget" }])
+        .mockResolvedValueOnce([{ id: "sig-budget", contentSha256: "b".repeat(64), storageStatus: "active" }]),
+      ...approvalRoleTables("finance_staff")
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
@@ -2536,6 +2547,8 @@ describe("SettlementService", () => {
             name: "预算部主管",
             mode: "any",
             roleKeys: ["budget_director"],
+            candidateUserIdsByRole: { budget_director: ["budget-director-1"] },
+            candidateUserIds: ["budget-director-1"],
             approvedRoleKeys: ["budget_director"]
           }
         ],
@@ -2559,6 +2572,11 @@ describe("SettlementService", () => {
         approvalInstanceId: "approval-instance-1",
         action: "approve",
         actorUserId: "budget-director-1",
+        comment: undefined,
+        approvedRoleKey: "budget_director",
+        representedUserId: "budget-director-1",
+        signatureFileIdSnapshot: "sig-budget",
+        signatureSha256Snapshot: "b".repeat(64),
         metadata: {
           nodeName: "预算部主管",
           roleKey: "budget_director",
@@ -3397,6 +3415,8 @@ describe("SettlementService", () => {
         action: "reject_previous",
         actorUserId: "project-manager-1",
         comment: "请上一节点复核结算依据",
+        approvedRoleKey: "project_manager",
+        representedUserId: "project-manager-1",
         metadata: {
           nodeName: "项目经理",
           roleKey: "project_manager",
@@ -3511,6 +3531,8 @@ describe("SettlementService", () => {
         action: "return_to_applicant",
         actorUserId: "material-director-1",
         comment: "退回申请人补充资料",
+        approvedRoleKey: "material_director",
+        representedUserId: "material-director-1",
         metadata: {
           nodeName: "物资主管",
           roleKey: "material_director",
@@ -3740,7 +3762,13 @@ describe("SettlementService", () => {
   });
 
   it("transfers the current settlement approval node to a target user", async () => {
-    const frozenNodes = [{ name: "物资主管", mode: "any", roleKeys: ["material_director"] }];
+    const frozenNodes = [{
+      name: "物资主管",
+      mode: "any",
+      roleKeys: ["material_director"],
+      candidateUserIdsByRole: { material_director: ["material-director-1"] },
+      candidateUserIds: ["material-director-1"]
+    }];
     const tx = {
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
@@ -3793,7 +3821,9 @@ describe("SettlementService", () => {
       data: {
         approvalInstanceId: "approval-instance-1",
         action: "transfer",
-        actorUserId: "material-director-1"
+        actorUserId: "material-director-1",
+        approvedRoleKey: "material_director",
+        representedUserId: "material-director-1"
       }
     });
     expect(audit.record).toHaveBeenCalledWith(tx, {
@@ -3978,6 +4008,8 @@ describe("SettlementService", () => {
         name: "物资主管",
         mode: "any",
         roleKeys: ["material_director"],
+        candidateUserIdsByRole: { material_director: ["material-director-1"] },
+        candidateUserIds: ["material-director-1"],
         assignments: [
           {
             kind: "transfer",
@@ -4011,6 +4043,11 @@ describe("SettlementService", () => {
       approvalActionLog: {
         create: jest.fn()
       },
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: "delegate-user-1", isActive: true, signatureFileId: "sig-delegate" }])
+        .mockResolvedValueOnce([{ id: "sig-delegate", contentSha256: "e".repeat(64), storageStatus: "active" }]),
       ...approvalRoleTables("employee")
     };
     const prisma = {
@@ -4112,7 +4149,13 @@ describe("SettlementService", () => {
   });
 
   it("rejects approval from a user without role, assignment, or active delegation", async () => {
-    const frozenNodes = [{ name: "物资主管", mode: "any", roleKeys: ["material_director"] }];
+    const frozenNodes = [{
+      name: "物资主管",
+      mode: "any",
+      roleKeys: ["material_director"],
+      candidateUserIdsByRole: { material_director: ["material-director-1"] },
+      candidateUserIds: ["material-director-1"]
+    }];
     const tx = {
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
@@ -4211,7 +4254,9 @@ describe("SettlementService", () => {
       data: {
         approvalInstanceId: "approval-instance-1",
         action: "delegate",
-        actorUserId: "project-manager-1"
+        actorUserId: "project-manager-1",
+        approvedRoleKey: "project_manager",
+        representedUserId: "project-manager-1"
       }
     });
     expect(tx.approvalDelegation.create).toHaveBeenCalledWith({
@@ -4678,6 +4723,7 @@ describe("SettlementService", () => {
           {
             action: "approve",
             actorUserId: "contract-director-1",
+            approvedRoleKey: "contract_director",
             comment: "同意",
             createdAt: new Date("2026-07-03T10:00:00.000Z"),
             metadata: {
@@ -4715,7 +4761,7 @@ describe("SettlementService", () => {
     await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
     const rows = workbook.getWorksheet("结算单")?.getSheetValues() as ExcelJS.CellValue[][];
 
-    expect(rows.some((row) => row?.includes("物资员") && row.includes("物资员"))).toBe(true);
+    expect(rows.some((row) => row?.includes("物资员") && row.includes("历史签名未冻结"))).toBe(true);
     expect(rows.some((row) => row?.includes("王材料") && row.includes("数量属实"))).toBe(true);
     expect(
       rows.some(

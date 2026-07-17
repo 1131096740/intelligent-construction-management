@@ -7,6 +7,7 @@ import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { dbMoneyToBigInt, formatMoneyCentsAsYuan } from "../money/decimal-money";
+import { verifyApprovalSignatureSnapshot } from "./approval-signature-snapshot";
 
 const APPROVAL_FORM_TEMPLATE_KEY = "approval_form";
 const FONT_PATH = resolve(__dirname, "../../assets/fonts/NotoSansSC-Regular.otf");
@@ -286,16 +287,6 @@ function drawTable(
   return y;
 }
 
-// 仅接受 PNG/JPEG 魔数的图片用于嵌入，廉价挡掉非图片字节。
-// ponytail: 头部合法但 IDAT 损坏的 PNG 仍可能拖慢 pdfkit 解码；上传走图片选择器，正常不触发。
-function isEmbeddableImage(buffer: Buffer | null): boolean {
-  if (!buffer || buffer.length < 4) return false;
-  const isPng =
-    buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
-  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-  return isPng || isJpeg;
-}
-
 // 平铺对角水印（浅灰半透明），盖在内容之上。用于下载件按下载人留痕。
 function stampWatermark(doc: PDFKit.PDFDocument, lines: string[]): void {
   const text = lines.filter(Boolean).join("  ·  ");
@@ -453,8 +444,7 @@ export class ApprovalFormService {
       orderBy: { createdAt: "asc" }
     });
 
-    const [projectId, businessCode, companyName] = await Promise.all([
-      this.resolveProjectId(prisma, instance.businessType, instance.businessId),
+    const [businessCode, companyName] = await Promise.all([
       this.resolveBusinessCode(prisma, instance.businessType, instance.businessId),
       this.resolveCompanyName(prisma, instance.businessType, instance.businessId)
     ]);
@@ -464,28 +454,21 @@ export class ApprovalFormService {
     );
     const users = await prisma.user.findMany({ where: { id: { in: actorIds } } });
     const nameById = new Map(users.map((user) => [user.id, user.name]));
-    const signatureFileIdById = new Map(users.map((user) => [user.id, user.signatureFileId]));
-
-    const positionById = new Map<string, string>();
-    if (projectId) {
-      for (const id of actorIds) {
-        const roles = await this.loadActorRoleKeys(prisma, id, projectId);
-        positionById.set(id, roles.map(roleLabel).join("、"));
-      }
-    }
-
-    // 懒加载签名图字节（仅签批人各取一次）。
-    const signatureBufferById = new Map<string, Buffer | null>();
+    const signatureBufferByLogId = new Map<string, Buffer | null>();
     for (const log of logs) {
-      if (signatureBufferById.has(log.actorUserId)) continue;
-      const fileId = signatureFileIdById.get(log.actorUserId);
-      const buffer = fileId
-        ? await this.files!
-            .getFileBuffer(fileId)
-            .then((result) => result.buffer)
-            .catch(() => null)
-        : null;
-      signatureBufferById.set(log.actorUserId, isEmbeddableImage(buffer) ? buffer : null);
+      const fileId = log.signatureFileIdSnapshot;
+      if (!fileId) {
+        signatureBufferByLogId.set(log.id, null);
+        continue;
+      }
+      if (!this.files) {
+        throw new BadRequestException("审批签名文件服务不可用，请稍后重试");
+      }
+      const { buffer } = await this.files.getFileBuffer(fileId);
+      signatureBufferByLogId.set(
+        log.id,
+        verifyApprovalSignatureSnapshot(buffer, log.signatureSha256Snapshot)
+      );
     }
 
     const applicantName = nameById.get(instance.applicantUserId) ?? "申请人未读取";
@@ -508,11 +491,13 @@ export class ApprovalFormService {
       nodes: instance.frozenNodes as unknown as FrozenNode[],
       logs: logs.map((log) => ({
         name: nameById.get(log.actorUserId) ?? "处理人未读取",
-        position: positionById.get(log.actorUserId) ?? "",
+        position: log.approvedRoleKey
+          ? roleLabel(log.approvedRoleKey as RoleKey)
+          : "历史签名未冻结",
         action: actionLabel(log.action),
         signedAt: formatDateTime(log.createdAt),
         comment: log.comment ?? "",
-        signature: signatureBufferById.get(log.actorUserId) ?? null
+        signature: signatureBufferByLogId.get(log.id) ?? null
       }))
     };
   }
@@ -670,29 +655,6 @@ export class ApprovalFormService {
     return done;
   }
 
-  private async resolveProjectId(
-    prisma: PrismaService,
-    businessType: string,
-    businessId: string
-  ): Promise<string | null> {
-    if (businessType === "settlement") {
-      const settlement = await prisma.settlement.findUnique({ where: { id: businessId } });
-      return settlement?.projectId ?? null;
-    }
-    if (businessType === "payment_request") {
-      const payment = await prisma.paymentRequest.findUnique({ where: { id: businessId } });
-      return payment?.projectId ?? null;
-    }
-    if (businessType === "contract_version") {
-      const version = await prisma.contractVersion.findUnique({ where: { id: businessId } });
-      const contract = version
-        ? await prisma.contract.findUnique({ where: { id: version.contractId } })
-        : null;
-      return contract?.projectId ?? null;
-    }
-    return null;
-  }
-
   private async resolveBusinessCode(
     prisma: PrismaService,
     businessType: string,
@@ -816,30 +778,6 @@ export class ApprovalFormService {
     return [];
   }
 
-  // 与各业务 service 的岗位解析一致：全局/项目岗位 + 项目成员岗位。
-  private async loadActorRoleKeys(
-    prisma: PrismaService,
-    actorUserId: string,
-    projectId: string
-  ): Promise<RoleKey[]> {
-    const [globalPositions, projectPositions, projectMembers] = await Promise.all([
-      prisma.userPosition.findMany({ where: { userId: actorUserId, projectId: null } }),
-      prisma.userPosition.findMany({ where: { userId: actorUserId, projectId } }),
-      prisma.projectMember.findMany({ where: { userId: actorUserId, projectId } })
-    ]);
-    const positionIds = Array.from(
-      new Set(
-        [...globalPositions, ...projectPositions].map((position) => position.positionId)
-      )
-    );
-    const positions = positionIds.length
-      ? await prisma.position.findMany({ where: { id: { in: positionIds } } })
-      : [];
-    const positionKeys = positions.map((position) => position.key as RoleKey);
-    const memberKeys = projectMembers.map((member) => member.positionKey as RoleKey);
-
-    return Array.from(new Set([...positionKeys, ...memberKeys]));
-  }
 }
 
 export { APPROVAL_FORM_TEMPLATE_KEY };

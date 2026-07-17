@@ -174,6 +174,174 @@ describe("PermissionGuard", () => {
     ).rejects.toThrow("当前账号缺少执行该项目操作所需的岗位权限");
   });
 
+  it("allows a governed frozen candidate after the candidate changes roles", async () => {
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: {
+        findFirst: jest.fn().mockImplementation(({ select }: { select: Record<string, boolean> }) =>
+          Promise.resolve(select.projectId ? { projectId: "project-1" } : { id: "payment-1" }))
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          currentNodeIndex: 0,
+          frozenNodes: [{
+            roleKeys: ["finance_director"],
+            candidateUserIdsByRole: { finance_director: ["former-finance-1"] }
+          }]
+        })
+      },
+      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findMany: jest.fn().mockResolvedValue([{ id: "former-finance-1", isActive: true }]) }
+    };
+    const guard = new PermissionGuard({
+      getAllAndOverride: jest.fn().mockReturnValueOnce(undefined).mockReturnValueOnce("payment.approve")
+    } as never, prisma as never);
+
+    await expect(guard.canActivate(contextWithRequest({
+      user: { id: "former-finance-1" },
+      params: { paymentId: "payment-1" }
+    }))).resolves.toBe(true);
+  });
+
+  it("rejects a current same-role user who is not the governed frozen candidate", async () => {
+    const prisma = {
+      ...buildProjectPrisma("finance_director"),
+      paymentRequest: {
+        findFirst: jest.fn().mockImplementation(({ select }: { select: Record<string, boolean> }) =>
+          Promise.resolve(select.projectId ? { projectId: "project-1" } : { id: "payment-1" }))
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          currentNodeIndex: 0,
+          frozenNodes: [{ roleKeys: ["finance_director"], candidateUserIds: ["finance-1"] }]
+        })
+      },
+      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findMany: jest.fn().mockResolvedValue([{ id: "finance-2", isActive: true }]) }
+    };
+    const guard = new PermissionGuard({
+      getAllAndOverride: jest.fn().mockReturnValueOnce(undefined).mockReturnValueOnce("payment.approve")
+    } as never, prisma as never);
+
+    await expect(guard.canActivate(contextWithRequest({
+      user: { id: "finance-2" },
+      params: { paymentId: "payment-1" }
+    }))).rejects.toThrow("当前账号不是该审批节点冻结的处理人");
+  });
+
+  it("allows a governed assignment recipient without requiring the current role", async () => {
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: {
+        findFirst: jest.fn().mockImplementation(({ select }: { select: Record<string, boolean> }) =>
+          Promise.resolve(select.projectId ? { projectId: "project-1" } : { id: "payment-1" }))
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          currentNodeIndex: 0,
+          frozenNodes: [{
+            roleKeys: ["finance_director"],
+            candidateUserIdsByRole: { finance_director: ["finance-1"] },
+            assignments: [{
+              kind: "transfer",
+              fromUserId: "finance-1",
+              fromRoleKey: "finance_director",
+              toUserId: "assigned-1"
+            }]
+          }]
+        })
+      },
+      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const guard = new PermissionGuard({
+      getAllAndOverride: jest.fn().mockReturnValueOnce(undefined).mockReturnValueOnce("payment.approve")
+    } as never, prisma as never);
+
+    await expect(guard.canActivate(contextWithRequest({
+      user: { id: "assigned-1" },
+      params: { paymentId: "payment-1" }
+    }))).resolves.toBe(true);
+  });
+
+  it("allows standing delegation only when the delegator is the governed frozen candidate", async () => {
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: {
+        findFirst: jest.fn().mockImplementation(({ select }: { select: Record<string, boolean> }) =>
+          Promise.resolve(select.projectId ? { projectId: "project-1" } : { id: "payment-1" }))
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          currentNodeIndex: 0,
+          frozenNodes: [{
+            roleKeys: ["finance_director"],
+            candidateUserIdsByRole: { finance_director: ["finance-1"] }
+          }]
+        })
+      },
+      approvalDelegation: {
+        findMany: jest.fn().mockResolvedValue([{ fromUserId: "finance-1" }])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "finance-1", isActive: true },
+          { id: "delegatee-1", isActive: true }
+        ])
+      }
+    };
+    const guard = new PermissionGuard({
+      getAllAndOverride: jest.fn().mockReturnValueOnce(undefined).mockReturnValueOnce("payment.approve")
+    } as never, prisma as never);
+
+    await expect(guard.canActivate(contextWithRequest({
+      user: { id: "delegatee-1" },
+      params: { paymentId: "payment-1" }
+    }))).resolves.toBe(true);
+  });
+
+  it("does not grant frozen approval access from an unrelated business instance", async () => {
+    const approvalFindFirst = jest.fn().mockImplementation(
+      ({ where }: { where: { businessId: string } }) =>
+        Promise.resolve(where.businessId === "other-payment" ? {
+          currentNodeIndex: 0,
+          frozenNodes: [{
+            roleKeys: ["finance_director"],
+            candidateUserIdsByRole: { finance_director: ["finance-1"] }
+          }]
+        } : null)
+    );
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: {
+        findFirst: jest.fn().mockImplementation(({ select }: { select: Record<string, boolean> }) =>
+          Promise.resolve(select.projectId ? { projectId: "project-1" } : { id: "payment-1" }))
+      },
+      approvalInstance: { findFirst: approvalFindFirst },
+      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const guard = new PermissionGuard({
+      getAllAndOverride: jest.fn().mockReturnValueOnce(undefined).mockReturnValueOnce("payment.approve")
+    } as never, prisma as never);
+
+    await expect(guard.canActivate(contextWithRequest({
+      user: { id: "finance-1" },
+      params: { paymentId: "payment-1" }
+    }))).rejects.toThrow("当前账号缺少执行该项目操作所需的岗位权限");
+    expect(approvalFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ businessId: "payment-1" })
+    }));
+  });
+
   it("allows delegated approval actions through the project-role guard", async () => {
     const prisma = {
       userPosition: {

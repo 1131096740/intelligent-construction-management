@@ -12,6 +12,8 @@ export interface ApprovalSelfReviewInput {
   actorUserId: string;
   actorRoleKeys: readonly RoleKey[];
   approvedRoleKey: RoleKey;
+  representedUserId?: string;
+  viaAssignment?: boolean;
 }
 
 export interface ConfirmApprovalSelfReviewInput extends ApprovalSelfReviewInput {
@@ -42,9 +44,13 @@ export function requiresApprovalSelfReviewConfirmation(input: {
 
 export function assertOrdinaryApplicantCannotReview(input: ApprovalSelfReviewInput): void {
   if (input.applicantUserId !== input.actorUserId) return;
+  const resolvedDirectIdentity =
+    input.representedUserId === input.actorUserId && input.viaAssignment !== true;
+  const legacyDirectIdentity =
+    input.representedUserId === undefined && input.actorRoleKeys.includes(input.approvedRoleKey);
   if (
     SELF_REVIEW_BUSINESS_ROLES.has(input.approvedRoleKey) &&
-    input.actorRoleKeys.includes(input.approvedRoleKey)
+    (resolvedDirectIdentity || legacyDirectIdentity)
   ) {
     return;
   }

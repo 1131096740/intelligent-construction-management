@@ -2557,6 +2557,13 @@ describe("PaymentRequestService", () => {
   });
 
   it("approves the first payment node, keeps payment pending, and advances the instance", async () => {
+    const governedPaymentApprovalNodes = paymentApprovalNodes.map((node, index) => index === 0
+      ? {
+          ...node,
+          candidateUserIdsByRole: { comprehensive_director: ["pm-1"] },
+          candidateUserIds: ["pm-1"]
+        }
+      : node);
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
@@ -2577,7 +2584,7 @@ describe("PaymentRequestService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "approval-instance-1",
           currentNodeIndex: 0,
-          frozenNodes: paymentApprovalNodes
+          frozenNodes: governedPaymentApprovalNodes
         }),
         update: jest.fn()
       },
@@ -2587,7 +2594,12 @@ describe("PaymentRequestService", () => {
       auditLog: {
         create: jest.fn()
       },
-      ...approvalRoleTables("comprehensive_director")
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: "pm-1", isActive: true, signatureFileId: "sig-pm" }])
+        .mockResolvedValueOnce([{ id: "sig-pm", contentSha256: "c".repeat(64), storageStatus: "active" }]),
+      ...approvalRoleTables("employee")
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
@@ -2609,12 +2621,12 @@ describe("PaymentRequestService", () => {
         currentNodeIndex: 1,
         frozenNodes: [
           {
-            ...paymentApprovalNodes[0],
+            ...governedPaymentApprovalNodes[0],
             approvedRoleKeys: ["comprehensive_director"]
           },
-          paymentApprovalNodes[1],
-          paymentApprovalNodes[2],
-          paymentApprovalNodes[3]
+          governedPaymentApprovalNodes[1],
+          governedPaymentApprovalNodes[2],
+          governedPaymentApprovalNodes[3]
         ],
         status: "in_progress"
       }
@@ -2631,7 +2643,12 @@ describe("PaymentRequestService", () => {
       data: {
         approvalInstanceId: "approval-instance-1",
         action: "approve",
-        actorUserId: "pm-1"
+        actorUserId: "pm-1",
+        comment: undefined,
+        approvedRoleKey: "comprehensive_director",
+        representedUserId: "pm-1",
+        signatureFileIdSnapshot: "sig-pm",
+        signatureSha256Snapshot: "c".repeat(64)
       }
     });
   });
@@ -3009,7 +3026,9 @@ describe("PaymentRequestService", () => {
         approvalInstanceId: "approval-instance-1",
         action: "approve",
         actorUserId: "chairman-1",
-        comment: "同意付款"
+        comment: "同意付款",
+        approvedRoleKey: "chairman",
+        representedUserId: "chairman-1"
       }
     });
   });
@@ -3039,7 +3058,12 @@ describe("PaymentRequestService", () => {
             {
               name: "董事长/总经理",
               mode: "any",
-              roleKeys: ["chairman", "general_manager"]
+              roleKeys: ["chairman", "general_manager"],
+              candidateUserIdsByRole: {
+                chairman: ["delegator-1"],
+                general_manager: []
+              },
+              candidateUserIds: ["delegator-1"]
             }
           ]
         }),
@@ -3062,6 +3086,19 @@ describe("PaymentRequestService", () => {
           Promise.resolve(where.userId === "delegator-1" ? [{ positionKey: "chairman" }] : [])
         )
       },
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{
+          id: "delegate-user-1",
+          isActive: true,
+          signatureFileId: "sig-delegate"
+        }])
+        .mockResolvedValueOnce([{
+          id: "sig-delegate",
+          contentSha256: "9".repeat(64),
+          storageStatus: "active"
+        }]),
       ...financingUsageUpdates()
     };
     const prisma = {
@@ -3086,6 +3123,15 @@ describe("PaymentRequestService", () => {
 
     expect(approved.status).toBe("approved_pending_payment");
     expect(delegations.activeDelegatorIds).toHaveBeenCalledWith(tx, "delegate-user-1");
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "delegate-user-1",
+        approvedRoleKey: "chairman",
+        representedUserId: "delegator-1",
+        signatureFileIdSnapshot: "sig-delegate",
+        signatureSha256Snapshot: "9".repeat(64)
+      })
+    });
     expect(tx.auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         actorUserId: "delegate-user-1",
@@ -3165,7 +3211,9 @@ describe("PaymentRequestService", () => {
         approvalInstanceId: "approval-instance-1",
         action: "reject",
         actorUserId: "general-manager-1",
-        comment: "付款条件尚未满足"
+        comment: "付款条件尚未满足",
+        approvedRoleKey: "general_manager",
+        representedUserId: "general-manager-1"
       }
     });
   });
@@ -3282,7 +3330,9 @@ describe("PaymentRequestService", () => {
         approvalInstanceId: "approval-instance-1",
         action: "reject_previous",
         actorUserId: "chairman-1",
-        comment: "请上一节点复核付款金额"
+        comment: "请上一节点复核付款金额",
+        approvedRoleKey: "chairman",
+        representedUserId: "chairman-1"
       }
     });
     expect(tx.auditLog.create).toHaveBeenCalledWith({
@@ -3404,7 +3454,9 @@ describe("PaymentRequestService", () => {
         approvalInstanceId: "approval-instance-1",
         action: "return_to_applicant",
         actorUserId: "general-manager-1",
-        comment: "退回申请人补充付款依据"
+        comment: "退回申请人补充付款依据",
+        approvedRoleKey: "general_manager",
+        representedUserId: "general-manager-1"
       }
     });
     expect(tx.auditLog.create).toHaveBeenCalledWith({
@@ -3481,7 +3533,9 @@ describe("PaymentRequestService", () => {
       data: {
         approvalInstanceId: "approval-instance-1",
         action: "transfer",
-        actorUserId: "chairman-1"
+        actorUserId: "chairman-1",
+        approvedRoleKey: "chairman",
+        representedUserId: "chairman-1"
       }
     });
     expect(tx.auditLog.create).toHaveBeenCalledWith({
@@ -3518,6 +3572,11 @@ describe("PaymentRequestService", () => {
               name: "董事长/总经理",
               mode: "any",
               roleKeys: ["chairman", "general_manager"],
+              candidateUserIdsByRole: {
+                chairman: ["chairman-1"],
+                general_manager: []
+              },
+              candidateUserIds: ["chairman-1"],
               assignments: [
                 {
                   kind: "transfer",
@@ -3537,6 +3596,11 @@ describe("PaymentRequestService", () => {
       auditLog: {
         create: jest.fn()
       },
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: "transfer-user-1", isActive: true, signatureFileId: "sig-transfer" }])
+        .mockResolvedValueOnce([{ id: "sig-transfer", contentSha256: "f".repeat(64), storageStatus: "active" }]),
       ...financingUsageUpdates(),
       ...approvalRoleTables("employee")
     };
@@ -3932,7 +3996,12 @@ describe("PaymentRequestService", () => {
             {
               name: "董事长/总经理",
               mode: "any",
-              roleKeys: ["chairman", "general_manager"]
+              roleKeys: ["chairman", "general_manager"],
+              candidateUserIdsByRole: {
+                chairman: ["chairman-1"],
+                general_manager: []
+              },
+              candidateUserIds: ["chairman-1"]
             }
           ]
         })

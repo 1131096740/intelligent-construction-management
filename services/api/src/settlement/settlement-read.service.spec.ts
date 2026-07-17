@@ -898,4 +898,47 @@ describe("SettlementReadService", () => {
 
     expect(access.canReview).toBe(expected);
   });
+
+  it.each([
+    ["冻结候选调岗后", "finance-director-1", [], true],
+    ["同岗位非冻结候选", "finance-director-2", ["finance_director"], false]
+  ] as const)("受治理结算节点%s保持冻结人员口径", async (_label, actorUserId, roleKeys, expected) => {
+    const prisma = {
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          applicantUserId: "applicant-1",
+          frozenNodes: [{
+            roleKeys: ["finance_director"],
+            candidateUserIdsByRole: { finance_director: ["finance-director-1"] },
+            candidateUserIds: ["finance-director-1"]
+          }],
+          currentNodeIndex: 0
+        })
+      },
+      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const service = new SettlementReadService(prisma as never, {
+      effectiveRoleKeys: jest.fn().mockResolvedValue([])
+    } as never) as unknown as {
+      canReviewCurrentApproval(
+        businessType: string,
+        businessId: string,
+        projectId: string,
+        roleKeys: string[],
+        actorUserId: string
+      ): Promise<{ canAct: boolean; canReview: boolean }>;
+    };
+
+    const access = await service.canReviewCurrentApproval(
+      "settlement",
+      "settlement-1",
+      "project-1",
+      [...roleKeys],
+      actorUserId
+    );
+
+    expect(access.canAct).toBe(expected);
+    expect(access.canReview).toBe(expected);
+  });
 });

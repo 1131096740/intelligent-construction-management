@@ -1357,4 +1357,47 @@ describe("ContractReadService", () => {
     expect(access.canReview).toBe(true);
     expect(prisma.approvalDelegation.findMany).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["冻结候选调岗后", "contract-director-1", [], true],
+    ["同岗位非冻结候选", "contract-director-2", ["contract_director"], false]
+  ] as const)("受治理合同节点%s保持冻结人员口径", async (_label, actorUserId, roleKeys, expected) => {
+    const prisma = {
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          applicantUserId: "applicant-1",
+          frozenNodes: [{
+            roleKeys: ["contract_director"],
+            candidateUserIdsByRole: { contract_director: ["contract-director-1"] },
+            candidateUserIds: ["contract-director-1"]
+          }],
+          currentNodeIndex: 0
+        })
+      },
+      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const service = new ContractReadService(prisma as never, {
+      effectiveRoleKeys: jest.fn().mockResolvedValue([])
+    } as never) as unknown as {
+      canReviewCurrentApproval(
+        businessType: string,
+        businessId: string,
+        projectId: string,
+        roleKeys: string[],
+        actorUserId: string
+      ): Promise<{ canAct: boolean; canReview: boolean }>;
+    };
+
+    const access = await service.canReviewCurrentApproval(
+      "contract_version",
+      "contract-version-1",
+      "project-1",
+      [...roleKeys],
+      actorUserId
+    );
+
+    expect(access.canAct).toBe(expected);
+    expect(access.canReview).toBe(expected);
+  });
 });

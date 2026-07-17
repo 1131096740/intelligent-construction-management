@@ -15,6 +15,17 @@ import {
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
 import { ApprovalFormService } from "../approval/approval-form.service";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
+import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
+import {
+  isGovernedFrozenApprovalNode,
+  resolveApprovalReviewIdentity,
+  assertActiveApprovalRecipient
+} from "../approval/approval-review-identity";
+import {
+  snapshotApprovalSignature,
+  verifyApprovalSignatureSnapshot
+} from "../approval/approval-signature-snapshot";
+import { lockApprovalReviewRow } from "../approval/approval-review-lock";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -76,6 +87,9 @@ interface SettlementApprovalNode {
   roleKeys: RoleKey[];
   approvedRoleKeys?: RoleKey[];
   assignments?: SettlementApprovalAssignment[];
+  candidateUserIds?: string[];
+  candidateUserIdsByRole?: Partial<Record<RoleKey, string[]>>;
+  selectedUserId?: string;
 }
 
 interface SettlementApprovalAssignment {
@@ -162,20 +176,15 @@ function formatSettlementAmount(cents: bigint): string {
   return `${sign}${yuan}.${fen} 元`;
 }
 
-function isEmbeddableImage(buffer: Buffer | null): boolean {
-  if (!buffer || buffer.length < 4) return false;
-  const isPng =
-    buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
-  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-  return isPng || isJpeg;
-}
-
 interface SettlementApprovalActionLogSnapshot {
   action: string;
   actorUserId: string;
   comment: string | null;
   createdAt: Date;
   metadata?: unknown;
+  approvedRoleKey?: string | null;
+  signatureFileIdSnapshot?: string | null;
+  signatureSha256Snapshot?: string | null;
 }
 
 interface SettlementApprovalLogMetadataSnapshot {
@@ -1477,6 +1486,9 @@ export class SettlementService {
     let completedInstanceId: string | undefined;
     let approvalPdfSettlementId: string | undefined;
     const result = await this.prisma.$transaction(async (tx) => {
+      await lockApprovalReviewRow(tx, Prisma.sql`
+        SELECT "id" FROM "Settlement" WHERE "id" = ${settlementId} FOR UPDATE
+      `);
       const settlement = await tx.settlement.findUnique({
         where: { id: settlementId }
       });
@@ -1488,6 +1500,15 @@ export class SettlementService {
       if (settlement.status !== "approval_pending") {
         throw new Error("当前结算单暂不能处理审批，请确认仍在审批中");
       }
+
+      await lockApprovalReviewRow(tx, Prisma.sql`
+        SELECT "id" FROM "ApprovalInstance"
+        WHERE "businessType" = 'settlement'
+          AND "businessId" = ${settlement.id}
+          AND "flowType" = 'settlement.approve'
+          AND "status" = 'in_progress'
+        FOR UPDATE
+      `);
 
       const instance = await tx.approvalInstance.findFirst({
         where: {
@@ -1510,29 +1531,42 @@ export class SettlementService {
       }
 
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, settlement.projectId);
-      let approvedRoleKey =
-        currentNode.roleKeys.find((role) => actorRoleKeys.includes(role)) ??
-        currentNode.assignments?.find((assignment) => assignment.toUserId === actorUserId)
-          ?.fromRoleKey;
-
-      if (!approvedRoleKey) {
-        approvedRoleKey = await this.resolveDelegatedRoleKey(
-          tx,
-          actorUserId,
-          settlement.projectId,
-          currentNode.roleKeys
-        );
+      const identityNode = input.decision === "approve"
+        ? currentNode
+        : { ...currentNode, approvedRoleKeys: [] };
+      let identity = resolveApprovalReviewIdentity({
+        node: identityNode,
+        actorUserId,
+        actorRoleKeys
+      });
+      if (!identity) {
+        const delegatorIds = this.delegations
+          ? await this.delegations.activeDelegatorIds(tx, actorUserId)
+          : await activeApprovalDelegatorIds(tx, actorUserId);
+        const activeDelegators = await Promise.all(delegatorIds.map(async (userId) => ({
+          userId,
+          roleKeys: await this.loadActorRoleKeys(tx, userId, settlement.projectId)
+        })));
+        identity = resolveApprovalReviewIdentity({ node: identityNode, actorUserId, actorRoleKeys, activeDelegators });
       }
-
-      if (!approvedRoleKey) {
+      if (!identity) {
         throw new Error(`当前账号不能处理“${currentNode.name}”节点，请确认是否为该节点审批人`);
       }
+      const approvedRoleKey = identity.approvedRoleKey;
+      const signature = await snapshotApprovalSignature(tx, actorUserId, {
+        required: input.decision === "approve" && isGovernedFrozenApprovalNode(currentNode)
+      });
 
       const selfReview = await confirmApprovalSelfReview({
         applicantUserId: instance.applicantUserId,
         actorUserId,
-        actorRoleKeys,
+        actorRoleKeys: identity.representedUserId === actorUserId &&
+          !identity.viaAssignment
+          ? Array.from(new Set([...actorRoleKeys, approvedRoleKey]))
+          : actorRoleKeys,
         approvedRoleKey,
+        representedUserId: identity.representedUserId,
+        viaAssignment: identity.viaAssignment,
         selfReviewReason: input.selfReviewReason,
         confirmationPassword: input.confirmationPassword,
         confirmPassword: this.auth
@@ -1571,6 +1605,8 @@ export class SettlementService {
             action: "reject_previous",
             actorUserId,
             comment: input.comment?.trim() || undefined,
+            approvedRoleKey,
+            representedUserId: identity.representedUserId,
             metadata: {
               ...(await this.approvalLogMetadata(tx, currentNode, actorUserId, approvedRoleKey)),
               ...selfReview.metadata
@@ -1612,6 +1648,8 @@ export class SettlementService {
             action: "return_to_applicant",
             actorUserId,
             comment: input.comment?.trim() || undefined,
+            approvedRoleKey,
+            representedUserId: identity.representedUserId,
             metadata: {
               ...(await this.approvalLogMetadata(tx, currentNode, actorUserId, approvedRoleKey)),
               ...selfReview.metadata
@@ -1659,6 +1697,8 @@ export class SettlementService {
             action: "reject",
             actorUserId,
             comment: input.comment?.trim() || undefined,
+            approvedRoleKey,
+            representedUserId: identity.representedUserId,
             ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
           }
         });
@@ -1718,6 +1758,14 @@ export class SettlementService {
           action: "approve",
           actorUserId,
           comment: input.comment?.trim() || undefined,
+          approvedRoleKey,
+          representedUserId: identity.representedUserId,
+          ...(isGovernedFrozenApprovalNode(currentNode)
+            ? {
+                signatureFileIdSnapshot: signature.fileId,
+                signatureSha256Snapshot: signature.sha256
+              }
+            : {}),
           metadata: {
             ...(await this.approvalLogMetadata(tx, currentNode, actorUserId, approvedRoleKey)),
             ...selfReview.metadata
@@ -2605,7 +2653,7 @@ export class SettlementService {
 
   private async buildSettlementApprovalRows(
     tx: Prisma.TransactionClient,
-    projectId: string,
+    _projectId: string,
     frozenNodes: SettlementApprovalNode[],
     actionLogs: SettlementApprovalActionLogSnapshot[]
   ): Promise<SettlementDocumentInput["approvalRows"]> {
@@ -2626,25 +2674,17 @@ export class SettlementService {
       : [];
     const userById = new Map(users.map((user) => [user.id, user]));
 
-    const roleKeysByActor = new Map<string, RoleKey[]>();
-    for (const actorId of actorIds) {
-      roleKeysByActor.set(actorId, await this.safeLoadActorRoleKeys(tx, actorId, projectId));
-    }
-
-    const signatureByActor = new Map<string, Buffer | null>();
-    if (this.files) {
-      for (const actorId of actorIds) {
-        const signatureFileId = userById.get(actorId)?.signatureFileId;
-        if (!signatureFileId) {
-          signatureByActor.set(actorId, null);
-          continue;
-        }
-        const buffer = await this.files
-          .getFileBuffer(signatureFileId)
-          .then((result) => result.buffer)
-          .catch(() => null);
-        signatureByActor.set(actorId, isEmbeddableImage(buffer) ? buffer : null);
+    const signatureByLog = new Map<SettlementApprovalActionLogSnapshot, Buffer>();
+    for (const log of signatureLogs) {
+      if (!log.signatureFileIdSnapshot) continue;
+      if (!this.files) {
+        throw new BadRequestException("审批签名文件服务不可用，请稍后重试");
       }
+      const { buffer } = await this.files.getFileBuffer(log.signatureFileIdSnapshot);
+      signatureByLog.set(
+        log,
+        verifyApprovalSignatureSnapshot(buffer, log.signatureSha256Snapshot)
+      );
     }
 
     const approvedRoleKeysByNode = frozenNodes.map(() => new Set<RoleKey>());
@@ -2653,13 +2693,10 @@ export class SettlementService {
     return signatureLogs.map((log) => {
       const metadata = this.approvalLogMetadataSnapshot(log.metadata);
       const node = frozenNodes[nodeIndex] ?? frozenNodes.at(-1);
-      const actorRoleKeys = roleKeysByActor.get(log.actorUserId) ?? [];
-      const roleKey = node
-        ? this.resolveApprovalLogRoleKey(node, log.actorUserId, actorRoleKeys)
-        : undefined;
-      const roleName = metadata.roleName ?? (roleKey
+      const roleKey = log.approvedRoleKey as RoleKey | null | undefined;
+      const roleName = roleKey
         ? roleLabel(roleKey)
-        : node?.roleKeys.map(roleLabel).join("、") ?? "");
+        : "历史签名未冻结";
 
       if (log.action === "approve" && node) {
         const completedRoleKey = metadata.roleKey ?? roleKey;
@@ -2686,7 +2723,7 @@ export class SettlementService {
         approverName: metadata.approverName ?? user?.name ?? "审批人未读取",
         comment: log.comment ?? "",
         approvedAt: log.createdAt,
-        signatureImage: signatureByActor.get(log.actorUserId) ?? null
+        signatureImage: signatureByLog.get(log) ?? null
       };
     });
   }
@@ -2740,26 +2777,8 @@ export class SettlementService {
     const maybeTx = tx as unknown as Partial<
       Pick<Prisma.TransactionClient, "userPosition" | "projectMember" | "position">
     >;
-    if (!maybeTx.userPosition || !maybeTx.projectMember || !maybeTx.position) {
-      return [];
-    }
-
+    if (!maybeTx.userPosition || !maybeTx.projectMember || !maybeTx.position) return [];
     return this.loadActorRoleKeys(tx, actorUserId, projectId);
-  }
-
-  private resolveApprovalLogRoleKey(
-    node: SettlementApprovalNode,
-    actorUserId: string,
-    actorRoleKeys: RoleKey[]
-  ): RoleKey | undefined {
-    const assignmentRole = node.assignments?.find(
-      (assignment) => assignment.toUserId === actorUserId
-    )?.fromRoleKey;
-    return (
-      assignmentRole ??
-      node.roleKeys.find((role) => actorRoleKeys.includes(role)) ??
-      node.roleKeys[0]
-    );
   }
 
   private roleKeysFromSettlementApprovalNodes(nodes: SettlementApprovalNode[]): RoleKey[] {
@@ -2839,31 +2858,6 @@ export class SettlementService {
     return Array.from(new Set([...positionKeys, ...memberKeys]));
   }
 
-  // 常驻委托台账消费：本人岗位/节点指派都不命中时，看是否有在窗口内的委托人持有该节点角色。
-  private async resolveDelegatedRoleKey(
-    tx: Prisma.TransactionClient,
-    actorUserId: string,
-    scopeId: string,
-    nodeRoleKeys: RoleKey[]
-  ): Promise<RoleKey | undefined> {
-    if (!this.delegations) {
-      return undefined;
-    }
-
-    const delegatorIds = await this.delegations.activeDelegatorIds(tx, actorUserId);
-
-    for (const delegatorId of delegatorIds) {
-      const delegatorRoleKeys = await this.loadActorRoleKeys(tx, delegatorId, scopeId);
-      const match = nodeRoleKeys.find((role) => delegatorRoleKeys.includes(role));
-
-      if (match) {
-        return match;
-      }
-    }
-
-    return undefined;
-  }
-
   private async assignApproval(
     kind: SettlementApprovalAssignment["kind"],
     settlementId: string,
@@ -2879,6 +2873,7 @@ export class SettlementService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      await lockApprovalReviewRow(tx, Prisma.sql`SELECT "id" FROM "Settlement" WHERE "id" = ${settlementId} FOR UPDATE`);
       const settlement = await tx.settlement.findUnique({
         where: { id: settlementId }
       });
@@ -2890,6 +2885,12 @@ export class SettlementService {
       if (settlement.status !== "approval_pending") {
         throw new Error("当前结算单已不在审批中，不能转交或委托审批");
       }
+
+      await lockApprovalReviewRow(tx, Prisma.sql`
+        SELECT "id" FROM "ApprovalInstance" WHERE "businessType" = 'settlement'
+          AND "businessId" = ${settlement.id} AND "flowType" = 'settlement.approve'
+          AND "status" = 'in_progress' FOR UPDATE
+      `);
 
       const instance = await tx.approvalInstance.findFirst({
         where: {
@@ -2912,11 +2913,22 @@ export class SettlementService {
       }
 
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, settlement.projectId);
-      const fromRoleKey = currentNode.roleKeys.find((role) => actorRoleKeys.includes(role));
-
-      if (!fromRoleKey) {
+      let identity = resolveApprovalReviewIdentity({ node: currentNode, actorUserId, actorRoleKeys });
+      if (!identity) {
+        const delegatorIds = this.delegations
+          ? await this.delegations.activeDelegatorIds(tx, actorUserId)
+          : await activeApprovalDelegatorIds(tx, actorUserId);
+        const activeDelegators = await Promise.all(delegatorIds.map(async (userId) => ({
+          userId,
+          roleKeys: await this.loadActorRoleKeys(tx, userId, settlement.projectId)
+        })));
+        identity = resolveApprovalReviewIdentity({ node: currentNode, actorUserId, actorRoleKeys, activeDelegators });
+      }
+      if (!identity) {
         throw new Error(`当前账号不能转交或委托“${currentNode.name}”节点，请确认是否为该节点审批人`);
       }
+      const fromRoleKey = identity.approvedRoleKey;
+      await assertActiveApprovalRecipient(tx, input.toUserId);
 
       const nextNodes = [...nodes];
       const nextAssignments = [
@@ -2924,11 +2936,11 @@ export class SettlementService {
           (assignment) =>
             !(
               assignment.kind === kind &&
-              assignment.fromUserId === actorUserId &&
+              assignment.fromUserId === identity.representedUserId &&
               assignment.fromRoleKey === fromRoleKey
             )
         ),
-        { kind, fromUserId: actorUserId, fromRoleKey, toUserId: input.toUserId }
+        { kind, fromUserId: identity.representedUserId, fromRoleKey, toUserId: input.toUserId }
       ];
       nextNodes[instance.currentNodeIndex] = { ...currentNode, assignments: nextAssignments };
 
@@ -2941,7 +2953,9 @@ export class SettlementService {
         data: {
           approvalInstanceId: instance.id,
           action: kind,
-          actorUserId
+          actorUserId,
+          approvedRoleKey: fromRoleKey,
+          representedUserId: identity.representedUserId
         }
       });
 
@@ -2949,7 +2963,7 @@ export class SettlementService {
         const startsAt = new Date();
         await tx.approvalDelegation.create({
           data: {
-            fromUserId: actorUserId,
+            fromUserId: identity.representedUserId,
             toUserId: input.toUserId,
             startsAt,
             // ponytail: 临时台账窗口；全局委托管理上线后由其维护 endsAt。

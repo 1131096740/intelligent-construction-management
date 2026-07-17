@@ -10,6 +10,8 @@ export async function activeApprovalDelegatorIds(
   toUserId: string,
   now: Date = new Date()
 ): Promise<string[]> {
+  const maybeClient = client as Partial<ActiveApprovalDelegationClient>;
+  if (!maybeClient.approvalDelegation || !maybeClient.user) return [];
   const rows = await client.approvalDelegation.findMany({
     where: {
       toUserId,

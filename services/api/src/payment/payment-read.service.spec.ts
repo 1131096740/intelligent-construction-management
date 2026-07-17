@@ -1131,7 +1131,11 @@ describe("PaymentReadService", () => {
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
           applicantUserId: "applicant-1",
-          frozenNodes: [{ roleKeys: ["finance_director"] }],
+          frozenNodes: [{
+            roleKeys: ["finance_director"],
+            candidateUserIdsByRole: { finance_director: ["finance-director-1"] },
+            candidateUserIds: ["finance-director-1"]
+          }],
           currentNodeIndex: 0
         })
       },
@@ -1168,6 +1172,47 @@ describe("PaymentReadService", () => {
         disabledReason: null
       })
     );
+  });
+
+  it("enables governed approval review for a frozen assignment recipient", async () => {
+    const prisma = {
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          applicantUserId: "applicant-1",
+          frozenNodes: [{
+            roleKeys: ["finance_director"],
+            candidateUserIdsByRole: { finance_director: ["finance-director-1"] },
+            candidateUserIds: ["finance-director-1"],
+            assignments: [{
+              kind: "transfer",
+              fromUserId: "finance-director-1",
+              fromRoleKey: "finance_director",
+              toUserId: "assigned-1"
+            }]
+          }],
+          currentNodeIndex: 0
+        })
+      },
+      approvalDelegation: { findMany: jest.fn() }
+    };
+    const service = new PaymentReadService(prisma as never, {} as never) as unknown as {
+      canReviewCurrentApproval(
+        businessType: string,
+        businessId: string,
+        projectId: string,
+        roleKeys: string[],
+        actorUserId: string
+      ): Promise<{ canAct: boolean; canReview: boolean }>;
+    };
+
+    await expect(service.canReviewCurrentApproval(
+      "payment_request",
+      "payment-1",
+      "project-1",
+      [],
+      "assigned-1"
+    )).resolves.toMatchObject({ canAct: true, canReview: true });
+    expect(prisma.approvalDelegation.findMany).not.toHaveBeenCalled();
   });
 
   it("does not enable standing delegation review when the delegator is inactive", async () => {
@@ -2028,5 +2073,48 @@ describe("PaymentReadService", () => {
         })
       ])
     );
+  });
+
+  it.each([
+    ["冻结候选调岗后", "finance-director-1", [], true],
+    ["同岗位非冻结候选", "finance-director-2", ["finance_director"], false]
+  ] as const)("受治理付款节点%s保持冻结人员口径", async (_label, actorUserId, roleKeys, expected) => {
+    const prisma = {
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          applicantUserId: "applicant-1",
+          frozenNodes: [{
+            roleKeys: ["finance_director"],
+            candidateUserIdsByRole: { finance_director: ["finance-director-1"] },
+            candidateUserIds: ["finance-director-1"]
+          }],
+          currentNodeIndex: 0
+        })
+      },
+      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const service = new PaymentReadService(prisma as never, {
+      effectiveRoleKeys: jest.fn().mockResolvedValue([])
+    } as never) as unknown as {
+      canReviewCurrentApproval(
+        businessType: string,
+        businessId: string,
+        projectId: string,
+        roleKeys: string[],
+        actorUserId: string
+      ): Promise<{ canAct: boolean; canReview: boolean }>;
+    };
+
+    const access = await service.canReviewCurrentApproval(
+      "payment_request",
+      "payment-1",
+      "project-1",
+      [...roleKeys],
+      actorUserId
+    );
+
+    expect(access.canAct).toBe(expected);
+    expect(access.canReview).toBe(expected);
   });
 });

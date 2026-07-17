@@ -876,13 +876,17 @@ model ApprovalInstance {
 }
 
 model ApprovalActionLog {
-  id                 String   @id @default(uuid())
-  approvalInstanceId String
-  action             String
-  actorUserId        String
-  comment            String?
-  metadata           Json?
-  createdAt          DateTime @default(now())
+  id                      String   @id @default(uuid())
+  approvalInstanceId      String
+  action                  String
+  actorUserId             String
+  comment                 String?
+  metadata                Json?
+  approvedRoleKey         String?
+  signatureFileIdSnapshot String?
+  signatureSha256Snapshot String?
+  representedUserId       String?
+  createdAt               DateTime @default(now())
 }
 
 model ApprovalDelegation {

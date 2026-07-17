@@ -2,6 +2,7 @@ import {
   ApprovalFormService,
   buildProjectPaymentApprovalRows
 } from "./approval-form.service";
+import { createHash } from "node:crypto";
 
 // 有效 1x1 PNG，供签名图嵌入测试（doc.image 需要可解码图片）。
 const PNG_1X1 = Buffer.from(
@@ -234,6 +235,19 @@ describe("ApprovalFormService", () => {
 
   it("embeds an approver signature image when the user has one", async () => {
     const prisma = buildPrisma({
+      approvalActionLog: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "log-1",
+          actorUserId: "user-chair",
+          action: "approve",
+          comment: "同意付款，注意分期",
+          approvedRoleKey: "chairman",
+          signatureFileIdSnapshot: "sig-1",
+          signatureSha256Snapshot: createHash("sha256").update(PNG_1X1).digest("hex"),
+          representedUserId: "user-chair",
+          createdAt: new Date("2026-06-24T08:30:00.000Z")
+        }])
+      },
       user: {
         findMany: jest.fn().mockResolvedValue([
           { id: "user-applicant", name: "申请人甲", signatureFileId: null },
@@ -258,6 +272,67 @@ describe("ApprovalFormService", () => {
 
     expect(files.getFileBuffer).toHaveBeenCalledWith("sig-1");
     expect(uploaded?.buffer.subarray(0, 5).toString()).toBe("%PDF-");
+  });
+
+  it("does not persist an approval form when a frozen signature cannot be read", async () => {
+    const prisma = buildPrisma({
+      approvalActionLog: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "log-1",
+          actorUserId: "user-chair",
+          action: "approve",
+          approvedRoleKey: "chairman",
+          signatureFileIdSnapshot: "sig-1",
+          signatureSha256Snapshot: "a".repeat(64),
+          createdAt: new Date("2026-06-24T08:30:00.000Z")
+        }])
+      }
+    });
+    const files = {
+      uploadPrivateFile: jest.fn(),
+      getFileBuffer: jest.fn().mockRejectedValue(new Error("COS temporarily unavailable"))
+    };
+    const service = new ApprovalFormService(
+      prisma as never,
+      files as never,
+      { record: jest.fn() } as never
+    );
+
+    await expect(service.generateForInstance("inst-1", "user-chair"))
+      .rejects.toThrow("COS temporarily unavailable");
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(prisma.pdfDocument.create).not.toHaveBeenCalled();
+  });
+
+  it("does not backfill a historical approval from the user's current signature", async () => {
+    const prisma = buildPrisma({
+      approvalActionLog: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "legacy-log-1",
+          actorUserId: "user-chair",
+          action: "approve",
+          comment: "历史审批",
+          approvedRoleKey: null,
+          signatureFileIdSnapshot: null,
+          createdAt: new Date("2026-06-24T08:30:00.000Z")
+        }])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "user-applicant", name: "申请人甲", signatureFileId: null },
+          { id: "user-chair", name: "董事长乙", signatureFileId: "current-signature" }
+        ])
+      }
+    });
+    const files = {
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" }),
+      getFileBuffer: jest.fn()
+    };
+    const service = new ApprovalFormService(prisma as never, files as never, { record: jest.fn() } as never);
+
+    await service.generateForInstance("inst-1", "user-chair");
+
+    expect(files.getFileBuffer).not.toHaveBeenCalledWith("current-signature");
   });
 
   it("renders a contract advance approval form without querying a null settlement", async () => {

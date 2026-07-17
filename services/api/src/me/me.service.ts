@@ -7,6 +7,10 @@ import {
   type RoleKey
 } from "@jiangkong/shared-domain";
 import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
+import {
+  resolveApprovalReviewIdentity,
+  type FrozenApprovalNode
+} from "../approval/approval-review-identity";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { dbMoneyToBigInt, formatMoneyCentsAsYuan } from "../money/decimal-money";
@@ -85,7 +89,7 @@ interface ProjectRoleScope {
   roleKeys: RoleKey[];
 }
 
-interface ApprovalNode {
+interface ApprovalNode extends FrozenApprovalNode {
   name?: unknown;
   roleKeys?: unknown;
   approvedRoleKeys?: unknown;
@@ -1045,22 +1049,11 @@ export class MeService {
   }
 
   private canActOnApprovalNode(node: ApprovalNode, roleKeys: RoleKey[], userId: string) {
-    const approvedRoleKeys = new Set(this.stringArray(node.approvedRoleKeys));
-    const pendingRoleKeys = this.stringArray(node.roleKeys).filter(
-      (role) => !approvedRoleKeys.has(role)
-    );
-    const hasRoleTodo = pendingRoleKeys.some((role) => roleKeys.includes(role as RoleKey));
-    const assignments = Array.isArray(node.assignments)
-      ? (node.assignments as ApprovalAssignment[])
-      : [];
-    const hasAssignmentTodo = assignments.some(
-      (assignment) =>
-        assignment.toUserId === userId &&
-        typeof assignment.fromRoleKey === "string" &&
-        !approvedRoleKeys.has(assignment.fromRoleKey)
-    );
-
-    return hasRoleTodo || hasAssignmentTodo;
+    return Boolean(resolveApprovalReviewIdentity({
+      node,
+      actorUserId: userId,
+      actorRoleKeys: roleKeys
+    }));
   }
 
   private hasDirectRoleTodo(node: ApprovalNode, roleKeys: RoleKey[]) {
@@ -1075,19 +1068,17 @@ export class MeService {
     const assignments = Array.isArray(node.assignments)
       ? (node.assignments as ApprovalAssignment[])
       : [];
-    return assignments.some(
-      (assignment) =>
-        assignment.toUserId === userId &&
-        typeof assignment.fromRoleKey === "string" &&
-        !approvedRoleKeys.has(assignment.fromRoleKey)
-    );
-  }
-
-  private pendingRoleKeys(node: ApprovalNode): RoleKey[] {
-    const approvedRoleKeys = new Set(this.stringArray(node.approvedRoleKeys));
-    return this.stringArray(node.roleKeys)
-      .filter((role) => !approvedRoleKeys.has(role))
-      .map((role) => role as RoleKey);
+    return assignments.some((assignment) => {
+      if (assignment.toUserId !== userId || typeof assignment.fromRoleKey !== "string") {
+        return false;
+      }
+      if (approvedRoleKeys.has(assignment.fromRoleKey)) return false;
+      return Boolean(resolveApprovalReviewIdentity({
+        node,
+        actorUserId: userId,
+        actorRoleKeys: []
+      }));
+    });
   }
 
   private async hasDelegatedApprovalTodo(
@@ -1096,24 +1087,21 @@ export class MeService {
     node: ApprovalNode,
     evaluatedAt: Date
   ): Promise<boolean> {
-    const nodeRoleKeys = this.pendingRoleKeys(node);
-    if (!nodeRoleKeys.length) {
-      return false;
-    }
-
     const delegatorIds = await activeApprovalDelegatorIds(
       this.prisma,
       userId,
       evaluatedAt
     );
-    for (const delegatorId of delegatorIds) {
-      const delegatorRoleKeys = await this.roleKeysForUserProject(delegatorId, projectId);
-      if (nodeRoleKeys.some((role) => delegatorRoleKeys.includes(role))) {
-        return true;
-      }
-    }
-
-    return false;
+    const activeDelegators = await Promise.all(delegatorIds.map(async (delegatorId) => ({
+      userId: delegatorId,
+      roleKeys: await this.roleKeysForUserProject(delegatorId, projectId)
+    })));
+    return Boolean(resolveApprovalReviewIdentity({
+      node,
+      actorUserId: userId,
+      actorRoleKeys: [],
+      activeDelegators
+    }));
   }
 
   private async roleKeysForUserProject(userId: string, projectId: string): Promise<RoleKey[]> {

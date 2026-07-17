@@ -79,6 +79,27 @@ describe("assertOrdinaryApplicantCannotReview", () => {
       })
     ).not.toThrow();
   });
+
+  it("冻结领导候选调岗后仍按审批身份允许二次确认", () => {
+    expect(() => assertOrdinaryApplicantCannotReview({
+      applicantUserId: "leader-1",
+      actorUserId: "leader-1",
+      actorRoleKeys: [],
+      approvedRoleKey: "chairman",
+      representedUserId: "leader-1"
+    })).not.toThrow();
+  });
+
+  it("节点指派不能制造领导自审例外", () => {
+    expect(() => assertOrdinaryApplicantCannotReview({
+      applicantUserId: "delegate-1",
+      actorUserId: "delegate-1",
+      actorRoleKeys: [],
+      approvedRoleKey: "chairman",
+      representedUserId: "leader-1",
+      viaAssignment: true
+    })).toThrow("申请人不能审批自己发起的业务");
+  });
 });
 
 describe("confirmApprovalSelfReview", () => {

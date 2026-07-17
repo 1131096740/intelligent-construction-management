@@ -4,6 +4,14 @@ import { approvalElapsedHours, canRemindApproval, type RoleKey } from "@jiangkon
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
 import { ApprovalFormService } from "../approval/approval-form.service";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
+import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
+import {
+  isGovernedFrozenApprovalNode,
+  resolveApprovalReviewIdentity,
+  assertActiveApprovalRecipient
+} from "../approval/approval-review-identity";
+import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
+import { lockApprovalReviewRow } from "../approval/approval-review-lock";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { ContractNumberingService } from "../contract-workbench/contract-numbering.service";
@@ -45,6 +53,9 @@ interface ContractApprovalNode {
   roleKeys: RoleKey[];
   approvedRoleKeys?: RoleKey[];
   assignments?: ContractApprovalAssignment[];
+  candidateUserIds?: string[];
+  candidateUserIdsByRole?: Partial<Record<RoleKey, string[]>>;
+  selectedUserId?: string;
 }
 
 const CONTRACT_APPROVAL_NODES = [
@@ -1380,6 +1391,9 @@ export class ContractService {
 
     let completedInstanceId: string | undefined;
     const result = await this.prisma.$transaction(async (tx) => {
+      await lockApprovalReviewRow(tx, Prisma.sql`
+        SELECT "id" FROM "ContractVersion" WHERE "id" = ${contractVersionId} FOR UPDATE
+      `);
       const version = await tx.contractVersion.findUnique({
         where: { id: contractVersionId }
       });
@@ -1391,6 +1405,15 @@ export class ContractService {
       if (version.status !== "in_approval") {
         throw new Error("当前合同已离开审批中，不能继续处理审批");
       }
+
+      await lockApprovalReviewRow(tx, Prisma.sql`
+        SELECT "id" FROM "ApprovalInstance"
+        WHERE "businessType" = 'contract_version'
+          AND "businessId" = ${version.id}
+          AND "flowType" = 'contract.approve'
+          AND "status" = 'in_progress'
+        FOR UPDATE
+      `);
 
       const instance = await tx.approvalInstance.findFirst({
         where: {
@@ -1413,29 +1436,42 @@ export class ContractService {
       }
 
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, version.contractId);
-      let approvedRoleKey =
-        currentNode.roleKeys.find((role) => actorRoleKeys.includes(role)) ??
-        currentNode.assignments?.find((assignment) => assignment.toUserId === actorUserId)
-          ?.fromRoleKey;
-
-      if (!approvedRoleKey) {
-        approvedRoleKey = await this.resolveDelegatedRoleKey(
-          tx,
-          actorUserId,
-          version.contractId,
-          currentNode.roleKeys
-        );
+      const identityNode = input.decision === "approve"
+        ? currentNode
+        : { ...currentNode, approvedRoleKeys: [] };
+      let identity = resolveApprovalReviewIdentity({
+        node: identityNode,
+        actorUserId,
+        actorRoleKeys
+      });
+      if (!identity) {
+        const delegatorIds = this.delegations
+          ? await this.delegations.activeDelegatorIds(tx, actorUserId)
+          : await activeApprovalDelegatorIds(tx, actorUserId);
+        const activeDelegators = await Promise.all(delegatorIds.map(async (userId) => ({
+          userId,
+          roleKeys: await this.loadActorRoleKeys(tx, userId, version.contractId)
+        })));
+        identity = resolveApprovalReviewIdentity({ node: identityNode, actorUserId, actorRoleKeys, activeDelegators });
       }
-
-      if (!approvedRoleKey) {
+      if (!identity) {
         throw new Error("当前账号无权处理该合同审批节点");
       }
+      const approvedRoleKey = identity.approvedRoleKey;
+      const signature = await snapshotApprovalSignature(tx, actorUserId, {
+        required: input.decision === "approve" && isGovernedFrozenApprovalNode(currentNode)
+      });
 
       const selfReview = await confirmApprovalSelfReview({
         applicantUserId: instance.applicantUserId,
         actorUserId,
-        actorRoleKeys,
+        actorRoleKeys: identity.representedUserId === actorUserId &&
+          !identity.viaAssignment
+          ? Array.from(new Set([...actorRoleKeys, approvedRoleKey]))
+          : actorRoleKeys,
         approvedRoleKey,
+        representedUserId: identity.representedUserId,
+        viaAssignment: identity.viaAssignment,
         selfReviewReason: input.selfReviewReason,
         confirmationPassword: input.confirmationPassword,
         confirmPassword: this.auth
@@ -1474,6 +1510,8 @@ export class ContractService {
             action: "reject_previous",
             actorUserId,
             comment: input.comment?.trim() || undefined,
+            approvedRoleKey,
+            representedUserId: identity.representedUserId,
             ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
           }
         });
@@ -1517,6 +1555,8 @@ export class ContractService {
             action: "return_to_applicant",
             actorUserId,
             comment: input.comment?.trim() || undefined,
+            approvedRoleKey,
+            representedUserId: identity.representedUserId,
             ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
           }
         });
@@ -1571,6 +1611,14 @@ export class ContractService {
           action: input.decision === "approve" ? "approve" : "reject",
           actorUserId,
           comment: input.comment?.trim() || undefined,
+          approvedRoleKey,
+          representedUserId: identity.representedUserId,
+          ...(input.decision === "approve" && isGovernedFrozenApprovalNode(currentNode)
+            ? {
+                signatureFileIdSnapshot: signature.fileId,
+                signatureSha256Snapshot: signature.sha256
+              }
+            : {}),
           ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
         }
       });
@@ -2229,31 +2277,6 @@ export class ContractService {
     return this.formatCents(value).replace(" CNY", "");
   }
 
-  // 常驻委托台账消费：本人岗位/节点指派都不命中时，看是否有在窗口内的委托人持有该节点角色。
-  private async resolveDelegatedRoleKey(
-    tx: Prisma.TransactionClient,
-    actorUserId: string,
-    contractId: string,
-    nodeRoleKeys: RoleKey[]
-  ): Promise<RoleKey | undefined> {
-    if (!this.delegations) {
-      return undefined;
-    }
-
-    const delegatorIds = await this.delegations.activeDelegatorIds(tx, actorUserId);
-
-    for (const delegatorId of delegatorIds) {
-      const delegatorRoleKeys = await this.loadActorRoleKeys(tx, delegatorId, contractId);
-      const match = nodeRoleKeys.find((role) => delegatorRoleKeys.includes(role));
-
-      if (match) {
-        return match;
-      }
-    }
-
-    return undefined;
-  }
-
   private async assignApproval(
     kind: ContractApprovalAssignment["kind"],
     contractVersionId: string,
@@ -2265,6 +2288,7 @@ export class ContractService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      await lockApprovalReviewRow(tx, Prisma.sql`SELECT "id" FROM "ContractVersion" WHERE "id" = ${contractVersionId} FOR UPDATE`);
       const version = await tx.contractVersion.findUnique({
         where: { id: contractVersionId }
       });
@@ -2276,6 +2300,12 @@ export class ContractService {
       if (version.status !== "in_approval") {
         throw new Error("当前合同不在审批中，不能转交或委托审批");
       }
+
+      await lockApprovalReviewRow(tx, Prisma.sql`
+        SELECT "id" FROM "ApprovalInstance" WHERE "businessType" = 'contract_version'
+          AND "businessId" = ${version.id} AND "flowType" = 'contract.approve'
+          AND "status" = 'in_progress' FOR UPDATE
+      `);
 
       const instance = await tx.approvalInstance.findFirst({
         where: {
@@ -2298,11 +2328,22 @@ export class ContractService {
       }
 
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, version.contractId);
-      const fromRoleKey = currentNode.roleKeys.find((role) => actorRoleKeys.includes(role));
-
-      if (!fromRoleKey) {
+      let identity = resolveApprovalReviewIdentity({ node: currentNode, actorUserId, actorRoleKeys });
+      if (!identity) {
+        const delegatorIds = this.delegations
+          ? await this.delegations.activeDelegatorIds(tx, actorUserId)
+          : await activeApprovalDelegatorIds(tx, actorUserId);
+        const activeDelegators = await Promise.all(delegatorIds.map(async (userId) => ({
+          userId,
+          roleKeys: await this.loadActorRoleKeys(tx, userId, version.contractId)
+        })));
+        identity = resolveApprovalReviewIdentity({ node: currentNode, actorUserId, actorRoleKeys, activeDelegators });
+      }
+      if (!identity) {
         throw new Error("当前账号无权转交或委托该合同审批节点");
       }
+      const fromRoleKey = identity.approvedRoleKey;
+      await assertActiveApprovalRecipient(tx, input.toUserId);
 
       const nextNodes = [...nodes];
       const nextAssignments = [
@@ -2310,11 +2351,11 @@ export class ContractService {
           (assignment) =>
             !(
               assignment.kind === kind &&
-              assignment.fromUserId === actorUserId &&
+              assignment.fromUserId === identity.representedUserId &&
               assignment.fromRoleKey === fromRoleKey
             )
         ),
-        { kind, fromUserId: actorUserId, fromRoleKey, toUserId: input.toUserId }
+        { kind, fromUserId: identity.representedUserId, fromRoleKey, toUserId: input.toUserId }
       ];
       nextNodes[instance.currentNodeIndex] = { ...currentNode, assignments: nextAssignments };
 
@@ -2327,7 +2368,9 @@ export class ContractService {
         data: {
           approvalInstanceId: instance.id,
           action: kind,
-          actorUserId
+          actorUserId,
+          approvedRoleKey: fromRoleKey,
+          representedUserId: identity.representedUserId
         }
       });
 
@@ -2335,7 +2378,7 @@ export class ContractService {
         const startsAt = new Date();
         await tx.approvalDelegation.create({
           data: {
-            fromUserId: actorUserId,
+            fromUserId: identity.representedUserId,
             toUserId: input.toUserId,
             startsAt,
             // ponytail: 临时台账窗口；全局委托管理上线后由其维护 endsAt。

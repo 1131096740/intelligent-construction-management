@@ -1,6 +1,38 @@
 import { approvalReviewAccessOnFrozenNode } from "./approval-node-access";
 
 describe("approvalReviewAccessOnFrozenNode", () => {
+  it("rejects a same-role user who is not the frozen candidate", () => {
+    expect(approvalReviewAccessOnFrozenNode(
+      [{ roleKeys: ["finance_director"], candidateUserIds: ["finance-1"] }],
+      0,
+      ["finance_director"],
+      "finance-2",
+      "applicant-1",
+      []
+    )).toEqual({ canAct: false, canReview: false, requiresSelfReviewConfirmation: false });
+  });
+
+  it("allows a frozen candidate after a role change", () => {
+    expect(approvalReviewAccessOnFrozenNode(
+      [{ roleKeys: ["finance_director"], candidateUserIdsByRole: { finance_director: ["finance-1"] } }],
+      0,
+      [],
+      "finance-1",
+      "applicant-1",
+      []
+    )).toEqual({ canAct: true, canReview: true, requiresSelfReviewConfirmation: false });
+  });
+
+  it("does not let an empty governed candidate list fall back to a legacy role", () => {
+    expect(approvalReviewAccessOnFrozenNode(
+      [{ roleKeys: ["finance_director"], candidateUserIds: [] }],
+      0,
+      ["finance_director"],
+      "finance-1",
+      "applicant-1",
+      []
+    ).canAct).toBe(false);
+  });
   it("allows leader final self-review only from the same direct pending role", () => {
     expect(
       approvalReviewAccessOnFrozenNode(
