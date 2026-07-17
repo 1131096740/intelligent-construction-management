@@ -1,4 +1,11 @@
-import { IsDateString, IsIn, MaxLength } from "class-validator";
+import {
+  IsArray,
+  IsDateString,
+  IsIn,
+  IsOptional,
+  IsString,
+  MaxLength
+} from "class-validator";
 import {
   SPOT_PROCUREMENT_PAYMENT_METHODS,
   type SpotProcurementPaymentMethod
@@ -23,13 +30,32 @@ export class RecordSpotProcurementPaymentDto {
   })
   paymentMethod!: SpotProcurementPaymentMethod;
 
+  @IsOptional()
   @IsRequiredText({
     requiredMessage: "付款凭证不能为空",
     typeMessage: "付款凭证编号必须是文字",
     blankMessage: "付款凭证不能为空白"
   })
   @MaxLength(128, { message: "付款凭证编号不能超过 128 个字符" })
-  voucherFileId!: string;
+  voucherFileId?: string;
+
+  @IsOptional()
+  @IsArray({ message: "付款凭证必须是文件编号数组" })
+  @IsString({ each: true, message: "付款凭证编号必须是文字" })
+  @MaxLength(128, {
+    each: true,
+    message: "付款凭证编号不能超过 128 个字符"
+  })
+  voucherFileIds?: string[];
+
+  @IsOptional()
+  @IsRequiredText({
+    requiredMessage: "付款渠道编号不能为空",
+    typeMessage: "付款渠道编号必须是文字",
+    blankMessage: "付款渠道编号不能为空白"
+  })
+  @MaxLength(128, { message: "付款渠道编号不能超过 128 个字符" })
+  paymentChannelId?: string;
 
   @IsRequiredText({
     requiredMessage: "幂等键不能为空",

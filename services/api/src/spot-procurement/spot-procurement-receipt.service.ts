@@ -143,6 +143,11 @@ type ProcurementLineLockRow = {
   specification: string | null;
   unit: string;
   quantity: Prisma.Decimal;
+  unitPrice: Prisma.Decimal | null;
+};
+
+type PaymentLinePriceRow = {
+  procurementLineId: string;
   unitPrice: Prisma.Decimal;
 };
 
@@ -465,6 +470,12 @@ export class SpotProcurementReceiptService {
             "零星采购收货当前版本坐标不一致，请刷新后重试"
           );
         }
+        const firstActualPayment =
+          await this.findActualPaymentExecution(
+            tx,
+            procurementId,
+            receipt.procurementVersionId
+          );
         const versionRevisionNos = versionRevisions.map(
           (item) => item.revisionNo
         );
@@ -534,6 +545,10 @@ export class SpotProcurementReceiptService {
             procurementVersionStatus: version.status,
             status: receipt.status,
             currentRevisionNo: receipt.currentRevisionNo,
+            receiptOpen: Boolean(firstActualPayment),
+            blockedReason: firstActualPayment
+              ? null
+              : "待财务登记实际付款后开放收货确认",
             handler: {
               id: receipt.handlerUserId,
               name:
@@ -667,7 +682,7 @@ export class SpotProcurementReceiptService {
           actorUserId,
           "采购经办人不存在或已停用"
         );
-        this.assertReceiptBusinessOpen(context);
+        await this.assertReceiptBusinessOpen(tx, context);
         this.assertPhotoAppendable(context);
         await this.requireActiveProjectMember(
           tx,
@@ -746,16 +761,19 @@ export class SpotProcurementReceiptService {
           procurementId
         );
         await this.requireReceiptActor(tx, context, actorUserId);
-        this.assertReceiptBusinessOpen(context);
+        await this.assertReceiptBusinessOpen(tx, context);
         this.assertDraftEditable(context);
 
         const procurementLines = await this.lockProcurementLines(
           tx,
           context.version.id
         );
+        const paymentLinePrices =
+          await this.lockPaymentLinePrices(tx, context);
         const prepared = this.prepareReceiptLines(
           input.lines,
-          procurementLines
+          procurementLines,
+          this.paymentLinePriceMap(paymentLinePrices)
         );
         const totalActualCostCents = sumActualCost(prepared);
 
@@ -942,7 +960,7 @@ export class SpotProcurementReceiptService {
             procurementId
           );
           await this.requireReceiptActor(tx, context, actorUserId);
-          this.assertReceiptBusinessOpen(context);
+          await this.assertReceiptBusinessOpen(tx, context);
           this.assertPhotoAppendable(context);
           this.assertPhotoSnapshotCurrent(context, snapshot);
           this.assertReceiptPhotoCount(
@@ -1122,7 +1140,7 @@ export class SpotProcurementReceiptService {
           procurementId
         );
         await this.requireReceiptActor(tx, context, actorUserId);
-        this.assertReceiptBusinessOpen(context);
+        await this.assertReceiptBusinessOpen(tx, context);
         this.assertDraftEditable(context);
 
         const rows = await tx.$queryRaw<ReceiptPhotoLockRow[]>(
@@ -1278,20 +1296,23 @@ export class SpotProcurementReceiptService {
           context,
           actorUserId
         );
-        this.assertReceiptBusinessOpen(context);
+        await this.assertReceiptBusinessOpen(tx, context);
         this.assertDraftEditable(context);
 
         const procurementLines = await this.lockProcurementLines(
           tx,
           context.version.id
         );
+        const paymentLinePrices =
+          await this.lockPaymentLinePrices(tx, context);
         const receiptLines = await this.lockReceiptLines(
           tx,
           context
         );
         const recalculated = this.validateStoredReceiptLines(
           procurementLines,
-          receiptLines
+          receiptLines,
+          this.paymentLinePriceMap(paymentLinePrices)
         );
         if (
           recalculated.some((line) => line.replenishmentPending)
@@ -1455,7 +1476,7 @@ export class SpotProcurementReceiptService {
           actorUserId,
           context.receipt.projectId
         );
-        this.assertReceiptBusinessOpen(context);
+        await this.assertReceiptBusinessOpen(tx, context);
         this.assertReceiptSubmissionCoordinates(
           context,
           "submitted",
@@ -1466,13 +1487,16 @@ export class SpotProcurementReceiptService {
           tx,
           context.version.id
         );
+        const paymentLinePrices =
+          await this.lockPaymentLinePrices(tx, context);
         const storedLines = await this.lockReceiptLines(
           tx,
           context
         );
         const receiptLines = this.validateStoredReceiptLines(
           procurementLines,
-          storedLines
+          storedLines,
+          this.paymentLinePriceMap(paymentLinePrices)
         );
         const photos = await this.lockReceiptPhotos(
           tx,
@@ -1629,7 +1653,7 @@ export class SpotProcurementReceiptService {
           actorUserId,
           context.receipt.projectId
         );
-        this.assertReceiptBusinessOpen(context);
+        await this.assertReceiptBusinessOpen(tx, context);
         this.assertReceiptSubmissionCoordinates(
           context,
           "reviewed",
@@ -1708,9 +1732,12 @@ export class SpotProcurementReceiptService {
           tx,
           context.version.id
         );
+        const paymentLinePrices =
+          await this.lockPaymentLinePrices(tx, context);
         const receiptLines = this.validateStoredReceiptLines(
           procurementLines,
-          await this.lockReceiptLines(tx, context)
+          await this.lockReceiptLines(tx, context),
+          this.paymentLinePriceMap(paymentLinePrices)
         );
         const review =
           await tx.spotProcurementReceiptReview.create({
@@ -1894,7 +1921,7 @@ export class SpotProcurementReceiptService {
           procurementId
         );
         await this.requireReceiptActor(tx, context, actorUserId);
-        this.assertReceiptBusinessOpen(context);
+        await this.assertReceiptBusinessOpen(tx, context);
         this.assertPhotoAppendable(context);
         this.assertReceiptPhotoCount(
           await this.lockReceiptPhotos(tx, context)
@@ -1949,7 +1976,8 @@ export class SpotProcurementReceiptService {
 
   private prepareReceiptLines(
     inputs: UpdateReceiptDraftLineDto[],
-    procurementLines: ProcurementLineLockRow[]
+    procurementLines: ProcurementLineLockRow[],
+    paymentLinePrices: Map<string, Prisma.Decimal>
   ): PreparedReceiptLine[] {
     if (inputs.length !== procurementLines.length) {
       throw new BadRequestException(
@@ -2019,7 +2047,7 @@ export class SpotProcurementReceiptService {
         ),
         actualCostCents: calculateReceiptActualCostCents(
           qualifiedQuantity,
-          procurementLine.unitPrice
+          this.receiptUnitPrice(procurementLine, paymentLinePrices)
         )
       };
     });
@@ -2027,7 +2055,8 @@ export class SpotProcurementReceiptService {
 
   private validateStoredReceiptLines(
     procurementLines: ProcurementLineLockRow[],
-    receiptLines: ReceiptLineLockRow[]
+    receiptLines: ReceiptLineLockRow[],
+    paymentLinePrices: Map<string, Prisma.Decimal>
   ): Array<ReceiptLineLockRow & { actualCostCents: bigint }> {
     if (
       procurementLines.length === 0 ||
@@ -2081,7 +2110,7 @@ export class SpotProcurementReceiptService {
         ...line,
         actualCostCents: calculateReceiptActualCostCents(
           line.qualifiedQuantity,
-          procurementLine.unitPrice
+          this.receiptUnitPrice(procurementLine, paymentLinePrices)
         )
       };
     });
@@ -2211,7 +2240,10 @@ export class SpotProcurementReceiptService {
     }
   }
 
-  private assertReceiptBusinessOpen(context: LockedReceiptContext) {
+  private async assertReceiptBusinessOpen(
+    tx: Prisma.TransactionClient,
+    context: LockedReceiptContext
+  ) {
     this.pilot.assertEnabled(context.procurement.projectId);
     if (
       context.procurement.status !== "approved_in_progress" ||
@@ -2244,6 +2276,16 @@ export class SpotProcurementReceiptService {
     }
     if (context.receipt.status === "locked") {
       throw new ConflictException("收货单已锁定，不能继续修改");
+    }
+    const execution = await this.findActualPaymentExecution(
+      tx,
+      context.procurement.id,
+      context.version.id
+    );
+    if (!execution) {
+      throw new ConflictException(
+        "尚未登记实际付款，暂不能办理收货确认"
+      );
     }
   }
 
@@ -2739,6 +2781,80 @@ export class SpotProcurementReceiptService {
       ORDER BY "id"
       FOR UPDATE
     `);
+  }
+
+  private async findActualPaymentExecution(
+    tx: Prisma.TransactionClient,
+    procurementId: string,
+    procurementVersionId: string
+  ): Promise<{ id: string; paymentId: string } | null> {
+    const rows = await tx.$queryRaw<
+      Array<{ id: string; paymentId: string }>
+    >(Prisma.sql`
+      SELECT
+        execution."id",
+        execution."paymentId"
+      FROM "SpotProcurementPaymentExecution" execution
+      INNER JOIN "SpotProcurementPayment" payment
+        ON payment."id" = execution."paymentId"
+      WHERE payment."procurementId" = ${procurementId}
+        AND payment."procurementVersionId" = ${procurementVersionId}
+        AND execution."voidedAt" IS NULL
+      ORDER BY execution."paidAt" ASC, execution."id" ASC
+      LIMIT 1
+      FOR KEY SHARE OF execution
+    `);
+    return rows[0] ?? null;
+  }
+
+  private lockPaymentLinePrices(
+    tx: Prisma.TransactionClient,
+    context: LockedReceiptContext
+  ) {
+    return tx.$queryRaw<PaymentLinePriceRow[]>(Prisma.sql`
+      SELECT
+        line."procurementLineId",
+        line."unitPrice"
+      FROM "SpotProcurementPaymentLine" line
+      INNER JOIN "SpotProcurementPayment" payment
+        ON payment."id" = line."paymentId"
+      WHERE payment."procurementId" = ${context.procurement.id}
+        AND payment."procurementVersionId" = ${context.version.id}
+        AND payment."paymentType" IS NOT NULL
+        AND payment."invalidatedAt" IS NULL
+      ORDER BY line."procurementLineId"
+      FOR UPDATE OF line
+    `);
+  }
+
+  private paymentLinePriceMap(
+    paymentLines: PaymentLinePriceRow[]
+  ) {
+    const prices = new Map<string, Prisma.Decimal>();
+    for (const line of paymentLines) {
+      if (line.unitPrice.isNegative() || prices.has(line.procurementLineId)) {
+        throw new ConflictException(
+          "付款材料单价事实不完整，请刷新后重试"
+        );
+      }
+      prices.set(line.procurementLineId, line.unitPrice);
+    }
+    return prices;
+  }
+
+  private receiptUnitPrice(
+    procurementLine: ProcurementLineLockRow,
+    paymentLinePrices: Map<string, Prisma.Decimal>
+  ) {
+    const unitPrice =
+      procurementLine.unitPrice ??
+      paymentLinePrices.get(procurementLine.id);
+    if (!unitPrice) {
+      throw new ConflictException(
+        "当前收货材料缺少付款申请冻结单价"
+      );
+    }
+    return unitPrice;
   }
 
   private lockReceiptLines(

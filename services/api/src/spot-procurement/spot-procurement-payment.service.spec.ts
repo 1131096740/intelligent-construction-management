@@ -112,6 +112,13 @@ function transactionDelegate() {
       findMany: jest.fn(),
       create: jest.fn()
     },
+    spotProcurementPaymentExecutionVoucher: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([]),
+      createMany: jest.fn()
+    },
+    spotProcurementPaymentMethodOption: { findMany: jest.fn().mockResolvedValue([]) },
+    spotProcurementPaymentChannel: { findMany: jest.fn().mockResolvedValue([]) },
     projectReceipt: { findMany: jest.fn() },
     paymentRequest: { findMany: jest.fn() },
     projectExpenseRequest: { findMany: jest.fn() },
@@ -197,6 +204,10 @@ function harness() {
     spotProcurementPaymentExecution: {
       findUnique: jest.fn().mockResolvedValue(null),
       findFirst: jest.fn().mockResolvedValue(null)
+    },
+    spotProcurementPaymentExecutionVoucher: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([])
     },
     spotProcurementPayment: {
       findUnique: jest.fn()
@@ -398,6 +409,13 @@ function executionHarness(
     storageStatus: "active",
     uploadedByUserId: "other-user"
   });
+  current.tx.fileObject.findMany.mockResolvedValue([
+    {
+      id: "file-voucher",
+      storageStatus: "active",
+      uploadedByUserId: "other-user"
+    }
+  ]);
   current.tx.projectReceipt.findMany.mockResolvedValue(
     (options.receipts ?? [10_000n]).map((amountCents) => ({
       amountCents
@@ -422,6 +440,7 @@ function executionHarness(
       validExecutionInput().paidAt
     ),
     paymentMethod: "bank_transfer",
+    paymentChannelId: null,
     executedByUserId: "finance-1",
     voucherFileId: "file-voucher",
     idempotencyKey: "spot-execution-key-1",
@@ -3095,6 +3114,73 @@ describe("SpotProcurementPaymentService", () => {
     );
     expect(current.prisma.$transaction.mock.invocationCallOrder[0]).toBeLessThan(
       current.approvalForms.tryRefreshLatestForBusiness.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("records one real-form execution against an approved channel with multiple vouchers", async () => {
+    const payment = approvedExecutionPayment({
+      paymentType: "company_direct",
+      payerCompanyEntityId: "company-1",
+      payerCompanyNameSnapshot: "云南建工集团",
+      payeeNameSnapshot: "昆明建材商行"
+    });
+    const current = executionHarness({ payment });
+    const input = validExecutionInput({
+      voucherFileId: undefined,
+      voucherFileIds: ["file-voucher-a", "file-voucher-b"],
+      paymentChannelId: "channel-bank"
+    });
+    current.tx.fileObject.findMany.mockResolvedValue([
+      { id: "file-voucher-a", storageStatus: "active", uploadedByUserId: "finance-1" },
+      { id: "file-voucher-b", storageStatus: "active", uploadedByUserId: "finance-1" }
+    ]);
+    current.tx.spotProcurementPaymentMethodOption.findMany.mockResolvedValue([
+      { paymentMethod: "bank_transfer" }
+    ]);
+    current.tx.spotProcurementPaymentChannel.findMany.mockResolvedValue([
+      { id: "channel-bank", channelType: "bank_transfer" }
+    ]);
+    current.tx.spotProcurementPaymentExecution.create.mockResolvedValue({
+      id: "execution-real-1",
+      paymentId: "payment-1",
+      amountCents: 4_000n,
+      paidAt: new Date(input.paidAt),
+      paymentMethod: "bank_transfer",
+      paymentChannelId: "channel-bank",
+      executedByUserId: "finance-1",
+      voucherFileId: null,
+      idempotencyKey: input.idempotencyKey
+    });
+
+    const result = await current.service.recordExecution("payment-1", "finance-1", input);
+
+    expect(current.tx.spotProcurementPaymentExecution.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        paymentChannelId: "channel-bank",
+        voucherFileId: null
+      })
+    });
+    expect(current.tx.spotProcurementPaymentExecutionVoucher.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          paymentExecutionId: "execution-real-1",
+          fileId: "file-voucher-a",
+          sortOrder: 1,
+          uploadedByUserId: "finance-1"
+        },
+        {
+          paymentExecutionId: "execution-real-1",
+          fileId: "file-voucher-b",
+          sortOrder: 2,
+          uploadedByUserId: "finance-1"
+        }
+      ]
+    });
+    expect(result.execution).toEqual(
+      expect.objectContaining({
+        paymentChannelId: "channel-bank",
+        voucherFileIds: ["file-voucher-a", "file-voucher-b"]
+      })
     );
   });
 

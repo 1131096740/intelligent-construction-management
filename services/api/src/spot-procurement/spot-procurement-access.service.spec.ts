@@ -80,11 +80,16 @@ type AccessFixture = {
   projectMemberUserIds?: string[];
   projectRosterUserIds?: string[];
   executions?: Array<{
+    id?: string;
     paymentId: string;
     executedByUserId: string;
     voidedByUserId?: string | null;
     voucherFileId: string;
     voidedAt: Date | null;
+  }>;
+  executionVouchers?: Array<{
+    paymentExecutionId: string;
+    fileId: string;
   }>;
   discrepancies?: Array<{
     id: string;
@@ -334,6 +339,7 @@ function buildPrisma(fixture: AccessFixture = {}) {
       findMany: jest.fn(
         ({ where }: {
           where: {
+            id?: { in: string[] };
             voucherFileId?: string;
             paymentId?: { in: string[] };
             voidedAt?: null;
@@ -341,12 +347,22 @@ function buildPrisma(fixture: AccessFixture = {}) {
         }) =>
           Promise.resolve(
             (fixture.executions ?? []).filter((row) => {
+              if (where.id && !where.id.in.includes(row.id ?? "")) return false;
               if (where.voucherFileId && row.voucherFileId !== where.voucherFileId) return false;
               if (where.paymentId && !where.paymentId.in.includes(row.paymentId)) return false;
               if (where.voidedAt === null && row.voidedAt !== null) return false;
               return true;
             })
           )
+      )
+    },
+    spotProcurementPaymentExecutionVoucher: {
+      findMany: jest.fn(({ where }: { where: { fileId: string } }) =>
+        Promise.resolve(
+          (fixture.executionVouchers ?? []).filter(
+            (row) => row.fileId === where.fileId
+          )
+        )
       )
     },
     spotProcurementDiscrepancy: {
@@ -1593,6 +1609,24 @@ describe("SpotProcurementAccessService", () => {
             voucherFileId: "file-1",
             voidedAt: null
           }
+        ]
+      },
+      "finance-executor"
+    ],
+    [
+      "multi-voucher execution evidence",
+      {
+        executions: [
+          {
+            id: "execution-1",
+            paymentId: "payment-1",
+            executedByUserId: "finance-executor",
+            voucherFileId: "legacy-voucher",
+            voidedAt: null
+          }
+        ],
+        executionVouchers: [
+          { paymentExecutionId: "execution-1", fileId: "file-1" }
         ]
       },
       "finance-executor"

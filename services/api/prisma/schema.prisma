@@ -655,6 +655,7 @@ model SpotProcurementPaymentExecution {
   amountCents      BigInt
   paidAt           DateTime
   paymentMethod    String
+  paymentChannelId String?
   executedByUserId String
   voucherFileId    String? // legacy: new executions use SpotProcurementPaymentExecutionVoucher
   idempotencyKey   String    @unique
@@ -664,6 +665,7 @@ model SpotProcurementPaymentExecution {
   createdAt        DateTime  @default(now())
 
   @@index([paymentId])
+  @@index([paymentChannelId])
   @@index([voucherFileId])
 }
 

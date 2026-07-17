@@ -105,6 +105,12 @@ function context(roleKey = "material_staff") {
       findMany: jest.fn().mockResolvedValue([]),
       updateMany: jest.fn().mockResolvedValue({ count: 0 })
     },
+    spotProcurementReceipt: {
+      create: jest.fn().mockResolvedValue({ id: "receipt-1" })
+    },
+    spotProcurementReceiptRevision: {
+      create: jest.fn().mockResolvedValue({ id: "receipt-revision-1" })
+    },
     spotProcurementPaymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
     $queryRaw: jest.fn()
   };
@@ -194,7 +200,7 @@ describe("SpotProcurementApplicationService real-form application", () => {
     });
   });
 
-  it("creates the only payment draft automatically after the final procurement approval", async () => {
+  it("creates the only payment draft and a receipt kept closed until actual payment", async () => {
     const { service, tx } = context("project_manager");
     tx.$queryRaw
       .mockResolvedValueOnce([procurement("approval_pending")])
@@ -223,6 +229,25 @@ describe("SpotProcurementApplicationService real-form application", () => {
         payeeNameSnapshot: null,
         settlementAmountCents: 0n,
         companyPaymentAmountCents: 0n
+      })
+    });
+    expect(tx.spotProcurementReceipt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        projectId: "project-1",
+        procurementId: "procurement-1",
+        procurementVersionId: "version-1",
+        handlerUserId: "material-1",
+        status: "draft",
+        currentRevisionNo: 1
+      })
+    });
+    expect(tx.spotProcurementReceiptRevision.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        receiptId: "receipt-1",
+        procurementId: "procurement-1",
+        procurementVersionId: "version-1",
+        revisionNo: 1,
+        handlerUserId: "material-1"
       })
     });
     expect(result).toMatchObject({ status: "approved_in_progress" });

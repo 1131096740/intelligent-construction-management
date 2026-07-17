@@ -114,6 +114,38 @@ describe("SpotProcurementReceiptService domain rules", () => {
     });
   });
 
+  it("does not accept client-supplied receipt costs", async () => {
+    const pipe = createApiValidationPipe();
+
+    await expect(
+      pipe.transform(
+        {
+          lines: [
+            {
+              procurementLineId: "line-1",
+              qualifiedQuantity: "1",
+              unqualifiedQuantity: "0",
+              freeGiftQuantity: "0",
+              replenishmentPending: false,
+              actualCostCents: "999999"
+            }
+          ]
+        },
+        {
+          type: "body",
+          metatype: UpdateReceiptDraftDto,
+          data: ""
+        }
+      )
+    ).rejects.toMatchObject({
+      response: {
+        errors: expect.arrayContaining([
+          "lines[0].actualCostCents 不是允许提交的字段"
+        ])
+      }
+    });
+  });
+
   it("accepts an explicit null receipt note while keeping line validation strict", async () => {
     const pipe = createApiValidationPipe();
 
@@ -214,6 +246,11 @@ describe("SpotProcurementReceiptService workflow", () => {
       | "allocation"
       | "no_invoice"
       | "exception";
+    hasActualPayment?: boolean;
+    paymentLinePrices?: Array<{
+      procurementLineId: string;
+      unitPrice: Prisma.Decimal;
+    }>;
   }) {
     const receiptStatus = options?.receiptStatus ?? "draft";
     const revisionSubmittedAt =
@@ -401,6 +438,31 @@ describe("SpotProcurementReceiptService workflow", () => {
         return options?.nonReceiptBusinessBinding
           ? [{ fileId: "original-1" }]
           : [];
+      }
+      if (
+        text.includes(
+          'FROM "SpotProcurementPaymentExecution" execution'
+        )
+      ) {
+        return options?.hasActualPayment === false
+          ? []
+          : [
+              {
+                id: "execution-1",
+                paymentId: "payment-1",
+                amountCents: 2_000n,
+                paidAt: new Date("2026-07-18T09:00:00.000Z")
+              }
+            ];
+      }
+      if (text.includes('FROM "SpotProcurementPaymentLine" line')) {
+        return (
+          options?.paymentLinePrices ??
+          procurementLines.map((line) => ({
+            procurementLineId: line.id,
+            unitPrice: line.unitPrice
+          }))
+        );
       }
       if (text.includes('FROM "SpotProcurementVersion"')) {
         return [version];
@@ -805,6 +867,31 @@ describe("SpotProcurementReceiptService workflow", () => {
     expect(harness.tx.user.findMany).toHaveBeenCalled();
   });
 
+  it("fails closed for receipt writes until at least one actual payment is recorded", async () => {
+    const harness = createHarness({ hasActualPayment: false });
+
+    await expect(
+      harness.service.updateDraft(
+        "procurement-1",
+        "handler-1",
+        completeDraft
+      )
+    ).rejects.toThrow("尚未登记实际付款");
+  });
+
+  it("keeps the pre-created receipt readable and explains why it is not open yet", async () => {
+    const harness = createHarness({ hasActualPayment: false });
+
+    await expect(
+      harness.service.getReceipt("procurement-1", "handler-1")
+    ).resolves.toMatchObject({
+      receipt: {
+        receiptOpen: false,
+        blockedReason: "待财务登记实际付款后开放收货确认"
+      }
+    });
+  });
+
   it("exposes only the current formally reviewed PDF pointer in the receipt snapshot", async () => {
     const submittedAt = new Date(
       "2026-07-17T08:30:00.000Z"
@@ -988,6 +1075,32 @@ describe("SpotProcurementReceiptService workflow", () => {
         })
       ])
     });
+  });
+
+  it("uses the payment application frozen price when the A4 application has no price", async () => {
+    const harness = createHarness({
+      paymentLinePrices: [
+        {
+          procurementLineId: "line-1",
+          unitPrice: new Prisma.Decimal("3.335")
+        },
+        {
+          procurementLineId: "line-2",
+          unitPrice: new Prisma.Decimal("10")
+        }
+      ]
+    });
+    for (const line of harness.procurementLines) {
+      (line as { unitPrice: Prisma.Decimal | null }).unitPrice = null;
+    }
+
+    await expect(
+      harness.service.updateDraft(
+        "procurement-1",
+        "handler-1",
+        completeDraft
+      )
+    ).resolves.toMatchObject({ actualCostCents: "1667" });
   });
 
   it("rejects an incomplete receipt line set instead of treating omitted lines as zero", async () => {

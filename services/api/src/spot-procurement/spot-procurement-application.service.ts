@@ -476,6 +476,43 @@ export class SpotProcurementApplicationService {
             paymentNote: null
           }
         });
+        const receipt = await tx.spotProcurementReceipt.create({
+          data: {
+            projectId: procurement.projectId,
+            procurementId: procurement.id,
+            procurementVersionId: version.id,
+            status: "draft",
+            currentRevisionNo: 1,
+            handlerUserId: version.handlerUserId,
+            note: null,
+            actualCostCents: 0n,
+            createdByUserId: actorUserId
+          }
+        });
+        await tx.spotProcurementReceiptRevision.create({
+          data: {
+            receiptId: receipt.id,
+            revisionNo: 1,
+            procurementId: procurement.id,
+            procurementVersionId: version.id,
+            handlerUserId: version.handlerUserId,
+            note: null,
+            actualCostCents: 0n,
+            createdByUserId: actorUserId
+          }
+        });
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "spot_procurement.receipt.draft.auto_create",
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.receipt,
+          businessId: receipt.id,
+          metadata: {
+            procurementId: procurement.id,
+            procurementVersionId: version.id,
+            receiptRevisionNo: 1,
+            reason: "采购审批完成后预建收货单，等待首次实际付款开放"
+          }
+        });
         await this.audit.record(tx, {
           actorUserId,
           action: "spot_procurement.payment.draft.auto_create",

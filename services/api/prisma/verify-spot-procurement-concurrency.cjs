@@ -189,10 +189,11 @@ async function assertRealFormSchemaPrerequisites(prisma) {
     ),
     prisma.$queryRaw(
       Prisma.sql`
-        SELECT "column_name", "is_nullable"
+        SELECT "table_name", "column_name", "is_nullable"
         FROM information_schema.columns
         WHERE table_schema = 'public'
           AND table_name IN (
+            'SpotProcurement',
             'SpotProcurementVersion',
             'SpotProcurementLine',
             'SpotProcurementPaymentExecution'
@@ -200,6 +201,7 @@ async function assertRealFormSchemaPrerequisites(prisma) {
           AND column_name IN (
             'supplierKey',
             'supplierNameSnapshot',
+            'approvedAmountCents',
             'totalAmountCents',
             'invoiceMode',
             'unitPrice',
@@ -226,8 +228,24 @@ async function assertRealFormSchemaPrerequisites(prisma) {
     "零星采购并发验收缺少唯一当前有效付款数据库约束"
   );
   assert(
-    nullableColumns.length === 7 &&
-      nullableColumns.every((column) => column.is_nullable === "YES"),
+    [
+      "SpotProcurement:supplierKey",
+      "SpotProcurement:supplierNameSnapshot",
+      "SpotProcurement:approvedAmountCents",
+      "SpotProcurementVersion:supplierKey",
+      "SpotProcurementVersion:supplierNameSnapshot",
+      "SpotProcurementVersion:totalAmountCents",
+      "SpotProcurementLine:invoiceMode",
+      "SpotProcurementLine:unitPrice",
+      "SpotProcurementLine:amountCents",
+      "SpotProcurementPaymentExecution:voucherFileId"
+    ].every((key) =>
+      nullableColumns.some(
+        (column) =>
+          `${column.table_name}:${column.column_name}` === key &&
+          column.is_nullable === "YES"
+      )
+    ),
     "零星采购并发验收要求旧供应商、价格、金额和单凭证列均已改为兼容可空"
   );
   assert(
@@ -497,6 +515,11 @@ async function createApprovedProcurement(prisma, input) {
       supplierKey: input.supplierKey,
       supplierNameSnapshot: input.supplierName,
       handlerUserId,
+      applicationDepartmentSnapshot: "工程部",
+      applicationNameSnapshot: "并发验收申请人",
+      purchaserNameSnapshot: "并发验收采购人",
+      purchaserDepartmentNameSnapshot: "工程部",
+      requestedArrivalAt: new Date(),
       totalAmountCents: input.totalAmountCents,
       submittedAt: new Date(),
       approvedAt: new Date(),
@@ -746,6 +769,11 @@ async function createTicketReadyProcurement(input) {
         supplierKey: `${input.procurementId}-supplier`,
         supplierNameSnapshot: `${input.procurementId} 供应商`,
         handlerUserId: HANDLER_USER_ID,
+        applicationDepartmentSnapshot: "工程部",
+        applicationNameSnapshot: "并发验收申请人",
+        purchaserNameSnapshot: "并发验收采购人",
+        purchaserDepartmentNameSnapshot: "工程部",
+        requestedArrivalAt: new Date(),
         totalAmountCents,
         createdByUserId: HANDLER_USER_ID
       }
@@ -977,19 +1005,15 @@ async function verifyCumulativeCapacityCompetition(servicesA, servicesB) {
     supplierName,
     totalAmountCents: 10_000n
   });
-  const payments = await Promise.all(
-    ["a", "b"].map((suffix) =>
-      createPaymentDraft(clientA, {
-        paymentId: `${procurementId}-payment-${suffix}`,
-        procurementId,
-        versionId,
-        code: `LXCG-CONC-CAP-P-${suffix.toUpperCase()}`,
-        supplierName,
-        settlementAmountCents: 7_000n,
-        supplierBalanceAmountCents: 0n
-      })
-    )
-  );
+  const payment = await createPaymentDraft(clientA, {
+    paymentId: `${procurementId}-payment`,
+    procurementId,
+    versionId,
+    code: "LXCG-CONC-CAP-P001",
+    supplierName,
+    settlementAmountCents: 7_000n,
+    supplierBalanceAmountCents: 0n
+  });
 
   const results = await runBehindDatabaseLock({
     blockerClient: clientA,
@@ -1000,36 +1024,30 @@ async function verifyCumulativeCapacityCompetition(servicesA, servicesB) {
       ),
     queryNeedle: "SpotProcurementVersion",
     start: () => [
-      servicesA.payment.submit(payments[0].id, HANDLER_USER_ID),
-      servicesB.payment.submit(payments[1].id, HANDLER_USER_ID)
+      servicesA.payment.submit(payment.id, HANDLER_USER_ID),
+      servicesB.payment.submit(payment.id, HANDLER_USER_ID)
     ]
   });
-  assertOneWinner(results, "采购批准金额累计额度竞争");
+  assertOneWinner(results, "同一付款申请重复提交竞争");
 
   const persisted = await clientA.spotProcurementPayment.findMany({
     where: { procurementId }
   });
-  const occupied = persisted
-    .filter((payment) => ACTIVE_PAYMENT_STATUSES.has(payment.status))
-    .reduce((sum, payment) => sum + payment.settlementAmountCents, 0n);
-  assertBigint(occupied, 7_000n, "累计额度竞争后的有效付款合计");
   assert(
-    persisted.filter((payment) => payment.status === "approval_pending")
-      .length === 1 &&
-      persisted.filter((payment) => payment.status === "draft").length === 1,
-    "累计额度竞争失败方必须完整回滚并保留草稿"
+    persisted.length === 1 && persisted[0].status === "approval_pending",
+    "同一付款申请并发提交后必须只保留一个审批中的当前付款"
   );
   assert(
     (await clientA.approvalInstance.count({
       where: {
         businessType: "spot_procurement_payment",
-        businessId: { in: payments.map((payment) => payment.id) }
+        businessId: payment.id
       }
     })) === 1,
-    "累计额度竞争只能生成一个审批实例"
+    "同一付款申请并发提交只能生成一个审批实例"
   );
   console.log(
-    "ok spot procurement cumulative capacity: two real submissions -> one winner, one Conflict/P2034"
+    "ok spot procurement current payment submit: one payment -> one winner, one Conflict/P2034"
   );
 }
 
@@ -2285,6 +2303,90 @@ async function verifyReceiptRootSubmissionAndReview(
     ]
   });
 
+  // 收货入口以第一次实际付款为开关；这里按真实 A5 付款事实准备
+  // 已完成付款和各材料的冻结单价，而不是沿用已废止的 A4 价格列。
+  const paymentId = `${procurementId}-payment-1`;
+  const paymentChannelId = `${paymentId}-cash`;
+  await clientA.spotProcurementPayment.create({
+    data: {
+      id: paymentId,
+      projectId: PROJECT_ID,
+      procurementId,
+      procurementVersionId: versionId,
+      code: `${procurementId}-P001`,
+      status: "paid",
+      settlementAmountCents: 8_335n,
+      supplierBalanceAmountCents: 0n,
+      companyPaymentAmountCents: 8_335n,
+      paidAmountCents: 8_335n,
+      executedSupplierBalanceAmountCents: 0n,
+      canceledAmountCents: 0n,
+      canceledCompanyPaymentAmountCents: 0n,
+      canceledSupplierBalanceAmountCents: 0n,
+      paymentPath: "supplier_direct",
+      paymentMethod: "cash",
+      paymentType: "company_direct",
+      merchantNameSnapshot: "收货真实事务验收商户",
+      payeeNameSnapshot: "收货真实事务验收收款方",
+      approvalAmountCents: 8_335n,
+      handlerUserId: HANDLER_USER_ID,
+      createdByUserId: HANDLER_USER_ID
+    }
+  });
+  await clientA.spotProcurementPaymentLine.createMany({
+    data: [
+      {
+        id: `${paymentId}-line-1`,
+        paymentId,
+        procurementVersionId: versionId,
+        procurementLineId: lineIds[0],
+        sortOrder: 1,
+        approvedQuantitySnapshot: new Prisma.Decimal("10"),
+        paymentQuantity: new Prisma.Decimal("10"),
+        unitPrice: new Prisma.Decimal("3.335"),
+        amountCents: 3_335n,
+        expectedInvoiceCondition: "no_invoice"
+      },
+      {
+        id: `${paymentId}-line-2`,
+        paymentId,
+        procurementVersionId: versionId,
+        procurementLineId: lineIds[1],
+        sortOrder: 2,
+        approvedQuantitySnapshot: new Prisma.Decimal("5"),
+        paymentQuantity: new Prisma.Decimal("5"),
+        unitPrice: new Prisma.Decimal("10"),
+        amountCents: 5_000n,
+        expectedInvoiceCondition: "no_invoice"
+      }
+    ]
+  });
+  await clientA.spotProcurementPaymentChannel.create({
+    data: {
+      id: paymentChannelId,
+      paymentId,
+      sortOrder: 1,
+      channelType: "cash",
+      isPrimary: true
+    }
+  });
+  await clientA.spotProcurementPayment.update({
+    where: { id: paymentId },
+    data: { primaryPaymentChannelId: paymentChannelId }
+  });
+  await clientA.spotProcurementPaymentExecution.create({
+    data: {
+      id: `${paymentId}-execution-1`,
+      paymentId,
+      amountCents: 8_335n,
+      paidAt: new Date("2026-07-18T09:00:00.000Z"),
+      paymentMethod: "cash",
+      paymentChannelId,
+      executedByUserId: FINANCE_USER_ID,
+      idempotencyKey: `${paymentId}-execution-key`
+    }
+  });
+
   let deferredConstraintFailed = false;
   try {
     await clientA.$transaction(async (tx) => {
@@ -2774,6 +2876,41 @@ async function verifyReceiptCrossColumnFileCompetition() {
           createdByUserId: HANDLER_USER_ID
         }
       });
+    });
+    const paymentId = `${item.procurementId}-payment-1`;
+    await clientA.spotProcurementPayment.create({
+      data: {
+        id: paymentId,
+        projectId: PROJECT_ID,
+        procurementId: item.procurementId,
+        procurementVersionId: item.versionId,
+        code: `${item.code}-P001`,
+        status: "paid",
+        settlementAmountCents: 100n,
+        supplierBalanceAmountCents: 0n,
+        companyPaymentAmountCents: 100n,
+        paidAmountCents: 100n,
+        executedSupplierBalanceAmountCents: 0n,
+        canceledAmountCents: 0n,
+        canceledCompanyPaymentAmountCents: 0n,
+        canceledSupplierBalanceAmountCents: 0n,
+        paymentPath: "supplier_direct",
+        paymentMethod: "cash",
+        payeeNameSnapshot: "收货文件竞争收款方",
+        handlerUserId: HANDLER_USER_ID,
+        createdByUserId: HANDLER_USER_ID
+      }
+    });
+    await clientA.spotProcurementPaymentExecution.create({
+      data: {
+        id: `${paymentId}-execution-1`,
+        paymentId,
+        amountCents: 100n,
+        paidAt: new Date("2026-07-18T09:00:00.000Z"),
+        paymentMethod: "cash",
+        executedByUserId: FINANCE_USER_ID,
+        idempotencyKey: `${paymentId}-execution-key`
+      }
     });
   }
 

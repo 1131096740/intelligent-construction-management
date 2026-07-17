@@ -661,7 +661,7 @@ export class SpotProcurementAccessService {
     const [
       attachmentBindings,
       directPaymentBindings,
-      voucherBindings,
+      legacyVoucherBindings,
       refundBindings,
       directPdfBindings,
       receiptPhotoBindings,
@@ -765,6 +765,24 @@ export class SpotProcurementAccessService {
           take: 2
         })
       ]);
+    const executionVoucherBindings =
+      await client.spotProcurementPaymentExecutionVoucher.findMany({
+        where: { fileId },
+        select: { paymentExecutionId: true }
+      });
+    const executionVoucherIds = executionVoucherBindings.map(
+      (binding) => binding.paymentExecutionId
+    );
+    const executionVoucherExecutions = executionVoucherIds.length
+      ? await client.spotProcurementPaymentExecution.findMany({
+          where: { id: { in: executionVoucherIds } },
+          select: { paymentId: true, executedByUserId: true, voidedAt: true }
+        })
+      : [];
+    const voucherBindings = [
+      ...legacyVoucherBindings,
+      ...executionVoucherExecutions
+    ];
     const replacementChain = await this.findReplacementDescendantFileIds(
       client,
       fileId

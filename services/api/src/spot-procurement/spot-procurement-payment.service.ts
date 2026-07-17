@@ -139,6 +139,10 @@ type PaymentLockRow = {
   invalidatedAt: Date | null;
   invalidatedByUserId: string | null;
   invalidatedReason: string | null;
+  paymentType: string | null;
+  merchantNameSnapshot: string | null;
+  payerCompanyEntityId: string | null;
+  payerCompanyNameSnapshot: string | null;
 };
 
 type ApprovalLockRow = {
@@ -155,6 +159,7 @@ type SpotPaymentExecutionRow = {
   amountCents: bigint;
   paidAt: Date;
   paymentMethod: string;
+  paymentChannelId: string | null;
   executedByUserId: string;
   voucherFileId: string | null;
   idempotencyKey: string;
@@ -207,7 +212,9 @@ export class SpotProcurementPaymentService {
       voucherFileId: string | null;
       paidAt: string;
       paymentMethod: string;
+      paymentChannelId: string | null;
       idempotencyKey: string;
+      voucherFileIds: string[];
     };
     payment: {
       id: string;
@@ -229,12 +236,9 @@ export class SpotProcurementPaymentService {
     if (!PAYMENT_METHODS.has(input.paymentMethod)) {
       throw new BadRequestException("实际付款方式不正确");
     }
-    const voucherFileId = requiredExecutionText(
-      input.voucherFileId,
-      "付款凭证不能为空",
-      128,
-      "付款凭证编号不能超过 128 个字符"
-    );
+    const voucherFileIds = requiredExecutionVoucherFileIds(input);
+    const voucherFileId = voucherFileIds[0];
+    const paymentChannelId = optionalExecutionText(input.paymentChannelId);
     const idempotencyKey = requiredExecutionText(
       input.idempotencyKey,
       "幂等键不能为空",
@@ -248,9 +252,10 @@ export class SpotProcurementPaymentService {
       "当前密码不能超过 256 个字符"
     );
 
-    await this.files.assertCanDownloadFileById(
-      voucherFileId,
-      actorUserId
+    await Promise.all(
+      voucherFileIds.map((fileId) =>
+        this.files.assertCanDownloadFileById(fileId, actorUserId)
+      )
     );
     await this.auth.confirmPassword(
       actorUserId,
@@ -275,6 +280,7 @@ export class SpotProcurementPaymentService {
           procurementPayments,
           paymentId
         );
+        const isRealFormPayment = Boolean(payment.paymentType);
         await this.requireActiveUser(
           tx,
           actorUserId,
@@ -299,20 +305,34 @@ export class SpotProcurementPaymentService {
             where: { idempotencyKey }
           });
         if (existingByIdempotencyKey) {
-          this.assertSameExecutionFacts(
-            existingByIdempotencyKey,
-            {
+          if (isRealFormPayment) {
+            await this.assertSameRealExecutionFacts(
+              tx,
+              existingByIdempotencyKey,
+              {
+                paymentId,
+                amountCents,
+                paidAt,
+                paymentMethod: input.paymentMethod,
+                actorUserId,
+                voucherFileIds,
+                paymentChannelId
+              }
+            );
+          } else {
+            this.assertSameExecutionFacts(existingByIdempotencyKey, {
               paymentId,
               amountCents,
               paidAt,
               paymentMethod: input.paymentMethod,
               actorUserId,
               voucherFileId
-            }
-          );
+            });
+          }
           return this.executionReadModel(
             existingByIdempotencyKey,
-            payment
+            payment,
+            isRealFormPayment ? voucherFileIds : undefined
           );
         }
         const pendingDiscrepancy =
@@ -342,6 +362,37 @@ export class SpotProcurementPaymentService {
           );
         }
 
+        let approvedChannel: { id: string; channelType: string } | null = null;
+        if (isRealFormPayment) {
+          if (
+            !payment.payerCompanyEntityId ||
+            !payment.payerCompanyNameSnapshot ||
+            !payment.payeeNameSnapshot ||
+            !paymentChannelId
+          ) {
+            throw new ConflictException(
+              "付款主体、收款对象或付款渠道未冻结，不能登记实际付款"
+            );
+          }
+          const [methods, channels] = await Promise.all([
+            tx.spotProcurementPaymentMethodOption.findMany({
+              where: { paymentId: payment.id },
+              select: { paymentMethod: true }
+            }),
+            tx.spotProcurementPaymentChannel.findMany({
+              where: { paymentId: payment.id },
+              select: { id: true, channelType: true }
+            })
+          ]);
+          if (!methods.some((row) => row.paymentMethod === input.paymentMethod)) {
+            throw new BadRequestException("实际付款方式不在审批通过的拟付款方式内");
+          }
+          approvedChannel = channels.find((row) => row.id === paymentChannelId) ?? null;
+          if (!approvedChannel || approvedChannel.channelType !== input.paymentMethod) {
+            throw new BadRequestException("实际付款渠道不属于审批通过的付款方式");
+          }
+        }
+
         const effectiveCompanyPaymentAmountCents =
           this.effectiveCompanyPaymentAmount(payment);
         const remainingCompanyPaymentAmountCents =
@@ -360,25 +411,24 @@ export class SpotProcurementPaymentService {
           );
         }
 
-        const voucher = await tx.fileObject.findUnique({
-          where: { id: voucherFileId },
-          select: {
-            id: true,
-            storageStatus: true,
-            uploadedByUserId: true
-          }
-        });
-        if (!voucher) {
+        const vouchers = isRealFormPayment
+          ? await tx.fileObject.findMany({
+              where: { id: { in: voucherFileIds } },
+              select: { id: true, storageStatus: true, uploadedByUserId: true }
+            })
+          : [await tx.fileObject.findUnique({
+              where: { id: voucherFileId },
+              select: { id: true, storageStatus: true, uploadedByUserId: true }
+            })];
+        if (vouchers.length !== voucherFileIds.length || vouchers.some((voucher) => !voucher)) {
           throw new NotFoundException("付款凭证不存在");
         }
-        if (voucher.storageStatus !== "active") {
-          throw new BadRequestException("付款凭证当前不可用");
+        for (const voucher of vouchers) {
+          if (voucher!.storageStatus !== "active") {
+            throw new BadRequestException("付款凭证当前不可用");
+          }
+          await this.files.assertCanDownloadFile(tx, voucher!.id, actorUserId);
         }
-        await this.files.assertCanDownloadFile(
-          tx,
-          voucherFileId,
-          actorUserId
-        );
 
         await this.lockProjectForExecution(
           tx,
@@ -404,26 +454,31 @@ export class SpotProcurementPaymentService {
           );
         }
 
-        const existingVoucher =
-          await tx.spotProcurementPaymentExecution.findFirst({
-            where: {
-              voucherFileId,
-              voidedAt: null
-            },
-            select: {
-              id: true,
-              paymentId: true,
-              voucherFileId: true
-            }
-          });
+        const existingVoucher = isRealFormPayment
+          ? await tx.spotProcurementPaymentExecutionVoucher.findFirst({
+              where: { fileId: { in: voucherFileIds } },
+              select: { id: true, paymentExecutionId: true, fileId: true }
+            })
+          : await tx.spotProcurementPaymentExecution.findFirst({
+              where: {
+                voucherFileId,
+                voidedAt: null
+              },
+              select: {
+                id: true,
+                paymentId: true,
+                voucherFileId: true
+              }
+            });
         if (existingVoucher) {
           throw new ConflictException(
             "该付款凭证已绑定其他有效实际付款记录"
           );
         }
-        await this.files.assertFileHasNoBusinessBinding(
-          tx,
-          voucherFileId
+        await Promise.all(
+          voucherFileIds.map((fileId) =>
+            this.files.assertFileHasNoBusinessBinding(tx, fileId)
+          )
         );
 
         const cashPoolBefore =
@@ -461,11 +516,24 @@ export class SpotProcurementPaymentService {
               amountCents,
               paidAt,
               paymentMethod: input.paymentMethod,
+              ...(isRealFormPayment
+                ? { paymentChannelId: approvedChannel!.id }
+                : {}),
               executedByUserId: actorUserId,
-              voucherFileId,
+              voucherFileId: isRealFormPayment ? null : voucherFileId,
               idempotencyKey
             }
           });
+        if (isRealFormPayment) {
+          await tx.spotProcurementPaymentExecutionVoucher.createMany({
+            data: voucherFileIds.map((fileId, index) => ({
+              paymentExecutionId: execution.id,
+              fileId,
+              sortOrder: index + 1,
+              uploadedByUserId: actorUserId
+            }))
+          });
+        }
         const updated =
           await tx.spotProcurementPayment.updateMany({
             where: {
@@ -513,6 +581,8 @@ export class SpotProcurementPaymentService {
             paidAt: paidAt.toISOString(),
             paymentMethod: input.paymentMethod,
             voucherFileId,
+            voucherFileIds,
+            paymentChannelId: isRealFormPayment ? approvedChannel!.id : null,
             actorUserId,
             statusBefore: payment.status,
             statusAfter: newStatus,
@@ -535,7 +605,8 @@ export class SpotProcurementPaymentService {
         );
         return this.executionReadModel(
           execution,
-          paymentAfter
+          paymentAfter,
+          isRealFormPayment ? voucherFileIds : undefined
         );
       });
       await this.approvalForms.tryRefreshLatestForBusiness(
@@ -556,7 +627,8 @@ export class SpotProcurementPaymentService {
             amountCents,
             paidAt,
             paymentMethod: input.paymentMethod,
-            voucherFileId,
+            voucherFileIds,
+            paymentChannelId,
             idempotencyKey
           });
         if (concurrentResult) {
@@ -580,7 +652,8 @@ export class SpotProcurementPaymentService {
             amountCents,
             paidAt,
             paymentMethod: input.paymentMethod,
-            voucherFileId,
+            voucherFileIds,
+            paymentChannelId,
             idempotencyKey
           });
         if (concurrentResult) {
@@ -2085,7 +2158,11 @@ export class SpotProcurementPaymentService {
         "approvedAt",
         "invalidatedAt",
         "invalidatedByUserId",
-        "invalidatedReason"
+        "invalidatedReason",
+        "paymentType",
+        "merchantNameSnapshot",
+        "payerCompanyEntityId",
+        "payerCompanyNameSnapshot"
       FROM "SpotProcurementPayment"
       WHERE "procurementId" = ${procurementId}
       ORDER BY "id"
@@ -2124,6 +2201,7 @@ export class SpotProcurementPaymentService {
           "amountCents",
           "paidAt",
           "paymentMethod",
+          "paymentChannelId",
           "executedByUserId",
           "voucherFileId",
           "idempotencyKey",
@@ -2254,12 +2332,57 @@ export class SpotProcurementPaymentService {
     }
   }
 
+  private async assertSameRealExecutionFacts(
+    tx: Pick<Prisma.TransactionClient | PrismaService, "spotProcurementPaymentExecutionVoucher">,
+    execution: {
+      id: string;
+      paymentId: string;
+      amountCents: bigint;
+      paidAt: Date;
+      paymentMethod: string;
+      paymentChannelId: string | null;
+      executedByUserId: string;
+    },
+    expected: {
+      paymentId: string;
+      amountCents: bigint;
+      paidAt: Date;
+      paymentMethod: string;
+      paymentChannelId: string | null;
+      actorUserId: string;
+      voucherFileIds: string[];
+    }
+  ) {
+    if (
+      execution.paymentId !== expected.paymentId ||
+      execution.amountCents !== expected.amountCents ||
+      execution.paidAt.getTime() !== expected.paidAt.getTime() ||
+      execution.paymentMethod !== expected.paymentMethod ||
+      execution.paymentChannelId !== expected.paymentChannelId ||
+      execution.executedByUserId !== expected.actorUserId
+    ) {
+      throw new ConflictException("幂等键已用于不同的实际付款事实");
+    }
+    const vouchers = await tx.spotProcurementPaymentExecutionVoucher.findMany({
+      where: { paymentExecutionId: execution.id },
+      orderBy: { sortOrder: "asc" },
+      select: { fileId: true }
+    });
+    if (
+      vouchers.length !== expected.voucherFileIds.length ||
+      vouchers.some((voucher, index) => voucher.fileId !== expected.voucherFileIds[index])
+    ) {
+      throw new ConflictException("幂等键已用于不同的实际付款事实");
+    }
+  }
+
   private executionReadModel(
     execution: {
       id: string;
       amountCents: bigint;
       paidAt: Date;
       paymentMethod: string;
+      paymentChannelId?: string | null;
       voucherFileId: string | null;
       idempotencyKey: string;
     },
@@ -2270,7 +2393,8 @@ export class SpotProcurementPaymentService {
       | "paidAmountCents"
       | "companyPaymentAmountCents"
       | "canceledCompanyPaymentAmountCents"
-    >
+    >,
+    voucherFileIds?: readonly string[]
   ) {
     const remaining =
       this.effectiveCompanyPaymentAmount(payment) -
@@ -2281,7 +2405,9 @@ export class SpotProcurementPaymentService {
         amountCents: execution.amountCents.toString(),
         paidAt: execution.paidAt.toISOString(),
         paymentMethod: execution.paymentMethod,
+        paymentChannelId: execution.paymentChannelId ?? null,
         voucherFileId: execution.voucherFileId,
+        voucherFileIds: [...(voucherFileIds ?? (execution.voucherFileId ? [execution.voucherFileId] : []))],
         idempotencyKey: execution.idempotencyKey
       },
       payment: {
@@ -2301,7 +2427,8 @@ export class SpotProcurementPaymentService {
     amountCents: bigint;
     paidAt: Date;
     paymentMethod: string;
-    voucherFileId: string;
+    voucherFileIds: string[];
+    paymentChannelId: string | null;
     idempotencyKey: string;
   }) {
     const existing =
@@ -2309,7 +2436,6 @@ export class SpotProcurementPaymentService {
         where: { idempotencyKey: input.idempotencyKey }
       });
     if (existing) {
-      this.assertSameExecutionFacts(existing, input);
       const payment =
         await this.prisma.spotProcurementPayment.findUnique({
           where: { id: input.paymentId },
@@ -2318,7 +2444,8 @@ export class SpotProcurementPaymentService {
             status: true,
             paidAmountCents: true,
             companyPaymentAmountCents: true,
-            canceledCompanyPaymentAmountCents: true
+            canceledCompanyPaymentAmountCents: true,
+            paymentType: true
           }
         });
       if (!payment) {
@@ -2326,20 +2453,34 @@ export class SpotProcurementPaymentService {
           "实际付款关联的付款申请已变化，请刷新后重试"
         );
       }
+      if (payment.paymentType) {
+        await this.assertSameRealExecutionFacts(this.prisma, existing, input);
+        return this.executionReadModel(existing, payment, input.voucherFileIds);
+      }
+      this.assertSameExecutionFacts(existing, {
+        ...input,
+        voucherFileId: input.voucherFileIds[0]
+      });
       return this.executionReadModel(existing, payment);
     }
-    const voucher =
-      await this.prisma.spotProcurementPaymentExecution.findFirst({
-        where: {
-          voucherFileId: input.voucherFileId,
-          voidedAt: null
-        },
-        select: { id: true }
-      });
+    const voucher = await this.prisma.spotProcurementPaymentExecution.findFirst({
+      where: {
+        voucherFileId: { in: input.voucherFileIds },
+        voidedAt: null
+      },
+      select: { id: true }
+    });
     if (voucher) {
       throw new ConflictException(
         "该付款凭证已绑定其他有效实际付款记录"
       );
+    }
+    const realVoucher = await this.prisma.spotProcurementPaymentExecutionVoucher.findFirst({
+      where: { fileId: { in: input.voucherFileIds } },
+      select: { id: true }
+    });
+    if (realVoucher) {
+      throw new ConflictException("该付款凭证已绑定其他有效实际付款记录");
     }
     return null;
   }
@@ -3350,6 +3491,26 @@ function requiredExecutionText(
     throw new BadRequestException(longMessage);
   }
   return normalized;
+}
+
+function optionalExecutionText(value: unknown) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized || null;
+}
+
+function requiredExecutionVoucherFileIds(input: RecordSpotProcurementPaymentDto) {
+  const source = input.voucherFileIds ?? (input.voucherFileId ? [input.voucherFileId] : []);
+  if (!source.length) {
+    throw new BadRequestException("付款凭证不能为空");
+  }
+  const ids = source.map((value) =>
+    requiredExecutionText(value, "付款凭证不能为空", 128, "付款凭证编号不能超过 128 个字符")
+  );
+  if (new Set(ids).size !== ids.length) {
+    throw new BadRequestException("同一笔实际付款不能重复上传同一凭证");
+  }
+  return ids;
 }
 
 function cashPoolAuditFacts(cashPool: {
