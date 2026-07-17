@@ -24,7 +24,7 @@ const ATTACHMENT_CATEGORIES = [
 export type SpotProcurementAttachmentCategory =
   (typeof ATTACHMENT_CATEGORIES)[number];
 
-function IsSpotProcurementQuantity(): PropertyDecorator {
+export function IsSpotProcurementQuantity(): PropertyDecorator {
   return (target, propertyKey) => {
     registerDecorator({
       name: "spotProcurementQuantity",

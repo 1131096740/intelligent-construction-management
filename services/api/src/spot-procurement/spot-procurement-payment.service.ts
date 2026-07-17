@@ -30,6 +30,8 @@ import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
 import type { RecordSpotProcurementPaymentDto } from "./dto/record-spot-procurement-payment.dto";
 import type { ReviewSpotProcurementPaymentDto } from "./dto/review-spot-procurement-payment.dto";
 import {
+  type SpotProcurementPaymentAttachmentDto,
+  type SpotProcurementPaymentChannelDto,
   SPOT_PROCUREMENT_PAYMENT_METHODS,
   type SpotProcurementPaymentPath,
   type UpdateSpotProcurementPaymentDraftDto
@@ -39,6 +41,7 @@ import { SpotProcurementClosureService } from "./spot-procurement-closure.servic
 import { deriveSpotProcurementPaymentExecutionStatus } from "./spot-procurement-payment-status";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
+import { calculateSpotProcurementLine } from "./spot-procurement-money";
 
 const HANDLER_ROLES = new Set<RoleKey>([
   "material_staff",
@@ -709,6 +712,9 @@ export class SpotProcurementPaymentService {
     actorUserId: string,
     input: UpdateSpotProcurementPaymentDraftDto
   ) {
+    if (hasRealFormPaymentFacts(input)) {
+      return this.updateRealFormDraft(paymentId, actorUserId, input);
+    }
     return this.runWrite(() =>
       this.runSerializable(async (tx) => {
         const version = await this.requireLockedVersionForPayment(
@@ -814,6 +820,19 @@ export class SpotProcurementPaymentService {
   }
 
   submit(paymentId: string, actorUserId: string) {
+    return this.runWrite(async () => {
+      const payment = await this.prisma.spotProcurementPayment.findUnique({
+        where: { id: paymentId },
+        select: { paymentType: true, merchantNameSnapshot: true }
+      });
+      if (payment?.paymentType || payment?.merchantNameSnapshot) {
+        return this.submitRealForm(paymentId, actorUserId);
+      }
+      return this.submitLegacyPayment(paymentId, actorUserId);
+    });
+  }
+
+  private submitLegacyPayment(paymentId: string, actorUserId: string) {
     return this.runWrite(async () => {
       const result = await this.runSerializable(async (tx) => {
         const version = await this.requireLockedVersionForPayment(
@@ -2512,6 +2531,417 @@ export class SpotProcurementPaymentService {
     };
   }
 
+  private updateRealFormDraft(
+    paymentId: string,
+    actorUserId: string,
+    input: UpdateSpotProcurementPaymentDraftDto
+  ) {
+    return this.runWrite(() =>
+      this.runSerializable(async (tx) => {
+        const payment = await tx.spotProcurementPayment.findUnique({
+          where: { id: paymentId }
+        });
+        if (!payment) throw new NotFoundException("零星材料付款申请不存在");
+        this.pilot.assertEnabled(payment.projectId);
+        if (payment.status !== "draft") {
+          throw new ConflictException("当前付款申请不是可编辑草稿");
+        }
+        if (payment.handlerUserId !== actorUserId) {
+          throw new ForbiddenException("只有采购经办人可以编辑付款申请");
+        }
+        const [procurement, version, procurementLines] = await Promise.all([
+          tx.spotProcurement.findUnique({ where: { id: payment.procurementId } }),
+          tx.spotProcurementVersion.findUnique({
+            where: { id: payment.procurementVersionId }
+          }),
+          tx.spotProcurementLine.findMany({
+            where: { versionId: payment.procurementVersionId },
+            orderBy: { sortOrder: "asc" }
+          })
+        ]);
+        if (
+          !procurement ||
+          !version ||
+          procurement.currentVersionId !== version.id ||
+          version.status !== "approved" ||
+          procurement.status !== "approved_in_progress"
+        ) {
+          throw new ConflictException("付款申请关联的采购批准版本已变化，请刷新后重试");
+        }
+        const prepared = await this.prepareRealFormPayment(
+          tx,
+          payment,
+          procurementLines,
+          actorUserId,
+          input
+        );
+        await tx.spotProcurementPaymentLine.deleteMany({
+          where: { paymentId: payment.id }
+        });
+        await tx.spotProcurementPaymentChannel.deleteMany({
+          where: { paymentId: payment.id }
+        });
+        await tx.spotProcurementPaymentMethodOption.deleteMany({
+          where: { paymentId: payment.id }
+        });
+        await tx.spotProcurementPaymentAttachment.deleteMany({
+          where: { paymentId: payment.id }
+        });
+        await tx.spotProcurementPaymentLine.createMany({
+          data: prepared.lines.map((line, index) => ({
+            paymentId: payment.id,
+            procurementVersionId: payment.procurementVersionId,
+            procurementLineId: line.procurementLineId,
+            sortOrder: index + 1,
+            approvedQuantitySnapshot: line.approvedQuantity,
+            paymentQuantity: line.paymentQuantity,
+            unitPrice: line.unitPrice,
+            amountCents: line.amountCents,
+            expectedInvoiceCondition: line.expectedInvoiceCondition,
+            vatRateOptionId: line.vatRateOptionId,
+            vatRateValueSnapshot: line.vatRateValueSnapshot,
+            vatRateLabelSnapshot: line.vatRateLabelSnapshot
+          }))
+        });
+        const channels = await Promise.all(
+          prepared.channels.map((channel, index) =>
+            tx.spotProcurementPaymentChannel.create({
+              data: {
+                paymentId: payment.id,
+                sortOrder: index + 1,
+                channelType: channel.channelType,
+                accountNameSnapshot: channel.accountName,
+                accountNumberSnapshot: channel.accountNumber,
+                bankNameSnapshot: channel.bankName,
+                channelNote: channel.note,
+                isPrimary: channel.isPrimary
+              }
+            })
+          )
+        );
+        await tx.spotProcurementPaymentMethodOption.createMany({
+          data: prepared.paymentMethods.map((paymentMethod, index) => ({
+            paymentId: payment.id,
+            paymentMethod,
+            sortOrder: index + 1
+          }))
+        });
+        if (prepared.attachments.length) {
+          await tx.spotProcurementPaymentAttachment.createMany({
+            data: prepared.attachments.map((attachment) => ({
+              paymentId: payment.id,
+              fileId: attachment.fileId,
+              category: attachment.category,
+              uploadedByUserId: actorUserId
+            }))
+          });
+        }
+        const primaryChannel = channels.find((channel) => channel.isPrimary);
+        const updated = await tx.spotProcurementPayment.update({
+          where: { id: payment.id },
+          data: {
+            settlementAmountCents: prepared.approvalAmountCents,
+            supplierBalanceAmountCents: 0n,
+            companyPaymentAmountCents: prepared.approvalAmountCents,
+            paymentPath:
+              prepared.paymentType === "company_direct"
+                ? "supplier_direct"
+                : "handler_reimbursement",
+            paymentMethod: primaryChannel?.channelType ?? null,
+            paymentType: prepared.paymentType,
+            merchantNameSnapshot: prepared.merchantName,
+            merchantPayeeMismatchNote: prepared.merchantPayeeMismatchNote,
+            payeePartyId: null,
+            payeeUserId:
+              prepared.paymentType === "handler_reimbursement"
+                ? actorUserId
+                : null,
+            payeeNameSnapshot: prepared.payeeName,
+            payeeAccountNameSnapshot:
+              primaryChannel?.accountNameSnapshot ?? null,
+            payeeBankNameSnapshot: primaryChannel?.bankNameSnapshot ?? null,
+            payeeBankAccountSnapshot:
+              primaryChannel?.accountNumberSnapshot ?? null,
+            approvalAmountCents: prepared.approvalAmountCents,
+            primaryPaymentChannelId: primaryChannel?.id ?? null,
+            paymentNote: null,
+            supportingAttachmentFileId: null,
+            merchantPaymentProofFileId: null,
+            balanceOverrideReason: null
+          }
+        });
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "spot_procurement.payment.real_form_draft.update",
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+          businessId: payment.id,
+          metadata: {
+            procurementId: payment.procurementId,
+            procurementVersionId: payment.procurementVersionId,
+            merchantName: prepared.merchantName,
+            paymentType: prepared.paymentType,
+            payeeName: prepared.payeeName,
+            approvalAmountCents: prepared.approvalAmountCents.toString(),
+            lineCount: prepared.lines.length,
+            channelCount: prepared.channels.length,
+            attachmentCount: prepared.attachments.length
+          }
+        });
+        return this.paymentReadModel(updated);
+      })
+    );
+  }
+
+  private submitRealForm(paymentId: string, actorUserId: string) {
+    return this.runWrite(async () => {
+      const result = await this.runSerializable(async (tx) => {
+        const payment = await tx.spotProcurementPayment.findUnique({
+          where: { id: paymentId }
+        });
+        if (!payment) throw new NotFoundException("零星材料付款申请不存在");
+        this.pilot.assertEnabled(payment.projectId);
+        if (payment.status !== "draft") {
+          throw new ConflictException("当前付款申请不是可提交草稿");
+        }
+        if (payment.handlerUserId !== actorUserId) {
+          throw new ForbiddenException("只有采购经办人可以提交付款申请");
+        }
+        const [version, lines, channels, methods] = await Promise.all([
+          tx.spotProcurementVersion.findUnique({
+            where: { id: payment.procurementVersionId }
+          }),
+          tx.spotProcurementPaymentLine.findMany({
+            where: { paymentId: payment.id },
+            orderBy: { sortOrder: "asc" }
+          }),
+          tx.spotProcurementPaymentChannel.findMany({
+            where: { paymentId: payment.id },
+            orderBy: { sortOrder: "asc" }
+          }),
+          tx.spotProcurementPaymentMethodOption.findMany({
+            where: { paymentId: payment.id },
+            orderBy: { sortOrder: "asc" }
+          })
+        ]);
+        if (
+          !version ||
+          version.status !== "approved" ||
+          !payment.paymentType ||
+          !payment.merchantNameSnapshot ||
+          !payment.payeeNameSnapshot ||
+          !lines.length ||
+          !channels.length ||
+          !methods.length ||
+          channels.filter((channel) => channel.isPrimary).length !== 1
+        ) {
+          throw new BadRequestException("请完整填写付款商户、明细、收款对象、收款渠道和拟付款方式后再提交");
+        }
+        const total = lines.reduce((sum, line) => sum + line.amountCents, 0n);
+        if (total <= 0n || total !== payment.approvalAmountCents) {
+          throw new ConflictException("付款申请金额与付款明细不一致，请刷新后重试");
+        }
+        const now = new Date();
+        const approval = await tx.approvalInstance.create({
+          data: {
+            flowType: "spot_procurement.payment.approve",
+            businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+            businessId: payment.id,
+            status: "approval_pending",
+            currentNodeIndex: 0,
+            frozenNodes: PAYMENT_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
+            applicantUserId: payment.handlerUserId
+          }
+        });
+        const updated = await tx.spotProcurementPayment.update({
+          where: { id: payment.id },
+          data: {
+            status: "approval_pending",
+            submittedAt: now,
+            submittedVersionNo: version.versionNo,
+            factsFrozenAt: now
+          }
+        });
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "spot_procurement.payment.approval.submit",
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+          businessId: payment.id,
+          metadata: {
+            approvalInstanceId: approval.id,
+            procurementId: payment.procurementId,
+            procurementVersionId: payment.procurementVersionId,
+            approvalAmountCents: total.toString(),
+            payerCompanyEntityId: null
+          }
+        });
+        return this.paymentReadModel(updated);
+      });
+      await this.approvalForms.tryRefreshLatestForBusiness(
+        SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+        paymentId,
+        actorUserId,
+        "approval.submit"
+      );
+      return result;
+    });
+  }
+
+  private async prepareRealFormPayment(
+    tx: Prisma.TransactionClient,
+    payment: { handlerUserId: string },
+    procurementLines: Array<{
+      id: string;
+      quantity: Prisma.Decimal;
+    }>,
+    actorUserId: string,
+    input: UpdateSpotProcurementPaymentDraftDto
+  ) {
+    if (
+      !input.paymentType ||
+      !input.merchantName ||
+      !input.paymentLines ||
+      !input.channels ||
+      !input.paymentMethods
+    ) {
+      throw new BadRequestException("请完整填写付款商户、明细、收款对象、收款渠道和拟付款方式");
+    }
+    const merchantName = requiredText(input.merchantName, "请填写实际商户名称");
+    const handler = await tx.user.findUnique({
+      where: { id: payment.handlerUserId },
+      select: { id: true, name: true, isActive: true }
+    });
+    if (!handler?.isActive) throw new ConflictException("采购经办人不存在或已停用");
+    const payeeName =
+      input.paymentType === "handler_reimbursement"
+        ? handler.name
+        : requiredText(input.payeeName, "请填写收款对象");
+    const merchantPayeeMismatchNote =
+      input.paymentType === "handler_reimbursement"
+        ? "经办人垫付后报回"
+        : merchantName === payeeName
+          ? null
+          : requiredText(
+              input.merchantPayeeMismatchNote,
+              "实际商户与收款对象不一致时必须填写说明"
+            );
+    const lineById = new Map(procurementLines.map((line) => [line.id, line]));
+    if (new Set(input.paymentLines.map((line) => line.procurementLineId)).size !== input.paymentLines.length) {
+      throw new BadRequestException("同一付款申请不能重复引用采购材料明细");
+    }
+    const vatRateOptionIds = input.paymentLines
+      .filter((line) => line.expectedInvoiceCondition !== "no_invoice")
+      .map((line) => requiredText(line.vatRateOptionId, "有票明细必须选择税率"));
+    const vatRates = vatRateOptionIds.length
+      ? await tx.vatRateOption.findMany({
+          where: { id: { in: vatRateOptionIds }, enabled: true },
+          select: { id: true, rateValue: true, label: true }
+        })
+      : [];
+    const vatRateById = new Map(vatRates.map((rate) => [rate.id, rate]));
+    const lines = input.paymentLines.map((line) => {
+      const source = lineById.get(line.procurementLineId);
+      if (!source) throw new BadRequestException("付款材料明细必须引用当前采购批准材料");
+      const calculated = calculateSpotProcurementLine({
+        quantity: line.paymentQuantity,
+        unitPrice: line.unitPrice
+      });
+      const paymentQuantity = new Prisma.Decimal(line.paymentQuantity);
+      if (paymentQuantity.greaterThan(source.quantity)) {
+        throw new BadRequestException("付款材料数量不能超过采购批准数量");
+      }
+      const vatRate =
+        line.expectedInvoiceCondition === "no_invoice"
+          ? null
+          : vatRateById.get(requiredText(line.vatRateOptionId, "有票明细必须选择税率"));
+      if (line.expectedInvoiceCondition !== "no_invoice" && !vatRate) {
+        throw new BadRequestException("所选税率不存在或已停用");
+      }
+      return {
+        procurementLineId: source.id,
+        approvedQuantity: source.quantity,
+        paymentQuantity,
+        unitPrice: new Prisma.Decimal(line.unitPrice),
+        amountCents: calculated.amountCents,
+        expectedInvoiceCondition: line.expectedInvoiceCondition,
+        vatRateOptionId: vatRate?.id ?? null,
+        vatRateValueSnapshot: vatRate?.rateValue ?? null,
+        vatRateLabelSnapshot: vatRate?.label ?? null
+      };
+    });
+    const approvalAmountCents = lines.reduce((sum, line) => sum + line.amountCents, 0n);
+    if (approvalAmountCents <= 0n) throw new BadRequestException("付款申请金额必须大于 0");
+    if (new Set(input.paymentMethods).size !== input.paymentMethods.length) {
+      throw new BadRequestException("拟付款方式不能重复");
+    }
+    if (input.channels.filter((channel) => channel.isPrimary).length !== 1) {
+      throw new BadRequestException("必须且只能选择一个主收款渠道");
+    }
+    const channels = input.channels.map((channel) => this.normalizeRealFormChannel(channel));
+    const primary = channels.find((channel) => channel.isPrimary);
+    if (!primary || !input.paymentMethods.includes(primary.channelType)) {
+      throw new BadRequestException("主收款渠道必须属于已选择的拟付款方式");
+    }
+    const attachments = await this.validateRealFormAttachments(
+      tx,
+      input.attachments ?? [],
+      actorUserId
+    );
+    return {
+      paymentType: input.paymentType,
+      merchantName,
+      payeeName,
+      merchantPayeeMismatchNote,
+      lines,
+      channels,
+      paymentMethods: input.paymentMethods,
+      attachments,
+      approvalAmountCents
+    };
+  }
+
+  private normalizeRealFormChannel(channel: SpotProcurementPaymentChannelDto) {
+    const accountName = optionalText(channel.accountName);
+    const accountNumber = optionalText(channel.accountNumber);
+    const bankName = optionalText(channel.bankName);
+    if (channel.channelType === "bank_transfer" && (!accountName || !accountNumber || !bankName)) {
+      throw new BadRequestException("银行收款渠道必须填写账户名称、账号和开户银行");
+    }
+    return {
+      channelType: channel.channelType,
+      accountName,
+      accountNumber,
+      bankName,
+      note: optionalText(channel.note),
+      isPrimary: channel.isPrimary
+    };
+  }
+
+  private async validateRealFormAttachments(
+    tx: Prisma.TransactionClient,
+    attachments: SpotProcurementPaymentAttachmentDto[],
+    actorUserId: string
+  ) {
+    const fileIds = attachments.map((attachment) => attachment.fileId);
+    if (new Set(fileIds).size !== fileIds.length) {
+      throw new BadRequestException("同一付款申请不能重复引用同一付款依据");
+    }
+    if (!fileIds.length) return [];
+    const files = await tx.fileObject.findMany({
+      where: { id: { in: fileIds } },
+      select: { id: true, storageStatus: true, uploadedByUserId: true }
+    });
+    if (files.length !== fileIds.length || files.some((file) => file.storageStatus !== "active")) {
+      throw new BadRequestException("付款依据不存在或已失效，请重新上传");
+    }
+    if (files.some((file) => file.uploadedByUserId !== actorUserId)) {
+      throw new ForbiddenException("付款依据必须由采购经办人本人上传");
+    }
+    return attachments.map((attachment) => ({
+      fileId: attachment.fileId,
+      category: attachment.category
+    }));
+  }
+
   private paymentReadModel(
     payment: {
       id: string;
@@ -2726,15 +3156,27 @@ function mergedText(
   return value || null;
 }
 
-function optionalText(value: string | undefined) {
+function optionalText(value: string | null | undefined) {
   const text = value?.trim();
   return text || null;
 }
 
-function requiredText(value: string, message: string) {
-  const text = value.trim();
+function requiredText(value: string | null | undefined, message: string) {
+  const text = value?.trim() ?? "";
   if (!text) throw new BadRequestException(message);
   return text;
+}
+
+function hasRealFormPaymentFacts(input: UpdateSpotProcurementPaymentDraftDto) {
+  return (
+    input.paymentType !== undefined ||
+    input.merchantName !== undefined ||
+    input.payeeName !== undefined ||
+    input.paymentLines !== undefined ||
+    input.channels !== undefined ||
+    input.paymentMethods !== undefined ||
+    input.attachments !== undefined
+  );
 }
 
 function parsePositiveExecutionAmount(value: string) {
