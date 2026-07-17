@@ -1,18 +1,70 @@
-import { Body, Controller, Get, Post } from "@nestjs/common";
-import { CompanyEntityService, type CreateCompanyEntityDto } from "./company-entity.service";
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query
+} from "@nestjs/common";
+import type { AuthenticatedUser } from "../auth/auth.types";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import {
+  CompanyEntityManagementQueryDto,
+  CreateCompanyEntityDto,
+  UpdateCompanyEntityDto,
+  UpdateCompanyEntityStatusDto
+} from "./dto/company-entity.dto";
+import { CompanyEntityService } from "./company-entity.service";
 
-// 我方公司主体字典：列表供合同创建时选择；创建为低风险字典维护，仅要求登录。
 @Controller("company-entities")
 export class CompanyEntityController {
   constructor(private readonly companyEntities: CompanyEntityService) {}
 
   @Get()
-  list() {
-    return this.companyEntities.list();
+  listActive() {
+    return this.companyEntities.listActive();
+  }
+
+  @Get("management")
+  listForManagement(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: CompanyEntityManagementQueryDto
+  ) {
+    return this.companyEntities.listForManagement(user.id, query);
+  }
+
+  @Get(":id/history")
+  history(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.companyEntities.history(id, user.id);
   }
 
   @Post()
-  create(@Body() body: CreateCompanyEntityDto) {
-    return this.companyEntities.create(body);
+  create(
+    @Body() body: CreateCompanyEntityDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.companyEntities.create(user.id, body);
+  }
+
+  @Patch(":id")
+  update(
+    @Param("id") id: string,
+    @Body() body: UpdateCompanyEntityDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.companyEntities.update(id, user.id, body);
+  }
+
+  @Post(":id/status")
+  updateStatus(
+    @Param("id") id: string,
+    @Body() body: UpdateCompanyEntityStatusDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.companyEntities.updateStatus(id, user.id, body);
   }
 }
