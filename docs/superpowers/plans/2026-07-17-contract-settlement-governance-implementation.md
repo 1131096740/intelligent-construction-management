@@ -879,7 +879,7 @@ git commit -m "feat: 按合同类型冻结审批路线"
 
 ### Task 9: M55 合同正式文件、双方授权书和用章任务
 
-> **执行校正（2026-07-17 代码审计）**：Task 9 只增加受约束的兼容数据结构与原字节 PDF 检查，不改写旧文件或旧状态。M55 的强度不得低于 M53：外键、枚举 CHECK、页数/SHA/revision CHECK、查询索引、同版本同 purpose 仅一个 active 文件，以及无回填/无 destructive DML 都必须由静态与变异测试验证，不能只断言 Prisma 模型名称存在。
+> **执行校正（2026-07-17 代码审计）**：Task 9 只增加受约束的兼容数据结构与原字节 PDF 检查，不改写旧文件或旧状态。M55 给 `ContractVersion` 增加 nullable `contractGovernanceVersion`（仅允许 1、无默认、无回填），后续仅部署后新建的草稿写 1；null 的存量草稿、在途和已生效合同继续旧链。M55 的强度不得低于 M53：外键、枚举 CHECK、页数/SHA/revision CHECK、查询索引、同版本同 purpose 仅一个 active 文件，以及无回填/无 destructive DML 都必须由静态与变异测试验证，不能只断言 Prisma 模型名称存在。
 
 **Files:**
 - Create: `services/api/prisma/migrations/20260717130000_contract_formal_documents_authorizations_and_seal_tasks/migration.sql`
@@ -925,12 +925,16 @@ model ContractFormalFile {
   declarationSnapshot Json
   declaredByUserId String
   declaredAt        DateTime
+  confirmedByUserId String?
+  confirmedAt        DateTime?
+  confirmationSnapshot Json?
   createdAt         DateTime  @default(now())
   @@index([contractVersionId, purpose, status])
 }
 
 model ContractAuthorization {
   id                String   @id @default(uuid())
+  originContractVersionId String
   side              String
   grantorName       String
   agentName         String
@@ -966,14 +970,17 @@ model ContractSealTask {
   approvedAt          DateTime?
   completedByUserId   String?
   completedAt         DateTime?
+  cancelledByUserId   String?
+  cancelledAt         DateTime?
+  cancellationReason  String?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 }
 ```
 
-保留 `ContractArchiveFile` 作为旧历史兼容，不迁移猜测旧文件用途。
+保留 `ContractArchiveFile` 作为旧历史兼容，不迁移猜测旧文件用途。新链只认 `contractGovernanceVersion=1`；null 版本继续旧用章/归档语义，禁止升级时强迫存量在途补审批前文件或 SealTask。`PdfDocument` 增加可空 `approvalInstanceId` 与受约束唯一索引，新审批单按实例冻结；旧 PdfDocument 不回填、不覆盖。
 
-迁移为四个新模型补齐到 `ContractVersion`、`FileObject`、`User`、授权记录、复用来源版本和 self-supersedes 的外键（删除策略以保留业务证据为先）；`purpose/status/side/seal task status` 使用 CHECK；正式文件和授权文件都保存 `pageCount > 0`、64 位十六进制 SHA-256、active/invalidated/superseded 状态、失效原因和替代关系；正式文件另保存不可变 `declarationSnapshot`、声明人和声明时间，不能只把签章/骑缝章/顺序声明留在前端。`sourceRevision >= 0`；`ContractSealTask(status, handlerUserId)` 建索引；使用 partial unique index 保证每个合同版本、每种 purpose 最多一个 active 正式文件。授权关联保持每版本每 side 唯一，数据库约束与服务事务共同防止失配。
+迁移为四个新模型补齐到 `ContractVersion`、`FileObject`、`User`、授权来源版本、授权记录、复用来源版本和 self-supersedes 的外键（删除策略以保留业务证据为先）；`purpose/status/side/seal task status` 使用 CHECK，SealTask 支持 `cancelled` 并要求取消人/时间/原因成组存在；正式文件和授权文件都保存 `pageCount > 0`、64 位小写十六进制 SHA-256、active/invalidated/superseded 状态、失效原因和替代关系；正式文件另保存不可变声明与最终归档确认快照、双方操作人和时间。`sourceRevision >= 1`、`supersedesId != id`；required 与 authorizationId 必须成对一致；`ContractSealTask(status, handlerUserId)` 建索引；使用 partial unique index 保证每个合同版本、每种 purpose 最多一个 active 正式文件。授权关联保持每版本每 side 唯一，数据库约束与服务事务共同防止失配。
 
 - [ ] **Step 4: 只读检查 PDF**
 
@@ -994,7 +1001,7 @@ git commit -m "feat: 增加合同签署与授权证据结构"
 
 ### Task 10: 合同审批前正式 PDF、双方授权和就绪门禁
 
-> **执行校正（2026-07-17 文件与授权审计）**：授权页属于正式审批 PDF 的组成部分，因此顺序固定为“先明确双方授权并关联有效授权文件 → 再上传完整合并审批 PDF”。授权语义变化必须递增 `draftRevision` 并使旧正式 PDF/readiness 失效；正式文件和授权服务的读取/写入/提交门禁必须接收同一个事务 `tx` 与已锁定版本，禁止各自开事务造成 TOCTOU。
+> **执行校正（2026-07-17 文件与授权审计）**：授权页属于正式审批 PDF 的组成部分，因此顺序固定为“先明确双方授权并关联有效授权文件 → 再上传完整合并审批 PDF”。部署后新建原合同/变更/补充草稿立即写 `contractGovernanceVersion=1`，存量 null 不升级。授权语义变化必须递增 `draftRevision` 并使旧正式 PDF/readiness 失效；普通草稿事实变化也必须清空旧 readiness。正式文件和授权服务的读取/写入/提交门禁必须接收同一个事务 `tx` 与已锁定版本，禁止各自开事务造成 TOCTOU。
 
 **Files:**
 - Create: `services/api/src/contract/contract-formal-file.service.ts`
@@ -1050,11 +1057,13 @@ await formalFiles.uploadApprovalVersion(versionId, actorUserId, {
 
 - [ ] **Step 4: 实现授权选择与复用**
 
-我方和乙方各保存一条明确 link；link 不存在表示“尚未选择”，绝不能解释为 `required=false`。写接口接收 `expectedRevision`，锁版本并校验经办人/可编辑状态；语义实际变化时原子递增 revision、清空 readiness，使旧正式 PDF 自动过期，相同请求重试幂等且不重复递增。`required=false` 时 authorization 必须为空，`required=true` 时必须关联新上传或可复用授权。复用只新增 link，不复制文件/授权记录；校验同一合同、side 一致、代理人相同、来源版本确有该 link、文件仍 active/SHA 可读，且范围摘要明确覆盖签署、履行、变更及补充协议。
+我方和乙方各保存一条明确 link；link 不存在表示“尚未选择”，绝不能解释为 `required=false`。写接口接收 `expectedRevision`，锁版本并校验经办人/可编辑状态；语义实际变化时原子递增 revision、清空 readiness，使旧正式 PDF 自动过期，相同请求重试幂等且不重复递增。`required=false` 时 authorization 必须为空，`required=true` 时必须关联新上传或可复用授权。复用只新增 link，不复制文件/授权记录；校验 `originContractVersionId` 与来源版本同属当前 Contract、side 和代理人一致、来源版本为 effective/superseded 且确有该 link、文件仍 active/SHA 可读，范围摘要明确覆盖签署、履行、变更及补充协议。来源 draft、跨合同、失效文件或只凭 authorizationId 均拒绝。
 
 - [ ] **Step 5: 合并到提交事务**
 
 `submitApproval()` 在改变状态和创建实例前依次验证主体快照、正式文件、授权和审批人员。`formalFiles.assertReadyForSubmission(tx, lockedVersion)` 与 `authorizations.assertReady(tx, lockedVersion)` 必须使用提交事务的同一 `tx`；文件/授权写入也锁同一版本或使用 revision/status CAS，覆盖并发上传、替换、授权修改、双击提交和网络重试。任何失败保持草稿及已填内容。若门禁阻断需要审计，不得在随后抛错回滚的同一事务中假记录；使用 tagged denial 让审计事务提交后再在外层抛出脱敏业务错误，或在回滚后单独记录并测试确实持久。
+
+固定锁序为 `Contract → ContractVersion → Authorization/FormalFile → FileObject`。`freeze()` 保存正式文件 ID/SHA/revision 和双方授权快照；相同 fileId/revision/声明的关联重试返回原记录，并发上传只留下一个 active。`contractGovernanceVersion=null` 严格走旧提交链，`=1` 缺任何新事实均 fail closed，禁止旧接口或旧 `ContractArchiveFile` 冒充新正式文件。
 
 - [ ] **Step 6: 运行定向测试**
 
@@ -1080,6 +1089,8 @@ git commit -m "feat: 增加合同签前文件与授权门禁"
 - Modify: `apps/web-admin/src/api/contract-workbench.api.test.ts`
 - Modify: `apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue`
 - Modify: `apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue`
+- Modify: `apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts`
+- Modify: `apps/web-admin/src/pages/contracts/workbench/use-contract-draft.test.ts`
 - Modify: `apps/web-admin/src/pages/contracts/ContractDetailPage.vue`
 - Modify: `apps/web-admin/src/api/core-flow-read.api.ts`
 - Modify: `apps/web-admin/src/api/core-flow-read.api.test.ts`
@@ -1105,7 +1116,9 @@ Expected: FAIL。
 
 顺序固定为“合同文档预览 → 双方授权选择/授权文件 → 乙方签章完整审批 PDF → 提交就绪”。共享工作台读模型返回两侧授权选择、关联文件、正式文件、sourceRevision/声明和 readiness；缺任一 side link 显示“尚未选择”，不伪装为“不需要”。页面只保留“提交审批”为主操作，生成/下载/上传为次级；编号规则与提交确认迁入工作台，详情页不保留并列提交主动作。上传或关联失败不清空主体、税务、清单和授权选择。
 
-TDesign Upload 使用自定义 request，禁止默认上传到未知地址；同一动作只调用一次 `/files`，成功后用返回 fileId 调业务关联路由。`/files` 失败保持所有本地输入；关联失败保留 fileId 和文件列表并提供重试；双击上传/提交被 loading guard 阻断；409/revision 冲突提示刷新但保留本地表单。点击提交先 `await saveNow()`，再刷新 readiness，最后提交冻结事实。
+TDesign Upload 使用自定义 request，禁止默认上传到未知地址；同一动作只调用一次 `/files`，成功后用返回 fileId 调业务关联路由。`/files` 失败保持所有本地输入；关联失败保留 fileId 和文件列表并提供重试；双击上传/提交被 loading guard 阻断；409/revision 冲突提示刷新但保留本地表单。
+
+`saveNow()/flush()` 在 clean 状态必须 no-op，不能因为点击提交把已上传的 R 版正式 PDF 变成 R+1 过期；dirty 时返回明确成功/失败，失败或冲突必须阻断 readiness/submit。授权或正式文件 mutation 前先 flush 普通草稿并 reload revision，授权成功后重载工作台，避免 autosave 与授权 revision 互相制造 409。点击提交先等待 flush 成功，再刷新 readiness，最后提交冻结事实；详情旧主动作只导航到工作台，不保留死的第二提交入口。
 
 - [ ] **Step 4: 运行 Web 定向测试和 UI 检查**
 
@@ -1122,7 +1135,7 @@ git commit -m "feat: 完善合同签前文件工作台"
 
 ### Task 12: 同意用章、线下盖章、最终文件与归档职责分离
 
-> **执行校正（2026-07-17 代码审计）**：现有 `approveSeal()` 会直接跳到“待归档”，必须由新服务取代。最终审批只负责原子、幂等创建“待同意用章”任务并冻结经办人；综合部主管的“同意用章”只代表允许线下取章，版本进入 `in_seal`；只有冻结经办人确认完成我方签署与盖章后，才允许上传双方最终版。所有写动作必须锁版本/任务或使用带旧状态的 CAS，不能沿用 find 后无条件 update。
+> **执行校正（2026-07-17 代码审计）**：现有 `approveSeal()` 会直接跳到“待归档”，必须由新服务取代。最终审批只负责原子、幂等创建“待同意用章”任务并冻结经办人；综合部主管的“同意用章”只代表允许线下取章，版本进入 `in_seal`；只有冻结经办人确认完成我方签署与盖章后，才允许上传双方最终版。所有写动作必须锁版本/任务或使用带旧状态的 CAS，不能沿用 find 后无条件 update。`contractGovernanceVersion=1` 走新链，null 保留旧用章/`ContractArchiveFile` 兼容；旧接口对新链必须转发新服务或明确拒绝。
 
 **Files:**
 - Create: `services/api/src/contract/contract-seal.service.ts`
@@ -1139,6 +1152,10 @@ git commit -m "feat: 完善合同签前文件工作台"
 - Modify: `services/api/src/contract/contract-read.service.spec.ts`
 - Modify: `services/api/src/approval/approval-form.service.ts`
 - Modify: `services/api/src/approval/approval-form.service.spec.ts`
+- Modify: `services/api/src/file/file.service.ts`
+- Modify: `services/api/src/file/file.service.spec.ts`
+- Modify: `services/api/src/me/me.service.ts`
+- Modify: `services/api/src/me/me.service.spec.ts`
 - Modify: `packages/shared-domain/src/core-flow-read-model.ts`
 - Modify: `packages/shared-domain/src/permissions.ts`
 - Modify: `packages/shared-domain/src/permissions.test.ts`
@@ -1170,11 +1187,15 @@ Expected: FAIL。
 
 - [ ] **Step 4: 最终签署版与审批版差异边界**
 
-最终上传使用 `ContractFormalFile(purpose='mutually_signed_final')`；仅冻结经办人且任务已完成线下签署盖章时可关联上传，服务校验 PDF、版本、页数和原审批版存在，并锁版本确保同 purpose 只有一个 active 文件。系统不机械判断文件内容差异，由上传人明确声明最终版相对审批版只新增我方签字或签章、公司公章、骑缝章和签署日期；合同部主管确认时再次确认同一声明，强制 uploader != confirmer，并生成生效事实。资料缺页/错页可退回最终文件补正；一旦主体、金额、税率、清单、付款条款、授权、范围或正文变化，旧正式文件失效并退回草稿重新审批。上传、替换、确认、退回、失效和声明内容均写审计。
+最终上传使用 `ContractFormalFile(purpose='mutually_signed_final')`；通常只允许冻结经办人且任务已完成线下签署盖章时关联上传。唯一例外：冻结经办人是唯一启用公司级合同主管时，允许该合同所属项目的启用 `contract_staff` 替代上传，由该主管确认；有另一名公司级合同主管时仍由经办人上传、另一主管确认。确认人必须是启用公司级合同主管且 `uploader != confirmer`，不能通过扩大粗权限实现例外。
+
+服务校验 PDF、版本、页数和原审批版存在，并锁版本确保同 purpose 只有一个 active 文件。系统不机械判断文件内容差异，由上传人明确声明最终版相对审批版只新增我方签字或签章、公司公章、骑缝章和签署日期；合同部主管确认时再次确认同一声明并把 confirmationSnapshot/人/时间写正式文件主事实。资料缺页/错页可退回最终文件补正；一旦主体、金额、税率、清单、付款条款、授权、范围或正文变化，旧正式文件失效、SealTask 持久改为 cancelled、readiness 清空并退回草稿重新审批。上传、替换、确认、退回、失效和声明内容均写审计。
 
 - [ ] **Step 5: 合同审批单使用冻结签名并加固下载授权**
 
-审批单只读 M54 快照；允许规格列明的经办人、合同部、实际审批人、所属项目经理、财务人员/主管、综合部主管和领导下载，仍要求密码、用途、水印和审计。`download_approval_form` 的 availableAction 必须使用同一精确 ACL，不能向无权用户显示伪可用按钮；该 ACL 仅限合同审批单，不扩成任意归档附件读取。
+审批单只读 M54 快照，并按 ApprovalInstance 唯一生成/复用，不再只按 ContractVersion 查找，防止重审错误复用旧审批单；生成失败可重试、可观测，不能事务外吞错。允许规格列明的经办人、合同部、实际审批人、所属项目经理、财务人员/主管、综合部主管和领导下载，仍要求密码、用途、水印和审计。`download_approval_form` 的 availableAction 必须使用同一精确 ACL，不能向无权用户显示伪可用按钮；该 ACL 仅限合同审批单，不扩成任意归档附件读取。
+
+`FileService` 必须在全局项目可见岗位快捷放行之前识别审批单、ContractFormalFile 和 ContractAuthorization 业务关联，执行精确 ACL；`super_admin`、非实际审批的预算/物资岗位不得通过通用 `/files/:id/download-ticket` 绕过。`MeService` 增加综合部主管“待同意用章”、冻结经办人“待完成我方签署盖章”、最终版上传（含唯一主管替代上传）和合同主管归档确认待办。
 
 - [ ] **Step 6: 运行定向测试**
 
@@ -1185,7 +1206,7 @@ Expected: PASS。
 - [ ] **Step 7: 提交**
 
 ```bash
-git add packages/shared-domain/src/core-flow-read-model.ts packages/shared-domain/src/permissions* services/api/src/contract services/api/src/approval/approval-form.service* services/api/src/file/file.service.spec.ts
+git add packages/shared-domain/src/core-flow-read-model.ts packages/shared-domain/src/permissions* services/api/src/contract services/api/src/approval/approval-form.service* services/api/src/file/file.service* services/api/src/me/me.service*
 git commit -m "feat: 分离合同同意用章与归档事实"
 ```
 
