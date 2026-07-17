@@ -805,7 +805,7 @@ git commit -m "feat: 冻结审批人员与签名事实"
 
 ### Task 8: 五类新合同审批路线和人员冻结
 
-> **执行校正（2026-07-17 代码审计）**：Task 8 依赖 Task 7 已完成“冻结人员不因调岗失权”的读、待办、HTTP Guard 和真实 review 闭环。这里只为尚未提交或重新提交的原合同生成新路线；既有在途实例不重算，合同变更继续使用现有路线直到后续 Task 14。项目岗位候选只认规范 `ProjectMember`，不把 legacy project-scoped `UserPosition` 混入新冻结事实；发现仅有遗留来源时提示先治理组织权限。
+> **执行校正（2026-07-17 代码审计）**：Task 8 依赖 Task 7 已完成“冻结人员不因调岗失权”的读、待办、HTTP Guard 和真实 review 闭环。这里只为尚未提交或重新提交的原合同生成新路线；既有在途实例不重算，合同变更继续使用现有路线直到后续 Task 14，历史接管也不套用新合同路线。项目岗位候选只认规范 `ProjectMember`，不把 legacy project-scoped `UserPosition` 混入新冻结事实；发现仅有遗留来源时提示先治理组织权限。提交事务必须使用统一锁序和 Serializable，避免组织岗位并发变更冻结出不存在的审批事实。
 
 **Files:**
 - Create: `services/api/src/contract/contract-approval-route.service.ts`
@@ -840,7 +840,9 @@ Run: `pnpm --filter @jiangkong/shared-domain test -- src/permissions.test.ts && 
 
 Expected: FAIL。
 
-失败测试必须覆盖五类完整路线、合同部成员发起保留首节点、只有公司级合同主管发起才跳过、项目隔离、启用用户、未知/空合同类型 fail closed、项目总工 exactly one、其他单角色节点至少一名非申请人候选、领导或签节点至少一名非申请人候选、`candidateUserIdsByRole` 实际写入 ApprovalInstance。批准规格明确禁止申请人利用兼任岗位审批自己发起的新合同，因此所有后续节点都排除申请人；排除后为空即阻断，不使用领导自审例外绕过本流程。
+失败测试必须覆盖五类完整路线、合同部成员发起保留首节点、只有公司级合同主管发起才跳过、项目隔离、启用用户、未知/空合同类型 fail closed、项目总工 exactly one、其他单角色节点至少一名非申请人候选、领导或签节点至少一名非申请人候选、`candidateUserIdsByRole` 实际写入 ApprovalInstance。项目总工唯一性先对所属项目全部启用规范成员检查，再排除申请人；两人中含申请人仍是冲突，唯一总工就是申请人则因无合格审批人阻断。批准规格明确禁止申请人利用兼任岗位审批自己发起的新合同，因此所有后续节点都排除申请人；排除后为空即阻断，不使用领导自审例外绕过本流程。
+
+集成测试还必须覆盖：申请人提交时仍是启用的项目合同员或公司级合同主管；项目存在且启用；原合同退回重提重新冻结；既有在途、变更、补充协议和历史接管不调用新路线；路线失败时状态、实例和审计零写入；组织岗位并发撤销/提交只能得到一致串行结果，P2034 返回固定中文重试提示。
 
 - [ ] **Step 3: 实现分类路线定义**
 
@@ -854,7 +856,9 @@ const NEW_CONTRACT_ROUTE: Record<ContractTypeKey, RouteNodeDefinition[]> = {
 };
 ```
 
-路线解析接口固定为 `freezeNewContractRoute(tx, lockedContract, applicantUserId)`：`ContractService.submitApproval()` 在自己的事务内先锁 Contract，再把同一 `tx` 与锁定行传入；路线服务不得用注入的全局 Prisma 客户端旁路事务。测试断言候选查询全部走传入 tx。公司级节点从 `UserPosition(projectId=null)` 加 `Position.key` 和启用用户解析；项目经理与项目总工仅从合同所属项目的 `ProjectMember` 解析。所有节点先排除申请人：项目总工随后必须恰好一名启用候选，缺失或多人冲突均阻断；其他单角色节点允许冻结全部剩余启用候选但至少一人，董事长/总经理或签只要求两种岗位剩余候选合计至少一人。主管发起时仅当申请人持有公司级 `contract_director` 才删除首节点。未知或空 `contractTypeKey` 必须 fail closed。所有节点写 `candidateUserIdsByRole` 与稳定排序的并集，后续 review 不重查现任岗位。
+路线解析接口固定为 `freezeNewContractRoute(tx, lockedContract, applicantUserId)`：`ContractService.submitApproval()` 先只读定位 contractId，再以 `Contract → ContractVersion → Project → CompanyEntity/候选事实` 固定锁序在 Serializable 事务中锁定并重读；把同一 `tx` 与锁定 Contract 传入路线服务，服务不得用注入的全局 Prisma 客户端旁路事务。锁后确认项目启用，服务层确认申请人仍是该项目启用的规范 `contract_staff` ProjectMember 或公司级 `contract_director`，不能依赖 Guard 或 legacy project-scoped UserPosition。测试断言候选查询全部走传入 tx。
+
+公司级节点从 `UserPosition(projectId=null)` 加 `Position.key` 和启用用户解析；项目经理与项目总工仅从合同所属项目的 `ProjectMember` 解析。项目总工先在未排除申请人的完整启用集合上要求 exactly one，再执行申请人排除；其他节点直接冻结全部剩余启用候选且至少一人，董事长/总经理或签只要求两种岗位剩余候选合计至少一人。主管发起时仅当申请人持有公司级 `contract_director` 才删除首节点。未知或空 `contractTypeKey` 必须 fail closed。所有节点写显式 `candidateUserIdsByRole`（OR 节点保留两个岗位 key，即使某个为空）与去重稳定排序的并集，后续 review 不重查现任岗位。原合同缺路线依赖必须 fail closed，绝不回退“仅董事长/总经理”；`ContractModule` 显式注册 provider。
 
 - [ ] **Step 4: 补粗粒度入口岗位但不扩大其他写权限**
 
@@ -864,7 +868,7 @@ const NEW_CONTRACT_ROUTE: Record<ContractTypeKey, RouteNodeDefinition[]> = {
 
 Run: `pnpm --filter @jiangkong/shared-domain test -- src/permissions.test.ts && pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-approval-route.service.spec.ts src/contract/contract.service.spec.ts src/approval/approval-node-access.spec.ts src/approval/approval-self-review.spec.ts src/me/me.service.spec.ts src/auth/guards/permission.guard.spec.ts src/payment/payment-request.service.spec.ts src/project-expense/project-expense.service.spec.ts && pnpm --filter @jiangkong/web-admin test -- src/pages/settings/approval-flow-readonly.config.test.ts && pnpm --filter @jiangkong/shared-domain typecheck && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint && pnpm --filter @jiangkong/web-admin typecheck && pnpm --filter @jiangkong/web-admin lint && pnpm --filter @jiangkong/web-admin check:ui`
 
-Expected: PASS；五类只读规则完整展示且重大变更规则未被改写；付款和项目支出既有领导自审测试不变。
+Expected: PASS；只读设置拆为五张新合同卡并完整展示各自路线，只有通用合同含综合部主管；合同变更规则保持到 Task 14 再改。付款和项目支出既有领导自审测试不变。
 
 - [ ] **Step 6: 提交**
 
