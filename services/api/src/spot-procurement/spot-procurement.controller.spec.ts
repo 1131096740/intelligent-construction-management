@@ -1,5 +1,7 @@
 import "reflect-metadata";
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, RequestMethod } from "@nestjs/common";
+import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
+import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { CreateSpotProcurementDto } from "./dto/create-spot-procurement.dto";
 import { SpotProcurementController } from "./spot-procurement.controller";
@@ -25,6 +27,34 @@ const realFormDraft = {
 };
 
 describe("SpotProcurementController real-form input", () => {
+  it("exposes abnormal termination as separate request and finance-confirmation actions", () => {
+    const expectations = [
+      [
+        "requestAbnormalTermination",
+        RequestMethod.POST,
+        ":procurementId/abnormal-termination",
+        "spot_procurement.abnormal_termination.request"
+      ],
+      [
+        "confirmAbnormalTermination",
+        RequestMethod.POST,
+        ":procurementId/abnormal-termination/confirmation",
+        "spot_procurement.abnormal_termination.confirm"
+      ]
+    ] as const;
+
+    for (const [method, requestMethod, path, action] of expectations) {
+      const target = SpotProcurementController.prototype[
+        method
+      ] as unknown as object;
+      expect(Reflect.getMetadata(METHOD_METADATA, target)).toBe(requestMethod);
+      expect(Reflect.getMetadata(PATH_METADATA, target)).toBe(path);
+      expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, target)).toBe(
+        action
+      );
+    }
+  });
+
   it("accepts the A4 application facts and rejects supplier, price, money, and invoice facts", async () => {
     const pipe = createApiValidationPipe();
     await expect(

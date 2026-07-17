@@ -91,6 +91,7 @@ const PROCUREMENT_STATUS_LABELS: Record<string, string> = {
   approval_pending: "采购审批中",
   approved_in_progress: "采购已批，办理中",
   closed: "已办结",
+  abnormally_terminated: "异常终止",
   voided: "已撤销"
 };
 const PAYMENT_STATUS_LABELS: Record<string, string> = {

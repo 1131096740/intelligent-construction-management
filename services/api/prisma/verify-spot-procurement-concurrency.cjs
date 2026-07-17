@@ -178,7 +178,13 @@ function assertLocalRuntime() {
 }
 
 async function assertRealFormSchemaPrerequisites(prisma) {
-  const [indexes, nullableColumns, triggers, discrepancyConstraints] = await Promise.all([
+  const [
+    indexes,
+    nullableColumns,
+    triggers,
+    discrepancyConstraints,
+    abnormalTerminationConstraints
+  ] = await Promise.all([
     prisma.$queryRaw(
       Prisma.sql`
         SELECT indexname
@@ -233,6 +239,17 @@ async function assertRealFormSchemaPrerequisites(prisma) {
             'SpotProcurementDiscrepancy_status_resolution_check'
           )
       `
+    ),
+    prisma.$queryRaw(
+      Prisma.sql`
+        SELECT conname, pg_get_constraintdef(oid) AS definition
+        FROM pg_constraint
+        WHERE conrelid = '"SpotProcurementAbnormalTermination"'::regclass
+          AND conname IN (
+            'SpotProcurementAbnormalTermination_status_check',
+            'SpotProcurementAbnormalTermination_lifecycle_check'
+          )
+      `
     )
   ]);
   assert(
@@ -271,6 +288,15 @@ async function assertRealFormSchemaPrerequisites(prisma) {
     constraints.includes("awaiting_replenishment") &&
       constraints.includes("'replenishment'"),
     "零星采购并发验收缺少补货差异状态或补货处置数据库约束"
+  );
+  const abnormalTerminationChecks = abnormalTerminationConstraints
+    .map((constraint) => String(constraint.definition))
+    .join("\n");
+  assert(
+    abnormalTerminationChecks.includes("'requested'") &&
+      abnormalTerminationChecks.includes("'confirmed'") &&
+      abnormalTerminationChecks.includes("confirmedAt"),
+    "零星采购并发验收缺少异常终止状态机数据库约束"
   );
 }
 

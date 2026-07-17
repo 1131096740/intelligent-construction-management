@@ -1,5 +1,8 @@
 import "reflect-metadata";
 import { ConflictException } from "@nestjs/common";
+import { createApiValidationPipe } from "../validation/api-validation";
+import { ConfirmAbnormalTerminationDto } from "./dto/confirm-abnormal-termination.dto";
+import { RequestAbnormalTerminationDto } from "./dto/request-abnormal-termination.dto";
 import { SpotProcurementApplicationService } from "./spot-procurement-application.service";
 
 const realFormDraft = {
@@ -76,7 +79,8 @@ function context(roleKey = "material_staff") {
     fileObject: { findMany: jest.fn().mockResolvedValue([]) },
     spotProcurement: {
       create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ ...procurement(), ...data })),
-      update: jest.fn().mockResolvedValue({})
+      update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 })
     },
     spotProcurementVersion: {
       create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ ...version(), ...data })),
@@ -112,6 +116,18 @@ function context(roleKey = "material_staff") {
       create: jest.fn().mockResolvedValue({ id: "receipt-revision-1" })
     },
     spotProcurementPaymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+    spotProcurementAbnormalTermination: {
+      create: jest.fn().mockImplementation(({ data }) =>
+        Promise.resolve({
+          id: "termination-1",
+          requestedAt: new Date("2026-07-18T08:00:00.000Z"),
+          confirmedByUserId: null,
+          confirmedAt: null,
+          ...data
+        })
+      ),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 })
+    },
     $queryRaw: jest.fn()
   };
   const prisma = { $transaction: jest.fn(async (operation) => operation(tx)) };
@@ -132,6 +148,31 @@ function context(roleKey = "material_staff") {
 }
 
 describe("SpotProcurementApplicationService real-form application", () => {
+  it("requires an explicit confirmation before the finance director can terminate a paid procurement", async () => {
+    const pipe = createApiValidationPipe();
+
+    await expect(
+      pipe.transform(
+        { reason: "   " },
+        { type: "body", metatype: RequestAbnormalTerminationDto }
+      )
+    ).rejects.toMatchObject({
+      response: { errors: expect.arrayContaining(["异常终止原因不能为空白"]) }
+    });
+    await expect(
+      pipe.transform(
+        { confirmTermination: false },
+        { type: "body", metatype: ConfirmAbnormalTerminationDto }
+      )
+    ).rejects.toMatchObject({
+      response: {
+        errors: expect.arrayContaining([
+          "请明确确认异常终止本次零星采购"
+        ])
+      }
+    });
+  });
+
   it("freezes the paper A4 application facts without supplier, price, amount, or invoice data", async () => {
     const { service, tx } = context();
 
@@ -271,5 +312,174 @@ describe("SpotProcurementApplicationService real-form application", () => {
         message: "采购已发生真实付款，不能通过普通版本变更覆盖既有事实"
       })
     );
+  });
+
+  it("keeps normal voiding available only before real payment", async () => {
+    const { service, tx } = context("project_manager");
+    tx.$queryRaw.mockResolvedValueOnce([
+      procurement("approved_in_progress")
+    ]);
+    tx.spotProcurementPayment.findMany.mockResolvedValue([
+      { id: "payment-1" }
+    ]);
+    tx.spotProcurementPaymentExecution.findFirst.mockResolvedValue({
+      id: "execution-1"
+    });
+
+    await expect(
+      service.voidProcurement(
+        "procurement-1",
+        "manager-1",
+        "已付款，改走异常终止"
+      )
+    ).rejects.toEqual(
+      new ConflictException("采购已发生真实付款，不能直接撤销")
+    );
+  });
+
+  it("lets the handler request paid-procurement termination and makes the same request idempotent", async () => {
+    const { service, tx } = context("material_staff");
+    const request = { reason: "商户无法继续供货，需要终止" };
+    tx.$queryRaw
+      .mockResolvedValueOnce([procurement("approved_in_progress")])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([procurement("approved_in_progress")])
+      .mockResolvedValueOnce([
+        {
+          id: "termination-1",
+          procurementId: "procurement-1",
+          status: "requested",
+          reason: request.reason,
+          requestedByUserId: "material-1",
+          requestedAt: new Date("2026-07-18T08:00:00.000Z"),
+          confirmedByUserId: null,
+          confirmedAt: null
+        }
+      ]);
+    tx.spotProcurementPayment.findMany.mockResolvedValue([
+      { id: "payment-1" }
+    ]);
+    tx.spotProcurementPaymentExecution.findFirst.mockResolvedValue({
+      id: "execution-1"
+    });
+
+    const first = await service.requestAbnormalTermination(
+      "procurement-1",
+      "material-1",
+      request
+    );
+    const replay = await service.requestAbnormalTermination(
+      "procurement-1",
+      "material-1",
+      request
+    );
+
+    expect(first).toEqual(replay);
+    expect(
+      tx.spotProcurementAbnormalTermination.create
+    ).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        procurementId: "procurement-1",
+        status: "requested",
+        reason: request.reason,
+        requestedByUserId: "material-1"
+      })
+    });
+    expect(
+      tx.spotProcurementAbnormalTermination.create
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it("only lets the finance director confirm once and locks the procurement as abnormally terminated", async () => {
+    const { service, tx } = context("finance_director");
+    const termination = {
+      id: "termination-1",
+      procurementId: "procurement-1",
+      status: "requested",
+      reason: "商户无法继续供货",
+      requestedByUserId: "material-1",
+      requestedAt: new Date("2026-07-18T08:00:00.000Z"),
+      confirmedByUserId: null,
+      confirmedAt: null
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([procurement("approved_in_progress")])
+      .mockResolvedValueOnce([termination]);
+    tx.spotProcurementPayment.findMany.mockResolvedValue([
+      { id: "payment-1" }
+    ]);
+    tx.spotProcurementPaymentExecution.findFirst.mockResolvedValue({
+      id: "execution-1"
+    });
+
+    const result = await service.confirmAbnormalTermination(
+      "procurement-1",
+      "finance-director-1",
+      { confirmTermination: true }
+    );
+
+    expect(result).toMatchObject({ status: "confirmed" });
+    expect(
+      tx.spotProcurementAbnormalTermination.updateMany
+    ).toHaveBeenCalledWith({
+      where: { id: "termination-1", status: "requested" },
+      data: expect.objectContaining({
+        status: "confirmed",
+        confirmedByUserId: "finance-director-1"
+      })
+    });
+    expect(tx.spotProcurement.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: "procurement-1",
+        status: "approved_in_progress"
+      }),
+      data: { status: "abnormally_terminated" }
+    });
+
+    tx.$queryRaw
+      .mockResolvedValueOnce([procurement("abnormally_terminated")]);
+    await expect(
+      service.confirmAbnormalTermination(
+        "procurement-1",
+        "finance-director-1",
+        { confirmTermination: true }
+      )
+    ).rejects.toEqual(
+      new ConflictException("零星采购已经异常终止")
+    );
+  });
+
+  it("rejects termination before actual payment and confirmation by a project manager", async () => {
+    const noPayment = context("material_staff");
+    noPayment.tx.$queryRaw.mockResolvedValueOnce([
+      procurement("approved_in_progress")
+    ]);
+    noPayment.tx.spotProcurementPayment.findMany.mockResolvedValue([
+      { id: "payment-1" }
+    ]);
+    noPayment.tx.spotProcurementPaymentExecution.findFirst.mockResolvedValue(null);
+    await expect(
+      noPayment.service.requestAbnormalTermination(
+        "procurement-1",
+        "material-1",
+        { reason: "尚未实际付款" }
+      )
+    ).rejects.toEqual(
+      new ConflictException("采购尚未发生真实付款，不能异常终止")
+    );
+
+    const manager = context("project_manager");
+    manager.tx.$queryRaw.mockResolvedValueOnce([
+      procurement("approved_in_progress")
+    ]);
+    await expect(
+      manager.service.confirmAbnormalTermination(
+        "procurement-1",
+        "manager-1",
+        { confirmTermination: true }
+      )
+    ).rejects.toMatchObject({
+      message: "只有本项目财务主管可以确认异常终止"
+    });
   });
 });

@@ -25,7 +25,9 @@ import type {
 } from "./dto/create-spot-procurement.dto";
 import type { CreateSpotProcurementDto } from "./dto/create-spot-procurement.dto";
 import type { CreateSpotProcurementVersionDto } from "./dto/create-spot-procurement-version.dto";
+import type { ConfirmAbnormalTerminationDto } from "./dto/confirm-abnormal-termination.dto";
 import type { ReviewSpotProcurementDto } from "./dto/review-spot-procurement.dto";
+import type { RequestAbnormalTerminationDto } from "./dto/request-abnormal-termination.dto";
 import type { UpdateSpotProcurementDraftDto } from "./dto/update-spot-procurement-draft.dto";
 import {
   procurementApprovalNodes,
@@ -39,6 +41,12 @@ const CREATE_ROLES = new Set<RoleKey>([
   "material_director"
 ]);
 const VOID_ROLES = new Set<RoleKey>(["project_manager", "finance_director"]);
+const ABNORMAL_TERMINATION_REQUEST_ROLES = new Set<RoleKey>([
+  "finance_staff"
+]);
+const ABNORMAL_TERMINATION_CONFIRM_ROLES = new Set<RoleKey>([
+  "finance_director"
+]);
 
 type ProcurementLockRow = {
   id: string;
@@ -78,6 +86,17 @@ type ApprovalLockRow = {
   currentNodeIndex: number;
   frozenNodes: Prisma.JsonValue;
   applicantUserId: string;
+};
+
+type AbnormalTerminationLockRow = {
+  id: string;
+  procurementId: string;
+  status: string;
+  reason: string;
+  requestedByUserId: string;
+  requestedAt: Date;
+  confirmedByUserId: string | null;
+  confirmedAt: Date | null;
 };
 
 type PurchaserSnapshot = {
@@ -664,6 +683,146 @@ export class SpotProcurementApplicationService {
     );
   }
 
+  requestAbnormalTermination(
+    procurementId: string,
+    actorUserId: string,
+    input: RequestAbnormalTerminationDto
+  ) {
+    const reason = requiredText(input.reason, "请填写异常终止原因");
+    return this.runWrite(() =>
+      this.prisma.$transaction(async (tx) => {
+        const procurement = await this.requireLockedProcurement(tx, procurementId);
+        this.pilot.assertEnabled(procurement.projectId);
+        this.assertAbnormalTerminationAllowed(procurement);
+        const roles = await this.loadActorRoleKeys(
+          tx,
+          actorUserId,
+          procurement.projectId
+        );
+        if (
+          actorUserId !== procurement.handlerUserId &&
+          !roles.some((role) =>
+            ABNORMAL_TERMINATION_REQUEST_ROLES.has(role)
+          )
+        ) {
+          throw new ForbiddenException(
+            "只有采购经办人或本项目财务人员可以发起异常终止"
+          );
+        }
+        await this.requireActualPayment(tx, procurement.id);
+        const existing = await this.lockAbnormalTermination(tx, procurement.id);
+        if (existing) {
+          if (
+            existing.status === "requested" &&
+            existing.requestedByUserId === actorUserId &&
+            existing.reason === reason
+          ) {
+            return abnormalTerminationReadModel(existing);
+          }
+          throw new ConflictException("当前采购已存在异常终止处理事实");
+        }
+        const termination =
+          await tx.spotProcurementAbnormalTermination.create({
+            data: {
+              procurementId: procurement.id,
+              status: "requested",
+              reason,
+              requestedByUserId: actorUserId
+            }
+          });
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "spot_procurement.abnormal_termination.request",
+          businessType: "spot_procurement_abnormal_termination",
+          businessId: termination.id,
+          metadata: {
+            procurementId: procurement.id,
+            projectId: procurement.projectId,
+            reason
+          }
+        });
+        return abnormalTerminationReadModel(termination);
+      })
+    );
+  }
+
+  confirmAbnormalTermination(
+    procurementId: string,
+    actorUserId: string,
+    input: ConfirmAbnormalTerminationDto
+  ) {
+    if (input.confirmTermination !== true) {
+      throw new BadRequestException("请明确确认异常终止本次零星采购");
+    }
+    return this.runWrite(() =>
+      this.prisma.$transaction(async (tx) => {
+        const procurement = await this.requireLockedProcurement(tx, procurementId);
+        this.pilot.assertEnabled(procurement.projectId);
+        this.assertAbnormalTerminationAllowed(procurement);
+        const roles = await this.loadActorRoleKeys(
+          tx,
+          actorUserId,
+          procurement.projectId
+        );
+        this.requireAnyRole(
+          roles,
+          ABNORMAL_TERMINATION_CONFIRM_ROLES,
+          "只有本项目财务主管可以确认异常终止"
+        );
+        await this.requireActualPayment(tx, procurement.id);
+        const termination = await this.lockAbnormalTermination(tx, procurement.id);
+        if (!termination || termination.status !== "requested") {
+          throw new ConflictException("当前采购不存在待确认的异常终止申请");
+        }
+        const now = new Date();
+        const confirmed =
+          await tx.spotProcurementAbnormalTermination.updateMany({
+            where: { id: termination.id, status: "requested" },
+            data: {
+              status: "confirmed",
+              confirmedByUserId: actorUserId,
+              confirmedAt: now
+            }
+          });
+        if (confirmed.count !== 1) {
+          throw new ConflictException("异常终止状态已变化，请刷新后重试");
+        }
+        const terminated = await tx.spotProcurement.updateMany({
+          where: {
+            id: procurement.id,
+            status: "approved_in_progress",
+            closedAt: null,
+            voidedAt: null
+          },
+          data: { status: "abnormally_terminated" }
+        });
+        if (terminated.count !== 1) {
+          throw new ConflictException("采购状态已变化，不能确认异常终止");
+        }
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "spot_procurement.abnormal_termination.confirm",
+          businessType: "spot_procurement_abnormal_termination",
+          businessId: termination.id,
+          metadata: {
+            procurementId: procurement.id,
+            projectId: procurement.projectId,
+            requestedByUserId: termination.requestedByUserId,
+            reason: termination.reason,
+            statusBefore: termination.status,
+            statusAfter: "confirmed"
+          }
+        });
+        return abnormalTerminationReadModel({
+          ...termination,
+          status: "confirmed",
+          confirmedByUserId: actorUserId,
+          confirmedAt: now
+        });
+      })
+    );
+  }
+
   applicationTextSuggestions(actorUserId: string, projectId: string, keyword?: string) {
     return this.prisma.$transaction(async (tx) => {
       this.pilot.assertEnabled(projectId);
@@ -998,6 +1157,61 @@ export class SpotProcurementApplicationService {
     return rows[0];
   }
 
+  private assertAbnormalTerminationAllowed(procurement: ProcurementLockRow) {
+    if (procurement.status === "closed") {
+      throw new ConflictException("零星采购已经正常办结，不能异常终止");
+    }
+    if (procurement.status === "abnormally_terminated") {
+      throw new ConflictException("零星采购已经异常终止");
+    }
+    if (procurement.status === "voided") {
+      throw new ConflictException("已撤销的零星采购不能异常终止");
+    }
+    if (procurement.status !== "approved_in_progress") {
+      throw new ConflictException("当前采购状态不允许异常终止");
+    }
+  }
+
+  private async requireActualPayment(
+    tx: Prisma.TransactionClient,
+    procurementId: string
+  ) {
+    const payments = await tx.spotProcurementPayment.findMany({
+      where: { procurementId },
+      select: { id: true }
+    });
+    if (!payments.length) {
+      throw new ConflictException("采购尚未发生真实付款，不能异常终止");
+    }
+    const execution =
+      await tx.spotProcurementPaymentExecution.findFirst({
+        where: {
+          paymentId: { in: payments.map((payment) => payment.id) },
+          voidedAt: null
+        },
+        select: { id: true }
+      });
+    if (!execution) {
+      throw new ConflictException("采购尚未发生真实付款，不能异常终止");
+    }
+  }
+
+  private async lockAbnormalTermination(
+    tx: Prisma.TransactionClient,
+    procurementId: string
+  ) {
+    const rows = await tx.$queryRaw<AbnormalTerminationLockRow[]>(Prisma.sql`
+      SELECT
+        "id", "procurementId", "status", "reason", "requestedByUserId",
+        "requestedAt", "confirmedByUserId", "confirmedAt"
+      FROM "SpotProcurementAbnormalTermination"
+      WHERE "procurementId" = ${procurementId}
+      LIMIT 1
+      FOR UPDATE
+    `);
+    return rows[0] ?? null;
+  }
+
   private async requireLockedCurrentVersion(tx: Prisma.TransactionClient, procurement: ProcurementLockRow) {
     if (!procurement.currentVersionId) throw new ConflictException("零星采购缺少当前版本");
     const rows = await tx.$queryRaw<Array<VersionLockRow>>(Prisma.sql`
@@ -1122,6 +1336,28 @@ function optionalText(value: unknown) {
   if (value === undefined || value === null) return null;
   if (typeof value !== "string") throw new BadRequestException("文字字段格式不正确");
   return trimUnicodeWhitespace(value) || null;
+}
+
+function abnormalTerminationReadModel(termination: {
+  id: string;
+  procurementId: string;
+  status: string;
+  reason: string;
+  requestedByUserId: string;
+  requestedAt: Date;
+  confirmedByUserId: string | null;
+  confirmedAt: Date | null;
+}) {
+  return {
+    id: termination.id,
+    procurementId: termination.procurementId,
+    status: termination.status,
+    reason: termination.reason,
+    requestedByUserId: termination.requestedByUserId,
+    requestedAt: termination.requestedAt.toISOString(),
+    confirmedByUserId: termination.confirmedByUserId,
+    confirmedAt: termination.confirmedAt?.toISOString() ?? null
+  };
 }
 
 function prismaErrorCode(error: unknown) {

@@ -11,10 +11,12 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CreateProcurementDiscrepancyDto } from "./dto/create-procurement-discrepancy.dto";
+import { ConfirmAbnormalTerminationDto } from "./dto/confirm-abnormal-termination.dto";
 import { CreateSpotProcurementDto } from "./dto/create-spot-procurement.dto";
 import { CreateSpotProcurementVersionDto } from "./dto/create-spot-procurement-version.dto";
 import { ExecuteSupplierBalanceDto } from "./dto/execute-supplier-balance.dto";
 import { RecordProcurementRefundDto } from "./dto/record-procurement-refund.dto";
+import { RequestAbnormalTerminationDto } from "./dto/request-abnormal-termination.dto";
 import { ReviewSpotProcurementDto } from "./dto/review-spot-procurement.dto";
 import { UpdateSpotProcurementDraftDto } from "./dto/update-spot-procurement-draft.dto";
 import { VoidSpotProcurementDto } from "./dto/void-spot-procurement.dto";
@@ -140,6 +142,34 @@ export class SpotProcurementController {
       procurementId,
       user.id,
       body.reason
+    );
+  }
+
+  @Post(":procurementId/abnormal-termination")
+  @RequireProjectRole("spot_procurement.abnormal_termination.request")
+  requestAbnormalTermination(
+    @Param("procurementId") procurementId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RequestAbnormalTerminationDto
+  ) {
+    return this.applications.requestAbnormalTermination(
+      procurementId,
+      user.id,
+      body
+    );
+  }
+
+  @Post(":procurementId/abnormal-termination/confirmation")
+  @RequireProjectRole("spot_procurement.abnormal_termination.confirm")
+  confirmAbnormalTermination(
+    @Param("procurementId") procurementId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ConfirmAbnormalTerminationDto
+  ) {
+    return this.applications.confirmAbnormalTermination(
+      procurementId,
+      user.id,
+      body
     );
   }
 
