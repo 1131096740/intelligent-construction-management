@@ -492,6 +492,8 @@ git commit -m "feat: 完善我方公司主体维护与历史"
 
 ### Task 5: 独立公司主体 Web 台账
 
+> **执行校正（2026-07-17 实现审查）**：历史版本必须展示安全的操作人姓名与岗位，不能把“数据库已留 UUID”当作用户可追溯；Task 4 历史读模型批量解析 `actorName` 并从响应移除 `actorUserId`。列表、历史抽屉和保存动作还必须覆盖真实浏览器下的请求乱序、清空事件时序和重复提交，不能只用 Vue 源码字符串断言。
+
 **Files:**
 - Create: `apps/web-admin/src/api/company-entity.api.ts`
 - Create: `apps/web-admin/src/api/company-entity.api.test.ts`
@@ -500,10 +502,14 @@ git commit -m "feat: 完善我方公司主体维护与历史"
 - Create: `apps/web-admin/src/pages/company-entities/company-entity.config.test.ts`
 - Create: `apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue`
 - Create: `apps/web-admin/src/pages/company-entities/components/CompanyEntityHistoryDrawer.vue`
+- Create: `apps/web-admin/e2e/company-entity-ledger.e2e.ts`
 - Modify: `apps/web-admin/src/routes/route-records.ts`
 - Modify: `apps/web-admin/src/routes/index.test.ts`
 - Modify: `apps/web-admin/src/pages/settings/SettingsPage.vue`
+- Modify: `apps/web-admin/src/api/core-flow-read.api.ts`
 - Modify: `apps/web-admin/scripts/check-ui-rules.mjs`
+- Modify: `services/api/src/company-entity/company-entity.service.ts`
+- Modify: `services/api/src/company-entity/company-entity.service.spec.ts`
 
 - [ ] **Step 1: 写路由、权限、无导出和 API 失败测试**
 
@@ -544,18 +550,20 @@ export function companyEntityCapabilities(globalRoleKeys: readonly RoleKey[]) {
 
 - [ ] **Step 4: 实现台账、表单和历史抽屉**
 
-使用 `BusinessPageHeader`、`BusinessTableToolbar`、`BusinessFeedback`、`t-table`、`t-drawer` 和 `SensitiveActionDialog`。页面显示启用/停用、资料待补全、当前与历史搜索，不提供删除、回滚或导出。将 `SettingsPage.vue` 的旧公司主体维护区删除，避免双入口。
+使用 `BusinessPageHeader`、`BusinessTableToolbar`、`BusinessFeedback`、`t-table`、`t-drawer` 和 `SensitiveActionDialog`。页面显示启用/停用、资料待补全、当前与历史搜索，不提供删除、回滚或导出。历史显示“操作人姓名 · 公司级岗位 · 时间 · 动作 · 前后差异”，响应不返回原始操作人 UUID。将 `SettingsPage.vue` 的旧公司主体维护区和 `core-flow-read.api.ts` 旧双 API 删除，避免双入口。
+
+列表和历史请求使用序号加查询/主体快照丢弃旧响应；筛选变化同步失效旧 token，确保 TDesign 清空事件随后启动的新查询不会被异步 watch 误杀。表单在函数入口阻断重复提交，失败后保持抽屉与三项输入。
 
 - [ ] **Step 5: 登记响应式治理并运行检查**
 
-Run: `pnpm --filter @jiangkong/web-admin test -- src/api/company-entity.api.test.ts src/pages/company-entities/company-entity.config.test.ts src/routes/index.test.ts && pnpm --filter @jiangkong/web-admin typecheck && pnpm --filter @jiangkong/web-admin lint && pnpm --filter @jiangkong/web-admin check:ui`
+Run: `pnpm --filter @jiangkong/api test -- --runInBand src/company-entity/company-entity.service.spec.ts src/company-entity/company-entity-access.spec.ts && pnpm --filter @jiangkong/web-admin test -- src/api/company-entity.api.test.ts src/pages/company-entities/company-entity.config.test.ts src/routes/index.test.ts && pnpm --filter @jiangkong/web-admin typecheck && pnpm --filter @jiangkong/web-admin typecheck:e2e && pnpm --filter @jiangkong/web-admin lint && pnpm --filter @jiangkong/web-admin check:ui && pnpm --filter @jiangkong/web-admin build && CI=true pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.config.ts e2e/company-entity-ledger.e2e.ts`
 
-Expected: PASS；新页是 ledger，只有表格区域横向滚动。
+Expected: PASS；新页是 ledger，只有表格区域横向滚动；清空查询采用最新响应、A 的延迟历史不能覆盖 B、双击保存只产生一次 POST。
 
 - [ ] **Step 6: 提交**
 
 ```bash
-git add apps/web-admin/src/api/company-entity.api* apps/web-admin/src/pages/company-entities apps/web-admin/src/routes apps/web-admin/src/pages/settings/SettingsPage.vue apps/web-admin/scripts/check-ui-rules.mjs
+git add services/api/src/company-entity/company-entity.service* apps/web-admin/src/api/company-entity.api* apps/web-admin/src/api/core-flow-read.api.ts apps/web-admin/src/pages/company-entities apps/web-admin/src/routes apps/web-admin/src/pages/settings/SettingsPage.vue apps/web-admin/scripts/check-ui-rules.mjs apps/web-admin/e2e/company-entity-ledger.e2e.ts
 git commit -m "feat: 增加我方公司主体独立台账"
 ```
 
