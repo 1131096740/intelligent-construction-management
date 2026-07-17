@@ -11,7 +11,13 @@ describe("SettlementDraftService", () => {
           status: "effective",
           invoiceType: null,
           defaultTaxRatePercent: null,
-          taxFactStatus: "unconfirmed"
+          taxFactStatus: "unconfirmed",
+          contractGovernanceVersion: 1
+        }),
+        findFirst: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "effective"
         })
       },
       contract: {
@@ -44,10 +50,12 @@ describe("SettlementDraftService", () => {
         findUnique: jest.fn().mockResolvedValue(null),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
-      settlement: { create: jest.fn() },
+      settlementSignedDocument: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      settlement: { create: jest.fn(), count: jest.fn().mockResolvedValue(0) },
       settlementLine: { createMany: jest.fn() },
       projectSettlementExceptionQuotaUsage: { createMany: jest.fn() },
       approvalInstance: { create: jest.fn() },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "locked" }]),
       ...overrides
     };
     const prisma = {
@@ -68,6 +76,99 @@ describe("SettlementDraftService", () => {
       contractBillRowId: "row-with-missing-price"
     }]
   };
+
+  const finalConfirmations = {
+    finalScopeCompleted: true,
+    finalPriorSettlementsIncluded: true,
+    finalNoOutstandingSettlements: true,
+    finalWithinContractCap: true,
+    finalNoFurtherOrdinarySettlements: true
+  };
+
+  it("persists selected participants and all five final-settlement confirmations separately", async () => {
+    const { tx, service } = context();
+
+    await service.create("project-1", "owner-1", {
+      ...draftInput,
+      isFinal: true,
+      finalCumulativeAmountCents: "1000",
+      fieldReviewerUserId: "material-1",
+      fieldReviewerRoleKey: "material_staff",
+      ...finalConfirmations
+    });
+
+    expect(tx.settlementDraft.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        governanceVersion: 1,
+        fieldReviewerUserId: "material-1",
+        ...finalConfirmations
+      })
+    });
+  });
+
+  it("governs a new settlement draft even when it comes from a historical contract version", async () => {
+    const { tx, service } = context({
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "effective",
+          contractGovernanceVersion: null
+        }),
+        findFirst: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "effective",
+          contractGovernanceVersion: null
+        })
+      }
+    });
+
+    await service.create("project-1", "owner-1", draftInput);
+
+    expect(tx.settlementDraft.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ governanceVersion: 1 })
+    });
+  });
+
+  it("rejects a new draft after an occupying final settlement exists", async () => {
+    const { tx, service } = context({
+      settlement: { create: jest.fn(), count: jest.fn().mockResolvedValue(1) }
+    });
+
+    await expect(
+      service.create("project-1", "owner-1", draftInput)
+    ).rejects.toThrow("最终结算");
+
+    expect(tx.settlementDraft.create).not.toHaveBeenCalled();
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects updating an existing draft after an occupying final settlement exists", async () => {
+    const existing = {
+      id: "draft-1",
+      projectId: "project-1",
+      contractId: "contract-1",
+      ownerUserId: "owner-1",
+      revision: 3,
+      status: "draft"
+    };
+    const { tx, service } = context({
+      settlement: { create: jest.fn(), count: jest.fn().mockResolvedValue(1) },
+      settlementDraft: {
+        findUnique: jest.fn().mockResolvedValue(existing),
+        updateMany: jest.fn()
+      }
+    });
+
+    await expect(service.update("project-1", "draft-1", "owner-1", {
+      ...draftInput,
+      expectedRevision: 3
+    })).rejects.toThrow("最终结算");
+
+    expect(tx.settlementDraft.updateMany).not.toHaveBeenCalled();
+    expect(tx.settlementSignedDocument.updateMany).not.toHaveBeenCalled();
+  });
 
   it("saves raw incomplete facts without occupying any formal settlement resource", async () => {
     const { tx, service } = context();
@@ -196,6 +297,45 @@ describe("SettlementDraftService", () => {
       expectedRevision: 3
     })).rejects.toThrow("已提交");
     expect(tx.settlementDraft.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("invalidates active signed evidence when a draft is re-saved into a new revision", async () => {
+    const existing = {
+      id: "draft-1",
+      projectId: "project-1",
+      contractId: "contract-1",
+      ownerUserId: "owner-1",
+      revision: 3,
+      status: "draft"
+    };
+    const updated = { ...existing, revision: 4, governanceVersion: 1 };
+    const { tx, service } = context({
+      settlementDraft: {
+        findUnique: jest.fn()
+          .mockResolvedValueOnce(existing)
+          .mockResolvedValueOnce(updated),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    });
+
+    await service.update("project-1", "draft-1", "owner-1", {
+      ...draftInput,
+      expectedRevision: 3
+    });
+
+    expect(tx.settlementSignedDocument.updateMany).toHaveBeenCalledWith({
+      where: { settlementDraftId: "draft-1", status: "active" },
+      data: {
+        status: "invalidated",
+        invalidatedAt: expect.any(Date),
+        invalidationReason: expect.stringContaining("新修订号")
+      }
+    });
+    const lockSql = tx.$queryRaw.mock.calls.map(([query]) =>
+      (query as { strings?: readonly string[] }).strings?.join(" ") ?? ""
+    );
+    expect(lockSql[0]).toContain("SettlementDraft");
+    expect(lockSql.slice(1).join(" ")).toContain("Contract");
   });
 
   it("keeps an existing non-settleable draft read-only even when the update targets an eligible contract", async () => {

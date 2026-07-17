@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Optional,
   NotFoundException
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
@@ -11,16 +12,22 @@ import type {
   CreateSettlementLineDto
 } from "./dto/create-settlement.dto";
 import { SettlementService } from "./settlement.service";
+import { SettlementCounterpartyDocumentService } from "./settlement-counterparty-document.service";
 
 @Injectable()
 export class SettlementSubmissionService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly settlements: SettlementService
+    private readonly settlements: SettlementService,
+    @Optional() private readonly counterpartyDocuments?: SettlementCounterpartyDocumentService
   ) {}
 
   submit(input: CreateSettlementDto, applicantUserId: string) {
-    return this.settlements.create(input, applicantUserId);
+    void input;
+    void applicantUserId;
+    throw new BadRequestException(
+      "请从结算工作台保存草稿、选择现场复核人并完成乙方签章文件后提交"
+    );
   }
 
   async submitDraft(
@@ -33,6 +40,15 @@ export class SettlementSubmissionService {
     try {
       settlement = await this.prisma.$transaction(
         async (tx) => {
+          const lockedDraft = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+            SELECT "id"
+            FROM "SettlementDraft"
+            WHERE "id" = ${draftId}
+            FOR UPDATE
+          `);
+          if (lockedDraft.length !== 1) {
+            throw new NotFoundException("未找到结算草稿，请刷新后重试");
+          }
           const draft = await tx.settlementDraft.findUnique({
             where: { id: draftId }
           });
@@ -48,6 +64,15 @@ export class SettlementSubmissionService {
           if (draft.revision !== expectedRevision) {
             throw new BadRequestException("结算草稿已被更新，请刷新后重新确认提交");
           }
+          if (draft.governanceVersion !== 1) {
+            throw new BadRequestException(
+              "当前旧草稿尚未适配新结算规则，请先在结算工作台重新保存并补齐现场复核人与乙方签章文件"
+            );
+          }
+          if (!this.counterpartyDocuments) {
+            throw new BadRequestException("结算签章文件门禁暂不可用，请稍后重试");
+          }
+          await this.counterpartyDocuments.assertReadyForSubmission(tx, draft);
 
           const claimed = await tx.settlementDraft.updateMany({
             where: {
@@ -69,7 +94,20 @@ export class SettlementSubmissionService {
           const created = await this.settlements.submitInTransaction(
             tx,
             prepared,
-            applicantUserId
+            applicantUserId,
+            {
+              draftId: draft.id,
+              governanceVersion: 1,
+              fieldReviewerUserId: draft.fieldReviewerUserId,
+              fieldReviewerRoleKey: draft.fieldReviewerRoleKey,
+              finalConfirmations: {
+                finalScopeCompleted: draft.finalScopeCompleted,
+                finalPriorSettlementsIncluded: draft.finalPriorSettlementsIncluded,
+                finalNoOutstandingSettlements: draft.finalNoOutstandingSettlements,
+                finalWithinContractCap: draft.finalWithinContractCap,
+                finalNoFurtherOrdinarySettlements: draft.finalNoFurtherOrdinarySettlements
+              }
+            }
           );
           const marked = await tx.settlementDraft.updateMany({
             where: {
@@ -92,6 +130,8 @@ export class SettlementSubmissionService {
       );
     } catch (error) {
       await this.settlements.persistContractCapacityDenial?.(error, applicantUserId);
+      await this.settlements.persistGovernanceDenial?.(error, applicantUserId, draftId);
+      await this.counterpartyDocuments?.persistDenial(draftId, applicantUserId, error);
       this.settlements.rethrowSubmissionError(error);
     }
 
@@ -106,6 +146,7 @@ export class SettlementSubmissionService {
     isFinal: boolean;
     finalCumulativeAmountCents: bigint | null;
     lines: Prisma.JsonValue;
+    governanceVersion?: number | null;
   }): CreateSettlementDto {
     if (!Array.isArray(draft.lines)) {
       throw new BadRequestException("结算草稿明细已损坏，请重新保存草稿后再提交");

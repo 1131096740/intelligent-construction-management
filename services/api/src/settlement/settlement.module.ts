@@ -19,6 +19,7 @@ import { SettlementImportService } from "./settlement-import.service";
 import { SettlementTemplateService } from "./settlement-template.service";
 import { SettlementService } from "./settlement.service";
 import { SettlementSubmissionService } from "./settlement-submission.service";
+import { SettlementCounterpartyDocumentService } from "./settlement-counterparty-document.service";
 
 @Module({
   imports: [ApprovalModule, AuditModule, AuthModule, FileModule],
@@ -38,7 +39,8 @@ import { SettlementSubmissionService } from "./settlement-submission.service";
     SettlementAttachmentTemplateService,
     SettlementWorkbenchService,
     SettlementImportService,
-    SettlementTemplateService
+    SettlementTemplateService,
+    SettlementCounterpartyDocumentService
   ],
   exports: [
     SettlementService,

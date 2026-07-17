@@ -24,6 +24,19 @@ function validateM56(sql: string) {
       `${table}_governance_version_check[\\s\\S]*?"governanceVersion" IS NULL[\\s\\S]*?"governanceVersion" = 1[\\s\\S]*?NOT VALID;`,
       "u"
     ));
+    for (const column of [
+      "finalScopeCompleted",
+      "finalPriorSettlementsIncluded",
+      "finalNoOutstandingSettlements",
+      "finalWithinContractCap",
+      "finalNoFurtherOrdinarySettlements"
+    ]) {
+      expect(sql).toMatch(new RegExp(`ALTER TABLE "${table}"[\\s\\S]*?ADD COLUMN "${column}" BOOLEAN`, "u"));
+    }
+    expect(sql).toMatch(new RegExp(
+      `${table}_final_confirmation_group_check[\\s\\S]*?"finalScopeCompleted" IS NULL[\\s\\S]*?"finalNoFurtherOrdinarySettlements" IS NULL[\\s\\S]*?"finalScopeCompleted" IS NOT NULL[\\s\\S]*?"finalNoFurtherOrdinarySettlements" IS NOT NULL[\\s\\S]*?NOT VALID;`,
+      "u"
+    ));
   }
 
   for (const column of ["fieldReviewerUserId", "fieldReviewerRoleKey"]) {
@@ -93,6 +106,15 @@ describe("M56 settlement participant and signed-document governance schema", () 
       expect(schema).toMatch(new RegExp(`model ${model}[\\s\\S]*?governanceVersion\\s+Int\\?`, "u"));
       expect(schema).toMatch(new RegExp(`model ${model}[\\s\\S]*?fieldReviewerUserId\\s+String\\?`, "u"));
       expect(schema).toMatch(new RegExp(`model ${model}[\\s\\S]*?fieldReviewerRoleKey\\s+String\\?`, "u"));
+      for (const column of [
+        "finalScopeCompleted",
+        "finalPriorSettlementsIncluded",
+        "finalNoOutstandingSettlements",
+        "finalWithinContractCap",
+        "finalNoFurtherOrdinarySettlements"
+      ]) {
+        expect(schema).toMatch(new RegExp(`model ${model}[\\s\\S]*?${column}\\s+Boolean\\?`, "u"));
+      }
     }
     expect(schema).toMatch(/model Settlement[\s\S]*?preparedByUserId\s+String\?[\s\S]*?preparerSignatureFileId\s+String\?[\s\S]*?preparerSignatureSha256\s+String\?/u);
     expect(schema).toContain("model SettlementSignedDocument");

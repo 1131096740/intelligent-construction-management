@@ -119,7 +119,15 @@ describe("settlement contract cap database concurrency", () => {
                     periodLabel: "2026-03",
                     isFinal: true,
                     finalCumulativeAmountCents: 1_001n,
-                    lines: []
+                    lines: [],
+                    governanceVersion: 1,
+                    fieldReviewerUserId: "material-1",
+                    fieldReviewerRoleKey: "material_staff",
+                    finalScopeCompleted: true,
+                    finalPriorSettlementsIncluded: true,
+                    finalNoOutstandingSettlements: true,
+                    finalWithinContractCap: true,
+                    finalNoFurtherOrdinarySettlements: true
                   } : null;
                 }),
                 updateMany: jest.fn().mockImplementation(async ({
@@ -184,6 +192,21 @@ describe("settlement contract cap database concurrency", () => {
         wrapped(clients[0]!) as never,
         audit as never
       );
+      jest.spyOn(auditedSettlementService, "freezeGovernedSettlementFacts")
+        .mockResolvedValue({
+          fieldReviewerUserId: "material-1",
+          fieldReviewerRoleKey: "material_staff",
+          engineeringDirectorUserId: null,
+          finalConfirmations: {
+            finalScopeCompleted: true,
+            finalPriorSettlementsIncluded: true,
+            finalNoOutstandingSettlements: true,
+            finalWithinContractCap: true,
+            finalNoFurtherOrdinarySettlements: true
+          },
+          frozenNodes: [],
+          preparerSignature: { fileId: "signature-1", sha256: "a".repeat(64) }
+        });
       await expect(auditedSettlementService.create({
         contractVersionId: "version-1",
         code: "JS-CAP-DENIED",
@@ -211,7 +234,11 @@ describe("settlement contract cap database concurrency", () => {
       `;
       const draftSubmission = new SettlementSubmissionService(
         wrapped(clients[0]!) as never,
-        auditedSettlementService
+        auditedSettlementService,
+        {
+          assertReadyForSubmission: jest.fn().mockResolvedValue({}),
+          persistDenial: jest.fn().mockResolvedValue(undefined)
+        } as never
       );
       await expect(draftSubmission.submitDraft(
         "project-1",

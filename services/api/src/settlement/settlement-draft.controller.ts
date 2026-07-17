@@ -8,12 +8,15 @@ import {
 } from "./dto/settlement-draft.dto";
 import { SettlementDraftService } from "./settlement-draft.service";
 import { SettlementSubmissionService } from "./settlement-submission.service";
+import { LinkSettlementCounterpartySignedDocumentDto } from "./dto/settlement-signed-document.dto";
+import { SettlementCounterpartyDocumentService } from "./settlement-counterparty-document.service";
 
 @Controller("projects/:projectId/settlement-drafts")
 export class SettlementDraftController {
   constructor(
     private readonly drafts: SettlementDraftService,
-    private readonly submissions: SettlementSubmissionService
+    private readonly submissions: SettlementSubmissionService,
+    private readonly counterpartyDocuments: SettlementCounterpartyDocumentService
   ) {}
 
   @Post()
@@ -70,5 +73,16 @@ export class SettlementDraftController {
       user.id,
       body.expectedRevision
     );
+  }
+
+  @Post(":draftId/counterparty-signed-documents")
+  @RequireProjectRole("settlement.create")
+  linkCounterpartySignedDocument(
+    @Param("projectId") projectId: string,
+    @Param("draftId") draftId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: LinkSettlementCounterpartySignedDocumentDto
+  ) {
+    return this.counterpartyDocuments.link(projectId, draftId, user.id, body);
   }
 }

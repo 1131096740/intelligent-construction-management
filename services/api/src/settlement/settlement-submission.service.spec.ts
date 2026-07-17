@@ -5,9 +5,10 @@ import {
 } from "@nestjs/common";
 import { SettlementSubmissionService } from "./settlement-submission.service";
 import { SettlementContractCapacityDenial } from "./contract-settlement-capacity";
+import { SettlementDocumentGovernanceDenial } from "./settlement-counterparty-document.service";
 
 describe("SettlementSubmissionService", () => {
-  it("keeps the legacy create entrypoint on the single submission service", async () => {
+  it("rejects the legacy direct-create entrypoint before any settlement write", async () => {
     const settlements = {
       create: jest.fn().mockResolvedValue({ id: "settlement-1" })
     };
@@ -19,10 +20,8 @@ describe("SettlementSubmissionService", () => {
       settlementLines: []
     };
 
-    await expect(service.submit(input, "user-1")).resolves.toEqual({
-      id: "settlement-1"
-    });
-    expect(settlements.create).toHaveBeenCalledWith(input, "user-1");
+    expect(() => service.submit(input, "user-1")).toThrow("请从结算工作台");
+    expect(settlements.create).not.toHaveBeenCalled();
   });
 
   function context(
@@ -48,9 +47,18 @@ describe("SettlementSubmissionService", () => {
       revision: 3,
       status: "draft",
       ownerUserId: "owner-1",
+      governanceVersion: 1,
+      fieldReviewerUserId: "reviewer-1",
+      fieldReviewerRoleKey: "material_staff",
+      finalScopeCompleted: null,
+      finalPriorSettlementsIncluded: null,
+      finalNoOutstandingSettlements: null,
+      finalWithinContractCap: null,
+      finalNoFurtherOrdinarySettlements: null,
       ...draftOverrides
     };
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: draft.id }]),
       settlementDraft: {
         findUnique: jest.fn().mockResolvedValue(draft),
         updateMany: jest
@@ -65,6 +73,10 @@ describe("SettlementSubmissionService", () => {
       )
     };
     const settlement = { id: "settlement-1" };
+    const counterpartyDocuments = {
+      assertReadyForSubmission: jest.fn().mockResolvedValue({}),
+      persistDenial: jest.fn().mockResolvedValue(undefined)
+    };
     const settlements = {
       prepareSubmission: jest.fn().mockImplementation((input) => ({ input })),
       submitInTransaction: jest.fn().mockResolvedValue(settlement),
@@ -83,8 +95,10 @@ describe("SettlementSubmissionService", () => {
       settlements,
       service: new SettlementSubmissionService(
         prisma as never,
-        settlements as never
-      )
+        settlements as never,
+        counterpartyDocuments as never
+      ),
+      counterpartyDocuments
     };
   }
 
@@ -169,6 +183,16 @@ describe("SettlementSubmissionService", () => {
     ).rejects.toThrow("已经提交");
   });
 
+  it("requires an old unsubmitted draft to be re-saved into the governed flow", async () => {
+    const { tx, counterpartyDocuments, service } = context({ governanceVersion: null });
+
+    await expect(
+      service.submitDraft("project-1", "draft-1", "owner-1", 3)
+    ).rejects.toThrow("旧草稿尚未适配新结算规则");
+    expect(counterpartyDocuments.assertReadyForSubmission).not.toHaveBeenCalled();
+    expect(tx.settlementDraft.updateMany).not.toHaveBeenCalled();
+  });
+
   it("leaves the draft unchanged when tax validation blocks formal submission", async () => {
     const taxError = new BadRequestException(
       "合同税务事实尚未确认，暂不能提交结算审批"
@@ -213,5 +237,25 @@ describe("SettlementSubmissionService", () => {
       expect.anything(),
       expect.objectContaining({ data: expect.objectContaining({ status: "submitted" }) })
     );
+  });
+
+  it("persists a signed-document denial after the submission transaction rolls back", async () => {
+    const denial = new SettlementDocumentGovernanceDenial(
+      "请先上传乙方完整签章扫描件",
+      "settlement.submission.counterparty_document_denied"
+    );
+    const { tx, counterpartyDocuments, service } = context();
+    counterpartyDocuments.assertReadyForSubmission.mockRejectedValue(denial);
+
+    await expect(
+      service.submitDraft("project-1", "draft-1", "owner-1", 3)
+    ).rejects.toBe(denial);
+
+    expect(counterpartyDocuments.persistDenial).toHaveBeenCalledWith(
+      "draft-1",
+      "owner-1",
+      denial
+    );
+    expect(tx.settlementDraft.updateMany).not.toHaveBeenCalled();
   });
 });

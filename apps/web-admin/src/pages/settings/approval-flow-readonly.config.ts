@@ -160,10 +160,12 @@ export const approvalFlowRules: ApprovalFlowRule[] = [
       { name: "物资主管", mode: "any", roleKeys: ["material_director"] },
       { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
       { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
-      { name: "财务总监", mode: "any", roleKeys: ["finance_director"] }
+      { name: "财务主管", mode: "any", roleKeys: ["finance_director"] }
     ],
     guardrails: [
       "结算只能从已生效合同版本发起",
+      "所属项目物资员由合同员选择并在提交时冻结具体人员",
+      "过程结算与最终结算使用完全相同的审批路线",
       "结算成本控制节点由合同部主管单独审批",
       "结算审批不经过董事长/总经理"
     ]
@@ -174,19 +176,16 @@ export const approvalFlowRules: ApprovalFlowRule[] = [
     businessType: "结算",
     status: "readonly",
     nodes: [
-      { name: "工长", mode: "any", roleKeys: ["engineering_foreman"] },
+      { name: "工长/施工员", mode: "any", roleKeys: ["engineering_foreman", "engineering_tech"] },
       { name: "项目总工", mode: "any", roleKeys: ["engineering_director"] },
-      {
-        name: "公司工程技术部部长",
-        mode: "any",
-        roleKeys: ["engineering_department_director"]
-      },
       { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
       { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
-      { name: "财务总监", mode: "any", roleKeys: ["finance_director"] }
+      { name: "财务主管", mode: "any", roleKeys: ["finance_director"] }
     ],
     guardrails: [
       "劳务/专业分包结算先经工程现场角色复核",
+      "工长/施工员由合同员选择，项目总工按所属项目唯一确定",
+      "过程结算与最终结算使用完全相同的审批路线",
       "结算成本控制节点由合同部主管单独审批",
       "结算审批不经过董事长/总经理"
     ]

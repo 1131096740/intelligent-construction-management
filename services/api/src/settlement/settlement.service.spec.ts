@@ -6,6 +6,7 @@ import {
   calculateFinalSettlementCurrentAmountBigInt,
   calculateSettlementLineTotalBigInt,
   calculateSettlementPayableAmountBigInt,
+  SettlementGovernanceSubmissionDenial,
   SettlementService
 } from "./settlement.service";
 
@@ -30,6 +31,32 @@ describe("settlement bigint calculations", () => {
 });
 
 describe("SettlementService", () => {
+  it("rejects governed direct POST before creating settlement or approval facts", async () => {
+    const version = {
+      id: "governed-version",
+      contractId: "contract-1",
+      status: "effective",
+      contractGovernanceVersion: 1
+    };
+    const tx = {
+      contractVersion: { findUnique: jest.fn().mockResolvedValue(version) },
+      settlement: { create: jest.fn() },
+      approvalInstance: { create: jest.fn() }
+    };
+    const service = new SettlementService({
+      $transaction: jest.fn(async (callback) => callback(tx))
+    } as never, audit as never);
+
+    await expect(service.create({
+      contractVersionId: "governed-version",
+      code: "JS-G-1",
+      periodLabel: "2026-07",
+      amountCents: "100",
+      settlementLines: []
+    }, "owner-1")).rejects.toThrow("必须从草稿");
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+  });
   const settlementCapacityLineage = [{
     id: "contract-version-1",
     baseVersionId: null,
@@ -55,6 +82,165 @@ describe("SettlementService", () => {
     audit.record.mockReset();
     auth.confirmPassword.mockReset();
     auth.confirmPassword.mockResolvedValue({ ok: true });
+  });
+
+  function governedRouteTx(projectMembers: Array<Record<string, unknown>>, globalRows: Array<Record<string, unknown>>) {
+    return {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce(projectMembers)
+        .mockResolvedValueOnce(globalRows)
+        .mockResolvedValueOnce([{ id: "owner-1", isActive: true, signatureFileId: "signature-1" }])
+        .mockResolvedValueOnce([{ id: "signature-1", storageStatus: "active", contentSha256: "a".repeat(64) }]),
+      settlementDraft: { count: jest.fn().mockResolvedValue(0) },
+      settlement: { count: jest.fn().mockResolvedValue(0) }
+    };
+  }
+
+  const finalFacts = {
+    finalScopeCompleted: true,
+    finalPriorSettlementsIncluded: true,
+    finalNoOutstandingSettlements: true,
+    finalWithinContractCap: true,
+    finalNoFurtherOrdinarySettlements: true
+  };
+
+  it("persists a final-confirmation denial against the draft in an independent transaction", async () => {
+    const tx = {};
+    const localAudit = { record: jest.fn().mockResolvedValue(undefined) };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const governedService = new SettlementService(prisma as never, localAudit as never);
+    const denial = new SettlementGovernanceSubmissionDenial(
+      "请确认最终结算后不再发起普通过程结算"
+    );
+
+    await governedService.persistGovernanceDenial(denial, "owner-1", "draft-1");
+
+    expect(localAudit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "owner-1",
+      action: "settlement.final_confirmation.denied",
+      businessType: "settlement_draft",
+      businessId: "draft-1",
+      metadata: {
+        tag: "settlement.final_confirmation.denied",
+        reason: "请确认最终结算后不再发起普通过程结算"
+      }
+    });
+  });
+
+  it.each([
+    ["material_purchase", "material-1", "material_staff", ["material_staff", "material_director", "contract_director", "project_manager", "finance_director"]],
+    ["equipment_rental", "material-1", "material_staff", ["material_staff", "material_director", "contract_director", "project_manager", "finance_director"]],
+    ["labor_subcontract", "foreman-1", "engineering_foreman", ["engineering_foreman", "engineering_director", "contract_director", "project_manager", "finance_director"]],
+    ["professional_subcontract", "tech-1", "engineering_tech", ["engineering_tech", "engineering_director", "contract_director", "project_manager", "finance_director"]]
+  ] as const)("freezes identical process/final governed routes for %s", async (contractTypeKey, selectedUserId, selectedRole, expected) => {
+    const members = [
+      { projectId: "project-1", userId: selectedUserId, roleKey: selectedRole, userIsActive: true },
+      { projectId: "project-1", userId: "chief-1", roleKey: "engineering_director", userIsActive: true },
+      { projectId: "project-1", userId: "manager-1", roleKey: "project_manager", userIsActive: true }
+    ];
+    const globals = [
+      { userId: "material-director-1", roleKey: "material_director" },
+      { userId: "contract-director-1", roleKey: "contract_director" },
+      { userId: "finance-director-1", roleKey: "finance_director" }
+    ];
+    const governed = (isFinal: boolean) => service.freezeGovernedSettlementFacts(
+      governedRouteTx(members, globals) as never,
+      { id: "contract-1", projectId: "project-1", contractTypeKey },
+      isFinal,
+      "owner-1",
+      { draftId: "draft-1", governanceVersion: 1, fieldReviewerUserId: selectedUserId, fieldReviewerRoleKey: selectedRole, finalConfirmations: isFinal ? finalFacts : Object.fromEntries(Object.keys(finalFacts).map((key) => [key, null])) as never }
+    );
+    const [process, final] = await Promise.all([governed(false), governed(true)]);
+    expect(process.frozenNodes.map((node) => node.roleKeys[0])).toEqual(expected);
+    expect(final.frozenNodes.map((node) => node.roleKeys[0])).toEqual(expected);
+    expect(JSON.stringify(final.frozenNodes)).not.toMatch(/engineering_department_director|budget_director/u);
+  });
+
+  it.each([
+    ["finalScopeCompleted", "合同范围内应结事项已经完成"],
+    ["finalPriorSettlementsIncluded", "历史过程结算已完整纳入累计数据"],
+    ["finalNoOutstandingSettlements", "不存在尚未处理的结算草稿或审批中结算"],
+    ["finalWithinContractCap", "累计结算符合当前有效合同金额上限"],
+    ["finalNoFurtherOrdinarySettlements", "最终结算后不再发起普通过程结算"]
+  ] as const)("rejects final settlement when %s is false or missing", async (key, message) => {
+    for (const value of [false, undefined]) {
+      const facts = { ...finalFacts, [key]: value };
+      await expect(service.freezeGovernedSettlementFacts(
+        governedRouteTx([
+          { projectId: "project-1", userId: "material-1", roleKey: "material_staff", userIsActive: true },
+          { projectId: "project-1", userId: "manager-1", roleKey: "project_manager", userIsActive: true }
+        ], [
+          { userId: "material-director-1", roleKey: "material_director" }, { userId: "contract-director-1", roleKey: "contract_director" }, { userId: "finance-director-1", roleKey: "finance_director" }
+        ]) as never,
+        { id: "contract-1", projectId: "project-1", contractTypeKey: "material_purchase" }, true, "owner-1",
+        { draftId: "draft-1", governanceVersion: 1, fieldReviewerUserId: "material-1", fieldReviewerRoleKey: "material_staff", finalConfirmations: facts as never }
+      )).rejects.toThrow(message);
+    }
+  });
+
+  it("rejects any final fact on an ordinary settlement", async () => {
+    await expect(service.freezeGovernedSettlementFacts(
+      governedRouteTx([
+        { projectId: "project-1", userId: "material-1", roleKey: "material_staff", userIsActive: true },
+        { projectId: "project-1", userId: "manager-1", roleKey: "project_manager", userIsActive: true }
+      ], [{ userId: "material-director-1", roleKey: "material_director" }, { userId: "contract-director-1", roleKey: "contract_director" }, { userId: "finance-director-1", roleKey: "finance_director" }]) as never,
+      { id: "contract-1", projectId: "project-1", contractTypeKey: "material_purchase" }, false, "owner-1",
+      { draftId: "draft-1", governanceVersion: 1, fieldReviewerUserId: "material-1", fieldReviewerRoleKey: "material_staff", finalConfirmations: { ...Object.fromEntries(Object.keys(finalFacts).map((key) => [key, null])), finalScopeCompleted: false } as never }
+    )).rejects.toThrow("过程结算不能携带");
+  });
+
+  it("rejects an ordinary settlement after an occupying final settlement exists", async () => {
+    const tx = governedRouteTx([
+      { projectId: "project-1", userId: "material-1", roleKey: "material_staff", userIsActive: true },
+      { projectId: "project-1", userId: "manager-1", roleKey: "project_manager", userIsActive: true }
+    ], [
+      { userId: "material-director-1", roleKey: "material_director" },
+      { userId: "contract-director-1", roleKey: "contract_director" },
+      { userId: "finance-director-1", roleKey: "finance_director" }
+    ]);
+    tx.settlement.count.mockResolvedValueOnce(1);
+
+    await expect(service.freezeGovernedSettlementFacts(
+      tx as never,
+      { id: "contract-1", projectId: "project-1", contractTypeKey: "material_purchase" },
+      false,
+      "owner-1",
+      {
+        draftId: "draft-1",
+        governanceVersion: 1,
+        fieldReviewerUserId: "material-1",
+        fieldReviewerRoleKey: "material_staff",
+        finalConfirmations: Object.fromEntries(
+          Object.keys(finalFacts).map((key) => [key, null])
+        ) as never
+      }
+    )).rejects.toThrow("不能再发起普通过程结算");
+  });
+
+  it.each([
+    ["inactive selected reviewer", [
+      { projectId: "project-1", userId: "foreman-1", roleKey: "engineering_foreman", userIsActive: false },
+      { projectId: "project-1", userId: "chief-1", roleKey: "engineering_director", userIsActive: true },
+      { projectId: "project-1", userId: "manager-1", roleKey: "project_manager", userIsActive: true }
+    ], [], "只能选择所属项目当前有效人员"],
+    ["changed unique chief engineer", [
+      { projectId: "project-1", userId: "foreman-1", roleKey: "engineering_foreman", userIsActive: true },
+      { projectId: "project-1", userId: "chief-1", roleKey: "engineering_director", userIsActive: true },
+      { projectId: "project-1", userId: "chief-2", roleKey: "engineering_director", userIsActive: true }
+    ], [], "项目总工配置缺失或冲突"],
+    ["missing mandatory company candidates", [
+      { projectId: "project-1", userId: "foreman-1", roleKey: "engineering_foreman", userIsActive: true },
+      { projectId: "project-1", userId: "chief-1", roleKey: "engineering_director", userIsActive: true },
+      { projectId: "project-1", userId: "manager-1", roleKey: "project_manager", userIsActive: true }
+    ], [], "合同部主管缺少当前有效审批人"]
+  ])("fails closed for %s", async (_label, members, globals, message) => {
+    const error = await service.freezeGovernedSettlementFacts(
+      governedRouteTx(members, globals) as never,
+      { id: "contract-1", projectId: "project-1", contractTypeKey: "labor_subcontract" }, false, "owner-1",
+      { draftId: "draft-1", governanceVersion: 1, fieldReviewerUserId: "foreman-1", fieldReviewerRoleKey: "engineering_foreman", finalConfirmations: Object.fromEntries(Object.keys(finalFacts).map((key) => [key, null])) as never }
+    ).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect((error as Error).message).toContain(message);
   });
 
   it("rejects an invalid settlement amount as HTTP 400 before opening a transaction", async () => {
@@ -2146,7 +2332,7 @@ describe("SettlementService", () => {
           { name: "物资主管", mode: "any", roleKeys: ["material_director"] },
           { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
           { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
-          { name: "财务总监", mode: "any", roleKeys: ["finance_director"] }
+          { name: "财务主管", mode: "any", roleKeys: ["finance_director"] }
         ]
       })
     });
@@ -2383,12 +2569,11 @@ describe("SettlementService", () => {
     expect(tx.approvalInstance.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         frozenNodes: [
-          { name: "工长", mode: "any", roleKeys: ["engineering_foreman"] },
+          { name: "工长/施工员", mode: "any", roleKeys: ["engineering_foreman", "engineering_tech"] },
           { name: "项目总工", mode: "any", roleKeys: ["engineering_director"] },
-          { name: "公司工程技术部部长", mode: "any", roleKeys: ["engineering_department_director"] },
           { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
           { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
-          { name: "财务总监", mode: "any", roleKeys: ["finance_director"] }
+          { name: "财务主管", mode: "any", roleKeys: ["finance_director"] }
         ]
       })
     });
@@ -2451,9 +2636,8 @@ describe("SettlementService", () => {
     expect(tx.approvalInstance.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         frozenNodes: expect.arrayContaining([
-          { name: "工长", mode: "any", roleKeys: ["engineering_foreman"] },
+          { name: "工长/施工员", mode: "any", roleKeys: ["engineering_foreman", "engineering_tech"] },
           { name: "项目总工", mode: "any", roleKeys: ["engineering_director"] },
-          { name: "公司工程技术部部长", mode: "any", roleKeys: ["engineering_department_director"] }
         ])
       })
     });

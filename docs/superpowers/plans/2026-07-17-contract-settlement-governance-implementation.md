@@ -1500,7 +1500,7 @@ git commit -m "feat: 增加结算参与人与签章证据结构"
 - Modify: `apps/web-admin/src/pages/settings/approval-flow-readonly.config.ts`
 - Modify: `apps/web-admin/src/pages/settings/approval-flow-readonly.config.test.ts`
 
-- [ ] **Step 1: 写路线、现场人员和扫描件失败测试**
+- [x] **Step 1: 写路线、现场人员和扫描件失败测试**
 
 ```ts
 expect(materialNodes.map(n => n.roleKeys[0])).toEqual([
@@ -1513,36 +1513,38 @@ expect(laborNodes.flatMap(n => n.roleKeys)).not.toContain("engineering_departmen
 await expect(submit(draftWithoutSignedPdf)).rejects.toThrow("请先上传乙方完整签章扫描件");
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `pnpm --filter @jiangkong/shared-domain test -- src/permissions.test.ts && pnpm --filter @jiangkong/api test -- --runInBand src/settlement/settlement-participant-freeze.spec.ts src/settlement/settlement-draft.service.spec.ts src/settlement/settlement-submission.service.spec.ts src/settlement/settlement.service.spec.ts`
 
 Expected: FAIL。
 
-- [ ] **Step 3: 冻结具体人员和编制人签名**
+- [x] **Step 3: 冻结具体人员和编制人签名**
 
 提交时验证所选人员仍属于项目，把 selected user 写入第一个冻结节点；劳务/专业 selected role 只能为 `engineering_foreman/engineering_tech`，材料/机械只能为 `material_staff`。项目总工节点冻结唯一用户；其他节点通过 Task 7 的 `candidateUserIdsByRole` 冻结提交时公司级/项目级候选并排除申请人，缺员 fail closed。编制人不是审批节点，但提交时冻结本人签名 fileId/SHA 和提交日期。四合同类型分别对过程/最终结算断言 frozenNodes 完全相同；设置只读页删除公司工程技术部部长旧节点并显示两类路线。
 
-- [ ] **Step 4: 前置扫描件声明**
+- [x] **Step 4: 前置扫描件声明**
 
 业务关联接口接收 `expectedRevision + frozenDocumentId + uploadedFileId + declaration`，锁 SettlementDraft，验证经办人、revision、受治理 marker 和原冻结版 hash；读取 FileObject 原 buffer，强制 active/本人上传/PDF/size/SHA/可解析/页数一致，不 normalize/resave。人工声明：扫描件与该编号/revision 冻结版页序一致、乙方每个需要签字处已签名并填写日期、每页盖章、多页骑缝章。禁 OCR，因此页面顺序和签章真伪不得冒充系统自动识别；系统只核 revision/hash/页数/可叠加尺寸与声明审计。
 
-- [ ] **Step 5: 过程/最终路线一致**
+- [x] **Step 5: 过程/最终路线一致**
 
 最终结算不增加审批岗位，只在同一提交事务中增加五项结构化完结校验：合同范围内应结事项已完成；历史过程结算已完整纳入累计数据；不存在尚未处理的结算草稿或审批中结算；本次累计结算符合当前有效合同金额上限；合同员已明确选择“最终结算”并确认后续不再发起普通过程结算。五项分别持久化输入/快照并逐项测试，不能用一条总确认代替。任一失败均保留草稿、上传件和已选人员，使用可持久的 tagged denial 审计并返回可操作提示。
 
-- [ ] **Step 6: 运行定向测试**
+- [x] **Step 6: 运行定向测试**
 
 Run: `pnpm --filter @jiangkong/shared-domain test -- src/permissions.test.ts && pnpm --filter @jiangkong/api test -- --runInBand src/settlement/settlement-participant-freeze.spec.ts src/settlement/settlement-counterparty-document.service.spec.ts src/settlement/settlement-draft.controller.spec.ts src/settlement/settlement.controller.spec.ts src/settlement/settlement-draft.service.spec.ts src/settlement/settlement-submission.service.spec.ts src/settlement/settlement.service.spec.ts src/approval/approval-node-access.spec.ts && pnpm --filter @jiangkong/web-admin test -- src/pages/settings/approval-flow-readonly.config.test.ts && pnpm --filter @jiangkong/shared-domain typecheck && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint && pnpm --filter @jiangkong/api check:business-errors`
 
 Expected: PASS。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add packages/shared-domain/src/permissions* services/api/src/settlement apps/web-admin/src/pages/settings/approval-flow-readonly.config*
 git commit -m "feat: 冻结结算审批参与人与签前文件"
 ```
+
+> Task 17 已于 2026-07-18 完成实现并通过规格/质量双复审 READY。部署后新建或重新保存的结算草稿一律进入治理版本 1，历史有效合同的新结算也不能绕过；旧未提交草稿须先重新保存补齐现场复核人、冻结版和乙方签章原件，直接 `POST /settlements` 零业务写拒绝。材料/机械与劳务/专业分包按所属项目冻结具体现场人员、唯一项目总工及公司级审批候选，过程/最终路线一致，预算岗位只保留可选资格，公司工程技术部部长永久移除。专用关联接口绑定项目和 revision，按稳定顺序锁草稿、文档和文件，校验原字节、SHA、所有权、PDF 大小/页数/方向/尺寸和人工声明；替代图拒绝跨父业务、跨用途、多后继和循环，并把序列化/唯一冲突映射为稳定中文结果。五项最终结算事实分别持久化和逐项重验；合同锁同时阻断已有最终结算后的新草稿、重复最终结算和后续普通过程结算，路线冻结、最终事实与文件门禁拒绝均可追溯审计。两个真实 PrismaClient 并发关联同一 uploadedFileId 的结果为一笔成功、一笔稳定中文重试拒绝，数据库仅一条 committed binding；Contract 锁域探针中真实草稿创建等待约 718ms，最终结算事实提交后复读拒绝且未生成草稿。fresh PostgreSQL 16 已再次从 M1 连续执行到 M56，56/56 成功，五项字段两表共 10 列、三项关键约束核对通过；临时容器全部清理。未连接或修改生产。
 
 ### Task 18: A4 横向冻结版、逐页签名区和最终合成件
 

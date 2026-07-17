@@ -45,6 +45,7 @@ describe("permission policy table", () => {
     ] as const) {
       expect(canPerform("settlement.approve", [role])).toBe(true);
     }
+    expect(canPerform("settlement.approve", ["engineering_department_director"])).toBe(false);
   });
 });
 
@@ -145,11 +146,11 @@ describe("role-specific gates", () => {
     expect(canPerform("contract.archive.upload", ["contract_director"])).toBe(false);
   });
 
-  it("requires contract or budget roles to create settlements", () => {
+  it("requires contract roles to create settlements", () => {
     expect(canPerform("settlement.create", ["contract_staff"])).toBe(true);
     expect(canPerform("settlement.create", ["contract_director"])).toBe(true);
-    expect(canPerform("settlement.create", ["budget_staff"])).toBe(true);
-    expect(canPerform("settlement.create", ["budget_director"])).toBe(true);
+    expect(canPerform("settlement.create", ["budget_staff"])).toBe(false);
+    expect(canPerform("settlement.create", ["budget_director"])).toBe(false);
     expect(canPerform("settlement.create", ["project_manager"])).toBe(false);
     expect(canPerform("settlement.create", ["finance_staff"])).toBe(false);
   });

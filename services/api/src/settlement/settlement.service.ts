@@ -78,8 +78,13 @@ import {
   isUnlimitedFrameworkContract,
   SettlementContractCapacityDenial
 } from "./contract-settlement-capacity";
+import { freezeSettlementParticipants } from "./settlement-participant-freeze";
 
 type SettlementContractKind = "material_mechanical" | "labor_professional";
+
+export class SettlementGovernanceSubmissionDenial extends BadRequestException {
+  readonly tag = "settlement.final_confirmation.denied";
+}
 
 const SETTLEMENT_POST_MONEY_FIELDS = [
   "amountCents",
@@ -112,16 +117,15 @@ const MATERIAL_MECHANICAL_SETTLEMENT_NODES: SettlementApprovalNode[] = [
   { name: "物资主管", mode: "any", roleKeys: ["material_director"] },
   { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
   { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
-  { name: "财务总监", mode: "any", roleKeys: ["finance_director"] }
+  { name: "财务主管", mode: "any", roleKeys: ["finance_director"] }
 ];
 
 const LABOR_PROFESSIONAL_SETTLEMENT_NODES: SettlementApprovalNode[] = [
-  { name: "工长", mode: "any", roleKeys: ["engineering_foreman"] },
+  { name: "工长/施工员", mode: "any", roleKeys: ["engineering_foreman", "engineering_tech"] },
   { name: "项目总工", mode: "any", roleKeys: ["engineering_director"] },
-  { name: "公司工程技术部部长", mode: "any", roleKeys: ["engineering_department_director"] },
   { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
   { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
-  { name: "财务总监", mode: "any", roleKeys: ["finance_director"] }
+  { name: "财务主管", mode: "any", roleKeys: ["finance_director"] }
 ];
 const SETTLEMENT_ACTIVE_PERIOD_STATUSES = [
   "draft",
@@ -310,6 +314,20 @@ export interface PreparedSettlementSubmission {
   input: CreateSettlementDto;
   submittedAmountCents: bigint | null;
   settlementTemplateVersionId: string | null;
+}
+
+export interface GovernedSettlementDraftSubmission {
+  draftId: string;
+  governanceVersion: 1;
+  fieldReviewerUserId: string | null;
+  fieldReviewerRoleKey: string | null;
+  finalConfirmations: {
+    finalScopeCompleted: boolean | null;
+    finalPriorSettlementsIncluded: boolean | null;
+    finalNoOutstandingSettlements: boolean | null;
+    finalWithinContractCap: boolean | null;
+    finalNoFurtherOrdinarySettlements: boolean | null;
+  };
 }
 
 interface SettlementDuplicateClient {
@@ -1043,7 +1061,8 @@ export class SettlementService {
   async submitInTransaction(
     tx: Prisma.TransactionClient,
     prepared: PreparedSettlementSubmission,
-    applicantUserId?: string
+    applicantUserId?: string,
+    governedDraft?: GovernedSettlementDraftSubmission
   ): Promise<Settlement> {
     const { input, submittedAmountCents, settlementTemplateVersionId } = prepared;
     const version = await lockContractAndAssertCurrentEffective(
@@ -1051,6 +1070,9 @@ export class SettlementService {
       input.contractVersionId,
       true
     );
+    if (version.contractGovernanceVersion === 1 && !governedDraft) {
+      throw new BadRequestException("新受治理结算必须从草稿完成参与人和乙方签章文件门禁后提交");
+    }
     if (this.settlementTemplates && settlementTemplateVersionId) {
       await this.settlementTemplates.assertPublishedCompatible(
         settlementTemplateVersionId,
@@ -1064,6 +1086,9 @@ export class SettlementService {
       throw new Error("未找到结算关联合同，请刷新合同台账后重试");
     }
     assertSettlementContractType(contract.contractTypeKey);
+    const governedFacts = governedDraft && applicantUserId
+      ? await this.freezeGovernedSettlementFacts(tx, contract, input.isFinal === true, applicantUserId, governedDraft)
+      : null;
     const periodLabel = this.requiredText(input.periodLabel, "结算期间");
     await this.assertNoDuplicateActiveSettlementPeriod(tx, version.id, periodLabel);
     await this.assertTaxFactsReadyForSubmission(tx, version, input.settlementLines);
@@ -1191,12 +1216,55 @@ export class SettlementService {
         paidAmountCents: 0n,
         invoiceTypeSnapshot: version.invoiceType,
         taxFactRevisionSnapshot: version.taxFactRevision,
+        ...(governedFacts ? {
+          governanceVersion: 1,
+          fieldReviewerUserId: governedFacts.fieldReviewerUserId,
+          fieldReviewerRoleKey: governedFacts.fieldReviewerRoleKey,
+          preparedByUserId: applicantUserId,
+          preparerSignatureFileId: governedFacts.preparerSignature.fileId,
+          preparerSignatureSha256: governedFacts.preparerSignature.sha256,
+          ...governedFacts.finalConfirmations
+        } : {}),
         ...(input.isFinal === true
           ? { isFinal: true, finalCumulativeAmountCents: submittedAmountCents! }
           : {})
       }
     });
     await this.createSettlementLines(tx, settlement.id, settlementLines);
+
+    if (applicantUserId && governedFacts) {
+      await this.audit.record(tx, {
+        actorUserId: applicantUserId,
+        action: "settlement.approval_route.freeze",
+        businessType: "settlement",
+        businessId: settlement.id,
+        metadata: {
+          tag: "settlement.approval_route.freeze",
+          draftId: governedDraft?.draftId,
+          contractId: contract.id,
+          contractTypeKey: contract.contractTypeKey,
+          nodes: governedFacts.frozenNodes.map((node) => ({
+            roleKeys: node.roleKeys,
+            candidateUserIds: node.candidateUserIds ?? [],
+            selectedUserId: node.selectedUserId ?? null
+          }))
+        }
+      });
+    }
+
+    if (applicantUserId && governedFacts && input.isFinal === true) {
+      await this.audit.record(tx, {
+        actorUserId: applicantUserId,
+        action: "settlement.final_confirmation.freeze",
+        businessType: "settlement",
+        businessId: settlement.id,
+        metadata: {
+          tag: "settlement.final_confirmation.freeze",
+          draftId: governedDraft?.draftId,
+          ...governedFacts.finalConfirmations
+        }
+      });
+    }
 
     if (applicantUserId) {
       await this.audit.record(tx, {
@@ -1253,15 +1321,129 @@ export class SettlementService {
           businessId: settlement.id,
           status: "in_progress",
           currentNodeIndex: 0,
-          frozenNodes: this.settlementApprovalNodesFor(
-            contract
-          ) as unknown as Prisma.InputJsonValue,
+          frozenNodes: (governedFacts?.frozenNodes ?? this.settlementApprovalNodesFor(contract)) as unknown as Prisma.InputJsonValue,
           applicantUserId
         }
       });
     }
 
     return settlement;
+  }
+
+  async freezeGovernedSettlementFacts(
+    tx: Prisma.TransactionClient,
+    contract: { id: string; projectId: string; contractTypeKey: string | null },
+    isFinal: boolean,
+    applicantUserId: string,
+    governed: GovernedSettlementDraftSubmission
+  ) {
+    const projectMembers = await tx.$queryRaw<Array<{ projectId: string; userId: string; roleKey: string; userIsActive: boolean }>>(Prisma.sql`
+      SELECT pm."projectId", pm."userId", pm."positionKey" AS "roleKey", u."isActive" AS "userIsActive"
+      FROM "ProjectMember" pm INNER JOIN "User" u ON u."id" = pm."userId"
+      WHERE pm."projectId" = ${contract.projectId}
+      FOR SHARE OF pm, u
+    `);
+    let participants: Awaited<ReturnType<typeof freezeSettlementParticipants>>;
+    try {
+      participants = await freezeSettlementParticipants({
+        contractTypeKey: contract.contractTypeKey,
+        projectId: contract.projectId,
+        selectedUserId: governed.fieldReviewerUserId,
+        projectMembers
+      });
+    } catch (error) {
+      throw new SettlementGovernanceSubmissionDenial(
+        error instanceof Error
+          ? error.message
+          : "结算现场复核人员配置异常，请重新选择后再提交"
+      );
+    }
+    if (participants.fieldReviewerUserId === applicantUserId ||
+      participants.fieldReviewerRoleKey !== governed.fieldReviewerRoleKey) {
+      throw new SettlementGovernanceSubmissionDenial(
+        "现场复核人或岗位已变化，请重新选择所属项目当前有效人员"
+      );
+    }
+    const globalRows = await tx.$queryRaw<Array<{ userId: string; roleKey: string }>>(Prisma.sql`
+      SELECT up."userId", p."key" AS "roleKey" FROM "UserPosition" up
+      INNER JOIN "Position" p ON p."id" = up."positionId"
+      INNER JOIN "User" u ON u."id" = up."userId"
+      WHERE up."projectId" IS NULL AND u."isActive" = TRUE
+        AND p."key" IN ('material_director', 'contract_director', 'finance_director')
+      FOR SHARE OF up, p, u
+    `);
+    const candidates = (roleKey: string, source = globalRows) =>
+      [...new Set(source.filter((row) => row.roleKey === roleKey && row.userId !== applicantUserId).map((row) => row.userId))].sort();
+    const node = (name: string, roleKey: RoleKey, ids: string[]): SettlementApprovalNode => {
+      if (!ids.length) {
+        throw new SettlementGovernanceSubmissionDenial(
+          `${name}缺少当前有效审批人，请先完成组织配置`
+        );
+      }
+      return { name, mode: "any", roleKeys: [roleKey], candidateUserIds: ids, candidateUserIdsByRole: { [roleKey]: ids } };
+    };
+    const fieldNode = node(roleLabel(participants.fieldReviewerRoleKey), participants.fieldReviewerRoleKey, [participants.fieldReviewerUserId]);
+    fieldNode.selectedUserId = participants.fieldReviewerUserId;
+    const projectRows = projectMembers
+      .filter((member) => member.userIsActive)
+      .map(({ userId, roleKey }) => ({ userId, roleKey }));
+    const frozenNodes = contract.contractTypeKey === "material_purchase" || contract.contractTypeKey === "equipment_rental"
+      ? [fieldNode, node("物资主管", "material_director", candidates("material_director")), node("合同部主管", "contract_director", candidates("contract_director")), node("项目经理", "project_manager", candidates("project_manager", projectRows)), node("财务主管", "finance_director", candidates("finance_director"))]
+      : [fieldNode, node("项目总工", "engineering_director", participants.engineeringDirectorUserId === applicantUserId ? [] : [participants.engineeringDirectorUserId!]), node("合同部主管", "contract_director", candidates("contract_director")), node("项目经理", "project_manager", candidates("project_manager", projectRows)), node("财务主管", "finance_director", candidates("finance_director"))];
+    const confirmations = governed.finalConfirmations;
+    const confirmationChecks = [
+      ["finalScopeCompleted", "请确认合同范围内应结事项已经完成"],
+      ["finalPriorSettlementsIncluded", "请确认历史过程结算已完整纳入累计数据"],
+      ["finalNoOutstandingSettlements", "请确认不存在尚未处理的结算草稿或审批中结算"],
+      ["finalWithinContractCap", "请确认本次累计结算符合当前有效合同金额上限"],
+      ["finalNoFurtherOrdinarySettlements", "请确认最终结算后不再发起普通过程结算"]
+    ] as const;
+    if (isFinal) {
+      for (const [key, message] of confirmationChecks) {
+        if (confirmations[key] !== true) {
+          throw new SettlementGovernanceSubmissionDenial(message);
+        }
+      }
+    } else if (!Object.values(confirmations).every((value) => value === null)) {
+      throw new SettlementGovernanceSubmissionDenial("过程结算不能携带最终结算完结确认");
+    }
+    const existingFinalCount = await tx.settlement.count({
+      where: {
+        contractId: contract.id,
+        isFinal: true,
+        status: { in: [...SETTLEMENT_OCCUPANCY_STATUSES] }
+      }
+    });
+    if (existingFinalCount > 0) {
+      throw new SettlementGovernanceSubmissionDenial(
+        isFinal
+          ? "该合同已存在占用中的最终结算，不能重复发起最终结算"
+          : "该合同已存在占用中的最终结算，不能再发起普通过程结算"
+      );
+    }
+    if (isFinal) {
+      const [draftCount, settlementCount] = await Promise.all([
+        tx.settlementDraft.count({ where: { contractId: contract.id, id: { not: governed.draftId }, status: "draft" } }),
+        tx.settlement.count({ where: { contractId: contract.id, status: { in: ["in_approval", "approval_pending", "approved_pending_archive", "archive_pending", "pending_archive_confirm"] } } })
+      ]);
+      if (draftCount + settlementCount > 0) throw new SettlementGovernanceSubmissionDenial("仍存在尚未处理的结算草稿或审批中结算，暂不能提交最终结算");
+    }
+    return { ...participants, finalConfirmations: confirmations, frozenNodes, preparerSignature: await snapshotApprovalSignature(tx, applicantUserId, { required: true }) };
+  }
+
+  async persistGovernanceDenial(
+    error: unknown,
+    actorUserId?: string,
+    draftId?: string
+  ) {
+    if (!(error instanceof SettlementGovernanceSubmissionDenial) || !actorUserId || !this.prisma) return;
+    await this.prisma.$transaction((tx) => this.audit.record(tx, {
+      actorUserId,
+      action: error.tag,
+      businessType: "settlement_draft",
+      ...(draftId ? { businessId: draftId } : {}),
+      metadata: { tag: error.tag, reason: error.message }
+    }));
   }
 
   rethrowSubmissionError(error: unknown): never {

@@ -452,59 +452,69 @@ model ContractSealTask {
 }
 
 model SettlementDraft {
-  id                          String    @id @default(uuid())
-  projectId                   String
-  contractId                  String
-  contractVersionId           String
-  paymentTermsVersionId       String
-  settlementTemplateVersionId String?
-  code                        String
-  periodLabel                 String
-  isFinal                     Boolean   @default(false)
-  finalCumulativeAmountCents  BigInt?
-  lines                       Json
-  revision                    Int       @default(1)
-  status                      String    @default("draft")
-  ownerUserId                 String
-  governanceVersion           Int?
-  fieldReviewerUserId         String?
-  fieldReviewerRoleKey        String?
-  submittedSettlementId       String?   @unique
-  submittedAt                 DateTime?
-  createdAt                   DateTime  @default(now())
-  updatedAt                   DateTime  @updatedAt
+  id                                String    @id @default(uuid())
+  projectId                         String
+  contractId                        String
+  contractVersionId                 String
+  paymentTermsVersionId             String
+  settlementTemplateVersionId       String?
+  code                              String
+  periodLabel                       String
+  isFinal                           Boolean   @default(false)
+  finalCumulativeAmountCents        BigInt?
+  lines                             Json
+  revision                          Int       @default(1)
+  status                            String    @default("draft")
+  ownerUserId                       String
+  governanceVersion                 Int?
+  fieldReviewerUserId               String?
+  fieldReviewerRoleKey              String?
+  finalScopeCompleted               Boolean?
+  finalPriorSettlementsIncluded     Boolean?
+  finalNoOutstandingSettlements     Boolean?
+  finalWithinContractCap            Boolean?
+  finalNoFurtherOrdinarySettlements Boolean?
+  submittedSettlementId             String?   @unique
+  submittedAt                       DateTime?
+  createdAt                         DateTime  @default(now())
+  updatedAt                         DateTime  @updatedAt
 
   @@index([projectId, ownerUserId, status, updatedAt])
   @@index([contractVersionId, status])
 }
 
 model Settlement {
-  id                          String   @id @default(uuid())
-  projectId                   String
-  contractId                  String
-  contractVersionId           String
-  paymentTermsVersionId       String
-  code                        String   @unique
-  periodLabel                 String
-  status                      String
-  amountCents                 BigInt
-  finalCumulativeAmountCents  BigInt?
-  payableAmountCents          BigInt
-  paidAmountCents             BigInt   @default(0)
-  sourceType                  String   @default("system")
-  sourceTakeoverId            String?  @unique
-  settlementTemplateVersionId String?
-  isFinal                     Boolean  @default(false)
-  invoiceTypeSnapshot         String?
-  taxFactRevisionSnapshot     Int?
-  governanceVersion           Int?
-  fieldReviewerUserId         String?
-  fieldReviewerRoleKey        String?
-  preparedByUserId            String?
-  preparerSignatureFileId     String?
-  preparerSignatureSha256     String?
-  createdAt                   DateTime @default(now())
-  updatedAt                   DateTime @updatedAt
+  id                                String   @id @default(uuid())
+  projectId                         String
+  contractId                        String
+  contractVersionId                 String
+  paymentTermsVersionId             String
+  code                              String   @unique
+  periodLabel                       String
+  status                            String
+  amountCents                       BigInt
+  finalCumulativeAmountCents        BigInt?
+  payableAmountCents                BigInt
+  paidAmountCents                   BigInt   @default(0)
+  sourceType                        String   @default("system")
+  sourceTakeoverId                  String?  @unique
+  settlementTemplateVersionId       String?
+  isFinal                           Boolean  @default(false)
+  invoiceTypeSnapshot               String?
+  taxFactRevisionSnapshot           Int?
+  governanceVersion                 Int?
+  fieldReviewerUserId               String?
+  fieldReviewerRoleKey              String?
+  preparedByUserId                  String?
+  preparerSignatureFileId           String?
+  preparerSignatureSha256           String?
+  finalScopeCompleted               Boolean?
+  finalPriorSettlementsIncluded     Boolean?
+  finalNoOutstandingSettlements     Boolean?
+  finalWithinContractCap            Boolean?
+  finalNoFurtherOrdinarySettlements Boolean?
+  createdAt                         DateTime @default(now())
+  updatedAt                         DateTime @updatedAt
 
   @@index([settlementTemplateVersionId])
 }

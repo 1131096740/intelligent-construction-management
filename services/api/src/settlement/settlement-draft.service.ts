@@ -7,8 +7,10 @@ import {
 import { Prisma } from "@prisma/client";
 import {
   canCreateSettlementFromContractStatus,
+  SETTLEMENT_OCCUPANCY_STATUSES,
   type ContractVersionStatus
 } from "@jiangkong/shared-domain";
+import { lockContractAndAssertCurrentEffective } from "../contract/contract-current-version-lock";
 import { PrismaService } from "../database/prisma.service";
 import { parseMoneyCentsInput } from "../money/decimal-money";
 import type { SaveSettlementDraftDto } from "./dto/settlement-draft.dto";
@@ -44,7 +46,11 @@ export class SettlementDraftService {
           isFinal: input.isFinal === true,
           finalCumulativeAmountCents: this.finalAmount(input),
           lines: this.toJson(input.settlementLines),
-          ownerUserId: actorUserId
+          ownerUserId: actorUserId,
+          governanceVersion: 1,
+          fieldReviewerUserId: input.fieldReviewerUserId?.trim() || null,
+          fieldReviewerRoleKey: input.fieldReviewerRoleKey ?? null,
+          ...this.finalConfirmations(input)
         }
       });
       return this.readModel(created);
@@ -89,6 +95,15 @@ export class SettlementDraftService {
       throw new BadRequestException("更新结算草稿时必须提供当前修订号");
     }
     return this.prisma.$transaction(async (tx) => {
+      const lockedDraft = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT "id"
+        FROM "SettlementDraft"
+        WHERE "id" = ${draftId}
+        FOR UPDATE
+      `);
+      if (lockedDraft.length !== 1) {
+        throw new NotFoundException("未找到结算草稿，请刷新后重试");
+      }
       const draft = await tx.settlementDraft.findUnique({
         where: { id: draftId }
       });
@@ -127,12 +142,24 @@ export class SettlementDraftService {
           isFinal: input.isFinal === true,
           finalCumulativeAmountCents: this.finalAmount(input),
           lines: this.toJson(input.settlementLines),
+          governanceVersion: 1,
+          fieldReviewerUserId: input.fieldReviewerUserId?.trim() || null,
+          fieldReviewerRoleKey: input.fieldReviewerRoleKey ?? null,
+          ...this.finalConfirmations(input),
           revision: { increment: 1 }
         }
       });
       if (updated.count !== 1) {
         throw new BadRequestException("结算草稿已被更新，请刷新后继续编辑");
       }
+      await tx.settlementSignedDocument.updateMany({
+        where: { settlementDraftId: draftId, status: "active" },
+        data: {
+          status: "invalidated",
+          invalidatedAt: new Date(),
+          invalidationReason: "结算草稿事实或参与人已更新，请按新修订号重新生成和签章"
+        }
+      });
       const result = await tx.settlementDraft.findUnique({
         where: { id: draftId }
       });
@@ -148,12 +175,11 @@ export class SettlementDraftService {
     projectId: string,
     contractVersionId: string
   ) {
-    const version = await tx.contractVersion.findUnique({
-      where: { id: contractVersionId }
-    });
-    if (!version) {
-      throw new NotFoundException("未找到合同版本，请刷新合同选择后重试");
-    }
+    const version = await lockContractAndAssertCurrentEffective(
+      tx,
+      contractVersionId,
+      true
+    );
     if (
       !canCreateSettlementFromContractStatus(
         version.status as ContractVersionStatus
@@ -170,6 +196,18 @@ export class SettlementDraftService {
     assertSettlementContractType(contract.contractTypeKey);
     if (contract.projectId !== projectId) {
       throw new BadRequestException("合同版本不属于当前项目，不能保存到该项目的结算草稿");
+    }
+    const finalSettlementCount = await tx.settlement.count({
+      where: {
+        contractId: contract.id,
+        isFinal: true,
+        status: { in: [...SETTLEMENT_OCCUPANCY_STATUSES] }
+      }
+    });
+    if (finalSettlementCount > 0) {
+      throw new BadRequestException(
+        "该合同已存在占用中的最终结算，不能再新建或修改结算草稿"
+      );
     }
     const terms = await tx.paymentTermsVersion.findFirst({
       where: { contractVersionId: version.id, status: "effective" },
@@ -208,6 +246,26 @@ export class SettlementDraftService {
       input.finalCumulativeAmountCents,
       "审定累计结算金额",
       "审定累计结算金额必须按分填写为 0 或更大的整数"
+    );
+  }
+
+  private finalConfirmations(input: SaveSettlementDraftDto) {
+    const values = {
+      finalScopeCompleted: input.finalScopeCompleted,
+      finalPriorSettlementsIncluded: input.finalPriorSettlementsIncluded,
+      finalNoOutstandingSettlements: input.finalNoOutstandingSettlements,
+      finalWithinContractCap: input.finalWithinContractCap,
+      finalNoFurtherOrdinarySettlements: input.finalNoFurtherOrdinarySettlements
+    };
+    const supplied = Object.values(values).filter((value) => value !== undefined).length;
+    if (input.isFinal === true && supplied !== 5) {
+      throw new BadRequestException("最终结算必须逐项完成五项完结确认");
+    }
+    if (input.isFinal !== true && supplied !== 0) {
+      throw new BadRequestException("过程结算不能填写最终结算完结确认");
+    }
+    return Object.fromEntries(
+      Object.entries(values).map(([key, value]) => [key, value ?? null])
     );
   }
 

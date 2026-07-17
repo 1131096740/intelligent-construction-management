@@ -88,6 +88,24 @@ describe("approval flow readonly configuration", () => {
     }
   });
 
+  it("shows the two governed settlement routes without the company engineering director", () => {
+    const material = approvalFlowRules.find((rule) => rule.id === "settlement_material_mechanical");
+    const labor = approvalFlowRules.find((rule) => rule.id === "settlement_labor_professional");
+
+    expect(material?.nodes.map((node) => node.roleKeys)).toEqual([
+      ["material_staff"], ["material_director"], ["contract_director"],
+      ["project_manager"], ["finance_director"]
+    ]);
+    expect(labor?.nodes.map((node) => node.roleKeys)).toEqual([
+      ["engineering_foreman", "engineering_tech"], ["engineering_director"],
+      ["contract_director"], ["project_manager"], ["finance_director"]
+    ]);
+    expect(JSON.stringify(labor)).not.toContain("engineering_department_director");
+    expect(JSON.stringify([material, labor])).not.toContain("budget_director");
+    expect(material?.guardrails).toContain("过程结算与最终结算使用完全相同的审批路线");
+    expect(labor?.guardrails).toContain("过程结算与最终结算使用完全相同的审批路线");
+  });
+
   it("shows the confirmed ordinary payment approval route", () => {
     const payment = approvalFlowRules.find((rule) => rule.id === "payment");
 

@@ -3,7 +3,12 @@ BEGIN;
 ALTER TABLE "SettlementDraft"
   ADD COLUMN "governanceVersion" INTEGER,
   ADD COLUMN "fieldReviewerUserId" TEXT,
-  ADD COLUMN "fieldReviewerRoleKey" TEXT;
+  ADD COLUMN "fieldReviewerRoleKey" TEXT,
+  ADD COLUMN "finalScopeCompleted" BOOLEAN,
+  ADD COLUMN "finalPriorSettlementsIncluded" BOOLEAN,
+  ADD COLUMN "finalNoOutstandingSettlements" BOOLEAN,
+  ADD COLUMN "finalWithinContractCap" BOOLEAN,
+  ADD COLUMN "finalNoFurtherOrdinarySettlements" BOOLEAN;
 
 ALTER TABLE "Settlement"
   ADD COLUMN "governanceVersion" INTEGER,
@@ -11,7 +16,12 @@ ALTER TABLE "Settlement"
   ADD COLUMN "fieldReviewerRoleKey" TEXT,
   ADD COLUMN "preparedByUserId" TEXT,
   ADD COLUMN "preparerSignatureFileId" TEXT,
-  ADD COLUMN "preparerSignatureSha256" TEXT;
+  ADD COLUMN "preparerSignatureSha256" TEXT,
+  ADD COLUMN "finalScopeCompleted" BOOLEAN,
+  ADD COLUMN "finalPriorSettlementsIncluded" BOOLEAN,
+  ADD COLUMN "finalNoOutstandingSettlements" BOOLEAN,
+  ADD COLUMN "finalWithinContractCap" BOOLEAN,
+  ADD COLUMN "finalNoFurtherOrdinarySettlements" BOOLEAN;
 
 CREATE TABLE "SettlementSignedDocument" (
   "id" TEXT NOT NULL,
@@ -69,7 +79,17 @@ ALTER TABLE "SettlementDraft"
   )) NOT VALID,
   ADD CONSTRAINT "SettlementDraft_field_reviewer_fk"
   FOREIGN KEY ("fieldReviewerUserId") REFERENCES "User"("id")
-  ON DELETE RESTRICT ON UPDATE CASCADE NOT VALID;
+  ON DELETE RESTRICT ON UPDATE CASCADE NOT VALID,
+  ADD CONSTRAINT "SettlementDraft_final_confirmation_group_check"
+  CHECK (
+    ("finalScopeCompleted" IS NULL AND "finalPriorSettlementsIncluded" IS NULL
+      AND "finalNoOutstandingSettlements" IS NULL AND "finalWithinContractCap" IS NULL
+      AND "finalNoFurtherOrdinarySettlements" IS NULL)
+    OR
+    ("finalScopeCompleted" IS NOT NULL AND "finalPriorSettlementsIncluded" IS NOT NULL
+      AND "finalNoOutstandingSettlements" IS NOT NULL AND "finalWithinContractCap" IS NOT NULL
+      AND "finalNoFurtherOrdinarySettlements" IS NOT NULL)
+  ) NOT VALID;
 
 ALTER TABLE "Settlement"
   ADD CONSTRAINT "Settlement_governance_version_check"
@@ -98,7 +118,17 @@ ALTER TABLE "Settlement"
   ON DELETE RESTRICT ON UPDATE CASCADE NOT VALID,
   ADD CONSTRAINT "Settlement_preparer_signature_file_fk"
   FOREIGN KEY ("preparerSignatureFileId") REFERENCES "FileObject"("id")
-  ON DELETE RESTRICT ON UPDATE CASCADE NOT VALID;
+  ON DELETE RESTRICT ON UPDATE CASCADE NOT VALID,
+  ADD CONSTRAINT "Settlement_final_confirmation_group_check"
+  CHECK (
+    ("finalScopeCompleted" IS NULL AND "finalPriorSettlementsIncluded" IS NULL
+      AND "finalNoOutstandingSettlements" IS NULL AND "finalWithinContractCap" IS NULL
+      AND "finalNoFurtherOrdinarySettlements" IS NULL)
+    OR
+    ("finalScopeCompleted" IS NOT NULL AND "finalPriorSettlementsIncluded" IS NOT NULL
+      AND "finalNoOutstandingSettlements" IS NOT NULL AND "finalWithinContractCap" IS NOT NULL
+      AND "finalNoFurtherOrdinarySettlements" IS NOT NULL)
+  ) NOT VALID;
 
 ALTER TABLE "SettlementSignedDocument"
   ADD CONSTRAINT "SettlementSignedDocument_settlement_fk"
