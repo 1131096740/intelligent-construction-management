@@ -124,6 +124,10 @@ test("快速切换主体时丢弃较早的历史响应", async ({ page }) => {
   const firstMayFinish = new Promise<void>((resolve) => {
     releaseFirst = resolve;
   });
+  let markFirstFulfilled!: () => void;
+  const firstFulfilled = new Promise<void>((resolve) => {
+    markFirstFulfilled = resolve;
+  });
   await page.route("**/api/company-entities/*/history", async (route: Route) => {
     const isFirst = new URL(route.request().url()).pathname.includes("entity-a");
     if (isFirst) await firstMayFinish;
@@ -132,6 +136,7 @@ test("快速切换主体时丢弃较早的历史响应", async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify(historyPayload(entity, isFirst ? "甲操作人" : "乙操作人"))
     });
+    if (isFirst) markFirstFulfilled();
   });
 
   await openLedger(page);
@@ -143,7 +148,7 @@ test("快速切换主体时丢弃较早的历史响应", async ({ page }) => {
   await expect(page.getByText("乙操作人 · 合同部成员")).toBeVisible();
 
   releaseFirst();
-  await page.waitForTimeout(100);
+  await firstFulfilled;
   await expect(page.getByText("乙操作人 · 合同部成员")).toBeVisible();
   await expect(page.getByText("甲操作人 · 合同部成员")).toBeHidden();
 });
