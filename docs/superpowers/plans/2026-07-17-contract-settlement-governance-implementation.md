@@ -1294,13 +1294,20 @@ git commit -m "feat: 统一合同变更与增项硬门禁"
 
 ### Task 15: 合同金额优先的结算占额门禁和通用合同禁建结算
 
+> **执行校正（2026-07-17 结算额度审计）**：合同占额集合必须兼容存量 `in_approval/archive_pending`；通用合同在草稿创建/更新、直接提交、草稿提交和读模型四处 fail closed，不能只在最后提交拒绝。无总价框架不仅跳过合同总额 cap，也不把预计数量/预计行金额当硬上限。超额阻断审计使用 tagged denial，不能写在随后回滚的事务中。
+
 **Files:**
 - Create: `services/api/src/settlement/contract-settlement-capacity.ts`
 - Create: `services/api/src/settlement/contract-settlement-capacity.spec.ts`
+- Create: `services/api/src/database/settlement-contract-cap-concurrency.spec.ts`
 - Modify: `services/api/src/settlement/settlement.service.ts`
 - Modify: `services/api/src/settlement/settlement.service.spec.ts`
 - Modify: `services/api/src/settlement/settlement-submission.service.spec.ts`
+- Modify: `services/api/src/settlement/settlement-submission.service.ts`
+- Modify: `services/api/src/settlement/settlement-draft.service.ts`
 - Modify: `services/api/src/settlement/settlement-draft.service.spec.ts`
+- Modify: `services/api/src/contract/contract-current-version-lock.ts`
+- Modify: `services/api/src/contract/contract-current-version-lock.spec.ts`
 - Modify: `services/api/src/contract/contract-read.service.ts`
 - Modify: `services/api/src/contract/contract-read.service.spec.ts`
 
@@ -1309,7 +1316,8 @@ git commit -m "feat: 统一合同变更与增项硬门禁"
 ```ts
 await expect(service.submitInTransaction(tx, prepared, applicant)).rejects.toThrow("通用合同不办理结算");
 expect(occupiedSettlementStatuses).toEqual([
-  "approval_pending", "approved_pending_archive", "pending_archive_confirm", "effective", "partially_paid", "paid"
+  "in_approval", "approval_pending", "approved_pending_archive", "archive_pending",
+  "pending_archive_confirm", "effective", "partially_paid", "paid"
 ]);
 await expect(overOriginalWithoutChange).rejects.toThrow("请先完成合同变更");
 await expect(overAlreadyIncreasedVersion).rejects.toThrow("必须新签合同");
@@ -1322,28 +1330,38 @@ Run: `pnpm --filter @jiangkong/api test -- --runInBand src/settlement/contract-s
 
 Expected: FAIL。
 
+同时先写：通用/空/未知合同类型在 draft create/update、direct submit、draft submit 均失败且零写入；四类明确可结算合同放行。框架无限额合同即使预计数量非空且实际累计超过预计数量/预计行金额也可继续，但范围外清单、冻结单价或税率漂移仍拒绝。
+
 - [ ] **Step 3: 在唯一提交共享点加事务门禁**
 
-在 `SettlementService.submitInTransaction()` 中使用固定锁顺序：`Contract` → 当前有效 `ContractVersion` → 相关占额 `Settlement` → 项目例外额度。先计算合同上限，再调用既有 `reserveSettlementQuota()`；草稿不占额，退回/驳回/撤回/作废不计。框架无上限跳过总额 cap，仍执行行级范围、单价和税校验。所有超额阻断、占用和占用释放都写审计，且项目例外额度不得覆盖合同上限拒绝结果。
+在 `SettlementService.submitInTransaction()` 中使用固定锁顺序：先只读定位 contractId，再 `Contract → 当前有效 ContractVersion → 按 id 稳定排序的相关占额 Settlement → Project/项目例外额度`。修正 `contract-current-version-lock.ts`，不能普通读版本后只锁合同；双连接隔离库测试证明两个各自不超限但合计超限的并发提交只能一个成功且无死锁。先计算合同上限，再调用既有 `reserveSettlementQuota()`；项目例外额度即使足够也不能突破合同 cap，拒绝后 Settlement/usage/ApprovalInstance 都为零。
+
+占额状态兼容 `in_approval/approval_pending/approved_pending_archive/archive_pending/pending_archive_confirm/effective/partially_paid/paid`；`draft/approval_rejected/withdrawn` 不占额。仓库当前没有完整结算作废写入口，Task 15 不得仅通过排除 `voided` 宣称已实现释放；作废另需状态机、权限、确认和审计后才能计入。仅 `pricingNature=framework && amountLimitType=unlimited` 时跳过总额、预计数量和预计行金额硬上限，仍执行清单范围、冻结单价和税校验。
+
+两种超限原因复用 Task 14 历史正增项事实：不存在曾生效正增项（包括只有减项）提示“请先完成合同变更”；存在正增项后仍超变更后上限提示“必须新签合同”。金额全程 bigint，覆盖恰好上限、超 1 分、近 PostgreSQL BIGINT、最终结算差额。
+
+成功占额始终写合同额度占用审计，不只在使用项目例外额度时记录。阻断走 tagged denial：锁内形成拒绝事实并正常结束事务，外层独立持久化脱敏审计后再抛固定错误；直接提交和草稿提交都重新查询证明审计存在。
 
 - [ ] **Step 4: 读模型禁止通用合同作为结算选项**
 
-`canCreateSettlement=false`，原因“通用合同直接按冻结付款条款申请付款，不办理结算”。付款选项保持。
+`canCreateSettlement=false`，原因“通用合同直接按冻结付款条款申请付款，不办理结算”。付款选项保持。`contractTypeKey` 为空或未知同样 fail closed；只有材料、机械、劳务、专业分包四类进入结算候选。
 
 - [ ] **Step 5: 运行定向测试**
 
-Run: `pnpm --filter @jiangkong/api test -- --runInBand src/settlement/contract-settlement-capacity.spec.ts src/settlement/settlement.service.spec.ts src/settlement/settlement-submission.service.spec.ts src/settlement/settlement-draft.service.spec.ts src/contract/contract-read.service.spec.ts`
+Run: `pnpm --filter @jiangkong/api test -- --runInBand src/settlement/contract-settlement-capacity.spec.ts src/settlement/settlement.service.spec.ts src/settlement/settlement-submission.service.spec.ts src/settlement/settlement-draft.service.spec.ts src/contract/contract-current-version-lock.spec.ts src/contract/contract-read.service.spec.ts src/database/settlement-contract-cap-concurrency.spec.ts && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint && pnpm --filter @jiangkong/api check:business-errors`
 
 Expected: PASS。
 
 - [ ] **Step 6: 提交**
 
 ```bash
-git add services/api/src/settlement services/api/src/contract/contract-read.service*
+git add services/api/src/settlement services/api/src/contract/contract-current-version-lock* services/api/src/contract/contract-read.service* services/api/src/database/settlement-contract-cap-concurrency.spec.ts
 git commit -m "feat: 增加合同结算金额硬上限"
 ```
 
 ### Task 16: M56 结算参与人和签章证据结构
+
+> **执行校正（2026-07-17 结算签章审计）**：M56 只增加兼容 schema、强约束和参与人纯冻结能力，不执行外部 PDF I/O。新增 nullable `governanceVersion` 区分旧 role-only/旧归档语义与新受治理实例，迁移不回填旧结算。工长/施工员明确映射为项目级 `engineering_foreman` 或 `engineering_tech` 中由合同员选定一人；所属项目总工为项目级唯一 `engineering_director`。Task 7/M54 和 Task 15 必须先绿。
 
 **Files:**
 - Create: `services/api/prisma/migrations/20260717140000_settlement_participants_and_signed_documents/migration.sql`
@@ -1355,9 +1373,10 @@ git commit -m "feat: 增加合同结算金额硬上限"
 - [ ] **Step 1: 写结构和项目人员失败测试**
 
 ```ts
-expect(schema).toContain("fieldReviewerUserId");
-expect(schema).toContain("compilerSignatureFileIdSnapshot");
-expect(schema).toContain("model SettlementSignedDocument");
+expect(migration).toContain('"governanceVersion"');
+expect(migration).toContain('FOREIGN KEY ("fileId") REFERENCES "FileObject"');
+expect(migration).toMatch(/CHECK[\s\S]*"contentSha256"[\s\S]*64/u);
+expect(migration).toMatch(/WHERE[\s\S]*"status"[\s\S]*'active'/u);
 await expect(freeze({ selectedUserId: "other-project-user", projectId: "p1" }))
   .rejects.toThrow("只能选择所属项目当前有效人员");
 ```
@@ -1370,15 +1389,17 @@ Expected: FAIL。
 
 - [ ] **Step 3: 增加最小增量字段和文档表**
 
-`SettlementDraft` 和 `Settlement` 增加 `fieldReviewerUserId/fieldReviewerRoleKey`；`Settlement` 增加编制人和提交时签名文件/摘要；新表保存 `frozen_counterparty_copy`、`counterparty_signed_original`、`final_internal_signed_copy` 三种用途、fileId、hash、pageCount、sourceRevision、状态、上传/生成者和替代关系。
+`SettlementDraft` 和 `Settlement` 增加 nullable `governanceVersion` 与 `fieldReviewerUserId/fieldReviewerRoleKey`；`Settlement` 增加编制人和提交时签名文件/摘要；新表保存 `frozen_counterparty_copy`、`counterparty_signed_original`、`final_internal_signed_copy` 三种用途、fileId、原字节 hash、pageCount、sourceRevision、业务 snapshot token、审批动作集合 hash、状态/生成状态、声明快照/声明人/时间、失效原因、上传/生成者和替代关系。
+
+M56 增加到 Settlement/SettlementDraft/FileObject/User/替代记录的外键与保留证据的删除策略；purpose/status CHECK、pageCount>0、sourceRevision>=1、64 位小写 SHA、同 settlement/draft revision+purpose 最多一个 active/live 文档的 partial unique、查询索引。静态测试覆盖 M55→M56 顺序、事务、无历史回填/默认猜测/破坏性 DML，并包含删外键、删 CHECK、删 partial unique、注入 UPDATE/DELETE 的变异测试。
 
 - [ ] **Step 4: 参与人冻结规则**
 
-材料/机械只接受所属项目 `material_staff`；劳务/专业只接受所属项目 `engineering_foreman` 或经既有角色定义确认的施工员岗位；项目总工必须唯一。公司工程技术部部长不再出现在新结算路线。
+材料/机械只接受所属项目启用的 `material_staff`；劳务/专业由合同员从所属项目启用的 `engineering_foreman` 或 `engineering_tech` 中选择一人，冻结 selectedUserId 与对应 roleKey；跨项目、停用、未选择均拒绝。项目总工必须为所属项目恰好一名启用 `engineering_director`。公司工程技术部部长不再出现在新结算路线。
 
 - [ ] **Step 5: 运行 Prisma 和定向测试**
 
-Run: `pnpm --filter @jiangkong/api prisma validate && pnpm --filter @jiangkong/api test -- --runInBand src/database/settlement-signature-governance-schema-verification.spec.ts src/settlement/settlement-participant-freeze.spec.ts`
+Run: `pnpm --filter @jiangkong/api prisma generate && pnpm --filter @jiangkong/api prisma validate && pnpm --filter @jiangkong/api test -- --runInBand src/database/settlement-signature-governance-schema-verification.spec.ts src/settlement/settlement-participant-freeze.spec.ts && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint`
 
 Expected: PASS。
 
@@ -1391,16 +1412,29 @@ git commit -m "feat: 增加结算参与人与签章证据结构"
 
 ### Task 17: 两类结算路线和乙方扫描件前置门禁
 
+> **执行校正（2026-07-17 提交入口审计）**：新受治理结算的固定顺序是“保存草稿事实/参与人 → 生成并冻结本 revision 结算单 → 乙方线下逐页签章盖章 → 上传整份原始扫描 PDF 并绑定同 revision → 提交”。新增专用业务关联 API/DTO；通用 `/files` 仍只负责私有原字节。直接 `POST /settlements` 也必须进入同一门禁或对新受治理合同明确拒绝，不能绕过草稿链路。
+
 **Files:**
 - Modify: `packages/shared-domain/src/permissions.ts`
 - Modify: `packages/shared-domain/src/permissions.test.ts`
 - Modify: `services/api/src/settlement/dto/create-settlement.dto.ts`
 - Modify: `services/api/src/settlement/dto/settlement-draft.dto.ts`
+- Create: `services/api/src/settlement/dto/settlement-signed-document.dto.ts`
+- Create: `services/api/src/settlement/settlement-counterparty-document.service.ts`
+- Create: `services/api/src/settlement/settlement-counterparty-document.service.spec.ts`
+- Modify: `services/api/src/settlement/settlement.module.ts`
+- Modify: `services/api/src/settlement/settlement.controller.ts`
+- Modify: `services/api/src/settlement/settlement.controller.spec.ts`
+- Modify: `services/api/src/settlement/settlement-draft.controller.ts`
+- Modify: `services/api/src/settlement/settlement-draft.controller.spec.ts`
 - Modify: `services/api/src/settlement/settlement-draft.service.ts`
 - Modify: `services/api/src/settlement/settlement-draft.service.spec.ts`
 - Modify: `services/api/src/settlement/settlement.service.ts`
 - Modify: `services/api/src/settlement/settlement.service.spec.ts`
 - Modify: `services/api/src/settlement/settlement-submission.service.spec.ts`
+- Modify: `services/api/src/settlement/settlement-submission.service.ts`
+- Modify: `apps/web-admin/src/pages/settings/approval-flow-readonly.config.ts`
+- Modify: `apps/web-admin/src/pages/settings/approval-flow-readonly.config.test.ts`
 
 - [ ] **Step 1: 写路线、现场人员和扫描件失败测试**
 
@@ -1409,7 +1443,7 @@ expect(materialNodes.map(n => n.roleKeys[0])).toEqual([
   "material_staff", "material_director", "contract_director", "project_manager", "finance_director"
 ]);
 expect(laborNodes.map(n => n.roleKeys[0])).toEqual([
-  "engineering_foreman", "engineering_director", "contract_director", "project_manager", "finance_director"
+  selectedFieldRole, "engineering_director", "contract_director", "project_manager", "finance_director"
 ]);
 expect(laborNodes.flatMap(n => n.roleKeys)).not.toContain("engineering_department_director");
 await expect(submit(draftWithoutSignedPdf)).rejects.toThrow("请先上传乙方完整签章扫描件");
@@ -1423,30 +1457,32 @@ Expected: FAIL。
 
 - [ ] **Step 3: 冻结具体人员和编制人签名**
 
-提交时验证所选人员仍属于项目，把 selected user 写入第一个冻结节点；项目总工节点冻结唯一用户；其他节点冻结提交时公司级/项目级候选。编制人不是审批节点，但提交时冻结本人签名 fileId/SHA 和提交日期。
+提交时验证所选人员仍属于项目，把 selected user 写入第一个冻结节点；劳务/专业 selected role 只能为 `engineering_foreman/engineering_tech`，材料/机械只能为 `material_staff`。项目总工节点冻结唯一用户；其他节点通过 Task 7 的 `candidateUserIdsByRole` 冻结提交时公司级/项目级候选并排除申请人，缺员 fail closed。编制人不是审批节点，但提交时冻结本人签名 fileId/SHA 和提交日期。四合同类型分别对过程/最终结算断言 frozenNodes 完全相同；设置只读页删除公司工程技术部部长旧节点并显示两类路线。
 
 - [ ] **Step 4: 前置扫描件声明**
 
-提交必须具备与草稿 revision 匹配的原始扫描 PDF，并确认：乙方每页签名和日期、每页盖章、多页骑缝章。系统校验 PDF、页数、顺序/尺寸可叠加性，不做 OCR。
+业务关联接口接收 `expectedRevision + frozenDocumentId + uploadedFileId + declaration`，锁 SettlementDraft，验证经办人、revision、受治理 marker 和原冻结版 hash；读取 FileObject 原 buffer，强制 active/本人上传/PDF/size/SHA/可解析/页数一致，不 normalize/resave。人工声明：扫描件与该编号/revision 冻结版页序一致、乙方每个需要签字处已签名并填写日期、每页盖章、多页骑缝章。禁 OCR，因此页面顺序和签章真伪不得冒充系统自动识别；系统只核 revision/hash/页数/可叠加尺寸与声明审计。
 
 - [ ] **Step 5: 过程/最终路线一致**
 
-最终结算不增加审批岗位，只在同一提交事务中增加五项完结性校验：合同范围内应结事项已完成；历史过程结算已完整纳入累计数据；不存在尚未处理的结算草稿或审批中结算；本次累计结算符合当前有效合同金额上限；合同员已明确选择“最终结算”并确认后续不再发起普通过程结算。任一失败均保留草稿、上传件和已选人员，返回可操作提示并写门禁审计。
+最终结算不增加审批岗位，只在同一提交事务中增加五项结构化完结校验：合同范围内应结事项已完成；历史过程结算已完整纳入累计数据；不存在尚未处理的结算草稿或审批中结算；本次累计结算符合当前有效合同金额上限；合同员已明确选择“最终结算”并确认后续不再发起普通过程结算。五项分别持久化输入/快照并逐项测试，不能用一条总确认代替。任一失败均保留草稿、上传件和已选人员，使用可持久的 tagged denial 审计并返回可操作提示。
 
 - [ ] **Step 6: 运行定向测试**
 
-Run: `pnpm --filter @jiangkong/shared-domain test -- src/permissions.test.ts && pnpm --filter @jiangkong/api test -- --runInBand src/settlement/settlement-participant-freeze.spec.ts src/settlement/settlement-draft.service.spec.ts src/settlement/settlement-submission.service.spec.ts src/settlement/settlement.service.spec.ts src/approval/approval-node-access.spec.ts`
+Run: `pnpm --filter @jiangkong/shared-domain test -- src/permissions.test.ts && pnpm --filter @jiangkong/api test -- --runInBand src/settlement/settlement-participant-freeze.spec.ts src/settlement/settlement-counterparty-document.service.spec.ts src/settlement/settlement-draft.controller.spec.ts src/settlement/settlement.controller.spec.ts src/settlement/settlement-draft.service.spec.ts src/settlement/settlement-submission.service.spec.ts src/settlement/settlement.service.spec.ts src/approval/approval-node-access.spec.ts && pnpm --filter @jiangkong/web-admin test -- src/pages/settings/approval-flow-readonly.config.test.ts && pnpm --filter @jiangkong/shared-domain typecheck && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint && pnpm --filter @jiangkong/api check:business-errors`
 
 Expected: PASS。
 
 - [ ] **Step 7: 提交**
 
 ```bash
-git add packages/shared-domain/src/permissions* services/api/src/settlement
+git add packages/shared-domain/src/permissions* services/api/src/settlement apps/web-admin/src/pages/settings/approval-flow-readonly.config*
 git commit -m "feat: 冻结结算审批参与人与签前文件"
 ```
 
 ### Task 18: A4 横向冻结版、逐页签名区和最终合成件
+
+> **执行校正（2026-07-17 合成与归档审计）**：终审事务不能在外部 PDF I/O 成功前直接进入待归档。使用两阶段幂等生成：终审事务锁 Settlement/ApprovalInstance 并落 `pending_generation` 事实；外部读取乙方原始 buffer、合成并上传后，第二事务重新锁定并核对 governanceVersion、原始 hash、业务 snapshot token 和审批动作集合 hash，再激活唯一最终件并进入 `pending_archive_confirm`。失败保留可重试状态与审计，绝不直接 effective。
 
 **Files:**
 - Create: `services/api/src/settlement/settlement-signed-document.service.ts`
@@ -1457,13 +1493,27 @@ git commit -m "feat: 冻结结算审批参与人与签前文件"
 - Modify: `services/api/src/settlement/settlement.service.spec.ts`
 - Modify: `services/api/src/settlement/settlement-read.service.ts`
 - Modify: `services/api/src/settlement/settlement-read.service.spec.ts`
+- Modify: `services/api/src/settlement/settlement.controller.ts`
+- Modify: `services/api/src/settlement/settlement.controller.spec.ts`
+- Create: `services/api/src/settlement/dto/settlement-signed-document-action.dto.ts`
+- Modify: `services/api/src/settlement/settlement.module.ts`
+- Modify: `services/api/src/file/file.service.ts`
+- Modify: `services/api/src/file/file.service.spec.ts`
+- Modify: `services/api/src/archive/archive.service.ts`
+- Modify: `services/api/src/archive/archive.service.spec.ts`
+- Modify: `services/api/src/me/me.service.ts`
+- Modify: `services/api/src/me/me.service.spec.ts`
+- Modify: `packages/shared-domain/src/core-flow-read-model.ts`
 
 - [ ] **Step 1: 写一页/多页、重复表头和签名漂移失败测试**
 
 ```ts
 expect(await pageCount(renderSettlementDraftPdf(onePage))).toBe(1);
 expect(await extractPageMarkers(multiPage)).toEqual(["第 1/3 页", "第 2/3 页", "第 3/3 页"]);
-expect(await eachPageHasHeader(multiPage, "含税单价")).toBe(true);
+expect(await eachPageHasHeaders(multiPage, [
+  "序号", "名称", "规格型号", "单位", "数量", "不含税单价", "含税单价",
+  "税率", "不含税金额", "税额", "含税金额", "备注"
+])).toBe(true);
 expect(await signatureIds(finalPdf)).toContain("signature-at-approval");
 expect(await signatureIds(finalPdf)).not.toContain("signature-after-profile-update");
 ```
@@ -1476,26 +1526,28 @@ Expected: FAIL。
 
 - [ ] **Step 3: 冻结版每页固定结构**
 
-PDF 使用 A4 横向，每页显示编号、文件 revision、页码/总页数；表头重复；底部预印一行 7 格签名区。材料路线为乙方/编制人/物资员/物资主管/合同部主管/项目经理/财务主管；劳务路线对应工长/项目总工。
+PDF 使用 A4 横向并逐页断言 MediaBox/CropBox/rotation；每页显示编号、文件 revision、页码/总页数，重复完整表头：序号、名称、规格型号、单位、数量、不含税/含税单价、税率、不含税金额、税额、含税金额、备注。每页底部预印单行最多 7 格“岗位—签名—日期”，字号可读、不裁切；材料/机械为乙方/编制人/物资员/物资主管/合同部主管/项目经理/财务主管，劳务/专业对应乙方/编制人/选定工长或施工员/项目总工/合同部主管/项目经理/财务主管。一页、边界换页、多页均逐页测试。
 
 - [ ] **Step 4: 在乙方原始扫描件上叠加冻结签名**
 
-使用 `pdf-lib` 加载原始扫描件，按页面尺寸映射固定签名格；嵌入编制人提交时签名和 M54 审批动作签名，日期使用审批发生日期。原始扫描 fileId、最终 fileId 和 hash 均永久保留。
+使用 `pdf-lib` 只读加载乙方原始扫描 buffer，按页面尺寸/rotation/crop 映射固定签名格；嵌入编制人提交时签名和 M54 审批动作签名，日期使用审批发生日期，绝不回查 User 当前签名。原始扫描件永不 normalize/resave，原始 fileId/SHA 与最终新 FileObject/fileId/SHA 永久保留。数据库 SHA 为空/非法/与对象字节不符、替换后旧 original、尺寸不可叠加均阻断并审计。
 
 - [ ] **Step 5: 最终审批后自动生成，合同部主管确认生效**
 
-全部节点通过后生成 `final_internal_signed_copy` 并进入 `pending_archive_confirm`，正常流程不再要求合同员审批后手工上传普通归档件。只允许渲染问题且原始 hash、业务 snapshot token、审批动作集合都不变时重新生成。
+全部节点通过后仅进入 `pending_generation`；生成器以 M56 partial unique + CAS 防双终审/双任务/双 active final。上传成功但业务关联失败、进程崩溃和网络重试必须可复用/清理孤儿文件并幂等恢复；原始 hash、业务 snapshot token 或审批动作集合任一漂移即失败，不得激活。成功后进入 `pending_archive_confirm`，正常新流程禁用审批后手工上传普通 `SettlementArchiveFile`；旧 governanceVersion 为空的历史实例继续双读旧语义，直到 Task 22 受控终止重提。
+
+合同部主管确认只接受 active `final_internal_signed_copy`，锁 Settlement/文档并复核原始 hash、snapshot token、审批动作集合后才 effective；旧 archiveFileId 不能确认新流程。read/file/archive/me 全部接入双证据：资料库和详情展示乙方原件/最终合成件，文件下载执行项目 ACL/用途/短票/审计；待办不再提示新流程“审批后上传归档件”。重新生成 endpoint 使用 DTO、权限和审计，只允许纯渲染问题且事实未变。
 
 - [ ] **Step 6: 运行定向测试**
 
-Run: `pnpm --filter @jiangkong/api test -- --runInBand src/settlement/settlement-document-renderer.spec.ts src/settlement/settlement-signed-document.service.spec.ts src/settlement/settlement.service.spec.ts src/settlement/settlement-read.service.spec.ts src/approval/approval-signature-snapshot.spec.ts`
+Run: `pnpm --filter @jiangkong/api test -- --runInBand src/settlement/settlement-document-renderer.spec.ts src/settlement/settlement-signed-document.service.spec.ts src/settlement/settlement.controller.spec.ts src/settlement/settlement.service.spec.ts src/settlement/settlement-read.service.spec.ts src/approval/approval-signature-snapshot.spec.ts src/file/file.service.spec.ts src/archive/archive.service.spec.ts src/me/me.service.spec.ts && pnpm --filter @jiangkong/shared-domain typecheck && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint && pnpm --filter @jiangkong/api check:business-errors`
 
 Expected: PASS。
 
 - [ ] **Step 7: 提交**
 
 ```bash
-git add services/api/src/settlement
+git add packages/shared-domain/src/core-flow-read-model.ts services/api/src/settlement services/api/src/file/file.service* services/api/src/archive/archive.service* services/api/src/me/me.service*
 git commit -m "feat: 生成结算逐页冻结签名合成件"
 ```
 
@@ -1509,6 +1561,8 @@ git commit -m "feat: 生成结算逐页冻结签名合成件"
 - Modify: `apps/web-admin/src/api/settlement-drafts.api.test.ts`
 - Modify: `apps/web-admin/src/api/settlement-workbench.api.ts`
 - Modify: `apps/web-admin/src/api/settlement-workbench.api.test.ts`
+- Modify: `apps/web-admin/src/api/core-flow-read.api.ts`
+- Modify: `apps/web-admin/src/api/core-flow-read.api.test.ts`
 - Modify: `apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue`
 - Modify: `apps/web-admin/src/pages/settlements/SettlementDetailPage.vue`
 - Modify: `apps/web-admin/src/pages/settlements/settlement-workbench.state.ts`
@@ -1545,14 +1599,14 @@ Expected: FAIL。
 
 - [ ] **Step 5: 运行 Web 定向测试与 E2E**
 
-Run: `pnpm --filter @jiangkong/web-admin test -- src/api/settlement-drafts.api.test.ts src/api/settlement-workbench.api.test.ts src/pages/settlements/settlement-workbench.state.test.ts src/pages/settlements/settlement-workbench.structure.test.ts src/pages/settlements/settlement-detail.config.test.ts && pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.config.ts e2e/settlement-signature-governance.e2e.ts e2e/settlement-workbench.e2e.ts e2e/ui-p1-settlement-visual.e2e.ts`
+Run: `pnpm --filter @jiangkong/web-admin test -- src/api/settlement-drafts.api.test.ts src/api/settlement-workbench.api.test.ts src/api/core-flow-read.api.test.ts src/pages/settlements/settlement-workbench.state.test.ts src/pages/settlements/settlement-workbench.structure.test.ts src/pages/settlements/settlement-detail.config.test.ts && pnpm --filter @jiangkong/web-admin typecheck && pnpm --filter @jiangkong/web-admin typecheck:e2e && pnpm --filter @jiangkong/web-admin lint && pnpm --filter @jiangkong/web-admin check:ui && pnpm --filter @jiangkong/web-admin build && CI=true pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.config.ts e2e/settlement-signature-governance.e2e.ts e2e/settlement-workbench.e2e.ts e2e/ui-p1-settlement-visual.e2e.ts`
 
 Expected: PASS；无文档级横向溢出和嵌套横滚。
 
 - [ ] **Step 6: 提交**
 
 ```bash
-git add apps/web-admin/src/api/settlement-* apps/web-admin/src/pages/settlements apps/web-admin/e2e/settlement-signature-governance.e2e.ts apps/web-admin/e2e/settlement-workbench.e2e.ts apps/web-admin/e2e/ui-p1-settlement-visual.e2e.ts
+git add apps/web-admin/src/api/settlement-* apps/web-admin/src/api/core-flow-read.api* apps/web-admin/src/pages/settlements apps/web-admin/e2e/settlement-signature-governance.e2e.ts apps/web-admin/e2e/settlement-workbench.e2e.ts apps/web-admin/e2e/ui-p1-settlement-visual.e2e.ts
 git commit -m "feat: 完善结算签章审批工作台"
 ```
 
