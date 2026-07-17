@@ -29,9 +29,30 @@ model CompanyEntity {
   id                      String   @id @default(uuid())
   name                    String
   unifiedSocialCreditCode String?
+  registeredAddress       String?
+  dataStatus              String   @default("legacy_incomplete")
+  currentVersionNo        Int      @default(0)
   isActive                Boolean  @default(true)
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
+}
+
+model CompanyEntityVersion {
+  id                      String   @id @default(uuid())
+  companyEntityId         String
+  versionNo               Int
+  name                    String
+  unifiedSocialCreditCode String?
+  registeredAddress       String?
+  isActive                Boolean
+  action                  String
+  actorUserId             String?
+  actorRoleKey            String?
+  createdAt               DateTime @default(now())
+
+  @@unique([companyEntityId, versionNo])
+  @@index([name])
+  @@index([unifiedSocialCreditCode])
 }
 
 model RefreshToken {
@@ -127,47 +148,54 @@ model Contract {
 }
 
 model ContractVersion {
-  id                        String    @id @default(uuid())
-  contractId                String
-  versionNo                 Int
-  changeType                String
-  status                    String
-  amountCents               BigInt
-  baseVersionId             String?
-  supersedesVersionId       String?
-  changeReason              String?
-  changeDirection           String?
-  changeAmountCents         BigInt?
-  originalBaseAmountCents   BigInt?
-  cumulativeIncreaseCents   BigInt    @default(0)
-  cumulativeDecreaseCents   BigInt    @default(0)
-  amountLimitType           String    @default("capped")
-  effectiveAt               DateTime?
-  businessTemplateVersionId String?
-  layoutTemplateVersionId   String?
-  draftRevision             Int       @default(1)
-  pricingNature             String    @default("fixed_total")
-  amountSource              String    @default("manual")
-  amountAdjustmentReason    String?
-  invoiceType               String?
-  taxMode                   String    @default("single_rate")
-  defaultTaxRatePercent     Decimal?  @db.Decimal(9, 6)
-  taxFactStatus             String    @default("unconfirmed")
-  taxFactSource             String?
-  taxFactExplanation        String?
-  taxFactEvidenceFileId     String?
-  taxFactRevision           Int       @default(0)
-  taxFactsFrozenAt          DateTime?
-  draftData                 Json
-  templateSnapshot          Json
-  clauseSnapshot            Json
-  readinessSnapshot         Json?
-  createdAt                 DateTime  @default(now())
-  updatedAt                 DateTime  @updatedAt
+  id                                     String    @id @default(uuid())
+  contractId                             String
+  versionNo                              Int
+  changeType                             String
+  status                                 String
+  amountCents                            BigInt
+  baseVersionId                          String?
+  supersedesVersionId                    String?
+  changeReason                           String?
+  changeDirection                        String?
+  changeAmountCents                      BigInt?
+  originalBaseAmountCents                BigInt?
+  cumulativeIncreaseCents                BigInt    @default(0)
+  cumulativeDecreaseCents                BigInt    @default(0)
+  amountLimitType                        String    @default("capped")
+  effectiveAt                            DateTime?
+  businessTemplateVersionId              String?
+  layoutTemplateVersionId                String?
+  draftRevision                          Int       @default(1)
+  pricingNature                          String    @default("fixed_total")
+  amountSource                           String    @default("manual")
+  amountAdjustmentReason                 String?
+  invoiceType                            String?
+  taxMode                                String    @default("single_rate")
+  defaultTaxRatePercent                  Decimal?  @db.Decimal(9, 6)
+  taxFactStatus                          String    @default("unconfirmed")
+  taxFactSource                          String?
+  taxFactExplanation                     String?
+  taxFactEvidenceFileId                  String?
+  taxFactRevision                        Int       @default(0)
+  taxFactsFrozenAt                       DateTime?
+  companyEntityIdSnapshot                String?
+  companyEntityVersionId                 String?
+  companyEntityNameSnapshot              String?
+  companyEntityCreditCodeSnapshot        String?
+  companyEntityRegisteredAddressSnapshot String?
+  draftData                              Json
+  templateSnapshot                       Json
+  clauseSnapshot                         Json
+  readinessSnapshot                      Json?
+  createdAt                              DateTime  @default(now())
+  updatedAt                              DateTime  @updatedAt
 
   @@unique([contractId, versionNo])
   @@index([baseVersionId])
   @@index([supersedesVersionId])
+  @@index([companyEntityIdSnapshot])
+  @@index([companyEntityVersionId])
 }
 
 model ContractTaxFactRevision {
