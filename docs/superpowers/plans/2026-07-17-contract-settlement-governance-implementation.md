@@ -844,6 +844,8 @@ Expected: FAIL。
 
 集成测试还必须覆盖：申请人提交时仍是启用的项目合同员或公司级合同主管；项目存在且启用；原合同退回重提重新冻结；既有在途、变更、补充协议和历史接管不调用新路线；路线失败时状态、实例和审计零写入；组织岗位并发撤销/提交只能得到一致串行结果，P2034 返回固定中文重试提示。
 
+同时修复已确认的无总价框架真实提交阻断：仅 `pricingNature=framework && amountLimitType=unlimited` 时跳过合同总金额和业主合同额度占用，仍强制清单范围、含税单价、税率、付款条款、签前文件和审批路线；其他 `amountCents<=0` 继续 fail closed。增加从工作台保存到提交审批完整测试，不能只测 readiness。
+
 - [ ] **Step 3: 实现分类路线定义**
 
 ```ts
@@ -1338,12 +1340,16 @@ git commit -m "feat: 统一合同变更与增项硬门禁"
 - Create: `services/api/src/settlement/contract-settlement-capacity.ts`
 - Create: `services/api/src/settlement/contract-settlement-capacity.spec.ts`
 - Create: `services/api/src/database/settlement-contract-cap-concurrency.spec.ts`
+- Modify: `packages/shared-domain/src/statuses.ts`
+- Modify: `packages/shared-domain/src/statuses.test.ts`
 - Modify: `services/api/src/settlement/settlement.service.ts`
 - Modify: `services/api/src/settlement/settlement.service.spec.ts`
 - Modify: `services/api/src/settlement/settlement-submission.service.spec.ts`
 - Modify: `services/api/src/settlement/settlement-submission.service.ts`
 - Modify: `services/api/src/settlement/settlement-draft.service.ts`
 - Modify: `services/api/src/settlement/settlement-draft.service.spec.ts`
+- Modify: `services/api/src/settlement/settlement-line-occupancy.ts`
+- Modify: `services/api/src/settlement/settlement-line-occupancy.spec.ts`
 - Modify: `services/api/src/contract/contract-current-version-lock.ts`
 - Modify: `services/api/src/contract/contract-current-version-lock.spec.ts`
 - Modify: `services/api/src/contract/contract-read.service.ts`
@@ -1368,32 +1374,32 @@ Run: `pnpm --filter @jiangkong/api test -- --runInBand src/settlement/contract-s
 
 Expected: FAIL。
 
-同时先写：通用/空/未知合同类型在 draft create/update、direct submit、draft submit 均失败且零写入；四类明确可结算合同放行。框架无限额合同即使预计数量非空且实际累计超过预计数量/预计行金额也可继续，但范围外清单、冻结单价或税率漂移仍拒绝。
+同时先写：通用/空/未知合同类型在 draft create/update、direct submit、draft submit、lines preview/导入均失败且零写入；四类明确可结算合同放行。既有非法类型草稿允许只读查看但明确 blocking reason，不允许修改/提交。框架无限额合同即使预计数量非空且实际累计超过预计数量/预计行金额也可继续，但范围外清单、冻结单价或税率漂移仍拒绝。
 
 - [ ] **Step 3: 在唯一提交共享点加事务门禁**
 
 在 `SettlementService.submitInTransaction()` 中使用固定锁顺序：先只读定位 contractId，再 `Contract → 当前有效 ContractVersion → 按 id 稳定排序的相关占额 Settlement → Project/项目例外额度`。修正 `contract-current-version-lock.ts`，不能普通读版本后只锁合同；双连接隔离库测试证明两个各自不超限但合计超限的并发提交只能一个成功且无死锁。先计算合同上限，再调用既有 `reserveSettlementQuota()`；项目例外额度即使足够也不能突破合同 cap，拒绝后 Settlement/usage/ApprovalInstance 都为零。
 
-占额状态兼容 `in_approval/approval_pending/approved_pending_archive/archive_pending/pending_archive_confirm/effective/partially_paid/paid`；`draft/approval_rejected/withdrawn` 不占额。仓库当前没有完整结算作废写入口，Task 15 不得仅通过排除 `voided` 宣称已实现释放；作废另需状态机、权限、确认和审计后才能计入。仅 `pricingNature=framework && amountLimitType=unlimited` 时跳过总额、预计数量和预计行金额硬上限，仍执行清单范围、冻结单价和税校验。
+shared-domain 状态、项目额度、清单行占额和合同总额统一兼容 `in_approval/approval_pending/approved_pending_archive/archive_pending/pending_archive_confirm/effective/partially_paid/paid` 八种占额状态；`draft/approval_rejected/withdrawn` 不占额。仓库当前没有完整结算作废写入口，Task 15 不得仅通过排除 `voided` 宣称已实现释放；作废另需状态机、权限、确认和审计后才能计入。仅 `pricingNature=framework && amountLimitType=unlimited` 时跳过总额、预计数量和预计行金额硬上限，仍执行清单范围、冻结单价和税校验。
 
 两种超限原因复用 Task 14 历史正增项事实：不存在曾生效正增项（包括只有减项）提示“请先完成合同变更”；存在正增项后仍超变更后上限提示“必须新签合同”。金额全程 bigint，覆盖恰好上限、超 1 分、近 PostgreSQL BIGINT、最终结算差额。
 
-成功占额始终写合同额度占用审计，不只在使用项目例外额度时记录。阻断走 tagged denial：锁内形成拒绝事实并正常结束事务，外层独立持久化脱敏审计后再抛固定错误；直接提交和草稿提交都重新查询证明审计存在。
+成功占额始终写合同额度占用审计，不只在使用项目例外额度时记录。阻断在业务事务内抛 typed denial，确保草稿 revision 抢占、Settlement、usage、ApprovalInstance 全部回滚；外层捕获后用独立事务持久化脱敏审计，再抛固定业务错误。直接提交和草稿提交都重新查询证明业务零写入、草稿 revision/status 不变且审计存在，禁止“正常提交拒绝事务”误保存 revision。
 
 - [ ] **Step 4: 读模型禁止通用合同作为结算选项**
 
-`canCreateSettlement=false`，原因“通用合同直接按冻结付款条款申请付款，不办理结算”。付款选项保持。`contractTypeKey` 为空或未知同样 fail closed；只有材料、机械、劳务、专业分包四类进入结算候选。
+`canCreateSettlement=false`，原因“通用合同直接按冻结付款条款申请付款，不办理结算”。付款选项保持。`contractTypeKey` 为空或未知同样 fail closed；只有材料、机械、劳务、专业分包四类进入结算候选。合同详情的 `availableActions/primaryAction/settlementBlockMessage` 使用相同规则：通用显示按冻结付款条款申请付款，空/未知不显示伪结算入口。
 
 - [ ] **Step 5: 运行定向测试**
 
-Run: `pnpm --filter @jiangkong/api test -- --runInBand src/settlement/contract-settlement-capacity.spec.ts src/settlement/settlement.service.spec.ts src/settlement/settlement-submission.service.spec.ts src/settlement/settlement-draft.service.spec.ts src/contract/contract-current-version-lock.spec.ts src/contract/contract-read.service.spec.ts src/database/settlement-contract-cap-concurrency.spec.ts && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint && pnpm --filter @jiangkong/api check:business-errors`
+Run: `pnpm --filter @jiangkong/shared-domain test -- src/statuses.test.ts && pnpm --filter @jiangkong/api test -- --runInBand src/settlement/contract-settlement-capacity.spec.ts src/settlement/settlement-line-occupancy.spec.ts src/settlement/settlement.service.spec.ts src/settlement/settlement-submission.service.spec.ts src/settlement/settlement-draft.service.spec.ts src/contract/contract-current-version-lock.spec.ts src/contract/contract-read.service.spec.ts src/database/settlement-contract-cap-concurrency.spec.ts && pnpm --filter @jiangkong/shared-domain typecheck && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint && pnpm --filter @jiangkong/api check:business-errors`
 
 Expected: PASS。
 
 - [ ] **Step 6: 提交**
 
 ```bash
-git add services/api/src/settlement services/api/src/contract/contract-current-version-lock* services/api/src/contract/contract-read.service* services/api/src/database/settlement-contract-cap-concurrency.spec.ts
+git add packages/shared-domain/src/statuses* services/api/src/settlement services/api/src/contract/contract-current-version-lock* services/api/src/contract/contract-read.service* services/api/src/database/settlement-contract-cap-concurrency.spec.ts
 git commit -m "feat: 增加合同结算金额硬上限"
 ```
 
