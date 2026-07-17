@@ -10,6 +10,80 @@ describe("company entity versions and contract subject snapshots schema", () => 
   const schema = readFileSync(join(process.cwd(), "prisma/schema.prisma"), "utf8");
   const model = (name: string) =>
     schema.match(new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`, "u"))?.[1] ?? "";
+  const snapshotColumns = [
+    "companyEntityIdSnapshot",
+    "companyEntityVersionId",
+    "companyEntityNameSnapshot",
+    "companyEntityCreditCodeSnapshot",
+    "companyEntityRegisteredAddressSnapshot"
+  ];
+  const assertNullableSnapshotColumns = (sql: string) => {
+    const contractVersionAlter =
+      sql.match(
+        /ALTER TABLE "ContractVersion"\s+ADD COLUMN "companyEntityIdSnapshot"[\s\S]*?;/u
+      )?.[0] ?? "";
+
+    for (const column of snapshotColumns) {
+      const definition =
+        contractVersionAlter.match(
+          new RegExp(`ADD COLUMN "${column}"\\s+([\\s\\S]*?)(?:,|;)`, "u")
+        )?.[1] ?? "";
+
+      expect(definition.trim()).toBe("TEXT");
+    }
+    expect(contractVersionAlter).not.toMatch(/\b(?:NOT\s+NULL|DEFAULT)\b/iu);
+  };
+  const assertLegacyVersionBackfill = (sql: string) => {
+    const legacyInsert =
+      sql.match(/INSERT INTO "CompanyEntityVersion"[\s\S]*?;/u)?.[0] ?? "";
+    const companyEntityUpdates = sql.match(/UPDATE\s+"CompanyEntity"[\s\S]*?;/gu) ?? [];
+
+    expect(legacyInsert).toMatch(
+      /'company-entity-version-v1-'\s*\|\|\s*ce\."id"[\s\S]*?ce\."id"[\s\S]*?1[\s\S]*?ce\."name"[\s\S]*?ce\."unifiedSocialCreditCode"[\s\S]*?ce\."registeredAddress"[\s\S]*?ce\."isActive"[\s\S]*?'legacy_backfill'[\s\S]*?FROM "CompanyEntity" ce/u
+    );
+    expect(legacyInsert).toMatch(/FROM "CompanyEntity" ce;\s*$/u);
+    expect(legacyInsert).not.toMatch(/\b(?:WHERE|LIMIT|ON\s+CONFLICT)\b/iu);
+    expect(companyEntityUpdates).toHaveLength(1);
+    expect(companyEntityUpdates[0]).toMatch(
+      /^UPDATE\s+"CompanyEntity"\s+SET\s+"currentVersionNo"\s*=\s*1;$/u
+    );
+    expect(companyEntityUpdates[0]).not.toMatch(/\bWHERE\b/iu);
+  };
+  const assertContractSnapshotBackfill = (sql: string) => {
+    const contractVersionBackfill =
+      sql.match(/UPDATE\s+"ContractVersion"[\s\S]*?;/u)?.[0] ?? "";
+
+    expect(contractVersionBackfill).toMatch(
+      /"companyEntityIdSnapshot"\s*=\s*ce\."id"/u
+    );
+    expect(contractVersionBackfill).toMatch(
+      /"companyEntityVersionId"\s*=\s*cev\."id"/u
+    );
+    expect(contractVersionBackfill).toMatch(
+      /NULLIF\(BTRIM\(c\."companyEntityName"\), ''\)[\s\S]*?c\."companyEntityName"[\s\S]*?ce\."name"/u
+    );
+    expect(contractVersionBackfill).toMatch(/FROM "Contract" c/u);
+    expect(contractVersionBackfill).toMatch(
+      /LEFT JOIN "CompanyEntity" ce ON ce\."id" = c\."companyEntityId"/u
+    );
+    expect(contractVersionBackfill).toMatch(
+      /LEFT JOIN "CompanyEntityVersion" cev[\s\S]*?cev\."companyEntityId" = ce\."id"[\s\S]*?cev\."versionNo" = 1/u
+    );
+    expect(contractVersionBackfill).toMatch(
+      /WHERE c\."id" = cv\."contractId"\s+AND \(\s*ce\."id" IS NOT NULL\s+OR NULLIF\(BTRIM\(c\."companyEntityName"\), ''\) IS NOT NULL\s*\);$/u
+    );
+    expect(contractVersionBackfill).not.toMatch(
+      /"companyEntityCreditCodeSnapshot"\s*=/u
+    );
+    expect(contractVersionBackfill).not.toMatch(
+      /"companyEntityRegisteredAddressSnapshot"\s*=/u
+    );
+  };
+  const assertM53BackfillSafety = (sql: string) => {
+    assertNullableSnapshotColumns(sql);
+    assertLegacyVersionBackfill(sql);
+    assertContractSnapshotBackfill(sql);
+  };
 
   it("adds M53 after M52 and applies it as one drift-visible transaction", () => {
     const migrationNames = readdirSync(migrationsPath).sort();
@@ -57,15 +131,7 @@ describe("company entity versions and contract subject snapshots schema", () => 
     expect(contractVersion).toMatch(/companyEntityCreditCodeSnapshot\s+String\?/u);
     expect(contractVersion).toMatch(/companyEntityRegisteredAddressSnapshot\s+String\?/u);
 
-    for (const column of [
-      "companyEntityIdSnapshot",
-      "companyEntityVersionId",
-      "companyEntityNameSnapshot",
-      "companyEntityCreditCodeSnapshot",
-      "companyEntityRegisteredAddressSnapshot"
-    ]) {
-      expect(migration).toContain(`ADD COLUMN "${column}" TEXT`);
-    }
+    assertNullableSnapshotColumns(migration);
   });
 
   it("adds normalized uniqueness, lookup indexes, and NOT VALID subject links", () => {
@@ -93,17 +159,7 @@ describe("company entity versions and contract subject snapshots schema", () => 
   });
 
   it("creates an append-only legacy version 1 and advances the master pointer", () => {
-    const legacyInsert =
-      migration.match(/INSERT INTO "CompanyEntityVersion"[\s\S]*?;/u)?.[0] ?? "";
-    const companyEntityUpdates = migration.match(/UPDATE\s+"CompanyEntity"[\s\S]*?;/gu) ?? [];
-
-    expect(legacyInsert).toMatch(
-      /'company-entity-version-v1-'\s*\|\|\s*ce\."id"[\s\S]*?ce\."id"[\s\S]*?1[\s\S]*?ce\."name"[\s\S]*?ce\."unifiedSocialCreditCode"[\s\S]*?ce\."registeredAddress"[\s\S]*?ce\."isActive"[\s\S]*?'legacy_backfill'[\s\S]*?FROM "CompanyEntity" ce/u
-    );
-    expect(legacyInsert).not.toMatch(/ON\s+CONFLICT[\s\S]*?DO\s+UPDATE/iu);
-    expect(companyEntityUpdates).toEqual([
-      expect.stringMatching(/SET\s+"currentVersionNo"\s*=\s*1/u)
-    ]);
+    assertLegacyVersionBackfill(migration);
     expect(migration).toMatch(
       /ADD CONSTRAINT "CompanyEntity_data_status_check"[\s\S]*?'legacy_incomplete'[\s\S]*?'complete'[\s\S]*?NOT VALID;/u
     );
@@ -113,31 +169,7 @@ describe("company entity versions and contract subject snapshots schema", () => 
   });
 
   it("backfills only reliable entity ids, version links, and names", () => {
-    const contractVersionBackfill =
-      migration.match(/UPDATE\s+"ContractVersion"[\s\S]*?;/u)?.[0] ?? "";
-
-    expect(contractVersionBackfill).toMatch(
-      /"companyEntityIdSnapshot"\s*=\s*ce\."id"/u
-    );
-    expect(contractVersionBackfill).toMatch(
-      /"companyEntityVersionId"\s*=\s*cev\."id"/u
-    );
-    expect(contractVersionBackfill).toMatch(
-      /NULLIF\(BTRIM\(c\."companyEntityName"\), ''\)[\s\S]*?c\."companyEntityName"[\s\S]*?ce\."name"/u
-    );
-    expect(contractVersionBackfill).toMatch(/FROM "Contract" c/u);
-    expect(contractVersionBackfill).toMatch(
-      /LEFT JOIN "CompanyEntity" ce ON ce\."id" = c\."companyEntityId"/u
-    );
-    expect(contractVersionBackfill).toMatch(
-      /LEFT JOIN "CompanyEntityVersion" cev[\s\S]*?cev\."companyEntityId" = ce\."id"[\s\S]*?cev\."versionNo" = 1/u
-    );
-    expect(contractVersionBackfill).not.toMatch(
-      /"companyEntityCreditCodeSnapshot"\s*=/u
-    );
-    expect(contractVersionBackfill).not.toMatch(
-      /"companyEntityRegisteredAddressSnapshot"\s*=/u
-    );
+    assertContractSnapshotBackfill(migration);
   });
 
   it("does not rewrite or invent legacy facts and contains no destructive DML", () => {
@@ -154,5 +186,49 @@ describe("company entity versions and contract subject snapshots schema", () => 
     expect(migration).not.toMatch(
       /"(?:legalRepresentative|phone|bank\w*|seal\w*|license\w*|remark\w*)"/iu
     );
+  });
+
+  it.each([
+    [
+      "a filtered legacy version insert",
+      (sql: string) =>
+        sql.replace(
+          'FROM "CompanyEntity" ce;',
+          'FROM "CompanyEntity" ce\nWHERE ce."isActive";'
+        )
+    ],
+    [
+      "a partial current-version pointer advance",
+      (sql: string) =>
+        sql.replace(
+          'SET "currentVersionNo" = 1;',
+          'SET "currentVersionNo" = 1\nWHERE "isActive";'
+        )
+    ],
+    [
+      "a contract snapshot update without the contract-version association",
+      (sql: string) => sql.replace('WHERE c."id" = cv."contractId"', "WHERE TRUE")
+    ],
+    [
+      "a required historical snapshot column",
+      (sql: string) =>
+        sql.replace(
+          'ADD COLUMN "companyEntityIdSnapshot" TEXT,',
+          'ADD COLUMN "companyEntityIdSnapshot" TEXT NOT NULL,'
+        )
+    ],
+    [
+      "a contract snapshot update without the reliable-source guard",
+      (sql: string) =>
+        sql.replace(
+          `  AND (\n    ce."id" IS NOT NULL\n    OR NULLIF(BTRIM(c."companyEntityName"), '') IS NOT NULL\n  );`,
+          ";"
+        )
+    ]
+  ])("rejects %s", (_name, mutate) => {
+    const mutatedMigration = mutate(migration);
+
+    expect(mutatedMigration).not.toBe(migration);
+    expect(() => assertM53BackfillSafety(mutatedMigration)).toThrow();
   });
 });
