@@ -106,7 +106,7 @@ describe("company entity ledger configuration", () => {
     expect(guard.tryStart()).toBe(false);
     guard.finish();
     expect(guard.tryStart()).toBe(true);
-    expect(formSource).toMatch(/async function save\(\) \{\n  if \(saving\.value\) return;/);
+    expect(formSource).toMatch(/async function save\(\) \{\n {2}if \(saving\.value\) return;/);
   });
 
   it("removes the obsolete settings entry while preserving account and signature settings", () => {
