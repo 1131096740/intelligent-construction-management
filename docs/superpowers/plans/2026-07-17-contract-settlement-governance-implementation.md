@@ -688,6 +688,8 @@ git commit -m "feat: 冻结合同我方主体版本"
 - Modify: `services/api/src/payment/payment-request.service.spec.ts`
 - Modify: `services/api/src/me/me.service.ts`
 - Modify: `services/api/src/me/me.service.spec.ts`
+- Modify: `services/api/src/auth/guards/permission.guard.ts`
+- Modify: `services/api/src/auth/guards/permission.guard.spec.ts`
 
 - [ ] **Step 1: 写候选人员和签名漂移失败测试**
 
@@ -728,6 +730,7 @@ interface FrozenApprovalNode {
   mode: "any" | "all";
   roleKeys: RoleKey[];
   candidateUserIds?: string[];
+  candidateUserIdsByRole?: Partial<Record<RoleKey, string[]>>;
   selectedUserId?: string;
   approvedRoleKeys?: RoleKey[];
   assignments?: ApprovalAssignment[];
@@ -740,12 +743,14 @@ M54 四列全部可空，无默认值、无历史回填、无 destructive DML。
 
 共享解析器返回 `{ approvedRoleKey, representedUserId }`，并同时服务于详情权限、待办、合同/结算/付款真实 review API：
 
-- `candidateUserIds` 存在时，直接处理人必须同时属于冻结候选人并持有待审批冻结岗位；`selectedUserId` 存在时只允许该人直接处理。
+- `candidateUserIdsByRole` 是新实例的权威“冻结岗位 → 具体人员”映射，`candidateUserIds` 为兼容并集；直接处理人只需命中待审批岗位对应的冻结人员，**不得再次要求其仍持有当前岗位**。`selectedUserId` 存在时只允许该冻结人员直接处理。提交后的调岗不自动改变资格，账号停用后通过转交/委托恢复，不重算路线。
 - 节点 assignment 只允许从冻结候选人产生，使用既有 `fromUserId/fromRoleKey/toUserId` 填写 `representedUserId`。
 - 常驻委托必须返回委托人 ID，且委托人必须是该节点冻结候选人，不能只凭委托人的当前岗位绕过冻结。
 - 旧 role-only 节点继续按原岗位、assignment、常驻委托规则处理，避免改变既有在途实例。
 
 `me.service.ts` 删除重复的候选人判断分支并复用同一纯函数语义；测试同时断言详情、待办和直接 POST 审批三处结果一致。
+
+现有 `PermissionGuard` 是真实 review controller 之前的 HTTP 粗门禁，必须为合同、结算、付款审批动作增加“当前实例冻结候选/assignment/合法委托”的受控放行；否则调岗后的冻结人员和无当前岗位的转交接收人会在到达服务层前被 403。Guard 只解析目标业务当前进行中实例，不允许把冻结资格扩散到 create、submit、archive、税务或其他项目动作，并补直接候选、assignment、常驻委托、非候选和错误业务实例测试。
 
 - [ ] **Step 5: 审批动作在事务内写入签名快照，所有 PDF 只读快照**
 
@@ -774,18 +779,20 @@ await tx.approvalActionLog.create({
 
 - [ ] **Step 6: 运行定向测试和 Prisma 验证**
 
-Run: `pnpm --filter @jiangkong/api prisma generate && pnpm --filter @jiangkong/api prisma validate && pnpm --filter @jiangkong/api test -- --runInBand src/approval/approval-node-access.spec.ts src/approval/approval-review-identity.spec.ts src/approval/approval-signature-snapshot.spec.ts src/approval/approval-form.service.spec.ts src/core-flow/approval-timeline-read.spec.ts src/contract/contract.service.spec.ts src/settlement/settlement.service.spec.ts src/payment/payment-request.service.spec.ts src/me/me.service.spec.ts src/database/approval-signature-snapshot-schema-verification.spec.ts && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint`
+Run: `pnpm --filter @jiangkong/api prisma generate && pnpm --filter @jiangkong/api prisma validate && pnpm --filter @jiangkong/api test -- --runInBand src/approval/approval-node-access.spec.ts src/approval/approval-review-identity.spec.ts src/approval/approval-signature-snapshot.spec.ts src/approval/approval-form.service.spec.ts src/core-flow/approval-timeline-read.spec.ts src/contract/contract.service.spec.ts src/settlement/settlement.service.spec.ts src/payment/payment-request.service.spec.ts src/me/me.service.spec.ts src/auth/guards/permission.guard.spec.ts src/database/approval-signature-snapshot-schema-verification.spec.ts && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint`
 
 Expected: PASS；非冻结同岗位人三处均无权，冻结候选人及合法指派/委托可处理；旧 role-only `frozenNodes` 仍能读取和处理但不会伪造历史签名。
 
 - [ ] **Step 7: 提交**
 
 ```bash
-git add services/api/prisma/schema.prisma services/api/prisma/migrations/20260717120000_approval_assignee_and_signature_snapshots services/api/src/approval services/api/src/core-flow/approval-timeline-read* services/api/src/contract/contract.service* services/api/src/settlement/settlement.service* services/api/src/payment/payment-request.service* services/api/src/me/me.service* services/api/src/database/approval-signature-snapshot-schema-verification.spec.ts
+git add services/api/prisma/schema.prisma services/api/prisma/migrations/20260717120000_approval_assignee_and_signature_snapshots services/api/src/approval services/api/src/core-flow/approval-timeline-read* services/api/src/contract/contract.service* services/api/src/settlement/settlement.service* services/api/src/payment/payment-request.service* services/api/src/me/me.service* services/api/src/auth/guards/permission.guard* services/api/src/database/approval-signature-snapshot-schema-verification.spec.ts
 git commit -m "feat: 冻结审批人员与签名事实"
 ```
 
 ### Task 8: 五类新合同审批路线和人员冻结
+
+> **执行校正（2026-07-17 代码审计）**：Task 8 依赖 Task 7 已完成“冻结人员不因调岗失权”的读、待办、HTTP Guard 和真实 review 闭环。这里只为尚未提交或重新提交的原合同生成新路线；既有在途实例不重算，合同变更继续使用现有路线直到后续 Task 12。项目岗位候选只认规范 `ProjectMember`，不把 legacy project-scoped `UserPosition` 混入新冻结事实；发现仅有遗留来源时提示先治理组织权限。
 
 **Files:**
 - Create: `services/api/src/contract/contract-approval-route.service.ts`
@@ -820,6 +827,8 @@ Run: `pnpm --filter @jiangkong/shared-domain test -- src/permissions.test.ts && 
 
 Expected: FAIL。
 
+失败测试必须覆盖五类完整路线、合同部成员发起保留首节点、只有公司级合同主管发起才跳过、项目隔离、启用用户、未知/空合同类型 fail closed、项目总工 exactly one、其他单角色节点至少一名候选、领导或签节点至少一名候选、`candidateUserIdsByRole` 实际写入 ApprovalInstance。不得把“申请人兼任后续岗位”自动排除；除合同主管首节点特例外，沿用现有自审二次确认规则。
+
 - [ ] **Step 3: 实现分类路线定义**
 
 ```ts
@@ -832,7 +841,7 @@ const NEW_CONTRACT_ROUTE: Record<ContractTypeKey, RouteNodeDefinition[]> = {
 };
 ```
 
-解析候选时排除申请人；主管发起时删除第一个主管节点。节点缺候选时阻止提交。审批 review 对新节点强制 candidate/selected user；转交和委托保持既有审计，历史 role-only 节点兼容。
+路线解析在 `submitApproval()` 同一事务中进行，并锁定 Contract 后读取类型、项目和组织候选。公司级节点从 `UserPosition(projectId=null)` 加 `Position.key` 和启用用户解析；项目经理与项目总工仅从合同所属项目的 `ProjectMember` 解析。项目总工必须恰好一名启用候选，缺失或多人冲突均阻断；其他单角色节点允许冻结全部启用候选但至少一人，董事长/总经理或签只要求两种岗位合计至少一人。主管发起时仅当申请人持有公司级 `contract_director` 才删除首节点。未知或空 `contractTypeKey` 必须 fail closed。所有节点写 `candidateUserIdsByRole` 与稳定排序的并集，后续 review 不重查现任岗位。
 
 - [ ] **Step 4: 补粗粒度入口岗位但不扩大其他写权限**
 
@@ -840,9 +849,9 @@ const NEW_CONTRACT_ROUTE: Record<ContractTypeKey, RouteNodeDefinition[]> = {
 
 - [ ] **Step 5: 运行定向测试**
 
-Run: `pnpm --filter @jiangkong/shared-domain test -- src/permissions.test.ts && pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-approval-route.service.spec.ts src/contract/contract.service.spec.ts src/approval/approval-node-access.spec.ts src/approval/approval-self-review.spec.ts`
+Run: `pnpm --filter @jiangkong/shared-domain test -- src/permissions.test.ts && pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-approval-route.service.spec.ts src/contract/contract.service.spec.ts src/approval/approval-node-access.spec.ts src/approval/approval-self-review.spec.ts src/me/me.service.spec.ts src/auth/guards/permission.guard.spec.ts src/payment/payment-request.service.spec.ts src/project-expense/project-expense.service.spec.ts && pnpm --filter @jiangkong/web-admin test -- src/pages/settings/approval-flow-readonly.config.test.ts && pnpm --filter @jiangkong/shared-domain typecheck && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint && pnpm --filter @jiangkong/web-admin typecheck && pnpm --filter @jiangkong/web-admin lint && pnpm --filter @jiangkong/web-admin check:ui`
 
-Expected: PASS；付款和项目支出既有领导自审测试不变。
+Expected: PASS；五类只读规则完整展示且重大变更规则未被改写；付款和项目支出既有领导自审测试不变。
 
 - [ ] **Step 6: 提交**
 
