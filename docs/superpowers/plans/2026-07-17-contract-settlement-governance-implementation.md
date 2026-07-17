@@ -862,6 +862,8 @@ git commit -m "feat: 按合同类型冻结审批路线"
 
 ### Task 9: M55 合同正式文件、双方授权书和用章任务
 
+> **执行校正（2026-07-17 代码审计）**：Task 9 只增加受约束的兼容数据结构与原字节 PDF 检查，不改写旧文件或旧状态。M55 的强度不得低于 M53：外键、枚举 CHECK、页数/SHA/revision CHECK、查询索引、同版本同 purpose 仅一个 active 文件，以及无回填/无 destructive DML 都必须由静态与变异测试验证，不能只断言 Prisma 模型名称存在。
+
 **Files:**
 - Create: `services/api/prisma/migrations/20260717130000_contract_formal_documents_authorizations_and_seal_tasks/migration.sql`
 - Modify: `services/api/prisma/schema.prisma`
@@ -872,10 +874,12 @@ git commit -m "feat: 按合同类型冻结审批路线"
 - [ ] **Step 1: 写模型和原字节失败测试**
 
 ```ts
-expect(schema).toContain("model ContractFormalFile");
-expect(schema).toContain("model ContractAuthorization");
-expect(schema).toContain("model ContractVersionAuthorizationLink");
-expect(schema).toContain("model ContractSealTask");
+expect(migration).toContain('FOREIGN KEY ("contractVersionId") REFERENCES "ContractVersion"');
+expect(migration).toContain('FOREIGN KEY ("fileId") REFERENCES "FileObject"');
+expect(migration).toContain('CREATE UNIQUE INDEX');
+expect(migration).toMatch(/WHERE\s+"status"\s*=\s*'active'/u);
+expect(migration).toMatch(/CHECK\s*\(\s*"pageCount"\s*>\s*0/u);
+expect(migration).toMatch(/CHECK[\s\S]*"contentSha256"[\s\S]*64/u);
 expect((await inspectSignedPdf(source)).sha256).toBe(createHash("sha256").update(source).digest("hex"));
 ```
 
@@ -943,15 +947,17 @@ model ContractSealTask {
 
 保留 `ContractArchiveFile` 作为旧历史兼容，不迁移猜测旧文件用途。
 
+迁移为四个新模型补齐到 `ContractVersion`、`FileObject`、`User`、授权记录、复用来源版本和 self-supersedes 的外键（删除策略以保留业务证据为先）；`purpose/status/side/seal task status` 使用 CHECK；`pageCount > 0`、`sourceRevision >= 0`、SHA-256 为 64 位十六进制；`ContractSealTask(status, handlerUserId)` 建索引；使用 partial unique index 保证每个合同版本、每种 purpose 最多一个 active 正式文件。授权关联保持每版本每 side 唯一，数据库约束与服务事务共同防止失配。
+
 - [ ] **Step 4: 只读检查 PDF**
 
 `contract-formal-pdf-inspector.ts` 使用 `pdf-lib` 加载原 buffer，仅返回 SHA、页数、页面尺寸/旋转；不保存 `PDFDocument.save()` 输出。
 
 - [ ] **Step 5: 运行 Prisma 和定向测试**
 
-Run: `pnpm --filter @jiangkong/api prisma validate && pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-formal-pdf-inspector.spec.ts src/database/contract-governance-files-schema-verification.spec.ts`
+Run: `pnpm --filter @jiangkong/api prisma generate && pnpm --filter @jiangkong/api prisma validate && pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-formal-pdf-inspector.spec.ts src/database/contract-governance-files-schema-verification.spec.ts && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint`
 
-Expected: PASS。
+Expected: PASS；迁移顺序、事务、外键、CHECK、partial unique、无默认猜测/回填/删除以及删约束、删索引、注入 destructive DML 的变异测试均通过。
 
 - [ ] **Step 6: 提交**
 
@@ -1074,9 +1080,15 @@ git commit -m "feat: 完善合同签前文件工作台"
 
 ### Task 12: 同意用章、线下盖章、最终文件与归档职责分离
 
+> **执行校正（2026-07-17 代码审计）**：现有 `approveSeal()` 会直接跳到“待归档”，必须由新服务取代。最终审批只负责原子、幂等创建“待同意用章”任务并冻结经办人；综合部主管的“同意用章”只代表允许线下取章，版本进入 `in_seal`；只有冻结经办人确认完成我方签署与盖章后，才允许上传双方最终版。所有写动作必须锁版本/任务或使用带旧状态的 CAS，不能沿用 find 后无条件 update。
+
 **Files:**
 - Create: `services/api/src/contract/contract-seal.service.ts`
 - Create: `services/api/src/contract/contract-seal.service.spec.ts`
+- Create: `services/api/src/contract/dto/contract-seal.dto.ts`
+- Modify: `services/api/src/contract/contract.module.ts`
+- Modify: `services/api/src/contract/contract.controller.ts`
+- Modify: `services/api/src/contract/contract.controller.spec.ts`
 - Modify: `services/api/src/contract/contract.service.ts`
 - Modify: `services/api/src/contract/contract.service.spec.ts`
 - Modify: `services/api/src/contract/contract-status.service.ts`
@@ -1085,6 +1097,9 @@ git commit -m "feat: 完善合同签前文件工作台"
 - Modify: `services/api/src/contract/contract-read.service.spec.ts`
 - Modify: `services/api/src/approval/approval-form.service.ts`
 - Modify: `services/api/src/approval/approval-form.service.spec.ts`
+- Modify: `packages/shared-domain/src/core-flow-read-model.ts`
+- Modify: `packages/shared-domain/src/permissions.ts`
+- Modify: `packages/shared-domain/src/permissions.test.ts`
 
 - [ ] **Step 1: 写状态和职责分离失败测试**
 
@@ -1094,6 +1109,9 @@ expect(await service.reviewApproval(versionId, finalApprover, { decision: "appro
 expect(await seal.approve(versionId, comprehensiveDirector)).toMatchObject({ status: "in_seal" });
 expect(await seal.complete(versionId, handler)).toMatchObject({ status: "seal_approved_pending_archive" });
 await expect(service.confirmArchiveFile(versionId, uploader, input)).rejects.toThrow("上传人与归档确认人不能是同一人");
+expect(await finalApproval()).toMatchObject({ sealTask: { handlerUserId: applicant, status: "pending_approval" } });
+await expect(Promise.all([seal.approve(versionId, director), seal.approve(versionId, director)]))
+  .rejects.toThrow("用章任务已处理");
 ```
 
 - [ ] **Step 2: 运行失败测试**
@@ -1104,26 +1122,28 @@ Expected: FAIL。
 
 - [ ] **Step 3: 修正状态机和用章任务**
 
-最终审批事务创建 `ContractSealTask(status='pending_approval')`；综合部主管“同意用章”后版本进入 `in_seal`，经办人确认线下签字盖章完成后进入 `seal_approved_pending_archive`。动作分别审计为 `contract.seal.approve` 和 `contract.seal.complete`。
+最终审批事务按 `contractVersionId` 幂等创建 `ContractSealTask(status='pending_approval')`，`handlerUserId` 固定为该审批实例的申请人；重复最终回调不得创建第二任务或第二份审计。综合部主管“同意用章”后任务和版本原子进入 `in_seal`，经办人确认线下签字盖章完成后进入 `seal_approved_pending_archive`。动作分别审计为 `contract.seal.approve` 和 `contract.seal.complete`，系统不创建印章实体、编号或图片档案。
+
+新增真实 controller/DTO/module 接线：`seal/approve`、`seal/complete`、双方最终版业务关联上传、退回资料补正和归档确认。文件字节仍经既有通用 `/files` 上传 API、类型/大小/私有存储/权限处理；合同业务服务只读取 `FileObject` 后强制正式件为 PDF 并建立 M55 关联。粗权限允许冻结经办人（包括合同部主管发起人）到达服务层，最终仍由 seal task handler 和状态硬校验，不能扩成任意合同写权限。
 
 - [ ] **Step 4: 最终签署版与审批版差异边界**
 
-最终上传使用 `ContractFormalFile(purpose='mutually_signed_final')`；服务至少校验 PDF、版本、页数和原审批版存在。系统不机械判断文件内容差异，由上传人明确声明最终版相对审批版只新增我方签名、公司印章和日期；合同部主管确认时再次确认该声明，强制 uploader != confirmer，并生成生效事实。上传、确认、退回和声明内容均写审计。
+最终上传使用 `ContractFormalFile(purpose='mutually_signed_final')`；仅冻结经办人且任务已完成线下签署盖章时可关联上传，服务校验 PDF、版本、页数和原审批版存在，并锁版本确保同 purpose 只有一个 active 文件。系统不机械判断文件内容差异，由上传人明确声明最终版相对审批版只新增我方签字或签章、公司公章、骑缝章和签署日期；合同部主管确认时再次确认同一声明，强制 uploader != confirmer，并生成生效事实。资料缺页/错页可退回最终文件补正；一旦主体、金额、税率、清单、付款条款、授权、范围或正文变化，旧正式文件失效并退回草稿重新审批。上传、替换、确认、退回、失效和声明内容均写审计。
 
 - [ ] **Step 5: 合同审批单使用冻结签名并加固下载授权**
 
-审批单只读 M54 快照；允许规格列明的经办人、合同部、实际审批人、项目经理、财务、综合部和领导下载，仍要求密码、用途、水印和审计。
+审批单只读 M54 快照；允许规格列明的经办人、合同部、实际审批人、所属项目经理、财务人员/主管、综合部主管和领导下载，仍要求密码、用途、水印和审计。`download_approval_form` 的 availableAction 必须使用同一精确 ACL，不能向无权用户显示伪可用按钮；该 ACL 仅限合同审批单，不扩成任意归档附件读取。
 
 - [ ] **Step 6: 运行定向测试**
 
-Run: `pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-seal.service.spec.ts src/contract/contract-status.service.spec.ts src/contract/contract.service.spec.ts src/contract/contract-read.service.spec.ts src/approval/approval-form.service.spec.ts src/file/file.service.spec.ts`
+Run: `pnpm --filter @jiangkong/shared-domain test -- src/permissions.test.ts && pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-seal.service.spec.ts src/contract/contract-status.service.spec.ts src/contract/contract.controller.spec.ts src/contract/contract.service.spec.ts src/contract/contract-read.service.spec.ts src/approval/approval-form.service.spec.ts src/file/file.service.spec.ts && pnpm --filter @jiangkong/shared-domain typecheck && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint && pnpm --filter @jiangkong/api check:business-errors`
 
 Expected: PASS。
 
 - [ ] **Step 7: 提交**
 
 ```bash
-git add services/api/src/contract services/api/src/approval/approval-form.service* services/api/src/file/file.service.spec.ts
+git add packages/shared-domain/src/core-flow-read-model.ts packages/shared-domain/src/permissions* services/api/src/contract services/api/src/approval/approval-form.service* services/api/src/file/file.service.spec.ts
 git commit -m "feat: 分离合同同意用章与归档事实"
 ```
 
@@ -1590,18 +1610,28 @@ git commit -m "fix: 加固历史主体与跨域只读边界"
 
 ### Task 22: 全量回归、迁移演练、UAT 和发布候选
 
+> **执行校正（2026-07-17 过渡审计）**：批准规格要求“历史不改、未生效重走”，不能只在报告里列清单。候选必须包含默认只读的预览/受控终止工具及测试，但本任务只生成预览清单并演练隔离库；未经用户对最终 40 位 SHA、精确实例 manifest 和生产写入再次批准，不得在生产运行 apply。M53-M56 迁移本身永不自动终止实例。
+
 **Files:**
 - Modify: `services/api/prisma/verify-trial-run.cjs`
+- Create: `services/api/prisma/transition-contract-settlement-governance.cjs`
+- Create: `services/api/src/database/contract-settlement-governance-transition.spec.ts`
 - Create: `docs/progress/2026-07-17-contract-settlement-governance-release-candidate.md`
 - Create: `docs/superpowers/runbooks/2026-07-17-contract-settlement-governance-release.md`
 - Modify: `GO_LIVE_P0_RELEASE_CANDIDATE_REPORT.md`
 - Modify: `PROGRESS.md`
 
-- [ ] **Step 1: 扩展隔离 UAT 覆盖**
+- [ ] **Step 1: 建立默认只读、manifest 驱动的旧实例过渡工具**
+
+`transition-contract-settlement-governance.cjs` 默认在 `READ ONLY` 事务中输出正在审批、待用章、待归档的未生效合同/结算清单、当前状态、审批实例、关联正式文件和建议动作，且不输出文件对象键或敏感内容。`--apply` 必须同时提供：精确候选 SHA、显式 `ALLOW_GOVERNANCE_TRANSITION_APPLY` 确认串、操作者用户 ID、由预览生成且未被修改的实例 manifest；任一行状态、版本、审批实例或摘要漂移则整批回滚。
+
+apply 在单事务按稳定顺序锁定 manifest 中的合同/结算版本和 ApprovalInstance，旧实例标记“因业务规则升级终止”，写 ApprovalActionLog 与 AuditLog；未生效单据回到可补资料并重新提交的状态，相关 active 正式文件按模型标记失效，不删除原文件或旧日志。已生效/归档/作废、付款/实付/入账、manifest 外记录一律不改。脚本幂等，重复执行只报告已处理，不重复审计。定向测试覆盖默认只读、缺门禁拒绝、manifest 漂移全回滚、精确状态迁移、历史日志保留和付款零改动。
+
+- [ ] **Step 2: 扩展隔离 UAT 覆盖**
 
 `verify-trial-run.cjs` 使用隔离测试数据覆盖：五类合同、主管发起跳过、最终或签、双方授权四组合、用章/最终归档、增项 9.99%/10%/10.01%、材料和劳务结算、一页/多页签名、通用合同直接付款、跨域只读负向权限。不得连接生产业务库执行写入。
 
-- [ ] **Step 2: 运行所有定向测试**
+- [ ] **Step 3: 运行所有定向测试**
 
 Run:
 
@@ -1609,7 +1639,8 @@ Run:
 pnpm --filter @jiangkong/shared-domain test
 pnpm --filter @jiangkong/api test -- --runInBand \
   src/company-entity src/approval src/contract src/contract-workbench \
-  src/contract-takeover src/settlement src/payment src/file
+  src/contract-takeover src/settlement src/payment src/file \
+  src/database/contract-settlement-governance-transition.spec.ts
 pnpm --filter @jiangkong/web-admin test -- \
   src/api src/pages/company-entities src/pages/contracts src/pages/settlements \
   src/pages/payments src/pages/business-readonly-access.test.ts src/routes/index.test.ts
@@ -1617,7 +1648,7 @@ pnpm --filter @jiangkong/web-admin test -- \
 
 Expected: PASS。
 
-- [ ] **Step 3: 运行工程质量全量门禁**
+- [ ] **Step 4: 运行工程质量全量门禁**
 
 ```bash
 pnpm --filter @jiangkong/shared-domain typecheck
@@ -1640,22 +1671,22 @@ git diff --check
 
 Expected: 全部 PASS；条件跳过项逐条记录原因。
 
-- [ ] **Step 4: 浏览器验证**
+- [ ] **Step 5: 浏览器验证**
 
 使用稳定 mock/隔离数据验证 1512×982、1440×900、1280×800、1180×820、1024×768、900×768：公司主体、五类合同、合同详情、变更、材料/劳务结算、结算详情、付款工作台和只读台账。根文档横向溢出、嵌套横滚和 pageerror 必须为 0。
 
-- [ ] **Step 5: 隔离库迁移演练**
+- [ ] **Step 6: 隔离库迁移与旧实例过渡演练**
 
-从生产备份恢复到 `jiangkong_restore_*`，使用精确候选 SHA 依次应用 M52-M56；核对迁移数、表/索引、旧 51 迁移事实、存量空信用代码、历史审批 JSON、金额计数和只读查询。不得连接或修改生产业务库。
+从生产备份恢复到 `jiangkong_restore_*`，使用精确候选 SHA 依次应用 M52-M56；核对迁移数、表/索引、旧 51 迁移事实、存量空信用代码、历史审批 JSON、金额计数和只读查询。先运行 transition preview，再只在隔离库对复制的 manifest 执行 apply，验证终止审计、草稿恢复、正式文件失效、幂等和付款零变化；清理隔离库。不得连接或修改生产业务库。
 
-- [ ] **Step 6: 生成发布候选报告和 runbook**
+- [ ] **Step 7: 生成发布候选报告和 runbook**
 
-报告必须记录：40 位 SHA、相对生产和 main 提交、实际文件、4 个新增迁移、隔离演练、测试、截图、旧未生效实例清单、未解决项、应用回滚和数据库前向修复方案。
+报告必须记录：40 位 SHA、相对生产和 main 提交、实际文件、4 个新增迁移、隔离演练、测试、截图、旧未生效实例预览 manifest 及摘要、未解决项、应用回滚和数据库前向修复方案。runbook 明确将“部署/迁移”和“按 manifest 终止旧实例”分成两次独立授权，禁止因批准部署而推定批准生产业务写入。
 
-- [ ] **Step 7: 最终提交并停止在发布候选**
+- [ ] **Step 8: 最终提交并停止在发布候选**
 
 ```bash
-git add services/api/prisma/verify-trial-run.cjs docs/progress/2026-07-17-contract-settlement-governance-release-candidate.md docs/superpowers/runbooks/2026-07-17-contract-settlement-governance-release.md GO_LIVE_P0_RELEASE_CANDIDATE_REPORT.md PROGRESS.md
+git add services/api/prisma/verify-trial-run.cjs services/api/prisma/transition-contract-settlement-governance.cjs services/api/src/database/contract-settlement-governance-transition.spec.ts docs/progress/2026-07-17-contract-settlement-governance-release-candidate.md docs/superpowers/runbooks/2026-07-17-contract-settlement-governance-release.md GO_LIVE_P0_RELEASE_CANDIDATE_REPORT.md PROGRESS.md
 git commit -m "test: 收口合同结算治理发布候选"
 ```
 
