@@ -564,7 +564,7 @@ describe("PaymentRequestService", () => {
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
-  it("creates a contract advance payment request from an effective contract version without settlement", async () => {
+  it("creates a payment request when an effective historical contract change baseline is missing", async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date("2026-07-20T00:00:00.000Z"));
 
@@ -579,6 +579,8 @@ describe("PaymentRequestService", () => {
             id: "contract-version-1",
             contractId: "contract-1",
             status: "effective",
+            changeType: "historical_takeover",
+            originalBaseAmountCents: null,
             amountCents: BigInt(1_000_000),
             effectiveAt: new Date("2026-06-01T00:00:00.000Z")
           })

@@ -355,6 +355,60 @@ export function canConfirmTakeover(takeover: Pick<ContractTakeoverReadModel, "ta
   return takeover.takeoverStatus === "pending_review";
 }
 
+export interface HistoricalChangeBaselineView {
+  status: "unconfirmed" | "confirmed" | "invalid";
+  statusLabel: string;
+  originalSignedAmountText: string;
+  preTakeoverPositiveIncreaseText: string;
+}
+
+function isCanonicalNonNegativeCents(value: unknown): value is string {
+  return typeof value === "string" && /^(0|[1-9]\d*)$/.test(value) &&
+    (value.length < 19 || (value.length === 19 && value <= "9223372036854775807"));
+}
+
+export function historicalChangeBaselineView(
+  takeover: Pick<ContractTakeoverReadModel,
+    "changeBaselineConfirmed" | "originalBaseAmountCents" | "preTakeoverPositiveIncreaseCents">
+): HistoricalChangeBaselineView {
+  if (takeover.changeBaselineConfirmed === false &&
+      takeover.originalBaseAmountCents === null &&
+      takeover.preTakeoverPositiveIncreaseCents === null) {
+    return {
+      status: "unconfirmed",
+      statusLabel: "尚未确认",
+      originalSignedAmountText: "—",
+      preTakeoverPositiveIncreaseText: "—"
+    };
+  }
+  if (takeover.changeBaselineConfirmed === true &&
+      isCanonicalNonNegativeCents(takeover.originalBaseAmountCents) &&
+      isCanonicalNonNegativeCents(takeover.preTakeoverPositiveIncreaseCents)) {
+    return {
+      status: "confirmed",
+      statusLabel: "已一次性确认",
+      originalSignedAmountText: centsToYuanText(takeover.originalBaseAmountCents),
+      preTakeoverPositiveIncreaseText: centsToYuanText(takeover.preTakeoverPositiveIncreaseCents)
+    };
+  }
+  return {
+    status: "invalid",
+    statusLabel: "数据异常，请联系管理员核对",
+    originalSignedAmountText: "—",
+    preTakeoverPositiveIncreaseText: "—"
+  };
+}
+
+export function canConfirmHistoricalChangeBaseline(
+  takeover: Pick<ContractTakeoverReadModel,
+    "takeoverStatus" | "changeBaselineConfirmed" | "originalBaseAmountCents" |
+    "preTakeoverPositiveIncreaseCents">,
+  hasConfirmPermission: boolean
+) {
+  return hasConfirmPermission && takeover.takeoverStatus === "confirmed" &&
+    historicalChangeBaselineView(takeover).status === "unconfirmed";
+}
+
 export function canEditTakeover(takeover: Pick<ContractTakeoverReadModel, "takeoverStatus">) {
   return takeover.takeoverStatus === "draft" || takeover.takeoverStatus === "needs_supplement";
 }

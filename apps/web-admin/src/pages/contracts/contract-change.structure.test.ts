@@ -14,6 +14,19 @@ describe("contract change Web closure", () => {
     expect(detail).toContain("workbench?versionId=${created.id}");
   });
 
+  it("creates only the unified contract change while preserving historical supplement reads", () => {
+    expect(detail).toContain('header="发起合同变更"');
+    expect(detail).toContain('changeType: "change"');
+    expect(detail).not.toContain('v-model="changeForm.changeType"');
+    expect(detail).not.toContain("发起变更/补充协议");
+    expect(workbench).toContain("补充协议（历史）");
+  });
+
+  it("shows the exact eligibility denial instead of silently hiding the reason", () => {
+    expect(detail).toContain('v-if="changeEligibility && !changeEligibility.eligible"');
+    expect(detail).toContain("changeEligibility.reason");
+  });
+
   it("renders backend route/history and fails closed around change policy", () => {
     expect(detail).toContain("contractChangeVersions");
     expect(detail).toContain("approvalRouteLabel(version.approvalRoute)");

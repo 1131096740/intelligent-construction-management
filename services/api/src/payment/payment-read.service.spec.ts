@@ -1925,7 +1925,7 @@ describe("PaymentReadService", () => {
     );
   });
 
-  it("does not double count historical paid in capacity explanation when initial settlement exists", async () => {
+  it("reads payment capacity when a historical contract change baseline is missing", async () => {
     const confirmedAt = new Date("2026-07-01T00:00:00.000Z");
     const prisma = {
       contractVersion: {
@@ -1934,6 +1934,8 @@ describe("PaymentReadService", () => {
           contractId: "contract-1",
           versionNo: 1,
           status: "effective",
+          changeType: "historical_takeover",
+          originalBaseAmountCents: null,
           amountCents: BigInt(100_000),
           effectiveAt: new Date("2026-06-01T00:00:00.000Z")
         }),

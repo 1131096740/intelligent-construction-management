@@ -59,7 +59,7 @@
             :options="amountLimitTypeOptions"
             @change="onAmountLimitTypeChange"
           />
-          <small class="field-hint">无限额框架合同发生任何金额变更时，将触发增强审批。</small>
+          <small class="field-hint">无限额框架合同不以预计金额作为硬上限；后续变更仍需按合同变更流程审批。</small>
         </label>
         <label
           v-if="directTemplateFallback"
@@ -341,7 +341,7 @@
         <template #message>
           <div class="change-banner-content">
             <div>
-              <strong>{{ changeMeta?.changeType === 'change' ? '合同变更草稿' : '补充协议草稿' }}</strong>
+              <strong>{{ changeMeta?.changeType === 'change' ? '合同变更草稿' : '补充协议（历史）' }}</strong>
               <span>基于合同 v{{ changeMeta?.baseVersion?.versionNo ?? '—' }}；只有归档确认后才会替代当前有效版本。旧文件、审批和归档记录不会复制到本草稿。</span>
             </div>
             <div class="change-banner-metrics">
@@ -352,7 +352,6 @@
             </div>
             <div>
               <span>审批路线：{{ approvalRouteText }}</span>
-              <span v-if="changeMeta?.enhancedApprovalReasons?.length">增强原因：{{ enhancedReasonText }}</span>
               <span v-if="!changePolicy.valid">当前后端未返回有效变更白名单，字段和条款已全部只读。</span>
             </div>
           </div>
@@ -683,7 +682,6 @@ import {
   canApplyExpectedWorkbenchVersion,
   contractApprovalRouteText,
   contractChangePolicyView,
-  contractEnhancedReasonText,
   CONTRACT_NAME_DRAFT_KEY,
   normalizeWorkbenchChange
 } from "./contract-change.state";
@@ -855,12 +853,11 @@ const governedWorkbench = computed(() =>
 const changePolicy = computed(() => contractChangePolicyView(workbench.value));
 const isChangeVersion = computed(() => changePolicy.value.isChange);
 const changeMeta = computed(() => normalizeWorkbenchChange(workbench.value));
-const enhancedReasonText = computed(() =>
-  contractEnhancedReasonText(changeMeta.value?.enhancedApprovalReasons ?? [])
-);
-const approvalRouteText = computed(() =>
-  contractApprovalRouteText(changeMeta.value?.approvalRoute)
-);
+const approvalRouteText = computed(() => {
+  const change = changeMeta.value;
+  if (change?.approvalRoute.length) return contractApprovalRouteText(change.approvalRoute);
+  return change?.approvalRouteLabel ?? contractApprovalRouteText(change?.approvalRoute);
+});
 
 function moneyText(value: string | undefined) {
   return value === undefined ? "—" : `¥${centsTextToYuanText(value)}`;

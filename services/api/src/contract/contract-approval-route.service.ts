@@ -102,6 +102,12 @@ const NEW_CONTRACT_ROUTE: Record<NewContractTypeKey, RouteNodeDefinition[]> = {
 };
 
 const SUPPORTED_CONTRACT_TYPES = new Set<string>(Object.keys(NEW_CONTRACT_ROUTE));
+const CONTRACT_CHANGE_ROUTE: RouteNodeDefinition[] = [
+  GLOBAL("合同部主管", "contract_director"),
+  PROJECT("项目经理", "project_manager"),
+  GLOBAL("财务主管", "finance_director"),
+  OR_GLOBAL("董事长/总经理", "chairman", "general_manager")
+];
 
 function stableUnique(values: string[]): string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
@@ -117,6 +123,80 @@ function roleCandidates(rows: CandidateRow[], roleKey: RoleKey, applicantUserId:
 
 @Injectable()
 export class ContractApprovalRouteService {
+  async freezeContractChangeRoute(
+    tx: Prisma.TransactionClient,
+    lockedContract: LockedNewContractRouteInput,
+    applicantUserId: string
+  ): Promise<FrozenNewContractApprovalNode[]> {
+    const projects = await tx.$queryRaw<ProjectRow[]>(Prisma.sql`
+      SELECT "id", "isActive" FROM "Project"
+      WHERE "id" = ${lockedContract.projectId} FOR UPDATE
+    `);
+    if (projects.length !== 1 || !projects[0]?.isActive) {
+      throw new BadRequestException("合同所属项目不存在或已停用");
+    }
+    const applicantRoles = await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
+      (SELECT pm."userId", pm."positionKey" AS "roleKey"
+       FROM "ProjectMember" pm INNER JOIN "User" u ON u."id" = pm."userId"
+       WHERE pm."projectId" = ${lockedContract.projectId}
+         AND pm."userId" = ${applicantUserId}
+         AND pm."positionKey" = 'contract_staff' AND u."isActive" = TRUE
+       FOR SHARE OF pm, u)
+      UNION ALL
+      (SELECT up."userId", p."key" AS "roleKey"
+       FROM "UserPosition" up
+       INNER JOIN "Position" p ON p."id" = up."positionId"
+       INNER JOIN "User" u ON u."id" = up."userId"
+       WHERE up."projectId" IS NULL AND up."userId" = ${applicantUserId}
+         AND p."key" = 'contract_director' AND u."isActive" = TRUE
+       FOR SHARE OF up, p, u)
+    `);
+    if (!applicantRoles.some((row) =>
+      row.roleKey === "contract_staff" || row.roleKey === "contract_director")) {
+      throw new BadRequestException("仅允许所属项目合同员或公司级合同部主管发起合同变更");
+    }
+    const isDirectorApplicant = applicantRoles.some((row) => row.roleKey === "contract_director");
+    const projectCandidates = await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
+      SELECT pm."userId", pm."positionKey" AS "roleKey"
+      FROM "ProjectMember" pm INNER JOIN "User" u ON u."id" = pm."userId"
+      WHERE pm."projectId" = ${lockedContract.projectId}
+        AND pm."positionKey" = 'project_manager' AND u."isActive" = TRUE
+      FOR SHARE OF pm, u
+    `);
+    const globalCandidates = await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
+      SELECT up."userId", p."key" AS "roleKey"
+      FROM "UserPosition" up
+      INNER JOIN "Position" p ON p."id" = up."positionId"
+      INNER JOIN "User" u ON u."id" = up."userId"
+      WHERE up."projectId" IS NULL AND u."isActive" = TRUE
+        AND p."key" IN ('contract_director','finance_director','chairman','general_manager')
+      FOR SHARE OF up, p, u
+    `);
+    const route = isDirectorApplicant ? CONTRACT_CHANGE_ROUTE.slice(1) : CONTRACT_CHANGE_ROUTE;
+    return route.map((definition) => {
+      const sourceRows = definition.source === "global" ? globalCandidates : projectCandidates;
+      const candidateUserIdsByRole = Object.fromEntries(definition.roleKeys.map((roleKey) => [
+        roleKey,
+        roleCandidates(sourceRows, roleKey, applicantUserId)
+      ])) as Partial<Record<RoleKey, string[]>>;
+      const candidateUserIds = stableUnique(definition.roleKeys.flatMap(
+        (roleKey) => candidateUserIdsByRole[roleKey] ?? []
+      ));
+      if (!candidateUserIds.length) {
+        throw new BadRequestException(definition.roleKeys.length > 1
+          ? "董事长或总经理没有可审批本合同变更的人员，请先完善岗位配置"
+          : `${definition.name}没有可审批本合同变更的人员，请先完善岗位配置`);
+      }
+      return {
+        name: definition.name,
+        mode: "any" as const,
+        roleKeys: [...definition.roleKeys],
+        candidateUserIds,
+        candidateUserIdsByRole
+      };
+    });
+  }
+
   async freezeNewContractRoute(
     tx: Prisma.TransactionClient,
     lockedContract: LockedNewContractRouteInput,

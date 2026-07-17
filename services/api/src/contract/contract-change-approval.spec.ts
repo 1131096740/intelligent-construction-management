@@ -1,41 +1,4 @@
-import { evaluateContractChangeApproval } from "./contract-change-approval";
 import { ContractService } from "./contract.service";
-
-describe("evaluateContractChangeApproval", () => {
-  const evaluate = (
-    cumulativeIncreaseCents: bigint,
-    cumulativeDecreaseCents: bigint = 0n,
-    amountLimitType = "capped"
-  ) => evaluateContractChangeApproval({
-    changeType: "supplement",
-    amountLimitType,
-    changeAmountCents: cumulativeIncreaseCents + cumulativeDecreaseCents > 0n ? 1n : 0n,
-    originalBaseAmountCents: 10_000n,
-    cumulativeIncreaseCents,
-    cumulativeDecreaseCents
-  });
-
-  it.each([
-    ["9%", 900n, false],
-    ["exactly 10%", 1_000n, false],
-    ["strictly over 10%", 1_001n, true]
-  ])("routes a capped change at %s", (_label, cumulative, enhanced) => {
-    expect(evaluate(cumulative).enhanced).toBe(enhanced);
-  });
-
-  it("tracks increases and decreases separately instead of offsetting them", () => {
-    const result = evaluate(1_100n, 1_100n);
-    expect(result.enhanced).toBe(true);
-    expect(result.reasons).toContain("cumulative_change_strictly_over_ten_percent");
-  });
-
-  it("enhances any non-zero amount change for an unlimited framework contract", () => {
-    expect(evaluate(1n, 0n, "unlimited")).toEqual({
-      enhanced: true,
-      reasons: ["unlimited_amount_change"]
-    });
-  });
-});
 
 describe("ContractService change draft version lineage", () => {
   const standardTemplateSnapshot = {
@@ -81,6 +44,7 @@ describe("ContractService change draft version lineage", () => {
     contractId: "contract-1",
     versionNo: 1,
     status: "effective",
+    effectiveAt: new Date("2026-07-01T00:00:00.000Z"),
     changeType: "original",
     amountCents: 1_000_000n,
     amountLimitType: "capped",
@@ -117,14 +81,16 @@ describe("ContractService change draft version lineage", () => {
       counterparty: "乙方公司",
       ...options.contract
     };
+    const latest = { ...latestEffective, ...options.latest };
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([contract]),
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({ id: "v1", contractId: "contract-1" }),
         findFirst: jest.fn()
-          .mockResolvedValueOnce({ ...latestEffective, ...options.latest })
+          .mockResolvedValueOnce(latest)
           .mockResolvedValueOnce({ versionNo: options.latestVersionNo ?? 2 })
           .mockResolvedValueOnce(null),
+        findMany: jest.fn().mockResolvedValue([latest]),
         create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({
           id: "v3",
           ...data
@@ -184,7 +150,7 @@ describe("ContractService change draft version lineage", () => {
     const service = new ContractService(prisma as never, audit as never);
 
     await service.createChangeDraft("v1", {
-      changeType: "supplement",
+      changeType: "change",
       changeReason: "补充工程量",
       changeDirection: "increase",
       changeAmountCents: "100000"
@@ -243,6 +209,7 @@ describe("ContractService change draft version lineage", () => {
       latestVersionNo: 1,
       latest: {
         changeType: "historical_takeover",
+        originalBaseAmountCents: 1_000_000n,
         templateSnapshot: {
           historicalTakeover: true,
           submissionSnapshot: { pdfFileId: "legacy-private-file" }
@@ -257,7 +224,7 @@ describe("ContractService change draft version lineage", () => {
     const service = new ContractService(prisma as never, audit as never);
 
     await service.createChangeDraft("v1", {
-      changeType: "supplement",
+      changeType: "change",
       changeReason: "补充工程量",
       changeDirection: "increase",
       changeAmountCents: "100000"
@@ -318,6 +285,7 @@ describe("ContractService change draft version lineage", () => {
       },
       latest: {
         changeType: "historical_takeover",
+        originalBaseAmountCents: 1_000_000n,
         templateSnapshot: { historicalTakeover: true }
       },
       parties: []
@@ -329,7 +297,7 @@ describe("ContractService change draft version lineage", () => {
     const service = new ContractService(prisma as never, audit as never);
 
     await expect(service.createChangeDraft("v1", {
-      changeType: "supplement",
+      changeType: "change",
       changeReason: "补充工程量",
       changeDirection: "increase",
       changeAmountCents: "100000"
@@ -342,8 +310,7 @@ describe("ContractService change draft version lineage", () => {
   });
 
   it.each([
-    ["projected amount", { amountCents: 9_223_372_036_854_775_807n }],
-    ["cumulative increase", { cumulativeIncreaseCents: 9_223_372_036_854_775_807n }]
+    ["projected amount", { amountCents: 9_223_372_036_854_775_807n }]
   ])("rejects %s PostgreSQL BIGINT overflow before creating a draft", async (_label, latest) => {
     const tx = makeChangeTx({ latest });
     const prisma = {
@@ -353,7 +320,7 @@ describe("ContractService change draft version lineage", () => {
     const service = new ContractService(prisma as never, audit as never);
 
     await expect(service.createChangeDraft("v1", {
-      changeType: "supplement",
+      changeType: "change",
       changeReason: "补充工程量",
       changeDirection: "increase",
       changeAmountCents: "1"
@@ -377,7 +344,7 @@ describe("ContractService change draft version lineage", () => {
       id: "v2",
       versionNo: 2,
       status: "draft",
-      changeType: "supplement",
+      changeType: "change",
       baseVersionId: "v1",
       changeDirection: "increase",
       changeAmountCents: 100_000n,
@@ -402,8 +369,16 @@ describe("ContractService change draft version lineage", () => {
         }
       }
     };
+    const base = {
+      ...latestEffective,
+      draftData: baseDraftData,
+      clauseSnapshot: []
+    };
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([version]),
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: "contract-1" }])
+        .mockResolvedValueOnce([version])
+        .mockResolvedValueOnce([base, version]),
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -413,11 +388,7 @@ describe("ContractService change draft version lineage", () => {
         })
       },
       contractVersion: {
-        findUnique: jest.fn().mockResolvedValue({
-          ...latestEffective,
-          draftData: baseDraftData,
-          clauseSnapshot: []
-        }),
+        findUnique: jest.fn().mockResolvedValue(base),
         updateMany: jest.fn()
       }
     };
@@ -474,5 +445,160 @@ describe("ContractService change draft version lineage", () => {
         reason: expect.stringContaining("历史接管合同缺少已确认的甲方名称")
       })
     );
+  });
+
+  it("blocks only future change eligibility when a confirmed historical contract lacks its baseline", async () => {
+    const current = {
+      ...latestEffective,
+      changeType: "historical_takeover",
+      originalBaseAmountCents: null
+    };
+    const prisma = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ id: "v1", contractId: "contract-1" }),
+        findFirst: jest.fn()
+          .mockResolvedValueOnce(current)
+          .mockResolvedValueOnce(null),
+        findMany: jest.fn().mockResolvedValue([current])
+      },
+      contract: { findUnique: jest.fn().mockResolvedValue({
+        id: "contract-1", source: "historical_takeover", contractTypeKey: "material_purchase",
+        companyEntityName: "我方公司", counterparty: "历史乙方", voidedAt: null
+      }) },
+      contractPartySnapshot: { findMany: jest.fn().mockResolvedValue([
+        { roleKey: "party_a", displayOrder: 1, businessPartyVersionId: null, snapshot: { name: "我方公司" } },
+        { roleKey: "party_b", displayOrder: 1, businessPartyVersionId: null, snapshot: { name: "历史乙方" } }
+      ]) },
+      contractBill: { findMany: jest.fn().mockResolvedValue([sourceBill]) },
+      paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue({
+        id: "terms-v1", versionNo: 1, originalText: "原付款条款"
+      }) }
+    };
+    const service = new ContractService(prisma as never, { record: jest.fn() } as never);
+
+    await expect(service.changeEligibility("v1")).resolves.toEqual(expect.objectContaining({
+      eligible: false,
+      reason: expect.stringContaining("历史合同尚未确认历史变更基线")
+    }));
+  });
+
+  it("recomputes effective positive increases at submit and persists an over-limit denial audit", async () => {
+    const snapshots = {
+      companyEntityIdSnapshot: "entity-1",
+      companyEntityVersionId: "entity-version-1",
+      companyEntityNameSnapshot: "我方公司",
+      companyEntityCreditCodeSnapshot: "91350211M000100Y46",
+      companyEntityRegisteredAddressSnapshot: null
+    };
+    const root = {
+      ...latestEffective,
+      ...snapshots,
+      id: "v1",
+      status: "superseded",
+      baseVersionId: null,
+      amountCents: 1_000_000n,
+      effectiveAt: new Date("2026-01-01")
+    };
+    const previous = {
+      ...root,
+      id: "v2",
+      versionNo: 2,
+      changeType: "change",
+      baseVersionId: "v1",
+      status: "effective",
+      changeDirection: "increase",
+      changeAmountCents: 100_000n,
+      amountCents: 1_100_000n,
+      effectiveAt: new Date("2026-02-01")
+    };
+    const candidate = {
+      ...previous,
+      id: "v3",
+      versionNo: 3,
+      status: "draft",
+      baseVersionId: "v2",
+      changeAmountCents: 1n,
+      amountCents: 1_100_001n,
+      effectiveAt: null,
+      draftRevision: 1,
+      contractGovernanceVersion: 1,
+      templateSnapshot: { fieldSchema: [], clauseSchema: [] }
+    };
+    const businessTx = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: "contract-1" }])
+        .mockResolvedValueOnce([candidate])
+        .mockResolvedValueOnce([root, previous, candidate]),
+      contract: { findUnique: jest.fn().mockResolvedValue({
+        id: "contract-1", projectId: "project-1", ownerUserId: "owner-1", voidedAt: null
+      }) },
+      contractVersion: { updateMany: jest.fn() },
+      approvalInstance: { create: jest.fn() }
+    };
+    const auditTx = {};
+    let transactionNo = 0;
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: unknown) => unknown) =>
+        callback(transactionNo++ === 0 ? businessTx : auditTx)
+      )
+    };
+    const auditForTest = { record: jest.fn().mockResolvedValue(undefined) };
+    const service = new ContractService(prisma as never, auditForTest as never);
+
+    await expect(service.submitApproval("v3", "owner-1", { numberRuleId: "rule-1" }))
+      .rejects.toThrow("累计增项已超过原合同 10%，必须新签合同");
+    expect(businessTx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(auditForTest.record).toHaveBeenCalledWith(auditTx, {
+      actorUserId: "owner-1",
+      action: "contract.change.limit.denied",
+      businessType: "contract_version",
+      businessId: "v3",
+      metadata: { reason: "累计增项已超过原合同 10%，必须新签合同" }
+    });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    "companyEntityIdSnapshot",
+    "companyEntityVersionId",
+    "companyEntityNameSnapshot",
+    "companyEntityCreditCodeSnapshot",
+    "companyEntityRegisteredAddressSnapshot"
+  ] as const)("rejects a changed %s instead of refreshing the signing subject", async (key) => {
+    const snapshots = {
+      companyEntityIdSnapshot: "entity-1",
+      companyEntityVersionId: "entity-version-1",
+      companyEntityNameSnapshot: "我方公司",
+      companyEntityCreditCodeSnapshot: "91350211M000100Y46",
+      companyEntityRegisteredAddressSnapshot: "注册地址"
+    };
+    const base = {
+      ...latestEffective,
+      ...snapshots,
+      id: "v1",
+      baseVersionId: null,
+      effectiveAt: new Date("2026-01-01")
+    };
+    const candidate = {
+      ...base,
+      id: "v2",
+      versionNo: 2,
+      status: "draft",
+      changeType: "change",
+      baseVersionId: "v1",
+      changeDirection: "unchanged",
+      changeAmountCents: 0n,
+      effectiveAt: null,
+      [key]: key === "companyEntityRegisteredAddressSnapshot" ? null : "changed",
+      templateSnapshot: { fieldSchema: [], clauseSchema: [] }
+    };
+    const tx = { $queryRaw: jest.fn().mockResolvedValue([base, candidate]) };
+    const service = new ContractService({} as never, { record: jest.fn() } as never);
+    const subject = service as unknown as {
+      assertChangeAmountProjection(client: unknown, version: typeof candidate): Promise<void>;
+    };
+
+    await expect(subject.assertChangeAmountProjection(tx, candidate))
+      .rejects.toThrow("合同变更不能替换我方签约主体");
   });
 });

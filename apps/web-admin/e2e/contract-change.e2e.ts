@@ -54,16 +54,18 @@ test("合同变更从详情进入新版本工作台并在两档宽度保持规�
     })
   }));
   let submittedChangeAmountCents = "";
+  let submittedChangeType = "";
   await page.route("**/api/contracts/v1/change-drafts", (route) => {
-    submittedChangeAmountCents = (route.request().postDataJSON() as { changeAmountCents?: string })
-      .changeAmountCents ?? "";
+    const body = route.request().postDataJSON() as { changeAmountCents?: string; changeType?: string };
+    submittedChangeAmountCents = body.changeAmountCents ?? "";
+    submittedChangeType = body.changeType ?? "";
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
       id: "v2",
       contractId: "contract-1",
       versionNo: 2,
-      changeType: "supplement",
+      changeType: "change",
       status: "draft",
       amountCents: "1100000",
       baseVersionId: "v1",
@@ -77,7 +79,12 @@ test("合同变更从详情进入新版本工作台并在两档宽度保持规�
       amountLimitType: "capped",
       enhancedApproval: false,
       enhancedApprovalReasons: [],
-        approvalRoute: [{ name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }]
+        approvalRoute: [
+          { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
+          { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
+          { name: "财务主管", mode: "any", roleKeys: ["finance_director"] },
+          { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+        ]
       })
     });
   });
@@ -122,7 +129,7 @@ test("合同变更从详情进入新版本工作台并在两档宽度保持规�
         baseVersionId: "v1",
         versionNo: 2,
         status: "draft",
-        changeType: "supplement",
+        changeType: "change",
         draftRevision: 1,
         amountCents: "1100000",
         pricingNature: "fixed_total",
@@ -137,7 +144,7 @@ test("合同变更从详情进入新版本工作台并在两档宽度保持规�
       change: {
         isChange: true,
         baseVersion: { id: "v1", versionNo: 1, status: "effective", amountCents: "1000000" },
-        changeType: "supplement",
+        changeType: "change",
         changeReason: "增加现场签证工程量",
         changeDirection: "increase",
         changeAmountCents: "100000",
@@ -147,7 +154,7 @@ test("合同变更从详情进入新版本工作台并在两档宽度保持规�
         amountLimitType: "capped",
         enhancedApproval: false,
         enhancedApprovalReasons: [],
-        approvalRoute: ["chairman_or_general_manager"],
+        approvalRoute: ["contract_director", "project_manager", "finance_director", "chairman_or_general_manager"],
         changePolicy: { version: 1, editableFieldKeys: [], editableClauseKeys: [], coreClauseKeys: [] }
       }
     })
@@ -163,7 +170,7 @@ test("合同变更从详情进入新版本工作台并在两档宽度保持规�
   await page.getByPlaceholder("请输入密码").fill("E2e@2026");
   await page.getByRole("button", { name: "登录" }).click();
   await page.goto("/contracts/contract-1");
-  await page.getByRole("button", { name: "发起变更/补充协议" }).click();
+  await page.getByRole("button", { name: "发起合同变更" }).click();
   await expect(page.getByText("只有新版本归档确认后才会替代旧版本生效")).toBeVisible();
   await page.getByText("金额方向").locator("..").locator(".t-select").click();
   await page.locator(".t-select__dropdown:visible").getByText("增加金额", { exact: true }).click();
@@ -171,8 +178,9 @@ test("合同变更从详情进入新版本工作台并在两档宽度保持规�
   await page.getByText("变更原因").locator("..").getByRole("textbox").fill("增加现场签证工程量");
   await page.getByRole("button", { name: "创建变更草稿" }).click();
   await expect.poll(() => submittedChangeAmountCents).toBe("100000");
+  await expect.poll(() => submittedChangeType).toBe("change");
   await expect(page).toHaveURL(/versionId=v2/u);
-  await expect(page.getByText("补充协议草稿", { exact: true })).toBeVisible();
+  await expect(page.getByText("合同变更草稿", { exact: true })).toBeVisible();
   await expect(page.getByText(/旧文件、审批和归档记录不会复制/u)).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("contract-change-workbench-1440x900.png"),
@@ -180,7 +188,7 @@ test("合同变更从详情进入新版本工作台并在两档宽度保持规�
   });
 
   await page.setViewportSize({ width: 1100, height: 800 });
-  await expect(page.getByText("审批路线：董事长/总经理或签")).toBeVisible();
+  await expect(page.getByText("审批路线：合同部主管 → 项目经理 → 财务主管 → 董事长/总经理或签")).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("contract-change-workbench-1100x800.png"),
     fullPage: true
@@ -271,7 +279,7 @@ test("提交资格复核未返回时从合同 A 切到 B 不创建草稿也不�
   await page.getByPlaceholder("请输入密码").fill("E2e@2026");
   await page.getByRole("button", { name: "登录" }).click();
   await page.goto("/contracts/contract-a");
-  await page.getByRole("button", { name: "发起变更/补充协议" }).click();
+  await page.getByRole("button", { name: "发起合同变更" }).click();
   await page.getByText("变更原因").locator("..").getByRole("textbox").fill("等待资格复核时切换合同");
   await page.getByRole("button", { name: "创建变更草稿" }).click();
   await secondEligibilityStarted;

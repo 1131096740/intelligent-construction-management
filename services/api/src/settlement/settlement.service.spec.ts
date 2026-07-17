@@ -222,13 +222,15 @@ describe("SettlementService", () => {
     expect(() => service.assertContractVersionEffective("effective")).not.toThrow();
   });
 
-  it("creates settlement from an effective contract version with bound payment terms", async () => {
+  it("creates/submits settlement when a historical contract change baseline is missing", async () => {
     const tx = {
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
           status: "effective",
+          changeType: "historical_takeover",
+          originalBaseAmountCents: null,
           invoiceType: "vat_special",
           defaultTaxRatePercent: new Decimal("13"),
           taxFactStatus: "frozen",

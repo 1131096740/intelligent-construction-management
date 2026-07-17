@@ -1293,6 +1293,35 @@
               <dd>{{ selectedRow.takeover.acceptanceConclusion || "未填写" }}</dd>
             </div>
           </dl>
+
+          <h3>历史变更基线</h3>
+          <t-alert
+            :theme="selectedChangeBaselineView.status === 'invalid' ? 'error' : 'info'"
+            :title="selectedChangeBaselineView.statusLabel"
+            :message="selectedChangeBaselineHint"
+          />
+          <dl class="detail-list money">
+            <div>
+              <dt>原始签约含税金额</dt>
+              <dd>{{ selectedChangeBaselineView.originalSignedAmountText }}</dd>
+            </div>
+            <div>
+              <dt>接管前累计正向增项</dt>
+              <dd>{{ selectedChangeBaselineView.preTakeoverPositiveIncreaseText }}</dd>
+            </div>
+          </dl>
+          <div
+            v-if="canOpenChangeBaselineConfirmation"
+            class="form-actions"
+          >
+            <t-button
+              theme="primary"
+              variant="outline"
+              @click="openChangeBaselineConfirmation"
+            >
+              确认历史变更基线
+            </t-button>
+          </div>
         </div>
         <div
           v-else
@@ -1355,6 +1384,37 @@
     </t-dialog>
 
     <SensitiveActionDialog
+      v-model="changeBaselineVisible"
+      title="确认历史变更基线"
+      description="两项金额将作为后续合同变更累计增项 10% 上限的唯一历史起点。确认后不可覆盖修改；未确认不会影响既有结算和付款。"
+      confirm-text="确认并冻结基线"
+      :require-password="true"
+      :loading="changeBaselineSubmitting"
+      :error="changeBaselineError"
+      @confirm="submitHistoricalChangeBaseline"
+      @cancel="cancelChangeBaselineConfirmation"
+    >
+      <div class="form-grid change-baseline-form">
+        <label>
+          <span>原始签约含税金额（元）</span>
+          <t-input
+            v-model="changeBaselineForm.originalSignedAmountYuan"
+            :disabled="changeBaselineSubmitting"
+            placeholder="请输入原合同签约时的含税金额"
+          />
+        </label>
+        <label>
+          <span>接管前累计正向增项（元）</span>
+          <t-input
+            v-model="changeBaselineForm.preTakeoverPositiveIncreaseYuan"
+            :disabled="changeBaselineSubmitting"
+            placeholder="没有历史正向增项时填写 0"
+          />
+        </label>
+      </div>
+    </SensitiveActionDialog>
+
+    <SensitiveActionDialog
       v-if="canConfirmTakeovers"
       v-model="importBatchReviewVisible"
       title="确认更新接管批次状态"
@@ -1387,6 +1447,7 @@ import {
   applyContractTakeoverExcelImport,
   attachContractTakeoverEvidenceFile,
   confirmContractTakeover,
+  confirmContractTakeoverChangeBaseline,
   createPrivateFileDownloadTicket,
   createContractTakeover,
   createContractTakeoverDraftsFromImport,
@@ -1437,6 +1498,7 @@ import {
   buildImportPrecheckMessage,
   buildTakeoverConfirmationSummary,
   buildTakeoverPostConfirmationChecklist,
+  canConfirmHistoricalChangeBaseline,
   canConfirmTakeover,
   canEditTakeover,
   canSubmitTakeoverReview,
@@ -1444,6 +1506,7 @@ import {
   contractTakeoverColumns,
   formatTakeoverDate,
   importPrecheckRowStatusLabel,
+  historicalChangeBaselineView,
   invoiceTypeLabel,
   invoiceTypeOptions,
   lifecycleStatusLabel,
@@ -1587,6 +1650,15 @@ const confirmVisible = ref(false);
 const importBatchReviewVisible = ref(false);
 const evidenceDownloadConfirmVisible = ref(false);
 const evidenceDownloadConfirmError = ref("");
+const changeBaselineVisible = ref(false);
+const changeBaselineSubmitting = ref(false);
+const changeBaselineError = ref("");
+const changeBaselineTargetId = ref("");
+const changeBaselineForm = reactive({
+  originalSignedAmountYuan: "",
+  preTakeoverPositiveIncreaseYuan: ""
+});
+let changeBaselineRequestToken = 0;
 const confirmTarget = ref<ContractTakeoverReadModel | null>(null);
 const pendingImportBatchReview = ref<{
   batch: ContractTakeoverImportBatchReadModel;
@@ -1675,6 +1747,32 @@ const responsibleUserOptions = computed(() =>
 const selectedRow = computed<ContractTakeoverTableRow | null>(
   () => tableRows.value.find((row) => row.id === selectedTakeoverId.value) ?? null
 );
+const selectedChangeBaselineView = computed(() => {
+  const takeover = selectedRow.value?.takeover;
+  return takeover
+    ? historicalChangeBaselineView(takeover)
+    : {
+        status: "invalid" as const,
+        statusLabel: "请先选择历史合同",
+        originalSignedAmountText: "—",
+        preTakeoverPositiveIncreaseText: "—"
+      };
+});
+const selectedChangeBaselineHint = computed(() => {
+  if (selectedChangeBaselineView.value.status === "confirmed") {
+    return "该基线已经冻结，仅用于后续合同变更上限判断。";
+  }
+  if (selectedChangeBaselineView.value.status === "invalid") {
+    return "读取到的基线事实不完整，当前已停止确认和金额判断，请刷新后仍异常时联系管理员。";
+  }
+  return "尚未补录不会影响既有结算和付款，但在确认前不能新建合同变更。";
+});
+const canOpenChangeBaselineConfirmation = computed(() => {
+  const takeover = selectedRow.value?.takeover;
+  return takeover
+    ? canConfirmHistoricalChangeBaseline(takeover, canConfirmTakeovers.value)
+    : false;
+});
 const selectedTaxFactCurrent = computed<ContractTaxFactCurrentReadModel | null>(() => {
   const takeover = selectedRow.value?.takeover;
   if (!takeover) return null;
@@ -2028,6 +2126,7 @@ async function loadResponsibleUsers() {
 }
 
 async function loadTakeovers() {
+  invalidateChangeBaselineContext(true);
   const projectId = selectedProjectId.value;
   if (!projectId) {
     takeovers.value = [];
@@ -2372,6 +2471,7 @@ async function selectTakeover(takeover: ContractTakeoverReadModel) {
   const previousId = selectedTakeoverId.value;
   selectedTakeoverId.value = takeover.id;
   if (previousId !== takeover.id) {
+    invalidateChangeBaselineContext(true);
     resetCorrectionForm();
     resetEvidenceDownloadForm(takeover);
   }
@@ -2675,6 +2775,119 @@ async function submitCorrectionRecord() {
     setMessage(error instanceof Error ? error.message : "保存接管更正记录失败", "danger");
   } finally {
     correctionSubmitting.value = false;
+  }
+}
+
+function openChangeBaselineConfirmation() {
+  const takeover = selectedRow.value?.takeover;
+  if (!takeover || !canConfirmHistoricalChangeBaseline(takeover, canConfirmTakeovers.value)) {
+    setMessage("只有公司级合同部主管可以为已确认且尚未补录基线的历史合同执行本操作", "danger");
+    return;
+  }
+  invalidateChangeBaselineContext(false);
+  changeBaselineTargetId.value = takeover.id;
+  changeBaselineForm.originalSignedAmountYuan = "";
+  changeBaselineForm.preTakeoverPositiveIncreaseYuan = "0";
+  changeBaselineError.value = "";
+  changeBaselineVisible.value = true;
+}
+
+function invalidateChangeBaselineContext(closeDialog: boolean) {
+  changeBaselineRequestToken += 1;
+  changeBaselineSubmitting.value = false;
+  if (!closeDialog) return;
+  changeBaselineVisible.value = false;
+  changeBaselineTargetId.value = "";
+  changeBaselineError.value = "";
+}
+
+function cancelChangeBaselineConfirmation() {
+  invalidateChangeBaselineContext(true);
+}
+
+function isCurrentChangeBaselineRequest(
+  token: number,
+  projectId: string,
+  takeoverId: string,
+  capturedSelectedTakeoverId: string
+) {
+  return token === changeBaselineRequestToken &&
+    changeBaselineVisible.value &&
+    selectedProjectId.value === projectId &&
+    changeBaselineTargetId.value === takeoverId &&
+    selectedTakeoverId.value === capturedSelectedTakeoverId &&
+    capturedSelectedTakeoverId === takeoverId;
+}
+
+async function submitHistoricalChangeBaseline(values: { password: string }) {
+  if (changeBaselineSubmitting.value) return;
+  const projectId = selectedProjectId.value;
+  const takeoverId = changeBaselineTargetId.value;
+  const capturedSelectedTakeoverId = selectedTakeoverId.value;
+  if (!projectId || !takeoverId || capturedSelectedTakeoverId !== takeoverId) {
+    changeBaselineError.value = "当前项目或历史合同已变化，请关闭窗口后重新选择";
+    return;
+  }
+
+  let originalSignedAmountCents: string;
+  let preTakeoverPositiveIncreaseCents: string;
+  try {
+    originalSignedAmountCents = yuanToCents(
+      changeBaselineForm.originalSignedAmountYuan.trim(),
+      "原始签约含税金额",
+      { allowZero: true }
+    );
+    preTakeoverPositiveIncreaseCents = yuanToCents(
+      changeBaselineForm.preTakeoverPositiveIncreaseYuan.trim(),
+      "接管前累计正向增项",
+      { allowZero: true }
+    );
+  } catch (error) {
+    changeBaselineError.value = error instanceof Error ? error.message : "历史变更基线金额格式不正确";
+    return;
+  }
+
+  const requestToken = ++changeBaselineRequestToken;
+  const requestIsCurrent = () => isCurrentChangeBaselineRequest(
+    requestToken,
+    projectId,
+    takeoverId,
+    capturedSelectedTakeoverId
+  );
+  changeBaselineSubmitting.value = true;
+  changeBaselineError.value = "";
+  try {
+    const result = await confirmContractTakeoverChangeBaseline(projectId, takeoverId, {
+      originalSignedAmountCents,
+      preTakeoverPositiveIncreaseCents,
+      currentPassword: values.password
+    });
+    if (!requestIsCurrent()) return;
+    if (result.takeoverId !== takeoverId || result.changeBaselineConfirmed !== true ||
+        result.originalBaseAmountCents !== originalSignedAmountCents ||
+        result.preTakeoverPositiveIncreaseCents !== preTakeoverPositiveIncreaseCents) {
+      throw new Error("服务器返回的历史变更基线与本次确认不一致，请刷新页面核对后再继续");
+    }
+    const refreshed = await getContractTakeover(projectId, takeoverId);
+    if (!requestIsCurrent()) return;
+    const refreshedBaseline = historicalChangeBaselineView(refreshed);
+    if (refreshedBaseline.status !== "confirmed" ||
+        refreshed.originalBaseAmountCents !== originalSignedAmountCents ||
+        refreshed.preTakeoverPositiveIncreaseCents !== preTakeoverPositiveIncreaseCents) {
+      throw new Error("历史变更基线已提交，但刷新后的事实不完整，请停止发起合同变更并联系管理员核对");
+    }
+    takeovers.value = takeovers.value.map((item) => item.id === refreshed.id ? refreshed : item);
+    changeBaselineForm.originalSignedAmountYuan = "";
+    changeBaselineForm.preTakeoverPositiveIncreaseYuan = "";
+    setMessage("历史变更基线已一次性确认，后续合同变更将按累计正向增项判断", "success");
+    invalidateChangeBaselineContext(true);
+  } catch (error) {
+    if (!requestIsCurrent()) return;
+    changeBaselineError.value = error instanceof Error ? error.message : "确认历史变更基线失败";
+  } finally {
+    if (requestIsCurrent()) {
+      changeBaselineSubmitting.value = false;
+    }
   }
 }
 

@@ -99,7 +99,7 @@ describe("approval flow readonly configuration", () => {
     ]);
   });
 
-  it("shows the confirmed major contract change route and initiation boundary", () => {
+  it("shows the unified contract change route and skips the director for their own initiation", () => {
     const change = approvalFlowRules.find((rule) => rule.id === "contract_change_major");
 
     expect(change?.nodes.map((node) => node.roleKeys)).toEqual([
@@ -108,7 +108,8 @@ describe("approval flow readonly configuration", () => {
       ["finance_director"],
       ["chairman", "general_manager"]
     ]);
-    expect(change?.guardrails).toContain("合同员或合同部主管作为合同经办人发起");
+    expect(change?.title).toBe("合同变更审批");
+    expect(change?.guardrails).toContain("合同部主管本人发起时跳过合同部主管节点");
     expect(JSON.stringify(change)).not.toContain("budget_director");
   });
 

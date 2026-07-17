@@ -63,7 +63,7 @@ const validContractDraft = {
 const validContractRouteBodies = [
   ["contract.create", ContractController, "create", 0, validContractDraft],
   ["contract.createChangeDraft", ContractController, "createChangeDraft", 1, {
-    changeType: "supplement",
+    changeType: "change",
     changeReason: "补充工程量",
     changeDirection: "increase",
     changeAmountCents: "100"
@@ -213,6 +213,21 @@ describe("ContractController authorization wiring", () => {
     };
 
     await expect(validateContractBody(ContractController, "reviewApproval", 2, value)).resolves.toEqual(value);
+  });
+
+  it("拒绝客户端新建历史补充协议类型", async () => {
+    const response = await getContractValidationResponse(
+      ContractController,
+      "createChangeDraft",
+      1,
+      {
+        changeType: "supplement",
+        changeReason: "补充工程量",
+        changeDirection: "increase",
+        changeAmountCents: "100"
+      }
+    );
+    expect(response.errors).toEqual(["新建流程仅支持合同变更"]);
   });
 
   it("按 Unicode code point 校验合同自审字段边界", async () => {

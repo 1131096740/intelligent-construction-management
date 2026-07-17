@@ -59,6 +59,7 @@ import {
   createPrivateFileDownloadTicket,
   createSettlementDraft,
   confirmContractTakeover,
+  confirmContractTakeoverChangeBaseline,
   confirmContractArchive,
   confirmSettlementArchive,
   delegateContractApproval,
@@ -143,7 +144,7 @@ describe("core flow read API client", () => {
 
     await fetchContractChangeEligibility("version/1");
     await createContractChangeDraft("version/1", {
-      changeType: "supplement",
+      changeType: "change",
       changeReason: "补充工程量",
       changeDirection: "increase",
       changeAmountCents: "100"
@@ -156,12 +157,37 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls[1]?.[1]).toEqual(expect.objectContaining({
       method: "POST",
       body: JSON.stringify({
-        changeType: "supplement",
+        changeType: "change",
         changeReason: "补充工程量",
         changeDirection: "increase",
         changeAmountCents: "100"
       })
     }));
+  });
+
+  it("confirms a historical change baseline with canonical cents and password", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ changeBaselineConfirmed: true })
+    } as Response);
+
+    await confirmContractTakeoverChangeBaseline("project/1", "takeover/1", {
+      originalSignedAmountCents: "1000000",
+      preTakeoverPositiveIncreaseCents: "100000",
+      currentPassword: "not-logged"
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/projects/project%2F1/contract-takeovers/takeover%2F1/change-baseline-confirmation",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          originalSignedAmountCents: "1000000",
+          preTakeoverPositiveIncreaseCents: "100000",
+          currentPassword: "not-logged"
+        })
+      })
+    );
   });
 
   it("rejects detail reads with server error messages", async () => {

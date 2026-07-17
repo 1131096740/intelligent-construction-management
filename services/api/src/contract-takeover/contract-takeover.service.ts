@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Optional } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { normalizeTaxRatePercent } from "@jiangkong/shared-domain";
 import { createHash } from "node:crypto";
@@ -18,6 +18,7 @@ import type {
   ContractTakeoverEvidencePurpose
 } from "./dto/attach-contract-takeover-evidence.dto";
 import type { ConfirmContractTakeoverDto } from "./dto/confirm-contract-takeover.dto";
+import type { ConfirmContractChangeBaselineDto } from "./dto/confirm-contract-change-baseline.dto";
 import type {
   ContractLifecycleStatus,
   ContractTakeoverLevel,
@@ -136,6 +137,8 @@ type ReadClientFindMany<T> = {
 type HistoricalContractVersionFacts = {
   id: string;
   amountCents: bigint;
+  originalBaseAmountCents?: bigint | null;
+  cumulativeIncreaseCents?: bigint;
   invoiceType?: string | null;
   taxMode?: string | null;
   defaultTaxRatePercent?: Prisma.Decimal | null;
@@ -281,6 +284,9 @@ export interface ContractTakeoverBusinessReadModel {
   submittedAt: Date | null;
   confirmedAt: Date | null;
   historicalBalanceConfirmedAt: Date | null;
+  changeBaselineConfirmed: boolean;
+  originalBaseAmountCents: string | null;
+  preTakeoverPositiveIncreaseCents: string | null;
   evidenceChecklist: ContractTakeoverEvidenceChecklistItemReadModel[];
   evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
   corrections: ContractTakeoverCorrectionReadModel[];
@@ -1238,6 +1244,147 @@ export class ContractTakeoverService {
     });
   }
 
+  async confirmChangeBaseline(
+    projectId: string,
+    takeoverId: string,
+    actorUserId: string,
+    input: ConfirmContractChangeBaselineDto
+  ) {
+    if (!input.currentPassword?.trim()) {
+      throw new BadRequestException("确认历史变更基线需要当前登录密码");
+    }
+    if (!this.auth) throw new Error("系统暂不能确认当前密码，请稍后重试");
+    const originalBaseAmountCents = parseMoneyCentsInput(
+      input.originalSignedAmountCents,
+      "原始签约含税金额",
+      "原始签约含税金额必须是大于等于 0 的整数分值"
+    );
+    const cumulativeIncreaseCents = parseMoneyCentsInput(
+      input.preTakeoverPositiveIncreaseCents,
+      "接管前累计正向增项",
+      "接管前累计正向增项必须是大于等于 0 的整数分值"
+    );
+    await this.auth.confirmPassword(actorUserId, input.currentPassword);
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+      const [located] = await tx.$queryRaw<Array<{
+        contractId: string;
+        contractVersionId: string;
+      }>>(Prisma.sql`
+        SELECT "contractId", "contractVersionId"
+        FROM "ContractTakeover"
+        WHERE "id" = ${takeoverId} AND "projectId" = ${projectId}
+      `);
+      if (!located) throw new BadRequestException("未找到历史合同接管记录");
+
+      const contractLocks = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT "id" FROM "Contract" WHERE "id" = ${located.contractId} FOR UPDATE
+      `);
+      if (contractLocks.length !== 1) throw new BadRequestException("历史合同不存在或已失效");
+      const [root] = await tx.$queryRaw<Array<{
+        id: string;
+        baseVersionId: string | null;
+        changeType: string;
+        status: string;
+        effectiveAt: Date | null;
+        pricingNature: string;
+        amountLimitType: string;
+        originalBaseAmountCents: bigint | null;
+      }>>(Prisma.sql`
+        SELECT "id", "baseVersionId", "changeType", "status", "effectiveAt",
+               "pricingNature", "amountLimitType",
+               "originalBaseAmountCents"
+        FROM "ContractVersion"
+        WHERE "id" = ${located.contractVersionId}
+        FOR UPDATE
+      `);
+      const [takeover] = await tx.$queryRaw<Array<{
+        id: string;
+        takeoverStatus: string;
+      }>>(Prisma.sql`
+        SELECT "id", "takeoverStatus"
+        FROM "ContractTakeover"
+        WHERE "id" = ${takeoverId} AND "projectId" = ${projectId}
+        FOR UPDATE
+      `);
+      const directorRows = await tx.$queryRaw<Array<{ userId: string }>>(Prisma.sql`
+        SELECT up."userId"
+        FROM "UserPosition" up
+        INNER JOIN "Position" p ON p."id" = up."positionId"
+        INNER JOIN "User" u ON u."id" = up."userId"
+        WHERE up."projectId" IS NULL
+          AND up."userId" = ${actorUserId}
+          AND p."key" = 'contract_director'
+          AND u."isActive" = TRUE
+        FOR SHARE OF up, p, u
+      `);
+      if (directorRows.length !== 1) {
+        throw new ForbiddenException("只有公司级合同部主管可以确认历史变更基线");
+      }
+      if (!root || !takeover || root.baseVersionId !== null ||
+          root.changeType !== "historical_takeover" ||
+          takeover.takeoverStatus !== "confirmed" ||
+          (root.status !== "effective" && root.status !== "superseded") ||
+          root.effectiveAt === null) {
+        throw new BadRequestException("只有已确认并生效的历史接管合同可以补录历史变更基线");
+      }
+      if (root.originalBaseAmountCents !== null) {
+        throw new BadRequestException("历史变更基线已经确认，不能重复覆盖");
+      }
+      const unlimitedFramework = root.pricingNature === "framework" &&
+        root.amountLimitType === "unlimited";
+      if (!unlimitedFramework && originalBaseAmountCents <= 0n) {
+        throw new BadRequestException("原始签约含税金额必须大于 0");
+      }
+      if (cumulativeIncreaseCents < 0n) {
+        throw new BadRequestException("接管前累计正向增项不能小于 0");
+      }
+      const updated = await tx.contractVersion.updateMany({
+        where: { id: root.id, originalBaseAmountCents: null },
+        data: { originalBaseAmountCents, cumulativeIncreaseCents }
+      });
+      if (updated.count !== 1) {
+        throw new BadRequestException("历史变更基线已经确认，不能重复覆盖");
+      }
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract_takeover.change_baseline.confirm",
+        businessType: "contract_takeover",
+        businessId: takeover.id,
+        metadata: {
+          projectId,
+          contractId: located.contractId,
+          contractVersionId: root.id,
+          originalBaseAmountCents: originalBaseAmountCents.toString(),
+          preTakeoverPositiveIncreaseCents: cumulativeIncreaseCents.toString()
+        }
+      });
+      return {
+        takeoverId: takeover.id,
+        contractVersionId: root.id,
+        changeBaselineConfirmed: true,
+        originalBaseAmountCents: originalBaseAmountCents.toString(),
+        preTakeoverPositiveIncreaseCents: cumulativeIncreaseCents.toString()
+      };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (this.isSerializationConflict(error)) {
+        throw new BadRequestException("历史变更基线正在被更新，请刷新后重试");
+      }
+      throw error;
+    }
+  }
+
+  private isSerializationConflict(error: unknown) {
+    return Boolean(
+      error && typeof error === "object" && "code" in error &&
+      (error.code === "P2034" ||
+        (error.code === "P2010" && "meta" in error && error.meta &&
+          typeof error.meta === "object" && "code" in error.meta && error.meta.code === "40001"))
+    );
+  }
+
   private async getProjectTakeover(
     client: TakeoverClient,
     projectId: string,
@@ -1311,6 +1458,8 @@ export class ContractTakeoverService {
         select: {
           id: true,
           amountCents: true,
+          originalBaseAmountCents: true,
+          cumulativeIncreaseCents: true,
           invoiceType: true,
           taxMode: true,
           defaultTaxRatePercent: true,
@@ -1594,6 +1743,7 @@ export class ContractTakeoverService {
     const defaultTaxRatePercent =
       contract.contractVersion?.defaultTaxRatePercent?.toString() ?? null;
     const pricingItems = contract.pricingItems ?? [];
+    const changeBaselineConfirmed = contract.contractVersion?.originalBaseAmountCents != null;
 
     return {
       id: takeover.id,
@@ -1652,6 +1802,13 @@ export class ContractTakeoverService {
       submittedAt: takeover.submittedAt,
       confirmedAt: takeover.confirmedAt,
       historicalBalanceConfirmedAt: takeover.historicalBalanceConfirmedAt,
+      changeBaselineConfirmed,
+      originalBaseAmountCents: changeBaselineConfirmed
+        ? moneyString(contract.contractVersion!.originalBaseAmountCents!)
+        : null,
+      preTakeoverPositiveIncreaseCents: changeBaselineConfirmed
+        ? moneyString(contract.contractVersion?.cumulativeIncreaseCents ?? 0n)
+        : null,
       evidenceChecklist,
       evidenceFiles: contract.evidenceFiles,
       corrections: contract.corrections,

@@ -5,11 +5,13 @@ import {
   buildImportPrecheckMessage,
   buildTakeoverConfirmationSummary,
   buildTakeoverPostConfirmationChecklist,
+  canConfirmHistoricalChangeBaseline,
   canConfirmTakeover,
   canEditTakeover,
   canSubmitTakeoverReview,
   centsToYuanText,
   contractTakeoverColumns,
+  historicalChangeBaselineView,
   invoiceTypeLabel,
   lifecycleStatusLabel,
   importPrecheckRowStatusLabel,
@@ -672,6 +674,37 @@ describe("contract takeover page configuration", () => {
     ).toContain("确认接管等级与系统建议一致：B级");
   });
 
+  it("fails closed for partial historical change baselines and permits one confirmation only", () => {
+    const confirmedTakeover = { ...takeover(), takeoverStatus: "confirmed" as const };
+    expect(historicalChangeBaselineView(confirmedTakeover)).toMatchObject({
+      status: "unconfirmed",
+      statusLabel: "尚未确认"
+    });
+    expect(canConfirmHistoricalChangeBaseline(confirmedTakeover, true)).toBe(true);
+    expect(canConfirmHistoricalChangeBaseline(confirmedTakeover, false)).toBe(false);
+
+    const confirmedBaseline = {
+      ...confirmedTakeover,
+      changeBaselineConfirmed: true,
+      originalBaseAmountCents: "100000000",
+      preTakeoverPositiveIncreaseCents: "10000000"
+    };
+    expect(historicalChangeBaselineView(confirmedBaseline)).toEqual({
+      status: "confirmed",
+      statusLabel: "已一次性确认",
+      originalSignedAmountText: "¥1,000,000.00",
+      preTakeoverPositiveIncreaseText: "¥100,000.00"
+    });
+    expect(canConfirmHistoricalChangeBaseline(confirmedBaseline, true)).toBe(false);
+
+    expect(historicalChangeBaselineView({
+      ...confirmedTakeover,
+      changeBaselineConfirmed: true,
+      originalBaseAmountCents: "100000000",
+      preTakeoverPositiveIncreaseCents: null
+    }).status).toBe("invalid");
+  });
+
   it("shows post-confirmation checks only after takeover confirmation", () => {
     expect(buildTakeoverPostConfirmationChecklist(takeover())).toBeNull();
 
@@ -820,6 +853,9 @@ function takeover(): ContractTakeoverReadModel {
     submittedAt: "2026-07-03T10:00:00.000Z",
     confirmedAt: null,
     historicalBalanceConfirmedAt: null,
+    changeBaselineConfirmed: false,
+    originalBaseAmountCents: null,
+    preTakeoverPositiveIncreaseCents: null,
     evidenceChecklist: [
       {
         purpose: "historical_contract_scan",

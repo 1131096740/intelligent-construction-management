@@ -1209,7 +1209,7 @@ describe("ContractWorkbenchService", () => {
     ]);
   });
 
-  it("exposes the enhanced contract change route without budget approval", async () => {
+  it("exposes the single contract change route without threshold enhancement or budget approval", async () => {
     const prisma = {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
@@ -1224,7 +1224,7 @@ describe("ContractWorkbenchService", () => {
           status: "draft",
           draftRevision: 1,
           amountCents: 1_200_000n,
-          changeType: "supplement",
+          changeType: "change",
           baseVersionId: "version-1",
           amountLimitType: "capped",
           changeAmountCents: 200_000n,
@@ -1259,6 +1259,40 @@ describe("ContractWorkbenchService", () => {
       "chairman_or_general_manager"
     ]);
     expect(result.change.approvalRoute).not.toContain("budget_director");
+    expect(result.change.approvalRouteLabel).toBe("合同变更");
+    expect(result.change.enhancedApproval).toBe(false);
+    expect(result.change.enhancedApprovalReasons).toEqual([]);
+  });
+
+  it("marks an unfrozen historical supplement route explicitly instead of returning an ambiguous empty route", async () => {
+    const prisma = {
+      contract: { findUnique: jest.fn().mockResolvedValue({ id: "contract-1", ownerUserId: "owner-1" }) },
+      contractVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "version-2", contractId: "contract-1", status: "draft", draftRevision: 1,
+          amountCents: 1_100_000n, changeType: "supplement", baseVersionId: "version-1",
+          amountLimitType: "capped", changeAmountCents: 100_000n,
+          originalBaseAmountCents: 1_000_000n, cumulativeIncreaseCents: 100_000n,
+          cumulativeDecreaseCents: 0n, templateSnapshot: TEMPLATE_SNAPSHOT,
+          clauseSnapshot: TEMPLATE_SNAPSHOT.clauseSchema
+        }),
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1", versionNo: 1, status: "effective", amountCents: 1_000_000n
+        })
+      },
+      contractBill: { findMany: jest.fn().mockResolvedValue([]) },
+      contractDraftCheckpoint: { findMany: jest.fn().mockResolvedValue([]) },
+      contractPartySnapshot: { findMany: jest.fn().mockResolvedValue([]) },
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) }
+    } as unknown as PrismaService;
+    const service = new ContractWorkbenchService(prisma, audit as never);
+
+    const result = await service.getDraft("contract-1", "owner-1");
+
+    expect(result.change.approvalRoute).toEqual([]);
+    expect(result.change.approvalRouteLabel).toBe("历史路线未冻结");
   });
 
   it("returns a JSON-safe detail read model with string money and string decimals", async () => {

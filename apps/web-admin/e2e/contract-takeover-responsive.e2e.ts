@@ -78,6 +78,9 @@ const takeover = {
   submittedAt: null,
   confirmedAt: null,
   historicalBalanceConfirmedAt: null,
+  changeBaselineConfirmed: false,
+  originalBaseAmountCents: null,
+  preTakeoverPositiveIncreaseCents: null,
   evidenceChecklist: [
     {
       purpose: "historical_contract_scan",
@@ -166,11 +169,17 @@ interface TaxReviewMockOptions {
   userId?: string;
   roleKeys?: string[];
   revisions?: Array<Record<string, unknown>>;
+  projects?: Array<{ id: string; code: string; name: string }>;
+  takeoversByProject?: Record<string, Array<Record<string, unknown>>>;
 }
+
+type TakeoverFixture = Record<string, unknown> & Pick<typeof takeover,
+  "invoiceType" | "taxMode" | "defaultTaxRatePercent" | "taxFactStatus" |
+  "taxFactSource" | "taxFactExplanation">;
 
 async function loginWithMocks(
   page: Page,
-  takeoverFixture: typeof takeover | typeof takeoverWithDownloadableEvidence = takeover,
+  takeoverFixture: TakeoverFixture = takeover,
   options: TaxReviewMockOptions = {}
 ) {
   const userId = options.userId ?? "contract-director";
@@ -198,7 +207,9 @@ async function loginWithMocks(
   await page.route("**/api/projects", (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify([{ id: "project-1", code: "JGXM-001", name: "响应式验收项目" }])
+      body: JSON.stringify(options.projects ?? [
+        { id: "project-1", code: "JGXM-001", name: "响应式验收项目" }
+      ])
     })
   );
   await page.route("**/api/me/work-items", (route) =>
@@ -221,8 +232,11 @@ async function loginWithMocks(
   await page.route("**/api/approval-delegations/user-options", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" })
   );
-  await page.route("**/api/projects/project-1/contract-takeovers**", (route) => {
+  await page.route("**/api/projects/*/contract-takeovers**", (route) => {
     const url = new URL(route.request().url());
+    const projectId = url.pathname.split("/")[3] ?? "";
+    const projectTakeovers = options.takeoversByProject?.[projectId] ?? [takeoverFixture];
+    const requestedTakeoverId = url.pathname.match(/\/contract-takeovers\/([^/]+)$/u)?.[1];
     const body = url.pathname.endsWith("/tax-fact-revisions")
       ? {
           contractId: "contract-responsive",
@@ -254,9 +268,9 @@ async function loginWithMocks(
         }
       : url.pathname.endsWith("/import-batches")
       ? []
-      : url.pathname.endsWith("/takeover-responsive")
-        ? takeoverFixture
-        : [takeoverFixture];
+      : requestedTakeoverId
+        ? projectTakeovers.find((item) => item.id === requestedTakeoverId) ?? projectTakeovers[0]
+        : projectTakeovers;
     return route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
   });
 
@@ -276,6 +290,170 @@ function collectRuntimeErrors(page: Page) {
   page.on("pageerror", (error) => errors.push(error.message));
   return errors;
 }
+
+const confirmedTakeoverWithoutChangeBaseline = {
+  ...takeover,
+  takeoverStatus: "confirmed",
+  confirmedAt: "2026-07-17T10:00:00.000Z",
+  historicalBalanceConfirmedAt: "2026-07-17T10:00:00.000Z",
+  changeBaselineConfirmed: false,
+  originalBaseAmountCents: null,
+  preTakeoverPositiveIncreaseCents: null
+};
+
+test("合同部主管确认历史变更基线时保留失败输入并在成功刷新后冻结入口", async ({ page }) => {
+  let frozen = false;
+  let requestCount = 0;
+  let submittedBody: Record<string, unknown> = {};
+  await loginWithMocks(page, confirmedTakeoverWithoutChangeBaseline);
+  await page.route(
+    "**/api/projects/project-1/contract-takeovers/takeover-responsive/change-baseline-confirmation",
+    async (route) => {
+      requestCount += 1;
+      submittedBody = route.request().postDataJSON() as Record<string, unknown>;
+      if (requestCount === 1) {
+        return route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({ message: "当前密码不正确，请重新输入" })
+        });
+      }
+      frozen = true;
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          takeoverId: "takeover-responsive",
+          contractVersionId: "contract-version-takeover-responsive",
+          changeBaselineConfirmed: true,
+          originalBaseAmountCents: submittedBody.originalSignedAmountCents,
+          preTakeoverPositiveIncreaseCents: submittedBody.preTakeoverPositiveIncreaseCents
+        })
+      });
+    }
+  );
+  await page.route("**/api/projects/project-1/contract-takeovers/takeover-responsive", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(frozen ? {
+        ...confirmedTakeoverWithoutChangeBaseline,
+        changeBaselineConfirmed: true,
+        originalBaseAmountCents: "12345678",
+        preTakeoverPositiveIncreaseCents: "123456"
+      } : confirmedTakeoverWithoutChangeBaseline)
+    })
+  );
+
+  await page.goto("/历史合同接管");
+  await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
+  await page.getByRole("button", { name: "确认历史变更基线" }).click();
+  const dialog = page.locator(".t-dialog").filter({ hasText: "确认历史变更基线" });
+  const amountInputs = dialog.getByRole("textbox");
+  await amountInputs.nth(0).fill("123456.78");
+  await amountInputs.nth(1).fill("1234.56");
+  await dialog.getByPlaceholder("用于确认当前操作者身份").fill("wrong-password");
+  await dialog.getByRole("button", { name: "确认并冻结基线" }).click();
+
+  await expect(dialog.getByText("当前密码不正确，请重新输入", { exact: true })).toBeVisible();
+  await expect(amountInputs.nth(0)).toHaveValue("123456.78");
+  await expect(amountInputs.nth(1)).toHaveValue("1234.56");
+
+  await dialog.getByPlaceholder("用于确认当前操作者身份").fill("E2e@2026");
+  await dialog.getByRole("button", { name: "确认并冻结基线" }).click();
+  await expect(page.getByText("历史变更基线已一次性确认，后续合同变更将按累计正向增项判断", { exact: true }))
+    .toBeVisible();
+  await expect(page.getByText("已一次性确认", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "确认历史变更基线" })).toHaveCount(0);
+  expect(submittedBody).toEqual({
+    originalSignedAmountCents: "12345678",
+    preTakeoverPositiveIncreaseCents: "123456",
+    currentPassword: "E2e@2026"
+  });
+});
+
+test("非合同部主管只能查看历史变更基线且没有确认入口", async ({ page }) => {
+  await loginWithMocks(page, confirmedTakeoverWithoutChangeBaseline, {
+    userId: "finance-director-1",
+    roleKeys: ["finance_director"]
+  });
+  await page.goto("/历史合同接管");
+  await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
+  await expect(page.getByText("历史变更基线", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "确认历史变更基线" })).toHaveCount(0);
+});
+
+test("延迟的基线确认响应在切换接管合同和项目后都不会污染当前上下文", async ({ page }) => {
+  const takeoverTwo = {
+    ...confirmedTakeoverWithoutChangeBaseline,
+    id: "takeover-two",
+    contractNo: "HT-LS-002",
+    contractName: "历史劳务合同二"
+  };
+  const takeoverProjectTwo = {
+    ...confirmedTakeoverWithoutChangeBaseline,
+    id: "takeover-project-two",
+    contractNo: "HT-P2-001",
+    contractName: "项目二历史合同"
+  };
+  const releases: Array<() => void> = [];
+  let requestCount = 0;
+  await loginWithMocks(page, confirmedTakeoverWithoutChangeBaseline, {
+    projects: [
+      { id: "project-1", code: "JGXM-001", name: "响应式验收项目" },
+      { id: "project-2", code: "JGXM-002", name: "第二验收项目" }
+    ],
+    takeoversByProject: {
+      "project-1": [confirmedTakeoverWithoutChangeBaseline, takeoverTwo],
+      "project-2": [takeoverProjectTwo]
+    }
+  });
+  await page.route("**/change-baseline-confirmation", async (route) => {
+    requestCount += 1;
+    await new Promise<void>((resolve) => releases.push(resolve));
+    const takeoverId = new URL(route.request().url()).pathname.split("/").at(-2)!;
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        takeoverId,
+        contractVersionId: `version-${takeoverId}`,
+        changeBaselineConfirmed: true,
+        originalBaseAmountCents: body.originalSignedAmountCents,
+        preTakeoverPositiveIncreaseCents: body.preTakeoverPositiveIncreaseCents
+      })
+    });
+  });
+
+  await page.goto("/历史合同接管");
+  await page.locator(".ledger-panel tr").filter({ hasText: "XYLH-2026-劳务-001" })
+    .getByText("详情", { exact: true }).click();
+  await page.getByRole("button", { name: "确认历史变更基线" }).click();
+  let dialog = page.locator(".t-dialog").filter({ hasText: "确认历史变更基线" });
+  await dialog.getByRole("textbox").nth(0).fill("100000.00");
+  await dialog.getByRole("textbox").nth(1).fill("0");
+  await dialog.getByPlaceholder("用于确认当前操作者身份").fill("E2e@2026");
+  await dialog.getByRole("button", { name: "确认并冻结基线" }).click();
+  await expect.poll(() => requestCount).toBe(1);
+
+  await page.locator(".ledger-panel tr").filter({ hasText: "HT-LS-002" })
+    .getByText("详情", { exact: true }).last()
+    .evaluate((element) => (element.closest(".t-link") as HTMLElement | null)?.click());
+  releases.shift()?.();
+  await expect(page.locator(".detail-panel").getByText("历史劳务合同二", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("历史变更基线已一次性确认", { exact: false })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "确认历史变更基线" }).click();
+  dialog = page.locator(".t-dialog").filter({ hasText: "确认历史变更基线" });
+  await dialog.getByRole("textbox").nth(0).fill("200000.00");
+  await dialog.getByRole("textbox").nth(1).fill("1000.00");
+  await dialog.getByPlaceholder("用于确认当前操作者身份").fill("E2e@2026");
+  await dialog.getByRole("button", { name: "确认并冻结基线" }).click();
+  await expect.poll(() => requestCount).toBe(2);
+
+  await page.locator(".project-picker select").selectOption("project-2", { force: true });
+  releases.shift()?.();
+  await expect(page.locator(".ledger-panel").getByText("HT-P2-001", { exact: true })).toBeVisible();
+  await expect(page.getByText("历史变更基线已一次性确认", { exact: false })).toHaveCount(0);
+});
 
 test("keeps takeover details and upload controls inside a 1224px desktop viewport", async ({
   page

@@ -23,7 +23,7 @@
           :title="changeEligibility.reason ?? '从当前生效版本发起合同变更'"
           @click="openChangeDialog"
         >
-          发起变更/补充协议
+          发起合同变更
         </t-button>
         <t-button
           variant="outline"
@@ -41,6 +41,14 @@
         </t-button>
       </template>
     </BusinessDetailHeader>
+
+    <t-alert
+      v-if="changeEligibility && !changeEligibility.eligible"
+      theme="warning"
+      class="change-eligibility-alert"
+      title="当前不能发起合同变更"
+      :message="changeEligibility.reason || '请核对合同当前状态后重试'"
+    />
 
     <section
       v-if="detailLoading && !contractDetail"
@@ -430,14 +438,14 @@
               >
                 {{ contractVersionStatusLabel(version.status) }}
               </t-tag>
-              <span>审批：{{ approvalRouteLabel(version.approvalRoute) }}</span>
+              <span>审批：{{ version.approvalRouteLabel || approvalRouteLabel(version.approvalRoute) }}</span>
               <span>{{ archiveEffectText(version) }}</span>
             </div>
           </div>
           <EmptyBusinessState
             v-else
             title="暂无版本历史"
-            description="合同产生变更或补充协议版本后，将在此显示版本替代关系。"
+            description="合同产生新变更版本后，将在此显示版本替代关系。"
           />
         </section>
 
@@ -935,7 +943,7 @@
 
     <t-dialog
       v-model:visible="changeDialogVisible"
-      header="发起合同变更/补充协议"
+      header="发起合同变更"
       :confirm-btn="{ content: '创建变更草稿', loading: changeSubmitting }"
       cancel-btn="取消"
       :close-on-overlay-click="false"
@@ -959,13 +967,6 @@
         <dd>{{ changeEligibility.currentEffective.amountLimitType === 'unlimited' ? '无限额框架合同' : '有金额上限' }}（继承且不可修改）</dd>
       </dl>
       <div class="change-form-grid">
-        <label class="change-field">
-          <span>办理类型</span>
-          <t-select
-            v-model="changeForm.changeType"
-            :options="changeTypeOptions"
-          />
-        </label>
         <label class="change-field">
           <span>金额方向</span>
           <t-select
@@ -1125,15 +1126,10 @@ let detailRequestId = 0;
 let changeSubmissionToken = 0;
 let changeDialogBaseVersionId = "";
 const changeForm = reactive({
-  changeType: "supplement" as "change" | "supplement",
   changeDirection: "unchanged" as "increase" | "decrease" | "unchanged",
   changeAmountYuan: "0",
   changeReason: ""
 });
-const changeTypeOptions = [
-  { label: "合同变更", value: "change" },
-  { label: "补充协议", value: "supplement" }
-];
 const changeDirectionOptions = [
   { label: "增加金额", value: "increase" },
   { label: "减少金额", value: "decrease" },
@@ -1556,7 +1552,6 @@ function routeContractId() {
 }
 
 function resetChangeForm() {
-  changeForm.changeType = "supplement";
   changeForm.changeDirection = "unchanged";
   changeForm.changeAmountYuan = "0";
   changeForm.changeReason = "";
@@ -1634,7 +1629,6 @@ async function submitChangeDraft() {
   const capturedRouteContractId = routeContractId();
   const capturedBaseVersionId = changeDialogBaseVersionId;
   const capturedBaseContractId = changeEligibility.value?.currentEffective?.contractId ?? "";
-  const capturedChangeType = changeForm.changeType;
   const capturedChangeDirection = changeForm.changeDirection;
   const submissionIsCurrent = () => isCurrentChangeSubmission(
     submissionToken,
@@ -1652,7 +1646,7 @@ async function submitChangeDraft() {
     }
     if (!submissionIsCurrent()) return;
     const createdPayload = await createContractChangeDraft(capturedBaseVersionId, {
-      changeType: capturedChangeType,
+      changeType: "change",
       changeReason: reason,
       changeDirection: capturedChangeDirection,
       changeAmountCents: amountCents

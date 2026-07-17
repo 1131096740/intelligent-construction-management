@@ -1,8 +1,8 @@
 import { IsIn, IsNotEmpty, IsString, Matches } from "class-validator";
 
 export class CreateContractChangeDraftDto {
-  @IsIn(["change", "supplement"])
-  changeType!: "change" | "supplement";
+  @IsIn(["change"], { message: "新建流程仅支持合同变更" })
+  changeType!: "change";
 
   @IsString()
   @IsNotEmpty()

@@ -573,7 +573,8 @@ export class ContractReadService {
       contractArchiveFiles,
       approvalTimeline,
       signingFacts,
-      approvedInstance
+      approvedInstance,
+      historicalApprovedInstances
     ] = await Promise.all([
       this.prisma.paymentTermsStage.findMany({
         where: { paymentTermsVersionId: terms.id },
@@ -595,7 +596,17 @@ export class ContractReadService {
       this.prisma.approvalInstance?.findFirst({
         where: { businessType: "contract_version", businessId: version.id, status: "approved" },
         orderBy: { updatedAt: "desc" }
-      }) ?? Promise.resolve(null)
+      }) ?? Promise.resolve(null),
+      this.prisma.approvalInstance?.findMany({
+        where: {
+          businessType: "contract_version",
+          businessId: { in: versions.map((item) => item.id) },
+          flowType: "contract.approve",
+          status: { in: ["approved", "in_progress"] }
+        },
+        orderBy: { updatedAt: "desc" },
+        select: { businessId: true, frozenNodes: true, status: true }
+      }) ?? Promise.resolve([])
     ]);
     const paymentIds = paymentRequests.map((payment) => payment.id);
     const settlementIds = settlements.map((settlement) => settlement.id);
@@ -726,7 +737,7 @@ export class ContractReadService {
         { label: "归档资料", to: "/archives" },
         { label: "审计日志", to: "/audit" }
       ],
-      changeVersions: contractChangeVersionsReadModel(versions)
+      changeVersions: contractChangeVersionsReadModel(versions, historicalApprovedInstances)
     };
   }
 

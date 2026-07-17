@@ -47,6 +47,72 @@ function contract(contractTypeKey: string | null, projectId = "project-1") {
 describe("ContractApprovalRouteService", () => {
   const service = new ContractApprovalRouteService();
 
+  function changeTx(input?: {
+    applicantRoles?: CandidateRow[];
+    projectCandidates?: CandidateRow[];
+    globalCandidates?: CandidateRow[];
+  }) {
+    return {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: "project-1", isActive: true }])
+        .mockResolvedValueOnce(input?.applicantRoles ?? [{ userId: "staff-1", roleKey: "contract_staff" }])
+        .mockResolvedValueOnce(input?.projectCandidates ?? [{ userId: "manager-1", roleKey: "project_manager" }])
+        .mockResolvedValueOnce(input?.globalCandidates ?? [
+          { userId: "director-1", roleKey: "contract_director" },
+          { userId: "finance-1", roleKey: "finance_director" },
+          { userId: "chairman-1", roleKey: "chairman" },
+          { userId: "gm-1", roleKey: "general_manager" }
+        ])
+    };
+  }
+
+  it("freezes the single governed contract-change route with concrete candidates", async () => {
+    const tx = changeTx();
+
+    const result = await service.freezeContractChangeRoute(
+      tx as unknown as Prisma.TransactionClient,
+      contract("material_purchase"),
+      "staff-1"
+    );
+
+    expect(result.map((node) => node.roleKeys.join("|"))).toEqual([
+      "contract_director",
+      "project_manager",
+      "finance_director",
+      "chairman|general_manager"
+    ]);
+    expect(result.at(-1)?.candidateUserIds).toEqual(["chairman-1", "gm-1"]);
+  });
+
+  it("skips the contract-director node when the company director initiates a change", async () => {
+    const tx = changeTx({
+      applicantRoles: [{ userId: "director-1", roleKey: "contract_director" }]
+    });
+
+    const result = await service.freezeContractChangeRoute(
+      tx as unknown as Prisma.TransactionClient,
+      contract("generic_contract"),
+      "director-1"
+    );
+
+    expect(result.map((node) => node.roleKeys)).toEqual([
+      ["project_manager"],
+      ["finance_director"],
+      ["chairman", "general_manager"]
+    ]);
+    expect(result.flatMap((node) => node.candidateUserIds)).not.toContain("director-1");
+  });
+
+  it("fails closed when the change applicant is not project contract staff or company director", async () => {
+    const tx = changeTx({ applicantRoles: [] });
+
+    await expect(service.freezeContractChangeRoute(
+      tx as unknown as Prisma.TransactionClient,
+      contract("material_purchase"),
+      "other-user"
+    )).rejects.toThrow("仅允许所属项目合同员或公司级合同部主管发起合同变更");
+  });
+
   it.each([
     [
       "material_purchase",
@@ -307,7 +373,7 @@ describe("ContractApprovalRouteService", () => {
       const routeLockedPromise = new Promise<void>((resolve) => { routeLocked = resolve; });
       const releaseSubmitPromise = new Promise<void>((resolve) => { releaseSubmit = resolve; });
       const submitFirst = submitClient.$transaction(async (tx) => {
-        const nodes = await service.freezeNewContractRoute(
+        const nodes = await service.freezeContractChangeRoute(
           tx,
           contract("material_purchase"),
           "staff-1"
@@ -367,6 +433,78 @@ describe("ContractApprovalRouteService", () => {
         meta: expect.objectContaining({ code: "40001" })
       });
       expect(await submitClient.$queryRaw`SELECT 1 FROM "ApprovalInstance" WHERE "id" = 'revoke-first'`)
+        .toEqual([]);
+
+      await submitClient.$executeRaw`
+        INSERT INTO "ProjectMember" VALUES ('pm-staff', 'project-1', 'staff-1', 'contract_staff')
+        ON CONFLICT ("id") DO NOTHING
+      `;
+      await submitClient.$executeRaw`
+        INSERT INTO "UserPosition" VALUES ('up-material', 'material-director-1', 'position-material', NULL)
+        ON CONFLICT ("id") DO NOTHING
+      `;
+      let applicantRouteLocked!: () => void;
+      let releaseApplicantSubmit!: () => void;
+      const applicantRouteLockedPromise = new Promise<void>((resolve) => { applicantRouteLocked = resolve; });
+      const releaseApplicantSubmitPromise = new Promise<void>((resolve) => { releaseApplicantSubmit = resolve; });
+      const applicantSubmitFirst = submitClient.$transaction(async (tx) => {
+        const nodes = await service.freezeContractChangeRoute(
+          tx,
+          contract("material_purchase"),
+          "staff-1"
+        );
+        applicantRouteLocked();
+        await releaseApplicantSubmitPromise;
+        await tx.$executeRaw(Prisma.sql`
+          INSERT INTO "ApprovalInstance" ("id", "frozenNodes")
+          VALUES ('applicant-submit-first', ${JSON.stringify(nodes)}::jsonb)
+        `);
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      await applicantRouteLockedPromise;
+      let applicantRoleRevoked = false;
+      const revokeApplicantRole = roleClient.$transaction(async (tx) => {
+        await tx.$executeRaw`DELETE FROM "ProjectMember" WHERE "id" = 'pm-staff'`;
+        applicantRoleRevoked = true;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(applicantRoleRevoked).toBe(false);
+      releaseApplicantSubmit();
+      await Promise.all([applicantSubmitFirst, revokeApplicantRole]);
+      expect(await submitClient.$queryRaw`SELECT 1 FROM "ApprovalInstance" WHERE "id" = 'applicant-submit-first'`)
+        .toHaveLength(1);
+      expect(await submitClient.$queryRaw`SELECT 1 FROM "ProjectMember" WHERE "id" = 'pm-staff'`)
+        .toEqual([]);
+
+      let applicantRoleDeleted!: () => void;
+      let releaseApplicantDelete!: () => void;
+      const applicantRoleDeletedPromise = new Promise<void>((resolve) => { applicantRoleDeleted = resolve; });
+      const releaseApplicantDeletePromise = new Promise<void>((resolve) => { releaseApplicantDelete = resolve; });
+      await submitClient.$executeRaw`
+        INSERT INTO "ProjectMember" VALUES ('pm-staff', 'project-1', 'staff-1', 'contract_staff')
+      `;
+      const revokeApplicantFirst = roleClient.$transaction(async (tx) => {
+        await tx.$executeRaw`DELETE FROM "ProjectMember" WHERE "id" = 'pm-staff'`;
+        applicantRoleDeleted();
+        await releaseApplicantDeletePromise;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      await applicantRoleDeletedPromise;
+      const applicantBlockedSubmit = submitClient.$transaction(async (tx) => {
+        const nodes = await service.freezeContractChangeRoute(
+          tx,
+          contract("material_purchase"),
+          "staff-1"
+        );
+        await tx.$executeRaw(Prisma.sql`
+          INSERT INTO "ApprovalInstance" ("id", "frozenNodes")
+          VALUES ('applicant-revoke-first', ${JSON.stringify(nodes)}::jsonb)
+        `);
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      releaseApplicantDelete();
+      await revokeApplicantFirst;
+      const applicantBlockedError = await applicantBlockedSubmit.catch((error: unknown) => error);
+      expect(applicantBlockedError).toBeInstanceOf(Error);
+      expect(await submitClient.$queryRaw`SELECT 1 FROM "ApprovalInstance" WHERE "id" = 'applicant-revoke-first'`)
         .toEqual([]);
     } finally {
       await Promise.allSettled([submitClient.$disconnect(), roleClient.$disconnect()]);

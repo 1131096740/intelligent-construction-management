@@ -102,7 +102,7 @@ export interface ContractChangeEligibilityReadModel {
 }
 
 export interface CreateContractChangeDraftPayload {
-  changeType: "change" | "supplement";
+  changeType: "change";
   changeReason: string;
   changeDirection: "increase" | "decrease" | "unchanged";
   changeAmountCents: string;
@@ -321,6 +321,9 @@ export interface ContractTakeoverReadModel {
   submittedAt: string | null;
   confirmedAt: string | null;
   historicalBalanceConfirmedAt: string | null;
+  changeBaselineConfirmed: boolean;
+  originalBaseAmountCents: ContractTakeoverCentsValue | null;
+  preTakeoverPositiveIncreaseCents: ContractTakeoverCentsValue | null;
   evidenceChecklist: ContractTakeoverEvidenceChecklistItemReadModel[];
   evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
   corrections: ContractTakeoverCorrectionReadModel[];
@@ -1539,6 +1542,31 @@ export function confirmContractTakeover(
 ) {
   return postJson<ContractTakeoverReadModel>(
     `/projects/${projectId}/contract-takeovers/${takeoverId}/confirmation`,
+    body
+  );
+}
+
+export interface ConfirmContractTakeoverChangeBaselinePayload {
+  originalSignedAmountCents: string;
+  preTakeoverPositiveIncreaseCents: string;
+  currentPassword: string;
+}
+
+export interface ConfirmContractTakeoverChangeBaselineReadModel {
+  takeoverId: string;
+  contractVersionId: string;
+  changeBaselineConfirmed: true;
+  originalBaseAmountCents: string;
+  preTakeoverPositiveIncreaseCents: string;
+}
+
+export function confirmContractTakeoverChangeBaseline(
+  projectId: string,
+  takeoverId: string,
+  body: ConfirmContractTakeoverChangeBaselinePayload
+) {
+  return postJson<ConfirmContractTakeoverChangeBaselineReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/contract-takeovers/${encodeURIComponent(takeoverId)}/change-baseline-confirmation`,
     body
   );
 }

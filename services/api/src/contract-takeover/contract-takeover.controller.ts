@@ -23,6 +23,7 @@ import { ContractTakeoverService } from "./contract-takeover.service";
 import { ContractTakeoverExcelService } from "./contract-takeover-excel.service";
 import { AttachContractTakeoverEvidenceDto } from "./dto/attach-contract-takeover-evidence.dto";
 import { ConfirmContractTakeoverDto } from "./dto/confirm-contract-takeover.dto";
+import { ConfirmContractChangeBaselineDto } from "./dto/confirm-contract-change-baseline.dto";
 import {
   ApplyContractTakeoverExcelDto,
   PreviewContractTakeoverExcelDto
@@ -316,6 +317,17 @@ export class ContractTakeoverController {
     @Body() body: ConfirmContractTakeoverDto
   ) {
     return this.takeovers.confirm(projectId, takeoverId, user.id, body);
+  }
+
+  @Post(":takeoverId/change-baseline-confirmation")
+  @RequireProjectRole("contract.archive.confirm")
+  confirmChangeBaseline(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ConfirmContractChangeBaselineDto
+  ) {
+    return this.takeovers.confirmChangeBaseline(projectId, takeoverId, user.id, body);
   }
 
   private requireExcel() {

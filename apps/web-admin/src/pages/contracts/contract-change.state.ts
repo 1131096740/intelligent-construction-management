@@ -16,6 +16,20 @@ const ENHANCED_REASONS = new Set([
   "cumulative_change_strictly_over_ten_percent"
 ]);
 const KNOWN_ROUTE_KEYS = new Set([...Object.keys(roleLabels), "chairman_or_general_manager"]);
+const APPROVAL_ROUTE_LABELS = new Set([
+  "合同变更",
+  "合同变更（历史）",
+  "增强合同变更（历史）",
+  "历史路线未冻结",
+  "原合同"
+]);
+
+type ContractApprovalRouteLabel =
+  | "合同变更"
+  | "合同变更（历史）"
+  | "增强合同变更（历史）"
+  | "历史路线未冻结"
+  | "原合同";
 
 export interface NormalizedChangeVersion {
   id: string;
@@ -36,6 +50,7 @@ export interface NormalizedChangeVersion {
   enhancedApproval: boolean;
   enhancedApprovalReasons: string[];
   approvalRoute: Array<{ name: string; mode: "any"; roleKeys: string[] }>;
+  approvalRouteLabel: ContractApprovalRouteLabel | null;
 }
 
 export interface NormalizedChangeEligibility {
@@ -62,6 +77,7 @@ export interface NormalizedContractChangeVersion {
   changeAmountCents: string | null;
   amountCents: string;
   approvalRoute: string[];
+  approvalRouteLabel: string | null;
   archiveEffect: NormalizedArchiveEffect | null;
 }
 
@@ -79,6 +95,7 @@ export interface NormalizedWorkbenchChange {
   enhancedApproval: boolean;
   enhancedApprovalReasons: string[];
   approvalRoute: string[];
+  approvalRouteLabel: ContractApprovalRouteLabel | null;
   changePolicy: {
     version: 1;
     editableFieldKeys: string[];
@@ -147,6 +164,30 @@ function normalizeApprovalNodes(value: unknown) {
   return nodes.every((node) => node !== null) ? nodes as Array<NonNullable<(typeof nodes)[number]>> : null;
 }
 
+function approvalRouteLabel(value: unknown): ContractApprovalRouteLabel | null | undefined {
+  if (value === undefined) return null;
+  return typeof value === "string" && APPROVAL_ROUTE_LABELS.has(value)
+    ? value as ContractApprovalRouteLabel
+    : undefined;
+}
+
+function validRouteLabelForChangeType(
+  changeType: unknown,
+  label: ContractApprovalRouteLabel | null,
+  hasFrozenRoute: boolean
+) {
+  if (label === null) return hasFrozenRoute;
+  if (changeType === "change") {
+    return (hasFrozenRoute && (label === "合同变更" || label === "合同变更（历史）" ||
+      label === "增强合同变更（历史）")) || (!hasFrozenRoute && label === "历史路线未冻结");
+  }
+  if (changeType === "supplement") {
+    return (hasFrozenRoute && (label === "合同变更（历史）" ||
+      label === "增强合同变更（历史）")) || (!hasFrozenRoute && label === "历史路线未冻结");
+  }
+  return hasFrozenRoute && label === "原合同";
+}
+
 export function normalizeChangeVersion(value: unknown): NormalizedChangeVersion | null {
   const source = record(value);
   if (!source) return null;
@@ -162,7 +203,11 @@ export function normalizeChangeVersion(value: unknown): NormalizedChangeVersion 
   const changeAmountCents = source["changeAmountCents"] === null ? null : source["changeAmountCents"];
   const originalBaseAmountCents = source["originalBaseAmountCents"] === null ? null : source["originalBaseAmountCents"];
   const amountLimitType = source["amountLimitType"];
-  const approvalRoute = normalizeApprovalNodes(source["approvalRoute"]);
+  const rawApprovalRoute = source["approvalRoute"];
+  const approvalRoute = Array.isArray(rawApprovalRoute) && rawApprovalRoute.length === 0
+    ? []
+    : normalizeApprovalNodes(rawApprovalRoute);
+  const normalizedApprovalRouteLabel = approvalRouteLabel(source["approvalRouteLabel"]);
   const enhancedReasons = reasons(source["enhancedApprovalReasons"]);
   if (
     !versionId || !contractId || !versionNo || !CHANGE_TYPES.has(String(changeType)) ||
@@ -175,7 +220,8 @@ export function normalizeChangeVersion(value: unknown): NormalizedChangeVersion 
     !isPostgresBigIntText(source["cumulativeIncreaseCents"]) ||
     !isPostgresBigIntText(source["cumulativeDecreaseCents"]) ||
     !AMOUNT_LIMIT_TYPES.has(String(amountLimitType)) || typeof source["enhancedApproval"] !== "boolean" ||
-    !enhancedReasons || !approvalRoute
+    !enhancedReasons || !approvalRoute || normalizedApprovalRouteLabel === undefined ||
+    !validRouteLabelForChangeType(changeType, normalizedApprovalRouteLabel, approvalRoute.length > 0)
   ) return null;
   const isChange = changeType === "change" || changeType === "supplement";
   if (isChange !== Boolean(baseVersionId && changeReason && changeDirection !== null && changeAmountCents !== null && originalBaseAmountCents !== null)) {
@@ -203,7 +249,8 @@ export function normalizeChangeVersion(value: unknown): NormalizedChangeVersion 
     amountLimitType: amountLimitType as "capped" | "unlimited",
     enhancedApproval: source["enhancedApproval"],
     enhancedApprovalReasons: enhancedReasons,
-    approvalRoute
+    approvalRoute,
+    approvalRouteLabel: normalizedApprovalRouteLabel
   };
 }
 
@@ -249,17 +296,23 @@ export function normalizeContractChangeVersions(value: unknown): NormalizedContr
     const changeReason = source["changeReason"] === null ? null : id(source["changeReason"]);
     const changeDirection = source["changeDirection"] === null ? null : source["changeDirection"];
     const changeAmountCents = source["changeAmountCents"] === null ? null : source["changeAmountCents"];
-    const approvalRoute = routeKeys(source["approvalRoute"]);
+    const rawApprovalRoute = source["approvalRoute"];
+    const approvalRoute = Array.isArray(rawApprovalRoute) && rawApprovalRoute.length === 0
+      ? []
+      : routeKeys(rawApprovalRoute);
+    const normalizedApprovalRouteLabel = approvalRouteLabel(source["approvalRouteLabel"]);
     const archiveEffect = source["archiveEffect"] === null ? null : normalizeArchiveEffect(source["archiveEffect"]);
     if (!versionNo || !CONTRACT_VERSION_STATUSES.has(String(status)) ||
       !CHANGE_TYPES.has(String(changeType)) || changeReason === undefined ||
       !(changeDirection === null || CHANGE_DIRECTIONS.has(String(changeDirection))) ||
       !(changeAmountCents === null || isPostgresBigIntText(changeAmountCents)) ||
-      !isPostgresBigIntText(source["amountCents"]) || !approvalRoute ||
+      !isPostgresBigIntText(source["amountCents"]) || !approvalRoute || normalizedApprovalRouteLabel === undefined ||
+      !validRouteLabelForChangeType(changeType, normalizedApprovalRouteLabel, approvalRoute.length > 0) ||
       (source["archiveEffect"] !== null && !archiveEffect)) return null;
     return { versionNo, status: String(status), changeType: String(changeType), changeReason,
       changeDirection: changeDirection === null ? null : String(changeDirection), changeAmountCents,
-      amountCents: source["amountCents"], approvalRoute, archiveEffect };
+      amountCents: source["amountCents"], approvalRoute,
+      approvalRouteLabel: normalizedApprovalRouteLabel, archiveEffect };
   });
   if (versions.some((version) => version === null)) return null;
   const normalized = versions as Array<NonNullable<(typeof versions)[number]>>;
@@ -296,7 +349,11 @@ export function normalizeWorkbenchChange(workbench: unknown): NormalizedWorkbenc
   const editableFieldKeys = stringArray(policy?.["editableFieldKeys"]);
   const editableClauseKeys = stringArray(policy?.["editableClauseKeys"]);
   const coreClauseKeys = stringArray(policy?.["coreClauseKeys"]);
-  const approvalRoute = routeKeys(change?.["approvalRoute"]);
+  const rawApprovalRoute = change?.["approvalRoute"];
+  const approvalRoute = Array.isArray(rawApprovalRoute) && rawApprovalRoute.length === 0
+    ? []
+    : routeKeys(rawApprovalRoute);
+  const normalizedApprovalRouteLabel = approvalRouteLabel(change?.["approvalRouteLabel"]);
   const enhancedReasons = reasons(change?.["enhancedApprovalReasons"]);
   const fieldSchema = Array.isArray(template["fieldSchema"]) ? template["fieldSchema"].map((item) => id(record(item)?.["key"])) : null;
   const clauseSchema = Array.isArray(template["clauseSchema"]) ? template["clauseSchema"].map((item) => id(record(item)?.["key"])) : null;
@@ -309,7 +366,9 @@ export function normalizeWorkbenchChange(workbench: unknown): NormalizedWorkbenc
     !isPostgresBigIntText(change["originalBaseAmountCents"]) ||
     !isPostgresBigIntText(change["cumulativeIncreaseCents"]) || !isPostgresBigIntText(change["cumulativeDecreaseCents"]) ||
     !AMOUNT_LIMIT_TYPES.has(String(change["amountLimitType"])) || typeof change["enhancedApproval"] !== "boolean" ||
-    !enhancedReasons || !approvalRoute || policy?.["version"] !== 1 || !editableFieldKeys || !editableClauseKeys ||
+    !enhancedReasons || !approvalRoute || normalizedApprovalRouteLabel === undefined ||
+    !validRouteLabelForChangeType(version["changeType"], normalizedApprovalRouteLabel, approvalRoute.length > 0) ||
+    policy?.["version"] !== 1 || !editableFieldKeys || !editableClauseKeys ||
     !coreClauseKeys || editableClauseKeys.some((key) => coreClauseKeys.includes(key)) || !fieldSchema || !clauseSchema ||
     fieldSchema.some((key) => key === null) || clauseSchema.some((key) => key === null) ||
     editableFieldKeys.some((key) => !fieldSchema.includes(key)) ||
@@ -327,6 +386,7 @@ export function normalizeWorkbenchChange(workbench: unknown): NormalizedWorkbenc
     cumulativeDecreaseCents: change["cumulativeDecreaseCents"],
     amountLimitType: change["amountLimitType"] as "capped" | "unlimited",
     enhancedApproval: change["enhancedApproval"], enhancedApprovalReasons: enhancedReasons, approvalRoute,
+    approvalRouteLabel: normalizedApprovalRouteLabel,
     changePolicy: { version: 1, editableFieldKeys, editableClauseKeys, coreClauseKeys }
   };
 }
@@ -381,5 +441,5 @@ export function contractEnhancedReasonText(value: unknown) {
 
 export function contractChangeTypeLabel(value: unknown) {
   return value === "original" ? "原始合同" : value === "historical_takeover" ? "历史接管合同" :
-    value === "change" ? "合同变更" : value === "supplement" ? "补充协议" : "未知变更类型";
+    value === "change" ? "合同变更" : value === "supplement" ? "补充协议（历史）" : "未知变更类型";
 }

@@ -1092,9 +1092,9 @@ describe("ContractService", () => {
     expect(projectLockIndex).toBeGreaterThan(1);
     const companyLockIndex = lockSql.findIndex((sql) => sql.includes('FROM "CompanyEntity"'));
     const authorizationLockIndex = lockSql.findIndex((sql) => sql.includes('FROM "ContractAuthorization"'));
-    expect(companyLockIndex).toBeGreaterThan(1);
+    expect(projectLockIndex).toBeGreaterThan(1);
+    expect(companyLockIndex).toBeGreaterThan(projectLockIndex);
     expect(companyLockIndex).toBeLessThan(authorizationLockIndex);
-    expect(authorizationLockIndex).toBeLessThan(projectLockIndex);
     expect(tx.contractVersion.updateMany).toHaveBeenCalledWith({
       where: {
         id: "contract-version-1",
@@ -1191,11 +1191,14 @@ describe("ContractService", () => {
     const version = {
       id: "contract-version-governed",
       contractId: "contract-governed",
-      changeType: "supplement",
+      changeType: "original",
       status: "draft",
       draftRevision: 2,
       contractGovernanceVersion: 1,
-      amountCents: 1_000n
+      amountCents: 1_000n,
+      draftData: {
+        companyEntitySelection: { id: "entity-1", versionNo: 1 }
+      }
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
@@ -1204,10 +1207,19 @@ describe("ContractService", () => {
           id: "contract-governed",
           ownerUserId: "owner-1",
           voidedAt: null,
-          projectId: "project-1"
+          projectId: "project-1",
+          companyEntityId: "entity-1"
         })
       },
       contractVersion: { updateMany: jest.fn() },
+      companyEntity: { findUnique: jest.fn().mockResolvedValue({
+        id: "entity-1", isActive: true, dataStatus: "complete", currentVersionNo: 1
+      }) },
+      companyEntityVersion: { findUnique: jest.fn().mockResolvedValue({
+        id: "entity-version-1", companyEntityId: "entity-1", versionNo: 1,
+        name: "我方公司", unifiedSocialCreditCode: "91350211M000100Y46",
+        registeredAddress: null
+      }) },
       approvalInstance: { create: jest.fn() },
       auditLog: { create: jest.fn() }
     };
@@ -1296,7 +1308,7 @@ describe("ContractService", () => {
     expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
-  it("freezes the confirmed major contract change approval route", () => {
+  it("uses the single fixed contract-change approval route without threshold enhancement", () => {
     const service = new ContractService({} as never, {} as never) as unknown as {
       approvalNodesForVersion(version: {
         changeType: string;
@@ -1310,7 +1322,7 @@ describe("ContractService", () => {
 
     expect(
       service.approvalNodesForVersion({
-        changeType: "supplement",
+        changeType: "change",
         amountLimitType: "capped",
         changeAmountCents: 200_000n,
         originalBaseAmountCents: 1_000_000n,
@@ -1325,7 +1337,7 @@ describe("ContractService", () => {
     ]);
   });
 
-  it("uses new routes only for owned original drafts and refreezes on every resubmission", async () => {
+  it("uses the fixed route for every change and refreezes owned original drafts", async () => {
     const routes = {
       freezeNewContractRoute: jest.fn().mockResolvedValue([{
         name: "物资主管",
@@ -1333,6 +1345,13 @@ describe("ContractService", () => {
         roleKeys: ["material_director"],
         candidateUserIds: ["material-1"],
         candidateUserIdsByRole: { material_director: ["material-1"] }
+      }]),
+      freezeContractChangeRoute: jest.fn().mockResolvedValue([{
+        name: "项目经理",
+        mode: "any",
+        roleKeys: ["project_manager"],
+        candidateUserIds: ["manager-1"],
+        candidateUserIdsByRole: { project_manager: ["manager-1"] }
       }])
     };
     const service = new ContractService(
@@ -1377,14 +1396,19 @@ describe("ContractService", () => {
       mode: "any",
       roleKeys: ["chairman", "general_manager"]
     }]);
-    for (const changeType of ["change", "supplement"]) {
-      await subject.approvalNodesForSubmission(
-        {},
-        { ...baseVersion, changeType },
-        { ...baseContract, ownerUserId: "staff-1" },
-        "staff-1"
-      );
-    }
+    await subject.approvalNodesForSubmission(
+      {},
+      { ...baseVersion, changeType: "change" },
+      { ...baseContract, ownerUserId: null },
+      "staff-1"
+    );
+    await subject.approvalNodesForSubmission(
+      {},
+      { ...baseVersion, changeType: "supplement" },
+      { ...baseContract, ownerUserId: "staff-1" },
+      "staff-1"
+    );
+    expect(routes.freezeContractChangeRoute).toHaveBeenCalledTimes(1);
     expect(routes.freezeNewContractRoute).not.toHaveBeenCalled();
 
     await subject.approvalNodesForSubmission(
@@ -1433,7 +1457,7 @@ describe("ContractService", () => {
     )).rejects.toThrow("新合同审批路线服务暂不可用");
   });
 
-  it("creates a governed supplement from complete frozen company facts without legacy party_a", async () => {
+  it("creates a governed change from complete frozen company facts without legacy party_a", async () => {
     const templateSnapshot = {
       fieldSchema: [],
       billSchema: [],
@@ -1446,7 +1470,9 @@ describe("ContractService", () => {
       contractId: "contract-1",
       versionNo: 1,
       status: "effective",
+      effectiveAt: new Date("2026-07-01T00:00:00.000Z"),
       changeType: "original",
+      baseVersionId: null,
       amountCents: 1_000_000n,
       amountLimitType: "capped",
       originalBaseAmountCents: null,
@@ -1492,6 +1518,7 @@ describe("ContractService", () => {
           .mockResolvedValueOnce(effective)
           .mockResolvedValueOnce({ versionNo: 1 })
           .mockResolvedValueOnce(null),
+        findMany: jest.fn().mockResolvedValue([effective]),
         create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({
           id: "version-2",
           ...data
@@ -1524,7 +1551,7 @@ describe("ContractService", () => {
     const service = new ContractService(prisma, audit as never);
 
     await expect(service.createChangeDraft("version-1", {
-      changeType: "supplement",
+      changeType: "change",
       changeReason: "补充工程量",
       changeDirection: "increase",
       changeAmountCents: "100000"
@@ -1540,6 +1567,62 @@ describe("ContractService", () => {
         contractGovernanceVersion: 1
       })
     });
+  });
+
+  it("keeps historical supplement agreements read-only and rejects new supplement drafts", async () => {
+    const prisma = { $transaction: jest.fn() } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await expect(service.createChangeDraft("version-1", {
+      changeType: "supplement" as never,
+      changeReason: "客户端伪造补充协议",
+      changeDirection: "increase",
+      changeAmountCents: "100"
+    }, "owner-1")).rejects.toThrow("新建流程仅支持合同变更");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("labels an unfrozen historical supplement projection without inventing an approval route", () => {
+    const service = new ContractService({} as PrismaService, audit as never) as unknown as {
+      changeVersionProjection: (version: {
+        id: string;
+        contractId: string;
+        versionNo: number;
+        changeType: string;
+        status: string;
+        amountCents: bigint;
+        baseVersionId: string | null;
+        supersedesVersionId: string | null;
+        changeReason: string | null;
+        changeDirection: string | null;
+        changeAmountCents: bigint | null;
+        originalBaseAmountCents: bigint | null;
+        cumulativeIncreaseCents: bigint;
+        cumulativeDecreaseCents: bigint;
+        amountLimitType: string;
+      }) => { approvalRouteLabel: string; approvalRoute: unknown[] };
+    };
+
+    const projection = service.changeVersionProjection({
+      id: "version-2",
+      contractId: "contract-1",
+      versionNo: 2,
+      changeType: "supplement",
+      status: "effective",
+      amountCents: 1_100_000n,
+      baseVersionId: "version-1",
+      supersedesVersionId: "version-1",
+      changeReason: "历史补充协议",
+      changeDirection: "increase",
+      changeAmountCents: 100_000n,
+      originalBaseAmountCents: 1_000_000n,
+      cumulativeIncreaseCents: 100_000n,
+      cumulativeDecreaseCents: 0n,
+      amountLimitType: "capped"
+    });
+
+    expect(projection.approvalRoute).toEqual([]);
+    expect(projection.approvalRouteLabel).toBe("历史路线未冻结");
   });
 
   it("still blocks governed change drafts that lack both frozen company facts and legacy party_a", () => {

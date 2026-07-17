@@ -247,16 +247,6 @@ export class ContractWorkbenchService {
     const changePolicy = isChangeVersion
       ? this.parseTemplateSnapshot(version.templateSnapshot).supplementChangePolicy ?? null
       : null;
-    const baseAmount = version.originalBaseAmountCents ?? 0n;
-    const unlimitedTriggered =
-      isChangeVersion &&
-      version.amountLimitType === "unlimited" &&
-      (version.changeAmountCents ?? 0n) > 0n;
-    const thresholdTriggered =
-      isChangeVersion &&
-      baseAmount > 0n &&
-      (version.cumulativeIncreaseCents * 10n > baseAmount ||
-        version.cumulativeDecreaseCents * 10n > baseAmount);
     return this.toReadModel({
       contract,
       version: {
@@ -274,14 +264,14 @@ export class ContractWorkbenchService {
         cumulativeIncreaseCents: version.cumulativeIncreaseCents,
         cumulativeDecreaseCents: version.cumulativeDecreaseCents,
         amountLimitType: version.amountLimitType,
-        enhancedApproval: unlimitedTriggered || thresholdTriggered,
-        enhancedApprovalReasons: [
-          ...(unlimitedTriggered ? ["unlimited_amount_change"] : []),
-          ...(thresholdTriggered ? ["cumulative_change_strictly_over_ten_percent"] : [])
-        ],
-        approvalRoute: unlimitedTriggered || thresholdTriggered
+        enhancedApproval: false,
+        enhancedApprovalReasons: [],
+        approvalRouteLabel: version.changeType === "supplement"
+          ? "历史路线未冻结"
+          : "合同变更",
+        approvalRoute: version.changeType === "change"
           ? ["contract_director", "project_manager", "finance_director", "chairman_or_general_manager"]
-          : ["chairman_or_general_manager"],
+          : [],
         changePolicy
       },
       readiness: this.readinessFromSnapshot(version.readinessSnapshot),

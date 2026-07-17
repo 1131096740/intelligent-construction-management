@@ -59,6 +59,16 @@ describe("contract change UI state", () => {
     expect(normalizeChangeVersion(projection({ status: "internal_status" }))).toBeNull();
     expect(normalizeChangeVersion(projection({ amountCents: "01" }))).toBeNull();
     expect(normalizeChangeVersion(projection({ approvalRoute: [{ name: "x", mode: "any", roleKeys: ["internal_role"] }] }))).toBeNull();
+    expect(normalizeChangeVersion(projection({
+      approvalRoute: [],
+      approvalRouteLabel: "历史路线未冻结"
+    }))).toMatchObject({ approvalRoute: [], approvalRouteLabel: "历史路线未冻结" });
+    expect(normalizeChangeVersion(projection({
+      changeType: "change",
+      approvalRouteLabel: "合同变更"
+    }))).toMatchObject({ approvalRouteLabel: "合同变更" });
+    expect(normalizeChangeVersion(projection({ approvalRoute: [], approvalRouteLabel: "合同变更（历史）" })))
+      .toBeNull();
     expect(normalizeChangeEligibility({
       eligible: true,
       reason: null,
@@ -81,6 +91,27 @@ describe("contract change UI state", () => {
     const invalid = workbench();
     (invalid.change.changePolicy.editableFieldKeys as string[]).push("unknown_field");
     expect(normalizeWorkbenchChange(invalid)).toBeNull();
+
+    const historicalSupplement = workbench();
+    historicalSupplement.change.approvalRoute = [];
+    Object.assign(historicalSupplement.change, { approvalRouteLabel: "历史路线未冻结" });
+    expect(normalizeWorkbenchChange(historicalSupplement)).toMatchObject({
+      changeType: "supplement",
+      approvalRoute: [],
+      approvalRouteLabel: "历史路线未冻结"
+    });
+
+    const candidateFrozenChange = workbench();
+    candidateFrozenChange.version.changeType = "change";
+    candidateFrozenChange.change.changeType = "change";
+    candidateFrozenChange.change.approvalRoute = [
+      "contract_director", "project_manager", "finance_director", "chairman_or_general_manager"
+    ];
+    Object.assign(candidateFrozenChange.change, { approvalRouteLabel: "合同变更" });
+    expect(normalizeWorkbenchChange(candidateFrozenChange)).toMatchObject({
+      changeType: "change",
+      approvalRouteLabel: "合同变更"
+    });
   });
 
   it("normalizes version history and rejects dangling lineage", () => {
@@ -102,6 +133,25 @@ describe("contract change UI state", () => {
     expect(normalizeContractChangeVersions([{ ...change, archiveEffect: { ...change.archiveEffect, replacesVersionNo: 3 } }, original])).toBeNull();
     expect(normalizeContractChangeVersions([{ ...change, archiveEffect: { ...change.archiveEffect, beforeAmountCents: "999" } }, original])).toBeNull();
     expect(normalizeContractChangeVersions([{ ...change, archiveEffect: { ...change.archiveEffect, historyReferencesStable: false } }, original])).toBeNull();
+    expect(normalizeContractChangeVersions([{ ...change, approvalRoute: [], approvalRouteLabel: "历史路线未冻结" }, original])?.[0])
+      .toMatchObject({ approvalRoute: [], approvalRouteLabel: "历史路线未冻结" });
+    expect(normalizeContractChangeVersions([{ ...change, approvalRoute: [], approvalRouteLabel: "未知历史路线" }, original]))
+      .toBeNull();
+    expect(normalizeContractChangeVersions([{
+      ...change,
+      changeType: "change",
+      approvalRouteLabel: "合同变更（历史）"
+    }, original])?.[0]?.approvalRouteLabel).toBe("合同变更（历史）");
+    expect(normalizeContractChangeVersions([{
+      ...change,
+      changeType: "change",
+      approvalRouteLabel: "增强合同变更（历史）"
+    }, original])?.[0]?.approvalRouteLabel).toBe("增强合同变更（历史）");
+    expect(normalizeContractChangeVersions([{
+      ...change,
+      changeType: "change",
+      approvalRouteLabel: "合同变更"
+    }, original])?.[0]?.approvalRouteLabel).toBe("合同变更");
   });
 
   it("guards version/submission races and PostgreSQL bigint bounds", () => {

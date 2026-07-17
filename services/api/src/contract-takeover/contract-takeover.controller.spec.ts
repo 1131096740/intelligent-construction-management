@@ -22,7 +22,8 @@ const takeoverBodyRoutes = [
   ["updateTaxFactRevision", 3],
   ["reviewTaxFactsByFinance", 3],
   ["confirmTaxFactsByContract", 3],
-  ["confirm", 3]
+  ["confirm", 3],
+  ["confirmChangeBaseline", 3]
 ] as const;
 
 const validTakeover = {
@@ -124,7 +125,12 @@ const validTakeoverRouteBodies = [
   ],
   ["reviewTaxFactsByFinance", 3, { decision: "approve", comment: "税务事实一致" }],
   ["confirmTaxFactsByContract", 3, { decision: "approve", comment: "合同事实确认" }],
-  ["confirm", 3, { confirmationPassword: "current password" }]
+  ["confirm", 3, { confirmationPassword: "current password" }],
+  ["confirmChangeBaseline", 3, {
+    originalSignedAmountCents: "100000000",
+    preTakeoverPositiveIncreaseCents: "5000000",
+    currentPassword: "current password"
+  }]
 ] as const;
 
 function takeoverBodyMetatype(method: string, bodyIndex: number) {
@@ -417,7 +423,8 @@ describe("ContractTakeoverController", () => {
       "reviewTaxFactsByFinance",
       "confirmTaxFactsByContract",
       "submitReview",
-      "confirm"
+      "confirm",
+      "confirmChangeBaseline"
     ] as const) {
       expect(
         Reflect.getMetadata(
@@ -439,6 +446,10 @@ describe("ContractTakeoverController", () => {
     );
     expectProjectAction(
       ContractTakeoverController.prototype.recordCorrection,
+      "contract.archive.confirm"
+    );
+    expectProjectAction(
+      ContractTakeoverController.prototype.confirmChangeBaseline,
       "contract.archive.confirm"
     );
   });

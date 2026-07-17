@@ -37,8 +37,9 @@ import { GenerateContractPdfArchiveDto } from "./dto/generate-contract-pdf-archi
 import { SubmitContractApprovalDto } from "./dto/submit-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 import { CreateContractChangeDraftDto } from "./dto/create-contract-change-draft.dto";
-import { evaluateContractChangeApproval } from "./contract-change-approval";
 import { assertContractChangeContentAllowed } from "./contract-change-policy";
+import { evaluateContractIncreaseLimit } from "./contract-change-limit-policy";
+import { resolveContractVersionRoot } from "./contract-version-root";
 import {
   ContractApprovalRouteService,
   type FrozenNewContractApprovalNode
@@ -342,6 +343,9 @@ export class ContractService {
     input: CreateContractChangeDraftDto,
     actorUserId: string
   ) {
+    if (input.changeType !== "change") {
+      throw new BadRequestException("新建流程仅支持合同变更；历史补充协议仅保留只读查看");
+    }
     const reason = input.changeReason?.trim();
     if (!reason) throw new BadRequestException("合同变更必须填写变更原因");
     if (!new Set(["increase", "decrease", "unchanged"]).has(input.changeDirection)) {
@@ -397,6 +401,35 @@ export class ContractService {
       });
       if (activeChange) throw new BadRequestException("当前生效版本已有进行中的合同变更");
 
+      const lineage = await tx.contractVersion.findMany({
+        where: { contractId: contract.id },
+        orderBy: { versionNo: "asc" }
+      });
+      const rootResolution = resolveContractVersionRoot(lineage);
+      if (!rootResolution.ok) throw new BadRequestException(rootResolution.reason);
+      const root = rootResolution.root;
+      const originalBaseAmountCents = root.changeType === "historical_takeover"
+        ? root.originalBaseAmountCents
+        : root.amountCents;
+      const unlimitedFramework = latest.pricingNature === "framework" &&
+        latest.amountLimitType === "unlimited";
+      if (root.changeType === "historical_takeover" && originalBaseAmountCents === null) {
+        throw new BadRequestException(
+          "历史合同尚未确认历史变更基线，请先由合同部主管补录后再发起合同变更"
+        );
+      }
+      const historicalPositiveIncreaseCents =
+        (root.changeType === "historical_takeover" ? root.cumulativeIncreaseCents : 0n) +
+        lineage.reduce((sum, item) =>
+          item.baseVersionId !== null &&
+          (item.changeType === "change" || item.changeType === "supplement") &&
+          (item.status === "effective" || item.status === "superseded") &&
+          item.effectiveAt !== null &&
+          item.changeDirection === "increase" &&
+          (item.changeAmountCents ?? 0n) > 0n
+            ? sum + item.changeAmountCents!
+            : sum, 0n);
+
       const [parties, bills, sourceTerms] = await Promise.all([
         tx.contractPartySnapshot.findMany({
           where: { contractVersionId: latest.id },
@@ -427,8 +460,7 @@ export class ContractService {
           : latest.amountCents;
       if (nextAmountCents < 0n) throw new BadRequestException("合同减项金额不能超过当前合同金额");
       const baseVersionId = latest.id;
-      const originalBaseAmountCents = latest.originalBaseAmountCents ?? latest.amountCents;
-      const cumulativeIncreaseCents = latest.cumulativeIncreaseCents +
+      const cumulativeIncreaseCents = historicalPositiveIncreaseCents +
         (input.changeDirection === "increase" ? changeAmountCents : 0n);
       const cumulativeDecreaseCents = latest.cumulativeDecreaseCents +
         (input.changeDirection === "decrease" ? changeAmountCents : 0n);
@@ -453,7 +485,9 @@ export class ContractService {
           changeReason: reason,
           changeDirection: input.changeDirection,
           changeAmountCents,
-          originalBaseAmountCents,
+          originalBaseAmountCents: unlimitedFramework
+            ? originalBaseAmountCents ?? 0n
+            : originalBaseAmountCents,
           cumulativeIncreaseCents,
           cumulativeDecreaseCents,
           amountLimitType,
@@ -910,6 +944,18 @@ export class ContractService {
           sourceTerms
         });
         sourceBlocker = prepared.ok ? null : prepared.reason;
+        if (!sourceBlocker) {
+          const lineage = await this.prisma.contractVersion.findMany({
+            where: { contractId: target.contractId },
+            orderBy: { versionNo: "asc" }
+          });
+          const rootResolution = resolveContractVersionRoot(lineage);
+          if (!rootResolution.ok) {
+            sourceBlocker = rootResolution.reason;
+          } else if (rootResolution.root.changeType === "historical_takeover" && rootResolution.root.originalBaseAmountCents === null) {
+            sourceBlocker = "历史合同尚未确认历史变更基线，请先由合同部主管补录后再发起合同变更";
+          }
+        }
       }
     }
     const eligible =
@@ -945,8 +991,11 @@ export class ContractService {
     cumulativeDecreaseCents: bigint;
     amountLimitType: string;
   }) {
-    const route = this.approvalNodesForVersion(version);
-    const approval = evaluateContractChangeApproval(version);
+    const route = version.changeType === "change"
+      ? ENHANCED_CONTRACT_CHANGE_APPROVAL_NODES
+      : version.changeType === "original"
+        ? CONTRACT_APPROVAL_NODES
+        : [];
     return {
       id: version.id,
       contractId: version.contractId,
@@ -963,8 +1012,13 @@ export class ContractService {
       cumulativeIncreaseCents: version.cumulativeIncreaseCents.toString(),
       cumulativeDecreaseCents: version.cumulativeDecreaseCents.toString(),
       amountLimitType: version.amountLimitType,
-      enhancedApproval: approval.enhanced,
-      enhancedApprovalReasons: approval.reasons,
+      enhancedApproval: false,
+      enhancedApprovalReasons: [],
+      approvalRouteLabel: version.changeType === "supplement"
+        ? "历史路线未冻结"
+        : version.changeType === "change"
+          ? "合同变更"
+          : "原合同",
       approvalRoute: route.map((node) => ({ name: node.name, mode: node.mode, roleKeys: node.roleKeys }))
     };
   }
@@ -1066,6 +1120,19 @@ export class ContractService {
         if (contract.ownerUserId && contract.ownerUserId !== actorUserId) {
           throw new Error("只有合同经办人可以提交该合同审批");
         }
+        if (version.changeType === "supplement") {
+          throw new BadRequestException("历史补充协议仅保留只读查看，不能重新提交");
+        }
+        await this.assertChangeAmountProjection(tx, version);
+        const projectLocks = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>(Prisma.sql`
+          SELECT "id", "isActive"
+          FROM "Project"
+          WHERE "id" = ${contract.projectId}
+          FOR UPDATE
+        `);
+        if (projectLocks.length !== 1 || projectLocks[0]?.isActive !== true) {
+          throw new BadRequestException("合同所属项目不存在或已停用，不能提交审批");
+        }
         const governedCompanySnapshot = version.contractGovernanceVersion === 1 &&
           contract.ownerUserId &&
           version.changeType !== "change" &&
@@ -1093,17 +1160,6 @@ export class ContractService {
             formalFile: formalFileSnapshot
           } as unknown as Prisma.JsonValue;
         }
-        await this.assertChangeAmountProjection(tx, version);
-        const projectLocks = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>(Prisma.sql`
-          SELECT "id", "isActive"
-          FROM "Project"
-          WHERE "id" = ${contract.projectId}
-          FOR UPDATE
-        `);
-        if (projectLocks.length !== 1 || projectLocks[0]?.isActive !== true) {
-          throw new BadRequestException("合同所属项目不存在或已停用，不能提交审批");
-        }
-
         const input = contract.ownerUserId ? this.parseSubmissionInput(rawInput) : null;
         let formalCode = contract.code;
         let readinessSnapshot = version.readinessSnapshot;
@@ -1277,17 +1333,13 @@ export class ContractService {
         throw new BadRequestException("合同审批资料正在被更新，请稍后刷新并重新提交");
       }
       if (error instanceof ContractGovernanceDenial) {
-        try {
-          await this.prisma.$transaction((tx) => this.audit.record(tx, {
-            actorUserId,
-            action: error.action,
-            businessType: "contract_version",
-            businessId: contractVersionId,
-            metadata: { reason: error.message }
-          }));
-        } catch {
-          // 保留原业务拒绝；审计写入异常由服务日志另行处置。
-        }
+        await this.prisma.$transaction((tx) => this.audit.record(tx, {
+          actorUserId,
+          action: error.action,
+          businessType: "contract_version",
+          businessId: contractVersionId,
+          metadata: { reason: error.message }
+        }));
       }
       throw error;
     }
@@ -1419,11 +1471,20 @@ export class ContractService {
   private async assertChangeAmountProjection(
     tx: Prisma.TransactionClient,
     version: {
+      id: string;
       changeType: string;
       baseVersionId: string | null;
       changeDirection: string | null;
       changeAmountCents: bigint | null;
       amountCents: bigint;
+      contractId: string;
+      pricingNature: string;
+      amountLimitType: string;
+      companyEntityIdSnapshot: string | null;
+      companyEntityVersionId: string | null;
+      companyEntityNameSnapshot: string | null;
+      companyEntityCreditCodeSnapshot: string | null;
+      companyEntityRegisteredAddressSnapshot: string | null;
       draftData: Prisma.JsonValue;
       clauseSnapshot: Prisma.JsonValue;
       templateSnapshot: Prisma.JsonValue;
@@ -1433,9 +1494,13 @@ export class ContractService {
     if (!version.baseVersionId || !version.changeDirection || version.changeAmountCents === null) {
       throw new BadRequestException("合同变更金额声明不完整，不能提交审批");
     }
-    const base = await tx.contractVersion.findUnique({
-      where: { id: version.baseVersionId }
-    });
+    const lineage = await tx.$queryRaw<Array<NonNullable<Awaited<ReturnType<typeof tx.contractVersion.findUnique>>>>>(Prisma.sql`
+      SELECT * FROM "ContractVersion"
+      WHERE "contractId" = ${version.contractId}
+      ORDER BY "versionNo" ASC
+      FOR UPDATE
+    `);
+    const base = lineage.find((item) => item.id === version.baseVersionId);
     if (!base) throw new BadRequestException("合同变更直接来源版本不存在，不能提交审批");
     const expected = version.changeDirection === "increase"
       ? base.amountCents + version.changeAmountCents
@@ -1444,6 +1509,58 @@ export class ContractService {
         : base.amountCents;
     if (version.amountCents !== expected) {
       throw new BadRequestException("合同当前金额与已声明变更金额不一致，请恢复清单或金额后再提交审批");
+    }
+    const subjectKeys = [
+      "companyEntityIdSnapshot",
+      "companyEntityVersionId",
+      "companyEntityNameSnapshot",
+      "companyEntityCreditCodeSnapshot",
+      "companyEntityRegisteredAddressSnapshot"
+    ] as const;
+    for (const key of subjectKeys) {
+      if (version[key] !== base[key]) {
+        throw new ContractGovernanceDenial(
+          "合同变更不能替换我方签约主体，需要变更主体时必须新签合同",
+          "contract.change.subject_snapshot.denied"
+        );
+      }
+    }
+
+    const rootResolution = resolveContractVersionRoot(lineage);
+    if (!rootResolution.ok) {
+      throw new ContractGovernanceDenial(
+        rootResolution.reason,
+        "contract.change.limit.denied"
+      );
+    }
+    const root = rootResolution.root;
+    const historicalPositiveIncreaseCents =
+      (root.changeType === "historical_takeover" ? root.cumulativeIncreaseCents : 0n) +
+      lineage.reduce((sum, item) =>
+        item.baseVersionId !== null && item.id !== version.id &&
+        (item.changeType === "change" || item.changeType === "supplement") &&
+        (item.status === "effective" || item.status === "superseded") &&
+        item.effectiveAt !== null && item.changeDirection === "increase" &&
+        (item.changeAmountCents ?? 0n) > 0n
+          ? sum + item.changeAmountCents!
+          : sum, 0n);
+    const originalAmountCents = root.changeType === "historical_takeover"
+      ? root.originalBaseAmountCents
+      : root.amountCents;
+    const limit = evaluateContractIncreaseLimit({
+      originalAmountCents,
+      historicalPositiveIncreaseCents,
+      proposedChangeCents: version.changeDirection === "increase"
+        ? version.changeAmountCents
+        : -version.changeAmountCents,
+      unlimitedFramework: version.pricingNature === "framework" &&
+        version.amountLimitType === "unlimited"
+    });
+    if (!limit.allowed) {
+      throw new ContractGovernanceDenial(
+        limit.reason ?? "合同变更暂不能提交",
+        "contract.change.limit.denied"
+      );
     }
     const template = version.templateSnapshot as unknown as {
       fieldSchema: Array<{ key: string; label: string; type: "text" }>;
@@ -1816,10 +1933,10 @@ export class ContractService {
     cumulativeDecreaseCents: bigint;
   }): ContractApprovalNode[] {
     if (version.changeType === "original") return CONTRACT_APPROVAL_NODES.map((node) => ({ ...node }));
-    const nodes = evaluateContractChangeApproval(version).enhanced
-      ? ENHANCED_CONTRACT_CHANGE_APPROVAL_NODES
-      : CONTRACT_APPROVAL_NODES;
-    return nodes.map((node) => ({ ...node }));
+    if (version.changeType === "change") {
+      return ENHANCED_CONTRACT_CHANGE_APPROVAL_NODES.map((node) => ({ ...node }));
+    }
+    return CONTRACT_APPROVAL_NODES.map((node) => ({ ...node }));
   }
 
   private async approvalNodesForSubmission(
@@ -1833,9 +1950,22 @@ export class ContractService {
     },
     actorUserId: string
   ): Promise<ContractApprovalNode[] | FrozenNewContractApprovalNode[]> {
-    if (!contract.ownerUserId || version.changeType !== "original") {
-      return this.approvalNodesForVersion(version);
+    if (version.changeType === "change") {
+      if (!this.approvalRoutes) {
+        throw new Error("合同变更审批路线服务暂不可用，请稍后重试或联系管理员");
+      }
+      return this.approvalRoutes.freezeContractChangeRoute(
+        tx,
+        {
+          id: contract.id,
+          projectId: contract.projectId,
+          contractTypeKey: contract.contractTypeKey
+        },
+        actorUserId
+      );
     }
+    if (!contract.ownerUserId) return this.approvalNodesForVersion(version);
+    if (version.changeType !== "original") return this.approvalNodesForVersion(version);
     if (!this.approvalRoutes) {
       throw new Error("新合同审批路线服务暂不可用，请稍后重试或联系管理员");
     }

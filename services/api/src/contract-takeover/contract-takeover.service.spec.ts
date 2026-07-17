@@ -3192,4 +3192,216 @@ describe("ContractTakeoverService", () => {
       paymentBlockingHint: "C级资料缺口明显，付款前必须补齐影响金额的资料和争议说明。"
     });
   });
+
+  function baselineTx(input?: {
+    director?: boolean;
+    casCount?: number;
+    existing?: bigint | null;
+    root?: Record<string, unknown>;
+    takeoverStatus?: string;
+  }) {
+    return {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ contractId: "contract-1", contractVersionId: "contract-version-1" }])
+        .mockResolvedValueOnce([{ id: "contract-1" }])
+        .mockResolvedValueOnce([{
+          id: "contract-version-1",
+          baseVersionId: null,
+          changeType: "historical_takeover",
+          status: "effective",
+          effectiveAt: new Date("2026-07-01T00:00:00.000Z"),
+          pricingNature: "fixed_total",
+          amountLimitType: "capped",
+          originalBaseAmountCents: input?.existing ?? null,
+          ...input?.root
+        }])
+        .mockResolvedValueOnce([{ id: "takeover-1", takeoverStatus: input?.takeoverStatus ?? "confirmed" }])
+        .mockResolvedValueOnce(input?.director === false ? [] : [{ userId: "director-1" }]),
+      contractVersion: {
+        updateMany: jest.fn().mockResolvedValue({ count: input?.casCount ?? 1 })
+      }
+    };
+  }
+
+  it("confirms the historical change baseline once with password, global role, bigint and audit", async () => {
+    const tx = baselineTx();
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    };
+    const authForTest = { confirmPassword: jest.fn().mockResolvedValue({ ok: true }) };
+    const auditForTest = { record: jest.fn().mockResolvedValue(undefined) };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      auditForTest as never,
+      authForTest as never
+    );
+
+    await expect(service.confirmChangeBaseline("project-1", "takeover-1", "director-1", {
+      originalSignedAmountCents: "9223372036854775807",
+      preTakeoverPositiveIncreaseCents: "100000",
+      currentPassword: "current password"
+    })).resolves.toEqual({
+      takeoverId: "takeover-1",
+      contractVersionId: "contract-version-1",
+      changeBaselineConfirmed: true,
+      originalBaseAmountCents: "9223372036854775807",
+      preTakeoverPositiveIncreaseCents: "100000"
+    });
+    expect(authForTest.confirmPassword).toHaveBeenCalledWith("director-1", "current password");
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith({
+      where: { id: "contract-version-1", originalBaseAmountCents: null },
+      data: {
+        originalBaseAmountCents: 9223372036854775807n,
+        cumulativeIncreaseCents: 100000n
+      }
+    });
+    expect(auditForTest.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "contract_takeover.change_baseline.confirm",
+      businessId: "takeover-1",
+      metadata: expect.objectContaining({
+        originalBaseAmountCents: "9223372036854775807",
+        preTakeoverPositiveIncreaseCents: "100000"
+      })
+    }));
+  });
+
+  it("rejects non-directors and CAS conflicts without writing baseline audit", async () => {
+    for (const scenario of [
+      { tx: baselineTx({ director: false }), message: "只有公司级合同部主管" },
+      { tx: baselineTx({ casCount: 0 }), message: "已经确认，不能重复覆盖" }
+    ]) {
+      const auditForTest = { record: jest.fn() };
+      const prisma = {
+        $transaction: jest.fn(async (callback: (client: typeof scenario.tx) => unknown) => callback(scenario.tx))
+      };
+      const service = new ContractTakeoverService(
+        prisma as never,
+        auditForTest as never,
+        { confirmPassword: jest.fn().mockResolvedValue({ ok: true }) } as never
+      );
+
+      await expect(service.confirmChangeBaseline("project-1", "takeover-1", "actor-1", {
+        originalSignedAmountCents: "1000000",
+        preTakeoverPositiveIncreaseCents: "0",
+        currentPassword: "current password"
+      })).rejects.toThrow(scenario.message);
+      expect(auditForTest.record).not.toHaveBeenCalled();
+    }
+  });
+
+  it("accepts a superseded historical root and allows zero only for an unlimited framework", async () => {
+    for (const root of [
+      { status: "superseded" },
+      { pricingNature: "framework", amountLimitType: "unlimited" }
+    ]) {
+      const tx = baselineTx({ root });
+      const service = new ContractTakeoverService({
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      } as never, { record: jest.fn() } as never, {
+        confirmPassword: jest.fn().mockResolvedValue({ ok: true })
+      } as never);
+      await expect(service.confirmChangeBaseline("project-1", "takeover-1", "director-1", {
+        originalSignedAmountCents: root.status === "superseded" ? "100000" : "0",
+        preTakeoverPositiveIncreaseCents: "0",
+        currentPassword: "secret"
+      })).resolves.toMatchObject({ changeBaselineConfirmed: true });
+    }
+  });
+
+  it.each([
+    ["capped zero", { root: {} }, "0"],
+    ["non historical root", { root: { changeType: "original" } }, "100000"],
+    ["non-root version", { root: { baseVersionId: "older" } }, "100000"],
+    ["never effective", { root: { effectiveAt: null } }, "100000"],
+    ["unconfirmed takeover", { takeoverStatus: "pending_review" }, "100000"]
+  ])("rejects %s baseline confirmation", async (_label, options, amount) => {
+    const tx = baselineTx(options);
+    const auditForTest = { record: jest.fn() };
+    const service = new ContractTakeoverService({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never, auditForTest as never, {
+      confirmPassword: jest.fn().mockResolvedValue({ ok: true })
+    } as never);
+    await expect(service.confirmChangeBaseline("project-1", "takeover-1", "director-1", {
+      originalSignedAmountCents: amount,
+      preTakeoverPositiveIncreaseCents: "0",
+      currentPassword: "secret"
+    })).rejects.toBeDefined();
+    expect(auditForTest.record).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { code: "P2034" },
+    { code: "P2010", meta: { code: "40001" } }
+  ])("maps baseline serialization conflicts to stable Chinese", async (details) => {
+    const service = new ContractTakeoverService({
+      $transaction: jest.fn().mockRejectedValue(Object.assign(new Error("serialization"), details))
+    } as never, audit as never, {
+      confirmPassword: jest.fn().mockResolvedValue({ ok: true })
+    } as never);
+    await expect(service.confirmChangeBaseline("project-1", "takeover-1", "director-1", {
+      originalSignedAmountCents: "100000",
+      preTakeoverPositiveIncreaseCents: "0",
+      currentPassword: "secret"
+    })).rejects.toThrow("历史变更基线正在被更新，请刷新后重试");
+  });
+
+  it("rolls the baseline transaction back when audit writing fails and never audits the password", async () => {
+    const tx = baselineTx();
+    const auditForTest = { record: jest.fn().mockRejectedValue(new Error("audit unavailable")) };
+    const transaction = jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    const service = new ContractTakeoverService({ $transaction: transaction } as never,
+      auditForTest as never, { confirmPassword: jest.fn().mockResolvedValue({ ok: true }) } as never);
+    await expect(service.confirmChangeBaseline("project-1", "takeover-1", "director-1", {
+      originalSignedAmountCents: "100000",
+      preTakeoverPositiveIncreaseCents: "0",
+      currentPassword: "top-secret"
+    })).rejects.toThrow("audit unavailable");
+    expect(JSON.stringify(auditForTest.record.mock.calls)).not.toContain("top-secret");
+  });
+
+  it("rejects a historical baseline outside PostgreSQL bigint before password or database access", async () => {
+    const prisma = { $transaction: jest.fn() };
+    const authForTest = { confirmPassword: jest.fn() };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      authForTest as never
+    );
+
+    await expect(service.confirmChangeBaseline("project-1", "takeover-1", "director-1", {
+      originalSignedAmountCents: "9223372036854775808",
+      preTakeoverPositiveIncreaseCents: "0",
+      currentPassword: "current password"
+    })).rejects.toThrow("原始签约含税金额必须是大于等于 0 的整数分值");
+    expect(authForTest.confirmPassword).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("exposes baseline status and nullable facts in the takeover read model", async () => {
+    const prisma = {
+      contractTakeover: { findMany: jest.fn().mockResolvedValue([
+        takeoverRecord({ takeoverStatus: "confirmed" })
+      ]) },
+      contract: { findMany: jest.fn().mockResolvedValue([{
+        id: "contract-1", code: "HT-HIS-001", temporaryCode: null,
+        name: "Historical contract", counterparty: "Supplier"
+      }]) },
+      contractVersion: { findMany: jest.fn().mockResolvedValue([{
+        id: "contract-version-1",
+        amountCents: 1_200_000n,
+        originalBaseAmountCents: 1_000_000n,
+        cumulativeIncreaseCents: 200_000n
+      }]) }
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const [row] = await service.list("project-1");
+
+    expect(row).toMatchObject({
+      changeBaselineConfirmed: true,
+      originalBaseAmountCents: "1000000",
+      preTakeoverPositiveIncreaseCents: "200000"
+    });
+  });
 });

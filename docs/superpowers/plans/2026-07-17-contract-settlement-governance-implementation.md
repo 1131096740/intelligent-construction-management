@@ -1257,7 +1257,7 @@ git commit -m "feat: 完善合同签署归档详情"
 
 ### Task 14: 统一合同变更和累计增项 10% 硬门禁
 
-> **执行校正（2026-07-17 金额与历史审计）**：Task 14 只约束新提交/重新提交，不终止旧在途实例；旧实例终止归 Task 22 manifest 工具。累计正增项必须从同一合同曾生效的 change/supplement 版本事实重算，减项永不返还额度。阻断审计不能写在随后抛错回滚的同一事务里。历史接管当前只保存接管时合同金额，无法证明最初签约额和接管前正增项；Task 14 编码前必须由用户在“接管金额作为系统起算基线”与“新增历史基线补录事实并待补全”之间确认，禁止静默猜测。
+> **执行校正（2026-07-18，用户已确认历史基线方案）**：Task 14 只约束新提交/重新提交，不终止旧在途实例；旧实例终止归 Task 22 manifest 工具。累计正增项必须从同一合同曾生效的 change/supplement 版本事实重算，减项永不返还额度。阻断审计不能写在随后抛错回滚的同一事务里。历史接管不得把接管时金额倒推为原始签约额：复用历史接管根 `ContractVersion.originalBaseAmountCents` 保存原始签约含税金额、`cumulativeIncreaseCents` 保存接管前累计正增项；两项由合同部主管在接管确认后通过密码敏感动作一次性同时确认，确认后 CAS 冻结并写 AuditLog。缺失基线只阻断未来合同变更，不阻断接管确认、既有结算或付款。该方案复用既有可空列，不新增迁移，Task 16 的 M56 编号保持不变。
 
 **Files:**
 - Create: `services/api/src/contract/contract-change-limit-policy.ts`
@@ -1272,6 +1272,13 @@ git commit -m "feat: 完善合同签署归档详情"
 - Modify: `services/api/src/contract/contract-read.service.spec.ts`
 - Modify: `services/api/src/contract/dto/create-contract-change-draft.dto.ts`
 - Modify: `services/api/src/contract/contract.controller.spec.ts`
+- Modify: `services/api/src/contract-takeover/contract-takeover.service.ts`
+- Modify: `services/api/src/contract-takeover/contract-takeover.service.spec.ts`
+- Modify: `services/api/src/contract-takeover/contract-takeover.controller.ts`
+- Modify: `services/api/src/contract-takeover/contract-takeover.controller.spec.ts`
+- Create: `services/api/src/contract-takeover/dto/confirm-contract-change-baseline.dto.ts`
+- Modify: `services/api/src/contract-workbench/contract-workbench.service.ts`
+- Modify: `services/api/src/contract-workbench/contract-workbench.service.spec.ts`
 - Modify: `apps/web-admin/src/api/core-flow-read.api.ts`
 - Modify: `apps/web-admin/src/api/core-flow-read.api.test.ts`
 - Modify: `apps/web-admin/src/pages/contracts/ContractDetailPage.vue`
@@ -1279,25 +1286,30 @@ git commit -m "feat: 完善合同签署归档详情"
 - Modify: `apps/web-admin/src/pages/contracts/contract-change.state.ts`
 - Modify: `apps/web-admin/src/pages/contracts/contract-change.state.test.ts`
 - Modify: `apps/web-admin/src/pages/contracts/contract-change.structure.test.ts`
+- Modify: `apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue`
+- Modify: `apps/web-admin/src/pages/contracts/contract-takeover.config.ts`
+- Modify: `apps/web-admin/src/pages/contracts/contract-takeover.config.test.ts`
+- Modify: `apps/web-admin/src/pages/settings/approval-flow-readonly.config.ts`
+- Modify: `apps/web-admin/src/pages/settings/approval-flow-readonly.config.test.ts`
 - Modify: `apps/web-admin/e2e/contract-change.e2e.ts`
 
-- [ ] **Step 1: 写边界和历史兼容失败测试**
+- [x] **Step 1: 写边界和历史兼容失败测试**
 
 ```ts
 expect(evaluateContractIncreaseLimit({ originalAmountCents: 1_000_00n, historicalPositiveIncreaseCents: 100_00n, proposedChangeCents: 0n }).allowed).toBe(true);
 expect(evaluateContractIncreaseLimit({ originalAmountCents: 1_000_00n, historicalPositiveIncreaseCents: 100_00n, proposedChangeCents: 1n }).allowed).toBe(false);
 expect(evaluateContractIncreaseLimit({ originalAmountCents: 1_000_00n, historicalPositiveIncreaseCents: 100_00n, proposedChangeCents: -50_00n }).positiveIncreaseAfterChangeCents).toBe(100_00n);
 expect(evaluateContractIncreaseLimit({ originalAmountCents: 1_000_00n, historicalPositiveIncreaseCents: 80_00n, proposedChangeCents: -50_00n }).positiveIncreaseAfterChangeCents).toBe(80_00n);
-expect(readHistoricalChangeRoute(completedLegacyInstance)).toEqual(completedLegacyInstance.frozenNodes);
+expect(readHistoricalChangeRoute(approvedLegacyInstance)).toEqual(approvedLegacyInstance.frozenNodes);
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-change-limit-policy.spec.ts src/contract/contract-change-read-model.spec.ts src/contract/contract.service.spec.ts && pnpm --filter @jiangkong/web-admin test -- src/pages/contracts/contract-change.state.test.ts`
 
 Expected: FAIL。
 
-- [ ] **Step 3: 实现整数门禁和事务重算**
+- [x] **Step 3: 实现整数门禁和事务重算**
 
 ```ts
 export function exceedsTenPercent(original: bigint, historicalPositive: bigint, proposed: bigint) {
@@ -1311,26 +1323,30 @@ export function exceedsTenPercent(original: bigint, historicalPositive: bigint, 
 
 阻断结果使用 tagged denial：锁内重算后写脱敏 AuditLog 并正常提交审计事务，事务外再抛业务错误；测试必须重新查询证明审计持久，不能只断言回滚事务中的 mock 调用。Task 14 不终止旧实例、不失效旧文件；这些只由 Task 22 受控过渡工具处理。
 
-- [ ] **Step 4: 统一新路线、保留历史实例**
+历史接管根版本以 `originalBaseAmountCents !== null` 作为两项历史基线已经同时确认的完整标记。新增 `POST /projects/:projectId/contract-takeovers/:takeoverId/change-baseline-confirmation`：仅合同部主管可执行，DTO 接收两个规范分值和当前密码；事务按 `Contract → 历史根 ContractVersion → ContractTakeover` 锁定，只允许已确认的 `historical_takeover` 根版本且 `originalBaseAmountCents IS NULL`，使用 `updateMany` CAS 保证只能成功一次。除 `framework + unlimited` 可接受原始金额为 0 外，原始金额必须大于 0；累计正增项必须大于等于 0。成功写 `contract_takeover.change_baseline.confirm` 审计，重试或覆盖均拒绝。历史基线缺失时，接管确认、结算、付款保持不变；仅变更 eligibility/create fail closed 并提示先补录。
 
-新变更固定“合同部主管（主管发起跳过）→ 项目经理 → 财务主管 → 董事长/总经理或签”，复用 Task 8 的 transaction-bound 候选冻结服务，排除申请人并缺员 fail closed。提交前逐字段比较 candidate 与直接 base 的 M53 五主体快照，历史 null 保持 null。读模型批量读取每个历史版本已完成 ApprovalInstance 的 frozenNodes，不按新策略重算旧名称或路线；旧“增强”只在旧冻结实例可证明时显示“增强合同变更（历史）”，找不到冻结实例显示“历史路线未冻结”，不得伪造 schema 不存在的 `major` 类型或产生 N+1。
+- [x] **Step 4: 统一新路线、保留历史实例**
 
-- [ ] **Step 5: Web 删除新流程增强文案**
+新变更固定“合同部主管（主管发起跳过）→ 项目经理 → 财务主管 → 董事长/总经理或签”，复用 Task 8 的 transaction-bound 候选冻结服务，排除申请人并缺员 fail closed。提交前逐字段比较 candidate 与直接 base 的 M53 五主体快照，历史 null 保持 null。读模型一次批量读取 `flowType=contract.approve` 的 `approved/in_progress` ApprovalInstance：`in_approval` 版本只信当前 `in_progress` 的 frozenNodes，其他状态只信 `approved` 的历史冻结事实，按业务版本映射最新可用路线，不按新策略重算旧名称或路线；旧“增强”只在旧冻结实例可证明时显示“增强合同变更（历史）”，找不到冻结实例显示“历史路线未冻结”，不得伪造 schema 不存在的 `major` 类型或产生 N+1。
+
+- [x] **Step 5: Web 删除新流程增强文案**
 
 新建只有“合同变更”；后端 DTO/服务忽略或拒绝客户端创建 `supplement`，历史读取仍兼容既有 supplement。详情下拉、API 联合类型和工作台“补充协议/增强”新建文案一并移除；历史记录仍显示可证明的旧标签。公司主体字段在变更草稿中只读，换主体提示新签合同。
 
-- [ ] **Step 6: 运行定向测试**
+- [x] **Step 6: 运行定向测试**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-change-limit-policy.spec.ts src/contract/contract-change-policy.spec.ts src/contract/contract-change-read-model.spec.ts src/contract/contract-approval-route.service.spec.ts src/contract/contract.service.spec.ts src/contract/contract-read.service.spec.ts src/contract/contract.controller.spec.ts && pnpm --filter @jiangkong/web-admin test -- src/api/core-flow-read.api.test.ts src/pages/contracts/contract-change.state.test.ts src/pages/contracts/contract-change.structure.test.ts && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint && pnpm --filter @jiangkong/api check:business-errors && pnpm --filter @jiangkong/web-admin typecheck && pnpm --filter @jiangkong/web-admin lint && pnpm --filter @jiangkong/web-admin check:ui`
 
 Expected: PASS。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add services/api/src/contract apps/web-admin/src/api/core-flow-read.api* apps/web-admin/src/pages/contracts/ContractDetailPage.vue apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue apps/web-admin/src/pages/contracts/contract-change* apps/web-admin/e2e/contract-change.e2e.ts
 git commit -m "feat: 统一合同变更与增项硬门禁"
 ```
+
+> Task 14 已于 2026-07-18 按上述边界完成实现、验证与独立双复审；真实 PostgreSQL 条件测试已落库，但本机无 `DATABASE_URL` 未执行，不作伪通过记录。
 
 ### Task 15: 合同金额优先的结算占额门禁和通用合同禁建结算
 

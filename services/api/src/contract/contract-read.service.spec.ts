@@ -584,16 +584,45 @@ describe("ContractReadService", () => {
         })
       },
       contractVersion: {
-        findMany: jest.fn().mockResolvedValue([{
-          id: "contract-version-2",
-          versionNo: 2,
-          status: "effective",
-          amountCents: 98650000n,
-          amountLimitType: "capped",
-          pricingNature: "fixed_total",
-          invoiceType: "vat_special",
-          defaultTaxRatePercent: { toString: () => "13" }
-        }])
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-version-2",
+            contractId: "contract-1",
+            versionNo: 2,
+            status: "effective",
+            changeType: "change",
+            baseVersionId: "contract-version-1",
+            supersedesVersionId: "contract-version-1",
+            changeReason: "历史增项",
+            changeDirection: "increase",
+            changeAmountCents: 8650000n,
+            amountCents: 98650000n,
+            amountLimitType: "capped",
+            originalBaseAmountCents: 90000000n,
+            cumulativeIncreaseCents: 8650000n,
+            cumulativeDecreaseCents: 0n,
+            pricingNature: "fixed_total",
+            invoiceType: "vat_special",
+            defaultTaxRatePercent: { toString: () => "13" }
+          },
+          {
+            id: "contract-version-1",
+            contractId: "contract-1",
+            versionNo: 1,
+            status: "superseded",
+            changeType: "original",
+            baseVersionId: null,
+            supersedesVersionId: null,
+            changeReason: null,
+            changeDirection: null,
+            changeAmountCents: null,
+            amountCents: 90000000n,
+            amountLimitType: "capped",
+            originalBaseAmountCents: null,
+            cumulativeIncreaseCents: 0n,
+            cumulativeDecreaseCents: 0n
+          }
+        ])
       },
       paymentTermsVersion: {
         findFirst: jest.fn().mockResolvedValue({
@@ -698,6 +727,10 @@ describe("ContractReadService", () => {
       value: "增值税专用发票"
     });
     expect(detail.baseInfo).toContainEqual({ label: "合同税率", value: "13%" });
+    expect(detail.changeVersions?.[0]).toMatchObject({
+      approvalRoute: [],
+      approvalRouteLabel: "历史路线未冻结"
+    });
     expect(detail.paymentTermStages[0]).toMatchObject({
       id: "stage-progress",
       version: "v2",
@@ -747,6 +780,87 @@ describe("ContractReadService", () => {
       "/archives",
       "/audit"
     ]);
+  });
+
+  it("shows the frozen in-progress change route after a contract director skips self-review", async () => {
+    const changeVersion = {
+      id: "contract-version-2",
+      contractId: "contract-1",
+      versionNo: 2,
+      status: "in_approval",
+      changeType: "change",
+      baseVersionId: "contract-version-1",
+      supersedesVersionId: null,
+      changeReason: "调整工程量",
+      changeDirection: "increase",
+      changeAmountCents: 1000000n,
+      amountCents: 91000000n,
+      amountLimitType: "capped",
+      originalBaseAmountCents: 90000000n,
+      cumulativeIncreaseCents: 1000000n,
+      cumulativeDecreaseCents: 0n
+    };
+    const originalVersion = {
+      id: "contract-version-1",
+      contractId: "contract-1",
+      versionNo: 1,
+      status: "effective",
+      changeType: "original",
+      baseVersionId: null,
+      supersedesVersionId: null,
+      changeReason: null,
+      changeDirection: null,
+      changeAmountCents: null,
+      amountCents: 90000000n,
+      amountLimitType: "capped",
+      originalBaseAmountCents: null,
+      cumulativeIncreaseCents: 0n,
+      cumulativeDecreaseCents: 0n
+    };
+    const prisma = {
+      contract: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          code: "HT-2026-010",
+          name: "导演发起变更",
+          counterparty: "乙方公司"
+        })
+      },
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "项目一" }) },
+      contractVersion: { findMany: jest.fn().mockResolvedValue([changeVersion, originalVersion]) },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "terms-2", versionNo: 2, status: "draft" })
+      },
+      paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentExecution: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([{
+          businessId: changeVersion.id,
+          status: "in_progress",
+          frozenNodes: [
+            { roleKeys: ["project_manager"], candidateUserIds: ["manager-1"] },
+            { roleKeys: ["finance_director"], candidateUserIds: ["finance-1"] },
+            { roleKeys: ["chairman", "general_manager"], candidateUserIds: ["chairman-1"] }
+          ]
+        }])
+      }
+    };
+    const service = new ContractReadService(prisma as never);
+
+    const detail = await service.getDetail("HT-2026-010");
+
+    expect(prisma.approvalInstance.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ status: { in: ["approved", "in_progress"] } }),
+      select: { businessId: true, frozenNodes: true, status: true }
+    }));
+    expect(detail.changeVersions?.[0]).toMatchObject({
+      approvalRouteLabel: "合同变更",
+      approvalRoute: ["project_manager", "finance_director", "chairman_or_general_manager"]
+    });
   });
 
   it("exposes enabled archive confirmation action for contract directors", async () => {
