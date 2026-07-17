@@ -50,6 +50,7 @@ export interface ContractDocumentInputSnapshot {
 
 const ACTIVE_DOCUMENT_STATUSES = ["queued", "processing", "success"];
 const EDITABLE_VERSION_STATUSES = ["draft", "approval_rejected"];
+const COMPANY_ENTITY_DRIFT = Symbol("company-entity-drift");
 const DOCX_MIME =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const BASE_REQUIRED_PLACEHOLDERS = [
@@ -85,14 +86,17 @@ export class ContractDocumentService {
     const input = this.parseQueueInput(rawInput);
     let contestedKey: string | undefined;
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        const { version, contract } = await this.loadOwnedVersion(
+      const result = await this.prisma.$transaction(async (tx) => {
+        const { version, contract } = await this.loadOwnedVersionForUpdate(
           tx,
           contractVersionId,
           actorUserId
         );
         if (!EDITABLE_VERSION_STATUSES.includes(version.status)) {
           throw new BadRequestException("合同草稿当前不可编辑，不能生成或修订合同文档");
+        }
+        if (await this.markOriginalDraftCompanyDrift(tx, version)) {
+          return COMPANY_ENTITY_DRIFT;
         }
         await this.markOlderSuccessStale(tx, version.id, version.draftRevision);
 
@@ -205,6 +209,8 @@ export class ContractDocumentService {
         });
         return document;
       });
+      if (result === COMPANY_ENTITY_DRIFT) throw this.companyEntityDriftError();
+      return result;
     } catch (error) {
       if (!contestedKey || !this.isUniqueConflict(error)) throw error;
       const winner = await this.prisma.contractGeneratedDocument.findUnique({
@@ -218,8 +224,13 @@ export class ContractDocumentService {
 
   async list(contractVersionId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
-      const { version } = await this.loadOwnedVersion(tx, contractVersionId, actorUserId);
+      const { version } = await this.loadOwnedVersionForUpdate(
+        tx,
+        contractVersionId,
+        actorUserId
+      );
       await this.markOlderSuccessStale(tx, version.id, version.draftRevision);
+      await this.markOriginalDraftCompanyDrift(tx, version);
       return tx.contractGeneratedDocument.findMany({
         where: { contractVersionId },
         orderBy: { createdAt: "desc" }
@@ -233,14 +244,17 @@ export class ContractDocumentService {
     rawInput: UploadOfflineRevisionInput
   ) {
     const input = this.parseOfflineRevisionInput(rawInput);
-    return this.prisma.$transaction(async (tx) => {
-      const { version, contract } = await this.loadOwnedVersion(
+    const result = await this.prisma.$transaction(async (tx) => {
+      const { version, contract } = await this.loadOwnedVersionForUpdate(
         tx,
         contractVersionId,
         actorUserId
       );
       if (!EDITABLE_VERSION_STATUSES.includes(version.status)) {
         throw new BadRequestException("合同草稿当前不可编辑，不能生成或修订合同文档");
+      }
+      if (await this.markOriginalDraftCompanyDrift(tx, version)) {
+        return COMPANY_ENTITY_DRIFT;
       }
       const file = await this.files.assertCanDownloadFile(
         tx,
@@ -338,6 +352,8 @@ export class ContractDocumentService {
       });
       return revision;
     });
+    if (result === COMPANY_ENTITY_DRIFT) throw this.companyEntityDriftError();
+    return result;
   }
 
   async listOfflineRevisions(contractVersionId: string, actorUserId: string) {
@@ -541,6 +557,76 @@ export class ContractDocumentService {
     return { version, contract };
   }
 
+  private async loadOwnedVersionForUpdate(
+    tx: Prisma.TransactionClient,
+    contractVersionId: string,
+    actorUserId: string
+  ) {
+    await tx.$queryRaw(Prisma.sql`
+      SELECT "id"
+      FROM "ContractVersion"
+      WHERE "id" = ${contractVersionId}
+      FOR UPDATE
+    `);
+    return this.loadOwnedVersion(tx, contractVersionId, actorUserId);
+  }
+
+  private async markOriginalDraftCompanyDrift(
+    tx: Prisma.TransactionClient,
+    version: {
+      id: string;
+      status: string;
+      changeType: string;
+      draftData: Prisma.JsonValue;
+    }
+  ) {
+    if (
+      !EDITABLE_VERSION_STATUSES.includes(version.status) ||
+      version.changeType === "change" ||
+      version.changeType === "supplement"
+    ) {
+      return false;
+    }
+    const draft = this.isObject(version.draftData) ? version.draftData : {};
+    const selection = this.isObject(draft.companyEntitySelection)
+      ? draft.companyEntitySelection
+      : {};
+    const companyEntityId = typeof selection.id === "string" ? selection.id : null;
+    const versionNo = typeof selection.versionNo === "number" &&
+      Number.isInteger(selection.versionNo)
+      ? selection.versionNo
+      : null;
+    if (!companyEntityId || versionNo === null) return false;
+
+    await tx.$queryRaw(Prisma.sql`
+      SELECT "id"
+      FROM "CompanyEntity"
+      WHERE "id" = ${companyEntityId}
+      FOR UPDATE
+    `);
+    const entity = await tx.companyEntity.findUnique({ where: { id: companyEntityId } });
+    const drifted = !entity ||
+      !entity.isActive ||
+      entity.dataStatus !== "complete" ||
+      entity.currentVersionNo !== versionNo;
+    if (!drifted) return false;
+
+    await tx.contractGeneratedDocument.updateMany({
+      where: {
+        contractVersionId: version.id,
+        status: { in: ACTIVE_DOCUMENT_STATUSES }
+      },
+      data: { status: "stale" }
+    });
+    return true;
+  }
+
+  private companyEntityDriftError() {
+    return new BadRequestException(
+      "所选我方公司主体资料已更新或不再可用，请回到基本信息同步后重新生成预览"
+    );
+  }
+
   private markOlderSuccessStale(
     tx: Prisma.TransactionClient,
     contractVersionId: string,
@@ -691,8 +777,15 @@ export class ContractDocumentService {
     const structuredDraftCompany = typeof draftSelection.name === "string"
       ? draftSelection
       : null;
-    const authoritativeCompany = isSubmitted ? frozenCompany : structuredDraftCompany;
-    const blocksLegacyPartyA = Boolean(frozenCompany || structuredDraftCompany);
+    const authoritativeCompany = isSubmitted
+      ? frozenCompany
+      : structuredDraftCompany ?? frozenCompany;
+    if (isSubmitted && !frozenCompany && structuredDraftCompany) {
+      throw new BadRequestException(
+        "合同已提交但我方主体冻结快照缺失，请联系合同部核对后重试"
+      );
+    }
+    const blocksLegacyPartyA = Boolean(authoritativeCompany);
     if (authoritativeCompany) {
       values["party.party_a"] = [authoritativeCompany];
       values["party.owner"] = values["party.party_a"];

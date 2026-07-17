@@ -1058,6 +1058,158 @@ describe("ContractService", () => {
     ]);
   });
 
+  it("creates a governed supplement from complete frozen company facts without legacy party_a", async () => {
+    const templateSnapshot = {
+      fieldSchema: [],
+      billSchema: [],
+      clauseSchema: [],
+      attachmentSchema: [],
+      validationSchema: []
+    };
+    const effective = {
+      id: "version-1",
+      contractId: "contract-1",
+      versionNo: 1,
+      status: "effective",
+      changeType: "original",
+      amountCents: 1_000_000n,
+      amountLimitType: "capped",
+      originalBaseAmountCents: null,
+      cumulativeIncreaseCents: 0n,
+      cumulativeDecreaseCents: 0n,
+      businessTemplateVersionId: "template-1",
+      layoutTemplateVersionId: null,
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      amountAdjustmentReason: null,
+      invoiceType: "vat_special",
+      taxMode: "single_rate",
+      defaultTaxRatePercent: null,
+      taxFactStatus: "frozen",
+      taxFactSource: "contract_document",
+      taxFactExplanation: null,
+      taxFactEvidenceFileId: null,
+      taxFactRevision: 1,
+      companyEntityIdSnapshot: "entity-1",
+      companyEntityVersionId: "entity-version-3",
+      companyEntityNameSnapshot: "我方建设公司",
+      companyEntityCreditCodeSnapshot: "91350211M000100Y46",
+      companyEntityRegisteredAddressSnapshot: null,
+      draftData: {},
+      templateSnapshot,
+      clauseSnapshot: []
+    };
+    const contract = {
+      id: "contract-1",
+      ownerUserId: "owner-1",
+      voidedAt: null,
+      code: "HT-001",
+      source: "system",
+      contractTypeKey: "material_purchase",
+      companyEntityName: "我方建设公司",
+      counterparty: "乙方公司"
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([contract]),
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ id: "version-1", contractId: "contract-1" }),
+        findFirst: jest.fn()
+          .mockResolvedValueOnce(effective)
+          .mockResolvedValueOnce({ versionNo: 1 })
+          .mockResolvedValueOnce(null),
+        create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+          id: "version-2",
+          ...data
+        }))
+      },
+      contractPartySnapshot: {
+        findMany: jest.fn().mockResolvedValue([{
+          roleKey: "party_b",
+          displayOrder: 1,
+          businessPartyVersionId: "party-b-version-1",
+          snapshot: { name: "乙方公司", attachments: [] }
+        }]),
+        createMany: jest.fn()
+      },
+      contractBill: { findMany: jest.fn().mockResolvedValue([]), create: jest.fn() },
+      contractBillRow: { findMany: jest.fn().mockResolvedValue([]), createMany: jest.fn() },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-1",
+          originalText: "原付款条款"
+        }),
+        create: jest.fn().mockResolvedValue({ id: "terms-2" })
+      },
+      paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]), createMany: jest.fn() },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await expect(service.createChangeDraft("version-1", {
+      changeType: "supplement",
+      changeReason: "补充工程量",
+      changeDirection: "increase",
+      changeAmountCents: "100000"
+    }, "owner-1")).resolves.toMatchObject({ id: "version-2" });
+
+    expect(tx.contractVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        companyEntityIdSnapshot: "entity-1",
+        companyEntityVersionId: "entity-version-3",
+        companyEntityNameSnapshot: "我方建设公司",
+        companyEntityCreditCodeSnapshot: "91350211M000100Y46",
+        companyEntityRegisteredAddressSnapshot: null
+      })
+    });
+  });
+
+  it("still blocks governed change drafts that lack both frozen company facts and legacy party_a", () => {
+    const service = new ContractService({} as PrismaService, audit as never) as unknown as {
+      prepareChangeDraftSource: (input: Record<string, unknown>) => {
+        ok: boolean;
+        reason?: string;
+      };
+    };
+
+    const result = service.prepareChangeDraftSource({
+      contract: {
+        source: "system",
+        contractTypeKey: "material_purchase",
+        companyEntityName: "我方建设公司",
+        counterparty: "乙方公司"
+      },
+      latest: {
+        templateSnapshot: {
+          fieldSchema: [],
+          billSchema: [],
+          clauseSchema: [],
+          attachmentSchema: [],
+          validationSchema: []
+        },
+        companyEntityIdSnapshot: null,
+        companyEntityVersionId: null,
+        companyEntityNameSnapshot: null,
+        companyEntityCreditCodeSnapshot: null
+      },
+      parties: [{
+        roleKey: "party_b",
+        displayOrder: 1,
+        businessPartyVersionId: "party-b-version-1",
+        snapshot: { name: "乙方公司", attachments: [] }
+      }],
+      bills: [],
+      sourceTerms: { id: "terms-1" }
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "当前生效合同缺少完整签约主体快照，不能发起合同变更"
+    });
+  });
+
   it("blocks approval submission when downstream contracts exceed effective owner contract quota before numbering", async () => {
     const version = {
       id: "contract-version-1",

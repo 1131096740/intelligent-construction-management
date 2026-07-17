@@ -17,6 +17,8 @@ import {
   saveContractDraft
 } from "../../../api/contract-workbench.api";
 import {
+  companyEntitySelectionUnavailable,
+  companyEntitySyncPatch,
   hasCompanyEntityVersionDrift,
   useContractDraft
 } from "./use-contract-draft";
@@ -110,6 +112,27 @@ afterEach(() => {
 });
 
 describe("useContractDraft", () => {
+  it("does not report an unavailable selection while candidate loading failed", () => {
+    expect(companyEntitySelectionUnavailable({
+      loaded: true,
+      loadError: "加载失败",
+      selectedId: "entity-1",
+      hasCandidate: false
+    })).toBe(false);
+    expect(companyEntitySelectionUnavailable({
+      loaded: true,
+      loadError: "",
+      selectedId: "entity-1",
+      hasCandidate: false
+    })).toBe(true);
+  });
+
+  it("builds a sync patch from the current candidate without derived facts", () => {
+    expect(companyEntitySyncPatch("entity-2")).toEqual({
+      companyEntityId: "entity-2",
+      companyEntitySelection: null
+    });
+  });
   it("detects company entity version drift only for the same selected entity", () => {
     const selection = {
       id: "entity-1",

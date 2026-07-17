@@ -292,7 +292,7 @@ export class ContractWorkbenchService {
   ) {
     const input = this.parseSaveInput(rawInput);
     return this.prisma.$transaction(async (tx) => {
-      const { version } = await this.loadOwnedEditableVersion(
+      const { version } = await this.lockAndReloadOwnedEditableVersion(
         tx,
         contractVersionId,
         actorUserId
@@ -438,7 +438,7 @@ export class ContractWorkbenchService {
         tx,
         version.contractId,
         actorUserId,
-        companySelection
+        companySelection ?? undefined
       );
 
       await this.audit.record(tx, {
@@ -477,7 +477,7 @@ export class ContractWorkbenchService {
   ) {
     const input = this.parseCheckpointInput(rawInput);
     return this.runSerializableWithRetry(async (tx) => {
-      const { version } = await this.loadOwnedEditableVersion(
+      const { version } = await this.lockAndReloadOwnedEditableVersion(
         tx,
         contractVersionId,
         actorUserId
@@ -539,7 +539,7 @@ export class ContractWorkbenchService {
     actorUserId: string
   ) {
     return this.prisma.$transaction(async (tx) => {
-      const { version } = await this.loadOwnedEditableVersion(
+      const { version } = await this.lockAndReloadOwnedEditableVersion(
         tx,
         contractVersionId,
         actorUserId
@@ -552,6 +552,20 @@ export class ContractWorkbenchService {
       }
       const snapshot = this.parseCheckpoint(checkpoint.snapshot);
       const checkpointCompanySelection = this.companySelectionFromDraft(snapshot.draftData);
+      const restoredCompanySelection = checkpointCompanySelection
+        ? await this.lockAndLoadCompanyEntitySelection(tx, checkpointCompanySelection.id)
+        : null;
+      if (
+        checkpointCompanySelection &&
+        (
+          restoredCompanySelection?.versionId !== checkpointCompanySelection.versionId ||
+          restoredCompanySelection.versionNo !== checkpointCompanySelection.versionNo
+        )
+      ) {
+        throw new BadRequestException(
+          "保存点中的我方公司主体版本已变更，不能恢复，请重新选择并保存"
+        );
+      }
       const updated = await tx.contractVersion.updateMany({
         where: {
           id: contractVersionId,
@@ -593,7 +607,7 @@ export class ContractWorkbenchService {
         tx,
         version.contractId,
         actorUserId,
-        checkpointCompanySelection
+        restoredCompanySelection
       );
       await this.replaceBillsFromSnapshot(tx, contractVersionId, snapshot.bills);
       await this.audit.record(tx, {
@@ -855,7 +869,7 @@ export class ContractWorkbenchService {
         tx,
         contract.id,
         actorUserId,
-        this.companySelectionFromDraft(nextData)
+        this.companySelectionFromDraft(nextData) ?? undefined
       );
 
       const template = await tx.contractBusinessTemplate.findUnique({
@@ -944,6 +958,20 @@ export class ContractWorkbenchService {
     return { version, contract };
   }
 
+  private async lockAndReloadOwnedEditableVersion(
+    tx: Prisma.TransactionClient,
+    contractVersionId: string,
+    actorUserId: string
+  ) {
+    await tx.$queryRaw(Prisma.sql`
+      SELECT "id"
+      FROM "ContractVersion"
+      WHERE "id" = ${contractVersionId}
+      FOR UPDATE
+    `);
+    return this.loadOwnedEditableVersion(tx, contractVersionId, actorUserId);
+  }
+
   private async loadOwnedContract(
     tx: Prisma.TransactionClient,
     contractId: string,
@@ -1008,12 +1036,17 @@ export class ContractWorkbenchService {
       },
       data: {
         ownerUserId: actorUserId,
-        ...(companySelection
-          ? {
-              companyEntityId: companySelection.id,
-              companyEntityName: companySelection.name
-            }
-          : {})
+        ...(companySelection === undefined
+          ? {}
+          : companySelection
+            ? {
+                companyEntityId: companySelection.id,
+                companyEntityName: companySelection.name
+              }
+            : {
+                companyEntityId: null,
+                companyEntityName: null
+              })
       }
     });
     if (parent.count !== 1) {

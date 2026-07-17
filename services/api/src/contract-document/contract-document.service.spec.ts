@@ -49,6 +49,7 @@ describe("ContractDocumentService", () => {
 
   function makeTx(overrides: Record<string, unknown> = {}) {
     return {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "version-1" }]),
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "version-1",
@@ -77,6 +78,14 @@ describe("ContractDocumentService", () => {
           code: null
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "company-1",
+          isActive: true,
+          dataStatus: "complete",
+          currentVersionNo: 1
+        })
       },
       contractLayoutTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -462,6 +471,14 @@ describe("ContractDocumentService", () => {
 
   it("uses structured draft company facts before legacy party_a", async () => {
     const tx = makeTx({
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-1",
+          isActive: true,
+          dataStatus: "complete",
+          currentVersionNo: 3
+        })
+      },
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "version-1",
@@ -505,6 +522,92 @@ describe("ContractDocumentService", () => {
     expect(values["party.owner.name"]).not.toBe("建工智管建设有限公司");
   });
 
+  it("blocks document queue and stales active documents when the selected company version drifts", async () => {
+    const tx = makeTx({
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-1",
+          isActive: true,
+          dataStatus: "complete",
+          currentVersionNo: 4
+        })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "draft",
+          changeType: "original",
+          draftRevision: 7,
+          draftData: {
+            companyEntitySelection: { id: "entity-1", versionNo: 3 }
+          }
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    });
+    const { service, prisma } = makeService(tx);
+    let committed = false;
+    jest.mocked(prisma.$transaction).mockImplementation(async (callback) => {
+      const result = await callback(tx as never);
+      committed = true;
+      return result as never;
+    });
+
+    await expect(service.queue("version-1", "owner-1", {
+      layoutTemplateVersionId: "layout-1",
+      purpose: "draft"
+    })).rejects.toThrow("所选我方公司主体资料已更新或不再可用");
+
+    expect(committed).toBe(true);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
+      where: {
+        contractVersionId: "version-1",
+        status: { in: ["queued", "processing", "success"] }
+      },
+      data: { status: "stale" }
+    });
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+  });
+
+  it("marks an existing successful document stale when list detects company drift", async () => {
+    const tx = makeTx({
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-1",
+          isActive: true,
+          dataStatus: "complete",
+          currentVersionNo: 4
+        })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "draft",
+          changeType: "original",
+          draftRevision: 7,
+          draftData: {
+            companyEntitySelection: { id: "entity-1", versionNo: 3 }
+          }
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    });
+    const { service } = makeService(tx);
+
+    await service.list("version-1", "owner-1");
+
+    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
+      where: {
+        contractVersionId: "version-1",
+        status: { in: ["queued", "processing", "success"] }
+      },
+      data: { status: "stale" }
+    });
+  });
+
   it("uses only the frozen company snapshot after submission and keeps legacy fallback historical", () => {
     const tx = makeTx();
     const { service } = makeService(tx);
@@ -545,6 +648,13 @@ describe("ContractDocumentService", () => {
     const frozen = renderer.renderValues(contract, baseVersion, parties, [], "draft");
     expect(frozen["party.owner.name"]).toBe("冻结名称");
 
+    const frozenDraft = renderer.renderValues(contract, {
+      ...baseVersion,
+      status: "draft",
+      draftData: {}
+    }, parties, [], "draft");
+    expect(frozenDraft["party.owner.name"]).toBe("冻结名称");
+
     const historical = renderer.renderValues(contract, {
       ...baseVersion,
       draftData: {},
@@ -555,6 +665,15 @@ describe("ContractDocumentService", () => {
       companyEntityRegisteredAddressSnapshot: null
     }, parties, [], "draft");
     expect(historical["party.owner.name"]).toBe("历史甲方");
+
+    expect(() => renderer.renderValues(contract, {
+      ...baseVersion,
+      companyEntityIdSnapshot: null,
+      companyEntityVersionId: null,
+      companyEntityNameSnapshot: null,
+      companyEntityCreditCodeSnapshot: null,
+      companyEntityRegisteredAddressSnapshot: null
+    }, parties, [], "draft")).toThrow("合同已提交但我方主体冻结快照缺失");
   });
 
   it("renders historical unknown tax and bill facts as dashes without recalculating amounts", async () => {

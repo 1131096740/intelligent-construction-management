@@ -47,6 +47,7 @@ describe("ContractWorkbenchService", () => {
 
   function ownedVersionTx(overrides: Record<string, unknown> = {}) {
     return {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "version-1" }]),
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "version-1",
@@ -1449,7 +1450,25 @@ describe("ContractWorkbenchService", () => {
       deleteMany: jest.fn()
     };
     const tx = ownedVersionTx({
-      contractDraftCheckpoint: checkpoints
+      contractDraftCheckpoint: checkpoints,
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-restored",
+          isActive: true,
+          dataStatus: "complete",
+          currentVersionNo: 2
+        })
+      },
+      companyEntityVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-version-restored",
+          companyEntityId: "entity-restored",
+          versionNo: 2,
+          name: "恢复的我方公司",
+          unifiedSocialCreditCode: "91350211M000100Y46",
+          registeredAddress: null
+        })
+      }
     });
     const service = makeService(tx);
 
@@ -1516,6 +1535,98 @@ describe("ContractWorkbenchService", () => {
     expect(checkpoints.update).not.toHaveBeenCalled();
     expect(checkpoints.delete).not.toHaveBeenCalled();
     expect(checkpoints.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("clears stale parent company facts when restoring an old checkpoint without selection", async () => {
+    const tx = ownedVersionTx({
+      contractDraftCheckpoint: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "legacy-checkpoint",
+          contractVersionId: "version-1",
+          snapshot: {
+            draftData: { contractName: "旧保存点" },
+            clauseSnapshot: [],
+            pricingNature: "fixed_total",
+            amountSource: "manual",
+            amountCents: "1000000",
+            amountAdjustmentReason: null,
+            layoutTemplateVersionId: null,
+            bills: []
+          }
+        })
+      }
+    });
+    const service = makeService(tx);
+
+    await service.restoreCheckpoint("version-1", "legacy-checkpoint", "owner-1");
+
+    expect(tx.contract.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: {
+        ownerUserId: "owner-1",
+        companyEntityId: null,
+        companyEntityName: null
+      }
+    }));
+  });
+
+  it.each([
+    {
+      name: "主体版本已漂移",
+      entity: { id: "entity-1", isActive: true, dataStatus: "complete", currentVersionNo: 4 },
+      version: {
+        id: "entity-version-4",
+        companyEntityId: "entity-1",
+        versionNo: 4,
+        name: "新公司名称",
+        unifiedSocialCreditCode: "91350211M000100Y46",
+        registeredAddress: null
+      },
+      message: "保存点中的我方公司主体版本已变更"
+    },
+    {
+      name: "主体已停用",
+      entity: { id: "entity-1", isActive: false, dataStatus: "complete", currentVersionNo: 3 },
+      version: null,
+      message: "所选我方公司主体已停用"
+    }
+  ])("拒绝恢复旧保存点：$name", async ({ entity, version, message }) => {
+    const tx = ownedVersionTx({
+      contractDraftCheckpoint: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "checkpoint-1",
+          contractVersionId: "version-1",
+          snapshot: {
+            draftData: {
+              companyEntitySelection: {
+                id: "entity-1",
+                versionId: "entity-version-3",
+                versionNo: 3,
+                name: "旧公司名称",
+                unifiedSocialCreditCode: "91350211M000100Y46",
+                registeredAddress: null
+              }
+            },
+            clauseSnapshot: [],
+            pricingNature: "fixed_total",
+            amountSource: "manual",
+            amountCents: "1000000",
+            amountAdjustmentReason: null,
+            layoutTemplateVersionId: null,
+            bills: []
+          }
+        })
+      },
+      companyEntity: { findUnique: jest.fn().mockResolvedValue(entity) },
+      companyEntityVersion: { findUnique: jest.fn().mockResolvedValue(version) }
+    });
+    const service = makeService(tx);
+
+    await expect(
+      service.restoreCheckpoint("version-1", "checkpoint-1", "owner-1")
+    ).rejects.toThrow(message);
+
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contract.updateMany).not.toHaveBeenCalled();
   });
 
   it("restores nullable historical bill facts without converting unknown values to zero", async () => {

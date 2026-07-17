@@ -114,8 +114,21 @@ describe("ContractDocumentProcessor", () => {
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({ id: "version-1", draftRevision: 3 })
       },
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "company-1",
+          isActive: true,
+          dataStatus: "complete",
+          currentVersionNo: 1
+        })
+      },
       $queryRaw: jest.fn().mockResolvedValue([
-        { draftRevision: 3, status: "draft" }
+        {
+          draftRevision: 3,
+          status: "draft",
+          changeType: null,
+          draftData: {}
+        }
       ]),
       auditLog: { create: jest.fn() }
     };
@@ -1067,6 +1080,54 @@ describe("ContractDocumentProcessor", () => {
       expect.objectContaining({ action: "contract.document.success" })
     );
     expect(prisma.tx.contractGeneratedDocument.findFirst).not.toHaveBeenCalled();
+    expect(files.linkFileReplacement).not.toHaveBeenCalled();
+  });
+
+  it("marks a document stale when the selected company version drifts before terminal success", async () => {
+    const prisma = makePrisma();
+    prisma.tx.$queryRaw
+      .mockResolvedValueOnce([{
+        draftRevision: 3,
+        status: "draft",
+        changeType: "original",
+        draftData: {
+          companyEntitySelection: { id: "company-1", versionNo: 1 }
+        }
+      }])
+      .mockResolvedValueOnce([{ id: "company-1" }]);
+    prisma.tx.companyEntity.findUnique.mockResolvedValue({
+      id: "company-1",
+      isActive: true,
+      dataStatus: "complete",
+      currentVersionNo: 2
+    });
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue(queuedDocument());
+    const files = generatedDocumentFiles();
+    const processor = new ContractDocumentProcessor(
+      prisma as unknown as PrismaService,
+      files as never,
+      audit as never
+    );
+
+    await processor.processNext();
+
+    expect(prisma.tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "document-1",
+        status: "processing",
+        sourceRevision: 3
+      },
+      data: {
+        status: "stale",
+        completedAt: expect.any(Date),
+        errorMessage: null
+      }
+    });
+    expect(audit.record).not.toHaveBeenCalledWith(
+      prisma.tx,
+      expect.objectContaining({ action: "contract.document.success" })
+    );
     expect(files.linkFileReplacement).not.toHaveBeenCalled();
   });
 

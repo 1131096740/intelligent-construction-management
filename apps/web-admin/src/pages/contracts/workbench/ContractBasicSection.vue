@@ -58,6 +58,21 @@
           v-if="loadError"
           theme="error"
           :message="loadError"
+        >
+          <template #operation>
+            <t-button
+              size="small"
+              variant="text"
+              @click="loadCandidates"
+            >
+              重试
+            </t-button>
+          </template>
+        </t-alert>
+        <t-alert
+          v-else-if="loaded && candidates.length === 0"
+          theme="info"
+          message="暂无可用的我方公司主体，请先到主体台账完善并启用资料。"
         />
       </label>
     </div>
@@ -71,6 +86,8 @@ import {
   type CompanyEntityModel
 } from "../../../api/company-entity.api";
 import {
+  companyEntitySelectionUnavailable,
+  companyEntitySyncPatch,
   hasCompanyEntityVersionDrift,
   type ContractDraftModel
 } from "./use-contract-draft";
@@ -98,23 +115,24 @@ const versionDrift = computed(() => hasCompanyEntityVersionDrift(
   selectedCandidate.value,
   props.model.companyEntitySelection
 ));
-const selectionUnavailable = computed(() => Boolean(
-  loaded.value && props.model.companyEntityId && !selectedCandidate.value
-));
+const selectionUnavailable = computed(() => companyEntitySelectionUnavailable({
+  loaded: loaded.value,
+  loadError: loadError.value,
+  selectedId: props.model.companyEntityId,
+  hasCandidate: Boolean(selectedCandidate.value)
+}));
 
 function selectCompany(value: string) {
-  emit("update", {
-    companyEntityId: value,
-    companyEntitySelection: null
-  });
+  emit("update", companyEntitySyncPatch(value));
 }
 
 function syncCompany() {
   if (selectedCandidate.value) selectCompany(selectedCandidate.value.id);
 }
 
-onMounted(async () => {
+async function loadCandidates() {
   loading.value = true;
+  loaded.value = false;
   loadError.value = "";
   try {
     candidates.value = await fetchActiveCompanyEntities();
@@ -126,7 +144,9 @@ onMounted(async () => {
     loaded.value = true;
     loading.value = false;
   }
-});
+}
+
+onMounted(loadCandidates);
 </script>
 
 <style scoped>
@@ -154,13 +174,13 @@ onMounted(async () => {
 }
 
 .field-label {
-  color: #767f8d;
-  font-size: 12px;
+  color: var(--jg-text-muted);
+  font-size: var(--jg-font-meta);
   font-weight: 600;
 }
 
 .field-help {
-  color: #767f8d;
-  font-size: 12px;
+  color: var(--jg-text-muted);
+  font-size: var(--jg-font-meta);
 }
 </style>

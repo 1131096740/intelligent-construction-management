@@ -89,6 +89,25 @@ export function hasCompanyEntityVersionDrift(
   );
 }
 
+export function companyEntitySelectionUnavailable(input: {
+  loaded: boolean;
+  loadError: string;
+  selectedId: string;
+  hasCandidate: boolean;
+}): boolean {
+  return input.loaded &&
+    !input.loadError &&
+    Boolean(input.selectedId) &&
+    !input.hasCandidate;
+}
+
+export function companyEntitySyncPatch(companyEntityId: string) {
+  return {
+    companyEntityId,
+    companyEntitySelection: null
+  } satisfies Partial<ContractDraftModel>;
+}
+
 export interface InitializeDraftController {
   projectId: Ref<string>;
   contractTypeKey: Ref<string>;

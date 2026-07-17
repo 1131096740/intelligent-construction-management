@@ -537,9 +537,14 @@ export class ContractDocumentProcessor
       const completedAt = new Date();
       await this.prisma.$transaction(async (tx) => {
         const [version] = await tx.$queryRaw<
-          Array<{ draftRevision: number; status: string }>
+          Array<{
+            draftRevision: number;
+            status: string;
+            changeType: string | null;
+            draftData: Prisma.JsonValue;
+          }>
         >(Prisma.sql`
-          SELECT "draftRevision", "status"
+          SELECT "draftRevision", "status", "changeType", "draftData"
           FROM "ContractVersion"
           WHERE "id" = ${job.contractVersionId}
           FOR UPDATE
@@ -558,6 +563,57 @@ export class ContractDocumentProcessor
             data: { status: "stale", completedAt, errorMessage: null }
           });
           return;
+        }
+        const draftData = version.draftData &&
+          typeof version.draftData === "object" &&
+          !Array.isArray(version.draftData)
+          ? version.draftData
+          : {};
+        const selection = "companyEntitySelection" in draftData &&
+          draftData.companyEntitySelection &&
+          typeof draftData.companyEntitySelection === "object" &&
+          !Array.isArray(draftData.companyEntitySelection)
+          ? draftData.companyEntitySelection
+          : {};
+        const companyEntityId = "id" in selection && typeof selection.id === "string"
+          ? selection.id
+          : null;
+        const companyVersionNo = "versionNo" in selection &&
+          typeof selection.versionNo === "number" &&
+          Number.isInteger(selection.versionNo)
+          ? selection.versionNo
+          : null;
+        if (
+          version.changeType !== "change" &&
+          version.changeType !== "supplement" &&
+          companyEntityId &&
+          companyVersionNo !== null
+        ) {
+          await tx.$queryRaw(Prisma.sql`
+            SELECT "id"
+            FROM "CompanyEntity"
+            WHERE "id" = ${companyEntityId}
+            FOR UPDATE
+          `);
+          const companyEntity = await tx.companyEntity.findUnique({
+            where: { id: companyEntityId }
+          });
+          if (
+            !companyEntity ||
+            !companyEntity.isActive ||
+            companyEntity.dataStatus !== "complete" ||
+            companyEntity.currentVersionNo !== companyVersionNo
+          ) {
+            await tx.contractGeneratedDocument.updateMany({
+              where: {
+                id: job.id,
+                status: "processing",
+                sourceRevision: job.sourceRevision
+              },
+              data: { status: "stale", completedAt, errorMessage: null }
+            });
+            return;
+          }
         }
         const updated = await tx.contractGeneratedDocument.updateMany({
           where: {

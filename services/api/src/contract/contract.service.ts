@@ -583,7 +583,13 @@ export class ContractService {
       companyEntityName: string | null;
       counterparty: string;
     };
-    latest: { templateSnapshot: Prisma.JsonValue };
+    latest: {
+      templateSnapshot: Prisma.JsonValue;
+      companyEntityIdSnapshot: string | null;
+      companyEntityVersionId: string | null;
+      companyEntityNameSnapshot: string | null;
+      companyEntityCreditCodeSnapshot: string | null;
+    };
     parties: Array<{
       roleKey: string;
       displayOrder: number;
@@ -639,7 +645,14 @@ export class ContractService {
       party_a: input.contract.companyEntityName?.trim() ?? "",
       party_b: input.contract.counterparty?.trim() ?? ""
     };
+    const hasCompleteFrozenCompany = [
+      input.latest.companyEntityIdSnapshot,
+      input.latest.companyEntityVersionId,
+      input.latest.companyEntityNameSnapshot,
+      input.latest.companyEntityCreditCodeSnapshot
+    ].every((value) => typeof value === "string" && value.trim().length > 0);
     for (const [roleKey, name] of Object.entries(requiredPartyNames)) {
+      if (roleKey === "party_a" && hasCompleteFrozenCompany) continue;
       if (parties.some((party) => party.roleKey === roleKey)) continue;
       if (sourceType !== "historical_takeover") {
         return {
