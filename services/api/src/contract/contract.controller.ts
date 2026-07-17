@@ -41,6 +41,7 @@ import { ContractFormalFileService } from "./contract-formal-file.service";
 import { ContractAuthorizationService } from "./contract-authorization.service";
 import { ContractSealService } from "./contract-seal.service";
 import {
+  ApproveContractSealDto,
   CompleteContractSealDto,
   ConfirmMutuallySignedContractDto,
   InvalidateContractSigningDto,
@@ -241,10 +242,11 @@ export class ContractController {
   @RequireProjectRole("contract.seal")
   approveGovernedSeal(
     @Param("contractVersionId") contractVersionId: string,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ApproveContractSealDto
   ) {
     if (!this.seals) throw new InternalServerErrorException("合同用章任务服务暂不可用，请稍后重试");
-    return this.seals.approve(contractVersionId, user.id);
+    return this.seals.approve(contractVersionId, user.id, body);
   }
 
   @Post(":contractVersionId/seal/complete")

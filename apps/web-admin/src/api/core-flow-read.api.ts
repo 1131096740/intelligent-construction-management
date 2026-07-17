@@ -1609,6 +1609,81 @@ export function approveContractSeal(contractVersionId: string) {
   return postJson<unknown>(`/contracts/${contractVersionId}/seal-approval`);
 }
 
+export interface CompleteContractSealPayload {
+  firstPartySignedOrStamped: boolean;
+  companySealCompleted: boolean;
+  crossPageSealCompleted: boolean;
+  signingDateCompleted: boolean;
+}
+
+export interface UploadMutuallySignedContractPayload extends CompleteContractSealPayload {
+  fileId: string;
+  sourceRevision: number;
+  onlyPermittedSignatureChanges: boolean;
+  documentOrderConfirmed: boolean;
+}
+
+export interface ReturnMutuallySignedContractPayload {
+  formalFileId: string;
+  reason: string;
+}
+
+export interface ConfirmMutuallySignedContractPayload extends CompleteContractSealPayload {
+  formalFileId: string;
+  onlyPermittedSignatureChanges: boolean;
+  documentOrderConfirmed: boolean;
+  confirmationPassword: string;
+}
+
+function governedContractPath(contractVersionId: string, suffix: string) {
+  return `/contracts/${encodeURIComponent(contractVersionId)}/${suffix}`;
+}
+
+export interface ApproveContractSealPayload {
+  confirmationPassword: string;
+}
+
+export function approveGovernedContractSeal(
+  contractVersionId: string,
+  body: ApproveContractSealPayload
+) {
+  return postJson<unknown>(governedContractPath(contractVersionId, "seal/approve"), body);
+}
+
+export function completeContractSeal(
+  contractVersionId: string,
+  body: CompleteContractSealPayload
+) {
+  return postJson<unknown>(governedContractPath(contractVersionId, "seal/complete"), body);
+}
+
+export function uploadMutuallySignedContract(
+  contractVersionId: string,
+  body: UploadMutuallySignedContractPayload
+) {
+  return postJson<unknown>(governedContractPath(contractVersionId, "formal-files/final"), body);
+}
+
+export function returnMutuallySignedContractForCorrection(
+  contractVersionId: string,
+  body: ReturnMutuallySignedContractPayload
+) {
+  return postJson<unknown>(
+    governedContractPath(contractVersionId, "formal-files/final/return"),
+    body
+  );
+}
+
+export function confirmMutuallySignedContract(
+  contractVersionId: string,
+  body: ConfirmMutuallySignedContractPayload
+) {
+  return postJson<unknown>(
+    governedContractPath(contractVersionId, "formal-files/final/confirmation"),
+    body
+  );
+}
+
 export function uploadSettlementArchiveFile(
   settlementId: string,
   body: UploadSettlementArchiveFilePayload

@@ -5,6 +5,7 @@ import { AuthService } from "../auth/auth.service";
 import type { PrismaService } from "../database/prisma.service";
 import { ContractFormalFileService } from "./contract-formal-file.service";
 import type {
+  ApproveContractSealDto,
   CompleteContractSealDto,
   ConfirmMutuallySignedContractDto,
   InvalidateContractSigningDto,
@@ -80,7 +81,10 @@ export class ContractSealService {
     return created;
   }
 
-  async approve(contractVersionId: string, actorUserId: string) {
+  async approve(contractVersionId: string, actorUserId: string, input: ApproveContractSealDto) {
+    await this.assertGlobalRole(this.prisma as unknown as Prisma.TransactionClient, actorUserId, "comprehensive_director");
+    if (!this.auth) throw new BadRequestException("当前密码校验服务暂不可用，请稍后重试");
+    await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
     return this.prisma.$transaction(async (tx) => {
       await this.assertGlobalRole(tx, actorUserId, "comprehensive_director");
       const { version, task } = await this.lockVersionAndTask(tx, contractVersionId);

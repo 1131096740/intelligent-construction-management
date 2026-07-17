@@ -71,6 +71,11 @@ import {
   generatePaymentPdfArchive,
   generateSettlementPdfArchive,
   approveContractSeal,
+  approveGovernedContractSeal,
+  completeContractSeal,
+  uploadMutuallySignedContract,
+  returnMutuallySignedContractForCorrection,
+  confirmMutuallySignedContract,
   remindContractApproval,
   remindPaymentApproval,
   remindSettlementApproval,
@@ -228,6 +233,53 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/payments/contract-application?contractVersionId=contract-version%2F1"
+    ]);
+  });
+
+  it("uses the governed contract signing and archive endpoints", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ status: "ok" })
+    } as Response);
+
+    await approveGovernedContractSeal("version/1", { confirmationPassword: "current-password" });
+    await completeContractSeal("version/1", {
+      firstPartySignedOrStamped: true,
+      companySealCompleted: true,
+      crossPageSealCompleted: true,
+      signingDateCompleted: true
+    });
+    await uploadMutuallySignedContract("version/1", {
+      fileId: "file-1",
+      sourceRevision: 3,
+      firstPartySignedOrStamped: true,
+      companySealCompleted: true,
+      crossPageSealCompleted: true,
+      signingDateCompleted: true,
+      onlyPermittedSignatureChanges: true,
+      documentOrderConfirmed: true
+    });
+    await returnMutuallySignedContractForCorrection("version/1", {
+      formalFileId: "formal-1",
+      reason: "扫描顺序有误"
+    });
+    await confirmMutuallySignedContract("version/1", {
+      formalFileId: "formal-1",
+      firstPartySignedOrStamped: true,
+      companySealCompleted: true,
+      crossPageSealCompleted: true,
+      signingDateCompleted: true,
+      onlyPermittedSignatureChanges: true,
+      documentOrderConfirmed: true,
+      confirmationPassword: "password"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/contracts/version%2F1/seal/approve",
+      "/api/contracts/version%2F1/seal/complete",
+      "/api/contracts/version%2F1/formal-files/final",
+      "/api/contracts/version%2F1/formal-files/final/return",
+      "/api/contracts/version%2F1/formal-files/final/confirmation"
     ]);
   });
 

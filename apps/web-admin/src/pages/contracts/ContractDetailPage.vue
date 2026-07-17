@@ -337,6 +337,12 @@
                   委托
                 </t-button>
               </div>
+              <p
+                v-if="stagedFinalAssociation"
+                class="action-field-hint"
+              >
+                已安全上传最终版，业务关联尚未完成；仅可对合同 R{{ stagedFinalAssociation.sourceRevision }} 重试，不会重复上传。
+              </p>
             </div>
 
             <div
@@ -347,15 +353,37 @@
                 <strong>用章与归档文件生成</strong>
                 <span>只执行后端已授权的当前动作</span>
               </div>
+              <t-checkbox-group
+                v-if="isContractActionEnabled('complete_seal')"
+                v-model="sealCompletionConfirmations"
+                class="confirmation-list"
+              >
+                <t-checkbox
+                  v-for="item in sealCompletionOptions"
+                  :key="item.value"
+                  :value="item.value"
+                >
+                  {{ item.label }}
+                </t-checkbox>
+              </t-checkbox-group>
               <div class="action-buttons action-buttons--end">
                 <t-button
                   v-if="isContractActionEnabled('approve_seal')"
                   :theme="buttonTheme('approve_seal')"
                   :variant="buttonVariant('approve_seal')"
                   :loading="archiveActionBusy === 'seal'"
-                  @click="submitContractSeal"
+                  @click="requestContractSealApproval"
                 >
-                  用章通过
+                  {{ displayContractActionLabel('approve_seal') }}
+                </t-button>
+                <t-button
+                  v-if="isContractActionEnabled('complete_seal')"
+                  :theme="buttonTheme('complete_seal')"
+                  :variant="buttonVariant('complete_seal')"
+                  :loading="archiveActionBusy === 'sealComplete'"
+                  @click="requestContractSealCompletion"
+                >
+                  {{ displayContractActionLabel('complete_seal') }}
                 </t-button>
                 <t-button
                   v-if="isContractActionEnabled('generate_pdf_archive')"
@@ -457,6 +485,54 @@
         class="tab-content"
         aria-label="合同凭证资料"
       >
+        <section class="content-panel content-panel--plain">
+          <header class="section-heading">
+            <div>
+              <h2>签署与归档证据</h2>
+              <p>审批前乙方签章版、双方最终版和合同审批单分开记录，不相互覆盖。</p>
+            </div>
+          </header>
+          <div class="formal-evidence-grid">
+            <article
+              v-for="evidence in contractFormalEvidenceView"
+              :key="evidence.kind"
+              class="formal-evidence-item"
+            >
+              <div>
+                <strong>{{ evidence.label }}</strong>
+                <span>{{ evidence.description }}</span>
+              </div>
+              <t-tag
+                size="small"
+                :theme="evidence.available ? 'success' : 'default'"
+                variant="light"
+              >
+                {{ evidence.statusLabel }}
+              </t-tag>
+              <small v-if="evidence.fileName">{{ evidence.fileName }} · {{ evidence.meta }}</small>
+              <small v-else>{{ evidence.meta }}</small>
+              <t-button
+                v-if="evidence.kind === 'approval_form' && isContractActionEnabled('download_approval_form')"
+                size="small"
+                variant="outline"
+                :loading="archiveActionBusy === 'approvalForm'"
+                @click="requestContractApprovalFormDownload"
+              >
+                {{ displayContractActionLabel('download_approval_form') }}
+              </t-button>
+              <t-button
+                v-else-if="evidence.fileId"
+                size="small"
+                variant="outline"
+                :loading="archiveActionBusy === 'formalFileDownload'"
+                @click="requestFormalFileDownload(evidence.fileId)"
+              >
+                下载文件
+              </t-button>
+            </article>
+          </div>
+        </section>
+
         <section
           v-if="showContractEvidenceActions"
           class="content-panel"
@@ -468,6 +544,95 @@
             </div>
           </header>
           <div class="action-grid">
+            <div
+              v-if="isContractActionEnabled('upload_final_contract')"
+              class="action-group"
+            >
+              <div class="action-title">
+                <strong>{{ displayContractActionLabel('upload_final_contract') }}</strong>
+                <span>仅上传线下签署盖章后的完整 PDF</span>
+              </div>
+              <label class="action-field action-field--wide">
+                <span>双方最终版 PDF <b aria-hidden="true">*</b></span>
+                <t-upload
+                  v-model="contractFinalUploadFiles"
+                  theme="file-input"
+                  :auto-upload="false"
+                  :max="1"
+                  :accept="PDF_ARCHIVE_UPLOAD_POLICY.acceptAttribute"
+                  :size-limit="pdfArchiveUploadSizeLimit"
+                  :disabled="archiveActionBusy === 'finalUpload'"
+                  placeholder="选择双方最终版 PDF"
+                />
+                <small>{{ contractFinalFileSummary }}</small>
+              </label>
+              <t-checkbox-group
+                v-model="finalUploadConfirmations"
+                class="confirmation-list"
+              >
+                <t-checkbox
+                  v-for="item in finalConfirmationOptions"
+                  :key="item.value"
+                  :value="item.value"
+                >
+                  {{ item.label }}
+                </t-checkbox>
+              </t-checkbox-group>
+              <div class="action-buttons action-buttons--end">
+                <t-button
+                  :theme="buttonTheme('upload_final_contract')"
+                  :variant="buttonVariant('upload_final_contract')"
+                  :loading="archiveActionBusy === 'finalUpload'"
+                  @click="requestFinalContractUpload"
+                >
+                  {{ displayContractActionLabel('upload_final_contract') }}
+                </t-button>
+              </div>
+            </div>
+
+            <div
+              v-if="isContractActionEnabled('confirm_final_contract') || isContractActionEnabled('return_final_contract')"
+              class="action-group"
+            >
+              <div class="action-title">
+                <strong>双方最终版复核</strong>
+                <span>归档确认与资料补正分开记录</span>
+              </div>
+              <t-checkbox-group
+                v-if="isContractActionEnabled('confirm_final_contract')"
+                v-model="finalArchiveConfirmations"
+                class="confirmation-list"
+              >
+                <t-checkbox
+                  v-for="item in finalConfirmationOptions"
+                  :key="item.value"
+                  :value="item.value"
+                >
+                  {{ item.label }}
+                </t-checkbox>
+              </t-checkbox-group>
+              <div class="action-buttons action-buttons--end">
+                <t-button
+                  v-if="isContractActionEnabled('return_final_contract')"
+                  theme="danger"
+                  variant="outline"
+                  :loading="archiveActionBusy === 'finalReturn'"
+                  @click="requestFinalContractCorrection"
+                >
+                  {{ displayContractActionLabel('return_final_contract') }}
+                </t-button>
+                <t-button
+                  v-if="isContractActionEnabled('confirm_final_contract')"
+                  :theme="buttonTheme('confirm_final_contract')"
+                  :variant="buttonVariant('confirm_final_contract')"
+                  :loading="archiveActionBusy === 'finalConfirm'"
+                  @click="requestFinalContractConfirmation"
+                >
+                  {{ displayContractActionLabel('confirm_final_contract') }}
+                </t-button>
+              </div>
+            </div>
+
             <div
               v-if="isContractActionEnabled('upload_archive')"
               class="action-group"
@@ -843,7 +1008,10 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   approveContractSeal,
+  approveGovernedContractSeal,
+  completeContractSeal,
   confirmContractArchive,
+  confirmMutuallySignedContract,
   createContractChangeDraft,
   createPrivateFileDownloadTicket,
   delegateContractApproval,
@@ -853,12 +1021,15 @@ import {
   fetchContractDetail,
   generateContractPdfArchive,
   remindContractApproval,
+  returnMutuallySignedContractForCorrection,
   reviewContractApproval,
   transferContractApproval,
   uploadContractArchiveFile,
+  uploadMutuallySignedContract,
   uploadPrivateFile,
   withdrawContractApproval
 } from "../../api/core-flow-read.api";
+import { useAuthStore } from "../../auth/auth.store";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import BusinessDetailHeader from "../../components/BusinessDetailHeader.vue";
@@ -867,7 +1038,10 @@ import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
-import { CORE_ARCHIVE_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
+import {
+  CORE_ARCHIVE_UPLOAD_POLICY,
+  PDF_ARCHIVE_UPLOAD_POLICY
+} from "../../components/file-upload-policy.config";
 import { buildFileUploadSummary } from "../../components/file-upload-summary.config";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import { contractDetailChainLinks } from "../business-chain-links.config";
@@ -875,6 +1049,8 @@ import type { DetailTone } from "./contract-detail.config";
 import {
   buildContractDetailHeader,
   buildContractFundTimeline,
+  canRequestContractChangeEligibility,
+  contractActionLabel,
   contractBaseInfo,
   contractDetailMeta,
   contractDetailTabs,
@@ -908,7 +1084,13 @@ type SensitiveActionKind =
   | "withdrawal"
   | "transfer"
   | "delegate"
-  | "fileDownload";
+  | "fileDownload"
+  | "formalFileDownload"
+  | "governedSealApprove"
+  | "governedSealComplete"
+  | "finalUpload"
+  | "finalReturn"
+  | "finalConfirm";
 
 interface SensitiveActionState {
   visible: boolean;
@@ -920,11 +1102,15 @@ interface SensitiveActionState {
   requireReason: boolean;
   requirePassword: boolean;
   reasonLabel: string;
+  targetFileId: string;
+  targetContractVersionId: string;
+  targetFormalFileId: string;
   error: string;
 }
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
 const contractDetail = ref<ContractDetailReadModel | null>(null);
 const detailLoading = ref(false);
 const contractDetailError = ref("");
@@ -953,12 +1139,38 @@ const changeDirectionOptions = [
   { label: "减少金额", value: "decrease" },
   { label: "金额不变", value: "unchanged" }
 ];
+const finalConfirmationOptions = [
+  { value: "firstPartySignedOrStamped", label: "我方签字或签章已完成" },
+  { value: "companySealCompleted", label: "对应我方公司公章已加盖" },
+  { value: "crossPageSealCompleted", label: "多页文件骑缝章已完成" },
+  { value: "signingDateCompleted", label: "签署日期已填写" },
+  { value: "onlyPermittedSignatureChanges", label: "审批后仅发生允许的签署信息变化" },
+  { value: "documentOrderConfirmed", label: "正文、附件、授权书和签署页顺序完整" }
+] as const;
+const sealCompletionOptions = finalConfirmationOptions.slice(0, 4);
+const sealCompletionKeys = sealCompletionOptions.map((item) => item.value);
+const finalConfirmationKeys = finalConfirmationOptions.map((item) => item.value);
 const assignmentUsers = ref<Array<{ id: string; name: string }>>([]);
 const archiveActionBusy = ref("");
 const archiveActionMessage = ref("");
 const archiveActionMessageTone = ref<"success" | "danger">("success");
 const contractNotice = ref("");
 const contractArchiveUploadFiles = ref<UploadFile[]>([]);
+const contractFinalUploadFiles = ref<UploadFile[]>([]);
+type StagedFinalAssociation = {
+  fileId: string;
+  contractVersionId: string;
+  sourceRevision: number;
+  declaration: ReturnType<typeof finalDeclarationPayload>;
+};
+const stagedFinalAssociations = ref<Record<string, StagedFinalAssociation>>({});
+const stagedFinalAssociation = computed(() => {
+  const contractVersionId = contractDetail.value?.contractVersionId;
+  return contractVersionId ? stagedFinalAssociations.value[contractVersionId] ?? null : null;
+});
+const sealCompletionConfirmations = ref<string[]>([]);
+const finalUploadConfirmations = ref<string[]>([]);
+const finalArchiveConfirmations = ref<string[]>([]);
 const sensitiveAction = reactive<SensitiveActionState>({
   visible: false,
   kind: null,
@@ -969,6 +1181,9 @@ const sensitiveAction = reactive<SensitiveActionState>({
   requireReason: false,
   requirePassword: false,
   reasonLabel: "操作原因",
+  targetFileId: "",
+  targetContractVersionId: "",
+  targetFormalFileId: "",
   error: ""
 });
 const contractArchiveForm = reactive({
@@ -1072,6 +1287,16 @@ const contractEvidenceFilesView = computed(() =>
   }))
 );
 const contractApprovalTimelineView = computed(() => contractDetail.value?.approvalTimeline ?? []);
+const activeApprovalOriginal = computed(() =>
+  (contractDetail.value?.formalFiles ?? []).find((file) =>
+    file.purpose === "approval_original" && file.status === "active"
+  ) ?? null
+);
+const activeMutuallySignedFinal = computed(() =>
+  (contractDetail.value?.formalFiles ?? []).find((file) =>
+    file.purpose === "mutually_signed_final" && file.status === "active"
+  ) ?? null
+);
 const contractActionByKey = computed(() =>
   new Map((contractDetail.value?.availableActions ?? []).map((action) => [action.key, action]))
 );
@@ -1101,10 +1326,15 @@ const showContractAssistanceActions = computed(
     isContractActionEnabled("delegate_approval")
 );
 const showContractSealActions = computed(
-  () => isContractActionEnabled("approve_seal") || isContractActionEnabled("generate_pdf_archive")
+  () => isContractActionEnabled("approve_seal") ||
+    isContractActionEnabled("complete_seal") ||
+    isContractActionEnabled("generate_pdf_archive")
 );
 const showContractEvidenceActions = computed(
-  () => isContractActionEnabled("upload_archive") ||
+  () => isContractActionEnabled("upload_final_contract") ||
+    isContractActionEnabled("return_final_contract") ||
+    isContractActionEnabled("confirm_final_contract") ||
+    isContractActionEnabled("upload_archive") ||
     isContractActionEnabled("confirm_archive") ||
     isContractActionEnabled("download_archive")
 );
@@ -1112,6 +1342,7 @@ const assignmentUserOptions = computed(() =>
   assignmentUsers.value.map((user) => ({ label: user.name, value: user.id }))
 );
 const selectedContractArchiveFile = computed(() => selectedUploadFile(contractArchiveUploadFiles.value));
+const selectedContractFinalFile = computed(() => selectedUploadFile(contractFinalUploadFiles.value));
 const coreArchiveUploadSizeLimit = {
   size: CORE_ARCHIVE_UPLOAD_POLICY.limitBytes,
   unit: "B" as const,
@@ -1123,6 +1354,58 @@ const contractArchiveFileSummary = computed(() => buildFileUploadSummary(
   CORE_ARCHIVE_UPLOAD_POLICY.acceptText,
   CORE_ARCHIVE_UPLOAD_POLICY.limitText
 ));
+const pdfArchiveUploadSizeLimit = {
+  size: PDF_ARCHIVE_UPLOAD_POLICY.limitBytes,
+  unit: "B" as const,
+  message: `文件大小不能超过 ${PDF_ARCHIVE_UPLOAD_POLICY.limitText.replace("不超过 ", "")}`
+};
+const contractFinalFileSummary = computed(() => buildFileUploadSummary(
+  selectedContractFinalFile.value,
+  archiveActionBusy.value === "finalUpload",
+  PDF_ARCHIVE_UPLOAD_POLICY.acceptText,
+  PDF_ARCHIVE_UPLOAD_POLICY.limitText
+));
+const contractFormalEvidenceView = computed(() => {
+  const approvalOriginal = activeApprovalOriginal.value;
+  const finalFile = activeMutuallySignedFinal.value;
+  const approvalFormAction = contractActionByKey.value.get("download_approval_form");
+  return [
+    {
+      kind: "counterparty_signed_approval",
+      label: "审批前乙方签章版",
+      description: "内部审批使用的完整合同 PDF 原件",
+      available: Boolean(approvalOriginal),
+      statusLabel: approvalOriginal ? "已留存" : "尚未留存",
+      fileName: approvalOriginal?.fileName ?? "",
+      fileId: approvalOriginal?.fileId ?? "",
+      meta: approvalOriginal
+        ? `${approvalOriginal.pageCount} 页 · 修订 R${approvalOriginal.sourceRevision}`
+        : "请在合同工作台完成签前资料"
+    },
+    {
+      kind: "mutually_signed_final",
+      label: "双方最终签署版",
+      description: "我方签署盖章完成后的最终合同 PDF",
+      available: Boolean(finalFile),
+      statusLabel: finalFile?.confirmedAt ? "已确认归档" : finalFile ? "待确认" : "尚未上传",
+      fileName: finalFile?.fileName ?? "",
+      fileId: finalFile?.fileId ?? "",
+      meta: finalFile
+        ? `${finalFile.pageCount} 页 · ${finalFile.confirmedAt ? "归档事实已冻结" : "等待合同部主管复核"}`
+        : "线下签署盖章完成后上传"
+    },
+    {
+      kind: "approval_form",
+      label: "合同审批单",
+      description: "内部审批人员、意见与冻结签名记录",
+      available: approvalFormAction?.enabled === true,
+      statusLabel: approvalFormAction?.enabled ? "可下载" : "暂不可用",
+      fileName: "",
+      fileId: "",
+      meta: approvalFormAction?.disabledReason ?? "下载时校验权限并记录审计"
+    }
+  ] as const;
+});
 const loadErrorState = computed<"error" | "permission">(() =>
   /无权|无权限|403|不可见/.test(contractDetailError.value) ? "permission" : "error"
 );
@@ -1132,6 +1415,14 @@ const actionFeedbackState = computed<"success" | "error">(() =>
 
 function isContractActionEnabled(key: string) {
   return contractActionByKey.value.get(key)?.enabled ?? false;
+}
+
+function displayContractActionLabel(key: string) {
+  return contractActionLabel(
+    key,
+    contractActionByKey.value.get(key)?.label ?? "办理",
+    Boolean(contractDetail.value?.sealTask)
+  );
 }
 
 function buttonTheme(key: string) {
@@ -1158,7 +1449,14 @@ function openPrimaryAction() {
     goToContractWorkbenchSubmission();
     return;
   }
-  activeTab.value = ["upload_archive", "confirm_archive", "download_archive"].includes(action.key)
+  activeTab.value = [
+    "upload_final_contract",
+    "return_final_contract",
+    "confirm_final_contract",
+    "upload_archive",
+    "confirm_archive",
+    "download_archive"
+  ].includes(action.key)
     ? "evidence"
     : "process";
   scrollToTabContent();
@@ -1201,13 +1499,18 @@ async function reloadContractDetail() {
     if (!versions) throw new Error("合同版本历史数据异常，已停止展示");
     contractDetail.value = detail;
     normalizedChangeVersions.value = versions;
-    changeEligibilityLoading.value = true;
-    const eligibilityPayload = await fetchContractChangeEligibility(detail.contractVersionId).catch(() => null);
-    if (requestId !== detailRequestId || contractId !== routeContractId()) return false;
-    changeEligibility.value = eligibilityPayload === null
-      ? null
-      : normalizeChangeEligibility(eligibilityPayload, detail.contractVersionId);
-    changeEligibilityLoading.value = false;
+    changeEligibility.value = null;
+    if (canRequestContractChangeEligibility(auth.user?.roleKeys ?? [])) {
+      changeEligibilityLoading.value = true;
+      const eligibilityPayload = await fetchContractChangeEligibility(detail.contractVersionId).catch(() => null);
+      if (requestId !== detailRequestId || contractId !== routeContractId()) return false;
+      changeEligibility.value = eligibilityPayload === null
+        ? null
+        : normalizeChangeEligibility(eligibilityPayload, detail.contractVersionId);
+      changeEligibilityLoading.value = false;
+    } else {
+      changeEligibilityLoading.value = false;
+    }
     const archiveFileIds = detail.archiveFiles
       .filter((file) => file.canDownload)
       .map((file) => file.fileId);
@@ -1238,6 +1541,7 @@ watch(
   (next, previous) => {
     if (next === previous) return;
     clearChangeTransientState();
+    clearContractActionTransientState();
     activeTab.value = "overview";
     contractDetail.value = null;
     normalizedChangeVersions.value = [];
@@ -1267,6 +1571,17 @@ function clearChangeTransientState() {
   changeDialogBaseVersionId = "";
   changeError.value = "";
   resetChangeForm();
+}
+
+function clearContractActionTransientState() {
+  sensitiveAction.visible = false;
+  sensitiveAction.kind = null;
+  sensitiveAction.error = "";
+  archiveActionBusy.value = "";
+  contractFinalUploadFiles.value = [];
+  finalUploadConfirmations.value = [];
+  finalArchiveConfirmations.value = [];
+  sealCompletionConfirmations.value = [];
 }
 
 function moneyText(cents: string) {
@@ -1370,6 +1685,11 @@ function currentContractVersionId() {
   return requiredText(contractDetail.value?.contractVersionId ?? "", "合同");
 }
 
+function isCurrentSensitiveContractTarget(contractVersionId: string) {
+  return contractDetail.value?.contractVersionId === contractVersionId &&
+    routeContractId() === contractDetail.value?.id;
+}
+
 function returnedId(result: unknown) {
   if (result && typeof result === "object" && "id" in result) {
     return String((result as { id: unknown }).id);
@@ -1394,7 +1714,7 @@ function setActionError(error: unknown, fallback: string) {
 function openSensitiveAction(
   kind: SensitiveActionKind,
   config: Pick<SensitiveActionState, "title" | "description"> &
-    Partial<Pick<SensitiveActionState, "confirmText" | "confirmTheme" | "requireReason" | "requirePassword" | "reasonLabel">>
+    Partial<Pick<SensitiveActionState, "confirmText" | "confirmTheme" | "requireReason" | "requirePassword" | "reasonLabel" | "targetFileId" | "targetContractVersionId" | "targetFormalFileId">>
 ) {
   Object.assign(sensitiveAction, {
     visible: true,
@@ -1406,6 +1726,9 @@ function openSensitiveAction(
     requireReason: config.requireReason ?? false,
     requirePassword: config.requirePassword ?? false,
     reasonLabel: config.reasonLabel ?? "操作原因",
+    targetFileId: config.targetFileId ?? "",
+    targetContractVersionId: config.targetContractVersionId ?? currentContractVersionId(),
+    targetFormalFileId: config.targetFormalFileId ?? "",
     error: ""
   });
 }
@@ -1510,6 +1833,143 @@ function requestContractApprovalFormDownload() {
   });
 }
 
+function requireConfirmations(selected: readonly string[], required: readonly string[], message: string) {
+  if (!required.every((key) => selected.includes(key))) throw new Error(message);
+}
+
+function sealCompletionPayload() {
+  requireConfirmations(
+    sealCompletionConfirmations.value,
+    sealCompletionKeys,
+    "请确认我方签署、公章、骑缝章和签署日期均已完成"
+  );
+  return {
+    firstPartySignedOrStamped: true,
+    companySealCompleted: true,
+    crossPageSealCompleted: true,
+    signingDateCompleted: true
+  };
+}
+
+function finalDeclarationPayload(selected: readonly string[]) {
+  requireConfirmations(
+    selected,
+    finalConfirmationKeys,
+    "请逐项确认最终版签署、盖章、页序和内容声明"
+  );
+  return {
+    firstPartySignedOrStamped: true,
+    companySealCompleted: true,
+    crossPageSealCompleted: true,
+    signingDateCompleted: true,
+    onlyPermittedSignatureChanges: true,
+    documentOrderConfirmed: true
+  };
+}
+
+function requestContractSealApproval() {
+  try {
+    const contractVersionId = currentContractVersionId();
+    const governed = Boolean(contractDetail.value?.sealTask);
+    openSensitiveAction("governedSealApprove", {
+      title: governed ? "确认同意用章？" : "确认用章通过？",
+      description: governed
+        ? "同意后合同进入线下签署盖章环节；该操作不代表合同已经生效。"
+        : "确认后进入合同归档环节；该操作不代表合同已经生效。",
+      confirmText: governed ? "确认同意用章" : "确认用章通过",
+      requirePassword: governed,
+      targetContractVersionId: contractVersionId
+    });
+  } catch (error) {
+    setActionError(error, "无法提交用章同意，请刷新后重试。");
+    return;
+  }
+}
+
+function requestContractSealCompletion() {
+  try {
+    const contractVersionId = currentContractVersionId();
+    sealCompletionPayload();
+    openSensitiveAction("governedSealComplete", {
+      title: "确认已完成我方签署与盖章？",
+      description: "确认后将进入双方最终版上传环节，请确保线下签署、公章、骑缝章和日期均已完成。",
+      confirmText: "确认已完成",
+      targetContractVersionId: contractVersionId
+    });
+  } catch (error) {
+    setActionError(error, "请补全我方签署盖章确认后重试。");
+    return;
+  }
+}
+
+function requestFinalContractUpload() {
+  let contractVersionId = "";
+  try {
+    contractVersionId = currentContractVersionId();
+    if (!activeApprovalOriginal.value) throw new Error("未找到审批前乙方签章原件，不能上传双方最终版");
+    const staged = stagedFinalAssociation.value;
+    if (staged) {
+      if (staged.contractVersionId !== currentContractVersionId() ||
+        staged.sourceRevision !== activeApprovalOriginal.value.sourceRevision) {
+        throw new Error("已暂存文件不属于当前合同修订，请重新选择双方最终版 PDF");
+      }
+    } else {
+      if (!selectedContractFinalFile.value) throw new Error("双方最终版 PDF 不能为空");
+      finalDeclarationPayload(finalUploadConfirmations.value);
+    }
+  } catch (error) {
+    setActionError(error, "请补全双方最终版资料后重试。");
+    return;
+  }
+    openSensitiveAction("finalUpload", {
+    title: "确认上传双方最终版？",
+    description: "系统会先将原件上传至私有文件库，再关联到当前合同版本；关联失败时会保留已选文件供重试。",
+    confirmText: "确认上传",
+    targetContractVersionId: contractVersionId
+  });
+}
+
+function requestFinalContractCorrection() {
+  let contractVersionId = "";
+  try {
+    contractVersionId = currentContractVersionId();
+    if (!activeMutuallySignedFinal.value) throw new Error("未找到可退回的双方最终版");
+  } catch (error) {
+    setActionError(error, "无法退回补正，请刷新后重试。");
+    return;
+  }
+  openSensitiveAction("finalReturn", {
+    title: "确认退回双方最终版补正？",
+    description: "退回原因会作为合同归档证据保存；请清楚说明缺页、错页或签署资料问题。",
+    confirmText: "确认退回补正",
+    confirmTheme: "danger",
+    requireReason: true,
+    reasonLabel: "补正原因",
+    targetContractVersionId: contractVersionId,
+    targetFormalFileId: activeMutuallySignedFinal.value?.formalFileId ?? ""
+  });
+}
+
+function requestFinalContractConfirmation() {
+  let contractVersionId = "";
+  try {
+    contractVersionId = currentContractVersionId();
+    if (!activeMutuallySignedFinal.value) throw new Error("未找到待确认的双方最终版");
+    finalDeclarationPayload(finalArchiveConfirmations.value);
+  } catch (error) {
+    setActionError(error, "请补全归档确认声明后重试。");
+    return;
+  }
+  openSensitiveAction("finalConfirm", {
+    title: "确认双方最终版并归档？",
+    description: "确认后合同版本生效并冻结归档事实；该操作需要当前密码验证。",
+    confirmText: "确认归档",
+    requirePassword: true,
+    targetContractVersionId: contractVersionId,
+    targetFormalFileId: activeMutuallySignedFinal.value?.formalFileId ?? ""
+  });
+}
+
 function requestContractWithdrawal() {
   openSensitiveAction("withdrawal", {
     title: "确认撤回合同审批？",
@@ -1552,6 +2012,24 @@ function requestContractFileDownload() {
   });
 }
 
+function requestFormalFileDownload(fileId: string) {
+  try {
+    requiredText(fileId, "合同正式文件");
+  } catch (error) {
+    setActionError(error, "无法下载合同正式文件，请刷新后重试。");
+    return;
+  }
+  openSensitiveAction("formalFileDownload", {
+    title: "确认下载合同正式文件？",
+    description: "系统将校验当前密码，签发短时效下载链接，并记录文件、合同和下载原因。",
+    confirmText: "确认下载",
+    requireReason: true,
+    requirePassword: true,
+    reasonLabel: "下载原因",
+    targetFileId: fileId
+  });
+}
+
 async function executeSensitiveAction(values: { reason: string; password: string }) {
   sensitiveAction.error = "";
   let succeeded = false;
@@ -1579,6 +2057,89 @@ async function executeSensitiveAction(values: { reason: string; password: string
           }
         ));
         break;
+      case "governedSealApprove":
+        succeeded = await runArchiveAction("seal", () => (
+          sensitiveAction.requirePassword
+            ? approveGovernedContractSeal(sensitiveAction.targetContractVersionId, { confirmationPassword: values.password })
+            : approveContractSeal(sensitiveAction.targetContractVersionId)
+        ));
+        break;
+      case "governedSealComplete":
+        succeeded = await runArchiveAction("sealComplete", () => completeContractSeal(
+          sensitiveAction.targetContractVersionId,
+          sealCompletionPayload()
+        ));
+        break;
+      case "finalUpload":
+        succeeded = await runArchiveAction("finalUpload", async () => {
+          const contractVersionId = sensitiveAction.targetContractVersionId;
+          if (!isCurrentSensitiveContractTarget(contractVersionId)) {
+            throw new Error("合同已切换，已停止关联暂存文件");
+          }
+          const file = selectedContractFinalFile.value;
+          const approvalOriginal = activeApprovalOriginal.value;
+          if (!approvalOriginal) throw new Error("未找到审批前乙方签章原件，不能上传双方最终版");
+          let staged = stagedFinalAssociations.value[contractVersionId] ?? null;
+          const sourceRevision = staged?.sourceRevision ?? approvalOriginal.sourceRevision;
+          const declaration = staged?.declaration ?? finalDeclarationPayload([
+            ...finalUploadConfirmations.value
+          ]);
+          if (!staged) {
+            if (!file) throw new Error("双方最终版 PDF 不能为空");
+            const uploaded = await uploadPrivateFile(file, file.name);
+            staged = {
+              fileId: uploaded.id,
+              contractVersionId,
+              sourceRevision,
+              declaration
+            };
+            stagedFinalAssociations.value = {
+              ...stagedFinalAssociations.value,
+              [contractVersionId]: staged
+            };
+            if (!isCurrentSensitiveContractTarget(contractVersionId)) {
+              throw new Error("合同已切换，已停止关联暂存文件");
+            }
+          }
+          if (staged.contractVersionId !== contractVersionId ||
+            staged.sourceRevision !== approvalOriginal.sourceRevision) {
+            throw new Error("已暂存文件不属于当前合同修订，请重新选择双方最终版 PDF");
+          }
+          await uploadMutuallySignedContract(contractVersionId, {
+            fileId: staged.fileId,
+            sourceRevision: staged.sourceRevision,
+            ...staged.declaration
+          });
+          const remainingStaged = { ...stagedFinalAssociations.value };
+          delete remainingStaged[contractVersionId];
+          stagedFinalAssociations.value = remainingStaged;
+          contractFinalUploadFiles.value = [];
+          finalUploadConfirmations.value = [];
+        });
+        break;
+      case "finalReturn":
+        succeeded = await runArchiveAction("finalReturn", () => {
+          if (!isCurrentSensitiveContractTarget(sensitiveAction.targetContractVersionId)) {
+            throw new Error("合同已切换，已停止退回补正");
+          }
+          return returnMutuallySignedContractForCorrection(sensitiveAction.targetContractVersionId, {
+            formalFileId: requiredText(sensitiveAction.targetFormalFileId, "双方最终版"),
+            reason: requiredText(values.reason, "补正原因")
+          });
+        });
+        break;
+      case "finalConfirm":
+        succeeded = await runArchiveAction("finalConfirm", () => {
+          if (!isCurrentSensitiveContractTarget(sensitiveAction.targetContractVersionId)) {
+            throw new Error("合同已切换，已停止归档确认");
+          }
+          return confirmMutuallySignedContract(sensitiveAction.targetContractVersionId, {
+            formalFileId: requiredText(sensitiveAction.targetFormalFileId, "双方最终版"),
+            confirmationPassword: values.password,
+            ...finalDeclarationPayload(finalArchiveConfirmations.value)
+          });
+        });
+        break;
       case "withdrawal":
         succeeded = await runArchiveAction("withdrawApproval", () =>
           withdrawContractApproval(currentContractVersionId())
@@ -1590,6 +2151,16 @@ async function executeSensitiveAction(values: { reason: string; password: string
         break;
       case "fileDownload":
         succeeded = await performContractFileDownload(values);
+        break;
+      case "formalFileDownload":
+        succeeded = await runArchiveAction("formalFileDownload", async () => {
+          const fileId = requiredText(sensitiveAction.targetFileId, "合同正式文件");
+          const ticket = await createPrivateFileDownloadTicket(fileId, {
+            confirmationPassword: values.password,
+            downloadReason: values.reason
+          });
+          window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
+        });
         break;
       default:
         throw new Error("未识别的合同操作，请关闭对话框后重试");
@@ -1651,10 +2222,6 @@ async function performContractFileDownload(values: { reason: string; password: s
 
 async function submitContractReminder() {
   await runArchiveAction("remindApproval", () => remindContractApproval(currentContractVersionId()));
-}
-
-async function submitContractSeal() {
-  await runArchiveAction("seal", () => approveContractSeal(currentContractVersionId()));
 }
 
 async function submitContractPdfGeneration() {

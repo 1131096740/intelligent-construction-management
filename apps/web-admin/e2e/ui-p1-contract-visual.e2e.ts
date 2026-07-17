@@ -273,6 +273,10 @@ test("captures the contract P1.2 ledger and detail states", async ({ page }) => 
 
   await page.goto("/contracts/HT-UI-ARCHIVE");
   await page.getByRole("button", { name: "上传合同归档件" }).click();
+  await expect(page.getByRole("heading", { name: "签署与归档证据" })).toBeVisible();
+  await expect(page.getByText("审批前乙方签章版", { exact: true })).toBeVisible();
+  await expect(page.getByText("双方最终签署版", { exact: true })).toBeVisible();
+  await expect(page.getByText("合同审批单", { exact: true })).toBeVisible();
   await expect(page.getByText("归档办理")).toBeVisible();
   await expect(page.locator(".action-group").filter({ hasText: "上传盖章合同" }).locator(".t-upload")).toBeVisible();
   await capture(page, "contract-detail-evidence-1440x900.png");

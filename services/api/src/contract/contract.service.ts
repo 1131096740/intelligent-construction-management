@@ -2023,8 +2023,7 @@ export class ContractService {
       select: { contractGovernanceVersion: true }
     });
     if (governed?.contractGovernanceVersion === 1) {
-      if (!this.seals) throw new Error("合同用章任务服务暂不可用，请稍后重试");
-      return this.seals.approve(contractVersionId, actorUserId);
+      throw new Error("受治理合同请使用用章确认入口");
     }
     return this.updateVersionStatus({
       contractVersionId,

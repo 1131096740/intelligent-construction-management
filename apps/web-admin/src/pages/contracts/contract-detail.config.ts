@@ -1,3 +1,4 @@
+import { canPerform, type RoleKey } from "@jiangkong/shared-domain";
 import type { PrimaryTableCol } from "tdesign-vue-next";
 import type { BusinessStatusSummaryItem } from "../../components/business-status-summary.config";
 
@@ -84,6 +85,30 @@ export const contractDetailTabs = [
   { value: "funds", label: "结算与付款" },
   { value: "audit", label: "关联与审计" }
 ];
+
+export const detailEvidenceKinds = [
+  "counterparty_signed_approval",
+  "mutually_signed_final",
+  "approval_form"
+] as const;
+
+const contractActionLabels: Record<string, string> = {
+  approve_seal: "同意用章",
+  complete_seal: "确认已完成我方签署与盖章",
+  upload_final_contract: "上传双方最终版",
+  return_final_contract: "退回补正",
+  confirm_final_contract: "确认归档",
+  download_approval_form: "审批单下载"
+};
+
+export function contractActionLabel(key: string, fallback: string, governed = true) {
+  if (key === "approve_seal" && !governed) return fallback;
+  return contractActionLabels[key] ?? fallback;
+}
+
+export function canRequestContractChangeEligibility(roleKeys: readonly RoleKey[]) {
+  return canPerform("contract.create", roleKeys);
+}
 
 export const contractDetailTitle = "HT-2026-001 · 钢材采购合同";
 

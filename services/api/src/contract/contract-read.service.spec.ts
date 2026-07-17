@@ -2,6 +2,70 @@ import * as ExcelJS from "exceljs";
 import { ContractReadService } from "./contract-read.service";
 
 describe("ContractReadService", () => {
+  it("exposes separate governed final-file confirmation and correction actions", () => {
+    const service = new ContractReadService({} as never);
+    const actions = (service as unknown as {
+      contractActions(
+        status: string,
+        roleKeys: string[],
+        approvalReviewAccess: { canAct: boolean; canReview: boolean; requiresSelfReviewConfirmation: boolean },
+        archiveFiles: [],
+        context: Record<string, unknown>
+      ): Array<{ key: string; enabled: boolean }>;
+    }).contractActions(
+      "pending_archive_confirm",
+      ["contract_director"],
+      { canAct: false, canReview: false, requiresSelfReviewConfirmation: false },
+      [],
+      {
+        actorUserId: "director-1",
+        ownerUserId: "handler-1",
+        governed: true,
+        sealTask: { handlerUserId: "handler-1" },
+        activeFinal: { uploadedByUserId: "handler-1" },
+        approvalFormAvailable: true,
+        approvalParticipant: false,
+        canUploadGovernedFinal: false
+      }
+    );
+
+    expect(actions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "return_final_contract", enabled: true }),
+      expect.objectContaining({ key: "confirm_final_contract", enabled: true })
+    ]));
+  });
+
+  it("does not expose PDF archive generation before a governed contract is effective", () => {
+    const service = new ContractReadService({} as never) as unknown as {
+      contractActions(
+        status: string,
+        roleKeys: string[],
+        approvalReviewAccess: { canAct: boolean; canReview: boolean; requiresSelfReviewConfirmation: boolean },
+        archiveFiles: [],
+        context: Record<string, unknown>
+      ): Array<{ key: string }>;
+    };
+    const approvalAccess = { canAct: false, canReview: false, requiresSelfReviewConfirmation: false };
+    const governedContext = {
+      actorUserId: "handler-1",
+      ownerUserId: "handler-1",
+      governed: true,
+      sealTask: { handlerUserId: "handler-1" },
+      activeFinal: null,
+      approvalFormAvailable: false,
+      approvalParticipant: false,
+      canUploadGovernedFinal: false
+    };
+
+    expect(service.contractActions("in_seal", ["contract_staff"], approvalAccess, [], governedContext))
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ key: "generate_pdf_archive" })]));
+    expect(service.contractActions("effective", ["contract_staff"], approvalAccess, [], governedContext))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ key: "generate_pdf_archive" })]));
+    expect(service.contractActions("in_seal", ["contract_staff"], approvalAccess, [], {
+      ...governedContext,
+      governed: false
+    })).toEqual(expect.arrayContaining([expect.objectContaining({ key: "generate_pdf_archive" })]));
+  });
   beforeEach(() => {
     jest.useFakeTimers().setSystemTime(new Date("2026-07-08T00:00:00.000Z"));
   });

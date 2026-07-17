@@ -4105,6 +4105,18 @@ describe("ContractService", () => {
     });
   });
 
+  it("rejects the legacy seal-approval entry for governed contracts", async () => {
+    const prisma = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ contractGovernanceVersion: 1 })
+      }
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await expect(service.approveSeal("contract-version-1", "user-contract-staff"))
+      .rejects.toThrow("受治理合同请使用用章确认入口");
+  });
+
   it.each([
     [
       "合同版本不存在",

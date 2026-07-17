@@ -112,9 +112,10 @@ describe("ContractSealService", () => {
 
   it("综合部主管同意用章后仅进入线下用章中", async () => {
     const { tx, prisma } = harness();
-    const service = new ContractSealService(prisma as never);
+    const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
+    const service = new ContractSealService(prisma as never, undefined, undefined, auth as never);
 
-    await expect(service.approve("version-1", "director-1")).resolves.toMatchObject({
+    await expect(service.approve("version-1", "director-1", { confirmationPassword: "Current@2026" })).resolves.toMatchObject({
       status: "in_seal"
     });
     expect(tx.contractSealTask.updateMany).toHaveBeenCalledWith(expect.objectContaining({
@@ -161,13 +162,14 @@ describe("ContractSealService", () => {
     first.tx.contractSealTask.updateMany
       .mockResolvedValueOnce({ count: 1 })
       .mockResolvedValueOnce({ count: 0 });
-    const service = new ContractSealService(first.prisma as never);
-    await service.approve("version-1", "director-1");
+    const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
+    const service = new ContractSealService(first.prisma as never, undefined, undefined, auth as never);
+    await service.approve("version-1", "director-1", { confirmationPassword: "Current@2026" });
     first.tx.$queryRaw
       .mockResolvedValueOnce([{ id: "contract-1" }])
       .mockResolvedValueOnce([first.version])
       .mockResolvedValueOnce([first.task]);
-    await expect(service.approve("version-1", "director-1"))
+    await expect(service.approve("version-1", "director-1", { confirmationPassword: "Current@2026" }))
       .rejects.toThrow("用章任务已被其他人处理");
   });
 

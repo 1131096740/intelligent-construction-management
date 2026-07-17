@@ -1,6 +1,12 @@
 import { Type } from "class-transformer";
 import { IsBoolean, IsInt, IsNotEmpty, IsString, Matches, Min } from "class-validator";
 
+export class ApproveContractSealDto {
+  @IsString()
+  @IsNotEmpty()
+  confirmationPassword!: string;
+}
+
 export class CompleteContractSealDto {
   @IsBoolean()
   firstPartySignedOrStamped!: boolean;

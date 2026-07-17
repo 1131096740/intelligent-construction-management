@@ -5,6 +5,8 @@ import {
   buildContractDetailHeader,
   buildContractFlowSummary,
   buildContractFundTimeline,
+  canRequestContractChangeEligibility,
+  contractActionLabel,
   contractBaseInfo,
   contractDetailMeta,
   contractDetailTabs,
@@ -13,10 +15,34 @@ import {
   contractPaymentTermColumns,
   contractSettlementLedgerColumns,
   contractSettlementBlockMessage,
+  detailEvidenceKinds,
   contractOverviewBaseInfo
 } from "./contract-detail.config";
 
 describe("contract detail page configuration", () => {
+  it("uses approved signing action labels and all three evidence kinds", () => {
+    expect(contractActionLabel("approve_seal", "用章通过")).toBe("同意用章");
+    expect(contractActionLabel("approve_seal", "确认用章通过", false)).toBe("确认用章通过");
+    expect(contractActionLabel("complete_seal", "完成用章")).toBe("确认已完成我方签署与盖章");
+    expect(contractActionLabel("upload_final_contract", "上传归档件")).toBe("上传双方最终版");
+    expect(contractActionLabel("return_final_contract", "退回")).toBe("退回补正");
+    expect(contractActionLabel("confirm_final_contract", "确认")).toBe("确认归档");
+    expect(contractActionLabel("download_approval_form", "下载")).toBe("审批单下载");
+    expect(detailEvidenceKinds).toEqual([
+      "counterparty_signed_approval",
+      "mutually_signed_final",
+      "approval_form"
+    ]);
+  });
+
+  it("does not request contract change eligibility for read-only finance or administration roles", () => {
+    expect(canRequestContractChangeEligibility(["contract_staff"])).toBe(true);
+    expect(canRequestContractChangeEligibility(["contract_director"])).toBe(true);
+    expect(canRequestContractChangeEligibility(["finance_staff"])).toBe(false);
+    expect(canRequestContractChangeEligibility(["finance_director"])).toBe(false);
+    expect(canRequestContractChangeEligibility(["comprehensive_director"])).toBe(false);
+  });
+
   it("uses the standard detail structure without native sensitive controls", () => {
     const source = readFileSync(new URL("./ContractDetailPage.vue", import.meta.url), "utf8");
     expect(source).toContain("<BusinessDetailHeader");
@@ -26,6 +52,10 @@ describe("contract detail page configuration", () => {
     expect(source).not.toContain("<input");
     expect(source).not.toContain("confirmSensitiveAction");
     expect(source).not.toContain("promptSensitiveActionReason");
+    expect(source).toContain("upload_final_contract");
+    expect(source).toContain("complete_seal");
+    expect(source).toContain("return_final_contract");
+    expect(source).toContain("confirm_final_contract");
   });
 
   it("organizes contract facts by task instead of an infinite card stack", () => {

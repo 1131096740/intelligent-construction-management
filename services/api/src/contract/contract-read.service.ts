@@ -1281,14 +1281,14 @@ export class ContractReadService {
         enabled: approvalReviewAccess.canAct,
         disabledReason: "当前用户不是当前审批节点处理人"
       }),
-      detailAction({
+      ...(!context?.governed || status === "effective" ? [detailAction({
         key: "generate_pdf_archive",
         label: "生成 PDF 归档",
         kind: "normal",
         roleKeys,
         requiredAction: "contract.archive.upload",
         enabled: Boolean(status)
-      })
+      })] : [])
     ];
 
     if (status === "draft") {
@@ -1376,6 +1376,16 @@ export class ContractReadService {
 
     if (status === "pending_archive_confirm" || status === "sealed_pending_archive") {
       return [
+        ...(context?.governed ? [detailAction({
+          key: "return_final_contract",
+          label: "退回补正",
+          kind: "danger",
+          roleKeys,
+          requiredAction: "contract.archive.confirm",
+          enabled: Boolean(context.activeFinal),
+          disabledReason: "暂无可退回补正的双方最终版",
+          requiresComment: true
+        })] : []),
         detailAction({
           key: context?.governed ? "confirm_final_contract" : "confirm_archive",
           label: context?.governed ? "确认双方最终版并归档" : "确认合同归档",
