@@ -1,3 +1,4 @@
+import type { DetailActionReadModel, EvidenceFileReadModel } from "@jiangkong/shared-domain";
 import type { PrimaryTableCol } from "tdesign-vue-next";
 
 export type SettlementDetailTone = "default" | "primary" | "warning" | "danger" | "success";
@@ -63,6 +64,67 @@ export interface SettlementDetailHeaderView {
   currentNode: string;
   nextStep: string;
   amount: string;
+}
+
+export const settlementSignatureEvidenceKinds = [
+  "counterparty_signed_original",
+  "final_internal_signed_copy"
+] as const;
+
+export type SettlementSignatureEvidenceKind = typeof settlementSignatureEvidenceKinds[number];
+export type SettlementSignatureGenerationState = "waiting" | "generating" | "failed" | "completed";
+
+export interface SettlementSignatureEvidenceSlot {
+  kind: SettlementSignatureEvidenceKind;
+  title: string;
+  description: string;
+  emptyText: string;
+  files: EvidenceFileReadModel[];
+}
+
+export function isGovernedSettlementEvidence(files: readonly EvidenceFileReadModel[]) {
+  return files.some((file) =>
+    file.purposeKey === "counterparty_signed_original" ||
+    file.purposeKey === "final_internal_signed_copy"
+  );
+}
+
+export function buildSettlementSignatureEvidenceSlots(
+  files: readonly EvidenceFileReadModel[]
+): SettlementSignatureEvidenceSlot[] {
+  return [
+    {
+      kind: "counterparty_signed_original",
+      title: "乙方签章原件",
+      description: "提交审批前冻结的乙方签字、盖章完整扫描件。",
+      emptyText: "尚未读取到乙方签章原件。",
+      files: files.filter((file) => file.purposeKey === "counterparty_signed_original")
+    },
+    {
+      kind: "final_internal_signed_copy",
+      title: "最终内部签名合成件",
+      description: "审批通过后由系统在冻结原件上合成我方审批签名。",
+      emptyText: "审批完成后由系统生成，无需人工上传。",
+      files: files.filter((file) => file.purposeKey === "final_internal_signed_copy")
+    }
+  ];
+}
+
+export function settlementSignatureGenerationState(
+  files: readonly EvidenceFileReadModel[],
+  actions: readonly DetailActionReadModel[],
+  statusLabel: string
+): SettlementSignatureGenerationState {
+  const finalFile = files.find((file) => file.purposeKey === "final_internal_signed_copy");
+  if (finalFile?.generationStatus === "completed" && finalFile.canDownload) return "completed";
+  if (actions.some((action) => action.key === "retry_signed_document_generation")) return "failed";
+  if (finalFile?.generationStatus === "failed" || statusLabel.includes("生成失败")) return "failed";
+  if (
+    finalFile?.downloadability === "pending_generation" ||
+    ["pending", "generating"].includes(finalFile?.generationStatus ?? "") ||
+    statusLabel.includes("生成")
+  ) return "generating";
+  return finalFile?.canDownload ? "completed" : "waiting";
 }
 
 export const settlementDetailTabs = [

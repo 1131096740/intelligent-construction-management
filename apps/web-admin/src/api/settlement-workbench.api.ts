@@ -5,6 +5,34 @@ import type {
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 
+export const SETTLEMENT_FIELD_REVIEWER_ROLE_KEYS = [
+  "material_staff",
+  "engineering_foreman",
+  "engineering_tech"
+] as const;
+
+export type SettlementFieldReviewerRoleKey =
+  (typeof SETTLEMENT_FIELD_REVIEWER_ROLE_KEYS)[number];
+
+export function isSettlementFieldReviewerRoleAllowed(
+  value: unknown
+): value is SettlementFieldReviewerRoleKey {
+  return typeof value === "string" &&
+    (SETTLEMENT_FIELD_REVIEWER_ROLE_KEYS as readonly string[]).includes(value);
+}
+
+export interface SettlementParticipantOptionReadModel {
+  userId: string;
+  name: string;
+  roleKey: SettlementFieldReviewerRoleKey;
+  roleLabel: string;
+}
+
+export interface SettlementParticipantOptionsReadModel {
+  route: "material_mechanical" | "labor_professional";
+  options: SettlementParticipantOptionReadModel[];
+}
+
 export interface SettlementLineDraftPayload {
   sourceType: "contract_bill_row" | "manual_adjustment";
   contractBillRowId?: string;
@@ -91,6 +119,17 @@ export async function fetchSettlementSourceLines(
     throw new Error(message);
   }
   return response.json() as Promise<SettlementSourceLinesReadModel>;
+}
+
+export async function fetchSettlementParticipantOptions(
+  contractVersionId: string
+): Promise<SettlementParticipantOptionsReadModel> {
+  const response = await apiFetch(
+    `/settlement-workbench/contract-versions/${encodeURIComponent(contractVersionId)}/participant-options`,
+    { method: "GET" }
+  );
+  await ensureOk(response, "加载现场复核人失败");
+  return response.json() as Promise<SettlementParticipantOptionsReadModel>;
 }
 
 export async function previewSettlementLines(

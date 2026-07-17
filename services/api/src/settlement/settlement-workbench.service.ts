@@ -28,6 +28,19 @@ interface SourceLineOccupancy {
 export class SettlementWorkbenchService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async participantOptions(contractVersionId: string, actorUserId: string) {
+    if (typeof (this.prisma as { $transaction?: unknown }).$transaction !== "function") {
+      return this.participantOptionsLocked(
+        this.prisma as unknown as Prisma.TransactionClient,
+        contractVersionId,
+        actorUserId
+      );
+    }
+    return this.prisma.$transaction((tx) =>
+      this.participantOptionsLocked(tx, contractVersionId, actorUserId)
+    );
+  }
+
   async sourceLines(contractVersionId: string): Promise<SettlementSourceLinesReadModel> {
     if (typeof (this.prisma as { $transaction?: unknown }).$transaction !== "function") {
       return this.sourceLinesLocked(this.prisma as unknown as Prisma.TransactionClient, contractVersionId);
@@ -145,6 +158,72 @@ export class SettlementWorkbenchService {
       contractAmountCents: version.amountCents.toString(),
       summary: this.summary(sourceRows),
       rows: sourceRows
+    };
+  }
+
+  private async participantOptionsLocked(
+    client: Prisma.TransactionClient,
+    contractVersionId: string,
+    actorUserId: string
+  ) {
+    const version = await lockContractAndAssertCurrentEffective(client, contractVersionId);
+    const contract = await client.contract.findUnique({
+      where: { id: version.contractId },
+      select: { projectId: true, contractTypeKey: true }
+    });
+    if (!contract) {
+      throw new NotFoundException("未找到结算关联合同，请刷新合同台账后重试");
+    }
+    assertSettlementContractType(contract.contractTypeKey);
+    const materialRoute = ["material_purchase", "equipment_rental"].includes(
+      contract.contractTypeKey ?? ""
+    );
+    const allowedRoles = materialRoute
+      ? ["material_staff"]
+      : ["engineering_foreman", "engineering_tech"];
+    const memberships = await client.projectMember.findMany({
+      where: {
+        projectId: contract.projectId,
+        positionKey: { in: allowedRoles },
+        userId: { not: actorUserId }
+      },
+      select: { userId: true, positionKey: true }
+    });
+    const userIds = [...new Set(memberships.map((membership) => membership.userId))];
+    const users = userIds.length
+      ? await client.user.findMany({
+          where: { id: { in: userIds }, isActive: true },
+          select: { id: true, name: true }
+        })
+      : [];
+    const nameById = new Map(users.map((user) => [user.id, user.name]));
+    const rolesByUser = new Map<string, Set<string>>();
+    for (const membership of memberships) {
+      if (!nameById.has(membership.userId)) continue;
+      const roles = rolesByUser.get(membership.userId) ?? new Set<string>();
+      roles.add(membership.positionKey);
+      rolesByUser.set(membership.userId, roles);
+    }
+    const options = [...rolesByUser.entries()].flatMap(([userId, roles]) => {
+      if (roles.size !== 1) return [];
+      const roleKey = [...roles][0]!;
+      return [{
+        userId,
+        name: nameById.get(userId)!,
+        roleKey,
+        roleLabel:
+          roleKey === "material_staff"
+            ? "物资员"
+            : roleKey === "engineering_foreman"
+              ? "工长"
+              : "施工员"
+      }];
+    }).sort((left, right) =>
+      left.name.localeCompare(right.name, "zh-CN") || left.userId.localeCompare(right.userId)
+    );
+    return {
+      route: materialRoute ? "material_mechanical" : "labor_professional",
+      options
     };
   }
 

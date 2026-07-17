@@ -437,7 +437,30 @@
         class="tab-content"
         aria-label="结算凭证资料"
       >
-        <section class="content-panel">
+        <section
+          v-if="isGovernedSignatureFlow"
+          class="content-panel"
+        >
+          <SettlementSignatureEvidencePanel
+            :files="settlementSignatureEvidenceFilesView"
+            :approval-timeline="settlementApprovalTimelineView"
+            :generation-state="settlementSignatureGenerationStateView"
+            :can-retry="isSettlementActionEnabled('retry_signed_document_generation')"
+            :can-regenerate="canRegenerateSettlementSignatureEvidence"
+            :can-confirm="isSettlementActionEnabled('confirm_archive')"
+            :disabled="detailLoading || Boolean(archiveActionBusy)"
+            :busy-action="archiveActionBusy"
+            @download="requestGovernedSettlementFileDownload"
+            @retry="retrySettlementSignatureGeneration"
+            @regenerate="requestSettlementSignatureRegeneration"
+            @confirm="requestSettlementArchiveConfirmation"
+          />
+        </section>
+
+        <section
+          v-else
+          class="content-panel"
+        >
           <header class="section-heading">
             <div>
               <h2>归档办理</h2>
@@ -582,7 +605,10 @@
           </div>
         </section>
 
-        <section class="content-panel">
+        <section
+          v-if="!isGovernedSignatureFlow"
+          class="content-panel"
+        >
           <header class="section-heading">
             <div>
               <h2>归档资料</h2>
@@ -644,7 +670,10 @@
           </div>
         </section>
 
-        <section class="content-panel">
+        <section
+          v-if="!isGovernedSignatureFlow"
+          class="content-panel"
+        >
           <header class="section-heading">
             <div>
               <h2>审批与审计记录</h2>
@@ -693,6 +722,8 @@ import {
   fetchSettlementDetail,
   generateSettlementPdfArchive,
   remindSettlementApproval,
+  regenerateSettlementSignedDocument,
+  retrySettlementSignedDocumentGeneration,
   reviewSettlementApproval,
   transferSettlementApproval,
   uploadPrivateFile,
@@ -712,12 +743,15 @@ import { buildFileUploadSummary } from "../../components/file-upload-summary.con
 import type { SettlementDetailTone } from "./settlement-detail.config";
 import {
   buildSettlementDetailHeader,
+  isGovernedSettlementEvidence,
   settlementAttachmentTemplates,
   settlementDetailTabs,
   settlementLineColumns,
   settlementOverviewBaseInfo,
-  settlementPaymentRuleColumns
+  settlementPaymentRuleColumns,
+  settlementSignatureGenerationState
 } from "./settlement-detail.config";
+import SettlementSignatureEvidencePanel from "./components/SettlementSignatureEvidencePanel.vue";
 
 type SettlementReviewDecision = "approve" | "reject" | "reject_previous" | "return_to_applicant";
 type SensitiveActionKind =
@@ -730,6 +764,7 @@ type SensitiveActionKind =
   | "withdrawal"
   | "transfer"
   | "delegate"
+  | "generationRegeneration"
   | "fileDownload";
 
 interface SensitiveActionState {
@@ -806,7 +841,13 @@ const settlementDetailHeaderView = computed(() => {
     settlementBaseInfoView.value
   );
 });
-const settlementEffectivenessStepsView = computed(() => settlementDetail.value?.effectivenessSteps ?? []);
+const settlementEffectivenessStepsView = computed(() =>
+  (settlementDetail.value?.effectivenessSteps ?? []).map((step) =>
+    isGovernedSignatureFlow.value && step.label === "签字盖章归档上传"
+      ? { ...step, label: "最终内部签名合成件", status: step.status === "已上传" ? "已冻结" : step.status }
+      : step
+  )
+);
 const settlementTaxFactSummaryView = computed(() => settlementDetail.value?.taxFactSummary ?? []);
 const settlementArchiveResponsibilitiesView = computed(() => settlementDetail.value?.archiveResponsibilities ?? []);
 const settlementPaymentRulesView = computed(() => settlementDetail.value?.paymentRules ?? []);
@@ -827,6 +868,28 @@ const settlementArchiveFilesView = computed(() =>
   }))
 );
 const settlementApprovalTimelineView = computed(() => settlementDetail.value?.approvalTimeline ?? []);
+const settlementSignatureEvidenceFilesView = computed(() =>
+  settlementArchiveFilesView.value.filter((file) =>
+    file.purposeKey === "counterparty_signed_original" ||
+    file.purposeKey === "final_internal_signed_copy"
+  )
+);
+const isGovernedSignatureFlow = computed(() =>
+  isGovernedSettlementEvidence(settlementDetail.value?.archiveFiles ?? []) ||
+  settlementDetail.value?.availableActions.some(
+    (action) => action.key === "retry_signed_document_generation"
+  ) === true ||
+  settlementDetailMetaView.value.some(
+    (item) => item.label === "当前状态" && /(?:系统生成最终|最终结算文件)/u.test(item.value)
+  )
+);
+const settlementSignatureGenerationStateView = computed(() =>
+  settlementSignatureGenerationState(
+    settlementDetail.value?.archiveFiles ?? [],
+    settlementDetail.value?.availableActions ?? [],
+    settlementDetailMetaView.value.find((item) => item.label === "当前状态")?.value ?? ""
+  )
+);
 const settlementArchiveFileOptions = computed(() => settlementArchiveFilesView.value
   .filter((file) => file.canDownload)
   .map((file) => ({ label: `${file.fileName}（${file.statusLabel}）`, value: file.fileId }))
@@ -837,6 +900,10 @@ const settlementArchiveRecordOptions = computed(() => settlementArchiveFilesView
 })));
 const settlementActionByKey = computed(() =>
   new Map((settlementDetail.value?.availableActions ?? []).map((action) => [action.key, action]))
+);
+const canRegenerateSettlementSignatureEvidence = computed(() =>
+  isSettlementActionEnabled("confirm_archive") &&
+  settlementSignatureGenerationStateView.value === "completed"
 );
 const settlementHeaderPrimaryAction = computed(() => {
   const primaryAction = settlementDetail.value?.primaryAction;
@@ -928,9 +995,14 @@ async function reloadSettlementDetail() {
     if (requestId !== settlementDetailRequestId || settlementId !== routeSettlementId()) return false;
     settlementDetail.value = detail;
     const archiveRecordIds = detail.archiveFiles.map((file) => file.recordId);
+    const governedFinalRecordId = detail.archiveFiles.find(
+      (file) => file.purposeKey === "final_internal_signed_copy" && file.canDownload
+    )?.recordId;
     const archiveFileIds = detail.archiveFiles.map((file) => file.fileId);
     if (!archiveRecordIds.includes(settlementArchiveForm.archiveFileId)) {
-      settlementArchiveForm.archiveFileId = archiveRecordIds[0] ?? "";
+      settlementArchiveForm.archiveFileId = governedFinalRecordId ?? archiveRecordIds[0] ?? "";
+    } else if (governedFinalRecordId) {
+      settlementArchiveForm.archiveFileId = governedFinalRecordId;
     }
     if (!archiveFileIds.includes(settlementArchiveForm.downloadFileId)) {
       settlementArchiveForm.downloadFileId = archiveFileIds[0] ?? "";
@@ -1076,6 +1148,26 @@ function requestSettlementArchiveConfirmation() {
   });
 }
 
+async function retrySettlementSignatureGeneration() {
+  if (!isSettlementActionEnabled("retry_signed_document_generation")) return;
+  await runArchiveAction("generationRetry", () =>
+    retrySettlementSignedDocumentGeneration(currentSettlementId())
+  );
+}
+
+function requestSettlementSignatureRegeneration() {
+  if (!canRegenerateSettlementSignatureEvidence.value) return;
+  openSensitiveAction("generationRegeneration", {
+    title: "仅修复渲染问题并重新生成？",
+    description:
+      "此操作只适用于错页、错位或签名显示异常等纯渲染问题，不会改变乙方原件、结算事实或审批结果。",
+    confirmText: "确认重新生成",
+    requireReason: true,
+    requirePassword: true,
+    reasonLabel: "渲染问题说明"
+  });
+}
+
 function requestSettlementReview(decision: SettlementReviewDecision) {
   try {
     currentSettlementId();
@@ -1187,6 +1279,11 @@ function requestSettlementFileDownload() {
   });
 }
 
+function requestGovernedSettlementFileDownload(fileId: string) {
+  settlementArchiveForm.downloadFileId = fileId;
+  requestSettlementFileDownload();
+}
+
 async function executeSensitiveAction(values: { reason: string; password: string }) {
   sensitiveAction.error = "";
   let succeeded = false;
@@ -1228,6 +1325,15 @@ async function executeSensitiveAction(values: { reason: string; password: string
       case "transfer":
       case "delegate":
         succeeded = await performSettlementAssignment(sensitiveAction.kind);
+        break;
+      case "generationRegeneration":
+        succeeded = await runArchiveAction("regeneration", () =>
+          regenerateSettlementSignedDocument(currentSettlementId(), {
+            confirmPureRenderingIssue: true,
+            reason: values.reason,
+            confirmationPassword: values.password
+          })
+        );
         break;
       case "fileDownload":
         succeeded = await performSettlementFileDownload(values);

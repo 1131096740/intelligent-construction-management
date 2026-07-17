@@ -62,6 +62,8 @@ import {
   confirmContractTakeoverChangeBaseline,
   confirmContractArchive,
   confirmSettlementArchive,
+  regenerateSettlementSignedDocument,
+  retrySettlementSignedDocumentGeneration,
   delegateContractApproval,
   delegatePaymentApproval,
   downloadSettlementAttachmentTemplate,
@@ -1297,6 +1299,37 @@ describe("core flow read API client", () => {
         fileId: "file-contract-archive"
       })
     );
+  });
+
+  it("retries failed settlement generation separately from confirmed pure-render regeneration", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ status: "completed" })
+    } as Response);
+
+    await retrySettlementSignedDocumentGeneration("settlement/1");
+    await regenerateSettlementSignedDocument("settlement/1", {
+      confirmPureRenderingIssue: true,
+      reason: "签名位置渲染偏移",
+      confirmationPassword: "current-password"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/settlements/settlement%2F1/signed-document-generation-retry",
+      "/api/settlements/settlement%2F1/signed-document-regeneration"
+    ]);
+    expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({})
+    }));
+    expect(fetchMock.mock.calls[1][1]).toEqual(expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        confirmPureRenderingIssue: true,
+        reason: "签名位置渲染偏移",
+        confirmationPassword: "current-password"
+      })
+    }));
   });
 
   it("downloads settlement draft Excel as a blob", async () => {

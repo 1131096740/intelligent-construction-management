@@ -1640,7 +1640,7 @@ git commit -m "feat: 生成结算逐页冻结签名合成件"
 - Modify: `apps/web-admin/src/pages/settlements/settlement-detail.config.test.ts`
 - Create: `apps/web-admin/e2e/settlement-signature-governance.e2e.ts`
 
-- [ ] **Step 1: 写步骤顺序、上传和详情失败测试**
+- [x] **Step 1: 写步骤顺序、上传和详情失败测试**
 
 ```ts
 expect(workbenchSteps).toEqual([
@@ -1651,32 +1651,34 @@ expect(detailEvidenceKinds).toEqual(["counterparty_signed_original", "final_inte
 expect(detailSource).not.toContain("审批通过后上传归档件");
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `pnpm --filter @jiangkong/web-admin test -- src/api/settlement-drafts.api.test.ts src/api/settlement-workbench.api.test.ts src/pages/settlements/settlement-workbench.state.test.ts src/pages/settlements/settlement-workbench.structure.test.ts src/pages/settlements/settlement-detail.config.test.ts`
 
 Expected: FAIL。
 
-- [ ] **Step 3: 实现工作台顺序和状态保持**
+- [x] **Step 3: 实现工作台顺序和状态保持**
 
 参与人选择、冻结 PDF 下载、扫描件上传和声明放在宽表格滚动区之外。申请金额或文件未就绪时主按钮说明下一步；接口失败保留草稿、选定人员和上传结果。
 
-- [ ] **Step 4: 详情展示双证据和生成状态**
+- [x] **Step 4: 详情展示双证据和生成状态**
 
 使用 `EvidenceFileCards` 展示乙方原始扫描件、最终合成件、审批时间线和合同部确认；重新生成使用 `SensitiveActionDialog`，加载中禁用依赖详情的动作。
 
-- [ ] **Step 5: 运行 Web 定向测试与 E2E**
+- [x] **Step 5: 运行 Web 定向测试与 E2E**
 
 Run: `pnpm --filter @jiangkong/web-admin test -- src/api/settlement-drafts.api.test.ts src/api/settlement-workbench.api.test.ts src/api/core-flow-read.api.test.ts src/pages/settlements/settlement-workbench.state.test.ts src/pages/settlements/settlement-workbench.structure.test.ts src/pages/settlements/settlement-detail.config.test.ts && pnpm --filter @jiangkong/web-admin typecheck && pnpm --filter @jiangkong/web-admin typecheck:e2e && pnpm --filter @jiangkong/web-admin lint && pnpm --filter @jiangkong/web-admin check:ui && pnpm --filter @jiangkong/web-admin build && CI=true pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.config.ts e2e/settlement-signature-governance.e2e.ts e2e/settlement-workbench.e2e.ts e2e/ui-p1-settlement-visual.e2e.ts`
 
 Expected: PASS；无文档级横向溢出和嵌套横滚。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add apps/web-admin/src/api/settlement-* apps/web-admin/src/api/core-flow-read.api* apps/web-admin/src/pages/settlements apps/web-admin/e2e/settlement-signature-governance.e2e.ts apps/web-admin/e2e/settlement-workbench.e2e.ts apps/web-admin/e2e/ui-p1-settlement-visual.e2e.ts
 git commit -m "feat: 完善结算签章审批工作台"
 ```
+
+> Task 19 已于 2026-07-18 完成本地实现并经三路独立只读复审最终 READY。结算工作台按“录入结算事实→选择项目现场复核人→生成冻结结算单→上传乙方签章扫描件→提交审批”形成五步闭环；参与人候选由后端按所属项目和合同类型解析，结算创建权限收紧为合同员。冻结 PDF、乙方完整签章 PDF、四项人工声明与草稿 revision 精确绑定，替换文件使用独立 evidence epoch，上传中或未取得服务端 fileId 时禁用声明；同修订幂等重生成保留有效关联，新冻结件、事实修订或换件必须重新确认。详情页分离乙方原件与最终内部签名合成件，覆盖生成失败重试、最终件下载、纯渲染问题密码/原因敏感重生成及归档确认，legacy 详情保持原分支。Shared 96/96、API 定向 31/31、Web 定向 96/96、三组 Playwright 5/5、API/Web typecheck/lint、Web `check:ui`/production build 和 `git diff --check` 全绿；未新增迁移、未连接生产、未推送或部署。P2 纵深项为无数据库记录的极端孤儿上传定期清理和异步下载弹窗兼容，不阻断本任务。
 
 ### Task 20: 通用合同直接付款和其他合同付款来源负向约束
 

@@ -1,6 +1,8 @@
 import type { SettlementSourceLineReadModel } from "@jiangkong/shared-domain";
 import { describe, expect, it } from "vitest";
 import {
+  SETTLEMENT_WORKBENCH_STEPS,
+  FINAL_SETTLEMENT_CONFIRMATIONS,
   applyBatchRemark,
   applyImportedSettlementLines,
   applyTsvQuantityPaste,
@@ -12,12 +14,93 @@ import {
   setSourceLineSelection,
   settlementQuantityProgress,
   settlementWorkbenchDraftFingerprint,
+  settlementSignatureStateAfterLinkFailure,
+  settlementSignatureNextAction,
+  settlementSignatureStateAfterDraftRevision,
+  validateFinalSettlementConfirmations,
   validateSettlementWorkbench,
   type ManualAdjustmentDraft,
   type SourceLineDraftMap
 } from "./settlement-workbench.state";
 
 describe("settlement workbench state", () => {
+  it("keeps the governed settlement workflow in the required five-step order", () => {
+    expect(SETTLEMENT_WORKBENCH_STEPS.map((step) => step.label)).toEqual([
+      "录入结算事实",
+      "选择现场复核人",
+      "生成冻结结算单",
+      "上传乙方签章扫描件",
+      "提交审批"
+    ]);
+  });
+
+  it("exposes exactly five structured confirmations for final settlement", () => {
+    expect(FINAL_SETTLEMENT_CONFIRMATIONS.map((item) => item.key)).toEqual([
+      "finalScopeCompleted",
+      "finalPriorSettlementsIncluded",
+      "finalNoOutstandingSettlements",
+      "finalWithinContractCap",
+      "finalNoFurtherOrdinarySettlements"
+    ]);
+    expect(validateFinalSettlementConfirmations(false, {})).toEqual([]);
+    expect(validateFinalSettlementConfirmations(true, {})).toHaveLength(5);
+    expect(
+      validateFinalSettlementConfirmations(
+        true,
+        Object.fromEntries(FINAL_SETTLEMENT_CONFIRMATIONS.map((item) => [item.key, true]))
+      )
+    ).toEqual([]);
+  });
+
+  it("keeps a staged upload after failure but invalidates all revision-bound evidence after an edit", () => {
+    const current = {
+      draftId: "draft-1",
+      revision: 3,
+      reviewerUserId: "reviewer-1",
+      frozenDocumentId: "frozen-3",
+      frozenFileId: "file-frozen-3",
+      stagedUploadedFileId: "uploaded-file",
+      linkedOriginalDocumentId: "original-3"
+    };
+
+    expect(settlementSignatureNextAction(current)).toEqual({
+      step: 5,
+      label: "提交结算审批",
+      reason: "当前修订版的参与人、冻结版和乙方签章扫描件均已就绪。"
+    });
+    expect(settlementSignatureStateAfterLinkFailure(current)).toEqual(current);
+    expect(settlementSignatureStateAfterDraftRevision(current, 4)).toEqual({
+      draftId: "draft-1",
+      revision: 4,
+      reviewerUserId: "reviewer-1",
+      frozenDocumentId: "",
+      frozenFileId: "",
+      stagedUploadedFileId: "",
+      linkedOriginalDocumentId: ""
+    });
+  });
+
+  it("describes one precise next action without treating an uploaded file as linked evidence", () => {
+    expect(settlementSignatureNextAction({
+      draftId: "",
+      revision: 0,
+      reviewerUserId: "",
+      frozenDocumentId: "",
+      frozenFileId: "",
+      stagedUploadedFileId: "",
+      linkedOriginalDocumentId: ""
+    }).label).toBe("先保存结算草稿");
+    expect(settlementSignatureNextAction({
+      draftId: "draft-1",
+      revision: 1,
+      reviewerUserId: "reviewer-1",
+      frozenDocumentId: "frozen-1",
+      frozenFileId: "file-1",
+      stagedUploadedFileId: "uploaded-file",
+      linkedOriginalDocumentId: ""
+    }).label).toBe("确认关联乙方签章扫描件");
+  });
+
   it("keeps source rows unselected by default and clears all current-period state on deselect", () => {
     const selected = setSourceLineSelection({}, "row-1", true);
     selected["row-1"] = { quantity: "2", amountYuan: "12.30", remark: "本期完成" };

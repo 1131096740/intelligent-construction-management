@@ -6,6 +6,136 @@ const QUANTITY_INPUT_PATTERN = /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/;
 const STORED_QUANTITY_PATTERN = /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/;
 const SIGNED_YUAN_PATTERN = /^-?(?:0|[1-9]\d*)(?:\.\d{1,2})?$/;
 
+export const SETTLEMENT_WORKBENCH_STEPS = [
+  { step: 1, label: "录入结算事实" },
+  { step: 2, label: "选择现场复核人" },
+  { step: 3, label: "生成冻结结算单" },
+  { step: 4, label: "上传乙方签章扫描件" },
+  { step: 5, label: "提交审批" }
+] as const;
+
+export const FINAL_SETTLEMENT_CONFIRMATIONS = [
+  {
+    key: "finalScopeCompleted",
+    label: "本合同约定的工作范围已经全部完成"
+  },
+  {
+    key: "finalPriorSettlementsIncluded",
+    label: "以前各期结算已经全部纳入本次累计金额"
+  },
+  {
+    key: "finalNoOutstandingSettlements",
+    label: "不存在尚未申报或尚未处理的结算事项"
+  },
+  {
+    key: "finalWithinContractCap",
+    label: "审定累计金额未超过当前有效合同金额上限"
+  },
+  {
+    key: "finalNoFurtherOrdinarySettlements",
+    label: "本次生效后不再发起普通或过程结算"
+  }
+] as const;
+
+export type FinalSettlementConfirmationKey =
+  (typeof FINAL_SETTLEMENT_CONFIRMATIONS)[number]["key"];
+
+export type FinalSettlementConfirmationState = Partial<
+  Record<FinalSettlementConfirmationKey, boolean>
+>;
+
+export interface SettlementSignatureWorkflowState {
+  draftId: string;
+  revision: number;
+  reviewerUserId: string;
+  frozenDocumentId: string;
+  frozenFileId: string;
+  stagedUploadedFileId: string;
+  linkedOriginalDocumentId: string;
+}
+
+export interface SettlementSignatureNextAction {
+  step: 1 | 2 | 3 | 4 | 5;
+  label: string;
+  reason: string;
+}
+
+export function validateFinalSettlementConfirmations(
+  isFinal: boolean,
+  confirmations: FinalSettlementConfirmationState
+): string[] {
+  if (!isFinal) return [];
+  return FINAL_SETTLEMENT_CONFIRMATIONS
+    .filter((item) => confirmations[item.key] !== true)
+    .map((item) => `请确认：${item.label}。`);
+}
+
+export function settlementSignatureNextAction(
+  state: SettlementSignatureWorkflowState
+): SettlementSignatureNextAction {
+  if (!state.draftId || state.revision < 1) {
+    return {
+      step: 1,
+      label: "先保存结算草稿",
+      reason: "冻结版和签章文件必须绑定已保存的草稿修订号。"
+    };
+  }
+  if (!state.reviewerUserId) {
+    return {
+      step: 2,
+      label: "选择项目现场复核人",
+      reason: "审批路线需要先冻结本项目的现场复核人。"
+    };
+  }
+  if (!state.frozenDocumentId || !state.frozenFileId) {
+    return {
+      step: 3,
+      label: "生成当前修订版冻结结算单",
+      reason: "请先生成并下载系统冻结的 A4 横向结算单，再交乙方签章。"
+    };
+  }
+  if (!state.stagedUploadedFileId) {
+    return {
+      step: 4,
+      label: "上传乙方完整签章扫描件",
+      reason: "请上传乙方签字、填写日期并按规则盖章后的整份 PDF。"
+    };
+  }
+  if (!state.linkedOriginalDocumentId) {
+    return {
+      step: 4,
+      label: "确认关联乙方签章扫描件",
+      reason: "文件已上传但尚未与当前草稿修订版绑定，请核对声明后确认关联。"
+    };
+  }
+  return {
+    step: 5,
+    label: "提交结算审批",
+    reason: "当前修订版的参与人、冻结版和乙方签章扫描件均已就绪。"
+  };
+}
+
+export function settlementSignatureStateAfterDraftRevision(
+  state: SettlementSignatureWorkflowState,
+  revision: number
+): SettlementSignatureWorkflowState {
+  if (revision === state.revision) return { ...state };
+  return {
+    ...state,
+    revision,
+    frozenDocumentId: "",
+    frozenFileId: "",
+    stagedUploadedFileId: "",
+    linkedOriginalDocumentId: ""
+  };
+}
+
+export function settlementSignatureStateAfterLinkFailure(
+  state: SettlementSignatureWorkflowState
+): SettlementSignatureWorkflowState {
+  return { ...state };
+}
+
 export interface SourceLineDraft {
   quantity: string;
   amountYuan: string;

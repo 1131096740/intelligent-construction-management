@@ -2,10 +2,60 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const page = readFileSync(new URL("./SettlementWorkbenchPage.vue", import.meta.url), "utf8");
+const participantSelect = readFileSync(
+  new URL("./components/SettlementApprovalParticipantSelect.vue", import.meta.url),
+  "utf8"
+);
+const counterpartyPanel = readFileSync(
+  new URL("./components/SettlementCounterpartySignedPdfPanel.vue", import.meta.url),
+  "utf8"
+);
+const state = readFileSync(new URL("./settlement-workbench.state.ts", import.meta.url), "utf8");
 const routes = readFileSync(new URL("../../routes/route-records.ts", import.meta.url), "utf8");
 const ledger = readFileSync(new URL("./SettlementListPage.vue", import.meta.url), "utf8");
 
 describe("settlement creation workbench structure", () => {
+  it("uses the governed five-step order and keeps participant and signature controls outside the wide table", () => {
+    expect(state).toMatch(
+      /录入结算事实[\s\S]*选择现场复核人[\s\S]*生成冻结结算单[\s\S]*上传乙方签章扫描件[\s\S]*提交审批/
+    );
+    expect(page).toContain("SettlementApprovalParticipantSelect");
+    expect(page).toContain("SettlementCounterpartySignedPdfPanel");
+    expect(page.indexOf("jg-table-region--workspace-wide")).toBeLessThan(
+      page.indexOf("<SettlementApprovalParticipantSelect")
+    );
+    expect(page).toContain("workflowNextAction.label");
+    expect(page).toContain("workflowNextAction.reason");
+    expect(page).toContain(':disabled="!selectedContractVersionId"');
+    expect(page).not.toContain(':disabled="!selectedContractVersionId || Boolean(linkedOriginalDocumentId)"');
+  });
+
+  it("uses project-scoped participants and TDesign PDF upload with four explicit declarations", () => {
+    expect(page).toContain("fetchSettlementParticipantOptions");
+    expect(page).not.toContain("fetchOrganizationDirectory");
+    expect(participantSelect).toContain("当前项目没有可选现场复核人");
+    expect(counterpartyPanel).toContain("<t-upload");
+    expect(counterpartyPanel).toContain('accept=".pdf,application/pdf"');
+    expect(counterpartyPanel).toContain(':auto-upload="false"');
+    expect(counterpartyPanel).toContain("pageOrderMatchesFrozenDocument");
+    expect(counterpartyPanel).toContain("counterpartySignedAndDated");
+    expect(counterpartyPanel).toContain("everyPageStamped");
+    expect(counterpartyPanel).toContain("crossPageSealCompleted");
+    expect(counterpartyPanel).not.toContain('type="file"');
+  });
+
+  it("keeps final settlement facts structured and restores revision-bound evidence after refresh", () => {
+    expect(page).toContain("FINAL_SETTLEMENT_CONFIRMATIONS");
+    expect(page).toContain("finalCumulativeAmountCents");
+    expect(page).toContain("draft.documents?.frozenDocument");
+    expect(page).toContain("draft.documents?.counterpartySignedOriginal");
+    expect(page).toContain("generateSettlementFrozenDocument");
+    expect(page).toContain("linkSettlementCounterpartySignedDocument");
+    expect(page).toContain("createPrivateFileDownloadTicket");
+    expect(page).not.toContain("window.confirm");
+    expect(page).not.toContain("window.prompt");
+  });
+
   it("uses an independent workbench route and keeps the ledger as the only created-order entry point", () => {
     expect(routes).toContain('path: "结算工作台"');
     expect(routes).toContain('SettlementWorkbenchPage.vue');

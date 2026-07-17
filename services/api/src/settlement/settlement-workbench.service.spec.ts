@@ -33,6 +33,17 @@ function buildPrisma() {
         contractTypeKey: "material_purchase"
       })
     },
+    projectMember: {
+      findMany: jest.fn().mockResolvedValue([
+        { userId: "material-1", positionKey: "material_staff" },
+        { userId: "inactive-material", positionKey: "material_staff" }
+      ])
+    },
+    user: {
+      findMany: jest.fn().mockResolvedValue([
+        { id: "material-1", name: "物资员甲" }
+      ])
+    },
     contractBill: {
       findMany: jest.fn().mockResolvedValue([
         {
@@ -128,6 +139,59 @@ function buildPrisma() {
 }
 
 describe("SettlementWorkbenchService", () => {
+  it("returns only active project field-review candidates for the contract route", async () => {
+    const prisma = buildPrisma();
+    const service = new SettlementWorkbenchService(prisma as never);
+
+    await expect(service.participantOptions("version-1", "contract-staff-1"))
+      .resolves.toEqual({
+        route: "material_mechanical",
+        options: [{
+          userId: "material-1",
+          name: "物资员甲",
+          roleKey: "material_staff",
+          roleLabel: "物资员"
+        }]
+      });
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+      where: {
+        projectId: "project-1",
+        positionKey: { in: ["material_staff"] },
+        userId: { not: "contract-staff-1" }
+      },
+      select: { userId: true, positionKey: true }
+    });
+  });
+
+  it("omits an ambiguous labor reviewer who holds both selectable project roles", async () => {
+    const prisma = buildPrisma();
+    prisma.contract.findUnique.mockResolvedValue({
+      id: "contract-1",
+      projectId: "project-1",
+      contractTypeKey: "labor_subcontract"
+    });
+    prisma.projectMember.findMany.mockResolvedValue([
+      { userId: "ambiguous-1", positionKey: "engineering_foreman" },
+      { userId: "ambiguous-1", positionKey: "engineering_tech" },
+      { userId: "foreman-1", positionKey: "engineering_foreman" }
+    ]);
+    prisma.user.findMany.mockResolvedValue([
+      { id: "ambiguous-1", name: "多岗位人员" },
+      { id: "foreman-1", name: "工长甲" }
+    ]);
+    const service = new SettlementWorkbenchService(prisma as never);
+
+    await expect(service.participantOptions("version-1", "contract-staff-1"))
+      .resolves.toEqual({
+        route: "labor_professional",
+        options: [{
+          userId: "foreman-1",
+          name: "工长甲",
+          roleKey: "engineering_foreman",
+          roleLabel: "工长"
+        }]
+      });
+  });
   it.each(["generic_contract", null, "unknown"])(
     "fails before reading bills for a non-settleable contract type: %p",
     async (contractTypeKey) => {

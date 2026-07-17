@@ -82,7 +82,11 @@ export class SettlementDraftService {
       where: { id: draft!.contractId },
       select: { contractTypeKey: true }
     });
-    return this.readModel(draft!, settlementContractTypeBlockReason(contract?.contractTypeKey));
+    const documents = await this.draftDocuments(draftId);
+    return {
+      ...this.readModel(draft!, settlementContractTypeBlockReason(contract?.contractTypeKey)),
+      documents
+    };
   }
 
   async update(
@@ -271,6 +275,53 @@ export class SettlementDraftService {
 
   private toJson(value: unknown): Prisma.InputJsonValue {
     return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+  }
+
+  private async draftDocuments(draftId: string) {
+    const records = await this.prisma.settlementSignedDocument.findMany({
+      where: {
+        settlementDraftId: draftId,
+        status: "active",
+        purpose: { in: ["frozen_counterparty_copy", "counterparty_signed_original"] }
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+    });
+    const fileIds = [...new Set(records.map((record) => record.fileId))];
+    const files = fileIds.length
+      ? await this.prisma.fileObject.findMany({
+          where: { id: { in: fileIds }, storageStatus: "active" },
+          select: {
+            id: true,
+            originalName: true,
+            mimeType: true,
+            sizeBytes: true
+          }
+        })
+      : [];
+    const fileById = new Map(files.map((file) => [file.id, file]));
+    const read = (purpose: "frozen_counterparty_copy" | "counterparty_signed_original") => {
+      const record = records.find((candidate) => candidate.purpose === purpose);
+      if (!record) return null;
+      const file = fileById.get(record.fileId);
+      if (!file) return null;
+      return {
+        id: record.id,
+        fileId: file.id,
+        fileName: file.originalName,
+        mimeType: file.mimeType,
+        sizeBytes: file.sizeBytes,
+        pageCount: record.pageCount,
+        sourceRevision: record.sourceRevision,
+        status: record.status,
+        generationStatus: record.generationStatus,
+        declaration: record.declarationSnapshot,
+        createdAt: record.createdAt.toISOString()
+      };
+    };
+    return {
+      frozenDocument: read("frozen_counterparty_copy"),
+      counterpartySignedOriginal: read("counterparty_signed_original")
+    };
   }
 
   private readModel<T>(

@@ -87,7 +87,7 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   "contract.tax_fact.supplement": ["contract_staff"],
   "contract.tax_fact.finance_review": ["finance_director"],
   "contract.tax_fact.confirm": ["contract_director"],
-  "settlement.create": ["contract_staff", "contract_director"],
+  "settlement.create": ["contract_staff"],
   // 评审级；具体按合同类型的路由留待审批引擎，明确不含 chairman / general_manager
   "settlement.approve": [
     "project_manager",

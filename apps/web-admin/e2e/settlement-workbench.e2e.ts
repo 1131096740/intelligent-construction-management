@@ -112,12 +112,12 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
       contentType: "application/json",
       body: JSON.stringify({
         user: {
-          id: "budget-staff-1",
-          name: "预算经办人",
+          id: "contract-staff-1",
+          name: "合同经办人",
           phone: "13900000000",
           mustChangePassword: false,
-          roleKeys: ["budget_staff"],
-          globalRoleKeys: ["budget_staff"]
+          roleKeys: ["contract_staff"],
+          globalRoleKeys: ["contract_staff"]
         },
         tokens: { accessToken: "access-token", refreshToken: "refresh-token", expiresIn: 900 }
       })
@@ -305,6 +305,21 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
       })
   );
   await page.route(
+    "**/api/settlement-workbench/contract-versions/version-1/participant-options",
+    (route) => route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        route: "material_mechanical",
+        options: [{
+          userId: "material-user-1",
+          name: "王物资",
+          roleKey: "material_staff",
+          roleLabel: "物资员"
+        }]
+      })
+    })
+  );
+  await page.route(
     "**/api/settlement-workbench/projects/project-1/contract-versions/version-1/template-recommendations",
     (route) =>
       route.fulfill({
@@ -392,7 +407,13 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
     uploadCalls += 1;
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ id: uploadCalls === 1 ? "file-error" : "file-clean" })
+      body: JSON.stringify({
+        id: uploadCalls === 1
+          ? "file-error"
+          : uploadCalls === 2
+            ? "file-clean"
+            : "file-counterparty"
+      })
     });
   });
   await page.route(
@@ -496,7 +517,7 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
         lines: savedDraftBody.settlementLines,
         revision: 1,
         status: "draft",
-        ownerUserId: "budget-staff-1",
+        ownerUserId: "contract-staff-1",
         submittedSettlementId: null,
         submittedAt: null,
         createdAt: "2026-07-17T08:00:00.000Z",
@@ -513,6 +534,30 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
         body: JSON.stringify({ id: "settlement-new", code: "JS-E2E-019" })
       });
     }
+  );
+  await page.route(
+    "**/api/projects/project-1/settlement-drafts/draft-e2e/frozen-document",
+    (route) => route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(settlementSignedDocument(
+        "frozen-e2e",
+        "file-frozen-e2e",
+        "frozen_counterparty_copy",
+        1
+      ))
+    })
+  );
+  await page.route(
+    "**/api/projects/project-1/settlement-drafts/draft-e2e/counterparty-signed-documents",
+    (route) => route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(settlementSignedDocument(
+        "counterparty-e2e",
+        "file-counterparty",
+        "counterparty_signed_original",
+        1
+      ))
+    })
   );
   await page.route("**/api/settlements/settlement-new", (route) =>
     route.fulfill({
@@ -642,9 +687,29 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
   await expect(page.getByText("import-clean", { exact: true })).toHaveCount(0);
   await expect(page.getByText("version-1", { exact: true })).toHaveCount(0);
 
+  await page.locator(".participant-select .t-select").click();
+  await page.getByText("王物资 · 物资员", { exact: true }).last().click();
+  await page.getByRole("button", { name: "保存当前结算事实", exact: true }).click();
+  await expect(page.getByText("结算草稿已保存；尚未占用合同额度，也未发起审批。")).toBeVisible();
+  await page.getByRole("button", { name: "生成当前修订版", exact: true }).click();
+  await expect(page.getByText("R1 · 2 页", { exact: true })).toBeVisible();
+  await page.locator(".signed-pdf-panel input[type=file]").setInputFiles({
+    name: "乙方签章扫描件.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("stable-counterparty-pdf")
+  });
+  await expect(page.getByText("已上传：乙方签章扫描件.pdf", { exact: true })).toBeVisible();
+  await page.getByText("扫描件页数、页序与当前冻结版一致", { exact: true }).click();
+  await page.getByText("乙方已在所有要求位置签字并填写日期", { exact: true }).click();
+  await page.getByText("乙方已逐页盖章", { exact: true }).click();
+  await page.getByText("多页文件已加盖骑缝章", { exact: false }).click();
+  await page.getByRole("button", { name: "确认关联扫描件", exact: true }).click();
+  await expect(page.getByText("当前修订版已关联", { exact: true })).toBeVisible();
+
   const screenshotDir = process.env.UI_RESPONSIVE_SCREENSHOT_DIR ?? testInfo.outputDir;
   for (const viewport of responsiveViewports) {
     await page.setViewportSize(viewport);
+    await settleResponsiveLayout(page);
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoNestedHorizontalScrollers(page);
     await expectHorizontalScrollOwner(page.locator(".table-shell .t-table__content"));
@@ -666,7 +731,7 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
     .poll(() => decodeURIComponent(new URL(page.url()).pathname))
     .toBe("/结算管理/settlement-new");
 
-  expect(uploadCalls).toBe(2);
+  expect(uploadCalls).toBe(3);
   expect(importPreviewBodies).toEqual([
     { fileId: "file-error", settlementTemplateVersionId },
     { fileId: "file-clean", settlementTemplateVersionId }
@@ -826,20 +891,69 @@ test("税务事实缺失时保存草稿，确认后同一草稿可提交", async
       periodLabel: String(body.periodLabel),
       isFinal: false,
       finalCumulativeAmountCents: null,
+      governanceVersion: 1,
+      fieldReviewerUserId:
+        typeof body.fieldReviewerUserId === "string" ? body.fieldReviewerUserId : null,
+      fieldReviewerRoleKey:
+        typeof body.fieldReviewerRoleKey === "string" ? body.fieldReviewerRoleKey : null,
+      finalScopeCompleted: null,
+      finalPriorSettlementsIncluded: null,
+      finalNoOutstandingSettlements: null,
+      finalWithinContractCap: null,
+      finalNoFurtherOrdinarySettlements: null,
       lines: body.settlementLines,
       revision: currentRevision + 1,
       status: "draft",
-      ownerUserId: "budget-staff-1",
+      ownerUserId: "contract-staff-1",
       submittedSettlementId: null,
       submittedAt: null,
       createdAt: "2026-07-17T08:00:00.000Z",
-      updatedAt: "2026-07-17T08:00:00.000Z"
+      updatedAt: "2026-07-17T08:00:00.000Z",
+      submissionBlockingReason: null,
+      documents: {
+        frozenDocument: null,
+        counterpartySignedOriginal: null
+      }
     };
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify(draftRecord)
     });
   });
+  await page.route(
+    "**/api/projects/project-1/settlement-drafts/draft-tax/frozen-document",
+    (route) => route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...settlementSignedDocument(
+          "frozen-tax",
+          "file-frozen-tax",
+          "frozen_counterparty_copy",
+          1
+        ),
+        settlementDraftId: "draft-tax"
+      })
+    })
+  );
+  await page.route(
+    "**/api/projects/project-1/settlement-drafts/draft-tax/counterparty-signed-documents",
+    (route) => route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...settlementSignedDocument(
+          "counterparty-tax",
+          "file-counterparty-tax",
+          "counterparty_signed_original",
+          1
+        ),
+        settlementDraftId: "draft-tax"
+      })
+    })
+  );
+  await page.route("**/api/files", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ id: "file-counterparty-tax", originalName: "乙方签章扫描件.pdf" })
+  }));
   await page.route("**/api/settlements/settlement-tax", (route) =>
     route.fulfill({
       status: 403,
@@ -869,7 +983,8 @@ test("税务事实缺失时保存草稿，确认后同一草稿可提交", async
   });
   await pendingRow.getByPlaceholder("本期数量").fill("1");
   await pendingRow.getByPlaceholder("本期数量").press("Tab");
-  await expect(page.getByRole("button", { name: "提交结算审批", exact: true })).toBeDisabled();
+  await page.locator(".participant-select .t-select").click();
+  await page.getByText("王物资 · 物资员", { exact: true }).last().click();
   await page.getByRole("button", { name: "保存草稿", exact: true }).click();
   await expect(page.getByText("结算草稿已保存；尚未占用合同额度，也未发起审批。")).toBeVisible();
   await expect(page).toHaveURL(/draftId=draft-tax/u);
@@ -888,6 +1003,7 @@ test("税务事实缺失时保存草稿，确认后同一草稿可提交", async
   const screenshotDir = process.env.UI_RESPONSIVE_SCREENSHOT_DIR ?? testInfo.outputDir;
   for (const viewport of responsiveViewports) {
     await page.setViewportSize(viewport);
+    await settleResponsiveLayout(page);
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoNestedHorizontalScrollers(page);
     await expectHorizontalScrollOwner(page.locator(".table-shell .t-table__content"));
@@ -910,6 +1026,20 @@ test("税务事实缺失时保存草稿，确认后同一草稿可提交", async
   await expect(confirmedRow.getByText("100.00 元（含税）", { exact: true })).toBeVisible();
   await expect(confirmedRow.getByPlaceholder("本期数量")).toHaveValue("1");
   await expect(page.getByText("¥100.00", { exact: true }).last()).toBeVisible();
+  await expect(page.getByRole("button", { name: "生成当前修订版", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "生成当前修订版", exact: true }).click();
+  await expect(page.getByText("R1 · 2 页", { exact: true })).toBeVisible();
+  await page.locator(".signed-pdf-panel input[type=file]").setInputFiles({
+    name: "乙方签章扫描件.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("stable-counterparty-tax-pdf")
+  });
+  await expect(page.getByText("已上传：乙方签章扫描件.pdf", { exact: true })).toBeVisible();
+  await page.getByText("扫描件页数、页序与当前冻结版一致", { exact: true }).click();
+  await page.getByText("乙方已在所有要求位置签字并填写日期", { exact: true }).click();
+  await page.getByText("乙方已逐页盖章", { exact: true }).click();
+  await page.getByText("多页文件已加盖骑缝章", { exact: false }).click();
+  await page.getByRole("button", { name: "确认关联扫描件", exact: true }).click();
   await expect(page.getByRole("button", { name: "提交结算审批", exact: true })).toBeEnabled();
   await page.screenshot({
     path: path.join(screenshotDir, "settlement-workbench-tax-confirmed-1440x900.png"),
@@ -920,8 +1050,8 @@ test("税务事实缺失时保存草稿，确认后同一草稿可提交", async
   await expect
     .poll(() => decodeURIComponent(new URL(page.url()).pathname))
     .toBe("/结算管理/settlement-tax");
-  expect(draftRecord).toEqual(expect.objectContaining({ id: "draft-tax", revision: 2 }));
-  expect(submittedDraftBody).toEqual({ expectedRevision: 2 });
+  expect(draftRecord).toEqual(expect.objectContaining({ id: "draft-tax", revision: 1 }));
+  expect(submittedDraftBody).toEqual({ expectedRevision: 1 });
 });
 
 async function installSettlementWorkbenchBaseMocks(
@@ -933,12 +1063,12 @@ async function installSettlementWorkbenchBaseMocks(
       contentType: "application/json",
       body: JSON.stringify({
         user: {
-          id: "budget-staff-1",
-          name: "预算经办人",
+          id: "contract-staff-1",
+          name: "合同经办人",
           phone: "13900000000",
           mustChangePassword: false,
-          roleKeys: ["budget_staff"],
-          globalRoleKeys: ["budget_staff"]
+          roleKeys: ["contract_staff"],
+          globalRoleKeys: ["contract_staff"]
         },
         tokens: { accessToken: "access-token", refreshToken: "refresh-token", expiresIn: 900 }
       })
@@ -1025,6 +1155,21 @@ async function installSettlementWorkbenchBaseMocks(
         })
       })
   );
+  await page.route(
+    "**/api/settlement-workbench/contract-versions/version-1/participant-options",
+    (route) => route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        route: "material_mechanical",
+        options: [{
+          userId: "material-user-1",
+          name: "王物资",
+          roleKey: "material_staff",
+          roleLabel: "物资员"
+        }]
+      })
+    })
+  );
 }
 
 async function loginSettlementWorkbenchUser(page: Page) {
@@ -1032,4 +1177,33 @@ async function loginSettlementWorkbenchUser(page: Page) {
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("E2e@2026");
   await page.getByRole("button", { name: "登录" }).click();
+}
+
+async function settleResponsiveLayout(page: Page) {
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  }));
+}
+
+function settlementSignedDocument(
+  id: string,
+  fileId: string,
+  purpose: "frozen_counterparty_copy" | "counterparty_signed_original",
+  revision: number
+) {
+  return {
+    id,
+    settlementDraftId: "draft-e2e",
+    settlementId: null,
+    purpose,
+    fileId,
+    contentSha256: "a".repeat(64),
+    pageCount: 2,
+    sourceRevision: revision,
+    businessSnapshotToken: "b".repeat(64),
+    status: "active",
+    generationStatus: purpose === "frozen_counterparty_copy" ? "completed" : "not_applicable",
+    createdAt: "2026-07-18T03:00:00.000Z",
+    updatedAt: "2026-07-18T03:00:00.000Z"
+  };
 }

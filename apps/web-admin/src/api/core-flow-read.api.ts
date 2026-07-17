@@ -7,6 +7,7 @@ import type {
   SettlementDetailReadModel
 } from "@jiangkong/shared-domain";
 import type { SettlementLineDraftPayload } from "./settlement-workbench.api";
+import type { SettlementSignedDocumentRecordReadModel } from "./settlement-drafts.api";
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 
@@ -1724,6 +1725,28 @@ export function confirmSettlementArchive(
   body: ConfirmSettlementArchivePayload
 ) {
   return postJson<unknown>(`/settlements/${settlementId}/archive-confirmation`, body);
+}
+
+export interface RegenerateSettlementSignedDocumentPayload {
+  confirmPureRenderingIssue: true;
+  reason: string;
+  confirmationPassword: string;
+}
+
+export function retrySettlementSignedDocumentGeneration(settlementId: string) {
+  return postJson<SettlementSignedDocumentRecordReadModel | null>(
+    `/settlements/${encodeURIComponent(settlementId)}/signed-document-generation-retry`
+  );
+}
+
+export function regenerateSettlementSignedDocument(
+  settlementId: string,
+  body: RegenerateSettlementSignedDocumentPayload
+) {
+  return postJson<SettlementSignedDocumentRecordReadModel>(
+    `/settlements/${encodeURIComponent(settlementId)}/signed-document-regeneration`,
+    body
+  );
 }
 
 export function reviewSettlementApproval(

@@ -56,6 +56,7 @@ const contractStatusLabels = {
 
 const settlementStatusLabels = {
   draft: "草稿",
+  pending_generation: "签批文件生成中",
   in_approval: "审批中",
   approval_pending: "待审批",
   approval_rejected: "审批驳回",

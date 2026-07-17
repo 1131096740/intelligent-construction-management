@@ -50,7 +50,11 @@ describe("SettlementDraftService", () => {
         findUnique: jest.fn().mockResolvedValue(null),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
-      settlementSignedDocument: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      settlementSignedDocument: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      fileObject: { findMany: jest.fn().mockResolvedValue([]) },
       settlement: { create: jest.fn(), count: jest.fn().mockResolvedValue(0) },
       settlementLine: { createMany: jest.fn() },
       projectSettlementExceptionQuotaUsage: { createMany: jest.fn() },
@@ -61,6 +65,8 @@ describe("SettlementDraftService", () => {
     const prisma = {
       settlementDraft: tx.settlementDraft,
       contract: tx.contract,
+      settlementSignedDocument: tx.settlementSignedDocument,
+      fileObject: tx.fileObject,
       $transaction: jest.fn(async (callback) => callback(tx))
     };
     return { tx, service: new SettlementDraftService(prisma as never) };
@@ -236,6 +242,72 @@ describe("SettlementDraftService", () => {
       id: "draft-legacy",
       submissionBlockingReason: "通用合同直接按冻结付款条款申请付款，不办理结算"
     });
+  });
+
+  it("returns active frozen and counterparty evidence metadata without object keys", async () => {
+    const draft = {
+      id: "draft-1",
+      projectId: "project-1",
+      contractId: "contract-1",
+      ownerUserId: "owner-1",
+      status: "draft"
+    };
+    const settlementSignedDocument = {
+      updateMany: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: "frozen-1",
+          fileId: "file-frozen",
+          purpose: "frozen_counterparty_copy",
+          pageCount: 2,
+          sourceRevision: 3,
+          status: "active",
+          generationStatus: "completed",
+          declarationSnapshot: null,
+          createdAt: new Date("2026-07-18T01:00:00.000Z")
+        },
+        {
+          id: "original-1",
+          fileId: "file-original",
+          purpose: "counterparty_signed_original",
+          pageCount: 2,
+          sourceRevision: 3,
+          status: "active",
+          generationStatus: "completed",
+          declarationSnapshot: { everyPageStamped: true },
+          createdAt: new Date("2026-07-18T02:00:00.000Z")
+        }
+      ])
+    };
+    const fileObject = { findMany: jest.fn().mockResolvedValue([
+      {
+        id: "file-frozen", originalName: "冻结结算单.pdf", mimeType: "application/pdf",
+        sizeBytes: 1000, objectKey: "must-not-leak/frozen.pdf"
+      },
+      {
+        id: "file-original", originalName: "乙方签章原件.pdf", mimeType: "application/pdf",
+        sizeBytes: 1200, objectKey: "must-not-leak/original.pdf"
+      }
+    ]) };
+    const { service } = context({
+      settlementDraft: { findUnique: jest.fn().mockResolvedValue(draft) },
+      settlementSignedDocument,
+      fileObject
+    });
+
+    const result = await service.get("project-1", "draft-1", "owner-1");
+
+    expect(result).toMatchObject({
+      documents: {
+        frozenDocument: { id: "frozen-1", fileId: "file-frozen", sourceRevision: 3 },
+        counterpartySignedOriginal: {
+          id: "original-1",
+          fileId: "file-original",
+          declaration: { everyPageStamped: true }
+        }
+      }
+    });
+    expect(JSON.stringify(result)).not.toContain("must-not-leak");
   });
 
   it("only returns a draft to its owner", async () => {

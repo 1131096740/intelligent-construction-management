@@ -48,4 +48,27 @@ describe("SettlementWorkbenchController", () => {
     ) as unknown[];
     expect(parameterTypes[1]).toBe(PreviewSettlementLinesDto);
   });
+
+  it("protects project participant options and excludes the applicant in the service", async () => {
+    const participantOptions = jest.fn().mockResolvedValue({
+      route: "material_mechanical",
+      options: []
+    });
+    const controller = new SettlementWorkbenchController(
+      { sourceLines: jest.fn(), participantOptions } as never,
+      { previewLines: jest.fn() } as never
+    );
+
+    await expect(controller.participantOptions(
+      "version-1",
+      { id: "contract-staff-1" } as never
+    )).resolves.toEqual({ route: "material_mechanical", options: [] });
+    expect(participantOptions).toHaveBeenCalledWith("version-1", "contract-staff-1");
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        SettlementWorkbenchController.prototype.participantOptions
+      )
+    ).toBe("settlement.create");
+  });
 });

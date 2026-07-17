@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSettlementFlowSummary,
   buildSettlementDetailHeader,
+  buildSettlementSignatureEvidenceSlots,
   settlementBaseInfo,
   settlementArchiveResponsibilities,
   settlementAttachmentTemplates,
@@ -13,6 +14,8 @@ import {
   settlementPaymentRuleColumns,
   settlementLineColumns,
   settlementDetailTabs,
+  settlementSignatureEvidenceKinds,
+  settlementSignatureGenerationState,
   settlementOverviewBaseInfo
 } from "./settlement-detail.config";
 
@@ -26,6 +29,59 @@ describe("settlement detail page configuration", () => {
     expect(source).not.toContain("<input");
     expect(source).not.toContain("confirmSensitiveAction");
     expect(source).not.toContain("promptSensitiveActionReason");
+  });
+
+  it("renders the governed settlement evidence pair without the legacy upload instruction", () => {
+    const source = readFileSync(new URL("./SettlementDetailPage.vue", import.meta.url), "utf8");
+    const panel = readFileSync(
+      new URL("./components/SettlementSignatureEvidencePanel.vue", import.meta.url),
+      "utf8"
+    );
+    expect(settlementSignatureEvidenceKinds).toEqual([
+      "counterparty_signed_original",
+      "final_internal_signed_copy"
+    ]);
+    expect(source).toContain("<SettlementSignatureEvidencePanel");
+    expect(panel).toContain("<EvidenceFileCards");
+    expect(panel).toContain("<ApprovalTimeline");
+    expect(source).not.toContain("审批通过后上传归档件");
+    expect(source).toContain("retrySettlementSignedDocumentGeneration");
+    expect(source).toContain("regenerateSettlementSignedDocument");
+    expect(source).toContain("confirmPureRenderingIssue: true");
+    expect(source).toContain("requireReason: true");
+    expect(source).toContain("requirePassword: true");
+    expect(source).toContain(":disabled=\"detailLoading || Boolean(archiveActionBusy)\"");
+  });
+
+  it("keeps generated evidence states machine readable", () => {
+    const original = {
+      recordId: "original-record",
+      fileId: "original-file",
+      fileName: "乙方签章件.pdf",
+      purpose: "乙方签章原件",
+      purposeKey: "counterparty_signed_original" as const,
+      mimeType: "application/pdf",
+      sizeBytes: 100,
+      status: "active",
+      statusLabel: "证据已冻结",
+      uploadedByName: "合同员",
+      uploadedAt: "2026-07-18T00:00:00.000Z",
+      confirmedByName: null,
+      confirmedAt: null,
+      canDownload: true,
+      disabledReason: null,
+      generationStatus: "not_applicable" as const,
+      downloadability: "available" as const
+    };
+    expect(buildSettlementSignatureEvidenceSlots([original]).map((slot) => slot.files.length))
+      .toEqual([1, 0]);
+    expect(settlementSignatureGenerationState([original], [{
+      key: "retry_signed_document_generation",
+      label: "重试",
+      kind: "primary",
+      enabled: true,
+      disabledReason: null
+    }], "最终结算文件生成失败")).toBe("failed");
   });
 
   it("shows settlement detail metadata tied to contract and terms versions", () => {

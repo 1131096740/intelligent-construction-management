@@ -38,14 +38,28 @@
         </t-button>
         <t-button
           theme="primary"
-          :loading="createBusy"
-          :disabled="Boolean(createDisabledReason)"
-          @click="submitSettlement"
+          :loading="primaryActionBusy"
+          :disabled="Boolean(primaryActionDisabledReason)"
+          @click="runPrimaryWorkflowAction"
         >
-          提交结算审批
+          {{ workflowNextAction.label }}
         </t-button>
       </div>
     </header>
+
+    <ol
+      class="workflow-steps"
+      aria-label="结算审批准备步骤"
+    >
+      <li
+        v-for="item in SETTLEMENT_WORKBENCH_STEPS"
+        :key="item.step"
+        :class="{ current: item.step === workflowNextAction.step, completed: item.step < workflowNextAction.step }"
+      >
+        <span>{{ item.step }}</span>
+        <strong>{{ item.label }}</strong>
+      </li>
+    </ol>
 
     <section
       class="basic-fields"
@@ -81,6 +95,38 @@
         placeholder="2026-07"
         :readonly="Boolean(draftSubmissionBlockingReason)"
       />
+      <label class="final-switch">
+        <span>结算类型</span>
+        <t-radio-group v-model="form.isFinal">
+          <t-radio :value="false">过程结算</t-radio>
+          <t-radio :value="true">最终结算</t-radio>
+        </t-radio-group>
+      </label>
+      <t-input
+        v-if="form.isFinal"
+        v-model="form.finalCumulativeAmountYuan"
+        label="审定累计结算金额（元）"
+        placeholder="请输入最终审定累计金额"
+        :readonly="Boolean(draftSubmissionBlockingReason)"
+      />
+    </section>
+
+    <section
+      v-if="form.isFinal && !draftSubmissionBlockingReason"
+      class="final-confirmations"
+      aria-labelledby="final-confirmations-title"
+    >
+      <div>
+        <strong id="final-confirmations-title">最终结算完结确认</strong>
+        <span>五项事实将分别保存并在提交时由后端逐项复核。</span>
+      </div>
+      <t-checkbox
+        v-for="item in FINAL_SETTLEMENT_CONFIRMATIONS"
+        :key="item.key"
+        v-model="finalConfirmations[item.key]"
+      >
+        {{ item.label }}
+      </t-checkbox>
     </section>
 
     <SettlementTemplateRecommendationPanel
@@ -513,6 +559,46 @@
       <span class="footer-note">页面不提交自算总额；创建时后端会再次核算并锁内复核。</span>
     </footer>
 
+    <section
+      v-if="!draftSubmissionBlockingReason"
+      ref="participantSectionRef"
+      class="governed-preparation"
+      aria-label="审批参与人与签章文件"
+    >
+      <SettlementApprovalParticipantSelect
+        v-model="form.fieldReviewerUserId"
+        :route-type="participantOptions.route"
+        :options="participantOptions.options"
+        :loading="participantLoading"
+        :disabled="!selectedContractVersionId"
+        :load-error="participantLoadError"
+        @change="onParticipantChange"
+        @retry="reloadParticipantOptions"
+      />
+      <SettlementCounterpartySignedPdfPanel
+        :key="counterpartyPanelKey"
+        ref="counterpartyPanelRef"
+        :frozen-document="frozenDocument"
+        :staged-file-id="stagedUploadedFileId"
+        :staged-file-name="stagedUploadedFileName"
+        :evidence-epoch="counterpartyEvidenceEpoch"
+        :linked="Boolean(linkedOriginalDocumentId)"
+        :disabled="!activeDraft || !form.fieldReviewerUserId || isDirty"
+        :generate-busy="frozenDocumentBusy"
+        :upload-busy="counterpartyUploadBusy"
+        :link-busy="counterpartyLinkBusy"
+        @generate="generateFrozenDocument"
+        @download="openFrozenDownloadDialog"
+        @select-file="uploadCounterpartySignedPdf"
+        @clear-file="clearStagedCounterpartyFile"
+        @link="linkCounterpartySignedPdf"
+      />
+      <t-alert
+        theme="info"
+        :message="workflowNextAction.reason"
+      />
+    </section>
+
     <t-dialog
       v-model:visible="pasteDialogVisible"
       header="粘贴多行结算数量"
@@ -581,6 +667,18 @@
       @confirm="confirmLeave"
       @cancel="pendingNavigationPath = ''"
     />
+    <SensitiveActionDialog
+      v-model="frozenDownloadDialogVisible"
+      title="下载当前修订版冻结结算单"
+      description="冻结版包含结算业务事实和签名占位。下载行为会记录审计，请确认用于本次乙方线下签章。"
+      confirm-text="生成下载链接"
+      require-reason
+      require-password
+      reason-label="下载用途"
+      :loading="frozenDownloadBusy"
+      :error="frozenDownloadError"
+      @confirm="downloadFrozenDocument"
+    />
   </section>
 </template>
 
@@ -594,6 +692,7 @@ import type { PrimaryTableCol, UploadChangeContext, UploadFile } from "tdesign-v
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import {
+  createPrivateFileDownloadTicket,
   fetchProjects,
   fetchSettlementContractOptions,
   uploadPrivateFile,
@@ -602,32 +701,39 @@ import {
 import {
   createSettlementDraftRecord,
   fetchSettlementDraftRecord,
+  generateSettlementFrozenDocument,
+  linkSettlementCounterpartySignedDocument,
   listSettlementDraftRecords,
   submitSettlementDraftRecord,
   updateSettlementDraftRecord,
   type SaveSettlementDraftPayload,
-  type SettlementDraftReadModel
+  type SettlementDraftReadModel,
+  type SettlementSignedDocumentRecordReadModel
 } from "../../api/settlement-drafts.api";
 import {
   applySettlementImport,
   downloadSettlementImportErrors,
   downloadSettlementImportResult,
   downloadSettlementImportTemplate,
+  fetchSettlementParticipantOptions,
   fetchSettlementSourceLines,
   previewSettlementImport,
   previewSettlementLines,
   type SettlementCanonicalPreviewReadModel,
   type SettlementImportErrorReadModel,
   type SettlementImportPreviewReadModel,
-  type SettlementLineDraftPayload
+  type SettlementLineDraftPayload,
+  type SettlementParticipantOptionsReadModel
 } from "../../api/settlement-workbench.api";
 import { fetchSettlementTemplateRecommendations } from "../../api/settlement-template.api";
-import { centsTextToYuanText } from "../../lib/money";
+import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import {
   findContractOption,
   toContractSelectOptions
 } from "../contracts/contract-business-options.config";
 import {
+  FINAL_SETTLEMENT_CONFIRMATIONS,
+  SETTLEMENT_WORKBENCH_STEPS,
   applyBatchRemark,
   applyImportedSettlementLines,
   applyTsvQuantityPaste,
@@ -639,14 +745,25 @@ import {
   setSourceLineSelection,
   settlementPayloadFingerprint,
   settlementQuantityProgress,
+  settlementSignatureNextAction,
+  settlementSignatureStateAfterDraftRevision,
   settlementWorkbenchDraftFingerprint,
+  validateFinalSettlementConfirmations,
   validateSettlementWorkbench,
   type ManualAdjustmentDraft,
+  type FinalSettlementConfirmationState,
   type SourceLineDraft,
   type SourceLineDraftMap
 } from "./settlement-workbench.state";
 import { canApplySettlementSourceResponse } from "./settlement-source-lines.state";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
+import SettlementApprovalParticipantSelect, {
+  type SettlementApprovalParticipantOption
+} from "./components/SettlementApprovalParticipantSelect.vue";
+import SettlementCounterpartySignedPdfPanel, {
+  type SettlementCounterpartyDeclaration,
+  type SettlementFrozenDocumentSummary
+} from "./components/SettlementCounterpartySignedPdfPanel.vue";
 import SettlementTemplateRecommendationPanel from "./components/SettlementTemplateRecommendationPanel.vue";
 import {
   blockedSettlementTemplateSelection,
@@ -685,8 +802,13 @@ const form = reactive({
   projectId: "",
   contractOptionValue: "",
   code: `JS-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
-  periodLabel: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`
+  periodLabel: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`,
+  isFinal: false,
+  finalCumulativeAmountYuan: "",
+  fieldReviewerUserId: "",
+  fieldReviewerRoleKey: "" as "" | "material_staff" | "engineering_foreman" | "engineering_tech"
 });
+const finalConfirmations = reactive<FinalSettlementConfirmationState>({});
 const projects = ref<ProjectOptionReadModel[]>([]);
 const contracts = ref<ContractBusinessOptionReadModel[]>([]);
 const sourceRows = ref<SettlementSourceLineReadModel[]>([]);
@@ -714,6 +836,29 @@ const sourceLoading = ref(false);
 const previewBusy = ref(false);
 const createBusy = ref(false);
 const saveBusy = ref(false);
+const participantOptions = ref<{
+  route: SettlementParticipantOptionsReadModel["route"] | "";
+  options: SettlementParticipantOptionsReadModel["options"];
+}>({
+  route: "",
+  options: []
+});
+const participantLoading = ref(false);
+const participantLoadError = ref("");
+const frozenDocument = ref<SettlementFrozenDocumentSummary | null>(null);
+const stagedUploadedFileId = ref("");
+const stagedUploadedFileName = ref("");
+const linkedOriginalDocumentId = ref("");
+const linkedOriginalDeclaration = ref<SettlementCounterpartyDeclaration | null>(null);
+const counterpartyEvidenceEpoch = ref(0);
+const frozenDocumentBusy = ref(false);
+const counterpartyUploadBusy = ref(false);
+const counterpartyLinkBusy = ref(false);
+const frozenDownloadDialogVisible = ref(false);
+const frozenDownloadBusy = ref(false);
+const frozenDownloadError = ref("");
+const participantSectionRef = ref<HTMLElement | null>(null);
+const counterpartyPanelRef = ref<InstanceType<typeof SettlementCounterpartySignedPdfPanel> | null>(null);
 const pageMessage = ref("");
 const pageMessageTone = ref<"info" | "success" | "warning" | "error">("info");
 const batchRemark = ref("");
@@ -812,6 +957,13 @@ const selectedContract = computed(() => findContractOption(contracts.value, form
 const selectedContractVersionId = computed(() => selectedContract.value?.contractVersionId ?? "");
 const selectedSettlementTemplateVersionId = computed(
   () => templateSelection.value.selectedVersionId
+);
+const selectedParticipantOption = computed(() =>
+  participantOptions.value.options.find(
+    (item) =>
+      item.userId === form.fieldReviewerUserId &&
+      item.roleKey === form.fieldReviewerRoleKey
+  ) ?? null
 );
 const templateReady = computed(
   () =>
@@ -932,6 +1084,25 @@ const createDisabledReason = computed(() => {
   } catch {
     return "后台合计格式不正确，请重新核算。";
   }
+  if (!form.fieldReviewerUserId || !form.fieldReviewerRoleKey) {
+    return "请选择当前项目符合审批路线的现场复核人。";
+  }
+  if (!selectedParticipantOption.value) {
+    return "所选现场复核人当前已不在本项目可选范围，请重新选择。";
+  }
+  if (form.isFinal) {
+    if (!form.finalCumulativeAmountYuan.trim()) return "请填写审定累计结算金额。";
+    try {
+      yuanTextToCentsText(form.finalCumulativeAmountYuan.trim());
+    } catch {
+      return "审定累计结算金额必须是非负数字，最多保留两位小数。";
+    }
+    const confirmationError = validateFinalSettlementConfirmations(
+      true,
+      finalConfirmations
+    )[0];
+    if (confirmationError) return confirmationError;
+  }
   return "";
 });
 const saveDisabledReason = computed(() => {
@@ -947,6 +1118,46 @@ const isDirty = computed(() =>
   Boolean(baselineDraftSnapshot.value) &&
   workbenchSnapshot() !== baselineDraftSnapshot.value
 );
+const workflowNextAction = computed(() => {
+  if (isDirty.value) {
+    return {
+      step: 1 as const,
+      label: "保存当前结算事实",
+      reason: "页面存在未保存更改；保存后旧冻结版和扫描件会失效，请按新修订号继续。"
+    };
+  }
+  return settlementSignatureNextAction({
+    draftId: activeDraft.value?.id ?? "",
+    revision: activeDraft.value?.revision ?? 0,
+    reviewerUserId: form.fieldReviewerUserId,
+    frozenDocumentId: frozenDocument.value?.id ?? "",
+    frozenFileId: frozenDocument.value?.fileId ?? "",
+    stagedUploadedFileId: stagedUploadedFileId.value,
+    linkedOriginalDocumentId: linkedOriginalDocumentId.value
+  });
+});
+const counterpartyPanelKey = computed(() => [
+  frozenDocument.value?.id ?? "",
+  frozenDocument.value?.sourceRevision ?? 0,
+  stagedUploadedFileId.value,
+  linkedOriginalDocumentId.value,
+  counterpartyEvidenceEpoch.value
+].join(":"));
+const primaryActionBusy = computed(() =>
+  saveBusy.value || createBusy.value || frozenDocumentBusy.value || counterpartyLinkBusy.value
+);
+const primaryActionDisabledReason = computed(() => {
+  if (draftSubmissionBlockingReason.value) return draftSubmissionBlockingReason.value;
+  if (workflowNextAction.value.step === 1) return saveDisabledReason.value;
+  if (workflowNextAction.value.step === 2) {
+    if (participantLoading.value) return "正在读取项目现场复核人，请稍候。";
+    if (participantLoadError.value) return participantLoadError.value;
+    if (!participantOptions.value.options.length) return "当前项目没有符合审批路线的现场复核人。";
+  }
+  if (workflowNextAction.value.step === 3) return createDisabledReason.value;
+  if (workflowNextAction.value.step === 5) return createDisabledReason.value;
+  return "";
+});
 const workbenchRows = computed<WorkbenchSourceRow[]>(() =>
   sourceRows.value.map((row) => ({
     ...row,
@@ -1376,6 +1587,21 @@ function resetSourceState() {
   adjustments.value = [];
   templateRequestId += 1;
   templateSelection.value = emptySettlementTemplateSelection();
+  resetGovernedPreparation();
+}
+
+function resetGovernedPreparation() {
+  participantOptions.value = { route: "", options: [] };
+  participantLoadError.value = "";
+  participantLoading.value = false;
+  form.fieldReviewerUserId = "";
+  form.fieldReviewerRoleKey = "";
+  frozenDocument.value = null;
+  stagedUploadedFileId.value = "";
+  stagedUploadedFileName.value = "";
+  linkedOriginalDocumentId.value = "";
+  linkedOriginalDeclaration.value = null;
+  counterpartyEvidenceEpoch.value += 1;
 }
 
 function resetImportState() {
@@ -1446,6 +1672,7 @@ async function loadSourceLines() {
     ) {
       sourceRows.value = result.rows;
     }
+    await loadParticipantOptions(contractVersionId);
     const recommendation = await fetchSettlementTemplateRecommendations(projectId, contractVersionId);
     if (
       canApplySettlementTemplateRecommendation(
@@ -1482,6 +1709,25 @@ async function loadSourceLines() {
   }
 }
 
+async function loadParticipantOptions(contractVersionId: string) {
+  participantLoading.value = true;
+  participantLoadError.value = "";
+  try {
+    const result = await fetchSettlementParticipantOptions(contractVersionId);
+    if (contractVersionId !== selectedContractVersionId.value) return;
+    participantOptions.value = result;
+  } catch (error) {
+    if (contractVersionId !== selectedContractVersionId.value) return;
+    participantOptions.value = { route: "", options: [] };
+    participantLoadError.value =
+      error instanceof Error ? error.message : "加载项目现场复核人失败";
+  } finally {
+    if (contractVersionId === selectedContractVersionId.value) {
+      participantLoading.value = false;
+    }
+  }
+}
+
 function selectSettlementTemplate(versionId: string) {
   const choice = templateSelection.value.choices.find(
     (item) => item.templateVersionId === versionId
@@ -1505,11 +1751,32 @@ function selectSettlementTemplate(versionId: string) {
 }
 
 function settlementDraftPayload(): SaveSettlementDraftPayload {
+  const finalPayload = form.isFinal
+    ? {
+        isFinal: true,
+        ...(form.finalCumulativeAmountYuan.trim()
+          ? { finalCumulativeAmountCents: yuanTextToCentsText(form.finalCumulativeAmountYuan.trim()) }
+          : {}),
+        finalScopeCompleted: finalConfirmations.finalScopeCompleted === true,
+        finalPriorSettlementsIncluded: finalConfirmations.finalPriorSettlementsIncluded === true,
+        finalNoOutstandingSettlements: finalConfirmations.finalNoOutstandingSettlements === true,
+        finalWithinContractCap: finalConfirmations.finalWithinContractCap === true,
+        finalNoFurtherOrdinarySettlements:
+          finalConfirmations.finalNoFurtherOrdinarySettlements === true
+      }
+    : { isFinal: false };
   return {
     contractVersionId: selectedContractVersionId.value,
     settlementTemplateVersionId: selectedSettlementTemplateVersionId.value,
     code: form.code.trim(),
     periodLabel: form.periodLabel.trim(),
+    ...finalPayload,
+    ...(form.fieldReviewerUserId && form.fieldReviewerRoleKey
+      ? {
+          fieldReviewerUserId: form.fieldReviewerUserId,
+          fieldReviewerRoleKey: form.fieldReviewerRoleKey
+        }
+      : {}),
     settlementLines: draftPayload.value
   };
 }
@@ -1537,7 +1804,27 @@ async function persistDraft(showSuccessMessage: boolean) {
             }
           )
         : await createSettlementDraftRecord(form.projectId, payload);
+    const previousRevision = activeDraft.value?.revision ?? 0;
     activeDraft.value = saved;
+    if (previousRevision !== saved.revision) {
+      const reset = settlementSignatureStateAfterDraftRevision(
+        {
+          draftId: saved.id,
+          revision: previousRevision,
+          reviewerUserId: form.fieldReviewerUserId,
+          frozenDocumentId: frozenDocument.value?.id ?? "",
+          frozenFileId: frozenDocument.value?.fileId ?? "",
+          stagedUploadedFileId: stagedUploadedFileId.value,
+          linkedOriginalDocumentId: linkedOriginalDocumentId.value
+        },
+        saved.revision
+      );
+      frozenDocument.value = null;
+      stagedUploadedFileId.value = reset.stagedUploadedFileId;
+      stagedUploadedFileName.value = "";
+      linkedOriginalDocumentId.value = reset.linkedOriginalDocumentId;
+      linkedOriginalDeclaration.value = null;
+    }
     baselineDraftSnapshot.value = workbenchSnapshot();
     await router.replace({
       path: route.path,
@@ -1566,7 +1853,193 @@ async function saveDraft() {
   await persistDraft(true);
 }
 
+function onParticipantChange(option: SettlementApprovalParticipantOption | null) {
+  form.fieldReviewerRoleKey = option?.roleKey ?? "";
+  if (option) participantLoadError.value = "";
+}
+
+function reloadParticipantOptions() {
+  if (selectedContractVersionId.value) {
+    void loadParticipantOptions(selectedContractVersionId.value);
+  }
+}
+
+async function runPrimaryWorkflowAction() {
+  if (primaryActionDisabledReason.value) {
+    pageMessage.value = primaryActionDisabledReason.value;
+    pageMessageTone.value = "warning";
+    return;
+  }
+  switch (workflowNextAction.value.step) {
+    case 1:
+      await saveDraft();
+      return;
+    case 2:
+    case 4:
+      participantSectionRef.value?.scrollIntoView({ block: "start" });
+      return;
+    case 3:
+      await generateFrozenDocument();
+      return;
+    case 5:
+      await submitSettlement();
+  }
+}
+
+async function generateFrozenDocument() {
+  const draft = activeDraft.value;
+  if (!draft || isDirty.value || createDisabledReason.value) {
+    pageMessage.value =
+      createDisabledReason.value || "请先保存当前结算事实，再生成冻结结算单。";
+    pageMessageTone.value = "warning";
+    return;
+  }
+  frozenDocumentBusy.value = true;
+  pageMessage.value = "";
+  try {
+    const result = await generateSettlementFrozenDocument(
+      draft.projectId,
+      draft.id,
+      draft.revision
+    );
+    const sameFrozenDocument = frozenDocument.value?.id === result.id;
+    frozenDocument.value = toFrozenDocumentSummary(result);
+    if (!sameFrozenDocument) {
+      stagedUploadedFileId.value = "";
+      stagedUploadedFileName.value = "";
+      linkedOriginalDocumentId.value = "";
+      linkedOriginalDeclaration.value = null;
+      counterpartyEvidenceEpoch.value += 1;
+    }
+    pageMessage.value = "当前修订版冻结结算单已生成，请下载后交乙方完成线下签章。";
+    pageMessageTone.value = "success";
+  } catch (error) {
+    pageMessage.value =
+      `${error instanceof Error ? error.message : "生成冻结结算单失败"}。` +
+      "草稿和已填写内容均已保留，请按提示处理后重试。";
+    pageMessageTone.value = "error";
+  } finally {
+    frozenDocumentBusy.value = false;
+  }
+}
+
+async function uploadCounterpartySignedPdf(file: File) {
+  if (!frozenDocument.value) return;
+  if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+    pageMessage.value = "乙方签章原件只支持完整 PDF 文件，请重新选择。";
+    pageMessageTone.value = "warning";
+    return;
+  }
+  counterpartyUploadBusy.value = true;
+  pageMessage.value = "";
+  try {
+    const uploaded = await uploadPrivateFile(file, file.name);
+    stagedUploadedFileId.value = uploaded.id;
+    stagedUploadedFileName.value = file.name;
+    linkedOriginalDocumentId.value = "";
+    linkedOriginalDeclaration.value = null;
+    counterpartyEvidenceEpoch.value += 1;
+    pageMessage.value = "文件已安全上传；请逐项核对签章声明并确认关联当前修订版。";
+    pageMessageTone.value = "success";
+  } catch (error) {
+    counterpartyPanelRef.value?.resetLocalEvidence();
+    pageMessage.value =
+      `${error instanceof Error ? error.message : "上传乙方签章扫描件失败"}。` +
+      "当前草稿、人员选择和上一次已上传结果均已保留，可直接重试。";
+    pageMessageTone.value = "error";
+  } finally {
+    counterpartyUploadBusy.value = false;
+  }
+}
+
+function clearStagedCounterpartyFile() {
+  stagedUploadedFileId.value = "";
+  stagedUploadedFileName.value = "";
+  linkedOriginalDocumentId.value = "";
+  linkedOriginalDeclaration.value = null;
+  counterpartyEvidenceEpoch.value += 1;
+}
+
+async function linkCounterpartySignedPdf(declaration: SettlementCounterpartyDeclaration) {
+  const draft = activeDraft.value;
+  const frozen = frozenDocument.value;
+  if (!draft || !frozen || !stagedUploadedFileId.value || isDirty.value) return;
+  counterpartyLinkBusy.value = true;
+  pageMessage.value = "";
+  try {
+    const linked = await linkSettlementCounterpartySignedDocument(
+      draft.projectId,
+      draft.id,
+      {
+        expectedRevision: draft.revision,
+        frozenDocumentId: frozen.id,
+        uploadedFileId: stagedUploadedFileId.value,
+        declaration
+      }
+    );
+    linkedOriginalDocumentId.value = linked.id;
+    linkedOriginalDeclaration.value = { ...declaration };
+    pageMessage.value = "乙方完整签章扫描件已校验并关联当前修订版，可以提交审批。";
+    pageMessageTone.value = "success";
+  } catch (error) {
+    pageMessage.value =
+      `${error instanceof Error ? error.message : "关联乙方签章扫描件失败"}。` +
+      "已填写内容、现场复核人和已上传文件均已保留，请按提示核对后重试。";
+    pageMessageTone.value = "error";
+  } finally {
+    counterpartyLinkBusy.value = false;
+  }
+}
+
+function openFrozenDownloadDialog() {
+  if (!frozenDocument.value) return;
+  frozenDownloadError.value = "";
+  frozenDownloadDialogVisible.value = true;
+}
+
+async function downloadFrozenDocument(values: { reason: string; password: string }) {
+  const document = frozenDocument.value;
+  if (!document) return;
+  frozenDownloadBusy.value = true;
+  frozenDownloadError.value = "";
+  try {
+    const ticket = await createPrivateFileDownloadTicket(document.fileId, {
+      confirmationPassword: values.password,
+      downloadReason: values.reason
+    });
+    window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener,noreferrer");
+    frozenDownloadDialogVisible.value = false;
+    pageMessage.value = "冻结结算单下载链接已生成，请核对修订号后交乙方签章。";
+    pageMessageTone.value = "success";
+  } catch (error) {
+    frozenDownloadError.value =
+      error instanceof Error ? error.message : "生成冻结结算单下载链接失败";
+  } finally {
+    frozenDownloadBusy.value = false;
+  }
+}
+
+function apiDownloadUrl(url: string) {
+  return url.startsWith("/api") ? url : `/api${url}`;
+}
+
+function toFrozenDocumentSummary(
+  document: Pick<SettlementSignedDocumentRecordReadModel, "id" | "fileId" | "sourceRevision" | "pageCount">
+): SettlementFrozenDocumentSummary {
+  return {
+    id: document.id,
+    fileId: document.fileId,
+    sourceRevision: document.sourceRevision,
+    pageCount: document.pageCount
+  };
+}
+
 async function submitSettlement() {
+  if (!frozenDocument.value || !linkedOriginalDocumentId.value) {
+    pageMessage.value = "请先完成当前修订版冻结结算单和乙方签章扫描件关联。";
+    pageMessageTone.value = "warning";
+    return;
+  }
   if (createDisabledReason.value || !previewIsCurrent.value) {
     pageMessage.value = createDisabledReason.value || "请先完成后台核算。";
     pageMessageTone.value = "warning";
@@ -1575,8 +2048,12 @@ async function submitSettlement() {
   createBusy.value = true;
   pageMessage.value = "";
   try {
-    const saved = await persistDraft(false);
-    if (!saved) return;
+    const saved = activeDraft.value;
+    if (!saved || isDirty.value) {
+      pageMessage.value = "请先保存当前结算事实，并重新完成当前修订版签章文件。";
+      pageMessageTone.value = "warning";
+      return;
+    }
     const settlement = await submitSettlementDraftRecord(
       saved.projectId,
       saved.id,
@@ -1600,6 +2077,7 @@ async function submitSettlement() {
 function workbenchSnapshot() {
   return JSON.stringify({
     form: { ...form },
+    finalConfirmations: { ...finalConfirmations },
     settlementTemplateVersionId: selectedSettlementTemplateVersionId.value,
     drafts: drafts.value,
     adjustments: adjustments.value
@@ -1660,6 +2138,13 @@ async function restoreDraft(draft: SettlementDraftReadModel) {
     : draft.contractVersionId;
   form.code = draft.code;
   form.periodLabel = draft.periodLabel;
+  form.isFinal = draft.isFinal;
+  form.finalCumulativeAmountYuan = draft.finalCumulativeAmountCents
+    ? centsTextToYuanText(draft.finalCumulativeAmountCents).replace(/,/g, "")
+    : "";
+  for (const item of FINAL_SETTLEMENT_CONFIRMATIONS) {
+    finalConfirmations[item.key] = draft[item.key] === true;
+  }
   if (draftSubmissionBlockingReason.value) {
     baselineDraftSnapshot.value = workbenchSnapshot();
     pageMessage.value = "";
@@ -1667,6 +2152,17 @@ async function restoreDraft(draft: SettlementDraftReadModel) {
     return;
   }
   await loadSourceLines();
+  form.fieldReviewerUserId = draft.fieldReviewerUserId ?? "";
+  form.fieldReviewerRoleKey = draft.fieldReviewerRoleKey ?? "";
+  if (
+    form.fieldReviewerUserId &&
+    !participantOptions.value.options.some(
+      (item) => item.userId === form.fieldReviewerUserId && item.roleKey === form.fieldReviewerRoleKey
+    )
+  ) {
+    participantLoadError.value =
+      "草稿中原现场复核人当前已不在可选范围，请重新选择本项目符合路线的人员";
+  }
   if (
     draft.settlementTemplateVersionId &&
     selectedSettlementTemplateVersionId.value !== draft.settlementTemplateVersionId
@@ -1682,6 +2178,23 @@ async function restoreDraft(draft: SettlementDraftReadModel) {
   const restored = restoreSettlementDraftLines(sourceRows.value, draft.lines);
   drafts.value = restored.drafts;
   adjustments.value = restored.adjustments;
+  const restoredFrozen = draft.documents?.frozenDocument;
+  frozenDocument.value = restoredFrozen
+    ? {
+        id: restoredFrozen.id,
+        fileId: restoredFrozen.fileId,
+        sourceRevision: restoredFrozen.sourceRevision,
+        pageCount: restoredFrozen.pageCount
+      }
+    : null;
+  const restoredOriginal = draft.documents?.counterpartySignedOriginal;
+  stagedUploadedFileId.value = restoredOriginal?.fileId ?? "";
+  stagedUploadedFileName.value = restoredOriginal?.fileName ?? "";
+  linkedOriginalDocumentId.value = restoredOriginal?.id ?? "";
+  linkedOriginalDeclaration.value = restoredOriginal?.declaration
+    ? { ...restoredOriginal.declaration }
+    : null;
+  counterpartyEvidenceEpoch.value += 1;
   invalidatePreview();
   baselineDraftSnapshot.value = workbenchSnapshot();
   pageMessage.value = "已恢复结算草稿；保存草稿不会发起审批，提交前仍需通过后台核算。";
@@ -1775,6 +2288,58 @@ onBeforeUnmount(() => {
   gap: var(--jg-space-sm);
 }
 
+.workflow-steps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+  margin: 0 0 var(--jg-space-lg);
+  padding: 0;
+  list-style: none;
+  border-top: var(--jg-border-width-base) solid var(--jg-border);
+  border-bottom: var(--jg-border-width-base) solid var(--jg-border);
+}
+
+.workflow-steps li {
+  display: flex;
+  align-items: center;
+  gap: var(--jg-space-sm);
+  min-width: 0;
+  padding: var(--jg-space-sm) var(--jg-space-md);
+  color: var(--jg-text-muted);
+  font-size: var(--jg-font-meta);
+  border-right: var(--jg-border-width-base) solid var(--jg-border);
+}
+
+.workflow-steps li:last-child {
+  border-right: 0;
+}
+
+.workflow-steps li > span {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  place-items: center;
+  border: var(--jg-border-width-base) solid var(--jg-border);
+  border-radius: 50%;
+}
+
+.workflow-steps li.current,
+.workflow-steps li.completed {
+  color: var(--jg-text-strong);
+}
+
+.workflow-steps li.current > span {
+  color: var(--jg-color-white);
+  background: var(--jg-brand);
+  border-color: var(--jg-brand);
+}
+
+.workflow-steps li.completed > span {
+  color: var(--jg-success);
+  border-color: var(--jg-success);
+}
+
 .basic-fields {
   display: grid;
   grid-template-columns: minmax(180px, 0.8fr) minmax(280px, 1.5fr) minmax(170px, 0.7fr) minmax(150px, 0.6fr);
@@ -1783,6 +2348,37 @@ onBeforeUnmount(() => {
   background: var(--jg-bg-panel);
   border: var(--jg-border-width-base) solid var(--jg-border);
   border-radius: var(--jg-radius-sm);
+}
+
+.final-switch {
+  display: grid;
+  align-content: start;
+  gap: var(--jg-space-sm);
+}
+
+.final-switch > span {
+  color: var(--jg-text-main);
+  font-size: var(--jg-font-body);
+}
+
+.final-confirmations {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--jg-space-sm) var(--jg-space-lg);
+  margin-top: var(--jg-space-md);
+  padding: var(--jg-space-lg);
+  background: var(--jg-bg-muted);
+}
+
+.final-confirmations > div {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: var(--jg-space-xs);
+}
+
+.final-confirmations span {
+  color: var(--jg-text-muted);
+  font-size: var(--jg-font-meta);
 }
 
 .page-message {
@@ -1960,6 +2556,19 @@ onBeforeUnmount(() => {
   border: var(--jg-border-width-base) solid var(--jg-border);
 }
 
+.governed-preparation {
+  display: grid;
+  gap: 0;
+  margin-top: var(--jg-space-xl);
+  padding: 0 var(--jg-space-lg) var(--jg-space-lg);
+  background: var(--jg-bg-panel);
+  border: var(--jg-border-width-base) solid var(--jg-border);
+}
+
+.governed-preparation > :deep(.t-alert) {
+  margin-top: var(--jg-space-lg);
+}
+
 .footer-metric {
   display: grid;
   min-width: 84px;
@@ -2019,6 +2628,19 @@ onBeforeUnmount(() => {
   .import-summary {
     align-items: flex-start;
   }
+
+  .workflow-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-steps li {
+    border-right: 0;
+    border-bottom: var(--jg-border-width-base) solid var(--jg-border);
+  }
+
+  .workflow-steps li:last-child {
+    border-bottom: 0;
+  }
 }
 
 @container jg-page (max-width: 620px) {
@@ -2030,6 +2652,10 @@ onBeforeUnmount(() => {
   }
 
   .basic-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .final-confirmations {
     grid-template-columns: 1fr;
   }
 

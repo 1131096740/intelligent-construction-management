@@ -5,6 +5,8 @@ import {
   downloadSettlementImportResult,
   downloadSettlementImportTemplate,
   fetchSettlementSourceLines,
+  fetchSettlementParticipantOptions,
+  isSettlementFieldReviewerRoleAllowed,
   previewSettlementImport,
   previewSettlementLines
 } from "./settlement-workbench.api";
@@ -20,6 +22,14 @@ describe("settlement workbench API", () => {
     vi.clearAllMocks();
   });
 
+  it("keeps the governed field-reviewer roles machine-readable without inventing candidates", () => {
+    expect(isSettlementFieldReviewerRoleAllowed("material_staff")).toBe(true);
+    expect(isSettlementFieldReviewerRoleAllowed("engineering_foreman")).toBe(true);
+    expect(isSettlementFieldReviewerRoleAllowed("engineering_tech")).toBe(true);
+    expect(isSettlementFieldReviewerRoleAllowed("engineering_director")).toBe(false);
+    expect(isSettlementFieldReviewerRoleAllowed(null)).toBe(false);
+  });
+
   it("loads source lines from the contract-version resource endpoint", async () => {
     mockApiFetch.mockResolvedValue(
       new Response(JSON.stringify({ contractVersionId: "version/1", rows: [] }), {
@@ -31,6 +41,34 @@ describe("settlement workbench API", () => {
     await expect(fetchSettlementSourceLines("version/1")).resolves.toMatchObject({ rows: [] });
     expect(mockApiFetch).toHaveBeenCalledWith(
       "/settlement-workbench/contract-versions/version%2F1/source-lines",
+      { method: "GET" }
+    );
+  });
+
+  it("loads backend-validated participant options for the selected contract route", async () => {
+    mockApiFetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          route: "labor_professional",
+          options: [
+            {
+              userId: "user-1",
+              name: "张施工",
+              roleKey: "engineering_tech",
+              roleLabel: "施工员"
+            }
+          ]
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    await expect(fetchSettlementParticipantOptions("version/1")).resolves.toMatchObject({
+      route: "labor_professional",
+      options: [expect.objectContaining({ userId: "user-1", roleKey: "engineering_tech" })]
+    });
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/settlement-workbench/contract-versions/version%2F1/participant-options",
       { method: "GET" }
     );
   });
