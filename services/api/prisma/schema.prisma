@@ -466,6 +466,9 @@ model SettlementDraft {
   revision                    Int       @default(1)
   status                      String    @default("draft")
   ownerUserId                 String
+  governanceVersion           Int?
+  fieldReviewerUserId         String?
+  fieldReviewerRoleKey        String?
   submittedSettlementId       String?   @unique
   submittedAt                 DateTime?
   createdAt                   DateTime  @default(now())
@@ -494,10 +497,46 @@ model Settlement {
   isFinal                     Boolean  @default(false)
   invoiceTypeSnapshot         String?
   taxFactRevisionSnapshot     Int?
+  governanceVersion           Int?
+  fieldReviewerUserId         String?
+  fieldReviewerRoleKey        String?
+  preparedByUserId            String?
+  preparerSignatureFileId     String?
+  preparerSignatureSha256     String?
   createdAt                   DateTime @default(now())
   updatedAt                   DateTime @updatedAt
 
   @@index([settlementTemplateVersionId])
+}
+
+model SettlementSignedDocument {
+  id                    String    @id @default(uuid())
+  settlementId          String?
+  settlementDraftId     String?
+  purpose               String
+  fileId                String
+  contentSha256         String
+  pageCount             Int
+  sourceRevision        Int
+  businessSnapshotToken String
+  approvalActionSetHash String?
+  status                String    @default("active")
+  generationStatus      String
+  declarationSnapshot   Json?
+  declaredByUserId      String?
+  declaredAt            DateTime?
+  invalidatedAt         DateTime?
+  invalidationReason    String?
+  uploadedByUserId      String?
+  generatedByUserId     String?
+  supersedesId          String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([settlementId, purpose, status])
+  @@index([settlementDraftId, purpose, status])
+  @@index([fileId])
+  @@index([supersedesId])
 }
 
 model SettlementLine {

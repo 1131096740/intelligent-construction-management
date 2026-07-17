@@ -1432,7 +1432,7 @@ git commit -m "feat: 增加合同结算金额硬上限"
 - Create: `services/api/src/settlement/settlement-participant-freeze.ts`
 - Create: `services/api/src/settlement/settlement-participant-freeze.spec.ts`
 
-- [ ] **Step 1: 写结构和项目人员失败测试**
+- [x] **Step 1: 写结构和项目人员失败测试**
 
 ```ts
 expect(migration).toContain('"governanceVersion"');
@@ -1443,34 +1443,36 @@ await expect(freeze({ selectedUserId: "other-project-user", projectId: "p1" }))
   .rejects.toThrow("只能选择所属项目当前有效人员");
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/database/settlement-signature-governance-schema-verification.spec.ts src/settlement/settlement-participant-freeze.spec.ts`
 
 Expected: FAIL。
 
-- [ ] **Step 3: 增加最小增量字段和文档表**
+- [x] **Step 3: 增加最小增量字段和文档表**
 
 `SettlementDraft` 和 `Settlement` 增加 nullable `governanceVersion` 与 `fieldReviewerUserId/fieldReviewerRoleKey`；`Settlement` 增加编制人和提交时签名文件/摘要；新表保存 `frozen_counterparty_copy`、`counterparty_signed_original`、`final_internal_signed_copy` 三种用途、fileId、原字节 hash、pageCount、sourceRevision、业务 snapshot token、审批动作集合 hash、状态/生成状态、声明快照/声明人/时间、失效原因、上传/生成者和替代关系。
 
 M56 增加到 Settlement/SettlementDraft/FileObject/User/替代记录的外键与保留证据的删除策略；purpose/status CHECK、pageCount>0、sourceRevision>=1、64 位小写 SHA、同 settlement/draft revision+purpose 最多一个 active/live 文档的 partial unique、查询索引。静态测试覆盖 M55→M56 顺序、事务、无历史回填/默认猜测/破坏性 DML，并包含删外键、删 CHECK、删 partial unique、注入 UPDATE/DELETE 的变异测试。
 
-- [ ] **Step 4: 参与人冻结规则**
+- [x] **Step 4: 参与人冻结规则**
 
 材料/机械只接受所属项目启用的 `material_staff`；劳务/专业由合同员从所属项目启用的 `engineering_foreman` 或 `engineering_tech` 中选择一人，冻结 selectedUserId 与对应 roleKey；跨项目、停用、未选择均拒绝。项目总工必须为所属项目恰好一名启用 `engineering_director`。公司工程技术部部长不再出现在新结算路线。
 
-- [ ] **Step 5: 运行 Prisma 和定向测试**
+- [x] **Step 5: 运行 Prisma 和定向测试**
 
 Run: `pnpm --filter @jiangkong/api prisma generate && pnpm --filter @jiangkong/api prisma validate && pnpm --filter @jiangkong/api test -- --runInBand src/database/settlement-signature-governance-schema-verification.spec.ts src/settlement/settlement-participant-freeze.spec.ts && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint`
 
 Expected: PASS。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add services/api/prisma/schema.prisma services/api/prisma/migrations/20260717140000_settlement_participants_and_signed_documents services/api/src/database/settlement-signature-governance-schema-verification.spec.ts services/api/src/settlement/settlement-participant-freeze*
 git commit -m "feat: 增加结算参与人与签章证据结构"
 ```
+
+> Task 16 已于 2026-07-18 完成实现并通过规格/质量双复审。质量复审发现并关闭了单项字段合法但用途组合可污染的缺口：M56 现以数据库 CHECK 固定“冻结版=草稿/系统生成/已完成”“乙方签章原件=草稿/人工上传/完整声明”“最终内部签名件=正式结算/系统生成/审批动作集合摘要”，失效或替代不改写原始证据事实。全新 PostgreSQL 16 临时库已从 M1 连续执行到 M56，共 56 个迁移全部成功；真实非法组合 INSERT 精确命中组合约束。替代服务在 Task 17/18 仍须于锁内校验同父业务、同 purpose，并防一旧件多后继或替代环。临时数据库已清理，未执行生产迁移。
 
 ### Task 17: 两类结算路线和乙方扫描件前置门禁
 
