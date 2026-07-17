@@ -295,7 +295,8 @@ watch(
   () => {
     requestGate.invalidate();
     loading.value = false;
-  }
+  },
+  { flush: "sync" }
 );
 </script>
 
