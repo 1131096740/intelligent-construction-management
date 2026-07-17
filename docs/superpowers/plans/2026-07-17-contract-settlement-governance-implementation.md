@@ -282,6 +282,7 @@ expect(COMPANY_ENTITY_READER_ROLES).toEqual([
   "comprehensive_director", "contract_staff", "contract_director",
   "finance_staff", "finance_director", "chairman", "general_manager"
 ]);
+// 这里只验证规范化，不代表 Y43 通过校验位检查；成功校验夹具统一使用 Y46。
 expect(normalizeUnifiedSocialCreditCode(" 91350211M000100Y43 ")).toBe("91350211M000100Y43");
 expect(() => assertValidUnifiedSocialCreditCode("91350211M000100Y44")).toThrow("校验位");
 ```
@@ -428,7 +429,7 @@ git commit -m "feat: 增加公司主体版本与合同快照结构"
 await expect(access.assertCanMaintain("project-contract-user")).rejects.toThrow("公司级全局岗位");
 await service.update("entity-1", "contract-user", {
   name: "云南某建设有限公司",
-  unifiedSocialCreditCode: "91350211M000100Y43",
+  unifiedSocialCreditCode: "91350211M000100Y46",
   registeredAddress: "昆明市"
 });
 expect(tx.companyEntityVersion.create).toHaveBeenCalledWith(expect.objectContaining({
@@ -560,17 +561,31 @@ git commit -m "feat: 增加我方公司主体独立台账"
 
 ### Task 6: 合同草稿选择主体并在提交时冻结 M53 快照
 
+> **执行校正（2026-07-17 代码审计）**：新建入口只创建空白工作台，不在 `CreateContractDraftDto` 强制主体；主体在工作台基本信息中选择。客户端只提交稳定 `companyEntityId`，服务端加载当前不可变主体版本并派生名称、信用代码、注册地址和旧 `myCompanyEntity` 兼容文本，禁止客户端同时维护两份主体事实。保存点恢复、合同类型切换和合同变更必须沿用同一结构化主体选择；不得仅改 JSON 而让父 `Contract` 留在旧主体。正式合同文档的我方主体只来自结构化选择或 M53 冻结快照；历史 `party_a` 仅作旧数据兜底，新草稿不得手工新增或改为 `party_a`，避免形成第二套主体真相。
+
 **Files:**
-- Modify: `services/api/src/contract/dto/create-contract.dto.ts`
+- Modify: `packages/shared-domain/src/contract-workbench.ts`
 - Modify: `services/api/src/contract/contract.service.ts`
 - Modify: `services/api/src/contract/contract.service.spec.ts`
+- Modify: `services/api/src/contract/contract-change-policy.ts`
+- Modify: `services/api/src/contract/contract-change-policy.spec.ts`
 - Modify: `services/api/src/contract-workbench/contract-workbench.service.ts`
 - Modify: `services/api/src/contract-workbench/contract-workbench.service.spec.ts`
+- Modify: `services/api/src/contract-workbench/dto/contract-workbench.dto.ts`
 - Modify: `services/api/src/contract-workbench/contract-readiness.service.ts`
 - Modify: `services/api/src/contract-workbench/contract-readiness.service.spec.ts`
+- Modify: `services/api/src/business-party/business-party.service.ts`
+- Modify: `services/api/src/business-party/business-party.service.spec.ts`
+- Modify: `services/api/src/contract-document/contract-document.service.ts`
+- Modify: `services/api/src/contract-document/contract-document.service.spec.ts`
+- Modify: `services/api/src/company-entity/company-entity.service.ts`
+- Modify: `services/api/src/company-entity/company-entity.service.spec.ts`
+- Modify: `apps/web-admin/src/api/company-entity.api.ts`
 - Modify: `apps/web-admin/src/api/contract-workbench.api.ts`
 - Modify: `apps/web-admin/src/api/contract-workbench.api.test.ts`
+- Modify: `apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue`
 - Modify: `apps/web-admin/src/pages/contracts/workbench/ContractBasicSection.vue`
+- Modify: `apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue`
 - Modify: `apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts`
 - Modify: `apps/web-admin/src/pages/contracts/workbench/use-contract-draft.test.ts`
 
@@ -585,10 +600,12 @@ expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(expect.objectContaini
     companyEntityIdSnapshot: "entity-1",
     companyEntityVersionId: "entity-version-3",
     companyEntityNameSnapshot: "云南某建设有限公司",
-    companyEntityCreditCodeSnapshot: "91350211M000100Y43"
+    companyEntityCreditCodeSnapshot: "91350211M000100Y46"
   })
 }));
-expect(componentSource).not.toContain('v-model="draft.myCompanyEntity"');
+expect(componentSource).toContain("<t-select");
+expect(componentSource).toContain("companyEntityId");
+expect(componentSource).not.toMatch(/emit\([^\n]*myCompanyEntity/u);
 ```
 
 - [ ] **Step 2: 运行失败测试**
@@ -597,10 +614,13 @@ Run: `pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract.ser
 
 Expected: FAIL。
 
-- [ ] **Step 3: 保存稳定 ID，提交时锁定当前主体版本**
+- [ ] **Step 3: 服务端派生结构化主体事实，提交时锁定当前版本**
 
 ```ts
-const entity = await tx.companyEntity.findUnique({ where: { id: contract.companyEntityId! } });
+const entity = await tx.companyEntity.findUnique({
+  where: { id: contract.companyEntityId! }
+  // 实现时使用事务内行锁，防止校验后被并发停用或换版。
+});
 if (!entity?.isActive) throw new BadRequestException("所选我方公司主体已停用，请回到基本信息重新选择");
 if (entity.dataStatus !== "complete") throw new BadRequestException("所选我方公司主体资料待补全，请先到我方公司主体页面完善信用代码");
 const entityVersion = await tx.companyEntityVersion.findFirst({
@@ -609,24 +629,28 @@ const entityVersion = await tx.companyEntityVersion.findFirst({
 if (!entityVersion) throw new BadRequestException("我方公司主体版本缺失，请联系合同部核对后重试");
 ```
 
-把快照列写入同一 `contractVersion.updateMany` 提交事务；变更草稿继承原版本快照并禁止换主体。
+`SaveContractDraftDto` 顶层只接收 `companyEntityId`。保存时由服务端读取当前 `CompanyEntityVersion`，生成只读的 `draftData.companyEntitySelection`（`id/versionId/versionNo/name/code/address`）和旧字段 `myCompanyEntity` 兼容文本，并在同一个 revision/CAS 更新中同步父 `Contract.companyEntityId/companyEntityName`。保存点恢复、合同类型切换和合同变更都必须保留这组结构化事实。
+
+提交审批前在同一事务中锁定 `CompanyEntity`，比较草稿记录的主体版本号与 `currentVersionNo`；主体停用、资料不完整、版本漂移或版本缺失时均阻断，并提示回到基本信息重新同步。原合同将 M53 五个快照字段从不可变版本写入同一次 `contractVersion.updateMany`；变更、补充协议继承原有效版本的冻结快照，绝不从当前主体档案刷新，历史空值也不得擅自补齐。
 
 - [ ] **Step 4: 将基本信息改为启用主体选择器**
 
-组件保存 `companyEntityId`，显示名称、信用代码、注册地址；保留旧 `myCompanyEntity` 只读兼容映射，不能继续作为新合同输入事实。主体停用或更新时显示同步提示，重新选择会使旧预览失效。
+组件使用 TDesign Select 保存 `companyEntityId`，显示名称、信用代码、注册地址；候选读模型补充 `currentVersionNo` 供客户端识别已保存版本是否漂移。保留旧 `myCompanyEntity` 只读兼容映射，不能继续作为新合同输入事实。主体停用或更新时显示同步提示；重新选择或同步都递增 revision 并使旧预览失效，未计算内容不得伪装为有效结果。
 
 主体候选只按“已启用且资料完整”筛选，不按项目绑定公司；同一项目必须能够为不同合同选择不同的已启用主体。增加回归测试，防止未来引入项目到主体的一对一限制。
 
+`ContractPartySection` 对受治理的新草稿移除 `party_a` 选项，`BusinessPartyService` 同时在后端拒绝新增或改为 `party_a`；历史合同仍可读取已有记录。`ContractDocumentService` 在提交前优先读取草稿结构化主体、提交后只读取冻结快照；仅当历史版本两者都不存在时，才允许旧 `party_a` 兜底。
+
 - [ ] **Step 5: 运行定向测试**
 
-Run: `pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract.service.spec.ts src/contract-workbench/contract-readiness.service.spec.ts src/contract-workbench/contract-workbench.service.spec.ts && pnpm --filter @jiangkong/web-admin test -- src/api/contract-workbench.api.test.ts src/pages/contracts/workbench/use-contract-draft.test.ts`
+Run: `pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract.service.spec.ts src/contract/contract-change-policy.spec.ts src/contract-workbench/contract-readiness.service.spec.ts src/contract-workbench/contract-workbench.service.spec.ts src/business-party/business-party.service.spec.ts src/contract-document/contract-document.service.spec.ts src/company-entity/company-entity.service.spec.ts && pnpm --filter @jiangkong/web-admin test -- src/api/contract-workbench.api.test.ts src/pages/contracts/workbench/use-contract-draft.test.ts`
 
 Expected: PASS。
 
 - [ ] **Step 6: 提交**
 
 ```bash
-git add services/api/src/contract services/api/src/contract-workbench apps/web-admin/src/api/contract-workbench.api* apps/web-admin/src/pages/contracts/workbench
+git add packages/shared-domain/src/contract-workbench.ts services/api/src/contract services/api/src/contract-workbench services/api/src/business-party services/api/src/contract-document services/api/src/company-entity apps/web-admin/src/api/company-entity.api.ts apps/web-admin/src/api/contract-workbench.api* apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue apps/web-admin/src/pages/contracts/workbench
 git commit -m "feat: 冻结合同我方主体版本"
 ```
 
