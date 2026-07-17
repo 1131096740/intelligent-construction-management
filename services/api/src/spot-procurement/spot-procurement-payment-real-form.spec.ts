@@ -41,6 +41,9 @@ function createHarness() {
       findUnique: jest.fn().mockResolvedValue(payment),
       update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ ...payment, ...data }))
     },
+    spotProcurementPaymentExecution: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
     spotProcurement: {
       findUnique: jest.fn().mockResolvedValue({
         id: "procurement-1",
@@ -76,11 +79,27 @@ function createHarness() {
     spotProcurementPaymentMethodOption: {
       deleteMany: jest.fn(),
       createMany: jest.fn(),
-      findMany: jest.fn().mockResolvedValue([])
+      findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0)
     },
     spotProcurementPaymentAttachment: { deleteMany: jest.fn(), createMany: jest.fn() },
-    approvalInstance: { create: jest.fn().mockResolvedValue({ id: "approval-1" }) },
-    auditLog: { create: jest.fn().mockResolvedValue({}) }
+    approvalInstance: {
+      create: jest.fn().mockResolvedValue({ id: "approval-1" }),
+      update: jest.fn().mockResolvedValue({ id: "approval-1" })
+    },
+    approvalActionLog: { create: jest.fn().mockResolvedValue({}) },
+    userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+    projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }]) },
+    position: { findMany: jest.fn().mockResolvedValue([]) },
+    companyEntity: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: "company-1",
+        name: "云南建工集团",
+        unifiedSocialCreditCode: "91530000TEST000001"
+      })
+    },
+    auditLog: { create: jest.fn().mockResolvedValue({}) },
+    $queryRaw: jest.fn().mockResolvedValue([])
   };
   const prisma = {
     $transaction: jest.fn((operation) => operation(tx)),
@@ -199,5 +218,142 @@ describe("SpotProcurementPaymentService real-form draft", () => {
         submittedVersionNo: 1
       })
     });
+  });
+
+  it("lets a project finance staff select only an active payer company on the draft", async () => {
+    const { service, tx } = createHarness();
+
+    await service.updatePayer("payment-1", "finance-1", {
+      companyEntityId: "company-1",
+      paymentMethods: ["bank_transfer"]
+    });
+
+    expect(tx.spotProcurementPaymentMethodOption.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          paymentId: "payment-1",
+          paymentMethod: "bank_transfer",
+          sortOrder: 1
+        }
+      ]
+    });
+    expect(tx.spotProcurementPayment.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: expect.objectContaining({
+        payerCompanyEntityId: "company-1",
+        payerCompanyNameSnapshot: "云南建工集团"
+      })
+    });
+  });
+
+  it("returns a finance-director payer change to comprehensive approval and preserves the prior approval trail", async () => {
+    const { service, tx } = createHarness();
+    const submitted = {
+      ...payment,
+      status: "approval_pending",
+      paymentMethod: "bank_transfer",
+      payerCompanyEntityId: "company-before"
+    };
+    tx.spotProcurementPayment.findUnique.mockResolvedValue(submitted);
+    tx.projectMember.findMany.mockResolvedValue([{ positionKey: "finance_director" }]);
+    tx.$queryRaw.mockResolvedValue([
+      {
+        id: "approval-1",
+        status: "approval_pending",
+        currentNodeIndex: 2,
+        applicantUserId: "material-1",
+        frozenNodes: [
+          {
+            name: "综合部主管审批",
+            mode: "any",
+            roleKeys: ["comprehensive_director"],
+            approvedRoleKeys: ["comprehensive_director"]
+          },
+          {
+            name: "项目经理审批",
+            mode: "any",
+            roleKeys: ["project_manager"],
+            approvedRoleKeys: ["project_manager"]
+          },
+          {
+            name: "财务主管审批",
+            mode: "any",
+            roleKeys: ["finance_director"]
+          }
+        ]
+      }
+    ]);
+
+    await service.updatePayer("payment-1", "finance-director", {
+      companyEntityId: "company-1",
+      paymentMethods: ["bank_transfer"],
+      changeReason: "付款主体需要改为实际出款公司"
+    });
+
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "payer_changed_reapproval",
+        actorUserId: "finance-director"
+      })
+    });
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-1" },
+      data: expect.objectContaining({
+        currentNodeIndex: 0,
+        status: "approval_pending",
+        frozenNodes: expect.arrayContaining([
+          expect.not.objectContaining({ approvedRoleKeys: expect.anything() })
+        ])
+      })
+    });
+  });
+
+  it("does not allow a payer change after any effective actual payment", async () => {
+    const { service, tx } = createHarness();
+    tx.spotProcurementPaymentExecution.findFirst.mockResolvedValue({ id: "execution-1" });
+
+    await expect(
+      service.updatePayer("payment-1", "finance-1", {
+        companyEntityId: "company-1",
+        paymentMethods: ["bank_transfer"]
+      })
+    ).rejects.toThrow("已发生实际付款");
+  });
+
+  it("blocks comprehensive approval until the payer and a planned method are both set", async () => {
+    const { service, tx } = createHarness();
+    const pending = { ...payment, status: "approval_pending", paymentType: "company_direct" };
+    const internal = service as unknown as {
+      requireLockedVersionForPayment: jest.Mock;
+      lockProcurementPayments: jest.Mock;
+      requireLockedApproval: jest.Mock;
+      requireActiveUser: jest.Mock;
+      loadActorRoleKeys: jest.Mock;
+    };
+    internal.requireLockedVersionForPayment = jest.fn().mockResolvedValue({
+      id: "version-1",
+      projectId: "project-1",
+      procurementId: "procurement-1"
+    });
+    internal.lockProcurementPayments = jest.fn().mockResolvedValue([pending]);
+    internal.requireLockedApproval = jest.fn().mockResolvedValue({
+      id: "approval-1",
+      applicantUserId: "material-1",
+      currentNodeIndex: 0,
+      frozenNodes: [
+        { name: "综合部主管审批", mode: "any", roleKeys: ["comprehensive_director"] }
+      ]
+    });
+    internal.requireActiveUser = jest.fn().mockResolvedValue(undefined);
+    internal.loadActorRoleKeys = jest.fn().mockResolvedValue(["comprehensive_director"]);
+    tx.spotProcurementPayment.findUnique.mockResolvedValue({
+      paymentType: "company_direct",
+      payerCompanyEntityId: null,
+      payerCompanyNameSnapshot: null
+    });
+
+    await expect(
+      service.review("payment-1", "comprehensive-1", { decision: "approve" })
+    ).rejects.toThrow("综合部主管审批通过前必须确定付款主体和至少一种拟付款方式");
   });
 });

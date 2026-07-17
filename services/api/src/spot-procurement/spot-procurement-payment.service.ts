@@ -9,7 +9,8 @@ import {
 import { Prisma } from "@prisma/client";
 import {
   resolveEffectiveRoleKeys,
-  type RoleKey
+  type RoleKey,
+  type SpotProcurementPaymentMethod
 } from "@jiangkong/shared-domain";
 import { pendingRoleKeysForFrozenApprovalNode } from "../approval/approval-node-access";
 import { ApprovalFormService } from "../approval/approval-form.service";
@@ -29,6 +30,7 @@ import {
 import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
 import type { RecordSpotProcurementPaymentDto } from "./dto/record-spot-procurement-payment.dto";
 import type { ReviewSpotProcurementPaymentDto } from "./dto/review-spot-procurement-payment.dto";
+import type { UpdateSpotPaymentPayerDto } from "./dto/update-spot-payment-payer.dto";
 import {
   type SpotProcurementPaymentAttachmentDto,
   type SpotProcurementPaymentChannelDto,
@@ -819,6 +821,131 @@ export class SpotProcurementPaymentService {
     );
   }
 
+  updatePayer(
+    paymentId: string,
+    actorUserId: string,
+    input: UpdateSpotPaymentPayerDto
+  ) {
+    return this.runWrite(() => this.runSerializable(async (tx) => {
+      const payment = await tx.spotProcurementPayment.findUnique({ where: { id: paymentId } });
+      if (!payment) throw new NotFoundException("零星材料付款申请不存在");
+      this.pilot.assertEnabled(payment.projectId);
+      if (!["draft", "approval_pending"].includes(payment.status)) {
+        throw new ConflictException("当前付款申请已锁定付款主体");
+      }
+      const existingExecution =
+        await tx.spotProcurementPaymentExecution.findFirst({
+          where: { paymentId: payment.id, voidedAt: null },
+          select: { id: true }
+        });
+      if (existingExecution) {
+        throw new ConflictException("已发生实际付款，不能再调整付款主体或拟付款方式");
+      }
+      const roles = await this.loadActorRoleKeys(tx, actorUserId, payment.projectId);
+      this.requireAnyRole(
+        roles,
+        new Set(["finance_staff", "comprehensive_director", "finance_director"]),
+        "只有财务人员、综合部主管或财务主管可以维护付款主体"
+      );
+      const approval = payment.status === "approval_pending"
+        ? await this.requireLockedApproval(tx, payment.id)
+        : null;
+      const pendingRoles = approval
+        ? pendingRoleKeysForFrozenApprovalNode(
+            approval.frozenNodes,
+            approval.currentNodeIndex
+          )
+        : [];
+      const isFinanceDirectorReapproval =
+        pendingRoles.includes("finance_director") &&
+        roles.includes("finance_director");
+      if (approval && !isFinanceDirectorReapproval && approval.currentNodeIndex !== 0) {
+        throw new ConflictException("综合部主管审批完成后，只有财务主管可在本节点调整付款主体");
+      }
+      if (isFinanceDirectorReapproval && !optionalText(input.changeReason)) {
+        throw new BadRequestException("财务主管调整付款主体时必须填写变更原因");
+      }
+      const company = await tx.companyEntity.findFirst({
+        where: { id: requiredText(input.companyEntityId, "请选择付款主体"), isActive: true },
+        select: { id: true, name: true, unifiedSocialCreditCode: true }
+      });
+      if (!company) throw new BadRequestException("付款主体不存在或已停用");
+      if (input.paymentMethods) {
+        if (!input.paymentMethods.length || new Set(input.paymentMethods).size !== input.paymentMethods.length) {
+          throw new BadRequestException("拟付款方式至少保留一种且不能重复");
+        }
+        if (
+          payment.paymentMethod &&
+          !input.paymentMethods.includes(
+            payment.paymentMethod as SpotProcurementPaymentMethod
+          )
+        ) {
+          throw new BadRequestException("拟付款方式必须包含当前主收款渠道");
+        }
+        await tx.spotProcurementPaymentMethodOption.deleteMany({
+          where: { paymentId: payment.id }
+        });
+        await tx.spotProcurementPaymentMethodOption.createMany({
+          data: input.paymentMethods.map((paymentMethod, index) => ({
+            paymentId: payment.id,
+            paymentMethod,
+            sortOrder: index + 1
+          }))
+        });
+      }
+      const frozenNodes = isFinanceDirectorReapproval && approval
+        ? resetPaymentApprovalToComprehensive(approval.frozenNodes)
+        : undefined;
+      if (isFinanceDirectorReapproval && approval) {
+        await tx.approvalActionLog.create({
+          data: {
+            approvalInstanceId: approval.id,
+            action: "payer_changed_reapproval",
+            actorUserId,
+            comment: optionalText(input.changeReason),
+            metadata: {
+              previousPayerCompanyEntityId: payment.payerCompanyEntityId,
+              nextPayerCompanyEntityId: company.id,
+              reason: optionalText(input.changeReason)
+            }
+          }
+        });
+        await tx.approvalInstance.update({
+          where: { id: approval.id },
+          data: {
+            currentNodeIndex: 0,
+            status: "approval_pending",
+            frozenNodes: frozenNodes as unknown as Prisma.InputJsonValue
+          }
+        });
+      }
+      const updated = await tx.spotProcurementPayment.update({
+        where: { id: payment.id },
+        data: {
+          payerCompanyEntityId: company.id,
+          payerCompanyNameSnapshot: company.name,
+          payerUnifiedSocialCreditCodeSnapshot: company.unifiedSocialCreditCode,
+          factsFrozenAt: isFinanceDirectorReapproval
+            ? new Date()
+            : payment.factsFrozenAt
+        }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "spot_procurement.payment.payer.update",
+        businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+        businessId: payment.id,
+        metadata: {
+          companyEntityId: company.id,
+          companyName: company.name,
+          changeReason: optionalText(input.changeReason),
+          reapprovalFromComprehensive: isFinanceDirectorReapproval
+        }
+      });
+      return this.paymentReadModel(updated);
+    }));
+  }
+
   submit(paymentId: string, actorUserId: string) {
     return this.runWrite(async () => {
       const payment = await this.prisma.spotProcurementPayment.findUnique({
@@ -1028,6 +1155,34 @@ export class SpotProcurementPaymentService {
           throw new BadRequestException(
             "驳回或退回付款申请时必须填写审批意见"
           );
+        }
+        if (
+          approvedRoleKey === "comprehensive_director" &&
+          input.decision === "approve"
+        ) {
+          const [realPayment, methodCount] = await Promise.all([
+            tx.spotProcurementPayment.findUnique({
+              where: { id: payment.id },
+              select: {
+                paymentType: true,
+                payerCompanyEntityId: true,
+                payerCompanyNameSnapshot: true
+              }
+            }),
+            tx.spotProcurementPaymentMethodOption.count({
+              where: { paymentId: payment.id }
+            })
+          ]);
+          if (
+            realPayment?.paymentType &&
+            (!realPayment.payerCompanyEntityId ||
+              !realPayment.payerCompanyNameSnapshot ||
+              methodCount < 1)
+          ) {
+            throw new BadRequestException(
+              "综合部主管审批通过前必须确定付款主体和至少一种拟付款方式"
+            );
+          }
         }
         const recordApprovalAction = () =>
           tx.approvalActionLog.create({
@@ -3177,6 +3332,20 @@ function hasRealFormPaymentFacts(input: UpdateSpotProcurementPaymentDraftDto) {
     input.paymentMethods !== undefined ||
     input.attachments !== undefined
   );
+}
+
+function resetPaymentApprovalToComprehensive(frozenNodes: Prisma.JsonValue) {
+  if (!Array.isArray(frozenNodes) || frozenNodes.length < 3) {
+    throw new ConflictException("付款审批节点快照损坏，不能重新发起审批");
+  }
+  return frozenNodes.map((node, index) => {
+    if (!node || typeof node !== "object" || Array.isArray(node)) {
+      throw new ConflictException("付款审批节点快照损坏，不能重新发起审批");
+    }
+    const copy = { ...(node as Record<string, Prisma.JsonValue>) };
+    if (index <= 2) delete copy.approvedRoleKeys;
+    return copy;
+  });
 }
 
 function parsePositiveExecutionAmount(value: string) {

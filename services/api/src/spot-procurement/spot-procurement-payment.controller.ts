@@ -14,6 +14,7 @@ import { ExecuteSupplierBalanceDto } from "./dto/execute-supplier-balance.dto";
 import { RecordSpotProcurementPaymentDto } from "./dto/record-spot-procurement-payment.dto";
 import { ReviewSpotProcurementPaymentDto } from "./dto/review-spot-procurement-payment.dto";
 import { UpdateSpotProcurementPaymentDraftDto } from "./dto/update-spot-procurement-payment-draft.dto";
+import { UpdateSpotPaymentPayerDto } from "./dto/update-spot-payment-payer.dto";
 import { VoidSpotProcurementDto } from "./dto/void-spot-procurement.dto";
 import { SpotProcurementPaymentService } from "./spot-procurement-payment.service";
 import { SpotProcurementReadService } from "./spot-procurement-read.service";
@@ -57,6 +58,16 @@ export class SpotProcurementPaymentController {
     @Body() body: UpdateSpotProcurementPaymentDraftDto
   ) {
     return this.payments.updateDraft(paymentId, user.id, body);
+  }
+
+  @Patch(":paymentId/payer")
+  @RequireProjectRole("spot_procurement.payment.facts.manage")
+  updatePayer(
+    @Param("paymentId") paymentId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: UpdateSpotPaymentPayerDto
+  ) {
+    return this.payments.updatePayer(paymentId, user.id, body);
   }
 
   @Post(":paymentId/submission")
