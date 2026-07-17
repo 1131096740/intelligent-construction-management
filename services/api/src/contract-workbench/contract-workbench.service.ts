@@ -305,9 +305,32 @@ export class ContractWorkbenchService {
       const changeBase = isChangeVersion && version.baseVersionId
         ? await tx.contractVersion.findUnique({ where: { id: version.baseVersionId } })
         : null;
-      const storedDraftData = this.withTaxFactMirror(input.draftData, input.taxFacts);
+      const companySelection = isChangeVersion
+        ? this.companySelectionFromDraft(changeBase?.draftData)
+        : input.companyEntityId
+          ? await this.lockAndLoadCompanyEntitySelection(tx, input.companyEntityId)
+          : this.companySelectionFromDraft(version.draftData);
+      if (
+        isChangeVersion &&
+        input.companyEntityId !== undefined &&
+        input.companyEntityId !== companySelection?.id
+      ) {
+        throw new BadRequestException("合同变更不得修改我方签约主体，如需换主体请新签合同");
+      }
+      const clientDraftData = { ...input.draftData };
+      delete clientDraftData.companyEntitySelection;
+      delete clientDraftData.myCompanyEntity;
+      const storedDraftData = this.withTaxFactMirror({
+        ...clientDraftData,
+        ...(companySelection
+          ? {
+              companyEntitySelection: companySelection,
+              myCompanyEntity: companySelection.name
+            }
+          : {})
+      }, input.taxFacts);
       this.validateDraftAgainstTemplate(
-        input.draftData,
+        storedDraftData,
         input.clauses,
         template,
         changeBase?.draftData
@@ -318,7 +341,7 @@ export class ContractWorkbenchService {
         }
         assertContractChangeContentAllowed({
           baseDraftData: this.withoutTaxFactMirror(changeBase.draftData),
-          candidateDraftData: this.withoutTaxFactMirror(input.draftData),
+          candidateDraftData: this.withoutTaxFactMirror(storedDraftData),
           baseClauses: changeBase.clauseSnapshot,
           candidateClauses: input.clauses,
           template
@@ -411,7 +434,12 @@ export class ContractWorkbenchService {
         contractVersionId,
         input.expectedRevision + 1
       );
-      await this.assertEditableParentCas(tx, version.contractId, actorUserId);
+      await this.assertEditableParentCas(
+        tx,
+        version.contractId,
+        actorUserId,
+        companySelection
+      );
 
       await this.audit.record(tx, {
         actorUserId,
@@ -523,6 +551,7 @@ export class ContractWorkbenchService {
         throw new NotFoundException("未找到合同草稿保存点，请刷新后重试");
       }
       const snapshot = this.parseCheckpoint(checkpoint.snapshot);
+      const checkpointCompanySelection = this.companySelectionFromDraft(snapshot.draftData);
       const updated = await tx.contractVersion.updateMany({
         where: {
           id: contractVersionId,
@@ -560,7 +589,12 @@ export class ContractWorkbenchService {
         contractVersionId,
         version.draftRevision + 1
       );
-      await this.assertEditableParentCas(tx, version.contractId, actorUserId);
+      await this.assertEditableParentCas(
+        tx,
+        version.contractId,
+        actorUserId,
+        checkpointCompanySelection
+      );
       await this.replaceBillsFromSnapshot(tx, contractVersionId, snapshot.bills);
       await this.audit.record(tx, {
         actorUserId,
@@ -720,8 +754,18 @@ export class ContractWorkbenchService {
           ];
         })
       );
+      const preservedStructuralKeys = new Set([
+        "contractName",
+        "companyEntitySelection",
+        "myCompanyEntity",
+        "partyValues"
+      ]);
+      for (const key of preservedStructuralKeys) {
+        if (Object.hasOwn(currentData, key)) nextData[key] = currentData[key];
+      }
       const removedFields = Object.fromEntries(
         Object.entries(currentData).filter(([key]) => {
+          if (preservedStructuralKeys.has(key)) return false;
           const oldField = oldFields.get(key);
           const targetField = targetFields.get(key);
           return !targetField || !oldField || oldField.type !== targetField.type;
@@ -807,7 +851,12 @@ export class ContractWorkbenchService {
         contractVersionId,
         input.expectedRevision + 1
       );
-      await this.assertEditableParentCas(tx, contract.id, actorUserId);
+      await this.assertEditableParentCas(
+        tx,
+        contract.id,
+        actorUserId,
+        this.companySelectionFromDraft(nextData)
+      );
 
       const template = await tx.contractBusinessTemplate.findUnique({
         where: { id: target.templateId }
@@ -945,7 +994,11 @@ export class ContractWorkbenchService {
   private async assertEditableParentCas(
     tx: Prisma.TransactionClient,
     contractId: string,
-    actorUserId: string
+    actorUserId: string,
+    companySelection?: {
+      id: string;
+      name: string;
+    } | null
   ) {
     const parent = await tx.contract.updateMany({
       where: {
@@ -953,7 +1006,15 @@ export class ContractWorkbenchService {
         ownerUserId: actorUserId,
         voidedAt: null
       },
-      data: { ownerUserId: actorUserId }
+      data: {
+        ownerUserId: actorUserId,
+        ...(companySelection
+          ? {
+              companyEntityId: companySelection.id,
+              companyEntityName: companySelection.name
+            }
+          : {})
+      }
     });
     if (parent.count !== 1) {
       throw new BadRequestException("合同草稿已变化，请刷新后重试");
@@ -1064,8 +1125,17 @@ export class ContractWorkbenchService {
       throw new BadRequestException("付款条款原文摘要必须是文本。");
     }
     const taxFacts = this.parseTaxFacts(input.taxFacts);
+    if (
+      input.companyEntityId !== undefined &&
+      (typeof input.companyEntityId !== "string" || !input.companyEntityId.trim())
+    ) {
+      throw new BadRequestException("请选择有效的我方公司主体");
+    }
     return {
       expectedRevision: input.expectedRevision as number,
+      ...(input.companyEntityId === undefined
+        ? {}
+        : { companyEntityId: (input.companyEntityId as string).trim() }),
       draftData: { ...(input.draftData as Record<string, unknown>) },
       clauses,
       pricingNature: input.pricingNature as SaveContractDraftDto["pricingNature"],
@@ -1339,6 +1409,7 @@ export class ContractWorkbenchService {
     const structuralKeys = new Set([
       "contractName",
       "myCompanyEntity",
+      "companyEntitySelection",
       "fieldValues",
       "partyValues"
     ]);
@@ -1847,6 +1918,69 @@ export class ContractWorkbenchService {
             : contractInvoiceTypeLabel(taxFacts.invoiceType),
         taxRatePercent: taxFacts.defaultTaxRatePercent
       }
+    };
+  }
+
+  private companySelectionFromDraft(value: unknown) {
+    const draft = this.objectValue(value);
+    const selection = this.objectValue(draft["companyEntitySelection"]);
+    return typeof selection["id"] === "string" &&
+      typeof selection["versionId"] === "string" &&
+      typeof selection["versionNo"] === "number" &&
+      Number.isInteger(selection["versionNo"]) &&
+      typeof selection["name"] === "string" &&
+      typeof selection["unifiedSocialCreditCode"] === "string" &&
+      (selection["registeredAddress"] === null ||
+        typeof selection["registeredAddress"] === "string")
+      ? {
+          id: selection["id"],
+          versionId: selection["versionId"],
+          versionNo: selection["versionNo"],
+          name: selection["name"],
+          unifiedSocialCreditCode: selection["unifiedSocialCreditCode"],
+          registeredAddress: selection["registeredAddress"] as string | null
+        }
+      : null;
+  }
+
+  private async lockAndLoadCompanyEntitySelection(
+    tx: Prisma.TransactionClient,
+    companyEntityId: string
+  ) {
+    await tx.$queryRaw(Prisma.sql`
+      SELECT "id"
+      FROM "CompanyEntity"
+      WHERE "id" = ${companyEntityId}
+      FOR UPDATE
+    `);
+    const entity = await tx.companyEntity.findUnique({ where: { id: companyEntityId } });
+    if (!entity) {
+      throw new BadRequestException("未找到所选我方公司主体，请回到基本信息重新选择");
+    }
+    if (!entity.isActive) {
+      throw new BadRequestException("所选我方公司主体已停用，请回到基本信息重新选择");
+    }
+    if (entity.dataStatus !== "complete") {
+      throw new BadRequestException("所选我方公司主体资料待补全，请先到我方公司主体页面完善信用代码");
+    }
+    const version = await tx.companyEntityVersion.findUnique({
+      where: {
+        companyEntityId_versionNo: {
+          companyEntityId: entity.id,
+          versionNo: entity.currentVersionNo
+        }
+      }
+    });
+    if (!version || !version.unifiedSocialCreditCode) {
+      throw new BadRequestException("我方公司主体版本缺失，请联系合同部核对后重试");
+    }
+    return {
+      id: entity.id,
+      versionId: version.id,
+      versionNo: version.versionNo,
+      name: version.name,
+      unifiedSocialCreditCode: version.unifiedSocialCreditCode,
+      registeredAddress: version.registeredAddress
     };
   }
 

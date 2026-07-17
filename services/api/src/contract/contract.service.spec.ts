@@ -799,7 +799,17 @@ describe("ContractService", () => {
       amountCents: BigInt(5000000),
       readinessSnapshot: null,
       templateSnapshot: { fieldSchema: [] },
-      clauseSnapshot: []
+      clauseSnapshot: [],
+      draftData: {
+        companyEntitySelection: {
+          id: "entity-1",
+          versionId: "entity-version-3",
+          versionNo: 3,
+          name: "旧名称",
+          unifiedSocialCreditCode: "91350211M000100Y46",
+          registeredAddress: "旧地址"
+        }
+      }
     };
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([version]),
@@ -815,14 +825,32 @@ describe("ContractService", () => {
           code: null,
           projectId: "project-1",
           contractTypeKey: "material_purchase",
-          companyEntityId: null,
-          companyEntityName: null
+          companyEntityId: "entity-1",
+          companyEntityName: "旧名称"
         }),
         findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       projectOwnerContract: {
         findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(200000000) }])
+      },
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-1",
+          isActive: true,
+          dataStatus: "complete",
+          currentVersionNo: 3
+        })
+      },
+      companyEntityVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-version-3",
+          companyEntityId: "entity-1",
+          versionNo: 3,
+          name: "云南某建设有限公司",
+          unifiedSocialCreditCode: "91350211M000100Y46",
+          registeredAddress: "昆明市"
+        })
       },
       approvalInstance: {
         create: jest.fn()
@@ -879,6 +907,11 @@ describe("ContractService", () => {
         status: "in_approval",
         taxFactStatus: "frozen",
         taxFactsFrozenAt: expect.any(Date),
+        companyEntityIdSnapshot: "entity-1",
+        companyEntityVersionId: "entity-version-3",
+        companyEntityNameSnapshot: "云南某建设有限公司",
+        companyEntityCreditCodeSnapshot: "91350211M000100Y46",
+        companyEntityRegisteredAddressSnapshot: "昆明市",
         readinessSnapshot: {
           blocking: [],
           warnings: [],
@@ -945,6 +978,57 @@ describe("ContractService", () => {
     });
   });
 
+  it.each([
+    [
+      { isActive: false, dataStatus: "complete", currentVersionNo: 3 },
+      { id: "entity-version-3", unifiedSocialCreditCode: "91350211M000100Y46" },
+      "所选我方公司主体已停用，请回到基本信息重新选择"
+    ],
+    [
+      { isActive: true, dataStatus: "legacy_incomplete", currentVersionNo: 3 },
+      { id: "entity-version-3", unifiedSocialCreditCode: null },
+      "所选我方公司主体资料待补全"
+    ],
+    [
+      { isActive: true, dataStatus: "complete", currentVersionNo: 4 },
+      { id: "entity-version-4", unifiedSocialCreditCode: "91350211M000100Y46" },
+      "所选我方公司主体资料已更新"
+    ],
+    [
+      { isActive: true, dataStatus: "complete", currentVersionNo: 3 },
+      null,
+      "我方公司主体版本缺失"
+    ]
+  ])("blocks an invalid company entity before snapshot freeze", async (
+    entity,
+    entityVersion,
+    message
+  ) => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "entity-1" }]),
+      companyEntity: { findUnique: jest.fn().mockResolvedValue({ id: "entity-1", ...entity }) },
+      companyEntityVersion: { findUnique: jest.fn().mockResolvedValue(entityVersion) }
+    };
+    const service = new ContractService({} as PrismaService, audit as never);
+    const subject = service as unknown as {
+      lockCompanyEntityForSubmission: (
+        client: typeof tx,
+        version: { draftData: unknown },
+        contract: { companyEntityId: string }
+      ) => Promise<unknown>;
+    };
+
+    await expect(subject.lockCompanyEntityForSubmission(tx, {
+      draftData: {
+        companyEntitySelection: {
+          id: "entity-1",
+          versionNo: 3
+        }
+      }
+    }, { companyEntityId: "entity-1" })).rejects.toThrow(message);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
   it("freezes the confirmed major contract change approval route", () => {
     const service = new ContractService({} as never, {} as never) as unknown as {
       approvalNodesForVersion(version: {
@@ -983,7 +1067,17 @@ describe("ContractService", () => {
       amountCents: BigInt(5000000),
       readinessSnapshot: null,
       templateSnapshot: { fieldSchema: [] },
-      clauseSnapshot: []
+      clauseSnapshot: [],
+      draftData: {
+        companyEntitySelection: {
+          id: "entity-1",
+          versionId: "entity-version-1",
+          versionNo: 1,
+          name: "我方公司",
+          unifiedSocialCreditCode: "91350211M000100Y46",
+          registeredAddress: null
+        }
+      }
     };
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([version]),
@@ -1009,8 +1103,8 @@ describe("ContractService", () => {
           code: null,
           projectId: "project-1",
           contractTypeKey: "material_purchase",
-          companyEntityId: null,
-          companyEntityName: null
+          companyEntityId: "entity-1",
+          companyEntityName: "我方公司"
         }),
         findMany: jest.fn().mockResolvedValue([{ id: "contract-old" }]),
         updateMany: jest.fn()
@@ -1072,6 +1166,24 @@ describe("ContractService", () => {
         findMany: jest.fn(),
         updateMany: jest.fn()
       },
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-1",
+          isActive: true,
+          dataStatus: "complete",
+          currentVersionNo: 1
+        })
+      },
+      companyEntityVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-version-1",
+          companyEntityId: "entity-1",
+          versionNo: 1,
+          name: "我方公司",
+          unifiedSocialCreditCode: "91350211M000100Y46",
+          registeredAddress: null
+        })
+      },
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -1109,7 +1221,17 @@ describe("ContractService", () => {
       amountCents: BigInt(5000000),
       readinessSnapshot: null,
       templateSnapshot: { fieldSchema: [] },
-      clauseSnapshot: []
+      clauseSnapshot: [],
+      draftData: {
+        companyEntitySelection: {
+          id: "entity-1",
+          versionId: "entity-version-1",
+          versionNo: 1,
+          name: "我方公司",
+          unifiedSocialCreditCode: "91350211M000100Y46",
+          registeredAddress: null
+        }
+      }
     };
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([version]),
@@ -1135,14 +1257,32 @@ describe("ContractService", () => {
           code: null,
           projectId: "project-1",
           contractTypeKey: "material_purchase",
-          companyEntityId: null,
-          companyEntityName: null
+          companyEntityId: "entity-1",
+          companyEntityName: "我方公司"
         }),
         findMany: jest.fn().mockResolvedValue([{ id: "contract-old" }]),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       approvalInstance: {
         create: jest.fn()
+      },
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-1",
+          isActive: true,
+          dataStatus: "complete",
+          currentVersionNo: 1
+        })
+      },
+      companyEntityVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-version-1",
+          companyEntityId: "entity-1",
+          versionNo: 1,
+          name: "我方公司",
+          unifiedSocialCreditCode: "91350211M000100Y46",
+          registeredAddress: null
+        })
       },
       auditLog: {
         create: jest.fn()

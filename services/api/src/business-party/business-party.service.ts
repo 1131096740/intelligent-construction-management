@@ -163,6 +163,7 @@ export class BusinessPartyService {
         actorUserId
       );
       this.assertContractPartyRole(input.roleKey);
+      this.assertNotGovernedCompanyRole(input.roleKey);
       const hasVersion = Boolean(input.businessPartyVersionId);
       const hasInlineSnapshot = Boolean(input.snapshot);
       if (hasVersion === hasInlineSnapshot) {
@@ -230,6 +231,7 @@ export class BusinessPartyService {
         actorUserId
       );
       this.assertContractPartyRole(roleKey);
+      this.assertNotGovernedCompanyRole(roleKey);
       const existing = await tx.contractPartySnapshot.findFirst({
         where: { id: partySnapshotId, contractVersionId }
       });
@@ -334,6 +336,12 @@ export class BusinessPartyService {
   private assertContractPartyRole(roleKey: AddContractPartyDto["roleKey"]) {
     if (!CONTRACT_PARTY_ROLES.has(roleKey)) {
       throw new BadRequestException("合同合作单位角色不正确，请重新选择");
+    }
+  }
+
+  private assertNotGovernedCompanyRole(roleKey: AddContractPartyDto["roleKey"]) {
+    if (roleKey === "party_a") {
+      throw new BadRequestException("我方签约主体请回到基本信息从我方公司主体中选择");
     }
   }
 

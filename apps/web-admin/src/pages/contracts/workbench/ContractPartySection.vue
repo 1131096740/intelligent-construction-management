@@ -183,7 +183,9 @@ const ROLE_LABELS: Record<string, string> = {
 
 const parties = computed(() => props.workbench?.parties ?? []);
 
-const roleOptions = Object.entries(ROLE_LABELS).map(([value, label]) => ({ label, value }));
+const roleOptions = Object.entries(ROLE_LABELS)
+  .filter(([value]) => value !== "party_a")
+  .map(([value, label]) => ({ label, value }));
 const ATTACHMENT_LABELS: Record<string, string> = {
   business_license: "营业执照",
   bank_account: "开户许可证",

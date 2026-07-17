@@ -120,6 +120,9 @@ export function assertContractChangeContentAllowed(input: ContractChangeContentI
   if (!isDeepStrictEqual(myCompanyBefore, myCompanyAfter)) {
     throw new BadRequestException("合同变更不得修改我方签约主体");
   }
+  if (!isDeepStrictEqual(base.companyEntitySelection, candidate.companyEntitySelection)) {
+    throw new BadRequestException("合同变更不得修改我方签约主体");
+  }
   if (!isDeepStrictEqual(base.partyValues, candidate.partyValues)) {
     throw new BadRequestException("合同变更不得修改签约主体信息");
   }

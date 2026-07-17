@@ -460,6 +460,103 @@ describe("ContractDocumentService", () => {
     });
   });
 
+  it("uses structured draft company facts before legacy party_a", async () => {
+    const tx = makeTx({
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "draft",
+          draftRevision: 7,
+          amountCents: 1_000_000n,
+          invoiceType: "vat_special",
+          defaultTaxRatePercent: { toString: () => "13" },
+          draftData: {
+            companyEntitySelection: {
+              id: "entity-1",
+              versionId: "entity-version-3",
+              versionNo: 3,
+              name: "结构化我方主体",
+              unifiedSocialCreditCode: "91350211M000100Y46",
+              registeredAddress: "昆明市"
+            }
+          },
+          clauseSnapshot: [],
+          readinessSnapshot: { checkedRevision: 7, blocking: [], warnings: [] },
+          companyEntityIdSnapshot: null,
+          companyEntityVersionId: null,
+          companyEntityNameSnapshot: null,
+          companyEntityCreditCodeSnapshot: null,
+          companyEntityRegisteredAddressSnapshot: null
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    });
+    const { service } = makeService(tx);
+
+    await service.queue("version-1", "owner-1", {
+      layoutTemplateVersionId: "layout-1",
+      purpose: "draft"
+    });
+
+    const values = tx.contractGeneratedDocument.create.mock.calls[0][0].data
+      .inputSnapshot.renderInput.values;
+    expect(values["party.owner.name"]).toBe("结构化我方主体");
+    expect(values["party.owner.name"]).not.toBe("建工智管建设有限公司");
+  });
+
+  it("uses only the frozen company snapshot after submission and keeps legacy fallback historical", () => {
+    const tx = makeTx();
+    const { service } = makeService(tx);
+    const renderer = service as unknown as {
+      renderValues: (
+        contract: { name: string; temporaryCode: string | null; code: string | null },
+        version: Record<string, unknown>,
+        parties: Array<{ roleKey: string; snapshot: Record<string, unknown> }>,
+        bills: [],
+        purpose: "draft"
+      ) => Record<string, unknown>;
+    };
+    const contract = { name: "合同", temporaryCode: "草稿-1", code: null };
+    const baseVersion = {
+      status: "in_approval",
+      amountCents: 1_000_000n,
+      invoiceType: "vat_special",
+      defaultTaxRatePercent: { toString: () => "13" },
+      draftData: {
+        companyEntitySelection: {
+          id: "entity-current",
+          versionId: "entity-version-current",
+          versionNo: 9,
+          name: "提交后漂移名称",
+          unifiedSocialCreditCode: "91350211M000100Y46",
+          registeredAddress: "新地址"
+        }
+      },
+      clauseSnapshot: [],
+      companyEntityIdSnapshot: "entity-frozen",
+      companyEntityVersionId: "entity-version-3",
+      companyEntityNameSnapshot: "冻结名称",
+      companyEntityCreditCodeSnapshot: "91350211M000100Y46",
+      companyEntityRegisteredAddressSnapshot: "冻结地址"
+    };
+    const parties = [{ roleKey: "party_a", snapshot: { name: "历史甲方" } }];
+
+    const frozen = renderer.renderValues(contract, baseVersion, parties, [], "draft");
+    expect(frozen["party.owner.name"]).toBe("冻结名称");
+
+    const historical = renderer.renderValues(contract, {
+      ...baseVersion,
+      draftData: {},
+      companyEntityIdSnapshot: null,
+      companyEntityVersionId: null,
+      companyEntityNameSnapshot: null,
+      companyEntityCreditCodeSnapshot: null,
+      companyEntityRegisteredAddressSnapshot: null
+    }, parties, [], "draft");
+    expect(historical["party.owner.name"]).toBe("历史甲方");
+  });
+
   it("renders historical unknown tax and bill facts as dashes without recalculating amounts", async () => {
     const tx = makeTx({
       contractVersion: {

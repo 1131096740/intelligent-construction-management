@@ -129,6 +129,7 @@ describe("CompanyEntityService reads", () => {
         registeredAddress: true,
         dataStatus: true,
         isActive: true,
+        currentVersionNo: true,
         createdAt: true,
         updatedAt: true
       },

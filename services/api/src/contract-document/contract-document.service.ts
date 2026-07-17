@@ -615,11 +615,17 @@ export class ContractDocumentService {
       code: string | null;
     },
     version: {
+      status: string;
       amountCents: bigint;
       invoiceType: string | null;
       defaultTaxRatePercent: Prisma.Decimal | null;
       draftData: Prisma.JsonValue;
       clauseSnapshot: Prisma.JsonValue;
+      companyEntityIdSnapshot: string | null;
+      companyEntityVersionId: string | null;
+      companyEntityNameSnapshot: string | null;
+      companyEntityCreditCodeSnapshot: string | null;
+      companyEntityRegisteredAddressSnapshot: string | null;
     },
     parties: Array<{ roleKey: string; snapshot: Prisma.JsonValue }>,
     bills: Array<{
@@ -668,6 +674,33 @@ export class ContractDocumentService {
     values["field.taxRatePercent"] = version.defaultTaxRatePercent
       ? `${version.defaultTaxRatePercent.toString()}%`
       : "—";
+    const draftData = this.isObject(version.draftData) ? version.draftData : {};
+    const draftSelection = this.isObject(draftData.companyEntitySelection)
+      ? draftData.companyEntitySelection
+      : {};
+    const isSubmitted = !EDITABLE_VERSION_STATUSES.includes(version.status);
+    const frozenCompany = typeof version.companyEntityNameSnapshot === "string"
+      ? {
+          id: version.companyEntityIdSnapshot ?? "",
+          versionId: version.companyEntityVersionId ?? "",
+          name: version.companyEntityNameSnapshot,
+          unifiedSocialCreditCode: version.companyEntityCreditCodeSnapshot ?? "",
+          registeredAddress: version.companyEntityRegisteredAddressSnapshot ?? ""
+        }
+      : null;
+    const structuredDraftCompany = typeof draftSelection.name === "string"
+      ? draftSelection
+      : null;
+    const authoritativeCompany = isSubmitted ? frozenCompany : structuredDraftCompany;
+    const blocksLegacyPartyA = Boolean(frozenCompany || structuredDraftCompany);
+    if (authoritativeCompany) {
+      values["party.party_a"] = [authoritativeCompany];
+      values["party.owner"] = values["party.party_a"];
+      for (const [field, value] of Object.entries(authoritativeCompany)) {
+        values[`party.party_a.${field}`] = value;
+        values[`party.owner.${field}`] = value;
+      }
+    }
     if (Array.isArray(version.clauseSnapshot)) {
       for (const clause of version.clauseSnapshot) {
         if (!this.isObject(clause) || typeof clause.key !== "string") continue;
@@ -677,6 +710,7 @@ export class ContractDocumentService {
     }
     for (const party of parties) {
       if (!this.isObject(party.snapshot)) continue;
+      if (party.roleKey === "party_a" && blocksLegacyPartyA) continue;
       const key = `party.${party.roleKey}`;
       const alias =
         party.roleKey === "party_a"

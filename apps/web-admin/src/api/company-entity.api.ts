@@ -9,8 +9,13 @@ export interface CompanyEntityModel {
   registeredAddress: string | null;
   dataStatus: CompanyEntityDataStatus;
   isActive: boolean;
+  currentVersionNo: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export function fetchActiveCompanyEntities() {
+  return readJson<CompanyEntityModel[]>("/company-entities", "加载可选我方公司主体失败");
 }
 
 export interface CompanyEntityVersionModel {

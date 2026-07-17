@@ -441,6 +441,12 @@ export class ContractService {
           taxFactEvidenceFileId: latest.taxFactEvidenceFileId,
           taxFactRevision: latest.taxFactRevision,
           taxFactsFrozenAt: null,
+          companyEntityIdSnapshot: latest.companyEntityIdSnapshot,
+          companyEntityVersionId: latest.companyEntityVersionId,
+          companyEntityNameSnapshot: latest.companyEntityNameSnapshot,
+          companyEntityCreditCodeSnapshot: latest.companyEntityCreditCodeSnapshot,
+          companyEntityRegisteredAddressSnapshot:
+            latest.companyEntityRegisteredAddressSnapshot,
           draftData: preparedSource.templateSnapshotSynthesized
             ? { historicalTakeover: true }
             : latest.draftData as Prisma.InputJsonValue,
@@ -1033,6 +1039,12 @@ export class ContractService {
           } as unknown as Prisma.JsonValue;
         }
 
+        const companySnapshot = !contract.ownerUserId ||
+          version.changeType === "change" ||
+          version.changeType === "supplement"
+          ? null
+          : await this.lockCompanyEntityForSubmission(tx, version, contract);
+
         const submitted = await tx.contractVersion.updateMany({
           where: {
             id: version.id,
@@ -1043,6 +1055,7 @@ export class ContractService {
             status: "in_approval",
             taxFactStatus: "frozen",
             taxFactsFrozenAt: new Date(),
+            ...(companySnapshot ?? {}),
             ...(input
               ? {
                   readinessSnapshot: readinessSnapshot as Prisma.InputJsonValue,
@@ -1188,6 +1201,66 @@ export class ContractService {
     if (ownerQuotaCents <= 0n || occupiedCents > ownerQuotaCents) {
       throw new BadRequestException("业主主合同额度不足");
     }
+  }
+
+  private async lockCompanyEntityForSubmission(
+    tx: Prisma.TransactionClient,
+    version: { draftData: Prisma.JsonValue },
+    contract: { companyEntityId: string | null }
+  ) {
+    const draft = this.jsonObject(version.draftData);
+    const selection = this.jsonObject(draft["companyEntitySelection"]);
+    const selectedId = typeof selection["id"] === "string" ? selection["id"] : null;
+    const selectedVersionNo = typeof selection["versionNo"] === "number" &&
+      Number.isInteger(selection["versionNo"])
+      ? selection["versionNo"]
+      : null;
+    if (!selectedId || selectedVersionNo === null || contract.companyEntityId !== selectedId) {
+      throw new BadRequestException("我方公司主体选择尚未同步，请回到基本信息重新选择并保存");
+    }
+    await tx.$queryRaw(Prisma.sql`
+      SELECT "id"
+      FROM "CompanyEntity"
+      WHERE "id" = ${selectedId}
+      FOR UPDATE
+    `);
+    const entity = await tx.companyEntity.findUnique({ where: { id: selectedId } });
+    if (!entity) {
+      throw new BadRequestException("未找到所选我方公司主体，请回到基本信息重新选择");
+    }
+    if (!entity.isActive) {
+      throw new BadRequestException("所选我方公司主体已停用，请回到基本信息重新选择");
+    }
+    if (entity.dataStatus !== "complete") {
+      throw new BadRequestException("所选我方公司主体资料待补全，请先到我方公司主体页面完善信用代码");
+    }
+    if (entity.currentVersionNo !== selectedVersionNo) {
+      throw new BadRequestException("所选我方公司主体资料已更新，请回到基本信息同步最新版本后重试");
+    }
+    const entityVersion = await tx.companyEntityVersion.findUnique({
+      where: {
+        companyEntityId_versionNo: {
+          companyEntityId: selectedId,
+          versionNo: selectedVersionNo
+        }
+      }
+    });
+    if (!entityVersion || !entityVersion.unifiedSocialCreditCode) {
+      throw new BadRequestException("我方公司主体版本缺失，请联系合同部核对后重试");
+    }
+    return {
+      companyEntityIdSnapshot: entityVersion.companyEntityId,
+      companyEntityVersionId: entityVersion.id,
+      companyEntityNameSnapshot: entityVersion.name,
+      companyEntityCreditCodeSnapshot: entityVersion.unifiedSocialCreditCode,
+      companyEntityRegisteredAddressSnapshot: entityVersion.registeredAddress
+    };
+  }
+
+  private jsonObject(value: unknown): Record<string, unknown> {
+    return value !== null && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : {};
   }
 
   private async assertChangeAmountProjection(

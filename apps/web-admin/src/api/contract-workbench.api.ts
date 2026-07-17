@@ -113,6 +113,7 @@ export function listContractDrafts(scope: "my" | "voided") {
 
 export interface SaveContractDraftPayload {
   expectedRevision: number;
+  companyEntityId?: string;
   draftData?: Record<string, unknown>;
   clauses?: unknown[];
   pricingNature?: string;

@@ -505,8 +505,12 @@ export class ContractReadinessService {
     const parties = await tx.contractPartySnapshot.findMany({
       where: { contractVersionId: version.id }
     });
+    const hasStructuredCompanyEntity = this.hasStructuredCompanyEntitySelection(draftData);
     for (const roleKey of ["party_a", "party_b"]) {
-      if (!parties.some((party) => party.roleKey === roleKey)) {
+      if (
+        !parties.some((party) => party.roleKey === roleKey) &&
+        !(roleKey === "party_a" && hasStructuredCompanyEntity)
+      ) {
         blocking.push({
           key: `party.${roleKey}`,
           section: "parties",
@@ -627,6 +631,15 @@ export class ContractReadinessService {
     }
 
     return { blocking, warnings, checkedRevision: version.draftRevision };
+  }
+
+  private hasStructuredCompanyEntitySelection(draftData: Record<string, unknown>) {
+    const selection = this.object(draftData["companyEntitySelection"]);
+    return typeof selection["id"] === "string" &&
+      typeof selection["versionId"] === "string" &&
+      typeof selection["versionNo"] === "number" &&
+      typeof selection["name"] === "string" &&
+      typeof selection["unifiedSocialCreditCode"] === "string";
   }
 
   async freeze(tx: ReadinessClient, version: ReadinessVersion) {

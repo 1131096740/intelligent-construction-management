@@ -163,6 +163,75 @@ describe("ContractWorkbenchService", () => {
     expect(audit.record).toHaveBeenCalledTimes(1);
   });
 
+  it("derives the company entity snapshot and synchronizes the parent contract", async () => {
+    const tx = ownedVersionTx({
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "entity-1" }]),
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-1",
+          name: "云南某建设有限公司",
+          unifiedSocialCreditCode: "91350211M000100Y46",
+          registeredAddress: "昆明市",
+          dataStatus: "complete",
+          currentVersionNo: 3,
+          isActive: true
+        })
+      },
+      companyEntityVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-version-3",
+          companyEntityId: "entity-1",
+          versionNo: 3,
+          name: "云南某建设有限公司",
+          unifiedSocialCreditCode: "91350211M000100Y46",
+          registeredAddress: "昆明市"
+        })
+      }
+    });
+    const service = makeService(tx);
+
+    await service.saveDraft("version-1", "owner-1", {
+      expectedRevision: 4,
+      companyEntityId: "entity-1",
+      draftData: { project_name: "新名称", myCompanyEntity: "伪造文本" },
+      clauses: [],
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      manualAmountCents: "1000000",
+      taxFacts: VALID_TAX_FACTS
+    });
+
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        draftData: expect.objectContaining({
+          companyEntitySelection: {
+            id: "entity-1",
+            versionId: "entity-version-3",
+            versionNo: 3,
+            name: "云南某建设有限公司",
+            unifiedSocialCreditCode: "91350211M000100Y46",
+            registeredAddress: "昆明市"
+          },
+          myCompanyEntity: "云南某建设有限公司"
+        })
+      })
+    }));
+    expect(tx.contract.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        companyEntityId: "entity-1",
+        companyEntityName: "云南某建设有限公司"
+      })
+    }));
+    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
+      where: {
+        contractVersionId: "version-1",
+        status: "success",
+        sourceRevision: { lt: 5 }
+      },
+      data: { status: "stale" }
+    });
+  });
+
   it("stores canonical tax facts and mirrors Chinese values into draftData", async () => {
     const tx = ownedVersionTx();
     const service = makeService(tx);
@@ -358,6 +427,14 @@ describe("ContractWorkbenchService", () => {
     const baseDraftData = {
       contractName: "原合同",
       myCompanyEntity: "甲方公司",
+      companyEntitySelection: {
+        id: "entity-1",
+        versionId: "entity-version-3",
+        versionNo: 3,
+        name: "甲方公司",
+        unifiedSocialCreditCode: "91350211M000100Y46",
+        registeredAddress: null
+      },
       fieldValues: { site_name: "旧项目", site_address: "旧地址" },
       partyValues: { party_a: "甲方公司", party_b: "乙方公司" }
     };
@@ -388,8 +465,9 @@ describe("ContractWorkbenchService", () => {
       });
     const service = makeService(tx);
     const candidateDraftData = {
-      ...baseDraftData,
-      fieldValues: { ...baseDraftData.fieldValues, site_name: "新项目" }
+      contractName: baseDraftData.contractName,
+      fieldValues: { ...baseDraftData.fieldValues, site_name: "新项目" },
+      partyValues: baseDraftData.partyValues
     };
 
     await service.saveDraft("version-2", "owner-1", {
@@ -407,6 +485,8 @@ describe("ContractWorkbenchService", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           draftData: expect.objectContaining({
+            myCompanyEntity: "甲方公司",
+            companyEntitySelection: baseDraftData.companyEntitySelection,
             fieldValues: expect.objectContaining({
               site_name: "新项目",
               invoiceType: "增值税专用发票",
@@ -1302,7 +1382,18 @@ describe("ContractWorkbenchService", () => {
         id: "ckpt-1",
         contractVersionId: "version-1",
         snapshot: {
-          draftData: { project_name: "回滚值" },
+          draftData: {
+            project_name: "回滚值",
+            companyEntitySelection: {
+              id: "entity-restored",
+              versionId: "entity-version-restored",
+              versionNo: 2,
+              name: "恢复的我方公司",
+              unifiedSocialCreditCode: "91350211M000100Y46",
+              registeredAddress: null
+            },
+            myCompanyEntity: "恢复的我方公司"
+          },
           clauseSnapshot: [
             {
               key: "clause_1",
@@ -1371,7 +1462,10 @@ describe("ContractWorkbenchService", () => {
         status: { in: ["draft", "approval_rejected"] }
       },
       data: {
-        draftData: { project_name: "回滚值" },
+        draftData: expect.objectContaining({
+          project_name: "回滚值",
+          myCompanyEntity: "恢复的我方公司"
+        }),
         clauseSnapshot: [
           expect.objectContaining({ key: "clause_1", content: { text: "回滚条款" } })
         ],
@@ -1383,6 +1477,12 @@ describe("ContractWorkbenchService", () => {
         draftRevision: { increment: 1 }
       }
     });
+    expect(tx.contract.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        companyEntityId: "entity-restored",
+        companyEntityName: "恢复的我方公司"
+      })
+    }));
     expect(tx.contractBill.deleteMany).toHaveBeenCalledWith({
       where: { contractVersionId: "version-1" }
     });
@@ -2004,7 +2104,16 @@ describe("ContractWorkbenchService", () => {
           draftData: {
             project_name: "保留",
             changed_type: "旧文本",
-            removed_field: "被删除"
+            removed_field: "被删除",
+            companyEntitySelection: {
+              id: "entity-1",
+              versionId: "entity-version-1",
+              versionNo: 1,
+              name: "我方公司",
+              unifiedSocialCreditCode: "91350211M000100Y46",
+              registeredAddress: null
+            },
+            myCompanyEntity: "我方公司"
           },
           templateSnapshot: currentTemplate,
           clauseSnapshot: currentClauses,
@@ -2110,7 +2219,16 @@ describe("ContractWorkbenchService", () => {
     expect(updateManyCall.data.draftData).toEqual({
       project_name: "保留",
       changed_type: 7,
-      new_field: "默认值"
+      new_field: "默认值",
+      companyEntitySelection: {
+        id: "entity-1",
+        versionId: "entity-version-1",
+        versionNo: 1,
+        name: "我方公司",
+        unifiedSocialCreditCode: "91350211M000100Y46",
+        registeredAddress: null
+      },
+      myCompanyEntity: "我方公司"
     });
     expect(updateManyCall.data.clauseSnapshot).toEqual([
       expect.objectContaining({

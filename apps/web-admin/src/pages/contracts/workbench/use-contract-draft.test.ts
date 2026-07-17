@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The composable talks to the Task 16 client; mock the whole module so no HTTP
@@ -15,7 +16,10 @@ import {
   fetchContractWorkbench,
   saveContractDraft
 } from "../../../api/contract-workbench.api";
-import { useContractDraft } from "./use-contract-draft";
+import {
+  hasCompanyEntityVersionDrift,
+  useContractDraft
+} from "./use-contract-draft";
 
 const mockCreateDraft = vi.mocked(createWorkbenchDraft);
 const mockFetchWorkbench = vi.mocked(fetchContractWorkbench);
@@ -106,6 +110,44 @@ afterEach(() => {
 });
 
 describe("useContractDraft", () => {
+  it("detects company entity version drift only for the same selected entity", () => {
+    const selection = {
+      id: "entity-1",
+      versionId: "entity-version-3",
+      versionNo: 3,
+      name: "我方公司",
+      unifiedSocialCreditCode: "91350211M000100Y46",
+      registeredAddress: null
+    };
+
+    expect(hasCompanyEntityVersionDrift(
+      { id: "entity-1", currentVersionNo: 4 },
+      selection
+    )).toBe(true);
+    expect(hasCompanyEntityVersionDrift(
+      { id: "entity-1", currentVersionNo: 3 },
+      selection
+    )).toBe(false);
+    expect(hasCompanyEntityVersionDrift(
+      { id: "entity-2", currentVersionNo: 4 },
+      selection
+    )).toBe(false);
+  });
+  it("uses a TDesign company selector and removes party_a from new-party options", () => {
+    const basicSource = readFileSync(
+      new URL("./ContractBasicSection.vue", import.meta.url),
+      "utf8"
+    );
+    const partySource = readFileSync(
+      new URL("./ContractPartySection.vue", import.meta.url),
+      "utf8"
+    );
+
+    expect(basicSource).toContain("<t-select");
+    expect(basicSource).toContain("companyEntityId");
+    expect(basicSource).not.toMatch(/emit\([^\n]*myCompanyEntity/u);
+    expect(partySource).toContain('.filter(([value]) => value !== "party_a")');
+  });
   it("ignores a late workbench response after a newer contract load wins", async () => {
     const draft = makeDraft();
     let resolveFirst!: (value: ReturnType<typeof makeWorkbench>) => void;
@@ -262,6 +304,36 @@ describe("useContractDraft", () => {
         }
       ]
     });
+  });
+
+  it("saves only the stable company entity id and never resubmits derived facts", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench({
+      version: {
+        ...makeWorkbench().version,
+        draftData: {
+          contractName: "测试合同",
+          myCompanyEntity: "云南某建设有限公司",
+          companyEntitySelection: {
+            id: "entity-1",
+            versionId: "entity-version-3",
+            versionNo: 3,
+            name: "云南某建设有限公司",
+            unifiedSocialCreditCode: "91350211M000100Y46",
+            registeredAddress: "昆明市"
+          }
+        }
+      }
+    }));
+    mockSaveDraft.mockResolvedValue({ version: { draftRevision: 4 } });
+
+    await draft.load("ct-1");
+    await draft.saveNow();
+
+    const payload = mockSaveDraft.mock.calls[0]?.[1];
+    expect(payload).toMatchObject({ companyEntityId: "entity-1" });
+    expect(payload?.draftData).not.toHaveProperty("companyEntitySelection");
+    expect(payload?.draftData).not.toHaveProperty("myCompanyEntity");
   });
 
   it("loads and saves normative tax facts outside legacy draft fields", async () => {

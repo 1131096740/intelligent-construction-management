@@ -23,6 +23,7 @@ const COMPANY_ENTITY_SELECT = {
   registeredAddress: true,
   dataStatus: true,
   isActive: true,
+  currentVersionNo: true,
   createdAt: true,
   updatedAt: true
 } as const;

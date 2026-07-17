@@ -19,6 +19,14 @@ const template = {
 const baseDraftData = {
   contractName: "原合同",
   myCompanyEntity: "甲方公司",
+  companyEntitySelection: {
+    id: "entity-1",
+    versionId: "entity-version-3",
+    versionNo: 3,
+    name: "甲方公司",
+    unifiedSocialCreditCode: "91350211M000100Y46",
+    registeredAddress: null
+  },
   fieldValues: { site_name: "旧项目", site_address: "旧地址" },
   partyValues: { party_a: "甲方公司", party_b: "乙方公司" },
   historicalTakeover: true
@@ -61,6 +69,17 @@ describe("assertContractChangeContentAllowed", () => {
           ...template.supplementChangePolicy,
           editableFieldKeys: [...template.supplementChangePolicy.editableFieldKeys, "myCompanyEntity"]
         }
+      }
+    })).toThrow("合同变更不得修改我方签约主体");
+  });
+
+  it("preserves the complete frozen company selection during a change", () => {
+    expect(() => assertCandidate({
+      ...baseDraftData,
+      companyEntitySelection: {
+        ...baseDraftData.companyEntitySelection,
+        versionNo: 4,
+        versionId: "entity-version-4"
       }
     })).toThrow("合同变更不得修改我方签约主体");
   });

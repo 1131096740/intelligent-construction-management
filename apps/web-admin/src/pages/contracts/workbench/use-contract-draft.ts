@@ -1,5 +1,6 @@
 import type {
   ContractClauseDefinition,
+  ContractCompanyEntitySelection,
   ContractInvoiceType,
   ContractReadinessResult,
   ContractTemplateSchema,
@@ -48,7 +49,8 @@ export type ContractDraftSaveState =
  */
 export interface ContractDraftModel {
   contractName: string;
-  myCompanyEntity: string;
+  companyEntityId: string;
+  companyEntitySelection: ContractCompanyEntitySelection | null;
   pricingNature: string;
   amountSource: string;
   manualAmountCents: string | null;
@@ -73,6 +75,18 @@ export interface ContractDraftModel {
 export interface ContractDraftConflict {
   local: ContractDraftModel;
   server: ContractDraftModel;
+}
+
+export function hasCompanyEntityVersionDrift(
+  candidate: { id: string; currentVersionNo: number } | null,
+  selection: ContractCompanyEntitySelection | null
+): boolean {
+  return Boolean(
+    candidate &&
+    selection &&
+    candidate.id === selection.id &&
+    candidate.currentVersionNo !== selection.versionNo
+  );
 }
 
 export interface InitializeDraftController {
@@ -123,7 +137,8 @@ export interface UseContractDraft {
 function emptyModel(): ContractDraftModel {
   return {
     contractName: "",
-    myCompanyEntity: "",
+    companyEntityId: "",
+    companyEntitySelection: null,
     pricingNature: "",
     amountSource: "",
     manualAmountCents: null,
@@ -146,6 +161,7 @@ function emptyModel(): ContractDraftModel {
 const KNOWN_DRAFT_KEYS = new Set([
   "contractName",
   "myCompanyEntity",
+  "companyEntitySelection",
   "fieldValues",
   "partyValues"
 ]);
@@ -168,10 +184,12 @@ function modelFromWorkbench(workbench: ContractWorkbenchReadModel): ContractDraf
       typeof draftData["contractName"] === "string"
         ? (draftData["contractName"] as string)
         : workbench.contract.name ?? "",
-    myCompanyEntity:
-      typeof draftData["myCompanyEntity"] === "string"
-        ? (draftData["myCompanyEntity"] as string)
-        : "",
+    companyEntityId: isCompanyEntitySelection(draftData["companyEntitySelection"])
+      ? draftData["companyEntitySelection"].id
+      : "",
+    companyEntitySelection: isCompanyEntitySelection(draftData["companyEntitySelection"])
+      ? { ...draftData["companyEntitySelection"] }
+      : null,
     pricingNature: workbench.version.pricingNature ?? "",
     amountSource: workbench.version.amountSource ?? "",
     manualAmountCents:
@@ -198,12 +216,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function isCompanyEntitySelection(value: unknown): value is ContractCompanyEntitySelection {
+  return isRecord(value) &&
+    typeof value["id"] === "string" &&
+    typeof value["versionId"] === "string" &&
+    typeof value["versionNo"] === "number" &&
+    typeof value["name"] === "string" &&
+    typeof value["unifiedSocialCreditCode"] === "string" &&
+    (value["registeredAddress"] === null || typeof value["registeredAddress"] === "string");
+}
+
 /** Re-assembles the draftData payload that the backend expects. */
 function draftDataFromModel(model: ContractDraftModel): Record<string, unknown> {
   return {
     ...model.extraDraftData,
     contractName: model.contractName,
-    myCompanyEntity: model.myCompanyEntity,
     fieldValues: { ...model.fieldValues },
     partyValues: { ...model.partyValues }
   };
@@ -212,6 +239,9 @@ function draftDataFromModel(model: ContractDraftModel): Record<string, unknown> 
 function cloneModel(model: ContractDraftModel): ContractDraftModel {
   return {
     ...model,
+    companyEntitySelection: model.companyEntitySelection
+      ? { ...model.companyEntitySelection }
+      : null,
     fieldValues: { ...model.fieldValues },
     partyValues: { ...model.partyValues },
     extraDraftData: { ...model.extraDraftData },
@@ -221,7 +251,10 @@ function cloneModel(model: ContractDraftModel): ContractDraftModel {
 
 function assignModel(target: ContractDraftModel, source: ContractDraftModel): void {
   target.contractName = source.contractName;
-  target.myCompanyEntity = source.myCompanyEntity;
+  target.companyEntityId = source.companyEntityId;
+  target.companyEntitySelection = source.companyEntitySelection
+    ? { ...source.companyEntitySelection }
+    : null;
   target.pricingNature = source.pricingNature;
   target.amountSource = source.amountSource;
   target.manualAmountCents = source.manualAmountCents;
@@ -408,6 +441,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     const isChangeDraft = changeType === "change" || changeType === "supplement";
     const payload = {
       expectedRevision: currentRevision.value,
+      ...(model.companyEntityId ? { companyEntityId: model.companyEntityId } : {}),
       draftData: draftDataFromModel(model),
       clauses: model.clauses,
       pricingNature: model.pricingNature,

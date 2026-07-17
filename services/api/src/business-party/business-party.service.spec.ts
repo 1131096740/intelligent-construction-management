@@ -149,6 +149,34 @@ describe("BusinessPartyService", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("rejects adding a new party_a snapshot to a governed draft", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "draft",
+          draftRevision: 1
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "owner-1",
+          voidedAt: null
+        })
+      },
+      contractPartySnapshot: { create: jest.fn() }
+    };
+    const service = new BusinessPartyService(prismaWithTransaction(tx), audit as never);
+
+    await expect(service.addContractParty("version-1", "owner-1", {
+      roleKey: "party_a",
+      snapshot: { name: "伪造我方主体", attachments: [] }
+    })).rejects.toThrow("我方签约主体请回到基本信息从我方公司主体中选择");
+    expect(tx.contractPartySnapshot.create).not.toHaveBeenCalled();
+  });
+
   it("keeps qualification attachment file ids in version snapshot", async () => {
     const tx = {
       ...globalRole(),
@@ -196,8 +224,8 @@ describe("BusinessPartyService", () => {
         findUnique: jest
           .fn()
           .mockResolvedValueOnce({
-            id: "party-version-a",
-            snapshot: { name: "甲方", attachments: [] }
+            id: "party-version-c",
+            snapshot: { name: "丙方", attachments: [] }
           })
           .mockResolvedValueOnce({
             id: "party-version-b",
@@ -211,7 +239,7 @@ describe("BusinessPartyService", () => {
           .mockResolvedValueOnce(null),
         create: jest
           .fn()
-          .mockResolvedValueOnce({ id: "snapshot-1", roleKey: "party_a", displayOrder: 1 })
+          .mockResolvedValueOnce({ id: "snapshot-1", roleKey: "party_c", displayOrder: 1 })
           .mockResolvedValueOnce({ id: "snapshot-2", roleKey: "party_b", displayOrder: 1 })
       },
       contractGeneratedDocument: {
@@ -221,8 +249,8 @@ describe("BusinessPartyService", () => {
     const service = new BusinessPartyService(prismaWithTransaction(tx), audit as never);
 
     await service.addContractParty("contract-version-1", "owner-1", {
-      roleKey: "party_a",
-      businessPartyVersionId: "party-version-a"
+      roleKey: "party_c",
+      businessPartyVersionId: "party-version-c"
     });
     await service.addContractParty("contract-version-1", "owner-1", {
       roleKey: "party_b",
@@ -230,7 +258,7 @@ describe("BusinessPartyService", () => {
     });
 
     expect(tx.contractPartySnapshot.findFirst).toHaveBeenNthCalledWith(1, {
-      where: { contractVersionId: "contract-version-1", roleKey: "party_a" },
+      where: { contractVersionId: "contract-version-1", roleKey: "party_c" },
       orderBy: { displayOrder: "desc" }
     });
     expect(tx.contractPartySnapshot.findFirst).toHaveBeenNthCalledWith(2, {
@@ -239,7 +267,7 @@ describe("BusinessPartyService", () => {
     });
     expect(tx.contractPartySnapshot.create).toHaveBeenNthCalledWith(
       1,
-      { data: expect.objectContaining({ roleKey: "party_a", displayOrder: 1 }) }
+      { data: expect.objectContaining({ roleKey: "party_c", displayOrder: 1 }) }
     );
     expect(tx.contractPartySnapshot.create).toHaveBeenNthCalledWith(
       2,

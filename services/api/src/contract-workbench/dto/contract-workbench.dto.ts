@@ -13,6 +13,7 @@ export interface SaveContractTaxFactsDto {
 
 export interface SaveContractDraftDto {
   expectedRevision: number;
+  companyEntityId?: string;
   draftData: Record<string, unknown>;
   clauses: ContractClauseDefinition[];
   pricingNature: "fixed_total" | "provisional_total" | "unit_price" | "framework";

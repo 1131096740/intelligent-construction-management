@@ -130,6 +130,15 @@ export interface ContractDraftCheckpointReadModel {
   draftData: Record<string, unknown>;
 }
 
+export interface ContractCompanyEntitySelection {
+  id: string;
+  versionId: string;
+  versionNo: number;
+  name: string;
+  unifiedSocialCreditCode: string;
+  registeredAddress: string | null;
+}
+
 export interface ContractGeneratedDocumentReadModel {
   id: string;
   name: string;
