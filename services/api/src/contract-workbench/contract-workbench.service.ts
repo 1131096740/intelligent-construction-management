@@ -176,20 +176,7 @@ export class ContractWorkbenchService {
         where: { contractVersionId: version.id },
         orderBy: [{ roleKey: "asc" }, { displayOrder: "asc" }]
       }),
-      this.prisma.contractGeneratedDocument.findMany({
-        where: { contractVersionId: version.id },
-        orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          purpose: true,
-          status: true,
-          sourceRevision: true,
-          docxFileId: true,
-          pdfFileId: true,
-          createdAt: true,
-          completedAt: true
-        }
-      }),
+      this.loadGeneratedDocumentsForDraft(version),
       this.prisma.paymentTermsVersion.findFirst({
         where: { contractVersionId: version.id },
         select: { id: true, originalText: true }
@@ -970,6 +957,84 @@ export class ContractWorkbenchService {
       FOR UPDATE
     `);
     return this.loadOwnedEditableVersion(tx, contractVersionId, actorUserId);
+  }
+
+  private loadGeneratedDocumentsForDraft(version: {
+    id: string;
+    status: string;
+    changeType: string | null;
+    draftData: Prisma.JsonValue;
+  }) {
+    const findDocuments = (client: Prisma.TransactionClient | PrismaService) =>
+      client.contractGeneratedDocument.findMany({
+        where: { contractVersionId: version.id },
+        orderBy: { createdAt: "desc" as const },
+        select: {
+          id: true,
+          purpose: true,
+          status: true,
+          sourceRevision: true,
+          docxFileId: true,
+          pdfFileId: true,
+          createdAt: true,
+          completedAt: true
+        }
+      });
+    const selection = this.companySelectionFromDraft(version.draftData);
+    if (
+      !selection ||
+      version.changeType === "change" ||
+      version.changeType === "supplement"
+    ) {
+      return findDocuments(this.prisma);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id"
+        FROM "ContractVersion"
+        WHERE "id" = ${version.id}
+        FOR UPDATE
+      `);
+      const lockedVersion = await tx.contractVersion.findUnique({
+        where: { id: version.id }
+      });
+      if (!lockedVersion || !EDITABLE_STATUSES.has(lockedVersion.status)) {
+        throw new BadRequestException("合同草稿状态已变化，请刷新后重试");
+      }
+      const lockedSelection = this.companySelectionFromDraft(lockedVersion.draftData);
+      if (
+        lockedVersion.changeType === "change" ||
+        lockedVersion.changeType === "supplement" ||
+        !lockedSelection
+      ) {
+        return findDocuments(tx);
+      }
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id"
+        FROM "CompanyEntity"
+        WHERE "id" = ${lockedSelection.id}
+        FOR UPDATE
+      `);
+      const entity = await tx.companyEntity.findUnique({
+        where: { id: lockedSelection.id }
+      });
+      if (
+        !entity ||
+        !entity.isActive ||
+        entity.dataStatus !== "complete" ||
+        entity.currentVersionNo !== lockedSelection.versionNo
+      ) {
+        await tx.contractGeneratedDocument.updateMany({
+          where: {
+            contractVersionId: lockedVersion.id,
+            status: { in: ["queued", "processing", "success"] }
+          },
+          data: { status: "stale" }
+        });
+      }
+      return findDocuments(tx);
+    });
   }
 
   private async loadOwnedContract(

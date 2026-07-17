@@ -367,16 +367,19 @@ export class ContractDocumentService {
   }
 
   async retry(documentId: string, actorUserId: string) {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const document = await tx.contractGeneratedDocument.findUnique({
         where: { id: documentId }
       });
       if (!document) throw new NotFoundException("未找到合同文档记录，请刷新后重试");
-      const { version, contract } = await this.loadOwnedVersion(
+      const { version, contract } = await this.loadOwnedVersionForUpdate(
         tx,
         document.contractVersionId,
         actorUserId
       );
+      if (await this.markOriginalDraftCompanyDrift(tx, version)) {
+        return COMPANY_ENTITY_DRIFT;
+      }
       await this.markOlderSuccessStale(tx, version.id, version.draftRevision);
       if (document.status !== "failed") {
         throw new BadRequestException("只有生成失败的合同文档可以重试");
@@ -457,6 +460,8 @@ export class ContractDocumentService {
       });
       return tx.contractGeneratedDocument.findUnique({ where: { id: documentId } });
     });
+    if (result === COMPANY_ENTITY_DRIFT) throw this.companyEntityDriftError();
+    return result;
   }
 
   private parseQueueInput(input: QueueContractDocumentInput) {

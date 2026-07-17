@@ -1015,6 +1015,94 @@ describe("ContractWorkbenchService", () => {
     );
   });
 
+  it("stales drifted company documents in the first workbench read and returns no success", async () => {
+    let documentStatus = "success";
+    const version = {
+      id: "version-1",
+      contractId: "contract-1",
+      status: "draft",
+      draftRevision: 3,
+      changeType: "original",
+      draftData: {
+        companyEntitySelection: {
+          id: "entity-1",
+          versionId: "entity-version-3",
+          versionNo: 3,
+          name: "我方公司",
+          unifiedSocialCreditCode: "91350211M000100Y46",
+          registeredAddress: null
+        }
+      },
+      amountCents: 1_000_000n,
+      amountLimitType: "capped",
+      cumulativeIncreaseCents: 0n,
+      cumulativeDecreaseCents: 0n,
+      templateSnapshot: TEMPLATE_SNAPSHOT,
+      clauseSnapshot: []
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "locked" }]),
+      contractVersion: { findUnique: jest.fn().mockResolvedValue(version) },
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-1",
+          isActive: true,
+          dataStatus: "complete",
+          currentVersionNo: 4
+        })
+      },
+      contractGeneratedDocument: {
+        updateMany: jest.fn().mockImplementation(() => {
+          documentStatus = "stale";
+          return { count: 1 };
+        }),
+        findMany: jest.fn().mockImplementation(() => [{
+          id: "document-1",
+          purpose: "draft",
+          status: documentStatus,
+          sourceRevision: 3,
+          docxFileId: "docx-1",
+          pdfFileId: "pdf-1",
+          createdAt: new Date("2026-07-17T01:00:00.000Z"),
+          completedAt: new Date("2026-07-17T01:01:00.000Z")
+        }])
+      }
+    };
+    const prisma = {
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "owner-1"
+        })
+      },
+      contractVersion: { findFirst: jest.fn().mockResolvedValue(version) },
+      contractBill: { findMany: jest.fn().mockResolvedValue([]) },
+      contractDraftCheckpoint: { findMany: jest.fn().mockResolvedValue([]) },
+      contractPartySnapshot: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) },
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const service = new ContractWorkbenchService(prisma, audit as never);
+
+    const result = await service.getDraft("contract-1", "owner-1");
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
+      where: {
+        contractVersionId: "version-1",
+        status: { in: ["queued", "processing", "success"] }
+      },
+      data: { status: "stale" }
+    });
+    expect(result.documents).toEqual([
+      expect.objectContaining({ id: "document-1", status: "stale" })
+    ]);
+    expect(result.documents).not.toEqual([
+      expect.objectContaining({ status: "success" })
+    ]);
+  });
+
   it("exposes the enhanced contract change route without budget approval", async () => {
     const prisma = {
       contract: {

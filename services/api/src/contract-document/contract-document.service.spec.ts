@@ -773,6 +773,70 @@ describe("ContractDocumentService", () => {
     );
   });
 
+  it("commits stale documents and denies retry when the selected company version drifts", async () => {
+    const tx = makeTx({
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-1",
+          isActive: true,
+          dataStatus: "complete",
+          currentVersionNo: 4
+        })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "draft",
+          changeType: "original",
+          draftRevision: 7,
+          draftData: {
+            companyEntitySelection: { id: "entity-1", versionNo: 3 }
+          }
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    });
+    tx.contractGeneratedDocument.findUnique.mockResolvedValue({
+      id: "document-1",
+      contractVersionId: "version-1",
+      layoutTemplateVersionId: "layout-1",
+      purpose: "draft",
+      sourceRevision: 7,
+      status: "failed",
+      inputSnapshot: { attachmentFiles: [] }
+    });
+    const { service, prisma } = makeService(tx);
+    let committed = false;
+    jest.mocked(prisma.$transaction).mockImplementation(async (callback) => {
+      const result = await callback(tx as never);
+      committed = true;
+      return result as never;
+    });
+
+    await expect(service.retry("document-1", "owner-1")).rejects.toThrow(
+      "所选我方公司主体资料已更新或不再可用"
+    );
+
+    expect(committed).toBe(true);
+    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
+      where: {
+        contractVersionId: "version-1",
+        status: { in: ["queued", "processing", "success"] }
+      },
+      data: { status: "stale" }
+    });
+    expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "queued" }) })
+    );
+    expect(tx.contractLayoutTemplateVersion.findUnique).not.toHaveBeenCalled();
+    expect(files.assertCanDownloadFile).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ action: "contract.document.retry" })
+    );
+  });
+
   it("revalidates retry gates and attachment authorization in the transaction", async () => {
     const tx = makeTx();
     tx.contractGeneratedDocument.findUnique.mockResolvedValue({
