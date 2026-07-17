@@ -531,7 +531,10 @@ export class SpotProcurementReceiptPdfService {
         materialName: line.materialName,
         specification: line.specification,
         unit: line.unit,
-        frozenUnitPrice: decimalText(line.unitPrice),
+        frozenUnitPrice:
+          line.unitPrice === null
+            ? "付款申请确定"
+            : decimalText(line.unitPrice),
         approvedQuantity,
         qualifiedQuantity,
         unqualifiedQuantity: decimalText(received.unqualifiedQuantity),
@@ -602,7 +605,7 @@ export class SpotProcurementReceiptPdfService {
       procurementVersionNo: version.versionNo,
       receiptRevisionNo: sourceRevisionNo,
       receiptStatus: receipt.status,
-      supplierName: procurement.supplierNameSnapshot,
+      supplierName: procurement.supplierNameSnapshot ?? "付款申请确定",
       handlerName,
       submittedByName,
       submittedAt: revision.submittedAt,

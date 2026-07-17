@@ -34,7 +34,6 @@ describe("spot procurement complete-chain contracts", () => {
     expect(Reflect.getMetadata(PATH_METADATA, InvoiceLedgerController)).toBe("/");
     const methods = [
       SpotProcurementController.prototype.create,
-      SpotProcurementController.prototype.createPaymentDraft,
       SpotProcurementController.prototype.createOrConfirmDiscrepancy,
       SpotProcurementController.prototype.recordRefund,
       SpotProcurementController.prototype.creditSupplierBalance,

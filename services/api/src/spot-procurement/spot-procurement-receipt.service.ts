@@ -584,7 +584,7 @@ export class SpotProcurementReceiptService {
               specification: line.specification,
               unit: line.unit,
               approvedQuantity: line.quantity.toString(),
-              frozenUnitPrice: line.unitPrice.toString(),
+              frozenUnitPrice: line.unitPrice?.toString() ?? null,
               qualifiedQuantity:
                 received?.qualifiedQuantity.toString() ?? null,
               unqualifiedQuantity:

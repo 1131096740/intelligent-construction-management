@@ -19,7 +19,6 @@ import { ReviewSpotProcurementDto } from "./dto/review-spot-procurement.dto";
 import { UpdateSpotProcurementDraftDto } from "./dto/update-spot-procurement-draft.dto";
 import { VoidSpotProcurementDto } from "./dto/void-spot-procurement.dto";
 import { SpotProcurementApplicationService } from "./spot-procurement-application.service";
-import { SpotProcurementPaymentService } from "./spot-procurement-payment.service";
 import { SpotProcurementReadService } from "./spot-procurement-read.service";
 import { SpotProcurementSettlementService } from "./spot-procurement-settlement.service";
 
@@ -27,7 +26,6 @@ import { SpotProcurementSettlementService } from "./spot-procurement-settlement.
 export class SpotProcurementController {
   constructor(
     private readonly applications: SpotProcurementApplicationService,
-    private readonly payments: SpotProcurementPaymentService,
     private readonly reads: SpotProcurementReadService,
     private readonly settlements: SpotProcurementSettlementService
   ) {}
@@ -52,6 +50,19 @@ export class SpotProcurementController {
       status,
       keyword
     });
+  }
+
+  @Get("application-text-suggestions")
+  applicationTextSuggestions(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("projectId") projectId: string,
+    @Query("keyword") keyword?: string
+  ) {
+    return this.applications.applicationTextSuggestions(
+      user.id,
+      projectId,
+      keyword
+    );
   }
 
   @Get(":procurementId")
@@ -89,15 +100,6 @@ export class SpotProcurementController {
     @Body() body: CreateSpotProcurementVersionDto
   ) {
     return this.applications.createVersion(procurementId, user.id, body);
-  }
-
-  @Post(":procurementId/payments")
-  @RequireProjectRole("spot_procurement.payment.submit")
-  createPaymentDraft(
-    @Param("procurementId") procurementId: string,
-    @CurrentUser() user: AuthenticatedUser
-  ) {
-    return this.payments.createNextDraft(procurementId, user.id);
   }
 
   @Post(":procurementId/submission")

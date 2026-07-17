@@ -974,8 +974,8 @@ export class MeService {
         projectId: procurement.projectId,
         projectName: projectNames.get(procurement.projectId) ?? procurement.projectId,
         businessCode: procurement.code,
-        title: `零星采购审批：${version.supplierNameSnapshot || procurement.supplierNameSnapshot}`,
-        amountCents: version.totalAmountCents,
+        title: `零星采购审批：${procurement.code}`,
+        amountCents: version.totalAmountCents ?? 0n,
         targetPath: `/零星采购/${procurement.id}`
       });
     }

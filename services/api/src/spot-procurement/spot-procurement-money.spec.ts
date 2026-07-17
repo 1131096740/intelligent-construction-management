@@ -10,33 +10,27 @@ import {
   calculateSpotProcurementLine
 } from "./spot-procurement-money";
 
-const validInvoiceLine = {
-  materialName: "HRB400E 钢筋",
-  specification: "Φ12",
-  unit: "吨",
-  quantity: "12.500000",
-  invoiceMode: "invoice" as const,
-  invoiceType: "vat_special" as const,
-  vatRateOptionId: "vat-rate-13",
-  unitPrice: "3.28",
-  usageLocation: "主体结构",
-  note: "首批进场"
-};
-
 const validDraft = {
-  supplierPartyId: "party-1",
-  supplierName: "北京某某商贸",
-  handlerUserId: "material-user-1",
+  applicationDepartment: "工程部",
+  applicationName: "杨帅",
+  requestedArrivalAt: "2026-07-20T00:00:00.000Z",
   reason: "现场临时补充钢筋",
   note: "当天送达",
-  lines: [validInvoiceLine],
+  lines: [
+    {
+      materialName: "HRB400E 钢筋",
+      specification: "Φ12",
+      unit: "吨",
+      quantity: "12.500000",
+      note: "首批进场"
+    }
+  ],
   attachments: [
     {
       fileId: "file-quote-1",
       category: "merchant_quote" as const
     }
-  ],
-  totalAmountCents: "1"
+  ]
 };
 
 const bodyMetadata = (metatype: new () => object) => ({
@@ -316,7 +310,7 @@ describe("spot procurement exact money", () => {
 });
 
 describe("spot procurement runtime DTO validation", () => {
-  it("transforms a complete create body and nested lines without trusting display totals", async () => {
+  it("transforms a complete A4 application body without supplier or money facts", async () => {
     const result = await validateBody(
       {
         projectId: "project-1",
@@ -330,7 +324,8 @@ describe("spot procurement runtime DTO validation", () => {
     expect((result as CreateSpotProcurementDto).lines[0]).toBeInstanceOf(
       SpotProcurementLineDto
     );
-    expect((result as CreateSpotProcurementDto).totalAmountCents).toBe("1");
+    expect(result).not.toHaveProperty("supplierName");
+    expect(result).not.toHaveProperty("totalAmountCents");
   });
 
   it("lets draft updates reuse draft content without accepting project or code", async () => {
@@ -366,7 +361,7 @@ describe("spot procurement runtime DTO validation", () => {
         projectId: "project-1",
         code: "LXCG-2026-001",
         ...validDraft,
-        lines: [{ ...validInvoiceLine, internalSecret: "do-not-accept" }]
+        lines: [{ ...validDraft.lines[0], internalSecret: "do-not-accept" }]
       },
       CreateSpotProcurementDto
     );
@@ -389,54 +384,7 @@ describe("spot procurement runtime DTO validation", () => {
     expect(response.errors).toContain("lines[0] 填写不正确");
   });
 
-  it("rejects invoice rows with missing fields and no-invoice rows with extra fields", async () => {
-    const missingInvoiceType = await getValidationResponse(
-      {
-        projectId: "project-1",
-        code: "LXCG-2026-001",
-        ...validDraft,
-        lines: [{ ...validInvoiceLine, invoiceType: undefined }]
-      },
-      CreateSpotProcurementDto
-    );
-    const missingVatRate = await getValidationResponse(
-      {
-        projectId: "project-1",
-        code: "LXCG-2026-001",
-        ...validDraft,
-        lines: [{ ...validInvoiceLine, vatRateOptionId: undefined }]
-      },
-      CreateSpotProcurementDto
-    );
-    const extraInvoiceFields = await getValidationResponse(
-      {
-        projectId: "project-1",
-        code: "LXCG-2026-001",
-        ...validDraft,
-        lines: [
-          {
-            ...validInvoiceLine,
-            invoiceMode: "no_invoice",
-            invoiceType: "vat_general",
-            vatRateOptionId: "vat-rate-1"
-          }
-        ]
-      },
-      CreateSpotProcurementDto
-    );
-
-    expect(missingInvoiceType.errors).toContain(
-      "有票明细必须填写发票类型、税率选项和含税单价"
-    );
-    expect(missingVatRate.errors).toContain(
-      "有票明细必须填写发票类型、税率选项和含税单价"
-    );
-    expect(extraInvoiceFields.errors).toContain(
-      "无票明细不能填写发票类型或税率选项"
-    );
-  });
-
-  it("rejects null invoice fields for a no-invoice row instead of treating them as omitted", async () => {
+  it("rejects supplier, price, amount, and invoice facts from an A4 application", async () => {
     const response = await getValidationResponse(
       {
         projectId: "project-1",
@@ -444,18 +392,20 @@ describe("spot procurement runtime DTO validation", () => {
         ...validDraft,
         lines: [
           {
-            ...validInvoiceLine,
-            invoiceMode: "no_invoice",
-            invoiceType: null,
-            vatRateOptionId: null
+            ...validDraft.lines[0],
+            unitPrice: "3.28",
+            invoiceType: "vat_general"
           }
-        ]
+        ],
+        supplierName: "不应在采购申请填写的商户",
+        totalAmountCents: "4100"
       },
       CreateSpotProcurementDto
     );
 
-    expect(response.errors).toContain(
-      "无票明细不能填写发票类型或税率选项"
-    );
+    expect(response.errors).toContain("supplierName 不是允许提交的字段");
+    expect(response.errors).toContain("totalAmountCents 不是允许提交的字段");
+    expect(response.errors).toContain("lines[0].unitPrice 不是允许提交的字段");
+    expect(response.errors).toContain("lines[0].invoiceType 不是允许提交的字段");
   });
 });

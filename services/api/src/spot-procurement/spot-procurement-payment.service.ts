@@ -114,7 +114,7 @@ type PaymentLockRow = {
   paymentMethod: string | null;
   payeePartyId: string | null;
   payeeUserId: string | null;
-  payeeNameSnapshot: string;
+  payeeNameSnapshot: string | null;
   payeeAccountNameSnapshot: string | null;
   payeeBankNameSnapshot: string | null;
   payeeBankAccountSnapshot: string | null;
@@ -147,7 +147,7 @@ type SpotPaymentExecutionRow = {
   paidAt: Date;
   paymentMethod: string;
   executedByUserId: string;
-  voucherFileId: string;
+  voucherFileId: string | null;
   idempotencyKey: string;
   voidedAt: Date | null;
   voidedByUserId: string | null;
@@ -225,7 +225,7 @@ export class SpotProcurementPaymentService {
     execution: {
       id: string;
       amountCents: string;
-      voucherFileId: string;
+      voucherFileId: string | null;
       paidAt: string;
       paymentMethod: string;
       idempotencyKey: string;
@@ -2081,7 +2081,7 @@ export class SpotProcurementPaymentService {
       paidAt: Date;
       paymentMethod: string;
       executedByUserId: string;
-      voucherFileId: string;
+      voucherFileId: string | null;
     },
     expected: {
       paymentId: string;
@@ -2089,7 +2089,7 @@ export class SpotProcurementPaymentService {
       paidAt: Date;
       paymentMethod: string;
       actorUserId: string;
-      voucherFileId: string;
+      voucherFileId: string | null;
     }
   ) {
     if (
@@ -2112,7 +2112,7 @@ export class SpotProcurementPaymentService {
       amountCents: bigint;
       paidAt: Date;
       paymentMethod: string;
-      voucherFileId: string;
+      voucherFileId: string | null;
       idempotencyKey: string;
     },
     payment: Pick<
@@ -2288,7 +2288,7 @@ export class SpotProcurementPaymentService {
       paymentMethod: string | null;
       payeePartyId: string | null;
       payeeUserId: string | null;
-      payeeNameSnapshot: string;
+      payeeNameSnapshot: string | null;
       payeeAccountNameSnapshot: string | null;
       payeeBankNameSnapshot: string | null;
       payeeBankAccountSnapshot: string | null;
@@ -2529,7 +2529,7 @@ export class SpotProcurementPaymentService {
       paymentPath?: string | null;
       payeePartyId?: string | null;
       payeeUserId?: string | null;
-      payeeNameSnapshot?: string;
+      payeeNameSnapshot?: string | null;
       balanceOverrideReason?: string | null;
     },
     suggestion?: {

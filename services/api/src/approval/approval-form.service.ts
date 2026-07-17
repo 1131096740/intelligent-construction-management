@@ -256,12 +256,6 @@ function decimalText(value: unknown): string {
   return String(value ?? "—");
 }
 
-function invoiceTypeLabel(value?: string | null): string {
-  if (value === "vat_general") return "增值税普通发票";
-  if (value === "vat_special") return "增值税专用发票";
-  return "发票类型未读取";
-}
-
 function paymentMethodLabel(value?: string | null): string {
   if (value === "bank_transfer") return "银行转账";
   if (value === "cash") return "现金";
@@ -1661,26 +1655,22 @@ export class ApprovalFormService {
       const rows: ApprovalFormRow[] = [
         { label: "项目名称", value: project?.name ?? "—" },
         { label: "采购编号", value: procurement?.code ?? businessId },
-        {
-          label: "供应商",
-          value: version.supplierNameSnapshot || procurement?.supplierNameSnapshot || "—"
-        },
         { label: "采购原因", value: version.reason || "—" },
-        { label: "采购金额合计", value: formatYuan(version.totalAmountCents) },
+        {
+          label: "采购金额",
+          value:
+            version.totalAmountCents === null
+              ? "付款申请确定"
+              : formatYuan(version.totalAmountCents)
+        },
         { label: "采购版本", value: `第 ${version.versionNo} 版` }
       ];
       for (const line of lines) {
         const quantity = `${decimalText(line.quantity)} ${line.unit}`;
-        const invoice =
-          line.invoiceMode === "invoice"
-            ? `${invoiceTypeLabel(line.invoiceType)}、${line.vatRateLabelSnapshot ?? "税率未读取"}、含税单价 ${decimalText(line.unitPrice)} 元`
-            : `无票、无票单价 ${decimalText(line.unitPrice)} 元`;
         const detail = [
           line.materialName,
           line.specification ? `规格 ${line.specification}` : null,
           `数量 ${quantity}`,
-          invoice,
-          `金额 ${formatYuan(line.amountCents)}`,
           line.note ? `备注 ${line.note}` : null
         ]
           .filter(Boolean)

@@ -829,8 +829,9 @@ export class SpotProcurementReadService {
         ),
         voucherFileId: execution.voucherFileId,
         voucherFileName:
-          fileById.get(execution.voucherFileId)?.originalName ??
-          "付款凭证未读取",
+          (execution.voucherFileId
+            ? fileById.get(execution.voucherFileId)?.originalName
+            : null) ?? "付款凭证未读取",
         voidedAt: isoOrNull(execution.voidedAt),
         voidReason: execution.voidReason,
         active: execution.voidedAt === null
@@ -1206,7 +1207,11 @@ export class SpotProcurementReadService {
       SPOT_PROCUREMENT_BUSINESS_TYPES.payment
     );
     const voucherFileIds = [
-      ...new Set(activeExecutions.map((execution) => execution.voucherFileId))
+      ...new Set(
+        activeExecutions.flatMap((execution) =>
+          execution.voucherFileId ? [execution.voucherFileId] : []
+        )
+      )
     ];
     const voucherFiles = voucherFileIds.length
       ? await this.prisma.fileObject.findMany({
@@ -1351,13 +1356,7 @@ export class SpotProcurementReadService {
       input.roleKeys.some((role) => PROCUREMENT_VOID_ROLES.has(role)) &&
       !hasActualPayment &&
       input.activePayments.length === 0;
-    const remainingPaymentAmount =
-      input.currentVersion.totalAmountCents -
-      BigInt(input.paymentSummary.activeSettlementAmountCents);
-    const canCreatePayment =
-      input.procurement.status === "approved_in_progress" &&
-      input.actorUserId === input.currentVersion.handlerUserId &&
-      remainingPaymentAmount > 0n;
+    const canCreatePayment = false;
     const canCreateVersion =
       !["closed", "voided"].includes(input.procurement.status) &&
       ["approved", "rejected"].includes(input.currentVersion.status) &&
@@ -1597,11 +1596,17 @@ export class SpotProcurementReadService {
             purpose: "商家付款证明"
           }
         : null,
-      ...executions.map((execution) => ({
-        id: `voucher:${execution.id}`,
-        fileId: execution.voucherFileId,
-        purpose: "公司实际付款凭证"
-      }))
+      ...executions.flatMap((execution) =>
+        execution.voucherFileId
+          ? [
+              {
+                id: `voucher:${execution.id}`,
+                fileId: execution.voucherFileId,
+                purpose: "公司实际付款凭证"
+              }
+            ]
+          : []
+      )
     ].filter(
       (
         reference
@@ -1908,7 +1913,7 @@ function lineReadModel(line: SpotProcurementLine) {
     vatRateOptionId: line.vatRateOptionId,
     vatRateValue: line.vatRateValueSnapshot?.toString() ?? null,
     vatRateLabel: line.vatRateLabelSnapshot,
-    unitPrice: line.unitPrice.toString(),
+    unitPrice: line.unitPrice?.toString() ?? null,
     amountCents: moneyText(line.amountCents),
     usageLocation: line.usageLocation,
     note: line.note
@@ -2050,8 +2055,10 @@ function voucherFact(
     return { status: "none", label: "暂无实付凭证" } as const;
   }
   if (
-    executions.every((execution) =>
-      activeVoucherFileIds.has(execution.voucherFileId)
+    executions.every(
+      (execution) =>
+        Boolean(execution.voucherFileId) &&
+        activeVoucherFileIds.has(execution.voucherFileId as string)
     )
   ) {
     return {
@@ -2087,8 +2094,8 @@ function bankAccountLast4(value: string | null) {
   return normalized ? normalized.slice(-4) : null;
 }
 
-function moneyText(value: bigint) {
-  return value.toString();
+function moneyText(value: bigint | null) {
+  return value?.toString() ?? "—";
 }
 
 function nonNegative(value: bigint) {

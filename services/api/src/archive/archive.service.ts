@@ -73,7 +73,7 @@ export class ArchiveService {
       ...spotArchives.invoiceExceptionConfirmations.map(
         (row) => row.proofFileId
       )
-    ];
+    ].filter((fileId): fileId is string => Boolean(fileId));
     const userIds = [
       ...contractArchives.flatMap((row) => [row.uploadedByUserId, row.confirmedByUserId]),
       ...settlementArchives.flatMap((row) => [row.uploadedByUserId, row.confirmedByUserId]),
@@ -331,7 +331,7 @@ export class ArchiveService {
       }),
       ...spotArchives.paymentExecutions.flatMap((row) => {
         const payment = spotPaymentById.get(row.paymentId);
-        if (!payment) return [];
+        if (!payment || !row.voucherFileId) return [];
         return [
           {
             projectId: payment.projectId,
