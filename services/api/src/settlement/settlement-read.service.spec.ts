@@ -109,6 +109,238 @@ describe("SettlementReadService", () => {
     expect(actions.find((action) => action.key === "generate_pdf_archive")?.enabled).toBe(false);
   });
 
+  it("shows governed counterparty and final evidence without reading legacy archive rows", async () => {
+    const prisma = {
+      settlementDraft: {
+        findFirst: jest.fn().mockResolvedValue({ id: "draft-1" })
+      },
+      settlementSignedDocument: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "original-1",
+            purpose: "counterparty_signed_original",
+            fileId: "file-original",
+            status: "active",
+            generationStatus: "not_applicable",
+            uploadedByUserId: "staff-1",
+            generatedByUserId: null,
+            confirmedByUserId: null,
+            confirmedAt: null,
+            createdAt: new Date("2026-07-17T01:00:00.000Z")
+          },
+          {
+            id: "final-1",
+            purpose: "final_internal_signed_copy",
+            fileId: "file-final",
+            status: "active",
+            generationStatus: "completed",
+            uploadedByUserId: null,
+            generatedByUserId: "system-user",
+            confirmedByUserId: null,
+            confirmedAt: null,
+            createdAt: new Date("2026-07-17T02:00:00.000Z")
+          }
+        ])
+      },
+      settlementArchiveFile: { findMany: jest.fn() },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "file-original",
+            originalName: "乙方签章原件.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 100,
+            storageStatus: "active"
+          },
+          {
+            id: "file-final",
+            originalName: "我方签名合成件.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 120,
+            storageStatus: "active"
+          }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "staff-1", name: "合同员" },
+          { id: "system-user", name: "系统任务" }
+        ])
+      }
+    };
+    const service = new SettlementReadService(prisma as never) as unknown as {
+      settlementArchiveFilesForSettlement(settlement: {
+        id: string;
+        governanceVersion: number;
+      }): Promise<Array<{
+        purposeKey?: string;
+        generationStatus?: string;
+        canDownload: boolean;
+        downloadability?: string;
+      }>>;
+    };
+
+    const files = await service.settlementArchiveFilesForSettlement({
+      id: "settlement-1",
+      governanceVersion: 1
+    });
+
+    expect(files).toEqual([
+      expect.objectContaining({
+        purposeKey: "counterparty_signed_original",
+        generationStatus: "not_applicable",
+        canDownload: true,
+        downloadability: "available"
+      }),
+      expect.objectContaining({
+        purposeKey: "final_internal_signed_copy",
+        generationStatus: "completed",
+        canDownload: true,
+        downloadability: "available"
+      })
+    ]);
+    expect(prisma.settlementArchiveFile.findMany).not.toHaveBeenCalled();
+  });
+
+  it("does not advertise a governed evidence file when storage is inactive", async () => {
+    const prisma = {
+      settlementDraft: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementSignedDocument: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "final-1",
+            purpose: "final_internal_signed_copy",
+            fileId: "file-final",
+            status: "active",
+            generationStatus: "completed",
+            uploadedByUserId: null,
+            generatedByUserId: null,
+            confirmedByUserId: null,
+            confirmedAt: null,
+            createdAt: new Date()
+          }
+        ])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "file-final",
+            originalName: "final.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 100,
+            storageStatus: "deleted"
+          }
+        ])
+      }
+    };
+    const service = new SettlementReadService(prisma as never) as unknown as {
+      settlementArchiveFilesForSettlement(settlement: {
+        id: string;
+        governanceVersion: number;
+      }): Promise<Array<{ canDownload: boolean; downloadability?: string }>>;
+    };
+
+    await expect(
+      service.settlementArchiveFilesForSettlement({
+        id: "settlement-1",
+        governanceVersion: 1
+      })
+    ).resolves.toEqual([
+      expect.objectContaining({ canDownload: false, downloadability: "unavailable" })
+    ]);
+  });
+
+  it("gives only the contract director a retry action after governed generation fails", () => {
+    const service = new SettlementReadService({} as never) as unknown as {
+      settlementActions(
+        status: string,
+        roleKeys: string[],
+        access: { canAct: boolean; canReview: boolean; requiresSelfReviewConfirmation: boolean },
+        files: [],
+        governanceVersion: number,
+        generationFailed: boolean
+      ): Array<{ key: string; enabled: boolean }>;
+      statusView(status: string, generationFailed?: boolean): { label: string };
+      nextActionLabel(status: string, generationFailed?: boolean): string;
+    };
+    const noApprovalAccess = {
+      canAct: false,
+      canReview: false,
+      requiresSelfReviewConfirmation: false
+    };
+
+    const directorActions = service.settlementActions(
+      "pending_generation",
+      ["contract_director"],
+      noApprovalAccess,
+      [],
+      1,
+      true
+    );
+    const staffActions = service.settlementActions(
+      "pending_generation",
+      ["contract_staff"],
+      noApprovalAccess,
+      [],
+      1,
+      true
+    );
+    const processingActions = service.settlementActions(
+      "pending_generation",
+      ["contract_director"],
+      noApprovalAccess,
+      [],
+      1,
+      false
+    );
+
+    expect(directorActions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "retry_signed_document_generation", enabled: true })
+      ])
+    );
+    expect(staffActions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "retry_signed_document_generation", enabled: false })
+      ])
+    );
+    expect(processingActions.map((action) => action.key)).not.toContain(
+      "retry_signed_document_generation"
+    );
+    expect(directorActions.map((action) => action.key)).not.toContain("generate_pdf_archive");
+    expect(service.statusView("pending_generation", true).label).toBe(
+      "最终结算文件生成失败"
+    );
+    expect(service.nextActionLabel("pending_generation", true)).toContain(
+      "审批结果不受影响"
+    );
+  });
+
+  it("offers generation recovery only for interrupted or stale claims", () => {
+    const service = new SettlementReadService({} as never) as unknown as {
+      signedDocumentGenerationNeedsRetry(claim: unknown): boolean;
+    };
+    const now = Date.now();
+
+    expect(service.signedDocumentGenerationNeedsRetry(null)).toBe(true);
+    expect(service.signedDocumentGenerationNeedsRetry({
+      status: "failed", claimedAt: new Date(now), uploadedFileId: null,
+      safeFailureCode: "activation_failed"
+    })).toBe(true);
+    expect(service.signedDocumentGenerationNeedsRetry({
+      status: "uploaded", claimedAt: new Date(now), uploadedFileId: "file-1",
+      safeFailureCode: null
+    })).toBe(true);
+    expect(service.signedDocumentGenerationNeedsRetry({
+      status: "pending", claimedAt: new Date(now - 6 * 60 * 1000),
+      uploadedFileId: null, safeFailureCode: null
+    })).toBe(true);
+    expect(service.signedDocumentGenerationNeedsRetry({
+      status: "pending", claimedAt: new Date(now), uploadedFileId: null,
+      safeFailureCode: null
+    })).toBe(false);
+  });
+
   it("builds settlement ledger rows and summary from persisted settlements", async () => {
     const prisma = {
       settlement: {

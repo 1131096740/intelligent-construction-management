@@ -35,7 +35,7 @@ const checks = {
   companyEntities: `SELECT "id", "name", "unifiedSocialCreditCode", "isActive" FROM "CompanyEntity" ORDER BY "createdAt"`,
   duplicateCreditCodes: `SELECT upper(trim("unifiedSocialCreditCode")) code, count(*) FROM "CompanyEntity" WHERE "unifiedSocialCreditCode" IS NOT NULL GROUP BY 1 HAVING count(*) > 1`,
   activeContracts: `SELECT "status", count(*) FROM "ContractVersion" WHERE "status" IN ('in_approval','approved_pending_seal','in_seal','seal_approved_pending_archive','pending_archive_confirm','approval_pending','approved','sealed_pending_archive') GROUP BY "status"`,
-  activeSettlements: `SELECT "status", count(*) FROM "Settlement" WHERE "status" IN ('in_approval','approval_pending','approved_pending_archive','archive_pending','pending_archive_confirm') GROUP BY "status"`
+  activeSettlements: `SELECT "status", count(*) FROM "Settlement" WHERE "status" IN ('in_approval','approval_pending','pending_generation','approved_pending_archive','archive_pending','pending_archive_confirm') GROUP BY "status"`
 };
 
 async function inspect() {

@@ -13,6 +13,13 @@ describe("SettlementService canonical preview", () => {
           taxFactStatus: "confirmed"
         })
       },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
+        })
+      },
       contractBill: {
         findMany: jest.fn().mockResolvedValue([
           { id: "bill-1", amountRole: "included", pricingMode: "tax_inclusive" }
@@ -93,6 +100,13 @@ describe("SettlementService canonical preview", () => {
           taxFactStatus: "confirmed"
         })
       },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
+        })
+      },
       contractBill: { findMany: jest.fn() },
       settlementLine: { createMany: jest.fn() },
       settlement: { create: jest.fn() },
@@ -136,6 +150,13 @@ describe("SettlementService canonical preview", () => {
           status: "effective",
           invoiceType: "vat_general",
           taxFactStatus: "confirmed"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       contractBill: {
@@ -194,6 +215,13 @@ describe("SettlementService canonical preview", () => {
           status: "effective",
           invoiceType: "vat_special",
           taxFactStatus: "confirmed"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       contractBill: {
@@ -281,7 +309,11 @@ describe("SettlementService canonical preview", () => {
       },
       contractBill: { findMany: jest.fn() },
       contract: {
-        findUnique: jest.fn().mockResolvedValue({ id: "contract-1", projectId: "project-1" })
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
+        })
       },
       paymentTermsVersion: {
         findFirst: jest.fn().mockResolvedValue({ id: "terms-1" })

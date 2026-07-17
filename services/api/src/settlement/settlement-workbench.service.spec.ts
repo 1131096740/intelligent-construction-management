@@ -4,6 +4,7 @@ import { SettlementWorkbenchService } from "./settlement-workbench.service";
 const ACTIVE_STATUSES = [
   "in_approval",
   "approval_pending",
+  "pending_generation",
   "approved_pending_archive",
   "archive_pending",
   "pending_archive_confirm",

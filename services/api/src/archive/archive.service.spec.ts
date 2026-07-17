@@ -1,6 +1,131 @@
 import { ArchiveService } from "./archive.service";
 
 describe("ArchiveService", () => {
+  it("loads governed settlement evidence only after applying project visibility", async () => {
+    const prisma = {
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "settlement-visible",
+            projectId: "project-visible",
+            code: "JS-001",
+            periodLabel: "2026-07"
+          }
+        ])
+      },
+      settlementDraft: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "draft-visible",
+            submittedSettlementId: "settlement-visible"
+          }
+        ])
+      },
+      settlementSignedDocument: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "original-1",
+            settlementId: null,
+            settlementDraftId: "draft-visible",
+            purpose: "counterparty_signed_original",
+            fileId: "file-original",
+            status: "active",
+            generationStatus: "not_applicable",
+            uploadedByUserId: "staff-1",
+            generatedByUserId: null,
+            confirmedByUserId: null,
+            confirmedAt: null,
+            createdAt: new Date("2026-07-17T01:00:00.000Z")
+          },
+          {
+            id: "final-1",
+            settlementId: "settlement-visible",
+            settlementDraftId: null,
+            purpose: "final_internal_signed_copy",
+            fileId: "file-final",
+            status: "active",
+            generationStatus: "completed",
+            uploadedByUserId: null,
+            generatedByUserId: "system-user",
+            confirmedByUserId: "director-1",
+            confirmedAt: new Date("2026-07-17T03:00:00.000Z"),
+            createdAt: new Date("2026-07-17T02:00:00.000Z")
+          }
+        ])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "file-original",
+            originalName: "乙方原件.pdf",
+            sizeBytes: 100,
+            storageStatus: "active"
+          },
+          {
+            id: "file-final",
+            originalName: "签名合成件.pdf",
+            sizeBytes: 120,
+            storageStatus: "active"
+          }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "staff-1", name: "合同员" },
+          { id: "system-user", name: "系统任务" },
+          { id: "director-1", name: "合同部主管" }
+        ])
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "project-visible", name: "可见项目" }
+        ])
+      }
+    };
+    const service = new ArchiveService(prisma as never) as unknown as {
+      findGovernedSettlementEvidence(projectIds: string[]): Promise<
+        Array<{ documentType: string; fileId: string; canDownload: boolean }>
+      >;
+    };
+
+    const rows = await service.findGovernedSettlementEvidence(["project-visible"]);
+
+    expect(prisma.settlement.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          governanceVersion: 1,
+          projectId: { in: ["project-visible"] }
+        }
+      })
+    );
+    expect(prisma.settlementSignedDocument.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              settlementId: { in: ["settlement-visible"] }
+            }),
+            expect.objectContaining({
+              settlementDraftId: { in: ["draft-visible"] }
+            })
+          ])
+        }
+      })
+    );
+    expect(rows).toEqual([
+      expect.objectContaining({
+        documentType: "结算乙方签章原件",
+        fileId: "file-original",
+        canDownload: true
+      }),
+      expect.objectContaining({
+        documentType: "结算我方签名合成件",
+        fileId: "file-final",
+        canDownload: true
+      })
+    ]);
+  });
+
   it("lists contract archives, payment vouchers, and pdf archives as one ledger", async () => {
     const prisma = {
       contractArchiveFile: {

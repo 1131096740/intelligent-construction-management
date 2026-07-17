@@ -12,7 +12,12 @@ function validateM56(sql: string) {
   expect(sql.match(/\bBEGIN;/gu)).toHaveLength(1);
   expect(sql.match(/\bCOMMIT;/gu)).toHaveLength(1);
   expect(sql).not.toMatch(/\bIF\s+(?:NOT\s+)?EXISTS\b/iu);
-  expect(sql).not.toMatch(/(?:^|;)\s*(?:UPDATE|DELETE|TRUNCATE|DROP|INSERT\s+INTO)\b/imu);
+  const withoutApprovedConstraintRebuilds = sql
+    .replace('ALTER TABLE "Settlement" DROP CONSTRAINT "Settlement_status_check";', "")
+    .replace('DROP INDEX "Settlement_contractVersion_period_active_key";', "");
+  expect(withoutApprovedConstraintRebuilds).not.toMatch(
+    /(?:^|;)\s*(?:UPDATE|DELETE|TRUNCATE|DROP|INSERT\s+INTO)\b/imu
+  );
 
   for (const table of ["SettlementDraft", "Settlement"]) {
     const governanceColumn = sql.match(
@@ -48,6 +53,11 @@ function validateM56(sql: string) {
   }
 
   expect(sql).toContain('CREATE TABLE "SettlementSignedDocument"');
+  expect(sql).toContain('CREATE TABLE "SettlementSignedDocumentGenerationClaim"');
+  expect(sql).toMatch(/Settlement_status_check[\s\S]*?'pending_generation'/u);
+  expect(sql).toMatch(/Settlement_contractVersion_period_active_key[\s\S]*?'pending_generation'/u);
+  expect(sql).toMatch(/SettlementSignedDocumentGenerationClaim_state_check[\s\S]*?'uploaded'[\s\S]*?"uploadedFileId" IS NOT NULL/u);
+  expect(sql).toMatch(/SettlementSignedDocumentGenerationClaim_failure_code_check[\s\S]*?'render_failed'[\s\S]*?'activation_failed'/u);
   for (const reference of [
     'FOREIGN KEY ("settlementId") REFERENCES "Settlement"("id")',
     'FOREIGN KEY ("settlementDraftId") REFERENCES "SettlementDraft"("id")',
@@ -73,6 +83,7 @@ function validateM56(sql: string) {
   expect(sql).toMatch(/SettlementSignedDocument_purpose_facts_check[\s\S]*?"purpose" = 'final_internal_signed_copy'[\s\S]*?"settlementId" IS NOT NULL[\s\S]*?"generationStatus" = 'completed'[\s\S]*?"generatedByUserId" IS NOT NULL[\s\S]*?"declarationSnapshot" IS NULL[\s\S]*?"approvalActionSetHash" IS NOT NULL/u);
   expect(sql).toMatch(/SettlementSignedDocument_supersedes_not_self_check[\s\S]*?"supersedesId" <> "id"/u);
   expect(sql).toMatch(/CREATE UNIQUE INDEX "SettlementSignedDocument_active_settlement_revision_purpose_key"[\s\S]*?"settlementId", "sourceRevision", "purpose"[\s\S]*?WHERE "status" = 'active' AND "settlementId" IS NOT NULL/u);
+  expect(sql).toMatch(/CREATE UNIQUE INDEX "SettlementSignedDocument_active_final_settlement_key"[\s\S]*?"settlementId", "purpose"[\s\S]*?final_internal_signed_copy/u);
   expect(sql).toMatch(/CREATE UNIQUE INDEX "SettlementSignedDocument_active_draft_revision_purpose_key"[\s\S]*?"settlementDraftId", "sourceRevision", "purpose"[\s\S]*?WHERE "status" = 'active' AND "settlementDraftId" IS NOT NULL/u);
   expect(sql).toContain('CREATE INDEX "SettlementSignedDocument_fileId_idx"');
   expect(sql).toContain('CREATE INDEX "SettlementSignedDocument_settlementId_purpose_status_idx"');
@@ -118,6 +129,7 @@ describe("M56 settlement participant and signed-document governance schema", () 
     }
     expect(schema).toMatch(/model Settlement[\s\S]*?preparedByUserId\s+String\?[\s\S]*?preparerSignatureFileId\s+String\?[\s\S]*?preparerSignatureSha256\s+String\?/u);
     expect(schema).toContain("model SettlementSignedDocument");
+    expect(schema).toContain("model SettlementSignedDocumentGenerationClaim");
   });
 
   it.each([

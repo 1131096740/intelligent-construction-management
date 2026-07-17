@@ -77,6 +77,9 @@ describe("SettlementSubmissionService", () => {
       assertReadyForSubmission: jest.fn().mockResolvedValue({}),
       persistDenial: jest.fn().mockResolvedValue(undefined)
     };
+    const frozenDocuments = {
+      assertCurrentFacts: jest.fn().mockResolvedValue({ id: "frozen-1" })
+    };
     const settlements = {
       prepareSubmission: jest.fn().mockImplementation((input) => ({ input })),
       submitInTransaction: jest.fn().mockResolvedValue(settlement),
@@ -96,14 +99,16 @@ describe("SettlementSubmissionService", () => {
       service: new SettlementSubmissionService(
         prisma as never,
         settlements as never,
-        counterpartyDocuments as never
+        counterpartyDocuments as never,
+        frozenDocuments as never
       ),
-      counterpartyDocuments
+      counterpartyDocuments,
+      frozenDocuments
     };
   }
 
   it("claims the expected revision and atomically marks a successful draft submitted", async () => {
-    const { tx, settlements, service } = context();
+    const { tx, settlements, service, counterpartyDocuments, frozenDocuments } = context();
 
     await expect(
       service.submitDraft("project-1", "draft-1", "owner-1", 3)
@@ -143,6 +148,22 @@ describe("SettlementSubmissionService", () => {
         submittedAt: expect.any(Date)
       }
     });
+    expect(frozenDocuments.assertCurrentFacts.mock.invocationCallOrder[0]).toBeLessThan(
+      counterpartyDocuments.assertReadyForSubmission.mock.invocationCallOrder[0]!
+    );
+  });
+
+  it("keeps the draft unchanged when the frozen business token has drifted", async () => {
+    const current = context();
+    current.frozenDocuments.assertCurrentFacts.mockRejectedValueOnce(
+      new BadRequestException(
+        "结算草稿、税务事实、前序结算或付款阶段已变化，请重新生成冻结版并由乙方重新签章"
+      )
+    );
+    await expect(current.service.submitDraft("project-1", "draft-1", "owner-1", 3))
+      .rejects.toThrow("重新生成冻结版并由乙方重新签章");
+    expect(current.tx.settlementDraft.updateMany).not.toHaveBeenCalled();
+    expect(current.settlements.submitInTransaction).not.toHaveBeenCalled();
   });
 
   it("rejects a forged project, another owner, an old revision, and repeated submission", async () => {

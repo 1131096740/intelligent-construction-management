@@ -557,4 +557,47 @@ describe("SettlementController authorization wiring", () => {
       }
     }, { type: "body", metatype, data: undefined })).resolves.toBeInstanceOf(metatype);
   });
+
+  it("guards and forwards a pure-rendering signed-document regeneration", async () => {
+    const signedDocuments = { generateFinal: jest.fn().mockResolvedValue({ id: "final-2" }) };
+    const controller = new SettlementController(
+      {} as never, {} as never, {} as never, {} as never, {} as never, signedDocuments as never
+    );
+
+    await expect(controller.regenerateSignedDocument(
+      "settlement-1",
+      { id: "director-1" } as never,
+      { confirmPureRenderingIssue: true, reason: "签名位置修复", confirmationPassword: "secret" }
+    )).resolves.toEqual({ id: "final-2" });
+    expect(signedDocuments.generateFinal).toHaveBeenCalledWith(
+      "settlement-1", "director-1", true, "签名位置修复", undefined, "secret"
+    );
+    expect(Reflect.getMetadata(
+      REQUIRED_PROJECT_ACTION_KEY,
+      SettlementController.prototype.regenerateSignedDocument
+    )).toBe("settlement.archive.confirm");
+  });
+
+  it("rejects regeneration without an explicit pure-rendering confirmation", async () => {
+    const controller = new SettlementController(
+      {} as never, {} as never, {} as never, {} as never, {} as never, {} as never
+    );
+    expect(() => controller.regenerateSignedDocument(
+      "settlement-1", { id: "director-1" } as never,
+      { confirmPureRenderingIssue: false, reason: "事实变化", confirmationPassword: "secret" }
+    )).toThrow("请确认仅修复渲染问题");
+  });
+
+  it("retries a missing or failed pending-generation claim without force regeneration", async () => {
+    const signedDocuments = { generateFinal: jest.fn().mockResolvedValue({ id: "final-1" }) };
+    const controller = new SettlementController(
+      {} as never, {} as never, {} as never, {} as never, {} as never, signedDocuments as never
+    );
+    await controller.retrySignedDocumentGeneration("settlement-1", { id: "director-1" } as never);
+    expect(signedDocuments.generateFinal).toHaveBeenCalledWith("settlement-1", "director-1", false);
+    expect(Reflect.getMetadata(
+      REQUIRED_PROJECT_ACTION_KEY,
+      SettlementController.prototype.retrySignedDocumentGeneration
+    )).toBe("settlement.archive.confirm");
+  });
 });

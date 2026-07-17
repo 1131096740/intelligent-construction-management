@@ -25,6 +25,10 @@ export interface UploadPrivateFileInput {
     approvalInstanceId: string;
     claimToken: string;
   };
+  settlementSignedDocumentGenerationClaim?: {
+    settlementId: string;
+    claimToken: string;
+  };
 }
 
 export interface ReadPrivateFileInput {
@@ -603,6 +607,10 @@ export class FileService {
     this.assertDownloadSecret();
   }
 
+  private objectKeyFingerprint(objectKey: string) {
+    return createHash("sha256").update(objectKey).digest("hex").slice(0, 16);
+  }
+
   async uploadPrivateFile(input: UploadPrivateFileInput) {
     if (!input.uploadedByUserId.trim()) {
       throw new Error("上传人信息缺失，请重新登录后再上传资料");
@@ -620,7 +628,14 @@ export class FileService {
       throw new Error("文件格式不支持，请上传 PDF、Word、Excel 或图片资料");
     }
 
-    const objectKey = `uploads/${randomUUID()}-${this.safeFileName(input.originalName)}`;
+    const settlementClaimToken = input.settlementSignedDocumentGenerationClaim?.claimToken;
+    if (settlementClaimToken && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(settlementClaimToken)) {
+      throw new BadRequestException("结算签名合成任务令牌无效，请重新发起生成");
+    }
+    const objectKey = settlementClaimToken
+      ? `uploads/settlement-signed-generation/${settlementClaimToken}.pdf`
+      : `uploads/${randomUUID()}-${this.safeFileName(input.originalName)}`;
+    const fileId = randomUUID();
     const contentSha256 = createHash("sha256").update(input.buffer).digest("hex");
     await this.storage.write(objectKey, input.buffer);
 
@@ -628,6 +643,7 @@ export class FileService {
       return await this.prisma.$transaction(async (tx) => {
         const file = await tx.fileObject.create({
           data: {
+            id: fileId,
             bucket: this.storage.bucketName(),
             objectKey,
             originalName: input.originalName,
@@ -672,15 +688,82 @@ export class FileService {
           }
         }
 
+        if (input.settlementSignedDocumentGenerationClaim) {
+          const claim = input.settlementSignedDocumentGenerationClaim;
+          const claimed = await tx.settlementSignedDocumentGenerationClaim.updateMany({
+            where: {
+              settlementId: claim.settlementId,
+              claimToken: claim.claimToken,
+              status: "pending",
+              uploadedFileId: null
+            },
+            data: { status: "uploaded", uploadedFileId: file.id, safeFailureCode: null }
+          });
+          if (claimed.count !== 1) {
+            throw new Error("结算签名合成件生成权已变化，请刷新后重试");
+          }
+        }
+
         return file;
       });
     } catch (transactionError) {
+      let committedFile: FileObject | null;
+      try {
+        committedFile = await this.prisma.fileObject.findUnique({ where: { id: fileId } });
+        if (committedFile) {
+          const fileMatches =
+            committedFile.objectKey === objectKey &&
+            committedFile.contentSha256 === contentSha256 &&
+            committedFile.uploadedByUserId === input.uploadedByUserId &&
+            committedFile.storageStatus === "active";
+          const [approvalClaim, settlementClaim] = await Promise.all([
+            input.approvalFormGenerationClaim
+              ? this.prisma.approvalFormGenerationClaim.findFirst({
+                  where: {
+                    approvalInstanceId: input.approvalFormGenerationClaim.approvalInstanceId,
+                    claimToken: input.approvalFormGenerationClaim.claimToken,
+                    uploadedFileId: fileId
+                  },
+                  select: { approvalInstanceId: true }
+                })
+              : Promise.resolve({ approvalInstanceId: "not-required" }),
+            input.settlementSignedDocumentGenerationClaim
+              ? this.prisma.settlementSignedDocumentGenerationClaim.findFirst({
+                  where: {
+                    settlementId: input.settlementSignedDocumentGenerationClaim.settlementId,
+                    claimToken: input.settlementSignedDocumentGenerationClaim.claimToken,
+                    uploadedFileId: fileId
+                  },
+                  select: { settlementId: true }
+                })
+              : Promise.resolve({ settlementId: "not-required" })
+          ]);
+          if (fileMatches && approvalClaim && settlementClaim) return committedFile;
+          this.logger.error({
+            event: "private_file_registration_commit_ambiguous",
+            fileId,
+            objectKeyFingerprint: this.objectKeyFingerprint(objectKey),
+            transactionError: safeErrorSummary(transactionError, "database_transaction")
+          });
+          throw new InternalServerErrorException("文件登记结果暂时无法确认，请稍后刷新重试");
+        }
+      } catch (verificationError) {
+        if (verificationError instanceof InternalServerErrorException) throw verificationError;
+        this.logger.error({
+          event: "private_file_registration_verification_failed",
+          fileId,
+          objectKeyFingerprint: this.objectKeyFingerprint(objectKey),
+          transactionError: safeErrorSummary(transactionError, "database_transaction"),
+          verificationError: safeErrorSummary(verificationError, "commit_verification")
+        });
+        throw new InternalServerErrorException("文件登记结果暂时无法确认，请稍后刷新重试");
+      }
       try {
         await this.storage.delete(objectKey);
       } catch (cleanupError) {
         this.logger.error({
           event: "private_file_registration_cleanup_failed",
-          objectKey,
+          objectKeyFingerprint: this.objectKeyFingerprint(objectKey),
           transactionError: safeErrorSummary(transactionError, "database_transaction"),
           cleanupError: safeErrorSummary(cleanupError, "orphan_cleanup")
         });
@@ -896,6 +979,69 @@ export class FileService {
     return { file, buffer: await this.readVerifiedFileBuffer(file) };
   }
 
+  async discardUnlinkedGeneratedFile(fileId: string, actorUserId: string): Promise<void> {
+    const discarded = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id" FROM "FileObject" WHERE "id" = ${fileId} FOR UPDATE
+      `);
+      const file = await tx.fileObject.findUnique({ where: { id: fileId } });
+      if (!file || file.uploadedByUserId !== actorUserId || file.storageStatus !== "active") {
+        return null;
+      }
+      if (await this.isFileReferenced(tx, fileId)) return null;
+      const updated = await tx.fileObject.updateMany({
+        where: { id: fileId, uploadedByUserId: actorUserId, storageStatus: "active" },
+        data: { storageStatus: "discarded" }
+      });
+      if (updated.count !== 1) return null;
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "file.generated_orphan.discard",
+        businessType: "file_object",
+        businessId: fileId
+      });
+      return { objectKey: file.objectKey };
+    });
+    if (!discarded) return;
+    try {
+      await this.storage.delete(discarded.objectKey);
+    } catch (error) {
+      this.logger.error({
+        event: "discarded_generated_file_storage_cleanup_failed",
+        fileId,
+        error: safeErrorSummary(error, "orphan_cleanup")
+      });
+    }
+  }
+
+  private async isFileReferenced(tx: Prisma.TransactionClient, fileId: string): Promise<boolean> {
+    const rows = await tx.$queryRaw<Array<{ referenced: boolean }>>(Prisma.sql`
+      SELECT EXISTS (
+        SELECT 1 FROM "SettlementSignedDocument" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "SettlementSignedDocumentGenerationClaim" WHERE "uploadedFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ApprovalFormGenerationClaim" WHERE "uploadedFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "SettlementArchiveFile" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ContractArchiveFile" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ArchiveRecord" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "PdfDocument" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ContractFormalFile" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ContractAuthorization" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "SettlementImport" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ProjectOwnerContract" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ContractBillImport" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "FileObject" WHERE "supersedesFileObjectId" = ${fileId}
+      ) AS "referenced"
+    `);
+    return rows[0]?.referenced === true;
+  }
+
+  async discardSettlementClaimObject(claimToken: string): Promise<void> {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(claimToken)) {
+      throw new BadRequestException("结算签名合成任务令牌无效");
+    }
+    await this.storage.delete(`uploads/settlement-signed-generation/${claimToken}.pdf`);
+  }
+
   // 供其它模块（如审批单下载）按 fileId 复用下载权限校验。
   async assertCanDownloadFileById(fileId: string, actorUserId: string) {
     await this.prisma.$transaction(async (tx) => {
@@ -994,6 +1140,15 @@ export class FileService {
     file: FileObject,
     actorUserId: string
   ) {
+    const governedSettlementAccess = await this.governedSettlementSignedDocumentAccess(
+      tx,
+      file.id,
+      actorUserId
+    );
+    if (governedSettlementAccess !== null) {
+      if (governedSettlementAccess) return;
+      throw new ForbiddenException("当前账号无权下载该结算签章资料");
+    }
     const governedContractAccess = await this.governedContractFileAccess(
       tx,
       file.id,
@@ -1451,6 +1606,52 @@ export class FileService {
     }
 
     throw new ForbiddenException("当前账号无权下载该资料");
+  }
+
+  private async governedSettlementSignedDocumentAccess(
+    tx: Prisma.TransactionClient,
+    fileId: string,
+    actorUserId: string
+  ): Promise<boolean | null> {
+    const client = (tx as unknown as {
+      settlementSignedDocument?: {
+        findFirst(args: { where: { fileId: string } }): Promise<{
+          status: string;
+          purpose: string;
+          settlementId: string | null;
+          settlementDraftId: string | null;
+        } | null>;
+      };
+    }).settlementSignedDocument;
+    const claimClient = (tx as unknown as {
+      settlementSignedDocumentGenerationClaim?: {
+        findFirst(args: { where: { uploadedFileId: string } }): Promise<{ status: string } | null>;
+      };
+    }).settlementSignedDocumentGenerationClaim;
+    const claim = claimClient
+      ? await claimClient.findFirst({ where: { uploadedFileId: fileId } })
+      : null;
+    if (claim && claim.status !== "completed") return false;
+    if (!client) return claim ? false : null;
+    const document = await client.findFirst({ where: { fileId } });
+    if (!document) return claim ? false : null;
+    if (document.status !== "active") return false;
+    let projectId: string | null = null;
+    if (document.settlementId) {
+      projectId = (await tx.settlement.findUnique({
+        where: { id: document.settlementId }, select: { projectId: true }
+      }))?.projectId ?? null;
+    } else if (document.settlementDraftId) {
+      projectId = (await tx.settlementDraft.findUnique({
+        where: { id: document.settlementDraftId }, select: { projectId: true }
+      }))?.projectId ?? null;
+    }
+    if (!projectId || ![
+      "frozen_counterparty_copy",
+      "counterparty_signed_original",
+      "final_internal_signed_copy"
+    ].includes(document.purpose)) return false;
+    return this.hasProjectRole(tx, actorUserId, projectId, ARCHIVE_FILE_DOWNLOAD_ROLES);
   }
 
   private async governedContractFileAccess(

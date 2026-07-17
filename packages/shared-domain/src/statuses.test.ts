@@ -12,6 +12,7 @@ describe("domain statuses", () => {
   it("keeps contract and settlement effectiveness explicit", () => {
     expect(CONTRACT_VERSION_STATUSES).toContain("effective");
     expect(SETTLEMENT_STATUSES).toContain("effective");
+    expect(SETTLEMENT_STATUSES).toContain("pending_generation");
   });
 
   it("keeps payment approval separate from actual payment", () => {
@@ -39,6 +40,7 @@ describe("domain statuses", () => {
     expect(SETTLEMENT_OCCUPANCY_STATUSES).toEqual([
       "in_approval",
       "approval_pending",
+      "pending_generation",
       "approved_pending_archive",
       "archive_pending",
       "pending_archive_confirm",

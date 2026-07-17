@@ -4,6 +4,8 @@ import {
   renderSettlementArchivePdf,
   renderSettlementDraftExcel,
   settlementDocumentRows,
+  settlementPdfPagePlan,
+  settlementSignatureRoleSlots,
   settlementSignatureBoardPageIndexes,
   type SettlementDocumentInput
 } from "./settlement-document-renderer";
@@ -27,10 +29,14 @@ const baseInput: SettlementDocumentInput = {
   previousEffectiveSettlementCents: 300_000n,
   isFinal: false,
   generatedAt: new Date("2026-07-03T00:00:00.000Z"),
+  documentRevision: 4,
+  contractTypeKey: "material_purchase",
+  fieldReviewerRoleKey: "material_staff",
   lines: [
     {
       sourceType: "contract_bill_row",
       name: "钢筋材料",
+      specification: "HRB400 / Φ20",
       unit: "吨",
       quantity: "1.23",
       taxInclusiveUnitPrice: "4.56",
@@ -148,32 +154,104 @@ describe("settlement document renderer", () => {
     ]);
   });
 
-  it("renders a formal settlement PDF on A4 landscape pages", async () => {
+  it("renders a formal settlement PDF with explicit A4 landscape MediaBox, CropBox and zero rotation", async () => {
     const buffer = await renderSettlementArchivePdf(baseInput);
     const pdf = await PdfLibDocument.load(buffer);
     const [page] = pdf.getPages();
     const { width, height } = page.getSize();
+    const mediaBox = page.getMediaBox();
+    const cropBox = page.getCropBox();
 
     expect(buffer.subarray(0, 5).toString("ascii")).toBe("%PDF-");
+    expect(pdf.getPageCount()).toBe(1);
     expect(width).toBeGreaterThan(height);
     expect(Math.round(width)).toBe(842);
     expect(Math.round(height)).toBe(595);
+    expect(mediaBox).toEqual(cropBox);
+    expect(page.getRotation().angle).toBe(0);
   });
 
-  it("paginates oversized approval signature boards instead of drawing one overflowing block", async () => {
-    const buffer = await renderSettlementArchivePdf({
-      ...baseInput,
-      approvalRows: Array.from({ length: 34 }, (_, index) => ({
-        nodeName: `节点${index + 1}`,
-        roleName: "审批角色",
-        approverName: `审批人${index + 1}`,
-        comment: "同意",
-        approvedAt: new Date("2026-07-03T09:00:00.000Z")
-      }))
-    });
-    const pdf = await PdfLibDocument.load(buffer);
+  it("plans the exact repeated 12-column header, revision and material/mechanical signature row", () => {
+    const [page] = settlementPdfPagePlan(baseInput);
 
-    expect(pdf.getPageCount()).toBeGreaterThanOrEqual(3);
+    expect(page).toMatchObject({
+      pageNumber: 1,
+      pageCount: 1,
+      settlementCode: "JS-2026-019",
+      revisionLabel: "R4",
+      pageMarker: "第 1/1 页"
+    });
+    expect(page?.tableHeaders).toEqual([
+      "序号",
+      "名称",
+      "规格型号",
+      "单位",
+      "数量",
+      "不含税单价",
+      "含税单价",
+      "税率",
+      "不含税金额",
+      "税额",
+      "含税金额",
+      "备注"
+    ]);
+    expect(page?.signatureRoleLabels).toEqual([
+      "乙方",
+      "编制人",
+      "物资员",
+      "物资主管",
+      "合同部主管",
+      "项目经理",
+      "财务主管"
+    ]);
+  });
+
+  it("keeps the nine-row boundary on one page and repeats the frozen structure after the boundary", async () => {
+    const line = baseInput.lines[0]!;
+    const boundaryInput = {
+      ...baseInput,
+      lines: Array.from({ length: 9 }, (_, index) => ({ ...line, name: `清单项${index + 1}` }))
+    };
+    expect(settlementPdfPagePlan(boundaryInput)).toHaveLength(1);
+
+    const multiPageInput = {
+      ...boundaryInput,
+      lines: [...boundaryInput.lines, { ...line, name: "清单项10" }]
+    };
+    const plan = settlementPdfPagePlan(multiPageInput);
+    expect(plan.map((page) => page.pageMarker)).toEqual(["第 1/2 页", "第 2/2 页"]);
+    expect(plan.every((page) => page.tableHeaders.length === 12)).toBe(true);
+    expect(plan.every((page) => page.signatureRoleLabels.length === 7)).toBe(true);
+
+    const pdf = await PdfLibDocument.load(await renderSettlementArchivePdf(multiPageInput));
+    expect(pdf.getPageCount()).toBe(2);
+    for (const page of pdf.getPages()) {
+      expect(Math.round(page.getMediaBox().width)).toBe(842);
+      expect(Math.round(page.getMediaBox().height)).toBe(595);
+      expect(page.getCropBox()).toEqual(page.getMediaBox());
+      expect(page.getRotation().angle).toBe(0);
+    }
+  });
+
+  it.each([
+    ["engineering_foreman", "工长"],
+    ["engineering_tech", "施工员"]
+  ] as const)("uses the frozen labor/professional field role %s in the single seven-cell row", (fieldReviewerRoleKey, fieldLabel) => {
+    const slots = settlementSignatureRoleSlots({
+      ...baseInput,
+      contractTypeKey: "professional_subcontract",
+      fieldReviewerRoleKey
+    });
+
+    expect(slots.map((slot) => slot.label)).toEqual([
+      "乙方",
+      "编制人",
+      fieldLabel,
+      "项目总工",
+      "合同部主管",
+      "项目经理",
+      "财务主管"
+    ]);
   });
 
   it("maps signature board drawing to the buffered tail pages", () => {

@@ -1,7 +1,9 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
+  Optional,
   Param,
   Post,
   Query,
@@ -30,6 +32,8 @@ import {
 } from "./settlement-attachment-template.service";
 import { SettlementService } from "./settlement.service";
 import { SettlementSubmissionService } from "./settlement-submission.service";
+import { SettlementSignedDocumentService } from "./settlement-signed-document.service";
+import { RegenerateSettlementSignedDocumentDto } from "./dto/settlement-signed-document-action.dto";
 
 @Controller("settlements")
 export class SettlementController {
@@ -38,7 +42,8 @@ export class SettlementController {
     private readonly attachmentTemplates: SettlementAttachmentTemplateService,
     private readonly settlements: SettlementService,
     private readonly projectVisibility: ProjectVisibilityService,
-    private readonly submissions: SettlementSubmissionService
+    private readonly submissions: SettlementSubmissionService,
+    @Optional() private readonly signedDocuments?: SettlementSignedDocumentService
   ) {}
 
   @Post()
@@ -162,6 +167,36 @@ export class SettlementController {
     @Body() body: ConfirmSettlementArchiveDto
   ) {
     return this.settlements.confirmArchiveFile(settlementId, user.id, body);
+  }
+
+  @Post(":settlementId/signed-document-regeneration")
+  @RequireProjectRole("settlement.archive.confirm")
+  regenerateSignedDocument(
+    @Param("settlementId") settlementId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RegenerateSettlementSignedDocumentDto
+  ) {
+    if (!body.confirmPureRenderingIssue || !body.reason.trim() || !body.confirmationPassword?.trim()) {
+      throw new BadRequestException("请确认仅修复渲染问题并填写重新生成原因");
+    }
+    if (!this.signedDocuments) {
+      throw new BadRequestException("结算签名合成服务暂不可用，请稍后重试");
+    }
+    return this.signedDocuments.generateFinal(
+      settlementId, user.id, true, body.reason.trim(), undefined, body.confirmationPassword
+    );
+  }
+
+  @Post(":settlementId/signed-document-generation-retry")
+  @RequireProjectRole("settlement.archive.confirm")
+  retrySignedDocumentGeneration(
+    @Param("settlementId") settlementId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    if (!this.signedDocuments) {
+      throw new BadRequestException("结算签名合成服务暂不可用，请稍后重试");
+    }
+    return this.signedDocuments.generateFinal(settlementId, user.id, false);
   }
 
   @Post(":settlementId/pdf-generation")

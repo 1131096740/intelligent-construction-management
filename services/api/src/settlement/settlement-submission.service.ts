@@ -13,13 +13,15 @@ import type {
 } from "./dto/create-settlement.dto";
 import { SettlementService } from "./settlement.service";
 import { SettlementCounterpartyDocumentService } from "./settlement-counterparty-document.service";
+import { SettlementFrozenDocumentService } from "./settlement-frozen-document.service";
 
 @Injectable()
 export class SettlementSubmissionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settlements: SettlementService,
-    @Optional() private readonly counterpartyDocuments?: SettlementCounterpartyDocumentService
+    @Optional() private readonly counterpartyDocuments?: SettlementCounterpartyDocumentService,
+    @Optional() private readonly frozenDocuments?: SettlementFrozenDocumentService
   ) {}
 
   submit(input: CreateSettlementDto, applicantUserId: string) {
@@ -72,6 +74,10 @@ export class SettlementSubmissionService {
           if (!this.counterpartyDocuments) {
             throw new BadRequestException("结算签章文件门禁暂不可用，请稍后重试");
           }
+          if (!this.frozenDocuments) {
+            throw new BadRequestException("结算冻结事实复核服务暂不可用，请稍后重试");
+          }
+          await this.frozenDocuments.assertCurrentFacts(tx, draft);
           await this.counterpartyDocuments.assertReadyForSubmission(tx, draft);
 
           const claimed = await tx.settlementDraft.updateMany({

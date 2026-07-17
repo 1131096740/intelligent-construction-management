@@ -539,6 +539,8 @@ model SettlementSignedDocument {
   invalidationReason    String?
   uploadedByUserId      String?
   generatedByUserId     String?
+  confirmedByUserId     String?
+  confirmedAt           DateTime?
   supersedesId          String?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
@@ -547,6 +549,28 @@ model SettlementSignedDocument {
   @@index([settlementDraftId, purpose, status])
   @@index([fileId])
   @@index([supersedesId])
+}
+
+model SettlementSignedDocumentGenerationClaim {
+  id                    String   @id @default(uuid())
+  settlementId          String   @unique
+  claimToken            String   @unique
+  sourceRevision        Int
+  originalDocumentId    String
+  originalContentSha256 String
+  businessSnapshotToken String
+  approvalActionSetHash String
+  status                String   @default("pending")
+  requestedByUserId     String
+  claimedAt             DateTime @default(now())
+  attemptCount          Int      @default(1)
+  uploadedFileId        String?  @unique
+  finalDocumentId       String?  @unique
+  safeFailureCode       String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([status, updatedAt])
 }
 
 model SettlementLine {

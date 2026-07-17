@@ -1,5 +1,22 @@
 BEGIN;
 
+ALTER TABLE "Settlement" DROP CONSTRAINT "Settlement_status_check";
+ALTER TABLE "Settlement" ADD CONSTRAINT "Settlement_status_check"
+  CHECK ("status" IN (
+    'draft', 'in_approval', 'approval_pending', 'approval_rejected', 'withdrawn',
+    'pending_generation', 'approved_pending_archive', 'archive_pending',
+    'pending_archive_confirm', 'effective', 'partially_paid', 'paid', 'voided'
+  )) NOT VALID;
+
+DROP INDEX "Settlement_contractVersion_period_active_key";
+CREATE UNIQUE INDEX "Settlement_contractVersion_period_active_key"
+  ON "Settlement" ("contractVersionId", "periodLabel")
+  WHERE "status" IN (
+    'draft', 'in_approval', 'approval_pending', 'pending_generation',
+    'approved_pending_archive', 'archive_pending', 'pending_archive_confirm',
+    'effective', 'partially_paid', 'paid'
+  );
+
 ALTER TABLE "SettlementDraft"
   ADD COLUMN "governanceVersion" INTEGER,
   ADD COLUMN "fieldReviewerUserId" TEXT,
@@ -43,12 +60,43 @@ CREATE TABLE "SettlementSignedDocument" (
   "invalidationReason" TEXT,
   "uploadedByUserId" TEXT,
   "generatedByUserId" TEXT,
+  "confirmedByUserId" TEXT,
+  "confirmedAt" TIMESTAMP(3),
   "supersedesId" TEXT,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL,
 
   CONSTRAINT "SettlementSignedDocument_pkey" PRIMARY KEY ("id")
 );
+
+CREATE TABLE "SettlementSignedDocumentGenerationClaim" (
+  "id" TEXT NOT NULL,
+  "settlementId" TEXT NOT NULL,
+  "claimToken" TEXT NOT NULL,
+  "sourceRevision" INTEGER NOT NULL,
+  "originalDocumentId" TEXT NOT NULL,
+  "originalContentSha256" TEXT NOT NULL,
+  "businessSnapshotToken" TEXT NOT NULL,
+  "approvalActionSetHash" TEXT NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'pending',
+  "requestedByUserId" TEXT NOT NULL,
+  "claimedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "attemptCount" INTEGER NOT NULL DEFAULT 1,
+  "uploadedFileId" TEXT,
+  "finalDocumentId" TEXT,
+  "safeFailureCode" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "SettlementSignedDocumentGenerationClaim_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "SettlementSignedDocumentGenerationClaim_settlementId_key" UNIQUE ("settlementId"),
+  CONSTRAINT "SettlementSignedDocumentGenerationClaim_claimToken_key" UNIQUE ("claimToken")
+);
+CREATE UNIQUE INDEX "SettlementSignedDocumentGenerationClaim_uploadedFileId_key"
+  ON "SettlementSignedDocumentGenerationClaim"("uploadedFileId");
+CREATE UNIQUE INDEX "SettlementSignedDocumentGenerationClaim_finalDocumentId_key"
+  ON "SettlementSignedDocumentGenerationClaim"("finalDocumentId");
+CREATE INDEX "SettlementSignedDocumentGenerationClaim_status_updatedAt_idx"
+  ON "SettlementSignedDocumentGenerationClaim"("status", "updatedAt");
 
 CREATE INDEX "SettlementSignedDocument_settlementId_purpose_status_idx"
   ON "SettlementSignedDocument"("settlementId", "purpose", "status");
@@ -61,6 +109,9 @@ CREATE INDEX "SettlementSignedDocument_supersedesId_idx"
 CREATE UNIQUE INDEX "SettlementSignedDocument_active_settlement_revision_purpose_key"
   ON "SettlementSignedDocument"("settlementId", "sourceRevision", "purpose")
   WHERE "status" = 'active' AND "settlementId" IS NOT NULL;
+CREATE UNIQUE INDEX "SettlementSignedDocument_active_final_settlement_key"
+  ON "SettlementSignedDocument"("settlementId", "purpose")
+  WHERE "status" = 'active' AND "purpose" = 'final_internal_signed_copy';
 CREATE UNIQUE INDEX "SettlementSignedDocument_active_draft_revision_purpose_key"
   ON "SettlementSignedDocument"("settlementDraftId", "sourceRevision", "purpose")
   WHERE "status" = 'active' AND "settlementDraftId" IS NOT NULL;
@@ -149,9 +200,45 @@ ALTER TABLE "SettlementSignedDocument"
   ADD CONSTRAINT "SettlementSignedDocument_generated_by_fk"
   FOREIGN KEY ("generatedByUserId") REFERENCES "User"("id")
   ON DELETE RESTRICT ON UPDATE CASCADE,
+  ADD CONSTRAINT "SettlementSignedDocument_confirmed_by_fk"
+  FOREIGN KEY ("confirmedByUserId") REFERENCES "User"("id")
+  ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT "SettlementSignedDocument_supersedes_fk"
   FOREIGN KEY ("supersedesId") REFERENCES "SettlementSignedDocument"("id")
   ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE "SettlementSignedDocumentGenerationClaim"
+  ADD CONSTRAINT "SettlementSignedDocumentGenerationClaim_settlement_fk"
+  FOREIGN KEY ("settlementId") REFERENCES "Settlement"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  ADD CONSTRAINT "SettlementSignedDocumentGenerationClaim_requested_by_fk"
+  FOREIGN KEY ("requestedByUserId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  ADD CONSTRAINT "SettlementSignedDocumentGenerationClaim_original_document_fk"
+  FOREIGN KEY ("originalDocumentId") REFERENCES "SettlementSignedDocument"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  ADD CONSTRAINT "SettlementSignedDocumentGenerationClaim_uploaded_file_fk"
+  FOREIGN KEY ("uploadedFileId") REFERENCES "FileObject"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  ADD CONSTRAINT "SettlementSignedDocumentGenerationClaim_final_document_fk"
+  FOREIGN KEY ("finalDocumentId") REFERENCES "SettlementSignedDocument"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  ADD CONSTRAINT "SettlementSignedDocumentGenerationClaim_source_revision_check"
+  CHECK ("sourceRevision" >= 1),
+  ADD CONSTRAINT "SettlementSignedDocumentGenerationClaim_hashes_check"
+  CHECK ("originalContentSha256" ~ '^[0-9a-f]{64}$' AND "approvalActionSetHash" ~ '^[0-9a-f]{64}$'),
+  ADD CONSTRAINT "SettlementSignedDocumentGenerationClaim_snapshot_check"
+  CHECK (NULLIF(BTRIM("businessSnapshotToken"), '') IS NOT NULL),
+  ADD CONSTRAINT "SettlementSignedDocumentGenerationClaim_status_check"
+  CHECK ("status" IN ('pending', 'uploaded', 'completed', 'failed')),
+  ADD CONSTRAINT "SettlementSignedDocumentGenerationClaim_state_check"
+  CHECK (
+    ("status" = 'pending' AND "uploadedFileId" IS NULL AND "finalDocumentId" IS NULL)
+    OR ("status" = 'uploaded' AND "uploadedFileId" IS NOT NULL AND "finalDocumentId" IS NULL)
+    OR ("status" = 'completed' AND "uploadedFileId" IS NOT NULL AND "finalDocumentId" IS NOT NULL)
+    OR ("status" = 'failed' AND "finalDocumentId" IS NULL)
+  ),
+  ADD CONSTRAINT "SettlementSignedDocumentGenerationClaim_attempt_count_check"
+  CHECK ("attemptCount" >= 1),
+  ADD CONSTRAINT "SettlementSignedDocumentGenerationClaim_failure_code_check"
+  CHECK ("safeFailureCode" IS NULL OR "safeFailureCode" IN (
+    'render_failed', 'upload_failed', 'activation_failed', 'facts_changed'
+  ));
 
 ALTER TABLE "SettlementSignedDocument"
   ADD CONSTRAINT "SettlementSignedDocument_parent_check"
@@ -235,6 +322,11 @@ ALTER TABLE "SettlementSignedDocument"
       AND NULLIF(BTRIM("invalidationReason"), '') IS NOT NULL)
   ),
   ADD CONSTRAINT "SettlementSignedDocument_supersedes_not_self_check"
-  CHECK ("supersedesId" IS NULL OR "supersedesId" <> "id");
+  CHECK ("supersedesId" IS NULL OR "supersedesId" <> "id"),
+  ADD CONSTRAINT "SettlementSignedDocument_confirmation_fields_check"
+  CHECK (
+    ("confirmedByUserId" IS NULL AND "confirmedAt" IS NULL)
+    OR ("purpose" = 'final_internal_signed_copy' AND "confirmedByUserId" IS NOT NULL AND "confirmedAt" IS NOT NULL)
+  );
 
 COMMIT;

@@ -5,6 +5,7 @@ describe("settlement line occupancy statuses", () => {
     expect(SETTLEMENT_LINE_OCCUPANCY_STATUSES).toEqual([
       "in_approval",
       "approval_pending",
+      "pending_generation",
       "approved_pending_archive",
       "archive_pending",
       "pending_archive_confirm",

@@ -1571,7 +1571,7 @@ git commit -m "feat: 冻结结算审批参与人与签前文件"
 - Modify: `services/api/src/me/me.service.spec.ts`
 - Modify: `packages/shared-domain/src/core-flow-read-model.ts`
 
-- [ ] **Step 1: 写一页/多页、重复表头和签名漂移失败测试**
+- [x] **Step 1: 写一页/多页、重复表头和签名漂移失败测试**
 
 ```ts
 expect(await pageCount(renderSettlementDraftPdf(onePage))).toBe(1);
@@ -1584,38 +1584,40 @@ expect(await signatureIds(finalPdf)).toContain("signature-at-approval");
 expect(await signatureIds(finalPdf)).not.toContain("signature-after-profile-update");
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/settlement/settlement-document-renderer.spec.ts src/settlement/settlement-signed-document.service.spec.ts src/settlement/settlement.service.spec.ts`
 
 Expected: FAIL。
 
-- [ ] **Step 3: 冻结版每页固定结构**
+- [x] **Step 3: 冻结版每页固定结构**
 
 PDF 使用 A4 横向并逐页断言 MediaBox/CropBox/rotation；每页显示编号、文件 revision、页码/总页数，重复完整表头：序号、名称、规格型号、单位、数量、不含税/含税单价、税率、不含税金额、税额、含税金额、备注。每页底部预印单行最多 7 格“岗位—签名—日期”，字号可读、不裁切；材料/机械为乙方/编制人/物资员/物资主管/合同部主管/项目经理/财务主管，劳务/专业对应乙方/编制人/选定工长或施工员/项目总工/合同部主管/项目经理/财务主管。一页、边界换页、多页均逐页测试。
 
-- [ ] **Step 4: 在乙方原始扫描件上叠加冻结签名**
+- [x] **Step 4: 在乙方原始扫描件上叠加冻结签名**
 
 使用 `pdf-lib` 只读加载乙方原始扫描 buffer，按页面尺寸/rotation/crop 映射固定签名格；嵌入编制人提交时签名和 M54 审批动作签名，日期使用审批发生日期，绝不回查 User 当前签名。原始扫描件永不 normalize/resave，原始 fileId/SHA 与最终新 FileObject/fileId/SHA 永久保留。数据库 SHA 为空/非法/与对象字节不符、替换后旧 original、尺寸不可叠加均阻断并审计。
 
-- [ ] **Step 5: 最终审批后自动生成，合同部主管确认生效**
+- [x] **Step 5: 最终审批后自动生成，合同部主管确认生效**
 
 全部节点通过后仅进入 `pending_generation`；生成器以 M56 partial unique + CAS 防双终审/双任务/双 active final。上传成功但业务关联失败、进程崩溃和网络重试必须可复用/清理孤儿文件并幂等恢复；原始 hash、业务 snapshot token 或审批动作集合任一漂移即失败，不得激活。成功后进入 `pending_archive_confirm`，正常新流程禁用审批后手工上传普通 `SettlementArchiveFile`；旧 governanceVersion 为空的历史实例继续双读旧语义，直到 Task 22 受控终止重提。
 
 合同部主管确认只接受 active `final_internal_signed_copy`，锁 Settlement/文档并复核原始 hash、snapshot token、审批动作集合后才 effective；旧 archiveFileId 不能确认新流程。read/file/archive/me 全部接入双证据：资料库和详情展示乙方原件/最终合成件，文件下载执行项目 ACL/用途/短票/审计；待办不再提示新流程“审批后上传归档件”。重新生成 endpoint 使用 DTO、权限和审计，只允许纯渲染问题且事实未变。
 
-- [ ] **Step 6: 运行定向测试**
+- [x] **Step 6: 运行定向测试**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/settlement/settlement-document-renderer.spec.ts src/settlement/settlement-signed-document.service.spec.ts src/settlement/settlement.controller.spec.ts src/settlement/settlement.service.spec.ts src/settlement/settlement-read.service.spec.ts src/approval/approval-signature-snapshot.spec.ts src/file/file.service.spec.ts src/archive/archive.service.spec.ts src/me/me.service.spec.ts && pnpm --filter @jiangkong/shared-domain typecheck && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint && pnpm --filter @jiangkong/api check:business-errors`
 
 Expected: PASS。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add packages/shared-domain/src/core-flow-read-model.ts services/api/src/settlement services/api/src/file/file.service* services/api/src/archive/archive.service* services/api/src/me/me.service*
 git commit -m "feat: 生成结算逐页冻结签名合成件"
 ```
+
+> Task 18 已于 2026-07-18 完成本地实现并通过规格/安全双复审 READY。受治理结算以 A4 横向冻结版为唯一签前事实，每页固定完整 12 列表头、编号/revision/页码和单行 7 格签名区；冻结版金额、税价、前序结算、最终累计、付款比例、合同与清单上限全部复用正式提交算法，提交前重算业务快照，事实漂移必须重新冻结并由乙方重签。终审事务先持久化 `pending_generation` 与生成 claim，外部合成后再以精确 token、原件 SHA、业务快照、审批动作集合、页数及唯一 active final 激活，失败/超时可审计重试；正常新流程禁用旧归档上传，合同部主管只可确认 completed claim 绑定的最终合成件。FileService 已防御上传事务“已提交但响应丢失”误删和已关联生成文件的孤儿清理竞态，相关错误日志仅保留对象键指纹。API 全量 139 套 3,166/3,166（另 4 套条件跳过）、Task 18 定向 15 套 516/516、shared-domain/API typecheck、API lint、业务错误检查、Prisma format/validate/generate 和 `git diff --check` 通过；全新 PostgreSQL 16 临时库从 M1 连续执行到 M56，56/56 迁移成功并复核 `pending_generation` 状态约束、期间唯一索引、claim 状态约束和唯一最终件索引，临时容器已清理。P2 纵深项为确认归档前再次读取 COS 字节、无数据库对象的极端硬崩溃 janitor/lifecycle 以及更细粒度 PDF 坐标回归；均不阻断本任务。未连接或修改生产，未推送、部署或执行生产迁移。
 
 ### Task 19: 结算工作台和详情闭环
 

@@ -65,6 +65,223 @@ describe("FileService", () => {
     storage.bucketName.mockReturnValue("private-local");
   });
 
+  it("denies a generated upload that is still owned by an incomplete settlement claim", async () => {
+    const service = new FileService(
+      {} as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    const tx = {
+      settlementSignedDocumentGenerationClaim: {
+        findFirst: jest.fn().mockResolvedValue({ status: "uploaded" })
+      },
+      settlementSignedDocument: { findFirst: jest.fn() }
+    };
+
+    await expect((service as unknown as {
+      assertCanDownloadFileObject(tx: unknown, file: { id: string; uploadedByUserId: string }, actor: string): Promise<void>;
+    }).assertCanDownloadFileObject(tx, { id: "generated-1", uploadedByUserId: "actor-1" }, "actor-1"))
+      .rejects.toThrow("当前账号无权下载该结算签章资料");
+    expect(tx.settlementSignedDocument.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("authorizes an active final settlement document only through its project ACL", async () => {
+    const service = new FileService(
+      {} as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    const tx = {
+      settlementSignedDocumentGenerationClaim: { findFirst: jest.fn().mockResolvedValue({ status: "completed" }) },
+      settlementSignedDocument: { findFirst: jest.fn().mockResolvedValue({
+        status: "active", purpose: "final_internal_signed_copy", settlementId: "settlement-1", settlementDraftId: null
+      }) },
+      settlement: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+
+    await expect((service as unknown as {
+      assertCanDownloadFileObject(tx: unknown, file: { id: string; uploadedByUserId: string }, actor: string): Promise<void>;
+    }).assertCanDownloadFileObject(tx, { id: "generated-1", uploadedByUserId: "other" }, "finance-1"))
+      .resolves.toBeUndefined();
+  });
+
+  it("registers a generated file and advances its settlement claim in one transaction", async () => {
+    const claimUpdate = jest.fn().mockResolvedValue({ count: 1 });
+    const tx = {
+      fileObject: { create: jest.fn().mockResolvedValue({
+        id: "generated-file-1", bucket: "private-local", objectKey: "object-1",
+        originalName: "final.pdf", sizeBytes: 3
+      }) },
+      settlementSignedDocumentGenerationClaim: { updateMany: claimUpdate }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new FileService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await service.uploadPrivateFile({
+      originalName: "final.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 3,
+      uploadedByUserId: "contract-director-1",
+      buffer: Buffer.from("pdf"),
+      settlementSignedDocumentGenerationClaim: {
+        settlementId: "settlement-1", claimToken: "123e4567-e89b-42d3-a456-426614174000"
+      }
+    });
+
+    expect(claimUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        settlementId: "settlement-1", claimToken: "123e4567-e89b-42d3-a456-426614174000", status: "pending"
+      }),
+      data: expect.objectContaining({ status: "uploaded", uploadedFileId: "generated-file-1" })
+    }));
+    expect(storage.write).toHaveBeenCalledWith(
+      "uploads/settlement-signed-generation/123e4567-e89b-42d3-a456-426614174000.pdf",
+      Buffer.from("pdf")
+    );
+  });
+
+  it("deletes only the stale claim token deterministic object during takeover cleanup", async () => {
+    const service = new FileService(
+      {} as PrismaService, audit as unknown as AuditService, storage as unknown as PrivateFileStorage
+    );
+    await service.discardSettlementClaimObject("123e4567-e89b-42d3-a456-426614174000");
+    expect(storage.delete).toHaveBeenCalledWith(
+      "uploads/settlement-signed-generation/123e4567-e89b-42d3-a456-426614174000.pdf"
+    );
+  });
+
+  it("keeps an already-linked generated file when cleanup observes the committed reference", async () => {
+    const tx = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ referenced: true }]),
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-linked", uploadedByUserId: "actor-1", storageStatus: "active",
+          objectKey: "uploads/file-linked.pdf"
+        }),
+        updateMany: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new FileService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await service.discardUnlinkedGeneratedFile("file-linked", "actor-1");
+
+    expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(storage.delete).not.toHaveBeenCalled();
+  });
+
+  it("discards and deletes a generated file only after the locked reference check stays empty", async () => {
+    const tx = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ referenced: false }]),
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-orphan", uploadedByUserId: "actor-1", storageStatus: "active",
+          objectKey: "uploads/file-orphan.pdf"
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new FileService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await service.discardUnlinkedGeneratedFile("file-orphan", "actor-1");
+
+    expect(tx.fileObject.updateMany).toHaveBeenCalledWith({
+      where: { id: "file-orphan", uploadedByUserId: "actor-1", storageStatus: "active" },
+      data: { storageStatus: "discarded" }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "file.generated_orphan.discard", businessId: "file-orphan"
+    }));
+    expect(storage.delete).toHaveBeenCalledWith("uploads/file-orphan.pdf");
+  });
+
+  it("keeps the discarded state when orphan storage deletion fails", async () => {
+    const tx = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ referenced: false }]),
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-cleanup-failed", uploadedByUserId: "actor-1", storageStatus: "active",
+          objectKey: "uploads/file-cleanup-failed.pdf"
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new FileService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    storage.delete.mockRejectedValue(new Error("cleanup failed"));
+
+    await expect(service.discardUnlinkedGeneratedFile("file-cleanup-failed", "actor-1"))
+      .resolves.toBeUndefined();
+
+    expect(tx.fileObject.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.fileObject.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: { storageStatus: "discarded" }
+    }));
+  });
+
+  it("does not delete after a concurrent cleanup loses the active-state CAS", async () => {
+    const tx = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ referenced: false }]),
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-raced", uploadedByUserId: "actor-1", storageStatus: "active",
+          objectKey: "uploads/file-raced.pdf"
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new FileService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await service.discardUnlinkedGeneratedFile("file-raced", "actor-1");
+
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(storage.delete).not.toHaveBeenCalled();
+  });
+
   it("does not let super_admin bypass a governed contract formal-file ACL", async () => {
     const service = new FileService(
       {} as PrismaService,
@@ -1029,7 +1246,8 @@ describe("FileService", () => {
       approvalFormGenerationClaim: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)),
+      fileObject: { findUnique: jest.fn().mockResolvedValue(null) }
     } as unknown as PrismaService;
     const service = new FileService(
       prisma,
@@ -1065,6 +1283,110 @@ describe("FileService", () => {
     expect(storage.delete).not.toHaveBeenCalled();
   });
 
+  it("returns a committed ordinary upload when the transaction acknowledgement is lost", async () => {
+    const acknowledgementError = new Error("transaction acknowledgement lost");
+    let persisted: Record<string, unknown> | null = null;
+    const tx = {
+      fileObject: {
+        create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+          persisted = { ...data, createdAt: new Date() };
+          return persisted;
+        })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => {
+        await callback(tx);
+        throw acknowledgementError;
+      }),
+      fileObject: { findUnique: jest.fn(async () => persisted) }
+    };
+    const service = new FileService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    const result = await service.uploadPrivateFile({
+      originalName: "合同附件.pdf", mimeType: "application/pdf", sizeBytes: 12,
+      uploadedByUserId: "contract-staff-1", buffer: Buffer.from("private-file")
+    });
+
+    expect(result.id).toBe((tx.fileObject.create.mock.calls[0]?.[0].data as { id: string }).id);
+    expect(storage.delete).not.toHaveBeenCalled();
+  });
+
+  it("returns a committed settlement-claim upload only when the claim points to its preallocated id", async () => {
+    const acknowledgementError = new Error("transaction acknowledgement lost");
+    let persisted: Record<string, unknown> | null = null;
+    let uploadedFileId: string | null = null;
+    const claim = {
+      updateMany: jest.fn(async (args: { data: { uploadedFileId: string } }) => {
+        uploadedFileId = args.data.uploadedFileId;
+        return { count: 1 };
+      }),
+      findFirst: jest.fn(async ({ where }: { where: { uploadedFileId: string } }) =>
+        where.uploadedFileId === uploadedFileId ? { settlementId: "settlement-1" } : null
+      )
+    };
+    const tx = {
+      fileObject: {
+        create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+          persisted = { ...data, createdAt: new Date() };
+          return persisted;
+        })
+      },
+      settlementSignedDocumentGenerationClaim: claim
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => {
+        await callback(tx);
+        throw acknowledgementError;
+      }),
+      fileObject: { findUnique: jest.fn(async () => persisted) },
+      settlementSignedDocumentGenerationClaim: claim
+    };
+    const service = new FileService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    const result = await service.uploadPrivateFile({
+      originalName: "结算签名合成件.pdf", mimeType: "application/pdf", sizeBytes: 12,
+      uploadedByUserId: "contract-director-1", buffer: Buffer.from("private-file"),
+      settlementSignedDocumentGenerationClaim: {
+        settlementId: "settlement-1", claimToken: "123e4567-e89b-42d3-a456-426614174000"
+      }
+    });
+
+    expect(result.id).toBe(uploadedFileId);
+    expect(claim.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ uploadedFileId })
+    }));
+    expect(storage.delete).not.toHaveBeenCalled();
+  });
+
+  it("does not delete storage when commit verification itself fails", async () => {
+    const transactionError = new Error("transaction acknowledgement lost");
+    const prisma = {
+      $transaction: jest.fn().mockRejectedValue(transactionError),
+      fileObject: { findUnique: jest.fn().mockRejectedValue(new Error("database unavailable")) }
+    };
+    const service = new FileService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(service.uploadPrivateFile({
+      originalName: "合同附件.pdf", mimeType: "application/pdf", sizeBytes: 12,
+      uploadedByUserId: "contract-staff-1", buffer: Buffer.from("private-file")
+    })).rejects.toThrow("文件登记结果暂时无法确认");
+
+    expect(storage.delete).not.toHaveBeenCalled();
+  });
+
   it("claim CAS 丢失时回滚文件登记并清理已写入 COS，不留孤儿", async () => {
     const tx = {
       fileObject: { create: jest.fn().mockResolvedValue({
@@ -1079,7 +1401,8 @@ describe("FileService", () => {
       approvalFormGenerationClaim: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)),
+      fileObject: { findUnique: jest.fn().mockResolvedValue(null) }
     } as unknown as PrismaService;
     const service = new FileService(
       prisma,
@@ -1133,7 +1456,8 @@ describe("FileService", () => {
       const prisma = {
         $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
           callback(tx)
-        )
+        ),
+        fileObject: { findUnique: jest.fn().mockResolvedValue(null) }
       } as unknown as PrismaService;
       const service = new FileService(
         prisma,
@@ -1184,7 +1508,8 @@ describe("FileService", () => {
       }
     );
     const prisma = {
-      $transaction: jest.fn().mockRejectedValue(transactionError)
+      $transaction: jest.fn().mockRejectedValue(transactionError),
+      fileObject: { findUnique: jest.fn().mockResolvedValue(null) }
     } as unknown as PrismaService;
     const service = new FileService(
       prisma,
@@ -1214,7 +1539,11 @@ describe("FileService", () => {
       expect(loggerError).toHaveBeenCalledTimes(1);
 
       const logged = JSON.stringify(loggerError.mock.calls);
-      expect(logged).toContain(objectKey);
+      expect(logged).toContain(
+        createHash("sha256").update(objectKey).digest("hex").slice(0, 16)
+      );
+      expect(logged).not.toContain(objectKey);
+      expect(logged).not.toContain("敏感合同附件.pdf");
       expect(logged).toContain("database_transaction");
       expect(logged).toContain("orphan_cleanup");
       expect(logged).toContain("PrismaClientKnownRequestError");

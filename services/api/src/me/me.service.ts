@@ -371,7 +371,8 @@ export class MeService {
         projectNameById,
         "上传结算签认件",
         "上传后等待合同部主管确认归档",
-        "primary"
+        "primary",
+        "legacy"
       )),
       ...(await this.settlementArchiveWorkItems(
         this.projectIdsFor(scopes, ["settlement.archive.confirm"]),
@@ -379,7 +380,21 @@ export class MeService {
         projectNameById,
         "确认结算归档",
         "确认后结算生效，可申请付款",
-        "warning"
+        "warning",
+        "legacy"
+      )),
+      ...(await this.settlementArchiveWorkItems(
+        this.projectIdsFor(scopes, ["settlement.archive.confirm"]),
+        ["pending_archive_confirm"],
+        projectNameById,
+        "确认最终结算文件",
+        "确认后结算生效，可申请付款",
+        "warning",
+        "governed"
+      )),
+      ...(await this.failedSettlementGenerationWorkItems(
+        this.projectIdsFor(scopes, ["settlement.archive.confirm"]),
+        projectNameById
       )),
       ...(await this.approvalWorkItems(scopes, userId, "pending", evaluatedAt))
     ];
@@ -812,14 +827,23 @@ export class MeService {
     projectNameById: ReadonlyMap<string, string>,
     currentNode: string,
     nextAction: string,
-    tone: WorkbenchCardTone
+    tone: WorkbenchCardTone,
+    governanceMode?: "governed" | "legacy"
   ): Promise<WorkItem[]> {
     if (!projectIds.length) {
       return [];
     }
 
     const settlements = await this.prisma.settlement.findMany({
-      where: { projectId: { in: projectIds }, status: { in: statuses } },
+      where: {
+        projectId: { in: projectIds },
+        status: { in: statuses },
+        ...(governanceMode === "governed"
+          ? { governanceVersion: 1 }
+          : governanceMode === "legacy"
+            ? { governanceVersion: null }
+            : {})
+      },
       orderBy: { updatedAt: "desc" },
       take: 30,
       select: {
@@ -829,6 +853,7 @@ export class MeService {
         code: true,
         periodLabel: true,
         amountCents: true,
+        governanceVersion: true,
         updatedAt: true
       }
     });
@@ -853,6 +878,93 @@ export class MeService {
       targetPath: `/结算管理/${settlement.code}`,
       tone
     }));
+  }
+
+  private async failedSettlementGenerationWorkItems(
+    projectIds: string[],
+    projectNameById: ReadonlyMap<string, string>
+  ): Promise<WorkItem[]> {
+    if (!projectIds.length || !this.prisma.settlementSignedDocumentGenerationClaim) {
+      return [];
+    }
+    // Restrict the parent business rows first; claim facts are only read for visible settlements.
+    const settlements = await this.prisma.settlement.findMany({
+      where: {
+        projectId: { in: projectIds },
+        governanceVersion: 1,
+        status: "pending_generation"
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 30,
+      select: {
+        id: true,
+        projectId: true,
+        contractId: true,
+        code: true,
+        periodLabel: true,
+        amountCents: true,
+        updatedAt: true
+      }
+    });
+    if (!settlements.length) return [];
+    const generationClaims = await this.prisma.settlementSignedDocumentGenerationClaim.findMany({
+      where: {
+        settlementId: { in: settlements.map((settlement) => settlement.id) }
+      },
+      select: {
+        settlementId: true,
+        status: true,
+        claimedAt: true,
+        uploadedFileId: true,
+        safeFailureCode: true
+      }
+    });
+    const claimBySettlementId = new Map(
+      generationClaims.map((claim) => [claim.settlementId, claim])
+    );
+    const staleBefore = Date.now() - 5 * 60 * 1000;
+    const failedSettlementIds = new Set(
+      settlements
+        .filter((settlement) => {
+          const claim = claimBySettlementId.get(settlement.id);
+          if (!claim) return true;
+          if (claim.safeFailureCode) return true;
+          if (claim.uploadedFileId && claim.status !== "completed") return true;
+          return claim.status === "pending" && claim.claimedAt.getTime() < staleBefore;
+        })
+        .map((settlement) => settlement.id)
+    );
+    if (!failedSettlementIds.size) return [];
+    const contracts = await this.prisma.contract.findMany({
+      where: {
+        id: {
+          in: [
+            ...new Set(
+              settlements
+                .filter((settlement) => failedSettlementIds.has(settlement.id))
+                .map((settlement) => settlement.contractId)
+            )
+          ]
+        }
+      },
+      select: { id: true, name: true }
+    });
+    const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
+    return settlements
+      .filter((settlement) => failedSettlementIds.has(settlement.id))
+      .map((settlement) => ({
+        id: `settlement-generation-retry:${settlement.id}`,
+        type: "archive" as const,
+        title: contractById.get(settlement.contractId)?.name ?? `结算 ${settlement.periodLabel}`,
+        projectName: projectNameById.get(settlement.projectId) ?? settlement.projectId,
+        businessCode: settlement.code,
+        amountText: this.amountText(settlement.amountCents),
+        currentNode: "最终结算文件生成失败",
+        stayedText: this.stayedText(settlement.updatedAt),
+        nextAction: "重试生成结算签名合成件",
+        targetPath: `/结算管理/${settlement.code}`,
+        tone: "danger" as const
+      }));
   }
 
   private async approvalWorkItems(

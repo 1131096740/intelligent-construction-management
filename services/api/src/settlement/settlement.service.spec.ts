@@ -1348,9 +1348,10 @@ describe("SettlementService", () => {
         status: {
           in: [
             "draft",
-              "in_approval",
-              "approval_pending",
-              "approved_pending_archive",
+          "in_approval",
+          "approval_pending",
+          "pending_generation",
+          "approved_pending_archive",
               "archive_pending",
               "pending_archive_confirm",
             "effective",
@@ -1594,6 +1595,7 @@ describe("SettlementService", () => {
           in: [
             "in_approval",
             "approval_pending",
+            "pending_generation",
             "approved_pending_archive",
             "archive_pending",
             "pending_archive_confirm",

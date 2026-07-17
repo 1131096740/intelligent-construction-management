@@ -32,6 +32,13 @@ export class ArchiveService {
           ...(archiveRecordWhere ? { where: archiveRecordWhere } : {})
         })
       ]);
+    const governedSettlementEvidence = await this.findGovernedSettlementEvidence(
+      visibleProjectIds,
+      take
+    );
+    const governedEvidenceFileIds = new Set(
+      governedSettlementEvidence.map((row) => row.fileId)
+    );
 
     const contractVersionIds = [
       ...contractArchives.map((row) => row.contractVersionId),
@@ -123,10 +130,11 @@ export class ArchiveService {
           createdAt: row.createdAt
         };
       }),
-      ...settlementArchives.map((row) => {
+      ...settlementArchives.flatMap((row) => {
         const settlement = settlementById.get(row.settlementId);
+        if (settlement?.governanceVersion === 1) return [];
         const canDownload = row.status === "confirmed" || Boolean(row.confirmedAt);
-        return {
+        return [{
           projectId: settlement?.projectId,
           id: `settlement-${row.id}`,
           documentNo: row.id,
@@ -144,8 +152,9 @@ export class ArchiveService {
           canDownload,
           disabledReason: canDownload ? null : "归档确认后开放下载",
           createdAt: row.createdAt
-        };
+        }];
       }),
+      ...governedSettlementEvidence,
       ...paymentVouchers.map((row) => {
         const payment = paymentById.get(row.paymentRequestId);
         return {
@@ -168,7 +177,13 @@ export class ArchiveService {
           createdAt: row.createdAt
         };
       }),
-      ...archiveRecords.map((row) => {
+      ...archiveRecords
+        .filter(
+          (row) =>
+            row.businessType !== "settlement" ||
+            !governedEvidenceFileIds.has(row.fileId)
+        )
+        .map((row) => {
         const ref = this.businessRef(row.businessType, row.businessId, {
           versionById,
           contractById,
@@ -244,6 +259,212 @@ export class ArchiveService {
         pending: rows.filter((row) => row.archiveStatus.includes("待")).length
       }
     };
+  }
+
+  private async findGovernedSettlementEvidence(
+    visibleProjectIds?: string[],
+    take = 100
+  ) {
+    const client = this.prisma as unknown as {
+      settlement?: {
+        findMany(args: {
+          where: {
+            governanceVersion: number;
+            projectId?: { in: string[] };
+          };
+          orderBy: { updatedAt: "desc" };
+          take: number;
+          select: {
+            id: true;
+            projectId: true;
+            code: true;
+            periodLabel: true;
+          };
+        }): Promise<
+          Array<{
+            id: string;
+            projectId: string;
+            code: string;
+            periodLabel: string;
+          }>
+        >;
+      };
+      settlementDraft?: {
+        findMany(args: {
+          where: { submittedSettlementId: { in: string[] } };
+          select: { id: true; submittedSettlementId: true };
+        }): Promise<Array<{ id: string; submittedSettlementId: string | null }>>;
+      };
+      settlementSignedDocument?: {
+        findMany(args: {
+          where: {
+            OR: Array<
+              | { settlementId: { in: string[] }; purpose: string; status: string }
+              | { settlementDraftId: { in: string[] }; purpose: string; status: string }
+            >;
+          };
+          orderBy: Array<{ createdAt: "desc" } | { id: "desc" }>;
+        }): Promise<
+          Array<{
+            id: string;
+            settlementId: string | null;
+            settlementDraftId: string | null;
+            purpose: string;
+            fileId: string;
+            status: string;
+            generationStatus: string;
+            uploadedByUserId: string | null;
+            generatedByUserId: string | null;
+            confirmedByUserId: string | null;
+            confirmedAt: Date | null;
+            createdAt: Date;
+          }>
+        >;
+      };
+      fileObject?: {
+        findMany(args: { where: { id: { in: string[] } } }): Promise<
+          Array<{
+            id: string;
+            originalName: string;
+            sizeBytes: number;
+            storageStatus?: string;
+          }>
+        >;
+      };
+      user?: {
+        findMany(args: { where: { id: { in: string[] } } }): Promise<
+          Array<{ id: string; name: string }>
+        >;
+      };
+      project?: {
+        findMany(args: { where: { id: { in: string[] } } }): Promise<
+          Array<{ id: string; name: string }>
+        >;
+      };
+    };
+    if (
+      !client.settlement ||
+      !client.settlementDraft ||
+      !client.settlementSignedDocument ||
+      !client.fileObject
+    ) {
+      return [];
+    }
+
+    // Project scope is applied before draft, evidence, file, or user records are read.
+    const settlements = await client.settlement.findMany({
+      where: {
+        governanceVersion: 1,
+        ...(visibleProjectIds ? { projectId: { in: visibleProjectIds } } : {})
+      },
+      orderBy: { updatedAt: "desc" },
+      take,
+      select: { id: true, projectId: true, code: true, periodLabel: true }
+    });
+    if (!settlements.length) return [];
+    const settlementIds = settlements.map((settlement) => settlement.id);
+    const drafts = await client.settlementDraft.findMany({
+      where: { submittedSettlementId: { in: settlementIds } },
+      select: { id: true, submittedSettlementId: true }
+    });
+    const draftIds = drafts.map((draft) => draft.id);
+    const documents = await client.settlementSignedDocument.findMany({
+      where: {
+        OR: [
+          {
+            settlementId: { in: settlementIds },
+            purpose: "final_internal_signed_copy",
+            status: "active"
+          },
+          ...(draftIds.length
+            ? [{
+                settlementDraftId: { in: draftIds },
+                purpose: "counterparty_signed_original",
+                status: "active"
+              }]
+            : [])
+        ]
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+    });
+    if (!documents.length) return [];
+
+    const files = await client.fileObject.findMany({
+      where: { id: { in: [...new Set(documents.map((document) => document.fileId))] } }
+    });
+    const userIds = [
+      ...new Set(
+        documents
+          .map((document) => document.confirmedByUserId)
+          .filter((id): id is string => Boolean(id))
+      )
+    ];
+    const projectIds = [...new Set(settlements.map((settlement) => settlement.projectId))];
+    const [users, projects] = await Promise.all([
+      client.user && userIds.length
+        ? client.user.findMany({ where: { id: { in: userIds } } })
+        : Promise.resolve([]),
+      client.project && projectIds.length
+        ? client.project.findMany({ where: { id: { in: projectIds } } })
+        : Promise.resolve([])
+    ]);
+    const settlementById = new Map(settlements.map((settlement) => [settlement.id, settlement]));
+    const settlementIdByDraftId = new Map(
+      drafts.flatMap((draft) =>
+        draft.submittedSettlementId ? [[draft.id, draft.submittedSettlementId] as const] : []
+      )
+    );
+    const fileById = new Map(files.map((file) => [file.id, file]));
+    const userById = new Map(users.map((user) => [user.id, user]));
+    const projectById = new Map(projects.map((project) => [project.id, project]));
+
+    return documents.flatMap((document) => {
+      const settlementId =
+        document.settlementId ??
+        (document.settlementDraftId
+          ? settlementIdByDraftId.get(document.settlementDraftId)
+          : undefined);
+      const settlement = settlementId ? settlementById.get(settlementId) : undefined;
+      const file = fileById.get(document.fileId);
+      if (!settlement || !file) return [];
+      const storageAvailable =
+        file.storageStatus === undefined || file.storageStatus === "active";
+      const generationComplete = ["not_applicable", "completed"].includes(
+        document.generationStatus
+      );
+      const canDownload =
+        document.status === "active" && storageAvailable && generationComplete;
+      const original = document.purpose === "counterparty_signed_original";
+      return [{
+        projectId: settlement.projectId,
+        id: `settlement-evidence-${document.id}`,
+        documentNo: document.id,
+        fileId: document.fileId,
+        fileSizeBytes: file.sizeBytes,
+        documentType: original ? "结算乙方签章原件" : "结算我方签名合成件",
+        businessRef: `${settlement.code} / ${settlement.periodLabel}`,
+        project: projectById.get(settlement.projectId)?.name ?? settlement.projectId,
+        fileSource: file.originalName,
+        archiveStatus: canDownload
+          ? "证据已冻结"
+          : storageAvailable
+            ? "文件生成中"
+            : "文件暂不可用",
+        statusTone: canDownload ? "success" as ArchiveTone : "primary" as ArchiveTone,
+        uploadDepartment: original ? "合同部" : "系统生成",
+        confirmedBy: document.confirmedByUserId
+          ? userById.get(document.confirmedByUserId)?.name ?? "确认人未读取"
+          : "-",
+        lastAction: this.date(document.confirmedAt ?? document.createdAt),
+        canDownload,
+        disabledReason: canDownload
+          ? null
+          : storageAvailable
+            ? "文件完成生成后开放下载"
+            : "文件当前不可用，请联系管理员处理",
+        createdAt: document.createdAt
+      }];
+    });
   }
 
   private limit(rawLimit?: string | number) {

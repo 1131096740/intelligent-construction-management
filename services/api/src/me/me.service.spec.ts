@@ -6,6 +6,200 @@ const PNG = Buffer.from(
 );
 
 describe("MeService", () => {
+  it("keeps legacy upload work separate from governed archive confirmation", async () => {
+    const prisma = {
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      contract: { findMany: jest.fn() }
+    };
+    const service = new MeService(prisma as never, {} as never) as unknown as {
+      settlementArchiveWorkItems(
+        projectIds: string[],
+        statuses: string[],
+        names: ReadonlyMap<string, string>,
+        currentNode: string,
+        nextAction: string,
+        tone: string,
+        governanceMode: "governed" | "legacy"
+      ): Promise<unknown[]>;
+    };
+
+    await service.settlementArchiveWorkItems(
+      ["project-1"],
+      ["approved_pending_archive"],
+      new Map(),
+      "上传结算签认件",
+      "上传后等待确认",
+      "primary",
+      "legacy"
+    );
+    await service.settlementArchiveWorkItems(
+      ["project-1"],
+      ["pending_archive_confirm"],
+      new Map(),
+      "确认最终结算文件",
+      "确认后生效",
+      "warning",
+      "governed"
+    );
+
+    expect(prisma.settlement.findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: {
+          projectId: { in: ["project-1"] },
+          status: { in: ["approved_pending_archive"] },
+          governanceVersion: null
+        }
+      })
+    );
+    expect(prisma.settlement.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          projectId: { in: ["project-1"] },
+          status: { in: ["pending_archive_confirm"] },
+          governanceVersion: 1
+        }
+      })
+    );
+  });
+
+  it("creates one retry work item only for visible governed generation failures", async () => {
+    const prisma = {
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "settlement-1",
+            projectId: "project-1",
+            contractId: "contract-1",
+            code: "JS-001",
+            periodLabel: "2026-07",
+            amountCents: 10000n,
+            updatedAt: new Date("2026-07-17T01:00:00.000Z")
+          },
+          {
+            id: "settlement-2",
+            projectId: "project-1",
+            contractId: "contract-2",
+            code: "JS-002",
+            periodLabel: "2026-07",
+            amountCents: 20000n,
+            updatedAt: new Date("2026-07-17T02:00:00.000Z")
+          },
+          {
+            id: "settlement-3",
+            projectId: "project-1",
+            contractId: "contract-3",
+            code: "JS-003",
+            periodLabel: "2026-07",
+            amountCents: 30000n,
+            updatedAt: new Date("2026-07-17T03:00:00.000Z")
+          },
+          {
+            id: "settlement-4",
+            projectId: "project-1",
+            contractId: "contract-4",
+            code: "JS-004",
+            periodLabel: "2026-07",
+            amountCents: 40000n,
+            updatedAt: new Date("2026-07-17T04:00:00.000Z")
+          }
+        ])
+      },
+      settlementSignedDocumentGenerationClaim: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            settlementId: "settlement-1",
+            status: "pending",
+            claimedAt: new Date(),
+            uploadedFileId: null,
+            safeFailureCode: null
+          },
+          {
+            settlementId: "settlement-2",
+            status: "failed",
+            claimedAt: new Date(),
+            uploadedFileId: null,
+            safeFailureCode: "render_failed"
+          },
+          {
+            settlementId: "settlement-3",
+            status: "uploaded",
+            claimedAt: new Date(),
+            uploadedFileId: "file-3",
+            safeFailureCode: null
+          },
+          {
+            settlementId: "settlement-4",
+            status: "pending",
+            claimedAt: new Date(Date.now() - 6 * 60 * 1000),
+            uploadedFileId: null,
+            safeFailureCode: null
+          }
+        ])
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-2", name: "已失败结算的合同" },
+          { id: "contract-3", name: "已上传未激活的合同" },
+          { id: "contract-4", name: "租约超时的合同" }
+        ])
+      }
+    };
+    const service = new MeService(prisma as never, {} as never) as unknown as {
+      failedSettlementGenerationWorkItems(
+        projectIds: string[],
+        names: ReadonlyMap<string, string>
+      ): Promise<Array<{ id: string; currentNode: string; nextAction: string }>>;
+    };
+
+    const items = await service.failedSettlementGenerationWorkItems(
+      ["project-1"],
+      new Map([["project-1", "项目一"]])
+    );
+
+    expect(prisma.settlement.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          projectId: { in: ["project-1"] },
+          governanceVersion: 1,
+          status: "pending_generation"
+        }
+      })
+    );
+    expect(prisma.settlementSignedDocumentGenerationClaim.findMany).toHaveBeenCalledWith({
+      where: {
+        settlementId: {
+          in: ["settlement-1", "settlement-2", "settlement-3", "settlement-4"]
+        }
+      },
+      select: {
+        settlementId: true,
+        status: true,
+        claimedAt: true,
+        uploadedFileId: true,
+        safeFailureCode: true
+      }
+    });
+    expect(items).toEqual([
+      expect.objectContaining({
+        id: "settlement-generation-retry:settlement-2",
+        currentNode: "最终结算文件生成失败",
+        nextAction: "重试生成结算签名合成件"
+      }),
+      expect.objectContaining({
+        id: "settlement-generation-retry:settlement-3",
+        currentNode: "最终结算文件生成失败",
+        nextAction: "重试生成结算签名合成件"
+      }),
+      expect.objectContaining({
+        id: "settlement-generation-retry:settlement-4",
+        currentNode: "最终结算文件生成失败",
+        nextAction: "重试生成结算签名合成件"
+      })
+    ]);
+  });
+
   it("creates distinct handler work items for offline sealing and final-file upload", async () => {
     const prisma = {
       contractSealTask: { findMany: jest.fn().mockResolvedValue([

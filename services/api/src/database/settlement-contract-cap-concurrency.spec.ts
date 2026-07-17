@@ -238,7 +238,8 @@ describe("settlement contract cap database concurrency", () => {
         {
           assertReadyForSubmission: jest.fn().mockResolvedValue({}),
           persistDenial: jest.fn().mockResolvedValue(undefined)
-        } as never
+        } as never,
+        { assertCurrentFacts: jest.fn().mockResolvedValue({}) } as never
       );
       await expect(draftSubmission.submitDraft(
         "project-1",

@@ -21,6 +21,7 @@ export const SETTLEMENT_STATUSES = [
   "approval_pending",
   "approval_rejected",
   "withdrawn",
+  "pending_generation",
   "approved_pending_archive",
   "archive_pending",
   "pending_archive_confirm",
@@ -35,6 +36,7 @@ export type SettlementStatus = (typeof SETTLEMENT_STATUSES)[number];
 export const SETTLEMENT_OCCUPANCY_STATUSES = [
   "in_approval",
   "approval_pending",
+  "pending_generation",
   "approved_pending_archive",
   "archive_pending",
   "pending_archive_confirm",

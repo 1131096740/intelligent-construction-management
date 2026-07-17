@@ -1,13 +1,44 @@
 import { resolve } from "node:path";
 import * as ExcelJS from "exceljs";
+import { degrees, PDFDocument as PdfLibDocument } from "pdf-lib";
 import PDFDocument = require("pdfkit");
 
 const FONT_PATH = resolve(__dirname, "../../assets/fonts/NotoSansSC-Regular.otf");
-const SIGNATURE_ROWS_PER_PAGE = 12;
+const PDF_LINE_ROWS_PER_PAGE = 9;
+const PDF_TABLE_HEADERS = [
+  "序号",
+  "名称",
+  "规格型号",
+  "单位",
+  "数量",
+  "不含税单价",
+  "含税单价",
+  "税率",
+  "不含税金额",
+  "税额",
+  "含税金额",
+  "备注"
+] as const;
+export const SETTLEMENT_SIGNATURE_BOARD_LAYOUT = {
+  margin: 24,
+  boardTop: 470,
+  boardHeight: 78,
+  imageTopOffset: 18,
+  imageHeight: 28,
+  dateTopOffset: 61,
+  dateHeight: 10
+} as const;
+
+export type SettlementDocumentContractType =
+  | "material_purchase"
+  | "equipment_rental"
+  | "labor_subcontract"
+  | "professional_subcontract";
 
 export interface SettlementApprovalSignatureRow {
   nodeName: string;
   roleName: string;
+  roleKey?: string | null;
   approverName: string;
   comment: string;
   approvedAt: Date | null;
@@ -34,6 +65,9 @@ export interface SettlementDocumentInput {
   previousEffectiveSettlementCents: bigint;
   isFinal: boolean;
   generatedAt: Date;
+  documentRevision?: number | null;
+  contractTypeKey?: SettlementDocumentContractType | null;
+  fieldReviewerRoleKey?: "material_staff" | "engineering_foreman" | "engineering_tech" | null;
   lines: SettlementDocumentLine[];
   approvalRows: SettlementApprovalSignatureRow[];
 }
@@ -41,6 +75,7 @@ export interface SettlementDocumentInput {
 export interface SettlementDocumentLine {
   sourceType: "contract_bill_row" | "manual_adjustment";
   name: string;
+  specification?: string | null;
   unit: string | null;
   quantity: string | null;
   taxInclusiveUnitPrice: string | null;
@@ -278,8 +313,14 @@ export async function renderSettlementDraftExcel(input: SettlementDocumentInput)
 }
 
 export async function renderSettlementArchivePdf(input: SettlementDocumentInput): Promise<Buffer> {
-  const margin = 32;
-  const doc = new PDFDocument({ size: "A4", layout: "landscape", margin, bufferPages: true });
+  const margin = 24;
+  const doc = new PDFDocument({
+    size: "A4",
+    layout: "landscape",
+    margin,
+    autoFirstPage: false,
+    compress: false
+  });
   const chunks: Buffer[] = [];
   doc.on("data", (chunk: Buffer) => chunks.push(chunk));
   const done = new Promise<Buffer>((resolvePromise) => {
@@ -287,263 +328,327 @@ export async function renderSettlementArchivePdf(input: SettlementDocumentInput)
   });
 
   doc.registerFont("cn", FONT_PATH);
-  doc.font("cn");
-
-  const pageWidth = doc.page.width;
-  const contentWidth = pageWidth - margin * 2;
-  doc.fontSize(18).text("工程结算单", margin, margin, {
-    width: contentWidth,
-    align: "center"
-  });
-  doc.moveDown(0.5);
-
-  let y = doc.y;
-  const signaturePages = pdfSignatureBoardPages(input);
-  const signatureBoardHeight = Math.max(
-    ...signaturePages.map((page) => pdfSignatureBoardHeight(page.rows))
-  );
-  y = drawPdfTable(
-    doc,
-    margin,
-    y,
-    [
-      ["项目名称", input.projectName, "结算编号", input.settlementCode],
-      ["合同名称", input.contractName, "合同编号", input.contractCode],
-      ["相对方", input.counterparty, "结算期次", input.periodLabel],
-      ["我方主体", input.companyEntityName, "结算类型", input.isFinal ? "最终结算" : "过程结算"]
-    ],
-    [80, 260, 80, contentWidth - 420],
-    24
-  );
-
-  y += 12;
-  y = drawPdfTable(
-    doc,
-    margin,
-    y,
-    [[
-      "发票类型",
-      input.invoiceType,
-      "税率模式",
-      input.taxMode,
-      "默认税率",
-      input.defaultTaxRatePercent ? `${input.defaultTaxRatePercent}%` : "—",
-      "税务修订",
-      input.taxFactRevision === null ? "—" : String(input.taxFactRevision)
-    ]],
-    [58, 110, 58, 92, 58, 78, 58, contentWidth - 512],
-    24
-  );
-
-  y += 10;
-  y = drawPdfTable(
-    doc,
-    margin,
-    y,
-    [
-      ["序号", "来源", "名称", "单位", "数量", "含税单价", "不含税单价", "税率", "含税金额", "不含税金额", "税额", "备注"],
-      ...input.lines.map((line, index) => {
-        const manualAdjustment = line.sourceType === "manual_adjustment";
-        return [
-          String(index + 1),
-          manualAdjustment ? "人工调整" : "合同清单项",
-          line.name,
-          line.unit ?? "-",
-          line.quantity ?? "-",
-          line.taxInclusiveUnitPrice ?? "-",
-          line.taxExclusiveUnitPrice ?? "-",
-          line.taxRatePercent === null ? "-" : `${line.taxRatePercent}%`,
-          formatYuan(line.taxInclusiveAmountCents),
-          line.taxExclusiveAmountCents === null
-            ? "-"
-            : formatYuan(line.taxExclusiveAmountCents),
-          line.taxAmountCents === null ? "-" : formatYuan(line.taxAmountCents),
-          manualAdjustment
-            ? `人工调整，不适用合同单价税额拆分${line.remark ? `；${line.remark}` : ""}`
-            : line.remark ?? ""
-        ];
-      })
-    ],
-    [24, 52, 82, 30, 42, 54, 54, 36, 66, 66, 54, contentWidth - 560],
-    28,
-    {
-      bottomReserved: signatureBoardHeight + 12,
-      repeatHeader: true,
-      rightAlignedColumns: [4, 5, 6, 8, 9, 10]
-    }
-  );
-
-  y += 10;
-  y = drawPdfTable(
-    doc,
-    margin,
-    y,
-    [
-      ["序号", "来源", "期前累计结算金额", "本期结算金额", "期后累计结算金额", "本期可付金额", "备注"],
-      ...settlementDocumentRows(input).map((row, index) => [
-        String(index + 1),
-        row.source,
-        formatYuan(row.previousCumulativeCents),
-        formatYuan(row.currentSettlementCents),
-        formatYuan(row.afterCumulativeCents),
-        formatYuan(row.payableAmountCents),
-        row.remark
-      ])
-    ],
-    [34, 98, 124, 118, 124, 110, contentWidth - 608],
-    28,
-    { bottomReserved: signatureBoardHeight + 12, repeatHeader: true }
-  );
-
-  if (y + signatureBoardHeight + 12 > doc.page.height - margin) {
-    doc.addPage();
-  }
-  let range = doc.bufferedPageRange();
-  while (range.count < signaturePages.length) {
-    doc.addPage();
-    range = doc.bufferedPageRange();
-  }
-  const signaturePageIndexes = settlementSignatureBoardPageIndexes(
-    range.start,
-    range.count,
-    signaturePages.length
-  );
-  for (let offset = 0; offset < signaturePageIndexes.length; offset += 1) {
-    const pageIndex = signaturePageIndexes[offset];
-    doc.switchToPage(pageIndex);
-    const signaturePage = signaturePages[offset];
-    drawSignatureBoard(doc, margin, contentWidth, signaturePage.rows, signaturePage.images);
-  }
-  doc.flushPages();
+  const pages = settlementPdfPagePlan(input);
+  pages.forEach((page) => drawSettlementPdfPage(doc, input, page, margin));
 
   doc.end();
-  return done;
-}
-
-function pdfSignatureBoardPages(input: SettlementDocumentInput) {
-  const sourceRows = input.approvalRows.length
-    ? input.approvalRows
-    : [{ nodeName: "", roleName: "", approverName: "", comment: "", approvedAt: null }];
-  const pages: Array<{ rows: string[][]; images: Array<Buffer | null | undefined> }> = [];
-
-  for (let index = 0; index < sourceRows.length; index += SIGNATURE_ROWS_PER_PAGE) {
-    const slice = sourceRows.slice(index, index + SIGNATURE_ROWS_PER_PAGE);
-    pages.push({
-      rows: slice.map((row) => [
-        row.nodeName,
-        row.roleName,
-        row.approverName,
-        row.comment,
-        row.approvedAt ? formatDateTime(row.approvedAt) : "",
-        row.approverName
-      ]),
-      images: slice.map((row) => row.signatureImage ?? null)
-    });
+  const rendered = await done;
+  const normalized = await PdfLibDocument.load(rendered);
+  for (const page of normalized.getPages()) {
+    const { width, height } = page.getSize();
+    page.setMediaBox(0, 0, width, height);
+    page.setCropBox(0, 0, width, height);
+    page.setRotation(degrees(0));
   }
-
-  return pages;
+  return Buffer.from(await normalized.save({ useObjectStreams: false }));
 }
 
-function pdfSignatureBoardHeight(rows: string[][]) {
-  return 18 + (rows.length + 1) * 28;
+export interface SettlementPdfPagePlan {
+  pageNumber: number;
+  pageCount: number;
+  settlementCode: string;
+  revisionLabel: string;
+  pageMarker: string;
+  lineStartIndex: number;
+  lines: SettlementDocumentLine[];
+  tableHeaders: readonly string[];
+  signatureRoleLabels: readonly string[];
 }
 
-function drawSignatureBoard(
+export function settlementPdfPagePlan(input: SettlementDocumentInput): SettlementPdfPagePlan[] {
+  const linePages: SettlementDocumentLine[][] = [];
+  for (let index = 0; index < input.lines.length; index += PDF_LINE_ROWS_PER_PAGE) {
+    linePages.push(input.lines.slice(index, index + PDF_LINE_ROWS_PER_PAGE));
+  }
+  if (!linePages.length) linePages.push([]);
+  const signatureRoleLabels = settlementSignatureRoleSlots(input).map((slot) => slot.label);
+  return linePages.map((lines, pageIndex) => ({
+    pageNumber: pageIndex + 1,
+    pageCount: linePages.length,
+    settlementCode: input.settlementCode,
+    revisionLabel: `R${input.documentRevision ?? 1}`,
+    pageMarker: `第 ${pageIndex + 1}/${linePages.length} 页`,
+    lineStartIndex: pageIndex * PDF_LINE_ROWS_PER_PAGE,
+    lines,
+    tableHeaders: PDF_TABLE_HEADERS,
+    signatureRoleLabels
+  }));
+}
+
+export function settlementSignatureRoleSlots(input: SettlementDocumentInput) {
+  const contractType = input.contractTypeKey;
+  const fieldRole = input.fieldReviewerRoleKey;
+  const materialRoute =
+    contractType === "material_purchase" ||
+    contractType === "equipment_rental" ||
+    fieldRole === "material_staff";
+  const engineeringRoute =
+    contractType === "labor_subcontract" ||
+    contractType === "professional_subcontract" ||
+    fieldRole === "engineering_foreman" ||
+    fieldRole === "engineering_tech";
+  if (materialRoute) {
+    return [
+      { key: "counterparty", label: "乙方" },
+      { key: "preparer", label: "编制人" },
+      { key: "material_staff", label: "物资员" },
+      { key: "material_director", label: "物资主管" },
+      { key: "contract_director", label: "合同部主管" },
+      { key: "project_manager", label: "项目经理" },
+      { key: "finance_director", label: "财务主管" }
+    ] as const;
+  }
+  if (engineeringRoute) {
+    const fieldLabel = fieldRole === "engineering_tech" ? "施工员" : "工长";
+    return [
+      { key: "counterparty", label: "乙方" },
+      { key: "preparer", label: "编制人" },
+      { key: fieldRole ?? "engineering_foreman", label: fieldLabel },
+      { key: "engineering_director", label: "项目总工" },
+      { key: "contract_director", label: "合同部主管" },
+      { key: "project_manager", label: "项目经理" },
+      { key: "finance_director", label: "财务主管" }
+    ] as const;
+  }
+  return [
+    { key: "counterparty", label: "乙方" },
+    { key: "preparer", label: "编制人" },
+    { key: "field_reviewer", label: "现场复核人" },
+    { key: "route_supervisor", label: "业务主管" },
+    { key: "contract_director", label: "合同部主管" },
+    { key: "project_manager", label: "项目经理" },
+    { key: "finance_director", label: "财务主管" }
+  ] as const;
+}
+
+function drawSettlementPdfPage(
   doc: PDFKit.PDFDocument,
-  margin: number,
-  contentWidth: number,
-  rows: string[][],
-  images: Array<Buffer | null | undefined>
+  input: SettlementDocumentInput,
+  page: SettlementPdfPagePlan,
+  margin: number
 ) {
-  const boardY = doc.page.height - margin - (pdfSignatureBoardHeight(rows) - 18);
-  doc.fontSize(11).text("审批人员签字板块", margin, boardY - 18);
-  drawPdfTable(
-    doc,
+  doc.addPage({ size: "A4", layout: "landscape", margin });
+  doc.font("cn");
+  const pageWidth = doc.page.width;
+  const contentWidth = pageWidth - margin * 2;
+  doc.fontSize(16).text("工程结算单", margin, 18, { width: contentWidth, align: "center" });
+  doc.fontSize(7.5).fillColor("#334155").text(
+    `结算编号：${page.settlementCode}    文件 revision：${page.revisionLabel}`,
     margin,
-    boardY,
+    44,
+    { width: contentWidth / 2, align: "left" }
+  );
+  doc.text(page.pageMarker, margin + contentWidth / 2, 44, {
+    width: contentWidth / 2,
+    align: "right"
+  });
+  doc.fillColor("#111827");
+
+  drawCompactInfoRows(doc, input, margin, 60, contentWidth);
+  drawSettlementLineTable(doc, page, margin, 136, contentWidth);
+  if (page.pageNumber === page.pageCount) {
+    drawSettlementSummary(doc, input, margin, 408, contentWidth);
+  }
+  drawSingleRowSignatureBoard(doc, input, margin, contentWidth);
+  doc.fontSize(6.5).fillColor("#475569").text(
+    `生成日期：${formatDate(input.generatedAt)}  ·  本页表头及签名栏为冻结版式`,
+    margin,
+    558,
+    { width: contentWidth, align: "center" }
+  );
+  doc.fillColor("#111827");
+}
+
+function drawCompactInfoRows(
+  doc: PDFKit.PDFDocument,
+  input: SettlementDocumentInput,
+  x: number,
+  y: number,
+  contentWidth: number
+) {
+  const widths = [58, 210, 58, 150, 58, contentWidth - 534];
+  drawFixedRow(doc, x, y, ["项目", input.projectName, "合同", input.contractName, "乙方", input.counterparty], widths, 21, [0, 2, 4]);
+  drawFixedRow(doc, x, y + 21, ["我方主体", input.companyEntityName, "合同编号", input.contractCode, "结算期次", input.periodLabel], widths, 21, [0, 2, 4]);
+  drawFixedRow(
+    doc,
+    x,
+    y + 42,
     [
-      ["审批节点", "审批角色", "审批人姓名", "审批意见", "审批时间", "手写签名图/姓名"],
-      ...rows
+      "发票类型", input.invoiceType,
+      "税率", input.defaultTaxRatePercent ? `${input.defaultTaxRatePercent}%` : "—",
+      "税务事实", `修订 ${input.taxFactRevision ?? "—"} · ${input.taxMode}`
     ],
-    [128, 140, 82, contentWidth - 128 - 140 - 82 - 116 - 120 - 100, 116, 100],
-    28,
-    {
-      imageColumn: 5,
-      rowImages: images
-    }
+    widths,
+    22,
+    [0, 2, 4]
   );
 }
 
-function drawPdfTable(
+function drawSettlementLineTable(
+  doc: PDFKit.PDFDocument,
+  page: SettlementPdfPagePlan,
+  x: number,
+  y: number,
+  contentWidth: number
+) {
+  const widths = [26, 94, 84, 34, 48, 64, 64, 40, 70, 56, 70, contentWidth - 650];
+  drawFixedRow(doc, x, y, [...PDF_TABLE_HEADERS], widths, 30, PDF_TABLE_HEADERS.map((_, index) => index), 6.5);
+  page.lines.forEach((line, index) => {
+    const manualAdjustment = line.sourceType === "manual_adjustment";
+    drawFixedRow(
+      doc,
+      x,
+      y + 30 + index * 26,
+      [
+        String(page.lineStartIndex + index + 1),
+        line.name,
+        line.specification ?? "—",
+        line.unit ?? "—",
+        line.quantity ?? "—",
+        line.taxExclusiveUnitPrice ?? "—",
+        line.taxInclusiveUnitPrice ?? "—",
+        line.taxRatePercent === null ? "—" : `${line.taxRatePercent}%`,
+        line.taxExclusiveAmountCents === null ? "—" : centsToYuanText(line.taxExclusiveAmountCents),
+        line.taxAmountCents === null ? "—" : centsToYuanText(line.taxAmountCents),
+        centsToYuanText(line.taxInclusiveAmountCents),
+        manualAdjustment
+          ? `人工调整${line.remark ? `；${line.remark}` : ""}`
+          : line.remark ?? ""
+      ],
+      widths,
+      26,
+      [],
+      6.5,
+      [0, 4, 5, 6, 7, 8, 9, 10]
+    );
+  });
+}
+
+function drawSettlementSummary(
+  doc: PDFKit.PDFDocument,
+  input: SettlementDocumentInput,
+  x: number,
+  y: number,
+  contentWidth: number
+) {
+  const row = settlementDocumentRows(input)[0];
+  const widths = [88, 118, 118, 118, 118, contentWidth - 560];
+  drawFixedRow(doc, x, y, ["期前累计", "本期结算", "期后累计", "本期可付", "结算类型", "说明"], widths, 18, [0, 1, 2, 3, 4, 5], 6.5);
+  drawFixedRow(
+    doc,
+    x,
+    y + 18,
+    [
+      centsToYuanText(row.previousCumulativeCents),
+      centsToYuanText(row.currentSettlementCents),
+      centsToYuanText(row.afterCumulativeCents),
+      centsToYuanText(row.payableAmountCents),
+      row.source,
+      row.remark
+    ],
+    widths,
+    26,
+    [],
+    6.5,
+    [0, 1, 2, 3]
+  );
+}
+
+function drawSingleRowSignatureBoard(
+  doc: PDFKit.PDFDocument,
+  input: SettlementDocumentInput,
+  margin: number,
+  contentWidth: number
+) {
+  const boardY = SETTLEMENT_SIGNATURE_BOARD_LAYOUT.boardTop;
+  const boardHeight = SETTLEMENT_SIGNATURE_BOARD_LAYOUT.boardHeight;
+  const slots = settlementSignatureRoleSlots(input);
+  const cellWidth = contentWidth / slots.length;
+  slots.forEach((slot, index) => {
+    const x = margin + index * cellWidth;
+    const evidence = findSignatureEvidence(input.approvalRows, slot.key, slot.label);
+    doc.rect(x, boardY, cellWidth, boardHeight).strokeColor("#64748b").lineWidth(0.6).stroke();
+    doc.font("cn").fillColor("#111827").fontSize(8).text(slot.label, x + 3, boardY + 4, {
+      width: cellWidth - 6,
+      height: 12,
+      align: "center"
+    });
+    if (evidence?.signatureImage) {
+      try {
+        doc.image(evidence.signatureImage, x + 8, boardY + SETTLEMENT_SIGNATURE_BOARD_LAYOUT.imageTopOffset, {
+          fit: [cellWidth - 16, SETTLEMENT_SIGNATURE_BOARD_LAYOUT.imageHeight],
+          align: "center",
+          valign: "center"
+        });
+      } catch {
+        drawSignatureFallback(doc, evidence.approverName, x, boardY, cellWidth);
+      }
+    } else {
+      drawSignatureFallback(doc, evidence?.approverName ?? "", x, boardY, cellWidth);
+    }
+    doc.fontSize(6.5).fillColor("#334155").text(
+      evidence?.approvedAt ? formatDate(evidence.approvedAt) : "日期：____-__-__",
+      x + 3,
+      boardY + SETTLEMENT_SIGNATURE_BOARD_LAYOUT.dateTopOffset,
+      { width: cellWidth - 6, height: SETTLEMENT_SIGNATURE_BOARD_LAYOUT.dateHeight, align: "center" }
+    );
+  });
+  doc.strokeColor("#000000").fillColor("#111827").lineWidth(1);
+}
+
+function drawSignatureFallback(
+  doc: PDFKit.PDFDocument,
+  name: string,
+  x: number,
+  y: number,
+  width: number
+) {
+  doc.font("cn").fontSize(7).fillColor("#334155").text(name || "签名：________", x + 4, y + 32, {
+    width: width - 8,
+    height: 12,
+    align: "center"
+  });
+}
+
+function findSignatureEvidence(
+  rows: SettlementApprovalSignatureRow[],
+  roleKey: string,
+  roleLabel: string
+) {
+  return rows.find((row) =>
+    row.roleKey === roleKey ||
+    row.roleName === roleLabel ||
+    row.nodeName === roleLabel
+  );
+}
+
+function drawFixedRow(
   doc: PDFKit.PDFDocument,
   x: number,
   y: number,
-  rows: string[][],
+  values: string[],
   widths: number[],
   rowHeight: number,
-  options: {
-    bottomReserved?: number;
-    imageColumn?: number;
-    rowImages?: Array<Buffer | null | undefined>;
-    repeatHeader?: boolean;
-    rightAlignedColumns?: number[];
-  } = {}
+  highlightedColumns: number[] = [],
+  fontSize = 7.5,
+  rightAlignedColumns: number[] = []
 ) {
-  let currentY = y;
-  const drawRow = (row: string[], rowIndex: number, dataIndex: number) => {
-    let currentX = x;
-    row.forEach((value, columnIndex) => {
-      const width = widths[columnIndex] ?? widths.at(-1) ?? 80;
-      doc.rect(currentX, currentY, width, rowHeight).stroke();
-      if (rowIndex === 0) {
-        doc.save().rect(currentX, currentY, width, rowHeight).fill("#edf2f7").restore();
-        doc.rect(currentX, currentY, width, rowHeight).stroke();
-      }
-      const image =
-        rowIndex !== 0 && columnIndex === options.imageColumn
-          ? options.rowImages?.[dataIndex]
-          : null;
-      if (image) {
-        try {
-          doc.image(image, currentX + 4, currentY + 4, {
-            fit: [width - 8, rowHeight - 8],
-            align: "center",
-            valign: "center"
-          });
-        } catch {
-          doc.fontSize(8).text(value, currentX + 4, currentY + 6, {
-            width: width - 8,
-            height: rowHeight - 8,
-            align: "center"
-          });
-        }
-      } else {
-        doc.fontSize(rowIndex === 0 ? 9 : 8).text(value, currentX + 4, currentY + 6, {
-          width: width - 8,
-          height: rowHeight - 8,
-          align: (options.rightAlignedColumns ?? [2, 3, 4, 5]).includes(columnIndex)
-            ? "right"
-            : "center"
-        });
-      }
-      currentX += width;
-    });
-    currentY += rowHeight;
-  };
-
-  rows.forEach((row, rowIndex) => {
-    const pageBottom = doc.page.height - doc.page.margins.bottom - (options.bottomReserved ?? 0);
-    if (currentY + rowHeight > pageBottom) {
-      doc.addPage();
-      currentY = doc.page.margins.top;
-      if (rowIndex > 0 && options.repeatHeader) {
-        drawRow(rows[0], 0, -1);
-      }
+  let currentX = x;
+  values.forEach((value, index) => {
+    const width = widths[index] ?? 0;
+    if (highlightedColumns.includes(index)) {
+      doc.save().rect(currentX, y, width, rowHeight).fill("#edf2f7").restore();
     }
-    drawRow(row, rowIndex, rowIndex - 1);
+    doc.rect(currentX, y, width, rowHeight).strokeColor("#94a3b8").lineWidth(0.5).stroke();
+    doc.font("cn").fillColor("#111827").fontSize(fontSize).text(value, currentX + 3, y + 5, {
+      width: width - 6,
+      height: rowHeight - 8,
+      align: rightAlignedColumns.includes(index) ? "right" : "center",
+      ellipsis: true
+    });
+    currentX += width;
   });
-
-  return currentY;
+  doc.strokeColor("#000000").lineWidth(1);
 }
 
 function thinBorder(): Partial<ExcelJS.Borders> {
@@ -561,10 +666,6 @@ function centsToYuanText(amountCents: bigint) {
   return `${negative ? "-" : ""}${absolute / 100n}.${(absolute % 100n)
     .toString()
     .padStart(2, "0")}`;
-}
-
-function formatYuan(amountCents: bigint) {
-  return `${centsToYuanText(amountCents)} 元`;
 }
 
 function formatDate(value: Date) {

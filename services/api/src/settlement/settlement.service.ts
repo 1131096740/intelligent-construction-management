@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Optional } from "@nestjs/common";
-import { Prisma, type Settlement } from "@prisma/client";
+import { Prisma, type Settlement, type SettlementDraft } from "@prisma/client";
 import {
   approvalElapsedHours,
   canCreateSettlementFromContractStatus,
@@ -79,6 +79,7 @@ import {
   SettlementContractCapacityDenial
 } from "./contract-settlement-capacity";
 import { freezeSettlementParticipants } from "./settlement-participant-freeze";
+import { SettlementSignedDocumentService } from "./settlement-signed-document.service";
 
 type SettlementContractKind = "material_mechanical" | "labor_professional";
 
@@ -131,6 +132,7 @@ const SETTLEMENT_ACTIVE_PERIOD_STATUSES = [
   "draft",
   "in_approval",
   "approval_pending",
+  "pending_generation",
   "approved_pending_archive",
   "archive_pending",
   "pending_archive_confirm",
@@ -373,6 +375,7 @@ interface SettlementDocumentSnapshotClient {
       orderBy: { sortOrder: "asc" };
     }): Promise<
       Array<{
+        contractBillRowId: string | null;
         sourceType: string;
         name: string;
         unit: string | null;
@@ -403,13 +406,233 @@ export class SettlementService {
     @Optional()
     private readonly approvalForms?: ApprovalFormService,
     @Optional()
-    private readonly settlementTemplates?: SettlementTemplateService
+    private readonly settlementTemplates?: SettlementTemplateService,
+    @Optional()
+    private readonly signedDocuments?: SettlementSignedDocumentService
   ) {}
 
   assertContractVersionEffective(status: ContractVersionStatus): void {
     if (!canCreateSettlementFromContractStatus(status)) {
       throw new Error("合同尚未归档生效，不能创建结算。请先完成合同归档确认。");
     }
+  }
+
+  async prepareDraftDocumentFacts(
+    tx: Prisma.TransactionClient,
+    draft: Pick<SettlementDraft,
+      "id" | "contractId" | "contractVersionId" | "paymentTermsVersionId" |
+      "isFinal" | "finalCumulativeAmountCents" | "lines"
+    >
+  ): Promise<{
+    amountCents: bigint;
+    finalCumulativeAmountCents: bigint | null;
+    previousEffectiveSettlementCents: bigint;
+    payableAmountCents: bigint;
+    currentSettlementStage: { id: string; ratioBps: number | null };
+    taxFacts: {
+      invoiceType: string | null;
+      taxMode: string | null;
+      defaultTaxRatePercent: string | null;
+      taxFactRevision: number;
+    };
+    lines: Array<SettlementDocumentInput["lines"][number] & { contractBillRowId: string | null }>;
+  }> {
+    const version = await lockContractAndAssertCurrentEffective(tx, draft.contractVersionId);
+    if (version.contractId !== draft.contractId || !Array.isArray(draft.lines)) {
+      throw new BadRequestException("结算草稿合同或明细事实已损坏，请重新保存草稿");
+    }
+    const contract = await tx.contract.findUnique({ where: { id: draft.contractId } });
+    if (!contract) throw new BadRequestException("未找到结算关联合同，请刷新合同台账后重试");
+    assertSettlementContractType(contract.contractTypeKey);
+    await this.assertTaxFactsReadyForSubmission(
+      tx,
+      version,
+      draft.lines as unknown as CreateSettlementLineDto[]
+    );
+    const preview = await this.previewSettlementLines(
+      tx,
+      version,
+      draft.lines as unknown as CreateSettlementLineDto[]
+    );
+    if (preview.submissionBlockers.length) this.throwSubmissionBlocker(preview.submissionBlockers[0]);
+    const normalized = preview.lines as NormalizedSettlementLine[];
+    const previousSettlements = await tx.settlement.findMany({
+      where: {
+        contractId: draft.contractId,
+        status: { in: [...SETTLEMENT_PREVIOUS_EFFECTIVE_STATUSES] }
+      },
+      select: { amountCents: true }
+    });
+    const previousEffectiveSettlementCents = previousSettlements.reduce(
+      (total, item) => total + item.amountCents,
+      0n
+    );
+    const calculatedCurrentAmount = draft.isFinal
+      ? draft.finalCumulativeAmountCents === null
+        ? (() => { throw new BadRequestException("最终结算必须填写审定累计结算金额"); })()
+        : await this.calculateFinalSettlementCurrentAmount(
+            tx,
+            draft.contractId,
+            draft.finalCumulativeAmountCents
+          )
+      : null;
+    const amountCents = this.settlementAmountFromLines(calculatedCurrentAmount, normalized);
+    if (amountCents <= 0n) throw new BadRequestException("结算金额必须大于 0");
+    const unlimitedFramework = isUnlimitedFrameworkContract(version);
+    if (!unlimitedFramework) {
+      await this.assertContractBillRowSettlementLimits(tx, normalized);
+    }
+
+    const occupiedContractAmountCents = await this.lockOccupiedContractSettlementAmount(
+      tx,
+      draft.contractId
+    );
+    const lineage = await tx.contractVersion.findMany({
+      where: { contractId: draft.contractId },
+      select: {
+        id: true,
+        baseVersionId: true,
+        changeType: true,
+        changeDirection: true,
+        changeAmountCents: true,
+        cumulativeIncreaseCents: true,
+        amountCents: true,
+        pricingNature: true,
+        amountLimitType: true,
+        status: true,
+        effectiveAt: true
+      },
+      orderBy: [{ versionNo: "asc" }, { id: "asc" }]
+    });
+    const capacityVersion = lineage.find((item) => item.id === version.id);
+    if (!capacityVersion) {
+      throw new BadRequestException("当前合同版本不在合同版本谱系中，暂不能核验结算金额上限");
+    }
+    assertContractSettlementCapacity(
+      {
+        contractId: draft.contractId,
+        contractVersionId: version.id,
+        contractAmountCents: dbMoneyToBigInt(capacityVersion.amountCents, "合同金额"),
+        historicalPositiveIncreaseCents: historicalPositiveIncreaseCents(lineage),
+        pricingNature: capacityVersion.pricingNature,
+        amountLimitType: capacityVersion.amountLimitType
+      },
+      occupiedContractAmountCents,
+      amountCents
+    );
+
+    const existingFinalCount = await tx.settlement.count({
+      where: {
+        contractId: draft.contractId,
+        isFinal: true,
+        status: { in: [...SETTLEMENT_OCCUPANCY_STATUSES] }
+      }
+    });
+    if (existingFinalCount > 0) {
+      throw new SettlementGovernanceSubmissionDenial(
+        draft.isFinal
+          ? "该合同已存在占用中的最终结算，不能重复发起最终结算"
+          : "该合同已存在占用中的最终结算，不能再发起普通过程结算"
+      );
+    }
+    if (draft.isFinal) {
+      const [draftCount, settlementCount] = await Promise.all([
+        tx.settlementDraft.count({
+          where: { contractId: draft.contractId, id: { not: draft.id }, status: "draft" }
+        }),
+        tx.settlement.count({
+          where: {
+            contractId: draft.contractId,
+            status: {
+              in: [
+                "in_approval",
+                "approval_pending",
+                "pending_generation",
+                "approved_pending_archive",
+                "archive_pending",
+                "pending_archive_confirm"
+              ]
+            }
+          }
+        })
+      ]);
+      if (draftCount + settlementCount > 0) {
+        throw new SettlementGovernanceSubmissionDenial(
+          "仍存在尚未处理的结算草稿或审批中结算，暂不能提交最终结算"
+        );
+      }
+    }
+    const terms = await tx.paymentTermsVersion.findFirst({
+      where: {
+        id: draft.paymentTermsVersionId,
+        contractVersionId: draft.contractVersionId,
+        status: "effective"
+      }
+    });
+    if (!terms) throw new BadRequestException("结算草稿引用的付款条款版本不存在");
+    const currentSettlementStage = await tx.paymentTermsStage.findFirst({
+      where: { paymentTermsVersionId: terms.id, basis: "current_settlement" },
+      orderBy: { createdAt: "asc" }
+    });
+    if (!currentSettlementStage) {
+      throw new BadRequestException("合同付款条款缺少结算款阶段");
+    }
+    const contractBills = await tx.contractBill.findMany({
+      where: { contractVersionId: draft.contractVersionId }, select: { id: true }
+    });
+    const billRows = contractBills.length
+      ? await tx.contractBillRow.findMany({
+          where: { contractBillId: { in: contractBills.map((bill) => bill.id) } },
+          select: { id: true, specification: true }
+        })
+      : [];
+    const specificationByRowId = new Map(
+      billRows.map((row) => [row.id, row.specification])
+    );
+    return {
+      amountCents,
+      finalCumulativeAmountCents: draft.finalCumulativeAmountCents,
+      previousEffectiveSettlementCents,
+      payableAmountCents: this.calculatePayableAmount(amountCents, currentSettlementStage.ratioBps),
+      currentSettlementStage: {
+        id: currentSettlementStage.id,
+        ratioBps: currentSettlementStage.ratioBps
+      },
+      taxFacts: {
+        invoiceType: version.invoiceType,
+        taxMode: version.taxMode,
+        defaultTaxRatePercent: decimalSnapshotText(version.defaultTaxRatePercent),
+        taxFactRevision: version.taxFactRevision
+      },
+      lines: normalized.map((line) => {
+        const manualAdjustment = line.sourceType === "manual_adjustment";
+        const taxAmounts = this.settlementLineTaxAmounts(line);
+        const prices = manualAdjustment
+          ? { inclusive: null, exclusive: null }
+          : settlementDocumentUnitPrices(
+              decimalSnapshotText(line.unitPriceSnapshot),
+              decimalSnapshotText(line.taxRatePercentSnapshot),
+              line.pricingModeSnapshot
+            );
+        return {
+          sourceType: manualAdjustment ? "manual_adjustment" : "contract_bill_row",
+          contractBillRowId: line.contractBillRowId,
+          name: line.name,
+          specification: line.contractBillRowId
+            ? specificationByRowId.get(line.contractBillRowId) ?? null
+            : null,
+          unit: line.unit,
+          quantity: manualAdjustment ? null : decimalSnapshotText(line.quantity),
+          taxInclusiveUnitPrice: prices.inclusive,
+          taxExclusiveUnitPrice: prices.exclusive,
+          taxRatePercent: manualAdjustment ? null : decimalSnapshotText(line.taxRatePercentSnapshot),
+          taxInclusiveAmountCents: line.amountCents,
+          taxExclusiveAmountCents: taxAmounts.taxExclusiveAmountCents,
+          taxAmountCents: taxAmounts.taxAmountCents,
+          remark: line.remark
+        };
+      })
+    };
   }
 
   async previewLines(contractVersionId: string, input: PreviewSettlementLinesDto) {
@@ -1424,7 +1647,7 @@ export class SettlementService {
     if (isFinal) {
       const [draftCount, settlementCount] = await Promise.all([
         tx.settlementDraft.count({ where: { contractId: contract.id, id: { not: governed.draftId }, status: "draft" } }),
-        tx.settlement.count({ where: { contractId: contract.id, status: { in: ["in_approval", "approval_pending", "approved_pending_archive", "archive_pending", "pending_archive_confirm"] } } })
+        tx.settlement.count({ where: { contractId: contract.id, status: { in: ["in_approval", "approval_pending", "pending_generation", "approved_pending_archive", "archive_pending", "pending_archive_confirm"] } } })
       ]);
       if (draftCount + settlementCount > 0) throw new SettlementGovernanceSubmissionDenial("仍存在尚未处理的结算草稿或审批中结算，暂不能提交最终结算");
     }
@@ -1711,6 +1934,10 @@ export class SettlementService {
         throw new Error("未找到结算单，请刷新结算台账后重试");
       }
 
+      if (settlement.governanceVersion === 1) {
+        throw new BadRequestException("新结算由系统自动生成最终签名合成件，不得上传普通归档文件");
+      }
+
       if (settlement.status !== "approved_pending_archive") {
         throw new Error("当前结算单尚不能上传归档文件，请确认审批已通过并等待归档");
       }
@@ -1767,6 +1994,7 @@ export class SettlementService {
     requireApprovalCommentForReturn(input.decision, input.comment);
 
     let completedInstanceId: string | undefined;
+    let completedGenerationClaimToken: string | undefined;
     let approvalPdfSettlementId: string | undefined;
     const result = await this.prisma.$transaction(async (tx) => {
       await lockApprovalReviewRow(tx, Prisma.sql`
@@ -2020,7 +2248,9 @@ export class SettlementService {
         nextNode.mode === "any" || nextNode.roleKeys.every((role) => approvedRoleKeys.has(role));
       const nextNodeIndex = nodeCompleted ? instance.currentNodeIndex + 1 : instance.currentNodeIndex;
       const flowCompleted = nextNodeIndex >= nextNodes.length;
-      const nextStatus = flowCompleted ? "approved_pending_archive" : "approval_pending";
+      const nextStatus = flowCompleted
+        ? settlement.governanceVersion === 1 ? "pending_generation" : "approved_pending_archive"
+        : "approval_pending";
       const updated = await tx.settlement.update({
         where: { id: settlement.id },
         data: { status: nextStatus satisfies SettlementStatus }
@@ -2075,6 +2305,18 @@ export class SettlementService {
         }
       });
 
+      if (flowCompleted && settlement.governanceVersion === 1) {
+        if (!this.signedDocuments) {
+          throw new BadRequestException("结算签名合成服务暂不可用，不能完成终审");
+        }
+        const claimed = await this.signedDocuments.initializeGenerationClaim(
+          tx,
+          settlement.id,
+          actorUserId
+        );
+        completedGenerationClaimToken = claimed?.claimToken;
+      }
+
       return updated;
     });
 
@@ -2083,6 +2325,15 @@ export class SettlementService {
     }
 
     if (completedInstanceId) {
+      await this.signedDocuments
+        ?.generateFinal(
+          settlementId,
+          actorUserId,
+          false,
+          undefined,
+          completedGenerationClaimToken
+        )
+        .catch(() => undefined);
       await this.approvalForms
         ?.generateForInstance(completedInstanceId, actorUserId)
         .catch(() => undefined);
@@ -2284,6 +2535,11 @@ export class SettlementService {
     await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
 
     return this.prisma.$transaction(async (tx) => {
+      if (typeof tx.$queryRaw === "function") {
+        await tx.$queryRaw(Prisma.sql`
+          SELECT "id" FROM "Settlement" WHERE "id" = ${settlementId} FOR UPDATE
+        `);
+      }
       const settlement = await tx.settlement.findUnique({
         where: { id: settlementId }
       });
@@ -2294,6 +2550,37 @@ export class SettlementService {
 
       if (settlement.status !== "pending_archive_confirm") {
         throw new Error("当前结算单尚不能确认归档，请先上传已签署的结算归档文件");
+      }
+
+      if (settlement.governanceVersion === 1) {
+        const actorRoles = await this.loadActorRoleKeys(tx, actorUserId, settlement.projectId);
+        if (!actorRoles.includes("contract_director")) {
+          throw new BadRequestException("仅所属项目合同部主管可以确认最终签名合成件归档");
+        }
+        if (!this.signedDocuments) {
+          throw new BadRequestException("结算签名合成服务暂不可用，请稍后重试");
+        }
+        const finalDocument = await this.signedDocuments.confirmInTransaction(
+          tx,
+          settlement.id,
+          actorUserId
+        );
+        const effectiveSettlement = await tx.settlement.update({
+          where: { id: settlement.id }, data: { status: "effective" satisfies SettlementStatus }
+        });
+        await this.useSettlementExceptionQuotaUsage(tx, settlement.id, actorUserId);
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "settlement.archive.confirm",
+          businessType: "settlement",
+          businessId: settlement.id,
+          metadata: { signedDocumentId: finalDocument.id, fileId: finalDocument.fileId }
+        });
+        return effectiveSettlement;
+      }
+
+      if (!input.archiveFileId) {
+        throw new BadRequestException("请选择结算归档文件");
       }
 
       const archiveFile = await tx.settlementArchiveFile.findFirst({
@@ -2364,6 +2651,10 @@ export class SettlementService {
 
       if (!settlement) {
         throw new Error("未找到结算单，请刷新结算台账后重试");
+      }
+
+      if (settlement.governanceVersion === 1) {
+        throw new BadRequestException("新结算仅使用受治理最终签名合成件，不得生成普通归档 PDF");
       }
 
       if (
@@ -2787,6 +3078,7 @@ export class SettlementService {
           id: true,
           code: true,
           name: true,
+          contractTypeKey: true,
           counterparty: true,
           companyEntityName: true
         }
@@ -2873,6 +3165,39 @@ export class SettlementService {
         : null) ??
       (lineTaxRates.length === 1 ? lineTaxRates[0] : null);
 
+    const governanceClients = tx as unknown as {
+      settlementDraft?: { findFirst(args: unknown): Promise<{ id: string } | null> };
+      settlementSignedDocument?: { findFirst(args: unknown): Promise<{ sourceRevision: number } | null> };
+      contractBillRow?: { findMany(args: unknown): Promise<Array<{ id: string; specification: string | null }>> };
+    };
+    const submittedDraft = settlement.governanceVersion === 1 && governanceClients.settlementDraft
+      ? await governanceClients.settlementDraft.findFirst({
+          where: { submittedSettlementId: settlement.id }, select: { id: true }
+        })
+      : null;
+    const governedOriginal = submittedDraft && governanceClients.settlementSignedDocument
+      ? await governanceClients.settlementSignedDocument.findFirst({
+          where: {
+            settlementDraftId: submittedDraft.id,
+            purpose: "counterparty_signed_original",
+            status: "active"
+          },
+          select: { sourceRevision: true }
+        })
+      : null;
+    if (settlement.governanceVersion === 1 && governanceClients.settlementSignedDocument && !governedOriginal) {
+      throw new BadRequestException("受治理结算缺少当前乙方签章原件，不能生成冻结文档");
+    }
+    const billRowIds = settlementLines
+      .map((line) => line.contractBillRowId)
+      .filter((id): id is string => Boolean(id));
+    const billRows = billRowIds.length && governanceClients.contractBillRow
+      ? await governanceClients.contractBillRow.findMany({
+          where: { id: { in: billRowIds } }, select: { id: true, specification: true }
+        })
+      : [];
+    const specificationById = new Map(billRows.map((row) => [row.id, row.specification]));
+
     return {
       settlementId: settlement.id,
       settlementCode: settlement.code,
@@ -2896,6 +3221,9 @@ export class SettlementService {
       ),
       isFinal: settlement.isFinal,
       generatedAt: new Date(),
+      documentRevision: governedOriginal?.sourceRevision ?? null,
+      contractTypeKey: contract.contractTypeKey as SettlementDocumentInput["contractTypeKey"],
+      fieldReviewerRoleKey: settlement.fieldReviewerRoleKey as SettlementDocumentInput["fieldReviewerRoleKey"],
       lines: settlementLines.map((line) => {
         const manualAdjustment = line.sourceType === "manual_adjustment";
         const unitPrices = manualAdjustment
@@ -2908,6 +3236,9 @@ export class SettlementService {
         return {
           sourceType: manualAdjustment ? "manual_adjustment" : "contract_bill_row",
           name: line.name,
+          specification: line.contractBillRowId
+            ? specificationById.get(line.contractBillRowId) ?? null
+            : null,
           unit: line.unit,
           quantity: manualAdjustment ? null : decimalSnapshotText(line.quantity),
           taxInclusiveUnitPrice: unitPrices.inclusive,
@@ -3003,6 +3334,7 @@ export class SettlementService {
       return {
         nodeName: metadata.nodeName ?? node?.name ?? log.action,
         roleName,
+        roleKey: metadata.roleKey ?? roleKey ?? null,
         approverName: metadata.approverName ?? user?.name ?? "审批人未读取",
         comment: log.comment ?? "",
         approvedAt: log.createdAt,

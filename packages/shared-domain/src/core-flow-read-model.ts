@@ -136,6 +136,24 @@ export interface EvidenceFileReadModel {
   confirmedAt: string | null;
   canDownload: boolean;
   disabledReason: string | null;
+  /** Stable machine-readable purpose for business evidence introduced by governed flows. */
+  purposeKey?:
+    | "legacy_archive"
+    | "counterparty_signed_original"
+    | "final_internal_signed_copy";
+  /** Rendering state is separate from the evidence record status. */
+  generationStatus?:
+    | "not_applicable"
+    | "pending"
+    | "generating"
+    | "completed"
+    | "failed";
+  /** Explains download availability without requiring clients to infer it from colors or labels. */
+  downloadability?:
+    | "available"
+    | "pending_generation"
+    | "pending_confirmation"
+    | "unavailable";
 }
 
 export interface DetailActionReadModel {

@@ -192,7 +192,7 @@ export class SettlementReadService {
   }
 
   private async settlementArchiveFilesForSettlement(
-    settlementId: string
+    settlement: { id: string; governanceVersion?: number | null }
   ): Promise<SettlementDetailReadModel["archiveFiles"]> {
     const client = this.prisma as unknown as {
       settlementArchiveFile?: {
@@ -218,6 +218,7 @@ export class SettlementReadService {
             originalName: string;
             mimeType: string;
             sizeBytes: number;
+            storageStatus?: string;
           }>
         >;
       };
@@ -226,14 +227,155 @@ export class SettlementReadService {
           Array<{ id: string; name: string }>
         >;
       };
+      settlementDraft?: {
+        findFirst(args: { where: { submittedSettlementId: string }; select: { id: true } }): Promise<{
+          id: string;
+        } | null>;
+      };
+      settlementSignedDocument?: {
+        findMany(args: {
+          where: {
+            OR: Array<
+              | { settlementId: string; purpose: string; status: string }
+              | { settlementDraftId: string; purpose: string; status: string }
+            >;
+          };
+          orderBy: Array<{ createdAt: "asc" } | { id: "asc" }>;
+        }): Promise<
+          Array<{
+            id: string;
+            purpose: string;
+            fileId: string;
+            status: string;
+            generationStatus: string;
+            uploadedByUserId: string | null;
+            generatedByUserId: string | null;
+            confirmedByUserId: string | null;
+            confirmedAt: Date | null;
+            createdAt: Date;
+          }>
+        >;
+      };
     };
+
+    if (settlement.governanceVersion === 1) {
+      if (!client.settlementDraft || !client.settlementSignedDocument || !client.fileObject) {
+        return [];
+      }
+      const draft = await client.settlementDraft.findFirst({
+        where: { submittedSettlementId: settlement.id },
+        select: { id: true }
+      });
+      const parentFilters: Array<
+        | { settlementId: string; purpose: string; status: string }
+        | { settlementDraftId: string; purpose: string; status: string }
+      > = [
+        {
+          settlementId: settlement.id,
+          purpose: "final_internal_signed_copy",
+          status: "active"
+        }
+      ];
+      if (draft) {
+        parentFilters.unshift({
+          settlementDraftId: draft.id,
+          purpose: "counterparty_signed_original",
+          status: "active"
+        });
+      }
+      const documents = await client.settlementSignedDocument.findMany({
+        where: { OR: parentFilters },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+      });
+      const fileIds = [...new Set(documents.map((document) => document.fileId))];
+      const actorIds = [
+        ...new Set(
+          documents
+            .flatMap((document) => [
+              document.uploadedByUserId,
+              document.generatedByUserId,
+              document.confirmedByUserId
+            ])
+            .filter((id): id is string => Boolean(id))
+        )
+      ];
+      const [files, users] = await Promise.all([
+        fileIds.length
+          ? client.fileObject.findMany({ where: { id: { in: fileIds } } })
+          : Promise.resolve([]),
+        client.user && actorIds.length
+          ? client.user.findMany({ where: { id: { in: actorIds } } })
+          : Promise.resolve([])
+      ]);
+      const fileById = new Map(files.map((file) => [file.id, file]));
+      const userById = new Map(users.map((user) => [user.id, user]));
+      return documents.flatMap((document) => {
+        const file = fileById.get(document.fileId);
+        if (!file) return [];
+        const purposeKey = document.purpose as
+          | "counterparty_signed_original"
+          | "final_internal_signed_copy";
+        const generationStatus = document.generationStatus as
+          | "not_applicable"
+          | "pending"
+          | "generating"
+          | "completed"
+          | "failed";
+        const storageAvailable =
+          file.storageStatus === undefined || file.storageStatus === "active";
+        const generationComplete = ["not_applicable", "completed"].includes(
+          document.generationStatus
+        );
+        const canDownload =
+          document.status === "active" && storageAvailable && generationComplete;
+        const actorId = document.uploadedByUserId ?? document.generatedByUserId;
+        return [{
+          recordId: document.id,
+          fileId: file.id,
+          fileName: file.originalName,
+          purpose:
+            purposeKey === "counterparty_signed_original"
+              ? "乙方签章原件"
+              : "我方审批签名合成件",
+          purposeKey,
+          generationStatus,
+          mimeType: file.mimeType,
+          sizeBytes: file.sizeBytes,
+          status: document.status,
+          statusLabel: canDownload
+            ? "证据已冻结"
+            : storageAvailable
+              ? "文件生成中"
+              : "文件暂不可用",
+          uploadedByName: actorId
+            ? userById.get(actorId)?.name ?? "经办人未读取"
+            : "系统生成",
+          uploadedAt: document.createdAt.toISOString(),
+          confirmedByName: document.confirmedByUserId
+            ? userById.get(document.confirmedByUserId)?.name ?? "确认人未读取"
+            : null,
+          confirmedAt: document.confirmedAt?.toISOString() ?? null,
+          canDownload,
+          disabledReason: canDownload
+            ? null
+            : storageAvailable
+              ? "文件完成生成后开放下载"
+              : "文件当前不可用，请联系管理员处理",
+          downloadability: canDownload
+            ? "available"
+            : storageAvailable
+              ? "pending_generation"
+              : "unavailable"
+        }];
+      });
+    }
 
     if (!client.settlementArchiveFile || !client.fileObject) {
       return [];
     }
 
     const archiveFiles = await client.settlementArchiveFile.findMany({
-      where: { settlementId },
+      where: { settlementId: settlement.id },
       orderBy: { createdAt: "desc" }
     });
     const fileIds = Array.from(new Set(archiveFiles.map((file) => file.fileId)));
@@ -262,7 +404,9 @@ export class SettlementReadService {
       if (!file) {
         return [];
       }
-      const canDownload = archiveFile.status === "confirmed" || Boolean(archiveFile.confirmedAt);
+      const canDownload =
+        (archiveFile.status === "confirmed" || Boolean(archiveFile.confirmedAt)) &&
+        (file.storageStatus === undefined || file.storageStatus === "active");
 
       return [
         {
@@ -417,7 +561,12 @@ export class SettlementReadService {
         total: rows.length,
         inApproval: settlements.filter((settlement) => settlement.status === "approval_pending").length,
         pendingArchive: settlements.filter((settlement) =>
-          ["approved_pending_archive", "archive_pending", "pending_archive_confirm"].includes(settlement.status)
+          [
+            "approved_pending_archive",
+            "pending_generation",
+            "archive_pending",
+            "pending_archive_confirm"
+          ].includes(settlement.status)
         ).length,
         effective: settlements.filter((settlement) => settlement.status === "effective").length,
         payable: settlements.filter((settlement) => settlement.status === "effective").length
@@ -510,7 +659,8 @@ export class SettlementReadService {
       archiveFiles,
       approvalTimeline,
       paymentActivity,
-      settlementLines
+      settlementLines,
+      generationClaim
     ] = await Promise.all([
       this.prisma.contract.findUnique({ where: { id: settlement.contractId } }),
       this.prisma.contractVersion.findUnique({ where: { id: settlement.contractVersionId } }),
@@ -521,10 +671,15 @@ export class SettlementReadService {
         where: { settlementId: settlement.id },
         orderBy: { createdAt: "desc" }
       }),
-      this.settlementArchiveFilesForSettlement(settlement.id),
+      this.settlementArchiveFilesForSettlement(settlement),
       approvalTimelineForBusiness(this.prisma, "settlement", settlement.id),
       this.paymentActivityForSettlement(settlement.id),
-      this.settlementLinesForSettlement(settlement.id)
+      this.settlementLinesForSettlement(settlement.id),
+      settlement.governanceVersion === 1
+        ? this.prisma.settlementSignedDocumentGenerationClaim?.findUnique?.({
+            where: { settlementId: settlement.id }
+          }) ?? Promise.resolve(null)
+        : Promise.resolve(null)
     ]);
 
     if (!contract) {
@@ -543,7 +698,8 @@ export class SettlementReadService {
       where: { paymentTermsVersionId: terms.id },
       orderBy: { createdAt: "asc" }
     });
-    const status = this.statusView(settlement.status);
+    const generationFailed = this.signedDocumentGenerationNeedsRetry(generationClaim);
+    const status = this.statusView(settlement.status, generationFailed);
     const roleKeys = await this.actorRoleKeys(actorUserId, settlement.projectId);
     const approvalReviewAccess = await this.canReviewCurrentApproval(
       "settlement",
@@ -556,7 +712,9 @@ export class SettlementReadService {
       settlement.status,
       roleKeys,
       approvalReviewAccess,
-      archiveFiles
+      archiveFiles,
+      settlement.governanceVersion,
+      generationFailed
     );
     const taxFactSummary = await this.taxFactSummary(
       settlement,
@@ -574,7 +732,11 @@ export class SettlementReadService {
         { label: "付款条款版本", value: `v${terms.versionNo} 随合同生效` },
         { label: "结算期间", value: settlement.periodLabel },
         { label: "责任部门", value: "合同部" },
-        { label: "下一步动作", value: this.nextActionLabel(settlement.status), tone: status.tone }
+        {
+          label: "下一步动作",
+          value: this.nextActionLabel(settlement.status, generationFailed),
+          tone: status.tone
+        }
       ],
       baseInfo: [
         { label: "结算编号", value: settlement.code },
@@ -585,13 +747,21 @@ export class SettlementReadService {
         { label: "创建人", value: "项目经理" }
       ],
       taxFactSummary,
-      effectivenessSteps: this.effectivenessSteps(settlement.status),
-      archiveResponsibilities: [
-        "结算审批不经过董事长/总经理",
-        "结算归档件由合同部成员上传",
-        "归档由合同部主管确认",
-        "财务只读取业务归档件"
-      ],
+      effectivenessSteps: this.effectivenessSteps(settlement.status, generationFailed),
+      archiveResponsibilities:
+        settlement.governanceVersion === 1
+          ? [
+              "乙方签章原件作为对方签署证据保留",
+              "我方审批通过后由系统生成冻结签名合成件",
+              "合同部主管确认合成件后结算生效",
+              "财务只读取业务证据文件"
+            ]
+          : [
+              "结算审批不经过董事长/总经理",
+              "结算归档件由合同部成员上传",
+              "归档由合同部主管确认",
+              "财务只读取业务归档件"
+            ],
       paymentRules: stages.map((stage) => ({
         id: stage.id,
         stage: stage.name,
@@ -920,7 +1090,9 @@ export class SettlementReadService {
     status: string,
     roleKeys: RoleKey[],
     approvalReviewAccess: ApprovalReviewAccess,
-    archiveFiles: SettlementDetailReadModel["archiveFiles"]
+    archiveFiles: SettlementDetailReadModel["archiveFiles"],
+    governanceVersion?: number | null,
+    generationFailed = false
   ): DetailActionReadModel[] {
     const workflowActions = [
       detailAction({
@@ -964,14 +1136,18 @@ export class SettlementReadService {
         enabled: approvalReviewAccess.canAct,
         disabledReason: "当前用户不是当前审批节点处理人"
       }),
-      detailAction({
-        key: "generate_pdf_archive",
-        label: "生成 PDF 归档",
-        kind: "normal",
-        roleKeys,
-        requiredAction: "settlement.archive.upload",
-        enabled: Boolean(status)
-      })
+      ...(governanceVersion === 1
+        ? []
+        : [
+            detailAction({
+              key: "generate_pdf_archive",
+              label: "生成 PDF 归档",
+              kind: "normal",
+              roleKeys,
+              requiredAction: "settlement.archive.upload",
+              enabled: Boolean(status)
+            })
+          ])
     ];
 
     if (status === "approval_pending") {
@@ -994,7 +1170,25 @@ export class SettlementReadService {
       ];
     }
 
-    if (status === "approved_pending_archive") {
+    if (status === "pending_generation" && governanceVersion === 1) {
+      return [
+        ...(generationFailed
+          ? [
+              detailAction({
+                key: "retry_signed_document_generation",
+                label: "重试生成结算签名合成件",
+                kind: "primary",
+                roleKeys,
+                requiredAction: "settlement.archive.confirm",
+                enabled: true
+              })
+            ]
+          : []),
+        ...workflowActions
+      ];
+    }
+
+    if (status === "approved_pending_archive" && governanceVersion !== 1) {
       return [
         detailAction({
           key: "upload_archive",
@@ -1050,12 +1244,19 @@ export class SettlementReadService {
     return workflowActions;
   }
 
-  private statusView(status: string): { label: string; tone: CoreFlowTone } {
+  private statusView(
+    status: string,
+    generationFailed = false
+  ): { label: string; tone: CoreFlowTone } {
+    if (status === "pending_generation" && generationFailed) {
+      return { label: "最终结算文件生成失败", tone: "danger" };
+    }
     const views: Record<string, { label: string; tone: CoreFlowTone }> = {
       approval_pending: { label: "审批中", tone: "primary" },
       approval_rejected: { label: "审批退回", tone: "danger" },
       withdrawn: { label: "已撤回", tone: "danger" },
       approved_pending_archive: { label: "待归档上传", tone: "primary" },
+      pending_generation: { label: "系统生成最终结算文件中", tone: "primary" },
       archive_pending: { label: "待归档确认", tone: "primary" },
       pending_archive_confirm: { label: "待归档确认", tone: "primary" },
       effective: { label: "已生效", tone: "success" },
@@ -1066,18 +1267,38 @@ export class SettlementReadService {
     return views[status] ?? { label: "结算状态未读取", tone: "default" };
   }
 
+  private signedDocumentGenerationNeedsRetry(
+    claim: {
+      status?: string | null;
+      claimedAt?: Date | null;
+      uploadedFileId?: string | null;
+      safeFailureCode?: string | null;
+    } | null | undefined
+  ): boolean {
+    if (!claim) return true;
+    if (claim.safeFailureCode) return true;
+    if (claim.uploadedFileId && claim.status !== "completed") return true;
+    return claim.status === "pending" &&
+      claim.claimedAt instanceof Date &&
+      Date.now() - claim.claimedAt.getTime() > 5 * 60 * 1000;
+  }
+
   private archiveFileStatusLabel(status: string): string {
     if (status === "confirmed") return "已确认";
     if (status === "pending_confirm") return "待确认";
     return status;
   }
 
-  private nextActionLabel(status: string): string {
+  private nextActionLabel(status: string, generationFailed = false): string {
+    if (status === "pending_generation" && generationFailed) {
+      return "审批结果不受影响，请合同部主管重试生成";
+    }
     const labels: Record<string, string> = {
       approval_pending: "等待结算审批",
       approval_rejected: "退回修改",
       withdrawn: "申请人已撤回",
       approved_pending_archive: "上传签章归档件",
+      pending_generation: "系统正在生成最终结算文件",
       archive_pending: "主管确认归档",
       pending_archive_confirm: "主管确认归档",
       effective: "可创建付款申请",
@@ -1094,6 +1315,7 @@ export class SettlementReadService {
       approval_rejected: "项目经理",
       withdrawn: "项目经理",
       approved_pending_archive: "合同部成员",
+      pending_generation: "系统处理",
       archive_pending: "合同部主管",
       pending_archive_confirm: "合同部主管",
       effective: "系统归档",
@@ -1113,13 +1335,29 @@ export class SettlementReadService {
     return days === 0 ? "今天" : `${days}天`;
   }
 
-  private effectivenessSteps(status: string): SettlementDetailReadModel["effectivenessSteps"] {
+  private effectivenessSteps(
+    status: string,
+    generationFailed = false
+  ): SettlementDetailReadModel["effectivenessSteps"] {
     if (status === "effective") {
       return [
         { label: "结算审批", status: "已通过", tone: "success" },
         { label: "签字盖章归档上传", status: "已上传", tone: "success" },
         { label: "合同部主管确认", status: "已确认", tone: "success" },
         { label: "结算生效", status: "已生效", tone: "success" }
+      ];
+    }
+
+    if (status === "pending_generation") {
+      return [
+        { label: "结算审批", status: "已通过", tone: "success" },
+        {
+          label: "最终签名合成件",
+          status: generationFailed ? "生成失败，待合同部主管重试" : "系统生成中",
+          tone: generationFailed ? "danger" : "primary"
+        },
+        { label: "合同部主管确认", status: "未开始", tone: "default" },
+        { label: "结算生效", status: "阻塞", tone: "danger" }
       ];
     }
 
