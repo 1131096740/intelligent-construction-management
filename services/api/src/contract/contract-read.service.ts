@@ -185,6 +185,47 @@ export class ContractReadService {
     });
   }
 
+  private async governedSigningFacts(contractVersionId: string) {
+    const [sealTask, formalFiles] = await Promise.all([
+      this.prisma.contractSealTask.findFirst({
+        where: { contractVersionId, status: { not: "cancelled" } },
+        orderBy: { createdAt: "desc" }
+      }),
+      this.prisma.contractFormalFile.findMany({
+        where: { contractVersionId },
+        orderBy: { createdAt: "desc" }
+      })
+    ]);
+    const fileObjects = formalFiles.length ? await this.prisma.fileObject.findMany({
+      where: { id: { in: formalFiles.map((item) => item.fileId) } },
+      select: { id: true, originalName: true }
+    }) : [];
+    const names = new Map(fileObjects.map((item) => [item.id, item.originalName]));
+    return {
+      sealTask: sealTask ? {
+        id: sealTask.id,
+        status: sealTask.status,
+        handlerUserId: sealTask.handlerUserId,
+        approvedByUserId: sealTask.approvedByUserId,
+        approvedAt: sealTask.approvedAt?.toISOString() ?? null,
+        completedByUserId: sealTask.completedByUserId,
+        completedAt: sealTask.completedAt?.toISOString() ?? null
+      } : null,
+      formalFiles: formalFiles.map((item) => ({
+        formalFileId: item.id,
+        purpose: item.purpose as "approval_original" | "mutually_signed_final",
+        fileId: item.fileId,
+        fileName: names.get(item.fileId) ?? "合同正式文件.pdf",
+        pageCount: item.pageCount,
+        sourceRevision: item.sourceRevision,
+        status: item.status,
+        uploadedByUserId: item.uploadedByUserId,
+        confirmedByUserId: item.confirmedByUserId,
+        confirmedAt: item.confirmedAt?.toISOString() ?? null
+      }))
+    };
+  }
+
   async listRecent(
     rawLimit?: string | number,
     visibleProjectIds?: string[],
@@ -466,12 +507,37 @@ export class ContractReadService {
       return this.sampleDetail(contractId);
     }
 
-    const contract = await this.prisma.contract.findFirst({
+    let contract = await this.prisma.contract.findFirst({
       where: {
         OR: [{ id: contractId }, { code: contractId }],
         ...(visibleProjectIds ? { projectId: { in: visibleProjectIds } } : {})
       }
     });
+
+    if (!contract && actorUserId) {
+      const candidate = await this.prisma.contract.findFirst({
+        where: { OR: [{ id: contractId }, { code: contractId }] }
+      });
+      if (candidate) {
+        const candidateVersions = await this.prisma.contractVersion.findMany({
+          where: { contractId: candidate.id },
+          orderBy: { versionNo: "desc" },
+          take: 1,
+          select: { id: true }
+        });
+        const handlerTask = candidateVersions[0]
+          ? await this.prisma.contractSealTask.findFirst({
+              where: {
+                contractVersionId: candidateVersions[0].id,
+                handlerUserId: actorUserId,
+                status: { not: "cancelled" }
+              },
+              select: { id: true }
+            })
+          : null;
+        if (handlerTask) contract = candidate;
+      }
+    }
 
     if (!contract) {
       throw new NotFoundException("未找到合同，请刷新合同台账后重试");
@@ -500,7 +566,15 @@ export class ContractReadService {
       throw new NotFoundException("未找到合同付款条款版本，请刷新合同台账后重试");
     }
 
-    const [stages, settlements, paymentRequests, contractArchiveFiles, approvalTimeline] = await Promise.all([
+    const [
+      stages,
+      settlements,
+      paymentRequests,
+      contractArchiveFiles,
+      approvalTimeline,
+      signingFacts,
+      approvedInstance
+    ] = await Promise.all([
       this.prisma.paymentTermsStage.findMany({
         where: { paymentTermsVersionId: terms.id },
         orderBy: { createdAt: "asc" }
@@ -514,7 +588,14 @@ export class ContractReadService {
         orderBy: { updatedAt: "desc" }
       }),
       this.contractArchiveFilesForVersion(version.id),
-      approvalTimelineForBusiness(this.prisma, "contract_version", version.id)
+      approvalTimelineForBusiness(this.prisma, "contract_version", version.id),
+      version.contractGovernanceVersion === 1
+        ? this.governedSigningFacts(version.id)
+        : Promise.resolve({ sealTask: null, formalFiles: [] }),
+      this.prisma.approvalInstance?.findFirst({
+        where: { businessType: "contract_version", businessId: version.id, status: "approved" },
+        orderBy: { updatedAt: "desc" }
+      }) ?? Promise.resolve(null)
     ]);
     const paymentIds = paymentRequests.map((payment) => payment.id);
     const settlementIds = settlements.map((settlement) => settlement.id);
@@ -543,13 +624,36 @@ export class ContractReadService {
       roleKeys,
       actorUserId
     );
+    const canUploadGovernedFinal = await this.canUploadGovernedFinal(
+      actorUserId,
+      contract.projectId,
+      signingFacts.sealTask
+    );
 
     const status = this.statusView(version.status);
     const availableActions = this.contractActions(
       version.status,
       roleKeys,
       approvalReviewAccess,
-      contractArchiveFiles
+      contractArchiveFiles,
+      {
+        actorUserId,
+        ownerUserId: contract.ownerUserId,
+        governed: version.contractGovernanceVersion === 1,
+        sealTask: signingFacts.sealTask,
+        activeFinal: signingFacts.formalFiles.find((item) =>
+          item.purpose === "mutually_signed_final" && item.status === "active"
+        ) ?? null,
+        approvalFormAvailable: Boolean(approvedInstance),
+        approvalParticipant: Boolean(actorUserId && approvedInstance && (
+          approvedInstance.applicantUserId === actorUserId ||
+          await this.prisma.approvalActionLog?.findFirst({
+            where: { approvalInstanceId: approvedInstance.id, actorUserId, action: "approve" },
+            select: { id: true }
+          })
+        )),
+        canUploadGovernedFinal
+      }
     );
 
     const contractCode = contract.code ?? contract.temporaryCode ?? contract.id;
@@ -610,6 +714,8 @@ export class ContractReadService {
         historicalBalance
       ),
       archiveFiles: contractArchiveFiles,
+      formalFiles: signingFacts.formalFiles,
+      sealTask: signingFacts.sealTask,
       approvalTimeline,
       availableActions,
       primaryAction: primaryActionKey(availableActions),
@@ -1113,7 +1219,17 @@ export class ContractReadService {
     status: string,
     roleKeys: RoleKey[],
     approvalReviewAccess: ApprovalReviewAccess,
-    archiveFiles: ContractDetailReadModel["archiveFiles"]
+    archiveFiles: ContractDetailReadModel["archiveFiles"],
+    context?: {
+      actorUserId?: string;
+      ownerUserId: string | null;
+      governed: boolean;
+      sealTask: ContractDetailReadModel["sealTask"];
+      activeFinal: NonNullable<ContractDetailReadModel["formalFiles"]>[number] | null;
+      approvalFormAvailable: boolean;
+      approvalParticipant: boolean;
+      canUploadGovernedFinal: boolean;
+    }
   ): DetailActionReadModel[] {
     const workflowActions = [
       detailAction({
@@ -1121,7 +1237,15 @@ export class ContractReadService {
         label: "下载审批单",
         kind: "normal",
         roleKeys,
-        enabled: true
+        enabled: Boolean(context?.approvalFormAvailable && (
+          context.approvalParticipant ||
+          context.actorUserId === context.ownerUserId ||
+          roleKeys.some((role) => [
+            "contract_staff", "contract_director", "project_manager", "finance_staff",
+            "finance_director", "comprehensive_director", "chairman", "general_manager"
+          ].includes(role))
+        )),
+        disabledReason: "审批单尚未生成或当前账号无下载权限"
       }),
       detailAction({
         key: "withdraw_approval",
@@ -1205,7 +1329,7 @@ export class ContractReadService {
       return [
         detailAction({
           key: "approve_seal",
-          label: "确认用章通过",
+          label: context?.governed ? "同意用章" : "确认用章通过",
           kind: "primary",
           roleKeys,
           requiredAction: "contract.seal",
@@ -1216,15 +1340,34 @@ export class ContractReadService {
       ];
     }
 
+    if (status === "in_seal") {
+      return [
+        detailAction({
+          key: "complete_seal",
+          label: "确认我方签署盖章完成",
+          kind: "primary",
+          roleKeys,
+          skipRoleCheck: true,
+          enabled: Boolean(context?.actorUserId && context.sealTask?.handlerUserId === context.actorUserId),
+          disabledReason: "仅冻结经办人可确认线下签署盖章完成"
+        }),
+        ...workflowActions
+      ];
+    }
+
     if (status === "seal_approved_pending_archive") {
       return [
         detailAction({
-          key: "upload_archive",
-          label: "上传盖章合同",
+          key: context?.governed ? "upload_final_contract" : "upload_archive",
+          label: context?.governed ? "上传双方最终版" : "上传盖章合同",
           kind: "primary",
           roleKeys,
-          requiredAction: "contract.archive.upload",
-          enabled: true,
+          requiredAction: context?.governed ? undefined : "contract.archive.upload",
+          skipRoleCheck: Boolean(context?.governed),
+          enabled: context?.governed
+            ? Boolean(context.canUploadGovernedFinal)
+            : true,
+          disabledReason: "仅冻结经办人或符合条件的替代上传人可上传",
           requiresFile: true
         }),
         ...workflowActions
@@ -1234,12 +1377,14 @@ export class ContractReadService {
     if (status === "pending_archive_confirm" || status === "sealed_pending_archive") {
       return [
         detailAction({
-          key: "confirm_archive",
-          label: "确认合同归档",
+          key: context?.governed ? "confirm_final_contract" : "confirm_archive",
+          label: context?.governed ? "确认双方最终版并归档" : "确认合同归档",
           kind: "primary",
           roleKeys,
           requiredAction: "contract.archive.confirm",
-          enabled: true,
+          enabled: context?.governed
+            ? Boolean(context.activeFinal && context.activeFinal.uploadedByUserId !== context.actorUserId)
+            : true,
           requiresPassword: true
         }),
         ...workflowActions
@@ -1270,6 +1415,39 @@ export class ContractReadService {
     }
 
     return workflowActions;
+  }
+
+  private async canUploadGovernedFinal(
+    actorUserId: string | undefined,
+    projectId: string,
+    sealTask: ContractDetailReadModel["sealTask"]
+  ) {
+    if (!actorUserId || !sealTask) return false;
+    if (sealTask.handlerUserId === actorUserId) return true;
+    const position = await this.prisma.position.findUnique({
+      where: { key: "contract_director" },
+      select: { id: true }
+    });
+    if (!position) return false;
+    const assignments = await this.prisma.userPosition.findMany({
+      where: { projectId: null, positionId: position.id },
+      select: { userId: true }
+    });
+    const activeDirectors = assignments.length ? await this.prisma.user.findMany({
+      where: { id: { in: assignments.map((item) => item.userId) }, isActive: true },
+      select: { id: true }
+    }) : [];
+    if (activeDirectors.length !== 1 || activeDirectors[0].id !== sealTask.handlerUserId) {
+      return false;
+    }
+    const [member, actor] = await Promise.all([
+      this.prisma.projectMember.findFirst({
+        where: { projectId, userId: actorUserId, positionKey: "contract_staff" },
+        select: { id: true }
+      }),
+      this.prisma.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } })
+    ]);
+    return Boolean(member && actor?.isActive);
   }
 
   private statusView(status: string): { label: string; tone: CoreFlowTone } {
@@ -1349,10 +1527,10 @@ export class ContractReadService {
       in_approval: "审批节点处理人",
       approval_pending: "审批节点处理人",
       approval_rejected: "合同部成员",
-      approved_pending_seal: "合同部成员",
+      approved_pending_seal: "综合部主管",
       approved: "合同部成员",
-      in_seal: "合同部成员",
-      seal_approved_pending_archive: "合同部成员",
+      in_seal: "冻结经办人",
+      seal_approved_pending_archive: "冻结经办人",
       pending_archive_confirm: "合同部主管",
       sealed_pending_archive: "合同部主管",
       effective: "系统归档",
@@ -1368,11 +1546,11 @@ export class ContractReadService {
       in_approval: "等待审批",
       approval_pending: "等待审批",
       approval_rejected: "退回修改",
-      approved_pending_seal: "发起用章",
+      approved_pending_seal: "综合部主管同意用章",
       approved: "发起用章",
-      in_seal: "等待用章通过",
-      seal_approved_pending_archive: "上传盖章合同",
-      pending_archive_confirm: "主管确认归档",
+      in_seal: "经办人完成线下签署盖章",
+      seal_approved_pending_archive: "上传双方最终版",
+      pending_archive_confirm: "合同部主管确认双方最终版",
       sealed_pending_archive: "主管确认归档",
       effective: "可发起结算",
       voided: "无"
@@ -1404,7 +1582,11 @@ export class ContractReadService {
     if (status === "approved" || status === "approved_pending_seal" || status === "in_seal") {
       return [
         { label: "合同审批", status: "已通过", tone: "success" },
-        { label: "用章", status: "待处理", tone: "warning" },
+        {
+          label: "用章",
+          status: status === "in_seal" ? "已同意，线下办理中" : "待综合部主管同意",
+          tone: "warning"
+        },
         { label: "归档上传", status: "未开始", tone: "default" },
         { label: "主管确认", status: "未开始", tone: "default" },
         { label: "合同生效", status: "阻塞", tone: "danger" }

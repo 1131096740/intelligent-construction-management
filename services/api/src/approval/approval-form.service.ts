@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, Optional } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import type { RoleKey } from "@jiangkong/shared-domain";
+import { Prisma } from "@prisma/client";
 import PDFDocument = require("pdfkit");
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
@@ -11,6 +13,9 @@ import { verifyApprovalSignatureSnapshot } from "./approval-signature-snapshot";
 
 const APPROVAL_FORM_TEMPLATE_KEY = "approval_form";
 const FONT_PATH = resolve(__dirname, "../../assets/fonts/NotoSansSC-Regular.otf");
+const GENERATION_CLAIM_STALE_MS = 120_000;
+const GENERATION_WAIT_ATTEMPTS = 30;
+const GENERATION_WAIT_INTERVAL_MS = 100;
 
 // 审批路线节点（与各业务 service 的 frozenNodes 形态一致：name/mode/roleKeys）
 interface FrozenNode {
@@ -322,54 +327,166 @@ export class ApprovalFormService {
       throw new Error("Prisma and file services are required to generate approval form");
     }
 
-    const instance = await this.prisma.approvalInstance.findUnique({
-      where: { id: instanceId }
+    const claimToken = randomUUID();
+    const acquisition = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id" FROM "ApprovalInstance" WHERE "id" = ${instanceId} FOR UPDATE
+      `);
+      const instance = await tx.approvalInstance.findUnique({ where: { id: instanceId } });
+      if (!instance || instance.status !== "approved") return { kind: "unavailable" as const };
+
+      const existing = await tx.pdfDocument.findFirst({
+        where: { approvalInstanceId: instance.id }
+      });
+      if (existing) return { kind: "existing" as const, document: existing };
+
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "approvalInstanceId" FROM "ApprovalFormGenerationClaim"
+        WHERE "approvalInstanceId" = ${instanceId} FOR UPDATE
+      `);
+      const claim = await tx.approvalFormGenerationClaim.findUnique({
+        where: { approvalInstanceId: instanceId }
+      });
+      const staleBefore = new Date(Date.now() - GENERATION_CLAIM_STALE_MS);
+      if (claim && ["pending", "uploaded"].includes(claim.status) &&
+        claim.claimedAt > staleBefore) {
+        return { kind: "waiting" as const };
+      }
+      const nextStatus = claim?.uploadedFileId ? "uploaded" : "pending";
+      if (claim) {
+        await tx.approvalFormGenerationClaim.update({
+          where: { approvalInstanceId: instanceId },
+          data: {
+            claimToken,
+            status: nextStatus,
+            claimedAt: new Date(),
+            attemptCount: { increment: 1 },
+            safeFailureCode: null
+          }
+        });
+      } else {
+        await tx.approvalFormGenerationClaim.create({
+          data: {
+            approvalInstanceId: instanceId,
+            claimToken,
+            status: "pending",
+            claimedAt: new Date()
+          }
+        });
+      }
+      return {
+        kind: "claimed" as const,
+        instance,
+        uploadedFileId: claim?.uploadedFileId ?? null
+      };
     });
 
-    if (!instance || instance.status !== "approved") {
-      return null;
+    if (acquisition.kind === "unavailable") return null;
+    if (acquisition.kind === "existing") return acquisition.document;
+    if (acquisition.kind === "waiting") return this.waitForGeneratedForm(instanceId);
+
+    let uploadedFileId = acquisition.uploadedFileId;
+    let input: Awaited<ReturnType<ApprovalFormService["buildRenderInput"]>>;
+    try {
+      input = await this.buildRenderInput(acquisition.instance);
+      if (!uploadedFileId) {
+        const buffer = await this.renderPdf(input);
+        const file = await this.files.uploadPrivateFile({
+        buffer,
+        originalName: approvalFileName(input),
+        mimeType: "application/pdf",
+        sizeBytes: buffer.length,
+          uploadedByUserId: actorUserId,
+          approvalFormGenerationClaim: { approvalInstanceId: instanceId, claimToken }
+        });
+        uploadedFileId = file.id;
+        const registered = await this.prisma.approvalFormGenerationClaim.updateMany({
+          where: { approvalInstanceId: instanceId, claimToken, status: "pending" },
+          data: { status: "uploaded", uploadedFileId, safeFailureCode: null }
+        });
+        if (registered.count === 0) {
+          const current = await this.prisma.approvalFormGenerationClaim.findUnique({
+            where: { approvalInstanceId: instanceId }
+          });
+          if (current?.claimToken !== claimToken || current.status !== "uploaded" ||
+            current.uploadedFileId !== uploadedFileId) {
+            throw new Error("审批单生成权已变化，请稍后重试");
+          }
+        }
+      }
+    } catch (error) {
+      await this.prisma.approvalFormGenerationClaim.updateMany({
+        where: { approvalInstanceId: instanceId, claimToken, status: "pending" },
+        data: { status: "failed", safeFailureCode: "render_or_upload_failed" }
+      });
+      throw error;
     }
 
-    const existing = await this.prisma.pdfDocument.findFirst({
-      where: {
-        businessType: instance.businessType,
-        businessId: instance.businessId,
-        templateKey: APPROVAL_FORM_TEMPLATE_KEY
-      }
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw(Prisma.sql`
+          SELECT "approvalInstanceId" FROM "ApprovalFormGenerationClaim"
+          WHERE "approvalInstanceId" = ${instanceId} FOR UPDATE
+        `);
+        const claim = await tx.approvalFormGenerationClaim.findUnique({
+          where: { approvalInstanceId: instanceId }
+        });
+        if (!claim || claim.claimToken !== claimToken || claim.status !== "uploaded" ||
+          claim.uploadedFileId !== uploadedFileId) {
+          throw new Error("审批单生成权已变化，请稍后重试");
+        }
+        const existing = await tx.pdfDocument.findFirst({
+          where: { approvalInstanceId: instanceId }
+        });
+        if (existing) return existing;
+        const pdfDocument = await tx.pdfDocument.create({
+        data: {
+            businessType: acquisition.instance.businessType,
+            businessId: acquisition.instance.businessId,
+            fileId: uploadedFileId,
+          templateKey: APPROVAL_FORM_TEMPLATE_KEY,
+            approvalInstanceId: instanceId
+        }
+      });
+
+        const completed = await tx.approvalFormGenerationClaim.updateMany({
+          where: { approvalInstanceId: instanceId, claimToken, status: "uploaded" },
+          data: { status: "completed", pdfDocumentId: pdfDocument.id, safeFailureCode: null }
+        });
+        if (completed.count !== 1) {
+          throw new Error("审批单生成状态已变化，请稍后重试");
+        }
+        await this.audit.record(tx, {
+        actorUserId,
+        action: "approval.form.generate",
+          businessType: acquisition.instance.businessType,
+          businessId: acquisition.instance.businessId,
+          metadata: {
+            pdfDocumentId: pdfDocument.id,
+            fileId: uploadedFileId,
+            businessCode: input.businessCode
+          }
+      });
+      return pdfDocument;
     });
-    if (existing) {
-      return existing;
+    } catch (error) {
+      await this.prisma.approvalFormGenerationClaim.updateMany({
+        where: { approvalInstanceId: instanceId, claimToken, status: "uploaded" },
+        data: { status: "failed", safeFailureCode: "finalize_retry_required" }
+      });
+      throw error;
     }
+  }
 
-    const input = await this.buildRenderInput(instance);
-    const buffer = await this.renderPdf(input);
-
-    const file = await this.files.uploadPrivateFile({
-      buffer,
-      originalName: approvalFileName(input),
-      mimeType: "application/pdf",
-      sizeBytes: buffer.length,
-      uploadedByUserId: actorUserId
-    });
-
-    const pdfDocument = await this.prisma.pdfDocument.create({
-      data: {
-        businessType: instance.businessType,
-        businessId: instance.businessId,
-        fileId: file.id,
-        templateKey: APPROVAL_FORM_TEMPLATE_KEY
-      }
-    });
-
-    await this.audit.record(this.prisma, {
-      actorUserId,
-      action: "approval.form.generate",
-      businessType: instance.businessType,
-      businessId: instance.businessId,
-      metadata: { pdfDocumentId: pdfDocument.id, fileId: file.id, businessCode: input.businessCode }
-    });
-
-    return pdfDocument;
+  private async waitForGeneratedForm(instanceId: string) {
+    for (let attempt = 0; attempt < GENERATION_WAIT_ATTEMPTS; attempt += 1) {
+      const existing = await this.prisma!.pdfDocument.findFirst({
+        where: { approvalInstanceId: instanceId }
+      });
+      if (existing) return existing;
+      await new Promise<void>((resolve) => setTimeout(resolve, GENERATION_WAIT_INTERVAL_MS));
+    }
+    return null;
   }
 
   // 下载时按下载人动态生成带水印审批单（谁下的+时间+公司名，可追溯防泄露）。
@@ -394,18 +511,34 @@ export class ApprovalFormService {
     }
 
     await this.auth.confirmPassword(downloaderUserId, confirmationPassword);
+    if (businessType === "contract_version") {
+      await this.files.assertCanDownloadContractApprovalForm(businessId, downloaderUserId);
+    }
 
     // 复用归档 PdfDocument 做权限锚点与幂等；其字节为无水印存档件，下载件按下载人重渲染。
-    const pdfDocument = await this.getOrCreateByBusiness(businessType, businessId, downloaderUserId);
+    const pdfDocument = await this.getOrCreateByBusiness(
+      businessType,
+      businessId,
+      downloaderUserId
+    ).catch((error: unknown) => {
+      if (error instanceof Error && error.message === "当前业务尚未完成审批，暂不能生成审批单") {
+        throw new Error("当前业务尚未完成审批，暂不能下载审批单");
+      }
+      throw error;
+    });
     if (!pdfDocument) {
       throw new Error("审批单暂未生成，请先确认审批已完成后再下载");
     }
     await this.files.assertCanDownloadFileById(pdfDocument.fileId, downloaderUserId);
 
-    const instance = await this.prisma.approvalInstance.findFirst({
-      where: { businessType, businessId, status: "approved" },
-      orderBy: { updatedAt: "desc" }
-    });
+    const instance = pdfDocument.approvalInstanceId
+      ? await this.prisma.approvalInstance.findUnique({
+          where: { id: pdfDocument.approvalInstanceId }
+        })
+      : await this.prisma.approvalInstance.findFirst({
+          where: { businessType, businessId, status: "approved" },
+          orderBy: { updatedAt: "desc" }
+        });
     if (!instance) {
       throw new Error("当前业务尚未完成审批，暂不能下载审批单");
     }
@@ -508,13 +641,6 @@ export class ApprovalFormService {
       throw new Error("Prisma service is required to load approval form");
     }
 
-    const existing = await this.prisma.pdfDocument.findFirst({
-      where: { businessType, businessId, templateKey: APPROVAL_FORM_TEMPLATE_KEY }
-    });
-    if (existing) {
-      return existing;
-    }
-
     const instance = await this.prisma.approvalInstance.findFirst({
       where: { businessType, businessId, status: "approved" },
       orderBy: { updatedAt: "desc" }
@@ -522,6 +648,11 @@ export class ApprovalFormService {
     if (!instance) {
       throw new Error("当前业务尚未完成审批，暂不能生成审批单");
     }
+
+    const existing = await this.prisma.pdfDocument.findFirst({
+      where: { approvalInstanceId: instance.id }
+    });
+    if (existing) return existing;
 
     return this.generateForInstance(instance.id, actorUserId);
   }

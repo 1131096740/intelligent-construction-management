@@ -48,6 +48,7 @@ import {
   ContractGovernanceDenial
 } from "./contract-formal-file.service";
 import { ContractAuthorizationService } from "./contract-authorization.service";
+import { ContractSealService } from "./contract-seal.service";
 
 interface ContractApprovalAssignment {
   kind: "transfer" | "delegate";
@@ -131,7 +132,9 @@ export class ContractService {
     @Optional()
     private readonly formalFiles?: ContractFormalFileService,
     @Optional()
-    private readonly authorizations?: ContractAuthorizationService
+    private readonly authorizations?: ContractAuthorizationService,
+    @Optional()
+    private readonly seals?: ContractSealService
   ) {}
 
   async createDraft(input: CreateContractDraftDto, actorUserId: string) {
@@ -971,6 +974,13 @@ export class ContractService {
     actorUserId: string,
     input: UploadContractArchiveFileDto
   ) {
+    const governed = await this.prisma.contractVersion?.findUnique({
+      where: { id: contractVersionId },
+      select: { contractGovernanceVersion: true }
+    });
+    if (governed?.contractGovernanceVersion === 1) {
+      throw new BadRequestException("新合同请上传双方最终签署 PDF，不能使用旧归档入口");
+    }
     return this.prisma.$transaction(async (tx) => {
       const version = await tx.contractVersion.findUnique({
         where: { id: contractVersionId }
@@ -1743,6 +1753,18 @@ export class ContractService {
       });
 
       if (isFinalApproval) {
+        if (version.contractGovernanceVersion === 1) {
+          if (!this.seals) {
+            throw new Error("合同用章任务服务暂不可用，请稍后重试或联系管理员");
+          }
+          await this.seals.ensurePendingTask(
+            tx,
+            updated,
+            instance.id,
+            instance.applicantUserId,
+            actorUserId
+          );
+        }
         completedInstanceId = instance.id;
       }
 
@@ -1765,9 +1787,21 @@ export class ContractService {
     });
 
     if (completedInstanceId) {
-      await this.approvalForms
-        ?.generateForInstance(completedInstanceId, actorUserId)
-        .catch(() => undefined);
+      try {
+        await this.approvalForms?.generateForInstance(completedInstanceId, actorUserId);
+      } catch (error) {
+        await this.audit.record(this.prisma, {
+          actorUserId,
+          action: "contract.approval_form.generate_failed",
+          businessType: "contract_version",
+          businessId: contractVersionId,
+          metadata: {
+            approvalInstanceId: completedInstanceId,
+            errorType: error instanceof Error ? error.name : "UnknownError",
+            retryAvailable: true
+          }
+        });
+      }
     }
 
     return result;
@@ -1984,6 +2018,14 @@ export class ContractService {
   }
 
   async approveSeal(contractVersionId: string, actorUserId: string) {
+    const governed = await this.prisma.contractVersion?.findUnique({
+      where: { id: contractVersionId },
+      select: { contractGovernanceVersion: true }
+    });
+    if (governed?.contractGovernanceVersion === 1) {
+      if (!this.seals) throw new Error("合同用章任务服务暂不可用，请稍后重试");
+      return this.seals.approve(contractVersionId, actorUserId);
+    }
     return this.updateVersionStatus({
       contractVersionId,
       expectedStatus: "approved_pending_seal",
@@ -1998,6 +2040,13 @@ export class ContractService {
     actorUserId: string,
     input: ConfirmContractArchiveDto
   ) {
+    const governed = await this.prisma.contractVersion?.findUnique({
+      where: { id: contractVersionId },
+      select: { contractGovernanceVersion: true }
+    });
+    if (governed?.contractGovernanceVersion === 1) {
+      throw new BadRequestException("新合同请在双方最终版中确认归档，不能使用旧归档入口");
+    }
     if (!input.confirmationPassword?.trim()) {
       throw new Error("确认合同归档需要当前登录密码");
     }

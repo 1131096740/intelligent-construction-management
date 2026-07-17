@@ -259,6 +259,50 @@ export class ContractFormalFileService {
     return this.inspectLockedPdf(fileId, locked);
   }
 
+  async inspectOwnedStoredPdf(fileId: string, actorUserId: string) {
+    const file = await this.prisma.fileObject.findUnique({ where: { id: fileId } });
+    if (!file || file.storageStatus !== "active") {
+      throw this.deny("所选合同文件不存在或当前不可用，请重新上传", "contract.formal_file.file_denied");
+    }
+    if (file.uploadedByUserId !== actorUserId) {
+      throw this.deny("只能关联本人本次上传的合同文件", "contract.formal_file.file_denied");
+    }
+    const inspected = await this.inspectLockedPdf(fileId, file);
+    return {
+      ...inspected,
+      fileSnapshot: {
+        storageStatus: file.storageStatus,
+        mimeType: file.mimeType,
+        sizeBytes: file.sizeBytes,
+        contentSha256: file.contentSha256
+      }
+    };
+  }
+
+  async inspectLinkedStoredPdf(
+    fileId: string,
+    expectedSha256: string,
+    expectedPageCount: number
+  ) {
+    const file = await this.prisma.fileObject.findUnique({ where: { id: fileId } });
+    if (!file || file.storageStatus !== "active") {
+      throw this.deny("已关联的合同文件当前不可用，请重新上传", "contract.formal_file.file_denied");
+    }
+    const inspected = await this.inspectLockedPdf(fileId, file);
+    if (inspected.sha256 !== expectedSha256 || inspected.pageCount !== expectedPageCount) {
+      throw this.deny("已关联的合同文件完整性校验失败，请重新上传", "contract.formal_file.file_denied");
+    }
+    return {
+      ...inspected,
+      fileSnapshot: {
+        storageStatus: file.storageStatus,
+        mimeType: file.mimeType,
+        sizeBytes: file.sizeBytes,
+        contentSha256: file.contentSha256
+      }
+    };
+  }
+
   async inspectLinkedPdf(
     tx: Prisma.TransactionClient,
     fileId: string,

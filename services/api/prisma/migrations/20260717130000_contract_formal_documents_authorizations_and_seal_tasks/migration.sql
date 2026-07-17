@@ -65,6 +65,7 @@ CREATE TABLE "ContractVersionAuthorizationLink" (
 CREATE TABLE "ContractSealTask" (
   "id" TEXT NOT NULL,
   "contractVersionId" TEXT NOT NULL,
+  "approvalInstanceId" TEXT NOT NULL,
   "handlerUserId" TEXT NOT NULL,
   "status" TEXT NOT NULL,
   "approvedByUserId" TEXT,
@@ -78,6 +79,20 @@ CREATE TABLE "ContractSealTask" (
   "updatedAt" TIMESTAMP(3) NOT NULL,
 
   CONSTRAINT "ContractSealTask_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE "ApprovalFormGenerationClaim" (
+  "approvalInstanceId" TEXT NOT NULL,
+  "claimToken" TEXT NOT NULL,
+  "status" TEXT NOT NULL,
+  "claimedAt" TIMESTAMP(3) NOT NULL,
+  "uploadedFileId" TEXT,
+  "pdfDocumentId" TEXT,
+  "attemptCount" INTEGER NOT NULL DEFAULT 1,
+  "safeFailureCode" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "ApprovalFormGenerationClaim_pkey" PRIMARY KEY ("approvalInstanceId")
 );
 
 CREATE UNIQUE INDEX "PdfDocument_approvalInstanceId_key" ON "PdfDocument"("approvalInstanceId");
@@ -101,10 +116,21 @@ CREATE INDEX "ContractVersionAuthorizationLink_authorizationId_idx"
   ON "ContractVersionAuthorizationLink"("authorizationId");
 CREATE INDEX "ContractVersionAuthorizationLink_reusedFromContractVersionId_idx"
   ON "ContractVersionAuthorizationLink"("reusedFromContractVersionId");
-CREATE UNIQUE INDEX "ContractSealTask_contractVersionId_key"
-  ON "ContractSealTask"("contractVersionId");
+CREATE UNIQUE INDEX "ContractSealTask_approvalInstanceId_key"
+  ON "ContractSealTask"("approvalInstanceId");
+CREATE UNIQUE INDEX "ContractSealTask_active_contract_version_key"
+  ON "ContractSealTask"("contractVersionId")
+  WHERE "status" <> 'cancelled';
 CREATE INDEX "ContractSealTask_status_handlerUserId_idx"
   ON "ContractSealTask"("status", "handlerUserId");
+CREATE INDEX "ContractSealTask_contractVersionId_status_idx"
+  ON "ContractSealTask"("contractVersionId", "status");
+CREATE UNIQUE INDEX "ApprovalFormGenerationClaim_uploadedFileId_key"
+  ON "ApprovalFormGenerationClaim"("uploadedFileId");
+CREATE UNIQUE INDEX "ApprovalFormGenerationClaim_pdfDocumentId_key"
+  ON "ApprovalFormGenerationClaim"("pdfDocumentId");
+CREATE INDEX "ApprovalFormGenerationClaim_status_claimedAt_idx"
+  ON "ApprovalFormGenerationClaim"("status", "claimedAt");
 
 ALTER TABLE "ContractVersion"
   ADD CONSTRAINT "ContractVersion_contract_governance_version_check"
@@ -229,6 +255,9 @@ ALTER TABLE "ContractSealTask"
   ADD CONSTRAINT "ContractSealTask_contract_version_fk"
   FOREIGN KEY ("contractVersionId") REFERENCES "ContractVersion"("id")
   ON DELETE RESTRICT ON UPDATE CASCADE,
+  ADD CONSTRAINT "ContractSealTask_approval_instance_fk"
+  FOREIGN KEY ("approvalInstanceId") REFERENCES "ApprovalInstance"("id")
+  ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT "ContractSealTask_handler_fk"
   FOREIGN KEY ("handlerUserId") REFERENCES "User"("id")
   ON DELETE RESTRICT ON UPDATE CASCADE,
@@ -241,6 +270,34 @@ ALTER TABLE "ContractSealTask"
   ADD CONSTRAINT "ContractSealTask_cancelled_by_fk"
   FOREIGN KEY ("cancelledByUserId") REFERENCES "User"("id")
   ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE "ApprovalFormGenerationClaim"
+  ADD CONSTRAINT "ApprovalFormGenerationClaim_approval_instance_fk"
+  FOREIGN KEY ("approvalInstanceId") REFERENCES "ApprovalInstance"("id")
+  ON DELETE RESTRICT ON UPDATE CASCADE,
+  ADD CONSTRAINT "ApprovalFormGenerationClaim_uploaded_file_fk"
+  FOREIGN KEY ("uploadedFileId") REFERENCES "FileObject"("id")
+  ON DELETE RESTRICT ON UPDATE CASCADE,
+  ADD CONSTRAINT "ApprovalFormGenerationClaim_pdf_document_fk"
+  FOREIGN KEY ("pdfDocumentId") REFERENCES "PdfDocument"("id")
+  ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE "ApprovalFormGenerationClaim"
+  ADD CONSTRAINT "ApprovalFormGenerationClaim_status_check"
+  CHECK ("status" IN ('pending', 'uploaded', 'completed', 'failed')),
+  ADD CONSTRAINT "ApprovalFormGenerationClaim_attempt_count_check"
+  CHECK ("attemptCount" >= 1),
+  ADD CONSTRAINT "ApprovalFormGenerationClaim_failure_code_check"
+  CHECK ("safeFailureCode" IS NULL OR "safeFailureCode" IN (
+    'render_or_upload_failed', 'finalize_retry_required'
+  )),
+  ADD CONSTRAINT "ApprovalFormGenerationClaim_state_fields_check"
+  CHECK (
+    ("status" = 'pending' AND "uploadedFileId" IS NULL AND "pdfDocumentId" IS NULL)
+    OR ("status" = 'uploaded' AND "uploadedFileId" IS NOT NULL AND "pdfDocumentId" IS NULL)
+    OR ("status" = 'completed' AND "uploadedFileId" IS NOT NULL AND "pdfDocumentId" IS NOT NULL)
+    OR ("status" = 'failed' AND "pdfDocumentId" IS NULL)
+  );
 
 ALTER TABLE "ContractSealTask"
   ADD CONSTRAINT "ContractSealTask_status_check"

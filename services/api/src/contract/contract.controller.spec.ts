@@ -23,6 +23,11 @@ const contractBodyRoutes = [
   ["contract.reviewApproval", ContractController, "reviewApproval", 2],
   ["contract.transferApproval", ContractController, "transferApproval", 2],
   ["contract.delegateApproval", ContractController, "delegateApproval", 2],
+  ["contract.completeGovernedSeal", ContractController, "completeGovernedSeal", 2],
+  ["contract.uploadMutuallySignedFinal", ContractController, "uploadMutuallySignedFinal", 2],
+  ["contract.returnMutuallySignedFinal", ContractController, "returnMutuallySignedFinal", 2],
+  ["contract.confirmMutuallySignedFinal", ContractController, "confirmMutuallySignedFinal", 2],
+  ["contract.invalidateSigningForMaterialChange", ContractController, "invalidateSigningForMaterialChange", 2],
   ["contract.uploadArchiveFile", ContractController, "uploadArchiveFile", 2],
   ["contract.confirmArchiveFile", ContractController, "confirmArchiveFile", 2],
   ["contract.generatePdfArchive", ContractController, "generatePdfArchive", 2],
@@ -81,6 +86,39 @@ const validContractRouteBodies = [
   ["contract.reviewApproval", ContractController, "reviewApproval", 2, { decision: "approve" }],
   ["contract.transferApproval", ContractController, "transferApproval", 2, { toUserId: "user-2" }],
   ["contract.delegateApproval", ContractController, "delegateApproval", 2, { toUserId: "user-2" }],
+  ["contract.completeGovernedSeal", ContractController, "completeGovernedSeal", 2, {
+    firstPartySignedOrStamped: true,
+    companySealCompleted: true,
+    crossPageSealCompleted: true,
+    signingDateCompleted: true
+  }],
+  ["contract.uploadMutuallySignedFinal", ContractController, "uploadMutuallySignedFinal", 2, {
+    fileId: "file-final",
+    sourceRevision: 1,
+    firstPartySignedOrStamped: true,
+    companySealCompleted: true,
+    crossPageSealCompleted: true,
+    signingDateCompleted: true,
+    onlyPermittedSignatureChanges: true,
+    documentOrderConfirmed: true
+  }],
+  ["contract.returnMutuallySignedFinal", ContractController, "returnMutuallySignedFinal", 2, {
+    formalFileId: "formal-final",
+    reason: "第三页扫描不清晰"
+  }],
+  ["contract.confirmMutuallySignedFinal", ContractController, "confirmMutuallySignedFinal", 2, {
+    formalFileId: "formal-final",
+    confirmationPassword: "current password",
+    firstPartySignedOrStamped: true,
+    companySealCompleted: true,
+    crossPageSealCompleted: true,
+    signingDateCompleted: true,
+    onlyPermittedSignatureChanges: true,
+    documentOrderConfirmed: true
+  }],
+  ["contract.invalidateSigningForMaterialChange", ContractController, "invalidateSigningForMaterialChange", 2, {
+    reason: "合同金额发生实质变化"
+  }],
   ["contract.uploadArchiveFile", ContractController, "uploadArchiveFile", 2, { fileId: "file-1" }],
   [
     "contract.confirmArchiveFile",
@@ -560,8 +598,11 @@ describe("ContractController authorization wiring", () => {
     ["transferApproval", "contract.approve"],
     ["delegateApproval", "contract.approve"],
     ["approveSeal", "contract.seal"],
+    ["approveGovernedSeal", "contract.seal"],
     ["uploadArchiveFile", "contract.archive.upload"],
     ["confirmArchiveFile", "contract.archive.confirm"],
+    ["returnMutuallySignedFinal", "contract.archive.confirm"],
+    ["confirmMutuallySignedFinal", "contract.archive.confirm"],
     ["generatePdfArchive", "contract.archive.upload"]
   ])("guards %s with the %s action", (method, action) => {
     const handler = (ContractController.prototype as unknown as Record<string, object>)[method];
@@ -578,6 +619,15 @@ describe("ContractController authorization wiring", () => {
     }
   );
 
+  it.each([
+    "completeGovernedSeal",
+    "uploadMutuallySignedFinal",
+    "invalidateSigningForMaterialChange"
+  ])("lets %s reach exact frozen-handler service authorization", (method) => {
+    const handler = (ContractController.prototype as unknown as Record<string, object>)[method];
+    expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler as object)).toBeUndefined();
+  });
+
   it.each([["withdrawApproval"], ["remindApproval"]])(
     "allows the approval applicant to %s without project approval action metadata",
     (method) => {
@@ -591,9 +641,8 @@ describe("ContractController authorization wiring", () => {
     const handler = ContractController.prototype.list;
 
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, handler)).toEqual(LEDGER_READ_POSITION_KEYS);
-    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ContractController.prototype.detail)).toEqual(
-      LEDGER_READ_POSITION_KEYS
-    );
+    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ContractController.prototype.detail))
+      .toBeUndefined();
   });
 
   it("limits contract ledger export to the approved contract, finance and comprehensive positions", () => {

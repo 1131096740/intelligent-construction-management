@@ -21,6 +21,10 @@ export interface UploadPrivateFileInput {
   sizeBytes: number;
   uploadedByUserId: string;
   buffer: Buffer;
+  approvalFormGenerationClaim?: {
+    approvalInstanceId: string;
+    claimToken: string;
+  };
 }
 
 export interface ReadPrivateFileInput {
@@ -649,6 +653,25 @@ export class FileService {
           }
         });
 
+        if (input.approvalFormGenerationClaim) {
+          const claimed = await tx.approvalFormGenerationClaim.updateMany({
+            where: {
+              approvalInstanceId: input.approvalFormGenerationClaim.approvalInstanceId,
+              claimToken: input.approvalFormGenerationClaim.claimToken,
+              status: "pending",
+              uploadedFileId: null
+            },
+            data: {
+              status: "uploaded",
+              uploadedFileId: file.id,
+              safeFailureCode: null
+            }
+          });
+          if (claimed.count !== 1) {
+            throw new Error("审批单生成权已变化，请稍后重试");
+          }
+        }
+
         return file;
       });
     } catch (transactionError) {
@@ -880,6 +903,46 @@ export class FileService {
     });
   }
 
+  async assertCanDownloadContractApprovalForm(
+    contractVersionId: string,
+    actorUserId: string
+  ) {
+    await this.prisma.$transaction(async (tx) => {
+      const version = await tx.contractVersion.findUnique({
+        where: { id: contractVersionId },
+        select: { id: true, contractId: true }
+      });
+      const contract = version ? await tx.contract.findUnique({
+        where: { id: version.contractId },
+        select: { projectId: true, ownerUserId: true, voidedAt: true }
+      }) : null;
+      if (!version || !contract || contract.voidedAt) {
+        throw new ForbiddenException("当前账号无权下载该合同审批单");
+      }
+      const instance = await tx.approvalInstance.findFirst({
+        where: {
+          businessType: "contract_version",
+          businessId: version.id,
+          status: "approved"
+        },
+        orderBy: { updatedAt: "desc" }
+      });
+      if (!instance) throw new BadRequestException("当前合同尚未完成审批，暂不能下载审批单");
+      if (contract.ownerUserId === actorUserId || instance.applicantUserId === actorUserId) return;
+      if (await tx.approvalActionLog.findFirst({
+        where: { approvalInstanceId: instance.id, actorUserId, action: "approve" },
+        select: { id: true }
+      })) return;
+      const roles = await this.loadActorRoleKeys(tx, actorUserId, contract.projectId);
+      const exactReaders = new Set<RoleKey>([
+        "contract_staff", "contract_director", "project_manager", "finance_staff",
+        "finance_director", "comprehensive_director", "chairman", "general_manager"
+      ]);
+      if (roles.some((role) => exactReaders.has(role))) return;
+      throw new ForbiddenException("当前账号无权下载该合同审批单");
+    });
+  }
+
   async assertCanDownloadFile(
     tx: Prisma.TransactionClient,
     fileId: string,
@@ -931,6 +994,15 @@ export class FileService {
     file: FileObject,
     actorUserId: string
   ) {
+    const governedContractAccess = await this.governedContractFileAccess(
+      tx,
+      file.id,
+      actorUserId
+    );
+    if (governedContractAccess !== null) {
+      if (governedContractAccess) return;
+      throw new ForbiddenException("当前账号无权下载该合同签署资料");
+    }
     if (
       await this.hasGlobalRole(
         tx,
@@ -1379,6 +1451,78 @@ export class FileService {
     }
 
     throw new ForbiddenException("当前账号无权下载该资料");
+  }
+
+  private async governedContractFileAccess(
+    tx: Prisma.TransactionClient,
+    fileId: string,
+    actorUserId: string
+  ): Promise<boolean | null> {
+    const clients = tx as unknown as {
+      contractFormalFile?: Prisma.TransactionClient["contractFormalFile"];
+      contractAuthorization?: Prisma.TransactionClient["contractAuthorization"];
+      pdfDocument?: Prisma.TransactionClient["pdfDocument"];
+      contractSealTask?: Prisma.TransactionClient["contractSealTask"];
+    };
+    if (!clients.contractFormalFile || !clients.contractAuthorization ||
+      !clients.pdfDocument || !clients.contractSealTask) return null;
+
+    const [formal, authorization, approvalForm] = await Promise.all([
+      clients.contractFormalFile.findFirst({ where: { fileId } }),
+      clients.contractAuthorization.findFirst({ where: { fileId } }),
+      clients.pdfDocument.findFirst({
+        where: { fileId, templateKey: "approval_form", businessType: "contract_version" }
+      })
+    ]);
+    const versionId = formal?.contractVersionId ??
+      authorization?.originContractVersionId ?? approvalForm?.businessId;
+    if (!versionId) return null;
+    if (formal && formal.status !== "active") return false;
+    if (authorization && authorization.status !== "active") return false;
+
+    const version = await tx.contractVersion.findUnique({
+      where: { id: versionId },
+      select: { id: true, contractId: true }
+    });
+    const contract = version ? await tx.contract.findUnique({
+      where: { id: version.contractId },
+      select: { projectId: true, ownerUserId: true, voidedAt: true }
+    }) : null;
+    if (!contract || contract.voidedAt) return false;
+    if (contract.ownerUserId === actorUserId) return true;
+
+    const instance = approvalForm?.approvalInstanceId
+      ? await tx.approvalInstance.findUnique({ where: { id: approvalForm.approvalInstanceId } })
+      : await tx.approvalInstance.findFirst({
+          where: { businessType: "contract_version", businessId: version!.id },
+          orderBy: { updatedAt: "desc" }
+        });
+    if (instance?.applicantUserId === actorUserId) return true;
+    if (instance && await tx.approvalActionLog.findFirst({
+      where: { approvalInstanceId: instance.id, actorUserId, action: "approve" }
+    })) return true;
+
+    const sealTask = await clients.contractSealTask.findFirst({
+      where: { contractVersionId: version!.id, status: { not: "cancelled" } },
+      orderBy: { createdAt: "desc" }
+    });
+    if (sealTask?.handlerUserId === actorUserId) return true;
+    if (formal?.uploadedByUserId === actorUserId || formal?.confirmedByUserId === actorUserId) {
+      return true;
+    }
+
+    const roles = await this.loadActorRoleKeys(tx, actorUserId, contract.projectId);
+    const exactReaders = new Set<RoleKey>([
+      "contract_staff",
+      "contract_director",
+      "project_manager",
+      "finance_staff",
+      "finance_director",
+      "comprehensive_director",
+      "chairman",
+      "general_manager"
+    ]);
+    return roles.some((role) => exactReaders.has(role));
   }
 
   private async resolveApprovalProjectId(

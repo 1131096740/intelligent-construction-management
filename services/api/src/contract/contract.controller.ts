@@ -39,6 +39,14 @@ import { UploadContractFormalFileDto } from "./dto/contract-formal-file.dto";
 import { SetContractAuthorizationDto } from "./dto/contract-authorization.dto";
 import { ContractFormalFileService } from "./contract-formal-file.service";
 import { ContractAuthorizationService } from "./contract-authorization.service";
+import { ContractSealService } from "./contract-seal.service";
+import {
+  CompleteContractSealDto,
+  ConfirmMutuallySignedContractDto,
+  InvalidateContractSigningDto,
+  ReturnContractFormalFileDto,
+  UploadMutuallySignedContractDto
+} from "./dto/contract-seal.dto";
 
 @Controller("contracts")
 export class ContractController {
@@ -48,7 +56,8 @@ export class ContractController {
     private readonly workbench: ContractWorkbenchService,
     private readonly projectVisibility: ProjectVisibilityService,
     @Optional() private readonly formalFiles?: ContractFormalFileService,
-    @Optional() private readonly authorizations?: ContractAuthorizationService
+    @Optional() private readonly authorizations?: ContractAuthorizationService,
+    @Optional() private readonly seals?: ContractSealService
   ) {}
 
   // 创建合同草稿：合同员或合同部主管从已发布模板快照初始化工作台草稿。
@@ -116,7 +125,6 @@ export class ContractController {
   }
 
   @Get(":contractId")
-  @RequirePositions(...LEDGER_READ_POSITION_KEYS)
   async detail(@Param("contractId") contractId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.contractRead.getDetail(
       contractId,
@@ -227,6 +235,68 @@ export class ContractController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.contracts.approveSeal(contractVersionId, user.id);
+  }
+
+  @Post(":contractVersionId/seal/approve")
+  @RequireProjectRole("contract.seal")
+  approveGovernedSeal(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    if (!this.seals) throw new InternalServerErrorException("合同用章任务服务暂不可用，请稍后重试");
+    return this.seals.approve(contractVersionId, user.id);
+  }
+
+  @Post(":contractVersionId/seal/complete")
+  completeGovernedSeal(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: CompleteContractSealDto
+  ) {
+    if (!this.seals) throw new InternalServerErrorException("合同用章任务服务暂不可用，请稍后重试");
+    return this.seals.complete(contractVersionId, user.id, body);
+  }
+
+  @Post(":contractVersionId/formal-files/final")
+  uploadMutuallySignedFinal(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: UploadMutuallySignedContractDto
+  ) {
+    if (!this.seals) throw new InternalServerErrorException("合同用章任务服务暂不可用，请稍后重试");
+    return this.seals.uploadFinal(contractVersionId, user.id, body);
+  }
+
+  @Post(":contractVersionId/formal-files/final/return")
+  @RequireProjectRole("contract.archive.confirm")
+  returnMutuallySignedFinal(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ReturnContractFormalFileDto
+  ) {
+    if (!this.seals) throw new InternalServerErrorException("合同用章任务服务暂不可用，请稍后重试");
+    return this.seals.returnForCorrection(contractVersionId, user.id, body);
+  }
+
+  @Post(":contractVersionId/formal-files/final/confirmation")
+  @RequireProjectRole("contract.archive.confirm")
+  confirmMutuallySignedFinal(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ConfirmMutuallySignedContractDto
+  ) {
+    if (!this.seals) throw new InternalServerErrorException("合同用章任务服务暂不可用，请稍后重试");
+    return this.seals.confirmArchive(contractVersionId, user.id, body);
+  }
+
+  @Post(":contractVersionId/signing/material-change")
+  invalidateSigningForMaterialChange(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: InvalidateContractSigningDto
+  ) {
+    if (!this.seals) throw new InternalServerErrorException("合同用章任务服务暂不可用，请稍后重试");
+    return this.seals.invalidateForMaterialChange(contractVersionId, user.id, body);
   }
 
   @Post(":contractVersionId/archive-files")

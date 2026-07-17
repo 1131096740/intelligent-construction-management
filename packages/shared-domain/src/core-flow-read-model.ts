@@ -98,6 +98,29 @@ export interface ContractArchiveFileReadModel {
   disabledReason: string | null;
 }
 
+export interface ContractFormalFileReadModel {
+  formalFileId: string;
+  purpose: "approval_original" | "mutually_signed_final";
+  fileId: string;
+  fileName: string;
+  pageCount: number;
+  sourceRevision: number;
+  status: string;
+  uploadedByUserId: string;
+  confirmedByUserId: string | null;
+  confirmedAt: string | null;
+}
+
+export interface ContractSealTaskReadModel {
+  id: string;
+  status: string;
+  handlerUserId: string;
+  approvedByUserId: string | null;
+  approvedAt: string | null;
+  completedByUserId: string | null;
+  completedAt: string | null;
+}
+
 export interface EvidenceFileReadModel {
   recordId: string;
   fileId: string;
@@ -172,6 +195,8 @@ export interface ContractDetailReadModel {
   settlementBlockMessage: string;
   settlementPayment: ContractSettlementPaymentReadModel;
   archiveFiles: ContractArchiveFileReadModel[];
+  formalFiles?: ContractFormalFileReadModel[];
+  sealTask?: ContractSealTaskReadModel | null;
   approvalTimeline: ApprovalTimelineItemReadModel[];
   availableActions: DetailActionReadModel[];
   primaryAction: string | null;

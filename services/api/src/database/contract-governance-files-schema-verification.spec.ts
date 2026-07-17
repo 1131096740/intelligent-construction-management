@@ -46,7 +46,8 @@ function validateM55(sql: string) {
     "ContractFormalFile",
     "ContractAuthorization",
     "ContractVersionAuthorizationLink",
-    "ContractSealTask"
+    "ContractSealTask",
+    "ApprovalFormGenerationClaim"
   ]) {
     expect(sql).toContain(`CREATE TABLE "${table}"`);
   }
@@ -62,6 +63,25 @@ function validateM55(sql: string) {
   ]) {
     expect(sql).toContain(reference);
   }
+  expect(sql).toMatch(
+    /ContractSealTask_approval_instance_fk[\s\S]*?FOREIGN KEY \("approvalInstanceId"\) REFERENCES "ApprovalInstance"\("id"\)/u
+  );
+  expect(sql).toMatch(
+    /ApprovalFormGenerationClaim_approval_instance_fk[\s\S]*?FOREIGN KEY \("approvalInstanceId"\) REFERENCES "ApprovalInstance"\("id"\)/u
+  );
+  expect(sql).toMatch(
+    /ApprovalFormGenerationClaim_uploaded_file_fk[\s\S]*?FOREIGN KEY \("uploadedFileId"\) REFERENCES "FileObject"\("id"\)/u
+  );
+  expect(sql).toMatch(
+    /ApprovalFormGenerationClaim_pdf_document_fk[\s\S]*?FOREIGN KEY \("pdfDocumentId"\) REFERENCES "PdfDocument"\("id"\)/u
+  );
+  expect(sql).toMatch(
+    /ApprovalFormGenerationClaim_status_check[\s\S]*?'pending'[\s\S]*?'uploaded'[\s\S]*?'completed'[\s\S]*?'failed'/u
+  );
+  expect(sql).toContain('"ApprovalFormGenerationClaim_state_fields_check"');
+  expect(sql).toMatch(
+    /ApprovalFormGenerationClaim_state_fields_check[\s\S]*?"status" = 'pending'[\s\S]*?"uploadedFileId" IS NULL[\s\S]*?"status" = 'uploaded'[\s\S]*?"uploadedFileId" IS NOT NULL[\s\S]*?"status" = 'completed'[\s\S]*?"pdfDocumentId" IS NOT NULL/u
+  );
   expect(sql).toMatch(
     /ContractFormalFile_supersedes_fk[\s\S]*?FOREIGN KEY \("supersedesId"\) REFERENCES "ContractFormalFile"\("id"\)/u
   );
@@ -160,6 +180,12 @@ function validateM55(sql: string) {
   expect(sql).toContain(
     'CREATE INDEX "ContractSealTask_status_handlerUserId_idx"'
   );
+  expect(sql).toContain(
+    'CREATE UNIQUE INDEX "ContractSealTask_approvalInstanceId_key"'
+  );
+  expect(sql).toMatch(
+    /CREATE UNIQUE INDEX "ContractSealTask_active_contract_version_key"[\s\S]*?ON "ContractSealTask"\("contractVersionId"\)[\s\S]*?WHERE "status" <> 'cancelled';/u
+  );
 }
 
 function insertBeforeCommit(sql: string, statement: string) {
@@ -196,10 +222,16 @@ describe("M55 contract governance evidence schema", () => {
       "ContractFormalFile",
       "ContractAuthorization",
       "ContractVersionAuthorizationLink",
-      "ContractSealTask"
+      "ContractSealTask",
+      "ApprovalFormGenerationClaim"
     ]) {
       expect(schema).toContain(`model ${name}`);
     }
+    expect(schema).toMatch(/model ContractSealTask[\s\S]*?approvalInstanceId\s+String\s+@unique/u);
+    expect(schema).toMatch(
+      /model ApprovalFormGenerationClaim[\s\S]*?approvalInstanceId\s+String\s+@id[\s\S]*?uploadedFileId\s+String\?\s+@unique[\s\S]*?pdfDocumentId\s+String\?\s+@unique/u
+    );
+    expect(schema).not.toMatch(/model ContractSealTask[\s\S]*?contractVersionId\s+String\s+@unique/u);
   });
 
   it.each([
@@ -300,6 +332,17 @@ describe("M55 contract governance evidence schema", () => {
       (sql: string) => sql.replace(
         'CREATE UNIQUE INDEX "ContractAuthorization_active_origin_side_key"\n  ON "ContractAuthorization"("originContractVersionId", "side")\n  WHERE "status" = \'active\';\n',
         ""
+      )
+    ],
+    [
+      "removing approval-form claim state grouping",
+      (sql: string) => removeNamedConstraint(sql, "ApprovalFormGenerationClaim_state_fields_check")
+    ],
+    [
+      "removing approval-form claim file ownership",
+      (sql: string) => sql.replace(
+        'FOREIGN KEY ("uploadedFileId") REFERENCES "FileObject"("id")',
+        'FOREIGN KEY ("uploadedFileId") REFERENCES "MissingFile"("id")'
       )
     ]
   ])("rejects %s", (_name, mutate) => {

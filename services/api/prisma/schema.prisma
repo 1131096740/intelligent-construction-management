@@ -433,7 +433,8 @@ model ContractVersionAuthorizationLink {
 
 model ContractSealTask {
   id                 String    @id @default(uuid())
-  contractVersionId  String    @unique
+  contractVersionId  String
+  approvalInstanceId String    @unique
   handlerUserId      String
   status             String
   approvedByUserId   String?
@@ -447,6 +448,7 @@ model ContractSealTask {
   updatedAt          DateTime  @updatedAt
 
   @@index([status, handlerUserId])
+  @@index([contractVersionId, status])
 }
 
 model SettlementDraft {
@@ -1016,6 +1018,21 @@ model PdfDocument {
   templateKey        String
   approvalInstanceId String?  @unique
   createdAt          DateTime @default(now())
+}
+
+model ApprovalFormGenerationClaim {
+  approvalInstanceId String   @id
+  claimToken         String
+  status             String
+  claimedAt          DateTime
+  uploadedFileId     String?  @unique
+  pdfDocumentId      String?  @unique
+  attemptCount       Int      @default(1)
+  safeFailureCode    String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([status, claimedAt])
 }
 
 model AuditLog {

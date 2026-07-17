@@ -2796,16 +2796,20 @@ describe("ContractService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
-          status: "in_approval"
+          status: "in_approval",
+          contractGovernanceVersion: 1
         }),
         update: jest.fn().mockResolvedValue({
           id: "contract-version-1",
-          status: "approved_pending_seal"
+          contractId: "contract-1",
+          status: "approved_pending_seal",
+          contractGovernanceVersion: 1
         })
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
           id: "approval-instance-1",
+          applicantUserId: "applicant-1",
           currentNodeIndex: 0,
           frozenNodes: [
             {
@@ -2834,7 +2838,21 @@ describe("ContractService", () => {
         callback(tx)
       )
     } as unknown as PrismaService;
-    const service = new ContractService(prisma, audit as never);
+    const seals = { ensurePendingTask: jest.fn().mockResolvedValue({ id: "seal-1" }) };
+    const service = new ContractService(
+      prisma,
+      audit as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      seals as never
+    );
 
     const result = await service.reviewApproval("contract-version-1", "chairman-1", {
       decision: "approve"
@@ -2864,6 +2882,13 @@ describe("ContractService", () => {
         signatureSha256Snapshot: "a".repeat(64)
       }
     });
+    expect(seals.ensurePendingTask).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ id: "contract-version-1", status: "approved_pending_seal" }),
+      "approval-instance-1",
+      "applicant-1",
+      "chairman-1"
+    );
     expect(audit.record).toHaveBeenCalledWith(tx, {
       actorUserId: "chairman-1",
       action: "contract.approval.approve",
@@ -2874,6 +2899,89 @@ describe("ContractService", () => {
         toStatus: "approved_pending_seal",
         nodeName: "董事长/总经理",
         approvedRoleKey: "chairman"
+      }
+    });
+  });
+
+  it("合同终审后审批单生成失败不回滚审批，并记录可重试事实", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "in_approval",
+          contractGovernanceVersion: 1
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "approved_pending_seal",
+          contractGovernanceVersion: 1
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          applicantUserId: "applicant-1",
+          currentNodeIndex: 0,
+          frozenNodes: [{
+            name: "董事长/总经理",
+            mode: "any",
+            roleKeys: ["chairman", "general_manager"],
+            candidateUserIdsByRole: { chairman: ["chairman-1"], general_manager: [] },
+            candidateUserIds: ["chairman-1"]
+          }]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn() },
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: "chairman-1", isActive: true, signatureFileId: "sig-chair" }])
+        .mockResolvedValueOnce([{ id: "sig-chair", contentSha256: "a".repeat(64), storageStatus: "active" }]),
+      ...approvalRoleTables("contract_staff")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const approvalForms = {
+      generateForInstance: jest.fn().mockRejectedValue(new Error("PDF renderer unavailable"))
+    };
+    const seals = { ensurePendingTask: jest.fn().mockResolvedValue({ id: "seal-1" }) };
+    const service = new ContractService(
+      prisma,
+      audit as never,
+      undefined,
+      undefined,
+      undefined,
+      approvalForms as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      seals as never
+    );
+
+    await expect(service.reviewApproval("contract-version-1", "chairman-1", {
+      decision: "approve"
+    })).resolves.toMatchObject({ status: "approved_pending_seal" });
+
+    expect(seals.ensurePendingTask).toHaveBeenCalledTimes(1);
+    expect(approvalForms.generateForInstance).toHaveBeenCalledWith(
+      "approval-instance-1",
+      "chairman-1"
+    );
+    expect(audit.record).toHaveBeenCalledWith(prisma, {
+      actorUserId: "chairman-1",
+      action: "contract.approval_form.generate_failed",
+      businessType: "contract_version",
+      businessId: "contract-version-1",
+      metadata: {
+        approvalInstanceId: "approval-instance-1",
+        errorType: "Error",
+        retryAvailable: true
       }
     });
   });

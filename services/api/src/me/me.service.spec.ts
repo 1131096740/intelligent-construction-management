@@ -6,6 +6,47 @@ const PNG = Buffer.from(
 );
 
 describe("MeService", () => {
+  it("creates distinct handler work items for offline sealing and final-file upload", async () => {
+    const prisma = {
+      contractSealTask: { findMany: jest.fn().mockResolvedValue([
+        { contractVersionId: "version-1" },
+        { contractVersionId: "version-2" }
+      ]) },
+      contractVersion: { findMany: jest.fn().mockResolvedValue([
+        {
+          id: "version-1",
+          contractId: "contract-1",
+          status: "in_seal",
+          amountCents: 100n,
+          updatedAt: new Date()
+        },
+        {
+          id: "version-2",
+          contractId: "contract-2",
+          status: "seal_approved_pending_archive",
+          amountCents: 200n,
+          updatedAt: new Date()
+        }
+      ]) },
+      contract: { findMany: jest.fn().mockResolvedValue([
+        { id: "contract-1", projectId: "project-1", code: "HT-1", temporaryCode: null, name: "合同一" },
+        { id: "contract-2", projectId: "project-1", code: "HT-2", temporaryCode: null, name: "合同二" }
+      ]) }
+    };
+    const service = new MeService(prisma as never, {} as never);
+    const items = await (service as unknown as {
+      contractSealHandlerWorkItems(
+        userId: string,
+        names: ReadonlyMap<string, string>
+      ): Promise<Array<{ currentNode: string; nextAction: string }>>;
+    }).contractSealHandlerWorkItems("handler-1", new Map([["project-1", "项目一"]]));
+
+    expect(items.map((item) => item.currentNode)).toEqual(["线下签署盖章", "上传双方最终版"]);
+    expect(items.map((item) => item.nextAction)).toEqual([
+      "确认我方签署盖章完成",
+      "上传双方最终签署 PDF"
+    ]);
+  });
   it("uploads a PNG signature and records it on the user", async () => {
     const prisma = { user: { update: jest.fn().mockResolvedValue({}) } };
     const files = { uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-9" }) };

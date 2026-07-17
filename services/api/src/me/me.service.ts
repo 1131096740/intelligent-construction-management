@@ -320,6 +320,35 @@ export class MeService {
         projectNameById
       )),
       ...(await this.contractArchiveWorkItems(
+        this.projectIdsFor(scopes, ["contract.seal"]),
+        ["approved_pending_seal"],
+        projectNameById,
+        "待同意用章",
+        "核对审批结果后同意经办人线下取章",
+        "warning",
+        undefined,
+        "governed"
+      )),
+      ...(await this.contractArchiveWorkItems(
+        this.projectIdsFor(scopes, ["contract.seal"]),
+        ["approved_pending_seal"],
+        projectNameById,
+        "待确认用章",
+        "确认后上传盖章合同",
+        "warning",
+        undefined,
+        "legacy"
+      )),
+      ...(await this.contractSealHandlerWorkItems(
+        userId,
+        projectNameById
+      )),
+      ...(await this.contractFinalUploadSubstituteWorkItems(
+        userId,
+        projectIds,
+        projectNameById
+      )),
+      ...(await this.contractArchiveWorkItems(
         this.projectIdsFor(scopes, ["contract.archive.upload"]),
         ["seal_approved_pending_archive"],
         projectNameById,
@@ -333,7 +362,8 @@ export class MeService {
         projectNameById,
         "确认合同归档",
         "确认后合同版本生效",
-        "warning"
+        "warning",
+        userId
       )),
       ...(await this.settlementArchiveWorkItems(
         this.projectIdsFor(scopes, ["settlement.archive.upload"]),
@@ -577,7 +607,9 @@ export class MeService {
     projectNameById: ReadonlyMap<string, string>,
     currentNode: string,
     nextAction: string,
-    tone: WorkbenchCardTone
+    tone: WorkbenchCardTone,
+    actorUserId?: string,
+    governanceMode?: "governed" | "legacy"
   ): Promise<WorkItem[]> {
     if (!projectIds.length) {
       return [];
@@ -592,15 +624,49 @@ export class MeService {
       ? await this.prisma.contractVersion.findMany({
           where: {
             contractId: { in: contracts.map((contract) => contract.id) },
-            status: { in: statuses }
+            status: { in: statuses },
+            ...(governanceMode === "governed"
+              ? { contractGovernanceVersion: 1 }
+              : governanceMode === "legacy"
+                ? { contractGovernanceVersion: null }
+                : {})
           },
           orderBy: { updatedAt: "desc" },
           take: 30,
-          select: { id: true, contractId: true, amountCents: true, updatedAt: true }
+          select: {
+            id: true,
+            contractId: true,
+            amountCents: true,
+            updatedAt: true,
+            contractGovernanceVersion: true
+          }
         })
       : [];
+    const governedPendingIds = versions
+      .filter((version) =>
+        version.contractGovernanceVersion === 1 &&
+        statuses.includes("pending_archive_confirm")
+      )
+      .map((version) => version.id);
+    const ownFinalVersionIds = new Set(
+      actorUserId && governedPendingIds.length
+        ? (await this.prisma.contractFormalFile?.findMany?.({
+            where: {
+              contractVersionId: { in: governedPendingIds },
+              purpose: "mutually_signed_final",
+              status: "active",
+              uploadedByUserId: actorUserId
+            },
+            select: { contractVersionId: true }
+          }) ?? []).map((item) => item.contractVersionId)
+        : []
+    );
 
     return versions.flatMap((version) => {
+      if (version.contractGovernanceVersion === 1 && statuses.includes("seal_approved_pending_archive")) {
+        return [];
+      }
+      if (ownFinalVersionIds.has(version.id)) return [];
       const contract = contractById.get(version.contractId);
       if (!contract) {
         return [];
@@ -621,6 +687,122 @@ export class MeService {
           tone
         }
       ];
+    });
+  }
+
+  private async contractSealHandlerWorkItems(
+    userId: string,
+    projectNameById: ReadonlyMap<string, string>
+  ): Promise<WorkItem[]> {
+    const tasks = await this.prisma.contractSealTask?.findMany({
+      where: { handlerUserId: userId, status: { in: ["in_seal", "completed"] } },
+      orderBy: { updatedAt: "desc" },
+      take: 30
+    }) ?? [];
+    if (!tasks.length) return [];
+    const versions = await this.prisma.contractVersion.findMany({
+      where: {
+        id: { in: tasks.map((item) => item.contractVersionId) },
+        status: { in: ["in_seal", "seal_approved_pending_archive"] }
+      },
+      select: { id: true, contractId: true, status: true, amountCents: true, updatedAt: true }
+    });
+    const contracts = versions.length ? await this.prisma.contract.findMany({
+      where: {
+        id: { in: [...new Set(versions.map((item) => item.contractId))] }
+      },
+      select: { id: true, projectId: true, code: true, temporaryCode: true, name: true }
+    }) : [];
+    const contractById = new Map(contracts.map((item) => [item.id, item]));
+    return versions.flatMap((version) => {
+      const contract = contractById.get(version.contractId);
+      if (!contract) return [];
+      const code = contract.code ?? contract.temporaryCode ?? contract.id;
+      const completing = version.status === "in_seal";
+      return [{
+        id: `contract-seal-handler:${version.id}`,
+        type: "archive" as const,
+        title: contract.name,
+        projectName: projectNameById.get(contract.projectId) ?? contract.projectId,
+        businessCode: code,
+        amountText: this.amountText(version.amountCents),
+        currentNode: completing ? "线下签署盖章" : "上传双方最终版",
+        stayedText: this.stayedText(version.updatedAt),
+        nextAction: completing ? "确认我方签署盖章完成" : "上传双方最终签署 PDF",
+        targetPath: `/合同管理/${code}`,
+        tone: "primary" as const
+      }];
+    });
+  }
+
+  private async contractFinalUploadSubstituteWorkItems(
+    userId: string,
+    visibleProjectIds: string[],
+    projectNameById: ReadonlyMap<string, string>
+  ): Promise<WorkItem[]> {
+    if (!visibleProjectIds.length) return [];
+    const directorPosition = await this.prisma.position?.findUnique?.({
+      where: { key: "contract_director" },
+      select: { id: true }
+    });
+    if (!directorPosition) return [];
+    const assignments = await this.prisma.userPosition?.findMany?.({
+      where: { projectId: null, positionId: directorPosition.id },
+      select: { userId: true }
+    }) ?? [];
+    const activeDirectors = assignments.length ? await this.prisma.user?.findMany?.({
+      where: { id: { in: assignments.map((item) => item.userId) }, isActive: true },
+      select: { id: true }
+    }) ?? [] : [];
+    if (activeDirectors.length !== 1) return [];
+    const memberships = await this.prisma.projectMember?.findMany?.({
+      where: {
+        userId,
+        projectId: { in: visibleProjectIds },
+        positionKey: "contract_staff"
+      },
+      select: { projectId: true }
+    }) ?? [];
+    const staffProjectIds = memberships.map((item) => item.projectId);
+    if (!staffProjectIds.length) return [];
+    const tasks = await this.prisma.contractSealTask?.findMany?.({
+      where: { handlerUserId: activeDirectors[0].id, status: "completed" },
+      select: { contractVersionId: true }
+    }) ?? [];
+    if (!tasks.length) return [];
+    const versions = await this.prisma.contractVersion.findMany({
+      where: {
+        id: { in: tasks.map((item) => item.contractVersionId) },
+        contractGovernanceVersion: 1,
+        status: "seal_approved_pending_archive"
+      },
+      select: { id: true, contractId: true, amountCents: true, updatedAt: true }
+    });
+    const contracts = versions.length ? await this.prisma.contract.findMany({
+      where: {
+        id: { in: [...new Set(versions.map((item) => item.contractId))] },
+        projectId: { in: staffProjectIds }
+      },
+      select: { id: true, projectId: true, code: true, temporaryCode: true, name: true }
+    }) : [];
+    const contractById = new Map(contracts.map((item) => [item.id, item]));
+    return versions.flatMap((version) => {
+      const contract = contractById.get(version.contractId);
+      if (!contract) return [];
+      const code = contract.code ?? contract.temporaryCode ?? contract.id;
+      return [{
+        id: `contract-final-substitute:${version.id}`,
+        type: "archive" as const,
+        title: contract.name,
+        projectName: projectNameById.get(contract.projectId) ?? contract.projectId,
+        businessCode: code,
+        amountText: this.amountText(version.amountCents),
+        currentNode: "上传双方最终版",
+        stayedText: this.stayedText(version.updatedAt),
+        nextAction: "代唯一合同主管上传双方最终签署 PDF",
+        targetPath: `/合同管理/${code}`,
+        tone: "primary" as const
+      }];
     });
   }
 

@@ -13,7 +13,44 @@ const PNG_1X1 = Buffer.from(
 // 构造一个「付款审批已通过」的最小 prisma 桩，覆盖 generateForInstance 用到的查询。
 function buildPrisma(overrides: Record<string, unknown> = {}) {
   const created = { id: "pdf-1", fileId: "file-1", templateKey: "approval_form" };
-  return {
+  let generationClaim: Record<string, unknown> | null = null;
+  const approvalFormGenerationClaim = {
+    findUnique: jest.fn().mockImplementation(() => Promise.resolve(generationClaim)),
+    create: jest.fn().mockImplementation(({ data }) => {
+      generationClaim = {
+        ...data,
+        uploadedFileId: null,
+        pdfDocumentId: null,
+        attemptCount: 1,
+        safeFailureCode: null,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      return Promise.resolve(generationClaim);
+    }),
+    update: jest.fn().mockImplementation(({ data }) => {
+      if (!generationClaim) return Promise.reject(new Error("claim missing"));
+      generationClaim = {
+        ...generationClaim,
+        ...data,
+        attemptCount: typeof data.attemptCount === "object"
+          ? Number(generationClaim.attemptCount) + Number(data.attemptCount.increment ?? 0)
+          : (data.attemptCount ?? generationClaim.attemptCount),
+        updatedAt: new Date()
+      };
+      return Promise.resolve(generationClaim);
+    }),
+    updateMany: jest.fn().mockImplementation(({ where, data }) => {
+      if (!generationClaim ||
+        (where.claimToken !== undefined && generationClaim.claimToken !== where.claimToken) ||
+        (where.status !== undefined && generationClaim.status !== where.status)) {
+        return Promise.resolve({ count: 0 });
+      }
+      generationClaim = { ...generationClaim, ...data, updatedAt: new Date() };
+      return Promise.resolve({ count: 1 });
+    })
+  };
+  const prisma = {
     created,
     approvalInstance: {
       findUnique: jest.fn().mockResolvedValue({
@@ -102,8 +139,15 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     userPosition: { findMany: jest.fn().mockResolvedValue([]) },
     projectMember: { findMany: jest.fn().mockResolvedValue([]) },
     position: { findMany: jest.fn().mockResolvedValue([]) },
+    approvalFormGenerationClaim,
     ...overrides
   };
+  Object.assign(prisma, {
+    $queryRaw: (prisma as { $queryRaw?: unknown }).$queryRaw ?? jest.fn().mockResolvedValue([{ id: "inst-1" }]),
+    $transaction: (prisma as { $transaction?: unknown }).$transaction ??
+      jest.fn(async (callback: (tx: typeof prisma) => unknown) => callback(prisma))
+  });
+  return prisma;
 }
 
 describe("ApprovalFormService", () => {
@@ -211,7 +255,8 @@ describe("ApprovalFormService", () => {
         businessType: "payment_request",
         businessId: "pay-1",
         fileId: "file-1",
-        templateKey: "approval_form"
+        templateKey: "approval_form",
+        approvalInstanceId: "inst-1"
       }
     });
     expect(audit.record).toHaveBeenCalled();
@@ -231,6 +276,139 @@ describe("ApprovalFormService", () => {
 
     expect(result).toEqual({ id: "pdf-existing", fileId: "file-x" });
     expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+  });
+
+  it("并发生成按审批实例串行化，竞争者复用 winner 且只上传一份", async () => {
+    const committed = { id: "pdf-winner", fileId: "file-winner", approvalInstanceId: "inst-1" };
+    let stored: typeof committed | null = null;
+    let queue = Promise.resolve();
+    const pdfDocument = {
+      findFirst: jest.fn().mockImplementation(() => Promise.resolve(stored)),
+      create: jest.fn().mockImplementation(() => {
+        stored = committed;
+        return Promise.resolve(committed);
+      })
+    };
+    const prisma = buildPrisma({ pdfDocument }) as ReturnType<typeof buildPrisma> & {
+      $transaction: jest.Mock;
+    };
+    prisma.$transaction = jest.fn(async (callback: (tx: typeof prisma) => unknown) => {
+      const previous = queue;
+      let release!: () => void;
+      queue = new Promise<void>((resolve) => { release = resolve; });
+      await previous;
+      try {
+        return await callback(prisma);
+      } finally {
+        release();
+      }
+    });
+    const files = {
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-winner" })
+    };
+    const service = new ApprovalFormService(
+      prisma as never,
+      files as never,
+      { record: jest.fn() } as never
+    );
+
+    await expect(Promise.all([
+      service.generateForInstance("inst-1", "user-chair"),
+      service.generateForInstance("inst-1", "user-chair")
+    ])).resolves.toEqual([committed, committed]);
+    expect(files.uploadPrivateFile).toHaveBeenCalledTimes(1);
+    expect(pdfDocument.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("终结失败的 uploaded claim 重试时复用已登记文件，不重复上传", async () => {
+    let claim = {
+      approvalInstanceId: "inst-1",
+      claimToken: "old-token",
+      status: "failed",
+      claimedAt: new Date(Date.now() - 1_000),
+      uploadedFileId: "file-recoverable",
+      pdfDocumentId: null,
+      attemptCount: 1,
+      safeFailureCode: "finalize_retry_required"
+    };
+    const claimStore = {
+      findUnique: jest.fn().mockImplementation(() => Promise.resolve(claim)),
+      create: jest.fn(),
+      update: jest.fn().mockImplementation(({ data }) => {
+        claim = {
+          ...claim,
+          ...data,
+          attemptCount: claim.attemptCount + Number(data.attemptCount?.increment ?? 0)
+        };
+        return Promise.resolve(claim);
+      }),
+      updateMany: jest.fn().mockImplementation(({ where, data }) => {
+        if (where.claimToken && where.claimToken !== claim.claimToken) {
+          return Promise.resolve({ count: 0 });
+        }
+        claim = { ...claim, ...data };
+        return Promise.resolve({ count: 1 });
+      })
+    };
+    const prisma = buildPrisma({ approvalFormGenerationClaim: claimStore });
+    const files = { uploadPrivateFile: jest.fn() };
+    const service = new ApprovalFormService(
+      prisma as never,
+      files as never,
+      { record: jest.fn() } as never
+    );
+
+    await expect(service.generateForInstance("inst-1", "user-chair"))
+      .resolves.toMatchObject({ id: "pdf-1", fileId: "file-1" });
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(claim.status).toBe("completed");
+    expect(claim.uploadedFileId).toBe("file-recoverable");
+  });
+
+  it("超时 pending claim 可被新 token 接管并完成，且只上传一份", async () => {
+    let claim = {
+      approvalInstanceId: "inst-1",
+      claimToken: "stale-token",
+      status: "pending",
+      claimedAt: new Date(Date.now() - 180_000),
+      uploadedFileId: null as string | null,
+      pdfDocumentId: null as string | null,
+      attemptCount: 1,
+      safeFailureCode: null as string | null
+    };
+    const claimStore = {
+      findUnique: jest.fn().mockImplementation(() => Promise.resolve(claim)),
+      create: jest.fn(),
+      update: jest.fn().mockImplementation(({ data }) => {
+        claim = {
+          ...claim,
+          ...data,
+          attemptCount: claim.attemptCount + Number(data.attemptCount?.increment ?? 0)
+        };
+        return Promise.resolve(claim);
+      }),
+      updateMany: jest.fn().mockImplementation(({ where, data }) => {
+        if (where.claimToken && where.claimToken !== claim.claimToken) {
+          return Promise.resolve({ count: 0 });
+        }
+        claim = { ...claim, ...data };
+        return Promise.resolve({ count: 1 });
+      })
+    };
+    const prisma = buildPrisma({ approvalFormGenerationClaim: claimStore });
+    const files = { uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-new" }) };
+    const service = new ApprovalFormService(
+      prisma as never,
+      files as never,
+      { record: jest.fn() } as never
+    );
+
+    await expect(service.generateForInstance("inst-1", "user-chair"))
+      .resolves.toMatchObject({ id: "pdf-1" });
+    expect(files.uploadPrivateFile).toHaveBeenCalledTimes(1);
+    expect(claim.claimToken).not.toBe("stale-token");
+    expect(claim.attemptCount).toBe(2);
+    expect(claim.status).toBe("completed");
   });
 
   it("embeds an approver signature image when the user has one", async () => {
@@ -422,6 +600,44 @@ describe("ApprovalFormService", () => {
     );
   });
 
+  it("合同审批单下载必须先通过业务 ACL，拒绝时不触发惰性生成", async () => {
+    const prisma = buildPrisma({
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn()
+      }
+    });
+    const files = {
+      assertCanDownloadContractApprovalForm: jest.fn()
+        .mockRejectedValue(new Error("当前账号无权下载该合同审批单")),
+      assertCanDownloadFileById: jest.fn(),
+      uploadPrivateFile: jest.fn()
+    };
+    const auth = { confirmPassword: jest.fn().mockResolvedValue({ ok: true }) };
+    const service = new ApprovalFormService(
+      prisma as never,
+      files as never,
+      { record: jest.fn() } as never,
+      auth as never
+    );
+
+    await expect(service.renderForDownload(
+      "contract_version",
+      "version-1",
+      "outsider-1",
+      "current-password",
+      "合同审批复核"
+    )).rejects.toThrow("当前账号无权下载该合同审批单");
+
+    expect(files.assertCanDownloadContractApprovalForm).toHaveBeenCalledWith(
+      "version-1",
+      "outsider-1"
+    );
+    expect(prisma.pdfDocument.findFirst).not.toHaveBeenCalled();
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(files.assertCanDownloadFileById).not.toHaveBeenCalled();
+  });
+
   it("does not expose internal user accounts in approval form names or watermark", async () => {
     const prisma = buildPrisma({
       pdfDocument: {
@@ -508,7 +724,7 @@ describe("ApprovalFormService", () => {
         "current-password",
         "付款审批复核"
       )
-    ).rejects.toThrow("当前业务尚未完成审批，暂不能生成审批单");
+    ).rejects.toThrow("当前业务尚未完成审批，暂不能下载审批单");
   });
 
   it("uses business message when completed approval disappears before approval form download", async () => {
