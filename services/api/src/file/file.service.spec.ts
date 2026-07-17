@@ -147,6 +147,82 @@ describe("FileService", () => {
     expect(globalLookup).not.toHaveBeenCalled();
   });
 
+  it("allows a receipt-only file after checking that no other business binding exists", async () => {
+    const access = {
+      resolveFileDownloadAccess: jest
+        .fn()
+        .mockResolvedValue("allowed")
+    };
+    const service = new FileService(
+      {} as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage,
+      access as unknown as SpotProcurementAccessService
+    );
+    const tx = {
+      spotProcurementReceiptPhoto: {
+        findFirst: jest.fn().mockResolvedValue({ id: "photo-1" })
+      },
+      $queryRaw: jest.fn().mockResolvedValue([])
+    };
+
+    await expect(
+      (
+        service as unknown as {
+          assertCanDownloadFileObject(
+            client: unknown,
+            file: { id: string },
+            actorUserId: string
+          ): Promise<void>;
+        }
+      ).assertCanDownloadFileObject(
+        tx,
+        { id: "receipt-only-file" },
+        "receipt-viewer"
+      )
+    ).resolves.toBeUndefined();
+  });
+
+  it("fails closed when an otherwise accessible receipt file has another business binding", async () => {
+    const access = {
+      resolveFileDownloadAccess: jest
+        .fn()
+        .mockResolvedValue("allowed")
+    };
+    const service = new FileService(
+      {} as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage,
+      access as unknown as SpotProcurementAccessService
+    );
+    const tx = {
+      spotProcurementReceiptPhoto: {
+        findFirst: jest.fn().mockResolvedValue({ id: "photo-1" })
+      },
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValue([{ fileId: "mixed-binding-file" }])
+    };
+
+    await expect(
+      (
+        service as unknown as {
+          assertCanDownloadFileObject(
+            client: unknown,
+            file: { id: string },
+            actorUserId: string
+          ): Promise<void>;
+        }
+      ).assertCanDownloadFileObject(
+        tx,
+        { id: "mixed-binding-file" },
+        "receipt-viewer"
+      )
+    ).rejects.toThrow(
+      "资料文件存在跨业务绑定冲突，暂不能下载"
+    );
+  });
+
   it("fails closed outside test when file download secret is missing", () => {
     const previous = {
       nodeEnv: process.env.NODE_ENV,
@@ -1551,6 +1627,305 @@ describe("FileService", () => {
 
     expect(result.file.id).toBe("file-docx");
     expect(result.buffer.equals(Buffer.from("docx"))).toBe(true);
+  });
+
+  it("reads an active owned receipt source only when hash and size both match", async () => {
+    const buffer = Buffer.from("receipt-photo");
+    const file = {
+      id: "receipt-source",
+      objectKey: "uploads/receipt-source.jpg",
+      uploadedByUserId: "handler-1",
+      storageStatus: "active",
+      sizeBytes: buffer.length,
+      contentSha256: createHash("sha256").update(buffer).digest("hex")
+    };
+    const prisma = {
+      fileObject: { findUnique: jest.fn().mockResolvedValue(file) }
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    storage.read.mockResolvedValue(buffer);
+
+    await expect(
+      service.getOwnedVerifiedFileBuffer("receipt-source", "handler-1")
+    ).resolves.toEqual({ file, buffer });
+  });
+
+  it("rejects a receipt source uploaded by another user before storage read", async () => {
+    const prisma = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "receipt-source",
+          uploadedByUserId: "other-user",
+          storageStatus: "active",
+          contentSha256: "a".repeat(64),
+          sizeBytes: 1
+        })
+      }
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.getOwnedVerifiedFileBuffer("receipt-source", "handler-1")
+    ).rejects.toThrow("当前账号无权使用该收货原始文件");
+    expect(storage.read).not.toHaveBeenCalled();
+  });
+
+  it("rejects an inactive owned receipt source before storage read", async () => {
+    const prisma = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "receipt-source",
+          uploadedByUserId: "handler-1",
+          storageStatus: "quarantined",
+          contentSha256: "a".repeat(64),
+          sizeBytes: 1
+        })
+      }
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.getOwnedVerifiedFileBuffer("receipt-source", "handler-1")
+    ).rejects.toThrow("资料文件当前不可用");
+    expect(storage.read).not.toHaveBeenCalled();
+  });
+
+  it.each([null, "invalid-hash"])(
+    "rejects a receipt source with invalid integrity metadata %s before storage read",
+    async (contentSha256) => {
+      const prisma = {
+        fileObject: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "receipt-source",
+            objectKey: "uploads/receipt-source.jpg",
+            uploadedByUserId: "handler-1",
+            storageStatus: "active",
+            contentSha256,
+            sizeBytes: 1
+          })
+        }
+      } as unknown as PrismaService;
+      const service = new FileService(
+        prisma,
+        audit as unknown as AuditService,
+        storage as unknown as PrivateFileStorage
+      );
+      const loggerError = jest.spyOn(Logger.prototype, "error").mockImplementation();
+
+      try {
+        await expect(
+          service.getOwnedVerifiedFileBuffer("receipt-source", "handler-1")
+        ).rejects.toThrow("资料文件完整性校验失败");
+        expect(storage.read).not.toHaveBeenCalled();
+      } finally {
+        loggerError.mockRestore();
+      }
+    }
+  );
+
+  it("rejects a receipt source whose registered size differs from private storage", async () => {
+    const buffer = Buffer.from("receipt-photo");
+    const prisma = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "receipt-source",
+          objectKey: "uploads/receipt-source.jpg",
+          uploadedByUserId: "handler-1",
+          storageStatus: "active",
+          contentSha256: createHash("sha256").update(buffer).digest("hex"),
+          sizeBytes: buffer.length + 1
+        })
+      }
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    const loggerError = jest.spyOn(Logger.prototype, "error").mockImplementation();
+    storage.read.mockResolvedValue(buffer);
+
+    try {
+      await expect(
+        service.getOwnedVerifiedFileBuffer("receipt-source", "handler-1")
+      ).rejects.toThrow("资料文件完整性校验失败");
+    } finally {
+      loggerError.mockRestore();
+    }
+  });
+
+  it("quarantines an owned active watermark only when no receipt photo binds it", async () => {
+    const tx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            id: "watermark-file",
+            uploadedByUserId: "handler-1",
+            storageStatus: "active"
+          }
+        ])
+        .mockResolvedValueOnce([]),
+      spotProcurementReceiptPhoto: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      fileObject: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.quarantineUnboundReceiptWatermark("watermark-file", "handler-1")
+    ).resolves.toBe(true);
+    expect(tx.fileObject.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "watermark-file",
+        uploadedByUserId: "handler-1",
+        storageStatus: "active"
+      },
+      data: { storageStatus: "quarantined" }
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: "file.quarantine.unbound_receipt_watermark",
+        businessId: "watermark-file"
+      })
+    );
+  });
+
+  it("never quarantines a generated receipt file that another business already bound", async () => {
+    const tx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            id: "generated-file",
+            uploadedByUserId: "handler-1",
+            storageStatus: "active"
+          }
+        ])
+        .mockResolvedValueOnce([
+          { fileId: "generated-file" }
+        ]),
+      spotProcurementReceiptPhoto: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      fileObject: {
+        updateMany: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(
+        (callback: (client: typeof tx) => unknown) =>
+          callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.quarantineUnboundReceiptWatermark(
+        "generated-file",
+        "handler-1"
+      )
+    ).resolves.toBe(false);
+    expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("preserves a generated file when either receipt photo column already binds it", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          id: "watermark-file",
+          uploadedByUserId: "handler-1",
+          storageStatus: "active"
+        }
+      ]),
+      spotProcurementReceiptPhoto: {
+        findFirst: jest.fn().mockResolvedValue({ id: "photo-1" })
+      },
+      fileObject: {
+        updateMany: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.quarantineUnboundReceiptWatermark("watermark-file", "handler-1")
+    ).resolves.toBe(false);
+    expect(
+      tx.spotProcurementReceiptPhoto.findFirst
+    ).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { originalFileId: "watermark-file" },
+          { watermarkedFileId: "watermark-file" }
+        ]
+      },
+      select: { id: true }
+    });
+    expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("never quarantines another user's unbound file", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          id: "watermark-file",
+          uploadedByUserId: "other-user",
+          storageStatus: "active"
+        }
+      ]),
+      spotProcurementReceiptPhoto: { findFirst: jest.fn() },
+      fileObject: { updateMany: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.quarantineUnboundReceiptWatermark("watermark-file", "handler-1")
+    ).resolves.toBe(false);
+    expect(tx.spotProcurementReceiptPhoto.findFirst).not.toHaveBeenCalled();
+    expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
   });
 
   it("keeps a historical internal file without a content hash readable without download audit", async () => {

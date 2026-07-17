@@ -20,6 +20,27 @@ type AccessFixture = {
     supportingAttachmentFileId?: string | null;
     merchantPaymentProofFileId?: string | null;
   }>;
+  receipts?: Array<{
+    id: string;
+    projectId: string;
+    procurementId: string;
+    handlerUserId: string;
+  }>;
+  receiptPhotos?: Array<{
+    receiptId: string;
+    originalFileId: string;
+    watermarkedFileId: string;
+  }>;
+  receiptDelegations?: Array<{
+    receiptId: string;
+    delegatorUserId: string;
+    delegateUserId: string;
+    revokedAt: Date | null;
+  }>;
+  users?: Array<{ id: string; isActive: boolean }>;
+  projectPositionUserIds?: string[];
+  projectMemberUserIds?: string[];
+  projectRosterUserIds?: string[];
   executions?: Array<{
     paymentId: string;
     executedByUserId: string;
@@ -74,7 +95,10 @@ function buildPrisma(fixture: AccessFixture = {}) {
     ...(fixture.globalRoleKeys ?? []).map((key, index) => ({
       id: `global-position-${index}`,
       key
-    }))
+    })),
+    ...(fixture.projectPositionUserIds?.length
+      ? [{ id: "affiliation-position", key: "employee" }]
+      : [])
   ];
   return {
     spotProcurement: {
@@ -144,6 +168,54 @@ function buildPrisma(fixture: AccessFixture = {}) {
             )
           );
         }
+      )
+    },
+    spotProcurementReceipt: {
+      findUnique: jest.fn(({ where }: { where: { id: string } }) =>
+        Promise.resolve(fixture.receipts?.find((row) => row.id === where.id) ?? null)
+      ),
+      findMany: jest.fn(
+        ({ where }: { where: { id: { in: string[] } } }) =>
+          Promise.resolve(
+            (fixture.receipts ?? []).filter((row) => where.id.in.includes(row.id))
+          )
+      )
+    },
+    spotProcurementReceiptPhoto: {
+      findMany: jest.fn(
+        ({ where }: { where: { OR: Array<Record<string, string>> } }) => {
+          const fileIds = new Set((where.OR ?? []).flatMap((condition) => Object.values(condition)));
+          return Promise.resolve(
+            (fixture.receiptPhotos ?? []).filter(
+              (row) =>
+                fileIds.has(row.originalFileId) || fileIds.has(row.watermarkedFileId)
+            )
+          );
+        }
+      )
+    },
+    spotProcurementReceiptDelegation: {
+      findMany: jest.fn(
+        ({ where }: {
+          where: {
+            receiptId: { in: string[] };
+            delegateUserId: string;
+            revokedAt: null;
+          };
+        }) =>
+          Promise.resolve(
+            (fixture.receiptDelegations ?? []).filter(
+              (row) =>
+                where.receiptId.in.includes(row.receiptId) &&
+                row.delegateUserId === where.delegateUserId &&
+                row.revokedAt === null
+            )
+          )
+      )
+    },
+    user: {
+      findUnique: jest.fn(({ where }: { where: { id: string } }) =>
+        Promise.resolve(fixture.users?.find((row) => row.id === where.id) ?? null)
       )
     },
     spotProcurementPaymentExecution: {
@@ -249,18 +321,40 @@ function buildPrisma(fixture: AccessFixture = {}) {
       )
     },
     userPosition: {
-      findMany: jest.fn(({ where }: { where: { projectId: string | null } }) =>
+      findMany: jest.fn(
+        ({ where }: { where: { userId: string; projectId: string | null } }) =>
+          Promise.resolve([
+            ...(where.projectId === null
+              ? fixture.globalRoleKeys ?? []
+              : fixture.projectRoleKeys ?? []
+            ).map((_, index) => ({
+              positionId: `${where.projectId === null ? "global" : "project"}-position-${index}`
+            })),
+            ...(where.projectId !== null &&
+            (fixture.projectPositionUserIds ?? []).includes(where.userId)
+              ? [{ positionId: "affiliation-position" }]
+              : [])
+          ])
+      )
+    },
+    projectMember: {
+      findMany: jest.fn(({ where }: { where: { userId: string; projectId: string } }) =>
         Promise.resolve(
-          (where.projectId === null
-            ? fixture.globalRoleKeys ?? []
-            : fixture.projectRoleKeys ?? []
-          ).map((_, index) => ({
-            positionId: `${where.projectId === null ? "global" : "project"}-position-${index}`
-          }))
+          (fixture.projectMemberUserIds ?? []).includes(where.userId)
+            ? [{ projectId: where.projectId, userId: where.userId, positionKey: "employee" }]
+            : []
         )
       )
     },
-    projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+    projectRosterMember: {
+      findMany: jest.fn(({ where }: { where: { userId: string; projectId: string } }) =>
+        Promise.resolve(
+          (fixture.projectRosterUserIds ?? []).includes(where.userId)
+            ? [{ projectId: where.projectId, userId: where.userId }]
+            : []
+        )
+      )
+    },
     position: {
       findMany: jest.fn(({ where }: { where: { id: { in: string[] } } }) =>
         Promise.resolve(positions.filter((position) => where.id.in.includes(position.id)))
@@ -278,7 +372,7 @@ describe("SpotProcurementAccessService", () => {
     );
   });
 
-  it("resolves real procurement/payment resources and fails closed for missing or future receipt resources", async () => {
+  it("resolves real procurement, payment, and receipt resources and fails closed when missing", async () => {
     const prisma = buildPrisma({
       procurements: [
         {
@@ -295,19 +389,317 @@ describe("SpotProcurementAccessService", () => {
           projectId: "project-1",
           handlerUserId: "handler-1"
         }
+      ],
+      receipts: [
+        {
+          id: "receipt-1",
+          procurementId: "procurement-1",
+          projectId: "project-1",
+          handlerUserId: "handler-1"
+        }
       ]
     });
     const service = new SpotProcurementAccessService(prisma as never);
 
     await expect(service.requireProcurementProjectId("procurement-1")).resolves.toBe("project-1");
     await expect(service.requirePaymentProjectId("payment-1")).resolves.toBe("project-1");
+    await expect(service.requireReceiptProjectId("receipt-1")).resolves.toBe("project-1");
     await expect(service.findPaymentProjectId("missing-payment")).resolves.toBeNull();
     await expect(service.requireProcurementProjectId("missing-procurement")).rejects.toBeInstanceOf(
       ForbiddenException
     );
-    await expect(service.requireReceiptProjectId("future-receipt")).rejects.toBeInstanceOf(
+    await expect(service.requireReceiptProjectId("missing-receipt")).rejects.toBeInstanceOf(
       ForbiddenException
     );
+  });
+
+  it.each([
+    ["applicant-1", "allowed"],
+    ["handler-1", "allowed"],
+    ["material-director", "allowed"],
+    ["unrelated-user", "denied"]
+  ] as const)("applies the minimal receipt ACL for %s", async (actorUserId, expected) => {
+    const fixture: AccessFixture = {
+      procurements: [
+        {
+          id: "procurement-1",
+          projectId: "project-1",
+          applicantUserId: "applicant-1",
+          handlerUserId: "handler-1"
+        }
+      ],
+      receipts: [
+        {
+          id: "receipt-1",
+          projectId: "project-1",
+          procurementId: "procurement-1",
+          handlerUserId: "handler-1"
+        }
+      ],
+      projectRoleKeys: actorUserId === "material-director" ? ["material_director"] : []
+    };
+
+    await expect(
+      new SpotProcurementAccessService(buildPrisma(fixture) as never)
+        .resolveReceiptViewAccess("receipt-1", actorUserId)
+    ).resolves.toBe(expected);
+  });
+
+  it("allows only a current active same-project receipt delegate", async () => {
+    const base: AccessFixture = {
+      procurements: [
+        {
+          id: "procurement-1",
+          projectId: "project-1",
+          applicantUserId: "applicant-1",
+          handlerUserId: "handler-1"
+        }
+      ],
+      receipts: [
+        {
+          id: "receipt-1",
+          projectId: "project-1",
+          procurementId: "procurement-1",
+          handlerUserId: "handler-1"
+        }
+      ],
+      users: [{ id: "delegate-1", isActive: true }],
+      projectRosterUserIds: ["delegate-1"]
+    };
+
+    await expect(
+      new SpotProcurementAccessService(buildPrisma({
+        ...base,
+        receiptDelegations: [
+          {
+            receiptId: "receipt-1",
+            delegatorUserId: "handler-1",
+            delegateUserId: "delegate-1",
+            revokedAt: null
+          }
+        ]
+      }) as never).resolveReceiptViewAccess("receipt-1", "delegate-1")
+    ).resolves.toBe("allowed");
+
+    await expect(
+      new SpotProcurementAccessService(buildPrisma({
+        ...base,
+        receiptDelegations: [
+          {
+            receiptId: "receipt-1",
+            delegatorUserId: "handler-1",
+            delegateUserId: "delegate-1",
+            revokedAt: new Date("2026-07-17T00:00:00.000Z")
+          }
+        ]
+      }) as never).resolveReceiptViewAccess("receipt-1", "delegate-1")
+    ).resolves.toBe("denied");
+
+    await expect(
+      new SpotProcurementAccessService(buildPrisma({
+        ...base,
+        projectRosterUserIds: [],
+        receiptDelegations: [
+          {
+            receiptId: "receipt-1",
+            delegatorUserId: "handler-1",
+            delegateUserId: "delegate-1",
+            revokedAt: null
+          }
+        ]
+      }) as never).resolveReceiptViewAccess("receipt-1", "delegate-1")
+    ).resolves.toBe("denied");
+
+    await expect(
+      new SpotProcurementAccessService(buildPrisma({
+        ...base,
+        users: [{ id: "delegate-1", isActive: false }],
+        receiptDelegations: [
+          {
+            receiptId: "receipt-1",
+            delegatorUserId: "handler-1",
+            delegateUserId: "delegate-1",
+            revokedAt: null
+          }
+        ]
+      }) as never).resolveReceiptViewAccess("receipt-1", "delegate-1")
+    ).resolves.toBe("denied");
+  });
+
+  it("does not retain receipt delegation access after the current handler changes", async () => {
+    const service = new SpotProcurementAccessService(buildPrisma({
+      procurements: [
+        {
+          id: "procurement-1",
+          projectId: "project-1",
+          applicantUserId: "applicant-1",
+          handlerUserId: "new-handler"
+        }
+      ],
+      receipts: [
+        {
+          id: "receipt-1",
+          projectId: "project-1",
+          procurementId: "procurement-1",
+          handlerUserId: "new-handler"
+        }
+      ],
+      receiptDelegations: [
+        {
+          receiptId: "receipt-1",
+          delegatorUserId: "old-handler",
+          delegateUserId: "delegate-1",
+          revokedAt: null
+        }
+      ],
+      users: [{ id: "delegate-1", isActive: true }],
+      projectRosterUserIds: ["delegate-1"]
+    }) as never);
+
+    await expect(service.resolveReceiptViewAccess("receipt-1", "delegate-1")).resolves.toBe(
+      "denied"
+    );
+  });
+
+  it.each(["original-file", "watermarked-file"])(
+    "protects a bound receipt %s with business ACL instead of uploader fallback",
+    async (fileId) => {
+      const fixture: AccessFixture = {
+        procurements: [
+          {
+            id: "procurement-1",
+            projectId: "project-1",
+            applicantUserId: "applicant-1",
+            handlerUserId: "handler-1"
+          }
+        ],
+        receipts: [
+          {
+            id: "receipt-1",
+            projectId: "project-1",
+            procurementId: "procurement-1",
+            handlerUserId: "handler-1"
+          }
+        ],
+        receiptPhotos: [
+          {
+            receiptId: "receipt-1",
+            originalFileId: "original-file",
+            watermarkedFileId: "watermarked-file"
+          }
+        ]
+      };
+
+      await expect(
+        new SpotProcurementAccessService(buildPrisma(fixture) as never)
+          .resolveFileDownloadAccess(fileId, "applicant-1")
+      ).resolves.toBe("allowed");
+      await expect(
+        new SpotProcurementAccessService(buildPrisma(fixture) as never)
+          .resolveFileDownloadAccess(fileId, "unrelated-uploader")
+      ).resolves.toBe("denied");
+    }
+  );
+
+  it("fails closed when a receipt file is also bound to another spot business", async () => {
+    const fixture: AccessFixture = {
+      procurements: [
+        {
+          id: "procurement-1",
+          projectId: "project-1",
+          applicantUserId: "applicant-1",
+          handlerUserId: "handler-1"
+        }
+      ],
+      versions: [
+        {
+          id: "version-1",
+          procurementId: "procurement-1",
+          handlerUserId: "handler-1"
+        }
+      ],
+      attachments: [
+        { fileId: "mixed-file", versionId: "version-1" }
+      ],
+      receipts: [
+        {
+          id: "receipt-1",
+          projectId: "project-1",
+          procurementId: "procurement-1",
+          handlerUserId: "handler-1"
+        }
+      ],
+      receiptPhotos: [
+        {
+          receiptId: "receipt-1",
+          originalFileId: "mixed-file",
+          watermarkedFileId: "watermarked-file"
+        }
+      ]
+    };
+
+    await expect(
+      new SpotProcurementAccessService(
+        buildPrisma(fixture) as never
+      ).resolveFileDownloadAccess(
+        "mixed-file",
+        "applicant-1"
+      )
+    ).resolves.toBe("denied");
+  });
+
+  it("fails closed when one file is cross-bound to multiple receipts", async () => {
+    const fixture: AccessFixture = {
+      procurements: [
+        {
+          id: "procurement-1",
+          projectId: "project-1",
+          applicantUserId: "applicant-1",
+          handlerUserId: "handler-1"
+        },
+        {
+          id: "procurement-2",
+          projectId: "project-1",
+          applicantUserId: "applicant-1",
+          handlerUserId: "handler-2"
+        }
+      ],
+      receipts: [
+        {
+          id: "receipt-1",
+          projectId: "project-1",
+          procurementId: "procurement-1",
+          handlerUserId: "handler-1"
+        },
+        {
+          id: "receipt-2",
+          projectId: "project-1",
+          procurementId: "procurement-2",
+          handlerUserId: "handler-2"
+        }
+      ],
+      receiptPhotos: [
+        {
+          receiptId: "receipt-1",
+          originalFileId: "shared-file",
+          watermarkedFileId: "watermarked-1"
+        },
+        {
+          receiptId: "receipt-2",
+          originalFileId: "original-2",
+          watermarkedFileId: "shared-file"
+        }
+      ]
+    };
+
+    await expect(
+      new SpotProcurementAccessService(
+        buildPrisma(fixture) as never
+      ).resolveFileDownloadAccess(
+        "shared-file",
+        "applicant-1"
+      )
+    ).resolves.toBe("denied");
   });
 
   it("retains procurement view access for historical version handlers and action actors", async () => {

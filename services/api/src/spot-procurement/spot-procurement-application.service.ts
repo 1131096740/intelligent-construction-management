@@ -111,6 +111,21 @@ type LockedPaymentRow = {
   status: string;
 };
 
+type ReceiptLockRow = {
+  id: string;
+  projectId: string;
+  procurementId: string;
+  procurementVersionId: string;
+  status: string;
+  currentRevisionNo: number;
+  handlerUserId: string;
+  revisionHandlerUserId: string;
+};
+
+type LockedReceiptDelegationRow = {
+  id: string;
+};
+
 type PreparedLine = {
   sortOrder: number;
   materialName: string;
@@ -299,6 +314,13 @@ export class SpotProcurementApplicationService {
         );
         const revisionComparison =
           await this.recomputeRevisionChangeSummary(tx, version, prepared);
+        await this.syncExistingReceiptHandler(
+          tx,
+          procurement,
+          version,
+          prepared.handlerUserId,
+          actorUserId
+        );
 
         await tx.spotProcurementVersion.update({
           where: { id: version.id },
@@ -764,6 +786,12 @@ export class SpotProcurementApplicationService {
             approvedAmountCents: version.totalAmountCents
           }
         });
+        await this.ensureReceiptForApprovedVersion(
+          tx,
+          procurement,
+          version,
+          actorUserId
+        );
         const balanceSuggestion =
           await this.balances.suggestionWithClient(
             tx,
@@ -1012,12 +1040,19 @@ export class SpotProcurementApplicationService {
           }
         });
         await this.replaceVersionFacts(tx, version.id, prepared);
+        await this.advanceExistingReceiptToVersion(
+          tx,
+          procurement,
+          version,
+          actorUserId
+        );
         await tx.spotProcurement.update({
           where: { id: procurement.id },
           data: {
             currentVersionId: version.id,
             status: "draft",
             approvedAmountCents: 0n,
+            actualCostCents: null,
             supplierPartyId: prepared.supplierPartyId,
             supplierKey: prepared.supplierKey,
             supplierNameSnapshot: prepared.supplierName,
@@ -1381,11 +1416,19 @@ export class SpotProcurementApplicationService {
         }))
       });
     }
+    await this.advanceExistingReceiptToVersion(
+      tx,
+      procurement,
+      newVersion,
+      actorUserId
+    );
     await tx.spotProcurement.update({
       where: { id: procurement.id },
       data: {
         currentVersionId: newVersion.id,
         status: "draft",
+        approvedAmountCents: 0n,
+        actualCostCents: null,
         supplierPartyId: sourceVersion.supplierPartyId,
         supplierKey: sourceVersion.supplierKey,
         supplierNameSnapshot: sourceVersion.supplierNameSnapshot,
@@ -1393,6 +1436,326 @@ export class SpotProcurementApplicationService {
       }
     });
     return newVersion;
+  }
+
+  private async ensureReceiptForApprovedVersion(
+    tx: Prisma.TransactionClient,
+    procurement: ProcurementLockRow,
+    version: Pick<VersionLockRow, "id" | "handlerUserId">,
+    actorUserId: string
+  ) {
+    const existing = await this.lockExistingReceipt(
+      tx,
+      procurement.id
+    );
+    if (existing) {
+      if (existing.procurementVersionId !== version.id) {
+        throw new ConflictException(
+          "收货单当前版本与采购版本不一致，请刷新后重试"
+        );
+      }
+      if (existing.status !== "draft") {
+        throw new ConflictException(
+          "当前收货单已经开始确认，不能重复完成采购审批"
+        );
+      }
+      await this.syncLockedReceiptHandler(
+        tx,
+        existing,
+        version.handlerUserId,
+        actorUserId,
+        "spot_procurement.receipt.handler.sync_on_approval"
+      );
+      return;
+    }
+
+    // 根单的当前修订外键是延迟检查；必须在同一事务中先建根单，
+    // 再建 revision 1，才能保持收货单唯一根与当前修订坐标一致。
+    const receipt = await tx.spotProcurementReceipt.create({
+      data: {
+        projectId: procurement.projectId,
+        procurementId: procurement.id,
+        procurementVersionId: version.id,
+        status: "draft",
+        currentRevisionNo: 1,
+        handlerUserId: version.handlerUserId,
+        note: null,
+        actualCostCents: 0n,
+        firstSubmittedAt: null,
+        submittedAt: null,
+        submittedByUserId: null,
+        submissionDelegationId: null,
+        lockedAt: null,
+        createdByUserId: actorUserId
+      }
+    });
+    await tx.spotProcurementReceiptRevision.create({
+      data: {
+        receiptId: receipt.id,
+        revisionNo: 1,
+        procurementId: procurement.id,
+        procurementVersionId: version.id,
+        handlerUserId: version.handlerUserId,
+        note: null,
+        actualCostCents: 0n,
+        submittedAt: null,
+        submittedByUserId: null,
+        submissionDelegationId: null,
+        createdByUserId: actorUserId
+      }
+    });
+    await this.audit.record(tx, {
+      actorUserId,
+      action: "spot_procurement.receipt.draft.auto_create",
+      businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.receipt,
+      businessId: receipt.id,
+      metadata: {
+        procurementId: procurement.id,
+        procurementVersionId: version.id,
+        receiptRevisionNo: 1,
+        handlerUserId: version.handlerUserId
+      }
+    });
+  }
+
+  private async advanceExistingReceiptToVersion(
+    tx: Prisma.TransactionClient,
+    procurement: ProcurementLockRow,
+    version: Pick<VersionLockRow, "id" | "handlerUserId">,
+    actorUserId: string
+  ) {
+    const receipt = await this.lockExistingReceipt(tx, procurement.id);
+    if (!receipt) return;
+    if (receipt.procurementVersionId === version.id) {
+      await this.syncLockedReceiptHandler(
+        tx,
+        receipt,
+        version.handlerUserId,
+        actorUserId,
+        "spot_procurement.receipt.handler.sync_on_version"
+      );
+      return;
+    }
+
+    const handlerChanged = receipt.handlerUserId !== version.handlerUserId;
+    const delegations = handlerChanged
+      ? await this.lockActiveReceiptDelegations(tx, receipt.id)
+      : [];
+    const nextRevisionNo = receipt.currentRevisionNo + 1;
+    const now = new Date();
+    await tx.spotProcurementReceiptRevision.create({
+      data: {
+        receiptId: receipt.id,
+        revisionNo: nextRevisionNo,
+        procurementId: procurement.id,
+        procurementVersionId: version.id,
+        handlerUserId: version.handlerUserId,
+        note: null,
+        actualCostCents: 0n,
+        submittedAt: null,
+        submittedByUserId: null,
+        submissionDelegationId: null,
+        createdByUserId: actorUserId
+      }
+    });
+    await tx.spotProcurementReceipt.update({
+      where: { id: receipt.id },
+      data: {
+        procurementVersionId: version.id,
+        status: "draft",
+        currentRevisionNo: nextRevisionNo,
+        handlerUserId: version.handlerUserId,
+        note: null,
+        actualCostCents: 0n,
+        submittedAt: null,
+        submittedByUserId: null,
+        submissionDelegationId: null,
+        lockedAt: null
+      }
+    });
+    await this.revokeLockedReceiptDelegations(
+      tx,
+      delegations,
+      actorUserId,
+      now
+    );
+    await this.audit.record(tx, {
+      actorUserId,
+      action: "spot_procurement.receipt.revision.advance",
+      businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.receipt,
+      businessId: receipt.id,
+      metadata: {
+        procurementId: procurement.id,
+        previousProcurementVersionId: receipt.procurementVersionId,
+        procurementVersionId: version.id,
+        previousReceiptRevisionNo: receipt.currentRevisionNo,
+        receiptRevisionNo: nextRevisionNo,
+        previousReceiptStatus: receipt.status,
+        previousHandlerUserId: receipt.handlerUserId,
+        handlerUserId: version.handlerUserId,
+        revokedDelegationIds: delegations.map((delegation) => delegation.id)
+      }
+    });
+  }
+
+  private async syncExistingReceiptHandler(
+    tx: Prisma.TransactionClient,
+    procurement: ProcurementLockRow,
+    version: Pick<VersionLockRow, "id">,
+    handlerUserId: string,
+    actorUserId: string
+  ) {
+    const receipt = await this.lockExistingReceipt(tx, procurement.id);
+    if (!receipt) return;
+    if (receipt.procurementVersionId !== version.id) {
+      throw new ConflictException(
+        "收货单当前版本与采购版本不一致，请刷新后重试"
+      );
+    }
+    await this.syncLockedReceiptHandler(
+      tx,
+      receipt,
+      handlerUserId,
+      actorUserId,
+      "spot_procurement.receipt.handler.sync_on_draft"
+    );
+  }
+
+  private async syncLockedReceiptHandler(
+    tx: Prisma.TransactionClient,
+    receipt: ReceiptLockRow,
+    handlerUserId: string,
+    actorUserId: string,
+    action: string
+  ) {
+    if (
+      receipt.handlerUserId === handlerUserId &&
+      receipt.revisionHandlerUserId === handlerUserId
+    ) {
+      return;
+    }
+    const delegations =
+      receipt.handlerUserId === handlerUserId
+        ? []
+        : await this.lockActiveReceiptDelegations(tx, receipt.id);
+    const now = new Date();
+    await tx.spotProcurementReceiptRevision.update({
+      where: {
+        receiptId_revisionNo: {
+          receiptId: receipt.id,
+          revisionNo: receipt.currentRevisionNo
+        }
+      },
+      data: { handlerUserId }
+    });
+    await tx.spotProcurementReceipt.update({
+      where: { id: receipt.id },
+      data: { handlerUserId }
+    });
+    await this.revokeLockedReceiptDelegations(
+      tx,
+      delegations,
+      actorUserId,
+      now
+    );
+    await this.audit.record(tx, {
+      actorUserId,
+      action,
+      businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.receipt,
+      businessId: receipt.id,
+      metadata: {
+        procurementId: receipt.procurementId,
+        procurementVersionId: receipt.procurementVersionId,
+        receiptRevisionNo: receipt.currentRevisionNo,
+        previousHandlerUserId: receipt.handlerUserId,
+        handlerUserId,
+        revokedDelegationIds: delegations.map((delegation) => delegation.id)
+      }
+    });
+  }
+
+  private async lockExistingReceipt(
+    tx: Prisma.TransactionClient,
+    procurementId: string
+  ): Promise<ReceiptLockRow | null> {
+    const candidate = await tx.spotProcurementReceipt.findUnique({
+      where: { procurementId },
+      select: { id: true }
+    });
+    if (!candidate) return null;
+    const rows = await tx.$queryRaw<Array<ReceiptLockRow>>(Prisma.sql`
+      SELECT
+        receipt."id",
+        receipt."projectId",
+        receipt."procurementId",
+        receipt."procurementVersionId",
+        receipt."status",
+        receipt."currentRevisionNo",
+        receipt."handlerUserId",
+        revision."handlerUserId" AS "revisionHandlerUserId"
+      FROM "SpotProcurementReceipt" receipt
+      INNER JOIN "SpotProcurementReceiptRevision" revision
+        ON revision."receiptId" = receipt."id"
+        AND revision."revisionNo" = receipt."currentRevisionNo"
+        AND revision."procurementId" = receipt."procurementId"
+        AND revision."procurementVersionId" = receipt."procurementVersionId"
+      WHERE receipt."id" = ${candidate.id}
+        AND receipt."procurementId" = ${procurementId}
+      LIMIT 1
+      FOR UPDATE OF receipt, revision
+    `);
+    const receipt = rows[0];
+    if (!receipt) {
+      throw new ConflictException(
+        "收货单当前修订不完整，请刷新后重试"
+      );
+    }
+    return receipt;
+  }
+
+  private async lockActiveReceiptDelegations(
+    tx: Prisma.TransactionClient,
+    receiptId: string
+  ) {
+    const rows = await tx.$queryRaw<Array<LockedReceiptDelegationRow>>(Prisma.sql`
+      SELECT "id"
+      FROM "SpotProcurementReceiptDelegation"
+      WHERE "receiptId" = ${receiptId}
+        AND "revokedAt" IS NULL
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    if (rows.length > 1) {
+      throw new ConflictException(
+        "收货委托数据异常，请刷新后重试"
+      );
+    }
+    return rows;
+  }
+
+  private async revokeLockedReceiptDelegations(
+    tx: Prisma.TransactionClient,
+    delegations: LockedReceiptDelegationRow[],
+    actorUserId: string,
+    now: Date
+  ) {
+    if (!delegations.length) return;
+    const result = await tx.spotProcurementReceiptDelegation.updateMany({
+      where: {
+        id: { in: delegations.map((delegation) => delegation.id) },
+        revokedAt: null
+      },
+      data: {
+        revokedAt: now,
+        revokedByUserId: actorUserId,
+        revocationReason: "采购经办人变更，原收货委托自动失效"
+      }
+    });
+    if (result.count !== delegations.length) {
+      throw new ConflictException(
+        "收货委托状态已变化，请刷新后重试"
+      );
+    }
   }
 
   private async replaceVersionFacts(
@@ -2023,10 +2386,7 @@ export class SpotProcurementApplicationService {
     try {
       return await operation();
     } catch (error) {
-      const code =
-        error && typeof error === "object" && "code" in error
-          ? error.code
-          : undefined;
+      const code = prismaErrorCode(error);
       if (code === "P2002") {
         throw new ConflictException("采购编号或版本数据已存在，请刷新后重试");
       }
@@ -2039,6 +2399,21 @@ export class SpotProcurementApplicationService {
       throw error;
     }
   }
+}
+
+function prismaErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const code = (error as { code?: unknown }).code;
+  if (code === "P2010") {
+    const meta = (error as { meta?: unknown }).meta;
+    if (meta && typeof meta === "object") {
+      const postgresCode = (meta as { code?: unknown }).code;
+      if (String(postgresCode) === "40001") {
+        return "P2034";
+      }
+    }
+  }
+  return typeof code === "string" ? code : undefined;
 }
 
 function requiredText(value: unknown, message: string) {

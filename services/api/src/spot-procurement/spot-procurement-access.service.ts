@@ -24,6 +24,7 @@ const PAYMENT_PROJECT_ROLES = new Set<RoleKey>([
   "project_manager",
   "finance_director"
 ]);
+const RECEIPT_PROJECT_ROLES = new Set<RoleKey>(["material_director"]);
 const PAYMENT_EXECUTOR_VISIBLE_STATUSES = new Set([
   "approved_pending_payment",
   "partially_paid"
@@ -86,11 +87,13 @@ export class SpotProcurementAccessService {
     return projectId;
   }
 
-  async requireReceiptProjectId(receiptId: string): Promise<never> {
-    // Task 7B: material receipt/delegate models do not exist yet. Never infer
-    // a project from request payloads while the real resource cannot be read.
-    void receiptId;
-    throw new ForbiddenException(RESOURCE_FORBIDDEN_MESSAGE);
+  async requireReceiptProjectId(receiptId: string): Promise<string> {
+    const receipt = await this.prisma.spotProcurementReceipt.findUnique({
+      where: { id: receiptId },
+      select: { projectId: true }
+    });
+    if (!receipt) throw new ForbiddenException(RESOURCE_FORBIDDEN_MESSAGE);
+    return receipt.projectId;
   }
 
   async accessibleProcurementIds(
@@ -405,6 +408,138 @@ export class SpotProcurementAccessService {
     return allowedIds;
   }
 
+  async accessibleReceiptIds(
+    receiptIds: readonly string[],
+    actorUserId: string,
+    client: AccessClient = this.prisma
+  ): Promise<Set<string>> {
+    const requestedIds = [...new Set(receiptIds)];
+    if (!requestedIds.length) return new Set();
+
+    const receipts = await client.spotProcurementReceipt.findMany({
+      where: { id: { in: requestedIds } },
+      select: {
+        id: true,
+        projectId: true,
+        procurementId: true,
+        handlerUserId: true
+      }
+    });
+    if (!receipts.length) return new Set();
+
+    const procurements = await client.spotProcurement.findMany({
+      where: {
+        id: { in: [...new Set(receipts.map((receipt) => receipt.procurementId))] }
+      },
+      select: {
+        id: true,
+        projectId: true,
+        applicantUserId: true,
+        handlerUserId: true
+      }
+    });
+    const procurementById = new Map(
+      procurements.map((procurement) => [procurement.id, procurement])
+    );
+    const validReceipts = receipts.filter(
+      (receipt) =>
+        procurementById.get(receipt.procurementId)?.projectId === receipt.projectId
+    );
+    if (!validReceipts.length) return new Set();
+
+    const allowedIds = new Set<string>();
+    for (const receipt of validReceipts) {
+      const procurement = procurementById.get(receipt.procurementId)!;
+      if (
+        procurement.applicantUserId === actorUserId ||
+        receipt.handlerUserId === actorUserId
+      ) {
+        allowedIds.add(receipt.id);
+      }
+    }
+
+    const effectiveRolesByProjectId = await this.loadEffectiveRoleKeysByProject(
+      client,
+      actorUserId,
+      validReceipts.map((receipt) => receipt.projectId)
+    );
+    for (const receipt of validReceipts) {
+      if (
+        (effectiveRolesByProjectId.get(receipt.projectId) ?? []).some((roleKey) =>
+          RECEIPT_PROJECT_ROLES.has(roleKey)
+        )
+      ) {
+        allowedIds.add(receipt.id);
+      }
+    }
+
+    const delegations = await client.spotProcurementReceiptDelegation.findMany({
+      where: {
+        receiptId: { in: validReceipts.map((receipt) => receipt.id) },
+        delegateUserId: actorUserId,
+        revokedAt: null
+      },
+      select: {
+        receiptId: true,
+        delegatorUserId: true,
+        delegateUserId: true,
+        revokedAt: true
+      }
+    });
+    if (!delegations.length) return allowedIds;
+
+    const actor = await client.user.findUnique({
+      where: { id: actorUserId },
+      select: { id: true, isActive: true }
+    });
+    if (!actor?.isActive) return allowedIds;
+
+    const receiptById = new Map(validReceipts.map((receipt) => [receipt.id, receipt]));
+    const candidateProjectIds = [
+      ...new Set(
+        delegations.flatMap((delegation) => {
+          const receipt = receiptById.get(delegation.receiptId);
+          return receipt && delegation.delegatorUserId === receipt.handlerUserId
+            ? [receipt.projectId]
+            : [];
+        })
+      )
+    ];
+    const affiliatedProjectIds = new Set<string>();
+    for (const projectId of candidateProjectIds) {
+      const [positions, memberships, rosterMemberships] = await Promise.all([
+        client.userPosition.findMany({
+          where: { userId: actorUserId, projectId },
+          select: { id: true }
+        }),
+        client.projectMember.findMany({
+          where: { userId: actorUserId, projectId },
+          select: { id: true }
+        }),
+        client.projectRosterMember.findMany({
+          where: { userId: actorUserId, projectId },
+          select: { id: true }
+        })
+      ]);
+      if (positions.length || memberships.length || rosterMemberships.length) {
+        affiliatedProjectIds.add(projectId);
+      }
+    }
+
+    for (const delegation of delegations) {
+      const receipt = receiptById.get(delegation.receiptId);
+      if (
+        receipt &&
+        delegation.delegatorUserId === receipt.handlerUserId &&
+        affiliatedProjectIds.has(receipt.projectId)
+      ) {
+        allowedIds.add(receipt.id);
+      }
+    }
+
+    return allowedIds;
+  }
+
   async resolveProcurementViewAccess(
     procurementId: string,
     actorUserId: string,
@@ -429,6 +564,19 @@ export class SpotProcurementAccessService {
       client
     );
     return accessibleIds.has(paymentId) ? "allowed" : "denied";
+  }
+
+  async resolveReceiptViewAccess(
+    receiptId: string,
+    actorUserId: string,
+    client: AccessClient = this.prisma
+  ): Promise<SpotProcurementBusinessAccessDecision> {
+    const accessibleIds = await this.accessibleReceiptIds(
+      [receiptId],
+      actorUserId,
+      client
+    );
+    return accessibleIds.has(receiptId) ? "allowed" : "denied";
   }
 
   async resolveBusinessDownloadAccess(
@@ -461,7 +609,13 @@ export class SpotProcurementAccessService {
     actorUserId: string,
     client: AccessClient = this.prisma
   ): Promise<SpotProcurementFileAccessDecision> {
-    const [attachmentBindings, directPaymentBindings, voucherBindings, directPdfBindings] =
+    const [
+      attachmentBindings,
+      directPaymentBindings,
+      voucherBindings,
+      directPdfBindings,
+      receiptPhotoBindings
+    ] =
       await Promise.all([
         client.spotProcurementAttachment.findMany({
           where: { fileId },
@@ -496,6 +650,12 @@ export class SpotProcurementAccessService {
             }
           },
           select: { businessType: true, businessId: true, templateKey: true }
+        }),
+        client.spotProcurementReceiptPhoto.findMany({
+          where: {
+            OR: [{ originalFileId: fileId }, { watermarkedFileId: fileId }]
+          },
+          select: { receiptId: true }
         })
       ]);
     const replacementChain = directPdfBindings.length
@@ -523,8 +683,36 @@ export class SpotProcurementAccessService {
       attachmentBindings.length > 0 ||
       directPaymentBindings.length > 0 ||
       voucherBindings.length > 0 ||
-      pdfBindings.length > 0;
+      pdfBindings.length > 0 ||
+      receiptPhotoBindings.length > 0;
     if (!bound) return "not_spot";
+
+    const receiptIds = new Set(
+      receiptPhotoBindings.map((binding) => binding.receiptId)
+    );
+    const hasNonReceiptBinding =
+      attachmentBindings.length > 0 ||
+      directPaymentBindings.length > 0 ||
+      voucherBindings.length > 0 ||
+      pdfBindings.length > 0;
+    if (
+      receiptIds.size > 1 ||
+      (receiptIds.size > 0 && hasNonReceiptBinding)
+    ) {
+      return "denied";
+    }
+    if (receiptIds.size) {
+      const accessibleReceiptIds = await this.accessibleReceiptIds(
+        [...receiptIds],
+        actorUserId,
+        client
+      );
+      if ([...receiptIds].some((receiptId) => accessibleReceiptIds.has(receiptId))) {
+        return "allowed";
+      }
+    }
+
+    if (!hasNonReceiptBinding) return "denied";
 
     const versionIds = new Set(attachmentBindings.map((binding) => binding.versionId));
     const paymentIds = new Set([

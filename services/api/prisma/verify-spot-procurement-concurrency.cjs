@@ -1,3 +1,4 @@
+const { createHash } = require("node:crypto");
 const { Prisma, PrismaClient } = require("@prisma/client");
 const { AuditService } = require("../dist/audit/audit.service");
 const {
@@ -9,6 +10,9 @@ const {
 const {
   SpotProcurementPilotService
 } = require("../dist/spot-procurement/spot-procurement-pilot.service");
+const {
+  SpotProcurementReceiptService
+} = require("../dist/spot-procurement/spot-procurement-receipt.service");
 const {
   calculateProjectCashPoolBigInt,
   spotProcurementPaymentToMoneyRequestValue
@@ -176,10 +180,11 @@ function fileAccessFor(prisma) {
 function servicesFor(prisma) {
   const audit = new AuditService();
   const balances = new SpotProcurementBalanceService(prisma, audit);
+  const pilot = new SpotProcurementPilotService();
   const payment = new SpotProcurementPaymentService(
     prisma,
     audit,
-    new SpotProcurementPilotService(),
+    pilot,
     balances,
     {
       confirmPassword: async (_actorUserId, password) => {
@@ -193,7 +198,15 @@ function servicesFor(prisma) {
       tryRefreshLatestForBusiness: async () => undefined
     }
   );
-  return { balances, payment };
+  const receipt = new SpotProcurementReceiptService(
+    prisma,
+    audit,
+    pilot,
+    {},
+    {},
+    {}
+  );
+  return { balances, payment, receipt };
 }
 
 async function seedVerificationFacts() {
@@ -1519,6 +1532,519 @@ async function verifyRawP2034Sentinel() {
   );
 }
 
+async function verifyReceiptRootAndSubmission(services) {
+  const procurementId = "spot-receipt-live";
+  const versionId = `${procurementId}-v1`;
+  const lineIds = [
+    `${procurementId}-line-1`,
+    `${procurementId}-line-2`
+  ];
+  await createApprovedProcurement(clientA, {
+    procurementId,
+    versionId,
+    code: "LXCG-RECEIPT-LIVE",
+    supplierKey: "spot-receipt-live-supplier",
+    supplierName: "收货真实事务验收供应商",
+    totalAmountCents: 53_350n
+  });
+  await clientA.spotProcurementLine.createMany({
+    data: [
+      {
+        id: lineIds[0],
+        versionId,
+        sortOrder: 1,
+        materialName: "免烧砖",
+        unit: "块",
+        quantity: new Prisma.Decimal("10"),
+        invoiceMode: "no_invoice",
+        unitPrice: new Prisma.Decimal("3.335"),
+        amountCents: 3_335n
+      },
+      {
+        id: lineIds[1],
+        versionId,
+        sortOrder: 2,
+        materialName: "水泥",
+        unit: "袋",
+        quantity: new Prisma.Decimal("5"),
+        invoiceMode: "no_invoice",
+        unitPrice: new Prisma.Decimal("10"),
+        amountCents: 5_000n
+      }
+    ]
+  });
+
+  let deferredConstraintFailed = false;
+  try {
+    await clientA.$transaction(async (tx) => {
+      await tx.spotProcurementReceipt.create({
+        data: {
+          id: "spot-receipt-orphan-root",
+          projectId: PROJECT_ID,
+          procurementId,
+          procurementVersionId: versionId,
+          status: "draft",
+          currentRevisionNo: 1,
+          handlerUserId: HANDLER_USER_ID,
+          actualCostCents: 0n,
+          createdByUserId: HANDLER_USER_ID
+        }
+      });
+    });
+  } catch {
+    deferredConstraintFailed = true;
+  }
+  assert(
+    deferredConstraintFailed,
+    "缺少首个收货修订时，延迟当前指针外键必须在提交时失败"
+  );
+  assert(
+    (await clientA.spotProcurementReceipt.count({
+      where: { id: "spot-receipt-orphan-root" }
+    })) === 0,
+    "延迟外键失败不得留下孤立收货根单"
+  );
+
+  const receipt = await clientA.$transaction(async (tx) => {
+    const root = await tx.spotProcurementReceipt.create({
+      data: {
+        id: "spot-receipt-live-root",
+        projectId: PROJECT_ID,
+        procurementId,
+        procurementVersionId: versionId,
+        status: "draft",
+        currentRevisionNo: 1,
+        handlerUserId: HANDLER_USER_ID,
+        actualCostCents: 0n,
+        createdByUserId: HANDLER_USER_ID
+      }
+    });
+    await tx.spotProcurementReceiptRevision.create({
+      data: {
+        id: "spot-receipt-live-revision-1",
+        receiptId: root.id,
+        revisionNo: 1,
+        procurementId,
+        procurementVersionId: versionId,
+        handlerUserId: HANDLER_USER_ID,
+        actualCostCents: 0n,
+        createdByUserId: HANDLER_USER_ID
+      }
+    });
+    return root;
+  });
+
+  const draft = await services.receipt.updateDraft(
+    procurementId,
+    HANDLER_USER_ID,
+    {
+      note: "一次性到货真实事务验收",
+      lines: [
+        {
+          procurementLineId: lineIds[0],
+          qualifiedQuantity: "2",
+          unqualifiedQuantity: "1",
+          unqualifiedReason: "破损",
+          freeGiftQuantity: "100",
+          replenishmentPending: false,
+          discrepancyNote: "赠品和不合格数量均不计成本"
+        },
+        {
+          procurementLineId: lineIds[1],
+          qualifiedQuantity: "1",
+          unqualifiedQuantity: "0",
+          freeGiftQuantity: "0",
+          replenishmentPending: false
+        }
+      ]
+    }
+  );
+  assert(
+    draft.actualCostCents === "1667",
+    `收货草稿实际成本应为 1667 分，实际 ${draft.actualCostCents}`
+  );
+
+  const originalFileId = "spot-receipt-live-original";
+  const watermarkedFileId = "spot-receipt-live-watermarked";
+  const originalSha =
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const watermarkedSha =
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  await clientA.fileObject.createMany({
+    data: [
+      {
+        id: originalFileId,
+        bucket: "local-private",
+        objectKey: "spot-receipt-live/original.jpg",
+        originalName: "现场原图.jpg",
+        mimeType: "image/jpeg",
+        sizeBytes: 6,
+        uploadedByUserId: HANDLER_USER_ID,
+        contentSha256: originalSha,
+        storageStatus: "active"
+      },
+      {
+        id: watermarkedFileId,
+        bucket: "local-private",
+        objectKey: "spot-receipt-live/watermarked.jpg",
+        originalName: "现场水印图.jpg",
+        mimeType: "image/jpeg",
+        sizeBytes: 12,
+        uploadedByUserId: HANDLER_USER_ID,
+        contentSha256: watermarkedSha,
+        storageStatus: "active"
+      }
+    ]
+  });
+  await clientA.spotProcurementReceiptPhoto.create({
+    data: {
+      receiptId: receipt.id,
+      receiptRevisionNo: 1,
+      originalFileId,
+      watermarkedFileId,
+      originalSha256: originalSha,
+      watermarkedSha256: watermarkedSha,
+      source: "album",
+      category: "material_scene",
+      serverRecordedAt: new Date(),
+      note: "免烧砖",
+      uploadedByUserId: HANDLER_USER_ID
+    }
+  });
+
+  const submitted = await services.receipt.submit(
+    procurementId,
+    HANDLER_USER_ID
+  );
+  assert(
+    submitted.status === "submitted" &&
+      submitted.actualCostCents === "1667",
+    "最终收货提交必须保存后端重算的实际成本"
+  );
+  const [persistedRoot, persistedRevision, persistedProcurement, photos] =
+    await Promise.all([
+      clientA.spotProcurementReceipt.findUniqueOrThrow({
+        where: { id: receipt.id }
+      }),
+      clientA.spotProcurementReceiptRevision.findUniqueOrThrow({
+        where: {
+          receiptId_revisionNo: {
+            receiptId: receipt.id,
+            revisionNo: 1
+          }
+        }
+      }),
+      clientA.spotProcurement.findUniqueOrThrow({
+        where: { id: procurementId }
+      }),
+      clientA.spotProcurementReceiptPhoto.findMany({
+        where: { receiptId: receipt.id }
+      })
+    ]);
+  assert(
+    persistedRoot.status === "submitted" &&
+      persistedRoot.actualCostCents === 1_667n &&
+      persistedRoot.submittedByUserId === HANDLER_USER_ID,
+    "收货根单提交 tuple 或实际成本不正确"
+  );
+  assert(
+    persistedRevision.actualCostCents === 1_667n &&
+      persistedRevision.submittedByUserId === HANDLER_USER_ID,
+    "当前收货修订提交 tuple 或实际成本不正确"
+  );
+  assertBigint(
+    persistedProcurement.actualCostCents,
+    1_667n,
+    "采购根单最终实际成本"
+  );
+  assert(
+    photos.length === 1 &&
+      photos[0].lockedAtFirstSubmission &&
+      photos[0].lockedAt instanceof Date,
+    "首次提交必须锁定当前收货修订的全部照片"
+  );
+  console.log(
+    "ok spot receipt lifecycle: deferred root/revision, exact costs, material photo and submit tuple"
+  );
+}
+
+async function verifyReceiptCrossColumnFileCompetition() {
+  const procurements = [
+    {
+      procurementId: "spot-receipt-file-race-a",
+      versionId: "spot-receipt-file-race-a-v1",
+      receiptId: "spot-receipt-file-race-a-root",
+      revisionId: "spot-receipt-file-race-a-revision-1",
+      code: "LXCG-RECEIPT-FILE-RACE-A"
+    },
+    {
+      procurementId: "spot-receipt-file-race-b",
+      versionId: "spot-receipt-file-race-b-v1",
+      receiptId: "spot-receipt-file-race-b-root",
+      revisionId: "spot-receipt-file-race-b-revision-1",
+      code: "LXCG-RECEIPT-FILE-RACE-B"
+    }
+  ];
+  for (const item of procurements) {
+    await createApprovedProcurement(clientA, {
+      procurementId: item.procurementId,
+      versionId: item.versionId,
+      code: item.code,
+      supplierKey: `${item.procurementId}-supplier`,
+      supplierName: "收货文件跨列竞争供应商",
+      totalAmountCents: 100n
+    });
+    await clientA.$transaction(async (tx) => {
+      await tx.spotProcurementReceipt.create({
+        data: {
+          id: item.receiptId,
+          projectId: PROJECT_ID,
+          procurementId: item.procurementId,
+          procurementVersionId: item.versionId,
+          status: "draft",
+          currentRevisionNo: 1,
+          handlerUserId: HANDLER_USER_ID,
+          actualCostCents: 0n,
+          createdByUserId: HANDLER_USER_ID
+        }
+      });
+      await tx.spotProcurementReceiptRevision.create({
+        data: {
+          id: item.revisionId,
+          receiptId: item.receiptId,
+          revisionNo: 1,
+          procurementId: item.procurementId,
+          procurementVersionId: item.versionId,
+          handlerUserId: HANDLER_USER_ID,
+          actualCostCents: 0n,
+          createdByUserId: HANDLER_USER_ID
+        }
+      });
+    });
+  }
+
+  const jpeg = (marker) =>
+    Buffer.from([0xff, 0xd8, marker, marker, 0xff, 0xd9]);
+  const buffers = new Map([
+    ["spot-receipt-race-file-x", jpeg(0x11)],
+    ["spot-receipt-race-file-y", jpeg(0x22)],
+    ["spot-receipt-race-file-z", jpeg(0x33)],
+    ["spot-receipt-race-shared-y", jpeg(0x22)],
+    ["spot-receipt-restricted-owner-contract", jpeg(0x44)]
+  ]);
+  const hash = (buffer) =>
+    createHash("sha256").update(buffer).digest("hex");
+  await clientA.fileObject.createMany({
+    data: [...buffers].map(([id, buffer]) => ({
+      id,
+      bucket: "local-private",
+      objectKey: `spot-receipt-race/${id}.jpg`,
+      originalName: `${id}.jpg`,
+      mimeType: "image/jpeg",
+      sizeBytes: buffer.length,
+      uploadedByUserId: HANDLER_USER_ID,
+      contentSha256: hash(buffer),
+      storageStatus: "active"
+    }))
+  });
+  await clientA.projectOwnerContract.create({
+    data: {
+      id: "spot-receipt-restricted-owner-contract",
+      projectId: CASH_SHORT_PROJECT_ID,
+      ownerName: "受限甲方",
+      contractName: "另一项目受限甲方合同",
+      contractCode: "OWNER-RESTRICTED-001",
+      signedAt: new Date("2026-07-01T00:00:00.000Z"),
+      amountCents: 100n,
+      taxRateBps: 900,
+      pricingMethod: "fixed_price",
+      paymentTermsSummary: "验收专用",
+      retentionSummary: "验收专用",
+      fileId: "spot-receipt-restricted-owner-contract",
+      recordedByUserId: HANDLER_USER_ID,
+      status: "effective"
+    }
+  });
+
+  let generatedFileSequence = 0;
+  const serviceFor = (prisma) => {
+    const audit = new AuditService();
+    const fileService = {
+      getOwnedVerifiedFileBuffer: async (fileId, actorUserId) => {
+        const file = await prisma.fileObject.findUniqueOrThrow({
+          where: { id: fileId }
+        });
+        assert(
+          file.uploadedByUserId === actorUserId,
+          "跨列竞争原图上传人不匹配"
+        );
+        return { file, buffer: buffers.get(fileId) };
+      },
+      uploadPrivateFile: async (input) => {
+        const digest = hash(input.buffer);
+        if (
+          digest === hash(buffers.get("spot-receipt-race-file-y"))
+        ) {
+          return prisma.fileObject.findUniqueOrThrow({
+            where: { id: "spot-receipt-race-shared-y" }
+          });
+        }
+        const id = `spot-receipt-generated-${++generatedFileSequence}`;
+        buffers.set(id, Buffer.from(input.buffer));
+        return prisma.fileObject.create({
+          data: {
+            id,
+            bucket: "local-private",
+            objectKey: `spot-receipt-generated/${id}.jpg`,
+            originalName: input.originalName,
+            mimeType: input.mimeType,
+            sizeBytes: input.sizeBytes,
+            uploadedByUserId: input.uploadedByUserId,
+            contentSha256: digest,
+            storageStatus: "active"
+          }
+        });
+      },
+      quarantineUnboundReceiptWatermark: async () => false
+    };
+    const watermark = {
+      generate: async (input) => {
+        const sourceId = [...buffers].find(([, buffer]) =>
+          buffer.equals(input.originalBuffer)
+        )?.[0];
+        const targetId =
+          sourceId === "spot-receipt-race-file-x"
+            ? "spot-receipt-race-file-y"
+            : "spot-receipt-race-file-z";
+        const target = buffers.get(targetId);
+        return {
+          buffer: target,
+          mimeType: "image/jpeg",
+          originalSha256: hash(input.originalBuffer),
+          watermarkedSha256: hash(target),
+          width: 360,
+          height: 400
+        };
+      }
+    };
+    return new SpotProcurementReceiptService(
+      prisma,
+      audit,
+      new SpotProcurementPilotService(),
+      fileService,
+      watermark,
+      {}
+    );
+  };
+  const serviceA = serviceFor(clientA);
+  const serviceB = serviceFor(clientB);
+  let restrictedSourceRejected = false;
+  try {
+    await serviceA.attachPhoto(
+      procurements[0].procurementId,
+      HANDLER_USER_ID,
+      {
+        originalFileId:
+          "spot-receipt-restricted-owner-contract",
+        source: "album",
+        category: "material_scene"
+      }
+    );
+  } catch (error) {
+    restrictedSourceRejected = errorText(error).includes(
+      "收货照片文件已被其他业务使用"
+    );
+  }
+  assert(
+    restrictedSourceRejected,
+    "另一项目甲方合同文件不得被复用为收货原图"
+  );
+  assert(
+    (await clientA.spotProcurementReceiptPhoto.count({
+      where: {
+        OR: [
+          {
+            originalFileId:
+              "spot-receipt-restricted-owner-contract"
+          },
+          {
+            watermarkedFileId:
+              "spot-receipt-restricted-owner-contract"
+          }
+        ]
+      }
+    })) === 0,
+    "受限甲方合同文件被拒绝后不得留下收货照片绑定"
+  );
+  console.log(
+    "ok spot receipt source isolation: another-project owner contract file rejected"
+  );
+  const results = await Promise.allSettled([
+    serviceA.attachPhoto(
+      procurements[0].procurementId,
+      HANDLER_USER_ID,
+      {
+        originalFileId: "spot-receipt-race-file-x",
+        source: "album",
+        category: "material_scene"
+      }
+    ),
+    serviceB.attachPhoto(
+      procurements[1].procurementId,
+      HANDLER_USER_ID,
+      {
+        originalFileId: "spot-receipt-race-file-y",
+        source: "camera",
+        category: "material_scene"
+      }
+    )
+  ]);
+  assertOneWinner(results, "收货照片原图/水印图跨列占用竞争");
+  const photos = await clientA.spotProcurementReceiptPhoto.findMany({
+    where: {
+      receiptId: {
+        in: procurements.map((item) => item.receiptId)
+      }
+    }
+  });
+  assert(
+    photos.length === 1,
+    "跨列文件竞争只能留下一个正式收货照片事实"
+  );
+  const allBoundFileIds = photos.flatMap((photo) => [
+    photo.originalFileId,
+    photo.watermarkedFileId
+  ]);
+  assert(
+    new Set(allBoundFileIds).size === allBoundFileIds.length,
+    "跨列文件竞争后原图和水印图不得复用同一文件"
+  );
+  assert(
+    photos.every(
+      (photo) =>
+        ![
+          "spot-receipt-race-file-x",
+          "spot-receipt-race-file-y"
+        ].includes(photo.originalFileId)
+    ),
+    "正式收货照片必须绑定服务端专用原图副本，不能绑定客户端上传源"
+  );
+  const dedicatedOriginals = await clientA.fileObject.findMany({
+    where: {
+      id: { in: photos.map((photo) => photo.originalFileId) }
+    }
+  });
+  assert(
+    dedicatedOriginals.every(
+      (file) => file.supersedesFileObjectId === null
+    ),
+    "收货专用原图副本不得接入其它文件替换链"
+  );
+  console.log(
+    "ok spot receipt cross-column file race: shared FileObject lock leaves one winner"
+  );
+}
+
 async function main() {
   assertLocalRuntime();
   await Promise.all([clientA.$connect(), clientB.$connect()]);
@@ -1545,9 +2071,11 @@ async function main() {
     servicesB
   );
   await verifyExecutionCashShortageZeroWrite(servicesA);
+  await verifyReceiptRootAndSubmission(servicesA);
+  await verifyReceiptCrossColumnFileCompetition();
   await verifyRawP2034Sentinel();
   console.log(
-    "零星采购真实 PostgreSQL 16 并发验收通过：付款提交、余额、实际付款上限、幂等、凭证唯一、项目现金串行、现金不足零写、P2034"
+    "零星采购真实 PostgreSQL 16 并发验收通过：付款提交、余额、实际付款上限、幂等、凭证唯一、项目现金串行、现金不足零写、收货根/修订、最终收货提交、收货文件跨列竞争、P2034"
   );
 }
 

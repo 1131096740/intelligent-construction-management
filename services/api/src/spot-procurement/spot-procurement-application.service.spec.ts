@@ -187,6 +187,35 @@ function transactionDelegate() {
     spotProcurementPaymentExecution: {
       findFirst: jest.fn().mockResolvedValue(null)
     },
+    spotProcurementReceipt: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({
+        id: "receipt-1",
+        procurementId: "procurement-1",
+        procurementVersionId: "version-1",
+        currentRevisionNo: 1,
+        status: "draft",
+        handlerUserId: "material-1"
+      }),
+      update: jest.fn().mockResolvedValue({ id: "receipt-1" })
+    },
+    spotProcurementReceiptRevision: {
+      create: jest.fn().mockResolvedValue({
+        id: "receipt-revision-1",
+        receiptId: "receipt-1",
+        revisionNo: 1
+      }),
+      update: jest.fn().mockResolvedValue({ id: "receipt-revision-1" })
+    },
+    spotProcurementReceiptDelegation: {
+      updateMany: jest.fn().mockResolvedValue({ count: 0 })
+    },
+    spotProcurementReceiptPhoto: {
+      updateMany: jest.fn().mockResolvedValue({ count: 0 })
+    },
+    spotProcurementReceiptReview: {
+      updateMany: jest.fn().mockResolvedValue({ count: 0 })
+    },
     auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
   };
 }
@@ -684,6 +713,77 @@ describe("SpotProcurementApplicationService", () => {
         })
       ])
     );
+  });
+
+  it("syncs a changed draft handler into the current receipt revision and revokes the old delegation", async () => {
+    const { service, tx } = harness();
+    const currentVersion = {
+      ...versionLock,
+      id: "version-2",
+      versionNo: 2,
+      status: "draft",
+      handlerUserId: "material-1"
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          ...rootLock,
+          currentVersionId: "version-2",
+          status: "draft",
+          handlerUserId: "material-1"
+        }
+      ])
+      .mockResolvedValueOnce([currentVersion])
+      .mockResolvedValueOnce([{ ...versionLock, status: "invalidated" }])
+      .mockResolvedValueOnce([
+        {
+          id: "receipt-1",
+          projectId: "project-1",
+          procurementId: "procurement-1",
+          procurementVersionId: "version-2",
+          status: "draft",
+          currentRevisionNo: 2,
+          handlerUserId: "material-1",
+          revisionHandlerUserId: "material-1"
+        }
+      ])
+      .mockResolvedValueOnce([{ id: "delegation-1" }]);
+    tx.spotProcurementReceipt.findUnique.mockResolvedValue({ id: "receipt-1" });
+    tx.spotProcurementReceiptDelegation.updateMany.mockResolvedValue({
+      count: 1
+    });
+    rolesByUser(tx, {
+      "material-1": { project: ["material_staff"] },
+      "handler-b": { project: ["material_staff"] }
+    });
+
+    await service.updateDraft("procurement-1", "material-1", {
+      ...draftInput,
+      handlerUserId: "handler-b"
+    });
+
+    expect(tx.spotProcurementReceiptRevision.update).toHaveBeenCalledWith({
+      where: {
+        receiptId_revisionNo: {
+          receiptId: "receipt-1",
+          revisionNo: 2
+        }
+      },
+      data: { handlerUserId: "handler-b" }
+    });
+    expect(tx.spotProcurementReceipt.update).toHaveBeenCalledWith({
+      where: { id: "receipt-1" },
+      data: { handlerUserId: "handler-b" }
+    });
+    expect(
+      tx.spotProcurementReceiptDelegation.updateMany
+    ).toHaveBeenCalledWith({
+      where: { id: { in: ["delegation-1"] }, revokedAt: null },
+      data: expect.objectContaining({
+        revokedAt: expect.any(Date),
+        revokedByUserId: "material-1"
+      })
+    });
   });
 
   it("rejects an active private attachment uploaded by an unrelated user", async () => {
@@ -1237,6 +1337,61 @@ describe("SpotProcurementApplicationService", () => {
         paymentNote: null
       })
     });
+    expect(tx.spotProcurementReceipt.create).toHaveBeenCalledWith({
+      data: {
+        projectId: "project-1",
+        procurementId: "procurement-1",
+        procurementVersionId: "version-1",
+        status: "draft",
+        currentRevisionNo: 1,
+        handlerUserId: "material-1",
+        note: null,
+        actualCostCents: 0n,
+        firstSubmittedAt: null,
+        submittedAt: null,
+        submittedByUserId: null,
+        submissionDelegationId: null,
+        lockedAt: null,
+        createdByUserId: "manager-1"
+      }
+    });
+    expect(tx.spotProcurementReceiptRevision.create).toHaveBeenCalledWith({
+      data: {
+        receiptId: "receipt-1",
+        revisionNo: 1,
+        procurementId: "procurement-1",
+        procurementVersionId: "version-1",
+        handlerUserId: "material-1",
+        note: null,
+        actualCostCents: 0n,
+        submittedAt: null,
+        submittedByUserId: null,
+        submissionDelegationId: null,
+        createdByUserId: "manager-1"
+      }
+    });
+    expect(
+      tx.spotProcurementReceipt.create.mock.invocationCallOrder[0]
+    ).toBeLessThan(
+      tx.spotProcurementReceiptRevision.create.mock.invocationCallOrder[0]
+    );
+    expect(
+      tx.spotProcurementReceiptRevision.create.mock.invocationCallOrder[0]
+    ).toBeLessThan(
+      tx.spotProcurementPayment.create.mock.invocationCallOrder[0]
+    );
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "spot_procurement.receipt.draft.auto_create",
+        businessType: "spot_procurement_receipt",
+        businessId: "receipt-1",
+        metadata: expect.objectContaining({
+          procurementVersionId: "version-1",
+          receiptRevisionNo: 1,
+          handlerUserId: "material-1"
+        })
+      })
+    });
     expect(result.status).toBe("approved_in_progress");
     expect(approvalForms.tryRefreshLatestForBusiness).toHaveBeenCalledWith(
       "spot_procurement_version",
@@ -1526,6 +1681,103 @@ describe("SpotProcurementApplicationService", () => {
       "manager-1",
       "approval.return_to_applicant"
     );
+  });
+
+  it("advances the current receipt revision when a later procurement approval is returned", async () => {
+    const { service, tx } = harness();
+    const pendingRoot = {
+      ...rootLock,
+      currentVersionId: "version-2",
+      status: "approval_pending",
+      approvedAmountCents: 4100n,
+      actualCostCents: 4000n
+    };
+    const pendingVersion = {
+      ...versionLock,
+      id: "version-2",
+      versionNo: 2,
+      status: "approval_pending",
+      submittedAt: new Date("2026-07-17T02:00:00.000Z")
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([pendingRoot])
+      .mockResolvedValueOnce([pendingVersion])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-2",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            { name: "项目经理审批", mode: "any", roleKeys: ["project_manager"] }
+          ],
+          applicantUserId: "material-1"
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "receipt-1",
+          projectId: "project-1",
+          procurementId: "procurement-1",
+          procurementVersionId: "version-2",
+          status: "draft",
+          currentRevisionNo: 2,
+          handlerUserId: "material-1",
+          revisionHandlerUserId: "material-1"
+        }
+      ]);
+    tx.spotProcurementReceipt.findUnique.mockResolvedValue({ id: "receipt-1" });
+    role(tx, "project_manager");
+    tx.spotProcurementVersion.create.mockResolvedValue({
+      ...pendingVersion,
+      id: "version-3",
+      versionNo: 3,
+      status: "draft",
+      submittedAt: null,
+      changeReason: "请补充到货说明"
+    });
+
+    await service.review("procurement-1", "manager-1", {
+      decision: "return_to_applicant",
+      comment: "请补充到货说明"
+    });
+
+    expect(tx.spotProcurementReceiptRevision.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        receiptId: "receipt-1",
+        revisionNo: 3,
+        procurementId: "procurement-1",
+        procurementVersionId: "version-3",
+        handlerUserId: "material-1",
+        actualCostCents: 0n,
+        submittedAt: null,
+        submissionDelegationId: null
+      })
+    });
+    expect(tx.spotProcurementReceipt.update).toHaveBeenCalledWith({
+      where: { id: "receipt-1" },
+      data: expect.objectContaining({
+        procurementVersionId: "version-3",
+        currentRevisionNo: 3,
+        status: "draft",
+        actualCostCents: 0n,
+        submittedAt: null,
+        submittedByUserId: null,
+        submissionDelegationId: null,
+        lockedAt: null
+      })
+    });
+    expect(tx.spotProcurement.update).toHaveBeenCalledWith({
+      where: { id: "procurement-1" },
+      data: expect.objectContaining({
+        currentVersionId: "version-3",
+        status: "draft",
+        approvedAmountCents: 0n,
+        actualCostCents: null
+      })
+    });
+    expect(tx.spotProcurementReceiptDelegation.updateMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementReceiptPhoto.updateMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementReceiptReview.updateMany).not.toHaveBeenCalled();
   });
 
   it("reuses the ordinary-applicant self-review guard at the current frozen node", async () => {
@@ -1939,6 +2191,140 @@ describe("SpotProcurementApplicationService", () => {
     expect(
       draftHarness.balances.releaseReservation
     ).not.toHaveBeenCalled();
+  });
+
+  it("advances an existing reviewed receipt without rewriting historical receipt facts", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          ...rootLock,
+          status: "approved_in_progress",
+          approvedAmountCents: 4100n,
+          actualCostCents: 4000n
+        }
+      ])
+      .mockResolvedValueOnce([{ ...versionLock, status: "approved" }])
+      .mockResolvedValueOnce([
+        {
+          id: "receipt-1",
+          projectId: "project-1",
+          procurementId: "procurement-1",
+          procurementVersionId: "version-1",
+          status: "reviewed",
+          currentRevisionNo: 1,
+          handlerUserId: "material-1",
+          revisionHandlerUserId: "material-1"
+        }
+      ])
+      .mockResolvedValueOnce([{ id: "delegation-1" }]);
+    tx.spotProcurementReceipt.findUnique.mockResolvedValue({ id: "receipt-1" });
+    rolesByUser(tx, {
+      "material-1": { project: ["material_staff"] },
+      "handler-b": { project: ["material_staff"] }
+    });
+    tx.spotProcurementPayment.findMany.mockResolvedValue([
+      { id: "payment-returned", status: "returned" }
+    ]);
+    tx.spotProcurementVersion.create.mockResolvedValue({
+      ...versionLock,
+      id: "version-2",
+      versionNo: 2,
+      status: "draft",
+      handlerUserId: "handler-b",
+      changeReason: "变更经办人和采购单价"
+    });
+    tx.spotProcurementReceiptDelegation.updateMany.mockResolvedValue({
+      count: 1
+    });
+
+    await service.createVersion("procurement-1", "material-1", {
+      ...draftInput,
+      handlerUserId: "handler-b",
+      lines: [{ ...invoiceLine, unitPrice: "4" }],
+      changeReason: "变更经办人和采购单价"
+    });
+
+    expect(tx.spotProcurementReceiptRevision.create).toHaveBeenCalledWith({
+      data: {
+        receiptId: "receipt-1",
+        revisionNo: 2,
+        procurementId: "procurement-1",
+        procurementVersionId: "version-2",
+        handlerUserId: "handler-b",
+        note: null,
+        actualCostCents: 0n,
+        submittedAt: null,
+        submittedByUserId: null,
+        submissionDelegationId: null,
+        createdByUserId: "material-1"
+      }
+    });
+    expect(tx.spotProcurementReceipt.update).toHaveBeenCalledWith({
+      where: { id: "receipt-1" },
+      data: {
+        procurementVersionId: "version-2",
+        status: "draft",
+        currentRevisionNo: 2,
+        handlerUserId: "handler-b",
+        note: null,
+        actualCostCents: 0n,
+        submittedAt: null,
+        submittedByUserId: null,
+        submissionDelegationId: null,
+        lockedAt: null
+      }
+    });
+    expect(
+      tx.spotProcurementReceiptDelegation.updateMany
+    ).toHaveBeenCalledWith({
+      where: { id: { in: ["delegation-1"] }, revokedAt: null },
+      data: {
+        revokedAt: expect.any(Date),
+        revokedByUserId: "material-1",
+        revocationReason: "采购经办人变更，原收货委托自动失效"
+      }
+    });
+    expect(tx.spotProcurement.update).toHaveBeenCalledWith({
+      where: { id: "procurement-1" },
+      data: expect.objectContaining({
+        currentVersionId: "version-2",
+        status: "draft",
+        approvedAmountCents: 0n,
+        actualCostCents: null,
+        handlerUserId: "handler-b"
+      })
+    });
+    expect(tx.spotProcurementReceiptPhoto.updateMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementReceiptReview.updateMany).not.toHaveBeenCalled();
+    const lockSql = tx.$queryRaw.mock.calls.map(
+      ([query]) =>
+        ((query as { strings?: readonly string[] }).strings ?? []).join(" ")
+    );
+    expect(lockSql[0]).toContain('FROM "SpotProcurement"');
+    expect(lockSql[1]).toContain('FROM "SpotProcurementVersion"');
+    expect(lockSql[2]).toContain('FROM "SpotProcurementReceipt"');
+    expect(lockSql[2]).toContain("FOR UPDATE OF receipt, revision");
+    expect(lockSql[3]).toContain('FROM "SpotProcurementReceiptDelegation"');
+    expect(lockSql[3]).toContain('ORDER BY "id"');
+    expect(lockSql[3]).toContain("FOR UPDATE");
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "spot_procurement.receipt.revision.advance",
+        businessId: "receipt-1",
+        metadata: expect.objectContaining({
+          previousProcurementVersionId: "version-1",
+          procurementVersionId: "version-2",
+          previousReceiptRevisionNo: 1,
+          receiptRevisionNo: 2,
+          previousReceiptStatus: "reviewed",
+          revokedDelegationIds: ["delegation-1"]
+        })
+      })
+    });
+    const receiptUpdate =
+      tx.spotProcurementReceipt.update.mock.calls[0]?.[0].data;
+    expect(receiptUpdate).not.toHaveProperty("firstSubmittedAt");
   });
 
   it("stops a version switch when draft invalidation loses its status CAS", async () => {
@@ -2485,4 +2871,22 @@ describe("SpotProcurementApplicationService", () => {
       );
     }
   );
+
+  it("maps a raw PostgreSQL serialization conflict without exposing database details", async () => {
+    const { service, prisma } = harness();
+    prisma.$transaction.mockRejectedValue({
+      code: "P2010",
+      meta: { code: "40001" },
+      detail: "sensitive-db-detail"
+    });
+
+    await expect(
+      service.createDraft("material-1", draftInput)
+    ).rejects.toEqual(
+      expect.objectContaining({
+        status: 409,
+        message: "采购数据已变化，请刷新后重试"
+      })
+    );
+  });
 });

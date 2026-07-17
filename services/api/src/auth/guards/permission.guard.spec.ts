@@ -1265,6 +1265,34 @@ describe("PermissionGuard", () => {
     expect(access.requirePaymentProjectId).toHaveBeenCalledWith("spot-payment-1");
   });
 
+  it("resolves receiptId project scope from the persisted receipt", async () => {
+    const access = {
+      requireReceiptProjectId: jest.fn().mockResolvedValue("project-real")
+    };
+    const prisma = buildPrisma("material_director");
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("spot_procurement.receipt.confirm")
+      } as never,
+      prisma as never,
+      access as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "material-director-1" },
+          params: { receiptId: "receipt-1" },
+          body: { projectId: "forged-project" }
+        })
+      )
+    ).resolves.toBe(true);
+    expect(access.requireReceiptProjectId).toHaveBeenCalledWith("receipt-1");
+  });
+
   it.each([
     ["procurementId", "missing-procurement"],
     ["procurementPaymentId", "missing-payment"],
