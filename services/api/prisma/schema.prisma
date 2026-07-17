@@ -506,13 +506,13 @@ model SpotProcurement {
   projectId            String
   code                 String    @unique
   supplierPartyId      String?
-  supplierKey          String
-  supplierNameSnapshot String
+  supplierKey          String? // legacy: new real-form applications do not select a supplier
+  supplierNameSnapshot String? // legacy: new real-form applications do not select a supplier
   applicantUserId      String
   handlerUserId        String
   currentVersionId     String?
   status               String
-  approvedAmountCents  BigInt    @default(0)
+  approvedAmountCents  BigInt? // legacy: approval amount is now frozen on the payment application
   actualCostCents      BigInt?
   closedAt             DateTime?
   voidedAt             DateTime?
@@ -527,24 +527,30 @@ model SpotProcurement {
 }
 
 model SpotProcurementVersion {
-  id                   String    @id @default(uuid())
-  procurementId        String
-  versionNo            Int
-  status               String
-  reason               String
-  note                 String?
-  supplierPartyId      String?
-  supplierKey          String
-  supplierNameSnapshot String
-  handlerUserId        String
-  totalAmountCents     BigInt
-  changeReason         String?
-  changeSummary        Json?
-  submittedAt          DateTime?
-  approvedAt           DateTime?
-  createdByUserId      String
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  id                              String    @id @default(uuid())
+  procurementId                   String
+  versionNo                       Int
+  status                          String
+  reason                          String
+  note                            String?
+  supplierPartyId                 String?
+  supplierKey                     String? // legacy: actual merchant is frozen on the payment application
+  supplierNameSnapshot            String? // legacy: actual merchant is frozen on the payment application
+  handlerUserId                   String
+  applicationDepartmentSnapshot   String
+  applicationNameSnapshot         String
+  purchaserNameSnapshot           String
+  purchaserDepartmentId           String?
+  purchaserDepartmentNameSnapshot String
+  requestedArrivalAt              DateTime
+  totalAmountCents                BigInt? // legacy: the A4 procurement application has no amount
+  changeReason                    String?
+  changeSummary                   Json?
+  submittedAt                     DateTime?
+  approvedAt                      DateTime?
+  createdByUserId                 String
+  createdAt                       DateTime  @default(now())
+  updatedAt                       DateTime  @updatedAt
 
   @@unique([procurementId, versionNo])
   @@unique([procurementId, id])
@@ -559,13 +565,13 @@ model SpotProcurementLine {
   specification        String?
   unit                 String
   quantity             Decimal  @db.Decimal(24, 6)
-  invoiceMode          String
+  invoiceMode          String? // legacy: expected invoice facts belong to payment lines
   invoiceType          String?
   vatRateOptionId      String?
   vatRateValueSnapshot Decimal? @db.Decimal(9, 6)
   vatRateLabelSnapshot String?
-  unitPrice            Decimal  @db.Decimal(24, 6)
-  amountCents          BigInt
+  unitPrice            Decimal? @db.Decimal(24, 6) // legacy: price belongs to payment lines
+  amountCents          BigInt? // legacy: amount belongs to payment lines
   usageLocation        String?
   note                 String?
   createdAt            DateTime @default(now())
@@ -587,48 +593,60 @@ model SpotProcurementAttachment {
 }
 
 model SpotProcurementPayment {
-  id                                 String    @id @default(uuid())
-  projectId                          String
-  procurementId                      String
-  procurementVersionId               String
-  code                               String    @unique
-  status                             String    @default("draft")
-  settlementAmountCents              BigInt    @default(0)
-  supplierBalanceAmountCents         BigInt    @default(0)
-  companyPaymentAmountCents          BigInt    @default(0)
-  paidAmountCents                    BigInt    @default(0)
-  executedSupplierBalanceAmountCents BigInt    @default(0)
-  canceledAmountCents                BigInt    @default(0)
-  canceledCompanyPaymentAmountCents  BigInt    @default(0)
-  canceledSupplierBalanceAmountCents BigInt    @default(0)
-  paymentPath                        String?
-  paymentMethod                      String?
-  payeePartyId                       String?
-  payeeUserId                        String?
-  payeeNameSnapshot                  String
-  payeeAccountNameSnapshot           String?
-  payeeBankNameSnapshot              String?
-  payeeBankAccountSnapshot           String?
-  expectedPaymentAt                  DateTime?
-  paymentNote                        String?
-  supportingAttachmentFileId         String?
-  merchantPaymentProofFileId         String?
-  balanceOverrideReason              String?
-  handlerUserId                      String
-  createdByUserId                    String
-  submittedAt                        DateTime?
-  approvedAt                         DateTime?
-  invalidatedAt                      DateTime?
-  invalidatedByUserId                String?
-  invalidatedReason                  String?
-  createdAt                          DateTime  @default(now())
-  updatedAt                          DateTime  @updatedAt
+  id                                   String    @id @default(uuid())
+  projectId                            String
+  procurementId                        String
+  procurementVersionId                 String
+  code                                 String    @unique
+  status                               String    @default("draft")
+  settlementAmountCents                BigInt    @default(0)
+  supplierBalanceAmountCents           BigInt    @default(0)
+  companyPaymentAmountCents            BigInt    @default(0)
+  paidAmountCents                      BigInt    @default(0)
+  executedSupplierBalanceAmountCents   BigInt    @default(0)
+  canceledAmountCents                  BigInt    @default(0)
+  canceledCompanyPaymentAmountCents    BigInt    @default(0)
+  canceledSupplierBalanceAmountCents   BigInt    @default(0)
+  paymentPath                          String?
+  paymentMethod                        String?
+  paymentType                          String?
+  merchantNameSnapshot                 String?
+  merchantPayeeMismatchNote            String?
+  payeePartyId                         String?
+  payeeUserId                          String?
+  payeeNameSnapshot                    String?
+  payeeAccountNameSnapshot             String?
+  payeeBankNameSnapshot                String?
+  payeeBankAccountSnapshot             String?
+  expectedPaymentAt                    DateTime?
+  paymentNote                          String?
+  supportingAttachmentFileId           String?
+  merchantPaymentProofFileId           String?
+  balanceOverrideReason                String?
+  payerCompanyEntityId                 String?
+  payerCompanyNameSnapshot             String?
+  payerUnifiedSocialCreditCodeSnapshot String?
+  approvalAmountCents                  BigInt    @default(0)
+  primaryPaymentChannelId              String?
+  submittedVersionNo                   Int?
+  factsFrozenAt                        DateTime?
+  handlerUserId                        String
+  createdByUserId                      String
+  submittedAt                          DateTime?
+  approvedAt                           DateTime?
+  invalidatedAt                        DateTime?
+  invalidatedByUserId                  String?
+  invalidatedReason                    String?
+  createdAt                            DateTime  @default(now())
+  updatedAt                            DateTime  @updatedAt
 
+  @@unique([id, procurementVersionId])
   @@index([projectId, status])
   @@index([procurementId, status])
   @@index([procurementVersionId])
   @@index([supportingAttachmentFileId])
   @@index([merchantPaymentProofFileId])
+  @@index([payerCompanyEntityId])
 }
 
 model SpotProcurementPaymentExecution {
@@ -638,7 +656,7 @@ model SpotProcurementPaymentExecution {
   paidAt           DateTime
   paymentMethod    String
   executedByUserId String
-  voucherFileId    String
+  voucherFileId    String? // legacy: new executions use SpotProcurementPaymentExecutionVoucher
   idempotencyKey   String    @unique
   voidedAt         DateTime?
   voidedByUserId   String?
@@ -647,6 +665,141 @@ model SpotProcurementPaymentExecution {
 
   @@index([paymentId])
   @@index([voucherFileId])
+}
+
+model SpotProcurementPaymentLine {
+  id                       String   @id @default(uuid())
+  paymentId                String
+  procurementVersionId     String
+  procurementLineId        String
+  sortOrder                Int
+  approvedQuantitySnapshot Decimal  @db.Decimal(24, 6)
+  paymentQuantity          Decimal  @db.Decimal(24, 6)
+  unitPrice                Decimal  @db.Decimal(24, 6)
+  amountCents              BigInt
+  expectedInvoiceCondition String
+  vatRateOptionId          String?
+  vatRateValueSnapshot     Decimal? @db.Decimal(9, 6)
+  vatRateLabelSnapshot     String?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@unique([paymentId, procurementLineId])
+  @@unique([paymentId, sortOrder])
+  @@index([procurementVersionId, procurementLineId])
+}
+
+model SpotProcurementPaymentChannel {
+  id                    String   @id @default(uuid())
+  paymentId             String
+  sortOrder             Int
+  channelType           String
+  accountNameSnapshot   String?
+  accountNumberSnapshot String?
+  bankNameSnapshot      String?
+  channelNote           String?
+  isPrimary             Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([paymentId, sortOrder])
+  @@unique([paymentId, id])
+  @@index([paymentId, isPrimary])
+}
+
+model SpotProcurementPaymentMethodOption {
+  id            String   @id @default(uuid())
+  paymentId     String
+  paymentMethod String
+  sortOrder     Int
+  createdAt     DateTime @default(now())
+
+  @@unique([paymentId, paymentMethod])
+  @@unique([paymentId, sortOrder])
+}
+
+model SpotProcurementPaymentAttachment {
+  id               String   @id @default(uuid())
+  paymentId        String
+  fileId           String   @unique
+  category         String
+  uploadedByUserId String
+  createdAt        DateTime @default(now())
+
+  @@unique([paymentId, fileId])
+  @@index([paymentId, category])
+}
+
+model SpotProcurementPaymentExecutionVoucher {
+  id                 String   @id @default(uuid())
+  paymentExecutionId String
+  fileId             String   @unique
+  sortOrder          Int
+  uploadedByUserId   String
+  createdAt          DateTime @default(now())
+
+  @@unique([paymentExecutionId, sortOrder])
+  @@index([paymentExecutionId])
+}
+
+model SpotProcurementPaymentInvoice {
+  id                  String    @id @default(uuid())
+  paymentId           String
+  fileId              String    @unique
+  status              String    @default("active")
+  uploadedByUserId    String
+  invalidatedAt       DateTime?
+  invalidatedByUserId String?
+  invalidationReason  String?
+  createdAt           DateTime  @default(now())
+
+  @@index([paymentId, status])
+}
+
+model SpotProcurementPaymentArchive {
+  id                     String   @id @default(uuid())
+  paymentId              String
+  versionNo              Int
+  archiveTrigger         String
+  status                 String   @default("generated")
+  generatedPackageFileId String?  @unique
+  snapshot               Json
+  createdByUserId        String?
+  createdAt              DateTime @default(now())
+
+  @@unique([paymentId, versionNo])
+  @@index([paymentId, createdAt])
+}
+
+model SpotProcurementPaymentArchiveFile {
+  id        String   @id @default(uuid())
+  archiveId String
+  fileId    String
+  fileRole  String
+  sortOrder Int
+  createdAt DateTime @default(now())
+
+  @@unique([archiveId, fileRole, sortOrder])
+  @@index([archiveId])
+  @@index([fileId])
+}
+
+model SpotProcurementAbnormalTermination {
+  id                String    @id @default(uuid())
+  procurementId     String    @unique
+  status            String    @default("requested")
+  reason            String
+  requestedByUserId String
+  requestedAt       DateTime  @default(now())
+  confirmedByUserId String?
+  confirmedAt       DateTime?
+  rejectedByUserId  String?
+  rejectedAt        DateTime?
+  rejectionReason   String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([status, requestedAt])
 }
 
 model SupplierBalanceAccount {
@@ -876,6 +1029,11 @@ model SpotProcurementDiscrepancy {
   paidAmountCentsSnapshot                BigInt
   supplierBalanceUsedAmountCentsSnapshot BigInt
   overpaidAmountCents                    BigInt
+  unexecutedAmountClosedCents            BigInt    @default(0)
+  refundExpectedAmountCents              BigInt    @default(0)
+  replenishedAt                          DateTime?
+  replenishedByUserId                    String?
+  replenishmentNote                      String?
   resolutionType                         String?
   supplierBalanceEntryId                 String?   @unique
   note                                   String?
@@ -900,6 +1058,7 @@ model SpotProcurementRefund {
   id               String   @id @default(uuid())
   discrepancyId    String   @unique
   procurementId    String
+  paymentId        String?
   amountCents      BigInt
   receivedAt       DateTime
   refundMethod     String
@@ -909,6 +1068,7 @@ model SpotProcurementRefund {
   createdAt        DateTime @default(now())
 
   @@index([procurementId, receivedAt])
+  @@index([paymentId])
   @@index([recordedByUserId, createdAt])
 }
 

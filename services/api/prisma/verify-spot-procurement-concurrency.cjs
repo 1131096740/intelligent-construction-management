@@ -177,6 +177,65 @@ function assertLocalRuntime() {
   );
 }
 
+async function assertRealFormSchemaPrerequisites(prisma) {
+  const [indexes, nullableColumns, triggers] = await Promise.all([
+    prisma.$queryRaw(
+      Prisma.sql`
+        SELECT indexname
+        FROM pg_indexes
+        WHERE schemaname = 'public'
+          AND indexname = 'SpotProcurementPayment_one_current_per_procurement'
+      `
+    ),
+    prisma.$queryRaw(
+      Prisma.sql`
+        SELECT "column_name", "is_nullable"
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name IN (
+            'SpotProcurementVersion',
+            'SpotProcurementLine',
+            'SpotProcurementPaymentExecution'
+          )
+          AND column_name IN (
+            'supplierKey',
+            'supplierNameSnapshot',
+            'totalAmountCents',
+            'invoiceMode',
+            'unitPrice',
+            'amountCents',
+            'voucherFileId'
+          )
+      `
+    ),
+    prisma.$queryRaw(
+      Prisma.sql`
+        SELECT tgname
+        FROM pg_trigger
+        WHERE NOT tgisinternal
+          AND tgname IN (
+            'jg_efb_spot_payment_attachment',
+            'jg_efb_spot_payment_execution_voucher',
+            'jg_efb_spot_payment_invoice'
+          )
+      `
+    )
+  ]);
+  assert(
+    indexes.length === 1,
+    "零星采购并发验收缺少唯一当前有效付款数据库约束"
+  );
+  assert(
+    nullableColumns.length === 7 &&
+      nullableColumns.every((column) => column.is_nullable === "YES"),
+    "零星采购并发验收要求旧供应商、价格、金额和单凭证列均已改为兼容可空"
+  );
+  assert(
+    triggers.length === 3,
+    "零星采购并发验收缺少付款依据、实付凭证或付款发票独占文件触发器"
+  );
+}
+
 function fileAccessFor(prisma) {
   const assertFile = async (client, fileId, actorUserId) => {
     const file = await client.fileObject.findUnique({
@@ -3617,6 +3676,7 @@ async function verifyInvoiceLedgerConcurrency(
 async function main() {
   assertLocalRuntime();
   await Promise.all([clientA.$connect(), clientB.$connect()]);
+  await assertRealFormSchemaPrerequisites(clientA);
   const servicesA = servicesFor(clientA);
   const servicesB = servicesFor(clientB);
   await seedVerificationFacts();
