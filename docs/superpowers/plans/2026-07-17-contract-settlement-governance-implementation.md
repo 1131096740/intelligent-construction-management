@@ -1217,6 +1217,8 @@ git commit -m "feat: 完善合同签署归档详情"
 
 ### Task 14: 统一合同变更和累计增项 10% 硬门禁
 
+> **执行校正（2026-07-17 金额与历史审计）**：Task 14 只约束新提交/重新提交，不终止旧在途实例；旧实例终止归 Task 22 manifest 工具。累计正增项必须从同一合同曾生效的 change/supplement 版本事实重算，减项永不返还额度。阻断审计不能写在随后抛错回滚的同一事务里。历史接管当前只保存接管时合同金额，无法证明最初签约额和接管前正增项；Task 14 编码前必须由用户在“接管金额作为系统起算基线”与“新增历史基线补录事实并待补全”之间确认，禁止静默猜测。
+
 **Files:**
 - Create: `services/api/src/contract/contract-change-limit-policy.ts`
 - Create: `services/api/src/contract/contract-change-limit-policy.spec.ts`
@@ -1224,8 +1226,19 @@ git commit -m "feat: 完善合同签署归档详情"
 - Modify: `services/api/src/contract/contract.service.spec.ts`
 - Modify: `services/api/src/contract/contract-change-read-model.ts`
 - Modify: `services/api/src/contract/contract-change-read-model.spec.ts`
+- Modify: `services/api/src/contract/contract-approval-route.service.ts`
+- Modify: `services/api/src/contract/contract-approval-route.service.spec.ts`
+- Modify: `services/api/src/contract/contract-read.service.ts`
+- Modify: `services/api/src/contract/contract-read.service.spec.ts`
+- Modify: `services/api/src/contract/dto/create-contract-change-draft.dto.ts`
+- Modify: `services/api/src/contract/contract.controller.spec.ts`
+- Modify: `apps/web-admin/src/api/core-flow-read.api.ts`
+- Modify: `apps/web-admin/src/api/core-flow-read.api.test.ts`
+- Modify: `apps/web-admin/src/pages/contracts/ContractDetailPage.vue`
+- Modify: `apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue`
 - Modify: `apps/web-admin/src/pages/contracts/contract-change.state.ts`
 - Modify: `apps/web-admin/src/pages/contracts/contract-change.state.test.ts`
+- Modify: `apps/web-admin/src/pages/contracts/contract-change.structure.test.ts`
 - Modify: `apps/web-admin/e2e/contract-change.e2e.ts`
 
 - [ ] **Step 1: 写边界和历史兼容失败测试**
@@ -1234,7 +1247,8 @@ git commit -m "feat: 完善合同签署归档详情"
 expect(evaluateContractIncreaseLimit({ originalAmountCents: 1_000_00n, historicalPositiveIncreaseCents: 100_00n, proposedChangeCents: 0n }).allowed).toBe(true);
 expect(evaluateContractIncreaseLimit({ originalAmountCents: 1_000_00n, historicalPositiveIncreaseCents: 100_00n, proposedChangeCents: 1n }).allowed).toBe(false);
 expect(evaluateContractIncreaseLimit({ originalAmountCents: 1_000_00n, historicalPositiveIncreaseCents: 100_00n, proposedChangeCents: -50_00n }).positiveIncreaseAfterChangeCents).toBe(100_00n);
-expect(readHistoricalChangeLabel("major")).toBe("重大合同变更（历史）");
+expect(evaluateContractIncreaseLimit({ originalAmountCents: 1_000_00n, historicalPositiveIncreaseCents: 80_00n, proposedChangeCents: -50_00n }).positiveIncreaseAfterChangeCents).toBe(80_00n);
+expect(readHistoricalChangeRoute(completedLegacyInstance)).toEqual(completedLegacyInstance.frozenNodes);
 ```
 
 - [ ] **Step 2: 运行失败测试**
@@ -1247,31 +1261,34 @@ Expected: FAIL。
 
 ```ts
 export function exceedsTenPercent(original: bigint, historicalPositive: bigint, proposed: bigint) {
-  if (original <= 0n) return false;
-  return (historicalPositive + proposed) * 10n > original;
+  if (original <= 0n) throw new Error("原合同金额事实异常，暂不能判断增项上限");
+  const proposedPositive = proposed > 0n ? proposed : 0n;
+  return (historicalPositive + proposedPositive) * 10n > original;
 }
 ```
 
-提交变更时锁 `Contract`，从该合同所有 `effective`/`superseded` 且曾生效的正向变更汇总，不信任沿版本复制的累计字段；减项不抵扣历史正增项。草稿超过上限仍可保存，但提交返回“累计增项已超过原合同 10%，必须新签合同”。无总价框架跳过金额比例。金额门禁阻断和旧流程实例因规则升级终止都必须写审计。
+提交先只读定位 contractId，再按固定顺序锁 `Contract → target ContractVersion → root/已生效变更版本 → Project`。分母取该合同唯一、曾生效且无 base 的 original 根版本金额；正增项只汇总 `changeType in (change,supplement)`、`status in (effective,superseded)`、`effectiveAt != null`、`changeDirection=increase`、`changeAmountCents>0`，不信任沿版本复制的累计字段或相邻 amount 差。拟提交只加入正向金额，减项不抵扣。草稿超过上限仍可保存，但提交返回“累计增项已超过原合同 10%，必须新签合同”。仅 `pricingNature=framework && amountLimitType=unlimited` 同时满足时跳过比例；其他 original<=0 脏数据 fail closed。近 BIGINT、恰好 10%、多次增减和 1 分越界均用 bigint 交叉乘测试。
+
+阻断结果使用 tagged denial：锁内重算后写脱敏 AuditLog 并正常提交审计事务，事务外再抛业务错误；测试必须重新查询证明审计持久，不能只断言回滚事务中的 mock 调用。Task 14 不终止旧实例、不失效旧文件；这些只由 Task 22 受控过渡工具处理。
 
 - [ ] **Step 4: 统一新路线、保留历史实例**
 
-新变更固定“合同部主管（主管发起跳过）→ 项目经理 → 财务主管 → 董事长/总经理或签”。读模型对历史实例读取 frozenNodes，不按新策略重算旧名称或路线。
+新变更固定“合同部主管（主管发起跳过）→ 项目经理 → 财务主管 → 董事长/总经理或签”，复用 Task 8 的 transaction-bound 候选冻结服务，排除申请人并缺员 fail closed。提交前逐字段比较 candidate 与直接 base 的 M53 五主体快照，历史 null 保持 null。读模型批量读取每个历史版本已完成 ApprovalInstance 的 frozenNodes，不按新策略重算旧名称或路线；旧“增强”只在旧冻结实例可证明时显示“增强合同变更（历史）”，找不到冻结实例显示“历史路线未冻结”，不得伪造 schema 不存在的 `major` 类型或产生 N+1。
 
 - [ ] **Step 5: Web 删除新流程增强文案**
 
-新建只有“合同变更”；历史记录仍显示原标签。公司主体字段在变更草稿中只读，换主体提示新签合同。
+新建只有“合同变更”；后端 DTO/服务忽略或拒绝客户端创建 `supplement`，历史读取仍兼容既有 supplement。详情下拉、API 联合类型和工作台“补充协议/增强”新建文案一并移除；历史记录仍显示可证明的旧标签。公司主体字段在变更草稿中只读，换主体提示新签合同。
 
 - [ ] **Step 6: 运行定向测试**
 
-Run: `pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-change-limit-policy.spec.ts src/contract/contract-change-policy.spec.ts src/contract/contract-change-read-model.spec.ts src/contract/contract.service.spec.ts && pnpm --filter @jiangkong/web-admin test -- src/pages/contracts/contract-change.state.test.ts src/pages/contracts/contract-change.structure.test.ts`
+Run: `pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-change-limit-policy.spec.ts src/contract/contract-change-policy.spec.ts src/contract/contract-change-read-model.spec.ts src/contract/contract-approval-route.service.spec.ts src/contract/contract.service.spec.ts src/contract/contract-read.service.spec.ts src/contract/contract.controller.spec.ts && pnpm --filter @jiangkong/web-admin test -- src/api/core-flow-read.api.test.ts src/pages/contracts/contract-change.state.test.ts src/pages/contracts/contract-change.structure.test.ts && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint && pnpm --filter @jiangkong/api check:business-errors && pnpm --filter @jiangkong/web-admin typecheck && pnpm --filter @jiangkong/web-admin lint && pnpm --filter @jiangkong/web-admin check:ui`
 
 Expected: PASS。
 
 - [ ] **Step 7: 提交**
 
 ```bash
-git add services/api/src/contract apps/web-admin/src/pages/contracts/contract-change* apps/web-admin/e2e/contract-change.e2e.ts
+git add services/api/src/contract apps/web-admin/src/api/core-flow-read.api* apps/web-admin/src/pages/contracts/ContractDetailPage.vue apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue apps/web-admin/src/pages/contracts/contract-change* apps/web-admin/e2e/contract-change.e2e.ts
 git commit -m "feat: 统一合同变更与增项硬门禁"
 ```
 
