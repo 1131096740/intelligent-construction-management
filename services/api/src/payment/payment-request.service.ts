@@ -49,6 +49,7 @@ import {
   toHistoricalContractPaymentBalance
 } from "./contract-takeover-balance";
 import { PaymentAmountService, PaymentCapacity } from "./payment-amount.service";
+import { loadSettlementPaymentConfirmationFacts } from "./settlement-confirmation-facts";
 import {
   allocateContractDuePaymentExecution,
   buildContractPaymentApplicationPreview,
@@ -1193,14 +1194,7 @@ export class PaymentRequestService {
             advanceDeductionStartRatioBps: true
           }
         }),
-        paymentTermsStageClient.settlementArchiveFile.findMany({
-          where: {
-            settlementId: { in: settlementIds },
-            status: "confirmed",
-            confirmedAt: { not: null }
-          },
-          select: { settlementId: true, confirmedAt: true }
-        }),
+        loadSettlementPaymentConfirmationFacts(tx, settlementIds),
         tx.paymentRequest.findMany({
           where: {
             contractId,
@@ -2551,14 +2545,7 @@ export class PaymentRequestService {
           advanceDeductionStartRatioBps: true
         }
       }),
-      tx.settlementArchiveFile.findMany({
-        where: {
-          settlementId: { in: settlementIds },
-          status: "confirmed",
-          confirmedAt: { not: null }
-        },
-        select: { settlementId: true, confirmedAt: true }
-      }),
+      loadSettlementPaymentConfirmationFacts(tx, settlementIds),
       tx.paymentExecutionAllocation.findMany({
         where: {
           contractId: payment.contractId,

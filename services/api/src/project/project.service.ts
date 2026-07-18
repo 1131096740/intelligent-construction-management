@@ -30,6 +30,7 @@ import {
   CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES,
   SETTLEMENT_CAPACITY_PAYMENT_STATUSES
 } from "../payment/settlement-payment-capacity";
+import { loadSettlementPaymentConfirmationFacts } from "../payment/settlement-confirmation-facts";
 import type {
   RecordProjectProxyPaymentDto,
   ProjectProxyPaymentType
@@ -1082,14 +1083,7 @@ export class ProjectService {
           advanceDeductionStartRatioBps: true
         }
       }),
-      clients.settlementArchiveFile.findMany({
-        where: {
-          settlementId: { in: settlementIds },
-          status: "confirmed",
-          confirmedAt: { not: null }
-        },
-        select: { settlementId: true, confirmedAt: true }
-      }),
+      loadSettlementPaymentConfirmationFacts(tx, settlementIds),
       tx.paymentRequest.findMany({
         where: {
           contractId,

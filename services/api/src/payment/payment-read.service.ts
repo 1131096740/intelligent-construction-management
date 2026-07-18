@@ -36,6 +36,7 @@ import {
   SETTLEMENT_CAPACITY_PAYMENT_STATUSES,
   sumMoneyCents
 } from "./settlement-payment-capacity";
+import { loadSettlementPaymentConfirmationFacts } from "./settlement-confirmation-facts";
 
 function emptyApprovalReviewAccess(): ApprovalReviewAccess {
   return { canAct: false, canReview: false, requiresSelfReviewConfirmation: false };
@@ -715,16 +716,7 @@ export class PaymentReadService {
             }
           })
         : Promise.resolve([]),
-      settlementIds.length
-        ? this.prisma.settlementArchiveFile.findMany({
-            where: {
-              settlementId: { in: settlementIds },
-              status: "confirmed",
-              confirmedAt: { not: null }
-            },
-            select: { settlementId: true, confirmedAt: true }
-          })
-        : Promise.resolve([]),
+      loadSettlementPaymentConfirmationFacts(this.prisma, settlementIds),
       this.prisma.paymentRequest.findMany({
         where: {
           contractId: contract.id,
