@@ -3433,7 +3433,13 @@ export class PaymentRequestService {
           action: kind,
           actorUserId,
           approvedRoleKey: fromRoleKey,
-          representedUserId: identity.representedUserId
+          representedUserId: identity.representedUserId,
+          metadata: {
+            kind,
+            fromUserId: identity.representedUserId,
+            toUserId: input.toUserId,
+            fromRoleKey
+          }
         }
       });
 

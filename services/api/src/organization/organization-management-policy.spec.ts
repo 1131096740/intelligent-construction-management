@@ -18,6 +18,7 @@ describe("organization management policy", () => {
 
   it("固定全局与项目岗位范围", () => {
     expect(roleScope("finance_staff")).toBe("global");
+    expect(roleScope("contract_staff")).toBe("global");
     expect(roleScope("engineering_department_director")).toBe("global");
     expect(roleScope("engineering_department_member")).toBe("project");
     expect(roleScope("engineering_director")).toBe("project");

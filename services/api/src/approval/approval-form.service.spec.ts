@@ -151,6 +151,162 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
 }
 
 describe("ApprovalFormService", () => {
+  it("renders frozen transfer and delegation relationships with names but never internal user IDs", async () => {
+    const prisma = buildPrisma({
+      approvalActionLog: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "log-transfer",
+            actorUserId: "user-chair",
+            action: "transfer",
+            comment: null,
+            metadata: {
+              kind: "transfer",
+              fromUserId: "user-chair",
+              toUserId: "user-agent-a",
+              fromRoleKey: "chairman"
+            },
+            approvedRoleKey: "chairman",
+            representedUserId: "user-chair",
+            signatureFileIdSnapshot: null,
+            signatureSha256Snapshot: null,
+            createdAt: new Date("2026-07-18T08:00:00.000Z")
+          },
+          {
+            id: "log-retransfer",
+            actorUserId: "user-chair",
+            action: "transfer",
+            comment: "改派处理人",
+            metadata: {
+              kind: "transfer",
+              fromUserId: "user-chair",
+              toUserId: "user-agent-b",
+              fromRoleKey: "chairman"
+            },
+            approvedRoleKey: "chairman",
+            representedUserId: "user-chair",
+            signatureFileIdSnapshot: null,
+            signatureSha256Snapshot: null,
+            createdAt: new Date("2026-07-18T08:30:00.000Z")
+          },
+          {
+            id: "log-delegate",
+            actorUserId: "user-agent-a",
+            action: "delegate",
+            comment: null,
+            metadata: {
+              kind: "delegate",
+              fromUserId: "user-chair",
+              toUserId: "user-agent-b",
+              fromRoleKey: "chairman"
+            },
+            approvedRoleKey: "chairman",
+            representedUserId: "user-chair",
+            signatureFileIdSnapshot: null,
+            signatureSha256Snapshot: null,
+            createdAt: new Date("2026-07-18T09:00:00.000Z")
+          },
+          {
+            id: "log-approve",
+            actorUserId: "user-agent-b",
+            action: "approve",
+            comment: "同意",
+            metadata: null,
+            approvedRoleKey: "chairman",
+            representedUserId: "user-chair",
+            signatureFileIdSnapshot: null,
+            signatureSha256Snapshot: null,
+            createdAt: new Date("2026-07-18T10:00:00.000Z")
+          }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "user-applicant", name: "申请人甲" },
+          { id: "user-chair", name: "董事长乙" },
+          { id: "user-agent-a", name: "受托人丙" },
+          { id: "user-agent-b", name: "受托人丁" }
+        ]),
+        findUnique: jest.fn()
+      }
+    });
+    const service = new ApprovalFormService(prisma as never) as unknown as {
+      buildRenderInput(instance: unknown): Promise<{
+        logs: Array<{ action: string; name: string; relationship: string }>;
+      }>;
+    };
+
+    const rendered = await service.buildRenderInput({
+      id: "inst-1",
+      businessType: "payment_request",
+      businessId: "pay-1",
+      applicantUserId: "user-applicant",
+      frozenNodes: []
+    });
+
+    expect(rendered.logs).toEqual([
+      expect.objectContaining({
+        action: "转交",
+        name: "董事长乙",
+        relationship: "转交关系：董事长乙 → 受托人丙（董事长）"
+      }),
+      expect.objectContaining({
+        action: "转交",
+        name: "董事长乙",
+        relationship: "转交关系：董事长乙 → 受托人丁（董事长）"
+      }),
+      expect.objectContaining({
+        action: "委托",
+        name: "受托人丙",
+        relationship: "委托关系：董事长乙 → 受托人丁（董事长）"
+      }),
+      expect.objectContaining({
+        action: "通过",
+        name: "受托人丁",
+        relationship: "代批关系：董事长乙 → 受托人丁（董事长）"
+      })
+    ]);
+    expect(JSON.stringify(rendered)).not.toContain("user-chair");
+    expect(JSON.stringify(rendered)).not.toContain("user-agent-a");
+    expect(JSON.stringify(rendered)).not.toContain("user-agent-b");
+  });
+
+  it("uses a neutral compatibility note for historical transfer logs without relationship metadata", async () => {
+    const prisma = buildPrisma({
+      approvalActionLog: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "log-legacy-transfer",
+            actorUserId: "user-chair",
+            action: "transfer",
+            comment: null,
+            metadata: null,
+            approvedRoleKey: "chairman",
+            representedUserId: "user-chair",
+            signatureFileIdSnapshot: null,
+            signatureSha256Snapshot: null,
+            createdAt: new Date("2026-06-18T08:00:00.000Z")
+          }
+        ])
+      }
+    });
+    const service = new ApprovalFormService(prisma as never) as unknown as {
+      buildRenderInput(instance: unknown): Promise<{
+        logs: Array<{ relationship: string }>;
+      }>;
+    };
+
+    const rendered = await service.buildRenderInput({
+      id: "inst-1",
+      businessType: "payment_request",
+      businessId: "pay-1",
+      applicantUserId: "user-applicant",
+      frozenNodes: []
+    });
+
+    expect(rendered.logs[0]?.relationship).toBe("历史记录未冻结委托/转交双方关系");
+  });
+
   it("builds the real company project payment approval form rows", () => {
     const rows = buildProjectPaymentApprovalRows({
       payment: {

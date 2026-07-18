@@ -4194,7 +4194,13 @@ describe("SettlementService", () => {
         action: "transfer",
         actorUserId: "material-director-1",
         approvedRoleKey: "material_director",
-        representedUserId: "material-director-1"
+        representedUserId: "material-director-1",
+        metadata: {
+          kind: "transfer",
+          fromUserId: "material-director-1",
+          toUserId: "delegate-user-1",
+          fromRoleKey: "material_director"
+        }
       }
     });
     expect(audit.record).toHaveBeenCalledWith(tx, {
@@ -4627,7 +4633,13 @@ describe("SettlementService", () => {
         action: "delegate",
         actorUserId: "project-manager-1",
         approvedRoleKey: "project_manager",
-        representedUserId: "project-manager-1"
+        representedUserId: "project-manager-1",
+        metadata: {
+          kind: "delegate",
+          fromUserId: "project-manager-1",
+          toUserId: "agent-user-1",
+          fromRoleKey: "project_manager"
+        }
       }
     });
     expect(tx.approvalDelegation.create).toHaveBeenCalledWith({

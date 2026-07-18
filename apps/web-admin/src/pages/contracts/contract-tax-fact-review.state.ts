@@ -1,6 +1,7 @@
 import {
   canPerform,
   HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS,
+  normalizeTaxRatePercent,
   type ContractInvoiceType,
   type ContractTaxFactSource,
   type ContractTaxMode,
@@ -253,14 +254,12 @@ function formatDateTime(value: string) {
 function optionalTaxRate(value: string, label: string): string | undefined {
   const normalized = value.trim();
   if (!normalized) return undefined;
-  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/u.test(normalized)) {
-    throw new Error(`${label}必须是大于 0 且不超过 100 的数字，最多保留 2 位小数`);
+  try {
+    return normalizeTaxRatePercent(normalized);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "税率格式不正确";
+    throw new Error(message.replace(/^税率/u, label));
   }
-  const rate = Number(normalized);
-  if (rate <= 0 || rate > 100) {
-    throw new Error(`${label}必须是大于 0 且不超过 100 的数字，最多保留 2 位小数`);
-  }
-  return normalized;
 }
 
 function optionalTwoDecimal(value: string, label: string): string | undefined {

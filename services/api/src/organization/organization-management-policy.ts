@@ -1,5 +1,5 @@
 import {
-  GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS,
+  GLOBAL_USER_POSITION_ROLE_KEYS,
   type RoleKey
 } from "@jiangkong/shared-domain";
 
@@ -29,7 +29,7 @@ const SUBORDINATE_ROLES: Partial<Record<RoleKey, readonly RoleKey[]>> = {
 };
 
 export function roleScope(roleKey: RoleKey): "global" | "project" {
-  return GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS.includes(roleKey) ? "global" : "project";
+  return GLOBAL_USER_POSITION_ROLE_KEYS.includes(roleKey) ? "global" : "project";
 }
 
 export function canManageRole(actorRoles: readonly RoleKey[], roleKey: RoleKey) {

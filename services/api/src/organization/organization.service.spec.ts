@@ -948,32 +948,30 @@ describe("OrganizationService permission integrity", () => {
 });
 
 describe("OrganizationService core writes", () => {
-  it("原子创建待本人确认账号与初始项目岗位", async () => {
-    const harness = createWriteHarness();
+  it("原子创建待本人确认账号与公司级合同员岗位", async () => {
+    const harness = createWriteHarness({
+      superAdminPosition: { id: "position-contract-staff" }
+    });
 
     await expect(
       harness.service.createUser("actor-1", {
         phone: "13800000009",
         departmentId: "department-1",
         initialRoleKey: "contract_staff",
-        projectId: "project-1",
         confirmationPassword: "current-password"
       })
     ).resolves.toMatchObject({ name: "待本人确认", mustChangePassword: true });
 
-    expect(harness.tx.projectMember.create).toHaveBeenCalledWith({
+    expect(harness.tx.userPosition.create).toHaveBeenCalledWith({
       data: {
         userId: "user-new",
-        projectId: "project-1",
-        positionKey: "contract_staff"
+        positionId: "position-contract-staff",
+        projectId: null
       },
       select: { id: true }
     });
-    expect(harness.tx.projectRosterMember.upsert).toHaveBeenCalledWith({
-      where: { projectId_userId: { projectId: "project-1", userId: "user-new" } },
-      create: { projectId: "project-1", userId: "user-new" },
-      update: {}
-    });
+    expect(harness.tx.projectMember.create).not.toHaveBeenCalled();
+    expect(harness.tx.projectRosterMember.upsert).not.toHaveBeenCalled();
     expect(harness.audit.record).toHaveBeenCalledWith(
       harness.tx,
       expect.objectContaining({
@@ -981,8 +979,8 @@ describe("OrganizationService core writes", () => {
           name: "待本人确认",
           initialRoleCount: 1,
           initialRoleKey: "contract_staff",
-          projectId: "project-1",
-          assignmentId: "project-role-new"
+          projectId: null,
+          assignmentId: "global-role-new"
         })
       })
     );

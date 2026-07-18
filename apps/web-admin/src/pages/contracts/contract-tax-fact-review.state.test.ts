@@ -105,7 +105,7 @@ describe("contract tax fact review state", () => {
     expect(released.settlementReleaseText).toContain("已解除税务事实阻断");
   });
 
-  it("keeps agreed-term changes outside the revision draft and validates two decimals", () => {
+  it("keeps agreed-term changes outside the revision draft and validates pricing and tax precision separately", () => {
     const draft = createContractTaxFactDraft(list().current, null);
     draft.invoiceType = "vat_special";
     draft.defaultTaxRatePercent = "13.00";
@@ -116,13 +116,35 @@ describe("contract tax fact review state", () => {
       kind: "supplement",
       invoiceType: "vat_special",
       taxMode: "single_rate",
-      defaultTaxRatePercent: "13.00",
+      defaultTaxRatePercent: "13",
       source: "contract_document",
       confirmationExplanation: "按原合同签署页核对",
+      evidenceFileId: undefined,
+      correctionReason: undefined,
       rowFacts: []
     });
     draft.defaultTaxRatePercent = "13.001";
-    expect(() => normalizeContractTaxFactDraft(draft)).toThrow("最多保留 2 位小数");
+    expect(normalizeContractTaxFactDraft(draft).defaultTaxRatePercent).toBe("13.001");
+    draft.defaultTaxRatePercent = "13.0001";
+    expect(() => normalizeContractTaxFactDraft(draft)).toThrow("税率最多保留 3 位小数");
+    draft.defaultTaxRatePercent = "0";
+    expect(() => normalizeContractTaxFactDraft(draft)).toThrow("税率必须大于 0");
+    draft.defaultTaxRatePercent = "100.001";
+    expect(() => normalizeContractTaxFactDraft(draft)).toThrow("税率不能超过 100");
+
+    draft.defaultTaxRatePercent = "13";
+    draft.rowFacts = [
+      {
+        contractBillRowId: "row-1",
+        taxInclusiveUnitPrice: "4000.001",
+        taxRatePercentOverride: "9.001"
+      }
+    ];
+    expect(() => normalizeContractTaxFactDraft(draft)).toThrow("含税单价必须是非负数字且最多保留 2 位小数");
+    draft.rowFacts[0]!.taxInclusiveUnitPrice = "4000.00";
+    expect(normalizeContractTaxFactDraft(draft).rowFacts?.[0]?.taxRatePercentOverride).toBe(
+      "9.001"
+    );
   });
 
   it("hydrates the first revision with current bill row ids and preserves row overrides", () => {

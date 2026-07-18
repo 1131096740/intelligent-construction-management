@@ -44,6 +44,21 @@ export const GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS: readonly RoleKey[] = [
 ];
 
 /**
+ * Roles that may be stored as company-wide UserPosition facts.
+ *
+ * This is intentionally separate from project visibility: a company-wide
+ * contract staff assignment is required for company-entity maintenance, but
+ * it must not implicitly grant visibility into every project.
+ */
+export const GLOBAL_USER_POSITION_ROLE_KEYS: readonly RoleKey[] = [
+  ...GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS,
+  "contract_staff"
+];
+
+/** Roles that legitimately have both a company-wide and a project assignment. */
+export const DUAL_SCOPE_ROLE_KEYS: readonly RoleKey[] = ["contract_staff"];
+
+/**
  * 历史合同接管的读取与导出岗位。
  *
  * 合同部保留原有办理范围；财务人员、财务主管和综合部主管只获得

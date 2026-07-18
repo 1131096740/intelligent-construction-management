@@ -116,6 +116,13 @@ interface FrozenNode {
   roleKeys: RoleKey[];
 }
 
+interface FrozenApprovalRelationship {
+  kind: "transfer" | "delegate";
+  fromUserId: string;
+  toUserId: string;
+  fromRoleKey: string;
+}
+
 const ROLE_LABELS: Record<string, string> = {
   chairman: "董事长",
   general_manager: "总经理",
@@ -161,6 +168,32 @@ const BUSINESS_TYPE_LABELS: Record<string, string> = {
 const roleLabel = (key: string) => ROLE_LABELS[key] ?? key;
 const actionLabel = (action: string) => ACTION_LABELS[action] ?? action;
 
+function frozenApprovalRelationship(
+  action: string,
+  metadata: unknown
+): FrozenApprovalRelationship | null {
+  if (action !== "transfer" && action !== "delegate") return null;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  const record = metadata as Record<string, unknown>;
+  if (
+    record.kind !== action ||
+    typeof record.fromUserId !== "string" ||
+    !record.fromUserId ||
+    typeof record.toUserId !== "string" ||
+    !record.toUserId ||
+    typeof record.fromRoleKey !== "string" ||
+    !record.fromRoleKey
+  ) {
+    return null;
+  }
+  return {
+    kind: action,
+    fromUserId: record.fromUserId,
+    toUserId: record.toUserId,
+    fromRoleKey: record.fromRoleKey
+  };
+}
+
 function formatDateTime(value: Date): string {
   // 本地化为 YYYY-MM-DD HH:mm:ss，避免依赖运行环境 locale
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -198,6 +231,7 @@ interface RenderInput {
     action: string;
     signedAt: string;
     comment: string;
+    relationship: string;
     signature: Buffer | null;
   }>;
   watermark?: string[];
@@ -1030,9 +1064,17 @@ export class ApprovalFormService {
       this.resolveCompanyName(prisma, instance.businessType, instance.businessId)
     ]);
 
-    const actorIds = Array.from(
-      new Set([instance.applicantUserId, ...logs.map((log) => log.actorUserId)])
-    );
+    const relationships = logs.map((log) => frozenApprovalRelationship(log.action, log.metadata));
+    const actorIds = Array.from(new Set([
+      instance.applicantUserId,
+      ...logs.map((log) => log.actorUserId),
+      ...logs.flatMap((log) =>
+        log.representedUserId ? [log.representedUserId] : []
+      ),
+      ...relationships.flatMap((relationship) =>
+        relationship ? [relationship.fromUserId, relationship.toUserId] : []
+      )
+    ]));
     const users = await prisma.user.findMany({ where: { id: { in: actorIds } } });
     const nameById = new Map(users.map((user) => [user.id, user.name]));
     const signatureBufferByLogId = new Map<string, Buffer | null>();
@@ -1070,16 +1112,31 @@ export class ApprovalFormService {
       applicantName,
       summary,
       nodes: instance.frozenNodes as unknown as FrozenNode[],
-      logs: logs.map((log) => ({
-        name: nameById.get(log.actorUserId) ?? "处理人未读取",
-        position: log.approvedRoleKey
-          ? roleLabel(log.approvedRoleKey as RoleKey)
-          : "历史签名未冻结",
-        action: actionLabel(log.action),
-        signedAt: formatDateTime(log.createdAt),
-        comment: log.comment ?? "",
-        signature: signatureBufferByLogId.get(log.id) ?? null
-      }))
+      logs: logs.map((log, index) => {
+        const relationship = relationships[index];
+        let relationshipText = "";
+        if (log.action === "transfer" || log.action === "delegate") {
+          relationshipText = relationship
+            ? `${relationship.kind === "transfer" ? "转交" : "委托"}关系：${nameById.get(relationship.fromUserId) ?? "原审批人未读取"} → ${nameById.get(relationship.toUserId) ?? "接收人未读取"}（${ROLE_LABELS[relationship.fromRoleKey] ?? "审批岗位未读取"}）`
+            : "历史记录未冻结委托/转交双方关系";
+        } else if (
+          log.representedUserId &&
+          log.representedUserId !== log.actorUserId
+        ) {
+          relationshipText = `代批关系：${nameById.get(log.representedUserId) ?? "原审批人未读取"} → ${nameById.get(log.actorUserId) ?? "实际审批人未读取"}（${log.approvedRoleKey ? (ROLE_LABELS[log.approvedRoleKey] ?? "审批岗位未读取") : "审批岗位未冻结"}）`;
+        }
+        return {
+          name: nameById.get(log.actorUserId) ?? "处理人未读取",
+          position: log.approvedRoleKey
+            ? roleLabel(log.approvedRoleKey as RoleKey)
+            : "历史签名未冻结",
+          action: actionLabel(log.action),
+          signedAt: formatDateTime(log.createdAt),
+          comment: log.comment ?? "",
+          relationship: relationshipText,
+          signature: signatureBufferByLogId.get(log.id) ?? null
+        };
+      })
     };
   }
 
@@ -1532,7 +1589,7 @@ export class ApprovalFormService {
       { header: "职位", width: 76 },
       { header: "动作", width: 44 },
       { header: "签批时间", width: 92 },
-      { header: "审批意见", width: contentWidth - 30 - 64 - 76 - 44 - 92 - 100 },
+      { header: "审批意见 / 委托转交关系", width: contentWidth - 30 - 64 - 76 - 44 - 92 - 100 },
       { header: "签名", width: 100 }
     ];
     const sigRows = hasLogs
@@ -1542,7 +1599,7 @@ export class ApprovalFormService {
           log.position,
           log.action,
           log.signedAt,
-          log.comment,
+          [log.relationship, log.comment].filter(Boolean).join("\n"),
           ""
         ])
       : [["", "（无签批记录）", "", "", "", "", ""]];

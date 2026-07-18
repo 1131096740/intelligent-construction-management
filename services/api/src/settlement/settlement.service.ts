@@ -3570,7 +3570,13 @@ export class SettlementService {
           action: kind,
           actorUserId,
           approvedRoleKey: fromRoleKey,
-          representedUserId: identity.representedUserId
+          representedUserId: identity.representedUserId,
+          metadata: {
+            kind,
+            fromUserId: identity.representedUserId,
+            toUserId: input.toUserId,
+            fromRoleKey
+          }
         }
       });
 

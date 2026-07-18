@@ -1,4 +1,8 @@
-import type { RoleKey } from "@jiangkong/shared-domain";
+import {
+  DUAL_SCOPE_ROLE_KEYS,
+  GLOBAL_USER_POSITION_ROLE_KEYS,
+  type RoleKey
+} from "@jiangkong/shared-domain";
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 
@@ -24,18 +28,10 @@ export const ORGANIZATION_ROLE_KEYS = [
   "super_admin"
 ] as const satisfies readonly RoleKey[];
 
-export const GLOBAL_ORGANIZATION_ROLE_KEYS: readonly RoleKey[] = [
-  "chairman",
-  "general_manager",
-  "engineering_department_director",
-  "finance_staff",
-  "finance_director",
-  "contract_director",
-  "budget_director",
-  "material_director",
-  "comprehensive_director",
-  "super_admin"
-];
+export const GLOBAL_ORGANIZATION_ROLE_KEYS: readonly RoleKey[] =
+  GLOBAL_USER_POSITION_ROLE_KEYS;
+export const DUAL_SCOPE_ORGANIZATION_ROLE_KEYS: readonly RoleKey[] =
+  DUAL_SCOPE_ROLE_KEYS;
 
 const ORGANIZATION_ROLE_KEY_SET = new Set<string>(ORGANIZATION_ROLE_KEYS);
 

@@ -192,7 +192,7 @@ const removalPreview: RoleRemovalImpactPreview = {
 };
 
 const additionDirectory: OrganizationDirectory = {
-  summary: { departments: 1, activeUsers: 1, inactiveUsers: 1, positions: 5 },
+  summary: { departments: 1, activeUsers: 1, inactiveUsers: 1, positions: 6 },
   departments,
   users,
   projects: [
@@ -205,7 +205,8 @@ const additionDirectory: OrganizationDirectory = {
     { id: "position-2", key: "project_manager", name: "项目经理" },
     { id: "position-3", key: "budget_director", name: "预算部主管" },
     { id: "position-4", key: "finance_director", name: "财务主管" },
-    { id: "position-5", key: "super_admin", name: "系统管理员" }
+    { id: "position-5", key: "super_admin", name: "系统管理员" },
+    { id: "position-6", key: "contract_staff", name: "合同员" }
   ]
 };
 
@@ -952,7 +953,7 @@ describe("organization config", () => {
       organizationRoleAdditionOptions(users[0], "global", null, additionDirectory.positions).map(
         (option) => option.value
       )
-    ).toEqual(["budget_director", "finance_director", "super_admin"]);
+    ).toEqual(["budget_director", "contract_staff", "finance_director", "super_admin"]);
     expect(
       organizationRoleAdditionOptions(
         users[0],
@@ -960,7 +961,7 @@ describe("organization config", () => {
         "project-1",
         additionDirectory.positions
       ).map((option) => option.value)
-    ).toEqual([]);
+    ).toEqual(["contract_staff"]);
     expect(
       organizationRoleAdditionOptions(
         users[0],
@@ -969,6 +970,14 @@ describe("organization config", () => {
         additionDirectory.positions
       ).map((option) => option.value)
     ).toContain("project_manager");
+    expect(
+      organizationRoleAdditionOptions(
+        users[0],
+        "project",
+        "project-2",
+        additionDirectory.positions
+      ).map((option) => option.value)
+    ).toContain("contract_staff");
   });
 
   it("builds additions only from an active user, active project and latest position directory", () => {
@@ -979,6 +988,30 @@ describe("organization config", () => {
         roleKey: "project_manager"
       }, additionDirectory)
     ).toEqual(additionPreview.change);
+    expect(
+      buildOrganizationRoleAdditionTarget(users[0], {
+        scope: "global",
+        roleKey: "contract_staff"
+      }, additionDirectory)
+    ).toEqual({
+      operation: "add",
+      userId: "user-1",
+      scope: "global",
+      roleKey: "contract_staff"
+    });
+    expect(
+      buildOrganizationRoleAdditionTarget(users[0], {
+        scope: "project",
+        projectId: "project-2",
+        roleKey: "contract_staff"
+      }, additionDirectory)
+    ).toEqual({
+      operation: "add",
+      userId: "user-1",
+      scope: "project",
+      projectId: "project-2",
+      roleKey: "contract_staff"
+    });
     expect(() =>
       buildOrganizationRoleAdditionTarget(users[1], {
         scope: "global",

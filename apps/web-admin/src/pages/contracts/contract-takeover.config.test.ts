@@ -154,15 +154,21 @@ describe("contract takeover page configuration", () => {
     ).toThrow("必须大于 0%");
   });
 
-  it("keeps optional historical tax facts explicit and validates two-decimal pricing", () => {
+  it("keeps optional historical tax facts explicit and validates pricing and tax precision separately", () => {
     expect(invoiceTypeLabel(null)).toBe("原合同未明确");
     expect(invoiceTypeLabel("vat_special")).toBe("增值税专用发票");
     expect(taxModeLabel("single_rate")).toBe("单一税率");
     expect(taxFactSourceLabel(null)).toBe("—");
     expect(normalizeOptionalTaxRate("", "默认税率")).toBeUndefined();
-    expect(normalizeOptionalTaxRate("13.00", "默认税率")).toBe("13.00");
-    expect(() => normalizeOptionalTaxRate("0", "默认税率")).toThrow("大于 0 且不超过 100");
-    expect(() => normalizeOptionalTaxRate("13.001", "默认税率")).toThrow("最多保留 2 位小数");
+    expect(normalizeOptionalTaxRate("13.00", "默认税率")).toBe("13");
+    expect(normalizeOptionalTaxRate("13.001", "默认税率")).toBe("13.001");
+    expect(() => normalizeOptionalTaxRate("0", "默认税率")).toThrow("税率必须大于 0");
+    expect(() => normalizeOptionalTaxRate("13.0001", "默认税率")).toThrow(
+      "税率最多保留 3 位小数"
+    );
+    expect(() => normalizeOptionalTaxRate("100.001", "默认税率")).toThrow(
+      "税率不能超过 100"
+    );
 
     expect(
       normalizeHistoricalPricingItems([
@@ -215,6 +221,43 @@ describe("contract takeover page configuration", () => {
         }
       ])
     ).toThrow("预计数量必须是非负数字且最多保留 2 位小数");
+
+    expect(
+      normalizeHistoricalPricingItems([
+        {
+          billKey: "main",
+          billName: "历史计价清单",
+          rowKey: "row-2",
+          itemCode: "",
+          itemName: "混凝土",
+          specification: "C30",
+          unit: "立方米",
+          estimatedQuantity: "10.50",
+          taxInclusiveUnitPrice: "360.00",
+          taxRatePercentOverride: "9.001",
+          isProvisional: false,
+          settlementBasis: ""
+        }
+      ])[0]?.taxRatePercentOverride
+    ).toBe("9.001");
+    expect(() =>
+      normalizeHistoricalPricingItems([
+        {
+          billKey: "main",
+          billName: "历史计价清单",
+          rowKey: "row-3",
+          itemCode: "",
+          itemName: "混凝土",
+          specification: "C30",
+          unit: "立方米",
+          estimatedQuantity: "10.50",
+          taxInclusiveUnitPrice: "360.001",
+          taxRatePercentOverride: "9.001",
+          isProvisional: false,
+          settlementBasis: ""
+        }
+      ])
+    ).toThrow("含税单价必须是非负数字且最多保留 2 位小数");
   });
 
   it("parses pasted takeover import rows without shifting blank leading TSV cells", () => {

@@ -1,5 +1,6 @@
 import {
   GLOBAL_ORGANIZATION_ROLE_KEYS,
+  DUAL_SCOPE_ORGANIZATION_ROLE_KEYS,
   isOrganizationRoleKey
 } from "../../api/organization.api";
 import type {
@@ -392,7 +393,8 @@ export function organizationRoleAdditionOptions(
         !assigned.has(position.key) &&
         (scope === "global"
           ? GLOBAL_ORGANIZATION_ROLE_KEYS.includes(position.key)
-          : !GLOBAL_ORGANIZATION_ROLE_KEYS.includes(position.key))
+          : !GLOBAL_ORGANIZATION_ROLE_KEYS.includes(position.key) ||
+            DUAL_SCOPE_ORGANIZATION_ROLE_KEYS.includes(position.key))
     )
     .slice()
     .sort((left, right) => left.key.localeCompare(right.key, "zh-CN"))
@@ -433,7 +435,10 @@ export function buildOrganizationRoleAdditionTarget(
   const project = directory.projects.find((item) => item.id === selection.projectId);
   if (!project) throw new Error("项目不在最新治理目录中，请刷新后重试");
   if (!project.isActive) throw new Error("项目已停用，不能新增岗位");
-  if (GLOBAL_ORGANIZATION_ROLE_KEYS.includes(position.key)) {
+  if (
+    GLOBAL_ORGANIZATION_ROLE_KEYS.includes(position.key) &&
+    !DUAL_SCOPE_ORGANIZATION_ROLE_KEYS.includes(position.key)
+  ) {
     throw new Error("该岗位只能按全局新增");
   }
   if (

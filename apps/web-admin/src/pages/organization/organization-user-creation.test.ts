@@ -6,13 +6,13 @@ import {
 } from "./organization-user-creation";
 
 describe("organization user creation", () => {
-  it("builds the initial project-role payload without sending an initial password", () => {
+  it("builds the company-wide contract staff payload without a project or initial password", () => {
     expect(
       buildOrganizationUserCreatePayload({
         phone: " 13800000001 ",
         departmentId: " department-1 ",
         initialRoleKey: "contract_staff",
-        projectId: " project-1 ",
+        projectId: "",
         confirmationPassword: " current-password ",
         passwordRecorded: true
       })
@@ -20,7 +20,6 @@ describe("organization user creation", () => {
       phone: "13800000001",
       departmentId: "department-1",
       initialRoleKey: "contract_staff",
-      projectId: "project-1",
       confirmationPassword: " current-password "
     });
   });
@@ -29,7 +28,7 @@ describe("organization user creation", () => {
     [{ phone: "12800000001" }, "手机号格式不正确"],
     [{ departmentId: "" }, "请选择启用部门"],
     [{ initialRoleKey: "" }, "请选择初始岗位"],
-    [{ projectId: "" }, "项目岗位必须选择项目"],
+    [{ projectId: "project-1" }, "全局岗位不需要安排项目"],
     [{ confirmationPassword: "   " }, "请输入当前登录密码"],
     [{ passwordRecorded: false }, "请先确认已通过线下安全渠道告知公司统一初始密码"]
   ])("rejects unsafe create input %#", (override, message) => {
@@ -38,7 +37,7 @@ describe("organization user creation", () => {
         phone: "13800000001",
         departmentId: "department-1",
         initialRoleKey: "contract_staff",
-        projectId: "project-1",
+        projectId: "",
         confirmationPassword: "current-password",
         passwordRecorded: true,
         ...(override as Partial<OrganizationUserCreationForm>)

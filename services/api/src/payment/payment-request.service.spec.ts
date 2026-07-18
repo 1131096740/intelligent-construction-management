@@ -4127,7 +4127,13 @@ describe("PaymentRequestService", () => {
         action: "transfer",
         actorUserId: "chairman-1",
         approvedRoleKey: "chairman",
-        representedUserId: "chairman-1"
+        representedUserId: "chairman-1",
+        metadata: {
+          kind: "transfer",
+          fromUserId: "chairman-1",
+          toUserId: "transfer-user-1",
+          fromRoleKey: "chairman"
+        }
       }
     });
     expect(tx.auditLog.create).toHaveBeenCalledWith({
@@ -4269,6 +4275,21 @@ describe("PaymentRequestService", () => {
         toUserId: "agent-user-1",
         startsAt: expect.any(Date),
         endsAt: expect.any(Date)
+      }
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "delegate",
+        actorUserId: "general-manager-1",
+        approvedRoleKey: "general_manager",
+        representedUserId: "general-manager-1",
+        metadata: {
+          kind: "delegate",
+          fromUserId: "general-manager-1",
+          toUserId: "agent-user-1",
+          fromRoleKey: "general_manager"
+        }
       }
     });
     expect(tx.auditLog.create).toHaveBeenCalledWith({

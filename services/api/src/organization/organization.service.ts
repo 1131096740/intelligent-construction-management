@@ -6,7 +6,8 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import {
-  GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS,
+  DUAL_SCOPE_ROLE_KEYS,
+  GLOBAL_USER_POSITION_ROLE_KEYS,
   ROLE_KEYS,
   type RoleKey
 } from "@jiangkong/shared-domain";
@@ -898,7 +899,7 @@ export class OrganizationService {
         assignment.projectId === null &&
         position &&
         isRoleKey(position.key) &&
-        !GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS.includes(position.key)
+        !GLOBAL_USER_POSITION_ROLE_KEYS.includes(position.key)
       ) {
         addIssue({
           code: "global_scope_mismatch",
@@ -1007,7 +1008,10 @@ export class OrganizationService {
           roleKey: assignment.positionKey
         });
       }
-      if (GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS.includes(assignment.positionKey)) {
+      if (
+        GLOBAL_USER_POSITION_ROLE_KEYS.includes(assignment.positionKey) &&
+        !DUAL_SCOPE_ROLE_KEYS.includes(assignment.positionKey)
+      ) {
         addIssue({
           code: "project_scope_mismatch",
           severity: "warning",

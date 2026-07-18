@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import {
   ACTION_REQUIRED_ROLES,
-  GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS,
+  DUAL_SCOPE_ROLE_KEYS,
+  GLOBAL_USER_POSITION_ROLE_KEYS,
   ROLE_KEYS,
   type RoleKey
 } from "@jiangkong/shared-domain";
@@ -665,13 +666,14 @@ export class PermissionImpactService {
     }
     if (
       change.scope === "project" &&
-      GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS.includes(change.roleKey)
+      GLOBAL_USER_POSITION_ROLE_KEYS.includes(change.roleKey) &&
+      !DUAL_SCOPE_ROLE_KEYS.includes(change.roleKey)
     ) {
       issue("global_role_scope_required");
     }
     if (
       change.scope === "global" &&
-      !GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS.includes(change.roleKey)
+      !GLOBAL_USER_POSITION_ROLE_KEYS.includes(change.roleKey)
     ) {
       issue("project_role_scope_required");
     }

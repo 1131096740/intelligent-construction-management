@@ -81,6 +81,34 @@ describe("ProjectVisibilityService", () => {
     await expect(service.visibleProjectIds("user-1")).resolves.toEqual(["project-1"]);
   });
 
+  it("does not expand all-project visibility for company-wide contract staff", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([{ projectId: null, positionId: "pos-contract-staff" }])
+          .mockResolvedValueOnce([])
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ projectId: "project-1" }])
+      },
+      projectRosterMember: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([{ id: "project-1" }, { id: "project-2" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "pos-contract-staff", key: "contract_staff" }
+        ])
+      }
+    };
+    const service = new ProjectVisibilityService(prisma as never);
+
+    await expect(service.visibleProjectIds("user-1")).resolves.toEqual(["project-1"]);
+  });
+
   it("grants project visibility through roster assignment without requiring a project position", async () => {
     const prisma = {
       userPosition: {
