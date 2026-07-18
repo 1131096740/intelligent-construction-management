@@ -164,11 +164,4 @@ export class CreateSpotProcurementDto extends SpotProcurementDraftDto {
     blankMessage: "请选择采购项目"
   })
   projectId!: string;
-
-  @IsRequiredText({
-    requiredMessage: "请填写采购编号",
-    typeMessage: "采购编号必须是文字",
-    blankMessage: "采购编号不能为空白"
-  })
-  code!: string;
 }

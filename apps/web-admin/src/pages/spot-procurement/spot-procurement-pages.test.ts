@@ -16,9 +16,13 @@ describe("spot procurement web pages", () => {
 
     expect(procurement).toContain("fetchSpotProcurements");
     expect(procurement).toContain("fetchSpotProcurementCapabilities");
+    expect(procurement).toContain("fetchSpotProcurementCreateProjectOptions");
     expect(procurement).toContain("createSpotProcurementDraft");
     expect(procurement).toContain("applicationDepartment");
     expect(procurement).toContain("requestedArrivalAt");
+    expect(procurement).toContain("采购申请单号会在保存草稿时由系统自动生成");
+    expect(procurement).not.toContain("createForm.code");
+    expect(procurement).not.toContain("系统申请单编号 <b");
     expect(payment).toContain("fetchSpotProcurementPayments");
     expect(`${procurement}\n${payment}`).not.toMatch(
       /sample|mockRows|fakeData/iu

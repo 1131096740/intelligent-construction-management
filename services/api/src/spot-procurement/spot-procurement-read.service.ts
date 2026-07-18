@@ -213,6 +213,35 @@ export class SpotProcurementReadService {
     };
   }
 
+  async createProjectOptions(actorUserId: string): Promise<ProjectSummary[]> {
+    const visibleProjectIds =
+      await this.projectVisibility.visibleProjectIds(actorUserId);
+    if (!visibleProjectIds.length) return [];
+
+    const projects = await this.prisma.project.findMany({
+      where: { id: { in: visibleProjectIds }, isActive: true },
+      select: { id: true, code: true, name: true },
+      orderBy: [{ code: "asc" }, { name: "asc" }]
+    });
+    const options = await Promise.all(
+      projects.map(async (project) => ({
+        project,
+        roleKeys: await this.projectVisibility.effectiveRoleKeys(
+          actorUserId,
+          project.id
+        )
+      }))
+    );
+
+    return options
+      .filter(
+        ({ project, roleKeys }) =>
+          this.pilot.isEnabled(project.id) &&
+          roleKeys.some((role) => PROCUREMENT_CREATE_ROLES.has(role))
+      )
+      .map(({ project }) => project);
+  }
+
   async listProcurements(
     actorUserId: string,
     query: SpotProcurementListQuery

@@ -361,6 +361,32 @@ function buildFixture() {
 }
 
 describe("SpotProcurementReadService", () => {
+  it("returns only pilot projects where the current user can create a procurement", async () => {
+    const fixture = buildFixture();
+    fixture.prisma.project.findMany.mockResolvedValue([
+      { id: "project-1", code: "XM-001", name: "一号项目" },
+      { id: "project-2", code: "XM-002", name: "二号项目" }
+    ]);
+    fixture.visibility.visibleProjectIds.mockResolvedValue([
+      "project-1",
+      "project-2"
+    ]);
+    fixture.visibility.effectiveRoleKeys
+      .mockResolvedValueOnce(["material_staff"])
+      .mockResolvedValueOnce(["employee"]);
+    fixture.pilot.isEnabled.mockImplementation((projectId: string) => projectId === "project-1");
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    await expect(service.createProjectOptions("material-1")).resolves.toEqual([
+      { id: "project-1", code: "XM-001", name: "一号项目" }
+    ]);
+  });
+
   it("returns only centrally-authorized procurement rows and serializes money facts", async () => {
     const fixture = buildFixture();
     const service = new SpotProcurementReadService(

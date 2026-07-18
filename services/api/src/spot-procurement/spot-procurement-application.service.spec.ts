@@ -7,7 +7,6 @@ import { SpotProcurementApplicationService } from "./spot-procurement-applicatio
 
 const realFormDraft = {
   projectId: "project-1",
-  code: "LXCG-001",
   applicationDepartment: "工程部",
   applicationName: "杨帅",
   requestedArrivalAt: "2026-07-20T00:00:00.000Z",
@@ -79,6 +78,7 @@ function context(roleKey = "material_staff") {
     fileObject: { findMany: jest.fn().mockResolvedValue([]) },
     spotProcurement: {
       create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ ...procurement(), ...data })),
+      findMany: jest.fn().mockResolvedValue([]),
       update: jest.fn().mockResolvedValue({}),
       updateMany: jest.fn().mockResolvedValue({ count: 1 })
     },
@@ -128,6 +128,7 @@ function context(roleKey = "material_staff") {
       ),
       updateMany: jest.fn().mockResolvedValue({ count: 1 })
     },
+    $executeRaw: jest.fn().mockResolvedValue(undefined),
     $queryRaw: jest.fn()
   };
   const prisma = { $transaction: jest.fn(async (operation) => operation(tx)) };
@@ -180,6 +181,7 @@ describe("SpotProcurementApplicationService real-form application", () => {
 
     expect(tx.spotProcurement.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
+        code: expect.stringMatching(/^LXCG-\d{8}-001$/u),
         supplierPartyId: null,
         supplierKey: null,
         supplierNameSnapshot: null,
@@ -212,10 +214,32 @@ describe("SpotProcurementApplicationService real-form application", () => {
       ]
     });
     expect(result).toMatchObject({
+      code: expect.stringMatching(/^LXCG-\d{8}-001$/u),
       status: "draft",
       totalAmountCents: null,
       amountStatus: "pending_payment_application"
     });
+  });
+
+  it("generates a Shanghai-date application number after locking the daily sequence", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-07-19T00:30:00.000Z"));
+    try {
+      const { service, tx } = context();
+      tx.spotProcurement.findMany.mockResolvedValue([
+        { code: "LXCG-20260719-002" },
+        { code: "LXCG-20260719-009" }
+      ]);
+
+      await expect(service.createDraft("material-1", realFormDraft)).resolves.toMatchObject({
+        code: "LXCG-20260719-010"
+      });
+      expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+      expect(tx.spotProcurement.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ code: "LXCG-20260719-010" })
+      });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("logs the material-director skip when the purchaser is the material director", async () => {
