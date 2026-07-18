@@ -199,6 +199,25 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
     const body = path.endsWith("/payment-1") ? paymentDetail() : { items: [paymentListRow()], truncated: false, limit: 200 };
     return route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
   });
+  await page.route("**/api/spot-procurements/create-project-options", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify([project]) })
+  );
+  await page.route("**/api/spot-procurements/capabilities?*", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        projectId: project.id,
+        enabled: true,
+        canCreate: true,
+        canExecutePayment: false,
+        unavailableReason: null,
+        handlerOptions: []
+      })
+    })
+  );
+  await page.route("**/api/spot-procurements/application-text-suggestions?*", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
 
   await page.goto("/login");
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
@@ -211,6 +230,10 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   await expect(page.getByText("部分已付", { exact: true })).toBeVisible();
   await expect(page.getByText("待确认收货", { exact: true })).toBeVisible();
   await expect(page.getByText("供应商余额抵扣", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "新建采购申请" }).click();
+  await expect(page.getByText("采购申请单号会在保存草稿时由系统自动生成。")).toBeVisible();
+  await expect(page.getByText("XM-001 · 一号项目", { exact: true })).toBeVisible();
+  await expect(page.getByText("系统申请单编号", { exact: true })).toHaveCount(0);
 
   await page.goto("/零星材料付款工作台");
   await expect(page.getByRole("heading", { name: "零星材料付款工作台" })).toBeVisible();

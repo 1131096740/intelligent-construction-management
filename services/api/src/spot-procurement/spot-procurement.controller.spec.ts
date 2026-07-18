@@ -8,7 +8,6 @@ import { SpotProcurementController } from "./spot-procurement.controller";
 
 const realFormDraft = {
   projectId: "project-1",
-  code: "LXCG-001",
   applicationDepartment: "工程部",
   applicationName: "杨帅",
   requestedArrivalAt: "2026-07-20T00:00:00.000Z",
@@ -69,6 +68,7 @@ describe("SpotProcurementController real-form input", () => {
       pipe.transform(
         {
           ...realFormDraft,
+          code: "LXCG-20260719-001",
           supplierName: "不应在采购申请填写的商户",
           totalAmountCents: "10000",
           lines: [
@@ -104,5 +104,24 @@ describe("SpotProcurementController real-form input", () => {
       "material-1",
       realFormDraft
     );
+  });
+
+  it("exposes the scoped project options before the procurement id route", () => {
+    const reads = { createProjectOptions: jest.fn() };
+    const controller = new SpotProcurementController(
+      {} as never,
+      reads as never,
+      {} as never
+    );
+
+    controller.createProjectOptions({ id: "material-1" } as never);
+
+    expect(reads.createProjectOptions).toHaveBeenCalledWith("material-1");
+    expect(
+      Reflect.getMetadata(
+        PATH_METADATA,
+        SpotProcurementController.prototype.createProjectOptions
+      )
+    ).toBe("create-project-options");
   });
 });

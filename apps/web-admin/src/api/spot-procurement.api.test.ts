@@ -4,6 +4,7 @@ import {
   appendSpotProcurementPaymentInvoice,
   createSpotProcurementDiscrepancy,
   createSpotProcurementDraft,
+  fetchSpotProcurementCreateProjectOptions,
   fetchSpotProcurementApplicationTextSuggestions,
   createSpotProcurementPaymentDraft,
   createSpotProcurementVersion,
@@ -60,6 +61,19 @@ describe("spot procurement API client", () => {
       "/spot-procurements/capabilities?projectId=project%2F1",
       "/vat-rate-options"
     ]);
+  });
+
+  it("reads only the current user's zero-procurement creation projects", async () => {
+    mockApiFetch.mockResolvedValueOnce(
+      jsonResponse([{ id: "project-1", code: "XM-001", name: "一号项目" }])
+    );
+
+    await expect(fetchSpotProcurementCreateProjectOptions()).resolves.toEqual([
+      { id: "project-1", code: "XM-001", name: "一号项目" }
+    ]);
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/spot-procurements/create-project-options"
+    );
   });
 
   it("reads the procurement list and detail with encoded query and resource ids", async () => {
@@ -143,7 +157,6 @@ describe("spot procurement API client", () => {
   it("connects every procurement write route and preserves the JSON body", async () => {
     const draft: CreateSpotProcurementDraftPayload = {
       projectId: "project-1",
-      code: "LXCG-001",
       applicationDepartment: "工程部",
       applicationName: "杨帅",
       requestedArrivalAt: "2026-07-18",

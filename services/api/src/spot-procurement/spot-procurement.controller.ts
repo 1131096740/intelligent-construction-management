@@ -40,6 +40,11 @@ export class SpotProcurementController {
     return this.reads.capabilities(user.id, projectId);
   }
 
+  @Get("create-project-options")
+  createProjectOptions(@CurrentUser() user: AuthenticatedUser) {
+    return this.reads.createProjectOptions(user.id);
+  }
+
   @Get()
   list(
     @CurrentUser() user: AuthenticatedUser,

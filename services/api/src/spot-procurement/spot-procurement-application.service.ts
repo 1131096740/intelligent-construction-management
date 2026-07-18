@@ -166,7 +166,7 @@ export class SpotProcurementApplicationService {
         const procurement = await tx.spotProcurement.create({
           data: {
             projectId: input.projectId,
-            code: requiredText(input.code, "采购编号不能为空"),
+            code: await this.nextApplicationCode(tx),
             supplierPartyId: null,
             supplierKey: null,
             supplierNameSnapshot: null,
@@ -1287,10 +1287,11 @@ export class SpotProcurementApplicationService {
     });
   }
 
-  private applicationReadModel(procurement: Pick<ProcurementLockRow, "id" | "projectId" | "status">, version: Pick<VersionLockRow, "id" | "versionNo" | "status">) {
+  private applicationReadModel(procurement: Pick<ProcurementLockRow, "id" | "projectId" | "code" | "status">, version: Pick<VersionLockRow, "id" | "versionNo" | "status">) {
     return {
       procurementId: procurement.id,
       projectId: procurement.projectId,
+      code: procurement.code,
       status: procurement.status,
       currentVersionId: version.id,
       versionId: version.id,
@@ -1299,6 +1300,22 @@ export class SpotProcurementApplicationService {
       totalAmountCents: null,
       amountStatus: "pending_payment_application"
     };
+  }
+
+  private async nextApplicationCode(tx: Prisma.TransactionClient) {
+    const dateKey = shanghaiDateKey(new Date());
+    const prefix = `LXCG-${dateKey}-`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`spot-procurement-code:${dateKey}`}))`;
+    const existing = await tx.spotProcurement.findMany({
+      where: { code: { startsWith: prefix } },
+      select: { code: true }
+    });
+    const sequence =
+      Math.max(
+        0,
+        ...existing.map((procurement) => applicationCodeSequence(procurement.code, prefix))
+      ) + 1;
+    return `${prefix}${String(sequence).padStart(3, "0")}`;
   }
 
   private async loadActorRoleKeys(tx: Prisma.TransactionClient, actorUserId: string, projectId: string): Promise<RoleKey[]> {
@@ -1354,6 +1371,22 @@ function optionalText(value: unknown) {
   if (value === undefined || value === null) return null;
   if (typeof value !== "string") throw new BadRequestException("文字字段格式不正确");
   return trimUnicodeWhitespace(value) || null;
+}
+
+function shanghaiDateKey(value: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(value);
+  const values = new Map(parts.map((part) => [part.type, part.value]));
+  return `${values.get("year")}${values.get("month")}${values.get("day")}`;
+}
+
+function applicationCodeSequence(code: string, prefix: string) {
+  const suffix = code.slice(prefix.length);
+  return /^\d+$/u.test(suffix) ? Number(suffix) : 0;
 }
 
 function abnormalTerminationReadModel(termination: {

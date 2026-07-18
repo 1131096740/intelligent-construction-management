@@ -314,7 +314,6 @@ describe("spot procurement runtime DTO validation", () => {
     const result = await validateBody(
       {
         projectId: "project-1",
-        code: "LXCG-2026-001",
         ...validDraft
       },
       CreateSpotProcurementDto
@@ -350,7 +349,6 @@ describe("spot procurement runtime DTO validation", () => {
     const topLevel = await getValidationResponse(
       {
         projectId: "project-1",
-        code: "LXCG-2026-001",
         ...validDraft,
         internalSecret: "do-not-accept"
       },
@@ -359,7 +357,6 @@ describe("spot procurement runtime DTO validation", () => {
     const nested = await getValidationResponse(
       {
         projectId: "project-1",
-        code: "LXCG-2026-001",
         ...validDraft,
         lines: [{ ...validDraft.lines[0], internalSecret: "do-not-accept" }]
       },
@@ -374,7 +371,6 @@ describe("spot procurement runtime DTO validation", () => {
     const response = await getValidationResponse(
       {
         projectId: "project-1",
-        code: "LXCG-2026-001",
         ...validDraft,
         lines: ["not-an-object"]
       },
@@ -388,7 +384,6 @@ describe("spot procurement runtime DTO validation", () => {
     const response = await getValidationResponse(
       {
         projectId: "project-1",
-        code: "LXCG-2026-001",
         ...validDraft,
         lines: [
           {

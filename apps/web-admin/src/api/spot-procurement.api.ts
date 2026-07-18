@@ -45,6 +45,12 @@ export interface SpotProcurementProjectSummary {
   name: string;
 }
 
+export interface SpotProcurementCreateProjectOptionReadModel {
+  id: string;
+  code: string;
+  name: string;
+}
+
 export interface SpotProcurementUserSummary {
   id: string;
   name: string;
@@ -685,7 +691,6 @@ export interface SpotProcurementDraftPayload {
 export interface CreateSpotProcurementDraftPayload
   extends SpotProcurementDraftPayload {
   projectId: string;
-  code: string;
 }
 
 export interface CreateSpotProcurementVersionPayload extends SpotProcurementDraftPayload {
@@ -788,6 +793,7 @@ export interface AttachSpotProcurementReceiptPhotoPayload {
 export interface SpotProcurementWriteReadModel {
   procurementId: string;
   projectId: string;
+  code: string;
   status: SpotProcurementStatus;
   currentVersionId: string;
   versionId: string;
@@ -839,6 +845,12 @@ export interface SpotProcurementPaymentExecutionWriteReadModel {
 export function fetchSpotProcurementCapabilities(projectId: string) {
   return readJson<SpotProcurementCapabilitiesReadModel>(
     `/spot-procurements/capabilities?projectId=${encodeURIComponent(projectId)}`
+  );
+}
+
+export function fetchSpotProcurementCreateProjectOptions() {
+  return readJson<SpotProcurementCreateProjectOptionReadModel[]>(
+    "/spot-procurements/create-project-options"
   );
 }
 

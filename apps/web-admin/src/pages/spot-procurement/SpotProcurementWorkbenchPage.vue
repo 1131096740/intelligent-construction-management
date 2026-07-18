@@ -4,19 +4,17 @@ import type { UploadFile } from "tdesign-vue-next";
 import { MessagePlugin } from "tdesign-vue-next";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
-import {
-  fetchProjects,
-  uploadPrivateFile,
-  type ProjectOptionReadModel
-} from "../../api/core-flow-read.api";
+import { uploadPrivateFile } from "../../api/core-flow-read.api";
 import {
   createSpotProcurementDraft,
   fetchSpotProcurementApplicationTextSuggestions,
   fetchSpotProcurementCapabilities,
+  fetchSpotProcurementCreateProjectOptions,
   fetchSpotProcurements,
   type SpotProcurementAttachmentPayload,
   type SpotProcurementApplicationTextSuggestionReadModel,
   type SpotProcurementCapabilitiesReadModel,
+  type SpotProcurementCreateProjectOptionReadModel,
   type SpotProcurementListItemReadModel
 } from "../../api/spot-procurement.api";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
@@ -45,7 +43,7 @@ const loadError = ref("");
 const referenceError = ref("");
 const rows = ref<SpotProcurementListItemReadModel[]>([]);
 const listMeta = ref<WorkbenchListMeta>({ limit: 200, truncated: false });
-const projects = ref<ProjectOptionReadModel[]>([]);
+const projects = ref<SpotProcurementCreateProjectOptionReadModel[]>([]);
 const applicationTextSuggestions = ref<
   SpotProcurementApplicationTextSuggestionReadModel[]
 >([]);
@@ -66,7 +64,6 @@ const filters = reactive({
 
 const createForm = reactive({
   projectId: "",
-  code: "",
   applicationDepartment: "",
   applicationName: "",
   requestedArrivalAt: "",
@@ -137,7 +134,6 @@ const createDisabledReason = computed(() => {
   if (!capabilities.value.canCreate) {
     return capabilities.value.unavailableReason ?? "当前账号无权在该项目新建零星采购。";
   }
-  if (!createForm.code.trim()) return "请填写系统申请单编号。";
   if (!createForm.applicationDepartment.trim()) return "请填写申请部门。";
   if (!createForm.applicationName.trim()) return "请填写申请人。";
   if (!createForm.requestedArrivalAt) return "请选择要求采购到位日期。";
@@ -240,9 +236,9 @@ async function loadWorkbench() {
 async function loadReferenceData() {
   referenceError.value = "";
   try {
-    projects.value = await fetchProjects();
+    projects.value = await fetchSpotProcurementCreateProjectOptions();
   } catch (error) {
-    referenceError.value = error instanceof Error ? error.message : "项目列表读取失败";
+    referenceError.value = error instanceof Error ? error.message : "零星采购项目读取失败";
   }
 }
 
@@ -334,7 +330,6 @@ async function saveDraft() {
     }
     const result = await createSpotProcurementDraft({
       projectId: requiredText(createForm.projectId, "项目"),
-      code: requiredText(createForm.code, "系统申请单编号"),
       applicationDepartment: requiredText(createForm.applicationDepartment, "申请部门"),
       applicationName: requiredText(createForm.applicationName, "申请人"),
       requestedArrivalAt: createForm.requestedArrivalAt,
@@ -351,7 +346,7 @@ async function saveDraft() {
     });
     createVisible.value = false;
     resetCreateForm();
-    await MessagePlugin.success("零星材料采购草稿已保存，正在打开详情。");
+    await MessagePlugin.success(`零星材料采购草稿已保存，采购申请单号为 ${result.code}。`);
     await router.push(`/零星采购/${encodeURIComponent(result.procurementId)}`);
   } catch (error) {
     createError.value = error instanceof Error ? error.message : "零星采购草稿保存失败";
@@ -387,7 +382,6 @@ function optionalText(value: string) {
 
 function resetCreateForm() {
   createForm.projectId = "";
-  createForm.code = "";
   createForm.applicationDepartment = "";
   createForm.applicationName = "";
   createForm.requestedArrivalAt = "";
@@ -618,7 +612,7 @@ onMounted(() => {
         <t-alert
           theme="info"
           title="申请表填写边界"
-          message="申请部门与申请人由当前采购人手工填写；采购人由系统按当前登录物资员冻结。所有材料共用一个要求采购到位日期。价格、商户、付款、税率和发票不在本申请表填写。"
+          message="申请部门与申请人由当前采购人手工填写；采购人由系统按当前登录物资员冻结。所有材料共用一个要求采购到位日期。价格、商户、付款、税率和发票不在本申请表填写。采购申请单号会在保存草稿时由系统自动生成。"
         />
         <div class="form-grid">
           <label class="form-field">
@@ -628,13 +622,6 @@ onMounted(() => {
               :options="createProjectOptions"
               placeholder="请选择项目"
               @change="handleCreateProjectChange"
-            />
-          </label>
-          <label class="form-field">
-            <span>系统申请单编号 <b aria-hidden="true">*</b></span>
-            <t-input
-              v-model="createForm.code"
-              placeholder="如：LXCG-20260718-001"
             />
           </label>
           <label class="form-field">
