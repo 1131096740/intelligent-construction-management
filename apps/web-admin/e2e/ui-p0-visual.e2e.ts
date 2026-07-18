@@ -168,6 +168,7 @@ const contractOption = {
   versionLabel: "v1",
   contractStatus: "effective",
   contractStatusLabel: "已生效",
+  contractTypeKey: "material_purchase",
   source: "system",
   sourceLabel: "系统合同",
   takeoverLevel: null,
@@ -449,19 +450,21 @@ test("captures the UI P0 enterprise sample and reproducible states", async ({ pa
   await page.goto("/付款工作台");
   await expect(page.getByRole("heading", { name: "付款工作台" })).toBeVisible();
   const workbenchSelects = page.locator(".create-grid .t-select");
-  await expect(workbenchSelects).toHaveCount(3);
+  await expect(workbenchSelects).toHaveCount(4);
   await workbenchSelects.nth(1).click();
   await page
     .getByText("HT-UI-001 · 科技园钢材采购合同 · 城建物资有限公司", { exact: true })
     .last()
     .click();
+  await workbenchSelects.nth(3).click();
+  await page.getByText("JS-UI-006 · 2026年6月 · ¥320,000.00", { exact: true }).last().click();
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(page.getByText("待补充 3 项")).toBeVisible();
-  await expect(page.getByText("请先校验可付款额度").first()).toBeVisible();
+  await expect(page.getByText("¥256,000.00").first()).toBeVisible();
+  await expect(page.getByText("请输入申请金额").first()).toBeVisible();
   await capture(page, "payment-workbench-missing-data-1440x900.png");
   await page.getByPlaceholder("请输入申请金额").fill("192000.00");
-  await page.getByRole("button", { name: "校验可付款额度" }).click();
-  await expect(page.locator(".capacity-explanation")).toContainText("最多可申请");
+  await expect(page.getByRole("button", { name: "创建付款申请" })).toBeEnabled();
   await captureRequiredViewports(page, "payment-workbench", "payment-workbench-normal");
 
   await page.goto("/付款管理/FK-UI-001");
