@@ -77,10 +77,11 @@
           <span>付款来源 <b aria-hidden="true">*</b></span>
           <t-select
             v-model="createForm.sourceType"
-            :options="paymentCreateSourceOptions"
+            :options="availablePaymentSourceOptions"
+            :disabled="!selectedContract || availablePaymentSourceOptions.length === 0"
             @change="clearSourceState"
           />
-          <small>来源类型会随申请一并提交，最终以系统校验结果为准。</small>
+          <small>{{ paymentSourceHint }}</small>
         </label>
 
         <label
@@ -95,6 +96,20 @@
             :disabled="settlementSelectOptions.length === 0"
           />
           <small>{{ selectedSettlementHint }}</small>
+        </label>
+
+        <label
+          v-if="contractPaymentRoute === 'generic_direct' && createForm.sourceType === 'contract_due'"
+          class="create-field create-field--wide"
+        >
+          <span>冻结付款阶段 <b aria-hidden="true">*</b></span>
+          <t-select
+            v-model="createForm.paymentTermsStageId"
+            placeholder="请选择合同已冻结的付款阶段"
+            :options="availablePaymentStageOptions"
+            :disabled="!visibleContractPaymentPreview || availablePaymentStageOptions.length === 0"
+          />
+          <small>{{ paymentStageHint }}</small>
         </label>
 
         <label class="create-field">
@@ -115,6 +130,14 @@
         />
       </div>
 
+      <t-alert
+        v-if="selectedContract"
+        class="payment-route-alert"
+        theme="info"
+        :title="contractPaymentRouteTitle"
+        :message="contractPaymentRouteDescription"
+      />
+
       <div
         v-if="createForm.sourceType === 'contract_due'"
         class="preview-actions"
@@ -132,7 +155,8 @@
           class="preview-strip"
         >
           <span>{{ visibleContractPaymentPreview.contract.contractNo }}</span>
-          <span>纳入 {{ visibleContractPaymentPreview.includedSettlements.length }} 张结算</span>
+          <span v-if="contractPaymentRoute === 'generic_direct'">付款依据：已生效付款条款</span>
+          <span v-else>纳入 {{ visibleContractPaymentPreview.includedSettlements.length }} 张结算</span>
         </div>
       </div>
 
@@ -140,13 +164,57 @@
         v-if="visibleContractPaymentPreview"
         class="application-preview"
       >
-        <div class="advance-deduction-strip">
+        <section
+          v-if="contractPaymentRoute === 'generic_direct'"
+          class="direct-payment-basis"
+          aria-label="通用合同付款依据"
+        >
+          <div>
+            <strong>已生效付款条款</strong>
+            <span>{{ effectivePaymentTermsVersionLabel }}</span>
+          </div>
+          <div class="direct-payment-stages">
+            <t-tag
+              v-for="stage in availablePaymentStages"
+              :key="stage.paymentTermsStageId"
+              variant="outline"
+            >
+              {{ stage.name }} · {{ stage.disabledReason || `可申请 ${formatCents(stage.maxRequestableCents)}` }}
+            </t-tag>
+            <span v-if="availablePaymentStages.length === 0">当前条款没有可执行付款阶段</span>
+          </div>
+          <p>付款阶段来自归档生效的合同条款，申请人不能临时编造或修改。</p>
+        </section>
+
+        <div
+          v-if="contractPaymentRoute === 'generic_direct'"
+          class="capacity-explanation"
+          aria-label="通用合同付款金额关系"
+        >
+          <span class="capacity-explanation__title">金额关系</span>
+          <div
+            v-for="item in genericDirectCapacityItems"
+            :key="item.label"
+            class="capacity-explanation-item"
+          >
+            <strong>{{ item.label }}</strong>
+            <b>{{ item.value }}</b>
+          </div>
+        </div>
+
+        <div
+          v-else
+          class="advance-deduction-strip"
+        >
           <span>预付款已付 {{ formatCents(visibleContractPaymentPreview.advanceDeduction.paidAdvanceCents) }}</span>
           <span>本次应扣回 {{ formatCents(visibleContractPaymentPreview.advanceDeduction.currentDeductionCents) }}</span>
           <span>剩余待扣回 {{ formatCents(visibleContractPaymentPreview.advanceDeduction.remainingAdvanceToDeductCents) }}</span>
         </div>
 
-        <div class="capacity-explanation">
+        <div
+          v-if="contractPaymentRoute !== 'generic_direct'"
+          class="capacity-explanation"
+        >
           <span class="capacity-explanation__title">金额关系</span>
           <div
             v-for="item in contractPaymentCapacityExplanation"
@@ -158,27 +226,29 @@
           </div>
         </div>
 
-        <section
-          v-for="section in contractPaymentPreviewSections"
-          :key="section.type"
-          class="preview-section"
-        >
-          <div class="preview-section-head">
-            <strong>{{ section.title }}</strong>
-            <span>{{ section.rows.length }} 行</span>
-          </div>
-          <div class="preview-table-wrap">
-            <t-table
-              row-key="id"
-              size="small"
-              table-layout="fixed"
-              :columns="paymentApplicationPreviewColumns"
-              :data="section.rows"
-              :row-class-name="previewRowClassName"
-              empty="暂无可计算明细"
-            />
-          </div>
-        </section>
+        <template v-if="contractPaymentRoute !== 'generic_direct'">
+          <section
+            v-for="section in contractPaymentPreviewSections"
+            :key="section.type"
+            class="preview-section"
+          >
+            <div class="preview-section-head">
+              <strong>{{ section.title }}</strong>
+              <span>{{ section.rows.length }} 行</span>
+            </div>
+            <div class="preview-table-wrap">
+              <t-table
+                row-key="id"
+                size="small"
+                table-layout="fixed"
+                :columns="paymentApplicationPreviewColumns"
+                :data="section.rows"
+                :row-class-name="previewRowClassName"
+                empty="暂无可计算明细"
+              />
+            </div>
+          </section>
+        </template>
       </div>
     </section>
 
@@ -257,6 +327,7 @@ import {
   paymentApplicationPreviewColumns,
   paymentApplicationPreviewRowClassName,
   paymentCreateSourceOptions,
+  toGenericDirectCapacityItems,
   toPaymentApplicationPreviewRows,
   toPaymentCapacityExplanationItems
 } from "./payment-list.config";
@@ -281,6 +352,7 @@ const createForm = reactive({
   projectId: "",
   contractOptionValue: "",
   settlementOptionValue: "",
+  paymentTermsStageId: "",
   sourceType: "contract_due" as PaymentCreateSourceType,
   code: `FK-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
   requestedAmountYuan: ""
@@ -303,10 +375,63 @@ const settlementSelectOptions = computed(() => toSettlementSelectOptions(selecte
 const selectedSettlement = computed(() =>
   findSettlementOption(selectedContract.value, createForm.settlementOptionValue)
 );
+const settlementContractTypeKeys = new Set([
+  "material_purchase",
+  "equipment_rental",
+  "labor_subcontract",
+  "professional_subcontract"
+]);
+const contractPaymentRoute = computed<
+  "unselected" | "generic_direct" | "settlement_required" | "unsupported"
+>(() => {
+  const contract = selectedContract.value;
+  if (!contract) return "unselected";
+  if (contract.contractTypeKey === "generic_contract") return "generic_direct";
+  return settlementContractTypeKeys.has(contract.contractTypeKey ?? "")
+    ? "settlement_required"
+    : "unsupported";
+});
+const availablePaymentSourceOptions = computed(() => {
+  if (["unselected", "unsupported"].includes(contractPaymentRoute.value)) return [];
+  const allowed = contractPaymentRoute.value === "generic_direct"
+    ? new Set<PaymentCreateSourceType>(["contract_due", "contract_advance"])
+    : new Set<PaymentCreateSourceType>(["settlement", "contract_advance"]);
+  return paymentCreateSourceOptions
+    .filter((option) => allowed.has(option.value))
+    .map((option) => option.value === "contract_due"
+      ? { ...option, label: "按冻结付款条款直接付款" }
+      : option);
+});
+const contractPaymentRouteTitle = computed(() =>
+  contractPaymentRoute.value === "generic_direct"
+    ? "通用合同直接付款"
+    : contractPaymentRoute.value === "unsupported"
+      ? "合同类型待确认"
+      : "从生效结算发起付款"
+);
+const contractPaymentRouteDescription = computed(() =>
+  contractPaymentRoute.value === "generic_direct"
+    ? "通用合同按已冻结付款阶段直接申请付款，不创建结算单；提交时系统将再次校验额度与条款。"
+    : contractPaymentRoute.value === "unsupported"
+      ? "当前合同类型尚未明确，不能判断合法付款来源。请先由合同部核对合同类型。"
+      : "其他合同必须从已生效结算发起付款；合同预付款仍按已冻结条款办理。"
+);
+const paymentSourceHint = computed(() => {
+  if (!selectedContract.value) return "请先选择合同，系统将按合同类型限定付款来源。";
+  if (contractPaymentRoute.value === "unsupported") {
+    return "请先由合同部明确合同类型，再发起付款申请。";
+  }
+  return contractPaymentRoute.value === "generic_direct"
+    ? "只能依据已生效合同版本和冻结付款条款办理。"
+    : "普通进度款须选择已生效结算；预付款保留既有合法入口。";
+});
 const selectedContractHint = computed(() => {
   const contract = selectedContract.value;
   if (!contract) return "请先选择项目和合同";
-  return contract.paymentUnavailableReason ?? "请先校验可付款额度，再填写申请金额";
+  if (contract.paymentUnavailableReason) return contract.paymentUnavailableReason;
+  return contractPaymentRoute.value === "generic_direct"
+    ? "通用合同不办理结算，请按已冻结付款条款申请。"
+    : "请选择已生效结算；预付款按合同冻结条款办理。";
 });
 const selectedSettlementHint = computed(() => {
   const settlement = selectedSettlement.value;
@@ -324,6 +449,33 @@ const showContractPaymentPreview = computed(() =>
 const visibleContractPaymentPreview = computed(() =>
   showContractPaymentPreview.value ? contractPaymentPreview.value : null
 );
+const availablePaymentStages = computed(() =>
+  visibleContractPaymentPreview.value?.availableStages ?? []
+);
+const availablePaymentStageOptions = computed(() =>
+  availablePaymentStages.value.map((stage) => ({
+    label: `${stage.name} · 可申请 ${formatCents(stage.maxRequestableCents)}`,
+    value: stage.paymentTermsStageId,
+    disabled: Boolean(stage.disabledReason),
+    hint: stage.disabledReason ?? "来自已生效合同付款条款"
+  }))
+);
+const selectedPaymentStage = computed(() =>
+  availablePaymentStages.value.find(
+    (stage) => stage.paymentTermsStageId === createForm.paymentTermsStageId
+  ) ?? null
+);
+const paymentStageHint = computed(() => {
+  if (!visibleContractPaymentPreview.value) return "请先校验可付款额度，读取合同已冻结阶段。";
+  if (!availablePaymentStages.value.length) return "当前合同没有可执行付款阶段，请先办理合同变更。";
+  return selectedPaymentStage.value
+    ? `已选择：${selectedPaymentStage.value.name}`
+    : "请选择本次付款对应的冻结阶段。";
+});
+const effectivePaymentTermsVersionLabel = computed(() => {
+  if (!visibleContractPaymentPreview.value) return "等待校验合同付款事实";
+  return "来自合同归档时冻结的付款条款";
+});
 const contractPaymentPreviewSections = computed(() =>
   visibleContractPaymentPreview.value
     ? visibleContractPaymentPreview.value.sections.map((section) => ({
@@ -338,6 +490,11 @@ const contractPaymentCapacityExplanation = computed(() =>
     ? toPaymentCapacityExplanationItems(visibleContractPaymentPreview.value)
     : []
 );
+const genericDirectCapacityItems = computed(() => {
+  const preview = visibleContractPaymentPreview.value;
+  if (!preview) return [];
+  return toGenericDirectCapacityItems(preview, selectedPaymentStage.value);
+});
 const messageTitle = computed(() => {
   if (messageState.value === "error") return "付款申请暂时无法继续";
   if (messageState.value === "success") return "操作成功";
@@ -353,6 +510,22 @@ const submitDisabledReason = computed(() => {
   if (!createForm.projectId) return "请选择项目。";
   if (!selectedContract.value) return "请选择可付款合同。";
   if (!createForm.code.trim()) return "请填写付款编号。";
+  if (contractPaymentRoute.value === "generic_direct" && createForm.sourceType === "settlement") {
+    return "通用合同不办理结算，请按已冻结付款条款直接申请。";
+  }
+  if (contractPaymentRoute.value === "settlement_required" && createForm.sourceType === "contract_due") {
+    return "该合同类型必须从已生效结算发起付款。";
+  }
+  if (
+    contractPaymentRoute.value === "generic_direct" &&
+    createForm.sourceType === "contract_due" &&
+    !selectedPaymentStage.value
+  ) {
+    return "请选择合同已冻结的付款阶段。";
+  }
+  if (selectedPaymentStage.value?.disabledReason) {
+    return selectedPaymentStage.value.disabledReason;
+  }
   if (createForm.sourceType === "settlement" && !selectedSettlement.value) return "请选择可付款结算单。";
   if (createForm.sourceType === "contract_due" && !visibleContractPaymentPreview.value) {
     return "请先校验可付款额度，确认当前可申请金额。";
@@ -368,13 +541,21 @@ const confirmationItems = computed<PaymentConfirmationSummaryItem[]>(() => {
   const preview = visibleContractPaymentPreview.value;
   const settlement = selectedSettlement.value;
   const sourceText = paymentSourceText();
-  const dueStages = preview?.sections
+  const dueStages = contractPaymentRoute.value === "generic_direct"
+    ? selectedPaymentStage.value?.name ?? ""
+    : preview?.sections
     .filter((section) => section.rows.some((row) => row.isDue))
     .map((section) => section.title)
     .join("、");
   const invoiceRequirements = [...new Set(
     preview?.sections.flatMap((section) => section.rows.map((row) => row.invoiceRequirement).filter(Boolean)) ?? []
   )].join("、");
+  const directStageCapacity = contractPaymentRoute.value === "generic_direct"
+    ? selectedPaymentStage.value?.maxRequestableCents
+    : undefined;
+  const directStageInvoiceRequirement = contractPaymentRoute.value === "generic_direct" && selectedPaymentStage.value
+    ? selectedPaymentStage.value.requiresInvoice ? "需提供发票" : "不要求发票"
+    : "";
 
   return [
     { label: "收款方", value: selectedContract.value?.counterparty ?? "" },
@@ -385,15 +566,19 @@ const confirmationItems = computed<PaymentConfirmationSummaryItem[]>(() => {
     { label: "付款阶段", value: dueStages || paymentSourceLabel(createForm.sourceType) },
     {
       label: "可申请额度",
-      value: preview
+      value: directStageCapacity
+        ? formatCents(directStageCapacity)
+        : preview
         ? formatCents(preview.capacity.maxRequestableCents)
         : settlement
           ? formatCents(settlement.payableAmountCents)
           : "请先校验可付款额度"
     },
     {
-      label: "已付金额",
-      value: preview
+      label: contractPaymentRoute.value === "generic_direct" ? "合同累计占用" : "已付金额",
+      value: contractPaymentRoute.value === "generic_direct" && preview
+        ? formatCents(preview.genericContractCapacity.contractOccupiedCents)
+        : preview
         ? formatCents(preview.capacity.actualPaidCents)
         : settlement
           ? formatCents(settlement.paidAmountCents)
@@ -401,7 +586,9 @@ const confirmationItems = computed<PaymentConfirmationSummaryItem[]>(() => {
     },
     {
       label: "待付金额",
-      value: preview
+      value: directStageCapacity
+        ? formatCents(directStageCapacity)
+        : preview
         ? formatCents(preview.capacity.maxRequestableCents)
         : settlement
           ? formatCents(settlement.payableAmountCents)
@@ -410,10 +597,12 @@ const confirmationItems = computed<PaymentConfirmationSummaryItem[]>(() => {
     { label: "本次申请金额", value: formatInputAmount(createForm.requestedAmountYuan) },
     {
       label: "附件或发票要求",
-      value: invoiceRequirements
+      value: directStageInvoiceRequirement
+        ? `发票：${directStageInvoiceRequirement}；附件要求待补充`
+        : invoiceRequirements
         ? `发票：${invoiceRequirements}；附件要求待补充`
         : "",
-      missing: !invoiceRequirements
+      missing: !directStageInvoiceRequirement && !invoiceRequirements
     },
     { label: "付款用途", value: paymentSourceLabel(createForm.sourceType) }
   ];
@@ -432,7 +621,8 @@ function formatInputAmount(value: string) {
 }
 
 function paymentSourceLabel(sourceType: PaymentCreateSourceType) {
-  return paymentCreateSourceOptions.find((option) => option.value === sourceType)?.label ?? "";
+  return availablePaymentSourceOptions.value.find((option) => option.value === sourceType)?.label ??
+    paymentCreateSourceOptions.find((option) => option.value === sourceType)?.label ?? "";
 }
 
 function paymentSourceText() {
@@ -452,13 +642,21 @@ function previewRowClassName(params: { row: PaymentApplicationPreviewRow }) {
 
 async function loadContractPaymentPreview() {
   previewBusy.value = true;
+  createForm.paymentTermsStageId = "";
   message.value = "";
   try {
     const contractVersionId = selectedContract.value?.contractVersionId;
     if (!contractVersionId || !selectedContract.value?.canCreatePayment) {
       throw new Error(selectedContract.value?.paymentUnavailableReason ?? "请选择可付款合同");
     }
-    contractPaymentPreview.value = await fetchContractPaymentApplication(contractVersionId);
+    if (contractPaymentRoute.value !== "generic_direct") {
+      throw new Error("该合同类型必须从已生效结算发起付款");
+    }
+    const preview = await fetchContractPaymentApplication(contractVersionId);
+    if (preview.paymentMode !== "generic_contract_stage") {
+      throw new Error("该合同类型必须从已生效结算发起付款");
+    }
+    contractPaymentPreview.value = preview;
     previewContractVersionId.value = contractVersionId;
   } catch (error) {
     contractPaymentPreview.value = null;
@@ -474,16 +672,21 @@ async function loadContractPaymentPreview() {
 function clearPaymentPreview() {
   contractPaymentPreview.value = null;
   previewContractVersionId.value = "";
+  createForm.paymentTermsStageId = "";
 }
 
 function clearContractSelectionState() {
   clearPaymentPreview();
   createForm.settlementOptionValue = "";
+  createForm.sourceType = contractPaymentRoute.value === "generic_direct"
+    ? "contract_due"
+    : "settlement";
 }
 
 function clearSourceState() {
   clearPaymentPreview();
   createForm.settlementOptionValue = "";
+  createForm.paymentTermsStageId = "";
 }
 
 async function loadProjects() {
@@ -670,6 +873,43 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: var(--jg-space-md);
   margin-top: var(--jg-space-lg);
+}
+
+.payment-route-alert {
+  margin-top: var(--jg-space-lg);
+}
+
+.direct-payment-basis {
+  display: grid;
+  gap: var(--jg-space-sm);
+  padding: var(--jg-space-md);
+  border: var(--jg-border-width-base) solid var(--jg-color-border);
+  border-radius: var(--jg-radius-panel);
+  background: var(--jg-color-bg-muted);
+}
+
+.direct-payment-basis > div:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--jg-space-sm);
+}
+
+.direct-payment-basis strong,
+.direct-payment-basis span,
+.direct-payment-basis p {
+  font-size: var(--jg-font-size-meta);
+}
+
+.direct-payment-basis p {
+  margin: 0;
+  color: var(--jg-color-text-secondary);
+}
+
+.direct-payment-stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--jg-space-xs);
 }
 
 .preview-strip {

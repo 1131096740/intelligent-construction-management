@@ -31,6 +31,13 @@ type SealTask = {
   status: string;
 };
 
+const SETTLEMENT_CONTRACT_TYPES = new Set([
+  "material_purchase",
+  "equipment_rental",
+  "labor_subcontract",
+  "professional_subcontract"
+]);
+
 @Injectable()
 export class ContractSealService {
   constructor(
@@ -703,26 +710,55 @@ export class ContractSealService {
       where: { id: version.contractId },
       select: { contractTypeKey: true }
     }) : null;
+    const contractTypeKey = contract?.contractTypeKey?.trim() ?? "";
+    const isGenericContract = contractTypeKey === "generic_contract";
+    if (!isGenericContract && !SETTLEMENT_CONTRACT_TYPES.has(contractTypeKey)) {
+      throw new BadRequestException("合同类型不在支持范围内，不能确认归档生效");
+    }
     const terms = await tx.paymentTermsVersion.findFirst({
       where: { contractVersionId },
       select: { id: true }
     });
-    const stage = terms ? await tx.paymentTermsStage.findFirst({
-      where: contract?.contractTypeKey === "generic_contract"
-        ? {
-            paymentTermsVersionId: terms.id,
-            OR: [
-              { ratioBps: { gt: 0 } },
-              { fixedAmountCents: { gt: 0 } }
-            ]
-          }
-        : { paymentTermsVersionId: terms.id, basis: "current_settlement", ratioBps: { gt: 0 } },
-      select: { id: true }
-    }) : null;
-    if (!terms || !stage) {
+    const stages = terms ? await tx.paymentTermsStage.findMany({
+      where: { paymentTermsVersionId: terms.id },
+      select: {
+        id: true,
+        stageType: true,
+        basis: true,
+        ratioBps: true,
+        fixedAmountCents: true,
+        triggerAnchor: true,
+        dueDays: true
+      }
+    }) : [];
+    const directStages = stages.filter((stage) => stage.stageType !== "advance");
+    const hasValidStage = isGenericContract
+      ? directStages.length > 0 && directStages.every((stage) => {
+          const hasValidRatio =
+            stage.ratioBps !== null &&
+            Number.isInteger(stage.ratioBps) &&
+            stage.ratioBps > 0 &&
+            stage.ratioBps <= 10000;
+          const hasValidFixedAmount =
+            stage.fixedAmountCents !== null && stage.fixedAmountCents > 0n;
+          return (
+            stage.basis === "contract_amount" &&
+            stage.triggerAnchor === "contract_effective" &&
+            hasValidRatio !== hasValidFixedAmount &&
+            Number.isSafeInteger(stage.dueDays) &&
+            stage.dueDays >= 0
+          );
+        })
+      : stages.some(
+          (stage) =>
+            stage.basis === "current_settlement" &&
+            stage.ratioBps !== null &&
+            stage.ratioBps > 0
+        );
+    if (!terms || !hasValidStage) {
       throw new BadRequestException(
-        contract?.contractTypeKey === "generic_contract"
-          ? "通用合同缺少可执行的付款条款，不能确认归档生效"
+        isGenericContract
+          ? "通用合同缺少可执行的直接付款阶段，不能确认归档生效"
           : "合同付款条款缺少有效结算款阶段，不能确认归档生效"
       );
     }

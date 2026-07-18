@@ -15,6 +15,7 @@ import type {
 } from "@jiangkong/shared-domain";
 import {
   IsCanonicalMoneyText,
+  IsIntegerInRange,
   IsOptionalNonBlankText,
   IsRequiredText,
   IsStrictDateOnly
@@ -29,6 +30,48 @@ export type ContractLifecycleStatus =
   | "completed"
   | "terminated"
   | "disputed";
+
+export class HistoricalTakeoverDirectPaymentStageDto {
+  @IsRequiredText({
+    requiredMessage: "请填写付款阶段名称",
+    typeMessage: "付款阶段名称必须是文字",
+    blankMessage: "请填写付款阶段名称"
+  })
+  name!: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsIntegerInRange({
+    min: 1,
+    max: 10_000,
+    typeMessage: "付款比例必须是整数",
+    rangeMessage: "付款比例必须在 1 到 10000 之间"
+  })
+  ratioBps?: number;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsCanonicalMoneyText({
+    typeMessage: "固定付款金额格式不正确",
+    formatMessage: "固定付款金额必须按分填写为正整数"
+  })
+  fixedAmountCents?: string;
+
+  @IsIntegerInRange({
+    min: 0,
+    max: 2_147_483_647,
+    typeMessage: "付款期限必须是整数天",
+    rangeMessage: "付款期限必须在 0 到 2147483647 天之间"
+  })
+  dueDays!: number;
+
+  @IsBoolean({ message: "是否要求发票必须是布尔值" })
+  requiresInvoice!: boolean;
+
+  @IsBoolean({ message: "是否允许提前付款必须是布尔值" })
+  allowsEarlyPayment!: boolean;
+
+  @IsBoolean({ message: "是否允许分次付款必须是布尔值" })
+  allowsInstallments!: boolean;
+}
 
 export class HistoricalPricingItemDto {
   @IsRequiredText({
@@ -219,6 +262,13 @@ export class CreateContractTakeoverDto {
     blankMessage: "付款条款原文摘要不能为空白"
   })
   paymentTermsOriginalText?: string;
+
+  @IsOptional()
+  @IsArray({ message: "直接付款阶段必须是列表" })
+  @ArrayMaxSize(20, { message: "直接付款阶段最多填写 20 项" })
+  @ValidateNested({ each: true })
+  @Type(() => HistoricalTakeoverDirectPaymentStageDto)
+  paymentStages?: HistoricalTakeoverDirectPaymentStageDto[];
 
   @ValidateIf((_object, value) => value !== undefined)
   @IsCanonicalMoneyText({

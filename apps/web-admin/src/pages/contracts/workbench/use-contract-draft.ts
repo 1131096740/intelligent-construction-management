@@ -195,8 +195,12 @@ function modelFromWorkbench(workbench: ContractWorkbenchReadModel): ContractDraf
       extraDraftData[key] = value;
     }
   }
-  const currentSettlementStage = workbench.paymentTerms.stages.find(
-    (stage) => stage.basis === "current_settlement"
+  const paymentStage = workbench.paymentTerms.stages.find(
+    (stage) => stage.basis === (
+      workbench.contract.contractTypeKey === "generic_contract"
+        ? "contract_amount"
+        : "current_settlement"
+    )
   );
 
   return {
@@ -216,10 +220,10 @@ function modelFromWorkbench(workbench: ContractWorkbenchReadModel): ContractDraf
       workbench.version.amountSource === "manual" ? workbench.version.amountCents ?? null : null,
     amountAdjustmentReason: "",
     paymentTermsOriginalText: workbench.paymentTerms.originalText ?? "",
-    paymentRatioBps: currentSettlementStage?.ratioBps ?? null,
-    paymentDueDays: currentSettlementStage?.dueDays ?? null,
-    paymentRequiresInvoice: currentSettlementStage?.requiresInvoice ?? true,
-    paymentAllowsInstallments: currentSettlementStage?.allowsInstallments ?? true,
+    paymentRatioBps: paymentStage?.ratioBps ?? null,
+    paymentDueDays: paymentStage?.dueDays ?? null,
+    paymentRequiresInvoice: paymentStage?.requiresInvoice ?? true,
+    paymentAllowsInstallments: paymentStage?.allowsInstallments ?? true,
     invoiceType: workbench.version.taxFacts.invoiceType,
     taxMode: workbench.version.taxFacts.taxMode,
     defaultTaxRatePercent: workbench.version.taxFacts.defaultTaxRatePercent,
@@ -294,21 +298,27 @@ function assignModel(target: ContractDraftModel, source: ContractDraftModel): vo
 }
 
 function paymentStagesFromModel(
-  model: ContractDraftModel
+  model: ContractDraftModel,
+  contractTypeKey: string
 ): NonNullable<SaveContractDraftPayload["paymentStages"]> {
   if (model.paymentRatioBps === null || model.paymentDueDays === null) {
     return [];
   }
+  const isGenericContract = contractTypeKey === "generic_contract";
   return [
     {
-      name: "当期结算款",
-      basis: "current_settlement",
+      name: isGenericContract ? "合同约定付款" : "当期结算款",
+      basis: isGenericContract ? "contract_amount" : "current_settlement",
       ratioBps: model.paymentRatioBps,
-      triggerEvent: "结算归档确认生效",
+      triggerEvent: isGenericContract
+        ? "合同归档确认生效"
+        : "结算归档确认生效",
       dueDays: model.paymentDueDays,
       requiresInvoice: model.paymentRequiresInvoice,
       allowsInstallments: model.paymentAllowsInstallments,
-      originalText: model.paymentTermsOriginalText || "结算归档确认生效后按比例付款。"
+      originalText: model.paymentTermsOriginalText || (isGenericContract
+        ? "合同归档确认生效后按约定比例付款。"
+        : "结算归档确认生效后按比例付款。")
     }
   ];
 }
@@ -488,7 +498,10 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       ...(!isChangeDraft
         ? {
             paymentTermsOriginalText: model.paymentTermsOriginalText,
-            paymentStages: paymentStagesFromModel(model)
+            paymentStages: paymentStagesFromModel(
+              model,
+              workbench.value?.contract.contractTypeKey ?? ""
+            )
           }
         : {})
     };

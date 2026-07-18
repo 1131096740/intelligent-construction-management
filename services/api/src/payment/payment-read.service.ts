@@ -23,7 +23,6 @@ import {
   dbMoneyToBigInt,
   formatMoneyCentsAsYuan,
   moneyCentsToApi,
-  parseMoneyCents,
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
 import {
@@ -332,7 +331,9 @@ export class PaymentReadService {
           : "合同信息未读取",
         settlementNo: payment.settlementId
           ? (settlementById.get(payment.settlementId)?.code ?? payment.settlementId)
-          : this.paymentSourceLabel(payment.sourceType),
+          : payment.paymentTermsStageId && payment.sourceType === "contract_due"
+            ? "合同冻结阶段直接付款"
+            : this.paymentSourceLabel(payment.sourceType),
         project: projectById.get(payment.projectId)?.name ?? payment.projectId,
         requestedAmount: this.formatMoney(payment.requestedAmountCents),
         approvalStatus: approval.label,
@@ -415,22 +416,32 @@ export class PaymentReadService {
       throw new NotFoundException("未找到合同付款条款版本，请先核对合同归档记录");
     }
 
-    const stage = await this.prisma.paymentTermsStage.findFirst({
-      where: isContractAdvance
-        ? {
-            paymentTermsVersionId: terms.id,
-            stageType: "advance",
-            basis: "contract_amount",
-            triggerAnchor: "contract_effective"
-          }
-        : {
-            paymentTermsVersionId: terms.id,
-            ...(payment.sourceType === "contract_due"
-              ? { basis: "current_settlement" }
-              : {})
-          },
-      orderBy: { createdAt: "asc" }
-    });
+    const stage = payment.paymentTermsStageId
+      ? await this.prisma.paymentTermsStage.findUnique({
+          where: { id: payment.paymentTermsStageId }
+        })
+      : await this.prisma.paymentTermsStage.findFirst({
+          where: isContractAdvance
+            ? {
+                paymentTermsVersionId: terms.id,
+                stageType: "advance",
+                basis: "contract_amount",
+                triggerAnchor: "contract_effective"
+              }
+            : {
+                paymentTermsVersionId: terms.id,
+                ...(payment.sourceType === "contract_due"
+                  ? { basis: "current_settlement" }
+                  : {})
+              },
+          orderBy: { createdAt: "asc" }
+        });
+    if (
+      payment.paymentTermsStageId &&
+      (!stage || stage.paymentTermsVersionId !== terms.id)
+    ) {
+      throw new NotFoundException("付款申请冻结的付款阶段与付款条款不一致，请联系管理员核对");
+    }
     const executionAmountCents = sumDbMoneyToBigInt(
       executions.map((execution) => execution.amountCents),
       "付款实付金额"
@@ -487,13 +498,26 @@ export class PaymentReadService {
       paidAmountCents,
       evidenceFiles
     );
+    const executionBatchById = new Map(
+      [...executions]
+        .sort((left, right) => {
+          const paidAtDiff = left.paidAt.getTime() - right.paidAt.getTime();
+          if (paidAtDiff !== 0) return paidAtDiff;
+          const createdAtDiff = left.createdAt.getTime() - right.createdAt.getTime();
+          if (createdAtDiff !== 0) return createdAtDiff;
+          return left.id.localeCompare(right.id);
+        })
+        .map((item, index) => [item.id, index + 1])
+    );
 
     return {
       id: payment.code,
       title: isContractAdvance
         ? `${payment.code} · 合同预付款申请`
         : payment.sourceType === "contract_due"
-          ? `${payment.code} · 合同累计结算付款申请`
+          ? payment.paymentTermsStageId
+            ? `${payment.code} · 合同冻结阶段直接付款申请`
+            : `${payment.code} · 合同累计结算付款申请`
         : `${payment.code} · ${settlement?.periodLabel}付款申请`,
       meta: [
         { label: "审批状态", value: approval.label, tone: approval.tone },
@@ -507,7 +531,12 @@ export class PaymentReadService {
         { label: "付款编号", value: payment.code },
         ...(isContractLevelPayment
           ? [
-              { label: "付款来源", value: this.paymentSourceLabel(payment.sourceType) },
+              {
+                label: "付款来源",
+                value: payment.paymentTermsStageId && payment.sourceType === "contract_due"
+                  ? "合同冻结阶段直接付款"
+                  : this.paymentSourceLabel(payment.sourceType)
+              },
               {
                 label: "关联合同",
                 value: `${contract?.code ?? payment.contractId} · ${contract?.name ?? payment.contractId}`
@@ -541,12 +570,17 @@ export class PaymentReadService {
 
         return {
           id: allocation.id,
-          executionCode: `${payment.code} · 第${allocation.allocationOrder + 1}笔`,
+          executionCode: `${payment.code} · 第${
+            executionBatchById.get(allocation.paymentExecutionId) ?? allocation.allocationOrder + 1
+          }笔`,
           settlementNo: allocationSettlement
             ? `${allocationSettlement.code} · ${allocationSettlement.periodLabel}`
             : (allocation.settlementId ?? "-"),
           stageName: allocation.stageName ?? allocation.stageType,
-          allocationType: this.allocationTypeLabel(allocation.allocationType),
+          allocationType:
+            payment.paymentTermsStageId && allocation.allocationType === "contract_due_payment"
+              ? "合同冻结阶段直接付款"
+              : this.allocationTypeLabel(allocation.allocationType),
           amountCents: moneyCentsToApi(allocation.amountCents)
         };
       }),
@@ -560,7 +594,9 @@ export class PaymentReadService {
         isContractAdvance
           ? "预付款按合同生效日和账期计算，不依赖结算单"
           : payment.sourceType === "contract_due"
-            ? "付款申请按合同下全部已生效结算累计计算，实付后自动生成分摊台账"
+            ? payment.paymentTermsStageId
+              ? "付款申请按合同冻结付款阶段执行，实付沿用申请时冻结的付款条款与阶段"
+              : "付款申请按合同下全部已生效结算累计计算，实付后自动生成分摊台账"
           : "付款申请只能来自已生效结算",
         "审批通过进入已批待付",
         "审批通过不等于实际付款完成",
@@ -606,6 +642,9 @@ export class PaymentReadService {
     if (!contract) {
       throw new NotFoundException("未找到关联合同，请先核对合同台账");
     }
+    if (contract.contractTypeKey !== "generic_contract") {
+      throw new BadRequestException("该合同类型应从生效结算发起付款");
+    }
 
     const project = await this.prisma.project.findUnique({
       where: { id: contract.projectId }
@@ -625,8 +664,13 @@ export class PaymentReadService {
         contractVersionId: contractVersion.id,
         status: "effective"
       },
-      select: { id: true }
+      select: { id: true },
+      orderBy: { versionNo: "desc" }
     });
+    const paymentTermsVersionId = paymentTermsVersions[0]?.id;
+    if (!paymentTermsVersionId) {
+      throw new BadRequestException("未找到已生效的付款条款，请先补齐合同付款条款");
+    }
     const historicalBalance = await this.confirmedHistoricalBalanceForContract(contract.id);
     const paymentTermsVersionIds = [
       ...new Set([
@@ -647,7 +691,9 @@ export class PaymentReadService {
         ? this.prisma.paymentTermsStage.findMany({
             where: {
               paymentTermsVersionId: { in: paymentTermsVersionIds },
-              OR: [{ basis: "current_settlement" }, { stageType: "advance" }]
+              basis: "contract_amount",
+              triggerAnchor: "contract_effective",
+              stageType: { not: "advance" }
             },
             select: {
               id: true,
@@ -663,7 +709,9 @@ export class PaymentReadService {
               advanceDeductionMode: true,
               advanceDeductionRatioBps: true,
               advanceDeductionStartRatioBps: true,
-              requiresInvoice: true
+              requiresInvoice: true,
+              allowsEarlyPayment: true,
+              allowsInstallments: true
             }
           })
         : Promise.resolve([]),
@@ -694,7 +742,8 @@ export class PaymentReadService {
           status: true,
           requestedAmountCents: true,
           approvedAmountCents: true,
-          paidAmountCents: true
+          paidAmountCents: true,
+          paymentTermsStageId: true
         }
       }),
       this.prisma.projectProxyPayment.findMany({
@@ -776,6 +825,38 @@ export class PaymentReadService {
       advancePaymentRequests,
       historicalBalance
     });
+    const eligibleStages = paymentTermsStages.filter(
+      (stage) => {
+        const hasValidRatio =
+          stage.ratioBps !== null &&
+          Number.isInteger(stage.ratioBps) &&
+          stage.ratioBps > 0 &&
+          stage.ratioBps <= 10000;
+        const hasValidFixedAmount =
+          stage.fixedAmountCents !== null && stage.fixedAmountCents > 0n;
+        return (
+        stage.paymentTermsVersionId === paymentTermsVersionId &&
+        stage.stageType !== "advance" &&
+        stage.basis === "contract_amount" &&
+        stage.triggerAnchor === "contract_effective" &&
+          hasValidRatio !== hasValidFixedAmount &&
+          Number.isSafeInteger(stage.dueDays) &&
+          stage.dueDays >= 0
+        );
+      }
+    );
+    const genericStageCapacity = this.genericContractStageCapacity({
+      asOf,
+      contractEffectiveAt: contractVersion.effectiveAt,
+      contractAmountCents: dbMoneyToBigInt(contractVersion.amountCents, "合同金额"),
+      stages: eligibleStages,
+      paymentRequests,
+      externalOccupancyCents:
+        proxyPaidCents + this.historicalConservativeOccupancyCents(historicalBalance)
+    });
+    const genericContractRemainingCents =
+      dbMoneyToBigInt(contractVersion.amountCents, "合同金额") -
+      genericStageCapacity.contractOccupiedCents;
     const settlementById = new Map(settlements.map((settlement) => [settlement.id, settlement]));
     const occupancy = this.paymentOccupancyBreakdown(settlementPaymentRequests);
     const actualPaidCents =
@@ -788,6 +869,13 @@ export class PaymentReadService {
 
     const capacity = {
       ...preview.capacity,
+      ...(eligibleStages.length
+        ? {
+            duePayableCents: moneyCentsToApi(genericStageCapacity.duePayableCents),
+            occupiedCents: moneyCentsToApi(genericStageCapacity.occupiedCents),
+            maxRequestableCents: moneyCentsToApi(genericStageCapacity.maxRequestableCents)
+          }
+        : {}),
       actualPaidCents: moneyCentsToApi(actualPaidCents),
       approvalPendingCents: moneyCentsToApi(occupancy.approvalPendingCents),
       approvedPendingCents: moneyCentsToApi(occupancy.approvedPendingCents),
@@ -821,9 +909,41 @@ export class PaymentReadService {
         contractNo: contract.code ?? contract.temporaryCode ?? contract.id,
         contractName: contract.name,
         contractVersion: `合同 v${contractVersion.versionNo}`,
+        contractTypeKey: contract.contractTypeKey,
         projectId: contract.projectId,
         projectName: project?.name ?? contract.projectId
       },
+      paymentMode: "generic_contract_stage" as const,
+      genericContractCapacity: {
+        contractAmountCents: moneyCentsToApi(
+          dbMoneyToBigInt(contractVersion.amountCents, "合同金额")
+        ),
+        contractOccupiedCents: moneyCentsToApi(
+          genericStageCapacity.contractOccupiedCents
+        ),
+        contractRemainingCents: moneyCentsToApi(
+          genericStageCapacity.contractRemainingCents
+        )
+      },
+      availableStages: eligibleStages.map((stage) => {
+        const stageCapacity = genericStageCapacity.byStageId.get(stage.id)!;
+        return {
+          paymentTermsStageId: stage.id,
+          paymentTermsVersionId: stage.paymentTermsVersionId,
+          name: stage.name,
+          stageType: stage.stageType,
+          basis: stage.basis,
+          triggerAnchor: stage.triggerAnchor,
+          triggerEvent: stage.triggerEvent,
+          dueDays: stage.dueDays,
+          requiresInvoice: stage.requiresInvoice,
+          allowsInstallments: stage.allowsInstallments,
+          payableCents: moneyCentsToApi(stageCapacity.payableCents),
+          occupiedCents: moneyCentsToApi(stageCapacity.occupiedCents),
+          maxRequestableCents: moneyCentsToApi(stageCapacity.maxRequestableCents),
+          disabledReason: stageCapacity.disabledReason
+        };
+      }),
       asOf: asOf.toISOString(),
       includedSettlements: settlements.map((settlement) => ({
         settlementId: settlement.id,
@@ -835,7 +955,33 @@ export class PaymentReadService {
       })),
       capacity,
       advanceDeduction: preview.advanceDeduction,
-      capacityExplanation: this.contractPaymentCapacityExplanation(capacity),
+      capacityExplanation: [
+        {
+          label: "合同金额",
+          amountCents: moneyCentsToApi(
+            dbMoneyToBigInt(contractVersion.amountCents, "合同金额")
+          ),
+          operator: "add" as const,
+          note: "按当前生效合同版本的金额上限",
+          tone: "primary" as const
+        },
+        {
+          label: "扣合同已占用金额",
+          amountCents: moneyCentsToApi(genericStageCapacity.contractOccupiedCents),
+          operator: "subtract" as const,
+          note: "含跨版本直接付款、预付款、代付和已确认历史占用",
+          tone: "default" as const
+        },
+        {
+          label: "合同当前剩余额度",
+          amountCents: moneyCentsToApi(
+            genericContractRemainingCents > 0n ? genericContractRemainingCents : 0n
+          ),
+          operator: "result" as const,
+          note: "实际申请仍受所选冻结付款阶段额度约束",
+          tone: "success" as const
+        }
+      ],
       ...(preview.historicalBalance ? { historicalBalance: preview.historicalBalance } : {}),
       sections: preview.sections.map((section) => ({
         type: section.type,
@@ -860,124 +1006,132 @@ export class PaymentReadService {
           };
         })
       })),
-      formula:
-        "当前累计可付款金额（系统内 + 历史接管） - 已实际付款金额（系统内 + 历史） - 审批中占用（系统内 + 历史） - 已批待付款金额（系统内 + 历史） - 总包代付金额（系统内 + 历史） - 本次应扣回预付款金额 = 本次最多可申请金额"
+      formula: "当前生效合同金额 - 合同已占用金额 = 合同当前剩余额度；本次申请同时受所选冻结付款阶段约束"
     };
   }
 
-  private contractPaymentCapacityExplanation(
-    capacity: ContractPaymentApplicationPreviewReadModel["capacity"]
-  ): ContractPaymentApplicationPreviewReadModel["capacityExplanation"] {
-    const cents = (value: string | undefined) =>
-      parseMoneyCents(value ?? "0", "付款额度金额");
-    const actualPaidCents =
-      cents(capacity.actualPaidCents) + cents(capacity.historicalPaidCents);
-    const approvalPendingCents =
-      cents(capacity.approvalPendingCents) + cents(capacity.historicalApprovalPendingCents);
-    const approvedPendingCents =
-      cents(capacity.approvedPendingCents) + cents(capacity.historicalApprovedPendingCents);
-    const proxyPaidCents =
-      cents(capacity.proxyPaidCents) + cents(capacity.historicalProxyPaidCents);
-    const historicalRetentionBalance =
-      cents(capacity.historicalRetentionWithheldCents) -
-      cents(capacity.historicalRetentionReleasedCents);
-    const historicalRetentionUnreleasedCents =
-      historicalRetentionBalance > 0n ? historicalRetentionBalance : 0n;
-    const historicalOtherConfirmedOccupancyCents = cents(
-      capacity.historicalOtherConfirmedOccupancyCents
-    );
+  private genericContractStageCapacity(input: {
+    asOf: Date;
+    contractEffectiveAt: Date | null;
+    contractAmountCents: bigint;
+    stages: Array<{
+      id: string;
+      ratioBps: number | null;
+      fixedAmountCents: bigint | null;
+      dueDays: number;
+      allowsEarlyPayment: boolean;
+      allowsInstallments: boolean;
+    }>;
+    paymentRequests: Array<{
+      paymentTermsStageId?: string | null;
+      status: string;
+      requestedAmountCents: bigint;
+      approvedAmountCents: bigint | null;
+      paidAmountCents: bigint;
+    }>;
+    externalOccupancyCents: bigint;
+  }) {
+    const byStageId = new Map<
+      string,
+      { payableCents: bigint; occupiedCents: bigint; maxRequestableCents: bigint; disabledReason: string | null }
+    >();
+    let duePayableCents = 0n;
+    let occupiedCents = 0n;
+    let maxRequestableCents = 0n;
+    const requestOccupancyCents = input.paymentRequests.reduce((total, request) => {
+      const payableCents = ["approved_pending_payment", "partially_paid", "paid"].includes(
+        request.status
+      )
+        ? (request.approvedAmountCents ?? request.requestedAmountCents)
+        : request.requestedAmountCents;
+      const outstandingCents = payableCents - request.paidAmountCents;
+      return total + request.paidAmountCents + (outstandingCents > 0n ? outstandingCents : 0n);
+    }, 0n);
+    const contractRemainingCents =
+      input.contractAmountCents - requestOccupancyCents - input.externalOccupancyCents;
+    const conservativeContractRemainingCents = contractRemainingCents > 0n
+      ? contractRemainingCents
+      : 0n;
 
-    return [
-      {
-        label: "当前累计可付款金额",
-        amountCents: capacity.duePayableCents,
-        operator: "add",
-        note: "按合同付款条款、已生效结算和到账期计算",
-        tone: "primary"
-      },
-      {
-        label: "扣已实际付款",
-        amountCents: moneyCentsToApi(actualPaidCents),
-        operator: "subtract",
-        note:
-          cents(capacity.historicalPaidCents) > 0n
-            ? "含历史接管已付款"
-            : "系统内已登记实付",
-        tone: "default"
-      },
-      {
-        label: "扣审批中占用",
-        amountCents: moneyCentsToApi(approvalPendingCents),
-        operator: "subtract",
-        note:
-          cents(capacity.historicalApprovalPendingCents) > 0n
-            ? "含历史接管审批中付款"
-            : "已发起但未审批通过",
-        tone: "warning"
-      },
-      {
-        label: "扣已批待付款占用",
-        amountCents: moneyCentsToApi(approvedPendingCents),
-        operator: "subtract",
-        note:
-          cents(capacity.historicalApprovedPendingCents) > 0n
-            ? "含历史接管已批待付款"
-            : "审批通过但尚未实付",
-        tone: "warning"
-      },
-      {
-        label: "扣总包代付",
-        amountCents: moneyCentsToApi(proxyPaidCents),
-        operator: "subtract",
-        note:
-          cents(capacity.historicalProxyPaidCents) > 0n
-            ? "含历史接管总包代付"
-            : "系统内已确认代付",
-        tone: "default"
-      },
-      ...(historicalRetentionUnreleasedCents > 0n
-        ? [
-            {
-              label: "扣历史未释放质保金",
-        amountCents: moneyCentsToApi(historicalRetentionUnreleasedCents),
-              operator: "subtract" as const,
-              note: "历史接管质保金扣留扣除已释放金额",
-              tone: "warning" as const
-            }
-          ]
-        : []),
-      ...(historicalOtherConfirmedOccupancyCents > 0
-        ? [
-            {
-              label: "扣历史其他确认占用",
-        amountCents: moneyCentsToApi(historicalOtherConfirmedOccupancyCents),
-              operator: "subtract" as const,
-              note: "历史接管时确认的其他付款占用",
-              tone: "warning" as const
-            }
-          ]
-        : []),
-      {
-        label: "扣本次应扣回预付款",
-        amountCents: capacity.advanceDeductionCents,
-        operator: "subtract",
-        note: "按预付款扣回规则和已扣回金额计算",
-        tone: "default"
-      },
-      {
-        label: "本次最多可申请",
-        amountCents: capacity.maxRequestableCents,
-        operator: "result",
-        note:
-          parseMoneyCents(capacity.maxRequestableCents, "本次最多可申请金额") > 0n
-            ? "提交金额不得超过该额度"
-            : "当前没有可发起的合同累计结算付款额度",
-        tone:
-          parseMoneyCents(capacity.maxRequestableCents, "本次最多可申请金额") > 0n
-            ? "success"
-            : "warning"
-      }
-    ];
+    for (const stage of input.stages) {
+      const configuredCents = stage.fixedAmountCents !== null
+        ? dbMoneyToBigInt(stage.fixedAmountCents, "付款阶段固定金额")
+        : (input.contractAmountCents * BigInt(Math.max(stage.ratioBps ?? 0, 0))) / 10000n;
+      const payableCents = configuredCents < input.contractAmountCents
+        ? configuredCents
+        : input.contractAmountCents;
+      const dueAt = input.contractEffectiveAt
+        ? new Date(
+            input.contractEffectiveAt.getTime() + Math.max(stage.dueDays, 0) * 24 * 60 * 60 * 1000
+          )
+        : null;
+      const isDue = !!dueAt && dueAt <= input.asOf;
+      const isAvailable = isDue || stage.allowsEarlyPayment;
+      const stageRequests = input.paymentRequests.filter(
+        (request) => request.paymentTermsStageId === stage.id
+      );
+      const stageOccupancy = this.paymentOccupancyBreakdown(stageRequests);
+      const paidCents = sumMoneyCents(stageRequests.map((request) => request.paidAmountCents));
+      const stageOccupiedCents =
+        paidCents + stageOccupancy.approvalPendingCents + stageOccupancy.approvedPendingCents;
+      const remainingCents = isAvailable ? payableCents - stageOccupiedCents : 0n;
+      const uncappedStageMaxRequestableCents = remainingCents > 0n ? remainingCents : 0n;
+      const cappedStageMaxRequestableCents = uncappedStageMaxRequestableCents < conservativeContractRemainingCents
+        ? uncappedStageMaxRequestableCents
+        : conservativeContractRemainingCents;
+      const stageMaxRequestableCents = stage.allowsInstallments === false && stageOccupiedCents > 0n
+        ? 0n
+        : cappedStageMaxRequestableCents;
+      const disabledReason = !input.contractEffectiveAt
+        ? "合同生效日期缺失，不能核算付款阶段"
+        : !isAvailable
+          ? `该阶段尚未到期，预计 ${dueAt!.toISOString().slice(0, 10)} 可申请`
+          : stage.allowsInstallments === false && stageOccupiedCents > 0n
+            ? "该阶段不允许分次申请，已有付款申请占用该阶段额度"
+          : stageMaxRequestableCents <= 0n
+            ? "该阶段的可申请额度已用尽"
+            : null;
+      byStageId.set(stage.id, {
+        payableCents: isAvailable ? payableCents : 0n,
+        occupiedCents: stageOccupiedCents,
+        maxRequestableCents: stageMaxRequestableCents,
+        disabledReason
+      });
+      duePayableCents += isAvailable ? payableCents : 0n;
+      occupiedCents += stageOccupiedCents;
+      maxRequestableCents += stageMaxRequestableCents;
+    }
+
+    maxRequestableCents = maxRequestableCents < conservativeContractRemainingCents
+      ? maxRequestableCents
+      : conservativeContractRemainingCents;
+    return {
+      duePayableCents,
+      occupiedCents,
+      maxRequestableCents,
+      contractOccupiedCents: requestOccupancyCents + input.externalOccupancyCents,
+      contractRemainingCents: conservativeContractRemainingCents,
+      byStageId
+    };
+  }
+
+  private historicalConservativeOccupancyCents(
+    historicalBalance: Awaited<ReturnType<PaymentReadService["confirmedHistoricalBalanceForContract"]>>
+  ): bigint {
+    if (!historicalBalance) return 0n;
+    const advanceUnrecoveredCents =
+      (historicalBalance.advancePaidCents ?? 0n) -
+      (historicalBalance.advanceDeductedCents ?? 0n);
+    const retentionUnreleasedCents =
+      (historicalBalance.retentionWithheldCents ?? 0n) -
+      (historicalBalance.retentionReleasedCents ?? 0n);
+    return (historicalBalance.paidCents ?? 0n) +
+      (historicalBalance.approvalPendingPaymentCents ?? 0n) +
+      (historicalBalance.approvedPendingPaymentCents ?? 0n) +
+      (historicalBalance.proxyPaidCents ?? 0n) +
+      (advanceUnrecoveredCents > 0n ? advanceUnrecoveredCents : 0n) +
+      (retentionUnreleasedCents > 0n ? retentionUnreleasedCents : 0n) +
+      (historicalBalance.otherConfirmedOccupancyCents ?? 0n);
   }
 
   private sampleDetail(paymentId: string): PaymentDetailReadModel {

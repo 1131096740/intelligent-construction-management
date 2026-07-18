@@ -205,6 +205,38 @@ describe("PaymentReadService", () => {
     });
   });
 
+  it("labels new frozen-stage direct payments without using legacy settlement wording", async () => {
+    const prisma = {
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "payment-direct-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          settlementId: null,
+          sourceType: "contract_due",
+          paymentTermsStageId: "stage-1",
+          code: "FK-TY-2026-001",
+          status: "approval_pending",
+          requestedAmountCents: 100_000n,
+          approvedAmountCents: null,
+          paidAmountCents: 0n,
+          updatedAt: new Date("2026-07-18T00:00:00.000Z")
+        }])
+      },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      project: { findMany: jest.fn().mockResolvedValue([{ id: "project-1", name: "项目一" }]) },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([{ id: "contract-1", code: "HT-TY-001", name: "通用合同" }])
+      },
+      paymentExecution: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const service = new PaymentReadService(prisma as never);
+
+    const ledger = await service.listRecent(20);
+
+    expect(ledger.rows[0]?.settlementNo).toBe("合同冻结阶段直接付款");
+  });
+
   it("builds payment detail from persisted payment request and executions", async () => {
     const prisma = {
       paymentRequest: {
@@ -741,7 +773,18 @@ describe("PaymentReadService", () => {
       },
       paymentExecution: {
         findMany: jest.fn().mockResolvedValue([
-          { id: "execution-1", amountCents: 100_000n }
+          {
+            id: "execution-1",
+            amountCents: 60_000n,
+            paidAt: new Date("2026-07-01T00:00:00.000Z"),
+            createdAt: new Date("2026-07-01T00:00:00.000Z")
+          },
+          {
+            id: "execution-2",
+            amountCents: 40_000n,
+            paidAt: new Date("2026-07-02T00:00:00.000Z"),
+            createdAt: new Date("2026-07-02T00:00:00.000Z")
+          }
         ])
       },
       financeRecord: {
@@ -751,6 +794,7 @@ describe("PaymentReadService", () => {
         findMany: jest.fn().mockResolvedValue([
           {
             id: "allocation-0",
+            paymentExecutionId: "execution-1",
             settlementId: "settlement-1",
             stageName: "进度款",
             stageType: "progress",
@@ -760,6 +804,7 @@ describe("PaymentReadService", () => {
           },
           {
             id: "allocation-1",
+            paymentExecutionId: "execution-1",
             settlementId: "settlement-1",
             stageName: "进度款",
             stageType: "progress",
@@ -769,12 +814,13 @@ describe("PaymentReadService", () => {
           },
           {
             id: "allocation-2",
+            paymentExecutionId: "execution-2",
             settlementId: "settlement-2",
             stageName: "进度款",
             stageType: "progress",
             allocationType: "contract_due_payment",
             amountCents: 40_000n,
-            allocationOrder: 2
+            allocationOrder: 0
           }
         ])
       }
@@ -804,7 +850,7 @@ describe("PaymentReadService", () => {
       },
       {
         id: "allocation-1",
-        executionCode: "FK-HT-2026-001 · 第2笔",
+        executionCode: "FK-HT-2026-001 · 第1笔",
         settlementNo: "JS-2026-031 · 2026-06",
         stageName: "进度款",
         allocationType: "合同累计结算付款分摊",
@@ -812,7 +858,7 @@ describe("PaymentReadService", () => {
       },
       {
         id: "allocation-2",
-        executionCode: "FK-HT-2026-001 · 第3笔",
+        executionCode: "FK-HT-2026-001 · 第2笔",
         settlementNo: "JS-2026-032 · 2026-07",
         stageName: "进度款",
         allocationType: "合同累计结算付款分摊",
@@ -822,6 +868,53 @@ describe("PaymentReadService", () => {
     expect(detail.traceRules).toContain(
       "付款申请按合同下全部已生效结算累计计算，实付后自动生成分摊台账"
     );
+  });
+
+  it("fails closed when a frozen payment stage belongs to another terms version", async () => {
+    const prisma = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-generic-1",
+          settlementId: null,
+          sourceType: "contract_due",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          paymentTermsStageId: "stage-other-terms",
+          projectId: "project-1",
+          code: "FK-TY-2026-001",
+          status: "approval_pending",
+          requestedAmountCents: 100_000n,
+          approvedAmountCents: null,
+          paidAmountCents: 0n
+        })
+      },
+      contract: { findUnique: jest.fn().mockResolvedValue({ id: "contract-1" }) },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ id: "contract-version-1", versionNo: 1 })
+      },
+      paymentTermsVersion: {
+        findUnique: jest.fn().mockResolvedValue({ id: "terms-version-1", versionNo: 1 })
+      },
+      paymentTermsStage: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "stage-other-terms",
+          paymentTermsVersionId: "terms-version-2"
+        }),
+        findFirst: jest.fn()
+      },
+      paymentExecution: { findMany: jest.fn().mockResolvedValue([]) },
+      financeRecord: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const service = new PaymentReadService(prisma as never);
+
+    await expect(service.getDetail("FK-TY-2026-001")).rejects.toThrow(
+      "付款申请冻结的付款阶段与付款条款不一致，请联系管理员核对"
+    );
+    expect(prisma.paymentTermsStage.findUnique).toHaveBeenCalledWith({
+      where: { id: "stage-other-terms" }
+    });
+    expect(prisma.paymentTermsStage.findFirst).not.toHaveBeenCalled();
   });
 
   it("does not show actual payment block message before approval passes", async () => {
@@ -1479,7 +1572,8 @@ describe("PaymentReadService", () => {
           id: "contract-1",
           code: "HT-2026-009",
           name: "幕墙分包合同",
-          projectId: "project-1"
+          projectId: "project-1",
+          contractTypeKey: "generic_contract"
         })
       },
       project: {
@@ -1621,6 +1715,7 @@ describe("PaymentReadService", () => {
       contractNo: "HT-2026-009",
       contractName: "幕墙分包合同",
       contractVersion: "合同 v1",
+      contractTypeKey: "generic_contract",
       projectId: "project-1",
       projectName: "总部综合楼"
     });
@@ -1632,42 +1727,15 @@ describe("PaymentReadService", () => {
       advanceDeductionCents: "20000",
       maxRequestableCents: "15000"
     });
+    expect(preview.genericContractCapacity).toEqual({
+      contractAmountCents: "1000000",
+      contractOccupiedCents: "85000",
+      contractRemainingCents: "915000"
+    });
     expect(preview.capacityExplanation).toEqual([
-      expect.objectContaining({
-        label: "当前累计可付款金额",
-        amountCents: "80000",
-        operator: "add"
-      }),
-      expect.objectContaining({
-        label: "扣已实际付款",
-        amountCents: "10000",
-        operator: "subtract"
-      }),
-      expect.objectContaining({
-        label: "扣审批中占用",
-        amountCents: "0",
-        operator: "subtract"
-      }),
-      expect.objectContaining({
-        label: "扣已批待付款占用",
-        amountCents: "30000",
-        operator: "subtract"
-      }),
-      expect.objectContaining({
-        label: "扣总包代付",
-        amountCents: "5000",
-        operator: "subtract"
-      }),
-      expect.objectContaining({
-        label: "扣本次应扣回预付款",
-        amountCents: "20000",
-        operator: "subtract"
-      }),
-      expect.objectContaining({
-        label: "本次最多可申请",
-        amountCents: "15000",
-        operator: "result"
-      })
+      expect.objectContaining({ label: "合同金额", amountCents: "1000000" }),
+      expect.objectContaining({ label: "扣合同已占用金额", amountCents: "85000" }),
+      expect.objectContaining({ label: "合同当前剩余额度", amountCents: "915000" })
     ]);
     expect(prisma.projectProxyPayment.findMany).toHaveBeenCalledWith({
       where: {
@@ -1715,9 +1783,7 @@ describe("PaymentReadService", () => {
         includableAmountCents: "0"
       })
     ]);
-    expect(preview.formula).toContain(
-      "当前累计可付款金额（系统内 + 历史接管）"
-    );
+    expect(preview.formula).toContain("当前生效合同金额 - 合同已占用金额");
   });
 
   it("builds contract payment application preview with historical takeover balance breakdown", async () => {
@@ -1745,7 +1811,8 @@ describe("PaymentReadService", () => {
           projectId: "project-1",
           code: "HT-HIS-001",
           temporaryCode: null,
-          name: "历史幕墙分包合同"
+          name: "历史幕墙分包合同",
+          contractTypeKey: "generic_contract"
         })
       },
       project: {
@@ -1896,31 +1963,9 @@ describe("PaymentReadService", () => {
     });
     expect(preview.capacityExplanation).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          label: "扣已实际付款",
-          amountCents: "60000",
-          note: "含历史接管已付款"
-        }),
-        expect.objectContaining({
-          label: "扣已批待付款占用",
-          amountCents: "30000",
-          note: "含历史接管已批待付款"
-        }),
-        expect.objectContaining({
-          label: "扣总包代付",
-          amountCents: "10000",
-          note: "含历史接管总包代付"
-        }),
-        expect.objectContaining({
-          label: "扣历史未释放质保金",
-          amountCents: "7000",
-          note: "历史接管质保金扣留扣除已释放金额"
-        }),
-        expect.objectContaining({
-          label: "本次最多可申请",
-          amountCents: "0",
-          tone: "warning"
-        })
+        expect.objectContaining({ label: "合同金额" }),
+        expect.objectContaining({ label: "扣合同已占用金额" }),
+        expect.objectContaining({ label: "合同当前剩余额度" })
       ])
     );
   });
@@ -1952,7 +1997,8 @@ describe("PaymentReadService", () => {
           projectId: "project-1",
           code: "HT-HIS-002",
           temporaryCode: null,
-          name: "历史期初付款合同"
+          name: "历史期初付款合同",
+          contractTypeKey: "generic_contract"
         })
       },
       project: {
@@ -2049,23 +2095,9 @@ describe("PaymentReadService", () => {
     });
     expect(preview.capacityExplanation).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          label: "扣已实际付款",
-          amountCents: "40000"
-        }),
-        expect.objectContaining({
-          label: "扣已批待付款占用",
-          amountCents: "10000"
-        }),
-        expect.objectContaining({
-          label: "扣历史其他确认占用",
-          amountCents: "5000"
-        }),
-        expect.objectContaining({
-          label: "本次最多可申请",
-          amountCents: "45000",
-          tone: "success"
-        })
+        expect.objectContaining({ label: "合同金额" }),
+        expect.objectContaining({ label: "扣合同已占用金额" }),
+        expect.objectContaining({ label: "合同当前剩余额度", tone: "success" })
       ])
     );
     expect(preview.capacityExplanation).not.toEqual(

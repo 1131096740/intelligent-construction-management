@@ -24,7 +24,7 @@ export interface SaveContractDraftDto {
   paymentTermsOriginalText?: string;
   paymentStages?: Array<{
     name: string;
-    basis: "current_settlement";
+    basis: "current_settlement" | "contract_amount";
     ratioBps: number;
     triggerEvent: string;
     dueDays: number;

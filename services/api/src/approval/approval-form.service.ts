@@ -110,6 +110,7 @@ interface RenderInput {
 interface ProjectPaymentApprovalRowsInput {
   payment: {
     sourceType?: string | null;
+    paymentTermsStageId?: string | null;
     requestedAmountCents: bigint;
     approvedAmountCents?: bigint | null;
     createdAt?: Date | null;
@@ -131,7 +132,7 @@ interface ProjectPaymentApprovalRowsInput {
   contractAmountCents?: bigint | null;
   cumulativeSettledCents?: bigint | null;
   cumulativePaidCents?: bigint | null;
-  currentAvailableCents?: bigint | null;
+  paymentTermsStageName?: string | null;
 }
 
 type ApprovalFormRow = { label: string; value: string };
@@ -141,8 +142,14 @@ const empty = (value?: string | null): string => {
   return trimmed ? trimmed : "—";
 };
 
-function sourceTypeLabel(sourceType?: string | null): string {
+function isFrozenContractStagePayment(input: ProjectPaymentApprovalRowsInput): boolean {
+  return input.payment.sourceType === "contract_due" && Boolean(input.payment.paymentTermsStageId);
+}
+
+function sourceTypeLabel(input: ProjectPaymentApprovalRowsInput): string {
+  const sourceType = input.payment.sourceType;
   if (sourceType === "contract_advance") return "合同预付款";
+  if (isFrozenContractStagePayment(input)) return "合同冻结阶段直接付款";
   if (sourceType === "contract_due") return "合同累计付款";
   return "结算付款";
 }
@@ -152,6 +159,9 @@ function paymentReason(input: ProjectPaymentApprovalRowsInput): string {
     return `${empty(input.contract?.name)}合同预付款`;
   }
   if (input.payment.sourceType === "contract_due") {
+    if (isFrozenContractStagePayment(input)) {
+      return `${empty(input.contract?.name)}·${empty(input.paymentTermsStageName)}直接付款`;
+    }
     return `${empty(input.contract?.name)}合同累计付款`;
   }
   const period = input.settlement?.periodLabel;
@@ -169,6 +179,7 @@ export function buildProjectPaymentApprovalRows(
   input: ProjectPaymentApprovalRowsInput
 ): ApprovalFormRow[] {
   const companyName = input.companyName || input.contract?.companyEntityName || "";
+  const frozenContractStagePayment = isFrozenContractStagePayment(input);
 
   return [
     { label: "项目名称", value: empty(input.projectName) },
@@ -180,18 +191,19 @@ export function buildProjectPaymentApprovalRows(
     { label: "合同名称", value: empty(input.contract?.name) },
     { label: "合同编号", value: empty(input.contract?.code) },
     { label: "付款方式", value: "网银转账" },
-    { label: "付款类型", value: sourceTypeLabel(input.payment.sourceType) },
+    { label: "付款类型", value: sourceTypeLabel(input) },
     { label: "合同金额", value: formatOptionalYuan(input.contractAmountCents) },
-    { label: "累计生效结算金额", value: formatOptionalYuan(input.cumulativeSettledCents) },
+    frozenContractStagePayment
+      ? { label: "合同冻结付款阶段", value: empty(input.paymentTermsStageName) }
+      : { label: "累计生效结算金额", value: formatOptionalYuan(input.cumulativeSettledCents) },
     { label: "累计已付款", value: formatOptionalYuan(input.cumulativePaidCents) },
-    { label: "当前可申请余额", value: formatOptionalYuan(input.currentAvailableCents) },
     { label: "发票类型提醒", value: "按合同约定提交" },
     { label: "本次付款金额", value: formatYuan(input.payment.requestedAmountCents) },
     { label: "收款方名称", value: empty(input.contract?.counterparty) },
     { label: "开户银行", value: "—" },
     { label: "银行账号", value: "—" },
     { label: "转款手续费", value: "—" },
-    { label: "备注", value: "付款创建时已通过后端额度校验" }
+    { label: "备注", value: "付款申请创建时已完成可付款额度校验" }
   ];
 }
 
@@ -843,7 +855,15 @@ export class ApprovalFormService {
     if (businessType === "payment_request") {
       const payment = await prisma.paymentRequest.findUnique({ where: { id: businessId } });
       if (!payment) return [];
-      const [project, settlement, contract, contractVersion, effectiveSettlements, paidPayments] =
+      const [
+        project,
+        settlement,
+        contract,
+        contractVersion,
+        paymentTermsStage,
+        effectiveSettlements,
+        paidPayments
+      ] =
         await Promise.all([
           prisma.project.findUnique({ where: { id: payment.projectId } }),
         payment.settlementId
@@ -851,6 +871,9 @@ export class ApprovalFormService {
           : Promise.resolve(null),
           prisma.contract.findUnique({ where: { id: payment.contractId } }),
           prisma.contractVersion.findUnique({ where: { id: payment.contractVersionId } }),
+          payment.paymentTermsStageId
+            ? prisma.paymentTermsStage.findUnique({ where: { id: payment.paymentTermsStageId } })
+            : Promise.resolve(null),
           prisma.settlement.findMany({
             where: { contractId: payment.contractId, status: { in: ["effective", "partially_paid", "paid"] } },
             select: { amountCents: true }
@@ -870,7 +893,12 @@ export class ApprovalFormService {
         settlement,
         contractAmountCents: contractVersion?.amountCents,
         cumulativeSettledCents: sumCents(effectiveSettlements),
-        cumulativePaidCents: sumCents(paidPayments)
+        cumulativePaidCents: sumCents(paidPayments),
+        paymentTermsStageName:
+          paymentTermsStage &&
+          paymentTermsStage.paymentTermsVersionId === payment.paymentTermsVersionId
+            ? paymentTermsStage.name
+            : null
       });
     }
 

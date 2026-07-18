@@ -160,7 +160,7 @@ describe("Task 3 DTO static field validation coverage", () => {
 
   it("keeps every optional association failure mutually exclusive", async () => {
     const groups = groupsWithRule("staticOptionalNonBlankText");
-    expect(groups).toHaveLength(7);
+    expect(groups).toHaveLength(8);
 
     for (const group of groups) {
       await expect(staticErrors(group, undefined)).resolves.toEqual([]);

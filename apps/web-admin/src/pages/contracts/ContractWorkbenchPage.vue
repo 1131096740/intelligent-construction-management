@@ -485,6 +485,7 @@
               <ContractPaymentTermsSection
                 v-else-if="activeSection === 'payment'"
                 :model="model"
+                :contract-type-key="workbench?.contract.contractTypeKey ?? ''"
                 :disabled="editorDisabled || isChangeVersion"
                 @update="applyPatch"
               />

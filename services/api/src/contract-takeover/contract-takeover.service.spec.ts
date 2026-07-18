@@ -270,6 +270,196 @@ describe("ContractTakeoverService", () => {
     });
   });
 
+  it("persists manually entered direct payment stages for a generic contract takeover", async () => {
+    const tx = {
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
+      contract: { create: jest.fn().mockResolvedValue({ id: "contract-1" }) },
+      contractVersion: { create: jest.fn().mockResolvedValue({ id: "contract-version-1" }) },
+      paymentTermsVersion: { create: jest.fn().mockResolvedValue({ id: "terms-version-1" }) },
+      paymentTermsStage: { createMany: jest.fn().mockResolvedValue({ count: 2 }) },
+      contractTakeover: {
+        create: jest.fn().mockResolvedValue(takeoverRecord())
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const result = await service.create(
+      "project-1",
+      {
+        code: "HT-TY-001",
+        name: "历史通用合同",
+        counterparty: "供应商A",
+        contractTypeKey: "generic_contract",
+        amountCents: "1000000",
+        signedAt: "2026-01-10",
+        takeoverLevel: "A",
+        lifecycleStatus: "in_progress",
+        paymentTermsOriginalText: "合同生效后付预算款，验收后付尾款。",
+        paymentStages: [
+          {
+            name: "首期合同款",
+            ratioBps: 3000,
+            dueDays: 7,
+            requiresInvoice: true,
+            allowsEarlyPayment: false,
+            allowsInstallments: false
+          },
+          {
+            name: "验收尾款",
+            fixedAmountCents: "700000",
+            dueDays: 30,
+            requiresInvoice: true,
+            allowsEarlyPayment: false,
+            allowsInstallments: true
+          }
+        ],
+        historicalSettledCents: "0",
+        historicalPaidCents: "0",
+        balanceSourceSummary: "已核对原合同。",
+        evidenceSummary: "原合同扫描件。"
+      },
+      "contract-user"
+    );
+
+    expect(result).toMatchObject({
+      contractTypeKey: "generic_contract",
+      paymentStages: [
+        expect.objectContaining({ name: "首期合同款", ratioBps: 3000 }),
+        expect.objectContaining({ name: "验收尾款", fixedAmountCents: "700000" })
+      ]
+    });
+
+    expect(tx.paymentTermsStage.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          paymentTermsVersionId: "terms-version-1",
+          name: "首期合同款",
+          stageType: "progress",
+          basis: "contract_amount",
+          ratioBps: 3000,
+          fixedAmountCents: null,
+          triggerAnchor: "contract_effective",
+          dueDays: 7,
+          requiresInvoice: true,
+          allowsEarlyPayment: false,
+          allowsInstallments: false
+        }),
+        expect.objectContaining({
+          name: "验收尾款",
+          ratioBps: null,
+          fixedAmountCents: 700000n,
+          dueDays: 30,
+          allowsInstallments: true
+        })
+      ]
+    });
+  });
+
+  it("rejects generic takeover without explicit direct stages and settlement contracts with them", async () => {
+    const tx = {
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
+      contract: { create: jest.fn().mockResolvedValue({ id: "contract-1" }) },
+      contractVersion: { create: jest.fn().mockResolvedValue({ id: "contract-version-1" }) },
+      paymentTermsVersion: { create: jest.fn().mockResolvedValue({ id: "terms-version-1" }) },
+      paymentTermsStage: { createMany: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+    const base = {
+      code: "HT-001",
+      name: "历史合同",
+      counterparty: "供应商A",
+      amountCents: "1000000",
+      signedAt: "2026-01-10",
+      takeoverLevel: "A" as const,
+      lifecycleStatus: "in_progress" as const,
+      historicalSettledCents: "0",
+      historicalPaidCents: "0",
+      balanceSourceSummary: "已核对。",
+      evidenceSummary: "已核对。"
+    };
+
+    await expect(
+      service.create("project-1", { ...base, contractTypeKey: "generic_contract" }, "user-1")
+    ).rejects.toThrow("必须按原合同条款录入至少一个直接付款阶段");
+    await expect(
+      service.create(
+        "project-1",
+        {
+          ...base,
+          contractTypeKey: "material_purchase",
+          paymentStages: [{
+            name: "合同款",
+            ratioBps: 5000,
+            dueDays: 0,
+            requiresInvoice: false,
+            allowsEarlyPayment: false,
+            allowsInstallments: true
+          }]
+        },
+        "user-1"
+      )
+    ).rejects.toThrow("必须依据生效结算付款");
+  });
+
+  it.each([
+    "material_purchase",
+    "equipment_rental",
+    "labor_subcontract",
+    "professional_subcontract"
+  ])("keeps the current-settlement initial stage for %s takeover", async (contractTypeKey) => {
+    const tx = {
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
+      contract: { create: jest.fn().mockResolvedValue({ id: "contract-1" }) },
+      contractVersion: { create: jest.fn().mockResolvedValue({ id: "contract-version-1" }) },
+      paymentTermsVersion: { create: jest.fn().mockResolvedValue({ id: "terms-version-1" }) },
+      paymentTermsStage: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      contractTakeover: { create: jest.fn().mockResolvedValue(takeoverRecord()) },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await service.create(
+      "project-1",
+      {
+        code: `HT-${contractTypeKey}`,
+        name: "历史结算类合同",
+        counterparty: "供应商A",
+        contractTypeKey,
+        amountCents: "1000000",
+        signedAt: "2026-01-10",
+        takeoverLevel: "A",
+        lifecycleStatus: "in_progress",
+        paymentTermsOriginalText: "按生效结算付款。",
+        historicalSettledCents: "0",
+        historicalPaidCents: "0",
+        balanceSourceSummary: "已核对。",
+        evidenceSummary: "已核对。"
+      },
+      "contract-user"
+    );
+
+    expect(tx.paymentTermsStage.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          name: "接管期初结算款",
+          basis: "current_settlement",
+          ratioBps: 10000,
+          triggerAnchor: "settlement_effective"
+        })
+      ]
+    });
+  });
+
   it("preserves historical tax gaps and creates unconfirmed pricing facts without guessing", async () => {
     const tx = {
       project: {
@@ -664,6 +854,40 @@ describe("ContractTakeoverService", () => {
       select: { code: true, temporaryCode: true }
     });
     expect(prisma.contractTakeover.create).not.toHaveBeenCalled();
+  });
+
+  it("blocks generic contract batch import because direct stages require manual verification", async () => {
+    const prisma = { contract: { findMany: jest.fn().mockResolvedValue([]) } };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const result = await service.precheckImport("project-1", {
+      rows: [
+        {
+          code: "HT-GENERIC-001",
+          name: "历史通用合同",
+          counterparty: "供应商A",
+          contractTypeKey: "generic_contract",
+          amountCents: "1000000",
+          signedAt: "2026-01-10",
+          takeoverLevel: "A",
+          lifecycleStatus: "in_progress",
+          paymentTermsOriginalText: "按原合同阶段付款。",
+          balanceSourceSummary: "已核对。",
+          evidenceSummary: "已核对。",
+          evidenceChecklist: "原合同扫描件",
+          issueSummary: "无"
+        }
+      ]
+    });
+
+    expect(result.rows[0]).toMatchObject({ status: "blocked" });
+    expect(result.rows[0]?.issues).toContainEqual(
+      expect.objectContaining({
+        field: "contractTypeKey",
+        level: "error",
+        message: expect.stringContaining("手工录入直接付款阶段")
+      })
+    );
   });
 
   it("uses business labels for invalid amount cells in import precheck", async () => {
@@ -1835,12 +2059,23 @@ describe("ContractTakeoverService", () => {
         code: "HT-HIS-EDIT",
         name: "Edited historical contract",
         counterparty: "Supplier B",
+        contractTypeKey: "generic_contract",
         companyEntityName: "建工智管公司",
         amountCents: "1200000",
         signedAt: "2026-02-01",
         takeoverLevel: "C",
         lifecycleStatus: "disputed",
         paymentTermsOriginalText: "Updated terms.",
+        paymentStages: [
+          {
+            name: "历史合同尾款",
+            ratioBps: 2500,
+            dueDays: 15,
+            requiresInvoice: true,
+            allowsEarlyPayment: false,
+            allowsInstallments: true
+          }
+        ],
         historicalSettledCents: "700000",
         historicalApprovalPendingPaymentCents: "50000",
         historicalApprovedPendingPaymentCents: "100000",
@@ -1861,7 +2096,11 @@ describe("ContractTakeoverService", () => {
       contractNo: "HT-HIS-EDIT",
       contractName: "Edited historical contract",
       companyEntityName: "建工智管公司",
+      contractTypeKey: "generic_contract",
       paymentTermsOriginalText: "Updated terms.",
+      paymentStages: [
+        expect.objectContaining({ name: "历史合同尾款", ratioBps: 2500, dueDays: 15 })
+      ],
       takeoverLevel: "C",
       suggestedTakeoverLevel: "C",
       takeoverLevelAdjustmentReason: null,
@@ -1874,7 +2113,8 @@ describe("ContractTakeoverService", () => {
         code: "HT-HIS-EDIT",
         name: "Edited historical contract",
         counterparty: "Supplier B",
-        companyEntityName: "建工智管公司"
+        companyEntityName: "建工智管公司",
+        contractTypeKey: "generic_contract"
       })
     });
     expect(tx.contractVersion.update).toHaveBeenCalledWith({
@@ -1897,9 +2137,10 @@ describe("ContractTakeoverService", () => {
       data: [
         expect.objectContaining({
           paymentTermsVersionId: "terms-version-1",
-          name: "接管期初结算款",
-          basis: "current_settlement",
-          ratioBps: 10000,
+          name: "历史合同尾款",
+          basis: "contract_amount",
+          ratioBps: 2500,
+          triggerAnchor: "contract_effective",
           originalText: "Updated terms."
         })
       ]
@@ -2609,7 +2850,7 @@ describe("ContractTakeoverService", () => {
     expect(tx.contractTakeover.update).not.toHaveBeenCalled();
   });
 
-  it("confirms takeover with second confirmation and makes version and terms effective", async () => {
+  it("confirms generic takeover only with a persisted direct stage and preserves historical settlement facts", async () => {
     const tx = {
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(
@@ -2632,11 +2873,32 @@ describe("ContractTakeoverService", () => {
       paymentTermsVersion: {
         update: jest.fn().mockResolvedValue({})
       },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "stage-1",
+            name: "历史合同款",
+            stageType: "progress",
+            basis: "contract_amount",
+            ratioBps: 8000,
+            fixedAmountCents: null,
+            triggerAnchor: "contract_effective",
+            dueDays: 30,
+            requiresInvoice: true,
+            allowsEarlyPayment: false,
+            allowsInstallments: true
+          }
+        ])
+      },
       settlement: {
         create: jest.fn().mockResolvedValue({})
       },
       contract: {
-        findUnique: jest.fn().mockResolvedValue({ code: "HT-HIS-001", temporaryCode: null }),
+        findUnique: jest.fn().mockResolvedValue({
+          code: "HT-HIS-001",
+          temporaryCode: null,
+          contractTypeKey: "generic_contract"
+        }),
         findMany: jest.fn().mockResolvedValue([
           {
             id: "contract-1",
@@ -2726,6 +2988,42 @@ describe("ContractTakeoverService", () => {
         contractVersionId: "contract-version-1"
       })
     });
+  });
+
+  it("fails closed before confirmation when a generic takeover has no valid direct stage", async () => {
+    const service = new ContractTakeoverService({} as never, audit as never, auth as never);
+    const internal = service as unknown as {
+      assertTakeoverPaymentStages(
+        tx: unknown,
+        takeover: ReturnType<typeof takeoverRecord>
+      ): Promise<void>;
+    };
+    const tx = {
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "generic_contract" })
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "invalid-stage",
+            name: "错误结算阶段",
+            stageType: "progress",
+            basis: "current_settlement",
+            ratioBps: 10000,
+            fixedAmountCents: null,
+            triggerAnchor: "settlement_effective",
+            dueDays: 0,
+            requiresInvoice: false,
+            allowsEarlyPayment: false,
+            allowsInstallments: true
+          }
+        ])
+      }
+    };
+
+    await expect(
+      internal.assertTakeoverPaymentStages.call(service, tx, takeoverRecord())
+    ).rejects.toThrow("直接付款阶段未完整录入");
   });
 
   it("确认接管时必须填写当前登录密码", async () => {
@@ -2907,13 +3205,32 @@ describe("ContractTakeoverService", () => {
             code: "HT-HIS-001",
             temporaryCode: null,
             name: "Historical material contract",
-            counterparty: "Supplier A"
+            counterparty: "Supplier A",
+            contractTypeKey: "generic_contract"
           }
         ])
       },
       contractVersion: {
         findMany: jest.fn().mockResolvedValue([
           { id: "contract-version-1", amountCents: 1_000_000n }
+        ])
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "stage-direct-1",
+            paymentTermsVersionId: "terms-version-1",
+            name: "历史合同款",
+            stageType: "progress",
+            basis: "contract_amount",
+            ratioBps: 8000,
+            fixedAmountCents: null,
+            triggerAnchor: "contract_effective",
+            dueDays: 30,
+            requiresInvoice: true,
+            allowsEarlyPayment: false,
+            allowsInstallments: true
+          }
         ])
       },
       user: {
@@ -2928,6 +3245,15 @@ describe("ContractTakeoverService", () => {
         contractNo: "HT-HIS-001",
         contractName: "Historical material contract",
         counterparty: "Supplier A",
+        contractTypeKey: "generic_contract",
+        paymentStages: [
+          expect.objectContaining({
+            id: "stage-direct-1",
+            name: "历史合同款",
+            ratioBps: 8000,
+            dueDays: 30
+          })
+        ],
         amountCents: "1000000",
         responsibleUserId: "contract-director-1",
         responsibleUserName: "合同负责人",

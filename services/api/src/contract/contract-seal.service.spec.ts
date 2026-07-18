@@ -386,34 +386,74 @@ describe("ContractSealService", () => {
     })).rejects.toThrow("双方最终版页数与审批原件不一致");
   });
 
-  it("通用合同不强制要求结算款阶段，存在可执行付款条款即可", async () => {
-    const stage = jest.fn().mockResolvedValue({ id: "stage-1" });
+  it("通用合同必须存在可计算的非预付款直接付款阶段", async () => {
+    const stage = jest.fn().mockResolvedValue([{
+      id: "stage-1",
+      stageType: "progress",
+      basis: "contract_amount",
+      ratioBps: 10000,
+      fixedAmountCents: null,
+      triggerAnchor: "contract_effective",
+      dueDays: 0
+    }]);
     const tx = {
       contractVersion: { findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1" }) },
       contract: { findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "generic_contract" }) },
       paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue({ id: "terms-1" }) },
-      paymentTermsStage: { findFirst: stage }
+      paymentTermsStage: { findMany: stage }
     };
     const service = new ContractSealService({} as never);
 
     await expect((service as unknown as {
       assertStructuredPaymentStage(tx: unknown, versionId: string): Promise<void>;
     }).assertStructuredPaymentStage(tx, "version-1")).resolves.toBeUndefined();
-    expect(stage).toHaveBeenCalledWith({
-      where: {
-        paymentTermsVersionId: "terms-1",
-        OR: [{ ratioBps: { gt: 0 } }, { fixedAmountCents: { gt: 0 } }]
-      },
-      select: { id: true }
-    });
+    expect(stage).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { paymentTermsVersionId: "terms-1" } })
+    );
+  });
+
+  it("通用合同任一非预付款阶段金额事实含糊时拒绝最终归档", async () => {
+    const tx = {
+      contractVersion: { findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1" }) },
+      contract: { findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "generic_contract" }) },
+      paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue({ id: "terms-1" }) },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "stage-valid",
+            stageType: "progress",
+            basis: "contract_amount",
+            ratioBps: 5000,
+            fixedAmountCents: null,
+            triggerAnchor: "contract_effective",
+            dueDays: 0
+          },
+          {
+            id: "stage-ambiguous",
+            stageType: "progress",
+            basis: "contract_amount",
+            ratioBps: 5000,
+            fixedAmountCents: 50_000n,
+            triggerAnchor: "contract_effective",
+            dueDays: 0
+          }
+        ])
+      }
+    };
+    const service = new ContractSealService({} as never);
+
+    await expect((service as unknown as {
+      assertStructuredPaymentStage(tx: unknown, versionId: string): Promise<void>;
+    }).assertStructuredPaymentStage(tx, "version-1"))
+      .rejects.toThrow("通用合同缺少可执行的直接付款阶段");
   });
 
   it("非通用合同缺少有效结算款阶段时拒绝归档生效", async () => {
     const tx = {
       contractVersion: { findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1" }) },
-      contract: { findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "material_contract" }) },
+      contract: { findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "material_purchase" }) },
       paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue({ id: "terms-1" }) },
-      paymentTermsStage: { findFirst: jest.fn().mockResolvedValue(null) }
+      paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const service = new ContractSealService({} as never);
 
@@ -422,6 +462,57 @@ describe("ContractSealService", () => {
     }).assertStructuredPaymentStage(tx, "version-1"))
       .rejects.toThrow("合同付款条款缺少有效结算款阶段");
   });
+
+  it.each([
+    "material_purchase",
+    "equipment_rental",
+    "labor_subcontract",
+    "professional_subcontract"
+  ])("%s 仍只认可计算的结算款阶段", async (contractTypeKey) => {
+    const stage = jest.fn().mockResolvedValue([{
+      id: "stage-settlement-1",
+      stageType: "progress",
+      basis: "current_settlement",
+      ratioBps: 8000,
+      fixedAmountCents: null,
+      triggerAnchor: "settlement_effective",
+      dueDays: 0
+    }]);
+    const tx = {
+      contractVersion: { findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1" }) },
+      contract: { findUnique: jest.fn().mockResolvedValue({ contractTypeKey }) },
+      paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue({ id: "terms-1" }) },
+      paymentTermsStage: { findMany: stage }
+    };
+    const service = new ContractSealService({} as never);
+
+    await expect((service as unknown as {
+      assertStructuredPaymentStage(tx: unknown, versionId: string): Promise<void>;
+    }).assertStructuredPaymentStage(tx, "version-1")).resolves.toBeUndefined();
+    expect(stage).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { paymentTermsVersionId: "terms-1" } })
+    );
+  });
+
+  it.each([null, "", "material_contract", "unsupported"])(
+    "合同类型 %p 为空或未知时归档门禁失败关闭",
+    async (contractTypeKey) => {
+      const tx = {
+        contractVersion: { findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1" }) },
+        contract: { findUnique: jest.fn().mockResolvedValue({ contractTypeKey }) },
+        paymentTermsVersion: { findFirst: jest.fn() },
+        paymentTermsStage: { findMany: jest.fn() }
+      };
+      const service = new ContractSealService({} as never);
+
+      await expect((service as unknown as {
+        assertStructuredPaymentStage(tx: unknown, versionId: string): Promise<void>;
+      }).assertStructuredPaymentStage(tx, "version-1"))
+        .rejects.toThrow("合同类型不在支持范围内，不能确认归档生效");
+      expect(tx.paymentTermsVersion.findFirst).not.toHaveBeenCalled();
+      expect(tx.paymentTermsStage.findMany).not.toHaveBeenCalled();
+    }
+  );
 
   it("无上传权限时在读取 COS/PDF 前拒绝", async () => {
     const { tx, prisma, version, task } = harness();

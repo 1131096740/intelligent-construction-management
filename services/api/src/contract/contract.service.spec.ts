@@ -4237,12 +4237,16 @@ describe("ContractService", () => {
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
+          contractId: "contract-1",
           status: "pending_archive_confirm"
         }),
         update: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           status: "effective"
         })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "material_purchase" })
       },
       contractArchiveFile: {
         findFirst: jest.fn().mockResolvedValue({
@@ -4259,7 +4263,15 @@ describe("ContractService", () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       paymentTermsStage: {
-        findFirst: jest.fn().mockResolvedValue({ id: "stage-1" })
+        findMany: jest.fn().mockResolvedValue([{
+          id: "stage-1",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          dueDays: 0
+        }])
       },
       auditLog: {
         create: jest.fn()
@@ -4302,13 +4314,17 @@ describe("ContractService", () => {
         effectiveAt: expect.any(Date)
       }
     });
-    expect(tx.paymentTermsStage.findFirst).toHaveBeenCalledWith({
-      where: {
-        paymentTermsVersionId: "terms-version-1",
-        basis: "current_settlement",
-        ratioBps: { gt: 0 }
-      },
-      select: { id: true }
+    expect(tx.paymentTermsStage.findMany).toHaveBeenCalledWith({
+      where: { paymentTermsVersionId: "terms-version-1" },
+      select: {
+        id: true,
+        stageType: true,
+        basis: true,
+        ratioBps: true,
+        fixedAmountCents: true,
+        triggerAnchor: true,
+        dueDays: true
+      }
     });
     expect(tx.paymentTermsVersion.updateMany).toHaveBeenCalledWith({
       where: { contractVersionId: "contract-version-1" },
@@ -4330,9 +4346,13 @@ describe("ContractService", () => {
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
+          contractId: "contract-1",
           status: "pending_archive_confirm"
         }),
         update: jest.fn()
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "material_purchase" })
       },
       contractArchiveFile: {
         findFirst: jest.fn().mockResolvedValue({
@@ -4346,7 +4366,7 @@ describe("ContractService", () => {
         updateMany: jest.fn()
       },
       paymentTermsStage: {
-        findFirst: jest.fn().mockResolvedValue(null)
+        findMany: jest.fn().mockResolvedValue([])
       },
       auditLog: {
         create: jest.fn()
@@ -4370,6 +4390,195 @@ describe("ContractService", () => {
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
     expect(tx.paymentTermsVersion.updateMany).not.toHaveBeenCalled();
   });
+
+  it("accepts a generic contract only when it has an executable frozen direct-payment stage", async () => {
+    const tx = {
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "generic_contract" })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "terms-version-1" })
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "stage-direct-1",
+          stageType: "progress",
+          basis: "contract_amount",
+          ratioBps: 10000,
+          fixedAmountCents: null,
+          triggerAnchor: "contract_effective",
+          dueDays: 0
+        }])
+      }
+    };
+    const service = new ContractService({} as PrismaService, audit as never, auth as never);
+
+    await expect((service as unknown as {
+      assertStructuredSettlementPaymentStage(
+        transaction: typeof tx,
+        contractVersionId: string,
+        contractId: string
+      ): Promise<void>;
+    }).assertStructuredSettlementPaymentStage(
+      tx,
+      "contract-version-1",
+      "contract-1"
+    )).resolves.toBeUndefined();
+
+    expect(tx.paymentTermsStage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { paymentTermsVersionId: "terms-version-1" } })
+    );
+  });
+
+  it("rejects a generic archive when any non-advance stage has ambiguous amount facts", async () => {
+    const tx = {
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "generic_contract" })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "terms-version-1" })
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "stage-valid",
+            stageType: "progress",
+            basis: "contract_amount",
+            ratioBps: 5000,
+            fixedAmountCents: null,
+            triggerAnchor: "contract_effective",
+            dueDays: 0
+          },
+          {
+            id: "stage-ambiguous",
+            stageType: "progress",
+            basis: "contract_amount",
+            ratioBps: 5000,
+            fixedAmountCents: 50_000n,
+            triggerAnchor: "contract_effective",
+            dueDays: 0
+          }
+        ])
+      }
+    };
+    const service = new ContractService({} as PrismaService, audit as never, auth as never);
+
+    await expect((service as unknown as {
+      assertStructuredSettlementPaymentStage(
+        transaction: typeof tx,
+        contractVersionId: string,
+        contractId: string
+      ): Promise<void>;
+    }).assertStructuredSettlementPaymentStage(
+      tx,
+      "contract-version-1",
+      "contract-1"
+    )).rejects.toThrow("通用合同付款条款缺少可执行的直接付款阶段");
+  });
+
+  it.each([
+    "material_purchase",
+    "equipment_rental",
+    "labor_subcontract",
+    "professional_subcontract"
+  ])("keeps %s on a positive current-settlement payment stage", async (contractTypeKey) => {
+    const tx = {
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ contractTypeKey })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "terms-version-1" })
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "stage-settlement-1",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          dueDays: 0
+        }])
+      }
+    };
+    const service = new ContractService({} as PrismaService, audit as never, auth as never);
+
+    await expect((service as unknown as {
+      assertStructuredSettlementPaymentStage(
+        transaction: typeof tx,
+        contractVersionId: string,
+        contractId: string
+      ): Promise<void>;
+    }).assertStructuredSettlementPaymentStage(
+      tx,
+      "contract-version-1",
+      "contract-1"
+    )).resolves.toBeUndefined();
+
+    expect(tx.paymentTermsStage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { paymentTermsVersionId: "terms-version-1" } })
+    );
+  });
+
+  it("rejects a generic contract whose frozen terms have no executable direct-payment stage", async () => {
+    const tx = {
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "generic_contract" })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "terms-version-1" })
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new ContractService({} as PrismaService, audit as never, auth as never);
+
+    await expect((service as unknown as {
+      assertStructuredSettlementPaymentStage(
+        transaction: typeof tx,
+        contractVersionId: string,
+        contractId: string
+      ): Promise<void>;
+    }).assertStructuredSettlementPaymentStage(
+      tx,
+      "contract-version-1",
+      "contract-1"
+    )).rejects.toThrow("通用合同付款条款缺少可执行的直接付款阶段");
+  });
+
+  it.each([null, "", "unsupported_contract"])(
+    "fails closed when archive payment terms use unknown contract type %p",
+    async (contractTypeKey) => {
+      const tx = {
+        contract: {
+          findUnique: jest.fn().mockResolvedValue({ contractTypeKey })
+        },
+        paymentTermsVersion: {
+          findFirst: jest.fn()
+        },
+        paymentTermsStage: {
+          findMany: jest.fn()
+        }
+      };
+      const service = new ContractService({} as PrismaService, audit as never, auth as never);
+
+      await expect((service as unknown as {
+        assertStructuredSettlementPaymentStage(
+          transaction: typeof tx,
+          contractVersionId: string,
+          contractId: string
+        ): Promise<void>;
+      }).assertStructuredSettlementPaymentStage(
+        tx,
+        "contract-version-1",
+        "contract-1"
+      )).rejects.toThrow("合同类型不在支持范围内，不能确认归档生效");
+
+      expect(tx.paymentTermsVersion.findFirst).not.toHaveBeenCalled();
+      expect(tx.paymentTermsStage.findMany).not.toHaveBeenCalled();
+    }
+  );
 
   it("rejects contract archive confirmation without a confirmation password", async () => {
     const prisma = {

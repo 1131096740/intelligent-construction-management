@@ -402,6 +402,14 @@
             />
           </label>
           <label>
+            <span>合同类型</span>
+            <t-select
+              v-model="createForm.contractTypeKey"
+              :options="takeoverContractTypeOptions"
+              placeholder="请选择原合同类型"
+            />
+          </label>
+          <label>
             <span>相对方</span>
             <t-input
               v-model="createForm.counterparty"
@@ -499,6 +507,92 @@
             :autosize="{ minRows: 2, maxRows: 4 }"
           />
         </label>
+        <div
+          v-if="createForm.contractTypeKey === 'generic_contract'"
+          class="direct-payment-stages"
+        >
+          <div class="section-title-with-action">
+            <div>
+              <h2>直接付款阶段</h2>
+              <p>仅按原合同条款如实录入；系统不会从摘要推测比例或金额。</p>
+            </div>
+            <t-button
+              variant="outline"
+              @click="addPaymentStage"
+            >
+              新增付款阶段
+            </t-button>
+          </div>
+          <div
+            v-for="(stage, index) in createForm.paymentStages"
+            :key="stage.rowKey"
+            class="direct-payment-stage-row"
+          >
+            <div class="direct-payment-stage-head">
+              <strong>付款阶段 {{ index + 1 }}</strong>
+              <t-button
+                theme="danger"
+                variant="text"
+                @click="removePaymentStage(index)"
+              >
+                删除
+              </t-button>
+            </div>
+            <div class="form-grid">
+              <label>
+                <span>阶段名称</span>
+                <t-input
+                  v-model="stage.name"
+                  placeholder="例如：验收合格合同款"
+                />
+              </label>
+              <label>
+                <span>金额方式</span>
+                <t-radio-group v-model="stage.amountMode">
+                  <t-radio value="ratio">合同金额比例</t-radio>
+                  <t-radio value="fixed">固定金额</t-radio>
+                </t-radio-group>
+              </label>
+              <label v-if="stage.amountMode === 'ratio'">
+                <span>付款比例（%）</span>
+                <t-input
+                  v-model="stage.ratioPercent"
+                  placeholder="例如：30"
+                />
+              </label>
+              <label v-else>
+                <span>固定金额（元）</span>
+                <t-input
+                  v-model="stage.fixedAmountYuan"
+                  placeholder="例如：100000.00"
+                />
+              </label>
+              <label>
+                <span>付款期限（天）</span>
+                <t-input
+                  v-model="stage.dueDays"
+                  placeholder="0"
+                />
+              </label>
+            </div>
+            <t-space break-line>
+              <t-checkbox v-model="stage.requiresInvoice">
+                要求发票
+              </t-checkbox>
+              <t-checkbox v-model="stage.allowsEarlyPayment">
+                允许提前付款
+              </t-checkbox>
+              <t-checkbox v-model="stage.allowsInstallments">
+                允许分次付款
+              </t-checkbox>
+            </t-space>
+          </div>
+          <t-alert
+            v-if="createForm.paymentStages.length === 0"
+            theme="warning"
+            message="通用合同必须按原合同条款录入至少一个直接付款阶段，否则不能保存或确认接管。"
+          />
+        </div>
       </div>
 
       <div class="form-section">
@@ -1513,6 +1607,7 @@ import {
   lifecycleStatusOptions,
   normalizeHistoricalPricingItems,
   normalizeOptionalTaxRate,
+  normalizeTakeoverDirectPaymentStages,
   parseContractTakeoverImportPrecheckRows,
   suggestTakeoverLevel,
   takeoverActionDisabledReason,
@@ -1530,6 +1625,7 @@ import {
   takeoverWorkbenchSteps,
   takeoverLevelLabel,
   takeoverLevelOptions,
+  takeoverContractTypeOptions,
   toContractTakeoverTableRow,
   takeoverStatusLabel,
   taxFactSourceLabel,
@@ -1538,6 +1634,8 @@ import {
   taxModeOptions,
   yuanToCents,
   type HistoricalPricingItemDraft,
+  type TakeoverContractTypeKey,
+  type TakeoverDirectPaymentStageDraft,
   type ContractTakeoverTableRow,
   type ContractTakeoverTone
 } from "./contract-takeover.config";
@@ -1559,6 +1657,7 @@ interface CreateFormState extends Record<MoneyFieldKey, string> {
   name: string;
   counterparty: string;
   companyEntityName: string;
+  contractTypeKey: TakeoverContractTypeKey | "";
   amountYuan: string;
   invoiceType: ContractInvoiceType | "";
   taxMode: ContractTaxMode;
@@ -1571,6 +1670,7 @@ interface CreateFormState extends Record<MoneyFieldKey, string> {
   takeoverLevel: ContractTakeoverLevel;
   lifecycleStatus: ContractLifecycleStatus;
   paymentTermsOriginalText: string;
+  paymentStages: TakeoverDirectPaymentStageDraft[];
   balanceSourceSummary: string;
   evidenceSummary: string;
   responsibleUserId: string;
@@ -1683,6 +1783,7 @@ const importPrecheckResult = ref<ContractTakeoverImportPrecheckReadModel | null>
 const excelImportFiles = ref<UploadFile[]>([]);
 const excelPreviewResult = ref<ContractTakeoverExcelPreviewReadModel | null>(null);
 let pricingItemSequence = 0;
+let paymentStageSequence = 0;
 const pendingImportBatchReviewDescription = computed(() => {
   const pending = pendingImportBatchReview.value;
   return pending
@@ -2531,6 +2632,7 @@ async function submitCreate() {
       code: requiredText(createForm.code, "合同编号"),
       name: requiredText(createForm.name, "合同名称"),
       counterparty: requiredText(createForm.counterparty, "相对方"),
+      contractTypeKey: requiredContractType(createForm.contractTypeKey),
       companyEntityName: createForm.companyEntityName.trim() || undefined,
       invoiceType: createForm.invoiceType || undefined,
       taxMode: createForm.taxMode,
@@ -2558,6 +2660,10 @@ async function submitCreate() {
         createForm.paymentTermsOriginalText,
         "付款条款原文摘要"
       ),
+      paymentStages:
+        createForm.contractTypeKey === "generic_contract"
+          ? normalizeTakeoverDirectPaymentStages(createForm.paymentStages)
+          : undefined,
       historicalSettledCents: moneyCents("historicalSettledYuan"),
       historicalApprovalPendingPaymentCents: moneyCents("historicalApprovalPendingPaymentYuan"),
       historicalApprovedPendingPaymentCents: moneyCents("historicalApprovedPendingPaymentYuan"),
@@ -2970,6 +3076,7 @@ function formFromTakeover(takeover: ContractTakeoverReadModel): CreateFormState 
     name: takeover.contractName,
     counterparty: takeover.counterparty,
     companyEntityName: takeover.companyEntityName ?? "",
+    contractTypeKey: (takeover.contractTypeKey as TakeoverContractTypeKey | null) ?? "",
     amountYuan: centsToYuanInput(takeover.amountCents),
     invoiceType: takeover.invoiceType ?? "",
     taxMode: takeover.taxMode,
@@ -2995,6 +3102,18 @@ function formFromTakeover(takeover: ContractTakeoverReadModel): CreateFormState 
     takeoverLevel: takeover.takeoverLevel,
     lifecycleStatus: takeover.lifecycleStatus,
     paymentTermsOriginalText: takeover.paymentTermsOriginalText,
+    paymentStages: (takeover.paymentStages ?? []).map((stage) => ({
+      rowKey: `saved-${stage.id}`,
+      name: stage.name,
+      amountMode: stage.fixedAmountCents !== null ? "fixed" : "ratio",
+      ratioPercent: stage.ratioBps === null ? "" : formatRatioPercent(stage.ratioBps),
+      fixedAmountYuan:
+        stage.fixedAmountCents === null ? "" : centsToYuanInput(stage.fixedAmountCents),
+      dueDays: String(stage.dueDays),
+      requiresInvoice: stage.requiresInvoice,
+      allowsEarlyPayment: stage.allowsEarlyPayment,
+      allowsInstallments: stage.allowsInstallments
+    })),
     historicalSettledYuan: centsToYuanInput(takeover.historicalSettledCents),
     historicalApprovalPendingPaymentYuan: centsToYuanInput(takeover.historicalApprovalPendingPaymentCents),
     historicalApprovedPendingPaymentYuan: centsToYuanInput(takeover.historicalApprovedPendingPaymentCents),
@@ -3024,6 +3143,7 @@ function createEmptyForm(): CreateFormState {
     name: "",
     counterparty: "",
     companyEntityName: "",
+    contractTypeKey: "",
     amountYuan: "",
     invoiceType: "",
     taxMode: "single_rate",
@@ -3036,6 +3156,7 @@ function createEmptyForm(): CreateFormState {
     takeoverLevel: "B",
     lifecycleStatus: "in_progress",
     paymentTermsOriginalText: "",
+    paymentStages: [],
     historicalSettledYuan: "",
     historicalApprovalPendingPaymentYuan: "",
     historicalApprovedPendingPaymentYuan: "",
@@ -3053,6 +3174,38 @@ function createEmptyForm(): CreateFormState {
     reviewComment: "",
     acceptanceConclusion: ""
   };
+}
+
+function createEmptyPaymentStage(): TakeoverDirectPaymentStageDraft {
+  paymentStageSequence += 1;
+  return {
+    rowKey: `payment-stage-${paymentStageSequence}`,
+    name: "",
+    amountMode: "ratio",
+    ratioPercent: "",
+    fixedAmountYuan: "",
+    dueDays: "0",
+    requiresInvoice: false,
+    allowsEarlyPayment: false,
+    allowsInstallments: true
+  };
+}
+
+function addPaymentStage() {
+  createForm.paymentStages.push(createEmptyPaymentStage());
+}
+
+function removePaymentStage(index: number) {
+  createForm.paymentStages.splice(index, 1);
+}
+
+function requiredContractType(value: CreateFormState["contractTypeKey"]): TakeoverContractTypeKey {
+  if (!value) throw new Error("请选择原合同类型");
+  return value;
+}
+
+function formatRatioPercent(ratioBps: number) {
+  return (ratioBps / 100).toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
 }
 
 function createEmptyPricingItem(): HistoricalPricingItemDraft {
@@ -3456,6 +3609,29 @@ input[type="date"] {
 
 .form-grid.two {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.direct-payment-stages {
+  display: grid;
+  gap: var(--jg-space-sm);
+  padding-top: var(--jg-space-sm);
+  border-top: 1px solid var(--jg-color-border);
+}
+
+.direct-payment-stage-row {
+  display: grid;
+  gap: var(--jg-space-sm);
+  padding: var(--jg-space-sm);
+  border: 1px solid var(--jg-color-border);
+  border-radius: var(--jg-radius-panel);
+  background: var(--jg-color-bg-panel);
+}
+
+.direct-payment-stage-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--jg-space-sm);
 }
 
 .level-suggestion {

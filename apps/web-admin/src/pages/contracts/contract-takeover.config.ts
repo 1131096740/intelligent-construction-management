@@ -8,6 +8,7 @@ import type {
   ContractTakeoverStatus,
   ContractTaxFactSource,
   ContractTaxMode,
+  HistoricalTakeoverDirectPaymentStagePayload,
   HistoricalPricingItemPayload,
   PrecheckContractTakeoverImportRowPayload
 } from "../../api/core-flow-read.api";
@@ -132,6 +133,25 @@ export interface HistoricalPricingItemDraft {
   settlementBasis: string;
 }
 
+export type TakeoverContractTypeKey =
+  | "material_purchase"
+  | "equipment_rental"
+  | "labor_subcontract"
+  | "professional_subcontract"
+  | "generic_contract";
+
+export interface TakeoverDirectPaymentStageDraft {
+  rowKey: string;
+  name: string;
+  amountMode: "ratio" | "fixed";
+  ratioPercent: string;
+  fixedAmountYuan: string;
+  dueDays: string;
+  requiresInvoice: boolean;
+  allowsEarlyPayment: boolean;
+  allowsInstallments: boolean;
+}
+
 export interface TakeoverCorrectionDraft {
   reason: string;
   responsibleUserId: string;
@@ -173,6 +193,58 @@ export const lifecycleStatusOptions: Array<ContractTakeoverOption<ContractLifecy
   { value: "terminated", label: "已终止" },
   { value: "disputed", label: "争议中" }
 ];
+
+export const takeoverContractTypeOptions: Array<ContractTakeoverOption<TakeoverContractTypeKey>> = [
+  { value: "material_purchase", label: "材料采购合同" },
+  { value: "equipment_rental", label: "工程机械设备租赁合同" },
+  { value: "labor_subcontract", label: "劳务分包合同" },
+  { value: "professional_subcontract", label: "专业分包合同" },
+  { value: "generic_contract", label: "通用合同" }
+];
+
+export function normalizeTakeoverDirectPaymentStages(
+  stages: TakeoverDirectPaymentStageDraft[]
+): HistoricalTakeoverDirectPaymentStagePayload[] {
+  if (!stages.length) {
+    throw new Error("通用合同必须录入至少一个直接付款阶段");
+  }
+  return stages.map((stage, index) => {
+    const label = `第 ${index + 1} 个付款阶段`;
+    const name = stage.name.trim();
+    if (!name) throw new Error(`${label}请填写名称`);
+    if (!/^\d+$/.test(stage.dueDays.trim())) {
+      throw new Error(`${label}的付款期限必须是 0 或更大的整数天`);
+    }
+    const dueDays = Number(stage.dueDays);
+    if (!Number.isSafeInteger(dueDays) || dueDays > 2_147_483_647) {
+      throw new Error(`${label}的付款期限超出可用范围`);
+    }
+    const common = {
+      name,
+      dueDays,
+      requiresInvoice: stage.requiresInvoice,
+      allowsEarlyPayment: stage.allowsEarlyPayment,
+      allowsInstallments: stage.allowsInstallments
+    };
+    if (stage.amountMode === "fixed") {
+      const fixedAmountCents = yuanToCents(
+        stage.fixedAmountYuan,
+        `${label}固定金额`
+      );
+      if (fixedAmountCents === "0") throw new Error(`${label}的固定金额必须大于 0`);
+      return { ...common, fixedAmountCents };
+    }
+    const ratioText = stage.ratioPercent.trim();
+    if (!/^(?:\d|[1-9]\d|100)(?:\.\d{1,2})?$/.test(ratioText)) {
+      throw new Error(`${label}的付款比例必须大于 0% 且不超过 100%，最多两位小数`);
+    }
+    const ratioBps = Math.round(Number(ratioText) * 100);
+    if (ratioBps <= 0 || ratioBps > 10000) {
+      throw new Error(`${label}的付款比例必须大于 0% 且不超过 100%`);
+    }
+    return { ...common, ratioBps };
+  });
+}
 
 export const invoiceTypeOptions: Array<ContractTakeoverOption<ContractInvoiceType>> = [
   { value: "vat_general", label: "增值税普通发票" },

@@ -570,7 +570,7 @@
           <header class="section-heading">
             <div>
               <h2>实付分摊台账</h2>
-              <p>按系统台账核对合同累计结算付款的分摊与抵扣。</p>
+              <p>按系统台账核对各笔实付的来源分摊与抵扣。</p>
             </div>
           </header>
           <t-table

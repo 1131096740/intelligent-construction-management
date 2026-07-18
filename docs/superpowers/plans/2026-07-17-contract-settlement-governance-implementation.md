@@ -1690,7 +1690,7 @@ git commit -m "feat: 完善结算签章审批工作台"
 - Modify: `apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue`
 - Modify: `apps/web-admin/src/pages/payments/payment-workbench.structure.test.ts`
 
-- [ ] **Step 1: 写通用合同与其他合同来源失败测试**
+- [x] **Step 1: 写通用合同与其他合同来源失败测试**
 
 ```ts
 expect(genericApplication.availableStages).toEqual(frozenContractStages);
@@ -1700,28 +1700,30 @@ await expect(createContractDue({ contractTypeKey: "generic_contract", stageId: "
   .rejects.toThrow("请选择合同已冻结的付款阶段");
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/payment/payment-read.service.spec.ts src/payment/payment-request.service.spec.ts && pnpm --filter @jiangkong/web-admin test -- src/pages/payments/payment-workbench.structure.test.ts`
 
 Expected: FAIL。
 
-- [ ] **Step 3: 限定既有 contract_due 入口**
+- [x] **Step 3: 限定既有 contract_due 入口**
 
 不新建付款流程；复用现有 `contract_due` 和后端额度核算。通用合同必须引用 effective contract version、effective payment terms version 和其中的 stage；材料/机械/劳务/专业的进度付款继续引用生效结算，合同预付款既有合法场景保持原逻辑。
 
-- [ ] **Step 4: 运行定向测试**
+- [x] **Step 4: 运行定向测试**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/payment/payment-read.service.spec.ts src/payment/payment-request.service.spec.ts src/payment/settlement-payment-capacity.spec.ts && pnpm --filter @jiangkong/web-admin test -- src/pages/payments/payment-workbench.structure.test.ts`
 
 Expected: PASS；元分和可付额度测试无变化。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add services/api/src/payment apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue apps/web-admin/src/pages/payments/payment-workbench.structure.test.ts
 git commit -m "feat: 限定通用合同直接付款来源"
 ```
+
+> Task 20 执行校正（2026-07-18）：为避免付款申请只靠请求瞬间解析、事后无法证明引用了哪一条冻结付款事实，本任务新增 M57 可空阶段引用，并以 `(paymentTermsStageId, paymentTermsVersionId)` 复合外键保证阶段与条款版本一致；既有记录不回填、不猜测。通用合同的新建工作台和历史接管同步建立可执行的 `contract_amount + contract_effective` 冻结阶段，否则直付入口在真实业务中不可达；材料、机械、劳务、专业分包仍只允许生效结算付款，预付款保持原逻辑，空或未知合同类型连预付款也失败关闭。历史通用合同必须逐阶段手工录入，不自动生成 100% 阶段。付款阶段要求比例/固定额二选一且为正值，归档会拒绝混入非法非预付款阶段；阶段额度只扣本阶段，合同总额同时扣同合同全部来源的在途/已付付款、预付款、代付及历史确认占用，避免旧结算付款漏算，执行分配保存冻结阶段事实；已删除或失效阶段返回稳定中文业务错误。Task 20 完成后 shared 97/97、API 核心复核 346/346、Web 定向 137/137、API 全量 3226/3226（另有 6 项条件跳过）、Web 全量 740/740 通过；Prisma validate/generate、三包 typecheck/lint、API `check:business-errors`、Web `check:ui`/production build/E2E typecheck、`git diff --check` 全绿。全新 PostgreSQL 16 从 M1→M57 共 57 个迁移执行成功，并核验复合外键、复合唯一索引及来源约束；未连接生产、未推送或部署。
 
 ### Task 21: 历史主体匹配、跨域只读和文件 ACL 加固
 

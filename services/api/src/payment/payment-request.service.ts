@@ -71,6 +71,13 @@ const PAYMENT_POST_MONEY_FIELDS = [
   "contractAmountCents"
 ] as const;
 
+const SETTLEMENT_PAYMENT_CONTRACT_TYPES = new Set([
+  "material_purchase",
+  "equipment_rental",
+  "labor_subcontract",
+  "professional_subcontract"
+]);
+
 function paymentPostResponseToApi<T>(value: T) {
   return mapBigIntMoneyFieldsToApi(value, PAYMENT_POST_MONEY_FIELDS);
 }
@@ -99,6 +106,8 @@ interface PaymentExecutionLockRow {
   projectId: string;
   contractId: string;
   contractVersionId: string;
+  paymentTermsVersionId?: string;
+  paymentTermsStageId?: string | null;
   settlementId: string | null;
   sourceType?: string;
   status: string;
@@ -453,6 +462,16 @@ export class PaymentRequestService {
         throw new Error("未找到结算记录，请刷新结算台账后重试");
       }
       this.assertSettlementEffective(settlement.status as SettlementStatus);
+      const settlementContract = await tx.contract.findUnique({
+        where: { id: settlement.contractId },
+        select: { contractTypeKey: true }
+      });
+      if (!settlementContract) {
+        throw new Error("未找到关联合同，请刷新合同台账后重试");
+      }
+      if (!SETTLEMENT_PAYMENT_CONTRACT_TYPES.has(settlementContract.contractTypeKey ?? "")) {
+        throw new BadRequestException("该合同类型应从合同已冻结的付款阶段发起付款");
+      }
       await this.assertHistoricalTakeoverPaymentReady(tx, {
         contractId: settlement.contractId,
         contractVersionId: settlement.contractVersionId,
@@ -581,7 +600,9 @@ export class PaymentRequestService {
       select: {
         id: true,
         contractId: true,
-        status: true
+        status: true,
+        amountCents: true,
+        effectiveAt: true
       }
     });
     if (!contractVersion) {
@@ -590,20 +611,25 @@ export class PaymentRequestService {
     if (contractVersion.status !== "effective") {
       throw new Error("当前合同尚未归档生效，不能发起付款申请");
     }
+    const contract = await tx.contract.findUnique({
+      where: { id: contractVersion.contractId },
+      select: { projectId: true, contractTypeKey: true }
+    });
+    if (!contract) {
+      throw new Error("未找到关联合同，请刷新合同台账后重试");
+    }
+    if (contract.contractTypeKey !== "generic_contract") {
+      throw new BadRequestException("该合同类型应从生效结算发起付款");
+    }
+    if (!input.paymentTermsStageId) {
+      throw new Error("请选择合同已冻结的付款阶段");
+    }
     await this.assertHistoricalTakeoverPaymentReady(tx, {
       contractId: contractVersion.contractId,
       contractVersionId: contractVersion.id,
       sourceType: "contract_due",
       actorUserId: applicantUserId
     });
-
-    const contract = await tx.contract.findUnique({
-      where: { id: contractVersion.contractId },
-      select: { projectId: true }
-    });
-    if (!contract) {
-      throw new Error("未找到关联合同，请刷新合同台账后重试");
-    }
 
     const paymentTermsVersion = await tx.paymentTermsVersion.findFirst({
       where: {
@@ -617,10 +643,27 @@ export class PaymentRequestService {
       throw new Error("未找到已生效的付款条款，请先补齐合同付款条款");
     }
 
-    await this.assertContractDuePaymentCapacityForContract(
+    const paymentTermsStage = await tx.paymentTermsStage.findUnique({
+      where: { id: input.paymentTermsStageId },
+      select: {
+        id: true,
+        paymentTermsVersionId: true,
+        stageType: true,
+        basis: true,
+        ratioBps: true,
+        fixedAmountCents: true,
+        triggerAnchor: true,
+        dueDays: true,
+        allowsEarlyPayment: true,
+        allowsInstallments: true
+      }
+    });
+    this.assertGenericContractPaymentStage(paymentTermsStage, paymentTermsVersion.id);
+
+    await this.assertGenericContractPaymentStageCapacity(
       tx,
-      contractVersion.contractId,
-      paymentTermsVersion.id,
+      contractVersion,
+      paymentTermsStage!,
       input.requestedAmountCents
     );
     const financingQuotaAllocations = await this.reserveProjectCashPool(
@@ -637,6 +680,7 @@ export class PaymentRequestService {
         contractId: contractVersion.contractId,
         contractVersionId: contractVersion.id,
         paymentTermsVersionId: paymentTermsVersion.id,
+        paymentTermsStageId: paymentTermsStage!.id,
         code: input.code,
         status: "approval_pending",
         requestedAmountCents: input.requestedAmountCents,
@@ -691,6 +735,154 @@ export class PaymentRequestService {
     return payment;
   }
 
+  private assertGenericContractPaymentStage(
+    stage: {
+      paymentTermsVersionId: string;
+      stageType: string;
+      basis: string;
+      triggerAnchor: string;
+      ratioBps: number | null;
+      fixedAmountCents: bigint | null;
+      dueDays: number;
+    } | null,
+    paymentTermsVersionId: string
+  ): void {
+    if (!stage) {
+      throw new BadRequestException("请选择合同已冻结的付款阶段");
+    }
+    const hasValidRatio =
+      stage.ratioBps !== null &&
+      Number.isInteger(stage.ratioBps) &&
+      stage.ratioBps > 0 &&
+      stage.ratioBps <= 10000;
+    const hasValidFixedAmount =
+      stage.fixedAmountCents !== null && stage.fixedAmountCents > 0n;
+    if (
+      stage.paymentTermsVersionId !== paymentTermsVersionId ||
+      stage.stageType === "advance" ||
+      stage.basis !== "contract_amount" ||
+      stage.triggerAnchor !== "contract_effective" ||
+      hasValidRatio === hasValidFixedAmount ||
+      !Number.isSafeInteger(stage.dueDays) ||
+      stage.dueDays < 0
+    ) {
+      throw new BadRequestException("请选择合同已冻结的付款阶段");
+    }
+  }
+
+  private async assertGenericContractPaymentStageCapacity(
+    tx: Prisma.TransactionClient,
+    contractVersion: {
+      id: string;
+      contractId: string;
+      amountCents: bigint;
+      effectiveAt: Date | null;
+    },
+    stage: {
+      id: string;
+      paymentTermsVersionId: string;
+      stageType: string;
+      basis: string;
+      ratioBps: number | null;
+      fixedAmountCents: bigint | null;
+      triggerAnchor: string;
+      dueDays: number;
+      allowsEarlyPayment: boolean;
+      allowsInstallments: boolean;
+    },
+    requestedAmountCents: bigint
+  ): Promise<void> {
+    await this.lockContractAdvancePaymentRows(tx, contractVersion.contractId);
+    const effectiveAt = contractVersion.effectiveAt;
+    if (!effectiveAt) {
+      throw new BadRequestException("合同生效日期缺失，不能核算冻结付款阶段");
+    }
+    const dueAt = new Date(
+      effectiveAt.getTime() + Math.max(stage.dueDays, 0) * 24 * 60 * 60 * 1000
+    );
+    const contractAmountCents = dbMoneyToBigInt(contractVersion.amountCents, "合同金额");
+    const configuredAmountCents = stage.fixedAmountCents !== null
+      ? dbMoneyToBigInt(stage.fixedAmountCents, "付款阶段固定金额")
+      : (contractAmountCents * BigInt(Math.max(stage.ratioBps ?? 0, 0))) / 10000n;
+    const stagePayableCents = dueAt <= new Date() || stage.allowsEarlyPayment
+      ? (configuredAmountCents < contractAmountCents ? configuredAmountCents : contractAmountCents)
+      : 0n;
+    const occupiedRequests = await tx.paymentRequest.findMany({
+      where: {
+        contractId: contractVersion.contractId,
+        status: { in: [...SETTLEMENT_CAPACITY_PAYMENT_STATUSES, "paid"] }
+      },
+      select: {
+        paymentTermsStageId: true,
+        status: true,
+        requestedAmountCents: true,
+        approvedAmountCents: true,
+        paidAmountCents: true
+      }
+    });
+    const requestOccupiedCents = (request: {
+      status: string;
+      requestedAmountCents: bigint;
+      approvedAmountCents: bigint | null;
+      paidAmountCents: bigint;
+    }) => request.paidAmountCents + this.paymentRequestOutstandingCents(request);
+    const occupiedCents = occupiedRequests
+      .filter((request) => request.paymentTermsStageId === stage.id)
+      .reduce(
+      (total, request) =>
+        total + requestOccupiedCents(request),
+      0n
+    );
+    const allStageOccupiedCents = occupiedRequests.reduce(
+      (total, request) => total + requestOccupiedCents(request),
+      0n
+    );
+    const [proxyPaidCents, historicalBalance] = await Promise.all([
+      this.sumProjectProxyPaymentCentsForContract(tx, contractVersion.contractId, []),
+      this.confirmedHistoricalBalanceForContract(tx, contractVersion.contractId)
+    ]);
+    const historicalAdvanceUnrecoveredCents = historicalBalance
+      ? (historicalBalance.advancePaidCents ?? 0n) -
+        (historicalBalance.advanceDeductedCents ?? 0n)
+      : 0n;
+    const historicalRetentionUnreleasedCents = historicalBalance
+      ? (historicalBalance.retentionWithheldCents ?? 0n) -
+        (historicalBalance.retentionReleasedCents ?? 0n)
+      : 0n;
+    const historicalOccupiedCents = historicalBalance
+      ? (historicalBalance.paidCents ?? 0n) +
+        (historicalBalance.approvalPendingPaymentCents ?? 0n) +
+        (historicalBalance.approvedPendingPaymentCents ?? 0n) +
+        (historicalBalance.proxyPaidCents ?? 0n) +
+        (historicalAdvanceUnrecoveredCents > 0n ? historicalAdvanceUnrecoveredCents : 0n) +
+        (historicalRetentionUnreleasedCents > 0n ? historicalRetentionUnreleasedCents : 0n) +
+        (historicalBalance.otherConfirmedOccupancyCents ?? 0n)
+      : 0n;
+    const stageRemainingCents = stagePayableCents - occupiedCents;
+    const contractRemainingCents =
+      contractAmountCents - allStageOccupiedCents - proxyPaidCents - historicalOccupiedCents;
+    const remainingCents = stageRemainingCents < contractRemainingCents
+      ? stageRemainingCents
+      : contractRemainingCents;
+    if (stage.allowsInstallments === false && occupiedCents > 0n) {
+      throw new BadRequestException("该付款阶段不允许分次申请，已有付款申请占用该阶段额度");
+    }
+    if (stage.allowsInstallments === false && requestedAmountCents !== remainingCents) {
+      throw new BadRequestException(
+        `该付款阶段不允许分次申请，本次申请金额必须等于当前可申请金额 ${formatMoneyCentsAsYuan(
+          remainingCents > 0n ? remainingCents : 0n
+        )} 元`
+      );
+    }
+    if (requestedAmountCents > remainingCents) {
+      throw new BadRequestException(
+        `合同付款阶段当前可申请金额不足，当前最多可申请 ${formatMoneyCentsAsYuan(
+          remainingCents > 0n ? remainingCents : 0n
+        )} 元`
+      );
+    }
+  }
+
   private async createContractAdvancePaymentRequest(
     tx: Prisma.TransactionClient,
     input: NormalizedCreatePaymentRequest,
@@ -728,10 +920,16 @@ export class PaymentRequestService {
 
     const contract = await tx.contract.findUnique({
       where: { id: contractVersion.contractId },
-      select: { projectId: true }
+      select: { projectId: true, contractTypeKey: true }
     });
     if (!contract) {
       throw new Error("未找到关联合同，请刷新合同台账后重试");
+    }
+    if (
+      contract.contractTypeKey !== "generic_contract" &&
+      !SETTLEMENT_PAYMENT_CONTRACT_TYPES.has(contract.contractTypeKey ?? "")
+    ) {
+      throw new BadRequestException("请先明确合同类型，再发起预付款申请");
     }
 
     await this.lockContractAdvancePaymentRows(tx, contractVersion.contractId);
@@ -1634,6 +1832,8 @@ export class PaymentRequestService {
         "projectId",
         "contractId",
         "contractVersionId",
+        "paymentTermsVersionId",
+        "paymentTermsStageId",
         "settlementId",
         "sourceType",
         "status",
@@ -2197,6 +2397,74 @@ export class PaymentRequestService {
     paidAt: Date,
     actorUserId: string
   ): Promise<void> {
+    if (payment.paymentTermsStageId && payment.paymentTermsVersionId) {
+      const [contractVersion, stage] = await Promise.all([
+        tx.contractVersion.findUnique({
+          where: { id: payment.contractVersionId },
+          select: { id: true, amountCents: true, effectiveAt: true }
+        }),
+        tx.paymentTermsStage.findUnique({
+          where: { id: payment.paymentTermsStageId },
+          select: {
+            id: true,
+            paymentTermsVersionId: true,
+            name: true,
+            stageType: true,
+            basis: true,
+            ratioBps: true,
+            fixedAmountCents: true,
+            triggerAnchor: true,
+            dueDays: true
+          }
+        })
+      ]);
+
+      if (!contractVersion || !contractVersion.effectiveAt) {
+        throw new BadRequestException("合同生效事实缺失，不能登记实付");
+      }
+      this.assertGenericContractPaymentStage(stage, payment.paymentTermsVersionId);
+
+      const contractAmountCents = dbMoneyToBigInt(contractVersion.amountCents, "合同金额");
+      const configuredAmountCents = stage!.fixedAmountCents !== null
+        ? dbMoneyToBigInt(stage!.fixedAmountCents, "付款阶段固定金额")
+        : (contractAmountCents * BigInt(Math.max(stage!.ratioBps ?? 0, 0))) / 10000n;
+      const sourcePayableAmountCents = configuredAmountCents < contractAmountCents
+        ? configuredAmountCents
+        : contractAmountCents;
+      const expectedPayableAt = new Date(
+        contractVersion.effectiveAt.getTime() + Math.max(stage!.dueDays, 0) * 24 * 60 * 60 * 1000
+      );
+
+      await tx.paymentExecutionAllocation.createMany({
+        data: [{
+          paymentExecutionId,
+          paymentRequestId: payment.id,
+          projectId: payment.projectId,
+          contractId: payment.contractId,
+          contractVersionId: contractVersion.id,
+          settlementId: null,
+          sourceType: "contract_due",
+          allocationType: "contract_due_payment",
+          sourceRowId: `contract:${payment.paymentTermsVersionId}:${stage!.id}`,
+          paymentTermsVersionId: payment.paymentTermsVersionId,
+          stageType: stage!.stageType,
+          stageId: stage!.id,
+          stageName: stage!.name,
+          triggerAnchor: stage!.triggerAnchor,
+          dueDays: stage!.dueDays,
+          ratioBps: stage!.ratioBps,
+          fixedAmountCents: stage!.fixedAmountCents,
+          sourceEffectiveAt: contractVersion.effectiveAt,
+          expectedPayableAt,
+          sourcePayableAmountCents,
+          amountCents,
+          allocationOrder: 0,
+          createdByUserId: actorUserId
+        }]
+      });
+      return;
+    }
+
     const contractSettlements = await tx.settlement.findMany({
       where: {
         contractId: payment.contractId,

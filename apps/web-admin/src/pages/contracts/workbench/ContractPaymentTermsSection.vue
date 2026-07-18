@@ -17,7 +17,7 @@
 
     <div class="field-grid">
       <label class="field">
-        <span class="field-label">当期结算款比例（%）</span>
+        <span class="field-label">{{ ratioLabel }}</span>
         <t-input
           :value="ratioPercentText"
           :disabled="disabled"
@@ -27,7 +27,7 @@
       </label>
 
       <label class="field">
-        <span class="field-label">结算生效后付款期限（天）</span>
+        <span class="field-label">{{ dueDaysLabel }}</span>
         <t-input
           :value="dueDaysText"
           :disabled="disabled"
@@ -62,6 +62,7 @@ import type { ContractDraftModel } from "./use-contract-draft";
 
 const props = defineProps<{
   model: ContractDraftModel;
+  contractTypeKey: string;
   disabled: boolean;
 }>();
 
@@ -72,6 +73,16 @@ const ratioPercentText = computed(() =>
 );
 const dueDaysText = computed(() =>
   props.model.paymentDueDays === null ? "" : String(props.model.paymentDueDays)
+);
+const ratioLabel = computed(() =>
+  props.contractTypeKey === "generic_contract"
+    ? "合同可付款比例（%）"
+    : "当期结算款比例（%）"
+);
+const dueDaysLabel = computed(() =>
+  props.contractTypeKey === "generic_contract"
+    ? "合同生效后付款期限（天）"
+    : "结算生效后付款期限（天）"
 );
 
 function onRatioChange(value: string) {

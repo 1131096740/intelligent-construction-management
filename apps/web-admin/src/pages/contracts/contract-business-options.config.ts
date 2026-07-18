@@ -15,6 +15,7 @@ export interface BusinessSelectOption<T> {
 
 export interface PaymentCreateBusinessForm {
   sourceType: PaymentCreateSourceType;
+  paymentTermsStageId?: string;
   code: string;
   requestedAmountYuan: string;
 }
@@ -103,9 +104,16 @@ export function buildPaymentCreatePayload(
     throw new Error(contract?.paymentUnavailableReason ?? "请选择可付款合同");
   }
 
+  if (form.sourceType === "contract_due" && !form.paymentTermsStageId?.trim()) {
+    throw new Error("请选择合同已冻结的付款阶段");
+  }
+
   return {
     ...commonPayload,
-    contractVersionId: contract.contractVersionId
+    contractVersionId: contract.contractVersionId,
+    ...(form.sourceType === "contract_due"
+      ? { paymentTermsStageId: form.paymentTermsStageId!.trim() }
+      : {})
   };
 }
 

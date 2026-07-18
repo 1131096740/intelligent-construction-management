@@ -457,12 +457,17 @@ export class ContractReadService {
         takeover
       );
       const settlementTypeBlockReason = settlementContractTypeBlockReason(contract.contractTypeKey);
+      const paymentTypeBlockReason =
+        contract.contractTypeKey === "generic_contract" || !settlementTypeBlockReason
+          ? null
+          : "请先明确合同类型，再发起付款申请";
 
       return {
         contractId: contract.id,
         contractVersionId: effectiveVersion?.id ?? null,
         contractNo: contract.code ?? contract.temporaryCode ?? contract.id,
         contractName: contract.name,
+        contractTypeKey: contract.contractTypeKey ?? null,
         counterparty: contract.counterparty,
         amountCents: this.centsValue(effectiveVersion?.amountCents ?? latestVersion?.amountCents ?? 0n),
         versionLabel: effectiveVersion ? `合同 v${effectiveVersion.versionNo}` : "-",
@@ -481,8 +486,8 @@ export class ContractReadService {
         settlementUnavailableReason: effectiveVersion
           ? settlementTypeBlockReason
           : "合同尚未生效，不能发起结算",
-        canCreatePayment: !paymentUnavailableReason,
-        paymentUnavailableReason,
+        canCreatePayment: !paymentUnavailableReason && !paymentTypeBlockReason,
+        paymentUnavailableReason: paymentUnavailableReason ?? paymentTypeBlockReason,
         settlements: (settlementsByContractId.get(contract.id) ?? []).map((settlement) => {
           const canCreatePayment = canCreatePaymentFromSettlementStatus(settlement.status as SettlementStatus);
           return {
@@ -870,6 +875,7 @@ export class ContractReadService {
       id: string;
       settlementId: string | null;
       sourceType?: string | null;
+      paymentTermsStageId?: string | null;
       code: string;
       status: string;
       requestedAmountCents: bigint;
@@ -1018,7 +1024,9 @@ export class ContractReadService {
         paymentNo: payment.code,
         settlementNo: payment.settlementId
           ? (settlementNoById.get(payment.settlementId) ?? payment.settlementId)
-          : this.paymentSourceLabel(payment.sourceType),
+          : payment.sourceType === "contract_due" && payment.paymentTermsStageId
+            ? "合同冻结阶段直接付款"
+            : this.paymentSourceLabel(payment.sourceType),
         requestedAmount: this.formatMoney(payment.requestedAmountCents),
         approvedAmount: approved ? this.formatMoney(approvedCents) : "待审批",
         paidAmount: this.formatMoney(paidCents),

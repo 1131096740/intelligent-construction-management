@@ -50,6 +50,12 @@ const PRICING_NATURES = new Set([
 const AMOUNT_SOURCES = new Set(["bill_sum", "manual"]);
 const CHECKPOINT_RETRY_LIMIT = 3;
 const PAYMENT_STAGE_TRIGGER_EVENT = "结算归档确认生效";
+const SETTLEMENT_CONTRACT_TYPE_KEYS = new Set([
+  "material_purchase",
+  "equipment_rental",
+  "labor_subcontract",
+  "professional_subcontract"
+]);
 
 interface TemplateSnapshot {
   fieldSchema: ContractFieldDefinition[];
@@ -310,7 +316,7 @@ export class ContractWorkbenchService {
   ) {
     const input = this.parseSaveInput(rawInput);
     return this.prisma.$transaction(async (tx) => {
-      const { version } = await this.lockAndReloadOwnedEditableVersion(
+      const { version, contract } = await this.lockAndReloadOwnedEditableVersion(
         tx,
         contractVersionId,
         actorUserId
@@ -446,7 +452,7 @@ export class ContractWorkbenchService {
         !isChangeVersion &&
         (input.paymentTermsOriginalText !== undefined || input.paymentStages !== undefined)
       ) {
-        await this.savePaymentTerms(tx, version.id, input);
+        await this.savePaymentTerms(tx, version.id, contract.contractTypeKey, input);
       }
       await this.markOlderSuccessfulDocumentsStale(
         tx,
@@ -1344,8 +1350,8 @@ export class ContractWorkbenchService {
       if (typeof record.name !== "string" || !record.name.trim()) {
         throw new BadRequestException(`第 ${index + 1} 条付款条款缺少阶段名称。`);
       }
-      if (record.basis !== "current_settlement") {
-        throw new BadRequestException(`第 ${index + 1} 条付款条款必须按当期结算计算。`);
+      if (record.basis !== "current_settlement" && record.basis !== "contract_amount") {
+        throw new BadRequestException(`第 ${index + 1} 条付款条款的计算基础不正确。`);
       }
       if (
         typeof record.ratioBps !== "number" ||
@@ -1370,19 +1376,23 @@ export class ContractWorkbenchService {
       }
       return {
         name: record.name.trim(),
-        basis: "current_settlement",
+        basis: record.basis,
         ratioBps: record.ratioBps,
         triggerEvent:
           typeof record.triggerEvent === "string" && record.triggerEvent.trim()
             ? record.triggerEvent.trim()
-            : PAYMENT_STAGE_TRIGGER_EVENT,
+            : record.basis === "contract_amount"
+              ? "合同归档确认生效"
+              : PAYMENT_STAGE_TRIGGER_EVENT,
         dueDays: record.dueDays,
         requiresInvoice: record.requiresInvoice,
         allowsInstallments: record.allowsInstallments,
         originalText:
           typeof record.originalText === "string" && record.originalText.trim()
             ? record.originalText.trim()
-            : PAYMENT_STAGE_TRIGGER_EVENT
+            : record.basis === "contract_amount"
+              ? "合同归档确认生效后按约定比例付款。"
+              : PAYMENT_STAGE_TRIGGER_EVENT
       };
     });
   }
@@ -1390,6 +1400,7 @@ export class ContractWorkbenchService {
   private async savePaymentTerms(
     tx: Prisma.TransactionClient,
     contractVersionId: string,
+    contractTypeKey: string | null,
     input: SaveContractDraftDto
   ) {
     const terms = await tx.paymentTermsVersion.findFirst({
@@ -1408,6 +1419,22 @@ export class ContractWorkbenchService {
       where: { paymentTermsVersionId: terms.id }
     });
     if (input.paymentStages?.length) {
+      if (
+        contractTypeKey !== "generic_contract" &&
+        !SETTLEMENT_CONTRACT_TYPE_KEYS.has(contractTypeKey ?? "")
+      ) {
+        throw new BadRequestException("合同类型不正确，不能保存付款条款");
+      }
+      const expectedBasis = contractTypeKey === "generic_contract"
+        ? "contract_amount"
+        : "current_settlement";
+      if (input.paymentStages.some((stage) => stage.basis !== expectedBasis)) {
+        throw new BadRequestException(
+          contractTypeKey === "generic_contract"
+            ? "通用合同付款条款必须按合同金额计算"
+            : "该合同类型付款条款必须按当期结算计算"
+        );
+      }
       await tx.paymentTermsStage.createMany({
         data: input.paymentStages.map((stage) => ({
           paymentTermsVersionId: terms.id,
@@ -1415,7 +1442,9 @@ export class ContractWorkbenchService {
           stageType: "progress",
           basis: stage.basis,
           ratioBps: stage.ratioBps,
-          triggerAnchor: "settlement_effective",
+          triggerAnchor: stage.basis === "contract_amount"
+            ? "contract_effective"
+            : "settlement_effective",
           triggerEvent: stage.triggerEvent,
           dueDays: stage.dueDays,
           requiresInvoice: stage.requiresInvoice,
@@ -2010,7 +2039,9 @@ export class ContractWorkbenchService {
           basis: stage.basis,
           ratioBps: stage.ratioBps,
           fixedAmountCents: null,
-          triggerAnchor: "settlement_effective",
+          triggerAnchor: stage.basis === "contract_amount"
+            ? "contract_effective"
+            : "settlement_effective",
           triggerEvent: stage.triggerEvent,
           dueDays: stage.dueDays,
           advanceDeductionMode: "none",

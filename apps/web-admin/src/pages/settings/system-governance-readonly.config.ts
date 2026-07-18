@@ -5,6 +5,11 @@ import type {
   SettlementStatus
 } from "@jiangkong/shared-domain";
 import {
+  CONTRACT_VERSION_STATUSES,
+  PAYMENT_REQUEST_STATUSES,
+  SETTLEMENT_STATUSES
+} from "@jiangkong/shared-domain";
+import {
   comprehensiveExpenseSubtypeOptions,
   expensePaymentMethodOptions,
   expenseTypeOptions,
@@ -82,9 +87,9 @@ const paymentStatusLabels = {
   voided: "已作废"
 } satisfies Record<PaymentRequestStatus, string>;
 
-const contractVersionStatuses = Object.keys(contractStatusLabels) as ContractVersionStatus[];
-const settlementStatuses = Object.keys(settlementStatusLabels) as SettlementStatus[];
-const paymentRequestStatuses = Object.keys(paymentStatusLabels) as PaymentRequestStatus[];
+const contractVersionStatuses = CONTRACT_VERSION_STATUSES;
+const settlementStatuses = SETTLEMENT_STATUSES;
+const paymentRequestStatuses = PAYMENT_REQUEST_STATUSES;
 
 const filePurposeEntries: ReadonlyDictionaryEntry[] = [
   {

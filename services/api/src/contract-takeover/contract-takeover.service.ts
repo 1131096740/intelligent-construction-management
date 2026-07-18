@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { normalizeTaxRatePercent } from "@jiangkong/shared-domain";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -93,6 +93,12 @@ const MONEY_FIELD_LABELS: Record<(typeof MONEY_FIELDS)[number], string> = {
   otherConfirmedOccupancyCents: "其他确认占用"
 };
 const IMPORT_PRECHECK_MAX_ROWS = 200;
+const SETTLEMENT_CONTRACT_TYPE_KEYS = new Set([
+  "material_purchase",
+  "equipment_rental",
+  "labor_subcontract",
+  "professional_subcontract"
+]);
 
 type TakeoverClient = Pick<Prisma.TransactionClient, "contractTakeover">;
 
@@ -119,6 +125,7 @@ type TakeoverReadClient = Pick<
   | "contract"
   | "contractVersion"
   | "paymentTermsVersion"
+  | "paymentTermsStage"
   | "contractTakeoverBatch"
   | "contractTakeoverCorrection"
   | "settlement"
@@ -145,6 +152,21 @@ type HistoricalContractVersionFacts = {
   taxFactStatus?: string | null;
   taxFactSource?: string | null;
   taxFactExplanation?: string | null;
+};
+
+type HistoricalPaymentTermsStageRecord = {
+  id: string;
+  paymentTermsVersionId: string;
+  name: string;
+  stageType: string;
+  basis: string;
+  ratioBps: number | null;
+  fixedAmountCents: bigint | null;
+  triggerAnchor: string;
+  dueDays: number;
+  requiresInvoice: boolean;
+  allowsEarlyPayment: boolean;
+  allowsInstallments: boolean;
 };
 
 type HistoricalContractBillRecord = {
@@ -245,8 +267,10 @@ export interface ContractTakeoverBusinessReadModel {
   contractName: string;
   counterparty: string;
   companyEntityName: string | null;
+  contractTypeKey: string | null;
   amountCents: string;
   paymentTermsOriginalText: string;
+  paymentStages: HistoricalTakeoverDirectPaymentStageReadModel[];
   invoiceType: string | null;
   taxMode: string;
   defaultTaxRatePercent: string | null;
@@ -293,6 +317,17 @@ export interface ContractTakeoverBusinessReadModel {
   postConfirmationVerification: ContractTakeoverPostConfirmationVerificationReadModel;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface HistoricalTakeoverDirectPaymentStageReadModel {
+  id: string;
+  name: string;
+  ratioBps: number | null;
+  fixedAmountCents: string | null;
+  dueDays: number;
+  requiresInvoice: boolean;
+  allowsEarlyPayment: boolean;
+  allowsInstallments: boolean;
 }
 
 export interface HistoricalPricingItemReadModel {
@@ -513,9 +548,13 @@ export class ContractTakeoverService {
           originalText: data.paymentTermsOriginalText ?? ""
         }
       });
-      await tx.paymentTermsStage.createMany({
-        data: [this.takeoverInitialSettlementStage(terms.id, data.paymentTermsOriginalText)]
-      });
+      const paymentStages = this.takeoverPaymentStages(
+        terms.id,
+        data.contractTypeKey,
+        data.paymentStages,
+        data.paymentTermsOriginalText
+      );
+      await tx.paymentTermsStage.createMany({ data: paymentStages });
 
       const takeover = await tx.contractTakeover.create({
         data: {
@@ -594,8 +633,10 @@ export class ContractTakeoverService {
         contractName: data.name,
         counterparty: data.counterparty,
         companyEntityName: data.companyEntityName ?? null,
+        contractTypeKey: data.contractTypeKey ?? null,
         amountCents: data.amountCents,
         paymentTermsOriginalText: data.paymentTermsOriginalText ?? "",
+        paymentStages: this.takeoverDirectStageReadModels(paymentStages),
         evidenceFiles: [],
         corrections: [],
         postConfirmationVerification: postConfirmationVerificationReadModel(
@@ -664,14 +705,13 @@ export class ContractTakeoverService {
       await tx.paymentTermsStage.deleteMany({
         where: { paymentTermsVersionId: takeover.paymentTermsVersionId }
       });
-      await tx.paymentTermsStage.createMany({
-        data: [
-          this.takeoverInitialSettlementStage(
-            takeover.paymentTermsVersionId,
-            data.paymentTermsOriginalText
-          )
-        ]
-      });
+      const paymentStages = this.takeoverPaymentStages(
+        takeover.paymentTermsVersionId,
+        data.contractTypeKey,
+        data.paymentStages,
+        data.paymentTermsOriginalText
+      );
+      await tx.paymentTermsStage.createMany({ data: paymentStages });
       const updated = await tx.contractTakeover.update({
         where: { id: takeover.id },
         data: {
@@ -742,8 +782,10 @@ export class ContractTakeoverService {
         contractName: data.name,
         counterparty: data.counterparty,
         companyEntityName: data.companyEntityName ?? null,
+        contractTypeKey: data.contractTypeKey ?? null,
         amountCents: data.amountCents,
         paymentTermsOriginalText: data.paymentTermsOriginalText ?? "",
+        paymentStages: this.takeoverDirectStageReadModels(paymentStages),
         evidenceFiles: [],
         corrections: [],
         postConfirmationVerification: postConfirmationVerificationReadModel(
@@ -1205,6 +1247,8 @@ export class ContractTakeoverService {
         );
       }
 
+      await this.assertTakeoverPaymentStages(tx, takeover);
+
       const confirmedAt = new Date();
       await tx.contractVersion.update({
         where: { id: takeover.contractVersionId },
@@ -1414,6 +1458,9 @@ export class ContractTakeoverService {
     const paymentTermsClient = (client as unknown as {
       paymentTermsVersion?: TakeoverReadClient["paymentTermsVersion"];
     }).paymentTermsVersion;
+    const paymentTermsStageClient = (client as unknown as {
+      paymentTermsStage?: TakeoverReadClient["paymentTermsStage"];
+    }).paymentTermsStage;
     const archiveClient = (client as unknown as {
       archiveRecord?: TakeoverReadClient["archiveRecord"];
       fileObject?: TakeoverReadClient["fileObject"];
@@ -1450,7 +1497,8 @@ export class ContractTakeoverService {
           temporaryCode: true,
           name: true,
           counterparty: true,
-          companyEntityName: true
+          companyEntityName: true,
+          contractTypeKey: true
         }
       }),
       client.contractVersion.findMany({
@@ -1493,6 +1541,27 @@ export class ContractTakeoverService {
           })
         : Promise.resolve([])
     ]);
+    const paymentStages: HistoricalPaymentTermsStageRecord[] =
+      typeof paymentTermsStageClient?.findMany === "function"
+        ? await paymentTermsStageClient.findMany({
+            where: { paymentTermsVersionId: { in: paymentTermsVersionIds } },
+            orderBy: [{ paymentTermsVersionId: "asc" }, { createdAt: "asc" }],
+            select: {
+              id: true,
+              paymentTermsVersionId: true,
+              name: true,
+              stageType: true,
+              basis: true,
+              ratioBps: true,
+              fixedAmountCents: true,
+              triggerAnchor: true,
+              dueDays: true,
+              requiresInvoice: true,
+              allowsEarlyPayment: true,
+              allowsInstallments: true
+            }
+          })
+        : [];
     const contractBills =
       typeof pricingClient.contractBill?.findMany === "function"
         ? await pricingClient.contractBill.findMany({
@@ -1621,6 +1690,29 @@ export class ContractTakeoverService {
       ]);
     }
     const termsById = new Map(terms.map((term) => [term.id, term]));
+    const paymentStagesByTermsId = new Map<string, HistoricalTakeoverDirectPaymentStageReadModel[]>();
+    for (const stage of paymentStages) {
+      if (
+        stage.stageType === "advance" ||
+        stage.basis !== "contract_amount" ||
+        stage.triggerAnchor !== "contract_effective"
+      ) {
+        continue;
+      }
+      paymentStagesByTermsId.set(stage.paymentTermsVersionId, [
+        ...(paymentStagesByTermsId.get(stage.paymentTermsVersionId) ?? []),
+        {
+          id: stage.id,
+          name: stage.name,
+          ratioBps: stage.ratioBps,
+          fixedAmountCents: stage.fixedAmountCents?.toString() ?? null,
+          dueDays: stage.dueDays,
+          requiresInvoice: stage.requiresInvoice,
+          allowsEarlyPayment: stage.allowsEarlyPayment,
+          allowsInstallments: stage.allowsInstallments
+        }
+      ]);
+    }
     const batchById = new Map(batches.map((batch) => [batch.id, batch]));
     const fileById = new Map(files.map((file) => [file.id, file]));
     const userNameById = new Map(users.map((user) => [user.id, user.name]));
@@ -1654,10 +1746,12 @@ export class ContractTakeoverService {
         contractName: contractById.get(takeover.contractId)?.name ?? "未读取合同名称",
         counterparty: contractById.get(takeover.contractId)?.counterparty ?? "未读取相对方",
         companyEntityName: contractById.get(takeover.contractId)?.companyEntityName ?? null,
+        contractTypeKey: contractById.get(takeover.contractId)?.contractTypeKey ?? null,
         amountCents: versionById.get(takeover.contractVersionId)?.amountCents ?? 0n,
         contractVersion: versionById.get(takeover.contractVersionId) ?? null,
         pricingItems: pricingItemsByVersionId.get(takeover.contractVersionId) ?? [],
         paymentTermsOriginalText: termsById.get(takeover.paymentTermsVersionId)?.originalText ?? "",
+        paymentStages: paymentStagesByTermsId.get(takeover.paymentTermsVersionId) ?? [],
         batchNo: takeover.takeoverBatchId
           ? batchById.get(takeover.takeoverBatchId)?.batchNo ?? null
           : null,
@@ -1727,10 +1821,12 @@ export class ContractTakeoverService {
       contractName: string;
       counterparty: string;
       companyEntityName: string | null;
+      contractTypeKey?: string | null;
       amountCents: bigint;
       contractVersion?: HistoricalContractVersionFacts | null;
       pricingItems?: HistoricalPricingItemReadModel[];
       paymentTermsOriginalText: string;
+      paymentStages?: HistoricalTakeoverDirectPaymentStageReadModel[];
       batchNo?: string | null;
       responsibleUserName?: string | null;
       evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
@@ -1753,8 +1849,10 @@ export class ContractTakeoverService {
       contractName: contract.contractName,
       counterparty: contract.counterparty,
       companyEntityName: contract.companyEntityName,
+      contractTypeKey: contract.contractTypeKey ?? null,
       amountCents: moneyString(contract.amountCents),
       paymentTermsOriginalText: contract.paymentTermsOriginalText,
+      paymentStages: contract.paymentStages ?? [],
       invoiceType,
       taxMode: contract.contractVersion?.taxMode ?? "single_rate",
       defaultTaxRatePercent,
@@ -1965,6 +2063,7 @@ export class ContractTakeoverService {
     const signedAt = stringValue(row["signedAt"]);
     const takeoverLevel = takeoverLevelInputValue(row["takeoverLevel"]);
     const lifecycleStatus = stringValue(row["lifecycleStatus"]);
+    const contractTypeKey = stringValue(row["contractTypeKey"]);
     const evidenceChecklist = stringValue(row["evidenceChecklist"]);
     const issueSummary = stringValue(row["issueSummary"]);
 
@@ -2004,6 +2103,16 @@ export class ContractTakeoverService {
     }
     if (!LIFECYCLE_STATUSES.includes(lifecycleStatus as ContractLifecycleStatus)) {
       issues.push(issue(rowNo, "lifecycleStatus", "error", "履约状态不在系统支持范围内"));
+    }
+    if (contractTypeKey === "generic_contract") {
+      issues.push(
+        issue(
+          rowNo,
+          "contractTypeKey",
+          "error",
+          "通用合同必须逐项核对并手工录入直接付款阶段，请改用单合同补录"
+        )
+      );
     }
 
     for (const field of MONEY_FIELDS) {
@@ -2257,6 +2366,7 @@ export class ContractTakeoverService {
       code: input.code.trim(),
       name: input.name.trim(),
       counterparty: input.counterparty.trim(),
+      contractTypeKey: input.contractTypeKey?.trim() || undefined,
       takeoverLevel: takeoverLevel as ContractTakeoverLevel,
       suggestedTakeoverLevel: suggestedLevel,
       takeoverLevelAdjustmentReason:
@@ -2439,6 +2549,104 @@ export class ContractTakeoverService {
     };
   }
 
+  private takeoverPaymentStages(
+    paymentTermsVersionId: string,
+    contractTypeKey: string | undefined,
+    stages: CreateContractTakeoverDto["paymentStages"],
+    originalText?: string
+  ): Prisma.PaymentTermsStageCreateManyInput[] {
+    const normalizedType = contractTypeKey?.trim() ?? "";
+    if (normalizedType !== "generic_contract") {
+      if (stages?.length) {
+        throw new BadRequestException("该合同类型必须依据生效结算付款，不能录入直接付款阶段");
+      }
+      return [
+        {
+          id: randomUUID(),
+          ...this.takeoverInitialSettlementStage(paymentTermsVersionId, originalText)
+        }
+      ];
+    }
+    if (!stages?.length) {
+      throw new BadRequestException("通用合同历史接管必须按原合同条款录入至少一个直接付款阶段");
+    }
+
+    return stages.map((stage, index) => {
+      const name = stage.name?.trim();
+      if (!name) {
+        throw new BadRequestException(`第 ${index + 1} 个付款阶段缺少名称`);
+      }
+      const hasRatio = stage.ratioBps !== undefined;
+      const hasFixedAmount = stage.fixedAmountCents !== undefined;
+      if (hasRatio === hasFixedAmount) {
+        throw new BadRequestException(`付款阶段“${name}”必须在付款比例和固定金额中仅选一项`);
+      }
+      if (
+        hasRatio &&
+        (!Number.isInteger(stage.ratioBps) || stage.ratioBps! <= 0 || stage.ratioBps! > 10000)
+      ) {
+        throw new BadRequestException(`付款阶段“${name}”的付款比例必须在 1 到 10000 之间`);
+      }
+      const fixedAmountCents = hasFixedAmount
+        ? parseMoneyCentsInput(
+            stage.fixedAmountCents!,
+            `付款阶段“${name}”固定金额`,
+            `付款阶段“${name}”的固定金额必须大于 0`
+          )
+        : null;
+      if (fixedAmountCents !== null && fixedAmountCents <= 0n) {
+        throw new BadRequestException(`付款阶段“${name}”的固定金额必须大于 0`);
+      }
+      if (!Number.isInteger(stage.dueDays) || stage.dueDays < 0) {
+        throw new BadRequestException(`付款阶段“${name}”的付款期限必须是 0 或更大的整数天`);
+      }
+
+      return {
+        id: randomUUID(),
+        paymentTermsVersionId,
+        name,
+        stageType: "progress",
+        basis: "contract_amount",
+        ratioBps: hasRatio ? stage.ratioBps : null,
+        fixedAmountCents,
+        triggerAnchor: "contract_effective",
+        triggerEvent: `${name}：合同生效后按原合同条款申请`,
+        dueDays: stage.dueDays,
+        requiresInvoice: stage.requiresInvoice,
+        allowsEarlyPayment: stage.allowsEarlyPayment,
+        allowsInstallments: stage.allowsInstallments,
+        originalText: originalText?.trim() || name
+      };
+    });
+  }
+
+  private takeoverDirectStageReadModels(
+    stages: Prisma.PaymentTermsStageCreateManyInput[]
+  ): HistoricalTakeoverDirectPaymentStageReadModel[] {
+    return stages.flatMap((stage) => {
+      if (
+        !stage.id ||
+        stage.stageType === "advance" ||
+        stage.basis !== "contract_amount" ||
+        stage.triggerAnchor !== "contract_effective"
+      ) {
+        return [];
+      }
+      return [
+        {
+          id: stage.id,
+          name: stage.name,
+          ratioBps: stage.ratioBps ?? null,
+          fixedAmountCents: stage.fixedAmountCents?.toString() ?? null,
+          dueDays: stage.dueDays,
+          requiresInvoice: stage.requiresInvoice ?? false,
+          allowsEarlyPayment: stage.allowsEarlyPayment ?? false,
+          allowsInstallments: stage.allowsInstallments ?? true
+        }
+      ];
+    });
+  }
+
   private async createHistoricalInitialSettlement(
     tx: Prisma.TransactionClient,
     takeover: ContractTakeoverRecord
@@ -2470,6 +2678,69 @@ export class ContractTakeoverService {
         sourceTakeoverId: takeover.id
       }
     });
+  }
+
+  private async assertTakeoverPaymentStages(
+    tx: Prisma.TransactionClient,
+    takeover: ContractTakeoverRecord
+  ) {
+    const [contract, stages] = await Promise.all([
+      tx.contract.findUnique({
+        where: { id: takeover.contractId },
+        select: { contractTypeKey: true }
+      }),
+      tx.paymentTermsStage.findMany({
+        where: { paymentTermsVersionId: takeover.paymentTermsVersionId },
+        select: {
+          id: true,
+          name: true,
+          stageType: true,
+          basis: true,
+          ratioBps: true,
+          fixedAmountCents: true,
+          triggerAnchor: true,
+          dueDays: true,
+          requiresInvoice: true,
+          allowsEarlyPayment: true,
+          allowsInstallments: true
+        }
+      })
+    ]);
+    const contractTypeKey = contract?.contractTypeKey?.trim() ?? "";
+    if (contractTypeKey === "generic_contract") {
+      const validDirectStages = stages.filter((stage) => {
+        const hasRatio = stage.ratioBps !== null && stage.ratioBps > 0;
+        const hasFixedAmount = stage.fixedAmountCents !== null && stage.fixedAmountCents > 0n;
+        return (
+          stage.name.trim().length > 0 &&
+          stage.stageType !== "advance" &&
+          stage.basis === "contract_amount" &&
+          stage.triggerAnchor === "contract_effective" &&
+          hasRatio !== hasFixedAmount &&
+          Number.isInteger(stage.dueDays) &&
+          stage.dueDays >= 0
+        );
+      });
+      if (!stages.length || validDirectStages.length !== stages.length) {
+        throw new BadRequestException(
+          "通用合同的直接付款阶段未完整录入，请按原合同条款补齐后再确认接管"
+        );
+      }
+      return;
+    }
+    if (!SETTLEMENT_CONTRACT_TYPE_KEYS.has(contractTypeKey)) {
+      throw new BadRequestException("请先明确历史合同类型，再确认接管");
+    }
+    const hasValidSettlementStage = stages.some(
+      (stage) =>
+        stage.basis === "current_settlement" &&
+        stage.triggerAnchor === "settlement_effective" &&
+        stage.ratioBps !== null &&
+        stage.ratioBps > 0
+    );
+    if (!hasValidSettlementStage) {
+      throw new BadRequestException("该合同类型缺少有效的结算付款阶段，暂不能确认接管");
+    }
   }
 }
 

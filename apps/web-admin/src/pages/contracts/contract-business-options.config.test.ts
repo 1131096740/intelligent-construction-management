@@ -58,12 +58,14 @@ describe("contract business options configuration", () => {
     expect(
       buildPaymentCreatePayload(selectedContract, null, {
         sourceType: "contract_due",
+        paymentTermsStageId: "stage-due-1",
         code: " FK-001 ",
         requestedAmountYuan: "2500"
       })
     ).toEqual({
       sourceType: "contract_due",
       contractVersionId: "version-1",
+      paymentTermsStageId: "stage-due-1",
       code: "FK-001",
       requestedAmountCents: "250000"
     });
@@ -79,6 +81,16 @@ describe("contract business options configuration", () => {
       code: "FK-002",
       requestedAmountCents: "99999"
     });
+  });
+
+  it("requires a frozen payment stage for a new contract-due request", () => {
+    expect(() =>
+      buildPaymentCreatePayload(contract(), null, {
+        sourceType: "contract_due",
+        code: "FK-004",
+        requestedAmountYuan: "1"
+      })
+    ).toThrow("请选择合同已冻结的付款阶段");
   });
 
   it("keeps blocked historical contracts out of payment payloads", () => {
@@ -98,6 +110,7 @@ function contract(): ContractBusinessOptionReadModel {
     contractVersionId: "version-1",
     contractNo: "HT-001",
     contractName: "材料采购合同",
+    contractTypeKey: "material_purchase",
     counterparty: "供应商",
     amountCents: "100000000",
     versionLabel: "合同 v1",

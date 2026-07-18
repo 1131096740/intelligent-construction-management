@@ -283,8 +283,10 @@ export interface ContractTakeoverReadModel {
   contractName: string;
   counterparty: string;
   companyEntityName: string | null;
+  contractTypeKey?: string | null;
   amountCents: ContractTakeoverCentsValue;
   paymentTermsOriginalText: string;
+  paymentStages?: HistoricalTakeoverDirectPaymentStageReadModel[];
   invoiceType: ContractInvoiceType | null;
   taxMode: ContractTaxMode;
   defaultTaxRatePercent: string | null;
@@ -333,6 +335,27 @@ export interface ContractTakeoverReadModel {
   updatedAt: string;
 }
 
+export interface HistoricalTakeoverDirectPaymentStageReadModel {
+  id: string;
+  name: string;
+  ratioBps: number | null;
+  fixedAmountCents: ContractTakeoverCentsValue | null;
+  dueDays: number;
+  requiresInvoice: boolean;
+  allowsEarlyPayment: boolean;
+  allowsInstallments: boolean;
+}
+
+export interface HistoricalTakeoverDirectPaymentStagePayload {
+  name: string;
+  ratioBps?: number;
+  fixedAmountCents?: string;
+  dueDays: number;
+  requiresInvoice: boolean;
+  allowsEarlyPayment: boolean;
+  allowsInstallments: boolean;
+}
+
 export interface HistoricalPricingItemPayload {
   billKey: string;
   billName: string;
@@ -367,6 +390,7 @@ export interface CreateContractTakeoverPayload {
   takeoverLevel: ContractTakeoverLevel;
   lifecycleStatus: ContractLifecycleStatus;
   paymentTermsOriginalText?: string;
+  paymentStages?: HistoricalTakeoverDirectPaymentStagePayload[];
   historicalSettledCents?: string;
   historicalApprovalPendingPaymentCents?: string;
   historicalApprovedPendingPaymentCents?: string;
@@ -538,6 +562,7 @@ export interface CreatePaymentRequestPayload {
   settlementId?: string;
   contractVersionId?: string;
   paymentTermsVersionId?: string;
+  paymentTermsStageId?: string;
   code: string;
   requestedAmountCents: string;
 }

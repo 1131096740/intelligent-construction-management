@@ -110,6 +110,12 @@ const ADVANCE_DEDUCTION_MODES = new Set([
   "per_settlement_ratio",
   "after_cumulative_settlement_ratio"
 ]);
+const SETTLEMENT_CONTRACT_TYPES = new Set([
+  "material_purchase",
+  "equipment_rental",
+  "labor_subcontract",
+  "professional_subcontract"
+]);
 
 @Injectable()
 export class ContractService {
@@ -2220,7 +2226,11 @@ export class ContractService {
         throw new Error("该合同归档文件已处理，不能重复确认");
       }
 
-      await this.assertStructuredSettlementPaymentStage(tx, version.id);
+      await this.assertStructuredSettlementPaymentStage(
+        tx,
+        version.id,
+        version.contractId
+      );
 
       const confirmedAt = new Date();
       await tx.contractArchiveFile.update({
@@ -2298,29 +2308,72 @@ export class ContractService {
 
   private async assertStructuredSettlementPaymentStage(
     tx: Prisma.TransactionClient,
-    contractVersionId: string
+    contractVersionId: string,
+    contractId: string
   ) {
+    const contract = await tx.contract.findUnique({
+      where: { id: contractId },
+      select: { contractTypeKey: true }
+    });
+    const contractTypeKey = contract?.contractTypeKey?.trim() ?? "";
+    const isGenericContract = contractTypeKey === "generic_contract";
+    if (!isGenericContract && !SETTLEMENT_CONTRACT_TYPES.has(contractTypeKey)) {
+      throw new BadRequestException("合同类型不在支持范围内，不能确认归档生效");
+    }
+
     const terms = await tx.paymentTermsVersion.findFirst({
       where: { contractVersionId },
       select: { id: true }
     });
     if (!terms) {
       throw new BadRequestException(
-        "合同付款条款还未结构化，不能确认归档生效。请先维护结算款、付款比例、付款期限和发票要求。"
+        isGenericContract
+          ? "通用合同付款条款还未结构化，不能确认归档生效。请先维护可执行的直接付款阶段。"
+          : "合同付款条款还未结构化，不能确认归档生效。请先维护结算款、付款比例、付款期限和发票要求。"
       );
     }
 
-    const stage = await tx.paymentTermsStage.findFirst({
-      where: {
-        paymentTermsVersionId: terms.id,
-        basis: "current_settlement",
-        ratioBps: { gt: 0 }
-      },
-      select: { id: true }
+    const stages = await tx.paymentTermsStage.findMany({
+      where: { paymentTermsVersionId: terms.id },
+      select: {
+        id: true,
+        stageType: true,
+        basis: true,
+        ratioBps: true,
+        fixedAmountCents: true,
+        triggerAnchor: true,
+        dueDays: true
+      }
     });
-    if (!stage) {
+    const directStages = stages.filter((stage) => stage.stageType !== "advance");
+    const hasValidStage = isGenericContract
+      ? directStages.length > 0 && directStages.every((stage) => {
+          const hasValidRatio =
+            stage.ratioBps !== null &&
+            Number.isInteger(stage.ratioBps) &&
+            stage.ratioBps > 0 &&
+            stage.ratioBps <= 10000;
+          const hasValidFixedAmount =
+            stage.fixedAmountCents !== null && stage.fixedAmountCents > 0n;
+          return (
+            stage.basis === "contract_amount" &&
+            stage.triggerAnchor === "contract_effective" &&
+            hasValidRatio !== hasValidFixedAmount &&
+            Number.isSafeInteger(stage.dueDays) &&
+            stage.dueDays >= 0
+          );
+        })
+      : stages.some(
+          (stage) =>
+            stage.basis === "current_settlement" &&
+            stage.ratioBps !== null &&
+            stage.ratioBps > 0
+        );
+    if (!hasValidStage) {
       throw new BadRequestException(
-        "合同付款条款缺少结算款阶段，不能确认归档生效。请先维护结算款、付款比例、付款期限和发票要求。"
+        isGenericContract
+          ? "通用合同付款条款缺少可执行的直接付款阶段，不能确认归档生效。请维护非预付款、按合同金额计算且以合同生效为触发点的付款阶段。"
+          : "合同付款条款缺少结算款阶段，不能确认归档生效。请先维护结算款、付款比例、付款期限和发票要求。"
       );
     }
   }

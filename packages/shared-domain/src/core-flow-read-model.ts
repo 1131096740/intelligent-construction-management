@@ -345,6 +345,27 @@ export type ContractPaymentApplicationSectionType =
   | "final"
   | "retention";
 
+export type ContractPaymentApplicationMode =
+  | "generic_contract_stage"
+  | "settlement_required";
+
+export interface ContractPaymentStageOptionReadModel {
+  paymentTermsStageId: string;
+  paymentTermsVersionId: string;
+  name: string;
+  stageType: string;
+  basis: string;
+  triggerAnchor: string;
+  triggerEvent: string;
+  dueDays: number;
+  requiresInvoice: boolean;
+  allowsInstallments: boolean;
+  payableCents: MoneyCents;
+  occupiedCents: MoneyCents;
+  maxRequestableCents: MoneyCents;
+  disabledReason: string | null;
+}
+
 export interface ContractPaymentApplicationPreviewReadModel {
   contract: {
     contractId: string;
@@ -352,8 +373,16 @@ export interface ContractPaymentApplicationPreviewReadModel {
     contractNo: string;
     contractName: string;
     contractVersion: string;
+    contractTypeKey: string | null;
     projectId: string;
     projectName: string;
+  };
+  paymentMode: ContractPaymentApplicationMode;
+  availableStages: ContractPaymentStageOptionReadModel[];
+  genericContractCapacity: {
+    contractAmountCents: MoneyCents;
+    contractOccupiedCents: MoneyCents;
+    contractRemainingCents: MoneyCents;
   };
   asOf: string;
   includedSettlements: Array<{
@@ -441,6 +470,7 @@ export interface ContractBusinessOptionReadModel {
   contractVersionId: string | null;
   contractNo: string;
   contractName: string;
+  contractTypeKey: string | null;
   counterparty: string;
   amountCents: MoneyCents;
   versionLabel: string;

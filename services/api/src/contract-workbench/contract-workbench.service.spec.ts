@@ -822,6 +822,101 @@ describe("ContractWorkbenchService", () => {
     });
   });
 
+  it("为通用合同保存合同生效后的冻结直接付款阶段", async () => {
+    const tx = ownedVersionTx({
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "owner-1",
+          voidedAt: null,
+          contractTypeKey: "generic_contract"
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "terms-1" }),
+        update: jest.fn().mockResolvedValue({ id: "terms-1" })
+      },
+      paymentTermsStage: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+        createMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    });
+    const service = makeService(tx);
+
+    await service.saveDraft("version-1", "owner-1", {
+      expectedRevision: 4,
+      draftData: { project_name: "通用合同" },
+      clauses: [],
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      manualAmountCents: "1000000",
+      taxFacts: VALID_TAX_FACTS,
+      paymentTermsOriginalText: "合同生效后30天内付款70%。",
+      paymentStages: [
+        {
+          name: "合同约定付款",
+          basis: "contract_amount",
+          ratioBps: 7000,
+          triggerEvent: "合同归档确认生效",
+          dueDays: 30,
+          requiresInvoice: true,
+          allowsInstallments: true,
+          originalText: "合同生效后30天内付款70%。"
+        }
+      ]
+    });
+
+    expect(tx.paymentTermsStage.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          paymentTermsVersionId: "terms-1",
+          name: "合同约定付款",
+          stageType: "progress",
+          basis: "contract_amount",
+          ratioBps: 7000,
+          triggerAnchor: "contract_effective",
+          triggerEvent: "合同归档确认生效"
+        })
+      ]
+    });
+  });
+
+  it("拒绝通用合同伪造当期结算付款阶段", async () => {
+    const tx = ownedVersionTx({
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "owner-1",
+          voidedAt: null,
+          contractTypeKey: "generic_contract"
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    });
+    const service = makeService(tx);
+
+    await expect(service.saveDraft("version-1", "owner-1", {
+      expectedRevision: 4,
+      draftData: {},
+      clauses: [],
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      manualAmountCents: "1000000",
+      taxFacts: VALID_TAX_FACTS,
+      paymentStages: [{
+        name: "当期结算款",
+        basis: "current_settlement",
+        ratioBps: 10000,
+        triggerEvent: "结算归档确认生效",
+        dueDays: 0,
+        requiresInvoice: true,
+        allowsInstallments: true,
+        originalText: "不合法条款"
+      }]
+    })).rejects.toThrow("通用合同付款条款必须按合同金额计算");
+  });
+
   it("does not audit a draft save when stale document marking fails", async () => {
     const tx = ownedVersionTx({
       contractGeneratedDocument: {

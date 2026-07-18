@@ -356,6 +356,9 @@ model PaymentTermsStage {
   retentionBps                  Int?
   originalText                  String
   createdAt                     DateTime @default(now())
+  paymentRequests               PaymentRequest[] @relation("PaymentRequestFrozenStage")
+
+  @@unique([id, paymentTermsVersionId], map: "PaymentTermsStage_id_paymentTermsVersionId_key")
 }
 
 model ContractArchiveFile {
@@ -699,6 +702,7 @@ model PaymentRequest {
   contractId            String
   contractVersionId     String
   paymentTermsVersionId String
+  paymentTermsStageId   String?
   code                  String    @unique
   status                String
   requestedAmountCents  BigInt
@@ -707,6 +711,9 @@ model PaymentRequest {
   dueDate               DateTime?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
+  paymentTermsStage     PaymentTermsStage? @relation("PaymentRequestFrozenStage", fields: [paymentTermsStageId, paymentTermsVersionId], references: [id, paymentTermsVersionId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([paymentTermsStageId], map: "PaymentRequest_paymentTermsStageId_idx")
 }
 
 model PaymentExecution {

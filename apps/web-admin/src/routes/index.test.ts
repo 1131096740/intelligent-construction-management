@@ -325,7 +325,7 @@ describe("web admin routes", () => {
           meta: childRoute("结算工作台")?.meta ?? {},
           fullPath: "/结算工作台"
         },
-        { isAuthenticated: true, roleKeys: ["budget_staff"] }
+        { isAuthenticated: true, roleKeys: ["contract_staff"] }
       )
     ).toBe(true);
   });

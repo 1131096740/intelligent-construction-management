@@ -17,6 +17,7 @@ import {
   importPrecheckRowStatusLabel,
   normalizeHistoricalPricingItems,
   normalizeOptionalTaxRate,
+  normalizeTakeoverDirectPaymentStages,
   parseContractTakeoverImportPrecheckRows,
   suggestTakeoverLevel,
   takeoverActionDisabledReason,
@@ -73,6 +74,57 @@ describe("contract takeover page configuration", () => {
     expect(() => yuanToCents("-1", "历史已付")).toThrow("历史已付必须是非负数字");
     expect(() => yuanToCents("1.234", "历史已付")).toThrow("历史已付必须是非负数字");
     expect(() => yuanToCents("abc", "历史已付")).toThrow("历史已付必须是非负数字");
+  });
+
+  it("normalizes manually entered generic contract direct payment stages", () => {
+    expect(
+      normalizeTakeoverDirectPaymentStages([
+        {
+          rowKey: "stage-1",
+          name: "首期合同款",
+          amountMode: "ratio",
+          ratioPercent: "30.5",
+          fixedAmountYuan: "",
+          dueDays: "7",
+          requiresInvoice: true,
+          allowsEarlyPayment: false,
+          allowsInstallments: false
+        },
+        {
+          rowKey: "stage-2",
+          name: "验收尾款",
+          amountMode: "fixed",
+          ratioPercent: "",
+          fixedAmountYuan: "7000.00",
+          dueDays: "30",
+          requiresInvoice: true,
+          allowsEarlyPayment: false,
+          allowsInstallments: true
+        }
+      ])
+    ).toEqual([
+      expect.objectContaining({ name: "首期合同款", ratioBps: 3050, dueDays: 7 }),
+      expect.objectContaining({ name: "验收尾款", fixedAmountCents: "700000", dueDays: 30 })
+    ]);
+  });
+
+  it("rejects missing or zero generic contract direct payment facts", () => {
+    expect(() => normalizeTakeoverDirectPaymentStages([])).toThrow("至少一个");
+    expect(() =>
+      normalizeTakeoverDirectPaymentStages([
+        {
+          rowKey: "stage-1",
+          name: "合同款",
+          amountMode: "ratio",
+          ratioPercent: "0",
+          fixedAmountYuan: "",
+          dueDays: "0",
+          requiresInvoice: false,
+          allowsEarlyPayment: false,
+          allowsInstallments: true
+        }
+      ])
+    ).toThrow("必须大于 0%");
   });
 
   it("keeps optional historical tax facts explicit and validates two-decimal pricing", () => {
@@ -798,8 +850,10 @@ function takeover(): ContractTakeoverReadModel {
     contractName: "历史材料采购合同",
     counterparty: "历史供应商",
     companyEntityName: "建工智管公司",
+    contractTypeKey: "material_purchase",
     amountCents: "100000000",
     paymentTermsOriginalText: "按月结算，归档后付款",
+    paymentStages: [],
     invoiceType: "vat_special",
     taxMode: "single_rate",
     defaultTaxRatePercent: "13",

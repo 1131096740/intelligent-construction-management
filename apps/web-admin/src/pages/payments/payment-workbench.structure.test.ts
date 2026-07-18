@@ -18,7 +18,7 @@ describe("payment workbench structure", () => {
   });
 
   it("uses TDesign selections for the project, contract, source and settlement chain", () => {
-    expect(workbench.match(/<t-select/g)).toHaveLength(4);
+    expect(workbench.match(/<t-select/g)).toHaveLength(5);
     expect(workbench).toContain('v-model="createForm.projectId"');
     expect(workbench).toContain('@change="loadPaymentContracts"');
     expect(workbench).toContain('v-model="createForm.contractOptionValue"');
@@ -26,6 +26,25 @@ describe("payment workbench structure", () => {
     expect(workbench).toContain('v-model="createForm.sourceType"');
     expect(workbench).toContain('v-model="createForm.settlementOptionValue"');
     expect(workbench).not.toContain("<select");
+  });
+
+  it("makes the contract-specific payment route explicit and only exposes valid sources", () => {
+    expect(workbench).toContain("contractPaymentRoute");
+    expect(workbench).toContain("availablePaymentSourceOptions");
+    expect(workbench).toContain("通用合同按已冻结付款阶段直接申请付款");
+    expect(workbench).toContain("其他合同必须从已生效结算发起付款");
+    expect(workbench).toContain('contract.contractTypeKey === "generic_contract"');
+    expect(workbench).toContain('"unselected" | "generic_direct" | "settlement_required" | "unsupported"');
+    expect(workbench).toContain("当前合同类型尚未明确，不能判断合法付款来源");
+    expect(workbench).not.toContain("!contract.canCreateSettlement && contract.canCreatePayment");
+    expect(workbench).toContain("availablePaymentStages");
+    expect(workbench).toContain("已生效付款条款");
+    expect(workbench).toContain('v-model="createForm.paymentTermsStageId"');
+    expect(workbench).toContain("请选择合同已冻结的付款阶段");
+    expect(workbench).toContain('createForm.paymentTermsStageId = ""');
+    expect(workbench).toContain("selectedPaymentStage.value?.maxRequestableCents");
+    expect(workbench).toContain("selectedPaymentStage.value.requiresInvoice");
+    expect(workbench).toContain("toGenericDirectCapacityItems(preview, selectedPaymentStage.value)");
   });
 
   it("keeps system capacity validation and manual requested amount before creation", () => {

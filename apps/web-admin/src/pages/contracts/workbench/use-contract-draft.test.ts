@@ -379,6 +379,49 @@ describe("useContractDraft", () => {
     });
   });
 
+  it("将通用合同付款条款保存为合同生效后的直接付款阶段", async () => {
+    const draft = makeDraft();
+    const base = makeWorkbench();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench({
+      contract: { ...base.contract, contractTypeKey: "generic_contract" },
+      paymentTerms: {
+        originalText: "合同生效后30天内可付款。",
+        stages: [
+          {
+            id: "stage-direct-1",
+            name: "合同约定付款",
+            basis: "contract_amount",
+            ratioBps: 7000,
+            triggerAnchor: "contract_effective",
+            triggerEvent: "合同归档确认生效",
+            dueDays: 30,
+            requiresInvoice: true,
+            allowsInstallments: true,
+            originalText: "合同生效后30天内可付款。"
+          }
+        ]
+      }
+    }));
+    mockSaveDraft.mockResolvedValue({ version: { draftRevision: 4 } });
+
+    await draft.load("ct-1");
+    expect(draft.model.paymentRatioBps).toBe(7000);
+    draft.markDirty();
+    await draft.saveNow();
+
+    expect(mockSaveDraft.mock.calls[0]?.[1]).toMatchObject({
+      paymentStages: [
+        {
+          name: "合同约定付款",
+          basis: "contract_amount",
+          ratioBps: 7000,
+          triggerEvent: "合同归档确认生效",
+          dueDays: 30
+        }
+      ]
+    });
+  });
+
   it("saves only the stable company entity id and never resubmits derived facts", async () => {
     const draft = makeDraft();
     mockFetchWorkbench.mockResolvedValue(makeWorkbench({

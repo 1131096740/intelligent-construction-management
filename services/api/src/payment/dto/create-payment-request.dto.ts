@@ -30,6 +30,12 @@ export class CreatePaymentRequestDto {
   })
   paymentTermsVersionId?: string;
 
+  @IsOptionalNonBlankText({
+    typeMessage: "付款阶段编号必须是文字",
+    blankMessage: "付款阶段编号不能为空"
+  })
+  paymentTermsStageId?: string;
+
   @IsRequiredText({
     requiredMessage: "付款单号不能为空",
     typeMessage: "付款单号必须是文字",

@@ -1,4 +1,7 @@
-import type { ContractPaymentApplicationPreviewReadModel } from "@jiangkong/shared-domain";
+import type {
+  ContractPaymentApplicationPreviewReadModel,
+  ContractPaymentStageOptionReadModel
+} from "@jiangkong/shared-domain";
 import type { PrimaryTableCol } from "tdesign-vue-next";
 import { centsTextToYuanText } from "../../lib/money";
 
@@ -25,6 +28,11 @@ export interface PaymentSummaryItem {
   label: string;
   value: string;
   tone: PaymentTone;
+}
+
+export interface GenericDirectCapacityItem {
+  label: string;
+  value: string;
 }
 
 export type PaymentCreateSourceType = "settlement" | "contract_due" | "contract_advance";
@@ -271,6 +279,39 @@ export function toPaymentCapacityExplanationItems(
     note: item.note ?? "",
     tone: item.tone ?? "default"
   }));
+}
+
+export function toGenericDirectCapacityItems(
+  preview: ContractPaymentApplicationPreviewReadModel,
+  stage: ContractPaymentStageOptionReadModel | null
+): GenericDirectCapacityItem[] {
+  const stageMissing = "请选择付款阶段";
+  return [
+    {
+      label: "合同金额",
+      value: formatPaymentCents(preview.genericContractCapacity.contractAmountCents)
+    },
+    {
+      label: "合同累计占用",
+      value: formatPaymentCents(preview.genericContractCapacity.contractOccupiedCents)
+    },
+    {
+      label: "合同剩余额度",
+      value: formatPaymentCents(preview.genericContractCapacity.contractRemainingCents)
+    },
+    {
+      label: "阶段约定额度",
+      value: stage ? formatPaymentCents(stage.payableCents) : stageMissing
+    },
+    {
+      label: "本阶段已占用",
+      value: stage ? formatPaymentCents(stage.occupiedCents) : stageMissing
+    },
+    {
+      label: "本次最多可申请",
+      value: stage ? formatPaymentCents(stage.maxRequestableCents) : stageMissing
+    }
+  ];
 }
 
 export function paymentApplicationPreviewRowClassName(row: Pick<PaymentApplicationPreviewRow, "isDue">) {

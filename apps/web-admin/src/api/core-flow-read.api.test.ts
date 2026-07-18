@@ -861,6 +861,7 @@ describe("core flow read API client", () => {
       code: "HT-LS-2026-001",
       name: "历史材料采购合同",
       counterparty: "历史供应商",
+      contractTypeKey: "material_purchase",
       companyEntityName: "建工集团",
       amountCents: "100000000",
       invoiceType: "vat_special" as const,
@@ -1162,6 +1163,7 @@ describe("core flow read API client", () => {
     await createPaymentRequest({
       sourceType: "contract_due",
       contractVersionId: "seed-contract-version-ht-2026-001-v1",
+      paymentTermsStageId: "stage-contract-due-1",
       code: "FK-HT-2026-001",
       requestedAmountCents: "8000000"
     });
@@ -1183,6 +1185,11 @@ describe("core flow read API client", () => {
         }
       ]
     });
+    expect(JSON.parse(fetchMock.mock.calls[3][1]?.body as string)).toMatchObject({
+      sourceType: "contract_due",
+      contractVersionId: "seed-contract-version-ht-2026-001-v1",
+      paymentTermsStageId: "stage-contract-due-1"
+    });
     expect(JSON.parse(fetchMock.mock.calls[2][1]?.body as string)).toEqual({
       sourceType: "contract_advance",
       contractVersionId: "seed-contract-version-ht-2026-001-v1",
@@ -1192,6 +1199,7 @@ describe("core flow read API client", () => {
     expect(JSON.parse(fetchMock.mock.calls[3][1]?.body as string)).toEqual({
       sourceType: "contract_due",
       contractVersionId: "seed-contract-version-ht-2026-001-v1",
+      paymentTermsStageId: "stage-contract-due-1",
       code: "FK-HT-2026-001",
       requestedAmountCents: "8000000"
     });

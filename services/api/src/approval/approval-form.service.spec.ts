@@ -188,7 +188,6 @@ describe("ApprovalFormService", () => {
       "合同金额",
       "累计生效结算金额",
       "累计已付款",
-      "当前可申请余额",
       "发票类型提醒",
       "本次付款金额",
       "收款方名称",
@@ -198,7 +197,7 @@ describe("ApprovalFormService", () => {
       "备注"
     ]);
     expect(rows.find((row) => row.label === "本次付款金额")?.value).toBe("1,234.56 元");
-    expect(rows.find((row) => row.label === "当前可申请余额")?.value).toBe("—");
+    expect(rows.some((row) => row.label === "当前可申请余额")).toBe(false);
     expect(rows.find((row) => row.label === "付款事由")?.value).toBe(
       "2026-06 结算付款（SET-2026-001）"
     );
@@ -215,7 +214,6 @@ describe("ApprovalFormService", () => {
       contractAmountCents: 9007199254740993n,
       cumulativeSettledCents: 2100000001n,
       cumulativePaidCents: 1000000001n,
-      currentAvailableCents: 1100000000n
     });
 
     expect(rows.find((row) => row.label === "本次付款金额")?.value).toBe(
@@ -227,6 +225,33 @@ describe("ApprovalFormService", () => {
     expect(rows.find((row) => row.label === "累计生效结算金额")?.value).toBe(
       "21,000,000.01 元"
     );
+  });
+
+  it("将通用合同冻结阶段直接付款与结算累计付款明确区分", () => {
+    const rows = buildProjectPaymentApprovalRows({
+      payment: {
+        sourceType: "contract_due",
+        paymentTermsStageId: "stage-direct-1",
+        requestedAmountCents: 300000n
+      },
+      applicantName: "合同员甲",
+      companyName: "四川建工智管建筑工程有限公司",
+      contract: { name: "通用服务合同" },
+      contractAmountCents: 1000000n,
+      cumulativeSettledCents: 800000n,
+      paymentTermsStageName: "验收后付款"
+    });
+
+    expect(rows.find((row) => row.label === "付款类型")?.value).toBe(
+      "合同冻结阶段直接付款"
+    );
+    expect(rows.find((row) => row.label === "付款事由")?.value).toBe(
+      "通用服务合同·验收后付款直接付款"
+    );
+    expect(rows.find((row) => row.label === "合同冻结付款阶段")?.value).toBe(
+      "验收后付款"
+    );
+    expect(rows.some((row) => row.label === "累计生效结算金额")).toBe(false);
   });
 
   it("renders an approval-form PDF and archives it as a PdfDocument", async () => {

@@ -15,6 +15,7 @@ import {
   paymentSummaryItems,
   toPaymentApplicationPreviewRows,
   toPaymentCapacityExplanationItems,
+  toGenericDirectCapacityItems,
   type PaymentLedgerRow
 } from "./payment-list.config";
 
@@ -244,6 +245,42 @@ describe("payment ledger page configuration", () => {
     expect(canShowContractPaymentApplicationPreview("settlement", preview, "contract-version-1", "contract-version-1")).toBe(false);
     expect(canShowContractPaymentApplicationPreview("contract_advance", preview, "contract-version-1", "contract-version-1")).toBe(false);
   });
+
+  it("闭合展示通用合同与所选冻结阶段的可付款关系", () => {
+    const preview = contractPaymentApplicationPreview({
+      paymentMode: "generic_contract_stage",
+      genericContractCapacity: {
+        contractAmountCents: "100000000",
+        contractOccupiedCents: "40000000",
+        contractRemainingCents: "60000000"
+      }
+    });
+    const stage = {
+      paymentTermsStageId: "stage-1",
+      paymentTermsVersionId: "terms-1",
+      name: "验收款",
+      stageType: "progress",
+      basis: "contract_amount",
+      triggerAnchor: "contract_effective",
+      triggerEvent: "合同生效",
+      dueDays: 0,
+      requiresInvoice: true,
+      allowsInstallments: true,
+      payableCents: "70000000",
+      occupiedCents: "10000000",
+      maxRequestableCents: "60000000",
+      disabledReason: null
+    };
+
+    expect(toGenericDirectCapacityItems(preview, stage)).toEqual([
+      { label: "合同金额", value: "¥1,000,000.00" },
+      { label: "合同累计占用", value: "¥400,000.00" },
+      { label: "合同剩余额度", value: "¥600,000.00" },
+      { label: "阶段约定额度", value: "¥700,000.00" },
+      { label: "本阶段已占用", value: "¥100,000.00" },
+      { label: "本次最多可申请", value: "¥600,000.00" }
+    ]);
+  });
 });
 
 function contractPaymentApplicationPreview(
@@ -256,8 +293,16 @@ function contractPaymentApplicationPreview(
       contractNo: "HT-001",
       contractName: "材料采购合同",
       contractVersion: "v1",
+      contractTypeKey: "material_purchase",
       projectId: "project-1",
       projectName: "示例项目"
+    },
+    paymentMode: "settlement_required",
+    availableStages: [],
+    genericContractCapacity: {
+      contractAmountCents: "0",
+      contractOccupiedCents: "0",
+      contractRemainingCents: "0"
     },
     asOf: "2026-07-03T00:00:00.000Z",
     includedSettlements: [],

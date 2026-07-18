@@ -94,6 +94,7 @@ function contractOption(): ContractBusinessOptionReadModel {
     contractVersionId: "version-1",
     contractNo: "HT-001",
     contractName: "材料采购合同",
+    contractTypeKey: "material_purchase",
     counterparty: "供应商",
     amountCents: "1000000",
     versionLabel: "合同 v1",
