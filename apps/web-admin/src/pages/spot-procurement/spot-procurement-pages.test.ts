@@ -17,30 +17,28 @@ describe("spot procurement web pages", () => {
     expect(procurement).toContain("fetchSpotProcurements");
     expect(procurement).toContain("fetchSpotProcurementCapabilities");
     expect(procurement).toContain("createSpotProcurementDraft");
-    expect(procurement).toContain("handlerOptions");
+    expect(procurement).toContain("applicationDepartment");
+    expect(procurement).toContain("requestedArrivalAt");
     expect(payment).toContain("fetchSpotProcurementPayments");
     expect(`${procurement}\n${payment}`).not.toMatch(
       /sample|mockRows|fakeData/iu
     );
   });
 
-  it("shows controlled VAT and exact server-backed material amounts", () => {
+  it("keeps the procurement application free of supplier, price and tax fields", () => {
     const workbench = pageSource("SpotProcurementWorkbenchPage.vue");
     const detail = pageSource("SpotProcurementDetailPage.vue");
     const editor = pageSource(
       "components/ProcurementLineEditor.vue"
     );
 
-    expect(workbench).toContain("fetchVatRateOptions");
-    expect(workbench).toContain("calculateSpotProcurementLineAmountCents");
-    expect(editor).toContain("invoiceMode === 'no_invoice'");
-    expect(editor).toContain("vatRateOptionId: null");
-    expect(detail).toContain("row.amountCents");
-    expect(detail).toContain(
-      "采购草稿已保存，金额已按系统重算结果刷新"
-    );
+    expect(workbench).toContain("物资用途及采购原因");
+    expect(workbench).toContain("要求采购到位日期");
+    expect(editor).toContain("采购申请只确认材料范围和数量");
+    expect(detail).toContain("价格在付款申请中确定");
+    expect(detail).toContain("系统申请单编号");
     expect(`${workbench}\n${editor}`).not.toMatch(
-      /parseFloat|Number\s*\(/u
+      /fetchVatRateOptions|unitPrice|invoiceMode|vatRateOptionId|supplierName/u
     );
   });
 
@@ -108,9 +106,9 @@ describe("spot procurement web pages", () => {
     expect(procurement).toContain(
       "spotProcurementReferencePhotoFileError"
     );
-    expect(procurement).toContain(
-      "supplierName === current.currentVersion.supplierName"
-    );
+    expect(procurement).toContain("applicationDepartment");
+    expect(procurement).toContain("requestedArrivalAt");
+    expect(procurement).not.toMatch(/supplierName|unitPrice|invoiceMode/u);
     expect(payment).toContain('decision: "return_to_applicant"');
     expect(payment).toContain(
       "adjustedSupplierBalanceAmountCents"
@@ -147,7 +145,7 @@ describe("spot procurement web pages", () => {
     expect(coverage).toContain("票据异常");
     expect(`${workbench}\n${receipt}\n${uploader}`).not.toMatch(/navigator\.geolocation/iu);
     expect(`${workbench}\n${receipt}`).not.toMatch(/createReceiptBatch|fetchReceiptBatches/iu);
-    expect(receipt).toContain("办结后收货、差异、供应商余额和票据事实全部只读");
+    expect(receipt).toContain("办结后收货、差异、退款和票据事实全部只读");
   });
 
   it("uses the approved shared business components instead of a second UI system", () => {

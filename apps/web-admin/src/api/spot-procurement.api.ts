@@ -200,6 +200,30 @@ export interface SpotProcurementPaymentSummaryReadModel {
   visibilityRestricted: boolean;
 }
 
+export interface SpotProcurementRealPaymentSummaryReadModel {
+  status: string;
+  statusLabel: string;
+  approvalAmountCents: string | null;
+  actualPaidAmountCents: string | null;
+  refundAmountCents: string | null;
+  netPaidAmountCents: string | null;
+  remainingAmountCents: string | null;
+  visibilityRestricted: boolean;
+}
+
+export interface SpotProcurementReceiptSummaryReadModel {
+  available: boolean;
+  status: string;
+  statusLabel: string;
+  openAfterActualPayment: boolean;
+  blockedReason: string | null;
+  currentRevisionNo: number | null;
+  firstSubmittedAt: string | null;
+  submittedAt: string | null;
+  lockedAt: string | null;
+  discrepancyStatus?: string | null;
+}
+
 export interface SpotProcurementListItemReadModel {
   id: string;
   code: string;
@@ -214,20 +238,32 @@ export interface SpotProcurementListItemReadModel {
   actualCostCents: null;
   actualCost: SpotProcurementFutureUnavailableReadModel;
   invoiceComposition: SpotProcurementInvoiceComposition;
-  payment: SpotProcurementPaymentSummaryReadModel;
-  receipt: SpotProcurementFutureUnavailableReadModel;
+  payment: SpotProcurementPaymentSummaryReadModel | SpotProcurementRealPaymentSummaryReadModel;
+  receipt: SpotProcurementFutureUnavailableReadModel | SpotProcurementReceiptSummaryReadModel;
   invoiceCoverage: SpotProcurementFutureUnavailableReadModel;
   status: SpotProcurementStatus;
   statusLabel: string;
   approval: SpotProcurementApprovalSummary;
   createdAt: string;
   updatedAt: string;
+  form?: "real_application" | "legacy";
+  applicationDepartment?: string;
+  applicationName?: string;
+  purchaserName?: string;
+  purchaserDepartment?: string;
+  requestedArrivalAt?: string;
 }
 
 export interface SpotProcurementListReadModel {
   items: SpotProcurementListItemReadModel[];
   truncated: boolean;
   limit: number;
+}
+
+export interface SpotProcurementApplicationTextSuggestionReadModel {
+  applicationDepartment: string;
+  applicationName: string;
+  versionId: string;
 }
 
 export type SpotProcurementVoucherStatus = "none" | "complete" | "anomaly";
@@ -289,6 +325,11 @@ export interface SpotProcurementVersionReadModel {
   createdByUserId: string;
   createdAt: string;
   updatedAt: string;
+  applicationDepartment?: string;
+  applicationName?: string;
+  purchaserName?: string;
+  purchaserDepartment?: string;
+  requestedArrivalAt?: string;
 }
 
 export interface SpotProcurementLineReadModel {
@@ -336,6 +377,8 @@ export interface SpotProcurementDetailReadModel {
     voidReason: string | null;
     createdAt: string;
     updatedAt: string;
+    form?: "real_application" | "legacy";
+    payment?: SpotProcurementRealPaymentSummaryReadModel;
   };
   currentVersion: SpotProcurementVersionReadModel;
   versions: SpotProcurementVersionReadModel[];
@@ -345,15 +388,26 @@ export interface SpotProcurementDetailReadModel {
   approval: SpotProcurementApprovalSummary;
   approvalTimeline: ApprovalTimelineItemReadModel[];
   payments: SpotProcurementPaymentListItemReadModel[];
-  paymentSummary: SpotProcurementPaymentSummaryReadModel;
-  receipt: SpotProcurementFutureUnavailableReadModel;
+  paymentSummary: SpotProcurementPaymentSummaryReadModel | SpotProcurementRealPaymentSummaryReadModel;
+  receipt: SpotProcurementFutureUnavailableReadModel | SpotProcurementReceiptSummaryReadModel;
   invoiceCoverage: SpotProcurementInvoiceCoverageReadModel;
   invoiceLedger: SpotProcurementInvoiceLedgerReadModel;
-  discrepancy: SpotProcurementFutureUnavailableReadModel;
+  discrepancy: SpotProcurementFutureUnavailableReadModel | {
+    status: string;
+    statusLabel?: string;
+    nextStep: string | null;
+    refund?: { amountCents: string; receivedAt: string } | null;
+  };
   applicationPdf: SpotProcurementApprovalPdfReadModel;
   availableActions: DetailActionReadModel[];
   primaryAction: string | null;
   disabledReasons: string[];
+  invoice?: {
+    status: string;
+    statusLabel: string;
+    activeCount: number;
+    invoices: Array<Record<string, unknown>>;
+  };
 }
 
 export interface SpotProcurementPaymentExecutionReadModel {
@@ -466,13 +520,7 @@ export interface SpotProcurementLinePayload {
   specification?: string;
   unit: string;
   quantity: string;
-  invoiceMode: InvoiceMode;
-  invoiceType?: VatInvoiceType;
-  vatRateOptionId?: string;
-  unitPrice: string;
-  usageLocation?: string;
   note?: string;
-  amountCents?: string;
 }
 
 export interface SpotProcurementAttachmentPayload {
@@ -481,14 +529,13 @@ export interface SpotProcurementAttachmentPayload {
 }
 
 export interface SpotProcurementDraftPayload {
-  supplierPartyId?: string | null;
-  supplierName: string;
-  handlerUserId?: string;
+  applicationDepartment: string;
+  applicationName: string;
+  requestedArrivalAt: string;
   reason: string;
   note?: string | null;
   lines: SpotProcurementLinePayload[];
   attachments?: SpotProcurementAttachmentPayload[];
-  totalAmountCents?: string;
 }
 
 export interface CreateSpotProcurementDraftPayload
@@ -622,6 +669,17 @@ export function fetchSpotProcurementCapabilities(projectId: string) {
 export function fetchSpotProcurements(query: SpotProcurementListQuery = {}) {
   return readJson<SpotProcurementListReadModel>(
     withQuery("/spot-procurements", query)
+  );
+}
+
+export function fetchSpotProcurementApplicationTextSuggestions(
+  projectId: string,
+  keyword?: string
+) {
+  const search = new URLSearchParams({ projectId });
+  if (keyword?.trim()) search.set("keyword", keyword.trim());
+  return readJson<SpotProcurementApplicationTextSuggestionReadModel[]>(
+    `/spot-procurements/application-text-suggestions?${search.toString()}`
   );
 }
 

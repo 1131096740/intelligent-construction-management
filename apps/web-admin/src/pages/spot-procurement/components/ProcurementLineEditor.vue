@@ -1,32 +1,16 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { centsTextToYuanText, calculateSpotProcurementLineAmountCents } from "../../../lib/money";
-
 export interface ProcurementLineDraft {
   materialName: string;
   specification: string;
   unit: string;
   quantity: string;
-  invoiceMode: "invoice" | "no_invoice";
-  invoiceType: "vat_general" | "vat_special" | null;
-  vatRateOptionId: string | null;
-  unitPrice: string;
-  usageLocation: string;
   note: string;
-}
-
-export interface VatRateOption {
-  id: string;
-  label: string;
-  rateValue: string;
 }
 
 const props = withDefaults(defineProps<{
   modelValue: ProcurementLineDraft[];
-  vatRateOptions?: VatRateOption[];
   readonly?: boolean;
 }>(), {
-  vatRateOptions: () => [],
   readonly: false
 });
 
@@ -39,30 +23,9 @@ const columns = [
   { colKey: "specification", title: "规格型号", width: 130 },
   { colKey: "unit", title: "单位", width: 80 },
   { colKey: "quantity", title: "数量", width: 110 },
-  { colKey: "invoiceMode", title: "票据方式", width: 110 },
-  { colKey: "invoiceType", title: "发票类型", width: 120 },
-  { colKey: "vatRateOptionId", title: "税率", width: 100 },
-  { colKey: "unitPrice", title: "含税/无票单价", width: 130 },
-  { colKey: "amount", title: "预览金额", width: 120 },
-  { colKey: "usageLocation", title: "使用部位", width: 130 },
   { colKey: "note", title: "备注", width: 130 },
   { colKey: "operation", title: "操作", width: 70, fixed: "right" as const }
 ];
-
-const invoiceModeOptions = [
-  { label: "有发票", value: "invoice" },
-  { label: "无发票", value: "no_invoice" }
-];
-const invoiceTypeOptions = [
-  { label: "增值税普通发票", value: "vat_general" },
-  { label: "增值税专用发票", value: "vat_special" }
-];
-const vatOptions = computed(() =>
-  props.vatRateOptions.map((option) => ({
-    label: option.label,
-    value: option.id
-  }))
-);
 
 function updateLine(
   index: number,
@@ -74,19 +37,6 @@ function updateLine(
   emit("update:modelValue", next);
 }
 
-function updateInvoiceMode(index: number, value: unknown) {
-  const invoiceMode = value === "invoice" ? "invoice" : "no_invoice";
-  updateLine(index, {
-    invoiceMode,
-    ...(invoiceMode === "no_invoice"
-      ? {
-          invoiceType: null,
-          vatRateOptionId: null
-        }
-      : {})
-  });
-}
-
 function addLine() {
   emit("update:modelValue", [
     ...props.modelValue,
@@ -95,11 +45,6 @@ function addLine() {
       specification: "",
       unit: "",
       quantity: "",
-      invoiceMode: "invoice",
-      invoiceType: "vat_general",
-      vatRateOptionId: null,
-      unitPrice: "",
-      usageLocation: "",
       note: ""
     }
   ]);
@@ -113,18 +58,6 @@ function removeLine(index: number) {
   );
 }
 
-function amountPreview(line: ProcurementLineDraft) {
-  try {
-    return `¥${centsTextToYuanText(
-      calculateSpotProcurementLineAmountCents(
-        line.quantity,
-        line.unitPrice
-      )
-    )}`;
-  } catch {
-    return "待补全";
-  }
-}
 </script>
 
 <template>
@@ -132,7 +65,7 @@ function amountPreview(line: ProcurementLineDraft) {
     <header>
       <div>
         <h3>材料明细</h3>
-        <p>页面金额仅作即时预览，保存成功后以系统重算结果为准。</p>
+        <p>采购申请只确认材料范围和数量；价格、商户、票据与付款条件在后续付款申请中确定。</p>
       </div>
       <t-button
         v-if="!readonly"
@@ -150,7 +83,7 @@ function amountPreview(line: ProcurementLineDraft) {
       table-layout="fixed"
       :columns="columns"
       :data="modelValue.map((line, index) => ({ ...line, index }))"
-      :scroll="{ x: 1410 }"
+      :scroll="{ x: 800 }"
     >
       <template #materialName="{ row }">
         <t-input
@@ -182,51 +115,6 @@ function amountPreview(line: ProcurementLineDraft) {
           :disabled="readonly"
           placeholder="最多6位小数"
           @change="(value: unknown) => updateLine(row.index, { quantity: String(value ?? '') })"
-        />
-      </template>
-      <template #invoiceMode="{ row }">
-        <t-select
-          :value="row.invoiceMode"
-          :disabled="readonly"
-          :options="invoiceModeOptions"
-          @change="(value: unknown) => updateInvoiceMode(row.index, value)"
-        />
-      </template>
-      <template #invoiceType="{ row }">
-        <t-select
-          :value="row.invoiceType"
-          :disabled="readonly || row.invoiceMode === 'no_invoice'"
-          :options="invoiceTypeOptions"
-          placeholder="选择类型"
-          @change="(value: unknown) => updateLine(row.index, { invoiceType: value === 'vat_special' ? 'vat_special' : 'vat_general' })"
-        />
-      </template>
-      <template #vatRateOptionId="{ row }">
-        <t-select
-          :value="row.vatRateOptionId"
-          :disabled="readonly || row.invoiceMode === 'no_invoice'"
-          :options="vatOptions"
-          placeholder="选择税率"
-          @change="(value: unknown) => updateLine(row.index, { vatRateOptionId: value ? String(value) : null })"
-        />
-      </template>
-      <template #unitPrice="{ row }">
-        <t-input
-          :value="row.unitPrice"
-          :disabled="readonly"
-          placeholder="最多6位小数"
-          @change="(value: unknown) => updateLine(row.index, { unitPrice: String(value ?? '') })"
-        />
-      </template>
-      <template #amount="{ row }">
-        <strong>{{ amountPreview(row) }}</strong>
-      </template>
-      <template #usageLocation="{ row }">
-        <t-input
-          :value="row.usageLocation"
-          :disabled="readonly"
-          placeholder="可选"
-          @change="(value: unknown) => updateLine(row.index, { usageLocation: String(value ?? '') })"
         />
       </template>
       <template #note="{ row }">

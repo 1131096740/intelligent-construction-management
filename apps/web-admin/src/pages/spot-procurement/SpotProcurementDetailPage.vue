@@ -4,22 +4,16 @@ import type { UploadFile } from "tdesign-vue-next";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
-  createSpotProcurementPaymentDraft,
   createSpotProcurementVersion,
   fetchSpotProcurementDetail,
-  fetchVatRateOptions,
   reviewSpotProcurement,
   submitSpotProcurement,
   updateSpotProcurementDraft,
   voidSpotProcurement,
   withdrawSpotProcurement,
-  type SpotProcurementDetailReadModel,
-  type VatRateOptionReadModel
+  type SpotProcurementDetailReadModel
 } from "../../api/spot-procurement.api";
-import {
-  downloadApprovalForm,
-  uploadPrivateFile
-} from "../../api/core-flow-read.api";
+import { downloadApprovalForm, uploadPrivateFile } from "../../api/core-flow-read.api";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import BusinessDetailHeader from "../../components/BusinessDetailHeader.vue";
@@ -32,15 +26,7 @@ import {
   spotProcurementReferencePhotoFileError
 } from "../../components/file-upload-policy.config";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
-import {
-  calculateSpotProcurementLineAmountCents,
-  centsTextToYuanText
-} from "../../lib/money";
-import ProcurementLineEditor, {
-  type ProcurementLineDraft
-} from "./components/ProcurementLineEditor.vue";
-import PaymentCompositionCard from "./components/PaymentCompositionCard.vue";
-import InvoiceCoveragePanel from "./components/InvoiceCoveragePanel.vue";
+import ProcurementLineEditor, { type ProcurementLineDraft } from "./components/ProcurementLineEditor.vue";
 import {
   activeSpotProcurementAttachmentIds,
   retainedSpotProcurementAttachments
@@ -57,7 +43,6 @@ type ActionKind =
 const route = useRoute();
 const router = useRouter();
 const detail = ref<SpotProcurementDetailReadModel | null>(null);
-const vatRateOptions = ref<VatRateOptionReadModel[]>([]);
 const loading = ref(false);
 const actionBusy = ref(false);
 const loadError = ref("");
@@ -71,7 +56,9 @@ const editQuotationFiles = ref<UploadFile[]>([]);
 const editReferencePhotoFiles = ref<UploadFile[]>([]);
 const retainedAttachmentFileIds = ref<string[]>([]);
 const editForm = reactive({
-  supplierName: "",
+  applicationDepartment: "",
+  applicationName: "",
+  requestedArrivalAt: "",
   reason: "",
   note: "",
   changeReason: "",
@@ -88,6 +75,7 @@ const confirmation = reactive({
   requirePassword: false,
   reasonLabel: "操作原因"
 });
+
 const quotationSizeLimit = {
   size: SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.limitBytes,
   unit: "B" as const,
@@ -95,48 +83,19 @@ const quotationSizeLimit = {
 };
 
 const procurementId = computed(() =>
-  typeof route.params.procurementId === "string"
-    ? route.params.procurementId
-    : ""
+  typeof route.params.procurementId === "string" ? route.params.procurementId : ""
 );
 const primaryAction = computed(() =>
-  detail.value?.availableActions.find(
-    (action) => action.key === detail.value?.primaryAction
-  )
+  detail.value?.availableActions.find((action) => action.key === detail.value?.primaryAction)
 );
 const materialColumns = [
-  { colKey: "materialName", title: "材料名称", width: 130 },
-  { colKey: "specification", title: "规格型号", width: 120 },
-  { colKey: "unit", title: "单位", width: 70 },
-  { colKey: "quantity", title: "数量", width: 100 },
-  { colKey: "invoiceMode", title: "票据方式", width: 90 },
-  { colKey: "invoiceType", title: "发票类型", width: 120 },
-  { colKey: "vatRateLabel", title: "税率", width: 80 },
-  { colKey: "unitPrice", title: "含税/无票单价", width: 120 },
-  { colKey: "amountCents", title: "明细金额", width: 120 },
-  { colKey: "usageLocation", title: "使用部位", width: 120 },
-  { colKey: "note", title: "备注", width: 120 }
+  { colKey: "sortOrder", title: "序号", width: 70 },
+  { colKey: "materialName", title: "名称", width: 180 },
+  { colKey: "specification", title: "型号", width: 160 },
+  { colKey: "unit", title: "单位", width: 90 },
+  { colKey: "quantity", title: "数量", width: 120 },
+  { colKey: "note", title: "备注", width: 180 }
 ];
-
-const editTotalAmountCents = computed(() => {
-  try {
-    return editForm.lines
-      .reduce(
-        (total, line) =>
-          total +
-          BigInt(
-            calculateSpotProcurementLineAmountCents(
-              line.quantity,
-              line.unitPrice
-            )
-          ),
-        0n
-      )
-      .toString();
-  } catch {
-    return null;
-  }
-});
 
 function statusTone(status: string): BusinessSummaryTone {
   if (status === "closed") return "success";
@@ -146,43 +105,43 @@ function statusTone(status: string): BusinessSummaryTone {
   return "default";
 }
 
-function money(cents: string | null | undefined) {
-  return cents === null || cents === undefined
-    ? "—"
-    : `¥${centsTextToYuanText(cents)}`;
+function dateOnly(value: string | null | undefined) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("zh-CN");
 }
 
 function dateTime(value: string | null | undefined) {
   if (!value) return "—";
   const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : date.toLocaleString("zh-CN", { hour12: false });
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("zh-CN", { hour12: false });
 }
 
-function invoiceModeLabel(value: string) {
-  return value === "invoice" ? "有发票" : "无发票";
+function toDateInput(value: string | undefined) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(0, 10);
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
 }
 
-function invoiceTypeLabel(value: string | null) {
-  if (value === "vat_general") return "增值税普通发票";
-  if (value === "vat_special") return "增值税专用发票";
-  return "—";
+function paymentSummaryLabel(current: SpotProcurementDetailReadModel) {
+  const payment = current.procurement.payment;
+  if (!payment || payment.approvalAmountCents === null) return "付款金额待确定";
+  return payment.statusLabel;
+}
+
+function receiptSummaryLabel(current: SpotProcurementDetailReadModel) {
+  return "label" in current.receipt
+    ? current.receipt.label
+    : current.receipt.statusLabel;
 }
 
 function actionEnabled(key: string) {
-  return Boolean(
-    detail.value?.availableActions.find(
-      (action) => action.key === key && action.enabled
-    )
-  );
+  return Boolean(detail.value?.availableActions.find((action) => action.key === key && action.enabled));
 }
 
 function actionLabel(key: string) {
-  return (
-    detail.value?.availableActions.find((action) => action.key === key)
-      ?.label ?? ""
-  );
+  return detail.value?.availableActions.find((action) => action.key === key)?.label ?? "";
 }
 
 async function loadDetail() {
@@ -193,28 +152,20 @@ async function loadDetail() {
     detail.value = await fetchSpotProcurementDetail(procurementId.value);
   } catch (error) {
     detail.value = null;
-    loadError.value =
-      error instanceof Error ? error.message : "零星采购详情读取失败";
+    loadError.value = error instanceof Error ? error.message : "零星采购详情读取失败";
   } finally {
     loading.value = false;
   }
 }
 
-async function loadVatRates() {
-  try {
-    vatRateOptions.value = await fetchVatRateOptions();
-  } catch {
-    vatRateOptions.value = [];
-  }
-}
-
 function openEdit(mode: "draft" | "version" = "draft") {
   const current = detail.value;
-  const actionKey =
-    mode === "version" ? "create_version" : "edit_draft";
+  const actionKey = mode === "version" ? "create_version" : "edit_draft";
   if (!current || !actionEnabled(actionKey)) return;
   editMode.value = mode;
-  editForm.supplierName = current.currentVersion.supplierName;
+  editForm.applicationDepartment = current.currentVersion.applicationDepartment ?? "";
+  editForm.applicationName = current.currentVersion.applicationName ?? "";
+  editForm.requestedArrivalAt = toDateInput(current.currentVersion.requestedArrivalAt);
   editForm.reason = current.currentVersion.reason;
   editForm.note = current.currentVersion.note ?? "";
   editForm.changeReason = "";
@@ -223,17 +174,11 @@ function openEdit(mode: "draft" | "version" = "draft") {
     specification: line.specification ?? "",
     unit: line.unit,
     quantity: line.quantity,
-    invoiceMode: line.invoiceMode,
-    invoiceType: line.invoiceType,
-    vatRateOptionId: line.vatRateOptionId,
-    unitPrice: line.unitPrice,
-    usageLocation: line.usageLocation ?? "",
     note: line.note ?? ""
   }));
   editQuotationFiles.value = [];
   editReferencePhotoFiles.value = [];
-  retainedAttachmentFileIds.value =
-    activeSpotProcurementAttachmentIds(current.attachments);
+  retainedAttachmentFileIds.value = activeSpotProcurementAttachmentIds(current.attachments);
   editError.value = "";
   editVisible.value = true;
 }
@@ -244,127 +189,77 @@ async function saveDraft() {
   editError.value = "";
   actionBusy.value = true;
   try {
-    const supplierName = requiredText(editForm.supplierName, "供应商");
-    const reason = requiredText(editForm.reason, "采购原因");
+    const applicationDepartment = requiredText(editForm.applicationDepartment, "申请部门");
+    const applicationName = requiredText(editForm.applicationName, "申请人");
+    if (!editForm.requestedArrivalAt) throw new Error("请选择要求采购到位日期");
+    const reason = requiredText(editForm.reason, "物资用途及采购原因");
     if (!editForm.lines.length) throw new Error("请至少填写一条材料明细");
-    const totalAmountCents = editTotalAmountCents.value;
-    if (totalAmountCents === null) {
-      throw new Error("请检查材料数量和单价，最多保留 6 位小数");
-    }
-    const attachments = retainedSpotProcurementAttachments(
-      current.attachments,
-      retainedAttachmentFileIds.value
-    );
+    const attachments = retainedSpotProcurementAttachments(current.attachments, retainedAttachmentFileIds.value);
     for (const file of selectedUploadFiles(editQuotationFiles.value)) {
-      const validationError =
-        spotProcurementQuotationFileError(file);
+      const validationError = spotProcurementQuotationFileError(file);
       if (validationError) throw new Error(validationError);
       const uploaded = await uploadPrivateFile(file, file.name);
-      attachments.push({
-        fileId: uploaded.id,
-        category: "merchant_quote"
-      });
+      attachments.push({ fileId: uploaded.id, category: "merchant_quote" });
     }
     for (const file of selectedUploadFiles(editReferencePhotoFiles.value)) {
-      const validationError =
-        spotProcurementReferencePhotoFileError(file);
+      const validationError = spotProcurementReferencePhotoFileError(file);
       if (validationError) throw new Error(validationError);
       const uploaded = await uploadPrivateFile(file, file.name);
-      attachments.push({
-        fileId: uploaded.id,
-        category: "reference_photo"
-      });
+      attachments.push({ fileId: uploaded.id, category: "reference_photo" });
     }
     const draft = {
-      supplierPartyId:
-        supplierName === current.currentVersion.supplierName
-          ? current.currentVersion.supplierPartyId
-          : null,
-      supplierName,
-      handlerUserId: current.currentVersion.handlerUserId,
+      applicationDepartment,
+      applicationName,
+      requestedArrivalAt: editForm.requestedArrivalAt,
       reason,
       note: optionalText(editForm.note),
       lines: editForm.lines.map((line) => ({
         materialName: requiredText(line.materialName, "材料名称"),
         specification: optionalText(line.specification) ?? undefined,
         unit: requiredText(line.unit, "材料单位"),
-        quantity: requiredText(line.quantity, "采购数量"),
-        invoiceMode: line.invoiceMode,
-        ...(line.invoiceMode === "invoice"
-          ? {
-              invoiceType: line.invoiceType ?? undefined,
-              vatRateOptionId: line.vatRateOptionId ?? undefined
-            }
-          : {}),
-        unitPrice: requiredText(line.unitPrice, "材料单价"),
-        usageLocation: optionalText(line.usageLocation) ?? undefined,
-        note: optionalText(line.note) ?? undefined,
-        amountCents: calculateSpotProcurementLineAmountCents(
-          line.quantity,
-          line.unitPrice
-        )
+        quantity: requiredQuantity(line.quantity),
+        note: optionalText(line.note) ?? undefined
       })),
-      attachments,
-      totalAmountCents
+      attachments
     };
     if (editMode.value === "version") {
       await createSpotProcurementVersion(current.procurement.id, {
         ...draft,
-        changeReason: requiredText(
-          editForm.changeReason,
-          "版本变更原因"
-        )
+        changeReason: requiredText(editForm.changeReason, "版本变更原因")
       });
     } else {
       await updateSpotProcurementDraft(current.procurement.id, draft);
     }
     editVisible.value = false;
-    showSuccess(
-      editMode.value === "version"
-        ? "采购修订版本已创建，金额已按系统重算结果刷新。"
-        : "采购草稿已保存，金额已按系统重算结果刷新。"
-    );
+    showSuccess(editMode.value === "version" ? "采购修订版本已创建。" : "采购草稿已保存。");
     await loadDetail();
   } catch (error) {
-    editError.value =
-      error instanceof Error ? error.message : "采购草稿保存失败";
+    editError.value = error instanceof Error ? error.message : "采购草稿保存失败";
   } finally {
     actionBusy.value = false;
   }
 }
 
-async function runSimpleAction(action: "submit" | "create_payment") {
+async function runSubmit() {
   const current = detail.value;
   if (!current) return;
   actionBusy.value = true;
   try {
-    if (action === "submit") {
-      await submitSpotProcurement(current.procurement.id);
-      showSuccess("采购申请已提交审批。");
-    } else {
-      const payment = await createSpotProcurementPaymentDraft(
-        current.procurement.id
-      );
-      showSuccess("零星材料付款草稿已创建。");
-      await router.push(`/零星材料付款/${payment.id}`);
-      return;
-    }
+    await submitSpotProcurement(current.procurement.id);
+    showSuccess("零星材料采购申请已提交审批。");
     await loadDetail();
   } catch (error) {
-    showError(error, "操作失败");
+    showError(error, "提交失败");
   } finally {
     actionBusy.value = false;
   }
 }
 
 function openConfirmation(kind: ActionKind) {
-  const configurations: Record<
-    ActionKind,
-    Omit<typeof confirmation, "visible" | "kind">
-  > = {
+  const configurations: Record<ActionKind, Omit<typeof confirmation, "visible" | "kind">> = {
     review_approve: {
       title: "确认通过采购审批",
-      description: "通过后审批流进入下一节点或完成，并据实生成审批单。",
+      description: "通过后审批流进入下一节点或完成，并冻结本次采购审批单。",
       confirmText: "确认通过",
       confirmTheme: "primary",
       requireReason: false,
@@ -382,8 +277,7 @@ function openConfirmation(kind: ActionKind) {
     },
     review_return: {
       title: "退回采购申请人",
-      description:
-        "退回后保留本次审批事实，并从冻结版本复制一份新的可修改草稿。",
+      description: "退回后保留本次审批事实，并生成新的可修改采购草稿。",
       confirmText: "确认退回",
       confirmTheme: "danger",
       requireReason: true,
@@ -401,7 +295,7 @@ function openConfirmation(kind: ActionKind) {
     },
     void: {
       title: "撤销零星采购",
-      description: "正式办结后不能更正；当前撤销将保留完整审计历史。",
+      description: "采购正式办结前可以撤销；撤销会保留完整审计历史。",
       confirmText: "确认撤销",
       confirmTheme: "danger",
       requireReason: true,
@@ -418,10 +312,7 @@ function openConfirmation(kind: ActionKind) {
       reasonLabel: "下载原因"
     }
   };
-  Object.assign(confirmation, configurations[kind], {
-    visible: true,
-    kind
-  });
+  Object.assign(confirmation, configurations[kind], { visible: true, kind });
 }
 
 async function confirmAction(values: { reason: string; password: string }) {
@@ -430,39 +321,25 @@ async function confirmAction(values: { reason: string; password: string }) {
   actionBusy.value = true;
   try {
     if (confirmation.kind === "review_approve") {
-      await reviewSpotProcurement(current.procurement.id, {
-        decision: "approve"
-      });
+      await reviewSpotProcurement(current.procurement.id, { decision: "approve" });
       showSuccess("采购审批已通过。");
     } else if (confirmation.kind === "review_reject") {
-      await reviewSpotProcurement(current.procurement.id, {
-        decision: "reject",
-        comment: values.reason
-      });
+      await reviewSpotProcurement(current.procurement.id, { decision: "reject", comment: values.reason });
       showSuccess("采购申请已驳回。");
     } else if (confirmation.kind === "review_return") {
-      await reviewSpotProcurement(current.procurement.id, {
-        decision: "return_to_applicant",
-        comment: values.reason
-      });
+      await reviewSpotProcurement(current.procurement.id, { decision: "return_to_applicant", comment: values.reason });
       showSuccess("采购申请已退回，并已生成新的修改草稿。");
     } else if (confirmation.kind === "withdraw") {
       await withdrawSpotProcurement(current.procurement.id);
       showSuccess("采购审批已撤回。");
     } else if (confirmation.kind === "void") {
-      await voidSpotProcurement(current.procurement.id, {
-        reason: values.reason
-      });
+      await voidSpotProcurement(current.procurement.id, { reason: values.reason });
       showSuccess("零星采购已撤销。");
     } else {
-      await downloadApprovalForm(
-        current.applicationPdf.businessType,
-        current.applicationPdf.businessId,
-        {
-          confirmationPassword: values.password,
-          downloadReason: values.reason
-        }
-      );
+      await downloadApprovalForm(current.applicationPdf.businessType, current.applicationPdf.businessId, {
+        confirmationPassword: values.password,
+        downloadReason: values.reason
+      });
       showSuccess("采购审批单已开始下载。");
     }
     confirmation.visible = false;
@@ -476,9 +353,8 @@ async function confirmAction(values: { reason: string; password: string }) {
 
 function runPrimaryAction() {
   const key = primaryAction.value?.key;
-  if (key === "submit_approval") void runSimpleAction("submit");
+  if (key === "submit_approval") void runSubmit();
   else if (key === "review_approval") openConfirmation("review_approve");
-  else if (key === "create_payment") void runSimpleAction("create_payment");
   else if (key === "create_version") openEdit("version");
 }
 
@@ -489,13 +365,20 @@ function showSuccess(message: string) {
 
 function showError(error: unknown, fallback: string) {
   actionState.value = "error";
-  actionMessage.value =
-    error instanceof Error ? error.message : fallback;
+  actionMessage.value = error instanceof Error ? error.message : fallback;
 }
 
 function requiredText(value: string, label: string) {
   const normalized = value.trim();
   if (!normalized) throw new Error(`${label}不能为空`);
+  return normalized;
+}
+
+function requiredQuantity(value: string) {
+  const normalized = value.trim();
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/.test(normalized) || Number(normalized) <= 0) {
+    throw new Error("采购数量必须大于 0，最多保留 6 位小数");
+  }
   return normalized;
 }
 
@@ -505,15 +388,11 @@ function optionalText(value: string) {
 }
 
 function selectedUploadFiles(files: UploadFile[]) {
-  return files.flatMap((file) =>
-    file.raw instanceof File ? [file.raw] : []
-  );
+  return files.flatMap((file) => (file.raw instanceof File ? [file.raw] : []));
 }
 
 watch(procurementId, () => void loadDetail());
-onMounted(() => {
-  void Promise.all([loadDetail(), loadVatRates()]);
-});
+onMounted(() => void loadDetail());
 </script>
 
 <template>
@@ -522,7 +401,7 @@ onMounted(() => {
       v-if="loading && !detail"
       state="loading"
       title="正在读取零星采购详情"
-      description="正在核对当前版本、审批、付款和附件事实。"
+      description="正在核对采购申请、审批、付款、收货与附件事实。"
     />
     <BusinessFeedback
       v-else-if="loadError"
@@ -536,14 +415,14 @@ onMounted(() => {
     <template v-if="detail">
       <BusinessDetailHeader
         :business-code="detail.procurement.code"
-        :title="`${detail.procurement.project.name} · ${detail.procurement.supplierName}`"
+        :title="detail.procurement.project.name"
         :status="detail.procurement.statusLabel"
         :status-tone="statusTone(detail.procurement.status)"
-        :owner="detail.procurement.handler.name"
+        :owner="detail.currentVersion.purchaserName ?? detail.procurement.handler.name"
         :current-node="detail.approval.currentNodeName"
         :next-step="primaryAction?.label ?? '等待既定条件满足'"
-        :requested-amount="money(detail.currentVersion.totalAmountCents)"
-        amount-label="采购金额合计"
+        :requested-amount="paymentSummaryLabel(detail)"
+        amount-label="关联付款"
         :primary-action-label="primaryAction?.label ?? ''"
         :primary-action-disabled="actionBusy"
         @primary-action="runPrimaryAction"
@@ -569,7 +448,7 @@ onMounted(() => {
       <t-tabs v-model="activeTab">
         <t-tab-panel
           value="overview"
-          label="采购摘要"
+          label="采购申请"
         />
         <t-tab-panel
           value="materials"
@@ -585,7 +464,7 @@ onMounted(() => {
         />
         <t-tab-panel
           value="receipt"
-          label="收货与票据"
+          label="收货与发票"
         />
       </t-tabs>
 
@@ -593,24 +472,30 @@ onMounted(() => {
         v-if="activeTab === 'overview'"
         class="detail-panel"
       >
-        <header>
-          <h2>采购摘要</h2>
-          <p>采购金额为当前有效版本的系统重算结果。</p>
-        </header>
+        <header><h2>零星/小额材料采购申请表</h2><p>该表沿用公司现有 A4 竖向申请表：采购阶段不记录价格、商户、税率或发票。</p></header>
         <dl class="detail-grid">
-          <div><dt>项目</dt><dd>{{ detail.procurement.project.code }} · {{ detail.procurement.project.name }}</dd></div>
-          <div><dt>供应商</dt><dd>{{ detail.procurement.supplierName }}</dd></div>
-          <div><dt>采购原因</dt><dd>{{ detail.currentVersion.reason }}</dd></div>
-          <div><dt>采购申请人</dt><dd>{{ detail.procurement.applicant.name }}</dd></div>
-          <div><dt>采购经办人</dt><dd>{{ detail.procurement.handler.name }}</dd></div>
-          <div><dt>采购金额合计</dt><dd>{{ money(detail.currentVersion.totalAmountCents) }}</dd></div>
-          <div><dt>票据构成</dt><dd>{{ detail.invoiceComposition === "mixed" ? "有票与无票混合" : detail.invoiceComposition === "invoice" ? "有发票" : detail.invoiceComposition === "no_invoice" ? "无发票" : "—" }}</dd></div>
+          <div><dt>项目名称</dt><dd>{{ detail.procurement.project.code }} · {{ detail.procurement.project.name }}</dd></div>
+          <div><dt>系统申请单编号</dt><dd>{{ detail.procurement.code }}</dd></div>
+          <div><dt>申请部门</dt><dd>{{ detail.currentVersion.applicationDepartment ?? "—" }}</dd></div>
+          <div><dt>申请人</dt><dd>{{ detail.currentVersion.applicationName ?? detail.procurement.applicant.name }}</dd></div>
+          <div><dt>采购人</dt><dd>{{ detail.currentVersion.purchaserName ?? detail.procurement.handler.name }}</dd></div>
+          <div><dt>采购部门</dt><dd>{{ detail.currentVersion.purchaserDepartment ?? "—" }}</dd></div>
+          <div><dt>要求采购到位日期</dt><dd>{{ dateOnly(detail.currentVersion.requestedArrivalAt) }}</dd></div>
           <div><dt>更新时间</dt><dd>{{ dateTime(detail.procurement.updatedAt) }}</dd></div>
+          <div class="detail-grid__wide">
+            <dt>物资用途及采购原因</dt><dd>{{ detail.currentVersion.reason }}</dd>
+          </div>
+          <div
+            v-if="detail.currentVersion.note"
+            class="detail-grid__wide"
+          >
+            <dt>备注</dt><dd>{{ detail.currentVersion.note }}</dd>
+          </div>
         </dl>
         <t-alert
           theme="info"
-          title="实际成本尚不可用"
-          :message="detail.procurement.actualCost.label"
+          title="价格在付款申请中确定"
+          message="采购审批只确认材料范围、数量、统一到位日期和采购原因。最终商户、我方付款主体、收款对象、含税单价、税率、付款方式和发票资料在项目零星付款申请单中补充。"
         />
         <section class="version-list">
           <h3>版本记录</h3>
@@ -620,14 +505,16 @@ onMounted(() => {
             :columns="[
               { colKey: 'versionNo', title: '版本' },
               { colKey: 'statusLabel', title: '状态' },
+              { colKey: 'applicationName', title: '申请人' },
+              { colKey: 'requestedArrivalAt', title: '要求到位日期' },
               { colKey: 'reason', title: '采购原因' },
-              { colKey: 'totalAmountCents', title: '金额' },
               { colKey: 'updatedAt', title: '更新时间' }
             ]"
             :data="detail.versions.map((version) => ({
               ...version,
               versionNo: `V${version.versionNo}`,
-              totalAmountCents: money(version.totalAmountCents),
+              applicationName: version.applicationName ?? detail!.procurement.applicant.name,
+              requestedArrivalAt: dateOnly(version.requestedArrivalAt),
               updatedAt: dateTime(version.updatedAt)
             }))"
           />
@@ -638,54 +525,30 @@ onMounted(() => {
         v-else-if="activeTab === 'materials'"
         class="detail-panel"
       >
-        <header>
-          <h2>材料明细</h2>
-          <p>直接展示票据方式、发票类型、税率和系统重算的明细金额。</p>
-        </header>
+        <header><h2>材料明细</h2><p>采购申请只保存材料名称、型号、单位、数量和备注；不显示价格、税率或发票条件。</p></header>
         <t-table
           row-key="id"
           size="small"
           table-layout="fixed"
           :columns="materialColumns"
           :data="detail.lines"
-          :scroll="{ x: 1260 }"
+          :scroll="{ x: 800 }"
         >
-          <template #invoiceMode="{ row }">
-            {{ invoiceModeLabel(row.invoiceMode) }}
-          </template>
-          <template #invoiceType="{ row }">
-            {{ invoiceTypeLabel(row.invoiceType) }}
-          </template>
-          <template #vatRateLabel="{ row }">
-            {{ row.vatRateLabel ?? "—" }}
-          </template>
-          <template #unitPrice="{ row }">
-            ¥{{ row.unitPrice }}
-          </template>
-          <template #amountCents="{ row }">
-            {{ money(row.amountCents) }}
-          </template>
-          <template #usageLocation="{ row }">
-            {{ row.usageLocation ?? "—" }}
+          <template #specification="{ row }">
+            {{ row.specification ?? "—" }}
           </template>
           <template #note="{ row }">
             {{ row.note ?? "—" }}
           </template>
         </t-table>
-        <section>
-          <h3>申请附件</h3>
-          <EvidenceFileCards :files="detail.attachments" />
-        </section>
+        <section><h3>申请附件</h3><EvidenceFileCards :files="detail.attachments" /></section>
       </section>
 
       <section
         v-else-if="activeTab === 'process'"
         class="detail-panel"
       >
-        <header>
-          <h2>审批与动作</h2>
-          <p>所有可办理性均按冻结审批流程和真实参与关系确定。</p>
-        </header>
+        <header><h2>审批与动作</h2><p>所有可办理性均按冻结审批流程和真实参与关系确定。</p></header>
         <BusinessActionPanel :actions="detail.availableActions" />
         <div class="action-buttons">
           <t-button
@@ -699,7 +562,7 @@ onMounted(() => {
             v-if="actionEnabled('submit_approval')"
             theme="primary"
             :loading="actionBusy"
-            @click="runSimpleAction('submit')"
+            @click="runSubmit"
           >
             {{ actionLabel("submit_approval") }}
           </t-button>
@@ -732,13 +595,6 @@ onMounted(() => {
             {{ actionLabel("withdraw_approval") }}
           </t-button>
           <t-button
-            v-if="actionEnabled('create_payment')"
-            theme="primary"
-            @click="runSimpleAction('create_payment')"
-          >
-            {{ actionLabel("create_payment") }}
-          </t-button>
-          <t-button
             v-if="actionEnabled('create_version')"
             variant="outline"
             @click="openEdit('version')"
@@ -761,26 +617,18 @@ onMounted(() => {
             {{ actionLabel("void_procurement") }}
           </t-button>
         </div>
-        <section>
-          <h3>采购审批历程</h3>
-          <ApprovalTimeline :items="detail.approvalTimeline" />
-        </section>
+        <section><h3>采购审批历程</h3><ApprovalTimeline :items="detail.approvalTimeline" /></section>
       </section>
 
       <section
         v-else-if="activeTab === 'payments'"
         class="detail-panel"
       >
-        <header>
-          <h2>关联付款</h2>
-          <p>供应商余额抵扣和公司实际付款始终分开呈现。</p>
-        </header>
-        <PaymentCompositionCard
-          :settlement-amount-cents="detail.paymentSummary.activeSettlementAmountCents"
-          :supplier-balance-amount-cents="detail.paymentSummary.supplierBalanceAmountCents"
-          :company-payment-amount-cents="detail.paymentSummary.companyPaymentAmountCents"
-          :paid-amount-cents="detail.paymentSummary.paidAmountCents"
-          :company-payment-status-label="detail.paymentSummary.statusLabel"
+        <header><h2>关联付款</h2><p>采购审批完成后系统生成一个付款草稿；实际商户、付款主体、收款对象、价格和税票条件在付款申请中登记。</p></header>
+        <t-alert
+          theme="info"
+          title="付款事实"
+          :message="paymentSummaryLabel(detail)"
         />
         <t-table
           v-if="detail.payments.length"
@@ -788,18 +636,12 @@ onMounted(() => {
           size="small"
           :columns="[
             { colKey: 'code', title: '付款申请编号' },
-            { colKey: 'settlementAmountCents', title: '结算申请金额' },
-            { colKey: 'supplierBalanceAmountCents', title: '余额抵扣' },
-            { colKey: 'paidAmountCents', title: '公司实际付款' },
             { colKey: 'statusLabel', title: '状态' },
+            { colKey: 'handler', title: '经办人' },
+            { colKey: 'updatedAt', title: '更新时间' },
             { colKey: 'operation', title: '操作', fixed: 'right', width: 90 }
           ]"
-          :data="detail.payments.map((payment) => ({
-            ...payment,
-            settlementAmountCents: money(payment.settlementAmountCents),
-            supplierBalanceAmountCents: money(payment.supplierBalanceAmountCents),
-            paidAmountCents: money(payment.paidAmountCents)
-          }))"
+          :data="detail.payments.map((payment) => ({ ...payment, handler: payment.handler.name, updatedAt: dateTime(payment.updatedAt) }))"
         >
           <template #operation="{ row }">
             <t-link
@@ -812,7 +654,7 @@ onMounted(() => {
         </t-table>
         <t-empty
           v-else
-          description="尚无当前账号可查看的关联付款申请"
+          description="采购审批完成后将自动生成付款草稿"
         />
       </section>
 
@@ -820,73 +662,70 @@ onMounted(() => {
         v-else
         class="detail-panel"
       >
-        <header>
-          <h2>收货、差异与票据</h2>
-          <p>最终收货、差异结算和票据覆盖分别保存，不把余额抵扣合并成公司实付。</p>
-        </header>
+        <header><h2>收货、少货与发票</h2><p>存在实际付款后开放收货；收货照片为必传，送货单可选。少货且已付款仅允许补货或由财务登记退款。</p></header>
+        <t-alert
+          theme="info"
+          title="当前收货状态"
+          :message="receiptSummaryLabel(detail)"
+        />
         <t-button
           theme="primary"
           @click="router.push(`/零星采购收货/${detail.procurement.id}`)"
         >
-          进入收货详情
+          进入收货确认
         </t-button>
-        <InvoiceCoveragePanel
-          :coverage="detail.invoiceCoverage"
-          :ledger="detail.invoiceLedger"
+        <t-alert
+          theme="info"
+          title="发票资料"
+          :message="detail.invoice?.statusLabel ?? '发票可在付款后追加，关联整张付款申请；暂不做结构化发票系统。'"
         />
         <t-alert
           v-if="detail.procurement.status === 'closed'"
           theme="success"
           title="采购已办结"
-          message="全部条件已满足，采购、收货、差异、余额和票据结果均不可更正。"
+          message="采购正式办结后不允许常规更正；发票资料可按规则继续追加归档。"
         />
       </section>
     </template>
 
     <t-dialog
       v-model:visible="editVisible"
-      :header="editMode === 'version' ? '创建采购修订版本' : '编辑零星采购草稿'"
+      :header="editMode === 'version' ? '创建采购修订版本' : '编辑零星材料采购草稿'"
       width="min(1180px, 94vw)"
       :close-on-overlay-click="false"
-      :confirm-btn="{
-        content: editMode === 'version' ? '创建修订版本' : '保存草稿',
-        loading: actionBusy
-      }"
+      :confirm-btn="{ content: editMode === 'version' ? '创建修订版本' : '保存草稿', loading: actionBusy }"
       @confirm="saveDraft"
     >
       <div class="edit-form">
-        <label v-if="editMode === 'version'">
-          <span>版本变更原因</span>
-          <t-textarea
-            v-model="editForm.changeReason"
-            :autosize="{ minRows: 2, maxRows: 4 }"
-            placeholder="说明为什么需要修订本次采购"
-          />
-        </label>
-        <label>
-          <span>供应商</span>
-          <t-input v-model="editForm.supplierName" />
-          <small>修改供应商名称后，系统会解除原合作单位档案关联，避免余额和收款对象错配。</small>
-        </label>
-        <label>
-          <span>采购原因</span>
-          <t-textarea
-            v-model="editForm.reason"
-            :autosize="{ minRows: 2, maxRows: 4 }"
-          />
-        </label>
-        <label>
-          <span>采购备注</span>
-          <t-textarea
-            v-model="editForm.note"
-            :autosize="{ minRows: 2, maxRows: 4 }"
-          />
-        </label>
+        <t-alert
+          theme="info"
+          title="只编辑采购申请事实"
+          message="本表不维护供应商、价格、税率、付款方式或发票。采购人由当前登录物资员在系统中冻结。"
+        />
+        <label v-if="editMode === 'version'"><span>版本变更原因</span><t-textarea
+          v-model="editForm.changeReason"
+          :autosize="{ minRows: 2, maxRows: 4 }"
+          placeholder="说明为什么需要修订本次采购"
+        /></label>
+        <div class="edit-form__grid">
+          <label><span>申请部门</span><t-input v-model="editForm.applicationDepartment" /></label>
+          <label><span>申请人</span><t-input v-model="editForm.applicationName" /></label>
+          <label><span>要求采购到位日期</span><t-date-picker
+            v-model="editForm.requestedArrivalAt"
+            value-type="YYYY-MM-DD"
+          /></label>
+        </div>
+        <label><span>物资用途及采购原因</span><t-textarea
+          v-model="editForm.reason"
+          :autosize="{ minRows: 2, maxRows: 5 }"
+        /></label>
+        <label><span>备注（可选）</span><t-textarea
+          v-model="editForm.note"
+          :autosize="{ minRows: 2, maxRows: 4 }"
+        /></label>
         <label>
           <span>已有附件</span>
-          <small>
-            取消勾选会从本次保存结果中移除该附件；已失效附件不会带入草稿或修订版本。
-          </small>
+          <small>取消勾选会从本次保存结果中移除该附件；已失效附件不会带入草稿或修订版本。</small>
           <t-checkbox-group
             v-if="detail?.attachments.length"
             v-model="retainedAttachmentFileIds"
@@ -897,19 +736,13 @@ onMounted(() => {
               :key="file.fileId"
               :value="file.fileId"
               :disabled="file.status !== 'active'"
-            >
-              {{ file.fileName }} · {{ file.statusLabel }}
-            </t-checkbox>
+            >{{ file.fileName }} · {{ file.statusLabel }}</t-checkbox>
           </t-checkbox-group>
           <small v-else>暂无已有附件</small>
         </label>
         <label>
-          <span>补充商家报价附件（可选）</span>
-          <small>
-            可补充
-            {{ SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.acceptText }}，
-            {{ SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.limitText }}。
-          </small>
+          <span>补充报价单、材料清单或说明附件（可选）</span>
+          <small>可补充 {{ SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.acceptText }}，{{ SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.limitText }}。</small>
           <t-upload
             v-model="editQuotationFiles"
             theme="file-flow"
@@ -922,10 +755,7 @@ onMounted(() => {
         </label>
         <label>
           <span>补充现场参考照片（可选）</span>
-          <small>
-            {{ SPOT_PROCUREMENT_REFERENCE_PHOTO_UPLOAD_POLICY.acceptText }}，
-            {{ SPOT_PROCUREMENT_REFERENCE_PHOTO_UPLOAD_POLICY.limitText }}；仅作申请参考，不替代后续收货照片。
-          </small>
+          <small>{{ SPOT_PROCUREMENT_REFERENCE_PHOTO_UPLOAD_POLICY.acceptText }}，{{ SPOT_PROCUREMENT_REFERENCE_PHOTO_UPLOAD_POLICY.limitText }}；仅作申请参考，不替代后续收货照片。</small>
           <t-upload
             v-model="editReferencePhotoFiles"
             theme="image-flow"
@@ -936,15 +766,7 @@ onMounted(() => {
             :disabled="actionBusy"
           />
         </label>
-        <ProcurementLineEditor
-          v-model="editForm.lines"
-          :vat-rate-options="vatRateOptions"
-        />
-        <t-alert
-          theme="info"
-          title="预览合计"
-          :message="editTotalAmountCents === null ? '请补全有效数量和单价' : money(editTotalAmountCents)"
-        />
+        <ProcurementLineEditor v-model="editForm.lines" />
         <t-alert
           v-if="editError"
           theme="error"
@@ -972,82 +794,43 @@ onMounted(() => {
 <style scoped>
 .spot-procurement-detail,
 .detail-panel,
-.edit-form {
+.edit-form,
+.detail-panel > section {
   display: grid;
   gap: var(--jg-space-lg);
   min-width: 0;
   color: var(--jg-color-text-primary);
 }
 
-.detail-panel {
-  padding-top: var(--jg-space-md);
-}
+.detail-panel { padding-top: var(--jg-space-md); }
 
 .detail-panel > header h2,
 .detail-panel > header p,
-.detail-panel h3 {
-  margin: 0;
-}
+.detail-panel h3 { margin: 0; }
 
 .detail-panel > header h2,
-.detail-panel h3 {
-  color: var(--jg-color-text-primary);
-  font-size: var(--jg-font-size-section-title);
-}
+.detail-panel h3 { color: var(--jg-color-text-primary); font-size: var(--jg-font-size-section-title); }
 
-.detail-panel > header p {
-  margin-top: var(--jg-space-xs);
-  color: var(--jg-color-text-tertiary);
-  font-size: var(--jg-font-size-meta);
-}
-
-.detail-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: var(--jg-space-md);
-  margin: 0;
-}
-
-.detail-grid > div {
-  display: grid;
-  gap: var(--jg-space-xs);
-  padding: var(--jg-space-md);
-  border: var(--jg-border-width-base) solid var(--jg-color-border);
-  border-radius: var(--jg-radius-panel);
-  background: var(--jg-color-bg-surface);
-}
-
-.detail-grid dt,
+.detail-panel > header p,
 .edit-form label > span,
-.edit-form label > small {
-  color: var(--jg-color-text-tertiary);
-  font-size: var(--jg-font-size-meta);
-}
+.edit-form label > small,
+.detail-grid dt { color: var(--jg-color-text-tertiary); font-size: var(--jg-font-size-meta); }
 
-.detail-grid dd {
-  margin: 0;
-  color: var(--jg-color-text-primary);
-}
+.detail-panel > header p { margin-top: var(--jg-space-xs); }
 
-.version-list,
-.detail-panel > section {
-  display: grid;
-  gap: var(--jg-space-md);
-}
+.detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: var(--jg-space-md); margin: 0; }
+.detail-grid > div { display: grid; gap: var(--jg-space-xs); padding: var(--jg-space-md); border: var(--jg-border-width-base) solid var(--jg-color-border); border-radius: var(--jg-radius-panel); background: var(--jg-color-bg-surface); }
+.detail-grid__wide { grid-column: 1 / -1; }
+.detail-grid dd { margin: 0; color: var(--jg-color-text-primary); white-space: pre-wrap; }
 
-.action-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--jg-space-sm);
-}
+.action-buttons { display: flex; flex-wrap: wrap; gap: var(--jg-space-sm); }
+.edit-form label { display: grid; gap: var(--jg-space-xs); }
+.edit-form__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--jg-space-md); }
+.edit-form__grid label:last-child { grid-column: 1 / -1; }
+.existing-attachment-options { display: grid; gap: var(--jg-space-xs); }
 
-.edit-form label {
-  display: grid;
-  gap: var(--jg-space-xs);
-}
-
-.existing-attachment-options {
-  display: grid;
-  gap: var(--jg-space-xs);
+@media (max-width: 720px) {
+  .edit-form__grid { grid-template-columns: 1fr; }
+  .edit-form__grid label:last-child { grid-column: auto; }
 }
 </style>

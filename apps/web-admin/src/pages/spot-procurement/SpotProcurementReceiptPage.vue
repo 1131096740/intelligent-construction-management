@@ -7,9 +7,6 @@ import BusinessDetailHeader from "../../components/BusinessDetailHeader.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import ReceiptLineEditor from "./components/ReceiptLineEditor.vue";
 import ReceiptPhotoUploader from "./components/ReceiptPhotoUploader.vue";
-import ProcurementSettlementSummary from "./components/ProcurementSettlementSummary.vue";
-import InvoiceCoveragePanel from "./components/InvoiceCoveragePanel.vue";
-import SupplierBalancePanel from "./components/SupplierBalancePanel.vue";
 
 const route=useRoute(); const receipt=ref<SpotProcurementReceiptDetailReadModel|null>(null); const detail=ref<SpotProcurementDetailReadModel|null>(null); const lines=ref<SpotProcurementReceiptLineReadModel[]>([]); const busy=ref(false); const error=ref(""); const message=ref(""); const delegateUserId=ref("");
 const procurementId=computed(()=>String(route.params.procurementId||"")); const readonly=computed(()=>receipt.value?.receipt.status==='locked'||detail.value?.procurement.status==='closed'); const latestApprovedReview=computed(()=>[...(receipt.value?.reviews??[])].reverse().find(item=>item.decision==='approved'));
@@ -42,7 +39,7 @@ onMounted(load);
         v-if="readonly"
         theme="success"
         title="采购已办结"
-        message="办结后收货、差异、供应商余额和票据事实全部只读，不允许撤销、退回或更正。"
+        message="办结后收货、差异、退款和票据事实全部只读，不允许撤销、退回或更正。"
       /><BusinessFeedback
         v-if="message||error"
         :state="error?'error':'success'"
@@ -127,19 +124,16 @@ onMounted(load);
         >
           办结前撤销复核
         </t-button>
-      </t-card><t-card title="结算与票据">
-        <ProcurementSettlementSummary
-          :approved="detail.procurement.approvedAmountCents"
-          :actual="receipt.receipt.actualCostCents"
-          :company-paid="detail.paymentSummary.paidAmountCents"
-          :balance-executed="detail.paymentSummary.executedSupplierBalanceAmountCents"
-          :canceled="detail.paymentSummary.canceledAmountCents"
-        /><InvoiceCoveragePanel
-          :coverage="detail.invoiceCoverage"
-          :ledger="detail.invoiceLedger"
-        /><SupplierBalancePanel
-          :status="detail.paymentSummary.statusLabel"
-          :amount="detail.paymentSummary.supplierBalanceAmountCents"
+      </t-card><t-card title="付款、差异与发票">
+        <t-alert
+          theme="info"
+          title="付款与收货按事实分别归档"
+          :message="`当前付款状态：${detail.paymentSummary.statusLabel}。少货且已付款时，只允许商户补货，或由财务登记退款并上传凭证；不再转商户余额。`"
+        />
+        <t-alert
+          theme="info"
+          title="发票资料"
+          :message="detail.invoice?.statusLabel ?? '付款后可追加一张关联整张付款申请的发票；发票不是采购办结条件。'"
         />
       </t-card>
     </template>

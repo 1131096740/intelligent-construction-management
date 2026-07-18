@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiFetch } from "./api-fetch";
 import {
   createSpotProcurementDraft,
+  fetchSpotProcurementApplicationTextSuggestions,
   createSpotProcurementPaymentDraft,
   createSpotProcurementVersion,
   fetchSpotProcurementCapabilities,
@@ -94,13 +95,21 @@ describe("spot procurement API client", () => {
     ]);
   });
 
+  it("reads bounded application text suggestions within a project", async () => {
+    await fetchSpotProcurementApplicationTextSuggestions("project/1", "工程部");
+
+    expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
+      "/spot-procurements/application-text-suggestions?projectId=project%2F1&keyword=%E5%B7%A5%E7%A8%8B%E9%83%A8"
+    ]);
+  });
+
   it("connects every procurement write route and preserves the JSON body", async () => {
     const draft: CreateSpotProcurementDraftPayload = {
       projectId: "project-1",
       code: "LXCG-001",
-      supplierPartyId: "party-1",
-      supplierName: "朝阳建材",
-      handlerUserId: "material-1",
+      applicationDepartment: "工程部",
+      applicationName: "杨帅",
+      requestedArrivalAt: "2026-07-18",
       reason: "现场临时补料",
       note: "当日送达",
       lines: [
@@ -109,17 +118,10 @@ describe("spot procurement API client", () => {
           specification: "240x115x53",
           unit: "块",
           quantity: "1000",
-          invoiceMode: "invoice",
-          invoiceType: "vat_general",
-          vatRateOptionId: "vat-3",
-          unitPrice: "0.55",
-          usageLocation: "2#楼",
-          note: "免烧砖",
-          amountCents: "55000"
+          note: "免烧砖"
         }
       ],
       attachments: [{ fileId: "quote-1", category: "merchant_quote" }],
-      totalAmountCents: "55000"
     };
 
     await createSpotProcurementDraft(draft);
