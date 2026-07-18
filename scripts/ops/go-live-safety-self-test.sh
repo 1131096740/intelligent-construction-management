@@ -642,6 +642,7 @@ make_deploy_fixture() {
   printf 'old-api\n' > "$fixture/runtime/api/dist/release.txt"
   printf 'old-web\n' > "$fixture/runtime/web-admin/dist/release.txt"
   printf 'DATABASE_URL=postgresql://local/jiangkong\n' > "$fixture/api.env"
+  printf 'UNRELATED_VALUE=$(touch %s)\n' "$fixture/api-env-command-must-not-run" >> "$fixture/api.env"
   cat > "$fixture/db-backup.env" <<'BACKUP_ENV'
 DB_BACKUP_COS_SECRET_ID=test-database-backup-secret-id
 DB_BACKUP_COS_SECRET_KEY=database-backup-secret-for-tests-only
@@ -715,6 +716,8 @@ make_deploy_fixture "$health_failure_fixture"
 if run_deploy_fixture "$health_failure_fixture" env >/dev/null 2>&1; then
   fail "deployment must fail when the new runtime health check fails"
 fi
+[[ ! -e "$health_failure_fixture/api-env-command-must-not-run" ]] ||
+  fail "deployment executed API_ENV_FILE as shell code"
 [[ "$(< "$health_failure_fixture/runtime/api/dist/release.txt")" == old-api ]] ||
   fail "API runtime snapshot was not restored"
 [[ "$(< "$health_failure_fixture/runtime/web-admin/dist/release.txt")" == old-web ]] ||

@@ -18,6 +18,7 @@ import type { CreateDepartmentDto } from "./dto/create-department.dto";
 import type { CreateOrganizationUserDto } from "./dto/create-organization-user.dto";
 import type { UpdateDepartmentDto } from "./dto/update-department.dto";
 import type { UpdateOrganizationUserDto } from "./dto/update-organization-user.dto";
+import { configuredInitialUserTemporaryPassword } from "./initial-user-temporary-password";
 import {
   canManageRole,
   ORGANIZATION_MANAGER_ROLE_KEYS,
@@ -258,7 +259,7 @@ export class OrganizationService {
     if (!this.auth) {
       throw new Error("组织写入缺少认证服务");
     }
-    const passwordHash = await this.auth.hashPassword(input.temporaryPassword);
+    const passwordHash = await this.auth.hashPassword(configuredInitialUserTemporaryPassword());
 
     try {
       return await this.prisma.$transaction(

@@ -337,7 +337,6 @@ export interface CreateOrganizationUserPayload {
   departmentId: string;
   initialRoleKey: RoleKey;
   projectId?: string;
-  temporaryPassword: string;
   confirmationPassword: string;
 }
 
@@ -574,7 +573,6 @@ export function createOrganizationUser(payload: CreateOrganizationUserPayload) {
     departmentId: payload.departmentId,
     initialRoleKey: payload.initialRoleKey,
     ...(payload.projectId ? { projectId: payload.projectId } : {}),
-    temporaryPassword: payload.temporaryPassword,
     confirmationPassword: payload.confirmationPassword
   }, "创建人员失败");
 }

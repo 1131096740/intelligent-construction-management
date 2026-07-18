@@ -439,7 +439,6 @@ describe("organization API client", () => {
       departmentId: "department-1",
       initialRoleKey: "contract_staff",
       projectId: "project-1",
-      temporaryPassword: " temporary-password ",
       confirmationPassword: " current-password ",
       roleKeys: ["super_admin"],
       isActive: false,
@@ -454,7 +453,6 @@ describe("organization API client", () => {
         departmentId: "department-1",
         initialRoleKey: "contract_staff",
         projectId: "project-1",
-        temporaryPassword: " temporary-password ",
         confirmationPassword: " current-password "
       })
     });

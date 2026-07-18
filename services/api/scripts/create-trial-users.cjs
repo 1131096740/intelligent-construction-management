@@ -1,5 +1,4 @@
 const fs = require("node:fs");
-const crypto = require("node:crypto");
 const path = require("node:path");
 const bcrypt = require("bcryptjs");
 const { PrismaClient } = require("@prisma/client");
@@ -61,8 +60,15 @@ function readEnvFile(filePath) {
     }, {});
 }
 
-function temporaryPassword() {
-  return `Jgzg-${crypto.randomBytes(9).toString("base64url")}1`;
+function initialTemporaryPassword(env) {
+  const password = env.INITIAL_USER_TEMPORARY_PASSWORD?.trim();
+  if (!password) {
+    throw new Error("INITIAL_USER_TEMPORARY_PASSWORD is required");
+  }
+  if (password.length < 8 || !/\S/u.test(password)) {
+    throw new Error("INITIAL_USER_TEMPORARY_PASSWORD must be at least 8 non-blank characters");
+  }
+  return password;
 }
 
 async function ensurePosition(prisma, positionKey) {
@@ -138,8 +144,8 @@ async function main() {
 
   const projectId = env.TRIAL_PROJECT_ID || DEFAULT_TRIAL_PROJECT_ID;
   const projectName = resolveTrialProjectName(env, projectId);
-  const resetExistingPassword = Boolean(env.TRIAL_USER_TEMP_PASSWORD);
-  const password = env.TRIAL_USER_TEMP_PASSWORD || temporaryPassword();
+  const resetExistingPassword = env.RESET_TRIAL_USER_INITIAL_PASSWORDS === "true";
+  const password = initialTemporaryPassword(env);
   const prisma = new PrismaClient();
   try {
     let project = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, name: true } });
@@ -159,14 +165,15 @@ async function main() {
     }
 
     console.log(`Created/updated ${TRIAL_USERS.length} trial users for project ${project.name} (${project.id}).`);
-    console.table(TRIAL_USERS.map(({ name, phone, positionKey }) => ({ name, phone, positionKey })));
     console.log(
       resetExistingPassword
-        ? `Temporary password reset for all trial users: ${password}`
-        : `Temporary password for newly-created trial users: ${password}`
+        ? "The configured initial password was reset for all listed trial users."
+        : "The configured initial password was applied only to newly-created trial users."
     );
     if (!resetExistingPassword) {
-      console.log("Existing trial user passwords were preserved. Set TRIAL_USER_TEMP_PASSWORD to reset them.");
+      console.log(
+        "Existing trial user passwords were preserved. Set RESET_TRIAL_USER_INITIAL_PASSWORDS=true to reset them."
+      );
     }
     console.log(
       resetExistingPassword
@@ -185,4 +192,9 @@ if (require.main === module) {
   });
 }
 
-module.exports = { buildUserUpdate, resolveTrialProjectName, trialUsers: TRIAL_USERS };
+module.exports = {
+  buildUserUpdate,
+  initialTemporaryPassword,
+  resolveTrialProjectName,
+  trialUsers: TRIAL_USERS
+};

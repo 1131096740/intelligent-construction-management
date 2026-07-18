@@ -9,6 +9,7 @@ API_SERVICE="${API_SERVICE:-jiangkong-api}"
 BACKUP_DIR="${BACKUP_DIR:-/srv/jiangkong-backups/db}"
 DB_BACKUP_ENV_FILE="${DB_BACKUP_ENV_FILE:-/etc/jiangkong/db-backup.env}"
 BACKUP_RUN_AS_ROOT="${BACKUP_RUN_AS_ROOT:-true}"
+DEPLOY_COREPACK_HOME="${DEPLOY_COREPACK_HOME:-${XDG_CACHE_HOME:-$HOME/.cache}/node/corepack}"
 STAGING_PARENT_DIR="${STAGING_PARENT_DIR:-/srv/jiangkong}"
 ROLLBACK_PARENT_DIR="${ROLLBACK_PARENT_DIR:-/srv/jiangkong}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:3000/health}"
@@ -50,6 +51,47 @@ run_pre_migration_backup() {
   DB_BACKUP_OFFSITE_REQUIRED=true \
     DB_BACKUP_TRANSFER_SCRIPT="$DB_BACKUP_TRANSFER_SCRIPT" \
     "$BACKUP_SCRIPT"
+}
+
+run_prisma_migrations() {
+  sudo --non-interactive env \
+    COREPACK_HOME="$DEPLOY_COREPACK_HOME" \
+    bash -s -- "$API_ENV_FILE" "$REPO_ROOT" <<'ROOT_MIGRATION'
+set -euo pipefail
+
+env_file=$1
+repo_root=$2
+database_url=""
+database_url_count=0
+
+while IFS= read -r line || [[ -n "$line" ]]; do
+  line="${line%$'\r'}"
+  [[ "$line" == DATABASE_URL=* ]] || continue
+  database_url_count=$((database_url_count + 1))
+  database_url="${line#DATABASE_URL=}"
+  if [[ "$database_url" == \"* ]]; then
+    if [[ "$database_url" != *\" || ${#database_url} -lt 2 ]]; then
+      echo "API_ENV_FILE contains an invalid quoted DATABASE_URL" >&2
+      exit 1
+    fi
+    database_url="${database_url:1:${#database_url}-2}"
+  elif [[ "$database_url" == \'* ]]; then
+    if [[ "$database_url" != *\' || ${#database_url} -lt 2 ]]; then
+      echo "API_ENV_FILE contains an invalid quoted DATABASE_URL" >&2
+      exit 1
+    fi
+    database_url="${database_url:1:${#database_url}-2}"
+  fi
+done < "$env_file"
+
+if [[ "$database_url_count" != 1 || -z "$database_url" ]]; then
+  echo "API_ENV_FILE must contain exactly one non-empty DATABASE_URL" >&2
+  exit 1
+fi
+
+cd "$repo_root"
+DATABASE_URL="$database_url" pnpm --filter @jiangkong/api exec prisma migrate deploy
+ROOT_MIGRATION
 }
 
 verified_backup_artifacts_exist() {
@@ -160,10 +202,6 @@ rsync -a --delete "$API_RUNTIME_DIR/" "$ROLLBACK_DIR/api/"
 rsync -a --delete "$WEB_RUNTIME_DIR/" "$ROLLBACK_DIR/web-admin/"
 RUNTIME_SNAPSHOT_READY=true
 
-set -a
-. "$API_ENV_FILE"
-set +a
-
 sudo nginx -t
 sudo systemctl is-active --quiet "$API_SERVICE"
 
@@ -178,7 +216,7 @@ echo "Only backward-compatible database migrations are allowed; migrations are n
 STOP_ATTEMPTED=true
 sudo systemctl stop "$API_SERVICE"
 
-pnpm --filter @jiangkong/api exec prisma migrate deploy
+run_prisma_migrations
 
 RUNTIME_REPLACEMENT_STARTED=true
 mkdir -p "$API_RUNTIME_DIR" "$WEB_RUNTIME_DIR"
