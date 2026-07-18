@@ -1,3 +1,5 @@
+import "reflect-metadata";
+import { PrismaService } from "../database/prisma.service";
 import { ContractSealService } from "./contract-seal.service";
 
 function harness() {
@@ -67,6 +69,12 @@ function harness() {
 }
 
 describe("ContractSealService", () => {
+  it("保留 PrismaService 运行时依赖注入元数据", () => {
+    const parameterTypes = Reflect.getMetadata("design:paramtypes", ContractSealService) as unknown[];
+
+    expect(parameterTypes[0]).toBe(PrismaService);
+  });
+
   it("终审同一事务幂等冻结经办人并创建待同意用章任务", async () => {
     const { tx, prisma, version } = harness();
     tx.contractSealTask.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({

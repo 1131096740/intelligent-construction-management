@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, Optional } from "@
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
-import type { PrismaService } from "../database/prisma.service";
+import { PrismaService } from "../database/prisma.service";
 import { ContractFormalFileService } from "./contract-formal-file.service";
 import type {
   ApproveContractSealDto,
