@@ -9,6 +9,7 @@ API_SERVICE="${API_SERVICE:-jiangkong-api}"
 BACKUP_DIR="${BACKUP_DIR:-/srv/jiangkong-backups/db}"
 DB_BACKUP_ENV_FILE="${DB_BACKUP_ENV_FILE:-/etc/jiangkong/db-backup.env}"
 BACKUP_RUN_AS_ROOT="${BACKUP_RUN_AS_ROOT:-true}"
+DEPLOY_COREPACK_HOME="${DEPLOY_COREPACK_HOME:-${XDG_CACHE_HOME:-$HOME/.cache}/node/corepack}"
 STAGING_PARENT_DIR="${STAGING_PARENT_DIR:-/srv/jiangkong}"
 ROLLBACK_PARENT_DIR="${ROLLBACK_PARENT_DIR:-/srv/jiangkong}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:3000/health}"
@@ -53,7 +54,9 @@ run_pre_migration_backup() {
 }
 
 run_prisma_migrations() {
-  sudo --non-interactive bash -s -- "$API_ENV_FILE" "$REPO_ROOT" <<'ROOT_MIGRATION'
+  sudo --non-interactive env \
+    COREPACK_HOME="$DEPLOY_COREPACK_HOME" \
+    bash -s -- "$API_ENV_FILE" "$REPO_ROOT" <<'ROOT_MIGRATION'
 set -euo pipefail
 
 env_file=$1
