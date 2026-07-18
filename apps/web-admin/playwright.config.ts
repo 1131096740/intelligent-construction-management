@@ -7,6 +7,8 @@ export default defineConfig({
   testDir: "./e2e",
   testMatch: "*.e2e.ts",
   timeout: 30_000,
+  // Production-build chunks can take longer than Playwright's 5 s default on hosted CI.
+  expect: { timeout: 15_000 },
   workers: isCI ? 1 : undefined,
   reporter: isCI
     ? [["line"], ["html", { open: "never", outputFolder: "playwright-report" }]]
