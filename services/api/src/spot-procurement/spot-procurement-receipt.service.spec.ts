@@ -845,7 +845,12 @@ describe("SpotProcurementReceiptService workflow", () => {
     expect(detail).toMatchObject({
       receipt: {
         id: "receipt-1",
-        handler: { id: "handler-1", name: "张三" }
+        handler: { id: "handler-1", name: "张三" },
+        receiptOpen: true,
+        firstActualPayment: {
+          executionId: "execution-1",
+          paidAt: "2026-07-18T09:00:00.000Z"
+        }
       },
       delegation: {
         id: "delegation-1",
@@ -853,6 +858,7 @@ describe("SpotProcurementReceiptService workflow", () => {
         delegateName: "李四"
       }
     });
+    expect(detail.discrepancy).toEqual({ status: "none", nextStep: null });
     expect(detail.photos[0]).not.toHaveProperty(
       "originalFileId"
     );

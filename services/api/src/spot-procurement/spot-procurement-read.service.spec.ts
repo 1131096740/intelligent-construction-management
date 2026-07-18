@@ -69,6 +69,9 @@ function paymentRow(overrides: Record<string, unknown> = {}) {
     canceledSupplierBalanceAmountCents: 0n,
     paymentPath: "supplier_direct",
     paymentMethod: "bank_transfer",
+    paymentType: null,
+    merchantNameSnapshot: null,
+    merchantPayeeMismatchNote: null,
     payeePartyId: "party-1",
     payeeUserId: null,
     payeeNameSnapshot: "昆明建材门市",
@@ -80,6 +83,13 @@ function paymentRow(overrides: Record<string, unknown> = {}) {
     supportingAttachmentFileId: "file-support",
     merchantPaymentProofFileId: null,
     balanceOverrideReason: null,
+    payerCompanyEntityId: null,
+    payerCompanyNameSnapshot: null,
+    payerUnifiedSocialCreditCodeSnapshot: null,
+    approvalAmountCents: 0n,
+    primaryPaymentChannelId: null,
+    submittedVersionNo: null,
+    factsFrozenAt: null,
     handlerUserId: "handler-1",
     createdByUserId: "handler-1",
     submittedAt: now,
@@ -222,6 +232,41 @@ function buildFixture() {
           createdAt: now
         }
       ])
+    },
+    spotProcurementPaymentLine: {
+      findMany: jest.fn().mockResolvedValue([])
+    },
+    spotProcurementPaymentChannel: {
+      findMany: jest.fn().mockResolvedValue([])
+    },
+    spotProcurementPaymentMethodOption: {
+      findMany: jest.fn().mockResolvedValue([])
+    },
+    spotProcurementPaymentAttachment: {
+      findMany: jest.fn().mockResolvedValue([])
+    },
+    spotProcurementPaymentExecutionVoucher: {
+      findMany: jest.fn().mockResolvedValue([])
+    },
+    spotProcurementPaymentInvoice: {
+      findMany: jest.fn().mockResolvedValue([])
+    },
+    spotProcurementPaymentArchive: {
+      findMany: jest.fn().mockResolvedValue([])
+    },
+    spotProcurementPaymentArchiveFile: {
+      findMany: jest.fn().mockResolvedValue([])
+    },
+    spotProcurementReceipt: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([])
+    },
+    spotProcurementDiscrepancy: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([])
+    },
+    spotProcurementRefund: {
+      findMany: jest.fn().mockResolvedValue([])
     },
     supplierBalanceReservation: {
       findMany: jest.fn().mockResolvedValue([])
@@ -432,16 +477,16 @@ describe("SpotProcurementReadService", () => {
       service.getPayment("payment-1", "finance-1")
       ]);
 
-    expect(procurementList.items[0].invoiceCoverage).toEqual(
+    expect((procurementList.items[0] as { invoiceCoverage: unknown }).invoiceCoverage).toEqual(
       procurementCoverage
     );
-    expect(procurementDetail.invoiceLedger).toEqual(
+    expect((procurementDetail as { invoiceLedger: unknown }).invoiceLedger).toEqual(
       procurementLedgerDetail
     );
-    expect(paymentDetail.invoiceCoverage).toEqual(paymentCoverage);
-    expect(paymentDetail.invoiceLedger).toEqual(paymentLedgerDetail);
+    expect((paymentDetail as { invoiceCoverage: unknown }).invoiceCoverage).toEqual(paymentCoverage);
+    expect((paymentDetail as { invoiceLedger: unknown }).invoiceLedger).toEqual(paymentLedgerDetail);
     expect(
-      paymentDetail.invoiceCoverage.paymentAttribution
+      (paymentDetail as { invoiceCoverage: typeof paymentCoverage }).invoiceCoverage.paymentAttribution
         .countsTowardProcurementCoverageAgain
     ).toBe(false);
     expect(
@@ -500,7 +545,7 @@ describe("SpotProcurementReadService", () => {
     });
     expect(result).not.toHaveProperty("payment.payeeBankAccountSnapshot");
     expect(JSON.stringify(result)).not.toContain("6222020202021234");
-    expect(result.invoiceCoverage).toEqual({
+    expect((result as { invoiceCoverage: unknown }).invoiceCoverage).toEqual({
       available: false,
       status: "not_available",
       label: "代码阶段 B 完成后开放"
@@ -538,7 +583,7 @@ describe("SpotProcurementReadService", () => {
 
     const result = await service.getPayment("payment-1", "finance-1");
 
-    expect(result.paymentInvoice).toEqual({
+    expect((result as { invoice: unknown }).invoice).toEqual({
       status: "uploaded",
       statusLabel: "已上传发票",
       activeCount: 1,
@@ -546,7 +591,216 @@ describe("SpotProcurementReadService", () => {
     });
     expect(invoiceLedger.coverageForPaymentIds).not.toHaveBeenCalled();
     expect(invoiceLedger.detailForPayment).not.toHaveBeenCalled();
-    expect(result.invoiceLedger).toMatchObject({ available: false });
+    expect(result).not.toHaveProperty("invoiceLedger");
+  });
+
+  it("exposes the real-form workbench facts without legacy procurement amounts, merchant balances, or full accounts", async () => {
+    const fixture = buildFixture();
+    const realProcurement = procurementRow({
+      supplierPartyId: null,
+      supplierKey: null,
+      supplierNameSnapshot: null,
+      approvedAmountCents: null
+    });
+    const realVersion = versionRow({
+      totalAmountCents: null,
+      applicationDepartmentSnapshot: "工程部",
+      applicationNameSnapshot: "赵凤平",
+      purchaserNameSnapshot: "杨帅",
+      purchaserDepartmentId: "department-material",
+      purchaserDepartmentNameSnapshot: "物资部",
+      requestedArrivalAt: now
+    });
+    const realPayment = paymentRow({
+      paymentType: "company_direct",
+      merchantNameSnapshot: "昆明建材门市",
+      merchantPayeeMismatchNote: null,
+      payerCompanyNameSnapshot: "云南建工集团有限公司",
+      payeeNameSnapshot: "昆明建材门市",
+      payeeAccountNameSnapshot: "昆明建材门市",
+      payeeBankAccountSnapshot: "6222020202021234",
+      approvalAmountCents: 12_000n,
+      factsFrozenAt: now
+    });
+    fixture.prisma.spotProcurement.findMany.mockResolvedValue([
+      realProcurement
+    ]);
+    fixture.prisma.spotProcurement.findUnique.mockResolvedValue(
+      realProcurement
+    );
+    fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([
+      realVersion
+    ]);
+    fixture.prisma.spotProcurementVersion.findUnique.mockResolvedValue(
+      realVersion
+    );
+    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([
+      realPayment
+    ]);
+    fixture.prisma.spotProcurementPayment.findUnique.mockResolvedValue(
+      realPayment
+    );
+    fixture.prisma.spotProcurementPaymentLine.findMany.mockResolvedValue([
+      {
+        id: "payment-line-1",
+        paymentId: "payment-1",
+        procurementLineId: "line-1",
+        sortOrder: 1,
+        approvedQuantitySnapshot: { toString: () => "100" },
+        paymentQuantity: { toString: () => "100" },
+        unitPrice: { toString: () => "1.2" },
+        amountCents: 12_000n,
+        expectedInvoiceCondition: "vat_general",
+        vatRateLabelSnapshot: "13%"
+      }
+    ]);
+    fixture.prisma.spotProcurementPaymentChannel.findMany.mockResolvedValue([
+      {
+        id: "channel-1",
+        sortOrder: 1,
+        channelType: "bank_transfer",
+        accountNameSnapshot: "昆明建材门市",
+        accountNumberSnapshot: "6222020202021234",
+        bankNameSnapshot: "某银行",
+        channelNote: null,
+        isPrimary: true
+      }
+    ]);
+    fixture.prisma.spotProcurementPaymentMethodOption.findMany.mockResolvedValue([
+      { id: "method-1", paymentId: "payment-1", paymentMethod: "bank_transfer", sortOrder: 1 }
+    ]);
+    const receipt = {
+      id: "receipt-1",
+      procurementId: "procurement-1",
+      status: "draft",
+      currentRevisionNo: 1,
+      firstSubmittedAt: null,
+      submittedAt: null,
+      lockedAt: null
+    };
+    fixture.prisma.spotProcurementReceipt.findUnique.mockResolvedValue(receipt);
+    fixture.prisma.spotProcurementReceipt.findMany.mockResolvedValue([receipt]);
+    const paymentInvoices = {
+      summary: jest.fn().mockResolvedValue({
+        status: "pending",
+        statusLabel: "待补发票",
+        activeCount: 0,
+        invoices: []
+      })
+    };
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never,
+      undefined,
+      paymentInvoices as never
+    );
+
+    const [procurementList, paymentList, procurementDetail, paymentDetail] =
+      await Promise.all([
+        service.listProcurements("finance-1", {}),
+        service.listPayments("finance-1", {}),
+        service.getProcurement("procurement-1", "finance-1"),
+        service.getPayment("payment-1", "finance-1")
+      ]);
+
+    expect(procurementList.items[0]).toMatchObject({
+      form: "real_application",
+      applicationDepartment: "工程部",
+      applicationName: "赵凤平",
+      requestedArrivalAt: now.toISOString(),
+      payment: {
+        approvalAmountCents: "12000",
+        actualPaidAmountCents: "5000",
+        remainingAmountCents: "7000"
+      },
+      receipt: { openAfterActualPayment: true }
+    });
+    expect(procurementList.items[0]).not.toHaveProperty("approvedAmountCents");
+    expect(procurementList.items[0]).not.toHaveProperty("supplierName");
+    expect(paymentList.items[0]).toMatchObject({
+      form: "real_payment",
+      payerCompanyName: "云南建工集团有限公司",
+      merchantName: "昆明建材门市",
+      approvalAmountCents: "12000",
+      actualPaidAmountCents: "5000",
+      remainingAmountCents: "7000",
+      payee: { accountNumberLast4: "1234" },
+      invoice: { status: "pending" }
+    });
+    expect(paymentList.items[0]).not.toHaveProperty("supplierBalanceAmountCents");
+    expect(procurementDetail.procurement).toMatchObject({
+      form: "real_application",
+      payment: { approvalAmountCents: "12000" }
+    });
+    expect(paymentDetail.payment).toMatchObject({
+      form: "real_payment",
+      payerCompanyName: "云南建工集团有限公司",
+      approvalAmountCents: "12000",
+      payee: { primaryChannel: { accountNumberLast4: "1234" } }
+    });
+    expect((paymentDetail as { paymentChannels: unknown }).paymentChannels).toEqual([
+      expect.objectContaining({ accountNumberLast4: "1234" })
+    ]);
+    expect(paymentDetail).not.toHaveProperty("balanceExecution");
+    expect(JSON.stringify(paymentDetail)).not.toContain("6222020202021234");
+  });
+
+  it("does not add an inaccessible payment refund into a procurement money summary", async () => {
+    const fixture = buildFixture();
+    const version = versionRow({
+      totalAmountCents: null,
+      applicationDepartmentSnapshot: "工程部",
+      applicationNameSnapshot: "赵凤平",
+      purchaserNameSnapshot: "杨帅",
+      purchaserDepartmentId: "department-material",
+      purchaserDepartmentNameSnapshot: "物资部",
+      requestedArrivalAt: now
+    });
+    const visiblePayment = paymentRow({
+      paymentType: "company_direct",
+      approvalAmountCents: 12_000n,
+      factsFrozenAt: now
+    });
+    const hiddenPayment = paymentRow({
+      id: "payment-hidden",
+      code: "LXFK-2026-002",
+      paymentType: "company_direct",
+      approvalAmountCents: 8_000n,
+      factsFrozenAt: now
+    });
+    fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([version]);
+    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([
+      visiblePayment,
+      hiddenPayment
+    ]);
+    fixture.prisma.spotProcurementRefund.findMany.mockResolvedValue([
+      {
+        id: "refund-hidden",
+        procurementId: "procurement-1",
+        paymentId: "payment-hidden",
+        amountCents: 8_000n,
+        receivedAt: now
+      }
+    ]);
+    fixture.access.accessiblePaymentIds.mockResolvedValue(
+      new Set(["payment-1"])
+    );
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const result = await service.getProcurement("procurement-1", "finance-1");
+
+    expect(result.paymentSummary).toMatchObject({
+      approvalAmountCents: "12000",
+      refundAmountCents: "0",
+      visibilityRestricted: true
+    });
   });
 
   it("offers a real revision action for an owner after rejection without exposing false draft editing", async () => {
@@ -845,7 +1099,7 @@ describe("SpotProcurementReadService", () => {
       paymentFactConsistent: false,
       voucherStatus: "anomaly"
     });
-    expect(result.companyPayment).toMatchObject({
+    expect((result as { companyPayment: unknown }).companyPayment).toMatchObject({
       paidAmountCents: "7000",
       statusLabel: "部分已付",
       voucherStatus: "anomaly"

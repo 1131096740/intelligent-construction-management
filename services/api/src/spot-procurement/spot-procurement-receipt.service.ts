@@ -356,7 +356,8 @@ export class SpotProcurementReceiptService {
           versionRevisions,
           reviews,
           pdfDocuments,
-          latestPdfRefresh
+          latestPdfRefresh,
+          discrepancy
         ] = await Promise.all([
           tx.spotProcurement.findUnique({
           where: { id: procurementId },
@@ -451,6 +452,22 @@ export class SpotProcurementReceiptService {
               { id: "desc" }
             ],
             select: { metadata: true }
+          }),
+          tx.spotProcurementDiscrepancy.findFirst({
+            where: {
+              procurementId,
+              procurementVersionId: receipt.procurementVersionId,
+              invalidatedAt: null
+            },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            select: {
+              id: true,
+              status: true,
+              resolutionType: true,
+              replenishedAt: true,
+              refundExpectedAmountCents: true,
+              resolvedAt: true
+            }
           })
         ]);
         if (!procurement || !version || !revision) {
@@ -548,6 +565,12 @@ export class SpotProcurementReceiptService {
             status: receipt.status,
             currentRevisionNo: receipt.currentRevisionNo,
             receiptOpen: Boolean(firstActualPayment),
+            firstActualPayment: firstActualPayment
+              ? {
+                  executionId: firstActualPayment.id,
+                  paidAt: firstActualPayment.paidAt.toISOString()
+                }
+              : null,
             blockedReason: firstActualPayment
               ? null
               : "待财务登记实际付款后开放收货确认",
@@ -645,7 +668,25 @@ export class SpotProcurementReceiptService {
               review.submissionDelegationId,
             targetReviewId: review.targetReviewId,
             createdAt: review.createdAt.toISOString()
-          }))
+          })),
+          discrepancy: discrepancy
+            ? {
+                id: discrepancy.id,
+                status: discrepancy.status,
+                resolutionType: discrepancy.resolutionType,
+                replenishedAt: asIso(discrepancy.replenishedAt),
+                refundExpectedAmountCents:
+                  discrepancy.refundExpectedAmountCents.toString(),
+                resolvedAt: asIso(discrepancy.resolvedAt),
+                nextStep:
+                  discrepancy.status === "pending_resolution"
+                    ? "请由经办人选择商户补货，或由财务登记退款"
+                    : null
+              }
+            : {
+                status: "none",
+                nextStep: null
+              }
         };
       },
       {
@@ -2848,13 +2889,14 @@ export class SpotProcurementReceiptService {
     tx: Prisma.TransactionClient,
     procurementId: string,
     procurementVersionId: string
-  ): Promise<{ id: string; paymentId: string } | null> {
+  ): Promise<{ id: string; paymentId: string; paidAt: Date } | null> {
     const rows = await tx.$queryRaw<
-      Array<{ id: string; paymentId: string }>
+      Array<{ id: string; paymentId: string; paidAt: Date }>
     >(Prisma.sql`
       SELECT
         execution."id",
-        execution."paymentId"
+        execution."paymentId",
+        execution."paidAt"
       FROM "SpotProcurementPaymentExecution" execution
       INNER JOIN "SpotProcurementPayment" payment
         ON payment."id" = execution."paymentId"

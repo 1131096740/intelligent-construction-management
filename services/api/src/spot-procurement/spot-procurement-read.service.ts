@@ -10,9 +10,15 @@ import {
   type FileObject,
   type Project,
   type SpotProcurement,
+  type SpotProcurementDiscrepancy,
   type SpotProcurementLine,
   type SpotProcurementPayment,
+  type SpotProcurementPaymentArchive,
+  type SpotProcurementPaymentArchiveFile,
+  type SpotProcurementPaymentChannel,
   type SpotProcurementPaymentExecution,
+  type SpotProcurementReceipt,
+  type SpotProcurementRefund,
   type SpotProcurementVersion
 } from "@prisma/client";
 import {
@@ -288,7 +294,10 @@ export class SpotProcurementReadService {
       lines,
       attachments,
       allPayments,
-      currentPdf
+      currentPdf,
+      receipt,
+      discrepancy,
+      refunds
     ] = await Promise.all([
       this.prisma.project.findFirst({
         where: { id: procurement.projectId },
@@ -322,6 +331,29 @@ export class SpotProcurementReadService {
           }
         },
         orderBy: { createdAt: "desc" }
+      }),
+      this.prisma.spotProcurementReceipt.findUnique({
+        where: { procurementId: procurement.id },
+        select: {
+          id: true,
+          status: true,
+          currentRevisionNo: true,
+          firstSubmittedAt: true,
+          submittedAt: true,
+          lockedAt: true
+        }
+      }),
+      this.prisma.spotProcurementDiscrepancy.findFirst({
+        where: {
+          procurementId: procurement.id,
+          procurementVersionId: procurement.currentVersionId,
+          invalidatedAt: null
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+      }),
+      this.prisma.spotProcurementRefund.findMany({
+        where: { procurementId: procurement.id },
+        orderBy: [{ receivedAt: "asc" }, { id: "asc" }]
       })
     ]);
     if (!project) {
@@ -349,6 +381,13 @@ export class SpotProcurementReadService {
     ]);
     const accessiblePayments = allPayments.filter((payment) =>
       accessiblePaymentIds.has(payment.id)
+    );
+    const accessiblePaymentIdSet = new Set(
+      accessiblePayments.map((payment) => payment.id)
+    );
+    const accessibleRefunds = refunds.filter(
+      (refund) =>
+        refund.paymentId !== null && accessiblePaymentIdSet.has(refund.paymentId)
     );
     const executionPaymentIds = allPayments.map((payment) => payment.id);
     const executions = executionPaymentIds.length
@@ -396,6 +435,12 @@ export class SpotProcurementReadService {
       accessiblePayments,
       actualPaidByPaymentId
     );
+    const realPaymentSummary = summarizeRealPaymentFacts(
+      accessiblePayments,
+      actualPaidByPaymentId,
+      accessibleRefunds
+    );
+    const usesRealProcurementForm = isRealProcurementForm(currentVersion);
     const currentApprovalTimeline = await approvalTimelineForBusiness(
       this.prisma,
       SPOT_PROCUREMENT_BUSINESS_TYPES.application,
@@ -414,7 +459,8 @@ export class SpotProcurementReadService {
       paymentSummary,
       currentPdfExists: Boolean(currentPdf)
     });
-    const invoiceCoverageByProcurementId = this.invoiceLedger
+    const invoiceCoverageByProcurementId =
+      !usesRealProcurementForm && this.invoiceLedger
       ? await this.invoiceLedger.coverageForProcurementIds([
           procurement.id
         ])
@@ -422,19 +468,26 @@ export class SpotProcurementReadService {
     const invoiceCoverage =
       invoiceCoverageByProcurementId.get(procurement.id) ??
       invoiceCoverageUnavailable();
-    const invoiceLedgerDetail = this.invoiceLedger
+    const invoiceLedgerDetail =
+      !usesRealProcurementForm && this.invoiceLedger
       ? await this.invoiceLedger.detailForProcurement(
           procurement.id
         )
       : invoiceLedgerDetailUnavailable();
+
+    const realReceipt = usesRealProcurementForm
+      ? receiptReadSummary(
+          receipt,
+          discrepancy,
+          executions.some((execution) => execution.voidedAt === null)
+        )
+      : futureUnavailable();
 
     return {
       procurement: {
         id: procurement.id,
         code: procurement.code,
         project: projectSummary(project),
-        supplierPartyId: procurement.supplierPartyId,
-        supplierName: procurement.supplierNameSnapshot,
         applicant: userSummary(
           procurement.applicantUserId,
           userById,
@@ -447,19 +500,30 @@ export class SpotProcurementReadService {
         ),
         status: procurement.status,
         statusLabel: procurementStatusLabel(procurement.status),
-        approvedAmountCents: moneyText(procurement.approvedAmountCents),
-        actualCostCents: null,
-        actualCost: futureUnavailable(),
         closedAt: isoOrNull(procurement.closedAt),
         voidedAt: isoOrNull(procurement.voidedAt),
         voidReason: procurement.voidReason,
         createdAt: procurement.createdAt.toISOString(),
-        updatedAt: procurement.updatedAt.toISOString()
+        updatedAt: procurement.updatedAt.toISOString(),
+        ...(usesRealProcurementForm
+          ? {
+              form: "real_application",
+              payment: realPaymentSummary
+            }
+          : {
+              form: "legacy",
+              supplierPartyId: procurement.supplierPartyId,
+              supplierName: procurement.supplierNameSnapshot,
+              approvedAmountCents: moneyText(procurement.approvedAmountCents),
+              actualCostCents: null,
+              actualCost: futureUnavailable()
+            })
       },
-      currentVersion: versionReadModel(currentVersion),
-      versions: versions.map(versionReadModel),
-      lines: lines.map(lineReadModel),
-      invoiceComposition: invoiceComposition(lines),
+      currentVersion: versionReadModel(currentVersion, usesRealProcurementForm),
+      versions: versions.map((version) =>
+        versionReadModel(version, isRealProcurementForm(version))
+      ),
+      lines: lines.map((line) => lineReadModel(line, usesRealProcurementForm)),
       attachments: attachments.flatMap((attachment) => {
         const file = fileById.get(attachment.fileId);
         if (!file) return [];
@@ -476,15 +540,29 @@ export class SpotProcurementReadService {
       approval: approvalSummary(currentApproval),
       approvalTimeline: currentApprovalTimeline,
       payments: paymentRows,
-      paymentSummary: {
-        ...paymentSummary,
-        visibilityRestricted:
-          accessiblePayments.length !== allPayments.length
-      },
-      receipt: futureUnavailable(),
-      invoiceCoverage,
-      invoiceLedger: invoiceLedgerDetail,
-      discrepancy: futureUnavailable(),
+      paymentSummary: usesRealProcurementForm
+        ? {
+            ...realPaymentSummary,
+            visibilityRestricted:
+              accessiblePayments.length !== allPayments.length
+          }
+        : {
+            ...paymentSummary,
+            visibilityRestricted:
+              accessiblePayments.length !== allPayments.length
+          },
+      receipt: realReceipt,
+      ...(usesRealProcurementForm
+        ? {
+            discrepancy: discrepancyReadSummary(discrepancy, accessibleRefunds),
+            invoice: await this.realProcurementInvoiceSummary(accessiblePayments)
+          }
+        : {
+            invoiceComposition: invoiceComposition(lines),
+            invoiceCoverage,
+            invoiceLedger: invoiceLedgerDetail,
+            discrepancy: futureUnavailable()
+          }),
       applicationPdf: {
         available: currentApproval?.status === "approved",
         generated: Boolean(currentPdf),
@@ -499,7 +577,9 @@ export class SpotProcurementReadService {
       primaryAction: primaryActionKey(availableActions),
       disabledReasons: [
         ...disabledActionReasons(availableActions),
-        "收货确认、收货差异和发票覆盖将在代码阶段 B 开放"
+        ...(usesRealProcurementForm
+          ? []
+          : ["收货确认、收货差异和发票覆盖将在代码阶段 B 开放"])
       ]
     };
   }
@@ -563,6 +643,12 @@ export class SpotProcurementReadService {
                 }
               },
               {
+                merchantNameSnapshot: {
+                  contains: keyword,
+                  mode: "insensitive"
+                }
+              },
+              {
                 procurementId: {
                   in: matchingProcurementIds
                 }
@@ -601,7 +687,16 @@ export class SpotProcurementReadService {
       project,
       executions,
       reservations,
-      approval
+      approval,
+      paymentLines,
+      paymentChannels,
+      paymentMethods,
+      paymentAttachments,
+      receipt,
+      discrepancy,
+      refunds,
+      approvalOriginal,
+      archives
     ] = await Promise.all([
       this.prisma.spotProcurement.findUnique({
         where: { id: payment.procurementId }
@@ -627,6 +722,62 @@ export class SpotProcurementReadService {
           businessId: payment.id
         },
         orderBy: { updatedAt: "desc" }
+      }),
+      this.prisma.spotProcurementPaymentLine.findMany({
+        where: { paymentId: payment.id },
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+      }),
+      this.prisma.spotProcurementPaymentChannel.findMany({
+        where: { paymentId: payment.id },
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+      }),
+      this.prisma.spotProcurementPaymentMethodOption.findMany({
+        where: { paymentId: payment.id },
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+      }),
+      this.prisma.spotProcurementPaymentAttachment.findMany({
+        where: { paymentId: payment.id },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+      }),
+      this.prisma.spotProcurementReceipt.findUnique({
+        where: { procurementId: payment.procurementId },
+        select: {
+          id: true,
+          status: true,
+          currentRevisionNo: true,
+          firstSubmittedAt: true,
+          submittedAt: true,
+          lockedAt: true
+        }
+      }),
+      this.prisma.spotProcurementDiscrepancy.findFirst({
+        where: {
+          procurementId: payment.procurementId,
+          procurementVersionId: payment.procurementVersionId,
+          invalidatedAt: null
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+      }),
+      this.prisma.spotProcurementRefund.findMany({
+        where: { paymentId: payment.id },
+        orderBy: [{ receivedAt: "asc" }, { id: "asc" }]
+      }),
+      this.prisma.pdfDocument.findFirst({
+        where: {
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+          businessId: payment.id,
+          templateKey: {
+            in: [
+              SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY,
+              "approval_form"
+            ]
+          }
+        },
+        orderBy: { createdAt: "desc" }
+      }),
+      this.prisma.spotProcurementPaymentArchive.findMany({
+        where: { paymentId: payment.id },
+        orderBy: [{ versionNo: "desc" }, { id: "desc" }]
       })
     ]);
     if (
@@ -639,10 +790,21 @@ export class SpotProcurementReadService {
       throw new ConflictException("零星采购付款关联事实不完整，请联系管理员核对");
     }
 
+    const executionVouchers = executions.length
+      ? await this.prisma.spotProcurementPaymentExecutionVoucher.findMany({
+          where: {
+            paymentExecutionId: { in: executions.map((execution) => execution.id) }
+          },
+          orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+        })
+      : [];
+
     const fileIds = [
       payment.supportingAttachmentFileId,
       payment.merchantPaymentProofFileId,
-      ...executions.map((execution) => execution.voucherFileId)
+      ...executions.map((execution) => execution.voucherFileId),
+      ...paymentAttachments.map((attachment) => attachment.fileId),
+      ...executionVouchers.map((voucher) => voucher.fileId)
     ].filter((fileId): fileId is string => Boolean(fileId));
     const userIds = [
       payment.handlerUserId,
@@ -726,6 +888,24 @@ export class SpotProcurementReadService {
       usesRealPaymentForm && this.paymentInvoices
         ? await this.paymentInvoices.summary(payment.id)
         : null;
+    const materialIds = paymentLines.map((line) => line.procurementLineId);
+    const materials = materialIds.length
+      ? await this.prisma.spotProcurementLine.findMany({
+          where: { id: { in: materialIds } },
+          orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+        })
+      : [];
+    const materialById = new Map(materials.map((material) => [material.id, material]));
+    const archiveFiles = archives.length
+      ? await this.prisma.spotProcurementPaymentArchiveFile.findMany({
+          where: { archiveId: { in: archives.map((archive) => archive.id) } },
+          orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+        })
+      : [];
+    const archiveFilesByArchiveId = groupBy(archiveFiles, (archiveFile) => archiveFile.archiveId);
+    const realPaymentFacts = usesRealPaymentForm
+      ? realPaymentFactReadModel(payment, actualPaidAmountCents, refunds)
+      : null;
 
     return {
       payment: {
@@ -736,51 +916,9 @@ export class SpotProcurementReadService {
         project: projectSummary(project),
         procurement: {
           id: procurement.id,
-          code: procurement.code,
-          supplierName: procurement.supplierNameSnapshot
+          code: procurement.code
         },
         procurementVersionId: payment.procurementVersionId,
-        settlementAmountCents: moneyText(payment.settlementAmountCents),
-        supplierBalanceAmountCents: moneyText(
-          payment.supplierBalanceAmountCents
-        ),
-        companyPaymentAmountCents: moneyText(
-          payment.companyPaymentAmountCents
-        ),
-        effectiveCompanyPaymentAmountCents: moneyText(
-          effectiveCompanyPaymentAmountCents
-        ),
-        paidAmountCents: moneyText(actualPaidAmountCents),
-        remainingCompanyPaymentAmountCents: moneyText(
-          remainingCompanyPaymentAmountCents
-        ),
-        paymentFactConsistent:
-          payment.paidAmountCents === actualPaidAmountCents,
-        voucherStatus: voucher.status,
-        voucherStatusLabel: voucher.label,
-        executedSupplierBalanceAmountCents: moneyText(
-          payment.executedSupplierBalanceAmountCents
-        ),
-        canceledAmountCents: moneyText(payment.canceledAmountCents),
-        canceledCompanyPaymentAmountCents: moneyText(
-          payment.canceledCompanyPaymentAmountCents
-        ),
-        canceledSupplierBalanceAmountCents: moneyText(
-          payment.canceledSupplierBalanceAmountCents
-        ),
-        paymentPath: payment.paymentPath,
-        paymentPathLabel: paymentPathLabel(payment.paymentPath),
-        paymentMethod: payment.paymentMethod,
-        paymentMethodLabel: paymentMethodLabel(payment.paymentMethod),
-        payeeName: payment.payeeNameSnapshot,
-        payeeAccountName: payment.payeeAccountNameSnapshot,
-        payeeBankName: payment.payeeBankNameSnapshot,
-        payeeBankAccountLast4: bankAccountLast4(
-          payment.payeeBankAccountSnapshot
-        ),
-        expectedPaymentAt: isoOrNull(payment.expectedPaymentAt),
-        paymentNote: payment.paymentNote,
-        balanceOverrideReason: payment.balanceOverrideReason,
         handler: userSummary(
           payment.handlerUserId,
           userById,
@@ -791,21 +929,134 @@ export class SpotProcurementReadService {
         invalidatedAt: isoOrNull(payment.invalidatedAt),
         invalidatedReason: payment.invalidatedReason,
         createdAt: payment.createdAt.toISOString(),
-        updatedAt: payment.updatedAt.toISOString()
+        updatedAt: payment.updatedAt.toISOString(),
+        ...(usesRealPaymentForm
+          ? {
+              form: "real_payment",
+              paymentType: payment.paymentType,
+              paymentTypeLabel: paymentTypeLabel(payment.paymentType),
+              merchantName: payment.merchantNameSnapshot,
+              merchantPayeeMismatchNote: payment.merchantPayeeMismatchNote,
+              payerCompanyName: payment.payerCompanyNameSnapshot,
+              payee: {
+                name: payment.payeeNameSnapshot,
+                accountName: payment.payeeAccountNameSnapshot,
+                primaryChannel: paymentChannels
+                  .filter((channel) => channel.isPrimary)
+                  .map(maskedPaymentChannelReadModel)
+                  .at(0) ?? null
+              },
+              ...realPaymentFacts!,
+              paymentFactConsistent:
+                payment.paidAmountCents === actualPaidAmountCents,
+              voucherStatus: voucher.status,
+              voucherStatusLabel: voucher.label
+            }
+          : {
+              form: "legacy",
+              supplierName: procurement.supplierNameSnapshot,
+              settlementAmountCents: moneyText(payment.settlementAmountCents),
+              supplierBalanceAmountCents: moneyText(
+                payment.supplierBalanceAmountCents
+              ),
+              companyPaymentAmountCents: moneyText(
+                payment.companyPaymentAmountCents
+              ),
+              effectiveCompanyPaymentAmountCents: moneyText(
+                effectiveCompanyPaymentAmountCents
+              ),
+              paidAmountCents: moneyText(actualPaidAmountCents),
+              remainingCompanyPaymentAmountCents: moneyText(
+                remainingCompanyPaymentAmountCents
+              ),
+              paymentFactConsistent:
+                payment.paidAmountCents === actualPaidAmountCents,
+              voucherStatus: voucher.status,
+              voucherStatusLabel: voucher.label,
+              executedSupplierBalanceAmountCents: moneyText(
+                payment.executedSupplierBalanceAmountCents
+              ),
+              canceledAmountCents: moneyText(payment.canceledAmountCents),
+              canceledCompanyPaymentAmountCents: moneyText(
+                payment.canceledCompanyPaymentAmountCents
+              ),
+              canceledSupplierBalanceAmountCents: moneyText(
+                payment.canceledSupplierBalanceAmountCents
+              ),
+              paymentPath: payment.paymentPath,
+              paymentPathLabel: paymentPathLabel(payment.paymentPath),
+              paymentMethod: payment.paymentMethod,
+              paymentMethodLabel: paymentMethodLabel(payment.paymentMethod),
+              payeeName: payment.payeeNameSnapshot,
+              payeeAccountName: payment.payeeAccountNameSnapshot,
+              payeeBankName: payment.payeeBankNameSnapshot,
+              payeeBankAccountLast4: bankAccountLast4(
+                payment.payeeBankAccountSnapshot
+              ),
+              expectedPaymentAt: isoOrNull(payment.expectedPaymentAt),
+              paymentNote: payment.paymentNote,
+              balanceOverrideReason: payment.balanceOverrideReason
+            })
       },
-      procurementVersion: versionReadModel(version),
+      procurementVersion: versionReadModel(version, isRealProcurementForm(version)),
       approval: approvalSummary(approval),
       approvalTimeline: timeline,
-      composition: {
-        settlementAmountCents: moneyText(payment.settlementAmountCents),
-        supplierBalanceAmountCents: moneyText(
-          payment.supplierBalanceAmountCents
-        ),
-        companyPaymentAmountCents: moneyText(
-          payment.companyPaymentAmountCents
-        )
-      },
-      companyPayment: {
+      ...(usesRealPaymentForm
+        ? {
+            materials: paymentLines.map((line) => ({
+              id: line.id,
+              procurementLineId: line.procurementLineId,
+              sortOrder: line.sortOrder,
+              materialName:
+                materialById.get(line.procurementLineId)?.materialName ?? "材料未读取",
+              specification:
+                materialById.get(line.procurementLineId)?.specification ?? null,
+              unit: materialById.get(line.procurementLineId)?.unit ?? "—",
+              approvedQuantity: line.approvedQuantitySnapshot.toString(),
+              paymentQuantity: line.paymentQuantity.toString(),
+              unitPrice: line.unitPrice.toString(),
+              amountCents: moneyText(line.amountCents),
+              expectedInvoiceCondition: line.expectedInvoiceCondition,
+              vatRateLabel: line.vatRateLabelSnapshot
+            })),
+            paymentMethods: paymentMethods.map((method) => ({
+              value: method.paymentMethod,
+              label: paymentMethodLabel(method.paymentMethod)
+            })),
+            paymentChannels: paymentChannels.map(maskedPaymentChannelReadModel),
+            receipt: receiptReadSummary(
+              receipt,
+              discrepancy,
+              activeExecutions.length > 0
+            ),
+            discrepancy: discrepancyReadSummary(discrepancy, refunds),
+            approvalOriginal: approvalOriginal
+              ? {
+                  documentId: approvalOriginal.id,
+                  fileId: approvalOriginal.fileId,
+                  templateKey: approvalOriginal.templateKey,
+                  createdAt: approvalOriginal.createdAt.toISOString(),
+                  immutable: true
+                }
+              : null,
+            archives: archiveReadModels(archives, archiveFilesByArchiveId),
+            archiveStatus: archiveStatusReadModel(
+              payment,
+              approvalOriginal,
+              archives.at(0) ?? null
+            )
+          }
+        : {
+            composition: {
+              settlementAmountCents: moneyText(payment.settlementAmountCents),
+              supplierBalanceAmountCents: moneyText(
+                payment.supplierBalanceAmountCents
+              ),
+              companyPaymentAmountCents: moneyText(
+                payment.companyPaymentAmountCents
+              )
+            },
+            companyPayment: {
         status: payment.status,
         statusLabel: companyPaymentStatusLabel(
           payment,
@@ -822,8 +1073,8 @@ export class SpotProcurementReadService {
           payment.paidAmountCents === actualPaidAmountCents,
         voucherStatus: voucher.status,
         voucherStatusLabel: voucher.label
-      },
-      balanceExecution: {
+            },
+            balanceExecution: {
         requestedAmountCents: moneyText(
           payment.supplierBalanceAmountCents
         ),
@@ -831,7 +1082,8 @@ export class SpotProcurementReadService {
           payment.executedSupplierBalanceAmountCents
         ),
         reservationStatus: reservations[0]?.status ?? null
-      },
+            }
+          }),
       executions: executions.map((execution) => ({
         id: execution.id,
         amountCents: moneyText(execution.amountCents),
@@ -850,18 +1102,44 @@ export class SpotProcurementReadService {
             : null) ?? "付款凭证未读取",
         voidedAt: isoOrNull(execution.voidedAt),
         voidReason: execution.voidReason,
-        active: execution.voidedAt === null
+        active: execution.voidedAt === null,
+        vouchers: executionVouchers
+          .filter((voucher) => voucher.paymentExecutionId === execution.id)
+          .map((voucher) => ({
+            id: voucher.id,
+            fileId: voucher.fileId,
+            sortOrder: voucher.sortOrder
+          }))
       })),
-      evidenceFiles: this.paymentEvidenceFiles(
-        payment,
-        activeExecutions,
-        fileById,
-        userById
-      ),
-      invoiceCoverage,
-      invoiceLedger: invoiceLedgerDetail,
-      paymentInvoice,
-      receipt: futureUnavailable(),
+      evidenceFiles: usesRealPaymentForm
+        ? paymentAttachments.flatMap((attachment) => {
+            const file = fileById.get(attachment.fileId);
+            return file
+              ? [
+                  evidenceFileReadModel(
+                    file,
+                    userById,
+                    attachment.category,
+                    attachment.id,
+                    true
+                  )
+                ]
+              : [];
+          })
+        : this.paymentEvidenceFiles(
+            payment,
+            activeExecutions,
+            fileById,
+            userById
+          ),
+      ...(usesRealPaymentForm
+        ? { invoice: paymentInvoice ?? realInvoiceSummaryUnavailable() }
+        : {
+            invoiceCoverage,
+            invoiceLedger: invoiceLedgerDetail,
+            paymentInvoice,
+            receipt: futureUnavailable()
+          }),
       paymentPdf: {
         available: approval?.status === "approved",
         businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
@@ -875,9 +1153,9 @@ export class SpotProcurementReadService {
       primaryAction: primaryActionKey(availableActions),
       disabledReasons: [
         ...disabledActionReasons(availableActions),
-        usesRealPaymentForm
-          ? "历史结构化票据、无票确认和采购自动办结将在代码阶段 B 开放"
-          : "发票覆盖、无票确认和采购自动办结将在代码阶段 B 开放"
+        ...(usesRealPaymentForm
+          ? []
+          : ["发票覆盖、无票确认和采购自动办结将在代码阶段 B 开放"])
       ]
     };
   }
@@ -1025,7 +1303,16 @@ export class SpotProcurementReadService {
       .map((row) => row.currentVersionId)
       .filter((id): id is string => Boolean(id));
     const procurementIds = rows.map((row) => row.id);
-    const [projects, versions, lines, payments, approvals] =
+    const [
+      projects,
+      versions,
+      lines,
+      payments,
+      approvals,
+      receipts,
+      discrepancies,
+      refunds
+    ] =
       await Promise.all([
         this.prisma.project.findMany({
           where: { id: { in: projectIds } },
@@ -1050,7 +1337,30 @@ export class SpotProcurementReadService {
               },
               orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
             })
-          : Promise.resolve([])
+          : Promise.resolve([]),
+        this.prisma.spotProcurementReceipt.findMany({
+          where: { procurementId: { in: procurementIds } },
+          select: {
+            id: true,
+            procurementId: true,
+            status: true,
+            currentRevisionNo: true,
+            firstSubmittedAt: true,
+            submittedAt: true,
+            lockedAt: true
+          }
+        }),
+        this.prisma.spotProcurementDiscrepancy.findMany({
+          where: {
+            procurementId: { in: procurementIds },
+            invalidatedAt: null
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+        }),
+        this.prisma.spotProcurementRefund.findMany({
+          where: { procurementId: { in: procurementIds } },
+          orderBy: [{ receivedAt: "asc" }, { id: "asc" }]
+        })
       ]);
     const [accessiblePaymentIds, activeExecutions] = await Promise.all([
       this.access.accessiblePaymentIds(
@@ -1090,6 +1400,15 @@ export class SpotProcurementReadService {
       payments,
       (payment) => payment.procurementId
     );
+    const receiptByProcurementId = new Map(
+      receipts.map((receipt) => [receipt.procurementId, receipt])
+    );
+    const discrepancyByProcurementId = new Map<string, (typeof discrepancies)[number]>();
+    for (const discrepancy of discrepancies) {
+      if (!discrepancyByProcurementId.has(discrepancy.procurementId)) {
+        discrepancyByProcurementId.set(discrepancy.procurementId, discrepancy);
+      }
+    }
     const invoiceCoverageByProcurementId = this.invoiceLedger
       ? await this.invoiceLedger.coverageForProcurementIds(
           rows.map((row) => row.id)
@@ -1105,13 +1424,22 @@ export class SpotProcurementReadService {
       const rowLines = linesByVersionId.get(version.id) ?? [];
       const visiblePayments = paymentsByProcurementId.get(row.id) ?? [];
       const allRowPayments = allPaymentsByProcurementId.get(row.id) ?? [];
+      const isRealApplication = isRealProcurementForm(version);
+      const realPayment = summarizeRealPaymentFacts(
+        visiblePayments,
+        actualPaidByPaymentId,
+        refunds.filter(
+          (refund) =>
+            refund.procurementId === row.id &&
+            refund.paymentId !== null &&
+            accessiblePaymentIds.has(refund.paymentId)
+        )
+      );
       return [
         {
           id: row.id,
           code: row.code,
           project: projectSummary(project),
-          supplierPartyId: row.supplierPartyId,
-          supplierName: row.supplierNameSnapshot,
           reason: version.reason,
           applicant: userSummary(
             row.applicantUserId,
@@ -1123,27 +1451,54 @@ export class SpotProcurementReadService {
             userById,
             "采购经办人未读取"
           ),
-          approvedAmountCents: moneyText(row.approvedAmountCents),
-          currentTotalAmountCents: moneyText(version.totalAmountCents),
-          actualCostCents: null,
-          actualCost: futureUnavailable(),
-          invoiceComposition: invoiceComposition(rowLines),
-          payment: {
-            ...summarizePayments(visiblePayments, actualPaidByPaymentId),
-            visibilityRestricted:
-              visiblePayments.length !== allRowPayments.length
-          },
-          receipt: futureUnavailable(),
-          invoiceCoverage:
-            invoiceCoverageByProcurementId.get(row.id) ??
-            invoiceCoverageUnavailable(),
           status: row.status,
           statusLabel: procurementStatusLabel(row.status),
           approval: approvalSummary(
             approvalByBusinessId.get(version.id) ?? null
           ),
           createdAt: row.createdAt.toISOString(),
-          updatedAt: row.updatedAt.toISOString()
+          updatedAt: row.updatedAt.toISOString(),
+          ...(isRealApplication
+            ? {
+                form: "real_application",
+                applicationDepartment: version.applicationDepartmentSnapshot,
+                applicationName: version.applicationNameSnapshot,
+                purchaserName: version.purchaserNameSnapshot,
+                purchaserDepartment: version.purchaserDepartmentNameSnapshot,
+                requestedArrivalAt: version.requestedArrivalAt.toISOString(),
+                payment: {
+                  ...realPayment,
+                  visibilityRestricted:
+                    visiblePayments.length !== allRowPayments.length
+                },
+                receipt: receiptReadSummary(
+                  receiptByProcurementId.get(row.id) ?? null,
+                  discrepancyByProcurementId.get(row.id) ?? null,
+                  visiblePayments.some(
+                    (payment) =>
+                      (actualPaidByPaymentId.get(payment.id) ?? 0n) > 0n
+                  )
+                )
+              }
+            : {
+                form: "legacy",
+                supplierPartyId: row.supplierPartyId,
+                supplierName: row.supplierNameSnapshot,
+                approvedAmountCents: moneyText(row.approvedAmountCents),
+                currentTotalAmountCents: moneyText(version.totalAmountCents),
+                actualCostCents: null,
+                actualCost: futureUnavailable(),
+                invoiceComposition: invoiceComposition(rowLines),
+                payment: {
+                  ...summarizePayments(visiblePayments, actualPaidByPaymentId),
+                  visibilityRestricted:
+                    visiblePayments.length !== allRowPayments.length
+                },
+                receipt: futureUnavailable(),
+                invoiceCoverage:
+                  invoiceCoverageByProcurementId.get(row.id) ??
+                  invoiceCoverageUnavailable()
+              })
         }
       ];
     });
@@ -1167,7 +1522,11 @@ export class SpotProcurementReadService {
       loadedVersions,
       approvals,
       loadedUsers,
-      activeExecutions
+      activeExecutions,
+      paymentLines,
+      paymentInvoices,
+      receipts,
+      refunds
     ] =
       await Promise.all([
         suppliedProjects
@@ -1202,6 +1561,30 @@ export class SpotProcurementReadService {
             paymentId: { in: rows.map((row) => row.id) },
             voidedAt: null
           }
+        }),
+        this.prisma.spotProcurementPaymentLine.findMany({
+          where: { paymentId: { in: rows.map((row) => row.id) } },
+          select: { paymentId: true, expectedInvoiceCondition: true }
+        }),
+        this.prisma.spotProcurementPaymentInvoice.findMany({
+          where: { paymentId: { in: rows.map((row) => row.id) } },
+          select: { paymentId: true, fileId: true, status: true }
+        }),
+        this.prisma.spotProcurementReceipt.findMany({
+          where: { procurementId: { in: procurementIds } },
+          select: {
+            id: true,
+            procurementId: true,
+            status: true,
+            currentRevisionNo: true,
+            firstSubmittedAt: true,
+            submittedAt: true,
+            lockedAt: true
+          }
+        }),
+        this.prisma.spotProcurementRefund.findMany({
+          where: { paymentId: { in: rows.map((row) => row.id) } },
+          select: { paymentId: true, amountCents: true, receivedAt: true }
         })
       ]);
     const projectById =
@@ -1247,6 +1630,21 @@ export class SpotProcurementReadService {
       activeExecutions,
       (execution) => execution.paymentId
     );
+    const paymentLinesByPaymentId = groupBy(
+      paymentLines,
+      (line) => line.paymentId
+    );
+    const paymentInvoicesByPaymentId = groupBy(
+      paymentInvoices,
+      (invoice) => invoice.paymentId
+    );
+    const receiptByProcurementId = new Map(
+      receipts.map((receipt) => [receipt.procurementId, receipt])
+    );
+    const refundsByPaymentId = groupBy(
+      refunds.filter((refund) => refund.paymentId !== null),
+      (refund) => refund.paymentId as string
+    );
     const invoiceCoverageByPaymentId = this.invoiceLedger
       ? await this.invoiceLedger.coverageForPaymentIds(
           rows.map((row) => row.id)
@@ -1278,35 +1676,17 @@ export class SpotProcurementReadService {
         0n
       );
       const voucher = voucherFact(rowExecutions, activeVoucherFileIds);
+      const rowRefunds = refundsByPaymentId.get(row.id) ?? [];
+      const realPayment = isRealPaymentForm(row);
       return [
         {
           id: row.id,
           code: row.code,
           procurement: {
             id: procurement.id,
-            code: procurement.code,
-            supplierName: procurement.supplierNameSnapshot
+            code: procurement.code
           },
           project: projectSummary(project),
-          paymentPath: row.paymentPath,
-          paymentPathLabel: paymentPathLabel(row.paymentPath),
-          payeeName: row.payeeNameSnapshot,
-          settlementAmountCents: moneyText(row.settlementAmountCents),
-          supplierBalanceAmountCents: moneyText(
-            row.supplierBalanceAmountCents
-          ),
-          companyPaymentAmountCents: moneyText(
-            row.companyPaymentAmountCents
-          ),
-          effectiveCompanyPaymentAmountCents: moneyText(effectiveCompany),
-          paidAmountCents: moneyText(actualPaidAmountCents),
-          remainingCompanyPaymentAmountCents: moneyText(
-            nonNegative(effectiveCompany - actualPaidAmountCents)
-          ),
-          executedSupplierBalanceAmountCents: moneyText(
-            row.executedSupplierBalanceAmountCents
-          ),
-          canceledAmountCents: moneyText(row.canceledAmountCents),
           status: row.status,
           statusLabel: paymentStatusLabel(row.status),
           companyPaymentStatusLabel: companyPaymentStatusLabel(
@@ -1325,11 +1705,63 @@ export class SpotProcurementReadService {
           voucherStatusLabel: voucher.label,
           paymentFactConsistent:
             row.paidAmountCents === actualPaidAmountCents,
-          invoiceCoverage:
-            invoiceCoverageByPaymentId.get(row.id) ??
-            invoiceCoverageUnavailable(),
           createdAt: row.createdAt.toISOString(),
-          updatedAt: row.updatedAt.toISOString()
+          updatedAt: row.updatedAt.toISOString(),
+          ...(realPayment
+            ? {
+                form: "real_payment",
+                paymentType: row.paymentType,
+                paymentTypeLabel: paymentTypeLabel(row.paymentType),
+                payerCompanyName: row.payerCompanyNameSnapshot,
+                merchantName: row.merchantNameSnapshot,
+                payee: {
+                  name: row.payeeNameSnapshot,
+                  accountName: row.payeeAccountNameSnapshot,
+                  accountNumberLast4: bankAccountLast4(
+                    row.payeeBankAccountSnapshot
+                  )
+                },
+                ...realPaymentFactReadModel(
+                  row,
+                  actualPaidAmountCents,
+                  rowRefunds
+                ),
+                receipt: receiptReadSummary(
+                  receiptByProcurementId.get(row.procurementId) ?? null,
+                  null,
+                  rowExecutions.length > 0
+                ),
+                invoice: paymentInvoiceListSummary(
+                  paymentLinesByPaymentId.get(row.id) ?? [],
+                  paymentInvoicesByPaymentId.get(row.id) ?? []
+                )
+              }
+            : {
+                form: "legacy",
+                supplierName: procurement.supplierNameSnapshot,
+                paymentPath: row.paymentPath,
+                paymentPathLabel: paymentPathLabel(row.paymentPath),
+                payeeName: row.payeeNameSnapshot,
+                settlementAmountCents: moneyText(row.settlementAmountCents),
+                supplierBalanceAmountCents: moneyText(
+                  row.supplierBalanceAmountCents
+                ),
+                companyPaymentAmountCents: moneyText(
+                  row.companyPaymentAmountCents
+                ),
+                effectiveCompanyPaymentAmountCents: moneyText(effectiveCompany),
+                paidAmountCents: moneyText(actualPaidAmountCents),
+                remainingCompanyPaymentAmountCents: moneyText(
+                  nonNegative(effectiveCompany - actualPaidAmountCents)
+                ),
+                executedSupplierBalanceAmountCents: moneyText(
+                  row.executedSupplierBalanceAmountCents
+                ),
+                canceledAmountCents: moneyText(row.canceledAmountCents),
+                invoiceCoverage:
+                  invoiceCoverageByPaymentId.get(row.id) ??
+                  invoiceCoverageUnavailable()
+              })
         }
       ];
     });
@@ -1647,6 +2079,16 @@ export class SpotProcurementReadService {
     });
   }
 
+  private async realProcurementInvoiceSummary(
+    payments: SpotProcurementPayment[]
+  ) {
+    const payment = payments.find(isRealPaymentForm);
+    if (!payment || !this.paymentInvoices) {
+      return realInvoiceSummaryUnavailable();
+    }
+    return this.paymentInvoices.summary(payment.id);
+  }
+
   private async loadUsers(userIds: string[]) {
     return userIds.length
       ? this.prisma.user.findMany({
@@ -1889,6 +2331,325 @@ function aggregatePaymentStatusLabel(payments: SpotProcurementPayment[]) {
   return "付款草稿";
 }
 
+function isRealProcurementForm(
+  version: Pick<SpotProcurementVersion, "totalAmountCents">
+) {
+  return version.totalAmountCents === null;
+}
+
+function isRealPaymentForm(
+  payment: Pick<SpotProcurementPayment, "paymentType">
+) {
+  return Boolean(payment.paymentType);
+}
+
+function summarizeRealPaymentFacts(
+  payments: SpotProcurementPayment[],
+  actualPaidByPaymentId: ReadonlyMap<string, bigint>,
+  refunds: Array<Pick<SpotProcurementRefund, "paymentId" | "amountCents">>
+) {
+  const captured = payments.filter(isRealPaymentForm);
+  if (!captured.length) {
+    return {
+      status: "pending_determination",
+      statusLabel: "付款金额待确定",
+      approvalAmountCents: null,
+      actualPaidAmountCents: null,
+      refundAmountCents: null,
+      netPaidAmountCents: null,
+      remainingAmountCents: null
+    };
+  }
+  const approvalAmountCents = captured.reduce(
+    (total, payment) => total + payment.approvalAmountCents,
+    0n
+  );
+  const actualPaidAmountCents = captured.reduce(
+    (total, payment) =>
+      total + (actualPaidByPaymentId.get(payment.id) ?? 0n),
+    0n
+  );
+  const paymentIds = new Set(captured.map((payment) => payment.id));
+  const refundAmountCents = refunds.reduce(
+    (total, refund) =>
+      refund.paymentId && paymentIds.has(refund.paymentId)
+        ? total + refund.amountCents
+        : total,
+    0n
+  );
+  return {
+    status: aggregateRealPaymentStatus(captured),
+    statusLabel: aggregateRealPaymentStatusLabel(captured),
+    approvalAmountCents: approvalAmountCents.toString(),
+    actualPaidAmountCents: actualPaidAmountCents.toString(),
+    refundAmountCents: refundAmountCents.toString(),
+    netPaidAmountCents: (actualPaidAmountCents - refundAmountCents).toString(),
+    remainingAmountCents: nonNegative(
+      approvalAmountCents - actualPaidAmountCents
+    ).toString()
+  };
+}
+
+function realPaymentFactReadModel(
+  payment: SpotProcurementPayment,
+  actualPaidAmountCents: bigint,
+  refunds: Array<Pick<SpotProcurementRefund, "amountCents">>
+) {
+  const refundAmountCents = refunds.reduce(
+    (total, refund) => total + refund.amountCents,
+    0n
+  );
+  const approvalAmountCents = payment.approvalAmountCents;
+  return {
+    approvalAmountCents: approvalAmountCents.toString(),
+    actualPaidAmountCents: actualPaidAmountCents.toString(),
+    refundAmountCents: refundAmountCents.toString(),
+    netPaidAmountCents: (actualPaidAmountCents - refundAmountCents).toString(),
+    remainingAmountCents: nonNegative(
+      approvalAmountCents - actualPaidAmountCents
+    ).toString()
+  };
+}
+
+function aggregateRealPaymentStatus(payments: SpotProcurementPayment[]) {
+  if (payments.some((payment) => payment.status === "settled")) {
+    return "settled";
+  }
+  if (payments.some((payment) => payment.status === "paid")) return "paid";
+  if (payments.some((payment) => payment.status === "partially_paid")) {
+    return "partially_paid";
+  }
+  if (
+    payments.some((payment) => payment.status === "approved_pending_payment")
+  ) {
+    return "approved_pending_payment";
+  }
+  if (payments.some((payment) => payment.status === "approval_pending")) {
+    return "approval_pending";
+  }
+  return payments.at(0)?.status ?? "pending_determination";
+}
+
+function aggregateRealPaymentStatusLabel(payments: SpotProcurementPayment[]) {
+  return paymentStatusLabel(aggregateRealPaymentStatus(payments));
+}
+
+function paymentTypeLabel(value: string | null) {
+  if (value === "company_direct") return "公司直付";
+  if (value === "handler_reimbursement") return "经办人垫付报回";
+  return "付款类型待确认";
+}
+
+function maskedPaymentChannelReadModel(
+  channel: Pick<
+    SpotProcurementPaymentChannel,
+    | "id"
+    | "sortOrder"
+    | "channelType"
+    | "accountNameSnapshot"
+    | "accountNumberSnapshot"
+    | "bankNameSnapshot"
+    | "channelNote"
+    | "isPrimary"
+  >
+) {
+  return {
+    id: channel.id,
+    sortOrder: channel.sortOrder,
+    channelType: channel.channelType,
+    channelTypeLabel: paymentMethodLabel(channel.channelType),
+    accountName: channel.accountNameSnapshot,
+    accountNumberLast4: bankAccountLast4(channel.accountNumberSnapshot),
+    bankName: channel.bankNameSnapshot,
+    note: channel.channelNote,
+    primary: channel.isPrimary
+  };
+}
+
+function receiptReadSummary(
+  receipt: Pick<
+    SpotProcurementReceipt,
+    | "id"
+    | "status"
+    | "currentRevisionNo"
+    | "firstSubmittedAt"
+    | "submittedAt"
+    | "lockedAt"
+  > | null,
+  discrepancy: Pick<SpotProcurementDiscrepancy, "status"> | null,
+  openedByActualPayment = false
+) {
+  if (!receipt) {
+    return {
+      available: false,
+      status: "not_created",
+      statusLabel: "尚未生成收货单",
+      openAfterActualPayment: openedByActualPayment,
+      blockedReason: openedByActualPayment
+        ? null
+        : "待财务登记实际付款后开放收货确认",
+      currentRevisionNo: null,
+      firstSubmittedAt: null,
+      submittedAt: null,
+      lockedAt: null
+    };
+  }
+  return {
+    available: true,
+    id: receipt.id,
+    status: receipt.status,
+    statusLabel: receiptStatusLabel(receipt.status),
+    openAfterActualPayment: openedByActualPayment,
+    blockedReason: openedByActualPayment
+      ? null
+      : "待财务登记实际付款后开放收货确认",
+    currentRevisionNo: receipt.currentRevisionNo,
+    firstSubmittedAt: isoOrNull(receipt.firstSubmittedAt),
+    submittedAt: isoOrNull(receipt.submittedAt),
+    lockedAt: isoOrNull(receipt.lockedAt),
+    discrepancyStatus: discrepancy?.status ?? null
+  };
+}
+
+function receiptStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    draft: "待确认收货",
+    submitted: "待物资主管复核",
+    returned: "已退回收货确认",
+    approved: "收货已复核",
+    review_revoked: "收货复核已撤销",
+    closed: "已办结"
+  };
+  return labels[status] ?? "收货状态未读取";
+}
+
+function discrepancyReadSummary(
+  discrepancy: SpotProcurementDiscrepancy | null,
+  refunds: Array<Pick<SpotProcurementRefund, "amountCents" | "receivedAt">>
+) {
+  if (!discrepancy) {
+    return {
+      status: "none",
+      statusLabel: "无待处理收货差异",
+      nextStep: null,
+      refund: null
+    };
+  }
+  const refund = refunds.at(-1) ?? null;
+  return {
+    status: discrepancy.status,
+    statusLabel: discrepancyStatusLabel(discrepancy.status),
+    resolutionType: discrepancy.resolutionType,
+    replenishedAt: isoOrNull(discrepancy.replenishedAt),
+    refundExpectedAmountCents: discrepancy.refundExpectedAmountCents.toString(),
+    nextStep:
+      discrepancy.status === "pending_resolution"
+        ? "请由经办人选择商户补货，或由财务登记退款"
+        : null,
+    refund: refund
+      ? {
+          amountCents: refund.amountCents.toString(),
+          receivedAt: refund.receivedAt.toISOString()
+        }
+      : null
+  };
+}
+
+function discrepancyStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    pending_resolution: "待处理少货差异",
+    replenishment_pending: "待商户补货",
+    resolved: "差异已处理",
+    refunded: "已退款"
+  };
+  return labels[status] ?? "差异状态未读取";
+}
+
+function archiveReadModels(
+  archives: SpotProcurementPaymentArchive[],
+  filesByArchiveId: ReadonlyMap<string, SpotProcurementPaymentArchiveFile[]>
+) {
+  return archives.map((archive) => ({
+    id: archive.id,
+    versionNo: archive.versionNo,
+    trigger: archive.archiveTrigger,
+    status: archive.status,
+    generatedPackageFileId: archive.generatedPackageFileId,
+    createdAt: archive.createdAt.toISOString(),
+    files: (filesByArchiveId.get(archive.id) ?? []).map((file) => ({
+      id: file.id,
+      fileId: file.fileId,
+      role: file.fileRole,
+      sortOrder: file.sortOrder
+    }))
+  }));
+}
+
+function archiveStatusReadModel(
+  payment: Pick<SpotProcurementPayment, "factsFrozenAt">,
+  approvalOriginal: Pick<FileObject, "id"> | null,
+  latestArchive: Pick<SpotProcurementPaymentArchive, "id" | "versionNo" | "status" | "createdAt"> | null
+) {
+  if (!payment.factsFrozenAt) {
+    return {
+      status: "not_ready",
+      label: "付款审批完成后生成归档包",
+      canRetry: false,
+      latestVersionNo: null
+    };
+  }
+  if (!approvalOriginal) {
+    return {
+      status: "waiting_approval_original",
+      label: "待生成不可变付款审批原件",
+      canRetry: false,
+      latestVersionNo: null
+    };
+  }
+  if (!latestArchive) {
+    return {
+      status: "pending_generation",
+      label: "待生成付款归档包",
+      canRetry: true,
+      latestVersionNo: null
+    };
+  }
+  return {
+    status: latestArchive.status,
+    label: latestArchive.status === "generated" ? "归档包已生成" : "归档包待重试",
+    canRetry: latestArchive.status !== "generated",
+    latestVersionNo: latestArchive.versionNo,
+    latestGeneratedAt: latestArchive.createdAt.toISOString()
+  };
+}
+
+function realInvoiceSummaryUnavailable() {
+  return {
+    status: "not_required",
+    statusLabel: "尚未填写付款材料票据条件",
+    activeCount: 0,
+    invoices: []
+  };
+}
+
+function paymentInvoiceListSummary(
+  lines: Array<{ expectedInvoiceCondition: string }>,
+  invoices: Array<{ status: string }>
+) {
+  const activeCount = invoices.filter(
+    (invoice) => invoice.status === "active"
+  ).length;
+  const expectsInvoice = lines.some(
+    (line) => line.expectedInvoiceCondition !== "no_invoice"
+  );
+  if (!expectsInvoice) {
+    return { status: "not_required", statusLabel: "无需发票", activeCount };
+  }
+  return activeCount
+    ? { status: "uploaded", statusLabel: "已上传发票", activeCount }
+    : { status: "pending", statusLabel: "待补发票", activeCount };
+}
+
 function invoiceComposition(lines: SpotProcurementLine[]) {
   const modes = new Set(lines.map((line) => line.invoiceMode));
   if (modes.has("invoice") && modes.has("no_invoice")) return "mixed";
@@ -1897,18 +2658,18 @@ function invoiceComposition(lines: SpotProcurementLine[]) {
   return "unknown";
 }
 
-function versionReadModel(version: SpotProcurementVersion) {
-  return {
+function versionReadModel(
+  version: SpotProcurementVersion,
+  realApplication = isRealProcurementForm(version)
+) {
+  const common = {
     id: version.id,
     versionNo: version.versionNo,
     status: version.status,
     statusLabel: versionStatusLabel(version.status),
     reason: version.reason,
     note: version.note,
-    supplierPartyId: version.supplierPartyId,
-    supplierName: version.supplierNameSnapshot,
     handlerUserId: version.handlerUserId,
-    totalAmountCents: moneyText(version.totalAmountCents),
     changeReason: version.changeReason,
     changeSummary: version.changeSummary,
     submittedAt: isoOrNull(version.submittedAt),
@@ -1917,16 +2678,37 @@ function versionReadModel(version: SpotProcurementVersion) {
     createdAt: version.createdAt.toISOString(),
     updatedAt: version.updatedAt.toISOString()
   };
+  return realApplication
+    ? {
+        ...common,
+        applicationDepartment: version.applicationDepartmentSnapshot,
+        applicationName: version.applicationNameSnapshot,
+        purchaserName: version.purchaserNameSnapshot,
+        purchaserDepartment: version.purchaserDepartmentNameSnapshot,
+        requestedArrivalAt: version.requestedArrivalAt.toISOString()
+      }
+    : {
+        ...common,
+        supplierPartyId: version.supplierPartyId,
+        supplierName: version.supplierNameSnapshot,
+        totalAmountCents: moneyText(version.totalAmountCents)
+      };
 }
 
-function lineReadModel(line: SpotProcurementLine) {
-  return {
+function lineReadModel(line: SpotProcurementLine, realApplication = false) {
+  const common = {
     id: line.id,
     sortOrder: line.sortOrder,
     materialName: line.materialName,
     specification: line.specification,
     unit: line.unit,
     quantity: line.quantity.toString(),
+    note: line.note
+  };
+  return realApplication
+    ? common
+    : {
+        ...common,
     invoiceMode: line.invoiceMode,
     invoiceType: line.invoiceType,
     vatRateOptionId: line.vatRateOptionId,
@@ -1935,8 +2717,7 @@ function lineReadModel(line: SpotProcurementLine) {
     unitPrice: line.unitPrice?.toString() ?? null,
     amountCents: moneyText(line.amountCents),
     usageLocation: line.usageLocation,
-    note: line.note
-  };
+      };
 }
 
 function evidenceFileReadModel(
