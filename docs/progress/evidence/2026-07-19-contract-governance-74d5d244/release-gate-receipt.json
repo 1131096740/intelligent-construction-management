@@ -1,0 +1,66 @@
+{
+  "generatedAt": "2026-07-19T03:00:00+08:00",
+  "runtimeCandidateSha": "74d5d2449ab9e4232f2625f2805c64b1686ff314",
+  "evidenceLineageHeadBeforeFinalDocs": "d56ca4904b50e9a88b686f8b9fe793e05b3fdf3d",
+  "branch": "codex/contract-tax-facts-pricing",
+  "originMainSha": "99d3859429ff135b07e083dd7ebeb345d85e9bed",
+  "productionSha": "89e434da7cde3ef30800b9f458b9b5ee59305de9",
+  "candidateMigrationCount": 69,
+  "productionMigrationCount": 61,
+  "diffs": {
+    "originMainCandidateFileCount": 334,
+    "productionCandidateFileCount": 334,
+    "githubAndOpsAgainstOriginMain": 0,
+    "githubAndOpsAgainstProduction": 0,
+    "runtimeTreeChangesBetweenCandidateAndEvidenceLineage": 0
+  },
+  "tests": {
+    "shared": {
+      "filesPassed": 11,
+      "testsPassed": 102
+    },
+    "api": {
+      "suitesPassed": 177,
+      "suitesSkipped": 4,
+      "testsPassed": 3921,
+      "testsSkipped": 15
+    },
+    "web": {
+      "filesPassed": 98,
+      "testsPassed": 785
+    },
+    "p0E2E": {
+      "passed": 53,
+      "conditionalSkipped": 2
+    },
+    "exactVisual": {
+      "passed": 3,
+      "screenshots": 76
+    },
+    "governanceUat": {
+      "runId": "task22-final-74d5d244-20260719a",
+      "passed": 20,
+      "total": 20
+    }
+  },
+  "hashes": {
+    "governanceUatSha256": "8e433478da8a2ea472c4997e949c00b88022da41ec77bff1560b5794cfe7e692",
+    "logManifestSha256": "6d49005956f48eefae94bbf5e2b9a58232075252ca0180a9b36c639f0e33d373",
+    "screenshotManifestSha256": "46dbe0d0c0f5d293f052d3d792cb972635d53fdccaab4d48c3743dee05878f84"
+  },
+  "productionRestoreEvidence": {
+    "backupSha256": "7a961c4caa0d07dd73f6076438610a21cd77603db6aeaf9d5c95670780e3462e",
+    "restoredMigrationsBefore": 61,
+    "migratedTo": 69,
+    "tableCount": 113,
+    "unifiedTriggerCount": 54,
+    "unifiedFunctionCount": 5,
+    "legacyFunctionCount": 0,
+    "transitionPreviewItemCount": 0,
+    "transitionPreviewBlockedCount": 0,
+    "transitionPreviewDigest": "4cfe129a3db1737283bf593018dc88be5adf7a007d85db93a1c72e86108b6876",
+    "candidateMigrationTreeEquivalentToE471": true
+  },
+  "productionWritesPerformedByThisTask": false,
+  "pushOrDeployPerformedByThisTask": false
+}

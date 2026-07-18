@@ -1,14 +1,14 @@
 # 合同结算治理发布 Runbook
 
 > 适用范围：2026-07-17 合同结算治理候选（生产已知 61 个迁移 → 候选 69 个迁移）
-> 当前状态：运行候选 `e47129ba637caf58d02a7206872fbdd53a606d17` 的自动化、精确 SHA UAT 和生产备份隔离恢复已通过；**未获得推送、部署、迁移或生产 transition apply 授权**
+> 当前状态：不可变运行候选 `74d5d2449ab9e4232f2625f2805c64b1686ff314` 的自动化、精确 SHA UAT 和生产备份隔离恢复已通过；后续仅文档证据 HEAD 不改变运行树；**未获得推送、部署、迁移或生产 transition apply 授权**
 > 运行原则：最小权限、精确 SHA、隔离恢复先行、两次独立授权、失败关闭。
 
 ## 1. 两个必须分开的变更窗口
 
 ### 窗口 A：代码部署和数据库迁移
 
-用户必须明确批准一个 **40 位小写候选 SHA**，且授权范围必须明确包含：
+用户必须同时明确批准：（1）当时包含本报告和机器证据的 **40 位证据/文档 HEAD**；（2）其中绑定并已通过运行门禁的 **40 位小写运行候选 SHA `74d5d2449ab9e4232f2625f2805c64b1686ff314`**。在执行前必须确认两者之间运行时代码树零差异，且授权范围必须明确包含：
 
 1. 快进推送目标 SHA；
 2. 部署 Web/API；
@@ -17,9 +17,9 @@
 
 窗口 A **不授权**终止、退回、失效或重提任何存量业务实例。迁移不得夹带这类业务写入。
 
-### 窗口 B：按 manifest 过渡存量未生效实例
+### 窗口 B：仅在 preview 产生非空 manifest 时按清单过渡存量未生效实例
 
-只能在窗口 A 完成并稳定后开始。用户必须再次单独批准：
+只能在窗口 A 完成并稳定且 preview 实际产生非空 manifest 后开始。当前候选 preview 为 0 项，因此本次不存在窗口 B。若未来清单非空，用户必须再次单独批准：
 
 1. 当前生产 40 位 SHA；
 2. transition preview 生成的精确 manifest 摘要/哈希；
@@ -40,7 +40,7 @@
 7. 完成所有定向、全量、构建、UI、E2E 和 `git diff --check` 门禁。
 8. 在六个桌面视口完成浏览器验证，记录截图绝对或仓库相对路径。
 9. 用脱敏 seed/test 数据执行完整隔离 UAT，证据清单必须绑定当前 SHA。
-10. 从已验证的生产备份恢复到 `jiangkong_restore_*`，完成 61→69 迁移和 transition preview/apply 隔离演练。
+10. 从已验证的生产备份恢复到 `jiangkong_restore_*`，完成 61→69 迁移和 transition preview；仅当 manifest 非空时才要求隔离 apply/幂等/漂移演练，空 manifest 记为不适用，不人工造数据。
 11. 完成业务、财务、技术 Go / No-Go 签认；未签认时发布结论只能为 No-Go/等待。
 
 ## 3. 隔离 UAT
@@ -110,7 +110,9 @@ node services/api/prisma/transition-contract-settlement-governance.cjs \
 
 预览必须是 `READ ONLY`，只输出脱敏业务 ID、状态、审批实例和建议动作；不输出文件对象键、密码、token 或附件内容。
 
-### 5.2 仅隔离库 apply
+### 5.2 仅非空 manifest 的隔离库 apply
+
+preview 为空时本节不适用，直接记录 0 项/0 阻断和 digest，不为演练 apply 伪造业务数据。preview 非空时，必须先确认操作人 ID 与 CLI 校验兼容；已知生产历史 `super_admin` ID 为非 UUID，而当前 CLI 只接受 UUID，因此未来任何非空 manifest 在 apply 前必须先修复这一兼容性阻断并重跑本节全部门禁。
 
 隔离 apply 使用工具当前实现的精确参数：
 
@@ -144,21 +146,22 @@ node services/api/prisma/transition-contract-settlement-governance.cjs \
 
 2026-07-18 的本地开发期演练 runId 为 `task22-20260718T160702Z`，执行时 HEAD 为 `2bef123cfbdc231cba41d212b17ed6f9cd5f0c30`，使用 PostgreSQL `16.14` 并应用 M1–M58 共 58 个迁移。manifest digest 为 `a4ac20b349f0a157228d072d876cfad7c8dd70f82a06beaa2703930a0eee24fc`，manifest 文件 SHA-256 为 `8f7e8f7c0175e690a1625e55dc5f25262605f22d54a0ea7aaee91ca6abdb4c5d`；首次 apply 为 `applied=2/alreadyProcessed=0`，二次 apply 为 `0/2`，漂移批次被整批拒绝且零 transition 审计、零替代草稿写入，付款申请、实付、入账及已付金额事实不变。机器收据 `/tmp/task22-20260718T160702Z-transition-evidence.json` 的 SHA-256 为 `67a272e0378033bd77c35783ffbd90c0bca009fff5fec48d8aa5999f03424bdf`，harness cleanup 通过。
 
-这次演练在 **dirty shared worktree** 中调用 **committed HEAD module**，只作为核心行为的开发期证据；它没有从洁净候选执行本节 CLI 端到端命令，也没有使用生产备份。因此不得把它填写为最终候选 CLI release gate 或生产备份恢复通过。最终 40 位 SHA 固定后，仍须在洁净工作树按 5.1–5.2 重跑精确 CLI 门禁；另按第 4 节把生产备份恢复到 `jiangkong_restore_*`，完成最终迁移、存量事实只读核验和清理。
+这次演练在 **dirty shared worktree** 中调用 **committed HEAD module**，只作为核心行为的开发期证据；它不替代最终候选的生产备份恢复。后续已对洁净候选完成生产备份 61→69 隔离恢复、只读核验和精确 CLI preview；实际 manifest 为空，所以 5.2 对本次候选为不适用，未人工造数据。
 
 ## 6. 窗口 A 生产执行前检查
 
-> 只有用户已精确批准 40 位 SHA 和窗口 A 时才能执行。
+> 只有用户已精确批准证据/文档 HEAD、运行候选 `74d5d244…` 和窗口 A 时才能执行。
 
 ### 6.1 已完成的候选前置证据（2026-07-19）
 
-- 精确候选：`e47129ba637caf58d02a7206872fbdd53a606d17`。
-- 精确 SHA 隔离 UAT：`task22-final-e47129ba-20260719a`，20/20，证据 SHA-256 `96af3d1ecebeba7d3303182dc56933bc901db4017bbf878c318e580034620143`。
+- 不可变运行候选：`74d5d2449ab9e4232f2625f2805c64b1686ff314`；后续仅文档证据 HEAD 必须与该 SHA 的运行树零差异。
+- 精确 SHA 隔离 UAT：`task22-final-74d5d244-20260719a`，20/20，证据 SHA-256 `8e433478da8a2ea472c4997e949c00b88022da41ec77bff1560b5794cfe7e692`。
+- 六视口精确截图：3/3 视觉用例、76 张 PNG，截图 manifest SHA-256 `46dbe0d0c0f5d293f052d3d792cb972635d53fdccaab4d48c3743dee05878f84`。
 - 生产异机备份回读 SHA-256：`7a961c4caa0d07dd73f6076438610a21cd77603db6aeaf9d5c95670780e3462e`。
-- 隔离恢复：生产 61 个迁移恢复成功，候选 61→69 成功，`prisma migrate status` 最新；113 张 public 表、54 个统一触发器、5 个统一函数、0 个旧函数。
+- 隔离恢复：生产 61 个迁移恢复成功，候选 61→69 成功，`prisma migrate status` 最新；113 张 public 表、54 个统一触发器、5 个统一函数、0 个旧函数。恢复执行原绑定 `e47129ba…`；已证明它到 `74d5d244…` 的 Prisma schema、migrations 和 transition 工具树零差异，因此恢复证据对当前运行候选等价，不得表述为在 `74d5d244…` 上重做了一次生产备份恢复。
 - transition preview：0 项/0 阻断，digest `4cfe129a3db1737283bf593018dc88be5adf7a007d85db93a1c72e86108b6876`；本次无需 apply，不存在窗口 B 业务写入清单。
-- 隔离库、checkout、bundle 和恢复输入均已清理；生产仍为 `d0007fe5b8a18dd2602a93d012634040eaf2183a` / `61|0|0`，API、Nginx、PostgreSQL、Cron 和公网 health 正常。
-- 已知兼容性项：生产历史 `super_admin` ID 为非 UUID，CLI 当前只接受 UUID 操作人。由于 preview 为空，它不阻断本次发布；若未来出现非空 manifest，必须先修复兼容性并重跑本 Runbook 的全部 transition 门禁。
+- 隔离库、checkout、bundle 和恢复输入均已清理；生产当前为 `89e434da7cde3ef30800b9f458b9b5ee59305de9` / `61|0|0`，API、Nginx、PostgreSQL、Cron 和公网 health 正常。
+- 已知兼容性阻断：生产历史 `super_admin` ID 为非 UUID，CLI 当前只接受 UUID 操作人。由于 preview 为空，它不阻断窗口 A；若未来出现非空 manifest，它是窗口 B 前的强制阻断，必须先修复并重跑全部 transition 门禁。
 
 1. 公网 Web/API health、Nginx、API、PostgreSQL、Cron 正常。
 2. 空间、内存、时间同步、TLS 和防火墙正常。
@@ -201,7 +204,8 @@ node services/api/prisma/transition-contract-settlement-governance.cjs \
 | 项目 | 回填 |
 | --- | --- |
 | 用户批准的窗口 | A / B |
-| 批准的 40 位 SHA | 待填 |
+| 批准的证据/文档 HEAD | 待填 |
+| 批准的运行候选 SHA | `74d5d2449ab9e4232f2625f2805c64b1686ff314` |
 | transition manifest SHA-256（仅窗口 B） | 待填 |
 | 执行人 | 待填 |
 | 开始/结束时间 | 待填 |

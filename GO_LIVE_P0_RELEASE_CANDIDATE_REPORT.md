@@ -227,30 +227,32 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 - 本次数据库迁移只扩展状态 CHECK 约束，对旧运行时向后兼容，回滚代码时保留该迁移，不自动回滚数据库。
 - 如必须恢复数据，先将迁移前备份恢复到 `jiangkong_restore_*` 隔离库复核，再由用户单独授权维护窗口；禁止对生产执行 `prisma migrate reset`。
 
-## 8. 2026-07-17 合同结算治理后续候选（验证中）
+## 8. 2026-07-17 合同结算治理发布候选（候选门禁已完成）
 
 > 本节是对 2026-07-16 已发布基线的后续候选补充，不改写上文的历史发布证据。
-> 运行候选 40 位 SHA：`e47129ba637caf58d02a7206872fbdd53a606d17`
+> 不可变运行候选 40 位 SHA：`74d5d2449ab9e4232f2625f2805c64b1686ff314`
+> 证据模型：本节和仓库机器证据位于后续仅文档证据 HEAD；该 HEAD 不得改变 `74d5d244…` 的运行时代码树，也不冒充在文档 HEAD 上重跑 UAT。发布授权必须同时指明证据 HEAD 和运行候选 SHA。
 > 当前结论：**No-Go / 技术发布候选已就绪，等待真实业务/财务签认和用户对精确 SHA 的推送、部署与生产迁移授权。**
 
 ### 8.1 变更范围
 
 - 已批准业务规格：新合同审批，签署/用印/归档，双方授权，合同变更与 10% 上限，结算单与冻结签名，税务/计价事实，我方公司主体。
-- 生产运行基线为 `d0007fe5b8a18dd2602a93d012634040eaf2183a` 和 61 个迁移；候选共 69 个迁移，生产尚未部署的 8 个迁移为 M52–M58 与 M69 `20260719100000_unified_file_business_binding_guard`。M69 用 54 项中心引用清单、54 个统一触发器和同一事务级锁收口合同、结算、零星采购及其他域的文件绑定；不主动改写业务数据，存量冲突时失败关闭。
+- 生产运行基线已更新为 `89e434da7cde3ef30800b9f458b9b5ee59305de9` 和 61 个迁移；候选共 69 个迁移，生产尚未部署的 8 个迁移为 M52–M58 与 M69 `20260719100000_unified_file_business_binding_guard`。M69 用 54 项中心引用清单、54 个统一触发器和同一事务级锁收口合同、结算、零星采购及其他域的文件绑定；不主动改写业务数据，存量冲突时失败关闭。
 - 新增旧实例过渡工具默认只读；生产 apply 必须使用精确 SHA、精确 manifest、操作人和确认语，且需用户在部署/迁移授权之外再次单独批准。
 
-### 8.2 待回填门禁
+### 8.2 候选门禁结果
 
 | 门禁 | 当前状态 | 备注 |
 | --- | --- | --- |
-| 运行候选 40 位 SHA | `e47129ba637caf58d02a7206872fbdd53a606d17` | 已提交且工作树洁净 |
-| 相对 `origin/main` 和生产 SHA 的提交/文件清单 | 已核对 | 相对 `origin/main` 91 个提交/324 个文件，相对生产 92 个提交/324 个文件 |
-| shared/API/Web 定向与全量门禁 | 通过 | shared 102/102；Web 98 文件 784/784；API 177 套通过、4 套条件跳过，3914 通过/15 跳过；typecheck、lint、Prisma validate/generate、业务错误检查、`check:ui` 通过 |
+| 运行候选 40 位 SHA | `74d5d2449ab9e4232f2625f2805c64b1686ff314` | 精确运行候选已提交且验证时工作树洁净 |
+| 相对 `origin/main` 和生产 SHA 的提交/文件清单 | 已核对 | 运行候选相对最新 `origin/main` 为候选侧 96 个提交/334 个文件并落后 1 个仅文档提交，该提交已合入证据 HEAD；相对生产为 96 个提交/334 个文件 |
+| 受保护运维目录 | 通过 | 相对 `origin/main` 和生产的 `.github`/`scripts/ops` 意外差异均为 0 |
+| shared/API/Web 定向与全量门禁 | 通过 | shared 102/102；Web 98 文件 785/785；API 177 套通过、4 套条件跳过，3921 通过/15 跳过；typecheck、lint、Prisma validate/generate、业务错误检查、`check:ui` 通过 |
 | API/Web production build | 通过 | 最新 `origin/main` 合并后重跑 |
 | P0 E2E | 通过 | Chromium 53 通过/2 条件跳过/0 失败 |
-| 六视口浏览器验收 | 通过 | 28/28 定向验收与 P0 六视口回归通过；阶段截图位于 `/tmp/jiangkong-contract-settlement-visual-a67c-final-2` |
-| 完整脱敏隔离 UAT | 通过 | `task22-final-e47129ba-20260719a`：精确 SHA `e47129ba…`，20/20 治理矩阵与 `HT-UAT-* → JS-UAT-* → FK-UAT-*` 全链通过；证据 SHA-256 `96af3d1ecebeba7d3303182dc56933bc901db4017bbf878c318e580034620143` |
-| 生产备份→`jiangkong_restore_*`→61→69 | 通过 | 备份 SHA-256 `7a961c4caa0d07dd73f6076438610a21cd77603db6aeaf9d5c95670780e3462e`；61→69、113 表、54 触发器、旧函数 0，精确绑定 `e47129ba…` |
+| 六视口浏览器验收 | 通过 | 精确 `74d5d244…` 视觉用例 3/3，共 76 张 PNG；截图 manifest SHA-256 `46dbe0d0c0f5d293f052d3d792cb972635d53fdccaab4d48c3743dee05878f84` |
+| 完整脱敏隔离 UAT | 通过 | `task22-final-74d5d244-20260719a`：精确 SHA `74d5d244…`，20/20 治理矩阵与 `HT-UAT-* → JS-UAT-* → FK-UAT-*` 全链通过；证据 SHA-256 `8e433478da8a2ea472c4997e949c00b88022da41ec77bff1560b5794cfe7e692` |
+| 生产备份→`jiangkong_restore_*`→61→69 | 通过 | 备份 SHA-256 `7a961c4caa0d07dd73f6076438610a21cd77603db6aeaf9d5c95670780e3462e`；61→69、113 表、54 触发器、旧函数 0；`e471…`→`74d5d244…` 的 Prisma/迁移/transition 树零差异，故恢复证据对当前运行候选等价 |
 | transition preview / 隔离 apply / 幂等 / 漂移回滚 | 精确 SHA preview 通过，apply 不适用 | 恢复库为 0 项/0 阻断，digest `4cfe129a3db1737283bf593018dc88be5adf7a007d85db93a1c72e86108b6876`；无实例可 apply，不人工造数据 |
 | 业务/财务/技术 Go / No-Go | 待签认 | 脱敏自动 UAT 不取代真实业务签认 |
 
@@ -258,8 +260,8 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 
 ### 8.3 发布和过渡授权边界
 
-1. **授权 A**：用户针对最终 40 位 SHA 明确批准推送、Web/API 部署、生产尚未完成的 M52–M58 与 M69 迁移和生产验证。
-2. **授权 B**：窗口 A 稳定后，用户针对 transition preview 的精确 manifest 和当前生产 SHA 再次批准生产 `--apply`。
+1. **授权 A**：用户必须同时针对当时证据/文档 HEAD 和已验证运行候选 `74d5d2449ab9e4232f2625f2805c64b1686ff314` 明确批准推送、Web/API 部署、生产尚未完成的 M52–M58 与 M69 迁移和生产验证；授权前必须证明证据 HEAD 没有改变运行时代码树。
+2. **授权 B**：只有窗口 A 稳定且 transition preview 生成非空 manifest 时才存在；用户针对精确 manifest 和当前生产 SHA 再次批准生产 `--apply`。当前 preview 为空，本次无窗口 B。
 3. 授权 A 不得默认包含授权 B；普通的“同意上线”不能取代两次精确授权。
 4. 在授权 B 之前，transition 在生产只允许只读 preview；不得终止或改写旧实例。
 
@@ -272,6 +274,6 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 
 transition 模块级隔离演练使用 runId `task22-20260718T160702Z`、执行 HEAD `2bef123cfbdc231cba41d212b17ed6f9cd5f0c30`、PostgreSQL `16.14` 和 M1–M58 共 58 个迁移。manifest digest 为 `a4ac20b349f0a157228d072d876cfad7c8dd70f82a06beaa2703930a0eee24fc`，manifest 文件 SHA-256 为 `8f7e8f7c0175e690a1625e55dc5f25262605f22d54a0ea7aaee91ca6abdb4c5d`；首次 apply 为 `applied=2/alreadyProcessed=0`，二次为 `0/2`，漂移批次零 transition 审计、零替代草稿写入，付款申请/实付/入账及已付金额事实不变，cleanup 通过。机器收据 `/tmp/task22-20260718T160702Z-transition-evidence.json` 的 SHA-256 为 `67a272e0378033bd77c35783ffbd90c0bca009fff5fec48d8aa5999f03424bdf`。
 
-该收据产生于 dirty shared worktree，仅作为开发期的 apply/幂等/漂移行为证据。后续已使用洁净精确候选 `e47129ba…` 完成生产备份 → `jiangkong_restore_*` → 61→69 恢复和 CLI preview；实际 manifest 为空，因此没有可在隔离库或生产执行的过渡实例，也不人工造数据冒充非空 apply 验收。
+该收据产生于 dirty shared worktree，仅作为开发期的 apply/幂等/漂移行为证据。后续已完成生产备份 → `jiangkong_restore_*` → 61→69 恢复和 CLI preview，并证明当前运行候选 `74d5d244…` 与恢复演练候选的 Prisma/迁移/transition 树零差异。实际 manifest 为空，因此没有可在隔离库或生产执行的过渡实例，也不人工造数据冒充非空 apply 验收。若未来 manifest 非空，生产历史 `super_admin` 非 UUID 与 CLI UUID 校验的兼容性必须先修复。
 
 详细候选证据见 `docs/progress/2026-07-17-contract-settlement-governance-release-candidate.md`，执行步骤见 `docs/superpowers/runbooks/2026-07-17-contract-settlement-governance-release.md`。

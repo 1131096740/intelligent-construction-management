@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "runId": "task22-final-74d5d244-20260719a",
+  "candidateSha": "74d5d2449ab9e4232f2625f2805c64b1686ff314",
+  "apiOrigin": "http://127.0.0.1:51708",
+  "databaseName": "jiangkong_governance_uat",
+  "storageDriver": "local",
+  "productionData": false,
+  "cases": [
+    {
+      "id": "contract_material_purchase",
+      "passed": true,
+      "evidenceIds": [
+        "task22-final-74d5d244-20260719a:e9de8ab4-44de-4973-ba9c-a51528bc5ae4",
+        "0495c2f5-4a8d-488a-b7be-812f4f75072a",
+        "7b1fd5f0-76ec-4ab8-8155-0495dd0cfa64"
+      ]
+    },
+    {
+      "id": "contract_equipment_rental",
+      "passed": true,
+      "evidenceIds": [
+        "task22-final-74d5d244-20260719a:b7485d33-8e60-4552-a9d6-fb22020dbc5f",
+        "add3496b-bf41-4bae-a456-03ea3b322cba",
+        "UAT-task22-final-74d5d244-20260719a-contract_equipment_rental-001"
+      ]
+    },
+    {
+      "id": "contract_labor_subcontract",
+      "passed": true,
+      "evidenceIds": [
+        "task22-final-74d5d244-20260719a:e623e7e9-6d69-49ed-ba7b-49edf56b48bb",
+        "b6c8fcff-a3de-44f8-9919-dfa35d78152d",
+        "UAT-task22-final-74d5d244-20260719a-contract_labor_subcontract-001"
+      ]
+    },
+    {
+      "id": "contract_professional_subcontract",
+      "passed": true,
+      "evidenceIds": [
+        "task22-final-74d5d244-20260719a:c7430137-e463-44da-a535-0f079d481eb2",
+        "cb35aca9-dbc7-4caf-829c-956256304a7f",
+        "UAT-task22-final-74d5d244-20260719a-contract_professional_subcontract-001"
+      ]
+    },
+    {
+      "id": "contract_generic",
+      "passed": true,
+      "evidenceIds": [
+        "task22-final-74d5d244-20260719a:cd0f75fc-384c-473e-a441-4b65e470bb19",
+        "dc97f90d-ecf2-41e5-9f7b-75d2d8eaeee7",
+        "3f1bbfb6-8635-488c-9070-8f6293575fbc",
+        "e26773ec-036d-4d86-ade4-5c272a484b0d"
+      ]
+    },
+    {
+      "id": "contract_director_initiator_skip",
+      "passed": true,
+      "evidenceIds": [
+        "task22-final-74d5d244-20260719a:3d961f7b-5e61-46fc-ab24-6ba81571098a"
+      ]
+    },
+    {
+      "id": "contract_final_or_sign",
+      "passed": true,
+      "evidenceIds": [
+        "task22-final-74d5d244-20260719a:fe8135fc-c392-46d8-8597-f638d46a687f",
+        "7ae7bd91-8022-410a-873f-e1fd96eaa897"
+      ]
+    },
+    {
+      "id": "contract_authorization_none_none",
+      "passed": true,
+      "evidenceIds": [
+        "task22-final-74d5d244-20260719a:cff31d76-388b-406f-9d5c-9ac5aefa9477",
+        "496d2ea7-e36d-46da-abc4-c2828eae5e43"
+      ]
+    },
+    {
+      "id": "contract_authorization_first_only",
+      "passed": true,
+      "evidenceIds": [
+        "task22-final-74d5d244-20260719a:567a4a69-f2bd-4d5b-b01a-9fb0e8ec0a37",
+        "ee7ab431-e65b-49ed-91b3-a476bc48840b"
+      ]
+    },
+    {
+      "id": "contract_authorization_counterparty_only",
+      "passed": true,
+      "evidenceIds": [
+        "task22-final-74d5d244-20260719a:a2123da4-1b9f-47bd-b9e1-4e36957c06ab",
+        "1b9707b2-58f4-4dbe-9c0e-0153307244e4"
+      ]
+    },
+    {
+      "id": "contract_authorization_both",
+      "passed": true,
+      "evidenceIds": [
+        "task22-final-74d5d244-20260719a:97b1f65f-9001-499b-84bc-5be16d6343f6",
+        "11ac4702-8a1c-4978-9a54-988f4b9dea55"
+      ]
+    },
+    {
+      "id": "contract_change_9_99_percent",
+      "passed": true,
+      "evidenceIds": [
+        "task22-final-74d5d244-20260719a:d46e7a43-85c4-4ae4-a035-c1e030c6c4a5",
+        "97e62887-45a2-466f-8711-e320f581a914",
+        "9e1b47ac-a81a-4303-803d-58cc26eba4bd"
+      ]
+    },
+    {
+      "id": "contract_change_10_percent",
+      "passed": true,
+      "evidenceIds": [
+        "task22-final-74d5d244-20260719a:8a97fed2-9c62-4879-b241-39918ca51aa5",
+        "8cc8900e-68ee-4997-b7b0-dfd7cb946c92",
+        "99158d6a-3a3e-4d14-a8c6-e98273c48bc3"
+      ]
+    },
+    {
+      "id": "contract_change_10_01_percent",
+      "passed": true,
+      "evidenceIds": [
+        "task22-final-74d5d244-20260719a:6e0b6245-8191-4338-9900-cd68ecaf0fed",
+        "40ae3a76-10bb-44c7-a2b6-5d31682db2ca",
+        "d72ae8ee-3291-4ff1-bc7d-142be7fbf164"
+      ]
+    },
+    {
+      "id": "settlement_material_route",
+      "passed": true,
+      "evidenceIds": [
+        "task22-final-74d5d244-20260719a:647f467b-5cca-4f89-95ed-364df1269b02",
+        "04441b98-613f-4e7d-9e2b-78e56653e9dd",
+        "1302d50e-7173-4fe4-94b0-e85a055c9089",
+        "413013ab-7fa5-495a-bca7-9feec2e7063e"
+      ]
+    },
+    {
+      "id": "settlement_labor_route",
+      "passed": true,
+      "evidenceIds": [
+        "task22-final-74d5d244-20260719a:8378ea0f-4ce2-4189-8cd1-1ea7141fa19d",
+        "68c36b61-7190-449f-80dd-1edeaba5ef32",
+        "6ddbd37f-d65b-40e1-85aa-852b10ed8b89",
+        "11744906-547c-4bcf-bc7c-efc5288b260c"
+      ]
+    },
+    {
+      "id": "settlement_single_page_signatures",
+      "passed": true,
+      "evidenceIds": [
+        "task22-final-74d5d244-20260719a:e803e1f8-7332-4577-a7c8-e2702d52ea05",
+        "3784311f-4ff7-4214-af8c-59ee6353e7fa",
+        "04441b98-613f-4e7d-9e2b-78e56653e9dd",
+        "79ab5248-32e3-4ced-bdfa-98827fdd33e5"
+      ]
+    },
+    {
+      "id": "settlement_multi_page_signatures",
+      "passed": true,
+      "evidenceIds": [
+        "task22-final-74d5d244-20260719a:e91c2ed2-083b-4ba8-8080-27a56c4b3ea2",
+        "f2455e2e-75fa-451f-a34a-ae3500c2474f",
+        "68c36b61-7190-449f-80dd-1edeaba5ef32",
+        "6bd6b082-79f4-47ed-9dde-5f620ed63fef"
+      ]
+    },
+    {
+      "id": "readonly_cross_domain_positive",
+      "passed": true,
+      "evidenceIds": [
+        "task22-final-74d5d244-20260719a:seed-user-finance-director",
+        "seed-project-jgxm-001"
+      ]
+    },
+    {
+      "id": "readonly_cross_domain_negative",
+      "passed": true,
+      "evidenceIds": [
+        "task22-final-74d5d244-20260719a:seed-user-finance-director",
+        "HTTP-403-contract-create",
+        "HTTP-403-settlement-create"
+      ]
+    }
+  ]
+}
