@@ -651,6 +651,7 @@ describe("SpotProcurementReadService", () => {
         unitPrice: { toString: () => "1.2" },
         amountCents: 12_000n,
         expectedInvoiceCondition: "vat_general",
+        vatRateOptionId: "vat-13",
         vatRateLabelSnapshot: "13%"
       }
     ]);
@@ -738,8 +739,25 @@ describe("SpotProcurementReadService", () => {
       form: "real_payment",
       payerCompanyName: "云南建工集团有限公司",
       approvalAmountCents: "12000",
-      payee: { primaryChannel: { accountNumberLast4: "1234" } }
+      payee: { primaryChannel: { accountNumberLast4: "1234" } },
+      payerManagement: {
+        visible: true,
+        enabled: false,
+        disabledReason: "已发生实际付款，不能再调整付款主体"
+      }
     });
+    expect((paymentDetail as { procurementMaterials: unknown }).procurementMaterials).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "line-1",
+          materialName: "免烧砖",
+          approvedQuantity: "100"
+        })
+      ])
+    );
+    expect((paymentDetail as { materials: unknown }).materials).toEqual([
+      expect.objectContaining({ vatRateOptionId: "vat-13" })
+    ]);
     expect((paymentDetail as { paymentChannels: unknown }).paymentChannels).toEqual([
       expect.objectContaining({ accountNumberLast4: "1234" })
     ]);

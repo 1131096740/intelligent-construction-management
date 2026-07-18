@@ -1,21 +1,16 @@
 <script setup lang="ts">
-import type { SpotProcurementPaymentStatus } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
-  fetchProjects,
-  type ProjectOptionReadModel
-} from "../../api/core-flow-read.api";
-import {
   fetchSpotProcurementPayments,
-  type SpotProcurementPaymentListItemReadModel,
-  type SpotProcurementVoucherStatus
+  type SpotProcurementPaymentListItemReadModel
 } from "../../api/spot-procurement.api";
+import { fetchProjects, type ProjectOptionReadModel } from "../../api/core-flow-read.api";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
 import BusinessTableToolbar from "../../components/BusinessTableToolbar.vue";
-import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
 import { centsTextToYuanText } from "../../lib/money";
+import type { SpotProcurementPaymentStatus } from "@jiangkong/shared-domain";
 
 const router = useRouter();
 const loading = ref(false);
@@ -23,54 +18,41 @@ const loadError = ref("");
 const projectError = ref("");
 const rows = ref<SpotProcurementPaymentListItemReadModel[]>([]);
 const projects = ref<ProjectOptionReadModel[]>([]);
-const listMeta = ref<{
-  limit: number;
-  truncated: boolean;
-}>({
-  limit: 200,
-  truncated: false
-});
-
+const listMeta = ref({ limit: 0, truncated: false });
 const filters = reactive({
   projectId: "",
   status: "" as SpotProcurementPaymentStatus | "",
   keyword: ""
 });
 
-const columns = [
-  { colKey: "code", title: "付款申请编号", width: 175, fixed: "left" as const },
-  { colKey: "procurement", title: "采购编号/供应商", width: 190 },
-  { colKey: "project", title: "项目", width: 170 },
-  { colKey: "paymentPathLabel", title: "支付路径", width: 120 },
-  { colKey: "payeeName", title: "收款对象", width: 140 },
-  { colKey: "settlementAmountCents", title: "结算申请金额", width: 130, align: "right" as const },
-  { colKey: "supplierBalanceAmountCents", title: "供应商余额抵扣", width: 140, align: "right" as const },
-  { colKey: "companyPaymentAmountCents", title: "公司付款申请", width: 130, align: "right" as const },
-  { colKey: "paidAmountCents", title: "公司实际付款", width: 130, align: "right" as const },
-  { colKey: "remainingCompanyPaymentAmountCents", title: "公司剩余待付", width: 130, align: "right" as const },
-  { colKey: "canceledAmountCents", title: "未执行取消", width: 120, align: "right" as const },
-  { colKey: "approval", title: "审批状态", width: 120 },
-  { colKey: "companyPaymentStatusLabel", title: "执行与结清", width: 125 },
-  { colKey: "voucherStatus", title: "付款凭证", width: 125 },
-  { colKey: "invoiceCoverage", title: "发票覆盖", width: 110 },
-  { colKey: "currentNode", title: "当前处理节点", width: 140 },
-  { colKey: "updatedAt", title: "更新时间", width: 170 },
-  { colKey: "operation", title: "操作", width: 90, fixed: "right" as const }
-];
-
 const statusOptions = [
   { label: "全部状态", value: "" },
-  { label: "草稿", value: "draft" },
-  { label: "审批中", value: "approval_pending" },
-  { label: "已批准待付款", value: "approved_pending_payment" },
+  { label: "付款草稿", value: "draft" },
+  { label: "付款审批中", value: "approval_pending" },
+  { label: "已批待付", value: "approved_pending_payment" },
   { label: "部分已付", value: "partially_paid" },
-  { label: "已付", value: "paid" },
+  { label: "公司付款已付", value: "paid" },
   { label: "已结清", value: "settled" },
   { label: "已退回", value: "returned" },
-  { label: "已驳回", value: "rejected" },
-  { label: "已撤回", value: "withdrawn" },
-  { label: "已作废", value: "voided" },
-  { label: "已失效", value: "invalidated" }
+  { label: "已作废", value: "voided" }
+];
+const columns = [
+  { colKey: "code", title: "付款申请编号", width: 178, fixed: "left" as const },
+  { colKey: "procurement", title: "采购申请", width: 150 },
+  { colKey: "project", title: "项目", width: 190 },
+  { colKey: "merchant", title: "实际商户", width: 170 },
+  { colKey: "payer", title: "我方付款主体", width: 170 },
+  { colKey: "payee", title: "收款对象 / 渠道", width: 190 },
+  { colKey: "approvalAmount", title: "审批金额", width: 125, align: "right" as const },
+  { colKey: "actualPaid", title: "累计实付", width: 125, align: "right" as const },
+  { colKey: "refund", title: "累计退款", width: 125, align: "right" as const },
+  { colKey: "netPaid", title: "净付", width: 125, align: "right" as const },
+  { colKey: "remaining", title: "剩余待付", width: 125, align: "right" as const },
+  { colKey: "receipt", title: "收货", width: 130 },
+  { colKey: "invoice", title: "发票", width: 110 },
+  { colKey: "approval", title: "审批", width: 130 },
+  { colKey: "handler", title: "经办人", width: 110 },
+  { colKey: "updatedAt", title: "最近更新", width: 170 }
 ];
 
 const projectOptions = computed(() => [
@@ -80,12 +62,12 @@ const projectOptions = computed(() => [
     value: project.id
   }))
 ]);
-
+const realRows = computed(() => rows.value.filter((row) => row.form === "real_payment"));
 const amountSummary = computed(() => ({
-  settlement: sumCents(rows.value.map((row) => row.settlementAmountCents)),
-  supplierBalance: sumCents(rows.value.map((row) => row.supplierBalanceAmountCents)),
-  companyRequested: sumCents(rows.value.map((row) => row.companyPaymentAmountCents)),
-  companyPaid: sumCents(rows.value.map((row) => row.paidAmountCents))
+  approval: sumCents(realRows.value.map((row) => row.approvalAmountCents)),
+  actual: sumCents(realRows.value.map((row) => row.actualPaidAmountCents)),
+  refund: sumCents(realRows.value.map((row) => row.refundAmountCents)),
+  net: sumCents(realRows.value.map((row) => row.netPaidAmountCents))
 }));
 
 function money(cents: string | null | undefined) {
@@ -97,37 +79,35 @@ function money(cents: string | null | undefined) {
   }
 }
 
-function sumCents(values: readonly string[]) {
+function sumCents(values: Array<string | undefined>) {
   try {
-    return values.reduce((total, value) => total + BigInt(value), 0n).toString();
+    return values.reduce((total, value) => total + BigInt(value ?? "0"), 0n).toString();
   } catch {
     return null;
   }
 }
 
-function dateTime(value: string) {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime())
-    ? value
-    : parsed.toLocaleString("zh-CN", { hour12: false });
-}
-
 function statusTheme(status: SpotProcurementPaymentStatus) {
   if (status === "paid" || status === "settled") return "success" as const;
-  if (status === "approval_pending" || status === "approved_pending_payment" || status === "partially_paid") {
-    return "warning" as const;
-  }
-  if (status === "rejected" || status === "voided" || status === "invalidated") {
-    return "danger" as const;
-  }
-  if (status === "returned" || status === "withdrawn") return "primary" as const;
+  if (["approval_pending", "approved_pending_payment", "partially_paid"].includes(status)) return "warning" as const;
+  if (["rejected", "voided", "invalidated"].includes(status)) return "danger" as const;
+  if (["returned", "withdrawn"].includes(status)) return "primary" as const;
   return "default" as const;
 }
 
-function voucherTheme(status: SpotProcurementVoucherStatus) {
-  if (status === "complete") return "success" as const;
-  if (status === "anomaly") return "danger" as const;
-  return "default" as const;
+function dateTime(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function primaryChannel(row: SpotProcurementPaymentListItemReadModel) {
+  const accountLast4 = row.payee?.accountNumberLast4;
+  return accountLast4 ? `尾号 ${accountLast4}` : "未填写账户";
+}
+
+function receiptLabel(row: SpotProcurementPaymentListItemReadModel) {
+  if (!row.receipt || "available" in row.receipt && !row.receipt.available) return "首笔实付后开放";
+  return row.receipt.statusLabel;
 }
 
 function openDetail(paymentId: string) {
@@ -146,8 +126,7 @@ async function loadPayments() {
     rows.value = result.items;
     listMeta.value = { limit: result.limit, truncated: result.truncated };
   } catch (error) {
-    loadError.value =
-      error instanceof Error ? error.message : "零星材料付款工作台读取失败";
+    loadError.value = error instanceof Error ? error.message : "零星材料付款工作台读取失败";
   } finally {
     loading.value = false;
   }
@@ -158,8 +137,7 @@ async function loadProjects() {
   try {
     projects.value = await fetchProjects();
   } catch (error) {
-    projectError.value =
-      error instanceof Error ? error.message : "项目筛选选项读取失败";
+    projectError.value = error instanceof Error ? error.message : "项目筛选选项读取失败";
   }
 }
 
@@ -170,16 +148,14 @@ function resetFilters() {
   void loadPayments();
 }
 
-onMounted(() => {
-  void Promise.all([loadProjects(), loadPayments()]);
-});
+onMounted(() => void Promise.all([loadProjects(), loadPayments()]));
 </script>
 
 <template>
   <section class="spot-payment-workbench">
     <BusinessPageHeader
       title="零星材料付款工作台"
-      description="新付款草稿从已审批的采购详情创建；本页仅展示真实关联付款，不提供脱离采购来源的新建入口。"
+      description="采购审批通过后自动生成付款草稿；实际商户、付款主体、收款对象、单价和税率在 A5 付款申请中确定。"
     >
       <template #actions>
         <t-button
@@ -200,38 +176,33 @@ onMounted(() => {
       action-label="重新读取"
       @action="loadProjects"
     />
-
     <t-alert
       theme="info"
-      title="四个金额口径独立展示"
-      message="结算申请金额 = 供应商余额抵扣 + 公司付款申请；公司实际付款只来自未作废且付款凭证有效的执行事实。供应商余额抵扣绝不显示为银行已付。"
+      title="只展示真实付款事实"
+      message="审批通过不等于已付款。累计实付、退款、净付和剩余待付只由逐笔实际付款与退款凭证形成；收货在首笔实付后开放，发票可在付款后继续追加。"
     />
 
     <section
       class="amount-summary"
-      aria-label="当前付款列表金额摘要"
+      aria-label="当前真实付款金额摘要"
     >
       <t-card bordered>
-        <span>结算申请金额</span>
-        <strong>{{ money(amountSummary.settlement) }}</strong>
+        <span>审批金额</span><strong>{{ money(amountSummary.approval) }}</strong>
       </t-card>
       <t-card bordered>
-        <span>供应商余额抵扣</span>
-        <strong>{{ money(amountSummary.supplierBalance) }}</strong>
+        <span>累计实付</span><strong>{{ money(amountSummary.actual) }}</strong>
       </t-card>
       <t-card bordered>
-        <span>公司付款申请</span>
-        <strong>{{ money(amountSummary.companyRequested) }}</strong>
+        <span>累计退款</span><strong>{{ money(amountSummary.refund) }}</strong>
       </t-card>
       <t-card bordered>
-        <span>公司实际付款</span>
-        <strong>{{ money(amountSummary.companyPaid) }}</strong>
+        <span>净付金额</span><strong>{{ money(amountSummary.net) }}</strong>
       </t-card>
     </section>
 
     <BusinessTableToolbar
       title="付款申请筛选"
-      description="列表只展示当前账号有权查看的付款事实。"
+      description="列表账号与渠道均保持最小展示，银行卡仅显示末四位。"
       appearance="plain"
     >
       <template #actions>
@@ -251,38 +222,28 @@ onMounted(() => {
           查询
         </t-button>
       </template>
-
-      <label class="filter-field">
-        <span>项目</span>
-        <t-select
-          v-model="filters.projectId"
-          :options="projectOptions"
-          placeholder="全部项目"
-        />
-      </label>
-      <label class="filter-field">
-        <span>付款状态</span>
-        <t-select
-          v-model="filters.status"
-          :options="statusOptions"
-        />
-      </label>
-      <label class="filter-field filter-field--keyword">
-        <span>关键词</span>
-        <t-input
-          v-model="filters.keyword"
-          clearable
-          placeholder="付款编号、采购编号、供应商或收款人"
-          @enter="loadPayments"
-        />
-      </label>
+      <label class="filter-field"><span>项目</span><t-select
+        v-model="filters.projectId"
+        :options="projectOptions"
+        placeholder="全部项目"
+      /></label>
+      <label class="filter-field"><span>付款状态</span><t-select
+        v-model="filters.status"
+        :options="statusOptions"
+      /></label>
+      <label class="filter-field filter-field--keyword"><span>关键词</span><t-input
+        v-model="filters.keyword"
+        clearable
+        placeholder="付款编号、采购编号、商户或收款对象"
+        @enter="loadPayments"
+      /></label>
     </BusinessTableToolbar>
 
     <BusinessFeedback
       v-if="loading && !rows.length"
       state="loading"
       title="正在读取零星材料付款"
-      description="系统正在核对审批、余额抵扣、实际付款与凭证事实。"
+      description="系统正在核对付款审批、逐笔实付、退款、收货和发票事实。"
     />
     <BusinessFeedback
       v-else-if="loadError"
@@ -302,12 +263,16 @@ onMounted(() => {
         <div>
           <h2 id="spot-payment-table-title">
             付款申请记录
-          </h2>
-          <p>公司实际付款与余额抵扣分列展示；发票覆盖在相关功能开放前标记为“阶段 B 开放”。</p>
+          </h2><p>每张申请只有一个收款对象，可登记多个收款渠道和多次实际付款；历史单据保持可读，不混入新表单金额汇总。</p>
         </div>
-        <span>当前返回 {{ rows.length }} 条</span>
+        <span>当前返回 {{ rows.length }} / {{ listMeta.limit || "—" }} 条</span>
       </header>
-
+      <t-alert
+        v-if="listMeta.truncated"
+        theme="warning"
+        title="结果已截断"
+        message="为保护查询性能，当前只返回可访问结果的前一部分；请缩小项目、状态或关键词范围。"
+      />
       <t-table
         v-if="rows.length"
         row-key="id"
@@ -316,7 +281,7 @@ onMounted(() => {
         :columns="columns"
         :data="rows"
         :loading="loading"
-        :scroll="{ x: 2440 }"
+        :scroll="{ x: 2340 }"
       >
         <template #code="{ row }">
           <t-link
@@ -328,211 +293,93 @@ onMounted(() => {
         </template>
         <template #procurement="{ row }">
           <div class="two-line-cell">
-            <strong>{{ row.procurement.code }}</strong>
-            <span>{{ row.procurement.supplierName }}</span>
+            <strong>{{ row.procurement.code }}</strong><span>{{ row.form === "real_payment" ? "A4 采购申请" : "历史付款关联" }}</span>
           </div>
         </template>
         <template #project="{ row }">
           {{ row.project.code }} · {{ row.project.name }}
         </template>
-        <template #settlementAmountCents="{ row }">
-          <strong>{{ money(row.settlementAmountCents) }}</strong>
+        <template #merchant="{ row }">
+          <span>{{ row.merchantName ?? row.procurement.supplierName ?? "待经办人填写" }}</span>
         </template>
-        <template #supplierBalanceAmountCents="{ row }">
-          <div class="two-line-cell two-line-cell--money">
-            <strong>{{ money(row.supplierBalanceAmountCents) }}</strong>
-            <span>已执行 {{ money(row.executedSupplierBalanceAmountCents) }}</span>
+        <template #payer="{ row }">
+          <span>{{ row.payerCompanyName ?? "待财务/综合部确定" }}</span>
+        </template>
+        <template #payee="{ row }">
+          <div class="two-line-cell">
+            <strong>{{ row.payee?.name ?? row.payeeName ?? "待填写" }}</strong><span>{{ primaryChannel(row) }}</span>
           </div>
         </template>
-        <template #companyPaymentAmountCents="{ row }">
-          <div class="two-line-cell two-line-cell--money">
-            <strong>{{ money(row.companyPaymentAmountCents) }}</strong>
-            <span>当前有效 {{ money(row.effectiveCompanyPaymentAmountCents) }}</span>
-          </div>
+        <template #approvalAmount="{ row }">
+          <strong>{{ money(row.approvalAmountCents) }}</strong>
         </template>
-        <template #paidAmountCents="{ row }">
-          <div class="two-line-cell two-line-cell--money">
-            <strong>{{ money(row.paidAmountCents) }}</strong>
-            <t-tag
-              v-if="!row.paymentFactConsistent"
-              size="small"
-              theme="danger"
-              variant="light"
-            >
-              付款事实待核对
-            </t-tag>
-          </div>
+        <template #actualPaid="{ row }">
+          <strong>{{ money(row.actualPaidAmountCents) }}</strong>
         </template>
-        <template #remainingCompanyPaymentAmountCents="{ row }">
-          {{ money(row.remainingCompanyPaymentAmountCents) }}
+        <template #refund="{ row }">
+          <strong>{{ money(row.refundAmountCents) }}</strong>
         </template>
-        <template #canceledAmountCents="{ row }">
-          {{ money(row.canceledAmountCents) }}
+        <template #netPaid="{ row }">
+          <strong>{{ money(row.netPaidAmountCents) }}</strong>
+        </template>
+        <template #remaining="{ row }">
+          <strong>{{ money(row.remainingAmountCents) }}</strong>
+        </template>
+        <template #receipt="{ row }">
+          <t-tag
+            size="small"
+            variant="light"
+          >
+            {{ receiptLabel(row) }}
+          </t-tag>
+        </template>
+        <template #invoice="{ row }">
+          <t-tag
+            size="small"
+            variant="light"
+          >
+            {{ row.invoice?.statusLabel ?? "历史单据" }}
+          </t-tag>
         </template>
         <template #approval="{ row }">
-          <t-tag
-            :theme="statusTheme(row.status)"
-            variant="light"
-          >
-            {{ row.approval.statusLabel || row.statusLabel }}
-          </t-tag>
+          <div class="two-line-cell">
+            <t-tag
+              size="small"
+              :theme="statusTheme(row.status)"
+              variant="light"
+            >
+              {{ row.statusLabel }}
+            </t-tag><span>{{ row.approval.currentNodeName }}</span>
+          </div>
         </template>
-        <template #companyPaymentStatusLabel="{ row }">
-          {{ row.companyPaymentStatusLabel }}
-        </template>
-        <template #voucherStatus="{ row }">
-          <t-tag
-            :theme="voucherTheme(row.voucherStatus)"
-            variant="light"
-          >
-            {{ row.voucherStatusLabel }}
-          </t-tag>
-        </template>
-        <template #invoiceCoverage>
-          <t-tag variant="outline">
-            阶段 B 开放
-          </t-tag>
-        </template>
-        <template #currentNode="{ row }">
-          {{ row.approval.currentNodeName || "—" }}
+        <template #handler="{ row }">
+          {{ row.handler.name }}
         </template>
         <template #updatedAt="{ row }">
-          {{ dateTime(row.updatedAt) }}
-        </template>
-        <template #operation="{ row }">
-          <t-link
-            theme="primary"
-            @click="openDetail(row.id)"
-          >
-            查看详情
-          </t-link>
+          <span>{{ dateTime(row.updatedAt) }}</span>
         </template>
       </t-table>
-
-      <EmptyBusinessState
+      <t-empty
         v-else
-        title="当前条件下暂无零星材料付款"
-        description="新付款草稿需从已审批的零星采购详情创建；也可以调整本页筛选条件。"
+        description="暂无可查看的零星材料付款申请"
       />
-
-      <footer class="data-footer">
-        <span>数据范围</span>
-        <p v-if="listMeta.truncated">
-          当前最多展示 {{ listMeta.limit }} 条可见付款，请收紧筛选条件继续查询。
-        </p>
-        <p v-else>
-          已展示当前筛选下的全部可见付款。
-        </p>
-      </footer>
+      <t-alert
+        v-if="rows.some((row) => row.voucherStatus === 'anomaly')"
+        theme="error"
+        title="存在凭证异常"
+        message="异常付款禁止继续登记新的实际付款，请由获权财务人员先核对付款凭证事实。"
+      />
     </section>
   </section>
 </template>
 
 <style scoped>
-.spot-payment-workbench,
-.data-panel {
-  display: grid;
-  gap: var(--jg-space-lg);
-  min-width: 0;
-  color: var(--jg-color-text-primary);
-}
-
-.amount-summary {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--jg-space-md);
-}
-
-.amount-summary :deep(.t-card__body) {
-  display: grid;
-  gap: var(--jg-space-xs);
-}
-
-.amount-summary span,
-.filter-field > span,
-.section-heading p,
-.data-footer,
-.data-footer p,
-.two-line-cell span {
-  color: var(--jg-color-text-tertiary);
-  font-size: var(--jg-font-size-meta);
-}
-
-.amount-summary strong {
-  color: var(--jg-color-text-primary);
-  font-size: var(--jg-font-size-section-title);
-}
-
-.filter-field {
-  display: grid;
-  flex: 1 1 var(--jg-control-width-md);
-  gap: var(--jg-space-xs);
-  min-width: 0;
-}
-
-.filter-field--keyword {
-  flex-grow: 2;
-}
-
-.section-heading {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--jg-space-md);
-}
-
-.section-heading h2,
-.section-heading p,
-.data-footer p {
-  margin: 0;
-}
-
-.section-heading h2 {
-  color: var(--jg-color-text-primary);
-  font-size: var(--jg-font-size-section-title);
-}
-
-.section-heading p {
-  margin-top: var(--jg-space-xs);
-}
-
-.two-line-cell {
-  display: grid;
-  gap: var(--jg-space-2xs);
-}
-
-.two-line-cell--money {
-  justify-items: end;
-}
-
-.data-footer {
-  display: flex;
-  gap: var(--jg-space-md);
-  padding-top: var(--jg-space-md);
-  border-top: var(--jg-border-width-base) solid var(--jg-color-border);
-}
-
-.data-footer > span {
-  flex: 0 0 auto;
-  color: var(--jg-color-text-secondary);
-  font-weight: var(--jg-font-weight-semibold);
-}
-
-@media (max-width: 960px) {
-  .amount-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 720px) {
-  .amount-summary {
-    grid-template-columns: 1fr;
-  }
-
-  .section-heading,
-  .data-footer {
-    align-items: stretch;
-    flex-direction: column;
-  }
-}
+.spot-payment-workbench,.data-panel{display:grid;gap:var(--jg-space-lg);min-width:0;color:var(--jg-color-text-primary)}
+.amount-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--jg-space-md)}
+.amount-summary :deep(.t-card__body){display:grid;gap:var(--jg-space-xs)}
+.amount-summary span,.section-heading p,.section-heading>span,.filter-field>span,.two-line-cell span{color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}
+.amount-summary strong{font-size:var(--jg-font-size-section-title)}
+.section-heading{display:flex;justify-content:space-between;gap:var(--jg-space-lg);align-items:flex-end}.section-heading h2,.section-heading p{margin:0}.section-heading p{margin-top:var(--jg-space-xs)}
+.filter-field{display:grid;gap:var(--jg-space-xs);min-width:160px}.filter-field--keyword{min-width:min(320px,100%)}.two-line-cell{display:grid;gap:var(--jg-space-xs);min-width:0}.two-line-cell strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:900px){.amount-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.section-heading{align-items:flex-start;flex-direction:column}}@media (max-width:560px){.amount-summary{grid-template-columns:1fr}}
 </style>

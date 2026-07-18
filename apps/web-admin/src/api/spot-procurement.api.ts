@@ -274,20 +274,41 @@ export interface SpotProcurementPaymentListItemReadModel {
   procurement: {
     id: string;
     code: string;
-    supplierName: string;
+    supplierName?: string;
   };
   project: SpotProcurementProjectSummary;
-  paymentPath: PaymentPath | null;
-  paymentPathLabel: string;
-  payeeName: string;
-  settlementAmountCents: string;
-  supplierBalanceAmountCents: string;
-  companyPaymentAmountCents: string;
-  effectiveCompanyPaymentAmountCents: string;
-  paidAmountCents: string;
-  remainingCompanyPaymentAmountCents: string;
-  executedSupplierBalanceAmountCents: string;
-  canceledAmountCents: string;
+  form?: "real_payment" | "legacy";
+  paymentType?: "company_direct" | "handler_reimbursement" | null;
+  paymentTypeLabel?: string;
+  merchantName?: string | null;
+  payerCompanyName?: string | null;
+  payee?: {
+    name: string;
+    accountName: string | null;
+    accountNumberLast4: string | null;
+  };
+  approvalAmountCents?: string;
+  actualPaidAmountCents?: string;
+  refundAmountCents?: string;
+  netPaidAmountCents?: string;
+  remainingAmountCents?: string;
+  receipt?: SpotProcurementReceiptSummaryReadModel | SpotProcurementFutureUnavailableReadModel;
+  invoice?: {
+    status: string;
+    statusLabel: string;
+    activeCount: number;
+  };
+  paymentPath?: PaymentPath | null;
+  paymentPathLabel?: string;
+  payeeName?: string;
+  settlementAmountCents?: string;
+  supplierBalanceAmountCents?: string;
+  companyPaymentAmountCents?: string;
+  effectiveCompanyPaymentAmountCents?: string;
+  paidAmountCents?: string;
+  remainingCompanyPaymentAmountCents?: string;
+  executedSupplierBalanceAmountCents?: string;
+  canceledAmountCents?: string;
   status: SpotProcurementPaymentStatus;
   statusLabel: string;
   companyPaymentStatusLabel: string;
@@ -296,7 +317,7 @@ export interface SpotProcurementPaymentListItemReadModel {
   voucherStatus: SpotProcurementVoucherStatus;
   voucherStatusLabel: string;
   paymentFactConsistent: boolean;
-  invoiceCoverage: SpotProcurementFutureUnavailableReadModel;
+  invoiceCoverage?: SpotProcurementFutureUnavailableReadModel;
   createdAt: string;
   updatedAt: string;
 }
@@ -417,11 +438,16 @@ export interface SpotProcurementPaymentExecutionReadModel {
   paymentMethod: SpotProcurementPaymentMethod;
   paymentMethodLabel: string;
   executedBy: SpotProcurementUserSummary;
-  voucherFileId: string;
+  voucherFileId: string | null;
   voucherFileName: string;
   voidedAt: string | null;
   voidReason: string | null;
   active: boolean;
+  vouchers?: Array<{
+    id: string;
+    fileId: string;
+    sortOrder: number;
+  }>;
 }
 
 export interface SpotProcurementPaymentDetailReadModel {
@@ -434,33 +460,50 @@ export interface SpotProcurementPaymentDetailReadModel {
     procurement: {
       id: string;
       code: string;
-      supplierName: string;
+      supplierName?: string;
     };
     procurementVersionId: string;
-    settlementAmountCents: string;
-    supplierBalanceAmountCents: string;
-    companyPaymentAmountCents: string;
-    effectiveCompanyPaymentAmountCents: string;
-    paidAmountCents: string;
-    remainingCompanyPaymentAmountCents: string;
-    paymentFactConsistent: boolean;
-    voucherStatus: SpotProcurementVoucherStatus;
-    voucherStatusLabel: string;
-    executedSupplierBalanceAmountCents: string;
-    canceledAmountCents: string;
-    canceledCompanyPaymentAmountCents: string;
-    canceledSupplierBalanceAmountCents: string;
-    paymentPath: PaymentPath | null;
-    paymentPathLabel: string;
-    paymentMethod: SpotProcurementPaymentMethod | null;
-    paymentMethodLabel: string;
-    payeeName: string;
-    payeeAccountName: string | null;
-    payeeBankName: string | null;
-    payeeBankAccountLast4: string | null;
-    expectedPaymentAt: string | null;
-    paymentNote: string | null;
-    balanceOverrideReason: string | null;
+    form?: "real_payment" | "legacy";
+    paymentType?: "company_direct" | "handler_reimbursement" | null;
+    paymentTypeLabel?: string;
+    merchantName?: string | null;
+    merchantPayeeMismatchNote?: string | null;
+    payerCompanyName?: string | null;
+    payee?: {
+      name: string;
+      accountName: string | null;
+      primaryChannel: SpotProcurementPaymentChannelReadModel | null;
+    };
+    approvalAmountCents?: string;
+    actualPaidAmountCents?: string;
+    refundAmountCents?: string;
+    netPaidAmountCents?: string;
+    remainingAmountCents?: string;
+    paymentFactConsistent?: boolean;
+    voucherStatus?: SpotProcurementVoucherStatus;
+    voucherStatusLabel?: string;
+    payerManagement?: SpotProcurementPayerManagementReadModel;
+    settlementAmountCents?: string;
+    supplierBalanceAmountCents?: string;
+    companyPaymentAmountCents?: string;
+    effectiveCompanyPaymentAmountCents?: string;
+    paidAmountCents?: string;
+    remainingCompanyPaymentAmountCents?: string;
+    executedSupplierBalanceAmountCents?: string;
+    canceledAmountCents?: string;
+    canceledCompanyPaymentAmountCents?: string;
+    canceledSupplierBalanceAmountCents?: string;
+    paymentPath?: PaymentPath | null;
+    paymentPathLabel?: string;
+    paymentMethod?: SpotProcurementPaymentMethod | null;
+    paymentMethodLabel?: string;
+    payeeName?: string;
+    payeeAccountName?: string | null;
+    payeeBankName?: string | null;
+    payeeBankAccountLast4?: string | null;
+    expectedPaymentAt?: string | null;
+    paymentNote?: string | null;
+    balanceOverrideReason?: string | null;
     handler: SpotProcurementUserSummary;
     submittedAt: string | null;
     approvedAt: string | null;
@@ -472,12 +515,12 @@ export interface SpotProcurementPaymentDetailReadModel {
   procurementVersion: SpotProcurementVersionReadModel;
   approval: SpotProcurementApprovalSummary;
   approvalTimeline: ApprovalTimelineItemReadModel[];
-  composition: {
+  composition?: {
     settlementAmountCents: string;
     supplierBalanceAmountCents: string;
     companyPaymentAmountCents: string;
   };
-  companyPayment: {
+  companyPayment?: {
     status: SpotProcurementPaymentStatus;
     statusLabel: string;
     approvedAmountCents: string;
@@ -487,20 +530,109 @@ export interface SpotProcurementPaymentDetailReadModel {
     voucherStatus: SpotProcurementVoucherStatus;
     voucherStatusLabel: string;
   };
-  balanceExecution: {
+  balanceExecution?: {
     requestedAmountCents: string;
     executedAmountCents: string;
     reservationStatus: string | null;
   };
   executions: SpotProcurementPaymentExecutionReadModel[];
   evidenceFiles: EvidenceFileReadModel[];
-  invoiceCoverage: SpotProcurementInvoiceCoverageReadModel;
-  invoiceLedger: SpotProcurementInvoiceLedgerReadModel;
-  receipt: SpotProcurementFutureUnavailableReadModel;
+  invoiceCoverage?: SpotProcurementInvoiceCoverageReadModel;
+  invoiceLedger?: SpotProcurementInvoiceLedgerReadModel;
+  receipt: SpotProcurementFutureUnavailableReadModel | SpotProcurementReceiptSummaryReadModel;
+  materials?: SpotProcurementPaymentMaterialReadModel[];
+  procurementMaterials?: Array<{
+    id: string;
+    sortOrder: number;
+    materialName: string;
+    specification: string | null;
+    unit: string;
+    approvedQuantity: string;
+    note: string | null;
+  }>;
+  paymentMethods?: Array<{ value: SpotProcurementPaymentMethod; label: string }>;
+  paymentChannels?: SpotProcurementPaymentChannelReadModel[];
+  discrepancy?: {
+    status: string;
+    statusLabel?: string;
+    nextStep: string | null;
+    refund?: { amountCents: string; receivedAt: string } | null;
+  };
+  approvalOriginal?: {
+    documentId: string;
+    fileId: string;
+    templateKey: string;
+    createdAt: string;
+    immutable: boolean;
+  } | null;
+  archives?: SpotProcurementPaymentArchiveReadModel[];
+  archiveStatus?: {
+    status: string;
+    label: string;
+    canRetry: boolean;
+    latestVersionNo: number | null;
+    latestGeneratedAt?: string;
+  };
+  invoice?: {
+    status: string;
+    statusLabel: string;
+    activeCount: number;
+    invoices: Array<Record<string, unknown>>;
+  };
   paymentPdf: SpotProcurementApprovalPdfReadModel;
   availableActions: DetailActionReadModel[];
   primaryAction: string | null;
   disabledReasons: string[];
+}
+
+export interface SpotProcurementPaymentMaterialReadModel {
+  id: string;
+  procurementLineId: string;
+  sortOrder: number;
+  materialName: string;
+  specification: string | null;
+  unit: string;
+  approvedQuantity: string;
+  paymentQuantity: string;
+  unitPrice: string;
+  amountCents: string;
+  expectedInvoiceCondition: "vat_general" | "vat_special" | "no_invoice";
+  vatRateOptionId: string | null;
+  vatRateLabel: string | null;
+}
+
+export interface SpotProcurementPaymentChannelReadModel {
+  id: string;
+  sortOrder: number;
+  channelType: SpotProcurementPaymentMethod;
+  channelTypeLabel: string;
+  accountName: string | null;
+  bankName: string | null;
+  accountNumberLast4: string | null;
+  note: string | null;
+  primary: boolean;
+}
+
+export interface SpotProcurementPayerManagementReadModel {
+  visible: boolean;
+  enabled: boolean;
+  disabledReason: string | null;
+  requiresReapproval: boolean;
+}
+
+export interface SpotProcurementPaymentArchiveReadModel {
+  id: string;
+  versionNo: number;
+  status: string;
+  statusLabel?: string;
+  archiveTrigger: string;
+  createdAt: string;
+  files: Array<{
+    id: string;
+    fileId: string;
+    role: string;
+    sortOrder: number;
+  }>;
 }
 
 export interface SpotProcurementListQuery {
@@ -565,6 +697,30 @@ export interface VoidSpotProcurementPayload {
 }
 
 export interface UpdateSpotProcurementPaymentDraftPayload {
+  paymentType?: "company_direct" | "handler_reimbursement";
+  merchantName?: string;
+  payeeName?: string;
+  merchantPayeeMismatchNote?: string | null;
+  paymentLines?: Array<{
+    procurementLineId: string;
+    paymentQuantity: string;
+    unitPrice: string;
+    expectedInvoiceCondition: "vat_general" | "vat_special" | "no_invoice";
+    vatRateOptionId?: string;
+  }>;
+  channels?: Array<{
+    channelType: SpotProcurementPaymentMethod;
+    accountName?: string | null;
+    accountNumber?: string | null;
+    bankName?: string | null;
+    note?: string | null;
+    isPrimary: boolean;
+  }>;
+  paymentMethods?: SpotProcurementPaymentMethod[];
+  attachments?: Array<{
+    fileId: string;
+    category: "merchant_receipt" | "merchant_quote" | "merchant_invoice" | "other";
+  }>;
   settlementAmountCents?: string;
   supplierBalanceAmountCents?: string;
   companyPaymentAmountCents?: string;
@@ -583,9 +739,17 @@ export interface RecordSpotProcurementPaymentExecutionPayload {
   amountCents: string;
   paidAt: string;
   paymentMethod: SpotProcurementPaymentMethod;
-  voucherFileId: string;
+  voucherFileId?: string;
+  voucherFileIds?: string[];
+  paymentChannelId?: string;
   idempotencyKey: string;
   confirmationPassword: string;
+}
+
+export interface UpdateSpotProcurementPaymentPayerPayload {
+  companyEntityId: string;
+  changeReason?: string;
+  paymentMethods?: SpotProcurementPaymentMethod[];
 }
 
 export interface UpdateSpotProcurementReceiptDraftPayload {
@@ -700,6 +864,16 @@ export function fetchSpotProcurementPayments(
 export function fetchSpotProcurementPaymentDetail(paymentId: string) {
   return readJson<SpotProcurementPaymentDetailReadModel>(
     `/spot-procurement-payments/${encodeURIComponent(paymentId)}`
+  );
+}
+
+export function updateSpotProcurementPaymentPayer(
+  paymentId: string,
+  body: UpdateSpotProcurementPaymentPayerPayload
+) {
+  return patchJson<SpotProcurementPaymentWriteReadModel>(
+    `/spot-procurement-payments/${encodeURIComponent(paymentId)}/payer`,
+    body
   );
 }
 

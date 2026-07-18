@@ -689,6 +689,7 @@ export class SpotProcurementReadService {
       reservations,
       approval,
       paymentLines,
+      procurementMaterials,
       paymentChannels,
       paymentMethods,
       paymentAttachments,
@@ -725,6 +726,10 @@ export class SpotProcurementReadService {
       }),
       this.prisma.spotProcurementPaymentLine.findMany({
         where: { paymentId: payment.id },
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+      }),
+      this.prisma.spotProcurementLine.findMany({
+        where: { versionId: payment.procurementVersionId },
         orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
       }),
       this.prisma.spotProcurementPaymentChannel.findMany({
@@ -906,6 +911,14 @@ export class SpotProcurementReadService {
     const realPaymentFacts = usesRealPaymentForm
       ? realPaymentFactReadModel(payment, actualPaidAmountCents, refunds)
       : null;
+    const payerManagement = usesRealPaymentForm
+      ? payerManagementReadModel({
+          payment,
+          approval,
+          roleKeys,
+          activeExecutionCount: activeExecutions.length
+        })
+      : null;
 
     return {
       payment: {
@@ -950,7 +963,8 @@ export class SpotProcurementReadService {
               paymentFactConsistent:
                 payment.paidAmountCents === actualPaidAmountCents,
               voucherStatus: voucher.status,
-              voucherStatusLabel: voucher.label
+              voucherStatusLabel: voucher.label,
+              payerManagement
             }
           : {
               form: "legacy",
@@ -1017,7 +1031,17 @@ export class SpotProcurementReadService {
               unitPrice: line.unitPrice.toString(),
               amountCents: moneyText(line.amountCents),
               expectedInvoiceCondition: line.expectedInvoiceCondition,
+              vatRateOptionId: line.vatRateOptionId,
               vatRateLabel: line.vatRateLabelSnapshot
+            })),
+            procurementMaterials: procurementMaterials.map((line) => ({
+              id: line.id,
+              sortOrder: line.sortOrder,
+              materialName: line.materialName,
+              specification: line.specification,
+              unit: line.unit,
+              approvedQuantity: line.quantity.toString(),
+              note: line.note
             })),
             paymentMethods: paymentMethods.map((method) => ({
               value: method.paymentMethod,
@@ -2620,6 +2644,78 @@ function archiveStatusReadModel(
     canRetry: latestArchive.status !== "generated",
     latestVersionNo: latestArchive.versionNo,
     latestGeneratedAt: latestArchive.createdAt.toISOString()
+  };
+}
+
+function payerManagementReadModel(input: {
+  payment: SpotProcurementPayment;
+  approval: ApprovalInstance | null;
+  roleKeys: RoleKey[];
+  activeExecutionCount: number;
+}) {
+  const canManage = input.roleKeys.some((role) =>
+    ["finance_staff", "comprehensive_director", "finance_director"].includes(role)
+  );
+  if (!canManage) {
+    return {
+      visible: false,
+      enabled: false,
+      disabledReason: "当前账号不是付款主体维护岗位",
+      requiresReapproval: false
+    };
+  }
+  if (input.activeExecutionCount) {
+    return {
+      visible: true,
+      enabled: false,
+      disabledReason: "已发生实际付款，不能再调整付款主体",
+      requiresReapproval: false
+    };
+  }
+  if (!["draft", "approval_pending"].includes(input.payment.status)) {
+    return {
+      visible: true,
+      enabled: false,
+      disabledReason: "付款审批完成后不能再调整付款主体",
+      requiresReapproval: false
+    };
+  }
+  if (!input.approval) {
+    return {
+      visible: true,
+      enabled: true,
+      disabledReason: null,
+      requiresReapproval: false
+    };
+  }
+  const pendingRoles = pendingRoleKeysForFrozenApprovalNode(
+    input.approval.frozenNodes,
+    input.approval.currentNodeIndex
+  );
+  const financeDirectorNode =
+    pendingRoles.includes("finance_director") &&
+    input.roleKeys.includes("finance_director");
+  if (financeDirectorNode) {
+    return {
+      visible: true,
+      enabled: true,
+      disabledReason: null,
+      requiresReapproval: true
+    };
+  }
+  if (input.approval.currentNodeIndex === 0) {
+    return {
+      visible: true,
+      enabled: true,
+      disabledReason: null,
+      requiresReapproval: false
+    };
+  }
+  return {
+    visible: true,
+    enabled: false,
+    disabledReason: "综合部主管审批完成后，仅财务主管可在本节点调整付款主体",
+    requiresReapproval: false
   };
 }
 

@@ -2,16 +2,16 @@
 import { centsTextToYuanText } from "../../../lib/money";
 
 defineProps<{
-  settlementAmountCents: string;
-  supplierBalanceAmountCents: string;
-  companyPaymentAmountCents: string;
-  paidAmountCents?: string;
+  approvalAmountCents?: string;
+  actualPaidAmountCents?: string;
+  refundAmountCents?: string;
+  netPaidAmountCents?: string;
   remainingAmountCents?: string;
-  companyPaymentStatusLabel?: string;
+  paymentFactConsistent?: boolean;
 }>();
 
 function money(value: string | undefined) {
-  return value === undefined ? "—" : `¥${centsTextToYuanText(value)}`;
+  return value === undefined ? "待确定" : `¥${centsTextToYuanText(value)}`;
 }
 </script>
 
@@ -19,106 +19,27 @@ function money(value: string | undefined) {
   <t-card
     class="payment-composition-card"
     bordered
-    title="付款构成"
+    title="付款事实汇总"
   >
-    <div class="payment-composition-card__equation">
-      <div>
-        <span>结算申请金额</span>
-        <strong>{{ money(settlementAmountCents) }}</strong>
-      </div>
-      <b aria-hidden="true">=</b>
-      <div>
-        <span>供应商余额抵扣</span>
-        <strong>{{ money(supplierBalanceAmountCents) }}</strong>
-        <small>内部余额执行，不属于银行实付</small>
-      </div>
-      <b aria-hidden="true">+</b>
-      <div>
-        <span>公司付款申请</span>
-        <strong>{{ money(companyPaymentAmountCents) }}</strong>
-      </div>
+    <div class="payment-composition-card__facts">
+      <div><span>审批金额</span><strong>{{ money(approvalAmountCents) }}</strong></div>
+      <div><span>累计实付</span><strong>{{ money(actualPaidAmountCents) }}</strong></div>
+      <div><span>累计退款</span><strong>{{ money(refundAmountCents) }}</strong></div>
+      <div><span>净付金额</span><strong>{{ money(netPaidAmountCents) }}</strong></div>
+      <div><span>剩余待付</span><strong>{{ money(remainingAmountCents) }}</strong></div>
     </div>
-
-    <div
-      v-if="paidAmountCents !== undefined"
-      class="payment-composition-card__actual"
-    >
-      <div>
-        <span>公司实际付款</span>
-        <strong>{{ money(paidAmountCents) }}</strong>
-      </div>
-      <div>
-        <span>公司剩余待付</span>
-        <strong>{{ money(remainingAmountCents) }}</strong>
-      </div>
-      <t-tag
-        theme="primary"
-        variant="light"
-      >
-        {{ companyPaymentStatusLabel ?? "等待实付事实" }}
-      </t-tag>
-    </div>
+    <t-alert
+      :theme="paymentFactConsistent === false ? 'error' : 'info'"
+      :title="paymentFactConsistent === false ? '付款事实待核对' : '审批与实际付款分开记账'"
+      :message="paymentFactConsistent === false ? '付款累计与逐笔实际付款记录不一致，暂不能继续登记实际付款。' : '审批完成只进入待付款；每次实际付款都单独登记渠道、时间和凭证。'"
+    />
   </t-card>
 </template>
 
 <style scoped>
-.payment-composition-card {
-  background: var(--jg-color-bg-panel);
-}
-
-.payment-composition-card__equation,
-.payment-composition-card__actual {
-  display: grid;
-  align-items: stretch;
-  gap: var(--jg-space-md);
-}
-
-.payment-composition-card__equation {
-  grid-template-columns: minmax(150px, 1fr) auto minmax(180px, 1fr) auto minmax(180px, 1fr);
-}
-
-.payment-composition-card__equation > div,
-.payment-composition-card__actual > div {
-  display: grid;
-  gap: var(--jg-space-xs);
-  padding: var(--jg-space-md);
-  border: var(--jg-border-width-base) solid var(--jg-color-border);
-  border-radius: var(--jg-radius-panel);
-  background: var(--jg-color-bg-surface);
-}
-
-.payment-composition-card__equation > b {
-  align-self: center;
-  color: var(--jg-color-text-muted);
-}
-
-.payment-composition-card span,
-.payment-composition-card small {
-  color: var(--jg-color-text-tertiary);
-  font-size: var(--jg-font-size-meta);
-}
-
-.payment-composition-card strong {
-  color: var(--jg-color-text-primary);
-  font-size: var(--jg-font-size-section-title);
-}
-
-.payment-composition-card__actual {
-  grid-template-columns: repeat(2, minmax(160px, 1fr)) auto;
-  align-items: center;
-  margin-top: var(--jg-space-lg);
-  padding-top: var(--jg-space-lg);
-  border-top: var(--jg-border-width-base) solid var(--jg-color-border);
-}
-
-@media (max-width: 840px) {
-  .payment-composition-card__equation,
-  .payment-composition-card__actual {
-    grid-template-columns: 1fr;
-  }
-
-  .payment-composition-card__equation > b {
-    display: none;
-  }
-}
+.payment-composition-card{background:var(--jg-color-bg-panel)}
+.payment-composition-card__facts{display:grid;grid-template-columns:repeat(5,minmax(130px,1fr));gap:var(--jg-space-md);margin-bottom:var(--jg-space-lg)}
+.payment-composition-card__facts>div{display:grid;gap:var(--jg-space-xs);padding:var(--jg-space-md);border:var(--jg-border-width-base) solid var(--jg-color-border);border-radius:var(--jg-radius-panel);background:var(--jg-color-bg-surface)}
+.payment-composition-card span{color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}.payment-composition-card strong{color:var(--jg-color-text-primary);font-size:var(--jg-font-size-section-title)}
+@media(max-width:900px){.payment-composition-card__facts{grid-template-columns:repeat(2,minmax(130px,1fr))}}@media(max-width:560px){.payment-composition-card__facts{grid-template-columns:1fr}}
 </style>

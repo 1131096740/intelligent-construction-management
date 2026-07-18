@@ -42,7 +42,7 @@ describe("spot procurement web pages", () => {
     );
   });
 
-  it("keeps balance deduction separate from company actual payment", () => {
+  it("presents the A5 payment fact separately from the earlier A4 procurement request", () => {
     const component = pageSource(
       "components/PaymentCompositionCard.vue"
     );
@@ -50,12 +50,14 @@ describe("spot procurement web pages", () => {
       "SpotProcurementPaymentDetailPage.vue"
     );
 
-    expect(component).toContain(
-      "内部余额执行，不属于银行实付"
-    );
-    expect(component).toContain("公司实际付款");
-    expect(detail).toContain("paymentFactConsistent");
-    expect(detail).toContain("未作废的实际付款记录");
+    expect(component).toContain("付款事实汇总");
+    expect(component).toContain("累计实付");
+    expect(component).toContain("累计退款");
+    expect(detail).toContain("merchantPayeeMismatchNote");
+    expect(detail).toContain("payerManagement");
+    expect(detail).toContain("paymentChannelId");
+    expect(`${component}\n${detail}`).not.toContain("supplierBalanceAmountCents");
+    expect(`${component}\n${detail}`).not.toMatch(/转商户余额/u);
   });
 
   it("reuses one locked idempotency payload across execution retries", () => {
@@ -66,7 +68,6 @@ describe("spot procurement web pages", () => {
     expect(detail).toContain(
       "executionAttempt.value ?? (await prepareExecutionAttempt())"
     );
-    expect(detail).toContain("executionAttemptLocked");
     expect(detail).toContain("本次重试参数已锁定");
     expect(detail).toContain("resetExecutionAttempt()");
     expect(detail).toContain(
@@ -74,9 +75,9 @@ describe("spot procurement web pages", () => {
     );
     expect(detail).toContain("await loadDetail()");
     expect(detail.indexOf("yuanTextToCentsText(executionForm.amountYuan)"))
-      .toBeLessThan(detail.indexOf("uploadPrivateFile(file, file.name)"));
+      .toBeLessThan(detail.lastIndexOf("uploadPrivateFile(file, file.name)"));
     expect(detail.indexOf("toIsoDateTime(executionForm.paidAt)"))
-      .toBeLessThan(detail.indexOf("uploadPrivateFile(file, file.name)"));
+      .toBeLessThan(detail.lastIndexOf("uploadPrivateFile(file, file.name)"));
   });
 
   it("exposes the existing return and procurement revision workflows", () => {
@@ -110,15 +111,9 @@ describe("spot procurement web pages", () => {
     expect(procurement).toContain("requestedArrivalAt");
     expect(procurement).not.toMatch(/supplierName|unitPrice|invoiceMode/u);
     expect(payment).toContain('decision: "return_to_applicant"');
-    expect(payment).toContain(
-      "adjustedSupplierBalanceAmountCents"
-    );
-    expect(payment).toContain(
-      "requiresBalanceAdjustmentOnReturn"
-    );
-    expect(payment).toContain(
-      "财务主管退回付款申请时必须填写"
-    );
+    expect(payment).toContain("merchantPayeeMismatchNote");
+    expect(payment).toContain("付款主体已调整");
+    expect(payment).toContain("从综合部节点重新审批");
     expect(payment).toContain("result.newDraftPaymentId");
   });
 

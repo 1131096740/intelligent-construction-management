@@ -20,6 +20,7 @@ import {
   submitSpotProcurementPayment,
   updateSpotProcurementDraft,
   updateSpotProcurementPaymentDraft,
+  updateSpotProcurementPaymentPayer,
   voidSpotProcurement,
   voidSpotProcurementPayment,
   withdrawSpotProcurement,
@@ -183,20 +184,15 @@ describe("spot procurement API client", () => {
     expect(mockApiFetch.mock.calls[7]?.[1]?.body).toBe("{}");
   });
 
-  it("connects every payment write route and preserves review safeguards", async () => {
+  it("connects A5 payment facts, payer controls and review safeguards", async () => {
     const draft = {
-      settlementAmountCents: "55000",
-      supplierBalanceAmountCents: "5000",
-      companyPaymentAmountCents: "50000",
-      paymentPath: "supplier_direct" as const,
-      paymentMethod: "bank_transfer" as const,
-      payeeAccountName: "朝阳建材",
-      payeeBankName: "建设银行",
-      payeeBankAccount: "6222000012345678",
-      expectedPaymentAt: "2026-07-18",
-      paymentNote: "零星材料款",
-      supportingAttachmentFileId: "support-1",
-      merchantPaymentProofFileId: null
+      paymentType: "company_direct" as const,
+      merchantName: "朝阳建材",
+      payeeName: "朝阳建材",
+      paymentLines: [{ procurementLineId: "line-1", paymentQuantity: "100", unitPrice: "4.00", expectedInvoiceCondition: "vat_general" as const, vatRateOptionId: "vat-13" }],
+      channels: [{ channelType: "bank_transfer" as const, accountName: "朝阳建材", accountNumber: "6222000012345678", bankName: "建设银行", isPrimary: true }],
+      paymentMethods: ["bank_transfer" as const],
+      attachments: [{ fileId: "quote-1", category: "merchant_quote" as const }]
     };
     const review = {
       decision: "return_to_applicant" as const,
@@ -207,6 +203,11 @@ describe("spot procurement API client", () => {
     };
 
     await updateSpotProcurementPaymentDraft("payment/1", draft);
+    await updateSpotProcurementPaymentPayer("payment/1", {
+      companyEntityId: "company-1",
+      paymentMethods: ["bank_transfer"],
+      changeReason: "付款主体调整"
+    });
     await submitSpotProcurementPayment("payment/1");
     await reviewSpotProcurementPayment("payment/1", review);
     await withdrawSpotProcurementPayment("payment/1");
@@ -214,6 +215,7 @@ describe("spot procurement API client", () => {
 
     expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
       "/spot-procurement-payments/payment%2F1/draft",
+      "/spot-procurement-payments/payment%2F1/payer",
       "/spot-procurement-payments/payment%2F1/submission",
       "/spot-procurement-payments/payment%2F1/approval",
       "/spot-procurement-payments/payment%2F1/approval-withdrawal",
@@ -222,10 +224,10 @@ describe("spot procurement API client", () => {
     expect(mockApiFetch.mock.calls[0]?.[1]).toEqual(
       expect.objectContaining({ method: "PATCH", body: JSON.stringify(draft) })
     );
-    expect(mockApiFetch.mock.calls[2]?.[1]).toEqual(
+    expect(mockApiFetch.mock.calls[3]?.[1]).toEqual(
       expect.objectContaining({ method: "POST", body: JSON.stringify(review) })
     );
-    expect(mockApiFetch.mock.calls[4]?.[1]).toEqual(
+    expect(mockApiFetch.mock.calls[5]?.[1]).toEqual(
       expect.objectContaining({
         body: JSON.stringify({ reason: "重新发起" })
       })
