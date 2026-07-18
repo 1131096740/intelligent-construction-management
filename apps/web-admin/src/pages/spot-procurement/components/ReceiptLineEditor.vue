@@ -21,15 +21,15 @@ function update(lines: SpotProcurementReceiptLineReadModel[], index: number, key
     >
       <header>
         <strong>{{ line.sortOrder }}. {{ line.materialName }}</strong>
-        <span>{{ line.specification || "无规格" }} · 审批 {{ line.approvedQuantity }} {{ line.unit }}</span>
+        <span>{{ line.specification || "无规格" }} · 采购申请数量 {{ line.approvedQuantity }} {{ line.unit }}</span>
       </header>
       <div class="line-fields">
-        <label><span>合格数量</span><t-input
+        <label><span>实际到货数量</span><t-input
           :value="line.qualifiedQuantity ?? '0'"
           :disabled="readonly"
           @change="update(lines, index, 'qualifiedQuantity', String($event))"
         /></label>
-        <label><span>不合格数量</span><t-input
+        <label><span>不合格/破损数量</span><t-input
           :value="line.unqualifiedQuantity ?? '0'"
           :disabled="readonly"
           @change="update(lines, index, 'unqualifiedQuantity', String($event))"
@@ -39,17 +39,12 @@ function update(lines: SpotProcurementReceiptLineReadModel[], index: number, key
           :disabled="readonly"
           @change="update(lines, index, 'freeGiftQuantity', String($event))"
         /></label>
-        <label><span>待补货</span><t-switch
-          :value="Boolean(line.replenishmentPending)"
-          :disabled="readonly"
-          @change="update(lines, index, 'replenishmentPending', Boolean($event))"
-        /></label>
         <label class="wide"><span>不合格原因</span><t-input
           :value="line.unqualifiedReason ?? ''"
           :disabled="readonly"
           @change="update(lines, index, 'unqualifiedReason', String($event))"
         /></label>
-        <label class="wide"><span>差异说明</span><t-input
+        <label class="wide"><span>到货/少货说明</span><t-input
           :value="line.discrepancyNote ?? ''"
           :disabled="readonly"
           @change="update(lines, index, 'discrepancyNote', String($event))"

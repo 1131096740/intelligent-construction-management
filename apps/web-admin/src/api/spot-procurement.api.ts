@@ -97,6 +97,9 @@ export interface SpotProcurementReceiptDetailReadModel {
     procurementVersionStatus: string;
     status: string;
     currentRevisionNo: number;
+    receiptOpen: boolean;
+    firstActualPayment: { executionId: string; paidAt: string } | null;
+    blockedReason: string | null;
     handler: SpotProcurementUserSummary;
     note: string | null;
     actualCostCents: string;
@@ -116,6 +119,15 @@ export interface SpotProcurementReceiptDetailReadModel {
   lines: SpotProcurementReceiptLineReadModel[];
   photos: SpotProcurementReceiptPhotoReadModel[];
   reviews: SpotProcurementReceiptReviewReadModel[];
+  discrepancy: {
+    id?: string;
+    status: string;
+    resolutionType?: "replenishment" | "full_refund";
+    replenishedAt?: string | null;
+    refundExpectedAmountCents?: string;
+    resolvedAt?: string | null;
+    nextStep: string | null;
+  };
 }
 
 export interface SpotProcurementReceiptLineReadModel {
@@ -944,15 +956,38 @@ export function revokeSpotProcurementReceiptReview(
 
 export function createSpotProcurementDiscrepancy(
   procurementId: string,
-  body: { operation: "initiate" | "confirm"; resolutionType?: "full_refund" | "full_supplier_balance"; note?: string }
+  body: {
+    operation: "initiate" | "confirm";
+    resolutionType?: "replenishment" | "full_refund";
+    note?: string;
+  }
 ) {
   return postJson<unknown>(`/spot-procurements/${encodeURIComponent(procurementId)}/discrepancy`, body);
 }
 
-export function creditSpotProcurementSupplierBalance(procurementId: string, confirmationPassword: string) {
+export function recordSpotProcurementRefund(
+  procurementId: string,
+  body: {
+    amountCents: string;
+    receivedAt: string;
+    refundMethod: "bank_transfer" | "cash";
+    voucherFileId: string;
+    idempotencyKey: string;
+  }
+) {
   return postJson<unknown>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/supplier-balance-credit`,
-    { confirmationPassword }
+    `/spot-procurements/${encodeURIComponent(procurementId)}/refunds`,
+    body
+  );
+}
+
+export function appendSpotProcurementPaymentInvoice(
+  paymentId: string,
+  fileId: string
+) {
+  return postJson<unknown>(
+    `/spot-procurement-payments/${encodeURIComponent(paymentId)}/invoices`,
+    { fileId }
   );
 }
 

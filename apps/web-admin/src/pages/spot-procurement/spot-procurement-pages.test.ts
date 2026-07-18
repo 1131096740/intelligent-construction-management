@@ -117,30 +117,33 @@ describe("spot procurement web pages", () => {
     expect(payment).toContain("result.newDraftPaymentId");
   });
 
-  it("connects final receipt, watermark evidence, review and ticket facts without location or batches", () => {
+  it("connects final receipt, shortage handling, invoice append and archive facts without location or batches", () => {
     const workbench = pageSource("SpotProcurementReceiptWorkbenchPage.vue");
     const receipt = pageSource("SpotProcurementReceiptPage.vue");
     const uploader = pageSource("components/ReceiptPhotoUploader.vue");
-    const settlement = pageSource("components/ProcurementSettlementSummary.vue");
-    const coverage = pageSource("components/InvoiceCoveragePanel.vue");
 
     expect(workbench).toContain("fetchSpotProcurements");
+    expect(workbench).toContain("待实际付款");
     expect(receipt).toContain("fetchSpotProcurementReceipt");
+    expect(receipt).toContain("fetchSpotProcurementPaymentDetail");
     expect(receipt).toContain("reviewSpotProcurementReceipt");
     expect(receipt).toContain("revokeSpotProcurementReceiptReview");
+    expect(receipt).toContain("createSpotProcurementDiscrepancy");
+    expect(receipt).toContain("recordSpotProcurementRefund");
+    expect(receipt).toContain("appendSpotProcurementPaymentInvoice");
     expect(receipt).toContain("委托");
+    expect(receipt).toContain("待财务登记首笔实际付款后开放收货");
+    expect(receipt).toContain("商户继续补货");
+    expect(receipt).toContain("商户退回差额");
+    expect(receipt).toContain("发票仍可在付款申请中补充归档");
     expect(uploader).toContain("系统拍照");
     expect(uploader).toContain("相册上传");
     expect(uploader).toContain("送货单可选");
     expect(uploader).toContain("watermarkedFileId");
     expect(uploader).toContain("已提交照片不可删除或替换");
-    expect(settlement).toContain("采购审批金额");
-    expect(settlement).toContain("公司实际付款");
-    expect(coverage).toContain("已确认无票");
-    expect(coverage).toContain("票据异常");
     expect(`${workbench}\n${receipt}\n${uploader}`).not.toMatch(/navigator\.geolocation/iu);
     expect(`${workbench}\n${receipt}`).not.toMatch(/createReceiptBatch|fetchReceiptBatches/iu);
-    expect(receipt).toContain("办结后收货、差异、退款和票据事实全部只读");
+    expect(`${workbench}\n${receipt}`).not.toMatch(/supplierBalance|转商户余额/iu);
   });
 
   it("uses the approved shared business components instead of a second UI system", () => {

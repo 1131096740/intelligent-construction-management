@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiFetch } from "./api-fetch";
 import {
+  appendSpotProcurementPaymentInvoice,
+  createSpotProcurementDiscrepancy,
   createSpotProcurementDraft,
   fetchSpotProcurementApplicationTextSuggestions,
   createSpotProcurementPaymentDraft,
@@ -13,6 +15,7 @@ import {
   fetchSpotProcurements,
   fetchVatRateOptions,
   recordSpotProcurementPaymentExecution,
+  recordSpotProcurementRefund,
   submitSpotProcurementReceipt,
   reviewSpotProcurement,
   reviewSpotProcurementPayment,
@@ -93,6 +96,39 @@ describe("spot procurement API client", () => {
     expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
       "/spot-procurements/procurement%2F1/receipt",
       "/spot-procurements/procurement%2F1/receipt/submission"
+    ]);
+  });
+
+  it("uses only replenishment or refund for real-form shortage handling and appends a payment-level invoice", async () => {
+    const refund = {
+      amountCents: "1200",
+      receivedAt: "2026-07-18",
+      refundMethod: "bank_transfer" as const,
+      voucherFileId: "refund-voucher-1",
+      idempotencyKey: "refund-1"
+    };
+
+    await createSpotProcurementDiscrepancy("procurement/1", {
+      operation: "initiate",
+      resolutionType: "replenishment",
+      note: "商户承诺补货"
+    });
+    await recordSpotProcurementRefund("procurement/1", refund);
+    await appendSpotProcurementPaymentInvoice("payment/1", "invoice-file-1");
+
+    expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
+      "/spot-procurements/procurement%2F1/discrepancy",
+      "/spot-procurements/procurement%2F1/refunds",
+      "/spot-procurement-payments/payment%2F1/invoices"
+    ]);
+    expect(mockApiFetch.mock.calls.map(([, init]) => init?.body)).toEqual([
+      JSON.stringify({
+        operation: "initiate",
+        resolutionType: "replenishment",
+        note: "商户承诺补货"
+      }),
+      JSON.stringify(refund),
+      JSON.stringify({ fileId: "invoice-file-1" })
     ]);
   });
 
