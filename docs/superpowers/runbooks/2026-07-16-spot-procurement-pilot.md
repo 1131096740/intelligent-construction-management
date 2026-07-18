@@ -13,12 +13,13 @@
 | 项目 | 值 |
 | --- | --- |
 | 候选分支 | `codex/spot-procurement` |
-| 候选 SHA | `ff23db24e872ce6eb2355b9c8035fe56f9449c02` |
-| 与本地 `main` 差异 | 候选领先 18 个提交、落后 0 个提交（发布前重新核验） |
+| 已部署运行 SHA | `6c382a39b4af9b3808b7e1794c60010eed386274` |
+| 候选前业务代码 SHA | `ff23db24e872ce6eb2355b9c8035fe56f9449c02` |
+| 与 `main` 差异 | 发布时已快进；后续仅可从 `main` 的新候选重新走本 Runbook |
 | 候选 Prisma 迁移数 | 61 |
-| 上次已验证生产运行 SHA | `de1439579d0e1fcf58e86bbf6c36163d0cad71de` |
-| 上次已验证生产迁移数 | 57 |
-| 当前入口 | 关闭；生产白名单及运行 SHA 必须在本次发布窗口重新只读核验 |
+| 发布前生产运行 SHA | `de1439579d0e1fcf58e86bbf6c36163d0cad71de` |
+| 已验证生产迁移数 | 61 |
+| 当前入口 | 仅 `seed-project-jgxm-001`；其余项目和 `*` 均关闭 |
 
 候选相对已发布 57 条迁移新增以下四条前向迁移：
 
@@ -92,9 +93,9 @@
 3. 在生产端执行经异机校验的发布前备份。
 4. 在隔离恢复库恢复该备份，按 `CANDIDATE_SHA_CONFIRMATION` 运行候选迁移；失败或零记录保护触发即停止。
 5. 使用既有 GitHub Actions 与服务器 `deploy-production-server.sh` 部署；脚本会在迁移前二次备份，在失败时恢复应用运行时目录，不回滚数据库迁移。
-6. 核对运行 SHA、61 条迁移、内外网 `/health`、Nginx、PostgreSQL、COS 私有文件及审计；白名单仍为空时先做只读 capability 检查。
-7. 仅将 `seed-project-jgxm-001` 写入白名单，核对它为 `enabled=true`、其他项目为 `enabled=false`。
-8. 由真实人员本人完成最小链路和第 4 节抽验；失败立即清空白名单并保留所有审计/事实。
+6. 核对运行 SHA、61 条迁移、内外网 `/health`、Nginx、PostgreSQL、COS 私有文件及审计；白名单仍为空时先做只读 capability 检查。本次已完成，运行 SHA 为 `6c382a39b4af9b3808b7e1794c60010eed386274`。
+7. 仅将 `seed-project-jgxm-001` 写入白名单，核对它为 `enabled=true`、其他项目为 `enabled=false`。本次已完成。
+8. 由真实人员本人完成最小链路和第 4 节抽验；失败立即清空白名单并保留所有审计/事实。此项尚待执行。
 
 ## 8. 回滚原则
 
