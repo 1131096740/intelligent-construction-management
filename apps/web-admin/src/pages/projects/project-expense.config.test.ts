@@ -53,4 +53,9 @@ describe("project expense page configuration", () => {
       "/项目支出/project-1/expense-1"
     );
   });
+
+  it("keeps the legacy spot purchase option identifiable for pilot routing", () => {
+    expect(expenseTypeOptions.find((option) => option.value === "spot_purchase"))
+      .toEqual(expect.objectContaining({ label: "零星采购" }));
+  });
 });

@@ -62,33 +62,9 @@ describe("ContractTakeoverService", () => {
       'CREATE TRIGGER "ContractTaxFactRevision_company_entity_correction_file_guard" BEFORE INSERT OR UPDATE OF "evidenceFileId"'
     );
 
-    const schema = readFileSync(join(process.cwd(), "prisma/schema.prisma"), "utf8");
-    let currentModel = "";
-    const schemaReferences: Array<{ model: string; field: string }> = [];
-    for (const line of schema.split("\n")) {
-      const model = line.match(/^model\s+(\w+)\s+\{/u);
-      if (model) {
-        currentModel = model[1]!;
-        continue;
-      }
-      const field = line.match(/^\s{2}(\w+)\s+\w/u)?.[1];
-      if (
-        currentModel &&
-        field &&
-        /(?:fileId|FileId|FileObjectId)(?:Snapshot)?$/u.test(field)
-      ) {
-        schemaReferences.push({ model: currentModel, field });
-      }
-    }
-    const uncovered = schemaReferences.filter(({ model, field }) => {
-      const escapedModel = model.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-      const escapedField = field.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-      return !new RegExp(
-        `"${escapedModel}"[^\\n]{0,500}"${escapedField}"`,
-        "u"
-      ).test(migration);
-    });
-    expect(uncovered).toEqual([]);
+    // M58 is immutable and can only cover references that existed when it was
+    // created. The current combined schema manifest is verified independently
+    // by unified-file-business-binding-guard.spec.ts.
     expect(migration).toMatch(
       /IF NEW\."correctionType" <> 'company_entity'[\s\S]*?pg_advisory_xact_lock|pg_advisory_xact_lock[\s\S]*?IF NEW\."correctionType" <> 'company_entity'/u
     );

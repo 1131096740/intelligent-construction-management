@@ -24,6 +24,7 @@ export interface ExecutiveProjectOverviewRow {
   settlementAmountCents: MoneyCents;
   payableAmountCents: MoneyCents;
   actualReceiptsCents: MoneyCents | null;
+  supplierRefundsCents: MoneyCents | null;
   actualPaidCents: MoneyCents;
   approvedPendingPaymentCents: MoneyCents;
   availableFundsCents: MoneyCents | null;
@@ -36,6 +37,7 @@ export interface ExecutiveProjectOverviewSummary {
   settlementAmountCents: MoneyCents;
   payableAmountCents: MoneyCents;
   actualReceiptsCents: MoneyCents | null;
+  supplierRefundsCents: MoneyCents | null;
   actualPaidCents: MoneyCents;
   approvedPendingPaymentCents: MoneyCents;
   availableFundsCents: MoneyCents | null;
@@ -125,6 +127,8 @@ export function buildExecutiveProjectOverview(
       settlementAmountCents: overview.business.effectiveSettlementAmountCents,
       payableAmountCents: overview.business.payableSettlementAmountCents,
       actualReceiptsCents: overview.cash.actualReceiptsCents,
+      supplierRefundsCents:
+        overview.cash.supplierRefundsCents,
       actualPaidCents: overview.cash.actualPaidCents,
       approvedPendingPaymentCents: overview.cash.approvedPendingPaymentCents,
       availableFundsCents: overview.cash.availableFundsCents,
@@ -144,6 +148,9 @@ export function buildExecutiveProjectOverview(
       settlementAmountCents: sumMoneyCents(rows.map((row) => row.settlementAmountCents)),
       payableAmountCents: sumMoneyCents(rows.map((row) => row.payableAmountCents)),
       actualReceiptsCents: sumNullableCents(rows.map((row) => row.actualReceiptsCents)),
+      supplierRefundsCents: sumNullableCents(
+        rows.map((row) => row.supplierRefundsCents)
+      ),
       actualPaidCents: sumMoneyCents(rows.map((row) => row.actualPaidCents)),
       approvedPendingPaymentCents: sumMoneyCents(
         rows.map((row) => row.approvedPendingPaymentCents)

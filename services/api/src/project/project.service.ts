@@ -13,10 +13,12 @@ import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import {
   dbMoneyToBigInt,
+  findProjectSpotProcurementRefundAmounts,
   formatMoneyCentsAsYuan,
   moneyCentsToApi,
   outstandingMoneyRequestCentsBigInt,
   parseMoneyCentsInput,
+  spotProcurementPaymentToMoneyRequestValue,
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
 import {
@@ -394,10 +396,12 @@ export class ProjectService {
       payments,
       financeRecords,
       projectReceipts,
+      supplierRefundAmountCents,
       projectProxyPayments,
       projectUpstreamSettlements,
       projectFinancingQuotas,
-      projectExpenseRequests
+      projectExpenseRequests,
+      spotProcurementPayments
     ] = await Promise.all([
       this.prisma.contract.findMany({
         where: { projectId, voidedAt: null },
@@ -425,6 +429,10 @@ export class ProjectService {
         where: { projectId, voidedAt: null },
         select: { amountCents: true }
       }),
+      findProjectSpotProcurementRefundAmounts(
+        this.prisma,
+        projectId
+      ),
       this.prisma.projectProxyPayment.findMany({
         where: { projectId, voidedAt: null },
         select: { amountCents: true }
@@ -446,11 +454,22 @@ export class ProjectService {
           approvedAmountCents: true,
           paidAmountCents: true
         }
+      }),
+      this.prisma.spotProcurementPayment.findMany({
+        where: { projectId },
+        select: {
+          id: true,
+          status: true,
+          companyPaymentAmountCents: true,
+          canceledCompanyPaymentAmountCents: true,
+          paidAmountCents: true
+        }
       })
     ]);
     const contractIds = contracts.map((contract) => contract.id);
     const paymentIds = payments.map((payment) => payment.id);
     const expenseRequestIds = projectExpenseRequests.map((request) => request.id);
+    const spotPaymentIds = spotProcurementPayments.map((payment) => payment.id);
     const contractVersions = contractIds.length
       ? await this.prisma.contractVersion.findMany({
           where: { contractId: { in: contractIds }, status: "effective" },
@@ -471,6 +490,16 @@ export class ProjectService {
           select: { amountCents: true }
         })
       : [];
+    const spotExecutions =
+      spotPaymentIds.length
+        ? await this.prisma.spotProcurementPaymentExecution.findMany({
+            where: {
+              paymentId: { in: spotPaymentIds },
+              voidedAt: null
+            },
+            select: { amountCents: true }
+          })
+        : [];
     const financingQuotaIds = projectFinancingQuotas.map((quota) => quota.id);
     const [paymentFinancingUsages, expenseFinancingUsages] = financingQuotaIds.length
       ? await Promise.all([
@@ -499,6 +528,10 @@ export class ProjectService {
       projectReceipts.map((receipt) => receipt.amountCents),
       "项目实收金额"
     );
+    const supplierRefundsCents = sumDbMoneyToBigInt(
+      supplierRefundAmountCents,
+      "供应商退款到账金额"
+    );
     const proxyPaymentCents = sumDbMoneyToBigInt(
       projectProxyPayments.map((payment) => payment.amountCents),
       "项目代付金额"
@@ -519,7 +552,8 @@ export class ProjectService {
     const actualPaidCents = sumDbMoneyToBigInt(
       [
         ...executions.map((execution) => execution.amountCents),
-        ...expenseExecutions.map((execution) => execution.amountCents)
+        ...expenseExecutions.map((execution) => execution.amountCents),
+        ...spotExecutions.map((execution) => execution.amountCents)
       ],
       "项目实付金额"
     );
@@ -527,7 +561,14 @@ export class ProjectService {
       ? upstreamSettlementCents
       : actualReceiptsCents + proxyPaymentCents;
     const operatingCostCents = actualPaidCents + proxyPaymentCents;
-    const projectRequests = [...payments, ...projectExpenseRequests];
+    const spotCashRequests = spotProcurementPayments.map(
+      spotProcurementPaymentToMoneyRequestValue
+    );
+    const projectRequests = [
+      ...payments,
+      ...projectExpenseRequests,
+      ...spotCashRequests
+    ];
     const approvalPendingOccupancyCents = sumDbMoneyToBigInt(
       projectRequests
         .filter((request) => request.status === "approval_pending")
@@ -543,7 +584,8 @@ export class ProjectService {
         0n
       );
     const availableFundsCents =
-      actualReceiptsCents -
+      actualReceiptsCents +
+      supplierRefundsCents -
       actualPaidCents -
       approvalPendingOccupancyCents -
       approvedPendingPaymentCents +
@@ -557,6 +599,8 @@ export class ProjectService {
       project,
       cash: {
         actualReceiptsCents: projectMoneyToApi(actualReceiptsCents),
+        supplierRefundsCents:
+          projectMoneyToApi(supplierRefundsCents),
         availableFundsCents: projectMoneyToApi(availableFundsCents),
         actualPaidCents: projectMoneyToApi(actualPaidCents),
         approvalPendingOccupancyCents: projectMoneyToApi(approvalPendingOccupancyCents),

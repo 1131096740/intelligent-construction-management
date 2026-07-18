@@ -26,6 +26,13 @@ describe("admin navigation visual hierarchy", () => {
     expect(layoutSource).toContain("background: var(--jg-border)");
   });
 
+  it("honors an explicit workbench menu target for non-prefix detail routes", () => {
+    expect(layoutSource).toContain("route.meta.activeNavigationPath");
+    expect(layoutSource).toContain(
+      "items.some((item) => item.path === explicitPath)"
+    );
+  });
+
   it("uses the content area as the responsive container and limits page scrolling to the extreme fallback", () => {
     expect(layoutSource).toContain("container-name: jg-content");
     expect(layoutSource).toContain("container-type: inline-size");

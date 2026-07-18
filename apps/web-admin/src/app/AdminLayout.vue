@@ -96,6 +96,13 @@ const adminNavigationGroups = computed(() =>
 );
 const activePath = computed(() => {
   const items = adminNavigationGroups.value.flatMap((group) => group.items);
+  const explicitPath =
+    typeof route.meta.activeNavigationPath === "string"
+      ? route.meta.activeNavigationPath
+      : "";
+  if (explicitPath && items.some((item) => item.path === explicitPath)) {
+    return explicitPath;
+  }
   const exact = items.find((item) => item.path === route.path);
   if (exact) {
     return exact.path;

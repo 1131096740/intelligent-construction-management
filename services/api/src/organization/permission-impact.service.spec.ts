@@ -30,6 +30,9 @@ interface Fixture {
   settlements: Array<{ id: string; projectId: string }>;
   payments: Array<{ id: string; projectId: string }>;
   expenses: Array<{ id: string; projectId: string }>;
+  spotProcurementVersions: Array<{ id: string; procurementId: string }>;
+  spotProcurements: Array<{ id: string; projectId: string }>;
+  spotProcurementPayments: Array<{ id: string; projectId: string }>;
 }
 
 interface PreviewResult {
@@ -76,7 +79,10 @@ function baseFixture(): Fixture {
     contracts: [],
     settlements: [],
     payments: [],
-    expenses: []
+    expenses: [],
+    spotProcurementVersions: [],
+    spotProcurements: [],
+    spotProcurementPayments: []
   };
 }
 
@@ -93,7 +99,14 @@ function createPrisma(fixture: Fixture) {
     contract: { findMany: jest.fn().mockResolvedValue(fixture.contracts) },
     settlement: { findMany: jest.fn().mockResolvedValue(fixture.settlements) },
     paymentRequest: { findMany: jest.fn().mockResolvedValue(fixture.payments) },
-    projectExpenseRequest: { findMany: jest.fn().mockResolvedValue(fixture.expenses) }
+    projectExpenseRequest: { findMany: jest.fn().mockResolvedValue(fixture.expenses) },
+    spotProcurementVersion: {
+      findMany: jest.fn().mockResolvedValue(fixture.spotProcurementVersions)
+    },
+    spotProcurement: { findMany: jest.fn().mockResolvedValue(fixture.spotProcurements) },
+    spotProcurementPayment: {
+      findMany: jest.fn().mockResolvedValue(fixture.spotProcurementPayments)
+    }
   };
 }
 
@@ -109,6 +122,8 @@ async function preview(
       | "project_manager"
       | "finance_director"
       | "budget_director"
+      | "material_director"
+      | "comprehensive_director"
       | "chairman";
   }
 ) {
@@ -429,7 +444,13 @@ describe("PermissionImpactService approval impacts", () => {
     fixture: Fixture,
     input: {
       id: string;
-      businessType: "contract_version" | "settlement" | "payment_request" | "project_expense_request";
+      businessType:
+        | "contract_version"
+        | "settlement"
+        | "payment_request"
+        | "project_expense_request"
+        | "spot_procurement_version"
+        | "spot_procurement_payment";
       businessId: string;
       projectId?: string;
       applicantUserId?: string;
@@ -454,8 +475,14 @@ describe("PermissionImpactService approval impacts", () => {
       fixture.settlements.push({ id: input.businessId, projectId });
     } else if (input.businessType === "payment_request") {
       fixture.payments.push({ id: input.businessId, projectId });
-    } else {
+    } else if (input.businessType === "project_expense_request") {
       fixture.expenses.push({ id: input.businessId, projectId });
+    } else if (input.businessType === "spot_procurement_version") {
+      const procurementId = `spot-procurement-${input.id}`;
+      fixture.spotProcurementVersions.push({ id: input.businessId, procurementId });
+      fixture.spotProcurements.push({ id: procurementId, projectId });
+    } else {
+      fixture.spotProcurementPayments.push({ id: input.businessId, projectId });
     }
   }
 
@@ -1032,6 +1059,111 @@ describe("PermissionImpactService approval impacts", () => {
     expect(result.impacts).toContainEqual(
       expect.objectContaining({
         approvalInstanceId: "approval-invalid",
+        blocking: true,
+        reasonCode: "invalid_approval_instance_data"
+      })
+    );
+  });
+
+  it("includes approval_pending spot application and payment instances with their real project mapping", async () => {
+    const fixture = baseFixture();
+    addProjectInstance(fixture, {
+      id: "approval-spot-version",
+      businessType: "spot_procurement_version",
+      businessId: "spot-version-1"
+    });
+    addProjectInstance(fixture, {
+      id: "approval-spot-payment",
+      businessType: "spot_procurement_payment",
+      businessId: "spot-payment-1"
+    });
+
+    const { prisma, result } = await preview(fixture, projectManagerRemoval);
+
+    expect(prisma.approvalInstance.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            expect.objectContaining({ status: "in_progress" }),
+            expect.objectContaining({ status: "approval_pending" })
+          ]
+        }
+      })
+    );
+    expect(result.impacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          approvalInstanceId: "approval-spot-version",
+          projectId: "project-1",
+          blocking: true
+        }),
+        expect.objectContaining({
+          approvalInstanceId: "approval-spot-payment",
+          projectId: "project-1",
+          blocking: true
+        })
+      ])
+    );
+    expect(prisma.spotProcurementVersion.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: { in: ["spot-version-1"] } } })
+    );
+    expect(prisma.spotProcurement.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ["spot-procurement-approval-spot-version"] } }
+      })
+    );
+    expect(prisma.spotProcurementPayment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: { in: ["spot-payment-1"] } } })
+    );
+  });
+
+  it("ignores frozen assignments and standing delegation for spot approvals", async () => {
+    const fixture = baseFixture();
+    fixture.delegations.push({
+      id: "spot-delegation",
+      fromUserId: "target",
+      toUserId: "approver",
+      startsAt: new Date("2026-07-01T00:00:00.000Z"),
+      endsAt: new Date("2026-07-31T00:00:00.000Z"),
+      enabled: true
+    });
+    addProjectInstance(fixture, {
+      id: "approval-spot-no-indirect",
+      businessType: "spot_procurement_payment",
+      businessId: "spot-payment-no-indirect",
+      node: pendingManagerNode({
+        assignments: [{ fromRoleKey: "project_manager", toUserId: "approver" }]
+      })
+    });
+
+    const { result } = await preview(fixture, projectManagerRemoval);
+
+    expect(result.impacts[0]?.roleCoverage[0]).toMatchObject({
+      assignmentApproverUserIds: [],
+      delegationApproverUserIds: [],
+      executable: false
+    });
+  });
+
+  it("fails closed when a spot approval freezes a role outside its business role set", async () => {
+    const fixture = baseFixture();
+    addProjectInstance(fixture, {
+      id: "approval-spot-invalid-role",
+      businessType: "spot_procurement_version",
+      businessId: "spot-version-invalid-role",
+      node: {
+        name: "非法财务节点",
+        mode: "any",
+        roleKeys: ["finance_director"]
+      }
+    });
+
+    const { result } = await preview(fixture, projectManagerRemoval);
+
+    expect(result.impacts).toContainEqual(
+      expect.objectContaining({
+        approvalInstanceId: "approval-spot-invalid-role",
+        projectId: "project-1",
         blocking: true,
         reasonCode: "invalid_approval_instance_data"
       })

@@ -26,4 +26,11 @@ describe("project operating overview structure", () => {
     expect(source).toContain("<t-collapse");
     expect(source).toContain("项目维护");
   });
+
+  it("routes pilot projects away from the legacy spot-purchase create option", () => {
+    expect(source).toContain("fetchSpotProcurementCapabilities");
+    expect(source).toContain("visibleExpenseTypeOptions");
+    expect(source).toContain('option.value !== "spot_purchase"');
+    expect(source).toContain("spotCapability.enabled");
+  });
 });

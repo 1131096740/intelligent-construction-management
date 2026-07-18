@@ -1,5 +1,11 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
+import { SPOT_PROCUREMENT_RECEIPT_PDF_TEMPLATE_KEY } from "../spot-procurement/spot-procurement.constants";
+import { SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY } from "../spot-procurement/spot-procurement-form-renderer";
+import {
+  isCurrentFormalReceiptPdfFact,
+  RECEIPT_PDF_REFRESH_ACTION
+} from "../spot-procurement/spot-procurement-receipt-pdf-facts";
 
 type ArchiveTone = "default" | "primary" | "warning" | "success";
 
@@ -21,7 +27,7 @@ export class ArchiveService {
           ]
         }
       : undefined;
-    const [contractArchives, settlementArchives, paymentVouchers, archiveRecords] =
+    const [contractArchives, settlementArchives, paymentVouchers, archiveRecords, spotArchives] =
       await Promise.all([
         this.prisma.contractArchiveFile.findMany({ take, orderBy: { createdAt: "desc" } }),
         this.prisma.settlementArchiveFile.findMany({ take, orderBy: { createdAt: "desc" } }),
@@ -30,7 +36,8 @@ export class ArchiveService {
           take,
           orderBy: { createdAt: "desc" },
           ...(archiveRecordWhere ? { where: archiveRecordWhere } : {})
-        })
+        }),
+        this.findSpotArchives(take, visibleProjectIds)
       ]);
     const governedSettlementEvidence = await this.findGovernedSettlementEvidence(
       visibleProjectIds,
@@ -66,12 +73,31 @@ export class ArchiveService {
       ...contractArchives.map((row) => row.fileId),
       ...settlementArchives.map((row) => row.fileId),
       ...paymentVouchers.map((row) => row.voucherFileId),
-      ...archiveRecords.map((row) => row.fileId)
-    ];
+      ...archiveRecords.map((row) => row.fileId),
+      ...spotArchives.pdfDocuments.map((row) => row.fileId),
+      ...spotArchives.paymentExecutions.map((row) => row.voucherFileId),
+      ...spotArchives.paymentInvoices.map((row) => row.fileId),
+      ...spotArchives.invoiceRecords.map((row) => row.fileId),
+      ...spotArchives.noInvoiceConfirmations.map((row) => row.proofFileId),
+      ...spotArchives.invoiceExceptionConfirmations.map(
+        (row) => row.proofFileId
+      )
+    ].filter((fileId): fileId is string => Boolean(fileId));
     const userIds = [
       ...contractArchives.flatMap((row) => [row.uploadedByUserId, row.confirmedByUserId]),
       ...settlementArchives.flatMap((row) => [row.uploadedByUserId, row.confirmedByUserId]),
-      ...paymentVouchers.map((row) => row.executedByUserId)
+      ...paymentVouchers.map((row) => row.executedByUserId),
+      ...spotArchives.paymentExecutions.map((row) => row.executedByUserId),
+      ...spotArchives.paymentInvoices.map((row) => row.uploadedByUserId),
+      ...spotArchives.invoiceRecords.map((row) => row.uploadedByUserId),
+      ...spotArchives.noInvoiceConfirmations.flatMap((row) => [
+        row.submittedByUserId,
+        row.reviewedByUserId
+      ]),
+      ...spotArchives.invoiceExceptionConfirmations.flatMap((row) => [
+        row.submittedByUserId,
+        row.reviewedByUserId
+      ])
     ].filter(Boolean) as string[];
 
     const [contractVersions, settlements, payments, expenses, takeovers, files, users] = await Promise.all([
@@ -92,7 +118,9 @@ export class ArchiveService {
       ...settlements.map((row) => row.projectId),
       ...payments.map((row) => row.projectId),
       ...expenses.map((row) => row.projectId),
-      ...takeovers.map((row) => row.projectId)
+      ...takeovers.map((row) => row.projectId),
+      ...spotArchives.procurements.map((row) => row.projectId),
+      ...spotArchives.payments.map((row) => row.projectId)
     ]);
 
     const versionById = new Map(contractVersions.map((row) => [row.id, row]));
@@ -104,6 +132,14 @@ export class ArchiveService {
     const projectById = new Map(projects.map((row) => [row.id, row]));
     const fileById = new Map(files.map((row) => [row.id, row]));
     const userById = new Map(users.map((row) => [row.id, row]));
+    const spotVersionById = new Map(spotArchives.versions.map((row) => [row.id, row]));
+    const spotProcurementById = new Map(
+      spotArchives.procurements.map((row) => [row.id, row])
+    );
+    const spotPaymentById = new Map(spotArchives.payments.map((row) => [row.id, row]));
+    const spotReceiptById = new Map(
+      spotArchives.receipts.map((row) => [row.id, row])
+    );
 
     const rows = [
       ...contractArchives.map((row) => {
@@ -226,6 +262,223 @@ export class ArchiveService {
           disabledReason: null,
           createdAt: row.createdAt
         };
+      }),
+      ...spotArchives.pdfDocuments.flatMap((row) => {
+        if (row.businessType === "spot_procurement_receipt") {
+          const receipt = spotReceiptById.get(row.businessId);
+          const procurement = receipt
+            ? spotProcurementById.get(receipt.procurementId)
+            : undefined;
+          if (!receipt || !procurement) return [];
+          return [
+            {
+              projectId: receipt.projectId,
+              id: `spot-pdf-${row.id}`,
+              documentNo: row.id,
+              fileId: row.fileId,
+              fileSizeBytes: fileById.get(row.fileId)?.sizeBytes ?? 0,
+              documentType: "项目零星材料收货确认单",
+              businessRef: procurement.code,
+              project: this.projectName(projectById, receipt.projectId),
+              fileSource: this.fileName(fileById, row.fileId),
+              archiveStatus:
+                receipt.status === "locked"
+                  ? "采购已办结"
+                  : "收货复核已通过",
+              statusTone: "success" as ArchiveTone,
+              uploadDepartment: "物资部",
+              confirmedBy: "-",
+              lastAction: this.date(row.createdAt),
+              canDownload: true,
+              disabledReason: null,
+              createdAt: row.createdAt
+            }
+          ];
+        }
+        if (row.businessType === "spot_procurement_version") {
+          const version = spotVersionById.get(row.businessId);
+          const procurement = version
+            ? spotProcurementById.get(version.procurementId)
+            : undefined;
+          if (!version || !procurement) return [];
+          return [
+            {
+              projectId: procurement.projectId,
+              id: `spot-pdf-${row.id}`,
+              documentNo: row.id,
+              fileId: row.fileId,
+              fileSizeBytes: fileById.get(row.fileId)?.sizeBytes ?? 0,
+              documentType: "零星采购申请审批单",
+              businessRef: procurement.code,
+              project: this.projectName(projectById, procurement.projectId),
+              fileSource: this.fileName(fileById, row.fileId),
+              archiveStatus: this.spotApprovedArchiveStatus(version.status),
+              statusTone: "success" as ArchiveTone,
+              uploadDepartment: "物资部",
+              confirmedBy: "-",
+              lastAction: this.date(row.createdAt),
+              canDownload: true,
+              disabledReason: null,
+              createdAt: row.createdAt
+            }
+          ];
+        }
+        const payment = spotPaymentById.get(row.businessId);
+        if (!payment) return [];
+        return [
+          {
+            projectId: payment.projectId,
+            id: `spot-pdf-${row.id}`,
+            documentNo: row.id,
+            fileId: row.fileId,
+            fileSizeBytes: fileById.get(row.fileId)?.sizeBytes ?? 0,
+            documentType: "零星材料付款审批单",
+            businessRef: payment.code,
+            project: this.projectName(projectById, payment.projectId),
+            fileSource: this.fileName(fileById, row.fileId),
+            archiveStatus: this.spotApprovedArchiveStatus(payment.status),
+            statusTone: "success" as ArchiveTone,
+            uploadDepartment: "财务部",
+            confirmedBy: "-",
+            lastAction: this.date(row.createdAt),
+            canDownload: true,
+            disabledReason: null,
+            createdAt: row.createdAt
+          }
+        ];
+      }),
+      ...spotArchives.paymentExecutions.flatMap((row) => {
+        const payment = spotPaymentById.get(row.paymentId);
+        if (!payment || !row.voucherFileId) return [];
+        return [
+          {
+            projectId: payment.projectId,
+            id: `spot-voucher-${row.id}`,
+            documentNo: row.voucherFileId,
+            fileId: row.voucherFileId,
+            fileSizeBytes: fileById.get(row.voucherFileId)?.sizeBytes ?? 0,
+            documentType: "零星材料付款凭证",
+            businessRef: payment.code,
+            project: this.projectName(projectById, payment.projectId),
+            fileSource: this.fileName(fileById, row.voucherFileId),
+            archiveStatus: "已上传",
+            statusTone: "success" as ArchiveTone,
+            uploadDepartment: "财务部",
+            confirmedBy: userById.get(row.executedByUserId)?.name ?? "经办人未读取",
+            lastAction: this.date(row.createdAt),
+            canDownload: true,
+            disabledReason: null,
+            createdAt: row.createdAt
+          }
+        ];
+      }),
+      ...spotArchives.paymentInvoices.flatMap((row) => {
+        const payment = spotPaymentById.get(row.paymentId);
+        if (!payment) return [];
+        return [
+          {
+            projectId: payment.projectId,
+            id: `spot-payment-invoice-${row.id}`,
+            documentNo: row.id,
+            fileId: row.fileId,
+            fileSizeBytes: fileById.get(row.fileId)?.sizeBytes ?? 0,
+            documentType: "零星材料付款发票",
+            businessRef: payment.code,
+            project: this.projectName(projectById, payment.projectId),
+            fileSource: this.fileName(fileById, row.fileId),
+            archiveStatus: "已上传",
+            statusTone: "success" as ArchiveTone,
+            uploadDepartment: "经办/财务",
+            confirmedBy:
+              userById.get(row.uploadedByUserId)?.name ?? "上传人未读取",
+            lastAction: this.date(row.createdAt),
+            canDownload: true,
+            disabledReason: null,
+            createdAt: row.createdAt
+          }
+        ];
+      }),
+      ...spotArchives.invoiceRecords.flatMap((row) => {
+        const procurement = row.sourceProcurementId
+          ? spotProcurementById.get(row.sourceProcurementId)
+          : undefined;
+        if (!procurement) return [];
+        return [
+          {
+            projectId: row.projectId,
+            id: `spot-invoice-${row.id}`,
+            documentNo: row.id,
+            fileId: row.fileId,
+            fileSizeBytes: fileById.get(row.fileId)?.sizeBytes ?? 0,
+            documentType: "零星采购发票",
+            businessRef: procurement.code,
+            project: this.projectName(projectById, row.projectId),
+            fileSource: this.fileName(fileById, row.fileId),
+            archiveStatus: "有效发票",
+            statusTone: "success" as ArchiveTone,
+            uploadDepartment: "财务部",
+            confirmedBy:
+              userById.get(row.uploadedByUserId)?.name ?? "上传人未读取",
+            lastAction: this.date(row.createdAt),
+            canDownload: true,
+            disabledReason: null,
+            createdAt: row.createdAt
+          }
+        ];
+      }),
+      ...spotArchives.noInvoiceConfirmations.flatMap((row) => {
+        const procurement = spotProcurementById.get(row.procurementId);
+        if (!procurement) return [];
+        return [
+          {
+            projectId: row.projectId,
+            id: `spot-no-invoice-${row.id}`,
+            documentNo: row.id,
+            fileId: row.proofFileId,
+            fileSizeBytes: fileById.get(row.proofFileId)?.sizeBytes ?? 0,
+            documentType: "零星采购无票替代证明",
+            businessRef: procurement.code,
+            project: this.projectName(projectById, row.projectId),
+            fileSource: this.fileName(fileById, row.proofFileId),
+            archiveStatus: "无票已确认",
+            statusTone: "success" as ArchiveTone,
+            uploadDepartment: "财务部",
+            confirmedBy: row.reviewedByUserId
+              ? userById.get(row.reviewedByUserId)?.name ?? "确认人未读取"
+              : "确认人未读取",
+            lastAction: this.date(row.reviewedAt ?? row.createdAt),
+            canDownload: true,
+            disabledReason: null,
+            createdAt: row.reviewedAt ?? row.createdAt
+          }
+        ];
+      }),
+      ...spotArchives.invoiceExceptionConfirmations.flatMap((row) => {
+        const procurement = spotProcurementById.get(row.procurementId);
+        if (!procurement) return [];
+        return [
+          {
+            projectId: row.projectId,
+            id: `spot-invoice-exception-${row.id}`,
+            documentNo: row.id,
+            fileId: row.proofFileId,
+            fileSizeBytes: fileById.get(row.proofFileId)?.sizeBytes ?? 0,
+            documentType: "零星采购票据异常证明",
+            businessRef: procurement.code,
+            project: this.projectName(projectById, row.projectId),
+            fileSource: this.fileName(fileById, row.proofFileId),
+            archiveStatus: "票据异常已确认",
+            statusTone: "success" as ArchiveTone,
+            uploadDepartment: "财务部",
+            confirmedBy: row.reviewedByUserId
+              ? userById.get(row.reviewedByUserId)?.name ?? "确认人未读取"
+              : "确认人未读取",
+            lastAction: this.date(row.reviewedAt ?? row.createdAt),
+            canDownload: true,
+            disabledReason: null,
+            createdAt: row.reviewedAt ?? row.createdAt
+          }
+        ];
       })
     ]
       .filter((row) => !visibleProjectSet || (row.projectId && visibleProjectSet.has(row.projectId)))
@@ -467,6 +720,464 @@ export class ArchiveService {
     });
   }
 
+  private async findSpotArchives(take: number, visibleProjectIds?: string[]) {
+    if (visibleProjectIds && visibleProjectIds.length === 0) {
+      return {
+        procurements: [],
+        versions: [],
+        payments: [],
+        receipts: [],
+        pdfDocuments: [],
+        paymentExecutions: [],
+        paymentInvoices: [],
+        invoiceRecords: [],
+        noInvoiceConfirmations: [],
+        invoiceExceptionConfirmations: []
+      };
+    }
+
+    // 资料库最终只返回 take 条。先按真实归档文件/付款凭证时间抓取有界候选，
+    // 再反查业务与已通过审批，既避免全表扫描，也不会因旧采购后来补生 PDF 而漏出候选。
+    const candidateTake = Math.min(Math.max(take * 4, take), 800);
+    const [
+      pdfCandidates,
+      executionCandidates,
+      paymentInvoiceCandidates,
+      invoiceCandidates,
+      noInvoiceCandidates,
+      invoiceExceptionCandidates
+    ] = await Promise.all([
+      this.prisma.pdfDocument.findMany({
+        where: {
+          OR: [
+            {
+              templateKey: {
+                in: [
+                  SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY,
+                  "approval_form"
+                ]
+              },
+              businessType: {
+                in: [
+                  "spot_procurement_version",
+                  "spot_procurement_payment"
+                ]
+              }
+            },
+            {
+              templateKey:
+                SPOT_PROCUREMENT_RECEIPT_PDF_TEMPLATE_KEY,
+              businessType: "spot_procurement_receipt"
+            }
+          ]
+        },
+        orderBy: { createdAt: "desc" },
+        take: candidateTake
+      }),
+      this.prisma.spotProcurementPaymentExecution.findMany({
+        where: { voidedAt: null },
+        orderBy: { createdAt: "desc" },
+        take: candidateTake
+      }),
+      this.prisma.spotProcurementPaymentInvoice.findMany({
+        where: { status: "active" },
+        orderBy: { createdAt: "desc" },
+        take: candidateTake,
+        select: {
+          id: true,
+          paymentId: true,
+          fileId: true,
+          uploadedByUserId: true,
+          createdAt: true
+        }
+      }),
+      this.prisma.invoiceRecord.findMany({
+        where: {
+          status: "active",
+          sourceBusinessType: "spot_procurement",
+          sourceProcurementId: { not: null },
+          ...(visibleProjectIds
+            ? { projectId: { in: visibleProjectIds } }
+            : {})
+        },
+        orderBy: { createdAt: "desc" },
+        take: candidateTake,
+        select: {
+          id: true,
+          projectId: true,
+          fileId: true,
+          sourceProcurementId: true,
+          uploadedByUserId: true,
+          createdAt: true
+        }
+      }),
+      this.prisma.noInvoiceConfirmation.findMany({
+        where: {
+          status: "confirmed",
+          ...(visibleProjectIds
+            ? { projectId: { in: visibleProjectIds } }
+            : {})
+        },
+        orderBy: { createdAt: "desc" },
+        take: candidateTake,
+        select: {
+          id: true,
+          projectId: true,
+          procurementId: true,
+          proofFileId: true,
+          submittedByUserId: true,
+          reviewedByUserId: true,
+          reviewedAt: true,
+          createdAt: true
+        }
+      }),
+      this.prisma.invoiceExceptionConfirmation.findMany({
+        where: {
+          status: "confirmed",
+          ...(visibleProjectIds
+            ? { projectId: { in: visibleProjectIds } }
+            : {})
+        },
+        orderBy: { createdAt: "desc" },
+        take: candidateTake,
+        select: {
+          id: true,
+          projectId: true,
+          procurementId: true,
+          proofFileId: true,
+          submittedByUserId: true,
+          reviewedByUserId: true,
+          reviewedAt: true,
+          createdAt: true
+        }
+      })
+    ]);
+    const invoiceRecordIds = invoiceCandidates.map((row) => row.id);
+    const invoiceLines = invoiceRecordIds.length
+      ? await this.prisma.invoiceLine.findMany({
+          where: { invoiceRecordId: { in: invoiceRecordIds } },
+          select: {
+            id: true,
+            projectId: true,
+            invoiceRecordId: true
+          }
+        })
+      : [];
+    const invoiceLineIds = invoiceLines.map((row) => row.id);
+    const activeInvoiceAllocations = invoiceLineIds.length
+      ? await this.prisma.invoiceAllocation.findMany({
+          where: {
+            invoiceLineId: { in: invoiceLineIds },
+            invalidatedAt: null,
+            ...(visibleProjectIds
+              ? { projectId: { in: visibleProjectIds } }
+              : {})
+          },
+          select: {
+            invoiceLineId: true,
+            projectId: true,
+            procurementId: true
+          }
+        })
+      : [];
+    const invoiceCandidateById = new Map(
+      invoiceCandidates.map((row) => [row.id, row])
+    );
+    const invoiceLineById = new Map(invoiceLines.map((row) => [row.id, row]));
+    const invoiceRecordIdsWithActiveAllocation = new Set(
+      activeInvoiceAllocations.flatMap((allocation) => {
+        const line = invoiceLineById.get(allocation.invoiceLineId);
+        const invoice = line
+          ? invoiceCandidateById.get(line.invoiceRecordId)
+          : undefined;
+        return line &&
+          invoice &&
+          line.projectId === invoice.projectId &&
+          allocation.projectId === invoice.projectId &&
+          allocation.procurementId === invoice.sourceProcurementId
+          ? [invoice.id]
+          : [];
+      })
+    );
+    const allocatedInvoiceCandidates = invoiceCandidates.filter((row) =>
+      invoiceRecordIdsWithActiveAllocation.has(row.id)
+    );
+    const versionIds = [
+      ...new Set(
+        pdfCandidates
+          .filter((row) => row.businessType === "spot_procurement_version")
+          .map((row) => row.businessId)
+      )
+    ];
+    const paymentIds = [
+      ...new Set([
+        ...pdfCandidates
+          .filter((row) => row.businessType === "spot_procurement_payment")
+          .map((row) => row.businessId),
+        ...executionCandidates.map((row) => row.paymentId),
+        ...paymentInvoiceCandidates.map((row) => row.paymentId)
+      ])
+    ];
+    const receiptIds = [
+      ...new Set(
+        pdfCandidates
+          .filter(
+            (row) =>
+              row.businessType ===
+              "spot_procurement_receipt"
+          )
+          .map((row) => row.businessId)
+      )
+    ];
+    const [versions, payments, receipts] = await Promise.all([
+      versionIds.length
+        ? this.prisma.spotProcurementVersion.findMany({
+            where: { id: { in: versionIds } },
+            select: { id: true, procurementId: true, status: true }
+          })
+        : Promise.resolve([]),
+      paymentIds.length
+        ? this.prisma.spotProcurementPayment.findMany({
+            where: {
+              id: { in: paymentIds },
+              ...(visibleProjectIds
+                ? { projectId: { in: visibleProjectIds } }
+                : {})
+            },
+            select: {
+              id: true,
+              projectId: true,
+              procurementId: true,
+              code: true,
+              status: true
+            }
+          })
+        : Promise.resolve([]),
+      receiptIds.length
+        ? this.prisma.spotProcurementReceipt.findMany({
+            where: {
+              id: { in: receiptIds },
+              ...(visibleProjectIds
+                ? { projectId: { in: visibleProjectIds } }
+                : {})
+            },
+            select: {
+              id: true,
+              projectId: true,
+              procurementId: true,
+              status: true,
+              currentRevisionNo: true
+            }
+          })
+        : Promise.resolve([])
+    ]);
+    const procurementIds = [
+      ...new Set([
+        ...versions.map((row) => row.procurementId),
+        ...payments.map((row) => row.procurementId),
+        ...receipts.map((row) => row.procurementId),
+        ...allocatedInvoiceCandidates.flatMap((row) =>
+          row.sourceProcurementId ? [row.sourceProcurementId] : []
+        ),
+        ...noInvoiceCandidates.map((row) => row.procurementId),
+        ...invoiceExceptionCandidates.map((row) => row.procurementId)
+      ])
+    ];
+    const procurements = procurementIds.length
+      ? await this.prisma.spotProcurement.findMany({
+          where: {
+            id: { in: procurementIds },
+            ...(visibleProjectIds
+              ? { projectId: { in: visibleProjectIds } }
+              : {})
+          },
+          select: {
+            id: true,
+            projectId: true,
+            code: true,
+            supplierNameSnapshot: true
+          }
+        })
+      : [];
+    const visibleProcurementIds = new Set(procurements.map((row) => row.id));
+    const procurementById = new Map(procurements.map((row) => [row.id, row]));
+    const visibleVersions = versions.filter((row) =>
+      visibleProcurementIds.has(row.procurementId)
+    );
+    const invoiceRecords = allocatedInvoiceCandidates.filter((row) => {
+      const procurement = row.sourceProcurementId
+        ? procurementById.get(row.sourceProcurementId)
+        : undefined;
+      return procurement?.projectId === row.projectId;
+    });
+    const noInvoiceConfirmations = noInvoiceCandidates.filter(
+      (row) => procurementById.get(row.procurementId)?.projectId === row.projectId
+    );
+    const invoiceExceptionConfirmations = invoiceExceptionCandidates.filter(
+      (row) => procurementById.get(row.procurementId)?.projectId === row.projectId
+    );
+    const visibleVersionIds = visibleVersions.map((row) => row.id);
+    const visiblePaymentIds = payments.map((row) => row.id);
+    const paymentById = new Map(payments.map((row) => [row.id, row]));
+    const paymentInvoices = paymentInvoiceCandidates.filter((row) => {
+      const payment = paymentById.get(row.paymentId);
+      const procurement = payment
+        ? procurementById.get(payment.procurementId)
+        : undefined;
+      return Boolean(payment && procurement && procurement.projectId === payment.projectId);
+    });
+    const approvedInstances = visibleVersionIds.length || visiblePaymentIds.length
+      ? await this.prisma.approvalInstance.findMany({
+          where: {
+            status: "approved",
+            OR: [
+              {
+                businessType: "spot_procurement_version",
+                businessId: { in: visibleVersionIds }
+              },
+              {
+                businessType: "spot_procurement_payment",
+                businessId: { in: visiblePaymentIds }
+              }
+            ]
+          },
+          orderBy: { updatedAt: "desc" },
+          take: candidateTake * 2,
+          select: { businessType: true, businessId: true }
+        })
+      : [];
+    const approvedVersionIds = approvedInstances
+      .filter((row) => row.businessType === "spot_procurement_version")
+      .map((row) => row.businessId);
+    const approvedPaymentIds = approvedInstances
+      .filter((row) => row.businessType === "spot_procurement_payment")
+      .map((row) => row.businessId);
+    const approvedBusinessKeys = new Set(
+      approvedInstances.map((row) => `${row.businessType}:${row.businessId}`)
+    );
+    const approvedVersionIdSet = new Set(approvedVersionIds);
+    const approvedPaymentIdSet = new Set(approvedPaymentIds);
+    const receiptById = new Map(
+      receipts.map((row) => [row.id, row])
+    );
+    const visibleReceiptIds = receipts.map((row) => row.id);
+    const [latestReceiptReviews, latestReceiptRefreshes] =
+      visibleReceiptIds.length
+        ? await Promise.all([
+            this.prisma.spotProcurementReceiptReview.findMany({
+              where: {
+                receiptId: { in: visibleReceiptIds }
+              },
+              distinct: ["receiptId"],
+              orderBy: [
+                { receiptId: "asc" },
+                { sequenceNo: "desc" },
+                { id: "desc" }
+              ],
+              select: {
+                id: true,
+                receiptId: true,
+                receiptRevisionNo: true,
+                decision: true
+              }
+            }),
+            this.prisma.auditLog.findMany({
+              where: {
+                action: RECEIPT_PDF_REFRESH_ACTION,
+                businessType: "spot_procurement_receipt",
+                businessId: { in: visibleReceiptIds }
+              },
+              distinct: ["businessId"],
+              orderBy: [
+                { businessId: "asc" },
+                { createdAt: "desc" },
+                { id: "desc" }
+              ],
+              select: {
+                businessId: true,
+                metadata: true
+              }
+            })
+          ])
+        : [[], []];
+    const latestReceiptReviewById = new Map(
+      latestReceiptReviews.map((row) => [
+        row.receiptId,
+        row
+      ])
+    );
+    const latestReceiptRefreshById = new Map(
+      latestReceiptRefreshes.flatMap((row) =>
+        row.businessId ? [[row.businessId, row]] : []
+      )
+    );
+    const seenPdfBusinesses = new Set<string>();
+    const currentPdfDocuments = pdfCandidates.filter((row) => {
+      const key = `${row.businessType}:${row.businessId}`;
+      if (
+        row.businessType === "spot_procurement_receipt"
+      ) {
+        const receipt = receiptById.get(row.businessId);
+        if (
+          row.templateKey !==
+            SPOT_PROCUREMENT_RECEIPT_PDF_TEMPLATE_KEY ||
+          !receipt ||
+          !isCurrentFormalReceiptPdfFact({
+            binding: row,
+            receipt,
+            latestReview:
+              latestReceiptReviewById.get(row.businessId),
+            refreshMetadata:
+              latestReceiptRefreshById.get(row.businessId)
+                ?.metadata
+          })
+        ) {
+          return false;
+        }
+      } else if (
+        ![
+          SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY,
+          "approval_form"
+        ].includes(row.templateKey) ||
+        !approvedBusinessKeys.has(key)
+      ) {
+        return false;
+      }
+      if (
+        row.businessType === "spot_procurement_version" &&
+        !approvedVersionIdSet.has(row.businessId)
+      ) {
+        return false;
+      }
+      if (
+        row.businessType === "spot_procurement_payment" &&
+        !approvedPaymentIdSet.has(row.businessId)
+      ) {
+        return false;
+      }
+      if (seenPdfBusinesses.has(key)) return false;
+      seenPdfBusinesses.add(key);
+      return true;
+    }).slice(0, take);
+    const paymentExecutions = executionCandidates
+      .filter((row) => approvedPaymentIdSet.has(row.paymentId) && row.voidedAt === null)
+      .slice(0, take);
+
+    return {
+      procurements,
+      versions: visibleVersions,
+      payments,
+      receipts,
+      pdfDocuments: currentPdfDocuments,
+      paymentExecutions,
+      paymentInvoices: paymentInvoices.slice(0, take),
+      invoiceRecords: invoiceRecords.slice(0, take),
+      noInvoiceConfirmations: noInvoiceConfirmations.slice(0, take),
+      invoiceExceptionConfirmations:
+        invoiceExceptionConfirmations.slice(0, take)
+    };
+  }
+
   private limit(rawLimit?: string | number) {
     const parsed = typeof rawLimit === "number" ? rawLimit : Number(rawLimit ?? 100);
     if (!Number.isFinite(parsed)) return 100;
@@ -596,6 +1307,21 @@ export class ArchiveService {
     if (status === "confirmed") return "success";
     if (status === "pending_confirm") return "warning";
     return "default";
+  }
+
+  private spotApprovedArchiveStatus(status: string) {
+    if (status === "invalidated") return "审批已完成（后续已失效）";
+    if (status === "voided") return "审批已完成（后续已作废）";
+    if (
+      status === "approved" ||
+      status === "approved_pending_payment" ||
+      status === "partially_paid" ||
+      status === "paid" ||
+      status === "settled"
+    ) {
+      return "审批已完成";
+    }
+    return "审批已完成（业务状态已变更）";
   }
 
   private date(value: Date) {

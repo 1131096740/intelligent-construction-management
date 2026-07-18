@@ -14,6 +14,7 @@ import { ContractWorkbenchModule } from "./contract-workbench/contract-workbench
 import { DatabaseModule } from "./database/database.module";
 import { FileModule } from "./file/file.module";
 import { HealthController } from "./health.controller";
+import { InvoiceLedgerModule } from "./invoice-ledger/invoice-ledger.module";
 import { MeModule } from "./me/me.module";
 import { OrganizationModule } from "./organization/organization.module";
 import { PaymentModule } from "./payment/payment.module";
@@ -21,6 +22,7 @@ import { PdfModule } from "./pdf/pdf.module";
 import { ProjectExpenseModule } from "./project-expense/project-expense.module";
 import { ProjectModule } from "./project/project.module";
 import { SettlementModule } from "./settlement/settlement.module";
+import { SpotProcurementModule } from "./spot-procurement/spot-procurement.module";
 
 @Module({
   imports: [
@@ -38,6 +40,8 @@ import { SettlementModule } from "./settlement/settlement.module";
     SettlementModule,
     PaymentModule,
     ProjectExpenseModule,
+    SpotProcurementModule,
+    InvoiceLedgerModule,
     ApprovalModule,
     FileModule,
     MeModule,

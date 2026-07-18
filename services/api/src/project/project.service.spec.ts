@@ -734,6 +734,43 @@ describe("ProjectService", () => {
       },
       projectExpenseExecution: {
         findMany: jest.fn()
+      },
+      spotProcurement: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      spotProcurementRefund: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      spotProcurementPayment: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "spot-payment-1",
+            status: "approval_pending",
+            companyPaymentAmountCents: 1_000_000n,
+            canceledCompanyPaymentAmountCents: 0n,
+            paidAmountCents: 0n
+          },
+          {
+            id: "spot-payment-2",
+            status: "partially_paid",
+            companyPaymentAmountCents: 3_000_000n,
+            canceledCompanyPaymentAmountCents: 1_000_000n,
+            paidAmountCents: 500_000n
+          },
+          {
+            id: "spot-payment-3",
+            status: "paid",
+            companyPaymentAmountCents: 1_000_000n,
+            canceledCompanyPaymentAmountCents: 0n,
+            paidAmountCents: 1_000_000n
+          }
+        ])
+      },
+      spotProcurementPaymentExecution: {
+        findMany: jest.fn().mockResolvedValue([
+          { amountCents: 500_000n },
+          { amountCents: 1_000_000n }
+        ])
       }
     };
     const service = new ProjectService(prisma as never);
@@ -742,10 +779,11 @@ describe("ProjectService", () => {
       project: { id: "project-1", code: "JG-001", name: "总部综合楼" },
       cash: {
         actualReceiptsCents: "15000000",
-        availableFundsCents: "3200000",
-        actualPaidCents: "4000000",
-        approvalPendingOccupancyCents: "3000000",
-        approvedPendingPaymentCents: "6800000",
+        supplierRefundsCents: "0",
+        availableFundsCents: "-800000",
+        actualPaidCents: "5500000",
+        approvalPendingOccupancyCents: "4000000",
+        approvedPendingPaymentCents: "8300000",
         financeRecordedOutflowCents: "2800000"
       },
       business: {
@@ -753,8 +791,8 @@ describe("ProjectService", () => {
         effectiveSettlementAmountCents: "20000000",
         payableSettlementAmountCents: "16000000",
         operatingIncomeCents: "30000000",
-        operatingCostCents: "6500000",
-        grossProfitCents: "23500000"
+        operatingCostCents: "8000000",
+        grossProfitCents: "22000000"
       },
       counts: { contracts: 2, settlements: 3, payments: 4 },
       dataGaps: []
@@ -775,9 +813,18 @@ describe("ProjectService", () => {
       where: { projectId: "project-1", status: "approved", validUntil: { gte: expect.any(Date) } },
       select: { id: true, amountCents: true }
     });
+    expect(prisma.spotProcurementPaymentExecution.findMany).toHaveBeenCalledWith({
+      where: {
+        paymentId: {
+          in: ["spot-payment-1", "spot-payment-2", "spot-payment-3"]
+        },
+        voidedAt: null
+      },
+      select: { amountCents: true }
+    });
   });
 
-  it("deducts occupied and used financing quota usage from operating available funds", async () => {
+  it("deducts financing usage and restores available cash from supplier refunds without relabeling receipts", async () => {
     const prisma = {
       project: {
         findFirst: jest.fn().mockResolvedValue({
@@ -793,6 +840,17 @@ describe("ProjectService", () => {
       projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
       projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
+      spotProcurement: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "procurement-1" }
+        ])
+      },
+      spotProcurementRefund: {
+        findMany: jest.fn().mockResolvedValue([
+          { amountCents: 100_000n }
+        ])
+      },
+      spotProcurementPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectFinancingQuota: {
         findMany: jest.fn().mockResolvedValue([{ id: "financing-quota-1", amountCents: BigInt(2000000) }])
       },
@@ -808,7 +866,13 @@ describe("ProjectService", () => {
 
     const overview = await service.getOperatingFundsOverview("project-1");
 
-    expect(overview.cash.availableFundsCents).toBe("1200000");
+    expect(overview.cash).toEqual(
+      expect.objectContaining({
+        actualReceiptsCents: "0",
+        supplierRefundsCents: "100000",
+        availableFundsCents: "1300000"
+      })
+    );
     expect(prisma.projectFinancingQuotaUsage.findMany).toHaveBeenCalledWith({
       where: { quotaId: { in: ["financing-quota-1"] }, status: { in: ["occupied", "used"] } },
       select: { quotaId: true, amountCents: true }
@@ -817,6 +881,41 @@ describe("ProjectService", () => {
       where: { quotaId: { in: ["financing-quota-1"] }, status: { in: ["occupied", "used"] } },
       select: { quotaId: true, amountCents: true }
     });
+  });
+
+  it("fails closed when the spot-procurement overview delegate is unavailable", async () => {
+    const prisma = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "project-1",
+          code: "JG-001",
+          name: "总部综合楼"
+        })
+      },
+      contract: { findMany: jest.fn().mockResolvedValue([]) },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
+      projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
+      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
+      projectUpstreamSettlement: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectFinancingQuota: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectExpenseRequest: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      spotProcurementPayment: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new ProjectService(prisma as never);
+
+    await expect(
+      service.getOperatingFundsOverview("project-1")
+    ).rejects.toBeInstanceOf(TypeError);
   });
 
   it("sums only the latest effective contract version per contract", async () => {
@@ -845,6 +944,9 @@ describe("ProjectService", () => {
       projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
       projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
+      spotProcurement: { findMany: jest.fn().mockResolvedValue([]) },
+      spotProcurementRefund: { findMany: jest.fn().mockResolvedValue([]) },
+      spotProcurementPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectFinancingQuota: { findMany: jest.fn().mockResolvedValue([]) },
       projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
       projectExpenseExecution: { findMany: jest.fn() }
@@ -881,6 +983,9 @@ describe("ProjectService", () => {
       projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
       projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
+      spotProcurement: { findMany: jest.fn().mockResolvedValue([]) },
+      spotProcurementRefund: { findMany: jest.fn().mockResolvedValue([]) },
+      spotProcurementPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectFinancingQuota: { findMany: jest.fn().mockResolvedValue([]) },
       projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
       projectExpenseExecution: { findMany: jest.fn() }

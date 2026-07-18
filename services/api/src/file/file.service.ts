@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
@@ -17,6 +18,12 @@ import { lstat, mkdir, open, realpath, rm } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
+import { SpotProcurementAccessService } from "../spot-procurement/spot-procurement-access.service";
+import { SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY } from "../spot-procurement/spot-procurement-form-renderer";
+import {
+  acquireFileBusinessBindingTransactionLock,
+  hasNonReceiptBusinessFileBinding
+} from "./file-business-binding";
 
 export interface UploadPrivateFileInput {
   originalName: string;
@@ -61,6 +68,31 @@ type LockedFileReplacementRow = Pick<
   FileObject,
   "id" | "uploadedByUserId" | "storageStatus" | "supersedesFileObjectId"
 >;
+type LockedGeneratedFileRow = Pick<
+  FileObject,
+  "id" | "uploadedByUserId" | "storageStatus"
+>;
+type LockedUnboundFileRow = Pick<
+  FileObject,
+  "id" | "mimeType" | "uploadedByUserId" | "storageStatus"
+>;
+
+const FILE_ALREADY_BOUND_MESSAGE = "该文件已绑定其他业务记录，不能重复使用";
+const REFUND_VOUCHER_BINDING = [
+  { table: "SpotProcurementRefund", column: "voucherFileId" }
+] as const;
+const INVOICE_RECORD_FILE_BINDING = [
+  { table: "InvoiceRecord", column: "fileId" }
+] as const;
+const SPOT_PAYMENT_INVOICE_FILE_BINDING = [
+  { table: "SpotProcurementPaymentInvoice", column: "fileId" }
+] as const;
+const NO_INVOICE_PROOF_BINDING = [
+  { table: "NoInvoiceConfirmation", column: "proofFileId" }
+] as const;
+const INVOICE_EXCEPTION_PROOF_BINDING = [
+  { table: "InvoiceExceptionConfirmation", column: "proofFileId" }
+] as const;
 
 const ARCHIVE_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
   "contract_staff",
@@ -94,7 +126,16 @@ const PROJECT_EXPENSE_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
   "chairman",
   "general_manager"
 ];
-const ALLOWED_EXTENSIONS = new Set([".docx", ".xlsx", ".pdf", ".png", ".jpg", ".jpeg"]);
+const ALLOWED_EXTENSIONS = new Set([
+  ".doc",
+  ".docx",
+  ".xls",
+  ".xlsx",
+  ".pdf",
+  ".png",
+  ".jpg",
+  ".jpeg"
+]);
 const INVALID_PRIVATE_FILE_PATH_MESSAGE = "私有文件路径无效，系统已阻止本次文件读取。";
 
 class InvalidPrivateFilePathError extends Error {
@@ -605,7 +646,9 @@ export class FileService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService = new AuditService(),
-    private readonly storage: PrivateFileStorage = new PrivateFileStorage()
+    private readonly storage: PrivateFileStorage = new PrivateFileStorage(),
+    private readonly spotAccess: SpotProcurementAccessService =
+      new SpotProcurementAccessService(prisma)
   ) {
     this.assertDownloadSecret();
   }
@@ -785,6 +828,7 @@ export class FileService {
       throw new BadRequestException("新旧文件不能为同一文件");
     }
 
+    await acquireFileBusinessBindingTransactionLock(tx);
     const initialFileIds = [input.newFileId, input.oldFileId].sort();
     const initialFiles = await tx.$queryRaw<LockedFileReplacementRow[]>(Prisma.sql`
       SELECT "id", "uploadedByUserId", "storageStatus", "supersedesFileObjectId"
@@ -1039,6 +1083,19 @@ export class FileService {
         UNION ALL SELECT 1 FROM "SettlementTemplatePreviewJob" WHERE "previewXlsxFileId" = ${fileId} OR "previewPdfFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectOwnerContract" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "PaymentExecution" WHERE "voucherFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "SpotProcurementAttachment" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "SpotProcurementPayment" WHERE "supportingAttachmentFileId" = ${fileId} OR "merchantPaymentProofFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "SpotProcurementPaymentExecution" WHERE "voucherFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "SpotProcurementPaymentAttachment" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "SpotProcurementPaymentExecutionVoucher" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "SpotProcurementPaymentInvoice" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "SpotProcurementPaymentArchive" WHERE "generatedPackageFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "SpotProcurementPaymentArchiveFile" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "SpotProcurementRefund" WHERE "voucherFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "SpotProcurementReceiptPhoto" WHERE "originalFileId" = ${fileId} OR "watermarkedFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "InvoiceRecord" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "NoInvoiceConfirmation" WHERE "proofFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "InvoiceExceptionConfirmation" WHERE "proofFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectExpenseRequest" WHERE "attachmentFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectExpenseExecution" WHERE "voucherFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectReceipt" WHERE "voucherFileId" = ${fileId}
@@ -1065,6 +1122,146 @@ export class FileService {
       throw new BadRequestException("结算签名合成任务令牌无效");
     }
     await this.storage.delete(`uploads/settlement-signed-generation/${claimToken}.pdf`);
+  }
+
+  // 收货照片转换专用：只读取指定上传人的、具备完整性元数据的活动文件。
+  async getOwnedVerifiedFileBuffer(
+    fileId: string,
+    expectedUploadedByUserId: string
+  ): Promise<InternalFileBuffer> {
+    if (!expectedUploadedByUserId.trim()) {
+      throw new ForbiddenException("当前账号无权使用该收货原始文件");
+    }
+    const file = await this.prisma.fileObject.findUnique({ where: { id: fileId } });
+    if (!file) {
+      throw new Error("资料文件不存在或已被移除");
+    }
+    if (file.uploadedByUserId !== expectedUploadedByUserId) {
+      throw new ForbiddenException("当前账号无权使用该收货原始文件");
+    }
+    if (file.storageStatus !== "active") {
+      throw new Error("资料文件当前不可用，请联系管理员核对文件状态");
+    }
+    if (!file.contentSha256 || !/^[0-9a-f]{64}$/.test(file.contentSha256)) {
+      this.logger.error(`私有文件完整性元数据无效 fileId=${file.id}`);
+      throw new Error("资料文件完整性校验失败，请联系管理员核对存储文件");
+    }
+
+    const buffer = await this.readVerifiedFileBuffer(file);
+    if (
+      !Number.isSafeInteger(file.sizeBytes) ||
+      file.sizeBytes < 0 ||
+      buffer.length !== file.sizeBytes
+    ) {
+      this.logger.error(`私有文件大小校验失败 fileId=${file.id}`);
+      throw new Error("资料文件完整性校验失败，请联系管理员核对存储文件");
+    }
+    return { file, buffer };
+  }
+
+  // 水印生成后的失败补偿：已绑定收货照片的文件必须保留，不能被模糊失败误隔离。
+  async quarantineUnboundReceiptWatermark(
+    fileId: string,
+    actorUserId: string
+  ): Promise<boolean> {
+    if (!fileId.trim() || !actorUserId.trim()) return false;
+
+    return this.prisma.$transaction(async (tx) => {
+      await acquireFileBusinessBindingTransactionLock(tx);
+      const rows = await tx.$queryRaw<LockedGeneratedFileRow[]>(Prisma.sql`
+        SELECT "id", "uploadedByUserId", "storageStatus"
+        FROM "FileObject"
+        WHERE "id" = ${fileId}
+        FOR UPDATE
+      `);
+      const file = rows[0];
+      if (
+        !file ||
+        file.uploadedByUserId !== actorUserId ||
+        file.storageStatus !== "active"
+      ) {
+        return false;
+      }
+
+      const binding = await tx.spotProcurementReceiptPhoto.findFirst({
+        where: {
+          OR: [
+            { originalFileId: fileId },
+            { watermarkedFileId: fileId }
+          ]
+        },
+        select: { id: true }
+      });
+      if (
+        binding ||
+        (await hasNonReceiptBusinessFileBinding(tx, [fileId]))
+      ) {
+        return false;
+      }
+
+      const updated = await tx.fileObject.updateMany({
+        where: {
+          id: fileId,
+          uploadedByUserId: actorUserId,
+          storageStatus: "active"
+        },
+        data: { storageStatus: "quarantined" }
+      });
+      if (updated.count !== 1) return false;
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "file.quarantine.unbound_receipt_watermark",
+        businessType: "file_object",
+        businessId: fileId,
+        metadata: { reason: "receipt_watermark_binding_failed" }
+      });
+      return true;
+    });
+  }
+
+  // 业务绑定前必须在同一事务内调用：文件行锁使“检查+写入绑定”串行化。
+  async assertFileHasNoBusinessBinding(
+    tx: Prisma.TransactionClient,
+    fileId: string
+  ): Promise<LockedUnboundFileRow> {
+    const normalizedFileId = fileId.trim();
+    if (!normalizedFileId) {
+      throw new BadRequestException("请选择需要绑定的文件");
+    }
+
+    await acquireFileBusinessBindingTransactionLock(tx);
+    const rows = await tx.$queryRaw<LockedUnboundFileRow[]>(Prisma.sql`
+      SELECT "id", "uploadedByUserId", "storageStatus"
+      FROM "FileObject"
+      WHERE "id" = ${normalizedFileId}
+      FOR UPDATE
+    `);
+    const file = rows[0];
+    if (!file) {
+      throw new BadRequestException("文件不存在或已被移除");
+    }
+    if (file.storageStatus !== "active") {
+      throw new BadRequestException("文件当前不可用");
+    }
+
+    const [receiptPhotoBinding, hasOtherBinding] = await Promise.all([
+      tx.spotProcurementReceiptPhoto.findFirst({
+        where: {
+          OR: [
+            { originalFileId: normalizedFileId },
+            { watermarkedFileId: normalizedFileId }
+          ]
+        },
+        select: { id: true }
+      }),
+      hasNonReceiptBusinessFileBinding(tx, [normalizedFileId])
+    ]);
+    if (receiptPhotoBinding || hasOtherBinding) {
+      throw new ConflictException(FILE_ALREADY_BOUND_MESSAGE);
+    }
+
+    return file;
   }
 
   // 供其它模块（如审批单下载）按 fileId 复用下载权限校验。
@@ -1242,8 +1439,7 @@ export class FileService {
       file.id,
       actorUserId
     );
-    if (governedSettlementAccess !== null) {
-      if (governedSettlementAccess) return;
+    if (governedSettlementAccess === false) {
       throw new ForbiddenException("当前账号无权下载该结算签章资料");
     }
     const governedContractAccess = await this.governedContractFileAccess(
@@ -1251,24 +1447,138 @@ export class FileService {
       file.id,
       actorUserId
     );
-    if (governedContractAccess !== null) {
-      if (governedContractAccess) return;
+    if (governedContractAccess === false) {
       throw new ForbiddenException("当前账号无权下载该合同签署资料");
+    }
+    if (governedSettlementAccess || governedContractAccess) {
+      const governedSpotDecision = await this.spotAccess.resolveFileDownloadAccess(
+        file.id,
+        actorUserId,
+        tx
+      );
+      if (governedSpotDecision !== "not_spot") {
+        throw new Error("资料文件存在跨业务绑定冲突，暂不能下载");
+      }
+      return;
     }
     const takeoverCorrectionClient = (tx as unknown as {
       contractTakeoverCorrection?: {
         findFirst(args: {
-          where: { attachmentFileId: string; correctionType: string };
+          where: { attachmentFileId: string };
           select: { projectId: true };
         }): Promise<{ projectId: string } | null>;
       };
     }).contractTakeoverCorrection;
     const takeoverCorrection = takeoverCorrectionClient
       ? await takeoverCorrectionClient.findFirst({
-          where: { attachmentFileId: file.id, correctionType: "company_entity" },
+          where: { attachmentFileId: file.id },
           select: { projectId: true }
         })
       : null;
+    const spotDecision = await this.spotAccess.resolveFileDownloadAccess(
+      file.id,
+      actorUserId,
+      tx
+    );
+    if (spotDecision === "allowed") {
+      const [
+        receiptBinding,
+        refundBindings,
+        spotPaymentInvoiceBindings,
+        invoiceRecordBindings,
+        noInvoiceBindings,
+        invoiceExceptionBindings
+      ] = await Promise.all([
+        tx.spotProcurementReceiptPhoto.findFirst({
+          where: {
+            OR: [
+              { originalFileId: file.id },
+              { watermarkedFileId: file.id }
+            ]
+          },
+          select: { id: true }
+        }),
+        tx.spotProcurementRefund.findMany({
+          where: { voucherFileId: file.id },
+          select: { id: true },
+          take: 2
+        }),
+        tx.spotProcurementPaymentInvoice.findMany({
+          where: { fileId: file.id },
+          select: { id: true },
+          take: 2
+        }),
+        tx.invoiceRecord.findMany({
+          where: { fileId: file.id },
+          select: { id: true },
+          take: 2
+        }),
+        tx.noInvoiceConfirmation.findMany({
+          where: { proofFileId: file.id },
+          select: { id: true },
+          take: 2
+        }),
+        tx.invoiceExceptionConfirmation.findMany({
+          where: { proofFileId: file.id },
+          select: { id: true },
+          take: 2
+        })
+      ]);
+      const evidenceBindingExclusions = [
+        ...spotPaymentInvoiceBindings.map(
+          () => SPOT_PAYMENT_INVOICE_FILE_BINDING
+        ),
+        ...invoiceRecordBindings.map(() => INVOICE_RECORD_FILE_BINDING),
+        ...noInvoiceBindings.map(() => NO_INVOICE_PROOF_BINDING),
+        ...invoiceExceptionBindings.map(
+          () => INVOICE_EXCEPTION_PROOF_BINDING
+        )
+      ];
+      if (
+        takeoverCorrection !== null
+      ) {
+        throw new Error("资料文件存在跨业务绑定冲突，暂不能下载");
+      }
+      if (
+        evidenceBindingExclusions.length > 1 ||
+        (evidenceBindingExclusions.length === 1 &&
+          (receiptBinding ||
+            refundBindings.length > 0 ||
+            (await hasNonReceiptBusinessFileBinding(
+              tx,
+              [file.id],
+              evidenceBindingExclusions[0]
+            ))))
+      ) {
+        throw new Error("资料文件存在跨业务绑定冲突，暂不能下载");
+      }
+      if (evidenceBindingExclusions.length === 1) {
+        return;
+      }
+      if (
+        receiptBinding &&
+        (await hasNonReceiptBusinessFileBinding(tx, [file.id]))
+      ) {
+        throw new Error("资料文件存在跨业务绑定冲突，暂不能下载");
+      }
+      if (
+        refundBindings.length > 1 ||
+        (refundBindings.length === 1 &&
+          (receiptBinding ||
+            (await hasNonReceiptBusinessFileBinding(
+              tx,
+              [file.id],
+              REFUND_VOUCHER_BINDING
+            ))))
+      ) {
+        throw new Error("资料文件存在跨业务绑定冲突，暂不能下载");
+      }
+      return;
+    }
+    if (spotDecision === "denied") {
+      throw new Error("当前账号无权下载该零星采购资料");
+    }
+
     if (takeoverCorrection) {
       if (
         await this.hasProjectRole(
@@ -1634,7 +1944,16 @@ export class FileService {
     // 审批 PDF：申请人、任一签批人，或该项目的归档可读岗位均可下载；
     // 结算审批中的 latest PDF 还允许审批链相关岗位读取，供后续审批人审阅。
     const approvalForm = await tx.pdfDocument.findFirst({
-      where: { fileId: file.id, templateKey: { in: ["approval_form", "settlement_approval_latest"] } }
+      where: {
+        fileId: file.id,
+        templateKey: {
+          in: [
+            "approval_form",
+            SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY,
+            "settlement_approval_latest"
+          ]
+        }
+      }
     });
     if (approvalForm) {
       const instance = await tx.approvalInstance.findFirst({
@@ -1642,7 +1961,10 @@ export class FileService {
           businessType: approvalForm.businessType,
           businessId: approvalForm.businessId,
           status:
-            approvalForm.templateKey === "approval_form"
+            [
+              "approval_form",
+              SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY
+            ].includes(approvalForm.templateKey)
               ? "approved"
               : { in: ["in_progress", "approved"] }
         },

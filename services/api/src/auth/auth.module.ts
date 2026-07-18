@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { AuditModule } from "../audit/audit.module";
+import { SpotProcurementAccessModule } from "../spot-procurement/spot-procurement-access.module";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
@@ -9,7 +10,7 @@ import { JwtTokenService } from "./jwt-token.service";
 import { ProjectVisibilityService } from "./project-visibility.service";
 
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, SpotProcurementAccessModule],
   controllers: [AuthController],
   providers: [
     AuthService,

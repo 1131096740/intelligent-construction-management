@@ -21,10 +21,13 @@ import { detailAction } from "../core-flow/detail-actions";
 import {
   calculateProjectCashPoolBigInt,
   dbMoneyToBigInt,
+  findProjectSpotProcurementRefundAmounts,
   formatMoneyCentsAsYuan,
   mapBigIntMoneyFieldsToApi,
   moneyCentsToApi,
   parseMoneyCentsInput,
+  SPOT_PROCUREMENT_CASH_POOL_STATUSES,
+  spotProcurementPaymentToMoneyRequestValue,
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
@@ -1313,11 +1316,19 @@ export class ProjectExpenseService {
       throw new BadRequestException("项目不存在或已停用");
     }
 
-    const [receipts, paymentRequests, expenseRequests, financingQuotas] = await Promise.all([
+    const [
+      receipts,
+      supplierRefundAmountCents,
+      paymentRequests,
+      expenseRequests,
+      spotProcurementPayments,
+      financingQuotas
+    ] = await Promise.all([
       tx.projectReceipt.findMany({
         where: { projectId, voidedAt: null },
         select: { amountCents: true }
       }),
+      findProjectSpotProcurementRefundAmounts(tx, projectId),
       tx.paymentRequest.findMany({
         where: { projectId, status: { in: [...CASH_POOL_STATUSES] } },
         select: {
@@ -1336,6 +1347,18 @@ export class ProjectExpenseService {
           paidAmountCents: true
         }
       }),
+      tx.spotProcurementPayment.findMany({
+        where: {
+          projectId,
+          status: { in: [...SPOT_PROCUREMENT_CASH_POOL_STATUSES] }
+        },
+        select: {
+          status: true,
+          companyPaymentAmountCents: true,
+          canceledCompanyPaymentAmountCents: true,
+          paidAmountCents: true
+        }
+      }),
       tx.projectFinancingQuota.findMany({
         where: { projectId, status: "approved", validUntil: { gte: new Date() } },
         select: { id: true, amountCents: true },
@@ -1345,8 +1368,12 @@ export class ProjectExpenseService {
 
     const cashPool = calculateProjectCashPoolBigInt({
       receiptAmountCents: receipts.map((receipt) => receipt.amountCents),
+      supplierRefundAmountCents,
       paymentRequests,
-      expenseRequests
+      expenseRequests,
+      spotProcurementPayments: spotProcurementPayments.map(
+        spotProcurementPaymentToMoneyRequestValue
+      )
     });
     const cashAvailable = cashPool.availableCents > 0n ? cashPool.availableCents : 0n;
     const requestedAmount = dbMoneyToBigInt(requestedAmountCents, "项目支出申请金额");

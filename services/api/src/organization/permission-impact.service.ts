@@ -15,18 +15,22 @@ import { OrganizationService } from "./organization.service";
 
 const ROLE_KEY_SET = new Set<string>(ROLE_KEYS);
 const LEADER_ROLE_KEYS = new Set<RoleKey>(["chairman", "general_manager"]);
-const SUPPORTED_BUSINESS_TYPES = [
+const LEGACY_BUSINESS_TYPES = [
   "contract_version",
   "settlement",
   "payment_request",
   "project_expense_request"
 ] as const;
+const SPOT_BUSINESS_TYPES = ["spot_procurement_version", "spot_procurement_payment"] as const;
+const SUPPORTED_BUSINESS_TYPES = [...LEGACY_BUSINESS_TYPES, ...SPOT_BUSINESS_TYPES] as const;
 type SupportedBusinessType = (typeof SUPPORTED_BUSINESS_TYPES)[number];
 const APPROVAL_ROLE_SETS_BY_BUSINESS_TYPE = {
   contract_version: new Set(ACTION_REQUIRED_ROLES["contract.approve"]),
   settlement: new Set(ACTION_REQUIRED_ROLES["settlement.approve"]),
   payment_request: new Set(ACTION_REQUIRED_ROLES["payment.approve"]),
-  project_expense_request: new Set(ACTION_REQUIRED_ROLES["project_expense.approve"])
+  project_expense_request: new Set(ACTION_REQUIRED_ROLES["project_expense.approve"]),
+  spot_procurement_version: new Set(ACTION_REQUIRED_ROLES["spot_procurement.approve"]),
+  spot_procurement_payment: new Set(ACTION_REQUIRED_ROLES["spot_procurement.payment.approve"])
 } satisfies Record<SupportedBusinessType, ReadonlySet<RoleKey>>;
 type PermissionImpactClient = Pick<
   Prisma.TransactionClient,
@@ -42,6 +46,9 @@ type PermissionImpactClient = Pick<
   | "settlement"
   | "paymentRequest"
   | "projectExpenseRequest"
+  | "spotProcurementVersion"
+  | "spotProcurement"
+  | "spotProcurementPayment"
 >;
 
 export type RoleRemovalBlockingIssueCode =
@@ -380,8 +387,16 @@ export class PermissionImpactService {
         client.project.findMany({ select: { id: true } }),
         client.approvalInstance.findMany({
           where: {
-            status: "in_progress",
-            businessType: { in: [...SUPPORTED_BUSINESS_TYPES] }
+            OR: [
+              {
+                status: "in_progress",
+                businessType: { in: [...LEGACY_BUSINESS_TYPES] }
+              },
+              {
+                status: "approval_pending",
+                businessType: { in: [...SPOT_BUSINESS_TYPES] }
+              }
+            ]
           },
           select: {
             id: true,
@@ -583,8 +598,16 @@ export class PermissionImpactService {
         client.project.findMany({ select: { id: true, isActive: true } }),
         client.approvalInstance.findMany({
           where: {
-            status: "in_progress",
-            businessType: { in: [...SUPPORTED_BUSINESS_TYPES] }
+            OR: [
+              {
+                status: "in_progress",
+                businessType: { in: [...LEGACY_BUSINESS_TYPES] }
+              },
+              {
+                status: "approval_pending",
+                businessType: { in: [...SPOT_BUSINESS_TYPES] }
+              }
+            ]
           },
           select: {
             id: true,
@@ -890,7 +913,9 @@ export class PermissionImpactService {
     const ids = (businessType: SupportedBusinessType) =>
       instances.filter((row) => row.businessType === businessType).map((row) => row.businessId);
     const contractVersionIds = ids("contract_version");
-    const [contractVersions, settlements, payments, expenses] = (await Promise.all([
+    const spotVersionIds = ids("spot_procurement_version");
+    const spotPaymentIds = ids("spot_procurement_payment");
+    const [contractVersions, settlements, payments, expenses, spotVersions, spotPayments] = (await Promise.all([
       client.contractVersion.findMany({
         where: { id: { in: contractVersionIds } },
         select: { id: true, contractId: true }
@@ -906,18 +931,46 @@ export class PermissionImpactService {
       client.projectExpenseRequest.findMany({
         where: { id: { in: ids("project_expense_request") } },
         select: { id: true, projectId: true }
-      })
+      }),
+      spotVersionIds.length
+        ? client.spotProcurementVersion.findMany({
+            where: { id: { in: spotVersionIds } },
+            select: { id: true, procurementId: true }
+          })
+        : Promise.resolve([]),
+      spotPaymentIds.length
+        ? client.spotProcurementPayment.findMany({
+            where: { id: { in: spotPaymentIds } },
+            select: { id: true, projectId: true }
+          })
+        : Promise.resolve([])
     ])) as [
       Array<{ id: string; contractId: string }>,
       Array<{ id: string; projectId: string }>,
       Array<{ id: string; projectId: string }>,
+      Array<{ id: string; projectId: string }>,
+      Array<{ id: string; procurementId: string }>,
       Array<{ id: string; projectId: string }>
     ];
-    const contracts = (await client.contract.findMany({
-      where: { id: { in: contractVersions.map((row) => row.contractId) } },
-      select: { id: true, projectId: true }
-    })) as Array<{ id: string; projectId: string }>;
+    const [contracts, spotProcurements] = (await Promise.all([
+      client.contract.findMany({
+        where: { id: { in: contractVersions.map((row) => row.contractId) } },
+        select: { id: true, projectId: true }
+      }),
+      spotVersions.length
+        ? client.spotProcurement.findMany({
+            where: { id: { in: [...new Set(spotVersions.map((row) => row.procurementId))] } },
+            select: { id: true, projectId: true }
+          })
+        : Promise.resolve([])
+    ])) as [
+      Array<{ id: string; projectId: string }>,
+      Array<{ id: string; projectId: string }>
+    ];
     const contractById = new Map(contracts.map((row) => [row.id, row.projectId]));
+    const projectBySpotProcurementId = new Map(
+      spotProcurements.map((row) => [row.id, row.projectId])
+    );
     const projectByBusinessKey = new Map<string, string>();
     for (const row of contractVersions) {
       const projectId = contractById.get(row.contractId);
@@ -926,9 +979,14 @@ export class PermissionImpactService {
     for (const [businessType, rows] of [
       ["settlement", settlements],
       ["payment_request", payments],
-      ["project_expense_request", expenses]
+      ["project_expense_request", expenses],
+      ["spot_procurement_payment", spotPayments]
     ] as const) {
       for (const row of rows) projectByBusinessKey.set(`${businessType}:${row.id}`, row.projectId);
+    }
+    for (const row of spotVersions) {
+      const projectId = projectBySpotProcurementId.get(row.procurementId);
+      if (projectId) projectByBusinessKey.set(`spot_procurement_version:${row.id}`, projectId);
     }
 
     return instances.map((instance) => ({
@@ -1001,7 +1059,11 @@ function normalizeAdditionChange(input: PreviewRoleAdditionDto): NormalizedRoleA
 }
 
 function parseCurrentNode(instance: ApprovalInstanceRow): ParsedNode | null {
-  return parseNodeAt(instance, instance.currentNodeIndex);
+  return parseNodeAt(
+    instance,
+    instance.currentNodeIndex,
+    spotApprovalRoleSetForBusinessType(instance.businessType) ?? undefined
+  );
 }
 
 function parseNodeAt(
@@ -1024,10 +1086,9 @@ function parseNodeAt(
   if (!approvedRoleKeys || approvedRoleKeys.some((role) => !roleKeys.includes(role))) return null;
   const pendingRoleKeys = roleKeys.filter((role) => !approvedRoleKeys.includes(role));
   if (pendingRoleKeys.length === 0) return null;
-  const assignments =
-    instance.businessType === "project_expense_request"
-      ? []
-      : parseAssignments(value.assignments, allowedRoles);
+  const assignments = supportsIndirectApproval(instance.businessType)
+    ? parseAssignments(value.assignments, allowedRoles)
+    : [];
   if (!assignments) return null;
   if (
     allowedRoles &&
@@ -1165,7 +1226,7 @@ function buildImpact(
   }
 
   const activeUserIds = new Set(users.filter((user) => user.isActive).map((user) => user.id));
-  const supportsIndirect = instance.businessType !== "project_expense_request";
+  const supportsIndirect = supportsIndirectApproval(instance.businessType);
   const directRoleByUser = new Map<string, RoleKey>();
   for (const roleKey of instance.parsedNode.roleKeys) {
     for (const userId of directUsersForRole(directFacts, instance.projectId, roleKey)) {
@@ -1302,7 +1363,7 @@ function collectRelevantAdditionNodes(
       const allowedRoles = approvalRoleSetForBusinessType(instance.businessType);
       const parsedNode = allowedRoles ? parseNodeAt(instance, nodeIndex, allowedRoles) : null;
       const mayUnlockFrozenAssignment =
-        instance.businessType !== "project_expense_request" &&
+        supportsIndirectApproval(instance.businessType) &&
         allowedRoles?.has(change.roleKey) &&
         parsedNode?.assignments.some((assignment) => assignment.toUserId === change.userId);
       if (
@@ -1344,7 +1405,11 @@ function collectRelevantRemovalNodes(
       nodeIndex < instance.frozenNodes.length;
       nodeIndex += 1
     ) {
-      const parsedNode = parseNodeAt(instance, nodeIndex);
+      const parsedNode = parseNodeAt(
+        instance,
+        nodeIndex,
+        spotApprovalRoleSetForBusinessType(instance.businessType) ?? undefined
+      );
       if (!parsedNode || parsedNode.pendingRoleKeys.includes(change.roleKey)) {
         relevant.push({ ...instance, currentNodeIndex: nodeIndex, parsedNode });
       }
@@ -1358,6 +1423,21 @@ function approvalRoleSetForBusinessType(
 ): ReadonlySet<RoleKey> | null {
   if (!SUPPORTED_BUSINESS_TYPES.includes(businessType as SupportedBusinessType)) return null;
   return APPROVAL_ROLE_SETS_BY_BUSINESS_TYPE[businessType as SupportedBusinessType];
+}
+
+function spotApprovalRoleSetForBusinessType(businessType: string): ReadonlySet<RoleKey> | null {
+  if (!SPOT_BUSINESS_TYPES.includes(businessType as (typeof SPOT_BUSINESS_TYPES)[number])) {
+    return null;
+  }
+  return approvalRoleSetForBusinessType(businessType);
+}
+
+function supportsIndirectApproval(businessType: string) {
+  return (
+    businessType !== "project_expense_request" &&
+    businessType !== "spot_procurement_version" &&
+    businessType !== "spot_procurement_payment"
+  );
 }
 
 function isApprovalActionGuardEligible(
@@ -1377,7 +1457,7 @@ function isApprovalActionGuardEligible(
       directUsersForRole(directFacts, instance.projectId, roleKey).includes(candidateUserId)
     );
   if (hasAllowedDirectRole(userId)) return true;
-  if (instance.businessType === "project_expense_request") return false;
+  if (!supportsIndirectApproval(instance.businessType)) return false;
 
   const activeUserIds = new Set(users.filter((user) => user.isActive).map((user) => user.id));
   return delegations.some(
@@ -1423,7 +1503,7 @@ function resolveUserOnNode(
       requiresSelfReviewConfirmation
     };
   }
-  if (instance.businessType === "project_expense_request") return none;
+  if (!supportsIndirectApproval(instance.businessType)) return none;
   const assignment = node.assignments.find((item) => item.toUserId === userId);
   if (
     assignment &&
@@ -1507,7 +1587,10 @@ function excludingRoleAssignments(
     contract: client.contract,
     settlement: client.settlement,
     paymentRequest: client.paymentRequest,
-    projectExpenseRequest: client.projectExpenseRequest
+    projectExpenseRequest: client.projectExpenseRequest,
+    spotProcurementVersion: client.spotProcurementVersion,
+    spotProcurement: client.spotProcurement,
+    spotProcurementPayment: client.spotProcurementPayment
   } as unknown as PermissionImpactClient;
 }
 
@@ -1533,7 +1616,10 @@ function cachedPermissionImpactClient(client: PermissionImpactClient): Permissio
     contract: cachedDelegate(client.contract),
     settlement: cachedDelegate(client.settlement),
     paymentRequest: cachedDelegate(client.paymentRequest),
-    projectExpenseRequest: cachedDelegate(client.projectExpenseRequest)
+    projectExpenseRequest: cachedDelegate(client.projectExpenseRequest),
+    spotProcurementVersion: cachedDelegate(client.spotProcurementVersion),
+    spotProcurement: cachedDelegate(client.spotProcurement),
+    spotProcurementPayment: cachedDelegate(client.spotProcurementPayment)
   } as unknown as PermissionImpactClient;
 }
 

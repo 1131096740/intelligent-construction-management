@@ -23,6 +23,99 @@ describe("permission policy table", () => {
     }
   });
 
+  it("maps spot procurement write actions to the confirmed business roles", () => {
+    const expectedRoles = [
+      [
+        "spot_procurement.create",
+        ["material_staff", "material_director"]
+      ],
+      [
+        "spot_procurement.approve",
+        ["material_director", "project_manager"]
+      ],
+      [
+        "spot_procurement.payment.submit",
+        ["material_staff", "material_director"]
+      ],
+      [
+        "spot_procurement.payment.approve",
+        [
+          "comprehensive_director",
+          "project_manager",
+          "finance_director",
+          "chairman",
+          "general_manager"
+        ]
+      ],
+      [
+        "spot_procurement.payment.facts.manage",
+        ["finance_staff", "comprehensive_director", "finance_director"]
+      ],
+      ["spot_procurement.payment.execute", ["finance_staff"]],
+      [
+        "spot_procurement.receipt.confirm",
+        ["employee", "material_staff", "material_director", "project_manager"]
+      ],
+      ["spot_procurement.receipt.review", ["material_director"]],
+      ["spot_procurement.receipt.review_revoke", ["material_director"]],
+      [
+        "spot_procurement.discrepancy.create",
+        ["material_staff", "material_director"]
+      ],
+      ["spot_procurement.refund.record", ["finance_staff"]],
+      [
+        "spot_procurement.invoice.append",
+        [
+          "material_staff",
+          "material_director",
+          "finance_staff",
+          "finance_director"
+        ]
+      ],
+      [
+        "spot_procurement.abnormal_termination.request",
+        ["material_staff", "material_director", "finance_staff"]
+      ],
+      [
+        "spot_procurement.abnormal_termination.confirm",
+        ["finance_director"]
+      ],
+      [
+        "spot_procurement.archive.download",
+        [
+          "material_staff",
+          "material_director",
+          "comprehensive_director",
+          "project_manager",
+          "finance_staff",
+          "finance_director",
+          "chairman",
+          "general_manager"
+        ]
+      ],
+      ["spot_procurement.balance.execute", ["finance_director"]],
+      [
+        "spot_procurement.invoice.manage",
+        [
+          "material_staff",
+          "material_director",
+          "finance_staff",
+          "finance_director"
+        ]
+      ],
+      ["spot_procurement.invoice_exception.confirm", ["finance_director"]],
+      ["spot_procurement.vat_rate.manage", ["finance_director"]],
+      [
+        "spot_procurement.void",
+        ["project_manager", "finance_director"]
+      ]
+    ] as const;
+
+    for (const [action, roles] of expectedRoles) {
+      expect(ACTION_REQUIRED_ROLES[action]).toEqual(roles);
+    }
+  });
+
   it("keeps chairman/general_manager out of settlement approval", () => {
     expect(ACTION_REQUIRED_ROLES["settlement.approve"]).not.toContain("chairman");
     expect(ACTION_REQUIRED_ROLES["settlement.approve"]).not.toContain(

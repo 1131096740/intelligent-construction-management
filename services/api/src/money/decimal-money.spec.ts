@@ -11,6 +11,7 @@ import {
   parseMoneyCentsInput,
   parseSignedMoneyCents,
   parseSignedMoneyCentsInput,
+  spotProcurementPaymentToMoneyRequestValue,
   sumDbMoneyToBigInt,
   yuanTextToCents
 } from "./decimal-money";
@@ -305,9 +306,91 @@ describe("internal bigint money compatibility", () => {
       })
     ).toEqual({
       actualReceiptsCents: 9_007_199_254_741_000n,
+      supplierRefundsCents: 0n,
       actualPaidCents: 4n,
       occupiedCents: 19n,
       availableCents: 9_007_199_254_740_977n
+    });
+  });
+
+  it("maps only the effective company-funded portion of spot procurement payments", () => {
+    expect(
+      spotProcurementPaymentToMoneyRequestValue({
+        status: "approved_pending_payment",
+        companyPaymentAmountCents: 9_007_199_254_740_993n,
+        canceledCompanyPaymentAmountCents: 2_000n,
+        paidAmountCents: 3_000n,
+        supplierBalanceAmountCents: 8_000n
+      })
+    ).toEqual({
+      status: "approved_pending_payment",
+      requestedAmountCents: 9_007_199_254_738_993n,
+      approvedAmountCents: 9_007_199_254_738_993n,
+      paidAmountCents: 3_000n
+    });
+  });
+
+  it("includes spot procurement actual payments and outstanding company cash without counting supplier balance", () => {
+    expect(
+      calculateProjectCashPoolBigInt({
+        receiptAmountCents: [20_000n],
+        paymentRequests: [],
+        expenseRequests: [],
+        spotProcurementPayments: [
+          spotProcurementPaymentToMoneyRequestValue({
+            status: "approval_pending",
+            companyPaymentAmountCents: 7_000n,
+            canceledCompanyPaymentAmountCents: 2_000n,
+            paidAmountCents: 0n,
+            supplierBalanceAmountCents: 4_000n
+          }),
+          spotProcurementPaymentToMoneyRequestValue({
+            status: "partially_paid",
+            companyPaymentAmountCents: 8_000n,
+            canceledCompanyPaymentAmountCents: 0n,
+            paidAmountCents: 3_000n,
+            supplierBalanceAmountCents: 9_000n
+          }),
+          spotProcurementPaymentToMoneyRequestValue({
+            status: "paid",
+            companyPaymentAmountCents: 2_000n,
+            canceledCompanyPaymentAmountCents: 0n,
+            paidAmountCents: 2_000n,
+            supplierBalanceAmountCents: 6_000n
+          }),
+          spotProcurementPaymentToMoneyRequestValue({
+            status: "voided",
+            companyPaymentAmountCents: 99_000n,
+            canceledCompanyPaymentAmountCents: 0n,
+            paidAmountCents: 0n,
+            supplierBalanceAmountCents: 99_000n
+          })
+        ]
+      })
+    ).toEqual({
+      actualReceiptsCents: 20_000n,
+      supplierRefundsCents: 0n,
+      actualPaidCents: 5_000n,
+      occupiedCents: 10_000n,
+      availableCents: 5_000n
+    });
+  });
+
+  it("restores available project cash from supplier refunds without relabeling them as project receipts", () => {
+    expect(
+      calculateProjectCashPoolBigInt({
+        receiptAmountCents: [20_000n],
+        supplierRefundAmountCents: [1_500n, 500n],
+        paymentRequests: [],
+        expenseRequests: [],
+        spotProcurementPayments: []
+      })
+    ).toEqual({
+      actualReceiptsCents: 20_000n,
+      supplierRefundsCents: 2_000n,
+      actualPaidCents: 0n,
+      occupiedCents: 0n,
+      availableCents: 22_000n
     });
   });
 });

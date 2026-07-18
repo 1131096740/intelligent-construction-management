@@ -119,6 +119,17 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
     ]
   },
   {
+    label: "零星采购",
+    items: [
+      { label: "零星采购工作台", path: "/零星采购工作台" },
+      {
+        label: "零星材料付款工作台",
+        path: "/零星材料付款工作台"
+      },
+      { label: "收货确认工作台", path: "/收货确认工作台" }
+    ]
+  },
+  {
     label: "资料与治理",
     items: [
       { label: "资料库", path: "/资料库" },
@@ -187,6 +198,10 @@ const settlementRedirect = (to: RedirectTarget) => `/结算管理/${String(to.pa
 const settlementTemplateRedirect = (to: RedirectTarget) =>
   `/结算模板库/${String(to.params.templateId)}`;
 const paymentRedirect = (to: RedirectTarget) => `/付款管理/${String(to.params.paymentId)}`;
+const spotProcurementRedirect = (to: RedirectTarget) =>
+  `/零星采购/${String(to.params.procurementId)}`;
+const spotProcurementPaymentRedirect = (to: RedirectTarget) =>
+  `/零星材料付款/${String(to.params.paymentId)}`;
 
 export const webAdminRoutes: RouteRecordRaw[] = [
   {
@@ -339,6 +354,59 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         component: () => import("../pages/payments/PaymentDetailPage.vue")
       },
       {
+        path: "零星采购工作台",
+        component: () =>
+          import(
+            "../pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
+          ),
+        meta: { title: "零星采购工作台" }
+      },
+      {
+        path: "零星采购/:procurementId",
+        component: () =>
+          import("../pages/spot-procurement/SpotProcurementDetailPage.vue"),
+        meta: {
+          title: "零星采购详情",
+          activeNavigationPath: "/零星采购工作台"
+        }
+      },
+      {
+        path: "零星材料付款工作台",
+        component: () =>
+          import(
+            "../pages/spot-procurement/SpotProcurementPaymentWorkbenchPage.vue"
+          ),
+        meta: { title: "零星材料付款工作台" }
+      },
+      {
+        path: "零星材料付款/:paymentId",
+        component: () =>
+          import(
+            "../pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ),
+        meta: {
+          title: "零星材料付款详情",
+          activeNavigationPath: "/零星材料付款工作台"
+        }
+      },
+      {
+        path: "收货确认工作台",
+        component: () =>
+          import(
+            "../pages/spot-procurement/SpotProcurementReceiptWorkbenchPage.vue"
+          ),
+        meta: { title: "收货确认工作台" }
+      },
+      {
+        path: "零星采购收货/:procurementId",
+        component: () =>
+          import("../pages/spot-procurement/SpotProcurementReceiptPage.vue"),
+        meta: {
+          title: "零星采购收货详情",
+          activeNavigationPath: "/收货确认工作台"
+        }
+      },
+      {
         path: "资料库",
         component: () => import("../pages/archives/ArchiveListPage.vue")
       },
@@ -393,6 +461,23 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       { path: "payments", redirect: "/付款管理" },
       { path: "payments/new", redirect: "/付款工作台" },
       { path: "payments/:paymentId", redirect: paymentRedirect },
+      { path: "spot-procurements", redirect: "/零星采购工作台" },
+      {
+        path: "spot-procurements/:procurementId",
+        redirect: spotProcurementRedirect
+      },
+      {
+        path: "spot-procurement-payments",
+        redirect: "/零星材料付款工作台"
+      },
+      {
+        path: "spot-procurement-payments/:paymentId",
+        redirect: spotProcurementPaymentRedirect
+      },
+      {
+        path: "spot-procurement-receipts",
+        redirect: "/收货确认工作台"
+      },
       { path: "archives", redirect: "/资料库" },
       { path: "project-roster", redirect: "/项目花名册" },
       { path: "search", redirect: "/全局搜索" },
