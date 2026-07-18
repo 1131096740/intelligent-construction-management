@@ -168,13 +168,17 @@ test("主数据台账和组织权限在六档桌面窗口中保持局部滚动",
   await page.setViewportSize({ width: 900, height: 768 });
   await page.goto("/组织权限");
   await page.getByRole("button", { name: "新增人员" }).click();
-  await expect(page.getByText("一次性临时密码", { exact: true })).toBeVisible();
+  const initialPasswordPolicyAlert = page.getByText(
+    "新账号使用公司统一初始密码。请通过线下安全渠道告知本人，并提醒其首次登录立即修改。",
+    { exact: true }
+  );
+  await expect(initialPasswordPolicyAlert).toBeVisible();
   await expectDrawerSettled(page);
   await expectNoDocumentHorizontalOverflow(page);
   await expectNoNestedHorizontalScrollers(page);
   await page.screenshot({ path: path.join(screenshotDir, "organization-user-drawer-900x768.png"), fullPage: true });
   await page.locator(".t-drawer__close-btn:visible").click();
-  await expect(page.getByText("一次性临时密码", { exact: true })).toBeHidden();
+  await expect(initialPasswordPolicyAlert).toBeHidden();
 
   await page.getByRole("button", { name: "岗位管理" }).click();
   await expect(page.getByRole("heading", { name: "已有岗位" })).toBeVisible();

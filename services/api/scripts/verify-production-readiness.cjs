@@ -134,6 +134,19 @@ function checkSeedPassword(env, results) {
   }
 }
 
+function checkInitialTemporaryPassword(env, results) {
+  const password = env.INITIAL_USER_TEMPORARY_PASSWORD;
+  if (!isSet(password)) {
+    add(results, "FAIL", "INITIAL_USER_TEMPORARY_PASSWORD", "missing");
+    return;
+  }
+  if (password.trim().length < 8 || !/\S/u.test(password)) {
+    add(results, "FAIL", "INITIAL_USER_TEMPORARY_PASSWORD", "does not meet minimum password policy");
+    return;
+  }
+  add(results, "PASS", "INITIAL_USER_TEMPORARY_PASSWORD", "set");
+}
+
 function runPsqlScalar(databaseUrl, sql) {
   return execFileSync("psql", [databaseUrl, "--tuples-only", "--no-align", "--command", sql], {
     encoding: "utf8",
@@ -293,6 +306,7 @@ function checkEnv(env, options = {}) {
   checkDatabaseUrl(env, results);
   checkSecrets(env, results);
   checkSeedPassword(env, results);
+  checkInitialTemporaryPassword(env, results);
   checkDatabaseState(env, results, runtimeOptions);
   checkStorage(env, results);
   checkUploadLimit(env, results);
@@ -318,6 +332,7 @@ function selfTest() {
     JWT_ACCESS_SECRET: "a".repeat(40),
     JWT_REFRESH_SECRET: "b".repeat(40),
     FILE_DOWNLOAD_SECRET: "c".repeat(40),
+    INITIAL_USER_TEMPORARY_PASSWORD: "configured-password",
     FILE_STORAGE_DRIVER: "cos",
     COS_SECRET_ID: "AKID".padEnd(40, "x"),
     COS_SECRET_KEY: "SECRET".padEnd(40, "x"),
@@ -397,6 +412,7 @@ function selfTest() {
     assertFail({ FILE_UPLOAD_MAX_BYTES: uploadLimit }, "FILE_UPLOAD_MAX_BYTES");
   }
   assertFail({ FILE_DOWNLOAD_SECRET: "f".repeat(31) }, "FILE_DOWNLOAD_SECRET");
+  assertFail({ INITIAL_USER_TEMPORARY_PASSWORD: "1234567" }, "INITIAL_USER_TEMPORARY_PASSWORD");
   assertFail(
     { FILE_DOWNLOAD_SECRET: "replace-with-long-random-file-download-secret" },
     "FILE_DOWNLOAD_SECRET"

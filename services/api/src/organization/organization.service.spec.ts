@@ -3,6 +3,20 @@ import { Prisma } from "@prisma/client";
 import type { DepartmentTreeNode } from "./organization.service";
 import { OrganizationService } from "./organization.service";
 
+const previousInitialTemporaryPassword = process.env.INITIAL_USER_TEMPORARY_PASSWORD;
+
+beforeEach(() => {
+  process.env.INITIAL_USER_TEMPORARY_PASSWORD = "test-initial-password";
+});
+
+afterEach(() => {
+  if (previousInitialTemporaryPassword === undefined) {
+    delete process.env.INITIAL_USER_TEMPORARY_PASSWORD;
+  } else {
+    process.env.INITIAL_USER_TEMPORARY_PASSWORD = previousInitialTemporaryPassword;
+  }
+});
+
 function createPrisma(overrides: Record<string, unknown[]> = {}) {
   return {
     department: { findMany: jest.fn().mockResolvedValue(overrides.departments ?? []) },
@@ -943,7 +957,6 @@ describe("OrganizationService core writes", () => {
         departmentId: "department-1",
         initialRoleKey: "contract_staff",
         projectId: "project-1",
-        temporaryPassword: "temporary-password",
         confirmationPassword: "current-password"
       })
     ).resolves.toMatchObject({ name: "待本人确认", mustChangePassword: true });
@@ -985,7 +998,6 @@ describe("OrganizationService core writes", () => {
           departmentId: "department-1",
           initialRoleKey,
           ...(initialRoleKey === "engineering_department_member" ? { projectId: "project-1" } : {}),
-          temporaryPassword: "temporary-password",
           confirmationPassword: "current-password"
         })
       ).rejects.toThrow("该岗位必须通过独立岗位预览与授岗流程办理");
@@ -1001,7 +1013,6 @@ describe("OrganizationService core writes", () => {
         name: " 张三 ",
         phone: "13800000001",
         departmentId: " department-1 ",
-        temporaryPassword: " temporary-password ",
         confirmationPassword: " current-password "
       })
     ).resolves.toEqual({
@@ -1014,7 +1025,7 @@ describe("OrganizationService core writes", () => {
     });
 
     expect(harness.auth.confirmPassword).toHaveBeenCalledWith("actor-1", " current-password ");
-    expect(harness.auth.hashPassword).toHaveBeenCalledWith(" temporary-password ");
+    expect(harness.auth.hashPassword).toHaveBeenCalledWith("test-initial-password");
     expect(harness.prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable
     });
@@ -1059,7 +1070,7 @@ describe("OrganizationService core writes", () => {
         initialRoleCount: 0
       }
     });
-    expect(JSON.stringify(harness.audit.record.mock.calls)).not.toContain("temporary-password");
+    expect(JSON.stringify(harness.audit.record.mock.calls)).not.toContain("test-initial-password");
     expect(JSON.stringify(harness.audit.record.mock.calls)).not.toContain("current-password");
     expect(JSON.stringify(harness.audit.record.mock.calls)).not.toContain("bcrypt-temporary-hash");
   });
@@ -1073,7 +1084,6 @@ describe("OrganizationService core writes", () => {
         name: "张三",
         phone: "13800000001",
         departmentId: "department-1",
-        temporaryPassword: "temporary-password",
         confirmationPassword: "wrong-password"
       })
     ).rejects.toThrow("当前密码不正确");
@@ -1083,7 +1093,7 @@ describe("OrganizationService core writes", () => {
     expect(harness.audit.record).not.toHaveBeenCalled();
   });
 
-  it("人员创建临时密码哈希失败时不启动事务", async () => {
+  it("人员创建初始密码策略哈希失败时不启动事务", async () => {
     const harness = createWriteHarness();
     harness.auth.hashPassword.mockRejectedValue(new BadRequestException("新密码至少需要 8 个字符"));
     await expect(
@@ -1091,7 +1101,6 @@ describe("OrganizationService core writes", () => {
         name: "张三",
         phone: "13800000001",
         departmentId: "department-1",
-        temporaryPassword: "short",
         confirmationPassword: "current-password"
       })
     ).rejects.toThrow("新密码至少需要 8 个字符");
@@ -1108,7 +1117,6 @@ describe("OrganizationService core writes", () => {
         name: "张三",
         phone: "13800000001",
         departmentId: "department-1",
-        temporaryPassword: "temporary-password",
         confirmationPassword: "current-password"
       })
     ).rejects.toThrow("audit unavailable");
@@ -1127,7 +1135,6 @@ describe("OrganizationService core writes", () => {
         name: "张三",
         phone: "13800000001",
         departmentId: "department-1",
-        temporaryPassword: "temporary-password",
         confirmationPassword: "current-password"
       })
     ).rejects.toBeInstanceOf(ForbiddenException);
@@ -1145,7 +1152,6 @@ describe("OrganizationService core writes", () => {
         name: "张三",
         phone: "13800000001",
         departmentId: "department-1",
-        temporaryPassword: "temporary-password",
         confirmationPassword: "current-password"
       })
     ).rejects.toThrow(message);
@@ -1164,7 +1170,6 @@ describe("OrganizationService core writes", () => {
         name: "张三",
         phone: "13800000001",
         departmentId: "department-1",
-        temporaryPassword: "temporary-password",
         confirmationPassword: "current-password"
       })
     ).rejects.toThrow(message);

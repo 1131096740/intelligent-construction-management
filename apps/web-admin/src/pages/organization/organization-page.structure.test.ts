@@ -52,8 +52,9 @@ describe("organization user creation structure", () => {
     expect(pageSource).toContain("OrganizationUserCreationDrawer");
     expect(pageSource).toContain("新增人员");
     expect(userCreationDrawerSource).toContain("createOrganizationUser");
-    expect(userCreationDrawerSource).toContain("generateTemporaryPassword");
-    expect(userCreationDrawerSource).toContain("navigator.clipboard.writeText");
+    expect(userCreationDrawerSource).toContain("公司统一初始密码");
+    expect(userCreationDrawerSource).not.toContain("generateTemporaryPassword");
+    expect(userCreationDrawerSource).not.toContain("navigator.clipboard.writeText");
     expect(userCreationDrawerSource).not.toContain("applyOrganizationRoleAddition");
     expect(userCreationDrawerSource).not.toContain("localStorage");
     expect(userCreationDrawerSource).not.toContain("sessionStorage");

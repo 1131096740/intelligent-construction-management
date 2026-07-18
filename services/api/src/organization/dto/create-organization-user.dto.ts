@@ -1,5 +1,5 @@
 import { ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
-import { IsIn, IsOptional, IsString, Matches, MinLength, ValidateIf } from "class-validator";
+import { IsIn, IsOptional, IsString, Matches, ValidateIf } from "class-validator";
 import {
   IsMaxUnicodeTextLength,
   IsRequiredText
@@ -36,15 +36,6 @@ export class CreateOrganizationUserDto {
   @IsString({ message: "项目标识必须是文字" })
   @IsMaxUnicodeTextLength({ max: 128, message: "项目标识不能超过 128 个字符" })
   projectId?: string;
-
-  @IsRequiredText({
-    requiredMessage: "请生成临时密码",
-    typeMessage: "临时密码必须是文字",
-    blankMessage: "临时密码不能全为空白字符"
-  })
-  @MinLength(8, { message: "临时密码至少需要 8 个字符" })
-  @IsMaxUnicodeTextLength({ max: 256, message: "临时密码不能超过 256 个字符" })
-  temporaryPassword!: string;
 
   @IsRequiredText({
     requiredMessage: "请输入当前登录密码",

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("全局管理员安全创建待本人确认人员并在成功后清空临时密码", async ({ page }) => {
+test("全局管理员安全创建待本人确认人员并在成功后清空确认密码", async ({ page }) => {
   let directoryReads = 0;
   let roleApplyCalls = 0;
   const createBodies: Array<Record<string, unknown>> = [];
@@ -120,11 +120,7 @@ test("全局管理员安全创建待本人确认人员并在成功后清空临�
   await page.locator(".t-select__dropdown:visible").getByText("合同部", { exact: true }).click();
   await page.getByPlaceholder("请选择允许授予的初始岗位").click();
   await page.locator(".t-select__dropdown:visible").getByText("财务员", { exact: true }).click();
-  await page.getByRole("button", { name: "显示" }).click();
-  const temporaryPasswordInput = page.getByPlaceholder("请生成临时密码");
-  const temporaryPassword = await temporaryPasswordInput.inputValue();
-  expect(temporaryPassword).toHaveLength(24);
-  await page.getByText("我已通过线下安全渠道妥善记录临时密码", { exact: true }).click();
+  await page.getByText("我已通过线下安全渠道告知公司统一初始密码", { exact: true }).click();
   await page.getByPlaceholder("请验证管理员当前密码").fill(" current-password ");
   await page.getByRole("button", { name: "确认创建人员" }).click();
 
@@ -136,16 +132,13 @@ test("全局管理员安全创建待本人确认人员并在成功后清空临�
       phone: "13800000001",
       departmentId: "department-1",
       initialRoleKey: "finance_staff",
-      temporaryPassword,
       confirmationPassword: " current-password "
     }
   ]);
   expect(createBodies[0]).not.toHaveProperty("name");
   expect(createBodies[0]).not.toHaveProperty("mustChangePassword");
-  await expect(temporaryPasswordInput).not.toBeVisible();
-  await expect(temporaryPasswordInput).toHaveValue("");
   expect(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }))).not.toContain(
-    temporaryPassword
+    "current-password"
   );
-  expect(page.url()).not.toContain(temporaryPassword);
+  expect(page.url()).not.toContain("current-password");
 });

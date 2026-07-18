@@ -154,7 +154,6 @@ describe("OrganizationController", () => {
       name: " 张三 ",
       phone: "13800000001",
       departmentId: "department-1",
-      temporaryPassword: " temporary-password ",
       confirmationPassword: " secret "
     };
     const createBody = { name: " 合同部 ", confirmationPassword: " secret " };
@@ -181,25 +180,25 @@ describe("OrganizationController", () => {
       name: "张三",
       phone: "13800000001",
       departmentId: "department-1",
-      temporaryPassword: "temporary-password",
       confirmationPassword: " current-password "
     };
     await expect(validateBody("createUser", body)).resolves.toEqual(body);
 
     const response = await validationResponse("createUser", {
       ...body,
-      temporaryPassword: "TOP-SECRET-TEMPORARY",
       confirmationPassword: "TOP-SECRET-CURRENT",
       isActive: false,
       mustChangePassword: false,
       roleKeys: ["super_admin"],
-      passwordHash: "client-hash"
+      passwordHash: "client-hash",
+      temporaryPassword: "TOP-SECRET-TEMPORARY"
     });
     expect(response.errors).toEqual([
       "isActive 不是允许提交的字段",
       "mustChangePassword 不是允许提交的字段",
       "roleKeys 不是允许提交的字段",
-      "passwordHash 不是允许提交的字段"
+      "passwordHash 不是允许提交的字段",
+      "temporaryPassword 不是允许提交的字段"
     ]);
     expect(JSON.stringify(response)).not.toContain("TOP-SECRET");
     expect(JSON.stringify(response)).not.toContain("client-hash");
@@ -210,16 +209,12 @@ describe("OrganizationController", () => {
     [{ name: "人".repeat(101) }, "人员姓名不能超过 100 个字符"],
     [{ phone: "12800000001" }, "手机号格式不正确"],
     [{ departmentId: "   " }, "部门标识不能为空白"],
-    [{ temporaryPassword: "1234567" }, "临时密码至少需要 8 个字符"],
-    [{ temporaryPassword: "        " }, "临时密码不能全为空白字符"],
-    [{ temporaryPassword: "密".repeat(257) }, "临时密码不能超过 256 个字符"],
     [{ confirmationPassword: "   " }, "请输入当前登录密码"]
   ])("人员创建拒绝非法字段 %#", async (override, message) => {
     const response = await validationResponse("createUser", {
       name: "张三",
       phone: "13800000001",
       departmentId: "department-1",
-      temporaryPassword: "temporary-password",
       confirmationPassword: "current-password",
       ...override
     });

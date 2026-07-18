@@ -1,9 +1,12 @@
-const { buildUserUpdate, resolveTrialProjectName, trialUsers } = jest.requireActual("../../scripts/create-trial-users.cjs") as {
+export {};
+
+const { buildUserUpdate, initialTemporaryPassword, resolveTrialProjectName, trialUsers } = jest.requireActual("../../scripts/create-trial-users.cjs") as {
   buildUserUpdate: (
     user: { name: string; phone: string },
     passwordHash: string,
     resetExistingPassword: boolean
   ) => Record<string, unknown>;
+  initialTemporaryPassword: (env: Record<string, string>) => string;
   resolveTrialProjectName: (env: Record<string, string>, projectId: string) => string;
   trialUsers: Array<{
     id: string;
@@ -22,12 +25,22 @@ describe("create-trial-users script", () => {
     });
   });
 
-  it("resets trial user password when TRIAL_USER_TEMP_PASSWORD is provided", () => {
+  it("resets trial user password only when the controlled reset switch is provided", () => {
     expect(buildUserUpdate(user, "new-hash", true)).toEqual({
       passwordHash: "new-hash",
       mustChangePassword: true,
       isActive: true
     });
+  });
+
+  it("requires the configured company initial password instead of generating one", () => {
+    expect(() => initialTemporaryPassword({})).toThrow("INITIAL_USER_TEMPORARY_PASSWORD is required");
+    expect(() =>
+      initialTemporaryPassword({ INITIAL_USER_TEMPORARY_PASSWORD: "1234567" })
+    ).toThrow("INITIAL_USER_TEMPORARY_PASSWORD must be at least 8 non-blank characters");
+    expect(
+      initialTemporaryPassword({ INITIAL_USER_TEMPORARY_PASSWORD: "  configured-password  " })
+    ).toBe("configured-password");
   });
 
   it("defines Yang Jixu as chairman and global technical administrator without a project super admin", () => {

@@ -17,7 +17,7 @@
       />
       <t-alert
         theme="warning"
-        title="临时密码只保存在当前抽屉内存中。请先通过线下安全渠道妥善记录；关闭、失败或成功后系统都会立即清空。"
+        title="新账号使用公司统一初始密码。请通过线下安全渠道告知本人，并提醒其首次登录立即修改。"
         :close="false"
       />
       <t-alert
@@ -62,44 +62,12 @@
             placeholder="请选择启用项目"
           />
         </t-form-item>
-        <t-form-item label="一次性临时密码">
-          <div class="temporary-password-row">
-            <t-input
-              :value="form.temporaryPassword"
-              :type="passwordVisible ? 'text' : 'password'"
-              readonly
-              autocomplete="new-password"
-              placeholder="请生成临时密码"
-            />
-            <t-button
-              variant="outline"
-              :disabled="submitting || !form.temporaryPassword"
-              @click="passwordVisible = !passwordVisible"
-            >
-              {{ passwordVisible ? "隐藏" : "显示" }}
-            </t-button>
-            <t-button
-              variant="outline"
-              :disabled="submitting || !form.temporaryPassword"
-              @click="copyTemporaryPassword"
-            >
-              复制
-            </t-button>
-            <t-button
-              variant="outline"
-              :disabled="submitting"
-              @click="regenerateTemporaryPassword"
-            >
-              重新生成
-            </t-button>
-          </div>
-        </t-form-item>
         <t-form-item>
           <t-checkbox
             v-model="form.passwordRecorded"
-            :disabled="submitting || !form.temporaryPassword"
+            :disabled="submitting"
           >
-            我已通过线下安全渠道妥善记录临时密码
+            我已通过线下安全渠道告知公司统一初始密码
           </t-checkbox>
         </t-form-item>
         <t-form-item label="管理员当前密码">
@@ -142,8 +110,7 @@ import {
 } from "../../../api/organization.api";
 import {
   buildOrganizationUserCreatePayload,
-  emptyOrganizationUserCreationForm,
-  generateTemporaryPassword
+  emptyOrganizationUserCreationForm
 } from "../organization-user-creation";
 
 const props = defineProps<{
@@ -160,7 +127,6 @@ const emit = defineEmits<{
 }>();
 
 const form = reactive(emptyOrganizationUserCreationForm());
-const passwordVisible = ref(false);
 const submitting = ref(false);
 const message = ref("");
 const requiresProject = computed(
@@ -176,42 +142,20 @@ watch(requiresProject, (required) => {
 watch(submitting, (busy) => emit("busy-change", busy), { immediate: true });
 watch(
   () => props.visible,
-  (visible) => {
+  () => {
     resetDrawer();
-    if (visible) regenerateTemporaryPassword();
   }
 );
 
 function resetSensitiveFields() {
-  form.temporaryPassword = "";
   form.confirmationPassword = "";
   form.passwordRecorded = false;
-  passwordVisible.value = false;
 }
 
 function resetDrawer() {
   Object.assign(form, emptyOrganizationUserCreationForm());
-  passwordVisible.value = false;
   submitting.value = false;
   message.value = "";
-}
-
-function regenerateTemporaryPassword() {
-  resetSensitiveFields();
-  try {
-    form.temporaryPassword = generateTemporaryPassword();
-  } catch (error) {
-    message.value = error instanceof Error ? error.message : "生成临时密码失败";
-  }
-}
-
-async function copyTemporaryPassword() {
-  if (!form.temporaryPassword) return;
-  try {
-    await navigator.clipboard.writeText(form.temporaryPassword);
-  } catch {
-    message.value = "复制临时密码失败，请手动显示后通过线下安全渠道记录。";
-  }
 }
 
 function requestClose() {
@@ -245,30 +189,13 @@ async function submitCreation() {
   gap: var(--jg-space-md);
 }
 
-.temporary-password-row,
 .drawer-actions {
   display: flex;
   align-items: center;
   gap: var(--jg-space-sm);
 }
 
-.temporary-password-row :deep(.t-input) {
-  flex: 1;
-}
-
 .drawer-actions {
   justify-content: flex-end;
-}
-
-@container organization-drawer (max-width: 560px) {
-  .temporary-password-row {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .temporary-password-row :deep(.t-input),
-  .temporary-password-row :deep(.t-input__wrap) {
-    width: 100%;
-  }
 }
 </style>
