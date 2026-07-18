@@ -219,7 +219,7 @@ M52 基线审计
 - Modify: `services/api/package.json`
 - Modify: `PROGRESS.md`
 
-- [ ] **Step 1: 写脚本静态安全失败测试**
+- [x] **Step 1: 写脚本静态安全失败测试**
 
 ```ts
 it("keeps the governance audit read-only", () => {
@@ -230,13 +230,13 @@ it("keeps the governance audit read-only", () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/database/contract-settlement-governance-readiness-script.spec.ts`
 
 Expected: FAIL，因为脚本尚不存在。
 
-- [ ] **Step 3: 实现只读盘点脚本**
+- [x] **Step 3: 实现只读盘点脚本**
 
 脚本只输出以下计数和明细摘要，不输出文件对象键或密钥：
 
@@ -250,13 +250,13 @@ const checks = {
 };
 ```
 
-- [ ] **Step 4: 运行定向测试和脚本语法检查**
+- [x] **Step 4: 运行定向测试和脚本语法检查**
 
 Run: `node --check services/api/scripts/inspect-contract-settlement-governance-readiness.cjs && pnpm --filter @jiangkong/api test -- --runInBand src/database/contract-settlement-governance-readiness-script.spec.ts`
 
 Expected: PASS；脚本只有 SELECT/只读事务。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add services/api/scripts/inspect-contract-settlement-governance-readiness.cjs services/api/src/database/contract-settlement-governance-readiness-script.spec.ts services/api/package.json PROGRESS.md
@@ -272,7 +272,7 @@ git commit -m "test: 增加合同结算治理只读预检"
 - Create: `services/api/src/company-entity/unified-social-credit-code.ts`
 - Create: `services/api/src/company-entity/unified-social-credit-code.spec.ts`
 
-- [ ] **Step 1: 写角色集合与信用代码失败测试**
+- [x] **Step 1: 写角色集合与信用代码失败测试**
 
 ```ts
 expect(COMPANY_ENTITY_MAINTAINER_ROLES).toEqual([
@@ -287,13 +287,13 @@ expect(normalizeUnifiedSocialCreditCode(" 91350211M000100Y43 ")).toBe("91350211M
 expect(() => assertValidUnifiedSocialCreditCode("91350211M000100Y44")).toThrow("校验位");
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `pnpm --filter @jiangkong/shared-domain test -- src/company-entity.test.ts && pnpm --filter @jiangkong/api test -- --runInBand src/company-entity/unified-social-credit-code.spec.ts`
 
 Expected: FAIL，因为常量和算法不存在。
 
-- [ ] **Step 3: 实现稳定类型和 GB 32100 校验位算法**
+- [x] **Step 3: 实现稳定类型和 GB 32100 校验位算法**
 
 ```ts
 const CHARSET = "0123456789ABCDEFGHJKLMNPQRTUWXY";
@@ -317,13 +317,13 @@ export function assertValidUnifiedSocialCreditCode(raw: string): string {
 }
 ```
 
-- [ ] **Step 4: 运行定向测试**
+- [x] **Step 4: 运行定向测试**
 
 Run: `pnpm --filter @jiangkong/shared-domain test -- src/company-entity.test.ts && pnpm --filter @jiangkong/api test -- --runInBand src/company-entity/unified-social-credit-code.spec.ts`
 
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/shared-domain/src/company-entity.ts packages/shared-domain/src/company-entity.test.ts packages/shared-domain/src/index.ts services/api/src/company-entity/unified-social-credit-code.ts services/api/src/company-entity/unified-social-credit-code.spec.ts
@@ -337,7 +337,7 @@ git commit -m "feat: 定义我方公司主体领域规则"
 - Modify: `services/api/prisma/schema.prisma`
 - Create: `services/api/src/database/company-entity-governance-schema-verification.spec.ts`
 
-- [ ] **Step 1: 写 schema 失败测试**
+- [x] **Step 1: 写 schema 失败测试**
 
 ```ts
 expect(schema).toContain("model CompanyEntityVersion");
@@ -347,13 +347,13 @@ expect(schema).toContain("companyEntityCreditCodeSnapshot");
 expect(migration).not.toContain("UPDATE \"CompanyEntity\" SET \"unifiedSocialCreditCode\"");
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/database/company-entity-governance-schema-verification.spec.ts`
 
 Expected: FAIL，因为 M53 尚不存在。
 
-- [ ] **Step 3: 添加兼容存量空值的 Prisma 模型**
+- [x] **Step 3: 添加兼容存量空值的 Prisma 模型**
 
 ```prisma
 model CompanyEntity {
@@ -399,13 +399,13 @@ companyEntityRegisteredAddressSnapshot String?
 
 M53 只回填可可靠推导的名称、ID 和版本链接；旧空/非法信用代码保持空并标记 `legacy_incomplete`。使用部分唯一索引保证非空规范代码唯一。
 
-- [ ] **Step 4: 验证 Prisma 和迁移 SQL**
+- [x] **Step 4: 验证 Prisma 和迁移 SQL**
 
 Run: `pnpm --filter @jiangkong/api prisma validate && pnpm --filter @jiangkong/api exec prisma format && pnpm --filter @jiangkong/api exec prisma generate && pnpm --filter @jiangkong/api test -- --runInBand src/database/company-entity-governance-schema-verification.spec.ts`
 
 Expected: PASS；M52 diff 为空。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add services/api/prisma/schema.prisma services/api/prisma/migrations/20260717110000_company_entity_versions_and_contract_subject_snapshots/migration.sql services/api/src/database/company-entity-governance-schema-verification.spec.ts
@@ -423,7 +423,7 @@ git commit -m "feat: 增加公司主体版本与合同快照结构"
 - Modify: `services/api/src/company-entity/company-entity.controller.ts`
 - Modify: `services/api/src/company-entity/company-entity.module.ts`
 
-- [ ] **Step 1: 写公司级权限和版本历史失败测试**
+- [x] **Step 1: 写公司级权限和版本历史失败测试**
 
 ```ts
 await expect(access.assertCanMaintain("project-contract-user")).rejects.toThrow("公司级全局岗位");
@@ -437,13 +437,13 @@ expect(tx.companyEntityVersion.create).toHaveBeenCalledWith(expect.objectContain
 }));
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/company-entity/company-entity-access.spec.ts src/company-entity/company-entity.service.spec.ts`
 
 Expected: FAIL。
 
-- [ ] **Step 3: 实现 global-only 判定和事务版本写入**
+- [x] **Step 3: 实现 global-only 判定和事务版本写入**
 
 ```ts
 const positions = await prisma.userPosition.findMany({
@@ -460,7 +460,7 @@ if (!roleKey) throw new ForbiddenException("当前账号没有公司级全局岗
 
 新增、修改、启停都锁定主体行，递增 `currentVersionNo`，创建不可覆盖历史，写入 `company_entity.create/update/disable/enable` 审计。名称重复只返回 warning；信用代码冲突返回明确下一步。
 
-- [ ] **Step 4: 添加兼容与管理路由**
+- [x] **Step 4: 添加兼容与管理路由**
 
 ```ts
 @Get() listActive() { return this.companyEntities.listActive(); }
@@ -477,7 +477,7 @@ if (!roleKey) throw new ForbiddenException("当前账号没有公司级全局岗
 @Post(":id/status") updateStatus(...) { return this.companyEntities.updateStatus(id, user.id, body); }
 ```
 
-- [ ] **Step 5: 运行定向测试**
+- [x] **Step 5: 运行定向测试**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/company-entity/company-entity-access.spec.ts src/company-entity/company-entity.service.spec.ts src/auth/guards/permission.guard.spec.ts`
 
@@ -511,7 +511,7 @@ git commit -m "feat: 完善我方公司主体维护与历史"
 - Modify: `services/api/src/company-entity/company-entity.service.ts`
 - Modify: `services/api/src/company-entity/company-entity.service.spec.ts`
 
-- [ ] **Step 1: 写路由、权限、无导出和 API 失败测试**
+- [x] **Step 1: 写路由、权限、无导出和 API 失败测试**
 
 ```ts
 expect(visibleAdminNavigationItems(["finance_staff"], ["finance_staff"]).map(i => i.path))
@@ -523,13 +523,13 @@ expect(pageSource).not.toMatch(/导出|exportCompany/);
 expect(formSource).not.toMatch(/法定代表人|联系电话|银行账户|公章图片|营业执照附件|备注/);
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `pnpm --filter @jiangkong/web-admin test -- src/api/company-entity.api.test.ts src/pages/company-entities/company-entity.config.test.ts src/routes/index.test.ts`
 
 Expected: FAIL。
 
-- [ ] **Step 3: 实现 API client 和纯权限配置**
+- [x] **Step 3: 实现 API client 和纯权限配置**
 
 ```ts
 export const companyEntityMaintainerRoleKeys = [
@@ -548,19 +548,19 @@ export function companyEntityCapabilities(globalRoleKeys: readonly RoleKey[]) {
 }
 ```
 
-- [ ] **Step 4: 实现台账、表单和历史抽屉**
+- [x] **Step 4: 实现台账、表单和历史抽屉**
 
 使用 `BusinessPageHeader`、`BusinessTableToolbar`、`BusinessFeedback`、`t-table`、`t-drawer` 和 `SensitiveActionDialog`。页面显示启用/停用、资料待补全、当前与历史搜索，不提供删除、回滚或导出。历史显示“操作人姓名 · 公司级岗位 · 时间 · 动作 · 前后差异”，响应不返回原始操作人 UUID。将 `SettingsPage.vue` 的旧公司主体维护区和 `core-flow-read.api.ts` 旧双 API 删除，避免双入口。
 
 列表和历史请求使用序号加查询/主体快照丢弃旧响应；筛选变化同步失效旧 token，确保 TDesign 清空事件随后启动的新查询不会被异步 watch 误杀。表单在函数入口阻断重复提交，失败后保持抽屉与三项输入。
 
-- [ ] **Step 5: 登记响应式治理并运行检查**
+- [x] **Step 5: 登记响应式治理并运行检查**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/company-entity/company-entity.service.spec.ts src/company-entity/company-entity-access.spec.ts && pnpm --filter @jiangkong/web-admin test -- src/api/company-entity.api.test.ts src/pages/company-entities/company-entity.config.test.ts src/routes/index.test.ts && pnpm --filter @jiangkong/web-admin typecheck && pnpm --filter @jiangkong/web-admin typecheck:e2e && pnpm --filter @jiangkong/web-admin lint && pnpm --filter @jiangkong/web-admin check:ui && pnpm --filter @jiangkong/web-admin build && CI=true pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.config.ts e2e/company-entity-ledger.e2e.ts`
 
 Expected: PASS；新页是 ledger，只有表格区域横向滚动；清空查询采用最新响应、A 的延迟历史不能覆盖 B、双击保存只产生一次 POST。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add services/api/src/company-entity/company-entity.service* apps/web-admin/src/api/company-entity.api* apps/web-admin/src/api/core-flow-read.api.ts apps/web-admin/src/pages/company-entities apps/web-admin/src/routes apps/web-admin/src/pages/settings/SettingsPage.vue apps/web-admin/scripts/check-ui-rules.mjs apps/web-admin/e2e/company-entity-ledger.e2e.ts
@@ -597,7 +597,7 @@ git commit -m "feat: 增加我方公司主体独立台账"
 - Modify: `apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts`
 - Modify: `apps/web-admin/src/pages/contracts/workbench/use-contract-draft.test.ts`
 
-- [ ] **Step 1: 写停用、版本冻结和自由文本负向测试**
+- [x] **Step 1: 写停用、版本冻结和自由文本负向测试**
 
 ```ts
 await expect(service.submitApproval("version-1", "owner-1", input)).rejects.toThrow(
@@ -616,13 +616,13 @@ expect(componentSource).toContain("companyEntityId");
 expect(componentSource).not.toMatch(/emit\([^\n]*myCompanyEntity/u);
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract.service.spec.ts src/contract-workbench/contract-readiness.service.spec.ts src/contract-workbench/contract-workbench.service.spec.ts && pnpm --filter @jiangkong/web-admin test -- src/api/contract-workbench.api.test.ts src/pages/contracts/workbench/use-contract-draft.test.ts`
 
 Expected: FAIL。
 
-- [ ] **Step 3: 服务端派生结构化主体事实，提交时锁定当前版本**
+- [x] **Step 3: 服务端派生结构化主体事实，提交时锁定当前版本**
 
 ```ts
 const entity = await tx.companyEntity.findUnique({
@@ -641,7 +641,7 @@ if (!entityVersion) throw new BadRequestException("我方公司主体版本缺�
 
 提交审批前在同一事务中锁定 `CompanyEntity`，比较草稿记录的主体版本号与 `currentVersionNo`；主体停用、资料不完整、版本漂移或版本缺失时均阻断，并提示回到基本信息重新同步。原合同将 M53 五个快照字段从不可变版本写入同一次 `contractVersion.updateMany`；变更、补充协议继承原有效版本的冻结快照，绝不从当前主体档案刷新，历史空值也不得擅自补齐。
 
-- [ ] **Step 4: 将基本信息改为启用主体选择器**
+- [x] **Step 4: 将基本信息改为启用主体选择器**
 
 组件使用 TDesign Select 保存 `companyEntityId`，显示名称、信用代码、注册地址；候选读模型补充 `currentVersionNo` 供客户端识别已保存版本是否漂移。保留旧 `myCompanyEntity` 只读兼容映射，不能继续作为新合同输入事实。主体停用或更新时显示同步提示；重新选择或同步都递增 revision 并使旧预览失效，未计算内容不得伪装为有效结果。
 
@@ -649,13 +649,13 @@ if (!entityVersion) throw new BadRequestException("我方公司主体版本缺�
 
 `ContractPartySection` 对受治理的新草稿移除 `party_a` 选项，`BusinessPartyService` 同时在后端拒绝新增或改为 `party_a`；历史合同仍可读取已有记录。`ContractDocumentService` 在提交前优先读取草稿结构化主体、提交后只读取冻结快照；仅当历史版本两者都不存在时，才允许旧 `party_a` 兜底。
 
-- [ ] **Step 5: 运行定向测试**
+- [x] **Step 5: 运行定向测试**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract.service.spec.ts src/contract/contract-change-policy.spec.ts src/contract-workbench/contract-readiness.service.spec.ts src/contract-workbench/contract-workbench.service.spec.ts src/business-party/business-party.service.spec.ts src/contract-document/contract-document.service.spec.ts src/company-entity/company-entity.service.spec.ts && pnpm --filter @jiangkong/web-admin test -- src/api/contract-workbench.api.test.ts src/pages/contracts/workbench/use-contract-draft.test.ts`
 
 Expected: PASS。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add packages/shared-domain/src/contract-workbench.ts services/api/src/contract services/api/src/contract-workbench services/api/src/business-party services/api/src/contract-document services/api/src/company-entity apps/web-admin/src/api/company-entity.api.ts apps/web-admin/src/api/contract-workbench.api* apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue apps/web-admin/src/pages/contracts/workbench
@@ -700,7 +700,7 @@ git commit -m "feat: 冻结合同我方主体版本"
 - Modify: `services/api/src/auth/guards/permission.guard.spec.ts`
 - Create: `services/api/src/database/approval-review-concurrency.spec.ts`
 
-- [ ] **Step 1: 写候选人员和签名漂移失败测试**
+- [x] **Step 1: 写候选人员和签名漂移失败测试**
 
 ```ts
 expect(canActOnFrozenApprovalNode(
@@ -713,13 +713,13 @@ expect(files.getFileBuffer).not.toHaveBeenCalledWith("current-signature");
 
 还要先写三条端到端单元边界：非冻结同岗位人员不出现在待办且直接审批失败；换签后重新生成/下载审批单和刷新结算 PDF 仍读取审批当时文件；新受治理实例缺少有效签名或 64 位 SHA-256 时批准失败。再写跨入口一致性和并发边界：调岗后的冻结候选、合法 assignment 和常驻委托在详情、待办、Guard、POST 四处结果一致；空候选字段不能退回 legacy；多岗位节点只有兼容并集而无法唯一确定岗位时 fail closed；两个连接同时批准同一节点只能一次推进并只产生一条该节点 approve 日志。
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/approval/approval-node-access.spec.ts src/approval/approval-review-identity.spec.ts src/approval/approval-signature-snapshot.spec.ts src/approval/approval-form.service.spec.ts src/core-flow/approval-timeline-read.spec.ts src/contract/contract.service.spec.ts src/settlement/settlement.service.spec.ts src/payment/payment-request.service.spec.ts src/me/me.service.spec.ts src/database/approval-signature-snapshot-schema-verification.spec.ts`
 
 Expected: FAIL。
 
-- [ ] **Step 3: 增加可空历史快照列**
+- [x] **Step 3: 增加可空历史快照列**
 
 ```prisma
 model ApprovalActionLog {
@@ -748,7 +748,7 @@ interface FrozenApprovalNode {
 
 M54 四列全部可空，无默认值、无历史回填、无 destructive DML。旧 role-only 节点与既有在途实例维持原资格，不补候选人；显式存在 `candidateUserIdsByRole`、`candidateUserIds` 或 `selectedUserId` 任一字段的新节点均启用人员冻结。迁移验证必须覆盖 M53→M54 顺序、事务边界、nullable、无默认值/回填，并包含删列、加默认值和注入回填 SQL 的变异测试。
 
-- [ ] **Step 4: 统一候选人、指派和常驻委托的审批身份解析**
+- [x] **Step 4: 统一候选人、指派和常驻委托的审批身份解析**
 
 共享解析器返回 `{ approvedRoleKey, representedUserId }`，并同时服务于详情权限、待办、合同/结算/付款真实 review API：
 
@@ -765,7 +765,7 @@ M54 四列全部可空，无默认值、无历史回填、无 destructive DML。
 
 三类 review 在事务内使用固定锁序：`ContractVersion/Settlement/PaymentRequest → 对应 ApprovalInstance → User → FileObject`。锁后重新读当前节点再解析身份、冻结签名、推进实例并写日志；PDF 字节读取与渲染不放在审批锁事务内。转交/节点委托同样以冻结身份判断发起人，接收人必须为启用账号；受治理 assignment 的 `fromUserId/fromRoleKey` 必须对应冻结候选。
 
-- [ ] **Step 5: 审批动作在事务内写入签名快照，所有 PDF 只读快照**
+- [x] **Step 5: 审批动作在事务内写入签名快照，所有 PDF 只读快照**
 
 ```ts
 const identity = await resolveApprovalReviewIdentity(/* frozen node + actor + delegation */);
@@ -790,13 +790,13 @@ await tx.approvalActionLog.create({
 
 `ApprovalFormService` 的归档生成和动态下载、以及现有 `SettlementService.buildSettlementApprovalRows()` 都只能读取日志的 `signatureFileIdSnapshot`，岗位优先读取 `approvedRoleKey`；旧日志无快照时固定显示“历史签名未冻结”，不得回查当前 `User.signatureFileId` 或当前岗位伪造历史。已存在的历史 `PdfDocument` 不覆盖、不重写。审批时间线同样优先读新列，旧日志才退回既有 metadata。
 
-- [ ] **Step 6: 运行定向测试和 Prisma 验证**
+- [x] **Step 6: 运行定向测试和 Prisma 验证**
 
 Run: `pnpm --filter @jiangkong/api prisma generate && pnpm --filter @jiangkong/api prisma validate && pnpm --filter @jiangkong/api test -- --runInBand src/approval/approval-node-access.spec.ts src/approval/approval-review-identity.spec.ts src/approval/approval-signature-snapshot.spec.ts src/approval/approval-self-review.spec.ts src/approval/approval-form.service.spec.ts src/core-flow/approval-timeline-read.spec.ts src/contract/contract.service.spec.ts src/contract/contract-read.service.spec.ts src/settlement/settlement.service.spec.ts src/settlement/settlement-read.service.spec.ts src/payment/payment-request.service.spec.ts src/payment/payment-read.service.spec.ts src/me/me.service.spec.ts src/auth/guards/permission.guard.spec.ts src/database/approval-signature-snapshot-schema-verification.spec.ts src/database/approval-review-concurrency.spec.ts && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint && pnpm --filter @jiangkong/api check:business-errors`
 
 Expected: PASS；非冻结同岗位人三处均无权，冻结候选人及合法指派/委托可处理；旧 role-only `frozenNodes` 仍能读取和处理但不会伪造历史签名。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add services/api/prisma/schema.prisma services/api/prisma/migrations/20260717120000_approval_assignee_and_signature_snapshots services/api/src/approval services/api/src/core-flow/approval-timeline-read* services/api/src/contract/contract.service* services/api/src/contract/contract-read.service* services/api/src/settlement/settlement.service* services/api/src/settlement/settlement-read.service* services/api/src/payment/payment-request.service* services/api/src/payment/payment-read.service* services/api/src/me/me.service* services/api/src/auth/guards/permission.guard* services/api/src/database/approval-signature-snapshot-schema-verification.spec.ts services/api/src/database/approval-review-concurrency.spec.ts
@@ -818,7 +818,7 @@ git commit -m "feat: 冻结审批人员与签名事实"
 - Modify: `apps/web-admin/src/pages/settings/approval-flow-readonly.config.ts`
 - Modify: `apps/web-admin/src/pages/settings/approval-flow-readonly.config.test.ts`
 
-- [ ] **Step 1: 写五类路线和主管发起失败测试**
+- [x] **Step 1: 写五类路线和主管发起失败测试**
 
 ```ts
 expect(await routes.freezeNewContractRoute(tx, lockedMaterialContract, "staff-1")).toMatchObject([
@@ -834,7 +834,7 @@ await expect(routes.freezeNewContractRoute(tx, lockedLaborContract, "staff-1"))
   .rejects.toThrow("所属项目的项目总工配置缺失或冲突");
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `pnpm --filter @jiangkong/shared-domain test -- src/permissions.test.ts && pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-approval-route.service.spec.ts src/contract/contract.service.spec.ts`
 
@@ -846,7 +846,7 @@ Expected: FAIL。
 
 同时修复已确认的无总价框架真实提交阻断：仅 `pricingNature=framework && amountLimitType=unlimited` 时跳过合同总金额和业主合同额度占用，仍强制清单范围、含税单价、税率、付款条款、签前文件和审批路线；其他 `amountCents<=0` 继续 fail closed。增加从工作台保存到提交审批完整测试，不能只测 readiness。
 
-- [ ] **Step 3: 实现分类路线定义**
+- [x] **Step 3: 实现分类路线定义**
 
 ```ts
 const NEW_CONTRACT_ROUTE: Record<ContractTypeKey, RouteNodeDefinition[]> = {
@@ -862,17 +862,17 @@ const NEW_CONTRACT_ROUTE: Record<ContractTypeKey, RouteNodeDefinition[]> = {
 
 公司级节点从 `UserPosition(projectId=null)` 加 `Position.key` 和启用用户解析；项目经理与项目总工仅从合同所属项目的 `ProjectMember` 解析。项目总工先在未排除申请人的完整启用集合上要求 exactly one，再执行申请人排除；其他节点直接冻结全部剩余启用候选且至少一人，董事长/总经理或签只要求两种岗位剩余候选合计至少一人。主管发起时仅当申请人持有公司级 `contract_director` 才删除首节点。未知或空 `contractTypeKey` 必须 fail closed。所有节点写显式 `candidateUserIdsByRole`（OR 节点保留两个岗位 key，即使某个为空）与去重稳定排序的并集，后续 review 不重查现任岗位。原合同缺路线依赖必须 fail closed，绝不回退“仅董事长/总经理”；`ContractModule` 显式注册 provider。
 
-- [ ] **Step 4: 补粗粒度入口岗位但不扩大其他写权限**
+- [x] **Step 4: 补粗粒度入口岗位但不扩大其他写权限**
 
 `contract.approve` 只增加 `material_director`、`comprehensive_director`、`engineering_director`，具体节点仍由冻结人员校验；不把这些岗位加入 create、submit、archive 或 tax confirm。
 
-- [ ] **Step 5: 运行定向测试**
+- [x] **Step 5: 运行定向测试**
 
 Run: `pnpm --filter @jiangkong/shared-domain test -- src/permissions.test.ts && pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-approval-route.service.spec.ts src/contract/contract.service.spec.ts src/approval/approval-node-access.spec.ts src/approval/approval-self-review.spec.ts src/me/me.service.spec.ts src/auth/guards/permission.guard.spec.ts src/payment/payment-request.service.spec.ts src/project-expense/project-expense.service.spec.ts && pnpm --filter @jiangkong/web-admin test -- src/pages/settings/approval-flow-readonly.config.test.ts && pnpm --filter @jiangkong/shared-domain typecheck && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint && pnpm --filter @jiangkong/web-admin typecheck && pnpm --filter @jiangkong/web-admin lint && pnpm --filter @jiangkong/web-admin check:ui`
 
 Expected: PASS；只读设置拆为五张新合同卡并完整展示各自路线，只有通用合同含综合部主管；合同变更规则保持到 Task 14 再改。付款和项目支出既有领导自审测试不变。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add packages/shared-domain/src/permissions* services/api/src/contract apps/web-admin/src/pages/settings/approval-flow-readonly.config*
@@ -890,7 +890,7 @@ git commit -m "feat: 按合同类型冻结审批路线"
 - Create: `services/api/src/contract/contract-formal-pdf-inspector.ts`
 - Create: `services/api/src/contract/contract-formal-pdf-inspector.spec.ts`
 
-- [ ] **Step 1: 写模型和原字节失败测试**
+- [x] **Step 1: 写模型和原字节失败测试**
 
 ```ts
 expect(migration).toContain('FOREIGN KEY ("contractVersionId") REFERENCES "ContractVersion"');
@@ -902,13 +902,13 @@ expect(migration).toMatch(/CHECK[\s\S]*"contentSha256"[\s\S]*64/u);
 expect((await inspectSignedPdf(source)).sha256).toBe(createHash("sha256").update(source).digest("hex"));
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-formal-pdf-inspector.spec.ts src/database/contract-governance-files-schema-verification.spec.ts`
 
 Expected: FAIL。
 
-- [ ] **Step 3: 建立增量模型**
+- [x] **Step 3: 建立增量模型**
 
 ```prisma
 model ContractFormalFile {
@@ -984,17 +984,17 @@ model ContractSealTask {
 
 迁移为四个新模型补齐到 `ContractVersion`、`FileObject`、`User`、授权来源版本、授权记录、复用来源版本和 self-supersedes 的外键（删除策略以保留业务证据为先）；`purpose/status/side/seal task status` 使用 CHECK，SealTask 支持 `cancelled` 并要求取消人/时间/原因成组存在；正式文件和授权文件都保存 `pageCount > 0`、64 位小写十六进制 SHA-256、active/invalidated/superseded 状态、失效原因和替代关系；正式文件另保存不可变声明与最终归档确认快照、双方操作人和时间。`sourceRevision >= 1`、`supersedesId != id`；required 与 authorizationId 必须成对一致；`ContractSealTask(status, handlerUserId)` 建索引；使用 partial unique index 保证每个合同版本、每种 purpose 最多一个 active 正式文件。授权关联保持每版本每 side 唯一，数据库约束与服务事务共同防止失配。
 
-- [ ] **Step 4: 只读检查 PDF**
+- [x] **Step 4: 只读检查 PDF**
 
 `contract-formal-pdf-inspector.ts` 使用 `pdf-lib` 加载原 buffer，仅返回 SHA、页数、页面尺寸/旋转；不保存 `PDFDocument.save()` 输出。
 
-- [ ] **Step 5: 运行 Prisma 和定向测试**
+- [x] **Step 5: 运行 Prisma 和定向测试**
 
 Run: `pnpm --filter @jiangkong/api prisma generate && pnpm --filter @jiangkong/api prisma validate && pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-formal-pdf-inspector.spec.ts src/database/contract-governance-files-schema-verification.spec.ts && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint`
 
 Expected: PASS；迁移顺序、事务、外键、CHECK、partial unique、无默认猜测/回填/删除以及删约束、删索引、注入 destructive DML 的变异测试均通过。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add services/api/prisma/schema.prisma services/api/prisma/migrations/20260717130000_contract_formal_documents_authorizations_and_seal_tasks services/api/src/contract/contract-formal-pdf-inspector* services/api/src/database/contract-governance-files-schema-verification.spec.ts
@@ -1023,7 +1023,7 @@ git commit -m "feat: 增加合同签署与授权证据结构"
 - Modify: `services/api/src/contract/contract.service.spec.ts`
 - Modify: `packages/shared-domain/src/contract-workbench.ts`
 
-- [ ] **Step 1: 写四种授权组合和修订一致性失败测试**
+- [x] **Step 1: 写四种授权组合和修订一致性失败测试**
 
 ```ts
 await expect(readiness.check(tx, version, contract, true)).resolves.toMatchObject({
@@ -1033,13 +1033,13 @@ await expect(files.assertReadyForSubmission(version)).rejects.toThrow("正式审
 expect(await authorizations.ready(versionId)).toEqual({ companyRequired: false, counterpartyRequired: false, ready: true });
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-formal-file.service.spec.ts src/contract/contract-authorization.service.spec.ts src/contract-workbench/contract-readiness.service.spec.ts src/contract/contract.service.spec.ts`
 
 Expected: FAIL。
 
-- [ ] **Step 3: 实现正式审批文件上传与声明**
+- [x] **Step 3: 实现正式审批文件上传与声明**
 
 ```ts
 await formalFiles.uploadApprovalVersion(versionId, actorUserId, {
@@ -1057,23 +1057,23 @@ await formalFiles.uploadApprovalVersion(versionId, actorUserId, {
 
 业务关联服务复用现有 `/files`，但必须读取原始 buffer 后额外验证：`storageStatus=active`、文件由当前经办人上传、声明 MIME 为 PDF 且真实字节可由 `pdf-lib` 解析、记录大小等于 buffer 长度且未超限、已有 `contentSha256` 为合法 64 位并与原字节重算一致、页数大于 0；扩展名伪装、错误 MIME、破损/加密/零页、SHA 缺失或不符、非本人上传、失效文件都拒绝。检查只读原 buffer，不调用 `PDFDocument.save()` 重写原件。声明快照、声明人和时间写 M55。
 
-- [ ] **Step 4: 实现授权选择与复用**
+- [x] **Step 4: 实现授权选择与复用**
 
 我方和乙方各保存一条明确 link；link 不存在表示“尚未选择”，绝不能解释为 `required=false`。写接口接收 `expectedRevision`，锁版本并校验经办人/可编辑状态；语义实际变化时原子递增 revision、清空 readiness，使旧正式 PDF 自动过期，相同请求重试幂等且不重复递增。`required=false` 时 authorization 必须为空，`required=true` 时必须关联新上传或可复用授权。复用只新增 link，不复制文件/授权记录；校验 `originContractVersionId` 与来源版本同属当前 Contract、side 和代理人一致、来源版本为 effective/superseded 且确有该 link、文件仍 active/SHA 可读，范围摘要明确覆盖签署、履行、变更及补充协议。来源 draft、跨合同、失效文件或只凭 authorizationId 均拒绝。
 
-- [ ] **Step 5: 合并到提交事务**
+- [x] **Step 5: 合并到提交事务**
 
 `submitApproval()` 在改变状态和创建实例前依次验证主体快照、正式文件、授权和审批人员。`formalFiles.assertReadyForSubmission(tx, lockedVersion)` 与 `authorizations.assertReady(tx, lockedVersion)` 必须使用提交事务的同一 `tx`；文件/授权写入也锁同一版本或使用 revision/status CAS，覆盖并发上传、替换、授权修改、双击提交和网络重试。任何失败保持草稿及已填内容。若门禁阻断需要审计，不得在随后抛错回滚的同一事务中假记录；使用 tagged denial 让审计事务提交后再在外层抛出脱敏业务错误，或在回滚后单独记录并测试确实持久。
 
 固定锁序为 `Contract → ContractVersion → Authorization/FormalFile → FileObject`。`freeze()` 保存正式文件 ID/SHA/revision 和双方授权快照；相同 fileId/revision/声明的关联重试返回原记录，并发上传只留下一个 active。`contractGovernanceVersion=null` 严格走旧提交链，`=1` 缺任何新事实均 fail closed，禁止旧接口或旧 `ContractArchiveFile` 冒充新正式文件。
 
-- [ ] **Step 6: 运行定向测试**
+- [x] **Step 6: 运行定向测试**
 
 Run: `pnpm --filter @jiangkong/shared-domain test && pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-formal-file.service.spec.ts src/contract/contract-authorization.service.spec.ts src/contract/contract.controller.spec.ts src/contract-workbench/contract-readiness.service.spec.ts src/contract-workbench/contract-workbench.service.spec.ts src/contract/contract.service.spec.ts src/file/file.service.spec.ts && pnpm --filter @jiangkong/shared-domain typecheck && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint && pnpm --filter @jiangkong/api check:business-errors`
 
 Expected: PASS。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add packages/shared-domain/src/contract-workbench.ts services/api/src/contract services/api/src/contract-workbench
@@ -1099,7 +1099,7 @@ git commit -m "feat: 增加合同签前文件与授权门禁"
 - Modify: `apps/web-admin/src/pages/contracts/contract-workbench-canvas.structure.test.ts`
 - Modify: `apps/web-admin/e2e/contract-workbench-canvas.e2e.ts`
 
-- [ ] **Step 1: 写 API、TDesign Upload 和结构失败测试**
+- [x] **Step 1: 写 API、TDesign Upload 和结构失败测试**
 
 ```ts
 expect(apiRequest).toHaveBeenCalledWith(`/contracts/${versionId}/formal-files/approval`, expect.anything());
@@ -1108,13 +1108,13 @@ expect(formalSectionSource).not.toContain('type="file"');
 expect(workbenchSource).toContain("ContractAuthorizationSection");
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `pnpm --filter @jiangkong/web-admin test -- src/api/contract-workbench.api.test.ts src/pages/contracts/contract-workbench-canvas.structure.test.ts`
 
 Expected: FAIL。
 
-- [ ] **Step 3: 实现读模型、两块域组件和唯一提交闭环**
+- [x] **Step 3: 实现读模型、两块域组件和唯一提交闭环**
 
 顺序固定为“合同文档预览 → 双方授权选择/授权文件 → 乙方签章完整审批 PDF → 提交就绪”。共享工作台读模型返回两侧授权选择、关联文件、正式文件、sourceRevision/声明和 readiness；缺任一 side link 显示“尚未选择”，不伪装为“不需要”。页面只保留“提交审批”为主操作，生成/下载/上传为次级；编号规则与提交确认迁入工作台，详情页不保留并列提交主动作。上传或关联失败不清空主体、税务、清单和授权选择。
 
@@ -1122,13 +1122,13 @@ TDesign Upload 使用自定义 request，禁止默认上传到未知地址；同
 
 `saveNow()/flush()` 在 clean 状态必须 no-op，不能因为点击提交把已上传的 R 版正式 PDF 变成 R+1 过期；dirty 时返回明确成功/失败，失败或冲突必须阻断 readiness/submit。授权或正式文件 mutation 前先 flush 普通草稿并 reload revision，授权成功后重载工作台，避免 autosave 与授权 revision 互相制造 409。点击提交先等待 flush 成功，再刷新 readiness，最后提交冻结事实；详情旧主动作只导航到工作台，不保留死的第二提交入口。
 
-- [ ] **Step 4: 运行 Web 定向测试和 UI 检查**
+- [x] **Step 4: 运行 Web 定向测试和 UI 检查**
 
 Run: `pnpm --filter @jiangkong/web-admin test -- src/api/contract-workbench.api.test.ts src/api/core-flow-read.api.test.ts src/pages/contracts/contract-workbench-canvas.structure.test.ts src/pages/contracts/workbench/use-contract-draft.test.ts && pnpm --filter @jiangkong/web-admin typecheck && pnpm --filter @jiangkong/web-admin typecheck:e2e && pnpm --filter @jiangkong/web-admin lint && pnpm --filter @jiangkong/web-admin check:ui && pnpm --filter @jiangkong/web-admin build && CI=true pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.config.ts e2e/contract-workbench-canvas.e2e.ts`
 
 Expected: PASS；不扩大原生文件控件 allowlist；浏览器覆盖授权四组合、清空/重选、文件上传两步、关联失败复用、双提交和提交前保存。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add apps/web-admin/src/api/contract-workbench.api* apps/web-admin/src/api/core-flow-read.api* apps/web-admin/src/pages/contracts apps/web-admin/e2e/contract-workbench-canvas.e2e.ts
@@ -1162,7 +1162,7 @@ git commit -m "feat: 完善合同签前文件工作台"
 - Modify: `packages/shared-domain/src/permissions.ts`
 - Modify: `packages/shared-domain/src/permissions.test.ts`
 
-- [ ] **Step 1: 写状态和职责分离失败测试**
+- [x] **Step 1: 写状态和职责分离失败测试**
 
 ```ts
 expect(await service.reviewApproval(versionId, finalApprover, { decision: "approve" }))
@@ -1175,37 +1175,37 @@ await expect(Promise.all([seal.approve(versionId, director), seal.approve(versio
   .rejects.toThrow("用章任务已处理");
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-seal.service.spec.ts src/contract/contract-status.service.spec.ts src/contract/contract.service.spec.ts src/approval/approval-form.service.spec.ts`
 
 Expected: FAIL。
 
-- [ ] **Step 3: 修正状态机和用章任务**
+- [x] **Step 3: 修正状态机和用章任务**
 
 最终审批事务按 `contractVersionId` 幂等创建 `ContractSealTask(status='pending_approval')`，`handlerUserId` 固定为该审批实例的申请人；重复最终回调不得创建第二任务或第二份审计。综合部主管“同意用章”后任务和版本原子进入 `in_seal`，经办人确认线下签字盖章完成后进入 `seal_approved_pending_archive`。动作分别审计为 `contract.seal.approve` 和 `contract.seal.complete`，系统不创建印章实体、编号或图片档案。
 
 新增真实 controller/DTO/module 接线：`seal/approve`、`seal/complete`、双方最终版业务关联上传、退回资料补正和归档确认。文件字节仍经既有通用 `/files` 上传 API、类型/大小/私有存储/权限处理；合同业务服务只读取 `FileObject` 后强制正式件为 PDF 并建立 M55 关联。粗权限允许冻结经办人（包括合同部主管发起人）到达服务层，最终仍由 seal task handler 和状态硬校验，不能扩成任意合同写权限。
 
-- [ ] **Step 4: 最终签署版与审批版差异边界**
+- [x] **Step 4: 最终签署版与审批版差异边界**
 
 最终上传使用 `ContractFormalFile(purpose='mutually_signed_final')`；通常只允许冻结经办人且任务已完成线下签署盖章时关联上传。唯一例外：冻结经办人是唯一启用公司级合同主管时，允许该合同所属项目的启用 `contract_staff` 替代上传，由该主管确认；有另一名公司级合同主管时仍由经办人上传、另一主管确认。确认人必须是启用公司级合同主管且 `uploader != confirmer`，不能通过扩大粗权限实现例外。
 
 服务校验 PDF、版本、页数和原审批版存在，并锁版本确保同 purpose 只有一个 active 文件。系统不机械判断文件内容差异，由上传人明确声明最终版相对审批版只新增我方签字或签章、公司公章、骑缝章和签署日期；合同部主管确认时再次确认同一声明并把 confirmationSnapshot/人/时间写正式文件主事实。资料缺页/错页可退回最终文件补正；一旦主体、金额、税率、清单、付款条款、授权、范围或正文变化，旧正式文件失效、SealTask 持久改为 cancelled、readiness 清空并退回草稿重新审批。上传、替换、确认、退回、失效和声明内容均写审计。
 
-- [ ] **Step 5: 合同审批单使用冻结签名并加固下载授权**
+- [x] **Step 5: 合同审批单使用冻结签名并加固下载授权**
 
 审批单只读 M54 快照，并按 ApprovalInstance 唯一生成/复用，不再只按 ContractVersion 查找，防止重审错误复用旧审批单；生成失败可重试、可观测，不能事务外吞错。允许规格列明的经办人、合同部、实际审批人、所属项目经理、财务人员/主管、综合部主管和领导下载，仍要求密码、用途、水印和审计。`download_approval_form` 的 availableAction 必须使用同一精确 ACL，不能向无权用户显示伪可用按钮；该 ACL 仅限合同审批单，不扩成任意归档附件读取。
 
 `FileService` 必须在全局项目可见岗位快捷放行之前识别审批单、ContractFormalFile 和 ContractAuthorization 业务关联，执行精确 ACL；`super_admin`、非实际审批的预算/物资岗位不得通过通用 `/files/:id/download-ticket` 绕过。`MeService` 增加综合部主管“待同意用章”、冻结经办人“待完成我方签署盖章”、最终版上传（含唯一主管替代上传）和合同主管归档确认待办。
 
-- [ ] **Step 6: 运行定向测试**
+- [x] **Step 6: 运行定向测试**
 
 Run: `pnpm --filter @jiangkong/shared-domain test -- src/permissions.test.ts && pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-seal.service.spec.ts src/contract/contract-status.service.spec.ts src/contract/contract.controller.spec.ts src/contract/contract.service.spec.ts src/contract/contract-read.service.spec.ts src/approval/approval-form.service.spec.ts src/file/file.service.spec.ts && pnpm --filter @jiangkong/shared-domain typecheck && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint && pnpm --filter @jiangkong/api check:business-errors`
 
 Expected: PASS。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add packages/shared-domain/src/core-flow-read-model.ts packages/shared-domain/src/permissions* services/api/src/contract services/api/src/approval/approval-form.service* services/api/src/file/file.service* services/api/src/me/me.service*
@@ -1223,7 +1223,7 @@ git commit -m "feat: 分离合同同意用章与归档事实"
 - Modify: `apps/web-admin/e2e/ui-p1-contract-visual.e2e.ts`
 - Create: `apps/web-admin/e2e/contract-governance.e2e.ts`
 
-- [ ] **Step 1: 写动作文案和只读岗位失败测试**
+- [x] **Step 1: 写动作文案和只读岗位失败测试**
 
 ```ts
 expect(contractActionLabel("seal_approve")).toBe("同意用章");
@@ -1232,23 +1232,23 @@ expect(canRequestContractChangeEligibility(["finance_staff"])).toBe(false);
 expect(detailEvidenceKinds).toEqual(expect.arrayContaining(["counterparty_signed_approval", "mutually_signed_final", "approval_form"]));
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `pnpm --filter @jiangkong/web-admin test -- src/api/core-flow-read.api.test.ts src/pages/contracts/contract-detail.config.test.ts`
 
 Expected: FAIL。
 
-- [ ] **Step 3: 使用后端 availableActions 渲染敏感动作**
+- [x] **Step 3: 使用后端 availableActions 渲染敏感动作**
 
 `ContractDetailPage.vue` 不复制状态机；“同意用章”“完成盖章”“上传最终版”“确认归档”均使用既有 `SensitiveActionDialog` 和 TDesign Upload。财务/综合只读用户不请求变更资格，不显示新建、上传、提交或确认按钮。
 
-- [ ] **Step 4: 运行定向测试与 E2E**
+- [x] **Step 4: 运行定向测试与 E2E**
 
 Run: `pnpm --filter @jiangkong/web-admin test -- src/api/core-flow-read.api.test.ts src/pages/contracts/contract-detail.config.test.ts src/pages/contracts/contract-change.structure.test.ts && pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.config.ts e2e/contract-governance.e2e.ts e2e/ui-p1-contract-visual.e2e.ts`
 
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add apps/web-admin/src/api/core-flow-read.api* apps/web-admin/src/pages/contracts/ContractDetailPage.vue apps/web-admin/src/pages/contracts/contract-detail.config* apps/web-admin/e2e/contract-governance.e2e.ts apps/web-admin/e2e/ui-p1-contract-visual.e2e.ts
@@ -1845,7 +1845,7 @@ Expected: 全部 PASS；条件跳过项逐条记录原因。
 
 使用稳定 mock/隔离数据验证 1512×982、1440×900、1280×800、1180×820、1024×768、900×768：公司主体、五类合同、合同详情、变更、材料/劳务结算、结算详情、付款工作台和只读台账。根文档横向溢出、嵌套横滚和 pageerror 必须为 0。
 
-- [ ] **Step 6: 隔离库迁移与旧实例过渡演练**
+- [x] **Step 6: 隔离库迁移与旧实例过渡演练**
 
 从生产备份恢复到 `jiangkong_restore_*`，使用精确候选 SHA 从生产已知 61 个迁移应用到候选 69 个迁移；核对迁移数、表/索引、存量空信用代码、历史审批 JSON、金额、税务事实、文件引用和只读查询。M69 必须实测 54 项引用清单、54 个统一触发器及旧函数为 0。先运行 transition preview，再只在隔离库对复制的 manifest 执行 apply，验证终止审计、草稿恢复、正式文件失效、幂等和付款零变化；清理隔离库。不得连接或修改生产业务库。
 
@@ -1853,7 +1853,7 @@ Expected: 全部 PASS；条件跳过项逐条记录原因。
 
 报告必须记录：40 位 SHA、相对生产和 main 提交、实际文件、生产 61→候选 69 的 8 个未部署迁移、隔离演练、测试、截图、旧未生效实例预览 manifest 及摘要、未解决项、应用回滚和数据库前向修复方案。runbook 明确将“部署/迁移”和“按 manifest 终止旧实例”分成两次独立授权，禁止因批准部署而推定批准生产业务写入。
 
-- [ ] **Step 8: 最终提交并停止在发布候选**
+- [x] **Step 8: 最终提交并停止在发布候选**
 
 ```bash
 git add services/api/prisma/verify-trial-run.cjs services/api/prisma/transition-contract-settlement-governance.cjs services/api/src/database/contract-settlement-governance-transition.spec.ts docs/progress/2026-07-17-contract-settlement-governance-release-candidate.md docs/superpowers/runbooks/2026-07-17-contract-settlement-governance-release.md GO_LIVE_P0_RELEASE_CANDIDATE_REPORT.md PROGRESS.md

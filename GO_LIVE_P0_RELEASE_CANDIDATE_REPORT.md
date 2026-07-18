@@ -230,8 +230,8 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 ## 8. 2026-07-17 合同结算治理后续候选（验证中）
 
 > 本节是对 2026-07-16 已发布基线的后续候选补充，不改写上文的历史发布证据。
-> 最终 40 位 SHA：**待 Task 22 提交后回填**
-> 当前结论：**No-Go / 本地代码与自动化门禁已收口，等待最终 SHA 隔离 UAT、生产备份 61→69 恢复演练、真实业务签认和用户精确 SHA 授权。**
+> 运行候选 40 位 SHA：`e47129ba637caf58d02a7206872fbdd53a606d17`
+> 当前结论：**No-Go / 技术发布候选已就绪，等待真实业务/财务签认和用户对精确 SHA 的推送、部署与生产迁移授权。**
 
 ### 8.1 变更范围
 
@@ -243,16 +243,18 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 
 | 门禁 | 当前状态 | 备注 |
 | --- | --- | --- |
-| 最终 40 位候选 SHA | 待填 | 不得使用未提交工作树或短 SHA |
-| 相对 `origin/main` 和生产 SHA 的提交/文件清单 | 待填 | 待候选固定 |
+| 运行候选 40 位 SHA | `e47129ba637caf58d02a7206872fbdd53a606d17` | 已提交且工作树洁净 |
+| 相对 `origin/main` 和生产 SHA 的提交/文件清单 | 已核对 | 相对 `origin/main` 91 个提交/324 个文件，相对生产 92 个提交/324 个文件 |
 | shared/API/Web 定向与全量门禁 | 通过 | shared 102/102；Web 98 文件 784/784；API 177 套通过、4 套条件跳过，3914 通过/15 跳过；typecheck、lint、Prisma validate/generate、业务错误检查、`check:ui` 通过 |
 | API/Web production build | 通过 | 最新 `origin/main` 合并后重跑 |
 | P0 E2E | 通过 | Chromium 53 通过/2 条件跳过/0 失败 |
 | 六视口浏览器验收 | 通过 | 28/28 定向验收与 P0 六视口回归通过；阶段截图位于 `/tmp/jiangkong-contract-settlement-visual-a67c-final-2` |
-| 完整脱敏隔离 UAT | 合并阶段通过，最终 SHA 须重跑 | `task22-merge-20260719a`：执行 SHA `a67c3092…`，20/20 治理矩阵与 `HT-UAT-* → JS-UAT-* → FK-UAT-*` 全链通过；证据 SHA-256 `a476d9acec8f84712a9bddca803ff0b5e89f3e50cd55ef208a0be45fa9c37fb9`；后续合并了新主线，不冒充最终 SHA 证据 |
-| 生产备份→`jiangkong_restore_*`→61→69 | 待演练 | 必须绑定本次最终 SHA；本地 fresh M1→69 和 `origin/main` 61→69 已通过 |
-| transition preview / 隔离 apply / 幂等 / 漂移回滚 | 本地模块级隔离演练通过，最终候选 CLI 门禁须重跑 | `task22-20260718T160702Z`：首次 2/0、二次 0/2、漂移整批零写入、付款事实不变；dirty shared worktree 调用 committed HEAD module，不是最终 release gate |
+| 完整脱敏隔离 UAT | 通过 | `task22-final-e47129ba-20260719a`：精确 SHA `e47129ba…`，20/20 治理矩阵与 `HT-UAT-* → JS-UAT-* → FK-UAT-*` 全链通过；证据 SHA-256 `96af3d1ecebeba7d3303182dc56933bc901db4017bbf878c318e580034620143` |
+| 生产备份→`jiangkong_restore_*`→61→69 | 通过 | 备份 SHA-256 `7a961c4caa0d07dd73f6076438610a21cd77603db6aeaf9d5c95670780e3462e`；61→69、113 表、54 触发器、旧函数 0，精确绑定 `e47129ba…` |
+| transition preview / 隔离 apply / 幂等 / 漂移回滚 | 精确 SHA preview 通过，apply 不适用 | 恢复库为 0 项/0 阻断，digest `4cfe129a3db1737283bf593018dc88be5adf7a007d85db93a1c72e86108b6876`；无实例可 apply，不人工造数据 |
 | 业务/财务/技术 Go / No-Go | 待签认 | 脱敏自动 UAT 不取代真实业务签认 |
+
+生产备份的只读聚合还确认：我方主体当前 0 条；4 个合同版本的金额负值为 0，但税务事实均未确认；审批实例与审批动作均为 0，因此没有历史 frozenNodes JSON 需过渡。这些不是 Schema/迁移失败，但“我方主体录入 + 现有合同税务事实确认”必须纳入真实业务 UAT 和 Go / No-Go 签认。
 
 ### 8.3 发布和过渡授权边界
 
@@ -270,6 +272,6 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 
 transition 模块级隔离演练使用 runId `task22-20260718T160702Z`、执行 HEAD `2bef123cfbdc231cba41d212b17ed6f9cd5f0c30`、PostgreSQL `16.14` 和 M1–M58 共 58 个迁移。manifest digest 为 `a4ac20b349f0a157228d072d876cfad7c8dd70f82a06beaa2703930a0eee24fc`，manifest 文件 SHA-256 为 `8f7e8f7c0175e690a1625e55dc5f25262605f22d54a0ea7aaee91ca6abdb4c5d`；首次 apply 为 `applied=2/alreadyProcessed=0`，二次为 `0/2`，漂移批次零 transition 审计、零替代草稿写入，付款申请/实付/入账及已付金额事实不变，cleanup 通过。机器收据 `/tmp/task22-20260718T160702Z-transition-evidence.json` 的 SHA-256 为 `67a272e0378033bd77c35783ffbd90c0bca009fff5fec48d8aa5999f03424bdf`。
 
-该收据产生于 dirty shared worktree，演练直接调用 committed HEAD module，而非从洁净候选执行 CLI 端到端发布命令；数据来自本地合成隔离库，也不是生产备份恢复。因此生产备份 → `jiangkong_restore_*` → 最终候选 M69 的 61→69 恢复演练继续保持“待演练”，最终固定 SHA 后还必须重跑洁净候选 CLI release gate。
+该收据产生于 dirty shared worktree，仅作为开发期的 apply/幂等/漂移行为证据。后续已使用洁净精确候选 `e47129ba…` 完成生产备份 → `jiangkong_restore_*` → 61→69 恢复和 CLI preview；实际 manifest 为空，因此没有可在隔离库或生产执行的过渡实例，也不人工造数据冒充非空 apply 验收。
 
 详细候选证据见 `docs/progress/2026-07-17-contract-settlement-governance-release-candidate.md`，执行步骤见 `docs/superpowers/runbooks/2026-07-17-contract-settlement-governance-release.md`。

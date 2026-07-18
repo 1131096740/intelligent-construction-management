@@ -1,7 +1,7 @@
 # 合同结算治理发布 Runbook
 
 > 适用范围：2026-07-17 合同结算治理候选（生产已知 61 个迁移 → 候选 69 个迁移）
-> 当前状态：候选验证中，**未获得推送、部署、迁移或生产 transition apply 授权**
+> 当前状态：运行候选 `e47129ba637caf58d02a7206872fbdd53a606d17` 的自动化、精确 SHA UAT 和生产备份隔离恢复已通过；**未获得推送、部署、迁移或生产 transition apply 授权**
 > 运行原则：最小权限、精确 SHA、隔离恢复先行、两次独立授权、失败关闭。
 
 ## 1. 两个必须分开的变更窗口
@@ -149,6 +149,16 @@ node services/api/prisma/transition-contract-settlement-governance.cjs \
 ## 6. 窗口 A 生产执行前检查
 
 > 只有用户已精确批准 40 位 SHA 和窗口 A 时才能执行。
+
+### 6.1 已完成的候选前置证据（2026-07-19）
+
+- 精确候选：`e47129ba637caf58d02a7206872fbdd53a606d17`。
+- 精确 SHA 隔离 UAT：`task22-final-e47129ba-20260719a`，20/20，证据 SHA-256 `96af3d1ecebeba7d3303182dc56933bc901db4017bbf878c318e580034620143`。
+- 生产异机备份回读 SHA-256：`7a961c4caa0d07dd73f6076438610a21cd77603db6aeaf9d5c95670780e3462e`。
+- 隔离恢复：生产 61 个迁移恢复成功，候选 61→69 成功，`prisma migrate status` 最新；113 张 public 表、54 个统一触发器、5 个统一函数、0 个旧函数。
+- transition preview：0 项/0 阻断，digest `4cfe129a3db1737283bf593018dc88be5adf7a007d85db93a1c72e86108b6876`；本次无需 apply，不存在窗口 B 业务写入清单。
+- 隔离库、checkout、bundle 和恢复输入均已清理；生产仍为 `d0007fe5b8a18dd2602a93d012634040eaf2183a` / `61|0|0`，API、Nginx、PostgreSQL、Cron 和公网 health 正常。
+- 已知兼容性项：生产历史 `super_admin` ID 为非 UUID，CLI 当前只接受 UUID 操作人。由于 preview 为空，它不阻断本次发布；若未来出现非空 manifest，必须先修复兼容性并重跑本 Runbook 的全部 transition 门禁。
 
 1. 公网 Web/API health、Nginx、API、PostgreSQL、Cron 正常。
 2. 空间、内存、时间同步、TLS 和防火墙正常。
