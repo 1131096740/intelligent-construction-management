@@ -35,6 +35,10 @@ import type {
   ContractTakeoverCorrectionType,
   RecordContractTakeoverCorrectionDto
 } from "./dto/record-contract-takeover-correction.dto";
+import type {
+  ReviewContractTakeoverCompanyEntityCorrectionDto,
+  SubmitContractTakeoverCompanyEntityCorrectionDto
+} from "./dto/contract-takeover-company-entity-correction.dto";
 
 const TAKEOVER_LEVELS = ["A", "B", "C"] as const;
 const LIFECYCLE_STATUSES = [
@@ -266,6 +270,7 @@ export interface ContractTakeoverBusinessReadModel {
   contractNo: string;
   contractName: string;
   counterparty: string;
+  companyEntityId: string | null;
   companyEntityName: string | null;
   contractTypeKey: string | null;
   amountCents: string;
@@ -382,14 +387,30 @@ export interface ContractTakeoverCorrectionReadModel {
   id: string;
   correctionType: string;
   correctionTypeLabel: string;
+  status: string;
+  statusLabel: string;
+  targetCompanyEntityId: string | null;
   reason: string;
   beforeSummary: string;
   afterSummary: string;
   responsibleUserName: string;
   createdByName: string;
+  submittedByName: string;
+  submittedAt: Date;
+  reviewedByName: string | null;
+  reviewedAt: Date | null;
+  reviewComment: string | null;
   attachmentFileId: string;
   attachmentFileName: string;
   createdAt: Date;
+}
+
+export interface ContractTakeoverCompanyEntityCandidateReadModel {
+  id: string;
+  name: string;
+  unifiedSocialCreditCode: string | null;
+  dataStatus: string;
+  isActive: boolean;
 }
 
 export type ContractTakeoverImportPrecheckIssueLevel = "error" | "warning";
@@ -479,6 +500,19 @@ export class ContractTakeoverService {
     );
   }
 
+  async listCompanyEntityCandidates(): Promise<ContractTakeoverCompanyEntityCandidateReadModel[]> {
+    return this.prisma.companyEntity.findMany({
+      select: {
+        id: true,
+        name: true,
+        unifiedSocialCreditCode: true,
+        dataStatus: true,
+        isActive: true
+      },
+      orderBy: [{ name: "asc" }, { createdAt: "asc" }]
+    });
+  }
+
   private async createDraftRecord(
     tx: Prisma.TransactionClient,
     projectId: string,
@@ -493,6 +527,8 @@ export class ContractTakeoverService {
     if (!project?.isActive) {
       throw new Error("项目不存在或已停用，请重新选择项目");
     }
+
+    await this.assertCompanyEntityExists(tx, data.companyEntityId);
 
       const contract = await tx.contract.create({
         data: {
@@ -632,6 +668,7 @@ export class ContractTakeoverService {
         contractNo: data.code,
         contractName: data.name,
         counterparty: data.counterparty,
+        companyEntityId: data.companyEntityId ?? null,
         companyEntityName: data.companyEntityName ?? null,
         contractTypeKey: data.contractTypeKey ?? null,
         amountCents: data.amountCents,
@@ -659,6 +696,8 @@ export class ContractTakeoverService {
       if (!["draft", "needs_supplement"].includes(takeover.takeoverStatus)) {
         throw new Error("当前接管记录不能编辑，请确认仍处于草稿或待补充状态");
       }
+
+      await this.assertCompanyEntityExists(tx, data.companyEntityId);
 
       await tx.contract.update({
         where: { id: takeover.contractId },
@@ -781,6 +820,7 @@ export class ContractTakeoverService {
         contractNo: data.code,
         contractName: data.name,
         counterparty: data.counterparty,
+        companyEntityId: data.companyEntityId ?? null,
         companyEntityName: data.companyEntityName ?? null,
         contractTypeKey: data.contractTypeKey ?? null,
         amountCents: data.amountCents,
@@ -927,6 +967,235 @@ export class ContractTakeoverService {
         message: "接管更正记录已保存，后续复核可查看原因、责任人和附件"
       };
     });
+  }
+
+  async submitCompanyEntityCorrection(
+    projectId: string,
+    takeoverId: string,
+    input: SubmitContractTakeoverCompanyEntityCorrectionDto,
+    actorUserId: string
+  ) {
+    const targetCompanyEntityId = input.targetCompanyEntityId?.trim();
+    if (!targetCompanyEntityId) throw new Error("请选择更正后的我方签约主体");
+    const reason = input.reason?.trim();
+    if (!reason) throw new Error("请填写更正原因");
+    const responsibleUserId = input.responsibleUserId?.trim();
+    if (!responsibleUserId) throw new Error("请选择更正责任人");
+    const attachmentFileId = input.attachmentFileId?.trim();
+    if (!attachmentFileId) throw new Error("请上传更正依据附件");
+    const currentPassword = input.currentPassword?.trim();
+    if (!currentPassword) throw new Error("请填写当前登录密码后再提交主体更正");
+    if (!this.auth) throw new Error("系统暂不能确认当前密码，请稍后重试");
+    await this.auth.confirmPassword(actorUserId, currentPassword);
+
+    return this.prisma.$transaction(async (tx) => {
+      const takeover = await this.getProjectTakeover(tx, projectId, takeoverId);
+      if (takeover.takeoverStatus !== "confirmed") {
+        throw new Error("接管尚未主管确认，请直接在草稿或待补充阶段修改主体匹配");
+      }
+      await this.assertProjectContractStaff(tx, projectId, actorUserId);
+      if (!this.files) throw new Error("系统暂不能读取更正依据附件，请稍后重试");
+      await this.files.assertCanAttachUnlinkedFile(tx, attachmentFileId, actorUserId);
+      const [contract, targetCompanyEntity, responsibleUser, pendingCorrection] =
+        await Promise.all([
+          tx.contract.findUnique({
+            where: { id: takeover.contractId },
+            select: { id: true, companyEntityId: true, companyEntityName: true }
+          }),
+          tx.companyEntity.findUnique({
+            where: { id: targetCompanyEntityId },
+            select: { id: true, name: true, dataStatus: true, isActive: true }
+          }),
+          tx.user.findUnique({
+            where: { id: responsibleUserId },
+            select: { id: true, isActive: true }
+          }),
+          tx.contractTakeoverCorrection.findFirst({
+            where: {
+              takeoverId: takeover.id,
+              correctionType: "company_entity",
+              status: "submitted"
+            },
+            select: { id: true }
+          })
+        ]);
+      if (!contract) throw new Error("未找到接管合同，请刷新后重试");
+      if (!targetCompanyEntity) throw new Error("更正后的我方签约主体不存在，请重新选择");
+      if (!responsibleUser?.isActive) throw new Error("更正责任人不存在或已停用，请重新选择");
+      if (contract.companyEntityId === targetCompanyEntity.id) {
+        throw new Error("更正后的主体与当前匹配主体相同，无需提交更正");
+      }
+      if (pendingCorrection) {
+        throw new Error("该接管合同已有待主管处理的主体更正，请勿重复提交");
+      }
+
+      const now = new Date();
+      let correction;
+      try {
+        correction = await tx.contractTakeoverCorrection.create({
+          data: {
+            projectId,
+            takeoverId: takeover.id,
+            correctionType: "company_entity",
+            status: "submitted",
+            targetCompanyEntityId: targetCompanyEntity.id,
+            beforeSnapshot: {
+              companyEntityId: contract.companyEntityId,
+              companyEntityName: contract.companyEntityName
+            },
+            afterSnapshot: {
+              companyEntityId: targetCompanyEntity.id,
+              companyEntityName: targetCompanyEntity.name,
+              dataStatus: targetCompanyEntity.dataStatus,
+              isActive: targetCompanyEntity.isActive
+            },
+            reason,
+            responsibleUserId,
+            attachmentFileId,
+            createdByUserId: actorUserId,
+            submittedByUserId: actorUserId,
+            submittedAt: now
+          }
+        });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+          throw new BadRequestException("该接管合同已有待主管处理的主体更正，请勿重复提交");
+        }
+        if (isCompanyEntityCorrectionAttachmentConflict(error)) {
+          throw new BadRequestException(
+            "该文件已用于其他业务，请重新上传专用的更正依据附件"
+          );
+        }
+        throw error;
+      }
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract_takeover.company_entity_correction.submit",
+        businessType: "contract_takeover",
+        businessId: takeover.id,
+        metadata: {
+          projectId,
+          correctionId: correction.id,
+          beforeCompanyEntityId: contract.companyEntityId,
+          targetCompanyEntityId: targetCompanyEntity.id,
+          responsibleUserId,
+          attachmentFileId
+        }
+      });
+      return { id: correction.id, status: "submitted", message: "主体更正已提交，等待合同部主管确认" };
+    });
+  }
+
+  async reviewCompanyEntityCorrection(
+    projectId: string,
+    takeoverId: string,
+    correctionId: string,
+    input: ReviewContractTakeoverCompanyEntityCorrectionDto,
+    actorUserId: string
+  ) {
+    const decision = input.decision;
+    if (!(["approve", "reject"] as const).includes(decision)) {
+      throw new Error("主体更正处理结果不正确");
+    }
+    const reviewComment = input.comment?.trim() || null;
+    if (decision === "reject" && !reviewComment) throw new Error("驳回主体更正时请填写处理意见");
+    const currentPassword = input.currentPassword?.trim();
+    if (!currentPassword) throw new Error("请填写当前登录密码后再处理主体更正");
+    if (!this.auth) throw new Error("系统暂不能确认当前密码，请稍后重试");
+    await this.auth.confirmPassword(actorUserId, currentPassword);
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+      const takeover = await this.getProjectTakeover(tx, projectId, takeoverId);
+      if (takeover.takeoverStatus !== "confirmed") {
+        throw new Error("接管记录尚未确认，不能处理主体更正");
+      }
+      await this.assertProjectContractDirector(tx, projectId, actorUserId);
+      const correction = await tx.contractTakeoverCorrection.findUnique({
+        where: { id: correctionId }
+      });
+      if (
+        !correction ||
+        correction.projectId !== projectId ||
+        correction.takeoverId !== takeover.id ||
+        correction.correctionType !== "company_entity"
+      ) {
+        throw new Error("未找到该接管合同的主体更正，请刷新后重试");
+      }
+      if (correction.status !== "submitted") {
+        throw new BadRequestException("主体更正已处理或发生变化，请刷新后重试");
+      }
+      if (correction.createdByUserId === actorUserId) {
+        throw new ForbiddenException("主体更正提交人与确认人不能是同一人");
+      }
+      const contract = await tx.contract.findUnique({
+        where: { id: takeover.contractId },
+        select: { id: true, companyEntityId: true, companyEntityName: true }
+      });
+      if (!contract) throw new Error("未找到接管合同，请刷新后重试");
+      let targetCompanyEntityId: string | null = null;
+      if (decision === "approve") {
+        const beforeSnapshot = isPlainObject(correction.beforeSnapshot)
+          ? correction.beforeSnapshot
+          : null;
+        const frozenCompanyEntityId = nullableString(beforeSnapshot?.companyEntityId);
+        if (contract.companyEntityId !== frozenCompanyEntityId) {
+          throw new BadRequestException("主体更正已处理或发生变化，请刷新后重试");
+        }
+        targetCompanyEntityId = correction.targetCompanyEntityId;
+        if (!targetCompanyEntityId) throw new Error("更正目标主体未冻结，请驳回后重新提交");
+        await this.assertCompanyEntityExists(tx, targetCompanyEntityId);
+      }
+      const now = new Date();
+      const claimed = await tx.contractTakeoverCorrection.updateMany({
+        where: { id: correction.id, status: "submitted" },
+        data: {
+          status: decision === "approve" ? "confirmed" : "rejected",
+          reviewedByUserId: actorUserId,
+          reviewedAt: now,
+          reviewComment
+        }
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestException("主体更正已处理或发生变化，请刷新后重试");
+      }
+      if (targetCompanyEntityId) {
+        await tx.contract.update({
+          where: { id: contract.id },
+          data: { companyEntityId: targetCompanyEntityId }
+        });
+      }
+      await this.audit.record(tx, {
+        actorUserId,
+        action: `contract_takeover.company_entity_correction.${decision === "approve" ? "confirm" : "reject"}`,
+        businessType: "contract_takeover",
+        businessId: takeover.id,
+        metadata: {
+          projectId,
+          correctionId: correction.id,
+          targetCompanyEntityId: correction.targetCompanyEntityId,
+          reviewComment
+        }
+      });
+      return {
+        id: correction.id,
+        status: decision === "approve" ? "confirmed" : "rejected",
+        message: decision === "approve" ? "主体更正已确认" : "主体更正已驳回"
+      };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof ForbiddenException
+      ) {
+        throw error;
+      }
+      if (this.isSerializationConflict(error)) {
+        throw new BadRequestException("主体更正已处理或发生变化，请刷新后重试");
+      }
+      throw error;
+    }
   }
 
   async list(projectId: string) {
@@ -1444,6 +1713,84 @@ export class ContractTakeoverService {
     return takeover;
   }
 
+  private async assertCompanyEntityExists(
+    client: Pick<Prisma.TransactionClient, "companyEntity">,
+    companyEntityId: string | null | undefined
+  ) {
+    if (!companyEntityId) return;
+    const companyEntity = await client.companyEntity.findUnique({
+      where: { id: companyEntityId },
+      select: { id: true }
+    });
+    if (!companyEntity) {
+      throw new BadRequestException("所选我方签约主体不存在，请重新选择");
+    }
+  }
+
+  private async assertProjectContractStaff(
+    client: Pick<Prisma.TransactionClient, "userPosition" | "position" | "projectMember">,
+    projectId: string,
+    actorUserId: string
+  ) {
+    const [assignments, memberships] = await Promise.all([
+      client.userPosition.findMany({
+        where: {
+          userId: actorUserId,
+          OR: [{ projectId: null }, { projectId }]
+        },
+        select: { positionId: true }
+      }),
+      client.projectMember.findMany({
+        where: { projectId, userId: actorUserId },
+        select: { positionKey: true }
+      })
+    ]);
+    const positions = assignments.length
+      ? await client.position.findMany({
+          where: { id: { in: assignments.map((assignment) => assignment.positionId) } },
+          select: { key: true }
+        })
+      : [];
+    const isContractStaff =
+      positions.some((position) => position.key === "contract_staff") ||
+      memberships.some((membership) => membership.positionKey === "contract_staff");
+    if (!isContractStaff) {
+      throw new ForbiddenException("仅该项目合同员可以发起历史主体更正");
+    }
+  }
+
+  private async assertProjectContractDirector(
+    client: Pick<Prisma.TransactionClient, "userPosition" | "position" | "projectMember">,
+    projectId: string,
+    actorUserId: string
+  ) {
+    const [assignments, memberships] = await Promise.all([
+      client.userPosition.findMany({
+        where: {
+          userId: actorUserId,
+          OR: [{ projectId: null }, { projectId }]
+        },
+        select: { positionId: true }
+      }),
+      client.projectMember.findMany({
+        where: { projectId, userId: actorUserId },
+        select: { positionKey: true }
+      })
+    ]);
+    const positions = assignments.length
+      ? await client.position.findMany({
+          where: { id: { in: assignments.map((assignment) => assignment.positionId) } },
+          select: { key: true }
+        })
+      : [];
+    const isContractDirector =
+      positions.some((position) => position.key === "contract_director") ||
+      memberships.some((membership) => membership.positionKey === "contract_director");
+    if (!isContractDirector) {
+      throw new ForbiddenException("仅该项目合同部主管可以处理历史主体更正");
+    }
+  }
+
   private async toReadModels(
     client: TakeoverReadClient,
     takeovers: ContractTakeoverRecord[]
@@ -1497,6 +1844,7 @@ export class ContractTakeoverService {
           temporaryCode: true,
           name: true,
           counterparty: true,
+          companyEntityId: true,
           companyEntityName: true,
           contractTypeKey: true
         }
@@ -1649,7 +1997,12 @@ export class ContractTakeoverService {
           ])
         : [[], []];
     const correctionUserIds = unique(
-      correctionRecords.flatMap((record) => [record.responsibleUserId, record.createdByUserId])
+      correctionRecords.flatMap((record) => [
+        record.responsibleUserId,
+        record.createdByUserId,
+        record.submittedByUserId,
+        record.reviewedByUserId
+      ].filter((id): id is string => typeof id === "string" && Boolean(id)))
     );
     const userIds = unique([
       ...files.map((file) => file.uploadedByUserId),
@@ -1745,6 +2098,7 @@ export class ContractTakeoverService {
           takeover.id,
         contractName: contractById.get(takeover.contractId)?.name ?? "未读取合同名称",
         counterparty: contractById.get(takeover.contractId)?.counterparty ?? "未读取相对方",
+        companyEntityId: contractById.get(takeover.contractId)?.companyEntityId ?? null,
         companyEntityName: contractById.get(takeover.contractId)?.companyEntityName ?? null,
         contractTypeKey: contractById.get(takeover.contractId)?.contractTypeKey ?? null,
         amountCents: versionById.get(takeover.contractVersionId)?.amountCents ?? 0n,
@@ -1786,12 +2140,24 @@ export class ContractTakeoverService {
             id: correction.id,
             correctionType: correction.correctionType,
             correctionTypeLabel: correctionTypeLabel(correction.correctionType),
+            status: correction.status,
+            statusLabel: correctionStatusLabel(correction.status),
+            targetCompanyEntityId: correction.targetCompanyEntityId,
             reason: correction.reason,
             beforeSummary: correctionBeforeSummary(correction.beforeSnapshot),
             afterSummary: correctionAfterSummary(correction.afterSnapshot),
             responsibleUserName:
               userNameById.get(correction.responsibleUserId) ?? "更正责任人未读取",
             createdByName: userNameById.get(correction.createdByUserId) ?? "更正记录人未读取",
+            submittedByName:
+              userNameById.get(correction.submittedByUserId ?? correction.createdByUserId) ??
+              "更正提交人未读取",
+            submittedAt: correction.submittedAt ?? correction.createdAt,
+            reviewedByName: correction.reviewedByUserId
+              ? userNameById.get(correction.reviewedByUserId) ?? "更正确认人未读取"
+              : null,
+            reviewedAt: correction.reviewedAt,
+            reviewComment: correction.reviewComment,
             attachmentFileId: correction.attachmentFileId,
             attachmentFileName: attachment?.originalName ?? "更正依据附件未读取",
             createdAt: correction.createdAt
@@ -1820,6 +2186,7 @@ export class ContractTakeoverService {
       contractNo: string;
       contractName: string;
       counterparty: string;
+      companyEntityId: string | null;
       companyEntityName: string | null;
       contractTypeKey?: string | null;
       amountCents: bigint;
@@ -1848,6 +2215,7 @@ export class ContractTakeoverService {
       contractNo: contract.contractNo,
       contractName: contract.contractName,
       counterparty: contract.counterparty,
+      companyEntityId: contract.companyEntityId,
       companyEntityName: contract.companyEntityName,
       contractTypeKey: contract.contractTypeKey ?? null,
       amountCents: moneyString(contract.amountCents),
@@ -2367,6 +2735,8 @@ export class ContractTakeoverService {
       name: input.name.trim(),
       counterparty: input.counterparty.trim(),
       contractTypeKey: input.contractTypeKey?.trim() || undefined,
+      companyEntityId: input.companyEntityId?.trim() || undefined,
+      companyEntityName: input.companyEntityName?.trim() || undefined,
       takeoverLevel: takeoverLevel as ContractTakeoverLevel,
       suggestedTakeoverLevel: suggestedLevel,
       takeoverLevelAdjustmentReason:
@@ -2491,6 +2861,7 @@ export class ContractTakeoverService {
       name: stringValue(row["name"]),
       counterparty: stringValue(row["counterparty"]),
       contractTypeKey: stringValue(row["contractTypeKey"]) || undefined,
+      companyEntityId: stringValue(row["companyEntityId"]) || undefined,
       companyEntityName: stringValue(row["companyEntityName"]) || undefined,
       invoiceType: optionalInvoiceType(row["invoiceType"]),
       taxMode: optionalTaxMode(row["taxMode"]),
@@ -3014,6 +3385,7 @@ function correctionTypeLabel(value: string): string {
     amount: "金额更正",
     payment_terms: "付款条款更正",
     evidence: "资料更正",
+    company_entity: "我方签约主体更正",
     other: "其他更正"
   };
   return labels[value] ?? "更正事项未读取";
@@ -3026,6 +3398,9 @@ function takeoverLevelDisplay(value: string): string {
 
 function correctionBeforeSummary(snapshot: unknown): string {
   if (!isPlainObject(snapshot)) return "改前记录未读取";
+  if ("companyEntityId" in snapshot || "companyEntityName" in snapshot) {
+    return `改前主体：${stringValue(snapshot.companyEntityName) || "—"}`;
+  }
   const parts = [
     `接管等级 ${takeoverLevelDisplay(String(snapshot.takeoverLevel ?? ""))}`,
     `历史累计结算 ${formatCents(snapshot.historicalSettledCents)}`,
@@ -3040,7 +3415,36 @@ function correctionBeforeSummary(snapshot: unknown): string {
 
 function correctionAfterSummary(snapshot: unknown): string {
   if (!isPlainObject(snapshot)) return "更正后的事实说明未读取";
+  if ("companyEntityId" in snapshot || "companyEntityName" in snapshot) {
+    return `更正为：${stringValue(snapshot.companyEntityName) || "主体名称未读取"}`;
+  }
   return stringValue(snapshot.summary) || "更正后的事实说明未读取";
+}
+
+function correctionStatusLabel(value: string): string {
+  if (value === "submitted") return "待合同部主管确认";
+  if (value === "confirmed") return "已确认";
+  if (value === "rejected") return "已驳回";
+  return "状态未读取";
+}
+
+function nullableString(value: unknown): string | null {
+  return typeof value === "string" && value ? value : null;
+}
+
+function isCompanyEntityCorrectionAttachmentConflict(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = "code" in error ? error.code : null;
+  if (code !== "P2004" && code !== "P2010") return false;
+  try {
+    const detail = JSON.stringify(error);
+    return (
+      detail.includes("23514") ||
+      detail.includes("该文件已用于其他业务，请重新上传专用的更正依据附件")
+    );
+  } catch {
+    return false;
+  }
 }
 
 function formatCents(value: unknown): string {

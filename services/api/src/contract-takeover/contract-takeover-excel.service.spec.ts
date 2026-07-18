@@ -27,7 +27,7 @@ async function takeoverWorkbook() {
     "历史材料合同",
     "供应商甲",
     "material_purchase",
-    "",
+    "entity-historical-1",
     "甲公司",
     "10000.00",
     "2026-01-10",
@@ -126,6 +126,8 @@ describe("ContractTakeoverExcelService", () => {
         rows: [
           expect.objectContaining({
             code: "HT-HIS-001",
+            companyEntityId: "entity-historical-1",
+            companyEntityName: "甲公司",
             amountCents: "1000000",
             invoiceType: "vat_special",
             defaultTaxRatePercent: "13",
@@ -158,6 +160,8 @@ describe("ContractTakeoverExcelService", () => {
         rows: [
           expect.objectContaining({
             code: "HT-HIS-001",
+            companyEntityId: "entity-historical-1",
+            companyEntityName: "甲公司",
             pricingItems: [expect.objectContaining({ itemName: "钢材" })]
           })
         ]

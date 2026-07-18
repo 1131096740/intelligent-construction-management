@@ -233,14 +233,30 @@ export interface ContractTakeoverCorrectionReadModel {
   id: string;
   correctionType: string;
   correctionTypeLabel: string;
+  status: "submitted" | "confirmed" | "rejected";
+  statusLabel: string;
+  targetCompanyEntityId: string | null;
   reason: string;
   beforeSummary: string;
   afterSummary: string;
   responsibleUserName: string;
   createdByName: string;
+  submittedByName: string;
+  submittedAt: string;
+  reviewedByName: string | null;
+  reviewedAt: string | null;
+  reviewComment: string | null;
   attachmentFileId: string;
   attachmentFileName: string;
   createdAt: string;
+}
+
+export interface HistoricalCompanyEntityCandidateReadModel {
+  id: string;
+  name: string;
+  unifiedSocialCreditCode: string | null;
+  dataStatus: "complete" | "legacy_incomplete";
+  isActive: boolean;
 }
 
 export interface ContractTakeoverPostConfirmationVerificationReadModel {
@@ -282,6 +298,7 @@ export interface ContractTakeoverReadModel {
   contractNo: string;
   contractName: string;
   counterparty: string;
+  companyEntityId: string | null;
   companyEntityName: string | null;
   contractTypeKey?: string | null;
   amountCents: ContractTakeoverCentsValue;
@@ -539,6 +556,20 @@ export interface RecordContractTakeoverCorrectionPayload {
   responsibleUserId: string;
   afterSummary: string;
   attachmentFileId: string;
+  currentPassword: string;
+}
+
+export interface SubmitContractTakeoverCompanyEntityCorrectionPayload {
+  targetCompanyEntityId: string;
+  reason: string;
+  responsibleUserId: string;
+  attachmentFileId: string;
+  currentPassword: string;
+}
+
+export interface ReviewContractTakeoverCompanyEntityCorrectionPayload {
+  decision: "approve" | "reject";
+  comment?: string;
   currentPassword: string;
 }
 
@@ -1424,6 +1455,12 @@ export function listContractTakeovers(projectId: string) {
   );
 }
 
+export function listHistoricalCompanyEntityCandidates(projectId: string) {
+  return readJson<HistoricalCompanyEntityCandidateReadModel[]>(
+    `/projects/${encodeURIComponent(projectId)}/contract-takeovers/company-entity-candidates`
+  );
+}
+
 export function downloadContractTakeoverLedgerExport(projectId: string) {
   return downloadWorkbook(
     `/projects/${encodeURIComponent(projectId)}/contract-takeovers/ledger-export`,
@@ -1551,6 +1588,29 @@ export function recordContractTakeoverCorrection(
 ) {
   return postJson<{ id: string; message: string }>(
     `/projects/${projectId}/contract-takeovers/${takeoverId}/corrections`,
+    body
+  );
+}
+
+export function submitContractTakeoverCompanyEntityCorrection(
+  projectId: string,
+  takeoverId: string,
+  body: SubmitContractTakeoverCompanyEntityCorrectionPayload
+) {
+  return postJson<{ id: string; status: string; message: string }>(
+    `/projects/${projectId}/contract-takeovers/${takeoverId}/company-entity-corrections`,
+    body
+  );
+}
+
+export function reviewContractTakeoverCompanyEntityCorrection(
+  projectId: string,
+  takeoverId: string,
+  correctionId: string,
+  body: ReviewContractTakeoverCompanyEntityCorrectionPayload
+) {
+  return postJson<{ id: string; status: string; message: string }>(
+    `/projects/${projectId}/contract-takeovers/${takeoverId}/company-entity-corrections/${correctionId}/review`,
     body
   );
 }

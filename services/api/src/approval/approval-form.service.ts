@@ -525,6 +525,12 @@ export class ApprovalFormService {
     await this.auth.confirmPassword(downloaderUserId, confirmationPassword);
     if (businessType === "contract_version") {
       await this.files.assertCanDownloadContractApprovalForm(businessId, downloaderUserId);
+    } else {
+      await this.files.assertCanDownloadApprovalFormByBusiness(
+        businessType,
+        businessId,
+        downloaderUserId
+      );
     }
 
     // 复用归档 PdfDocument 做权限锚点与幂等；其字节为无水印存档件，下载件按下载人重渲染。

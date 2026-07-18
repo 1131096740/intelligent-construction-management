@@ -1,4 +1,7 @@
 import { ContractTakeoverService } from "./contract-takeover.service";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { BadRequestException } from "@nestjs/common";
 
 describe("ContractTakeoverService", () => {
   const audit = {
@@ -8,7 +11,8 @@ describe("ContractTakeoverService", () => {
     confirmPassword: jest.fn()
   };
   const files = {
-    assertCanDownloadFile: jest.fn()
+    assertCanDownloadFile: jest.fn(),
+    assertCanAttachUnlinkedFile: jest.fn()
   };
 
   beforeEach(() => {
@@ -17,6 +21,83 @@ describe("ContractTakeoverService", () => {
     auth.confirmPassword.mockResolvedValue({ ok: true });
     files.assertCanDownloadFile.mockReset();
     files.assertCanDownloadFile.mockResolvedValue({ id: "file-1" });
+    files.assertCanAttachUnlinkedFile.mockReset();
+    files.assertCanAttachUnlinkedFile.mockResolvedValue({ id: "file-1" });
+  });
+
+  it("M58 constrains takeover company entity correction status, target and one pending request", () => {
+    const migration = readFileSync(
+      join(
+        process.cwd(),
+        "prisma/migrations/20260718110000_contract_takeover_company_entity_corrections/migration.sql"
+      ),
+      "utf8"
+    );
+
+    expect(migration).toMatch(
+      /CREATE UNIQUE INDEX "ContractTakeoverCorrection_pending_company_entity_key"[\s\S]*?WHERE "correctionType" = 'company_entity' AND "status" = 'submitted'/u
+    );
+    expect(migration).toMatch(
+      /CONSTRAINT "ContractTakeoverCorrection_status_check"[\s\S]*?'submitted'[\s\S]*?'confirmed'[\s\S]*?'rejected'/u
+    );
+    expect(migration).toMatch(
+      /CONSTRAINT "ContractTakeoverCorrection_company_entity_target_check"[\s\S]*?"targetCompanyEntityId" IS NOT NULL[\s\S]*?"submittedByUserId" = "createdByUserId"[\s\S]*?"reviewedByUserId" <> "createdByUserId"/u
+    );
+    expect(migration).toMatch(
+      /pg_advisory_xact_lock\(hashtextextended\(candidate_file_id, 74289103\)\)/u
+    );
+    expect(migration).toContain(
+      'CREATE TRIGGER "User_company_entity_correction_file_guard" BEFORE INSERT OR UPDATE OF "signatureFileId"'
+    );
+    expect(migration).toContain(
+      'CREATE TRIGGER "ApprovalActionLog_company_entity_correction_file_guard" BEFORE INSERT OR UPDATE OF "signatureFileIdSnapshot"'
+    );
+    expect(migration).toContain(
+      'CREATE TRIGGER "PaymentExecution_company_entity_correction_file_guard" BEFORE INSERT OR UPDATE OF "voucherFileId"'
+    );
+    expect(migration).toContain(
+      'CREATE TRIGGER "ContractVersion_company_entity_correction_file_guard" BEFORE INSERT OR UPDATE OF "taxFactEvidenceFileId"'
+    );
+    expect(migration).toContain(
+      'CREATE TRIGGER "ContractTaxFactRevision_company_entity_correction_file_guard" BEFORE INSERT OR UPDATE OF "evidenceFileId"'
+    );
+
+    const schema = readFileSync(join(process.cwd(), "prisma/schema.prisma"), "utf8");
+    let currentModel = "";
+    const schemaReferences: Array<{ model: string; field: string }> = [];
+    for (const line of schema.split("\n")) {
+      const model = line.match(/^model\s+(\w+)\s+\{/u);
+      if (model) {
+        currentModel = model[1]!;
+        continue;
+      }
+      const field = line.match(/^\s{2}(\w+)\s+\w/u)?.[1];
+      if (
+        currentModel &&
+        field &&
+        /(?:fileId|FileId|FileObjectId)(?:Snapshot)?$/u.test(field)
+      ) {
+        schemaReferences.push({ model: currentModel, field });
+      }
+    }
+    const uncovered = schemaReferences.filter(({ model, field }) => {
+      const escapedModel = model.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+      const escapedField = field.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+      return !new RegExp(
+        `"${escapedModel}"[^\\n]{0,500}"${escapedField}"`,
+        "u"
+      ).test(migration);
+    });
+    expect(uncovered).toEqual([]);
+    expect(migration).toMatch(
+      /IF NEW\."correctionType" <> 'company_entity'[\s\S]*?pg_advisory_xact_lock|pg_advisory_xact_lock[\s\S]*?IF NEW\."correctionType" <> 'company_entity'/u
+    );
+    expect(migration).toMatch(
+      /NEW\."correctionType" <> 'company_entity'[\s\S]*?"correctionType" = 'company_entity'[\s\S]*?"id" <> NEW\."id"/u
+    );
+    expect(migration).toContain(
+      `EXECUTE FUNCTION "guard_other_binding_from_company_entity_correction"('id', 'supersedesFileObjectId')`
+    );
   });
 
   function takeoverRecord(overrides: Record<string, unknown> = {}) {
@@ -89,6 +170,8 @@ describe("ContractTakeoverService", () => {
       projectId: "project-1",
       takeoverId: "takeover-1",
       correctionType: "evidence",
+      status: "confirmed",
+      targetCompanyEntityId: null,
       beforeSnapshot: {
         takeoverLevel: "B",
         historicalSettledCents: "1000000",
@@ -102,14 +185,119 @@ describe("ContractTakeoverService", () => {
       responsibleUserId: "contract-director-1",
       attachmentFileId: "file-1",
       createdByUserId: "contract-user",
+      submittedByUserId: "contract-user",
+      submittedAt: new Date("2026-07-04T09:00:00.000Z"),
+      reviewedByUserId: "contract-director-1",
+      reviewedAt: new Date("2026-07-04T09:00:00.000Z"),
+      reviewComment: null,
       createdAt: new Date("2026-07-04T09:00:00.000Z")
     };
   }
+
+  it("lists active, inactive and legacy-incomplete company entities for historical matching", async () => {
+    const candidates = [
+      {
+        id: "entity-active",
+        name: "在用主体",
+        unifiedSocialCreditCode: "91530100ACTIVE",
+        dataStatus: "complete",
+        isActive: true
+      },
+      {
+        id: "entity-inactive",
+        name: "历史停用主体",
+        unifiedSocialCreditCode: null,
+        dataStatus: "legacy_incomplete",
+        isActive: false
+      }
+    ];
+    const prisma = {
+      companyEntity: { findMany: jest.fn().mockResolvedValue(candidates) }
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never);
+
+    await expect(service.listCompanyEntityCandidates()).resolves.toEqual(candidates);
+    expect(prisma.companyEntity.findMany).toHaveBeenCalledWith({
+      select: {
+        id: true,
+        name: true,
+        unifiedSocialCreditCode: true,
+        dataStatus: true,
+        isActive: true
+      },
+      orderBy: [{ name: "asc" }, { createdAt: "asc" }]
+    });
+  });
+
+  it("validates a selected historical company entity while preserving the original name", async () => {
+    const tx = {
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
+      companyEntity: { findUnique: jest.fn().mockResolvedValue({ id: "entity-inactive" }) },
+      contract: { create: jest.fn().mockResolvedValue({ id: "contract-1" }) },
+      contractVersion: { create: jest.fn().mockResolvedValue({ id: "contract-version-1" }) },
+      paymentTermsVersion: { create: jest.fn().mockResolvedValue({ id: "terms-version-1" }) },
+      paymentTermsStage: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      contractTakeover: { create: jest.fn().mockResolvedValue(takeoverRecord()) }
+    };
+    const prisma = { $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) };
+    const service = new ContractTakeoverService(prisma as never, audit as never);
+
+    await service.create("project-1", {
+      code: "HT-ENTITY-001",
+      name: "历史主体匹配合同",
+      counterparty: "历史供应商",
+      companyEntityId: "entity-inactive",
+      companyEntityName: "扫描件原文：云南旧公司",
+      amountCents: "10000",
+      signedAt: "2026-01-10",
+      takeoverLevel: "A",
+      lifecycleStatus: "in_progress",
+      reviewComment: "历史资料完整，确认按A级接管"
+    }, "contract-user");
+
+    expect(tx.companyEntity.findUnique).toHaveBeenCalledWith({
+      where: { id: "entity-inactive" },
+      select: { id: true }
+    });
+    expect(tx.contract.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        companyEntityId: "entity-inactive",
+        companyEntityName: "扫描件原文：云南旧公司"
+      })
+    });
+  });
+
+  it("rejects an unknown company entity before creating historical contract facts", async () => {
+    const tx = {
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
+      companyEntity: { findUnique: jest.fn().mockResolvedValue(null) },
+      contract: { create: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) };
+    const service = new ContractTakeoverService(prisma as never, audit as never);
+
+    await expect(service.create("project-1", {
+      code: "HT-ENTITY-002",
+      name: "错误主体匹配合同",
+      counterparty: "历史供应商",
+      companyEntityId: "missing-entity",
+      companyEntityName: "原文主体",
+      amountCents: "10000",
+      signedAt: "2026-01-10",
+      takeoverLevel: "A",
+      lifecycleStatus: "in_progress",
+      reviewComment: "历史资料完整，确认按A级接管"
+    }, "contract-user")).rejects.toThrow("所选我方签约主体不存在，请重新选择");
+    expect(tx.contract.create).not.toHaveBeenCalled();
+  });
 
   it("creates a historical contract takeover draft on existing contract tables", async () => {
     const tx = {
       project: {
         findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+      },
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({ id: "entity-historical-1" })
       },
       contract: {
         create: jest.fn().mockResolvedValue({ id: "contract-1" })
@@ -1304,6 +1492,9 @@ describe("ContractTakeoverService", () => {
       project: {
         findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
       },
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({ id: "entity-historical-1" })
+      },
       contract: {
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockResolvedValue({ id: "contract-1" })
@@ -1376,6 +1567,7 @@ describe("ContractTakeoverService", () => {
             code: "HT-HIS-001",
             name: "历史材料合同",
             counterparty: "供应商A",
+            companyEntityId: "entity-historical-1",
             companyEntityName: "建工智管公司",
             amountCents: "1000000",
             signedAt: "2026-01-10",
@@ -1430,6 +1622,8 @@ describe("ContractTakeoverService", () => {
         source: "historical_takeover",
         code: "HT-HIS-001",
         name: "历史材料合同",
+        companyEntityId: "entity-historical-1",
+        companyEntityName: "建工智管公司",
         ownerUserId: "contract-user"
       })
     });
@@ -2673,6 +2867,475 @@ describe("ContractTakeoverService", () => {
     expect(tx.contractTakeoverCorrection.create).not.toHaveBeenCalled();
   });
 
+  it("合同员提交已确认接管的主体更正时冻结改前改后事实且不修改合同", async () => {
+    const takeover = takeoverRecord({ takeoverStatus: "confirmed" });
+    const tx = {
+      contractTakeover: { findUnique: jest.fn().mockResolvedValue(takeover) },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          companyEntityId: "entity-before",
+          companyEntityName: "扫描件原文主体"
+        }),
+        update: jest.fn()
+      },
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-after",
+          name: "匹配后的主体",
+          dataStatus: "legacy_incomplete",
+          isActive: false
+        })
+      },
+      user: { findUnique: jest.fn().mockResolvedValue({ id: "responsible-1", isActive: true }) },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-staff" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }])
+      },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      contractTakeoverCorrection: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "correction-entity-1" })
+      }
+    };
+    const prisma = { $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never, files as never);
+
+    await expect(service.submitCompanyEntityCorrection("project-1", "takeover-1", {
+      targetCompanyEntityId: "entity-after",
+      reason: "原主体匹配错误",
+      responsibleUserId: "responsible-1",
+      attachmentFileId: "file-1",
+      currentPassword: "current-password"
+    }, "contract-user")).resolves.toEqual({
+      id: "correction-entity-1",
+      status: "submitted",
+      message: "主体更正已提交，等待合同部主管确认"
+    });
+
+    expect(tx.contractTakeoverCorrection.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        projectId: "project-1",
+        takeoverId: "takeover-1",
+        correctionType: "company_entity",
+        status: "submitted",
+        targetCompanyEntityId: "entity-after",
+        beforeSnapshot: {
+          companyEntityId: "entity-before",
+          companyEntityName: "扫描件原文主体"
+        },
+        afterSnapshot: {
+          companyEntityId: "entity-after",
+          companyEntityName: "匹配后的主体",
+          dataStatus: "legacy_incomplete",
+          isActive: false
+        },
+        reason: "原主体匹配错误",
+        responsibleUserId: "responsible-1",
+        attachmentFileId: "file-1",
+        createdByUserId: "contract-user",
+        submittedByUserId: "contract-user",
+        submittedAt: expect.any(Date)
+      })
+    });
+    expect(files.assertCanAttachUnlinkedFile).toHaveBeenCalledWith(
+      tx,
+      "file-1",
+      "contract-user"
+    );
+    expect(tx.contract.update).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      actorUserId: "contract-user",
+      action: "contract_takeover.company_entity_correction.submit",
+      businessId: "takeover-1"
+    }));
+  });
+
+  it("合同部主管只有主管岗位时不能代替合同员发起主体更正", async () => {
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "confirmed" }))
+      },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-director" }])
+      },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(service.submitCompanyEntityCorrection("project-1", "takeover-1", {
+      targetCompanyEntityId: "entity-after",
+      reason: "原主体匹配错误",
+      responsibleUserId: "responsible-1",
+      attachmentFileId: "file-1",
+      currentPassword: "current-password"
+    }, "contract-director")).rejects.toThrow("仅该项目合同员可以发起历史主体更正");
+    expect(files.assertCanAttachUnlinkedFile).not.toHaveBeenCalled();
+  });
+
+  it("已绑定其他业务的文件不能提交为主体更正依据", async () => {
+    files.assertCanAttachUnlinkedFile.mockRejectedValue(
+      new Error("该文件已用于其他业务，请重新上传专用的更正依据附件")
+    );
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "confirmed" }))
+      },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-staff" }])
+      },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      contractTakeoverCorrection: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(service.submitCompanyEntityCorrection("project-1", "takeover-1", {
+      targetCompanyEntityId: "entity-after",
+      reason: "原主体匹配错误",
+      responsibleUserId: "responsible-1",
+      attachmentFileId: "file-bound",
+      currentPassword: "current-password"
+    }, "contract-user")).rejects.toThrow(
+      "该文件已用于其他业务，请重新上传专用的更正依据附件"
+    );
+    expect(tx.contractTakeoverCorrection.create).not.toHaveBeenCalled();
+  });
+
+  it("数据库互斥触发器拒绝并发绑定时返回稳定中文且不泄露表名", async () => {
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "confirmed" }))
+      },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-staff" }])
+      },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          companyEntityId: "entity-before",
+          companyEntityName: "原主体"
+        })
+      },
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-after",
+          name: "新主体",
+          dataStatus: "complete",
+          isActive: true
+        })
+      },
+      user: { findUnique: jest.fn().mockResolvedValue({ id: "responsible-1", isActive: true }) },
+      contractTakeoverCorrection: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockRejectedValue({
+          code: "P2004",
+          meta: {
+            database_error:
+              '23514: 该文件已用于其他业务，请重新上传专用的更正依据附件; relation="PaymentExecution"'
+          }
+        })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    let thrown: unknown;
+    try {
+      await service.submitCompanyEntityCorrection("project-1", "takeover-1", {
+        targetCompanyEntityId: "entity-after",
+        reason: "原主体匹配错误",
+        responsibleUserId: "responsible-1",
+        attachmentFileId: "file-raced",
+        currentPassword: "current-password"
+      }, "contract-user");
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(BadRequestException);
+    expect((thrown as Error).message).toBe(
+      "该文件已用于其他业务，请重新上传专用的更正依据附件"
+    );
+    expect((thrown as Error).message).not.toContain("PaymentExecution");
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("合同部主管确认主体更正时只更新主体ID并保留原始名称", async () => {
+    const tx = {
+      contractTakeover: { findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "confirmed" })) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-director" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      contractTakeoverCorrection: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "correction-entity-1",
+          projectId: "project-1",
+          takeoverId: "takeover-1",
+          correctionType: "company_entity",
+          status: "submitted",
+          targetCompanyEntityId: "entity-after",
+          beforeSnapshot: { companyEntityId: "entity-before", companyEntityName: "扫描件原文主体" },
+          createdByUserId: "contract-user"
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          companyEntityId: "entity-before",
+          companyEntityName: "扫描件原文主体"
+        }),
+        update: jest.fn().mockResolvedValue({ id: "contract-1" })
+      },
+      companyEntity: { findUnique: jest.fn().mockResolvedValue({ id: "entity-after" }) }
+    };
+    const prisma = { $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never, files as never);
+
+    await expect(service.reviewCompanyEntityCorrection("project-1", "takeover-1", "correction-entity-1", {
+      decision: "approve",
+      currentPassword: "current-password",
+      comment: "主体资料核对无误"
+    }, "contract-director")).resolves.toEqual({
+      id: "correction-entity-1",
+      status: "confirmed",
+      message: "主体更正已确认"
+    });
+    expect(tx.contract.update).toHaveBeenCalledWith({
+      where: { id: "contract-1" },
+      data: { companyEntityId: "entity-after" }
+    });
+    expect(auth.confirmPassword).toHaveBeenCalledWith("contract-director", "current-password");
+    expect(tx.contractTakeoverCorrection.updateMany).toHaveBeenCalledWith({
+      where: { id: "correction-entity-1", status: "submitted" },
+      data: {
+        status: "confirmed",
+        reviewedByUserId: "contract-director",
+        reviewedAt: expect.any(Date),
+        reviewComment: "主体资料核对无误"
+      }
+    });
+  });
+
+  it("服务层拒绝合同员、跨项目或仅全局非主管岗位处理主体更正", async () => {
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "confirmed" }))
+      },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-staff" }])
+      },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      contractTakeoverCorrection: { findUnique: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(service.reviewCompanyEntityCorrection(
+      "project-1",
+      "takeover-1",
+      "correction-entity-1",
+      {
+        decision: "approve",
+        currentPassword: "current-password"
+      },
+      "contract-staff"
+    )).rejects.toThrow("仅该项目合同部主管可以处理历史主体更正");
+    expect(tx.contractTakeoverCorrection.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("主体更正驳回不修改合同，且跨项目、重复处理和自审均失败关闭", async () => {
+    const baseCorrection = {
+      id: "correction-entity-1",
+      projectId: "project-1",
+      takeoverId: "takeover-1",
+      correctionType: "company_entity",
+      status: "submitted",
+      targetCompanyEntityId: "entity-after",
+      beforeSnapshot: { companyEntityId: "entity-before" },
+      createdByUserId: "contract-user"
+    };
+    const makeService = (correction: Record<string, unknown> | null) => {
+      const tx = {
+        contractTakeover: { findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "confirmed" })) },
+        userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-director" }]) },
+        position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }]) },
+        projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+        contractTakeoverCorrection: {
+          findUnique: jest.fn().mockResolvedValue(correction),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 })
+        },
+        contract: {
+          findUnique: jest.fn().mockResolvedValue({ id: "contract-1", companyEntityId: "entity-before", companyEntityName: "原文" }),
+          update: jest.fn()
+        },
+        companyEntity: { findUnique: jest.fn() }
+      };
+      const prisma = { $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) };
+      return { tx, service: new ContractTakeoverService(prisma as never, audit as never, auth as never, files as never) };
+    };
+
+    const rejected = makeService(baseCorrection);
+    await rejected.service.reviewCompanyEntityCorrection("project-1", "takeover-1", "correction-entity-1", {
+      decision: "reject",
+      currentPassword: "current-password",
+      comment: "依据不足"
+    }, "contract-director");
+    expect(rejected.tx.contract.update).not.toHaveBeenCalled();
+    expect(rejected.tx.contractTakeoverCorrection.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "rejected" })
+    }));
+
+    const crossProject = makeService({ ...baseCorrection, projectId: "project-2" });
+    await expect(crossProject.service.reviewCompanyEntityCorrection("project-1", "takeover-1", "correction-entity-1", {
+      decision: "approve",
+      currentPassword: "current-password"
+    }, "contract-director")).rejects.toThrow("未找到该接管合同的主体更正");
+
+    const repeated = makeService({ ...baseCorrection, status: "confirmed" });
+    await expect(repeated.service.reviewCompanyEntityCorrection("project-1", "takeover-1", "correction-entity-1", {
+      decision: "approve",
+      currentPassword: "current-password"
+    }, "contract-director")).rejects.toThrow("主体更正已处理或发生变化，请刷新后重试");
+
+    const selfReview = makeService(baseCorrection);
+    await expect(selfReview.service.reviewCompanyEntityCorrection("project-1", "takeover-1", "correction-entity-1", {
+      decision: "approve",
+      currentPassword: "current-password"
+    }, "contract-user")).rejects.toThrow("主体更正提交人与确认人不能是同一人");
+  });
+
+  it("主体更正确认和驳回都必须先验证当前密码", async () => {
+    const prisma = { $transaction: jest.fn() };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(service.reviewCompanyEntityCorrection(
+      "project-1",
+      "takeover-1",
+      "correction-1",
+      { decision: "approve", currentPassword: "" },
+      "contract-director"
+    )).rejects.toThrow("请填写当前登录密码后再处理主体更正");
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { code: "P2034" },
+    { code: "P2010", meta: { code: "40001" } }
+  ])("主体更正并发冲突 $code 返回稳定业务提示", async (transactionError) => {
+    const prisma = {
+      $transaction: jest.fn().mockRejectedValue(transactionError)
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(service.reviewCompanyEntityCorrection(
+      "project-1",
+      "takeover-1",
+      "correction-1",
+      { decision: "approve", currentPassword: "current-password" },
+      "contract-director"
+    )).rejects.toThrow("主体更正已处理或发生变化，请刷新后重试");
+    expect(auth.confirmPassword).toHaveBeenCalledWith("contract-director", "current-password");
+  });
+
+  it("主体更正CAS未取得待处理记录时不修改合同", async () => {
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "confirmed" }))
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-director" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      contractTakeoverCorrection: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "correction-1",
+          projectId: "project-1",
+          takeoverId: "takeover-1",
+          correctionType: "company_entity",
+          status: "submitted",
+          targetCompanyEntityId: "entity-after",
+          beforeSnapshot: { companyEntityId: "entity-before" },
+          createdByUserId: "contract-user"
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          companyEntityId: "entity-before",
+          companyEntityName: "原始名称"
+        }),
+        update: jest.fn()
+      },
+      companyEntity: { findUnique: jest.fn().mockResolvedValue({ id: "entity-after" }) }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(service.reviewCompanyEntityCorrection(
+      "project-1",
+      "takeover-1",
+      "correction-1",
+      { decision: "approve", currentPassword: "current-password" },
+      "contract-director"
+    )).rejects.toThrow("主体更正已处理或发生变化，请刷新后重试");
+    expect(tx.contract.update).not.toHaveBeenCalled();
+  });
+
   it("rejects missing signed date before writing", async () => {
     const tx = {
       project: {
@@ -3346,12 +4009,20 @@ describe("ContractTakeoverService", () => {
         id: "takeover-correction-1",
         correctionType: "evidence",
         correctionTypeLabel: "资料更正",
+        status: "confirmed",
+        statusLabel: "已确认",
+        targetCompanyEntityId: null,
         reason: "补充历史付款凭证复核说明",
         beforeSummary:
           "改前：接管等级 B级；历史累计结算 ¥10,000.00；历史累计已付 ¥4,000.00；证据说明：原接管资料：合同扫描件、结算台账。",
         afterSummary: "补充历史付款凭证，确认历史已付金额不变。",
         responsibleUserName: "合同负责人",
         createdByName: "合同经办",
+        submittedByName: "合同经办",
+        submittedAt: new Date("2026-07-04T09:00:00.000Z"),
+        reviewedByName: "合同负责人",
+        reviewedAt: new Date("2026-07-04T09:00:00.000Z"),
+        reviewComment: null,
         attachmentFileId: "file-1",
         attachmentFileName: "接管资料-1.pdf",
         createdAt: new Date("2026-07-04T09:00:00.000Z")

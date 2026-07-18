@@ -5,6 +5,8 @@ import {
   buildImportPrecheckMessage,
   buildTakeoverConfirmationSummary,
   buildTakeoverPostConfirmationChecklist,
+  companyEntityMatchOptionLabel,
+  companyEntityMatchStatus,
   canConfirmHistoricalChangeBaseline,
   canConfirmTakeover,
   canEditTakeover,
@@ -45,6 +47,31 @@ import {
 } from "./contract-takeover.config";
 
 describe("contract takeover page configuration", () => {
+  it("keeps the historical contract entity name separate from its system match", () => {
+    const inactive = {
+      id: "entity-1",
+      name: "当前主体名称",
+      unifiedSocialCreditCode: "91530100MA6K000001",
+      dataStatus: "complete" as const,
+      isActive: false
+    };
+
+    expect(companyEntityMatchOptionLabel(inactive)).toBe(
+      "当前主体名称 · 91530100MA6K000001 · 已停用"
+    );
+    expect(companyEntityMatchStatus(inactive)).toEqual({
+      label: "已停用（仅历史匹配）",
+      tone: "warning"
+    });
+    expect(
+      companyEntityMatchStatus({
+        ...inactive,
+        isActive: true,
+        dataStatus: "legacy_incomplete"
+      })
+    ).toEqual({ label: "资料待补全（仅历史匹配）", tone: "warning" });
+  });
+
   it("uses compact columns for historical contract takeover ledger", () => {
     expect(contractTakeoverColumns.map((column) => column.title)).toEqual([
       "合同编号",
@@ -476,12 +503,20 @@ describe("contract takeover page configuration", () => {
             id: "takeover-correction-1",
             correctionType: "evidence",
             correctionTypeLabel: "资料更正",
+            status: "confirmed",
+            statusLabel: "已确认",
+            targetCompanyEntityId: null,
             reason: "补充历史付款凭证复核说明",
             beforeSummary:
               "改前：接管等级 B级；历史累计结算 ¥10,000.00；历史累计已付 ¥4,000.00",
             afterSummary: "补充历史付款凭证，确认历史已付金额不变。",
             responsibleUserName: "合同负责人",
             createdByName: "合同经办",
+            submittedByName: "合同经办",
+            submittedAt: "2026-07-04T09:00:00.000Z",
+            reviewedByName: "合同主管",
+            reviewedAt: "2026-07-04T10:00:00.000Z",
+            reviewComment: "已复核",
             attachmentFileId: "file-1",
             attachmentFileName: "付款凭证.pdf",
             createdAt: "2026-07-04T09:00:00.000Z"
@@ -849,6 +884,7 @@ function takeover(): ContractTakeoverReadModel {
     contractNo: "HT-LS-001",
     contractName: "历史材料采购合同",
     counterparty: "历史供应商",
+    companyEntityId: "entity-1",
     companyEntityName: "建工智管公司",
     contractTypeKey: "material_purchase",
     amountCents: "100000000",

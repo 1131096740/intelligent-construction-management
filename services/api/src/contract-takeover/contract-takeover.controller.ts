@@ -37,6 +37,10 @@ import {
   PrecheckContractTakeoverImportDto
 } from "./dto/precheck-contract-takeover-import.dto";
 import { RecordContractTakeoverCorrectionDto } from "./dto/record-contract-takeover-correction.dto";
+import {
+  ReviewContractTakeoverCompanyEntityCorrectionDto,
+  SubmitContractTakeoverCompanyEntityCorrectionDto
+} from "./dto/contract-takeover-company-entity-correction.dto";
 import { ReviewContractTakeoverImportBatchDto } from "./dto/review-contract-takeover-import-batch.dto";
 
 @Controller("projects/:projectId/contract-takeovers")
@@ -58,6 +62,12 @@ export class ContractTakeoverController {
   @RequireProjectRole("contract.create")
   listImportBatches(@Param("projectId") projectId: string) {
     return this.takeovers.listImportBatches(projectId);
+  }
+
+  @Get("company-entity-candidates")
+  @RequireProjectRole("contract.create")
+  listCompanyEntityCandidates() {
+    return this.takeovers.listCompanyEntityCandidates();
   }
 
   @Patch("import-batches/:batchId/review-result")
@@ -296,6 +306,40 @@ export class ContractTakeoverController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.takeovers.recordCorrection(projectId, takeoverId, body, user.id);
+  }
+
+  @Post(":takeoverId/company-entity-corrections")
+  @RequireProjectRole("contract.create")
+  submitCompanyEntityCorrection(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Body() body: SubmitContractTakeoverCompanyEntityCorrectionDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.takeovers.submitCompanyEntityCorrection(
+      projectId,
+      takeoverId,
+      body,
+      user.id
+    );
+  }
+
+  @Post(":takeoverId/company-entity-corrections/:correctionId/review")
+  @RequireProjectRole("contract.archive.confirm")
+  reviewCompanyEntityCorrection(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Param("correctionId") correctionId: string,
+    @Body() body: ReviewContractTakeoverCompanyEntityCorrectionDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.takeovers.reviewCompanyEntityCorrection(
+      projectId,
+      takeoverId,
+      correctionId,
+      body,
+      user.id
+    );
   }
 
   @Post(":takeoverId/review-submission")

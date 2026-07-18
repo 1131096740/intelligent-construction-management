@@ -53,6 +53,7 @@ import {
   downloadContractTakeoverLedgerExport,
   downloadSettlementLedgerExport,
   listContractTakeoverImportBatches,
+  listHistoricalCompanyEntityCandidates,
   createPaymentRequest,
   precheckContractTakeoverImport,
   previewContractTakeoverExcelImport,
@@ -105,9 +106,11 @@ import {
   createApprovalDelegation,
   attachContractTakeoverEvidenceFile,
   recordContractTakeoverCorrection,
+  reviewContractTakeoverCompanyEntityCorrection,
   fetchApprovalDelegationUserOptions,
   revokeApprovalDelegation,
   submitContractTakeoverReview,
+  submitContractTakeoverCompanyEntityCorrection,
   reviewContractTakeoverImportBatch,
   updateContractTakeover
 } from "./core-flow-read.api";
@@ -119,6 +122,54 @@ describe("core flow read API client", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("loads project-scoped historical company entity candidates", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => []
+    } as Response);
+
+    await listHistoricalCompanyEntityCandidates("project/1");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/projects/project%2F1/contract-takeovers/company-entity-candidates",
+      expect.any(Object)
+    );
+  });
+
+  it("submits and reviews a historical company entity correction", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "correction-1", status: "submitted" })
+    } as Response);
+
+    await submitContractTakeoverCompanyEntityCorrection("project-1", "takeover-1", {
+      targetCompanyEntityId: "entity-2",
+      reason: "原匹配主体有误",
+      responsibleUserId: "contract-staff-1",
+      attachmentFileId: "file-1",
+      currentPassword: "current-password"
+    });
+    await reviewContractTakeoverCompanyEntityCorrection(
+      "project-1",
+      "takeover-1",
+      "correction-1",
+      { decision: "approve", comment: "已核对原合同", currentPassword: "current-password" }
+    );
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project-1/contract-takeovers/takeover-1/company-entity-corrections",
+      "/api/projects/project-1/contract-takeovers/takeover-1/company-entity-corrections/correction-1/review"
+    ]);
+    expect(fetchMock.mock.calls.map((call) => call[1]?.method)).toEqual(["POST", "POST"]);
+    expect(fetchMock.mock.calls[1][1]?.body).toBe(
+      JSON.stringify({
+        decision: "approve",
+        comment: "已核对原合同",
+        currentPassword: "current-password"
+      })
+    );
   });
 
   it("requests the first read-only detail endpoints", async () => {

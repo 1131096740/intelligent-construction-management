@@ -416,13 +416,12 @@
               placeholder="供应商/分包单位"
             />
           </label>
-          <label>
-            <span>我方签约主体</span>
-            <t-input
-              v-model="createForm.companyEntityName"
-              placeholder="可选"
-            />
-          </label>
+          <HistoricalCompanyEntityMatchPanel
+            v-model:company-entity-id="createForm.companyEntityId"
+            v-model:original-name="createForm.companyEntityName"
+            :candidates="companyEntityCandidates"
+            :loading="loadingCompanyEntityCandidates"
+          />
           <label>
             <span>合同金额（元）</span>
             <t-input
@@ -1220,6 +1219,124 @@
               已确认的金额、付款条款和证据资料不能静默覆盖。需要补正时，请保存更正原因、责任人、更正后的事实说明和依据附件。
             </p>
             <div
+              v-if="selectedRow?.takeover.takeoverStatus === 'confirmed'"
+              class="company-entity-correction"
+            >
+              <h4>我方主体匹配更正</h4>
+              <p class="correction-hint">
+                当前原合同主体名称保持不变。合同员提交系统主体匹配更正后，由合同部主管确认；原扫描件不会被修改。
+              </p>
+              <div
+                v-for="correction in selectedCompanyEntityCorrections"
+                :key="correction.id"
+                class="correction-history-item"
+              >
+                <strong>{{ correction.correctionTypeLabel }} · {{ correction.statusLabel }}</strong>
+                <p>{{ correction.beforeSummary }}</p>
+                <p>拟更正为：{{ correction.afterSummary }}</p>
+                <p>更正原因：{{ correction.reason }}</p>
+                <div class="form-actions">
+                  <t-button
+                    variant="outline"
+                    @click="openCorrectionAttachmentDownload(correction.attachmentFileId, correction.attachmentFileName)"
+                  >
+                    安全下载更正依据
+                  </t-button>
+                </div>
+                <template v-if="canConfirmTakeovers && correction.status === 'submitted'">
+                  <div class="form-actions">
+                    <t-button
+                      theme="primary"
+                      :loading="companyEntityCorrectionReviewingId === correction.id"
+                      @click="openCompanyEntityCorrectionReview(correction.id, 'approve')"
+                    >
+                      确认主体更正
+                    </t-button>
+                    <t-button
+                      theme="danger"
+                      variant="outline"
+                      :loading="companyEntityCorrectionReviewingId === correction.id"
+                      @click="openCompanyEntityCorrectionReview(correction.id, 'reject')"
+                    >
+                      驳回更正
+                    </t-button>
+                  </div>
+                </template>
+              </div>
+              <div
+                v-if="canSubmitCompanyEntityCorrections && !selectedPendingCompanyEntityCorrections.length"
+                class="form-grid two"
+              >
+                <label>
+                  <span>更正后的系统主体</span>
+                  <t-select
+                    v-model="companyEntityCorrectionForm.targetCompanyEntityId"
+                    :options="companyEntityCandidates.map((candidate) => ({
+                      value: candidate.id,
+                      label: companyEntityMatchOptionLabel(candidate)
+                    }))"
+                    filterable
+                    placeholder="请选择真实主体，不按名称自动猜测"
+                  />
+                </label>
+                <label>
+                  <span>更正责任人</span>
+                  <t-select
+                    v-model="companyEntityCorrectionForm.responsibleUserId"
+                    :options="responsibleUserOptions"
+                    filterable
+                    placeholder="选择负责核实和跟进的人员"
+                  />
+                </label>
+                <label>
+                  <span>更正原因</span>
+                  <t-input
+                    v-model="companyEntityCorrectionForm.reason"
+                    placeholder="说明原匹配为何不正确"
+                  />
+                </label>
+                <label>
+                  <span>更正依据附件</span>
+                  <t-upload
+                    v-model="companyEntityCorrectionFiles"
+                    :auto-upload="false"
+                    :multiple="false"
+                    :max="1"
+                    accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
+                    theme="file-input"
+                    placeholder="选择主体更正依据"
+                  />
+                </label>
+                <label>
+                  <span>当前登录密码</span>
+                  <t-input
+                    v-model="companyEntityCorrectionForm.currentPassword"
+                    type="password"
+                    autocomplete="current-password"
+                    placeholder="用于确认本次更正由本人发起"
+                  />
+                </label>
+                <div class="form-actions">
+                  <t-tooltip
+                    v-if="companyEntityCorrectionDisabledReason"
+                    :content="companyEntityCorrectionDisabledReason"
+                  >
+                    <t-button disabled>
+                      提交主体更正
+                    </t-button>
+                  </t-tooltip>
+                  <t-button
+                    v-else
+                    theme="primary"
+                    :loading="companyEntityCorrectionSubmitting"
+                    @click="submitCompanyEntityCorrection"
+                  >
+                    提交主体更正
+                  </t-button>
+                </div>
+              </div>
+            </div>
+            <div
               v-if="selectedCorrectionRows.length"
               class="correction-history"
             >
@@ -1287,12 +1404,15 @@
               </label>
               <label>
                 <span>更正依据附件</span>
-                <input
-                  ref="correctionInputRef"
-                  type="file"
+                <t-upload
+                  v-model="correctionFiles"
+                  :auto-upload="false"
+                  :multiple="false"
+                  :max="1"
                   accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
-                  @change="onCorrectionFileChange"
-                >
+                  theme="file-input"
+                  placeholder="选择更正依据"
+                />
               </label>
               <label>
                 <span>当前登录密码</span>
@@ -1521,6 +1641,37 @@
     />
 
     <SensitiveActionDialog
+      v-model="correctionAttachmentDownloadVisible"
+      title="安全下载主体更正依据"
+      :description="`将下载“${correctionAttachmentDownloadFileName || '更正依据'}”，系统会记录下载人、用途和时间。`"
+      confirm-text="确认下载"
+      require-reason
+      reason-label="下载用途"
+      require-password
+      :loading="correctionAttachmentDownloading"
+      :error="correctionAttachmentDownloadError"
+      @confirm="submitCorrectionAttachmentDownload"
+      @cancel="resetCorrectionAttachmentDownload"
+    />
+
+    <SensitiveActionDialog
+      v-model="companyEntityCorrectionReviewVisible"
+      :title="companyEntityCorrectionReviewDecision === 'approve' ? '确认主体更正' : '驳回主体更正'"
+      :description="companyEntityCorrectionReviewDecision === 'approve'
+        ? '确认后只会更新系统关联的我方主体，原合同载明名称和扫描件保持不变。'
+        : '驳回后合同员需要根据处理意见重新核对并提交主体更正。'"
+      :confirm-text="companyEntityCorrectionReviewDecision === 'approve' ? '确认更正' : '确认驳回'"
+      :confirm-theme="companyEntityCorrectionReviewDecision === 'approve' ? 'primary' : 'danger'"
+      :require-reason="companyEntityCorrectionReviewDecision === 'reject'"
+      reason-label="处理意见"
+      require-password
+      :loading="Boolean(companyEntityCorrectionReviewingId)"
+      :error="companyEntityCorrectionReviewError"
+      @confirm="confirmCompanyEntityCorrectionReview"
+      @cancel="resetCompanyEntityCorrectionReview"
+    />
+
+    <SensitiveActionDialog
       v-model="evidenceDownloadConfirmVisible"
       title="确认安全下载资料"
       description="系统将校验当前登录密码，并记录下载人、接管合同、资料和下载原因。"
@@ -1552,12 +1703,15 @@ import {
   fetchProjects,
   getContractTakeover,
   listContractTakeoverImportBatches,
+  listHistoricalCompanyEntityCandidates,
   listContractTakeovers,
   precheckContractTakeoverImport,
   previewContractTakeoverExcelImport,
   recordContractTakeoverCorrection,
+  reviewContractTakeoverCompanyEntityCorrection,
   reviewContractTakeoverImportBatch,
   submitContractTakeoverReview,
+  submitContractTakeoverCompanyEntityCorrection,
   updateContractTakeover,
   uploadPrivateFile,
   type ContractInvoiceType,
@@ -1572,6 +1726,7 @@ import {
   type ContractLifecycleStatus,
   type ContractTakeoverLevel,
   type ContractTakeoverReadModel,
+  type HistoricalCompanyEntityCandidateReadModel,
   type ProjectOptionReadModel,
   type UserOptionReadModel
 } from "../../api/core-flow-read.api";
@@ -1587,6 +1742,7 @@ import {
   canSubmitHistoricalContractTakeovers
 } from "../business-readonly-access";
 import ContractTaxFactReviewPanel from "./components/ContractTaxFactReviewPanel.vue";
+import HistoricalCompanyEntityMatchPanel from "./components/HistoricalCompanyEntityMatchPanel.vue";
 import {
   buildImportDraftsMessage,
   buildImportPrecheckMessage,
@@ -1597,6 +1753,7 @@ import {
   canEditTakeover,
   canSubmitTakeoverReview,
   centsToYuanText,
+  companyEntityMatchOptionLabel,
   contractTakeoverColumns,
   formatTakeoverDate,
   importPrecheckRowStatusLabel,
@@ -1656,6 +1813,7 @@ interface CreateFormState extends Record<MoneyFieldKey, string> {
   code: string;
   name: string;
   counterparty: string;
+  companyEntityId: string;
   companyEntityName: string;
   contractTypeKey: TakeoverContractTypeKey | "";
   amountYuan: string;
@@ -1694,6 +1852,13 @@ interface CorrectionFormState {
   currentPassword: string;
 }
 
+interface CompanyEntityCorrectionFormState {
+  targetCompanyEntityId: string;
+  reason: string;
+  responsibleUserId: string;
+  currentPassword: string;
+}
+
 const moneyFields: Array<{ key: MoneyFieldKey; label: string }> = [
   { key: "historicalSettledYuan", label: "历史累计结算" },
   { key: "historicalApprovalPendingPaymentYuan", label: "历史审批中付款" },
@@ -1713,6 +1878,9 @@ const roleKeys = computed(() => auth.user?.roleKeys ?? []);
 const canManageTakeovers = computed(() =>
   canManageHistoricalContractTakeovers(roleKeys.value)
 );
+const canSubmitCompanyEntityCorrections = computed(() =>
+  roleKeys.value.includes("contract_staff")
+);
 const canSubmitTakeovers = computed(() =>
   canSubmitHistoricalContractTakeovers(roleKeys.value)
 );
@@ -1725,11 +1893,13 @@ const canExportTakeovers = computed(() =>
 const projects = ref<ProjectOptionReadModel[]>([]);
 const responsibleUsers = ref<UserOptionReadModel[]>([]);
 const takeovers = ref<ContractTakeoverReadModel[]>([]);
+const companyEntityCandidates = ref<HistoricalCompanyEntityCandidateReadModel[]>([]);
 const importBatches = ref<ContractTakeoverImportBatchReadModel[]>([]);
 const selectedProjectId = ref("");
 const selectedTakeoverId = ref("");
 const loadingProjects = ref(false);
 const loadingTakeovers = ref(false);
+const loadingCompanyEntityCandidates = ref(false);
 const creating = ref(false);
 const prechecking = ref(false);
 const generatingImportDrafts = ref(false);
@@ -1744,12 +1914,23 @@ const confirming = ref(false);
 const evidenceUploading = ref(false);
 const evidenceDownloading = ref(false);
 const correctionSubmitting = ref(false);
+const companyEntityCorrectionSubmitting = ref(false);
+const companyEntityCorrectionReviewingId = ref("");
+const companyEntityCorrectionReviewVisible = ref(false);
+const companyEntityCorrectionReviewDecision = ref<"approve" | "reject">("approve");
+const companyEntityCorrectionReviewTargetId = ref("");
+const companyEntityCorrectionReviewError = ref("");
 const showCreateForm = ref(false);
 const showPrecheckPanel = ref(false);
 const confirmVisible = ref(false);
 const importBatchReviewVisible = ref(false);
 const evidenceDownloadConfirmVisible = ref(false);
 const evidenceDownloadConfirmError = ref("");
+const correctionAttachmentDownloadVisible = ref(false);
+const correctionAttachmentDownloadFileId = ref("");
+const correctionAttachmentDownloadFileName = ref("");
+const correctionAttachmentDownloadError = ref("");
+const correctionAttachmentDownloading = ref(false);
 const changeBaselineVisible = ref(false);
 const changeBaselineSubmitting = ref(false);
 const changeBaselineError = ref("");
@@ -1771,13 +1952,16 @@ const evidenceInputRef = ref<HTMLInputElement | null>(null);
 const evidenceDownloadFileId = ref("");
 const evidenceDownloadPassword = ref("");
 const evidenceDownloadReason = ref("");
-const correctionFile = ref<File | null>(null);
-const correctionInputRef = ref<HTMLInputElement | null>(null);
+const correctionFiles = ref<UploadFile[]>([]);
+const companyEntityCorrectionFiles = ref<UploadFile[]>([]);
 const message = ref("");
 const messageTone = ref<"success" | "danger" | "default">("default");
 const createForm = reactive<CreateFormState>(createEmptyForm());
 const importBatchForm = reactive<ImportBatchFormState>(createEmptyImportBatchForm());
 const correctionForm = reactive<CorrectionFormState>(createEmptyCorrectionForm());
+const companyEntityCorrectionForm = reactive<CompanyEntityCorrectionFormState>(
+  createEmptyCompanyEntityCorrectionForm()
+);
 const importPrecheckText = ref("");
 const importPrecheckResult = ref<ContractTakeoverImportPrecheckReadModel | null>(null);
 const excelImportFiles = ref<UploadFile[]>([]);
@@ -1946,6 +2130,14 @@ const selectedExcelImportFile = computed(() => {
   const raw = excelImportFiles.value[0]?.raw;
   return raw instanceof File ? raw : null;
 });
+const selectedCorrectionFile = computed(() => {
+  const raw = correctionFiles.value[0]?.raw;
+  return raw instanceof File ? raw : null;
+});
+const selectedCompanyEntityCorrectionFile = computed(() => {
+  const raw = companyEntityCorrectionFiles.value[0]?.raw;
+  return raw instanceof File ? raw : null;
+});
 const displayedImportPrecheckResult = computed<
   ContractTakeoverImportPrecheckReadModel | ContractTakeoverExcelPreviewReadModel | null
 >(() => excelPreviewResult.value ?? importPrecheckResult.value);
@@ -2090,13 +2282,43 @@ const selectedCorrectionDisabledReason = computed(() => {
     reason: correctionForm.reason,
     responsibleUserId: correctionForm.responsibleUserId,
     afterSummary: correctionForm.afterSummary,
-    hasAttachment: Boolean(correctionFile.value),
+    hasAttachment: Boolean(selectedCorrectionFile.value),
     currentPassword: correctionForm.currentPassword
   });
 });
 const selectedCorrectionRows = computed(() =>
-  selectedRow.value ? takeoverCorrectionRows(selectedRow.value.takeover) : []
+  selectedRow.value
+    ? takeoverCorrectionRows({
+        ...selectedRow.value.takeover,
+        corrections: selectedRow.value.takeover.corrections.filter(
+          (correction) => correction.correctionType !== "company_entity"
+        )
+      })
+    : []
 );
+const selectedCompanyEntityCorrections = computed(() =>
+  (selectedRow.value?.takeover.corrections ?? []).filter(
+    (correction) => correction.correctionType === "company_entity"
+  )
+);
+const selectedPendingCompanyEntityCorrections = computed(() =>
+  selectedCompanyEntityCorrections.value.filter((correction) => correction.status === "submitted")
+);
+const companyEntityCorrectionDisabledReason = computed(() => {
+  const takeover = selectedRow.value?.takeover;
+  if (!takeover) return "请先选择需要更正主体匹配的接管合同";
+  if (takeover.takeoverStatus !== "confirmed") return "仅已确认接管的合同需要发起主体匹配更正";
+  if (selectedPendingCompanyEntityCorrections.value.length) return "已有待合同部主管处理的主体更正";
+  if (!companyEntityCorrectionForm.targetCompanyEntityId) return "请选择更正后的系统主体";
+  if (companyEntityCorrectionForm.targetCompanyEntityId === takeover.companyEntityId) {
+    return "更正后的主体与当前匹配主体相同";
+  }
+  if (!companyEntityCorrectionForm.responsibleUserId) return "请选择更正责任人";
+  if (!companyEntityCorrectionForm.reason.trim()) return "请填写更正原因";
+  if (!selectedCompanyEntityCorrectionFile.value) return "请上传更正依据附件";
+  if (!companyEntityCorrectionForm.currentPassword.trim()) return "请填写当前登录密码";
+  return "";
+});
 
 const selectedBaseInfo = computed(() => {
   const row = selectedRow.value;
@@ -2231,6 +2453,7 @@ async function loadTakeovers() {
   const projectId = selectedProjectId.value;
   if (!projectId) {
     takeovers.value = [];
+    companyEntityCandidates.value = [];
     importBatches.value = [];
     selectedTakeoverId.value = "";
     resetEvidenceDownloadForm(null);
@@ -2240,17 +2463,28 @@ async function loadTakeovers() {
   loadingTakeovers.value = true;
   message.value = "";
   try {
-    const [nextTakeovers, nextImportBatches] = await Promise.all([
+    const [nextTakeovers, nextImportBatches, candidateError] = await Promise.all([
       listContractTakeovers(projectId),
       canManageTakeovers.value
         ? listContractTakeoverImportBatches(projectId)
-        : Promise.resolve([])
+        : Promise.resolve([]),
+      loadCompanyEntityCandidates()
+        .then(() => null)
+        .catch((error: unknown) => error)
     ]);
     takeovers.value = nextTakeovers;
     importBatches.value = nextImportBatches;
     if (!nextTakeovers.some((takeover) => takeover.id === selectedTakeoverId.value)) {
       selectedTakeoverId.value = "";
       resetEvidenceDownloadForm(null);
+    }
+    if (candidateError) {
+      setMessage(
+        candidateError instanceof Error
+          ? `${candidateError.message}。历史接管台账已加载，但暂不能选择系统匹配主体。`
+          : "历史接管台账已加载，但暂不能选择系统匹配主体，请稍后重试。",
+        "danger"
+      );
     }
   } catch (error) {
     takeovers.value = [];
@@ -2260,6 +2494,23 @@ async function loadTakeovers() {
     setMessage(error instanceof Error ? error.message : "加载历史合同接管台账失败", "danger");
   } finally {
     loadingTakeovers.value = false;
+  }
+}
+
+async function loadCompanyEntityCandidates() {
+  const projectId = selectedProjectId.value;
+  if (!projectId || !canManageTakeovers.value) {
+    companyEntityCandidates.value = [];
+    return;
+  }
+  loadingCompanyEntityCandidates.value = true;
+  try {
+    companyEntityCandidates.value = await listHistoricalCompanyEntityCandidates(projectId);
+  } catch (error) {
+    companyEntityCandidates.value = [];
+    throw error;
+  } finally {
+    loadingCompanyEntityCandidates.value = false;
   }
 }
 
@@ -2574,6 +2825,7 @@ async function selectTakeover(takeover: ContractTakeoverReadModel) {
   if (previousId !== takeover.id) {
     invalidateChangeBaselineContext(true);
     resetCorrectionForm();
+    resetCompanyEntityCorrectionForm();
     resetEvidenceDownloadForm(takeover);
   }
   try {
@@ -2633,6 +2885,7 @@ async function submitCreate() {
       name: requiredText(createForm.name, "合同名称"),
       counterparty: requiredText(createForm.counterparty, "相对方"),
       contractTypeKey: requiredContractType(createForm.contractTypeKey),
+      companyEntityId: createForm.companyEntityId.trim() || undefined,
       companyEntityName: createForm.companyEntityName.trim() || undefined,
       invoiceType: createForm.invoiceType || undefined,
       taxMode: createForm.taxMode,
@@ -2766,11 +3019,6 @@ function onEvidenceFileChange(event: Event) {
   evidenceFile.value = input.files?.[0] ?? null;
 }
 
-function onCorrectionFileChange(event: Event) {
-  const input = event.target as HTMLInputElement;
-  correctionFile.value = input.files?.[0] ?? null;
-}
-
 async function submitEvidenceFile() {
   if (!canManageTakeovers.value) {
     setMessage("当前岗位不能上传历史合同接管资料", "danger");
@@ -2849,7 +3097,7 @@ async function submitCorrectionRecord() {
   }
   const projectId = selectedProjectId.value;
   const takeover = selectedRow.value?.takeover;
-  const file = correctionFile.value;
+  const file = selectedCorrectionFile.value;
   if (!projectId || !takeover) {
     setMessage("请先选择需要更正的接管合同", "danger");
     return;
@@ -2881,6 +3129,143 @@ async function submitCorrectionRecord() {
     setMessage(error instanceof Error ? error.message : "保存接管更正记录失败", "danger");
   } finally {
     correctionSubmitting.value = false;
+  }
+}
+
+function openCorrectionAttachmentDownload(fileId: string, fileName: string) {
+  correctionAttachmentDownloadFileId.value = fileId;
+  correctionAttachmentDownloadFileName.value = fileName;
+  correctionAttachmentDownloadError.value = "";
+  correctionAttachmentDownloadVisible.value = true;
+}
+
+function resetCorrectionAttachmentDownload() {
+  if (correctionAttachmentDownloading.value) return;
+  correctionAttachmentDownloadVisible.value = false;
+  correctionAttachmentDownloadFileId.value = "";
+  correctionAttachmentDownloadFileName.value = "";
+  correctionAttachmentDownloadError.value = "";
+}
+
+async function submitCorrectionAttachmentDownload(values: {
+  reason: string;
+  password: string;
+}) {
+  const fileId = correctionAttachmentDownloadFileId.value;
+  if (!fileId) {
+    correctionAttachmentDownloadError.value = "更正依据已变化，请关闭后重试";
+    return;
+  }
+  correctionAttachmentDownloading.value = true;
+  correctionAttachmentDownloadError.value = "";
+  try {
+    const ticket = await createPrivateFileDownloadTicket(fileId, {
+      confirmationPassword: values.password,
+      downloadReason: values.reason
+    });
+    window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
+    correctionAttachmentDownloadVisible.value = false;
+    correctionAttachmentDownloadFileId.value = "";
+    correctionAttachmentDownloadFileName.value = "";
+    setMessage("已生成更正依据短时效下载链接，请在新窗口完成下载。", "success");
+  } catch (error) {
+    correctionAttachmentDownloadError.value =
+      error instanceof Error ? error.message : "生成更正依据下载链接失败";
+  } finally {
+    correctionAttachmentDownloading.value = false;
+  }
+}
+
+async function submitCompanyEntityCorrection() {
+  if (!canManageTakeovers.value) {
+    setMessage("当前岗位不能发起历史主体匹配更正", "danger");
+    return;
+  }
+  const projectId = selectedProjectId.value;
+  const takeover = selectedRow.value?.takeover;
+  const file = selectedCompanyEntityCorrectionFile.value;
+  if (!projectId || !takeover || companyEntityCorrectionDisabledReason.value || !file) {
+    setMessage(companyEntityCorrectionDisabledReason.value || "请完善主体更正信息", "danger");
+    return;
+  }
+  companyEntityCorrectionSubmitting.value = true;
+  try {
+    const uploaded = await uploadPrivateFile(file, file.name);
+    const result = await submitContractTakeoverCompanyEntityCorrection(projectId, takeover.id, {
+      targetCompanyEntityId: companyEntityCorrectionForm.targetCompanyEntityId,
+      reason: requiredText(companyEntityCorrectionForm.reason, "更正原因"),
+      responsibleUserId: requiredText(
+        companyEntityCorrectionForm.responsibleUserId,
+        "更正责任人"
+      ),
+      attachmentFileId: uploaded.id,
+      currentPassword: requiredText(companyEntityCorrectionForm.currentPassword, "当前登录密码")
+    });
+    resetCompanyEntityCorrectionForm();
+    await selectTakeover(takeover);
+    setMessage(result.message, "success");
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : "提交主体匹配更正失败", "danger");
+  } finally {
+    companyEntityCorrectionSubmitting.value = false;
+  }
+}
+
+function openCompanyEntityCorrectionReview(
+  correctionId: string,
+  decision: "approve" | "reject"
+) {
+  if (!canConfirmTakeovers.value) {
+    setMessage("仅合同部主管可以处理历史主体匹配更正", "danger");
+    return;
+  }
+  companyEntityCorrectionReviewTargetId.value = correctionId;
+  companyEntityCorrectionReviewDecision.value = decision;
+  companyEntityCorrectionReviewError.value = "";
+  companyEntityCorrectionReviewVisible.value = true;
+}
+
+function resetCompanyEntityCorrectionReview() {
+  if (companyEntityCorrectionReviewingId.value) return;
+  companyEntityCorrectionReviewVisible.value = false;
+  companyEntityCorrectionReviewTargetId.value = "";
+  companyEntityCorrectionReviewError.value = "";
+}
+
+async function confirmCompanyEntityCorrectionReview(values: {
+  reason: string;
+  password: string;
+}) {
+  const projectId = selectedProjectId.value;
+  const takeover = selectedRow.value?.takeover;
+  const correctionId = companyEntityCorrectionReviewTargetId.value;
+  const decision = companyEntityCorrectionReviewDecision.value;
+  if (!projectId || !takeover || !correctionId) {
+    companyEntityCorrectionReviewError.value = "主体更正上下文已变化，请关闭后重新选择";
+    return;
+  }
+  companyEntityCorrectionReviewingId.value = correctionId;
+  companyEntityCorrectionReviewError.value = "";
+  try {
+    const result = await reviewContractTakeoverCompanyEntityCorrection(
+      projectId,
+      takeover.id,
+      correctionId,
+      {
+        decision,
+        comment: values.reason || undefined,
+        currentPassword: values.password
+      }
+    );
+    companyEntityCorrectionReviewVisible.value = false;
+    companyEntityCorrectionReviewTargetId.value = "";
+    await selectTakeover(takeover);
+    setMessage(result.message, "success");
+  } catch (error) {
+    companyEntityCorrectionReviewError.value =
+      error instanceof Error ? error.message : "处理主体匹配更正失败";
+  } finally {
+    companyEntityCorrectionReviewingId.value = "";
   }
 }
 
@@ -3057,10 +3442,12 @@ function resetCreateForm() {
 
 function resetCorrectionForm() {
   Object.assign(correctionForm, createEmptyCorrectionForm());
-  correctionFile.value = null;
-  if (correctionInputRef.value) {
-    correctionInputRef.value.value = "";
-  }
+  correctionFiles.value = [];
+}
+
+function resetCompanyEntityCorrectionForm() {
+  Object.assign(companyEntityCorrectionForm, createEmptyCompanyEntityCorrectionForm());
+  companyEntityCorrectionFiles.value = [];
 }
 
 function resetEvidenceDownloadForm(takeover: ContractTakeoverReadModel | null) {
@@ -3075,6 +3462,7 @@ function formFromTakeover(takeover: ContractTakeoverReadModel): CreateFormState 
     code: takeover.contractNo,
     name: takeover.contractName,
     counterparty: takeover.counterparty,
+    companyEntityId: takeover.companyEntityId ?? "",
     companyEntityName: takeover.companyEntityName ?? "",
     contractTypeKey: (takeover.contractTypeKey as TakeoverContractTypeKey | null) ?? "",
     amountYuan: centsToYuanInput(takeover.amountCents),
@@ -3142,6 +3530,7 @@ function createEmptyForm(): CreateFormState {
     code: "",
     name: "",
     counterparty: "",
+    companyEntityId: "",
     companyEntityName: "",
     contractTypeKey: "",
     amountYuan: "",
@@ -3259,6 +3648,15 @@ function createEmptyCorrectionForm(): CorrectionFormState {
     reason: "",
     responsibleUserId: "",
     afterSummary: "",
+    currentPassword: ""
+  };
+}
+
+function createEmptyCompanyEntityCorrectionForm(): CompanyEntityCorrectionFormState {
+  return {
+    targetCompanyEntityId: "",
+    reason: "",
+    responsibleUserId: "",
     currentPassword: ""
   };
 }

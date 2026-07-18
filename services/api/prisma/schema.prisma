@@ -307,20 +307,28 @@ model ContractTakeoverBatch {
 }
 
 model ContractTakeoverCorrection {
-  id                String   @id @default(uuid())
-  projectId         String
-  takeoverId        String
-  correctionType    String
-  beforeSnapshot    Json
-  afterSnapshot     Json
-  reason            String
-  responsibleUserId String
-  attachmentFileId  String
-  createdByUserId   String
-  createdAt         DateTime @default(now())
+  id                    String    @id @default(uuid())
+  projectId             String
+  takeoverId            String
+  correctionType        String
+  status                String    @default("confirmed")
+  targetCompanyEntityId String?
+  beforeSnapshot        Json
+  afterSnapshot         Json
+  reason                String
+  responsibleUserId     String
+  attachmentFileId      String
+  createdByUserId       String
+  submittedByUserId     String?
+  submittedAt           DateTime?
+  reviewedByUserId      String?
+  reviewedAt            DateTime?
+  reviewComment         String?
+  createdAt             DateTime  @default(now())
 
   @@index([projectId, takeoverId, createdAt])
   @@index([takeoverId])
+  @@index([takeoverId, correctionType, status])
 }
 
 model PaymentTermsVersion {

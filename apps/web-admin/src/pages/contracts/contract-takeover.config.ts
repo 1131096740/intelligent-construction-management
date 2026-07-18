@@ -5,6 +5,7 @@ import type {
   ContractTakeoverCentsValue,
   ContractTakeoverLevel,
   ContractTakeoverReadModel,
+  HistoricalCompanyEntityCandidateReadModel,
   ContractTakeoverStatus,
   ContractTaxFactSource,
   ContractTaxMode,
@@ -150,6 +151,29 @@ export interface TakeoverDirectPaymentStageDraft {
   requiresInvoice: boolean;
   allowsEarlyPayment: boolean;
   allowsInstallments: boolean;
+}
+
+export function companyEntityMatchOptionLabel(
+  entity: HistoricalCompanyEntityCandidateReadModel
+) {
+  const code = entity.unifiedSocialCreditCode?.trim() || "信用代码待补全";
+  const status = !entity.isActive
+    ? "已停用"
+    : entity.dataStatus === "legacy_incomplete"
+      ? "资料待补全"
+      : "可用";
+  return `${entity.name} · ${code} · ${status}`;
+}
+
+export function companyEntityMatchStatus(
+  entity: HistoricalCompanyEntityCandidateReadModel | undefined
+): { label: string; tone: "success" | "warning" | "default" } {
+  if (!entity) return { label: "尚未匹配", tone: "default" };
+  if (!entity.isActive) return { label: "已停用（仅历史匹配）", tone: "warning" };
+  if (entity.dataStatus === "legacy_incomplete") {
+    return { label: "资料待补全（仅历史匹配）", tone: "warning" };
+  }
+  return { label: "已匹配", tone: "success" };
 }
 
 export interface TakeoverCorrectionDraft {

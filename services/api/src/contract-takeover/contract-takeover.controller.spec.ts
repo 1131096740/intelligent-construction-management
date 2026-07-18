@@ -18,6 +18,8 @@ const takeoverBodyRoutes = [
   ["updateDraft", 2],
   ["attachEvidence", 2],
   ["recordCorrection", 2],
+  ["submitCompanyEntityCorrection", 2],
+  ["reviewCompanyEntityCorrection", 3],
   ["createTaxFactRevision", 2],
   ["updateTaxFactRevision", 3],
   ["reviewTaxFactsByFinance", 3],
@@ -97,6 +99,26 @@ const validTakeoverRouteBodies = [
       afterSummary: "已补齐历史付款凭证",
       attachmentFileId: "file-1",
       currentPassword: "current password"
+    }
+  ],
+  [
+    "submitCompanyEntityCorrection",
+    2,
+    {
+      targetCompanyEntityId: "entity-2",
+      reason: "原主体匹配错误",
+      responsibleUserId: "contract-user",
+      attachmentFileId: "file-1",
+      currentPassword: "current password"
+    }
+  ],
+  [
+    "reviewCompanyEntityCorrection",
+    3,
+    {
+      decision: "approve",
+      currentPassword: "current password",
+      comment: "主体资料核对无误"
     }
   ],
   [
@@ -396,8 +418,22 @@ describe("ContractTakeoverController", () => {
     expect(JSON.stringify(response)).not.toContain("TOP-SECRET");
   });
 
+  it("requires a current password before reviewing a company entity correction", async () => {
+    const response = await getTakeoverValidationResponse(
+      "reviewCompanyEntityCorrection",
+      3,
+      { decision: "reject", currentPassword: "", comment: "依据不足" }
+    );
+
+    expect(response.errors).toEqual(["请填写当前登录密码后再处理主体更正"]);
+  });
+
   it("protects create and submit with contract staff project roles", () => {
     expectProjectAction(ContractTakeoverController.prototype.create, "contract.create");
+    expectProjectAction(
+      ContractTakeoverController.prototype.listCompanyEntityCandidates,
+      "contract.create"
+    );
     expectProjectAction(ContractTakeoverController.prototype.listImportBatches, "contract.create");
     expectProjectAction(ContractTakeoverController.prototype.updateDraft, "contract.create");
     expectProjectAction(ContractTakeoverController.prototype.precheckImport, "contract.create");
@@ -406,6 +442,10 @@ describe("ContractTakeoverController", () => {
     expectProjectAction(ContractTakeoverController.prototype.previewExcelImport, "contract.create");
     expectProjectAction(ContractTakeoverController.prototype.applyExcelImport, "contract.create");
     expectProjectAction(ContractTakeoverController.prototype.attachEvidence, "contract.create");
+    expectProjectAction(
+      ContractTakeoverController.prototype.submitCompanyEntityCorrection,
+      "contract.create"
+    );
     expectProjectAction(ContractTakeoverController.prototype.submitReview, "contract.submit");
   });
 
@@ -417,6 +457,8 @@ describe("ContractTakeoverController", () => {
       "applyExcelImport",
       "attachEvidence",
       "recordCorrection",
+      "submitCompanyEntityCorrection",
+      "reviewCompanyEntityCorrection",
       "createTaxFactRevision",
       "updateTaxFactRevision",
       "submitTaxFactFinanceReview",
@@ -446,6 +488,10 @@ describe("ContractTakeoverController", () => {
     );
     expectProjectAction(
       ContractTakeoverController.prototype.recordCorrection,
+      "contract.archive.confirm"
+    );
+    expectProjectAction(
+      ContractTakeoverController.prototype.reviewCompanyEntityCorrection,
       "contract.archive.confirm"
     );
     expectProjectAction(

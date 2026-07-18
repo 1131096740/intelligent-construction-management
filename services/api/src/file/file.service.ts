@@ -7,7 +7,10 @@ import {
   type OnModuleInit
 } from "@nestjs/common";
 import { type FileObject, Prisma } from "@prisma/client";
-import { GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
+import {
+  HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS,
+  type RoleKey
+} from "@jiangkong/shared-domain";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import { lstat, mkdir, open, realpath, rm } from "node:fs/promises";
@@ -1017,7 +1020,12 @@ export class FileService {
   private async isFileReferenced(tx: Prisma.TransactionClient, fileId: string): Promise<boolean> {
     const rows = await tx.$queryRaw<Array<{ referenced: boolean }>>(Prisma.sql`
       SELECT EXISTS (
-        SELECT 1 FROM "SettlementSignedDocument" WHERE "fileId" = ${fileId}
+        SELECT 1 FROM "User" WHERE "signatureFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ContractVersion" WHERE "taxFactEvidenceFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ContractTaxFactRevision" WHERE "evidenceFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ContractTakeoverCorrection" WHERE "attachmentFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "Settlement" WHERE "preparerSignatureFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "SettlementSignedDocument" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "SettlementSignedDocumentGenerationClaim" WHERE "uploadedFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ApprovalFormGenerationClaim" WHERE "uploadedFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "SettlementArchiveFile" WHERE "fileId" = ${fileId}
@@ -1027,8 +1035,25 @@ export class FileService {
         UNION ALL SELECT 1 FROM "ContractFormalFile" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ContractAuthorization" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "SettlementImport" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "SettlementTemplateVersion" WHERE "xlsxFileId" = ${fileId} OR "previewXlsxFileId" = ${fileId} OR "previewPdfFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "SettlementTemplatePreviewJob" WHERE "previewXlsxFileId" = ${fileId} OR "previewPdfFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectOwnerContract" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "PaymentExecution" WHERE "voucherFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ProjectExpenseRequest" WHERE "attachmentFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ProjectExpenseExecution" WHERE "voucherFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ProjectReceipt" WHERE "voucherFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ProjectProxyPayment" WHERE "voucherFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ProjectUpstreamSettlement" WHERE "voucherFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ProjectSettlementExceptionQuota" WHERE "attachmentFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ProjectFinancingQuota" WHERE "attachmentFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ApprovalActionLog" WHERE "signatureFileIdSnapshot" = ${fileId}
+        UNION ALL SELECT 1 FROM "ContractLayoutTemplateVersion" WHERE "docxFileId" = ${fileId} OR "previewPdfFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ContractLayoutPreviewJob" WHERE "previewPdfFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ContractBill" WHERE "sourceExcelFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ContractBillImport" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ContractGeneratedDocument" WHERE "docxFileId" = ${fileId} OR "pdfFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ContractOfflineRevision" WHERE "fileId" = ${fileId} OR "previewPdfFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "FileObject" WHERE "id" = ${fileId} AND "supersedesFileObjectId" IS NOT NULL
         UNION ALL SELECT 1 FROM "FileObject" WHERE "supersedesFileObjectId" = ${fileId}
       ) AS "referenced"
     `);
@@ -1089,6 +1114,54 @@ export class FileService {
     });
   }
 
+  async assertCanDownloadApprovalFormByBusiness(
+    businessType: string,
+    businessId: string,
+    actorUserId: string
+  ) {
+    if (businessType === "contract_version") {
+      return this.assertCanDownloadContractApprovalForm(businessId, actorUserId);
+    }
+    if (businessType !== "settlement" && businessType !== "payment_request") {
+      throw new BadRequestException("当前业务类型不支持下载审批单");
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const instance = await tx.approvalInstance.findFirst({
+        where: { businessType, businessId, status: "approved" },
+        orderBy: { updatedAt: "desc" }
+      });
+      if (!instance) {
+        throw new BadRequestException("当前业务尚未完成审批，暂不能下载审批单");
+      }
+      if (instance.applicantUserId === actorUserId) return;
+
+      const participated = await tx.approvalActionLog.findFirst({
+        where: {
+          approvalInstanceId: instance.id,
+          actorUserId,
+          action: { in: ["approve", "reject_previous", "return_to_applicant"] }
+        }
+      });
+      if (participated) return;
+
+      const projectId = await this.resolveApprovalProjectId(tx, businessType, businessId);
+      if (
+        projectId &&
+        (await this.hasProjectRole(
+          tx,
+          actorUserId,
+          projectId,
+          ARCHIVE_FILE_DOWNLOAD_ROLES
+        ))
+      ) {
+        return;
+      }
+
+      throw new ForbiddenException("当前账号无权下载该审批单");
+    });
+  }
+
   async assertCanDownloadFile(
     tx: Prisma.TransactionClient,
     fileId: string,
@@ -1099,6 +1172,30 @@ export class FileService {
       throw new BadRequestException("资料文件不存在或已被移除");
     }
     await this.assertCanDownloadFileObject(tx, file, actorUserId);
+    return file;
+  }
+
+  async assertCanAttachUnlinkedFile(
+    tx: Prisma.TransactionClient,
+    fileId: string,
+    actorUserId: string
+  ) {
+    await tx.$queryRaw(Prisma.sql`
+      SELECT "id" FROM "FileObject" WHERE "id" = ${fileId} FOR UPDATE
+    `);
+    const file = await tx.fileObject.findUnique({
+      where: { id: fileId },
+      select: { id: true, uploadedByUserId: true, storageStatus: true }
+    });
+    if (!file || file.storageStatus !== "active") {
+      throw new BadRequestException("更正依据附件不存在或当前不可用，请重新上传");
+    }
+    if (file.uploadedByUserId !== actorUserId) {
+      throw new ForbiddenException("更正依据附件必须由当前合同员本人上传");
+    }
+    if (await this.isFileReferenced(tx, fileId)) {
+      throw new BadRequestException("该文件已用于其他业务，请重新上传专用的更正依据附件");
+    }
     return file;
   }
 
@@ -1158,14 +1255,32 @@ export class FileService {
       if (governedContractAccess) return;
       throw new ForbiddenException("当前账号无权下载该合同签署资料");
     }
-    if (
-      await this.hasGlobalRole(
-        tx,
-        actorUserId,
-        GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS
-      )
-    ) {
-      return;
+    const takeoverCorrectionClient = (tx as unknown as {
+      contractTakeoverCorrection?: {
+        findFirst(args: {
+          where: { attachmentFileId: string; correctionType: string };
+          select: { projectId: true };
+        }): Promise<{ projectId: string } | null>;
+      };
+    }).contractTakeoverCorrection;
+    const takeoverCorrection = takeoverCorrectionClient
+      ? await takeoverCorrectionClient.findFirst({
+          where: { attachmentFileId: file.id, correctionType: "company_entity" },
+          select: { projectId: true }
+        })
+      : null;
+    if (takeoverCorrection) {
+      if (
+        await this.hasProjectRole(
+          tx,
+          actorUserId,
+          takeoverCorrection.projectId,
+          HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS
+        )
+      ) {
+        return;
+      }
+      throw new ForbiddenException("当前账号无权下载该历史接管更正依据");
     }
     const projectOwnerContractClient = (tx as unknown as {
       projectOwnerContract?: {

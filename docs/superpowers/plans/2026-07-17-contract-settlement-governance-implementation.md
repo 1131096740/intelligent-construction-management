@@ -483,7 +483,7 @@ Run: `pnpm --filter @jiangkong/api test -- --runInBand src/company-entity/compan
 
 Expected: PASS；项目级同名岗位和 `super_admin` 均不能维护。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add services/api/src/company-entity
@@ -1739,7 +1739,7 @@ git commit -m "feat: 限定通用合同直接付款来源"
 - Modify: `apps/web-admin/src/pages/business-readonly-access.test.ts`
 - Modify: `apps/web-admin/src/routes/index.test.ts`
 
-- [ ] **Step 1: 写停用主体匹配和负向权限测试**
+- [x] **Step 1: 写停用主体匹配和负向权限测试**
 
 ```ts
 expect(await takeoverOptions()).toContainEqual(expect.objectContaining({ id: "inactive-entity", isActive: false }));
@@ -1749,21 +1749,21 @@ await expect(projectOnlyContractStaff.maintainCompanyEntity()).rejects.toThrow()
 await expect(financeUser.downloadUnrelatedPrivateFile()).rejects.toThrow();
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/contract-takeover/contract-takeover.service.spec.ts src/file/file.service.spec.ts src/approval/approval-form.service.spec.ts && pnpm --filter @jiangkong/web-admin test -- src/pages/contracts/contract-takeover.config.test.ts src/pages/business-readonly-access.test.ts src/routes/index.test.ts`
 
 Expected: FAIL 或暴露缺少的负向断言。
 
-- [ ] **Step 3: 实现历史匹配而不改原文文件**
+- [x] **Step 3: 实现历史匹配而不改原文文件**
 
 历史接管可关联停用/待补全主体，并保留原合同主体名称。匹配错误走既有“合同员更正 → 合同部主管确认”账本；不修改扫描件，不把非法代码猜成合法值。
 
-- [ ] **Step 4: 加固只读、导出和附件边界**
+- [x] **Step 4: 加固只读、导出和附件边界**
 
 保持 `HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS` 与 `CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS`；写接口继续走原 `BUSINESS_ACTIONS`。公司主体无导出。文件下载仍需业务 ACL、密码/用途、短票和 `file.download.ticket/file.download` 审计。
 
-- [ ] **Step 5: 运行定向测试**
+- [x] **Step 5: 运行定向测试**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/contract-takeover/contract-takeover.service.spec.ts src/contract-takeover/contract-takeover.controller.spec.ts src/file/file.service.spec.ts src/approval/approval-form.service.spec.ts src/auth/guards/permission.guard.spec.ts && pnpm --filter @jiangkong/web-admin test -- src/pages/contracts/contract-takeover.config.test.ts src/pages/business-readonly-access.test.ts src/routes/index.test.ts`
 
@@ -1775,6 +1775,8 @@ Expected: PASS。
 git add services/api/src/contract-takeover services/api/src/file/file.service.spec.ts services/api/src/approval/approval-form.service.spec.ts apps/web-admin/src/pages/contracts apps/web-admin/src/pages/business-readonly-access.test.ts apps/web-admin/src/routes/index.test.ts
 git commit -m "fix: 加固历史主体与跨域只读边界"
 ```
+
+> Task 21 执行校正（2026-07-18）：只读审计确认既有更正表实际只有“合同部主管直接登记”，并不存在计划假设的“合同员发起 → 合同部主管确认”。为兑现已批准规格，本任务增加 M58：既有更正默认保持 `confirmed`，主体错配新增 `submitted/confirmed/rejected` 状态、目标主体、提交/确认人和时间、处理意见及待确认部分唯一索引。合同员提交时必须提供目标主体、原因、责任人、本人新上传且未绑定其他业务的依据附件和当前密码，服务端二次强制项目合同员岗位；合同部主管通过密码敏感确认或驳回，服务层再次强制所属项目主管岗位，并禁止自审、跨项目、重复处理和漂移确认。确认只更新稳定 `companyEntityId`，原合同主体名称和扫描件均不改。历史主体候选独立于新合同候选，允许停用/资料待补全主体；创建、编辑和 Excel 导入均验证主体 ID 且不按名称猜测。安全审计同时修复公司级全局岗位绕过细粒度文件 ACL 的 P0、非合同审批单在授权前惰性生成的 P1，以及复用其他受治理文件作为更正附件造成的组合 ACL 旁路；M58 以数据库双向触发器、排序 advisory transaction lock 和完整 FileObject 引用 manifest 阻止敏感文件复用及并发双绑定，包含同表其他更正类型和替换链双向保护，且不扫描或改写历史数据。合法业务归档跨项目只读保持不变，更正依据继续使用密码、用途、短票和审计。定向 API 417/417、Web 115/115、Prisma validate/generate、API/Web typecheck/lint、API `check:business-errors`、Web `check:ui` 与 `git diff --check` 已通过；全新 PostgreSQL 16 从 M1→M58 共 58 个迁移成功，真实验证更正附件作为替换链新文件被数据库拒绝。独立代码复核与最终安全复核均为 READY。本任务未连接生产、未执行生产 M58、未推送或部署。
 
 ### Task 22: 全量回归、迁移演练、UAT 和发布候选
 

@@ -592,6 +592,7 @@ describe("ApprovalFormService", () => {
     const files = {
       uploadPrivateFile: jest.fn(),
       getFileBuffer: jest.fn().mockRejectedValue(new Error("Private file not found")),
+      assertCanDownloadApprovalFormByBusiness: jest.fn().mockResolvedValue(undefined),
       assertCanDownloadFileById: jest.fn().mockResolvedValue(undefined)
     };
     const audit = { record: jest.fn() };
@@ -663,6 +664,45 @@ describe("ApprovalFormService", () => {
     expect(files.assertCanDownloadFileById).not.toHaveBeenCalled();
   });
 
+  it("非合同审批单下载必须先通过业务 ACL，拒绝时不触发惰性生成", async () => {
+    const prisma = buildPrisma({
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn()
+      }
+    });
+    const files = {
+      assertCanDownloadApprovalFormByBusiness: jest.fn()
+        .mockRejectedValue(new Error("当前账号无权下载该审批单")),
+      assertCanDownloadFileById: jest.fn(),
+      uploadPrivateFile: jest.fn()
+    };
+    const auth = { confirmPassword: jest.fn().mockResolvedValue({ ok: true }) };
+    const service = new ApprovalFormService(
+      prisma as never,
+      files as never,
+      { record: jest.fn() } as never,
+      auth as never
+    );
+
+    await expect(service.renderForDownload(
+      "payment_request",
+      "pay-1",
+      "outsider-1",
+      "current-password",
+      "付款审批复核"
+    )).rejects.toThrow("当前账号无权下载该审批单");
+
+    expect(files.assertCanDownloadApprovalFormByBusiness).toHaveBeenCalledWith(
+      "payment_request",
+      "pay-1",
+      "outsider-1"
+    );
+    expect(prisma.pdfDocument.findFirst).not.toHaveBeenCalled();
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(files.assertCanDownloadFileById).not.toHaveBeenCalled();
+  });
+
   it("does not expose internal user accounts in approval form names or watermark", async () => {
     const prisma = buildPrisma({
       pdfDocument: {
@@ -676,6 +716,7 @@ describe("ApprovalFormService", () => {
     });
     const files = {
       uploadPrivateFile: jest.fn(),
+      assertCanDownloadApprovalFormByBusiness: jest.fn().mockResolvedValue(undefined),
       assertCanDownloadFileById: jest.fn().mockResolvedValue(undefined)
     };
     const audit = { record: jest.fn() };
@@ -736,7 +777,12 @@ describe("ApprovalFormService", () => {
     });
     const service = new ApprovalFormService(
       prisma as never,
-      { assertCanDownloadFileById: jest.fn() } as never,
+      {
+        assertCanDownloadApprovalFormByBusiness: jest.fn().mockRejectedValue(
+          new Error("当前业务尚未完成审批，暂不能下载审批单")
+        ),
+        assertCanDownloadFileById: jest.fn()
+      } as never,
       { record: jest.fn() } as never,
       { confirmPassword: jest.fn().mockResolvedValue({ ok: true }) } as never
     );
@@ -765,7 +811,10 @@ describe("ApprovalFormService", () => {
     });
     const service = new ApprovalFormService(
       prisma as never,
-      { assertCanDownloadFileById: jest.fn().mockResolvedValue(undefined) } as never,
+      {
+        assertCanDownloadApprovalFormByBusiness: jest.fn().mockResolvedValue(undefined),
+        assertCanDownloadFileById: jest.fn().mockResolvedValue(undefined)
+      } as never,
       { record: jest.fn() } as never,
       { confirmPassword: jest.fn().mockResolvedValue({ ok: true }) } as never
     );

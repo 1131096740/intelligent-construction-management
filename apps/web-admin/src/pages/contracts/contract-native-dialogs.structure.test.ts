@@ -19,4 +19,12 @@ describe("contract pages sensitive confirmations", () => {
       expect(page).toContain("<SensitiveActionDialog");
     }
   );
+
+  it("uses governed upload and password confirmation for historical entity corrections", () => {
+    const page = source("ContractTakeoverPage.vue");
+    expect(page).toContain('v-model="companyEntityCorrectionFiles"');
+    expect(page).toContain('v-model="companyEntityCorrectionReviewVisible"');
+    expect(page).toContain("require-password");
+    expect(page).not.toContain('ref="companyEntityCorrectionInputRef"');
+  });
 });
