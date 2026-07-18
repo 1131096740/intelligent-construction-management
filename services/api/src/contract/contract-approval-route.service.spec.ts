@@ -48,14 +48,16 @@ describe("ContractApprovalRouteService", () => {
   const service = new ContractApprovalRouteService();
 
   function changeTx(input?: {
-    applicantRoles?: CandidateRow[];
+    projectApplicantRoles?: CandidateRow[];
+    globalApplicantRoles?: CandidateRow[];
     projectCandidates?: CandidateRow[];
     globalCandidates?: CandidateRow[];
   }) {
     return {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ id: "project-1", isActive: true }])
-        .mockResolvedValueOnce(input?.applicantRoles ?? [{ userId: "staff-1", roleKey: "contract_staff" }])
+        .mockResolvedValueOnce(input?.projectApplicantRoles ?? [{ userId: "staff-1", roleKey: "contract_staff" }])
+        .mockResolvedValueOnce(input?.globalApplicantRoles ?? [])
         .mockResolvedValueOnce(input?.projectCandidates ?? [{ userId: "manager-1", roleKey: "project_manager" }])
         .mockResolvedValueOnce(input?.globalCandidates ?? [
           { userId: "director-1", roleKey: "contract_director" },
@@ -86,7 +88,8 @@ describe("ContractApprovalRouteService", () => {
 
   it("skips the contract-director node when the company director initiates a change", async () => {
     const tx = changeTx({
-      applicantRoles: [{ userId: "director-1", roleKey: "contract_director" }]
+      projectApplicantRoles: [],
+      globalApplicantRoles: [{ userId: "director-1", roleKey: "contract_director" }]
     });
 
     const result = await service.freezeContractChangeRoute(
@@ -104,7 +107,7 @@ describe("ContractApprovalRouteService", () => {
   });
 
   it("fails closed when the change applicant is not project contract staff or company director", async () => {
-    const tx = changeTx({ applicantRoles: [] });
+    const tx = changeTx({ projectApplicantRoles: [], globalApplicantRoles: [] });
 
     await expect(service.freezeContractChangeRoute(
       tx as unknown as Prisma.TransactionClient,

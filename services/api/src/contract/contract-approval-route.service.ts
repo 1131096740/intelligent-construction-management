@@ -135,22 +135,24 @@ export class ContractApprovalRouteService {
     if (projects.length !== 1 || !projects[0]?.isActive) {
       throw new BadRequestException("合同所属项目不存在或已停用");
     }
-    const applicantRoles = await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
-      (SELECT pm."userId", pm."positionKey" AS "roleKey"
-       FROM "ProjectMember" pm INNER JOIN "User" u ON u."id" = pm."userId"
-       WHERE pm."projectId" = ${lockedContract.projectId}
-         AND pm."userId" = ${applicantUserId}
-         AND pm."positionKey" = 'contract_staff' AND u."isActive" = TRUE
-       FOR SHARE OF pm, u)
-      UNION ALL
-      (SELECT up."userId", p."key" AS "roleKey"
-       FROM "UserPosition" up
-       INNER JOIN "Position" p ON p."id" = up."positionId"
-       INNER JOIN "User" u ON u."id" = up."userId"
-       WHERE up."projectId" IS NULL AND up."userId" = ${applicantUserId}
-         AND p."key" = 'contract_director' AND u."isActive" = TRUE
-       FOR SHARE OF up, p, u)
+    const projectApplicantRoles = await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
+      SELECT pm."userId", pm."positionKey" AS "roleKey"
+      FROM "ProjectMember" pm INNER JOIN "User" u ON u."id" = pm."userId"
+      WHERE pm."projectId" = ${lockedContract.projectId}
+        AND pm."userId" = ${applicantUserId}
+        AND pm."positionKey" = 'contract_staff' AND u."isActive" = TRUE
+      FOR SHARE OF pm, u
     `);
+    const globalApplicantRoles = await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
+      SELECT up."userId", p."key" AS "roleKey"
+      FROM "UserPosition" up
+      INNER JOIN "Position" p ON p."id" = up."positionId"
+      INNER JOIN "User" u ON u."id" = up."userId"
+      WHERE up."projectId" IS NULL AND up."userId" = ${applicantUserId}
+        AND p."key" = 'contract_director' AND u."isActive" = TRUE
+      FOR SHARE OF up, p, u
+    `);
+    const applicantRoles = [...projectApplicantRoles, ...globalApplicantRoles];
     if (!applicantRoles.some((row) =>
       row.roleKey === "contract_staff" || row.roleKey === "contract_director")) {
       throw new BadRequestException("仅允许所属项目合同员或公司级合同部主管发起合同变更");
