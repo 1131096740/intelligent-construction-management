@@ -1,0 +1,136 @@
+# 合同结算治理发布候选验收记录
+
+> 状态：Task 22 隔离 UAT 已通过；待合并最新 `origin/main`、固定最终 SHA、以洁净候选重跑门禁并完成浏览器/恢复演练后收口
+> 候选分支：`codex/contract-tax-facts-pricing`
+> 40 位候选 SHA：**待最终 Task 22 提交后回填**
+> 生产当前运行 SHA：`b857a4269aa907e0550470cece52c846bcbb7623`
+> 结论：**待决策；本文档不构成推送、部署、迁移或生产业务写入授权。**
+
+## 1. 候选范围
+
+本候选将 2026-07-17 已批准的七块合同结算治理规格收口为一个可独立审计的发布单元：
+
+1. 新合同审批；
+2. 签署、用印与归档；
+3. 双方授权委托书；
+4. 合同变更与累计正增项 10% 上限；
+5. 结算单、乙方签章与我方冻结签名；
+6. 税务与计价事实；
+7. 我方公司主体及历史接管主体匹配。
+
+本轮从生产第 51 个迁移基线向前增加 **M52–M58 共 7 个迁移**，其中 M52 是实施前已存在且全程保持不变的基线，本轮新增候选为 **M53–M58 共 6 个**：
+
+| 序号 | 迁移 | 范围 |
+| --- | --- | --- |
+| M52 | `20260716160000_contract_tax_facts_and_settlement_drafts` | 税务事实和结算草稿基线，本实施期零改动 |
+| M53 | `20260717110000_company_entity_versions_and_contract_subject_snapshots` | 我方主体版本和合同主体冻结快照 |
+| M54 | `20260717120000_approval_assignee_and_signature_snapshots` | 审批候选人、代表人、岗位和签名快照 |
+| M55 | `20260717130000_contract_formal_documents_authorizations_and_seal_tasks` | 合同正式件、授权、审批单和用章任务 |
+| M56 | `20260717140000_settlement_participants_and_signed_documents` | 结算参与人和签章文档 |
+| M57 | `20260718100000_payment_request_frozen_stage` | 付款申请冻结付款阶段 |
+| M58 | `20260718110000_contract_takeover_company_entity_corrections` | 历史主体错配两步更正证据 |
+
+## 2. Git 与差异证据
+
+| 项目 | 结果 |
+| --- | --- |
+| 最终候选 SHA | 待填，必须是 Task 22 最终提交的 40 位 SHA |
+| 对 `origin/main` 提交列表 | 待最终候选固定后生成 |
+| 对生产 `b857a426…` 提交列表 | 待最终候选固定后生成 |
+| 实际修改文件清单 | 待 `git diff --name-status b857a426…<candidate>` 生成 |
+| M52 差异 | 待最终复核；预期必须为空 |
+| 受保护生产运维文件意外差异 | 待最终复核 |
+
+## 3. 自动化门禁
+
+> 本表只能根据实际命令回填。当前未执行的项目全部保持“待运行”。
+
+| 门禁 | 结果 | 证据/条件跳过原因 |
+| --- | --- | --- |
+| shared-domain 定向与全量测试 | 待运行 | 待填 |
+| API 定向与全量测试 | 待运行 | 待填 |
+| Web 定向与全量测试 | 待运行 | 待填 |
+| Prisma validate / generate | 待运行 | 待填 |
+| typecheck / lint | 待运行 | 待填 |
+| `check:business-errors` / `check:ui` | 待运行 | 待填 |
+| API / Web production build | 待运行 | 待填 |
+| P0 E2E | 待运行 | 待填 |
+| `git diff --check` | 待运行 | 待填 |
+
+## 4. 隔离 UAT 矩阵
+
+`verify-trial-run.cjs` 的完整模式必须绑定当前 40 位候选 SHA 和脱敏隔离 UAT 证据清单；缺少任一必选场景都会失败。`--preflight` 仍只做本地 API、数据库和文件存储安全检查，不写业务数据。
+
+| 场景 | 结果 | 脱敏证据编号 |
+| --- | --- | --- |
+| 五类合同路线 | 通过 | `task22-full-20260718k` 证据清单 |
+| 合同部主管发起跳过自审 | 通过 | 同上 |
+| 董事长/总经理最终或签 | 通过 | 同上 |
+| 双方授权四种组合 | 通过 | 同上 |
+| 用章、线下签署、双方最终版与归档 | 通过 | 完整 P0-5B HTTP 链路 |
+| 累计正增项 9.99% / 10% / 10.01% | 通过 | `task22-full-20260718k` 证据清单 |
+| 材料/机械结算路线 | 通过 | 同上 |
+| 劳务/专业分包结算路线 | 通过 | 同上 |
+| 单页/多页结算单签名 | 通过 | 同上 |
+| 通用合同直接付款 | 通过 | 同上 |
+| 跨域只读正向与写入负向 | 通过 | 同上 |
+
+隔离执行事实：
+
+- runId：`task22-full-20260718k`；执行时 Git HEAD：`2bef123cfbdc231cba41d212b17ed6f9cd5f0c30`。
+- 机器证据：`/tmp/jiangkong-task22-full-evidence-k.json`，SHA-256 `d5fb62d3a7d6676edd2b6ff2e82a7cbe0bc664a73df6bf2b8be03498cbd2c4af`，20/20 均为 `passed=true`。
+- 环境：一次性 PostgreSQL 16 数据库 `jiangkong_governance_uat`、`127.0.0.1` API、本地文件存储、`productionData=false`；未连接生产、未访问 COS。
+- 完整业务链：`HT-UAT-task22-full-20260718k` → `JS-UAT-task22-full-20260718k` → `FK-UAT-task22-full-20260718k`，通过历史接管、税务事实、结算冻结、乙方签章、五节点审批、我方签名合成、主管归档、付款审批、实付、入账、PDF 归档和下载审计。
+- 成功与此前失败轮次均确认临时 API、PostgreSQL 容器和本地存储已清理；仓库根目录误生成的 seed `storage/` 也已核对并删除。
+- 该次执行发生在 Task 22 尚未提交且合并最新 `origin/main` 之前，只能作为工作树行为证据；不得把 `2bef123c…` 写成最终候选。最终候选固定后必须以洁净工作树重新执行并产生绑定最终 SHA 的新证据。
+
+隔离 UAT 真实发现并关闭两个 P0：
+
+1. 合同变更并发锁 SQL 对 `UNION` 使用 `FOR SHARE`，PostgreSQL 拒绝执行；拆分为合法锁查询后，真实双连接并发回归 23/23 通过。
+2. 新治理结算的归档确认事实保存在已确认的 `final_internal_signed_copy`，付款/项目容量仍只读取旧 `SettlementArchiveFile`，导致合法结算可申请金额为 0；新增统一双读并按结算取最早确认时间，付款请求、付款预览和项目代付容量统一复用，定向 287/287、API typecheck/lint 通过，随后完整 UAT 付款闭环通过。
+
+## 5. 浏览器验收
+
+| 视口 | 页面范围 | 结果 | 截图目录 |
+| --- | --- | --- | --- |
+| 1512×982 | 主体、五类合同、详情/变更、材料/劳务结算、付款、只读台账 | 待验证 | 待填 |
+| 1440×900 | 同上 | 待验证 | 待填 |
+| 1280×800 | 同上 | 待验证 | 待填 |
+| 1180×820 | 同上 | 待验证 | 待填 |
+| 1024×768 | 同上 | 待验证 | 待填 |
+| 900×768 | 同上 | 待验证 | 待填 |
+
+硬性验收：根文档横向溢出 `0`，嵌套横滚 `0`，`pageerror` `0`。任一不为零即不得回填“通过”。
+
+## 6. 隔离库迁移与旧实例过渡演练
+
+| 门禁 | 结果 | 证据 |
+| --- | --- | --- |
+| 生产备份恢复至 `jiangkong_restore_*` | 待演练 | 待填，不得记录密钥或对象存储内部键 |
+| 原 51 个迁移事实 | 待演练 | 待填 |
+| M1–M58 在本地 PostgreSQL 16 隔离库依次应用 | 模块级行为演练通过；最终候选须重跑 | PostgreSQL 16.14，58 个迁移；不是生产备份恢复 |
+| 存量空信用代码/历史审批 JSON/金额计数只读核验 | 待演练 | 待填 |
+| transition preview manifest 与摘要 | 本地模块级隔离演练通过；最终 CLI 门禁须重跑 | 2 个脱敏测试对象；manifest 摘要见下文 |
+| 隔离库 manifest apply | 本地模块级隔离演练通过；最终 CLI 门禁须重跑 | 首次 `applied=2`、`alreadyProcessed=0` |
+| 漂移整批回滚 | 本地模块级隔离演练通过；最终 CLI 门禁须重跑 | 漂移批次被拒绝，业务写入为 0 |
+| 重复 apply 幂等 | 本地模块级隔离演练通过；最终 CLI 门禁须重跑 | 二次 `applied=0`、`alreadyProcessed=2` |
+| 付款/实付/入账零改动 | 本地模块级隔离演练通过；最终候选须重查 | 演练前后受保护付款事实一致 |
+| 隔离库清理 | 通过 | 本地演练 harness 清理通过 |
+
+本地 transition 行为演练收据：runId `task22-20260718T160702Z`，执行时 Git HEAD `2bef123cfbdc231cba41d212b17ed6f9cd5f0c30`，PostgreSQL `16.14`，M1–M58 共 58 个迁移；manifest digest 为 `a4ac20b349f0a157228d072d876cfad7c8dd70f82a06beaa2703930a0eee24fc`，manifest 文件 SHA-256 为 `8f7e8f7c0175e690a1625e55dc5f25262605f22d54a0ea7aaee91ca6abdb4c5d`。首次 apply 为 2/0，第二次幂等 apply 为 0/2；漂移批次被整批拒绝且 transition 审计、替代草稿写入均为 0；付款申请、实付、入账与已付金额事实不变。机器收据 `/tmp/task22-20260718T160702Z-transition-evidence.json` 的 SHA-256 为 `67a272e0378033bd77c35783ffbd90c0bca009fff5fec48d8aa5999f03424bdf`，harness cleanup 通过。
+
+边界：本次在 **dirty shared worktree** 中调用 **committed HEAD module** 完成本地合成数据隔离演练，只证明 transition 核心行为；它不是洁净候选上的 CLI 端到端 release gate，也不是生产备份恢复。固定最终候选 SHA 后仍必须在洁净工作树重跑精确 CLI preview/apply/幂等/漂移门禁，并使用生产备份恢复到 `jiangkong_restore_*` 后完成 M1–M58、存量事实只读核验和清理。
+
+## 7. 已知问题与 Go / No-Go
+
+- 待全量门禁后回填已知问题；不允许用“无”代替实际复核。
+- 待用户对最终 40 位 SHA 给出独立推送/部署/迁移授权。
+- 即使部署/迁移被批准，也不等于批准 transition manifest 的生产业务写入。
+- 生产历史合同批量接管、3–5 个活跃合同长链路、母版逐页验收和普通岗位矩阵签认仍是真实试运行门禁，不能被脱敏自动 UAT 取代。
+
+## 8. 回滚边界
+
+- 应用回滚：保留上一生产 SHA 和 Web/API 快照；新格式业务事实已产生后不得盲目回退旧代码。
+- 数据库：M53–M58 均按前向兼容设计；不执行自动 down migration，故障使用经审查的前向修复。
+- 数据恢复：只先恢复到 `jiangkong_restore_*` 隔离库核验；恢复生产需新的维护窗口和单独授权。
+- 业务过渡：生产 transition 只能使用经用户单独批准的精确 manifest；终止旧实例不删文件、不删日志、不改付款事实。
