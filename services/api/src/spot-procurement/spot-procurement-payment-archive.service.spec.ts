@@ -107,6 +107,16 @@ describe("SpotProcurementPaymentArchiveService", () => {
       service.createVersion("payment-1", "finance-1", "payment.execution.record")
     ).resolves.toEqual({ id: "archive-3", versionNo: 3 });
 
+    const detailUpload = files.uploadPrivateFile.mock.calls.find(
+      ([input]) =>
+        input.originalName === "项目零星付款明细附页-LXCG-001-V1-P001.pdf"
+    )?.[0];
+    expect(detailUpload).toBeDefined();
+    const detailPdf = await PDFDocument.load(detailUpload!.buffer);
+    expect(detailPdf.getPageCount()).toBe(1);
+    expect(detailPdf.getPage(0).getWidth()).toBeCloseTo(595.28, 1);
+    expect(detailPdf.getPage(0).getHeight()).toBeCloseTo(841.89, 1);
+
     expect(files.uploadPrivateFile).toHaveBeenCalledWith(
       expect.objectContaining({
         originalName: "项目零星付款明细附页-LXCG-001-V1-P001.pdf",

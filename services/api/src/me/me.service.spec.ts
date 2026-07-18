@@ -822,7 +822,7 @@ describe("MeService", () => {
           businessType: "spot_procurement_version",
           businessId: "spot-version-1",
           businessCode: "LXCG-001",
-          title: "零星采购审批：甲材料店",
+          title: "零星采购审批：LXCG-001",
           amountText: "¥1,234.00",
           targetPath: "/零星采购/spot-procurement-1"
         }),

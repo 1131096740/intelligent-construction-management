@@ -40,7 +40,17 @@ export const NON_RECEIPT_FILE_BINDINGS = [
     table: "SpotProcurementPaymentExecution",
     columns: ["voucherFileId"]
   },
+  { table: "SpotProcurementPaymentAttachment", columns: ["fileId"] },
+  {
+    table: "SpotProcurementPaymentExecutionVoucher",
+    columns: ["fileId"]
+  },
   { table: "SpotProcurementPaymentInvoice", columns: ["fileId"] },
+  {
+    table: "SpotProcurementPaymentArchive",
+    columns: ["generatedPackageFileId"]
+  },
+  { table: "SpotProcurementPaymentArchiveFile", columns: ["fileId"] },
   { table: "SpotProcurementRefund", columns: ["voucherFileId"] },
   { table: "InvoiceRecord", columns: ["fileId"] },
   { table: "NoInvoiceConfirmation", columns: ["proofFileId"] },

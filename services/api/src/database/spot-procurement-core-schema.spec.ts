@@ -70,13 +70,13 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
       "projectId String",
       "code String @unique",
       "supplierPartyId String?",
-      "supplierKey String",
-      "supplierNameSnapshot String",
+      "supplierKey String? // legacy: new real-form applications do not select a supplier",
+      "supplierNameSnapshot String? // legacy: new real-form applications do not select a supplier",
       "applicantUserId String",
       "handlerUserId String",
       "currentVersionId String?",
       "status String",
-      "approvedAmountCents BigInt @default(0)",
+      "approvedAmountCents BigInt? // legacy: approval amount is now frozen on the payment application",
       "actualCostCents BigInt?",
       "closedAt DateTime?",
       "voidedAt DateTime?",
@@ -100,10 +100,16 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
       "reason String",
       "note String?",
       "supplierPartyId String?",
-      "supplierKey String",
-      "supplierNameSnapshot String",
+      "supplierKey String? // legacy: actual merchant is frozen on the payment application",
+      "supplierNameSnapshot String? // legacy: actual merchant is frozen on the payment application",
       "handlerUserId String",
-      "totalAmountCents BigInt",
+      "applicationDepartmentSnapshot String",
+      "applicationNameSnapshot String",
+      "purchaserNameSnapshot String",
+      "purchaserDepartmentId String?",
+      "purchaserDepartmentNameSnapshot String",
+      "requestedArrivalAt DateTime",
+      "totalAmountCents BigInt? // legacy: the A4 procurement application has no amount",
       "changeReason String?",
       "changeSummary Json?",
       "submittedAt DateTime?",
@@ -127,13 +133,13 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
       "specification String?",
       "unit String",
       "quantity Decimal @db.Decimal(24, 6)",
-      "invoiceMode String",
+      "invoiceMode String? // legacy: expected invoice facts belong to payment lines",
       "invoiceType String?",
       "vatRateOptionId String?",
       "vatRateValueSnapshot Decimal? @db.Decimal(9, 6)",
       "vatRateLabelSnapshot String?",
-      "unitPrice Decimal @db.Decimal(24, 6)",
-      "amountCents BigInt",
+      "unitPrice Decimal? @db.Decimal(24, 6) // legacy: price belongs to payment lines",
+      "amountCents BigInt? // legacy: amount belongs to payment lines",
       "usageLocation String?",
       "note String?",
       "createdAt DateTime @default(now())"
@@ -169,9 +175,12 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
       "canceledSupplierBalanceAmountCents BigInt @default(0)",
       "paymentPath String?",
       "paymentMethod String?",
+      "paymentType String?",
+      "merchantNameSnapshot String?",
+      "merchantPayeeMismatchNote String?",
       "payeePartyId String?",
       "payeeUserId String?",
-      "payeeNameSnapshot String",
+      "payeeNameSnapshot String?",
       "payeeAccountNameSnapshot String?",
       "payeeBankNameSnapshot String?",
       "payeeBankAccountSnapshot String?",
@@ -180,6 +189,13 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
       "supportingAttachmentFileId String?",
       "merchantPaymentProofFileId String?",
       "balanceOverrideReason String?",
+      "payerCompanyEntityId String?",
+      "payerCompanyNameSnapshot String?",
+      "payerUnifiedSocialCreditCodeSnapshot String?",
+      "approvalAmountCents BigInt @default(0)",
+      "primaryPaymentChannelId String?",
+      "submittedVersionNo Int?",
+      "factsFrozenAt DateTime?",
       "handlerUserId String",
       "createdByUserId String",
       "submittedAt DateTime?",
@@ -191,11 +207,13 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
       "updatedAt DateTime @updatedAt"
     ],
     [
+      "@@unique([id, procurementVersionId])",
       "@@index([projectId, status])",
       "@@index([procurementId, status])",
       "@@index([procurementVersionId])",
       "@@index([supportingAttachmentFileId])",
-      "@@index([merchantPaymentProofFileId])"
+      "@@index([merchantPaymentProofFileId])",
+      "@@index([payerCompanyEntityId])"
     ]
   ),
   SpotProcurementPaymentExecution: expectedModel(
@@ -205,15 +223,20 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
       "amountCents BigInt",
       "paidAt DateTime",
       "paymentMethod String",
+      "paymentChannelId String?",
       "executedByUserId String",
-      "voucherFileId String",
+      "voucherFileId String? // legacy: new executions use SpotProcurementPaymentExecutionVoucher",
       "idempotencyKey String @unique",
       "voidedAt DateTime?",
       "voidedByUserId String?",
       "voidReason String?",
       "createdAt DateTime @default(now())"
     ],
-    ["@@index([paymentId])", "@@index([voucherFileId])"]
+    [
+      "@@index([paymentId])",
+      "@@index([paymentChannelId])",
+      "@@index([voucherFileId])"
+    ]
   ),
   SupplierBalanceAccount: expectedModel(
     [
@@ -287,6 +310,70 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
     ["@@unique([rateValue, label])", "@@index([enabled, sortOrder])"]
   )
 };
+
+const CORE_MIGRATION_FIELD_OVERRIDES: Record<string, Record<string, string>> = {
+  SpotProcurement: {
+    supplierKey: "supplierKey String",
+    supplierNameSnapshot: "supplierNameSnapshot String",
+    approvedAmountCents: "approvedAmountCents BigInt @default(0)"
+  },
+  SpotProcurementVersion: {
+    supplierKey: "supplierKey String",
+    supplierNameSnapshot: "supplierNameSnapshot String",
+    totalAmountCents: "totalAmountCents BigInt"
+  },
+  SpotProcurementLine: {
+    invoiceMode: "invoiceMode String",
+    unitPrice: "unitPrice Decimal @db.Decimal(24, 6)",
+    amountCents: "amountCents BigInt"
+  },
+  SpotProcurementPayment: {
+    payeeNameSnapshot: "payeeNameSnapshot String"
+  },
+  SpotProcurementPaymentExecution: {
+    voucherFileId: "voucherFileId String"
+  }
+};
+
+const CORE_MIGRATION_FORWARD_FIELDS = new Set([
+  "SpotProcurementVersion.applicationDepartmentSnapshot",
+  "SpotProcurementVersion.applicationNameSnapshot",
+  "SpotProcurementVersion.purchaserNameSnapshot",
+  "SpotProcurementVersion.purchaserDepartmentId",
+  "SpotProcurementVersion.purchaserDepartmentNameSnapshot",
+  "SpotProcurementVersion.requestedArrivalAt",
+  "SpotProcurementPayment.paymentType",
+  "SpotProcurementPayment.merchantNameSnapshot",
+  "SpotProcurementPayment.merchantPayeeMismatchNote",
+  "SpotProcurementPayment.payerCompanyEntityId",
+  "SpotProcurementPayment.payerCompanyNameSnapshot",
+  "SpotProcurementPayment.payerUnifiedSocialCreditCodeSnapshot",
+  "SpotProcurementPayment.approvalAmountCents",
+  "SpotProcurementPayment.primaryPaymentChannelId",
+  "SpotProcurementPayment.submittedVersionNo",
+  "SpotProcurementPayment.factsFrozenAt",
+  "SpotProcurementPaymentExecution.paymentChannelId",
+  "SupplierBalanceReservation.releasedAmountCents"
+]);
+
+const REAL_FORM_FILE_BINDING_TABLES = new Set([
+  "SpotProcurementPaymentAttachment",
+  "SpotProcurementPaymentExecutionVoucher",
+  "SpotProcurementPaymentInvoice",
+  "SpotProcurementPaymentArchive",
+  "SpotProcurementPaymentArchiveFile"
+]);
+
+const fieldsAtCoreMigration = (table: string, fields: string[]) =>
+  fields
+    .filter((field) => {
+      const fieldName = field.split(" ")[0];
+      return !CORE_MIGRATION_FORWARD_FIELDS.has(`${table}.${fieldName}`);
+    })
+    .map((field) => {
+      const fieldName = field.split(" ")[0];
+      return CORE_MIGRATION_FIELD_OVERRIDES[table]?.[fieldName] ?? field;
+    });
 
 const LEGACY_PROJECT_EXPENSE_FIELDS = [
   "id",
@@ -793,14 +880,8 @@ describe("spot procurement core schema", () => {
     expect(createdTables).toEqual(Object.keys(EXPECTED_PRISMA_MODELS).sort());
 
     for (const [table, expected] of Object.entries(EXPECTED_PRISMA_MODELS)) {
-      const fieldsAtCoreMigration =
-        table === "SupplierBalanceReservation"
-          ? expected.fields.filter(
-              (field) => !field.startsWith("releasedAmountCents ")
-            )
-          : expected.fields;
       expect(sqlColumns(table)).toEqual(
-        expectedSqlColumns(fieldsAtCoreMigration)
+        expectedSqlColumns(fieldsAtCoreMigration(table, expected.fields))
       );
     }
   });
@@ -863,7 +944,9 @@ describe("spot procurement core schema", () => {
       "SpotProcurementReceiptPhoto.watermarkedFileId"
     ]);
     const expectedBindings = [
-      ...NON_RECEIPT_FILE_BINDINGS.flatMap(({ table, columns }) =>
+      ...NON_RECEIPT_FILE_BINDINGS.filter(
+        ({ table }) => !REAL_FORM_FILE_BINDING_TABLES.has(table)
+      ).flatMap(({ table, columns }) =>
         columns.map((column) => ({
           table,
           column,
@@ -941,7 +1024,9 @@ describe("spot procurement core schema", () => {
       "SpotProcurementReceiptPhoto.watermarkedFileId"
     ]);
     const expectedBindings = [
-      ...NON_RECEIPT_FILE_BINDINGS.flatMap(({ table, columns }) =>
+      ...NON_RECEIPT_FILE_BINDINGS.filter(
+        ({ table }) => !REAL_FORM_FILE_BINDING_TABLES.has(table)
+      ).flatMap(({ table, columns }) =>
         columns.map((column) => ({
           table,
           column,
@@ -1046,7 +1131,7 @@ describe("spot procurement core schema", () => {
   it("matches the complete unique and ordinary index set", () => {
     expect(indexes()).toEqual(sortByName(EXPECTED_INDEXES));
     expect(fieldDeclarations("SpotProcurementPaymentExecution")).toContain(
-      "voucherFileId String"
+      "voucherFileId String? // legacy: new executions use SpotProcurementPaymentExecutionVoucher"
     );
   });
 

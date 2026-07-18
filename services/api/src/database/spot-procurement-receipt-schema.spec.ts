@@ -203,6 +203,11 @@ const EXPECTED_MODELS: Record<(typeof REQUIRED_MODELS)[number], ModelExpectation
       "paidAmountCentsSnapshot BigInt",
       "supplierBalanceUsedAmountCentsSnapshot BigInt",
       "overpaidAmountCents BigInt",
+      "unexecutedAmountClosedCents BigInt @default(0)",
+      "refundExpectedAmountCents BigInt @default(0)",
+      "replenishedAt DateTime?",
+      "replenishedByUserId String?",
+      "replenishmentNote String?",
       "resolutionType String?",
       "supplierBalanceEntryId String? @unique",
       "note String?",
@@ -229,6 +234,7 @@ const EXPECTED_MODELS: Record<(typeof REQUIRED_MODELS)[number], ModelExpectation
       "id String @id @default(uuid())",
       "discrepancyId String @unique",
       "procurementId String",
+      "paymentId String?",
       "amountCents BigInt",
       "receivedAt DateTime",
       "refundMethod String",
@@ -239,6 +245,7 @@ const EXPECTED_MODELS: Record<(typeof REQUIRED_MODELS)[number], ModelExpectation
     ],
     [
       "@@index([procurementId, receivedAt])",
+      "@@index([paymentId])",
       "@@index([recordedByUserId, createdAt])"
     ]
   ),
@@ -541,15 +548,18 @@ describe("spot procurement receipt and invoice schema", () => {
   });
 
   it.each(REQUIRED_MODELS)("keeps migration columns aligned for %s", (modelName) => {
-    const baseFields =
-      modelName === "SpotProcurementReceiptReview"
-        ? EXPECTED_MODELS[modelName].fields.filter(
-            (field) =>
-              !field.startsWith(
-                "reviewedByNameSnapshot "
-              )
-          )
-        : EXPECTED_MODELS[modelName].fields;
+    const forwardOnlyFields = new Set([
+      "SpotProcurementReceiptReview.reviewedByNameSnapshot",
+      "SpotProcurementDiscrepancy.unexecutedAmountClosedCents",
+      "SpotProcurementDiscrepancy.refundExpectedAmountCents",
+      "SpotProcurementDiscrepancy.replenishedAt",
+      "SpotProcurementDiscrepancy.replenishedByUserId",
+      "SpotProcurementDiscrepancy.replenishmentNote",
+      "SpotProcurementRefund.paymentId"
+    ]);
+    const baseFields = EXPECTED_MODELS[modelName].fields.filter((field) =>
+      !forwardOnlyFields.has(`${modelName}.${field.split(" ")[0]}`)
+    );
     expect(sqlColumns(modelName)).toEqual(
       baseFields.map(prismaFieldToSqlColumn)
     );
