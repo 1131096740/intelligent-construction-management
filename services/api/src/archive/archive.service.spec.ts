@@ -796,7 +796,12 @@ describe("ArchiveService", () => {
         where: {
           OR: [
             {
-              templateKey: "approval_form",
+              templateKey: {
+                in: [
+                  "spot_procurement_approval_original_v1",
+                  "approval_form"
+                ]
+              },
               businessType: {
                 in: [
                   "spot_procurement_version",

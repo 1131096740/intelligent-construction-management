@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { SPOT_PROCUREMENT_RECEIPT_PDF_TEMPLATE_KEY } from "../spot-procurement/spot-procurement.constants";
+import { SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY } from "../spot-procurement/spot-procurement-form-renderer";
 import {
   isCurrentFormalReceiptPdfFact,
   RECEIPT_PDF_REFRESH_ACTION
@@ -529,7 +530,12 @@ export class ArchiveService {
         where: {
           OR: [
             {
-              templateKey: "approval_form",
+              templateKey: {
+                in: [
+                  SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY,
+                  "approval_form"
+                ]
+              },
               businessType: {
                 in: [
                   "spot_procurement_version",
@@ -908,7 +914,10 @@ export class ArchiveService {
           return false;
         }
       } else if (
-        row.templateKey !== "approval_form" ||
+        ![
+          SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY,
+          "approval_form"
+        ].includes(row.templateKey) ||
         !approvedBusinessKeys.has(key)
       ) {
         return false;

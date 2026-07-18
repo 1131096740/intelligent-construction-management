@@ -37,6 +37,7 @@ import { PrismaService } from "../database/prisma.service";
 import { InvoiceLedgerService } from "../invoice-ledger/invoice-ledger.service";
 import { SpotProcurementAccessService } from "./spot-procurement-access.service";
 import { SpotProcurementInvoiceService } from "./spot-procurement-invoice.service";
+import { SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY } from "./spot-procurement-form-renderer";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
 
@@ -313,7 +314,12 @@ export class SpotProcurementReadService {
         where: {
           businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.application,
           businessId: procurement.currentVersionId,
-          templateKey: "approval_form"
+          templateKey: {
+            in: [
+              SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY,
+              "approval_form"
+            ]
+          }
         },
         orderBy: { createdAt: "desc" }
       })

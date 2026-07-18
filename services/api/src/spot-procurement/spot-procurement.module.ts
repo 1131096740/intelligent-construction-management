@@ -21,6 +21,7 @@ import { SpotProcurementSettlementService } from "./spot-procurement-settlement.
 import { SpotProcurementController } from "./spot-procurement.controller";
 import { SpotProcurementInvoiceController } from "./spot-procurement-invoice.controller";
 import { SpotProcurementInvoiceService } from "./spot-procurement-invoice.service";
+import { SpotProcurementPaymentArchiveService } from "./spot-procurement-payment-archive.service";
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { SpotProcurementInvoiceService } from "./spot-procurement-invoice.servic
     ReceiptWatermarkService,
     SpotProcurementApplicationService,
     SpotProcurementInvoiceService,
+    SpotProcurementPaymentArchiveService,
     SpotProcurementBalanceService,
     SpotProcurementPaymentService,
     SpotProcurementPilotService,
@@ -54,6 +56,7 @@ import { SpotProcurementInvoiceService } from "./spot-procurement-invoice.servic
   exports: [
     SpotProcurementApplicationService,
     SpotProcurementInvoiceService,
+    SpotProcurementPaymentArchiveService,
     SpotProcurementBalanceService,
     SpotProcurementPaymentService,
     SpotProcurementPilotService,

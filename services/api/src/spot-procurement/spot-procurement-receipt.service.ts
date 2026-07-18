@@ -51,6 +51,7 @@ import {
   RECEIPT_PDF_REFRESH_ACTION
 } from "./spot-procurement-receipt-pdf-facts";
 import { SpotProcurementReceiptPdfService } from "./spot-procurement-receipt-pdf.service";
+import { SpotProcurementPaymentArchiveService } from "./spot-procurement-payment-archive.service";
 import {
   SPOT_PROCUREMENT_BUSINESS_TYPES,
   SPOT_PROCUREMENT_RECEIPT_MAX_PHOTO_COUNT,
@@ -302,7 +303,8 @@ export class SpotProcurementReceiptService {
     private readonly watermark: ReceiptWatermarkService,
     private readonly access: SpotProcurementAccessService,
     private readonly receiptPdfs: SpotProcurementReceiptPdfService,
-    private readonly closure: SpotProcurementClosureService
+    private readonly closure: SpotProcurementClosureService,
+    private readonly archives?: SpotProcurementPaymentArchiveService
   ) {}
 
   async getReceipt(procurementId: string, actorUserId: string) {
@@ -1641,8 +1643,32 @@ export class SpotProcurementReceiptService {
           reviewId: result.reviewId
         }
       );
+      if (result.decision === "approved") {
+        await this.tryArchiveProcurementPayments(
+          procurementId,
+          actorUserId,
+          "procurement.normal_closure.check"
+        );
+      }
       return result;
     });
+  }
+
+  private async tryArchiveProcurementPayments(
+    procurementId: string,
+    actorUserId: string,
+    trigger: string
+  ): Promise<void> {
+    if (!this.archives) return;
+    const payments = await this.prisma.spotProcurementPayment.findMany({
+      where: { procurementId },
+      select: { id: true }
+    });
+    await Promise.all(
+      payments.map((payment) =>
+        this.archives!.tryCreateVersion(payment.id, actorUserId, trigger)
+      )
+    );
   }
 
   revokeReview(

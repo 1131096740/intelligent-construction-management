@@ -46,6 +46,7 @@ import {
 } from "./spot-procurement-approval-nodes";
 import { deriveSpotProcurementPaymentExecutionStatus } from "./spot-procurement-payment-status";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
+import { SpotProcurementPaymentArchiveService } from "./spot-procurement-payment-archive.service";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
 import { calculateSpotProcurementLine } from "./spot-procurement-money";
 
@@ -198,7 +199,8 @@ export class SpotProcurementPaymentService {
     private readonly auth: AuthService,
     private readonly files: FileService,
     private readonly approvalForms: ApprovalFormService,
-    private readonly closure: SpotProcurementClosureService
+    private readonly closure: SpotProcurementClosureService,
+    private readonly archives?: SpotProcurementPaymentArchiveService
   ) {}
 
   async recordExecution(
@@ -615,6 +617,11 @@ export class SpotProcurementPaymentService {
         actorUserId,
         "payment.execution.record"
       );
+      await this.archives?.tryCreateVersion(
+        paymentId,
+        actorUserId,
+        "payment.execution.record"
+      );
       return result;
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -634,6 +641,11 @@ export class SpotProcurementPaymentService {
         if (concurrentResult) {
           await this.approvalForms.tryRefreshLatestForBusiness(
             SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+            paymentId,
+            actorUserId,
+            "payment.execution.record"
+          );
+          await this.archives?.tryCreateVersion(
             paymentId,
             actorUserId,
             "payment.execution.record"
@@ -659,6 +671,11 @@ export class SpotProcurementPaymentService {
         if (concurrentResult) {
           await this.approvalForms.tryRefreshLatestForBusiness(
             SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+            paymentId,
+            actorUserId,
+            "payment.execution.record"
+          );
+          await this.archives?.tryCreateVersion(
             paymentId,
             actorUserId,
             "payment.execution.record"
@@ -1485,6 +1502,13 @@ export class SpotProcurementPaymentService {
         actorUserId,
         `approval.${input.decision}`
       );
+      if (result.status === "approved_pending_payment") {
+        await this.archives?.tryCreateVersion(
+          paymentId,
+          actorUserId,
+          "payment.approval.completed"
+        );
+      }
       return result;
     });
   }

@@ -16,6 +16,7 @@ import { basename, extname, isAbsolute, join, parse, relative, resolve, sep } fr
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { SpotProcurementAccessService } from "../spot-procurement/spot-procurement-access.service";
+import { SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY } from "../spot-procurement/spot-procurement-form-renderer";
 import {
   acquireFileBusinessBindingTransactionLock,
   hasNonReceiptBusinessFileBinding
@@ -1574,7 +1575,16 @@ export class FileService {
     // 审批 PDF：申请人、任一签批人，或该项目的归档可读岗位均可下载；
     // 结算审批中的 latest PDF 还允许审批链相关岗位读取，供后续审批人审阅。
     const approvalForm = await tx.pdfDocument.findFirst({
-      where: { fileId: file.id, templateKey: { in: ["approval_form", "settlement_approval_latest"] } }
+      where: {
+        fileId: file.id,
+        templateKey: {
+          in: [
+            "approval_form",
+            SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY,
+            "settlement_approval_latest"
+          ]
+        }
+      }
     });
     if (approvalForm) {
       const instance = await tx.approvalInstance.findFirst({
@@ -1582,7 +1592,10 @@ export class FileService {
           businessType: approvalForm.businessType,
           businessId: approvalForm.businessId,
           status:
-            approvalForm.templateKey === "approval_form"
+            [
+              "approval_form",
+              SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY
+            ].includes(approvalForm.templateKey)
               ? "approved"
               : { in: ["in_progress", "approved"] }
         },

@@ -782,6 +782,33 @@ export class SpotProcurementAccessService {
     const executionVoucherIds = executionVoucherBindings.map(
       (binding) => binding.paymentExecutionId
     );
+    const archiveFileModel = client as unknown as {
+      spotProcurementPaymentArchiveFile?: {
+        findMany(input: {
+          where: { fileId: string };
+          select: { archiveId: true };
+        }): Promise<Array<{ archiveId: string }>>;
+      };
+      spotProcurementPaymentArchive?: {
+        findMany(input: {
+          where: { id: { in: string[] } };
+          select: { paymentId: true };
+        }): Promise<Array<{ paymentId: string }>>;
+      };
+    };
+    const archiveFileBindings = archiveFileModel.spotProcurementPaymentArchiveFile
+      ? await archiveFileModel.spotProcurementPaymentArchiveFile.findMany({
+          where: { fileId },
+          select: { archiveId: true }
+        })
+      : [];
+    const archivePaymentBindings =
+      archiveFileBindings.length && archiveFileModel.spotProcurementPaymentArchive
+        ? await archiveFileModel.spotProcurementPaymentArchive.findMany({
+            where: { id: { in: archiveFileBindings.map((binding) => binding.archiveId) } },
+            select: { paymentId: true }
+          })
+        : [];
     const executionVoucherExecutions = executionVoucherIds.length
       ? await client.spotProcurementPaymentExecution.findMany({
           where: { id: { in: executionVoucherIds } },
@@ -825,6 +852,7 @@ export class SpotProcurementAccessService {
       directPaymentBindings.length > 0 ||
       voucherBindings.length > 0 ||
       paymentInvoiceBindings.length > 0 ||
+      archivePaymentBindings.length > 0 ||
       refundBindings.length > 0 ||
       pdfBindings.length > 0 ||
       receiptPhotoBindings.length > 0 ||
@@ -876,6 +904,7 @@ export class SpotProcurementAccessService {
         directPaymentBindings.length > 0 ||
         voucherBindings.length > 0 ||
         paymentInvoiceBindings.length > 0 ||
+        archivePaymentBindings.length > 0 ||
         refundBindings.length > 0 ||
         pdfBindings.length > 0 ||
         receiptPhotoBindings.length > 0;
@@ -915,6 +944,7 @@ export class SpotProcurementAccessService {
       directPaymentBindings.length > 0 ||
       voucherBindings.length > 0 ||
       paymentInvoiceBindings.length > 0 ||
+      archivePaymentBindings.length > 0 ||
       refundBindings.length > 0;
     if (
       receiptPhotoIds.size > 1 ||
@@ -1005,7 +1035,8 @@ export class SpotProcurementAccessService {
     const paymentIds = new Set([
       ...directPaymentBindings.map((binding) => binding.id),
       ...voucherBindings.map((binding) => binding.paymentId),
-      ...paymentInvoiceBindings.map((binding) => binding.paymentId)
+      ...paymentInvoiceBindings.map((binding) => binding.paymentId),
+      ...archivePaymentBindings.map((binding) => binding.paymentId)
     ]);
     for (const pdf of approvalPdfBindings) {
       if (pdf.businessType === SPOT_PROCUREMENT_BUSINESS_TYPES.application) {

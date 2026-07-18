@@ -27,6 +27,7 @@ import { SpotProcurementBalanceService } from "./spot-procurement-balance.servic
 import { SpotProcurementClosureService } from "./spot-procurement-closure.service";
 import { deriveSpotProcurementPaymentExecutionStatus } from "./spot-procurement-payment-status";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
+import { SpotProcurementPaymentArchiveService } from "./spot-procurement-payment-archive.service";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
 
 const HANDLER_ROLES = new Set<RoleKey>([
@@ -178,7 +179,8 @@ export class SpotProcurementSettlementService {
     private readonly auth: AuthService,
     private readonly files: FileService,
     private readonly approvalForms: ApprovalFormService,
-    private readonly closure: SpotProcurementClosureService
+    private readonly closure: SpotProcurementClosureService,
+    private readonly archives?: SpotProcurementPaymentArchiveService
   ) {}
 
   async createOrConfirmDiscrepancy(
@@ -2473,6 +2475,11 @@ export class SpotProcurementSettlementService {
           actorUserId,
           reason
         )
+      )
+    );
+    await Promise.all(
+      [...new Set(paymentIds)].map((paymentId) =>
+        this.archives?.tryCreateVersion(paymentId, actorUserId, reason)
       )
     );
   }

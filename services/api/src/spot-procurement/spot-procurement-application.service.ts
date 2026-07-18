@@ -34,6 +34,7 @@ import {
   type SpotProcurementApprovalNode
 } from "./spot-procurement-approval-nodes";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
+import { SpotProcurementPaymentArchiveService } from "./spot-procurement-payment-archive.service";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
 
 const CREATE_ROLES = new Set<RoleKey>([
@@ -134,7 +135,8 @@ export class SpotProcurementApplicationService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly pilot: SpotProcurementPilotService,
-    private readonly approvalForms: ApprovalFormService
+    private readonly approvalForms: ApprovalFormService,
+    private readonly archives?: SpotProcurementPaymentArchiveService
   ) {}
 
   createDraft(actorUserId: string, input: CreateSpotProcurementDto) {
@@ -754,8 +756,8 @@ export class SpotProcurementApplicationService {
     if (input.confirmTermination !== true) {
       throw new BadRequestException("请明确确认异常终止本次零星采购");
     }
-    return this.runWrite(() =>
-      this.prisma.$transaction(async (tx) => {
+    return this.runWrite(async () => {
+      const result = await this.prisma.$transaction(async (tx) => {
         const procurement = await this.requireLockedProcurement(tx, procurementId);
         this.pilot.assertEnabled(procurement.projectId);
         this.assertAbnormalTerminationAllowed(procurement);
@@ -819,8 +821,24 @@ export class SpotProcurementApplicationService {
           confirmedByUserId: actorUserId,
           confirmedAt: now
         });
-      })
-    );
+      });
+      if (this.archives) {
+        const payments = await this.prisma.spotProcurementPayment.findMany({
+          where: { procurementId },
+          select: { id: true }
+        });
+        await Promise.all(
+          payments.map((payment) =>
+            this.archives!.tryCreateVersion(
+              payment.id,
+              actorUserId,
+              "procurement.abnormal_termination.confirmed"
+            )
+          )
+        );
+      }
+      return result;
+    });
   }
 
   applicationTextSuggestions(actorUserId: string, projectId: string, keyword?: string) {

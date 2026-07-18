@@ -17,6 +17,7 @@ import { FileService } from "../file/file.service";
 import type { AttachSpotPaymentInvoiceDto } from "./dto/attach-spot-payment-invoice.dto";
 import type { InvalidateSpotPaymentInvoiceDto } from "./dto/invalidate-spot-payment-invoice.dto";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
+import { SpotProcurementPaymentArchiveService } from "./spot-procurement-payment-archive.service";
 
 const FINANCE_APPEND_ROLES = new Set<RoleKey>([
   "finance_staff",
@@ -58,7 +59,8 @@ export class SpotProcurementInvoiceService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly files: FileService,
-    private readonly pilot: SpotProcurementPilotService
+    private readonly pilot: SpotProcurementPilotService,
+    private readonly archives?: SpotProcurementPaymentArchiveService
   ) {}
 
   append(
@@ -68,8 +70,8 @@ export class SpotProcurementInvoiceService {
   ) {
     const paymentId = requiredText(paymentIdInput, "请选择付款申请");
     const fileId = requiredText(input.fileId, "请选择发票文件");
-    return this.runWrite(() =>
-      this.prisma.$transaction(async (tx) => {
+    return this.runWrite(async () => {
+      const result = await this.prisma.$transaction(async (tx) => {
         const { procurement, payment } = await this.lockContext(tx, paymentId);
         await this.requireAppendAccess(tx, procurement, payment, actorUserId);
         const existing = await tx.spotProcurementPaymentInvoice.findUnique({
@@ -113,8 +115,14 @@ export class SpotProcurementInvoiceService {
           }
         });
         return invoiceReadModel(invoice);
-      })
-    );
+      });
+      await this.archives?.tryCreateVersion(
+        paymentId,
+        actorUserId,
+        "payment.invoice.append"
+      );
+      return result;
+    });
   }
 
   invalidate(
@@ -126,8 +134,8 @@ export class SpotProcurementInvoiceService {
     const paymentId = requiredText(paymentIdInput, "请选择付款申请");
     const invoiceId = requiredText(invoiceIdInput, "请选择发票附件");
     const reason = requiredText(input.reason, "请填写发票附件作废原因");
-    return this.runWrite(() =>
-      this.prisma.$transaction(async (tx) => {
+    return this.runWrite(async () => {
+      const result = await this.prisma.$transaction(async (tx) => {
         const { procurement, payment } = await this.lockContext(tx, paymentId);
         await this.requireAppendAccess(tx, procurement, payment, actorUserId);
         if (procurement.status !== "approved_in_progress") {
@@ -179,8 +187,14 @@ export class SpotProcurementInvoiceService {
           invalidatedByUserId: actorUserId,
           invalidationReason: reason
         });
-      })
-    );
+      });
+      await this.archives?.tryCreateVersion(
+        paymentId,
+        actorUserId,
+        "payment.invoice.invalidate"
+      );
+      return result;
+    });
   }
 
   async summary(
