@@ -63,6 +63,7 @@ async function login(page: Page) {
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("E2e@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await page.waitForURL((url) => !url.pathname.endsWith("/login"));
 }
 
 async function openLedger(page: Page) {
