@@ -1769,7 +1769,7 @@ Run: `pnpm --filter @jiangkong/api test -- --runInBand src/contract-takeover/con
 
 Expected: PASS。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add services/api/src/contract-takeover services/api/src/file/file.service.spec.ts services/api/src/approval/approval-form.service.spec.ts apps/web-admin/src/pages/contracts apps/web-admin/src/pages/business-readonly-access.test.ts apps/web-admin/src/routes/index.test.ts
@@ -1780,7 +1780,7 @@ git commit -m "fix: 加固历史主体与跨域只读边界"
 
 ### Task 22: 全量回归、迁移演练、UAT 和发布候选
 
-> **执行校正（2026-07-17 过渡审计）**：批准规格要求“历史不改、未生效重走”，不能只在报告里列清单。候选必须包含默认只读的预览/受控终止工具及测试，但本任务只生成预览清单并演练隔离库；未经用户对最终 40 位 SHA、精确实例 manifest 和生产写入再次批准，不得在生产运行 apply。M53-M56 迁移本身永不自动终止实例。
+> **执行校正（2026-07-17 过渡审计）**：批准规格要求“历史不改、未生效重走”，不能只在报告里列清单。候选必须包含默认只读的预览/受控终止工具及测试，但本任务只生成预览清单并演练隔离库；未经用户对最终 40 位 SHA、精确实例 manifest 和生产写入再次批准，不得在生产运行 apply。生产尚未部署的 M52–M58 与 M69 迁移本身永不自动终止实例。
 
 **Files:**
 - Modify: `services/api/prisma/verify-trial-run.cjs`
@@ -1791,17 +1791,17 @@ git commit -m "fix: 加固历史主体与跨域只读边界"
 - Modify: `GO_LIVE_P0_RELEASE_CANDIDATE_REPORT.md`
 - Modify: `PROGRESS.md`
 
-- [ ] **Step 1: 建立默认只读、manifest 驱动的旧实例过渡工具**
+- [x] **Step 1: 建立默认只读、manifest 驱动的旧实例过渡工具**
 
 `transition-contract-settlement-governance.cjs` 默认在 `READ ONLY` 事务中输出正在审批、待用章、待归档的未生效合同/结算清单、当前状态、审批实例、关联正式文件和建议动作，且不输出文件对象键或敏感内容。`--apply` 必须同时提供：精确候选 SHA、显式 `ALLOW_GOVERNANCE_TRANSITION_APPLY` 确认串、操作者用户 ID、由预览生成且未被修改的实例 manifest；任一行状态、版本、审批实例或摘要漂移则整批回滚。
 
 apply 在单事务按稳定顺序锁定 manifest 中的合同/结算版本和 ApprovalInstance，旧实例标记“因业务规则升级终止”，写 ApprovalActionLog 与 AuditLog；未生效单据回到可补资料并重新提交的状态，相关 active 正式文件按模型标记失效，不删除原文件或旧日志。已生效/归档/作废、付款/实付/入账、manifest 外记录一律不改。脚本幂等，重复执行只报告已处理，不重复审计。定向测试覆盖默认只读、缺门禁拒绝、manifest 漂移全回滚、精确状态迁移、历史日志保留和付款零改动。
 
-- [ ] **Step 2: 扩展隔离 UAT 覆盖**
+- [x] **Step 2: 扩展隔离 UAT 覆盖**
 
 `verify-trial-run.cjs` 使用隔离测试数据覆盖：五类合同、主管发起跳过、最终或签、双方授权四组合、用章/最终归档、增项 9.99%/10%/10.01%、材料和劳务结算、一页/多页签名、通用合同直接付款、跨域只读负向权限。不得连接生产业务库执行写入。
 
-- [ ] **Step 3: 运行所有定向测试**
+- [x] **Step 3: 运行所有定向测试**
 
 Run:
 
@@ -1818,7 +1818,7 @@ pnpm --filter @jiangkong/web-admin test -- \
 
 Expected: PASS。
 
-- [ ] **Step 4: 运行工程质量全量门禁**
+- [x] **Step 4: 运行工程质量全量门禁**
 
 ```bash
 pnpm --filter @jiangkong/shared-domain typecheck
@@ -1841,17 +1841,17 @@ git diff --check
 
 Expected: 全部 PASS；条件跳过项逐条记录原因。
 
-- [ ] **Step 5: 浏览器验证**
+- [x] **Step 5: 浏览器验证**
 
 使用稳定 mock/隔离数据验证 1512×982、1440×900、1280×800、1180×820、1024×768、900×768：公司主体、五类合同、合同详情、变更、材料/劳务结算、结算详情、付款工作台和只读台账。根文档横向溢出、嵌套横滚和 pageerror 必须为 0。
 
 - [ ] **Step 6: 隔离库迁移与旧实例过渡演练**
 
-从生产备份恢复到 `jiangkong_restore_*`，使用精确候选 SHA 依次应用 M52-M56；核对迁移数、表/索引、旧 51 迁移事实、存量空信用代码、历史审批 JSON、金额计数和只读查询。先运行 transition preview，再只在隔离库对复制的 manifest 执行 apply，验证终止审计、草稿恢复、正式文件失效、幂等和付款零变化；清理隔离库。不得连接或修改生产业务库。
+从生产备份恢复到 `jiangkong_restore_*`，使用精确候选 SHA 从生产已知 61 个迁移应用到候选 69 个迁移；核对迁移数、表/索引、存量空信用代码、历史审批 JSON、金额、税务事实、文件引用和只读查询。M69 必须实测 54 项引用清单、54 个统一触发器及旧函数为 0。先运行 transition preview，再只在隔离库对复制的 manifest 执行 apply，验证终止审计、草稿恢复、正式文件失效、幂等和付款零变化；清理隔离库。不得连接或修改生产业务库。
 
-- [ ] **Step 7: 生成发布候选报告和 runbook**
+- [x] **Step 7: 生成发布候选报告和 runbook**
 
-报告必须记录：40 位 SHA、相对生产和 main 提交、实际文件、4 个新增迁移、隔离演练、测试、截图、旧未生效实例预览 manifest 及摘要、未解决项、应用回滚和数据库前向修复方案。runbook 明确将“部署/迁移”和“按 manifest 终止旧实例”分成两次独立授权，禁止因批准部署而推定批准生产业务写入。
+报告必须记录：40 位 SHA、相对生产和 main 提交、实际文件、生产 61→候选 69 的 8 个未部署迁移、隔离演练、测试、截图、旧未生效实例预览 manifest 及摘要、未解决项、应用回滚和数据库前向修复方案。runbook 明确将“部署/迁移”和“按 manifest 终止旧实例”分成两次独立授权，禁止因批准部署而推定批准生产业务写入。
 
 - [ ] **Step 8: 最终提交并停止在发布候选**
 
@@ -1882,6 +1882,6 @@ git commit -m "test: 收口合同结算治理发布候选"
 ## 5. 发布与回滚边界
 
 - 应用回滚：保留前一生产 SHA，候选失败时只允许按 runbook 回退 Web/API；不得对已产生新格式业务事实执行盲目代码回退。
-- 数据库：M53-M56 采用向后兼容增量列/表；生产迁移前备份并验证异机恢复。迁移应用后不执行自动 down migration，失败按前向修复处理。
+- 数据库：M52–M58 与 M69 采用前向兼容迁移；生产迁移前备份并验证异机恢复。迁移应用后不执行自动 down migration，失败按前向修复处理。
 - 业务切换：上线前列出未生效旧合同/结算实例，由用户另行授权后才能终止并要求重提；迁移本身不得自动终止。
 - 生产：只有用户明确批准最终 40 位 SHA 后，才可以进入 push、部署、迁移和生产只读/受控写验证。

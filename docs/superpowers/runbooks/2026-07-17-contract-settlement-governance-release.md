@@ -1,6 +1,6 @@
 # 合同结算治理发布 Runbook
 
-> 适用范围：2026-07-17 合同结算治理候选（M53–M58）
+> 适用范围：2026-07-17 合同结算治理候选（生产已知 61 个迁移 → 候选 69 个迁移）
 > 当前状态：候选验证中，**未获得推送、部署、迁移或生产 transition apply 授权**
 > 运行原则：最小权限、精确 SHA、隔离恢复先行、两次独立授权、失败关闭。
 
@@ -12,7 +12,7 @@
 
 1. 快进推送目标 SHA；
 2. 部署 Web/API；
-3. 执行 M52–M58 中生产尚未完成的迁移；
+3. 执行生产尚未完成的 M52–M58 与 M69 迁移；
 4. 进行生产只读验证和明确列出的最小冒烟。
 
 窗口 A **不授权**终止、退回、失效或重提任何存量业务实例。迁移不得夹带这类业务写入。
@@ -35,12 +35,13 @@
 2. `git status --short` 只允许已审查的候选改动。
 3. 生成对 `origin/main` 及生产 SHA 的提交/文件清单。
 4. 确认 M52 `20260716160000_contract_tax_facts_and_settlement_drafts` 与实施前基线零差异。
-5. 确认候选增量迁移为 M53–M58 共 6 个，没有编号重用。
-6. 完成所有定向、全量、构建、UI、E2E 和 `git diff --check` 门禁。
-7. 在六个桌面视口完成浏览器验证，记录截图绝对或仓库相对路径。
-8. 用脱敏 seed/test 数据执行完整隔离 UAT，证据清单必须绑定当前 SHA。
-9. 从已验证的生产备份恢复到 `jiangkong_restore_*`，完成迁移和 transition preview/apply 隔离演练。
-10. 完成业务、财务、技术 Go / No-Go 签认；未签认时发布结论只能为 No-Go/等待。
+5. 确认生产 61 个迁移到候选 69 个迁移共有 8 个未部署增量：M52–M58 与 M69，没有编号重用。
+6. 确认 M69 的中心 FileObject 引用清单为 54 项、统一触发器为 54 个、旧绑定函数为 0，并在存量冲突时失败关闭。
+7. 完成所有定向、全量、构建、UI、E2E 和 `git diff --check` 门禁。
+8. 在六个桌面视口完成浏览器验证，记录截图绝对或仓库相对路径。
+9. 用脱敏 seed/test 数据执行完整隔离 UAT，证据清单必须绑定当前 SHA。
+10. 从已验证的生产备份恢复到 `jiangkong_restore_*`，完成 61→69 迁移和 transition preview/apply 隔离演练。
+11. 完成业务、财务、技术 Go / No-Go 签认；未签认时发布结论只能为 No-Go/等待。
 
 ## 3. 隔离 UAT
 
@@ -92,7 +93,7 @@ node services/api/prisma/run-contract-settlement-governance-uat-local.cjs
 2. 只恢复到空 `jiangkong_restore_*` 数据库。
 3. 恢复前记录 dump SHA-256、候选 SHA 和原迁移计数；不在文档中记录密码、COS 密钥或对象内部键。
 4. 使用精确候选 checkout 执行 `prisma migrate deploy` 和 `prisma migrate status`。
-5. 核对最终 M1–M58 共 58 个已完成迁移、关键索引/约束和存量计数。
+5. 核对恢复前 61 个已完成迁移，候选迁移后 M1–M69 共 69 个已完成迁移、关键索引/约束和存量计数。
 6. 使用 `default_transaction_read_only=on` 独立重查历史审批 JSON、金额、税务事实和文件证据计数。
 7. 迁移演练不得启动 transition `--apply`，两者的证据必须分开记录。
 
@@ -153,14 +154,14 @@ node services/api/prisma/transition-contract-settlement-governance.cjs \
 2. 空间、内存、时间同步、TLS 和防火墙正常。
 3. 备份监控不是失败/陈旧状态。
 4. 立即执行一次发布前本地+异机备份，验证 dump、checksum、收据、HEAD/GET 回读。
-5. 备份必须先在 `jiangkong_restore_*` 恢复并绑定本次精确候选通过 M1–M58。
+5. 备份必须先在 `jiangkong_restore_*` 恢复并绑定本次精确候选通过 61→69 迁移。
 6. 生产 `git status`、当前 SHA、数据库已完成迁移数与发布前记录一致。
 7. 当前 `JiangKongProdCosUploadsRW` 策略版本保持不变；不在本窗口删除非当前版本。
 
 ## 7. 窗口 A 发布后验证
 
 1. `origin/main`、部署 workflow checkout SHA、服务器 HEAD 和用户批准 SHA 四者一致。
-2. `prisma migrate status` 显示 M1–M58 全部完成，无失败记录。
+2. `prisma migrate status` 显示 M1–M69 全部完成，无失败记录；M69 引用清单和触发器均为 54。
 3. API/Nginx/PostgreSQL 正常，内外网 health 正常，无新 error/fatal 日志。
 4. 普通岗位最小冒烟：登录、主体只读/维护、五类合同候选、结算候选、通用合同付款选择、私有文件下载权限。
 5. 只读查询确认迁移未自动终止或改写任何旧实例，付款/实付/入账计数不变。
@@ -176,7 +177,7 @@ node services/api/prisma/transition-contract-settlement-governance.cjs \
 
 ### 数据库失败
 
-- M53–M58 不自动 down migration；先定界故障迁移，编写并在隔离库验证前向修复。
+- M52–M58 与 M69 不自动 down migration；先定界故障迁移，编写并在隔离库验证前向修复。
 - 只有在数据不可前向修复且用户另行批准维护窗口后，才可以基于发布前备份恢复生产。
 - 禁止对生产执行 `prisma migrate reset`。
 
@@ -196,6 +197,9 @@ node services/api/prisma/transition-contract-settlement-governance.cjs \
 | 开始/结束时间 | 待填 |
 | 发布前备份/恢复证据 | 待填 |
 | 迁移前/后计数 | 待填 |
+| M69 引用清单/触发器计数 | 待填 |
+| 隔离恢复数据库名 | 待填 |
+| 隔离库与临时 checkout 清理 | 待填 |
 | 工作流运行 ID | 待填 |
 | 服务器 HEAD | 待填 |
 | 健康与冒烟结果 | 待填 |

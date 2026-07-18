@@ -1,5 +1,7 @@
 # 建工智管 Go-Live P0 发布候选报告
 
+> 阅读说明：下方第 0–7 节保留 2026-07-16 备份监控与首次发布的历史证据；当前合同结算治理候选以第 8 节和专项发布候选记录为准。
+
 > 审计日期：2026-07-16
 > 当前运维候选分支：`codex/production-backup-alerts`
 > 已恢复验证的运行候选 SHA：`434c41a0511b0701fdc8f28e9466dfc959ef4f59`
@@ -229,12 +231,12 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 
 > 本节是对 2026-07-16 已发布基线的后续候选补充，不改写上文的历史发布证据。
 > 最终 40 位 SHA：**待 Task 22 提交后回填**
-> 当前结论：**No-Go / 等待全量门禁、隔离库演练、浏览器证据和用户精确 SHA 授权。**
+> 当前结论：**No-Go / 本地代码与自动化门禁已收口，等待最终 SHA 隔离 UAT、生产备份 61→69 恢复演练、真实业务签认和用户精确 SHA 授权。**
 
 ### 8.1 变更范围
 
 - 已批准业务规格：新合同审批，签署/用印/归档，双方授权，合同变更与 10% 上限，结算单与冻结签名，税务/计价事实，我方公司主体。
-- 生产基线是 51 个迁移；候选最终为 M1–M58。M52 是实施前已存在的不变基线，本轮新增 M53–M58 共 6 个，不再沿用早期计划中“4 个新迁移”的过期统计。
+- 生产文档已知运行基线为 `6c382a39…` 和 61 个迁移；候选共 69 个迁移，生产尚未部署的 8 个迁移为 M52–M58 与 M69 `20260719100000_unified_file_business_binding_guard`。M69 用 54 项中心引用清单、54 个统一触发器和同一事务级锁收口合同、结算、零星采购及其他域的文件绑定；不主动改写业务数据，存量冲突时失败关闭。
 - 新增旧实例过渡工具默认只读；生产 apply 必须使用精确 SHA、精确 manifest、操作人和确认语，且需用户在部署/迁移授权之外再次单独批准。
 
 ### 8.2 待回填门禁
@@ -243,18 +245,18 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 | --- | --- | --- |
 | 最终 40 位候选 SHA | 待填 | 不得使用未提交工作树或短 SHA |
 | 相对 `origin/main` 和生产 SHA 的提交/文件清单 | 待填 | 待候选固定 |
-| shared/API/Web 定向与全量门禁 | 待运行 | 条件跳过必须逐条记录 |
-| API/Web production build | 待运行 | 待填 |
-| P0 E2E | 待运行 | 待填 |
-| 六视口浏览器验收 | 待运行 | 截图位置待填；横向溢出/嵌套横滚/pageerror 必须为 0 |
-| 完整脱敏隔离 UAT | 工作树验证通过，最终候选须重跑 | `task22-full-20260718k`：20/20 治理矩阵及 `HT-UAT-* → JS-UAT-* → FK-UAT-*` 历史接管、结算签名合成、付款实付入账完整链通过；证据 SHA-256 `d5fb62d3a7d6676edd2b6ff2e82a7cbe0bc664a73df6bf2b8be03498cbd2c4af`；执行 SHA `2bef123c…` 不是合并后的最终候选 |
-| 生产备份→`jiangkong_restore_*`→M58 | 待演练 | 必须绑定本次最终 SHA |
+| shared/API/Web 定向与全量门禁 | 通过 | shared 102/102；Web 98 文件 784/784；API 177 套通过、4 套条件跳过，3914 通过/15 跳过；typecheck、lint、Prisma validate/generate、业务错误检查、`check:ui` 通过 |
+| API/Web production build | 通过 | 最新 `origin/main` 合并后重跑 |
+| P0 E2E | 通过 | Chromium 53 通过/2 条件跳过/0 失败 |
+| 六视口浏览器验收 | 通过 | 28/28 定向验收与 P0 六视口回归通过；阶段截图位于 `/tmp/jiangkong-contract-settlement-visual-a67c-final-2` |
+| 完整脱敏隔离 UAT | 合并阶段通过，最终 SHA 须重跑 | `task22-merge-20260719a`：执行 SHA `a67c3092…`，20/20 治理矩阵与 `HT-UAT-* → JS-UAT-* → FK-UAT-*` 全链通过；证据 SHA-256 `a476d9acec8f84712a9bddca803ff0b5e89f3e50cd55ef208a0be45fa9c37fb9`；后续合并了新主线，不冒充最终 SHA 证据 |
+| 生产备份→`jiangkong_restore_*`→61→69 | 待演练 | 必须绑定本次最终 SHA；本地 fresh M1→69 和 `origin/main` 61→69 已通过 |
 | transition preview / 隔离 apply / 幂等 / 漂移回滚 | 本地模块级隔离演练通过，最终候选 CLI 门禁须重跑 | `task22-20260718T160702Z`：首次 2/0、二次 0/2、漂移整批零写入、付款事实不变；dirty shared worktree 调用 committed HEAD module，不是最终 release gate |
 | 业务/财务/技术 Go / No-Go | 待签认 | 脱敏自动 UAT 不取代真实业务签认 |
 
 ### 8.3 发布和过渡授权边界
 
-1. **授权 A**：用户针对最终 40 位 SHA 明确批准推送、Web/API 部署、M52–M58 生产尚未完成迁移和生产验证。
+1. **授权 A**：用户针对最终 40 位 SHA 明确批准推送、Web/API 部署、生产尚未完成的 M52–M58 与 M69 迁移和生产验证。
 2. **授权 B**：窗口 A 稳定后，用户针对 transition preview 的精确 manifest 和当前生产 SHA 再次批准生产 `--apply`。
 3. 授权 A 不得默认包含授权 B；普通的“同意上线”不能取代两次精确授权。
 4. 在授权 B 之前，transition 在生产只允许只读 preview；不得终止或改写旧实例。
@@ -268,6 +270,6 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 
 transition 模块级隔离演练使用 runId `task22-20260718T160702Z`、执行 HEAD `2bef123cfbdc231cba41d212b17ed6f9cd5f0c30`、PostgreSQL `16.14` 和 M1–M58 共 58 个迁移。manifest digest 为 `a4ac20b349f0a157228d072d876cfad7c8dd70f82a06beaa2703930a0eee24fc`，manifest 文件 SHA-256 为 `8f7e8f7c0175e690a1625e55dc5f25262605f22d54a0ea7aaee91ca6abdb4c5d`；首次 apply 为 `applied=2/alreadyProcessed=0`，二次为 `0/2`，漂移批次零 transition 审计、零替代草稿写入，付款申请/实付/入账及已付金额事实不变，cleanup 通过。机器收据 `/tmp/task22-20260718T160702Z-transition-evidence.json` 的 SHA-256 为 `67a272e0378033bd77c35783ffbd90c0bca009fff5fec48d8aa5999f03424bdf`。
 
-该收据产生于 dirty shared worktree，演练直接调用 committed HEAD module，而非从洁净候选执行 CLI 端到端发布命令；数据来自本地合成隔离库，也不是生产备份恢复。因此生产备份 → `jiangkong_restore_*` → 最终候选 M58 的恢复演练继续保持“待演练”，最终固定 SHA 后还必须重跑洁净候选 CLI release gate。
+该收据产生于 dirty shared worktree，演练直接调用 committed HEAD module，而非从洁净候选执行 CLI 端到端发布命令；数据来自本地合成隔离库，也不是生产备份恢复。因此生产备份 → `jiangkong_restore_*` → 最终候选 M69 的 61→69 恢复演练继续保持“待演练”，最终固定 SHA 后还必须重跑洁净候选 CLI release gate。
 
 详细候选证据见 `docs/progress/2026-07-17-contract-settlement-governance-release-candidate.md`，执行步骤见 `docs/superpowers/runbooks/2026-07-17-contract-settlement-governance-release.md`。
