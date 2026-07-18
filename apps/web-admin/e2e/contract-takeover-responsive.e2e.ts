@@ -237,7 +237,9 @@ async function loginWithMocks(
     const projectId = url.pathname.split("/")[3] ?? "";
     const projectTakeovers = options.takeoversByProject?.[projectId] ?? [takeoverFixture];
     const requestedTakeoverId = url.pathname.match(/\/contract-takeovers\/([^/]+)$/u)?.[1];
-    const body = url.pathname.endsWith("/tax-fact-revisions")
+    const body = url.pathname.endsWith("/company-entity-candidates")
+      ? []
+      : url.pathname.endsWith("/tax-fact-revisions")
       ? {
           contractId: "contract-responsive",
           current: {
@@ -345,6 +347,8 @@ test("合同部主管确认历史变更基线时保留失败输入并在成功�
 
   await page.goto("/历史合同接管");
   await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
+  await expect(page.locator(".detail-panel")).toBeVisible();
+  await expect(page.getByText("历史变更基线", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "确认历史变更基线" }).click();
   const dialog = page.locator(".t-dialog").filter({ hasText: "确认历史变更基线" });
   const amountInputs = dialog.getByRole("textbox");

@@ -65,6 +65,7 @@ test("separates the payment ledger from the contract-linked creation workbench",
           versionLabel: "v1",
           contractStatus: "effective",
           contractStatusLabel: "已生效",
+          contractTypeKey: "material_purchase",
           source: "system",
           sourceLabel: "系统合同",
           takeoverLevel: null,
@@ -136,7 +137,7 @@ test("separates the payment ledger from the contract-linked creation workbench",
   await expect(page.getByRole("heading", { name: "付款工作台" })).toBeVisible();
 
   const selects = page.locator(".create-grid .t-select");
-  await expect(selects).toHaveCount(3);
+  await expect(selects).toHaveCount(4);
   await selects.nth(1).click();
   await page
     .getByText("HT-2026-001 · 科技园钢材采购合同 · 城建物资公司", { exact: true })
@@ -144,7 +145,6 @@ test("separates the payment ledger from the contract-linked creation workbench",
     .click();
   await selects.nth(2).click();
   await page.getByText("单张结算付款", { exact: true }).last().click();
-  await expect(selects).toHaveCount(4);
   await selects.nth(3).click();
   await page.getByText("JS-2026-001 · 2026-06 · ¥50,000.00", { exact: true }).last().click();
 
