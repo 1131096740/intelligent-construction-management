@@ -35,6 +35,7 @@ import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
 import { SubmitContractApprovalDto } from "./dto/submit-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 import { CreateContractChangeDraftDto } from "./dto/create-contract-change-draft.dto";
+import { AbandonContractDraftDto } from "./dto/abandon-contract-draft.dto";
 import { UploadContractFormalFileDto } from "./dto/contract-formal-file.dto";
 import { SetContractAuthorizationDto } from "./dto/contract-authorization.dto";
 import { ContractFormalFileService } from "./contract-formal-file.service";
@@ -80,6 +81,16 @@ export class ContractController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.contracts.createChangeDraft(contractVersionId, body, user.id);
+  }
+
+  @Post(":contractVersionId/abandonment")
+  @RequireProjectRole("contract.create")
+  abandonDraft(
+    @Param("contractVersionId") contractVersionId: string,
+    @Body() body: AbandonContractDraftDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.contracts.abandonDraft(contractVersionId, user.id, body);
   }
 
   @Get(":contractVersionId/change-eligibility")

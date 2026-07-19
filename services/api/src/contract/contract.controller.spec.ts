@@ -17,6 +17,7 @@ type RuntimeDto = new () => object;
 const contractBodyRoutes = [
   ["contract.create", ContractController, "create", 0],
   ["contract.createChangeDraft", ContractController, "createChangeDraft", 1],
+  ["contract.abandonDraft", ContractController, "abandonDraft", 1],
   ["contract.submitApproval", ContractController, "submitApproval", 2],
   ["contract.uploadFormalApprovalFile", ContractController, "uploadFormalApprovalFile", 2],
   ["contract.setAuthorization", ContractController, "setAuthorization", 2],
@@ -67,6 +68,10 @@ const validContractRouteBodies = [
     changeReason: "补充工程量",
     changeDirection: "increase",
     changeAmountCents: "100"
+  }],
+  ["contract.abandonDraft", ContractController, "abandonDraft", 1, {
+    expectedRevision: 1,
+    action: "delete_pristine_draft"
   }],
   ["contract.submitApproval", ContractController, "submitApproval", 2, { numberRuleId: "rule-1" }],
   ["contract.uploadFormalApprovalFile", ContractController, "uploadFormalApprovalFile", 2, {

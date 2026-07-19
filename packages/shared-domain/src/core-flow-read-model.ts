@@ -217,6 +217,8 @@ export interface ContractDetailReadModel {
   sealTask?: ContractSealTaskReadModel | null;
   approvalTimeline: ApprovalTimelineItemReadModel[];
   availableActions: DetailActionReadModel[];
+  lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";
+  lifecycleBlockers?: string[];
   primaryAction: string | null;
   disabledReasons: string[];
   chainLinks: BusinessChainLink[];

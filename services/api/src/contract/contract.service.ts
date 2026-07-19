@@ -1,4 +1,11 @@
-import { BadRequestException, Injectable, Optional } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  Optional
+} from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { approvalElapsedHours, canRemindApproval, type RoleKey } from "@jiangkong/shared-domain";
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
@@ -37,6 +44,7 @@ import { GenerateContractPdfArchiveDto } from "./dto/generate-contract-pdf-archi
 import { SubmitContractApprovalDto } from "./dto/submit-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 import { CreateContractChangeDraftDto } from "./dto/create-contract-change-draft.dto";
+import { AbandonContractDraftDto } from "./dto/abandon-contract-draft.dto";
 import { assertContractChangeContentAllowed } from "./contract-change-policy";
 import { evaluateContractIncreaseLimit } from "./contract-change-limit-policy";
 import { resolveContractVersionRoot } from "./contract-version-root";
@@ -645,6 +653,208 @@ export class ContractService {
       });
       return this.changeVersionProjection(version);
     });
+  }
+
+  async abandonDraft(
+    contractVersionId: string,
+    actorUserId: string,
+    input: AbandonContractDraftDto
+  ) {
+    const reason = input.reason?.trim() ?? "";
+    if (input.action === "abandon_application" && !reason) {
+      throw new BadRequestException("放弃合同申请必须填写原因");
+    }
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const [locked] = await tx.$queryRaw<Array<{
+          id: string;
+          contractId: string;
+          versionNo: number;
+          changeType: string;
+          status: string;
+          draftRevision: number;
+          abandonedAt: Date | null;
+          abandonedByUserId: string | null;
+          abandonReason: string | null;
+          ownerUserId: string | null;
+        }>>(Prisma.sql`
+          SELECT
+            v."id", v."contractId", v."versionNo", v."changeType", v."status",
+            v."draftRevision", v."abandonedAt", v."abandonedByUserId", v."abandonReason",
+            c."ownerUserId"
+          FROM "Contract" c
+          JOIN "ContractVersion" v ON v."contractId" = c."id"
+          WHERE v."id" = ${contractVersionId}
+          FOR UPDATE OF c, v
+        `);
+        if (!locked) {
+          throw new NotFoundException("未找到合同草稿，请刷新合同工作台后重试");
+        }
+        if (locked.ownerUserId !== actorUserId) {
+          throw new ForbiddenException("只有当前合同经办人可以删除草稿或放弃申请");
+        }
+        if (locked.abandonedAt || locked.status === "abandoned") {
+          const terminalAction = locked.abandonReason
+            ? "abandon_application"
+            : "delete_pristine_draft";
+          return {
+            contractVersionId: locked.id,
+            status: "abandoned",
+            lifecycleKind: terminalAction === "delete_pristine_draft"
+              ? "pristine_draft"
+              : "approval_draft",
+            action: terminalAction,
+            abandonedAt: locked.abandonedAt,
+            abandonedByUserId: locked.abandonedByUserId,
+            reason: locked.abandonReason,
+            idempotent: true
+          };
+        }
+        if (!new Set(["draft", "approval_rejected"]).has(locked.status)) {
+          throw new ConflictException("合同状态已变化，请刷新页面后按当前状态处理");
+        }
+        if (locked.draftRevision !== input.expectedRevision) {
+          throw new ConflictException("合同草稿已被更新，请刷新后再处理");
+        }
+
+        // 固定读取顺序：审批 -> 正式文件 -> 授权 -> 用章/归档 -> 下游业务。
+        const approvalInstances = await tx.approvalInstance.findMany({
+          where: { businessType: "contract_version", businessId: locked.id },
+          orderBy: { createdAt: "asc" },
+          select: { id: true }
+        });
+        const approvalActionCount = approvalInstances.length
+          ? await tx.approvalActionLog.count({
+              where: { approvalInstanceId: { in: approvalInstances.map((item) => item.id) } }
+            })
+          : 0;
+        const formalFileCount = await tx.contractFormalFile.count({
+          where: { contractVersionId: locked.id }
+        });
+        const authorizationCount = await tx.contractAuthorization.count({
+          where: { originContractVersionId: locked.id }
+        });
+        const authorizationLinkCount = await tx.contractVersionAuthorizationLink.count({
+          where: { contractVersionId: locked.id, authorizationId: { not: null } }
+        });
+        const sealTaskCount = await tx.contractSealTask.count({
+          where: { contractVersionId: locked.id }
+        });
+        const archiveFileCount = await tx.contractArchiveFile.count({
+          where: { contractVersionId: locked.id }
+        });
+        const settlementCount = await tx.settlement.count({
+          where: { contractVersionId: locked.id }
+        });
+        const paymentRequestCount = await tx.paymentRequest.count({
+          where: { contractVersionId: locked.id }
+        });
+
+        const blockers = [
+          ...(locked.changeType !== "original" || locked.versionNo !== 1 ? ["合同变更或派生版本"] : []),
+          ...(locked.status !== "draft" ? ["合同曾进入审批"] : []),
+          ...(approvalInstances.length || approvalActionCount ? ["存在审批记录"] : []),
+          ...(formalFileCount ? ["存在正式合同文件"] : []),
+          ...(authorizationCount || authorizationLinkCount ? ["存在授权委托书"] : []),
+          ...(sealTaskCount ? ["存在用印记录"] : []),
+          ...(archiveFileCount ? ["存在归档记录"] : []),
+          ...(settlementCount ? ["存在关联结算"] : []),
+          ...(paymentRequestCount ? ["存在关联付款"] : [])
+        ];
+        const expectedAction = blockers.length === 0
+          ? "delete_pristine_draft"
+          : "abandon_application";
+        if (input.action !== expectedAction) {
+          throw new ConflictException(
+            expectedAction === "delete_pristine_draft"
+              ? "当前合同仍是纯净草稿，请刷新后使用“删除草稿”"
+              : `当前合同已留下业务记录，只能放弃申请：${blockers.join("、")}`
+          );
+        }
+
+        const now = new Date();
+        const updated = await tx.contractVersion.updateMany({
+          where: {
+            id: locked.id,
+            status: locked.status,
+            draftRevision: input.expectedRevision,
+            abandonedAt: null
+          },
+          data: {
+            status: "abandoned",
+            abandonedAt: now,
+            abandonedByUserId: actorUserId,
+            abandonReason: expectedAction === "abandon_application" ? reason : null,
+            draftRevision: { increment: 1 }
+          }
+        });
+        if (updated.count !== 1) {
+          throw new ConflictException("合同草稿已被其他操作更新，请刷新后重试");
+        }
+
+        await tx.contractGeneratedDocument.updateMany({
+          where: { contractVersionId: locked.id, status: { in: ["queued", "processing"] } },
+          data: { status: "stale", completedAt: now, errorMessage: null }
+        });
+        await tx.contractFormalFile.updateMany({
+          where: { contractVersionId: locked.id, status: "active" },
+          data: {
+            status: "invalidated",
+            invalidatedAt: now,
+            invalidationReason: "合同申请已放弃，文件作为历史证据保留"
+          }
+        });
+        await tx.contractAuthorization.updateMany({
+          where: { originContractVersionId: locked.id, status: "active" },
+          data: {
+            status: "invalidated",
+            invalidatedAt: now,
+            invalidationReason: "合同申请已放弃，授权文件作为历史证据保留"
+          }
+        });
+
+        await this.audit.record(tx, {
+          actorUserId,
+          action: expectedAction === "delete_pristine_draft"
+            ? "contract.draft.delete"
+            : "contract.application.abandon",
+          businessType: "contract_version",
+          businessId: locked.id,
+          metadata: {
+            lifecycleKind: expectedAction === "delete_pristine_draft"
+              ? "pristine_draft"
+              : "approval_draft",
+            previousStatus: locked.status,
+            blockers,
+            reason: expectedAction === "abandon_application" ? reason : null
+          }
+        });
+
+        return {
+          contractVersionId: locked.id,
+          status: "abandoned",
+          lifecycleKind: expectedAction === "delete_pristine_draft"
+            ? "pristine_draft"
+            : "approval_draft",
+          action: expectedAction,
+          abandonedAt: now,
+          abandonedByUserId: actorUserId,
+          reason: expectedAction === "abandon_application" ? reason : null,
+          blockers,
+          idempotent: false
+        };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (error instanceof BadRequestException || error instanceof ConflictException ||
+          error instanceof ForbiddenException || error instanceof NotFoundException) {
+        throw error;
+      }
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+        throw new ConflictException("合同草稿正在被其他操作处理，请刷新后重试");
+      }
+      throw error;
+    }
   }
 
   private prepareChangeDraftSource(input: {

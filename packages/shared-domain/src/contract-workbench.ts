@@ -183,6 +183,9 @@ export function contractPricingPolicy(input: {
 }
 
 export interface ContractWorkbenchReadModel {
+  lifecycleKind?: "pristine_draft" | "approval_draft";
+  availableLifecycleActions?: Array<"delete_pristine_draft" | "abandon_application">;
+  lifecycleBlockers?: string[];
   contract: {
     id: string;
     temporaryCode: string;

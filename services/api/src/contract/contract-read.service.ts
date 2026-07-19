@@ -242,7 +242,7 @@ export class ContractReadService {
     const [versions, terms, projects] = await Promise.all([
       contractIds.length
         ? this.prisma.contractVersion.findMany({
-            where: { contractId: { in: contractIds } },
+            where: { contractId: { in: contractIds }, status: { not: "abandoned" } },
             orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
           })
         : Promise.resolve([]),
@@ -262,17 +262,25 @@ export class ContractReadService {
     }
     const termsByContractId = new Map<string, (typeof terms)[number]>();
     for (const term of terms) {
-      if (!termsByContractId.has(term.contractId)) termsByContractId.set(term.contractId, term);
+      const activeVersion = versionByContractId.get(term.contractId);
+      if (
+        activeVersion &&
+        (!("contractVersionId" in term) || activeVersion.id === term.contractVersionId) &&
+        !termsByContractId.has(term.contractId)
+      ) {
+        termsByContractId.set(term.contractId, term);
+      }
     }
     const projectById = new Map(projects.map((project) => [project.id, project]));
 
-    const rows = contracts.map((contract) => {
+    const rows = contracts.flatMap((contract) => {
       const version = versionByContractId.get(contract.id);
+      if (!version) return [];
       const termsVersion = termsByContractId.get(contract.id);
       const status = this.statusView(version?.status ?? "draft");
       const nextAction = this.nextActionLabel(version?.status ?? "draft");
       const pendingOwner = this.currentOwnerLabel(version?.status ?? "draft");
-      return {
+      return [{
         id: contract.code ?? contract.id,
         contractNo: contract.code ?? contract.temporaryCode ?? contract.id,
         name: contract.name,
@@ -289,7 +297,7 @@ export class ContractReadService {
         nextAction,
         updatedAt: this.date(contract.updatedAt),
         paymentTermsVersion: termsVersion ? `v${termsVersion.versionNo}` : "-"
-      };
+      }];
     });
 
     return {
@@ -555,7 +563,7 @@ export class ContractReadService {
     const [project, versions] = await Promise.all([
       this.prisma.project.findUnique({ where: { id: contract.projectId } }),
       this.prisma.contractVersion.findMany({
-        where: { contractId: contract.id },
+        where: { contractId: contract.id, status: { not: "abandoned" } },
         orderBy: { versionNo: "desc" }
       })
     ]);
@@ -677,6 +685,37 @@ export class ContractReadService {
       }
     );
 
+    const lifecycleBlockers = [
+      ...(version.changeType !== "original" || version.versionNo !== 1
+        ? ["合同变更或派生版本"]
+        : []),
+      ...(version.status !== "draft" ? ["合同曾进入审批或正式流程"] : []),
+      ...(approvalTimeline.length ? ["存在审批记录"] : []),
+      ...(signingFacts.formalFiles.length ? ["存在正式合同文件"] : []),
+      ...(signingFacts.sealTask ? ["存在用印记录"] : []),
+      ...(contractArchiveFiles.length ? ["存在归档记录"] : []),
+      ...(settlements.length ? ["存在关联结算"] : []),
+      ...(paymentRequests.length ? ["存在关联付款"] : [])
+    ];
+    const lifecycleKind = ["draft", "approval_rejected"].includes(version.status)
+      ? lifecycleBlockers.length === 0 ? "pristine_draft" : "approval_draft"
+      : "formal_record";
+    if (
+      lifecycleKind !== "formal_record" &&
+      actorUserId && actorUserId === contract.ownerUserId
+    ) {
+      availableActions.push(detailAction({
+        key: lifecycleKind === "pristine_draft"
+          ? "delete_pristine_draft"
+          : "abandon_application",
+        label: lifecycleKind === "pristine_draft" ? "删除草稿" : "放弃申请",
+        kind: "danger",
+        roleKeys,
+        skipRoleCheck: true,
+        enabled: true
+      }));
+    }
+
     const contractCode = contract.code ?? contract.temporaryCode ?? contract.id;
     const latestSettlement = settlements.at(-1);
     return {
@@ -739,6 +778,8 @@ export class ContractReadService {
       sealTask: signingFacts.sealTask,
       approvalTimeline,
       availableActions,
+      lifecycleKind,
+      lifecycleBlockers,
       primaryAction: primaryActionKey(availableActions),
       disabledReasons: disabledActionReasons(availableActions),
       chainLinks: [

@@ -254,6 +254,22 @@ export class ContractWorkbenchService {
       ? this.parseTemplateSnapshot(version.templateSnapshot).supplementChangePolicy ?? null
       : null;
     return this.toReadModel({
+      lifecycleKind: isChangeVersion || version.status === "approval_rejected" ||
+        formalFiles.length > 0 || authorizations.length > 0
+        ? "approval_draft"
+        : "pristine_draft",
+      availableLifecycleActions: [
+        isChangeVersion || version.status === "approval_rejected" ||
+        formalFiles.length > 0 || authorizations.length > 0
+          ? "abandon_application"
+          : "delete_pristine_draft"
+      ],
+      lifecycleBlockers: [
+        ...(isChangeVersion ? ["合同变更或派生版本"] : []),
+        ...(version.status === "approval_rejected" ? ["合同曾进入审批"] : []),
+        ...(formalFiles.length ? ["存在正式合同文件"] : []),
+        ...(authorizations.length ? ["存在授权委托书"] : [])
+      ],
       contract,
       version: {
         ...version,

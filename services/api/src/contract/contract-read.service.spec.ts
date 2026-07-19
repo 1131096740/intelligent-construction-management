@@ -306,6 +306,38 @@ describe("ContractReadService", () => {
     });
   });
 
+  it("excludes abandoned-only contracts and falls back to the latest non-abandoned version", async () => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-1", projectId: "project-1", updatedAt: new Date(), name: "保留", counterparty: "乙方", code: "HT-1", temporaryCode: null },
+          { id: "contract-2", projectId: "project-1", updatedAt: new Date(), name: "删除", counterparty: "乙方", code: null, temporaryCode: "草稿-2" }
+        ])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "version-effective", contractId: "contract-1", versionNo: 1, status: "effective", amountCents: 100n }
+        ])
+      },
+      paymentTermsVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "terms-1", contractId: "contract-1", contractVersionId: "version-effective", versionNo: 1 }
+        ])
+      },
+      project: { findMany: jest.fn().mockResolvedValue([{ id: "project-1", name: "项目一" }]) }
+    };
+    const service = new ContractReadService(prisma as never);
+
+    const result = await service.listRecent(50);
+
+    expect(prisma.contractVersion.findMany).toHaveBeenCalledWith({
+      where: { contractId: { in: ["contract-1", "contract-2"] }, status: { not: "abandoned" } },
+      orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
+    });
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({ contractNo: "HT-1", version: "v1" });
+  });
+
   it("lists business contract options for settlement and payment creation", async () => {
     const prisma = {
       contract: {
