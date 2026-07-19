@@ -1162,8 +1162,12 @@ describe("SpotProcurementReadService", () => {
     expect(fixture.prisma.spotProcurement.findMany).toHaveBeenCalledTimes(10);
 
     await expect(
-      service.listPayments("unrelated-user", {})
-    ).resolves.toMatchObject({ items: [], truncated: true });
+      service.listPayments("finance-1", { view: "all" })
+    ).resolves.toMatchObject({
+      items: [],
+      truncated: true,
+      amountSummary: { complete: false }
+    });
     expect(
       fixture.prisma.spotProcurementPayment.findMany
     ).toHaveBeenCalledTimes(10);
@@ -1622,5 +1626,224 @@ describe("SpotProcurementReadService", () => {
     expect(result.viewCounts).toEqual({ mine: 1, all: 201, closed: 0 });
     expect(result.truncated).toBe(false);
     expect(fixture.prisma.spotProcurementPayment.findMany).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not stop a fully visible payment scan at 201 rows", async () => {
+    const fixture = buildFixture();
+    const rows = Array.from({ length: 400 }, (_value, index) =>
+      paymentRow({
+        id: `payment-${String(index).padStart(3, "0")}`,
+        code: `LXFK-${index}`,
+        status: "settled",
+        approvalAmountCents: 1n
+      })
+    );
+    fixture.prisma.spotProcurementPayment.findMany = jest
+      .fn()
+      .mockResolvedValueOnce(rows.slice(0, 200))
+      .mockResolvedValueOnce(rows.slice(200))
+      .mockResolvedValueOnce([]);
+    fixture.access.accessiblePaymentIds.mockImplementation(
+      (paymentIds: string[]) => Promise.resolve(new Set(paymentIds))
+    );
+    fixture.prisma.spotProcurementPaymentExecution.findMany.mockResolvedValue([]);
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const result = await service.listPayments("finance-1", { view: "all" });
+
+    expect(result.items).toHaveLength(200);
+    expect(result.viewCounts).toEqual({ mine: 0, all: 400, closed: 400 });
+    expect(result.truncated).toBe(true);
+    expect(result.amountSummary).toMatchObject({
+      approvalAmountCents: "400",
+      complete: true
+    });
+    expect(fixture.prisma.spotProcurementPayment.findMany).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not assign a handler draft task to a material director without material staff", () => {
+    expect(
+      deriveSpotPaymentCurrentTask({
+        payment: paymentRow({ status: "draft", handlerUserId: "director-1" }) as never,
+        approval: null,
+        receipt: null,
+        discrepancy: null,
+        refunds: [],
+        actorUserId: "director-1",
+        roleKeys: ["material_director"],
+        projectScopedRoleKeys: ["material_director"],
+        availableActions: [
+          { key: "edit_draft", label: "编辑付款草稿", enabled: true }
+        ] as never
+      })
+    ).toMatchObject({ key: "none", scope: "none", priority: 0 });
+  });
+
+  it("matches discrepancies to the payment procurement version and attributes null-payment refunds", async () => {
+    const fixture = buildFixture();
+    const oldPayment = paymentRow({
+      id: "payment-old",
+      code: "LXFK-OLD",
+      procurementVersionId: "version-old",
+      status: "approved_pending_payment",
+      payerCompanyEntityId: "company-1",
+      payerCompanyNameSnapshot: "云南建工",
+      approvalAmountCents: 7_000n,
+      paidAmountCents: 0n
+    });
+    const currentPayment = paymentRow({
+      paymentType: "company_direct",
+      status: "paid",
+      payerCompanyEntityId: "company-1",
+      payerCompanyNameSnapshot: "云南建工",
+      approvalAmountCents: 12_000n
+    });
+    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([
+      oldPayment,
+      currentPayment
+    ]);
+    fixture.prisma.spotProcurementPayment.findUnique.mockResolvedValue(
+      currentPayment
+    );
+    fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([
+      versionRow({ id: "version-old", versionNo: 0 }),
+      versionRow()
+    ]);
+    const currentDiscrepancy = {
+        id: "discrepancy-current",
+        procurementId: "procurement-1",
+        procurementVersionId: "version-1",
+        status: "resolved",
+        resolutionType: "full_refund",
+        replenishedAt: null,
+        refundExpectedAmountCents: 500n,
+        createdAt: now,
+        updatedAt: now
+      };
+    fixture.prisma.spotProcurementDiscrepancy.findMany.mockResolvedValue([
+      currentDiscrepancy
+    ]);
+    fixture.prisma.spotProcurementDiscrepancy.findFirst.mockResolvedValue(
+      currentDiscrepancy
+    );
+    fixture.prisma.spotProcurementRefund.findMany.mockResolvedValue([
+      {
+        id: "refund-current",
+        discrepancyId: "discrepancy-current",
+        procurementId: "procurement-1",
+        paymentId: null,
+        amountCents: 500n,
+        receivedAt: now
+      }
+    ]);
+    fixture.prisma.spotProcurementPaymentExecution.findMany.mockResolvedValue([
+      {
+        id: "execution-1",
+        paymentId: "payment-1",
+        amountCents: 5_000n,
+        paidAt: now,
+        voucherFileId: "voucher-1",
+        voidedAt: null,
+        createdAt: now
+      }
+    ]);
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const result = await service.listPayments("finance-1", { view: "all" });
+
+    expect(result.items.find((item) => item.id === "payment-old")?.currentTask).toMatchObject({
+      key: "record_execution",
+      priority: 300
+    });
+    expect(
+      result.items.find((item) => item.id === "payment-1")
+    ).toMatchObject({ refundAmountCents: "500", netPaidAmountCents: "4500" });
+    expect(result.amountSummary).toMatchObject({
+      refundAmountCents: "500",
+      netPaidAmountCents: "4500"
+    });
+    await expect(
+      service.getPayment("payment-1", "finance-1")
+    ).resolves.toMatchObject({
+      payment: { refundAmountCents: "500", netPaidAmountCents: "4500" }
+    });
+  });
+
+  it("orders blocking tasks by their discrepancy fact time before payment update time", async () => {
+    const fixture = buildFixture();
+    const latePaymentUpdate = new Date("2026-07-19T10:00:00.000Z");
+    const earlyPaymentUpdate = new Date("2026-07-18T10:00:00.000Z");
+    const olderDiscrepancy = new Date("2026-07-17T09:00:00.000Z");
+    const newerDiscrepancy = new Date("2026-07-18T09:00:00.000Z");
+    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([
+      paymentRow({
+        id: "payment-old-fact",
+        code: "LXFK-OLD-FACT",
+        procurementVersionId: "version-old-fact",
+        status: "paid",
+        updatedAt: latePaymentUpdate
+      }),
+      paymentRow({
+        id: "payment-new-fact",
+        code: "LXFK-NEW-FACT",
+        procurementVersionId: "version-new-fact",
+        status: "partially_paid",
+        paidAmountCents: 1_000n,
+        updatedAt: earlyPaymentUpdate
+      })
+    ]);
+    fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([
+      versionRow({ id: "version-old-fact" }),
+      versionRow({ id: "version-new-fact" })
+    ]);
+    fixture.prisma.spotProcurementDiscrepancy.findMany.mockResolvedValue([
+      {
+        id: "discrepancy-old",
+        procurementId: "procurement-1",
+        procurementVersionId: "version-old-fact",
+        status: "awaiting_refund",
+        resolutionType: "full_refund",
+        createdAt: olderDiscrepancy,
+        updatedAt: olderDiscrepancy
+      }
+    ]);
+    fixture.prisma.spotProcurementPaymentExecution.findMany.mockResolvedValue([
+      {
+        id: "execution-new-fact",
+        paymentId: "payment-new-fact",
+        amountCents: 1_000n,
+        paidAt: newerDiscrepancy,
+        voucherFileId: null,
+        voidedAt: null,
+        createdAt: newerDiscrepancy
+      }
+    ]);
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const result = await service.listPayments("finance-1", {});
+
+    expect(result.items.map((item) => item.id)).toEqual([
+      "payment-old-fact",
+      "payment-new-fact"
+    ]);
+    expect(result.items.map((item) => item.currentTask.key)).toEqual([
+      "record_refund",
+      "view_only"
+    ]);
   });
 });

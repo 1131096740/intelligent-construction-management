@@ -269,6 +269,7 @@ export function deriveSpotPaymentCurrentTask(input: {
   if (
     input.payment.status === "draft" &&
     input.payment.handlerUserId === input.actorUserId &&
+    input.roleKeys.includes("material_staff") &&
     action("edit_draft")?.enabled
   ) {
     return {
@@ -1017,7 +1018,10 @@ export class SpotProcurementReadService {
         orderBy: [{ createdAt: "desc" }, { id: "desc" }]
       }),
       this.prisma.spotProcurementRefund.findMany({
-        where: { paymentId: payment.id },
+        where: {
+          procurementId: payment.procurementId,
+          OR: [{ paymentId: payment.id }, { paymentId: null }]
+        },
         orderBy: [{ receivedAt: "asc" }, { id: "asc" }]
       }),
       this.prisma.pdfDocument.findFirst({
@@ -1092,6 +1096,13 @@ export class SpotProcurementReadService {
     ]);
     const userById = new Map(users.map((user) => [user.id, user]));
     const fileById = new Map(files.map((file) => [file.id, file]));
+    const paymentRefunds = refunds.filter(
+      (refund) =>
+        refund.paymentId === payment.id ||
+        (refund.paymentId === null &&
+          discrepancy?.id === refund.discrepancyId &&
+          discrepancy.procurementVersionId === payment.procurementVersionId)
+    );
     const activeExecutions = executions.filter(
       (execution) => execution.voidedAt === null
     );
@@ -1135,7 +1146,7 @@ export class SpotProcurementReadService {
       approval,
       receipt,
       discrepancy,
-      refunds,
+      refunds: paymentRefunds,
       actorUserId,
       roleKeys,
       projectScopedRoleKeys: isProjectFinanceStaff
@@ -1175,7 +1186,7 @@ export class SpotProcurementReadService {
       : [];
     const archiveFilesByArchiveId = groupBy(archiveFiles, (archiveFile) => archiveFile.archiveId);
     const realPaymentFacts = usesRealPaymentForm
-      ? realPaymentFactReadModel(payment, actualPaidAmountCents, refunds)
+      ? realPaymentFactReadModel(payment, actualPaidAmountCents, paymentRefunds)
       : null;
     const payerManagement = usesRealPaymentForm
       ? payerManagementReadModel({
@@ -1319,7 +1330,7 @@ export class SpotProcurementReadService {
               discrepancy,
               activeExecutions.length > 0
             ),
-            discrepancy: discrepancyReadSummary(discrepancy, refunds),
+            discrepancy: discrepancyReadSummary(discrepancy, paymentRefunds),
             approvalOriginal: approvalOriginal
               ? {
                   documentId: approvalOriginal.id,
@@ -1549,10 +1560,7 @@ export class SpotProcurementReadService {
     let scannedRows = 0;
     let sourceTruncated = false;
 
-    while (
-      accessible.length <= LIST_LIMIT &&
-      scannedRows < LIST_SCAN_MAX_ROWS
-    ) {
+    while (scannedRows < LIST_SCAN_MAX_ROWS) {
       const batch = await this.prisma.spotProcurementPayment.findMany({
         where,
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
@@ -1576,7 +1584,7 @@ export class SpotProcurementReadService {
     }
 
     return {
-      rows: accessible.slice(0, LIST_LIMIT + 1),
+      rows: accessible,
       sourceTruncated
     };
   }
@@ -1878,8 +1886,14 @@ export class SpotProcurementReadService {
           }
         }),
         this.prisma.spotProcurementRefund.findMany({
-          where: { paymentId: { in: rows.map((row) => row.id) } },
-          select: { paymentId: true, amountCents: true, receivedAt: true }
+          where: { procurementId: { in: procurementIds } },
+          select: {
+            discrepancyId: true,
+            procurementId: true,
+            paymentId: true,
+            amountCents: true,
+            receivedAt: true
+          }
         }),
         this.prisma.spotProcurementDiscrepancy.findMany({
           where: {
@@ -1946,18 +1960,54 @@ export class SpotProcurementReadService {
     const receiptByProcurementId = new Map(
       receipts.map((receipt) => [receipt.procurementId, receipt])
     );
-    const refundsByPaymentId = groupBy(
-      refunds.filter((refund) => refund.paymentId !== null),
-      (refund) => refund.paymentId as string
-    );
-    const discrepancyByProcurementId = new Map<
+    const discrepancyByCoordinate = new Map<
       string,
       (typeof discrepancies)[number]
     >();
+    const discrepancyById = new Map(
+      discrepancies.map((discrepancy) => [discrepancy.id, discrepancy])
+    );
     for (const discrepancy of discrepancies) {
-      if (!discrepancyByProcurementId.has(discrepancy.procurementId)) {
-        discrepancyByProcurementId.set(discrepancy.procurementId, discrepancy);
+      const coordinate = procurementVersionCoordinate(
+        discrepancy.procurementId,
+        discrepancy.procurementVersionId
+      );
+      if (!discrepancyByCoordinate.has(coordinate)) {
+        discrepancyByCoordinate.set(coordinate, discrepancy);
       }
+    }
+    const paymentsByVersionCoordinate = groupBy(rows, (payment) =>
+      procurementVersionCoordinate(
+        payment.procurementId,
+        payment.procurementVersionId
+      )
+    );
+    const paymentIds = new Set(rows.map((payment) => payment.id));
+    const refundsByPaymentId = new Map<
+      string,
+      Array<(typeof refunds)[number]>
+    >();
+    for (const refund of refunds) {
+      const directPaymentId =
+        refund.paymentId && paymentIds.has(refund.paymentId)
+          ? refund.paymentId
+          : null;
+      const discrepancy = discrepancyById.get(refund.discrepancyId);
+      const inferredPayment = refund.paymentId === null && discrepancy
+        ? paymentForRefund(
+            paymentsByVersionCoordinate.get(
+              procurementVersionCoordinate(
+                discrepancy.procurementId,
+                discrepancy.procurementVersionId
+              )
+            ) ?? []
+          )
+        : null;
+      const paymentId = directPaymentId ?? inferredPayment?.id ?? null;
+      if (!paymentId) continue;
+      const grouped = refundsByPaymentId.get(paymentId) ?? [];
+      grouped.push(refund);
+      refundsByPaymentId.set(paymentId, grouped);
     }
     const invoiceCoverageByPaymentId = this.invoiceLedger
       ? await this.invoiceLedger.coverageForPaymentIds(
@@ -1991,6 +2041,13 @@ export class SpotProcurementReadService {
       );
       const voucher = voucherFact(rowExecutions, activeVoucherFileIds);
       const rowRefunds = refundsByPaymentId.get(row.id) ?? [];
+      const discrepancy =
+        discrepancyByCoordinate.get(
+          procurementVersionCoordinate(
+            row.procurementId,
+            row.procurementVersionId
+          )
+        ) ?? null;
       const realPayment = isRealPaymentForm(row, version);
       const approval = approvalByBusinessId.get(row.id) ?? null;
       const roleContext = roleContextByProjectId.get(row.projectId) ?? {
@@ -2015,7 +2072,7 @@ export class SpotProcurementReadService {
         payment: row,
         approval,
         receipt: receiptByProcurementId.get(row.procurementId) ?? null,
-        discrepancy: discrepancyByProcurementId.get(row.procurementId) ?? null,
+        discrepancy,
         refunds: rowRefunds,
         actorUserId,
         roleKeys: roleContext.effectiveRoleKeys,
@@ -2024,7 +2081,18 @@ export class SpotProcurementReadService {
       });
       return [
         {
-          [PAYMENT_TASK_SORT_AT]: paymentTaskFactAt(row, approval, currentTask),
+          [PAYMENT_TASK_SORT_AT]: paymentTaskFactAt(
+            row,
+            approval,
+            currentTask,
+            discrepancy,
+            voucher.status === "anomaly"
+              ? earliestVoucherAnomalyAt(
+                  rowExecutions,
+                  activeVoucherFileIds
+                )
+              : null
+          ),
           [PAYMENT_AMOUNT_FACTS]: {
             approvalAmountCents: row.approvalAmountCents,
             actualPaidAmountCents,
@@ -2657,11 +2725,51 @@ function paymentWorkbenchView(value?: string): SpotPaymentWorkbenchView {
   return normalized as SpotPaymentWorkbenchView;
 }
 
+function procurementVersionCoordinate(
+  procurementId: string,
+  procurementVersionId: string
+) {
+  return `${procurementId}\u0000${procurementVersionId}`;
+}
+
+function paymentForRefund(payments: SpotProcurementPayment[]) {
+  const refundSettlementStatuses = new Set([
+    "partially_paid",
+    "paid",
+    "settled"
+  ]);
+  return [...payments].sort((left, right) => {
+    const leftPriority = refundSettlementStatuses.has(left.status)
+      ? 2
+      : ["voided", "invalidated"].includes(left.status)
+        ? 0
+        : 1;
+    const rightPriority = refundSettlementStatuses.has(right.status)
+      ? 2
+      : ["voided", "invalidated"].includes(right.status)
+        ? 0
+        : 1;
+    return (
+      rightPriority - leftPriority ||
+      right.createdAt.getTime() - left.createdAt.getTime() ||
+      right.id.localeCompare(left.id)
+    );
+  })[0] ?? null;
+}
+
 function paymentTaskFactAt(
   payment: SpotProcurementPayment,
   approval: ApprovalInstance | null,
-  currentTask: SpotPaymentCurrentTask
+  currentTask: SpotPaymentCurrentTask,
+  discrepancy: SpotProcurementDiscrepancy | null,
+  voucherAnomalyAt: Date | null
 ) {
+  if (currentTask.key === "record_refund") {
+    return discrepancy?.updatedAt ?? discrepancy?.createdAt ?? payment.updatedAt;
+  }
+  if (currentTask.key === "view_only" && voucherAnomalyAt) {
+    return voucherAnomalyAt;
+  }
   if (currentTask.key === "review_payment") {
     return approval?.updatedAt ?? payment.updatedAt;
   }
@@ -2672,6 +2780,29 @@ function paymentTaskFactAt(
     return payment.createdAt;
   }
   return payment.updatedAt;
+}
+
+function earliestVoucherAnomalyAt(
+  executions: Array<
+    Pick<
+      SpotProcurementPaymentExecution,
+      "paidAt" | "createdAt" | "voucherFileId"
+    >
+  >,
+  activeVoucherFileIds: ReadonlySet<string>
+) {
+  return executions
+    .filter(
+      (execution) =>
+        !execution.voucherFileId ||
+        !activeVoucherFileIds.has(execution.voucherFileId)
+    )
+    .reduce<Date | null>((earliest, execution) => {
+      const factAt = execution.paidAt ?? execution.createdAt;
+      return !earliest || factAt.getTime() < earliest.getTime()
+        ? factAt
+        : earliest;
+    }, null);
 }
 
 function comparePaymentWorkbenchItems(
@@ -2717,6 +2848,8 @@ function stripPaymentInternalFacts<
     [PAYMENT_AMOUNT_FACTS]: _amountFacts,
     ...readModel
   } = item;
+  void _taskSortAt;
+  void _amountFacts;
   return readModel;
 }
 
