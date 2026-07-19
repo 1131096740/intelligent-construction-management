@@ -80,6 +80,25 @@ describe("SpotProcurementController real-form input", () => {
     }
   });
 
+  it("exposes payment draft recreation on the parent resource with payment-submit permission", () => {
+    const target = SpotProcurementController.prototype.recreatePaymentDraft as unknown as object;
+    expect(Reflect.getMetadata(METHOD_METADATA, target)).toBe(RequestMethod.POST);
+    expect(Reflect.getMetadata(PATH_METADATA, target)).toBe(":procurementId/payment-drafts");
+    expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, target)).toBe(
+      "spot_procurement.payment.submit"
+    );
+
+    const payments = { recreateDraft: jest.fn() };
+    const controller = new SpotProcurementController(
+      {} as never,
+      {} as never,
+      {} as never,
+      payments as never
+    );
+    controller.recreatePaymentDraft("procurement-1", { id: "material-1" } as never);
+    expect(payments.recreateDraft).toHaveBeenCalledWith("procurement-1", "material-1");
+  });
+
   it("accepts the A4 application facts and rejects supplier, price, money, and invoice facts", async () => {
     const pipe = createApiValidationPipe();
     await expect(
@@ -121,6 +140,7 @@ describe("SpotProcurementController real-form input", () => {
     const controller = new SpotProcurementController(
       applications as never,
       {} as never,
+      {} as never,
       {} as never
     );
 
@@ -137,6 +157,7 @@ describe("SpotProcurementController real-form input", () => {
     const controller = new SpotProcurementController(
       {} as never,
       reads as never,
+      {} as never,
       {} as never
     );
 

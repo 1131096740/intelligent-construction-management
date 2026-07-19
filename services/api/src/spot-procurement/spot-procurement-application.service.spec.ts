@@ -376,7 +376,8 @@ describe("SpotProcurementApplicationService real-form application", () => {
         status: "draft",
         payeeNameSnapshot: null,
         settlementAmountCents: 0n,
-        companyPaymentAmountCents: 0n
+        companyPaymentAmountCents: 0n,
+        draftOrigin: "auto_after_procurement_approval"
       })
     });
     expect(tx.spotProcurementReceipt.create).toHaveBeenCalledWith({

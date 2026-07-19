@@ -10,6 +10,7 @@ import {
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { AbandonSpotProcurementPaymentDraftDto } from "./dto/abandon-spot-procurement-payment-draft.dto";
 import { ExecuteSupplierBalanceDto } from "./dto/execute-supplier-balance.dto";
 import { RecordSpotProcurementPaymentDto } from "./dto/record-spot-procurement-payment.dto";
 import { ReviewSpotProcurementPaymentDto } from "./dto/review-spot-procurement-payment.dto";
@@ -77,6 +78,16 @@ export class SpotProcurementPaymentController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.payments.submit(paymentId, user.id);
+  }
+
+  @Post(":paymentId/abandonment")
+  @RequireProjectRole("spot_procurement.payment.submit")
+  abandonDraft(
+    @Param("paymentId") paymentId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: AbandonSpotProcurementPaymentDraftDto
+  ) {
+    return this.payments.abandonDraft(paymentId, user.id, body);
   }
 
   @Post(":paymentId/approval")

@@ -361,6 +361,50 @@ function buildFixture() {
 }
 
 describe("SpotProcurementReadService", () => {
+  it("offers payment draft recreation only after the prior draft is invalidated and no active payment remains", async () => {
+    const fixture = buildFixture();
+    const invalidated = paymentRow({
+      status: "invalidated",
+      submittedAt: null,
+      approvedAt: null,
+      invalidatedAt: now,
+      draftOrigin: "auto_after_procurement_approval",
+      sourcePaymentId: null
+    });
+    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([invalidated]);
+    fixture.prisma.spotProcurementPaymentExecution.findMany.mockResolvedValue([]);
+    fixture.prisma.approvalInstance.findMany.mockResolvedValue([
+      {
+        id: "approval-1",
+        businessType: "spot_procurement_version",
+        businessId: "version-1",
+        status: "approved",
+        currentNodeIndex: 1,
+        frozenNodes: [],
+        applicantUserId: "applicant-1",
+        createdAt: now,
+        updatedAt: now
+      }
+    ]);
+    fixture.visibility.effectiveRoleKeys.mockResolvedValue(["material_staff"]);
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const detail = await service.getProcurement("procurement-1", "handler-1");
+
+    expect(
+      detail.availableActions.find((action) => action.key === "create_payment_draft")
+    ).toMatchObject({ enabled: true });
+    expect(detail.paymentSummary).toMatchObject({
+      paymentCount: 0,
+      activeSettlementAmountCents: "0"
+    });
+  });
+
   it("returns only pilot projects where the current user can create a procurement", async () => {
     const fixture = buildFixture();
     fixture.prisma.project.findMany.mockResolvedValue([

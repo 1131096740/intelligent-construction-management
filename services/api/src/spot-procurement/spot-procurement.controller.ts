@@ -22,6 +22,7 @@ import { ReviewSpotProcurementDto } from "./dto/review-spot-procurement.dto";
 import { UpdateSpotProcurementDraftDto } from "./dto/update-spot-procurement-draft.dto";
 import { VoidSpotProcurementDto } from "./dto/void-spot-procurement.dto";
 import { SpotProcurementApplicationService } from "./spot-procurement-application.service";
+import { SpotProcurementPaymentService } from "./spot-procurement-payment.service";
 import { SpotProcurementReadService } from "./spot-procurement-read.service";
 import { SpotProcurementSettlementService } from "./spot-procurement-settlement.service";
 
@@ -30,7 +31,8 @@ export class SpotProcurementController {
   constructor(
     private readonly applications: SpotProcurementApplicationService,
     private readonly reads: SpotProcurementReadService,
-    private readonly settlements: SpotProcurementSettlementService
+    private readonly settlements: SpotProcurementSettlementService,
+    private readonly payments: SpotProcurementPaymentService
   ) {}
 
   @Get("capabilities")
@@ -117,6 +119,15 @@ export class SpotProcurementController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.applications.submit(procurementId, user.id);
+  }
+
+  @Post(":procurementId/payment-drafts")
+  @RequireProjectRole("spot_procurement.payment.submit")
+  recreatePaymentDraft(
+    @Param("procurementId") procurementId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.payments.recreateDraft(procurementId, user.id);
   }
 
   @Post(":procurementId/approval")

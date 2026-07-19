@@ -544,7 +544,8 @@ export class SpotProcurementApplicationService {
             payeeNameSnapshot: null,
             handlerUserId: version.handlerUserId,
             createdByUserId: actorUserId,
-            paymentNote: null
+            paymentNote: null,
+            draftOrigin: "auto_after_procurement_approval"
           }
         });
         const receipt = await tx.spotProcurementReceipt.create({

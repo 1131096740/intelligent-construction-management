@@ -993,6 +993,8 @@ export class SpotProcurementReadService {
         approvedAt: isoOrNull(payment.approvedAt),
         invalidatedAt: isoOrNull(payment.invalidatedAt),
         invalidatedReason: payment.invalidatedReason,
+        draftOrigin: payment.draftOrigin ?? "legacy_unknown",
+        sourcePaymentId: payment.sourcePaymentId,
         createdAt: payment.createdAt.toISOString(),
         updatedAt: payment.updatedAt.toISOString(),
         ...(usesRealPaymentForm
@@ -1765,6 +1767,8 @@ export class SpotProcurementReadService {
           project: projectSummary(project),
           status: row.status,
           statusLabel: paymentStatusLabel(row.status),
+          draftOrigin: row.draftOrigin ?? "legacy_unknown",
+          sourcePaymentId: row.sourcePaymentId,
           companyPaymentStatusLabel: companyPaymentStatusLabel(
             row,
             actualPaidAmountCents
@@ -1895,7 +1899,23 @@ export class SpotProcurementReadService {
       input.roleKeys.some((role) => PROCUREMENT_VOID_ROLES.has(role)) &&
       !hasActualPayment &&
       input.activePayments.length === 0;
-    const canCreatePayment = false;
+    const hasActivePayment = input.allPayments.some(
+      (payment) =>
+        payment.status === "draft" || ACTIVE_PAYMENT_STATUSES.has(payment.status)
+    );
+    const hasRecreatableSource = input.allPayments.some(
+      (payment) =>
+        payment.procurementVersionId === input.currentVersion.id &&
+        payment.status === "invalidated" &&
+        payment.submittedAt === null
+    );
+    const canCreatePayment =
+      input.procurement.status === "approved_in_progress" &&
+      input.currentVersion.status === "approved" &&
+      input.actorUserId === input.procurement.handlerUserId &&
+      canCreate &&
+      !hasActivePayment &&
+      hasRecreatableSource;
     const canCreateVersion =
       !["closed", "voided"].includes(input.procurement.status) &&
       ["approved", "rejected"].includes(input.currentVersion.status) &&
@@ -1981,14 +2001,14 @@ export class SpotProcurementReadService {
         disabledReason: "只有采购申请人可在审批中撤回"
       }),
       detailAction({
-        key: "create_payment",
-        label: "新建后续付款申请",
+        key: "create_payment_draft",
+        label: "重新创建付款草稿",
         kind: "primary",
         roleKeys: input.roleKeys,
         requiredAction: "spot_procurement.payment.submit",
         enabled: canCreatePayment,
         disabledReason:
-          "采购批准后，仅采购经办人可在剩余金额内创建付款"
+          "只有采购批准、原草稿已放弃且不存在活动付款时，当前采购经办人才可重新创建"
       }),
       detailAction({
         key: "create_version",
@@ -2060,6 +2080,16 @@ export class SpotProcurementReadService {
       input.voucherFactConsistent;
 
     return [
+      detailAction({
+        key: "abandon_payment_draft",
+        label: "放弃付款草稿",
+        kind: "danger",
+        roleKeys: input.roleKeys,
+        requiredAction: "spot_procurement.payment.submit",
+        enabled: input.payment.status === "draft" && isHandler,
+        disabledReason: "只有当前采购经办人可放弃尚未提交的付款草稿",
+        requiresComment: true
+      }),
       detailAction({
         key: "edit_draft",
         label: "编辑付款草稿",
@@ -2472,7 +2502,11 @@ function summarizeRealPaymentFacts(
   actualPaidByPaymentId: ReadonlyMap<string, bigint>,
   refunds: Array<Pick<SpotProcurementRefund, "paymentId" | "amountCents">>
 ) {
-  const captured = payments.filter((payment) => Boolean(payment.paymentType));
+  const captured = payments.filter(
+    (payment) =>
+      Boolean(payment.paymentType) &&
+      (payment.status === "draft" || ACTIVE_PAYMENT_STATUSES.has(payment.status))
+  );
   if (!captured.length) {
     return {
       status: "pending_determination",

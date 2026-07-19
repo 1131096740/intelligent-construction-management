@@ -29,6 +29,7 @@ import {
 } from "../money/decimal-money";
 import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
 import type { RecordSpotProcurementPaymentDto } from "./dto/record-spot-procurement-payment.dto";
+import type { AbandonSpotProcurementPaymentDraftDto } from "./dto/abandon-spot-procurement-payment-draft.dto";
 import type { ReviewSpotProcurementPaymentDto } from "./dto/review-spot-procurement-payment.dto";
 import type { UpdateSpotPaymentPayerDto } from "./dto/update-spot-payment-payer.dto";
 import {
@@ -144,6 +145,16 @@ type PaymentLockRow = {
   merchantNameSnapshot: string | null;
   payerCompanyEntityId: string | null;
   payerCompanyNameSnapshot: string | null;
+  draftOrigin: string | null;
+  sourcePaymentId: string | null;
+  updatedAt: Date;
+};
+
+type PaymentReservationLockRow = {
+  paymentId: string;
+  amountCents: bigint;
+  releasedAmountCents: bigint;
+  status: string;
 };
 
 type ApprovalLockRow = {
@@ -703,56 +714,11 @@ export class SpotProcurementPaymentService {
           procurementId
         );
         this.pilot.assertEnabled(version.projectId);
-        const payments = await this.lockProcurementPayments(
-          tx,
-          version.procurementId
-        );
-        await this.requireHandler(tx, version, actorUserId);
-        const occupied = this.settlementTotalForStatuses(
-          payments,
-          version.id,
-          PLANNED_PAYMENT_STATUSES
-        );
-        const capacityLimit =
-          await this.paymentCapacityLimit(tx, version);
-        const remaining = capacityLimit - occupied;
-        if (remaining <= 0n) {
-          throw new ConflictException("当前采购已没有可新建的付款申请金额");
-        }
-        const suggestion = await this.balances.suggestionWithClient(
-          tx,
-          version.projectId,
-          version.supplierKey,
-          remaining
-        );
-        const suggestedBalanceAmountCents = BigInt(
-          suggestion.suggestedBalanceAmountCents
-        );
-        const payment = await this.createDraftFromFacts(
+        const payments = await this.lockProcurementPayments(tx, version.procurementId);
+        const { payment, suggestion, amountCents } = await this.createLegacyNextDraft(
           tx,
           version,
           payments,
-          {
-            settlementAmountCents: remaining,
-            supplierBalanceAmountCents:
-              suggestedBalanceAmountCents,
-            companyPaymentAmountCents:
-              remaining - suggestedBalanceAmountCents,
-            paymentPath: null,
-            paymentMethod: null,
-            payeePartyId: version.supplierPartyId,
-            payeeUserId: null,
-            payeeNameSnapshot: version.supplierNameSnapshot,
-            payeeAccountNameSnapshot: null,
-            payeeBankNameSnapshot: null,
-            payeeBankAccountSnapshot: null,
-            expectedPaymentAt: null,
-            paymentNote: null,
-            supportingAttachmentFileId: null,
-            merchantPaymentProofFileId: null,
-            balanceOverrideReason: null,
-            handlerUserId: version.handlerUserId
-          },
           actorUserId
         );
         await this.audit.record(tx, {
@@ -763,12 +729,193 @@ export class SpotProcurementPaymentService {
           metadata: {
             procurementId: version.procurementId,
             procurementVersionId: version.id,
-            settlementAmountCents: remaining.toString(),
+            settlementAmountCents: amountCents.toString(),
             suggestedBalanceAmountCents:
               suggestion.suggestedBalanceAmountCents
           }
         });
         return this.paymentReadModel(payment, suggestion);
+      })
+    );
+  }
+
+  recreateDraft(procurementId: string, actorUserId: string) {
+    return this.runWrite(() =>
+      this.runSerializable(async (tx) => {
+        const version = await this.requireLockedCurrentApprovedVersion(tx, procurementId);
+        this.pilot.assertEnabled(version.projectId);
+        const payments = await this.lockProcurementPayments(tx, version.procurementId);
+        await this.requireHandler(tx, version, actorUserId);
+        if (payments.some((payment) => payment.status === "draft" || ACTIVE_CAPACITY_STATUSES.has(payment.status))) {
+          throw new ConflictException("当前采购已存在活动付款草稿或申请");
+        }
+        const source = payments
+          .filter((payment) => payment.procurementVersionId === version.id && payment.status === "invalidated")
+          .sort(
+            (left, right) => {
+              const timeDifference =
+                (right.invalidatedAt?.getTime() ?? 0) -
+                (left.invalidatedAt?.getTime() ?? 0);
+              return timeDifference || right.id.localeCompare(left.id);
+            }
+          )[0];
+        if (!source) {
+          throw new ConflictException("当前采购没有可重新创建的已放弃付款草稿");
+        }
+        const facts = await this.lockPaymentTerminationFacts(
+          tx,
+          payments.map((payment) => payment.id)
+        );
+        const sourceReservation = facts.reservations.find(
+          (reservation) => reservation.paymentId === source.id
+        );
+        if (
+          facts.approvalBusinessIds.has(source.id) ||
+          facts.executionPaymentIds.has(source.id) ||
+          facts.invoicePaymentIds.has(source.id) ||
+          facts.archivePaymentIds.has(source.id) ||
+          facts.refundPaymentIds.has(source.id) ||
+          (sourceReservation !== undefined &&
+            (sourceReservation.status === "executed" ||
+              sourceReservation.amountCents > sourceReservation.releasedAmountCents))
+        ) {
+          throw new ConflictException("已放弃付款草稿存在正式事实或残余额度占用，不能重新创建");
+        }
+
+        if (version.totalAmountCents !== null) {
+          const { payment, suggestion } = await this.createLegacyNextDraft(
+            tx,
+            version,
+            payments,
+            actorUserId,
+            { draftOrigin: "manual_recreate", sourcePaymentId: source.id }
+          );
+          await this.recordDraftRecreationAudit(tx, actorUserId, version, source.id, payment.id);
+          return this.paymentReadModel(payment, suggestion, {
+            sourcePaymentId: source.id,
+            draftOrigin: "manual_recreate"
+          });
+        }
+
+        const payment = await this.createDraftFromFacts(
+          tx,
+          version,
+          payments,
+          {
+            settlementAmountCents: 0n,
+            supplierBalanceAmountCents: 0n,
+            companyPaymentAmountCents: 0n,
+            paymentPath: null,
+            paymentMethod: null,
+            payeePartyId: null,
+            payeeUserId: null,
+            payeeNameSnapshot: null,
+            payeeAccountNameSnapshot: null,
+            payeeBankNameSnapshot: null,
+            payeeBankAccountSnapshot: null,
+            expectedPaymentAt: null,
+            paymentNote: null,
+            supportingAttachmentFileId: null,
+            merchantPaymentProofFileId: null,
+            balanceOverrideReason: null,
+            handlerUserId: version.handlerUserId
+          },
+          actorUserId,
+          { draftOrigin: "manual_recreate", sourcePaymentId: source.id }
+        );
+        await this.recordDraftRecreationAudit(tx, actorUserId, version, source.id, payment.id);
+        return this.paymentReadModel(payment, undefined, {
+          sourcePaymentId: source.id,
+          draftOrigin: "manual_recreate"
+        });
+      })
+    );
+  }
+
+  abandonDraft(
+    paymentId: string,
+    actorUserId: string,
+    input: AbandonSpotProcurementPaymentDraftDto
+  ) {
+    return this.runWrite(() =>
+      this.runSerializable(async (tx) => {
+        const version = await this.requireLockedVersionForPayment(tx, paymentId);
+        this.pilot.assertEnabled(version.projectId);
+        const payments = await this.lockProcurementPayments(tx, version.procurementId);
+        const payment = this.requirePayment(payments, paymentId);
+        await this.requireHandler(tx, version, actorUserId, payment);
+        if (payment.handlerUserId !== actorUserId) {
+          throw new ForbiddenException("只有当前采购经办人可以放弃付款草稿");
+        }
+        if (payment.status === "invalidated" && payment.invalidatedAt) {
+          return this.paymentReadModel(payment);
+        }
+        const expectedUpdatedAt = new Date(input.expectedUpdatedAt);
+        if (payment.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+          throw new ConflictException("付款草稿已被更新，请刷新后重试");
+        }
+        const reason = requiredText(input.reason, "请填写放弃付款草稿原因");
+        if (payment.status !== "draft" || payment.submittedAt !== null) {
+          throw new ConflictException("只能放弃尚未提交的付款草稿");
+        }
+
+        const facts = await this.lockPaymentTerminationFacts(tx, payments.map((row) => row.id));
+        if (facts.approvalBusinessIds.has(payment.id)) {
+          throw new ConflictException("付款草稿已形成审批历史，不能放弃");
+        }
+        if (facts.executionPaymentIds.has(payment.id)) {
+          throw new ConflictException("付款草稿已形成实际付款历史，不能放弃");
+        }
+        const reservation = facts.reservations.find((row) => row.paymentId === payment.id);
+        if (reservation?.status === "executed") {
+          throw new ConflictException("付款草稿已执行供应商余额抵扣，不能放弃");
+        }
+        if (facts.invoicePaymentIds.has(payment.id) || facts.archivePaymentIds.has(payment.id) || facts.refundPaymentIds.has(payment.id)) {
+          throw new ConflictException("付款草稿已形成发票、归档或退款事实，不能放弃");
+        }
+        if (reservation?.status === "reserved") {
+          const remaining = reservation.amountCents - reservation.releasedAmountCents;
+          if (remaining > 0n) {
+            await this.balances.releaseForShortage(tx, {
+              paymentId: payment.id,
+              expectedReservedAmountCents: reservation.amountCents,
+              releaseAmountCents: remaining,
+              expectedProjectId: version.projectId,
+              expectedSupplierKey: version.supplierKey,
+              actorUserId,
+              reason: `放弃付款草稿：${reason}`
+            });
+          }
+        }
+        const now = new Date();
+        const invalidated = await tx.spotProcurementPayment.updateMany({
+          where: {
+            id: payment.id,
+            status: "draft",
+            submittedAt: null,
+            invalidatedAt: null,
+            updatedAt: expectedUpdatedAt
+          },
+          data: { status: "invalidated", invalidatedAt: now, invalidatedByUserId: actorUserId, invalidatedReason: reason }
+        });
+        if (invalidated.count !== 1) {
+          throw new ConflictException("付款草稿状态已变化，请刷新后重试");
+        }
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "spot_procurement.payment.draft.abandon",
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+          businessId: payment.id,
+          metadata: { procurementId: version.procurementId, procurementVersionId: version.id, reason }
+        });
+        return this.paymentReadModel({
+          ...payment,
+          status: "invalidated",
+          invalidatedAt: now,
+          invalidatedByUserId: actorUserId,
+          invalidatedReason: reason,
+          updatedAt: now
+        });
       })
     );
   }
@@ -1567,7 +1714,9 @@ export class SpotProcurementPaymentService {
           version,
           payments,
           payment,
-          actorUserId
+          actorUserId,
+          undefined,
+          "approval_withdrawal_clone"
         );
         await this.audit.record(tx, {
           actorUserId,
@@ -2090,7 +2239,7 @@ export class SpotProcurementPaymentService {
        AND p."currentVersionId" = v."id"
       WHERE p."id" = ${procurementId}
       LIMIT 1
-      FOR UPDATE OF v
+      FOR UPDATE OF p, v
     `);
     return this.assertCurrentApprovedVersion(rows[0]);
   }
@@ -2122,7 +2271,7 @@ export class SpotProcurementPaymentService {
         ON p."id" = v."procurementId"
       WHERE pay."id" = ${paymentId}
       LIMIT 1
-      FOR UPDATE OF v
+      FOR UPDATE OF p, v
     `);
     return this.assertCurrentApprovedVersion(rows[0]);
   }
@@ -2186,7 +2335,10 @@ export class SpotProcurementPaymentService {
         "paymentType",
         "merchantNameSnapshot",
         "payerCompanyEntityId",
-        "payerCompanyNameSnapshot"
+        "payerCompanyNameSnapshot",
+        "draftOrigin",
+        "sourcePaymentId",
+        "updatedAt"
       FROM "SpotProcurementPayment"
       WHERE "procurementId" = ${procurementId}
       ORDER BY "id"
@@ -2612,7 +2764,11 @@ export class SpotProcurementPaymentService {
       balanceOverrideReason: string | null;
       handlerUserId: string;
     },
-    actorUserId: string
+    actorUserId: string,
+    provenance?: {
+      draftOrigin: string;
+      sourcePaymentId: string;
+    }
   ) {
     const versionPaymentCount = existingPayments.filter(
       (payment) => payment.procurementVersionId === version.id
@@ -2636,6 +2792,9 @@ export class SpotProcurementPaymentService {
         canceledSupplierBalanceAmountCents: 0n,
         paymentPath: facts.paymentPath,
         paymentMethod: facts.paymentMethod,
+        paymentType: null,
+        merchantNameSnapshot: null,
+        merchantPayeeMismatchNote: null,
         payeePartyId: facts.payeePartyId,
         payeeUserId: facts.payeeUserId,
         payeeNameSnapshot: facts.payeeNameSnapshot,
@@ -2649,8 +2808,15 @@ export class SpotProcurementPaymentService {
         merchantPaymentProofFileId:
           facts.merchantPaymentProofFileId,
         balanceOverrideReason: facts.balanceOverrideReason,
+        payerCompanyEntityId: null,
+        payerCompanyNameSnapshot: null,
+        payerUnifiedSocialCreditCodeSnapshot: null,
+        approvalAmountCents: 0n,
+        primaryPaymentChannelId: null,
         handlerUserId: facts.handlerUserId,
-        createdByUserId: actorUserId
+        createdByUserId: actorUserId,
+        draftOrigin: provenance?.draftOrigin ?? null,
+        sourcePaymentId: provenance?.sourcePaymentId ?? null
       }
     });
   }
@@ -2664,7 +2830,9 @@ export class SpotProcurementPaymentService {
     balanceAdjustment?: {
       supplierBalanceAmountCents: bigint;
       reason: string;
-    }
+    },
+    draftOrigin: "approval_return_clone" | "approval_withdrawal_clone" =
+      "approval_return_clone"
   ) {
     const supplierBalanceAmountCents =
       balanceAdjustment?.supplierBalanceAmountCents ??
@@ -2713,8 +2881,152 @@ export class SpotProcurementPaymentService {
           source.balanceOverrideReason,
         handlerUserId: source.handlerUserId
       },
-      actorUserId
+      actorUserId,
+      { draftOrigin, sourcePaymentId: source.id }
     );
+  }
+
+  private async createLegacyNextDraft(
+    tx: Prisma.TransactionClient,
+    version: VersionLockRow,
+    payments: PaymentLockRow[],
+    actorUserId: string,
+    provenance?: { draftOrigin: string; sourcePaymentId: string }
+  ) {
+    await this.requireHandler(tx, version, actorUserId);
+    const occupied = this.settlementTotalForStatuses(
+      payments,
+      version.id,
+      PLANNED_PAYMENT_STATUSES
+    );
+    const capacityLimit = await this.paymentCapacityLimit(tx, version);
+    const remaining = capacityLimit - occupied;
+    if (remaining <= 0n) {
+      throw new ConflictException("当前采购已没有可新建的付款申请金额");
+    }
+    const suggestion = await this.balances.suggestionWithClient(
+      tx,
+      version.projectId,
+      version.supplierKey,
+      remaining
+    );
+    const suggestedBalanceAmountCents = BigInt(suggestion.suggestedBalanceAmountCents);
+    const payment = await this.createDraftFromFacts(
+      tx,
+      version,
+      payments,
+      {
+        settlementAmountCents: remaining,
+        supplierBalanceAmountCents: suggestedBalanceAmountCents,
+        companyPaymentAmountCents: remaining - suggestedBalanceAmountCents,
+        paymentPath: null,
+        paymentMethod: null,
+        payeePartyId: version.supplierPartyId,
+        payeeUserId: null,
+        payeeNameSnapshot: version.supplierNameSnapshot,
+        payeeAccountNameSnapshot: null,
+        payeeBankNameSnapshot: null,
+        payeeBankAccountSnapshot: null,
+        expectedPaymentAt: null,
+        paymentNote: null,
+        supportingAttachmentFileId: null,
+        merchantPaymentProofFileId: null,
+        balanceOverrideReason: null,
+        handlerUserId: version.handlerUserId
+      },
+      actorUserId,
+      provenance
+    );
+    return { payment, suggestion, amountCents: remaining };
+  }
+
+  private recordDraftRecreationAudit(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    version: VersionLockRow,
+    sourcePaymentId: string,
+    newPaymentId: string
+  ) {
+    return this.audit.record(tx, {
+      actorUserId,
+      action: "spot_procurement.payment.draft.recreate",
+      businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+      businessId: newPaymentId,
+      metadata: {
+        procurementId: version.procurementId,
+        procurementVersionId: version.id,
+        sourcePaymentId,
+        draftOrigin: "manual_recreate"
+      }
+    });
+  }
+
+  private async lockPaymentTerminationFacts(
+    tx: Prisma.TransactionClient,
+    paymentIds: string[]
+  ) {
+    const approvals = await tx.$queryRaw<Array<{ businessId: string }>>(Prisma.sql`
+      SELECT "businessId"
+      FROM "ApprovalInstance"
+      WHERE "businessType" = ${SPOT_PROCUREMENT_BUSINESS_TYPES.payment}
+        AND "businessId" IN (${Prisma.join(paymentIds)})
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    const reservations = await tx.$queryRaw<PaymentReservationLockRow[]>(Prisma.sql`
+      SELECT "paymentId", "amountCents", "releasedAmountCents", "status"
+      FROM "SupplierBalanceReservation"
+      WHERE "paymentId" IN (${Prisma.join(paymentIds)})
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    const executions = await tx.$queryRaw<Array<{ paymentId: string }>>(Prisma.sql`
+      SELECT "paymentId"
+      FROM "SpotProcurementPaymentExecution"
+      WHERE "paymentId" IN (${Prisma.join(paymentIds)})
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    const invoices = await tx.$queryRaw<Array<{ paymentId: string }>>(Prisma.sql`
+      SELECT "paymentId"
+      FROM "SpotProcurementPaymentInvoice"
+      WHERE "paymentId" IN (${Prisma.join(paymentIds)})
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    const archives = await tx.$queryRaw<Array<{ paymentId: string }>>(Prisma.sql`
+      SELECT "paymentId"
+      FROM "SpotProcurementPaymentArchive"
+      WHERE "paymentId" IN (${Prisma.join(paymentIds)})
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    const archiveRecords = await tx.$queryRaw<Array<{ businessId: string }>>(Prisma.sql`
+      SELECT "businessId"
+      FROM "ArchiveRecord"
+      WHERE "businessType" = ${SPOT_PROCUREMENT_BUSINESS_TYPES.payment}
+        AND "businessId" IN (${Prisma.join(paymentIds)})
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    const refunds = await tx.$queryRaw<Array<{ paymentId: string | null }>>(Prisma.sql`
+      SELECT "paymentId"
+      FROM "SpotProcurementRefund"
+      WHERE "paymentId" IN (${Prisma.join(paymentIds)})
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    return {
+      approvalBusinessIds: new Set(approvals.map((row) => row.businessId)),
+      reservations,
+      executionPaymentIds: new Set(executions.map((row) => row.paymentId)),
+      invoicePaymentIds: new Set(invoices.map((row) => row.paymentId)),
+      archivePaymentIds: new Set([
+        ...archives.map((row) => row.paymentId),
+        ...archiveRecords.map((row) => row.businessId)
+      ]),
+      refundPaymentIds: new Set(refunds.flatMap((row) => row.paymentId ? [row.paymentId] : []))
+    };
   }
 
   private async requireLockedApproval(
@@ -3255,6 +3567,10 @@ export class SpotProcurementPaymentService {
       payeeUserId?: string | null;
       payeeNameSnapshot?: string | null;
       balanceOverrideReason?: string | null;
+      invalidatedAt?: Date | null;
+      invalidatedByUserId?: string | null;
+      invalidatedReason?: string | null;
+      updatedAt?: Date;
     },
     suggestion?: {
       availableBalanceAmountCents: string;
@@ -3286,6 +3602,10 @@ export class SpotProcurementPaymentService {
       payeeNameSnapshot: payment.payeeNameSnapshot ?? "",
       balanceOverrideReason:
         payment.balanceOverrideReason ?? null,
+      invalidatedAt: payment.invalidatedAt?.toISOString() ?? null,
+      invalidatedByUserId: payment.invalidatedByUserId ?? null,
+      invalidatedReason: payment.invalidatedReason ?? null,
+      updatedAt: payment.updatedAt?.toISOString() ?? null,
       ...(suggestion ?? {}),
       ...extra
     };
