@@ -119,6 +119,24 @@ describe("spot procurement web pages", () => {
     expect(payment).toContain("付款主体已调整");
     expect(payment).toContain("从综合部节点重新审批");
     expect(payment).toContain("result.newDraftPaymentId");
+    expect(payment).toContain("router.push('/零星材料付款工作台')");
+    expect(payment).not.toContain("router.push('/零星材料付款')");
+  });
+
+  it("keeps both workbench ledgers inside their own horizontal scroll regions", () => {
+    const procurement = pageSource("SpotProcurementWorkbenchPage.vue");
+    const payment = pageSource("SpotProcurementPaymentWorkbenchPage.vue");
+
+    for (const source of [procurement, payment]) {
+      expect(source).toContain("jg-responsive-ledger");
+      expect(source).toContain("jg-table-region jg-table-region--wide");
+      expect(source).toContain("horizontal-scroll-affixed-bottom");
+    }
+    expect(procurement).toContain('title: "申请 / 采购"');
+    expect(procurement).toContain('title: "付款与收货"');
+    expect(payment).toContain('title: "付款 / 采购单"');
+    expect(payment).toContain('title: "商户 / 收款对象"');
+    expect(payment).toContain('return row.status === "draft" ? "填写付款申请" : "查看详情"');
   });
 
   it("connects final receipt, shortage handling, invoice append and archive facts without location or batches", () => {

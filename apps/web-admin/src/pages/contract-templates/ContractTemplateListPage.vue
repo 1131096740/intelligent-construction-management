@@ -90,9 +90,7 @@
           </t-space>
           <div class="template-card-body">
             <p>{{ versionLabel(template) }}</p>
-          </div>
-          <template #actions>
-            <t-space size="small">
+            <div class="template-card-actions">
               <t-button @click="openPreview(template)">
                 预览模板内容
               </t-button>
@@ -102,8 +100,8 @@
               >
                 用此模板建合同
               </t-button>
-            </t-space>
-          </template>
+            </div>
+          </div>
         </t-card>
       </div>
 
@@ -373,7 +371,7 @@ onMounted(loadTemplates);
 .mode-note span { color: var(--jg-text-muted); }
 .template-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(var(--jg-layout-template-card-min-width), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
   gap: var(--jg-space-md);
 }
 .template-card {
@@ -393,6 +391,8 @@ onMounted(loadTemplates);
   border-top: 0;
 }
 .template-card-body p { margin: 0; color: var(--jg-text-muted); font-size: var(--jg-font-size-meta); }
+.template-card-actions { display: grid; gap: var(--jg-space-sm); }
+.template-card-actions :deep(.t-button) { box-sizing: border-box; justify-content: center; max-width: 100%; width: 100%; }
 .template-meta { color: var(--jg-text-main); }
 .panel { margin-bottom: var(--jg-space-lg); border-radius: var(--jg-radius-sm); }
 .form-grid {

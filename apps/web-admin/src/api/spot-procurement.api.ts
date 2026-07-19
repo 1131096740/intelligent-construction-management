@@ -305,11 +305,11 @@ export interface SpotProcurementPaymentListItemReadModel {
     accountName: string | null;
     accountNumberLast4: string | null;
   };
-  approvalAmountCents?: string;
-  actualPaidAmountCents?: string;
-  refundAmountCents?: string;
-  netPaidAmountCents?: string;
-  remainingAmountCents?: string;
+  approvalAmountCents?: string | null;
+  actualPaidAmountCents?: string | null;
+  refundAmountCents?: string | null;
+  netPaidAmountCents?: string | null;
+  remainingAmountCents?: string | null;
   receipt?: SpotProcurementReceiptSummaryReadModel | SpotProcurementFutureUnavailableReadModel;
   invoice?: {
     status: string;
@@ -492,11 +492,11 @@ export interface SpotProcurementPaymentDetailReadModel {
       accountName: string | null;
       primaryChannel: SpotProcurementPaymentChannelReadModel | null;
     };
-    approvalAmountCents?: string;
-    actualPaidAmountCents?: string;
-    refundAmountCents?: string;
-    netPaidAmountCents?: string;
-    remainingAmountCents?: string;
+    approvalAmountCents?: string | null;
+    actualPaidAmountCents?: string | null;
+    refundAmountCents?: string | null;
+    netPaidAmountCents?: string | null;
+    remainingAmountCents?: string | null;
     paymentFactConsistent?: boolean;
     voucherStatus?: SpotProcurementVoucherStatus;
     voucherStatusLabel?: string;

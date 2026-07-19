@@ -37,22 +37,14 @@ const statusOptions = [
   { label: "已作废", value: "voided" }
 ];
 const columns = [
-  { colKey: "code", title: "付款申请编号", width: 178, fixed: "left" as const },
-  { colKey: "procurement", title: "采购申请", width: 150 },
-  { colKey: "project", title: "项目", width: 190 },
-  { colKey: "merchant", title: "实际商户", width: 170 },
-  { colKey: "payer", title: "我方付款主体", width: 170 },
-  { colKey: "payee", title: "收款对象 / 渠道", width: 190 },
-  { colKey: "approvalAmount", title: "审批金额", width: 125, align: "right" as const },
-  { colKey: "actualPaid", title: "累计实付", width: 125, align: "right" as const },
-  { colKey: "refund", title: "累计退款", width: 125, align: "right" as const },
-  { colKey: "netPaid", title: "净付", width: 125, align: "right" as const },
-  { colKey: "remaining", title: "剩余待付", width: 125, align: "right" as const },
-  { colKey: "receipt", title: "收货", width: 130 },
-  { colKey: "invoice", title: "发票", width: 110 },
-  { colKey: "approval", title: "审批", width: 130 },
-  { colKey: "handler", title: "经办人", width: 110 },
-  { colKey: "updatedAt", title: "最近更新", width: 170 }
+  { colKey: "code", title: "付款 / 采购单", width: 150, fixed: "left" as const },
+  { colKey: "project", title: "项目", width: 160 },
+  { colKey: "merchantPayee", title: "商户 / 收款对象", width: 155 },
+  { colKey: "amounts", title: "付款金额", width: 135, align: "right" as const },
+  { colKey: "fulfillment", title: "收货与发票", width: 130 },
+  { colKey: "approval", title: "审批状态", width: 130 },
+  { colKey: "handlerUpdated", title: "经办与更新", width: 120 },
+  { colKey: "operation", title: "操作", width: 90, fixed: "right" as const }
 ];
 
 const projectOptions = computed(() => [
@@ -79,7 +71,7 @@ function money(cents: string | null | undefined) {
   }
 }
 
-function sumCents(values: Array<string | undefined>) {
+function sumCents(values: Array<string | null | undefined>) {
   try {
     return values.reduce((total, value) => total + BigInt(value ?? "0"), 0n).toString();
   } catch {
@@ -108,6 +100,10 @@ function primaryChannel(row: SpotProcurementPaymentListItemReadModel) {
 function receiptLabel(row: SpotProcurementPaymentListItemReadModel) {
   if (!row.receipt || "available" in row.receipt && !row.receipt.available) return "首笔实付后开放";
   return row.receipt.statusLabel;
+}
+
+function operationLabel(row: SpotProcurementPaymentListItemReadModel) {
+  return row.status === "draft" ? "填写付款申请" : "查看详情";
 }
 
 function openDetail(paymentId: string) {
@@ -152,7 +148,7 @@ onMounted(() => void Promise.all([loadProjects(), loadPayments()]));
 </script>
 
 <template>
-  <section class="spot-payment-workbench">
+  <section class="spot-payment-workbench jg-responsive-ledger">
     <BusinessPageHeader
       title="零星材料付款工作台"
       description="采购审批通过后自动生成付款草稿；实际商户、付款主体、收款对象、单价和税率在 A5 付款申请中确定。"
@@ -273,92 +269,80 @@ onMounted(() => void Promise.all([loadProjects(), loadPayments()]));
         title="结果已截断"
         message="为保护查询性能，当前只返回可访问结果的前一部分；请缩小项目、状态或关键词范围。"
       />
-      <t-table
+      <div
         v-if="rows.length"
-        row-key="id"
-        size="small"
-        table-layout="fixed"
-        :columns="columns"
-        :data="rows"
-        :loading="loading"
-        :scroll="{ x: 2340 }"
+        class="jg-table-region jg-table-region--wide"
       >
-        <template #code="{ row }">
-          <t-link
-            theme="primary"
-            @click="openDetail(row.id)"
-          >
-            {{ row.code }}
-          </t-link>
-        </template>
-        <template #procurement="{ row }">
-          <div class="two-line-cell">
-            <strong>{{ row.procurement.code }}</strong><span>{{ row.form === "real_payment" ? "A4 采购申请" : "历史付款关联" }}</span>
-          </div>
-        </template>
-        <template #project="{ row }">
-          {{ row.project.code }} · {{ row.project.name }}
-        </template>
-        <template #merchant="{ row }">
-          <span>{{ row.merchantName ?? row.procurement.supplierName ?? "待经办人填写" }}</span>
-        </template>
-        <template #payer="{ row }">
-          <span>{{ row.payerCompanyName ?? "待财务/综合部确定" }}</span>
-        </template>
-        <template #payee="{ row }">
-          <div class="two-line-cell">
-            <strong>{{ row.payee?.name ?? row.payeeName ?? "待填写" }}</strong><span>{{ primaryChannel(row) }}</span>
-          </div>
-        </template>
-        <template #approvalAmount="{ row }">
-          <strong>{{ money(row.approvalAmountCents) }}</strong>
-        </template>
-        <template #actualPaid="{ row }">
-          <strong>{{ money(row.actualPaidAmountCents) }}</strong>
-        </template>
-        <template #refund="{ row }">
-          <strong>{{ money(row.refundAmountCents) }}</strong>
-        </template>
-        <template #netPaid="{ row }">
-          <strong>{{ money(row.netPaidAmountCents) }}</strong>
-        </template>
-        <template #remaining="{ row }">
-          <strong>{{ money(row.remainingAmountCents) }}</strong>
-        </template>
-        <template #receipt="{ row }">
-          <t-tag
-            size="small"
-            variant="light"
-          >
-            {{ receiptLabel(row) }}
-          </t-tag>
-        </template>
-        <template #invoice="{ row }">
-          <t-tag
-            size="small"
-            variant="light"
-          >
-            {{ row.invoice?.statusLabel ?? "历史单据" }}
-          </t-tag>
-        </template>
-        <template #approval="{ row }">
-          <div class="two-line-cell">
-            <t-tag
+        <t-table
+          row-key="id"
+          size="small"
+          table-layout="fixed"
+          :columns="columns"
+          :data="rows"
+          :loading="loading"
+          :scroll="{ x: 1100 }"
+          horizontal-scroll-affixed-bottom
+        >
+          <template #code="{ row }">
+            <div class="two-line-cell">
+              <t-link
+                theme="primary"
+                @click="openDetail(row.id)"
+              >
+                {{ row.code }}
+              </t-link>
+              <span>{{ row.procurement.code }}</span>
+            </div>
+          </template>
+          <template #project="{ row }">
+            {{ row.project.code }} · {{ row.project.name }}
+          </template>
+          <template #merchantPayee="{ row }">
+            <div class="two-line-cell">
+              <strong>{{ row.merchantName ?? row.procurement.supplierName ?? "待经办人填写" }}</strong>
+              <span>{{ row.payee?.name ?? row.payeeName ?? primaryChannel(row) }}</span>
+            </div>
+          </template>
+          <template #amounts="{ row }">
+            <div class="two-line-cell amount-cell">
+              <strong>审批 {{ money(row.approvalAmountCents) }}</strong>
+              <span>净付 {{ money(row.netPaidAmountCents) }}</span>
+            </div>
+          </template>
+          <template #fulfillment="{ row }">
+            <div class="two-line-cell">
+              <span>收货：{{ receiptLabel(row) }}</span>
+              <span>发票：{{ row.invoice?.statusLabel ?? "历史单据" }}</span>
+            </div>
+          </template>
+          <template #approval="{ row }">
+            <div class="two-line-cell">
+              <t-tag
+                size="small"
+                :theme="statusTheme(row.status)"
+                variant="light"
+              >
+                {{ row.statusLabel }}
+              </t-tag><span>{{ row.approval.currentNodeName }}</span>
+            </div>
+          </template>
+          <template #handlerUpdated="{ row }">
+            <div class="two-line-cell">
+              <strong>{{ row.handler.name }}</strong>
+              <span>{{ dateTime(row.updatedAt) }}</span>
+            </div>
+          </template>
+          <template #operation="{ row }">
+            <t-button
               size="small"
-              :theme="statusTheme(row.status)"
-              variant="light"
+              variant="outline"
+              @click="openDetail(row.id)"
             >
-              {{ row.statusLabel }}
-            </t-tag><span>{{ row.approval.currentNodeName }}</span>
-          </div>
-        </template>
-        <template #handler="{ row }">
-          {{ row.handler.name }}
-        </template>
-        <template #updatedAt="{ row }">
-          <span>{{ dateTime(row.updatedAt) }}</span>
-        </template>
-      </t-table>
+              {{ operationLabel(row) }}
+            </t-button>
+          </template>
+        </t-table>
+      </div>
       <t-empty
         v-else
         description="暂无可查看的零星材料付款申请"
@@ -381,5 +365,6 @@ onMounted(() => void Promise.all([loadProjects(), loadPayments()]));
 .amount-summary strong{font-size:var(--jg-font-size-section-title)}
 .section-heading{display:flex;justify-content:space-between;gap:var(--jg-space-lg);align-items:flex-end}.section-heading h2,.section-heading p{margin:0}.section-heading p{margin-top:var(--jg-space-xs)}
 .filter-field{display:grid;gap:var(--jg-space-xs);min-width:160px}.filter-field--keyword{min-width:min(320px,100%)}.two-line-cell{display:grid;gap:var(--jg-space-xs);min-width:0}.two-line-cell strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.amount-cell{justify-items:end}
 @media (max-width:900px){.amount-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.section-heading{align-items:flex-start;flex-direction:column}}@media (max-width:560px){.amount-summary{grid-template-columns:1fr}}
 </style>

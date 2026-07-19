@@ -35,6 +35,37 @@ const publishedTemplate = {
   usagePreview
 };
 
+const publishedTemplates = [
+  publishedTemplate,
+  {
+    ...publishedTemplate,
+    id: "template-responsive-equipment",
+    code: "TPL-RESPONSIVE-EQUIPMENT",
+    businessCode: "合同模板-机械设备租赁-V1",
+    name: "工程机械设备租赁合同模板",
+    contractTypeKey: "equipment_lease",
+    versionId: "version-responsive-equipment"
+  },
+  {
+    ...publishedTemplate,
+    id: "template-responsive-labor",
+    code: "TPL-RESPONSIVE-LABOR",
+    businessCode: "合同模板-劳务分包-V1",
+    name: "劳务分包合同模板",
+    contractTypeKey: "labor_subcontract",
+    versionId: "version-responsive-labor"
+  },
+  {
+    ...publishedTemplate,
+    id: "template-responsive-general",
+    code: "TPL-RESPONSIVE-GENERAL",
+    businessCode: "合同模板-通用-V1",
+    name: "通用合同模板",
+    contractTypeKey: "general",
+    versionId: "version-responsive-general"
+  }
+];
+
 const templateDetail = {
   template: {
     id: "template-responsive",
@@ -113,7 +144,7 @@ async function mockSession(page: Page) {
     if (route.request().method() !== "GET") return route.abort();
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify([publishedTemplate])
+      body: JSON.stringify(publishedTemplates)
     });
   });
 }
@@ -138,6 +169,15 @@ test("合同模板台账与十列编辑区在六档桌面窗口中保持单一�
     await page.setViewportSize(viewport);
     await page.goto("/合同模板库");
     await expect(page.getByRole("heading", { name: "合同模板库" })).toBeVisible();
+    await expect(page.locator(".template-card")).toHaveCount(4);
+    await expect(page.locator(".template-card .t-card__actions")).toHaveCount(0);
+    await expect(page.locator(".template-card-actions")).toHaveCount(4);
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoNestedHorizontalScrollers(page);
+    await page.screenshot({
+      path: path.join(screenshotDir, `contract-template-use-${viewport.width}x${viewport.height}.png`),
+      fullPage: true
+    });
     await page.getByRole("button", { name: "配置模式" }).click();
     await expect(page.locator(".jg-table-region .t-table__content")).toBeVisible();
     await expectNoDocumentHorizontalOverflow(page);
