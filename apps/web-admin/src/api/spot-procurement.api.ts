@@ -739,6 +739,13 @@ export interface ReviewSpotProcurementPaymentPayload
   confirmationPassword?: string;
 }
 
+export interface ReviewSpotProcurementA5PaymentPayload {
+  decision: SpotProcurementA5ReviewDecision;
+  comment?: string;
+  selfReviewReason?: string;
+  confirmationPassword?: string;
+}
+
 export interface VoidSpotProcurementPayload {
   reason: string;
 }
@@ -1133,6 +1140,16 @@ export function submitSpotProcurementPayment(paymentId: string) {
 export function reviewSpotProcurementPayment(
   paymentId: string,
   body: ReviewSpotProcurementPaymentPayload
+) {
+  return postJson<SpotProcurementPaymentWriteReadModel>(
+    `/spot-procurement-payments/${encodeURIComponent(paymentId)}/approval`,
+    body
+  );
+}
+
+export function reviewSpotProcurementA5Payment(
+  paymentId: string,
+  body: ReviewSpotProcurementA5PaymentPayload
 ) {
   return postJson<SpotProcurementPaymentWriteReadModel>(
     `/spot-procurement-payments/${encodeURIComponent(paymentId)}/approval`,

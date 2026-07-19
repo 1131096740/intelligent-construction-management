@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { apiFetch } from "./api-fetch";
 import {
   appendSpotProcurementPaymentInvoice,
@@ -19,6 +19,7 @@ import {
   recordSpotProcurementRefund,
   submitSpotProcurementReceipt,
   reviewSpotProcurement,
+  reviewSpotProcurementA5Payment,
   reviewSpotProcurementPayment,
   submitSpotProcurement,
   submitSpotProcurementPayment,
@@ -30,7 +31,8 @@ import {
   withdrawSpotProcurement,
   withdrawSpotProcurementPayment,
   type CreateSpotProcurementDraftPayload,
-  type RecordSpotProcurementPaymentExecutionPayload
+  type RecordSpotProcurementPaymentExecutionPayload,
+  type ReviewSpotProcurementA5PaymentPayload
 } from "./spot-procurement.api";
 
 vi.mock("./api-fetch", () => ({ apiFetch: vi.fn() }));
@@ -289,6 +291,26 @@ describe("spot procurement API client", () => {
     expect(mockApiFetch.mock.calls[5]?.[1]).toEqual(
       expect.objectContaining({
         body: JSON.stringify({ reason: "重新发起" })
+      })
+    );
+  });
+
+  it("exposes an A5-specific review contract that excludes reject", async () => {
+    expectTypeOf<
+      ReviewSpotProcurementA5PaymentPayload["decision"]
+    >().toEqualTypeOf<"approve" | "return_to_applicant">();
+    const review: ReviewSpotProcurementA5PaymentPayload = {
+      decision: "return_to_applicant",
+      comment: "请补充付款依据"
+    };
+
+    await reviewSpotProcurementA5Payment("payment/1", review);
+
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/spot-procurement-payments/payment%2F1/approval",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(review)
       })
     );
   });

@@ -6,8 +6,7 @@ import {
 } from "class-validator";
 import {
   IsCanonicalMoneyText,
-  IsMaxUnicodeTextLength,
-  IsOptionalNonBlankText
+  IsMaxUnicodeTextLength
 } from "../../validation/static-field-validation";
 
 export const SPOT_PROCUREMENT_PAYMENT_REVIEW_DECISIONS = [
@@ -26,9 +25,11 @@ export class ReviewSpotProcurementPaymentDto {
   })
   decision!: SpotProcurementPaymentReviewDecision;
 
-  @IsOptionalNonBlankText({
-    typeMessage: "审批意见必须是文字",
-    blankMessage: "审批意见不能为空白"
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "审批意见必须是文字" })
+  @IsMaxUnicodeTextLength({
+    max: 500,
+    message: "审批意见不能超过 500 个字符"
   })
   comment?: string;
 

@@ -606,11 +606,58 @@ describe("Spot procurement payment DTOs", () => {
   });
 
   it("limits payment review decisions and comment shape at runtime", async () => {
-    const response = await validationErrors(
+    const invalidDecision = await validationErrors(
       { decision: "return_to_previous" },
       ReviewSpotProcurementPaymentDto
     );
-    expect(response.errors).toContain("付款审批决定不正确");
+    const invalidCommentType = await validationErrors(
+      { decision: "approve", comment: 1 },
+      ReviewSpotProcurementPaymentDto
+    );
+    const overlongComment = await validationErrors(
+      { decision: "approve", comment: "审".repeat(501) },
+      ReviewSpotProcurementPaymentDto
+    );
+
+    expect(invalidDecision.errors).toContain("付款审批决定不正确");
+    expect(invalidCommentType.errors).toContain("审批意见必须是文字");
+    expect(overlongComment.errors).toContain("审批意见不能超过 500 个字符");
+  });
+
+  it("lets blank A5 comments cross the global validation boundary for service normalization", async () => {
+    const pipe = createApiValidationPipe();
+    const approve = await pipe.transform(
+      { decision: "approve", comment: "   " },
+      { type: "body", metatype: ReviewSpotProcurementPaymentDto }
+    );
+    const approveHarness = realPaymentReviewHarness();
+
+    await approveHarness.service.review(
+      "payment-1",
+      "project-manager-1",
+      approve
+    );
+    expect(
+      approveHarness.tx.approvalActionLog.create
+    ).toHaveBeenCalledWith({
+      data: expect.objectContaining({ comment: "同意" })
+    });
+
+    const returned = await pipe.transform(
+      { decision: "return_to_applicant", comment: "   " },
+      { type: "body", metatype: ReviewSpotProcurementPaymentDto }
+    );
+    const returnHarness = realPaymentReviewHarness();
+    await expect(
+      returnHarness.service.review(
+        "payment-1",
+        "project-manager-1",
+        returned
+      )
+    ).rejects.toEqual(
+      new BadRequestException("退回付款申请时必须填写原因")
+    );
+    expectNoPaymentReviewWrites(returnHarness);
   });
 
   it("validates the finance-return adjusted balance as canonical string cents", async () => {
