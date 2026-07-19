@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException
@@ -14,6 +15,8 @@ import { lockContractAndAssertCurrentEffective } from "../contract/contract-curr
 import { PrismaService } from "../database/prisma.service";
 import { parseMoneyCentsInput } from "../money/decimal-money";
 import type { SaveSettlementDraftDto } from "./dto/settlement-draft.dto";
+import type { AbandonSettlementDraftDto } from "./dto/abandon-settlement-draft.dto";
+import { AuditService } from "../audit/audit.service";
 import {
   assertSettlementContractType,
   settlementContractTypeBlockReason
@@ -21,7 +24,10 @@ import {
 
 @Injectable()
 export class SettlementDraftService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService = new AuditService()
+  ) {}
 
   async create(
     projectId: string,
@@ -59,7 +65,7 @@ export class SettlementDraftService {
 
   async list(projectId: string, actorUserId: string) {
     const drafts = await this.prisma.settlementDraft.findMany({
-      where: { projectId, ownerUserId: actorUserId },
+      where: { projectId, ownerUserId: actorUserId, status: { not: "abandoned" } },
       orderBy: { updatedAt: "desc" }
     });
     const contracts = drafts.length ? await this.prisma.contract.findMany({
@@ -172,6 +178,107 @@ export class SettlementDraftService {
       }
       return this.readModel(result);
     });
+  }
+
+  async abandon(
+    projectId: string,
+    draftId: string,
+    actorUserId: string,
+    input: AbandonSettlementDraftDto
+  ) {
+    const reason = input.reason?.trim() ?? "";
+    if (input.action === "abandon_application" && !reason) {
+      throw new BadRequestException("放弃结算申请必须填写原因");
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const [locked] = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT "id" FROM "SettlementDraft" WHERE "id" = ${draftId} FOR UPDATE
+      `);
+      if (!locked) throw new NotFoundException("未找到结算草稿，请刷新后重试");
+      const draft = await tx.settlementDraft.findUnique({ where: { id: draftId } });
+      this.assertOwnedDraft(draft, projectId, actorUserId);
+      if (draft!.status === "abandoned") {
+        return { draftId, status: "abandoned", idempotent: true };
+      }
+      if (draft!.submittedSettlementId || draft!.submittedAt || draft!.status !== "draft") {
+        throw new ConflictException("该结算草稿已形成正式结算，请在正式结算流程中处理");
+      }
+      if (draft!.revision !== input.expectedRevision) {
+        throw new ConflictException("结算草稿已被更新，请刷新后重试");
+      }
+      const documents = await tx.settlementSignedDocument.findMany({
+        where: { settlementDraftId: draftId, status: "active" },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, purpose: true }
+      });
+      const evidencePurposes = new Set([
+        "frozen_counterparty_copy", "counterparty_signed_original"
+      ]);
+      const hasSigningEvidence = documents.some((item) => evidencePurposes.has(item.purpose));
+      const expectedAction = hasSigningEvidence
+        ? "abandon_application"
+        : "delete_pristine_draft";
+      if (input.action !== expectedAction) {
+        throw new ConflictException(
+          hasSigningEvidence
+            ? "结算草稿已生成或上传签章文件，只能放弃申请并保留证据"
+            : "当前结算仍是纯净草稿，请刷新后使用“删除草稿”"
+        );
+      }
+      const now = new Date();
+      const updated = await tx.settlementDraft.updateMany({
+        where: {
+          id: draftId,
+          projectId,
+          ownerUserId: actorUserId,
+          status: "draft",
+          revision: input.expectedRevision,
+          submittedSettlementId: null
+        },
+        data: {
+          status: "abandoned",
+          abandonedAt: now,
+          abandonedByUserId: actorUserId,
+          abandonReason: hasSigningEvidence ? reason : null,
+          revision: { increment: 1 }
+        }
+      });
+      if (updated.count !== 1) {
+        throw new ConflictException("结算草稿已被其他操作处理，请刷新后重试");
+      }
+      await tx.settlementSignedDocument.updateMany({
+        where: { settlementDraftId: draftId, status: "active" },
+        data: {
+          status: "invalidated",
+          invalidatedAt: now,
+          invalidationReason: "结算申请已放弃，文件作为历史证据保留"
+        }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: hasSigningEvidence
+          ? "settlement.application.abandon"
+          : "settlement.draft.delete",
+        businessType: "settlement_draft",
+        businessId: draftId,
+        metadata: {
+          projectId,
+          contractId: draft!.contractId,
+          contractVersionId: draft!.contractVersionId,
+          isFinal: draft!.isFinal,
+          documentCount: documents.length,
+          reason: hasSigningEvidence ? reason : null
+        }
+      });
+      return {
+        draftId,
+        status: "abandoned",
+        action: expectedAction,
+        abandonedAt: now,
+        releasedFinalSettlementOccupancy: draft!.isFinal,
+        idempotent: false
+      };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   private async contractContext(
