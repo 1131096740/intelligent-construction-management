@@ -82,13 +82,17 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
       "voidedAt DateTime?",
       "voidedByUserId String?",
       "voidReason String?",
+      "abandonedAt DateTime?",
+      "abandonedByUserId String?",
+      "abandonReason String?",
       "createdAt DateTime @default(now())",
       "updatedAt DateTime @updatedAt"
     ],
     [
       "@@unique([projectId, id])",
       "@@index([projectId, status])",
-      "@@index([projectId, supplierKey])"
+      "@@index([projectId, supplierKey])",
+      "@@index([status, updatedAt])"
     ]
   ),
   SpotProcurementVersion: expectedModel(
@@ -114,6 +118,9 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
       "changeSummary Json?",
       "submittedAt DateTime?",
       "approvedAt DateTime?",
+      "abandonedAt DateTime?",
+      "abandonedByUserId String?",
+      "abandonReason String?",
       "createdByUserId String",
       "createdAt DateTime @default(now())",
       "updatedAt DateTime @updatedAt"
@@ -121,7 +128,8 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
     [
       "@@unique([procurementId, versionNo])",
       "@@unique([procurementId, id])",
-      "@@index([procurementId, status])"
+      "@@index([procurementId, status])",
+      "@@index([status, updatedAt])"
     ]
   ),
   SpotProcurementLine: expectedModel(
@@ -203,6 +211,10 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
       "invalidatedAt DateTime?",
       "invalidatedByUserId String?",
       "invalidatedReason String?",
+      "draftOrigin String?",
+      "sourcePaymentId String?",
+      'sourcePayment SpotProcurementPayment? @relation("SpotProcurementPaymentSource", fields: [sourcePaymentId], references: [id], onDelete: Restrict, onUpdate: Restrict)',
+      'derivedPayments SpotProcurementPayment[] @relation("SpotProcurementPaymentSource")',
       "createdAt DateTime @default(now())",
       "updatedAt DateTime @updatedAt"
     ],
@@ -213,7 +225,8 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
       "@@index([procurementVersionId])",
       "@@index([supportingAttachmentFileId])",
       "@@index([merchantPaymentProofFileId])",
-      "@@index([payerCompanyEntityId])"
+      "@@index([payerCompanyEntityId])",
+      "@@index([sourcePaymentId])"
     ]
   ),
   SpotProcurementPaymentExecution: expectedModel(
@@ -336,12 +349,18 @@ const CORE_MIGRATION_FIELD_OVERRIDES: Record<string, Record<string, string>> = {
 };
 
 const CORE_MIGRATION_FORWARD_FIELDS = new Set([
+  "SpotProcurement.abandonedAt",
+  "SpotProcurement.abandonedByUserId",
+  "SpotProcurement.abandonReason",
   "SpotProcurementVersion.applicationDepartmentSnapshot",
   "SpotProcurementVersion.applicationNameSnapshot",
   "SpotProcurementVersion.purchaserNameSnapshot",
   "SpotProcurementVersion.purchaserDepartmentId",
   "SpotProcurementVersion.purchaserDepartmentNameSnapshot",
   "SpotProcurementVersion.requestedArrivalAt",
+  "SpotProcurementVersion.abandonedAt",
+  "SpotProcurementVersion.abandonedByUserId",
+  "SpotProcurementVersion.abandonReason",
   "SpotProcurementPayment.paymentType",
   "SpotProcurementPayment.merchantNameSnapshot",
   "SpotProcurementPayment.merchantPayeeMismatchNote",
@@ -352,6 +371,10 @@ const CORE_MIGRATION_FORWARD_FIELDS = new Set([
   "SpotProcurementPayment.primaryPaymentChannelId",
   "SpotProcurementPayment.submittedVersionNo",
   "SpotProcurementPayment.factsFrozenAt",
+  "SpotProcurementPayment.draftOrigin",
+  "SpotProcurementPayment.sourcePaymentId",
+  "SpotProcurementPayment.sourcePayment",
+  "SpotProcurementPayment.derivedPayments",
   "SpotProcurementPaymentExecution.paymentChannelId",
   "SupplierBalanceReservation.releasedAmountCents"
 ]);

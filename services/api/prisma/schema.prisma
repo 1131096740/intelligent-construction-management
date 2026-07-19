@@ -357,25 +357,25 @@ model PaymentTermsVersion {
 }
 
 model PaymentTermsStage {
-  id                            String   @id @default(uuid())
+  id                            String           @id @default(uuid())
   paymentTermsVersionId         String
   name                          String
-  stageType                     String   @default("progress")
+  stageType                     String           @default("progress")
   basis                         String
   ratioBps                      Int?
   fixedAmountCents              BigInt?
-  triggerAnchor                 String   @default("settlement_effective")
+  triggerAnchor                 String           @default("settlement_effective")
   triggerEvent                  String
   dueDays                       Int
-  advanceDeductionMode          String   @default("none")
+  advanceDeductionMode          String           @default("none")
   advanceDeductionRatioBps      Int?
   advanceDeductionStartRatioBps Int?
-  requiresInvoice               Boolean  @default(false)
-  allowsEarlyPayment            Boolean  @default(false)
-  allowsInstallments            Boolean  @default(true)
+  requiresInvoice               Boolean          @default(false)
+  allowsEarlyPayment            Boolean          @default(false)
+  allowsInstallments            Boolean          @default(true)
   retentionBps                  Int?
   originalText                  String
-  createdAt                     DateTime @default(now())
+  createdAt                     DateTime         @default(now())
   paymentRequests               PaymentRequest[] @relation("PaymentRequestFrozenStage")
 
   @@unique([id, paymentTermsVersionId], map: "PaymentTermsStage_id_paymentTermsVersionId_key")
@@ -719,25 +719,29 @@ model SettlementArchiveFile {
 }
 
 model PaymentRequest {
-  id                    String    @id @default(uuid())
+  id                    String             @id @default(uuid())
   projectId             String
   settlementId          String?
-  sourceType            String    @default("settlement")
+  sourceType            String             @default("settlement")
   contractId            String
   contractVersionId     String
   paymentTermsVersionId String
   paymentTermsStageId   String?
-  code                  String    @unique
+  code                  String             @unique
   status                String
   requestedAmountCents  BigInt
   approvedAmountCents   BigInt?
-  paidAmountCents       BigInt    @default(0)
+  paidAmountCents       BigInt             @default(0)
   dueDate               DateTime?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  abandonedAt           DateTime?
+  abandonedByUserId     String?
+  abandonReason         String?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
   paymentTermsStage     PaymentTermsStage? @relation("PaymentRequestFrozenStage", fields: [paymentTermsStageId, paymentTermsVersionId], references: [id, paymentTermsVersionId], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([paymentTermsStageId], map: "PaymentRequest_paymentTermsStageId_idx")
+  @@index([status, updatedAt])
 }
 
 model PaymentExecution {
@@ -803,12 +807,16 @@ model SpotProcurement {
   voidedAt             DateTime?
   voidedByUserId       String?
   voidReason           String?
+  abandonedAt          DateTime?
+  abandonedByUserId    String?
+  abandonReason        String?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
   @@unique([projectId, id])
   @@index([projectId, status])
   @@index([projectId, supplierKey])
+  @@index([status, updatedAt])
 }
 
 model SpotProcurementVersion {
@@ -833,6 +841,9 @@ model SpotProcurementVersion {
   changeSummary                   Json?
   submittedAt                     DateTime?
   approvedAt                      DateTime?
+  abandonedAt                     DateTime?
+  abandonedByUserId               String?
+  abandonReason                   String?
   createdByUserId                 String
   createdAt                       DateTime  @default(now())
   updatedAt                       DateTime  @updatedAt
@@ -840,6 +851,7 @@ model SpotProcurementVersion {
   @@unique([procurementId, versionNo])
   @@unique([procurementId, id])
   @@index([procurementId, status])
+  @@index([status, updatedAt])
 }
 
 model SpotProcurementLine {
@@ -878,20 +890,20 @@ model SpotProcurementAttachment {
 }
 
 model SpotProcurementPayment {
-  id                                   String    @id @default(uuid())
+  id                                   String                   @id @default(uuid())
   projectId                            String
   procurementId                        String
   procurementVersionId                 String
-  code                                 String    @unique
-  status                               String    @default("draft")
-  settlementAmountCents                BigInt    @default(0)
-  supplierBalanceAmountCents           BigInt    @default(0)
-  companyPaymentAmountCents            BigInt    @default(0)
-  paidAmountCents                      BigInt    @default(0)
-  executedSupplierBalanceAmountCents   BigInt    @default(0)
-  canceledAmountCents                  BigInt    @default(0)
-  canceledCompanyPaymentAmountCents    BigInt    @default(0)
-  canceledSupplierBalanceAmountCents   BigInt    @default(0)
+  code                                 String                   @unique
+  status                               String                   @default("draft")
+  settlementAmountCents                BigInt                   @default(0)
+  supplierBalanceAmountCents           BigInt                   @default(0)
+  companyPaymentAmountCents            BigInt                   @default(0)
+  paidAmountCents                      BigInt                   @default(0)
+  executedSupplierBalanceAmountCents   BigInt                   @default(0)
+  canceledAmountCents                  BigInt                   @default(0)
+  canceledCompanyPaymentAmountCents    BigInt                   @default(0)
+  canceledSupplierBalanceAmountCents   BigInt                   @default(0)
   paymentPath                          String?
   paymentMethod                        String?
   paymentType                          String?
@@ -911,7 +923,7 @@ model SpotProcurementPayment {
   payerCompanyEntityId                 String?
   payerCompanyNameSnapshot             String?
   payerUnifiedSocialCreditCodeSnapshot String?
-  approvalAmountCents                  BigInt    @default(0)
+  approvalAmountCents                  BigInt                   @default(0)
   primaryPaymentChannelId              String?
   submittedVersionNo                   Int?
   factsFrozenAt                        DateTime?
@@ -922,8 +934,12 @@ model SpotProcurementPayment {
   invalidatedAt                        DateTime?
   invalidatedByUserId                  String?
   invalidatedReason                    String?
-  createdAt                            DateTime  @default(now())
-  updatedAt                            DateTime  @updatedAt
+  draftOrigin                          String?
+  sourcePaymentId                      String?
+  sourcePayment                        SpotProcurementPayment?  @relation("SpotProcurementPaymentSource", fields: [sourcePaymentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  derivedPayments                      SpotProcurementPayment[] @relation("SpotProcurementPaymentSource")
+  createdAt                            DateTime                 @default(now())
+  updatedAt                            DateTime                 @updatedAt
 
   @@unique([id, procurementVersionId])
   @@index([projectId, status])
@@ -932,6 +948,7 @@ model SpotProcurementPayment {
   @@index([supportingAttachmentFileId])
   @@index([merchantPaymentProofFileId])
   @@index([payerCompanyEntityId])
+  @@index([sourcePaymentId])
 }
 
 model SpotProcurementPaymentExecution {
@@ -1176,6 +1193,9 @@ model SpotProcurementReceipt {
   submittedByUserId      String?
   submissionDelegationId String?
   lockedAt               DateTime?
+  invalidatedAt          DateTime?
+  invalidatedByUserId    String?
+  invalidationReason     String?
   createdByUserId        String
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
@@ -1185,6 +1205,7 @@ model SpotProcurementReceipt {
   @@index([procurementVersionId, status])
   @@index([handlerUserId, status])
   @@index([submissionDelegationId])
+  @@index([status, updatedAt])
 }
 
 model SpotProcurementReceiptRevision {

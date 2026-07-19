@@ -51,6 +51,9 @@ const EXPECTED_MODELS: Record<(typeof REQUIRED_MODELS)[number], ModelExpectation
       "submittedByUserId String?",
       "submissionDelegationId String?",
       "lockedAt DateTime?",
+      "invalidatedAt DateTime?",
+      "invalidatedByUserId String?",
+      "invalidationReason String?",
       "createdByUserId String",
       "createdAt DateTime @default(now())",
       "updatedAt DateTime @updatedAt"
@@ -60,7 +63,8 @@ const EXPECTED_MODELS: Record<(typeof REQUIRED_MODELS)[number], ModelExpectation
       "@@index([projectId, status])",
       "@@index([procurementVersionId, status])",
       "@@index([handlerUserId, status])",
-      "@@index([submissionDelegationId])"
+      "@@index([submissionDelegationId])",
+      "@@index([status, updatedAt])"
     ]
   ),
   SpotProcurementReceiptRevision: expectedModel(
@@ -549,6 +553,9 @@ describe("spot procurement receipt and invoice schema", () => {
 
   it.each(REQUIRED_MODELS)("keeps migration columns aligned for %s", (modelName) => {
     const forwardOnlyFields = new Set([
+      "SpotProcurementReceipt.invalidatedAt",
+      "SpotProcurementReceipt.invalidatedByUserId",
+      "SpotProcurementReceipt.invalidationReason",
       "SpotProcurementReceiptReview.reviewedByNameSnapshot",
       "SpotProcurementDiscrepancy.unexecutedAmountClosedCents",
       "SpotProcurementDiscrepancy.refundExpectedAmountCents",
