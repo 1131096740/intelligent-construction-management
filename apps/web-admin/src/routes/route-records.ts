@@ -20,6 +20,12 @@ export const fundsOverviewRoleKeys = [
   "project_manager"
 ] as const satisfies readonly RoleKey[];
 
+export const projectOperationsRoleKeys = [
+  ...fundsOverviewRoleKeys,
+  "employee",
+  "material_staff"
+] as const satisfies readonly RoleKey[];
+
 export const historicalTakeoverRoleKeys =
   HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS;
 export const companyEntityReaderRoleKeys = COMPANY_ENTITY_READER_ROLES;
@@ -72,7 +78,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
   {
     label: "项目",
     items: [
-      { label: "项目经营", path: "/项目经营", requiredRoleKeys: fundsOverviewRoleKeys },
+      { label: "项目经营", path: "/项目经营", requiredRoleKeys: projectOperationsRoleKeys },
       { label: "项目花名册", path: "/项目花名册" }
     ]
   },
@@ -292,7 +298,7 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       {
         path: "项目经营",
         component: () => import("../pages/projects/ProjectOperatingOverviewPage.vue"),
-        meta: { requiredRoleKeys: fundsOverviewRoleKeys, title: "项目经营" }
+        meta: { requiredRoleKeys: projectOperationsRoleKeys, title: "项目经营" }
       },
       {
         path: "项目支出/:projectId/:expenseRequestId",

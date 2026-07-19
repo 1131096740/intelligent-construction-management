@@ -7,6 +7,7 @@ import {
   fetchContractLifecycleLedger,
   fetchPaymentDetail,
   fetchPaymentLedger,
+  fetchPaymentLifecycleLedger,
   fetchPaymentContractOptions,
   fetchSettlementDetail,
   fetchSettlementContractOptions,
@@ -100,6 +101,7 @@ import {
   reviewPaymentApproval,
   withdrawContractApproval,
   withdrawPaymentApproval,
+  abandonPaymentRequest,
   withdrawSettlementApproval,
   transferSettlementApproval,
   delegateSettlementApproval,
@@ -154,7 +156,7 @@ describe("core flow read API client", () => {
     );
   });
 
-  it("loads contract and settlement lifecycle ledgers with server-owned pagination", async () => {
+  it("loads contract, settlement and payment lifecycle ledgers with server-owned pagination", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -166,11 +168,36 @@ describe("core flow read API client", () => {
 
     await fetchContractLifecycleLedger("returned_for_revision", 2, 20);
     await fetchSettlementLifecycleLedger("ended", 3, 50);
+    await fetchPaymentLifecycleLedger("my_drafts", 1, 20);
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/contracts/lifecycle-ledger?view=returned_for_revision&page=2&pageSize=20",
-      "/api/settlements/lifecycle-ledger?view=ended&page=3&pageSize=50"
+      "/api/settlements/lifecycle-ledger?view=ended&page=3&pageSize=50",
+      "/api/payments?view=my_drafts&page=1&pageSize=20"
     ]);
+  });
+
+  it("abandons a returned payment with exact CAS facts and encoded identity", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "payment/1", status: "abandoned" })
+    } as Response);
+
+    await abandonPaymentRequest("payment/1", {
+      expectedUpdatedAt: "2026-07-20T02:03:04.000Z",
+      reason: "本次付款不再办理"
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/payments/payment%2F1/abandonment",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          expectedUpdatedAt: "2026-07-20T02:03:04.000Z",
+          reason: "本次付款不再办理"
+        })
+      })
+    );
   });
 
   it("passes the server batch preview hash back unchanged on apply", async () => {
@@ -544,6 +571,23 @@ describe("core flow read API client", () => {
       "/api/projects/project-1/operating-funds-overview",
       "/api/projects/project-1/expense-requests"
     ]);
+  });
+
+  it("loads project expense lifecycle views without widening the resource route", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ rows: [], summary: {} })
+    } as Response);
+
+    await fetchProjectExpenseRequests("project/1", {
+      view: "ended",
+      page: 2,
+      pageSize: 20
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/projects/project%2F1/expense-requests?view=ended&page=2&pageSize=20"
+    );
   });
 
   it("creates projects through the backend", async () => {
@@ -949,10 +993,20 @@ describe("core flow read API client", () => {
   it("reads project expense approval detail and preserves self-review password exactly", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => ({ id: "expense-1" })
+      json: async () => ({
+        id: "expense-1",
+        availableActions: [{
+          key: "withdraw",
+          label: "撤回项目支出申请",
+          kind: "danger",
+          enabled: true,
+          disabledReason: null
+        }],
+        blockedReasons: []
+      })
     } as Response);
 
-    await fetchProjectExpenseApprovalDetail("project-1", "expense-1");
+    const detail = await fetchProjectExpenseApprovalDetail("project-1", "expense-1");
     await reviewProjectExpenseApproval("project-1", "expense-1", {
       decision: "approve",
       selfReviewReason: "业务紧急",
@@ -963,6 +1017,11 @@ describe("core flow read API client", () => {
       "/api/projects/project-1/expense-requests/expense-1/approval-detail"
     );
     expect(fetchMock.mock.calls[0][1]?.method).toBeUndefined();
+    expect(detail.availableActions[0]).toMatchObject({
+      key: "withdraw",
+      kind: "danger",
+      enabled: true
+    });
     expect(fetchMock.mock.calls[1][1]?.body).toBe(
       JSON.stringify({
         decision: "approve",

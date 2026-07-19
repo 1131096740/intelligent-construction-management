@@ -44,7 +44,17 @@ type PaymentDetailLifecycleProjection = {
   nextStep: string;
   currentOwner: string;
   returnReason: string;
+  lifecycleUpdatedAt: string | null;
+  blockedReasons: string[];
 };
+
+type PaymentLedgerView = "formal_ledger" | "my_drafts" | "returned_for_revision" | "ended";
+
+interface PaymentLedgerQuery {
+  view?: PaymentLedgerView;
+  page?: string | number;
+  pageSize?: string | number;
+}
 
 function emptyApprovalReviewAccess(): ApprovalReviewAccess {
   return { canAct: false, canReview: false, requiresSelfReviewConfirmation: false };
@@ -302,11 +312,15 @@ export class PaymentReadService {
     return toHistoricalContractPaymentBalance(takeover);
   }
 
-  async listRecent(rawLimit?: string | number, visibleProjectIds?: string[]) {
+  async listRecent(
+    rawLimit?: string | number,
+    visibleProjectIds?: string[],
+    options?: { all?: boolean; actorUserId?: string }
+  ) {
     const take = this.limit(rawLimit);
     const payments = await this.prisma.paymentRequest.findMany({
       ...(visibleProjectIds ? { where: { projectId: { in: visibleProjectIds } } } : {}),
-      take,
+      ...(options?.all ? {} : { take }),
       orderBy: { updatedAt: "desc" }
     });
     const paymentIds = payments.map((payment) => payment.id);
@@ -314,9 +328,9 @@ export class PaymentReadService {
       approvalInstance?: {
         findMany(args: {
           where: { businessType: string; businessId: { in: string[] }; flowType: string };
-          select: { id: true; businessId: true; status: true; createdAt: true };
+          select: { id: true; businessId: true; status: true; createdAt: true; applicantUserId: true };
           orderBy: Array<{ createdAt: "desc" } | { id: "desc" }>;
-        }): Promise<Array<{ id: string; businessId: string; status: string; createdAt: Date }>>;
+        }): Promise<Array<{ id: string; businessId: string; status: string; createdAt: Date; applicantUserId: string }>>;
       };
       approvalActionLog?: {
         findMany(args: {
@@ -357,7 +371,7 @@ export class PaymentReadService {
               businessId: { in: paymentIds },
               flowType: "payment.approve"
             },
-            select: { id: true, businessId: true, status: true, createdAt: true },
+            select: { id: true, businessId: true, status: true, createdAt: true, applicantUserId: true },
             orderBy: [{ createdAt: "desc" }, { id: "desc" }]
           })
         : Promise.resolve([])
@@ -399,7 +413,10 @@ export class PaymentReadService {
       const returnedForRevision = payment.status === "draft" &&
         latestApproval?.status === "returned_to_applicant" &&
         returnedApprovalWithActionIds.has(latestApproval.id);
-      const ledgerView = payment.status === "abandoned"
+      const ended = ["abandoned", "withdrawn", "approval_rejected", "rejected", "voided"].includes(
+        payment.status
+      );
+      const ledgerView = ended
         ? "ended"
         : returnedForRevision
           ? "returned_for_revision"
@@ -410,12 +427,12 @@ export class PaymentReadService {
         returnedForRevision ? "returned_for_revision" : payment.status
       );
       const execution = this.executionStatusView(payment.status, paidAmountCents, payableAmountCents);
-      const nextAction = payment.status === "abandoned"
+      const nextAction = ended
         ? "已结束"
         : returnedForRevision
         ? "补充付款申请或放弃申请"
         : this.nextActionLabel(payment.status, execution.complete);
-      const pendingOwner = payment.status === "abandoned"
+      const pendingOwner = ended
         ? "-"
         : returnedForRevision
         ? "申请人"
@@ -453,6 +470,21 @@ export class PaymentReadService {
           ? "approval_draft"
           : "formal_record",
         ledgerView,
+        lifecycleUpdatedAt: payment.updatedAt.toISOString(),
+        requestedAmountCents: moneyCentsToApi(payment.requestedAmountCents),
+        paidAmountCents: moneyCentsToApi(paidAmountCents),
+        availableActions:
+          returnedForRevision &&
+          options?.actorUserId &&
+          latestApproval?.applicantUserId === options.actorUserId
+            ? ["abandon_application"]
+            : [],
+        blockedReasons:
+          returnedForRevision &&
+          options?.actorUserId &&
+          latestApproval?.applicantUserId !== options.actorUserId
+            ? ["只有原申请人可以结束退回待修改的付款申请"]
+            : [],
         updatedAt: this.date(payment.updatedAt)
       };
     });
@@ -465,6 +497,63 @@ export class PaymentReadService {
         orSign: payments.filter((payment) => payment.status === "approval_pending").length,
         pendingPayment: payments.filter((payment) => payment.status === "approved_pending_payment").length,
         paid: rows.filter((row) => row.paymentStatus === "已付款").length
+      }
+    };
+  }
+
+  async listLedger(
+    query: PaymentLedgerQuery,
+    visibleProjectIds: string[] | undefined,
+    actorUserId: string
+  ) {
+    const view = this.paymentLedgerView(query.view);
+    const page = this.positiveInteger(query.page, 1);
+    const pageSize = Math.min(this.positiveInteger(query.pageSize, 20), 100);
+    const ledger = await this.listRecent(undefined, visibleProjectIds, {
+      all: true,
+      actorUserId
+    });
+    const allRows = ledger.rows;
+    const rowsByView = {
+      formal_ledger: allRows.filter((row) => row.ledgerView === "formal_ledger"),
+      my_drafts: [],
+      returned_for_revision: allRows.filter(
+        (row) =>
+          row.ledgerView === "returned_for_revision" &&
+          row.availableActions.includes("abandon_application")
+      ),
+      ended: allRows.filter((row) => row.ledgerView === "ended")
+    } satisfies Record<PaymentLedgerView, typeof allRows>;
+    const selectedRows = rowsByView[view];
+    const offset = (page - 1) * pageSize;
+    const formalRows = rowsByView.formal_ledger;
+
+    return {
+      rows: selectedRows.slice(offset, offset + pageSize),
+      view,
+      hasPersistentDraft: false,
+      pagination: {
+        page,
+        pageSize,
+        total: selectedRows.length,
+        totalPages: selectedRows.length === 0 ? 0 : Math.ceil(selectedRows.length / pageSize)
+      },
+      viewCounts: {
+        formal_ledger: rowsByView.formal_ledger.length,
+        my_drafts: 0,
+        returned_for_revision: rowsByView.returned_for_revision.length,
+        ended: rowsByView.ended.length
+      },
+      statistics: {
+        formalRequestedAmountCents: moneyCentsToApi(
+          formalRows.reduce((sum, row) => sum + BigInt(row.requestedAmountCents), 0n)
+        ),
+        formalPaidAmountCents: moneyCentsToApi(
+          formalRows.reduce((sum, row) => sum + BigInt(row.paidAmountCents), 0n)
+        ),
+        pendingApproval: formalRows.filter((row) => row.approvalStatus === "审批中").length,
+        pendingPayment: formalRows.filter((row) => row.paymentStatus === "已批待付").length,
+        paid: formalRows.filter((row) => row.paymentStatus === "已付款").length
       }
     };
   }
@@ -629,7 +718,8 @@ export class PaymentReadService {
     if (
       returnedForRevision &&
       actorUserId &&
-      latestApproval?.applicantUserId === actorUserId
+      latestApproval?.applicantUserId === actorUserId &&
+      payment.updatedAt instanceof Date
     ) {
       availableActions.push(detailAction({
         key: "abandon_application",
@@ -675,6 +765,22 @@ export class PaymentReadService {
       : returnedForRevision
       ? "审批退回待修改，查看审批历史"
       : this.returnReason(payment.status);
+    const blockedReasons = disabledActionReasons(availableActions);
+    if (
+      returnedForRevision &&
+      actorUserId &&
+      latestApproval?.applicantUserId !== actorUserId
+    ) {
+      blockedReasons.push("只有原申请人可以结束退回待修改的付款申请");
+    }
+    if (
+      returnedForRevision &&
+      actorUserId &&
+      latestApproval?.applicantUserId === actorUserId &&
+      !(payment.updatedAt instanceof Date)
+    ) {
+      blockedReasons.push("付款申请版本信息未读取，刷新详情后再试");
+    }
 
     return {
       id: payment.code,
@@ -760,6 +866,8 @@ export class PaymentReadService {
       returnReason,
       primaryAction: primaryActionKey(availableActions),
       disabledReasons: disabledActionReasons(availableActions),
+      blockedReasons,
+      lifecycleUpdatedAt: payment.updatedAt instanceof Date ? payment.updatedAt.toISOString() : null,
       executionCoverages: this.executionCoverages(payment.code, executions, financeRecords, evidenceFiles),
       traceRules: [
         isContractAdvance
@@ -1345,6 +1453,8 @@ export class PaymentReadService {
       nextStep: "出纳付款登记",
       currentOwner: "出纳/财务",
       returnReason: "-",
+      lifecycleUpdatedAt: null,
+      blockedReasons: [],
       primaryAction: null,
       disabledReasons: [],
       traceRules: [
@@ -1632,6 +1742,7 @@ export class PaymentReadService {
       paid: { label: "已通过", tone: "success" },
       completed: { label: "已通过", tone: "success" },
       rejected: { label: "已退回", tone: "danger" },
+      approval_rejected: { label: "已退回", tone: "danger" },
       abandoned: { label: "已结束", tone: "default" },
       returned_for_revision: { label: "退回待修改", tone: "warning" }
     };
@@ -1687,14 +1798,17 @@ export class PaymentReadService {
       partially_paid: "出纳/财务",
       paid: "财务部",
       completed: "财务部",
-      rejected: "项目经理"
+      rejected: "项目经理",
+      approval_rejected: "项目经理"
     };
 
     return labels[status] ?? "财务部";
   }
 
   private returnReason(status: string): string {
-    return status === "rejected" ? "审批退回，查看审批历史" : "-";
+    return ["rejected", "approval_rejected"].includes(status)
+      ? "审批退回，查看审批历史"
+      : "-";
   }
 
   private stalledFor(value: Date): string {
@@ -1790,6 +1904,17 @@ export class PaymentReadService {
     const parsed = typeof rawLimit === "number" ? rawLimit : Number(rawLimit ?? 100);
     if (!Number.isFinite(parsed)) return 100;
     return Math.min(Math.max(Math.trunc(parsed), 1), 200);
+  }
+
+  private positiveInteger(rawValue: string | number | undefined, fallback: number) {
+    const parsed = typeof rawValue === "number" ? rawValue : Number(rawValue ?? fallback);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : fallback;
+  }
+
+  private paymentLedgerView(value: PaymentLedgerView | undefined): PaymentLedgerView {
+    return value && ["formal_ledger", "my_drafts", "returned_for_revision", "ended"].includes(value)
+      ? value
+      : "formal_ledger";
   }
 
   private date(value: Date) {

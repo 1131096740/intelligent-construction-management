@@ -478,4 +478,30 @@ describe("PaymentController authorization wiring", () => {
     expect(projectVisibility.visibleProjectIds).toHaveBeenCalledWith("user-1");
     expect(paymentRead.getDetail).toHaveBeenCalledWith("FK-2026-011", ["project-1"], "user-1");
   });
+
+  it("keeps legacy payment list calls and forwards server ledger paging only when requested", async () => {
+    const paymentRead = {
+      listRecent: jest.fn().mockResolvedValue({ rows: [] }),
+      listLedger: jest.fn().mockResolvedValue({ rows: [] })
+    };
+    const projectVisibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
+    const controller = new PaymentController(paymentRead as never, {} as never, projectVisibility as never);
+
+    await controller.list({ id: "user-1" } as never, "50");
+    expect(paymentRead.listRecent).toHaveBeenCalledWith("50", ["project-1"]);
+    expect(paymentRead.listLedger).not.toHaveBeenCalled();
+
+    await controller.list(
+      { id: "user-1" } as never,
+      undefined,
+      "returned_for_revision",
+      "2",
+      "20"
+    );
+    expect(paymentRead.listLedger).toHaveBeenCalledWith(
+      { view: "returned_for_revision", page: "2", pageSize: "20" },
+      ["project-1"],
+      "user-1"
+    );
+  });
 });

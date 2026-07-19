@@ -180,6 +180,7 @@ describe("PaymentReadService", () => {
             id: "approval-returned",
             businessId: "payment-returned",
             status: "returned_to_applicant",
+            applicantUserId: "applicant-1",
             createdAt: new Date("2026-07-19T09:00:00.000Z")
           }
         ])
@@ -208,6 +209,40 @@ describe("PaymentReadService", () => {
       })
     ]));
     expect(ledger.summary.pendingApproval).toBe(0);
+
+    const returnedPage = await service.listLedger(
+      { view: "returned_for_revision", page: 1, pageSize: 10 },
+      ["project-1"],
+      "applicant-1"
+    );
+    expect(returnedPage).toMatchObject({
+      hasPersistentDraft: false,
+      view: "returned_for_revision",
+      pagination: { page: 1, pageSize: 10, total: 1, totalPages: 1 },
+      viewCounts: {
+        formal_ledger: 0,
+        my_drafts: 0,
+        returned_for_revision: 1,
+        ended: 1
+      },
+      statistics: {
+        formalRequestedAmountCents: "0",
+        formalPaidAmountCents: "0"
+      }
+    });
+    expect(returnedPage.rows[0]).toMatchObject({
+      paymentNo: "FK-RETURNED",
+      lifecycleUpdatedAt: "2026-07-19T10:00:00.000Z",
+      availableActions: ["abandon_application"]
+    });
+
+    const observerPage = await service.listLedger(
+      { view: "returned_for_revision" },
+      ["project-1"],
+      "observer-1"
+    );
+    expect(observerPage.rows).toEqual([]);
+    expect(observerPage.viewCounts.returned_for_revision).toBe(0);
   });
 
   it.each([
@@ -238,7 +273,8 @@ describe("PaymentReadService", () => {
             status: "draft",
             requestedAmountCents: 10_000n,
             approvedAmountCents: null,
-            paidAmountCents: 0n
+            paidAmountCents: 0n,
+            updatedAt: new Date("2026-07-19T10:00:00.000Z")
           })
         },
         settlement: {
@@ -295,7 +331,8 @@ describe("PaymentReadService", () => {
         ledgerView: "returned_for_revision",
         nextStep: "补充付款申请或放弃申请",
         currentOwner: "申请人",
-        returnReason: "审批退回待修改，查看审批历史"
+        returnReason: "审批退回待修改，查看审批历史",
+        lifecycleUpdatedAt: "2026-07-19T10:00:00.000Z"
       });
       expect(detail.meta).toContainEqual(
         expect.objectContaining({ label: "审批状态", value: "退回待修改" })
@@ -315,6 +352,8 @@ describe("PaymentReadService", () => {
     expect(approvalStatusView.call(service, "internal_status").label).toBe(
       "付款审批状态未读取"
     );
+    expect(approvalStatusView.call(service, "approval_rejected").label).toBe("已退回");
+    expect(approvalStatusView.call(service, "rejected").label).toBe("已退回");
   });
 
   it("builds payment ledger rows for contract advance requests without settlement", async () => {

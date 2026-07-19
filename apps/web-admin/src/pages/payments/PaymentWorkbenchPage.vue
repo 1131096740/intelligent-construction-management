@@ -268,7 +268,7 @@
         :disabled="createBusy"
         @click="requestBackToLedger"
       >
-        取消
+        放弃填写
       </t-button>
       <t-button
         theme="primary"
@@ -287,7 +287,7 @@
       confirm-text="放弃并离开"
       confirm-theme="danger"
       @confirm="confirmLeave"
-      @cancel="pendingNavigationPath = ''"
+      @cancel="resolveLeaveDecision(false)"
     />
   </section>
 </template>
@@ -295,8 +295,8 @@
 <script setup lang="ts">
 import type { ContractBusinessOptionReadModel } from "@jiangkong/shared-domain";
 import { MessagePlugin } from "tdesign-vue-next";
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
-import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
+import { computed, onMounted, reactive, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import {
   createPaymentRequest,
   fetchContractPaymentApplication,
@@ -311,6 +311,7 @@ import PaymentConfirmationSummary from "../../components/PaymentConfirmationSumm
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import type { PaymentConfirmationSummaryItem } from "../../components/payment-confirmation-summary.config";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
+import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import {
   buildPaymentCreatePayload,
   findContractOption,
@@ -346,8 +347,8 @@ const contractPaymentPreview = ref<Awaited<ReturnType<typeof fetchContractPaymen
 const previewContractVersionId = ref("");
 const baselineFormSnapshot = ref("");
 const leaveDialogVisible = ref(false);
-const pendingNavigationPath = ref("");
 const allowNavigation = ref(false);
+let resolvePendingLeave: ((decision: boolean) => void) | null = null;
 const createForm = reactive({
   projectId: "",
   contractOptionValue: "",
@@ -503,6 +504,22 @@ const messageTitle = computed(() => {
 const isDirty = computed(() =>
   Boolean(baselineFormSnapshot.value) && formSnapshot() !== baselineFormSnapshot.value
 );
+
+useUnsavedChangesGuard({
+  isDirty: () => isDirty.value && !allowNavigation.value,
+  confirmLeave: () => new Promise<boolean>((resolve) => {
+    resolvePendingLeave?.(false);
+    resolvePendingLeave = resolve;
+    leaveDialogVisible.value = true;
+  })
+});
+
+function resolveLeaveDecision(decision: boolean) {
+  leaveDialogVisible.value = false;
+  const resolve = resolvePendingLeave;
+  resolvePendingLeave = null;
+  resolve?.(decision);
+}
 const submitDisabledReason = computed(() => {
   if (loadingProjects.value || loadingContracts.value || previewBusy.value) {
     return "业务来源仍在加载，请稍候。";
@@ -759,33 +776,12 @@ function requestBackToLedger() {
 }
 
 function confirmLeave() {
-  const path = pendingNavigationPath.value || "/付款管理";
   allowNavigation.value = true;
-  leaveDialogVisible.value = false;
-  pendingNavigationPath.value = "";
-  void router.push(path);
+  resolveLeaveDecision(true);
 }
-
-function handleBeforeUnload(event: BeforeUnloadEvent) {
-  if (!isDirty.value || allowNavigation.value) return;
-  event.preventDefault();
-  event.returnValue = "";
-}
-
-onBeforeRouteLeave((to) => {
-  if (!isDirty.value || allowNavigation.value) return true;
-  pendingNavigationPath.value = to.fullPath;
-  leaveDialogVisible.value = true;
-  return false;
-});
 
 onMounted(() => {
-  window.addEventListener("beforeunload", handleBeforeUnload);
   void loadProjects();
-});
-
-onBeforeUnmount(() => {
-  window.removeEventListener("beforeunload", handleBeforeUnload);
 });
 </script>
 

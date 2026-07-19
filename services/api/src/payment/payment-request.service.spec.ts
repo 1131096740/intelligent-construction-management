@@ -3745,7 +3745,7 @@ describe("PaymentRequestService", () => {
         update: jest.fn().mockResolvedValue({
           id: "payment-1",
           code: "FK-2026-012",
-          status: "rejected",
+          status: "approval_rejected",
           approvedAmountCents: null
         })
       },
@@ -3782,11 +3782,11 @@ describe("PaymentRequestService", () => {
       comment: "付款条件尚未满足"
     });
 
-    expect(rejected.status).toBe("rejected");
+    expect(rejected.status).toBe("approval_rejected");
     expect(tx.paymentRequest.update).toHaveBeenCalledWith({
       where: { id: "payment-1" },
       data: {
-        status: "rejected",
+        status: "approval_rejected",
         approvedAmountCents: null
       }
     });
@@ -8084,7 +8084,14 @@ describe("PaymentRequestService", () => {
     expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
   });
 
-  it.each(["approved_pending_payment", "partially_paid", "paid", "rejected", "withdrawn"])(
+  it.each([
+    "approved_pending_payment",
+    "partially_paid",
+    "paid",
+    "approval_rejected",
+    "rejected",
+    "withdrawn"
+  ])(
     "rejects abandonment from terminal or formal payment status %s",
     async (paymentStatus) => {
       const { tx, service: paymentService, input } = returnedPaymentAbandonmentFixture({ paymentStatus });

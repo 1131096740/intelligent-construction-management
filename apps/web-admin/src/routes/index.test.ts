@@ -10,7 +10,7 @@ import {
   adminNavigationGroups,
   contractMaintenanceRoleKeys,
   contractScenarioAdminRoleKeys,
-  fundsOverviewRoleKeys,
+  projectOperationsRoleKeys,
   historicalTakeoverRoleKeys,
   organizationAdminRoleKeys,
   companyEntityReaderRoleKeys,
@@ -180,7 +180,7 @@ describe("web admin routes", () => {
 
   it("guards project operations as a business module shell", () => {
     expect(childRoute("项目经营")?.meta).toMatchObject({
-      requiredRoleKeys: fundsOverviewRoleKeys
+      requiredRoleKeys: projectOperationsRoleKeys
     });
     expect(String(childRoute("项目经营")?.component)).toContain("ProjectOperatingOverviewPage.vue");
   });

@@ -48,6 +48,7 @@ describe("ProjectExpenseService", () => {
     instanceApplicantUserId = applicantUserId,
     actorUserId = "reviewer-1",
     status = "approval_pending",
+    paidAmountCents = 0n,
     currentNode = { name: "财务部", mode: "any", roleKeys: ["finance_director"] }
   }: {
     actorRoleKeys?: string[];
@@ -55,6 +56,7 @@ describe("ProjectExpenseService", () => {
     instanceApplicantUserId?: string;
     actorUserId?: string;
     status?: string;
+    paidAmountCents?: bigint;
     currentNode?: { name: string; mode: "any"; roleKeys: string[] };
   } = {}) {
     const prisma = {
@@ -69,8 +71,10 @@ describe("ProjectExpenseService", () => {
           reason: "现场费用报销",
           requestedAmountCents: 50_000n,
           approvedAmountCents: null,
+          paidAmountCents,
           applicantUserId,
-          status
+          status,
+          updatedAt: new Date("2026-07-20T08:00:00.000Z")
         })
       },
       approvalInstance: {
@@ -166,6 +170,97 @@ describe("ProjectExpenseService", () => {
         requiresSelfReviewConfirmation: false
       })
     );
+    expect(detail.availableActions).toEqual([
+      expect.objectContaining({
+        key: "withdraw",
+        enabled: true,
+        requiresComment: undefined
+      })
+    ]);
+    expect(detail.blockedReasons).toEqual([]);
+    expect(detail.lifecycleUpdatedAt).toBe("2026-07-20T08:00:00.000Z");
+  });
+
+  it("非申请人不能从详情撤回审批中的项目支出", async () => {
+    const { service } = approvalDetailFixture({
+      actorRoleKeys: ["comprehensive_director"],
+      applicantUserId: "applicant-1",
+      actorUserId: "comprehensive-1"
+    });
+
+    const detail = await service.getApprovalDetail("project-1", "expense-1", "comprehensive-1");
+
+    expect(detail.availableActions).toEqual([]);
+    expect(detail.blockedReasons).toEqual([
+      "只有申请人可以撤回，或由具备作废权限的岗位结束审批中的项目支出申请"
+    ]);
+  });
+
+  it("审批中申请人同时具备作废权限时服务端返回两个独立动作", async () => {
+    const { service } = approvalDetailFixture({
+      actorRoleKeys: ["project_manager"],
+      applicantUserId: "manager-1",
+      instanceApplicantUserId: "manager-1",
+      actorUserId: "manager-1",
+      currentNode: { name: "财务部", mode: "any", roleKeys: ["finance_director"] }
+    });
+
+    const detail = await service.getApprovalDetail("project-1", "expense-1", "manager-1");
+
+    expect(detail.availableActions).toEqual([
+      expect.objectContaining({ key: "withdraw", enabled: true, requiresComment: undefined }),
+      expect.objectContaining({ key: "void", enabled: true, requiresComment: true })
+    ]);
+    expect(detail.blockedReasons).toEqual([]);
+  });
+
+  it("仅具备既有作废权限且已批待付无实付时从详情返回作废动作", async () => {
+    const { service } = approvalDetailFixture({
+      actorRoleKeys: ["project_manager"],
+      applicantUserId: "applicant-1",
+      actorUserId: "manager-1",
+      status: "approved_pending_payment"
+    });
+
+    const detail = await service.getApprovalDetail("project-1", "expense-1", "manager-1");
+
+    expect(detail.availableActions).toEqual([
+      expect.objectContaining({ key: "void", enabled: true, requiresComment: true })
+    ]);
+    expect(detail.blockedReasons).toEqual([]);
+  });
+
+  it.each([
+    ["partially_paid", 1n],
+    ["paid", 50_000n]
+  ] as const)("项目支出 %s 有实付时详情不返回删除或普通作废", async (status, paidAmountCents) => {
+    const { service } = approvalDetailFixture({
+      actorRoleKeys: ["project_manager"],
+      applicantUserId: "applicant-1",
+      actorUserId: "manager-1",
+      status,
+      paidAmountCents
+    });
+
+    const detail = await service.getApprovalDetail("project-1", "expense-1", "manager-1");
+
+    expect(detail.availableActions).toEqual([]);
+    expect(detail.blockedReasons).toEqual(["已有实付记录，不能删除或普通作废"]);
+  });
+
+  it.each(["withdrawn", "rejected", "voided"])("项目支出结束态 %s 详情只读", async (status) => {
+    const { service } = approvalDetailFixture({
+      actorRoleKeys: ["project_manager"],
+      applicantUserId: "applicant-1",
+      actorUserId: "manager-1",
+      status
+    });
+
+    const detail = await service.getApprovalDetail("project-1", "expense-1", "manager-1");
+
+    expect(detail.ledgerView).toBe("ended");
+    expect(detail.availableActions).toEqual([]);
+    expect(detail.blockedReasons).toEqual(["项目支出申请已结束，只能查看历史记录"]);
   });
 
   it("领导申请人在实际领导终审节点启用自审二次确认", async () => {
@@ -345,6 +440,7 @@ describe("ProjectExpenseService", () => {
             paymentMethod: "cash",
             counterpartyName: null,
             attachmentFileId: null,
+            applicantUserId: "manager-1",
             status: "approval_pending",
             createdAt,
             updatedAt
@@ -404,6 +500,106 @@ describe("ProjectExpenseService", () => {
         templateKey: "approval_form"
       },
       select: { businessId: true }
+    });
+
+    const paged = await service.list("project-1", "manager-1", {
+      view: "formal_ledger",
+      page: 1,
+      pageSize: 1
+    });
+    expect(paged).toMatchObject({
+      hasPersistentDraft: false,
+      localUnsavedAction: "discard_local",
+      pagination: { page: 1, pageSize: 1, total: 2, totalPages: 2 },
+      viewCounts: {
+        formal_ledger: 2,
+        my_drafts: 0,
+        returned_for_revision: 0,
+        ended: 0
+      },
+      statistics: {
+        formalTotal: 2,
+        pendingApproval: 1,
+        pendingPayment: 1,
+        paid: 0,
+        formalRequestedAmountCents: "50000",
+        formalPaidAmountCents: "10000"
+      }
+    });
+    expect(paged.rows).toHaveLength(1);
+    const fullPaged = await service.list("project-1", "manager-1", {
+      view: "formal_ledger",
+      page: 1,
+      pageSize: 10
+    });
+    expect(fullPaged.rows[1]).toMatchObject({
+      id: "expense-2",
+      availableActions: ["withdraw", "void"]
+    });
+  });
+
+  it("classifies only withdrawn, rejected and voided expenses as ended without draft deletion actions", async () => {
+    const now = new Date("2026-07-20T00:00:00.000Z");
+    const row = (id: string, status: string, paidAmountCents = 0n) => ({
+      id,
+      code: `ZC-${id}`,
+      expenseType: "reimbursement",
+      expenseSubtype: "reimbursement",
+      paymentSubject: id,
+      reason: id,
+      requestedAmountCents: 10_000n,
+      approvedAmountCents: status === "approval_pending" ? null : 10_000n,
+      paidAmountCents,
+      paymentMethod: "bank_transfer",
+      counterpartyName: null,
+      attachmentFileId: null,
+      purchaseExecutedAt: null,
+      receiptConfirmedAt: null,
+      applicantUserId: "applicant-1",
+      status,
+      createdAt: now,
+      updatedAt: now
+    });
+    const prisma = {
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      projectExpenseRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          row("withdrawn", "withdrawn"),
+          row("rejected", "rejected"),
+          row("voided", "voided"),
+          row("paid", "paid", 10_000n)
+        ])
+      },
+      pdfDocument: { findMany: jest.fn().mockResolvedValue([]) },
+      ...roleTables("project_manager")
+    };
+    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
+
+    const ended = await service.list("project-1", "applicant-1", { view: "ended" });
+
+    expect(ended.viewCounts).toEqual({
+      formal_ledger: 1,
+      my_drafts: 0,
+      returned_for_revision: 0,
+      ended: 3
+    });
+    expect(ended.rows.map((item) => item.id)).toEqual(["withdrawn", "rejected", "voided"]);
+    expect(ended.rows.every((item) => item.availableActions.length === 0)).toBe(true);
+    expect(ended.statistics).toMatchObject({
+      formalTotal: 1,
+      pendingApproval: 0,
+      pendingPayment: 0,
+      paid: 1,
+      formalRequestedAmountCents: "10000",
+      formalPaidAmountCents: "10000"
+    });
+
+    const formal = await service.list("project-1", "applicant-1", { view: "formal_ledger" });
+    expect(formal.rows[0]).toMatchObject({
+      id: "paid",
+      hasPersistentDraft: false,
+      availableActions: [],
+      blockedReasons: ["已有实付记录，不能删除或普通作废"]
     });
   });
 

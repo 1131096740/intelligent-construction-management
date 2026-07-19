@@ -21,6 +21,32 @@
       </template>
     </BusinessPageHeader>
 
+    <t-tabs v-model="activeView">
+      <t-tab-panel
+        value="formal_ledger"
+        :label="`正式台账 ${lifecycleSummary.formal_ledger}`"
+      />
+      <t-tab-panel
+        value="my_drafts"
+        :label="`我的草稿 ${lifecycleSummary.my_drafts}`"
+      />
+      <t-tab-panel
+        value="returned_for_revision"
+        :label="`退回待修改 ${lifecycleSummary.returned_for_revision}`"
+      />
+      <t-tab-panel
+        value="ended"
+        :label="`已结束 ${lifecycleSummary.ended}`"
+      />
+    </t-tabs>
+
+    <t-alert
+      v-if="activeView === 'my_drafts'"
+      theme="info"
+      title="付款申请不保存服务端草稿"
+      message="付款工作台中的内容仅在当前页面填写；提交成功前不会形成付款台账记录。"
+    />
+
     <BusinessStatusSummary
       :items="summaryValues"
       appearance="metrics"
@@ -53,7 +79,7 @@
 
     <BusinessTableToolbar
       title="付款台账筛选"
-      description="筛选作用于当前已加载记录；列设置按当前用户保存在本机。"
+      description="筛选作用于当前页记录；翻页与各视图数量由服务端返回。"
       appearance="plain"
     >
       <template #actions>
@@ -170,8 +196,16 @@
         </template>
       </t-table>
 
+      <t-pagination
+        v-if="!errorMessage && lifecycleMeta.total > lifecycleMeta.pageSize"
+        :current="lifecycleMeta.page"
+        :page-size="lifecycleMeta.pageSize"
+        :total="lifecycleMeta.total"
+        @current-change="changeLifecyclePage"
+      />
+
       <EmptyBusinessState
-        v-else-if="!errorMessage"
+        v-if="!errorMessage && !ledgerLoading && !filteredPaymentLedgerRows.length"
         title="当前条件下暂无付款记录"
         description="可以调整筛选条件；如需发起新申请，请从付款工作台选择有效业务来源。"
         :actions="[{ label: '新建付款申请', to: '/付款工作台' }]"
@@ -190,9 +224,13 @@
 </template>
 
 <script setup lang="ts">
+import type { DraftLedgerView } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { fetchPaymentLedger } from "../../api/core-flow-read.api";
+import {
+  fetchPaymentLifecycleLedger,
+  type PaymentLifecycleLedgerRow
+} from "../../api/core-flow-read.api";
 import {
   normalizeVisibleColumnKeys,
   readPersonalTablePreferences,
@@ -204,6 +242,7 @@ import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
 import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
 import BusinessTableToolbar from "../../components/BusinessTableToolbar.vue";
 import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
+import { centsTextToYuanText } from "../../lib/money";
 import type {
   PaymentFilterKey,
   PaymentLedgerRow,
@@ -224,28 +263,47 @@ const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
 const errorMessage = ref("");
-const paymentLedgerRows = ref<PaymentLedgerRow[]>([]);
+const paymentLedgerRows = ref<(PaymentLedgerRow & PaymentLifecycleLedgerRow)[]>([]);
 const paymentFilters = reactive(emptyPaymentLedgerFilters());
 const ledgerLoading = ref(false);
 const showColumnSettings = ref(false);
 const showPaymentRules = ref(false);
+const lifecycleViews = new Set<DraftLedgerView>([
+  "formal_ledger",
+  "my_drafts",
+  "returned_for_revision",
+  "ended"
+]);
+function routeLifecycleView(value: unknown): DraftLedgerView {
+  return typeof value === "string" && lifecycleViews.has(value as DraftLedgerView)
+    ? value as DraftLedgerView
+    : "formal_ledger";
+}
+const activeView = ref<DraftLedgerView>(routeLifecycleView(route.query.view));
 const configurablePaymentColumnKeys = paymentLedgerColumns
   .map((column) => String(column.colKey))
   .filter((key) => key !== "operation");
 const visiblePaymentColumnKeys = ref<string[]>([...configurablePaymentColumnKeys]);
 const ledgerSummary = ref({
-  total: 0,
+  formalRequestedAmountCents: "0",
+  formalPaidAmountCents: "0",
   pendingApproval: 0,
-  orSign: 0,
   pendingPayment: 0,
   paid: 0
 });
+const lifecycleSummary = ref({
+  formal_ledger: 0,
+  my_drafts: 0,
+  returned_for_revision: 0,
+  ended: 0
+});
+const lifecycleMeta = ref({ page: 1, pageSize: 20, total: 0, totalPages: 0 });
 
 const summaryValues = computed(() => {
   const values = [
-    ledgerSummary.value.total,
+    `¥${centsTextToYuanText(ledgerSummary.value.formalRequestedAmountCents)}`,
+    `¥${centsTextToYuanText(ledgerSummary.value.formalPaidAmountCents)}`,
     ledgerSummary.value.pendingApproval,
-    ledgerSummary.value.orSign,
     ledgerSummary.value.pendingPayment,
     ledgerSummary.value.paid
   ];
@@ -342,9 +400,15 @@ async function loadPaymentLedger() {
   ledgerLoading.value = true;
   errorMessage.value = "";
   try {
-    const result = await fetchPaymentLedger();
+    const result = await fetchPaymentLifecycleLedger(
+      activeView.value,
+      lifecycleMeta.value.page,
+      lifecycleMeta.value.pageSize
+    );
     paymentLedgerRows.value = result.rows;
-    ledgerSummary.value = result.summary;
+    ledgerSummary.value = result.statistics;
+    lifecycleSummary.value = result.viewCounts;
+    lifecycleMeta.value = result.pagination;
   } catch (error) {
     const reason = error instanceof Error ? error.message : "未知错误";
     errorMessage.value = `付款记录读取失败：${reason}。这不代表当前没有付款记录；本页统计与台账暂不可用于判断，请检查网络与权限后重试。`;
@@ -353,14 +417,34 @@ async function loadPaymentLedger() {
   }
 }
 
+function changeLifecyclePage(page: number) {
+  lifecycleMeta.value.page = page;
+  void loadPaymentLedger();
+}
+
 function statusTagTheme(tone: PaymentTone) {
   return tone;
 }
 
 watch(() => route.query.project, applyRouteProjectFilter, { immediate: true });
 watch(paymentPreferenceStorageKey, loadPaymentColumnPreferences, { immediate: true });
+watch(
+  () => route.query.view,
+  (value) => {
+    const next = routeLifecycleView(value);
+    if (next !== activeView.value) activeView.value = next;
+  }
+);
+watch(activeView, (view) => {
+  lifecycleMeta.value.page = 1;
+  if (route.query.view !== view) void router.replace({ query: { ...route.query, view } });
+  void loadPaymentLedger();
+});
 
 onMounted(() => {
+  if (route.query.view !== activeView.value) {
+    void router.replace({ query: { ...route.query, view: activeView.value } });
+  }
   void loadPaymentLedger();
 });
 </script>

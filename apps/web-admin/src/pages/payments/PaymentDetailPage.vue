@@ -177,7 +177,14 @@
             </div>
           </header>
 
-          <BusinessActionPanel :actions="paymentDetail.availableActions" />
+          <BusinessActionPanel :actions="paymentOperationalActions" />
+
+          <BusinessDraftAction
+            :actions="paymentDetail.availableActions"
+            :blocked-reasons="paymentDetail.blockedReasons"
+            :subject="paymentDraftActionSubject"
+            :execute="executePaymentDraftAction"
+          />
 
           <t-alert
             v-if="paymentDetail.disabledReasons.length"
@@ -655,12 +662,13 @@
 </template>
 
 <script setup lang="ts">
-import type { CoreFlowTone, PaymentDetailReadModel } from "@jiangkong/shared-domain";
+import type { CoreFlowTone } from "@jiangkong/shared-domain";
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   createPrivateFileDownloadTicket,
+  abandonPaymentRequest,
   delegatePaymentApproval,
   downloadApprovalForm as downloadApprovalFormRequest,
   fetchApprovalDelegationUserOptions,
@@ -673,10 +681,14 @@ import {
   reviewPaymentApproval,
   transferPaymentApproval,
   uploadPrivateFile,
-  withdrawPaymentApproval
+  withdrawPaymentApproval,
+  type PaymentLifecycleDetailReadModel
 } from "../../api/core-flow-read.api";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
+import BusinessDraftAction, {
+  type BusinessDraftActionRequest
+} from "../../components/BusinessDraftAction.vue";
 import BusinessDetailHeader from "../../components/BusinessDetailHeader.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
@@ -730,7 +742,7 @@ interface SensitiveActionState {
 
 const route = useRoute();
 const router = useRouter();
-const paymentDetail = ref<PaymentDetailReadModel | null>(null);
+const paymentDetail = ref<PaymentLifecycleDetailReadModel | null>(null);
 const detailLoading = ref(false);
 const paymentDetailLoadError = ref("");
 const activeTab = ref("overview");
@@ -866,11 +878,22 @@ const paymentPdfArchiveFileSummary = computed(() =>
 const paymentActionByKey = computed(
   () => new Map((paymentDetail.value?.availableActions ?? []).map((action) => [action.key, action]))
 );
+const paymentOperationalActions = computed(() =>
+  (paymentDetail.value?.availableActions ?? []).filter(
+    (action) => action.key !== "abandon_application"
+  )
+);
+const paymentDraftActionSubject = computed(() => ({
+  businessCode: paymentDetail.value?.id ?? "—",
+  name: paymentDetail.value?.title ?? "付款申请",
+  lastSavedAt: paymentDetail.value?.lifecycleUpdatedAt ?? "更新时间未读取",
+  impactScope: "结束当前退回待修改申请；审批、附件与操作历史继续保留"
+}));
 const paymentHeaderPrimaryAction = computed(() => {
   const primaryAction = paymentDetail.value?.primaryAction;
   if (!primaryAction) return null;
   const action = paymentActionByKey.value.get(primaryAction);
-  return action?.enabled ? action : null;
+  return action?.enabled && action.key !== "abandon_application" ? action : null;
 });
 const paymentHeaderPrimaryActionLabel = computed(() => {
   if (!paymentHeaderPrimaryAction.value) return undefined;
@@ -903,6 +926,29 @@ const actionFeedbackState = computed<"success" | "error">(() =>
 
 function isPaymentActionEnabled(key: string) {
   return paymentActionByKey.value.get(key)?.enabled ?? false;
+}
+
+async function executePaymentDraftAction(request: BusinessDraftActionRequest) {
+  if (request.action !== "abandon_application") {
+    throw new Error("当前付款申请不支持该结束操作，请刷新后重试");
+  }
+  const detail = paymentDetail.value;
+  if (!detail?.lifecycleUpdatedAt) {
+    throw new Error("付款申请版本信息未读取，请刷新详情后重试");
+  }
+  const action = detail.availableActions.find(
+    (item) => item.key === request.action && item.enabled
+  );
+  if (!action) throw new Error("当前放弃申请操作已不可用，请刷新后重试");
+  const reason = request.reason.trim();
+  if (!reason) throw new Error("请填写放弃申请原因");
+  const succeeded = await runPaymentAction("abandonApplication", () =>
+    abandonPaymentRequest(detail.id, {
+      expectedUpdatedAt: detail.lifecycleUpdatedAt as string,
+      reason
+    })
+  );
+  if (!succeeded) throw new Error(actionMessage.value || "放弃付款申请失败，请重试");
 }
 
 function buttonTheme(key: string) {

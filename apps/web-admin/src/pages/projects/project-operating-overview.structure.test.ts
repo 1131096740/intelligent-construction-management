@@ -11,13 +11,16 @@ describe("project operating overview structure", () => {
   it("keeps the default page on a read-only project overview and separates funds handling", () => {
     expect(source).toContain('label="项目概览"');
     expect(source).toContain('label="资金办理"');
-    expect(source).toContain('v-if="canUseFundsOperations && overview"');
+    expect(source).toContain("canReadProjectExpenseLedger || canCreateProjectExpense");
     expect(source).toContain('v-model="activeTab"');
   });
 
-  it("loads write-only supporting data only for the original funds operation roles", () => {
-    expect(source).toContain("canUseFundsOperations.value ? fetchProjectExpenseRequests(projectId)");
+  it("separates overview, expense-ledger and expense-create capabilities", () => {
+    expect(source).toContain("canReadProjectOverview.value\n        ? fetchProjectOperatingOverview(projectId)");
+    expect(source).toContain("canReadProjectExpenseLedger.value\n        ? fetchProjectExpenseRequests(projectId");
     expect(source).toContain("canUseFundsOperations.value ? fetchPaymentContractOptions(projectId)");
+    expect(source).toContain("const canCreateProjectExpense = computed");
+    expect(source).toContain('v-if="canCreateProjectExpense"');
     expect(source).toContain("auth.user?.globalRoleKeys.some");
   });
 
@@ -32,5 +35,46 @@ describe("project operating overview structure", () => {
     expect(source).toContain("visibleExpenseTypeOptions");
     expect(source).toContain('option.value !== "spot_purchase"');
     expect(source).toContain("spotCapability.enabled");
+  });
+
+  it("treats an unsubmitted expense form as local state and guards discarding it", () => {
+    expect(source).toContain("useUnsavedChangesGuard");
+    expect(source).toContain("expenseFormDirty");
+    expect(source).toContain("放弃填写");
+    expect(source).toContain("<SensitiveActionDialog");
+    expect(source).toContain("不会创建、删除或修改任何后端业务记录");
+    expect(source).not.toContain("deleteProjectExpense");
+  });
+
+  it("guards project and tab switches before replacing an unfinished expense form", () => {
+    expect(source).toContain("const previousProjectId = loadedProjectId.value");
+    expect(source).toContain("selectedProjectId.value = previousProjectId");
+    expect(source).toContain("if (projectSwitching.value)");
+    expect(source).toContain("projectSwitching.value = true");
+    expect(source).toContain("await expenseLeaveGuard.requestClose()");
+    expect(source).toContain("if (!confirmed) return");
+    expect(source).toContain("async function handleOperatingTabChange");
+    expect(source).toContain('@change="handleOperatingTabChange"');
+  });
+
+  it("never lets capability refresh silently clear a dirty legacy purchase form", () => {
+    expect(source).toContain('expenseForm.value.expenseType === "spot_purchase" &&');
+    expect(source).toContain("!expenseFormDirty.value");
+    expect(source).toContain('expenseForm.value = createProjectExpenseForm("sporadic_payment")');
+    expect(source).toContain("syncExpenseFormBaseline()");
+  });
+
+  it("separates formal and ended expense records without inventing a persisted draft view", () => {
+    expect(source).toContain('value="formal_ledger"');
+    expect(source).toContain('value="ended"');
+    expect(source).toContain("项目支出提交即进入审批");
+    expect(source).toContain("fetchProjectExpenseRequests(projectId, {");
+    expect(source).toContain("<t-pagination");
+    expect(source).toContain('@current-change="changeExpenseLedgerPage"');
+    expect(source).toContain("projectExpenses.value?.statistics");
+    expect(source).toContain("正式支出单");
+    expect(source).toContain("['approval_pending', 'approved_pending_payment'].includes");
+    expect(source).not.toContain('value="my_drafts"');
+    expect(source).not.toContain('value="returned_for_revision"');
   });
 });

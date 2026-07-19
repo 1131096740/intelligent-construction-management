@@ -2431,7 +2431,7 @@ export class PaymentRequestService {
         const rejected = await tx.paymentRequest.update({
           where: { id: payment.id },
           data: {
-            status: "rejected",
+            status: "approval_rejected",
             approvedAmountCents: null
           }
         });
@@ -2464,7 +2464,7 @@ export class PaymentRequestService {
           metadata: {
             code: payment.code,
             fromStatus: payment.status,
-            toStatus: "rejected",
+            toStatus: "approval_rejected",
             nodeName: currentNode.name,
             approvedRoleKey,
             ...selfReview.metadata

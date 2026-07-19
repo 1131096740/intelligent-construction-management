@@ -443,6 +443,25 @@ describe("ProjectExpenseController authorization wiring", () => {
     expect(expenses.list).toHaveBeenCalledWith("project-1", "user-1");
   });
 
+  it("forwards project expense ledger paging only when requested", async () => {
+    const expenses = { list: jest.fn() };
+    const controller = new ProjectExpenseController(expenses as never);
+
+    await controller.list(
+      "project-1",
+      { id: "user-1" } as never,
+      "ended",
+      "2",
+      "20"
+    );
+
+    expect(expenses.list).toHaveBeenCalledWith("project-1", "user-1", {
+      view: "ended",
+      page: "2",
+      pageSize: "20"
+    });
+  });
+
   it("forwards create requests with the authenticated user id", async () => {
     const expenses = { create: jest.fn() };
     const controller = new ProjectExpenseController(expenses as never);

@@ -5,6 +5,8 @@ import type {
   DetailActionReadModel,
   DraftLedgerView,
   LifecycleLedgerPage,
+  LifecycleLedgerPageMeta,
+  LifecycleLedgerViewCount,
   PaymentDetailReadModel,
   ProjectExpenseApprovalDetailReadModel,
   SettlementDetailReadModel
@@ -133,8 +135,15 @@ export function fetchSettlementDetail(settlementId: string) {
 }
 
 export function fetchPaymentDetail(paymentId: string) {
-  return readJson<PaymentDetailReadModel>(`/payments/${paymentId}`);
+  return readJson<PaymentLifecycleDetailReadModel>(`/payments/${encodeURIComponent(paymentId)}`);
 }
+
+export type PaymentLifecycleDetailReadModel = PaymentDetailReadModel & {
+  lifecycleKind: "approval_draft" | "formal_record";
+  ledgerView: DraftLedgerView;
+  lifecycleUpdatedAt: string | null;
+  blockedReasons: string[];
+};
 
 export function fetchContractPaymentApplication(contractVersionId: string) {
   const encodedContractVersionId = encodeURIComponent(contractVersionId);
@@ -1166,6 +1175,10 @@ export interface ProjectExpenseRequestListReadModel {
     status: string;
     createdAt: string;
     updatedAt: string;
+    lifecycleUpdatedAt?: string | null;
+    hasPersistentDraft?: false;
+    availableActions?: string[];
+    blockedReasons?: string[];
   }>;
   summary: {
     total: number;
@@ -1175,6 +1188,18 @@ export interface ProjectExpenseRequestListReadModel {
     paymentBlocked: number;
     totalRequestedCents: string;
     totalPaidCents: string;
+  };
+  view?: DraftLedgerView;
+  hasPersistentDraft?: false;
+  pagination?: LifecycleLedgerPageMeta;
+  viewCounts?: LifecycleLedgerViewCount;
+  statistics?: {
+    formalTotal: number;
+    pendingApproval: number;
+    pendingPayment: number;
+    paid: number;
+    formalRequestedAmountCents: string;
+    formalPaidAmountCents: string;
   };
 }
 
@@ -1260,8 +1285,21 @@ export function fetchProjectOperatingOverview(projectId: string) {
   return readJson<ProjectOperatingOverviewReadModel>(`/projects/${projectId}/operating-funds-overview`);
 }
 
-export function fetchProjectExpenseRequests(projectId: string) {
-  return readJson<ProjectExpenseRequestListReadModel>(`/projects/${projectId}/expense-requests`);
+export function fetchProjectExpenseRequests(
+  projectId: string,
+  query?: { view: DraftLedgerView; page: number; pageSize: number }
+) {
+  const encodedProjectId = encodeURIComponent(projectId);
+  const suffix = query
+    ? `?${new URLSearchParams({
+        view: query.view,
+        page: String(query.page),
+        pageSize: String(query.pageSize)
+      }).toString()}`
+    : "";
+  return readJson<ProjectExpenseRequestListReadModel>(
+    `/projects/${encodedProjectId}/expense-requests${suffix}`
+  );
 }
 
 export function recordProjectReceipt(projectId: string, body: RecordProjectReceiptPayload) {
@@ -1335,10 +1373,18 @@ export function fetchProjectExpenseApprovalDetail(
   projectId: string,
   expenseRequestId: string
 ) {
-  return readJson<ProjectExpenseApprovalDetailReadModel>(
-    `/projects/${projectId}/expense-requests/${expenseRequestId}/approval-detail`
+  return readJson<ProjectExpenseApprovalLifecycleDetailReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/expense-requests/${encodeURIComponent(expenseRequestId)}/approval-detail`
   );
 }
+
+export type ProjectExpenseApprovalLifecycleDetailReadModel =
+  ProjectExpenseApprovalDetailReadModel & {
+    lifecycleUpdatedAt: string | null;
+    hasPersistentDraft: false;
+    availableActions: DetailActionReadModel[];
+    blockedReasons: string[];
+  };
 
 export function reviewProjectExpenseApproval(
   projectId: string,
@@ -1517,6 +1563,44 @@ export function downloadSettlementLedgerExport() {
 
 export function fetchPaymentLedger() {
   return readJson<PaymentLedgerListReadModel>("/payments");
+}
+
+export type PaymentLifecycleLedgerRow = PaymentLedgerListReadModel["rows"][number] & {
+  lifecycleKind: "approval_draft" | "formal_record";
+  ledgerView: DraftLedgerView;
+  lifecycleUpdatedAt: string | null;
+  requestedAmountCents: string;
+  paidAmountCents: string;
+  availableActions: string[];
+  blockedReasons: string[];
+};
+
+export interface PaymentLifecycleLedgerPage {
+  rows: PaymentLifecycleLedgerRow[];
+  view: DraftLedgerView;
+  hasPersistentDraft: false;
+  pagination: LifecycleLedgerPageMeta;
+  viewCounts: LifecycleLedgerViewCount;
+  statistics: {
+    formalRequestedAmountCents: string;
+    formalPaidAmountCents: string;
+    pendingApproval: number;
+    pendingPayment: number;
+    paid: number;
+  };
+}
+
+export function fetchPaymentLifecycleLedger(
+  view: DraftLedgerView,
+  page: number,
+  pageSize: number
+) {
+  const query = new URLSearchParams({
+    view,
+    page: String(page),
+    pageSize: String(pageSize)
+  });
+  return readJson<PaymentLifecycleLedgerPage>(`/payments?${query.toString()}`);
 }
 
 export function fetchAuditLogs() {
@@ -2005,6 +2089,16 @@ export function reviewPaymentApproval(paymentId: string, body: ReviewPaymentAppr
 
 export function withdrawPaymentApproval(paymentId: string) {
   return postJson<unknown>(`/payments/${paymentId}/approval-withdrawal`);
+}
+
+export function abandonPaymentRequest(
+  paymentId: string,
+  body: { expectedUpdatedAt: string; reason: string }
+) {
+  return postJson<unknown>(
+    `/payments/${encodeURIComponent(paymentId)}/abandonment`,
+    body
+  );
 }
 
 export function remindPaymentApproval(paymentId: string) {

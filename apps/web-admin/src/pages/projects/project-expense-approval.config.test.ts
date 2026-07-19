@@ -1,9 +1,16 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import {
   canBeginProjectExpenseReview,
   projectExpenseApprovedAmountCents,
   submitConfirmedProjectExpenseReview
 } from "./project-expense-approval.config";
+
+const detailPageSource = readFileSync(
+  fileURLToPath(new URL("./ProjectExpenseApprovalDetailPage.vue", import.meta.url)),
+  "utf8"
+);
 
 describe("project expense approval interaction", () => {
   it("does not submit when the user cancels the sensitive confirmation", async () => {
@@ -51,4 +58,14 @@ describe("project expense approval interaction", () => {
       );
     }
   );
+
+  it("renders only server-projected withdrawal and void actions through the shared sensitive action", () => {
+    expect(detailPageSource).toContain("<BusinessDraftAction");
+    expect(detailPageSource).toContain(':actions="detail.availableActions"');
+    expect(detailPageSource).toContain(':blocked-reasons="detail.blockedReasons"');
+    expect(detailPageSource).toContain("withdrawProjectExpenseApproval");
+    expect(detailPageSource).toContain("voidProjectExpenseRequest");
+    expect(detailPageSource).not.toContain("canWithdrawProjectExpense");
+    expect(detailPageSource).not.toContain("canVoidProjectExpense");
+  });
 });

@@ -38,8 +38,18 @@ export class PaymentController {
 
   @Get()
   @RequirePositions(...LEDGER_READ_POSITION_KEYS)
-  async list(@CurrentUser() user: AuthenticatedUser, @Query("limit") limit?: string) {
-    return this.paymentRead.listRecent(limit, await this.projectVisibility.visibleProjectIds(user.id));
+  async list(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("limit") limit?: string,
+    @Query("view") view?: "formal_ledger" | "my_drafts" | "returned_for_revision" | "ended",
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string
+  ) {
+    const visibleProjectIds = await this.projectVisibility.visibleProjectIds(user.id);
+    if (view !== undefined || page !== undefined || pageSize !== undefined) {
+      return this.paymentRead.listLedger({ view, page, pageSize }, visibleProjectIds, user.id);
+    }
+    return this.paymentRead.listRecent(limit, visibleProjectIds);
   }
 
   @Post(":paymentId/approval")
