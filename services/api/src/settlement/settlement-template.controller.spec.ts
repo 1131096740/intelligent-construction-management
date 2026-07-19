@@ -5,6 +5,7 @@ import {
   CreateSettlementTemplateDto,
   UpdateSettlementTemplateVersionDto
 } from "./dto/settlement-template.dto";
+import { DiscardSettlementTemplateVersionDto } from "./dto/discard-settlement-template-version.dto";
 import {
   SettlementTemplateGovernanceController,
   SettlementTemplateRecommendationController
@@ -25,8 +26,20 @@ describe("Settlement template controllers", () => {
       SettlementTemplateGovernanceController.prototype,
       "update"
     ) as unknown[];
+    const discardTypes = Reflect.getMetadata(
+      "design:paramtypes",
+      SettlementTemplateGovernanceController.prototype,
+      "discard"
+    ) as unknown[];
     expect(createTypes[0]).toBe(CreateSettlementTemplateDto);
     expect(updateTypes[1]).toBe(UpdateSettlementTemplateVersionDto);
+    expect(discardTypes[1]).toBe(DiscardSettlementTemplateVersionDto);
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_POSITIONS_KEY,
+        SettlementTemplateGovernanceController.prototype.discard
+      )
+    ).toEqual(["contract_director"]);
   });
 
   it("protects recommendation reads with settlement.create and project route binding", async () => {

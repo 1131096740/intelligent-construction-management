@@ -636,10 +636,12 @@ describe("LayoutTemplateService", () => {
       },
       contractLayoutTemplateVersion: {
         findMany: jest.fn().mockResolvedValue([
-          { id: "version-2", versionNo: 2, draftRevision: 3 },
-          { id: "version-1", versionNo: 1, draftRevision: 1 }
+          { id: "version-2", versionNo: 2, status: "draft", draftRevision: 3 },
+          { id: "version-1", versionNo: 1, status: "published", draftRevision: 1 }
         ])
       },
+      contractVersion: { findFirst: jest.fn().mockResolvedValue(null) },
+      contractGeneratedDocument: { findFirst: jest.fn().mockResolvedValue(null) },
       contractLayoutPreviewJob: {
         findMany: jest.fn().mockResolvedValue([
           { id: "job-2", layoutTemplateVersionId: "version-2", sourceRevision: 3 }
@@ -651,15 +653,22 @@ describe("LayoutTemplateService", () => {
     } as unknown as PrismaService;
     const service = new LayoutTemplateService(prisma, audit as never, files as never);
 
-    await expect(service.getLayoutTemplate("template-1", "staff-1")).resolves.toEqual({
+    const result = await service.getLayoutTemplate("template-1", "staff-1");
+    expect(result).toEqual({
       template: { id: "template-1", name: "采购合同" },
       versions: [
         expect.objectContaining({ id: "version-2", latestPreview: expect.objectContaining({ id: "job-2" }) }),
         expect.objectContaining({ id: "version-1", latestPreview: null })
       ]
     });
+    expect(result.versions[0]?.availableActions).toContainEqual(
+      expect.objectContaining({ key: "discard_version", enabled: true })
+    );
+    expect(result.versions[1]?.availableActions).toContainEqual(
+      expect.objectContaining({ key: "discard_version", enabled: false })
+    );
     expect(tx.contractLayoutTemplateVersion.findMany).toHaveBeenCalledWith({
-      where: { layoutTemplateId: "template-1" },
+      where: { layoutTemplateId: "template-1", status: { not: "discarded" } },
       orderBy: { versionNo: "desc" }
     });
   });
@@ -744,6 +753,77 @@ describe("LayoutTemplateService", () => {
         placeholderSchema: { bills: [{ key: "materials" }] }
       })
     ).rejects.toThrow("版式草稿已被更新，请刷新后重试");
+    expect(tx.contractLayoutPreviewJob.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("discards an unreferenced layout draft and stales preview bindings", async () => {
+    const tx = {
+      ...roleTx("contract_staff"),
+      $queryRaw: jest.fn().mockResolvedValue([{
+        id: "version-1",
+        layoutTemplateId: "template-1",
+        status: "draft",
+        draftRevision: 2,
+        submittedByUserId: null,
+        publishedAt: null,
+        stoppedAt: null,
+        revokedAt: null,
+        discardedAt: null
+      }]),
+      contractVersion: { findFirst: jest.fn().mockResolvedValue(null) },
+      contractGeneratedDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      contractLayoutTemplateVersion: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      contractLayoutPreviewJob: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const service = new LayoutTemplateService(prisma, audit as never, files as never);
+
+    await expect(service.discardVersion("version-1", "staff-1", "重复版式", 2)).resolves.toMatchObject({
+      id: "version-1",
+      status: "discarded"
+    });
+    expect(tx.contractLayoutPreviewJob.updateMany).toHaveBeenCalledWith({
+      where: {
+        layoutTemplateVersionId: "version-1",
+        status: { in: ["queued", "processing", "succeeded"] }
+      },
+      data: expect.objectContaining({ status: "stale", previewPdfFileId: null })
+    });
+    expect(audit.record).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects stale layout discard before checking references or invalidating previews", async () => {
+    const tx = {
+      ...roleTx("contract_staff"),
+      $queryRaw: jest.fn().mockResolvedValue([{
+        id: "version-1",
+        layoutTemplateId: "template-1",
+        status: "draft",
+        draftRevision: 3,
+        submittedByUserId: null,
+        publishedAt: null,
+        stoppedAt: null,
+        revokedAt: null,
+        discardedAt: null
+      }]),
+      contractVersion: { findFirst: jest.fn() },
+      contractGeneratedDocument: { findFirst: jest.fn() },
+      contractLayoutTemplateVersion: { updateMany: jest.fn() },
+      contractLayoutPreviewJob: { updateMany: jest.fn() }
+    };
+    const service = new LayoutTemplateService(
+      { $transaction: jest.fn(async (callback) => callback(tx)) } as never,
+      audit as never,
+      files as never
+    );
+
+    await expect(service.discardVersion("version-1", "staff-1", "重复版式", 2))
+      .rejects.toMatchObject({ status: 409 });
+    expect(tx.contractVersion.findFirst).not.toHaveBeenCalled();
+    expect(tx.contractGeneratedDocument.findFirst).not.toHaveBeenCalled();
+    expect(tx.contractLayoutTemplateVersion.updateMany).not.toHaveBeenCalled();
     expect(tx.contractLayoutPreviewJob.updateMany).not.toHaveBeenCalled();
   });
 });

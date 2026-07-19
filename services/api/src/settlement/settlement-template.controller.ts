@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
@@ -9,6 +9,7 @@ import {
   SettlementTemplatePreviewDownloadDto,
   UpdateSettlementTemplateVersionDto
 } from "./dto/settlement-template.dto";
+import { DiscardSettlementTemplateVersionDto } from "./dto/discard-settlement-template-version.dto";
 import { SettlementTemplateService } from "./settlement-template.service";
 
 @Controller()
@@ -17,8 +18,11 @@ export class SettlementTemplateGovernanceController {
   constructor(private readonly templates: SettlementTemplateService) {}
 
   @Get("settlement-templates")
-  list(@CurrentUser() user: AuthenticatedUser) {
-    return this.templates.listGovernance(user.id);
+  list(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("includeHistory") includeHistory?: string
+  ) {
+    return this.templates.listGovernance(user.id, includeHistory === "true");
   }
 
   @Post("settlement-templates")
@@ -32,9 +36,10 @@ export class SettlementTemplateGovernanceController {
   @Get("settlement-templates/:templateId")
   get(
     @Param("templateId") templateId: string,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("includeHistory") includeHistory?: string
   ) {
-    return this.templates.get(templateId, user.id);
+    return this.templates.get(templateId, user.id, includeHistory === "true");
   }
 
   @Patch("settlement-template-versions/:versionId")
@@ -85,6 +90,16 @@ export class SettlementTemplateGovernanceController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.templates.clone(versionId, user.id);
+  }
+
+  @Post("settlement-template-versions/:versionId/discard")
+  @RequirePositions("contract_director")
+  discard(
+    @Param("versionId") versionId: string,
+    @Body() input: DiscardSettlementTemplateVersionDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.templates.discard(versionId, user.id, input.reason, input.expectedRevision);
   }
 
   @Post("settlement-template-versions/:versionId/stop")

@@ -17,6 +17,9 @@ const templateBodyRoutes = [
   ["publishVersion", 1],
   ["createClause", 0],
   ["publishClauseVersion", 1],
+  ["discardLayout", 1],
+  ["discardVersion", 1],
+  ["discardClauseVersion", 1],
   ["createBusinessScenario", 0],
   ["updateBusinessScenario", 1],
   ["createScenarioTemplateMapping", 1],
@@ -117,6 +120,9 @@ const validTemplateBodies = [
     }
   ],
   ["publishClauseVersion", 1, { changeSummary: "发布标准条款" }],
+  ["discardLayout", 1, { reason: "误建版式草稿", expectedRevision: 1 }],
+  ["discardVersion", 1, { reason: "误建业务模板草稿", expectedUpdatedAt: "2026-07-20T00:00:00.000Z" }],
+  ["discardClauseVersion", 1, { reason: "误建标准条款草稿", expectedUpdatedAt: "2026-07-20T00:00:00.000Z" }],
   [
     "createBusinessScenario",
     0,
@@ -184,13 +190,16 @@ describe("ContractTemplateController authorization wiring", () => {
     "getLayoutPreview",
     "submitLayout",
     "cloneLayout",
+    "discardLayout",
     "getTemplate",
     "createTemplate",
     "updateDraftVersion",
     "cloneVersion",
+    "discardVersion",
     "submitVersion",
     "createClause",
     "submitClauseVersion",
+    "discardClauseVersion",
   ];
   const publicationMethods = [
     "publishLayout",
@@ -217,7 +226,7 @@ describe("ContractTemplateController authorization wiring", () => {
     await expect(
       controller.getLayoutTemplate("layout-template-1", { id: "staff-1" } as never)
     ).resolves.toBe(detail);
-    expect(layouts.getLayoutTemplate).toHaveBeenCalledWith("layout-template-1", "staff-1");
+    expect(layouts.getLayoutTemplate).toHaveBeenCalledWith("layout-template-1", "staff-1", false);
   });
 
   it("delegates the existing template detail route to the read model service", async () => {
@@ -225,8 +234,8 @@ describe("ContractTemplateController authorization wiring", () => {
     const templates = { getTemplate: jest.fn().mockResolvedValue(detail) };
     const controller = new ContractTemplateController(templates as never, {} as never, {} as never);
 
-    await expect(controller.getTemplate("template-1")).resolves.toBe(detail);
-    expect(templates.getTemplate).toHaveBeenCalledWith("template-1");
+    await expect(controller.getTemplate("template-1", { id: "staff-1" } as never)).resolves.toBe(detail);
+    expect(templates.getTemplate).toHaveBeenCalledWith("template-1", "staff-1", false);
   });
 
   it.each(templateBodyRoutes)("exposes a runtime DTO for %s", (method, bodyIndex) => {

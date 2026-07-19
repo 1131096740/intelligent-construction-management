@@ -1,5 +1,6 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import type { DetailActionReadModel } from "@jiangkong/shared-domain";
 import PizZip from "pizzip";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
@@ -117,15 +118,21 @@ export class LayoutTemplateService {
     });
   }
 
-  async getLayoutTemplate(templateId: string, actorUserId: string) {
+  async getLayoutTemplate(templateId: string, actorUserId: string, includeHistory = false) {
     return this.prisma.$transaction(async (tx) => {
       await this.assertAnyGlobalRole(tx, actorUserId, ["contract_staff", "contract_director"]);
       const template = await tx.contractLayoutTemplate.findUnique({ where: { id: templateId } });
       if (!template) throw new NotFoundException("未找到合同版式模板，请刷新后重试");
       const versions = await tx.contractLayoutTemplateVersion.findMany({
-        where: { layoutTemplateId: templateId },
+        where: {
+          layoutTemplateId: templateId,
+          ...(includeHistory ? {} : { status: { not: "discarded" } })
+        },
         orderBy: { versionNo: "desc" }
       });
+      if (!includeHistory && versions.length === 0) {
+        throw new NotFoundException("未找到合同版式模板，请刷新后重试");
+      }
       const jobs = versions.length
         ? await tx.contractLayoutPreviewJob.findMany({
             where: {
@@ -143,11 +150,28 @@ export class LayoutTemplateService {
           latestByVersion.set(job.layoutTemplateVersionId, job);
         }
       }
+      const actionModels = await Promise.all(versions.map(async (version) => {
+        const [contract, generatedDocument] = await Promise.all([
+          tx.contractVersion.findFirst({
+            where: { layoutTemplateVersionId: version.id },
+            select: { id: true }
+          }),
+          tx.contractGeneratedDocument.findFirst({
+            where: { layoutTemplateVersionId: version.id },
+            select: { id: true }
+          })
+        ]);
+        return this.discardAction(
+          version,
+          contract || generatedDocument ? "该版本已被合同或生成文件引用" : null
+        );
+      }));
       return {
         template,
-        versions: versions.map((version) => ({
+        versions: versions.map((version, index) => ({
           ...version,
-          latestPreview: latestByVersion.get(version.id) ?? null
+          latestPreview: latestByVersion.get(version.id) ?? null,
+          ...actionModels[index]
         }))
       };
     });
@@ -392,12 +416,135 @@ export class LayoutTemplateService {
     });
   }
 
+  async discardVersion(
+    versionId: string,
+    actorUserId: string,
+    reason: string,
+    expectedRevision: number
+  ) {
+    const discardReason = reason.trim();
+    if (!discardReason) throw new BadRequestException("请填写模板草稿废弃原因");
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertTemplateMaintenanceRole(tx, actorUserId);
+      const [version] = await tx.$queryRaw<Array<{
+        id: string;
+        layoutTemplateId: string;
+        status: string;
+        draftRevision: number;
+        submittedByUserId: string | null;
+        publishedAt: Date | null;
+        stoppedAt: Date | null;
+        revokedAt: Date | null;
+        discardedAt: Date | null;
+      }>>(Prisma.sql`
+        SELECT v.* FROM "ContractLayoutTemplateVersion" v
+        JOIN "ContractLayoutTemplate" t ON t."id" = v."layoutTemplateId"
+        WHERE v."id" = ${versionId}
+        FOR UPDATE OF t, v
+      `);
+      if (!version) throw new NotFoundException("未找到合同版式版本，请刷新后重试");
+      if (version.status === "discarded") {
+        return { id: versionId, status: "discarded", discardedAt: version.discardedAt };
+      }
+      if (version.draftRevision !== expectedRevision) {
+        throw new ConflictException("合同版式草稿已被更新，请刷新页面后重试");
+      }
+      if (
+        version.status !== "draft" ||
+        version.submittedByUserId ||
+        version.publishedAt ||
+        version.stoppedAt ||
+        version.revokedAt
+      ) {
+        throw new BadRequestException("该合同版式版本已提交、发布、停用或撤销，不能废弃");
+      }
+      const [contract, generatedDocument] = await Promise.all([
+        tx.contractVersion.findFirst({
+          where: { layoutTemplateVersionId: versionId },
+          select: { id: true }
+        }),
+        tx.contractGeneratedDocument.findFirst({
+          where: { layoutTemplateVersionId: versionId },
+          select: { id: true }
+        })
+      ]);
+      if (contract || generatedDocument) {
+        throw new BadRequestException("该合同版式版本已被合同或生成文件引用，不能废弃");
+      }
+      const discardedAt = new Date();
+      const changed = await tx.contractLayoutTemplateVersion.updateMany({
+        where: {
+          id: versionId,
+          status: "draft",
+          draftRevision: expectedRevision,
+          discardedAt: null
+        },
+        data: {
+          status: "discarded",
+          discardedAt,
+          discardedByUserId: actorUserId,
+          discardReason,
+          previewPdfFileId: null
+        }
+      });
+      if (changed.count !== 1) {
+        throw new ConflictException("合同版式草稿已被更新，请刷新页面后重试");
+      }
+      await tx.contractLayoutPreviewJob.updateMany({
+        where: {
+          layoutTemplateVersionId: versionId,
+          status: { in: ["queued", "processing", "succeeded"] }
+        },
+        data: {
+          status: "stale",
+          previewPdfFileId: null,
+          completedAt: discardedAt,
+          errorMessage: "合同版式草稿已废弃，预览失效"
+        }
+      });
+      await this.record(tx, actorUserId, "discard_version", versionId, {
+        reason: discardReason
+      });
+      return { id: versionId, status: "discarded", discardedAt };
+    });
+  }
+
   stopVersion(versionId: string, actorUserId: string) {
     return this.changePublishedStatus(versionId, actorUserId, "stopped");
   }
 
   revokeVersion(versionId: string, actorUserId: string) {
     return this.changePublishedStatus(versionId, actorUserId, "revoked");
+  }
+
+  private discardAction(
+    version: {
+      status: string;
+      submittedByUserId?: string | null;
+      publishedAt?: Date | null;
+      stoppedAt?: Date | null;
+      revokedAt?: Date | null;
+    },
+    referenceReason: string | null
+  ): { availableActions: DetailActionReadModel[]; blockedReasons: string[] } {
+    const blockedReasons: string[] = [];
+    if (version.status === "discarded") blockedReasons.push("该草稿版本已废弃");
+    else if (version.status !== "draft") blockedReasons.push("只有从未提交的草稿版本可以废弃");
+    if (version.submittedByUserId || version.publishedAt || version.stoppedAt || version.revokedAt) {
+      blockedReasons.push("该版本已形成提交、发布、停用或撤销历史");
+    }
+    if (referenceReason) blockedReasons.push(referenceReason);
+    return {
+      availableActions: [{
+        key: "discard_version",
+        label: "废弃草稿版本",
+        kind: "danger",
+        enabled: blockedReasons.length === 0,
+        disabledReason: blockedReasons.length ? blockedReasons.join("；") : null,
+        requiresComment: true
+      }],
+      blockedReasons
+    };
   }
 
   private inspectDocx(buffer: Buffer, placeholderSchema: unknown): LayoutInspectionReport {

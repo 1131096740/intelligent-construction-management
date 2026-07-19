@@ -118,6 +118,47 @@ describe("SettlementTemplateService", () => {
     jest.mocked(convertXlsxToPdf).mockReset();
   });
 
+  it("returns a disabled discard action to a super admin instead of granting it", async () => {
+    const version = {
+      id: "version-1",
+      settlementTemplateId: "template-1",
+      status: "draft",
+      draftRevision: 1,
+      xlsxFileId: "source-1",
+      previewXlsxFileId: null,
+      previewPdfFileId: null,
+      submittedByUserId: null,
+      publishedAt: null,
+      stoppedAt: null
+    };
+    const tx = governanceTx(version, {
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "super_admin" }]) },
+      settlementTemplate: {
+        findMany: jest.fn().mockResolvedValue([{ id: "template-1", name: "结算模板" }])
+      },
+      settlementTemplateVersion: {
+        findMany: jest.fn().mockResolvedValue([version])
+      },
+      settlementDraft: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlement: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementImport: { findFirst: jest.fn().mockResolvedValue(null) }
+    });
+    const service = new SettlementTemplateService(
+      { $transaction: jest.fn(async (callback) => callback(tx)) } as never,
+      {} as never,
+      {} as never
+    );
+
+    const result = await service.listGovernance("admin-1");
+    expect(result[0]?.versions[0]?.availableActions).toContainEqual(
+      expect.objectContaining({
+        key: "discard_version",
+        enabled: false,
+        disabledReason: expect.stringContaining("只有合同主管")
+      })
+    );
+  });
+
   it("inspects fixed columns, order, formulas, merged data cells, print area and signatures", async () => {
     const buffer = await templateWorkbook({
       headers: [HEADERS[1], HEADERS[0], ...HEADERS.slice(2)],
@@ -717,5 +758,103 @@ describe("SettlementTemplateService", () => {
       selected: null,
       choices: [{ templateCode: "A" }, { templateCode: "B" }]
     });
+  });
+
+  it("does not let super_admin discard a settlement template draft", async () => {
+    const tx = governanceTx({ id: "version-1", status: "draft" }, {
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "super_admin" }]) }
+    });
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new SettlementTemplateService(prisma as never, {} as never, {} as never);
+
+    await expect(service.discard("version-1", "admin-1", "清理", 1)).rejects.toThrow(
+      "只有合同主管可以废弃结算模板草稿版本"
+    );
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("discards an unreferenced settlement template draft and invalidates previews", async () => {
+    const tx = governanceTx({
+      id: "version-1",
+      settlementTemplateId: "template-1",
+      status: "draft",
+      draftRevision: 3,
+      submittedByUserId: null,
+      publishedAt: null,
+      stoppedAt: null,
+      discardedAt: null
+    }, {
+      settlementDraft: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlement: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementImport: { findFirst: jest.fn().mockResolvedValue(null) }
+    });
+    const audit = { record: jest.fn() };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new SettlementTemplateService(prisma as never, audit as never, {} as never);
+
+    await expect(service.discard("version-1", "director-1", "误传模板", 3)).resolves.toMatchObject({
+      id: "version-1",
+      status: "discarded"
+    });
+    expect(tx.settlementTemplateVersion.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "version-1",
+        status: "draft",
+        draftRevision: 3,
+        discardedAt: null
+      },
+      data: expect.objectContaining({
+        status: "discarded",
+        previewXlsxFileId: null,
+        previewPdfFileId: null
+      })
+    });
+    expect(tx.settlementTemplatePreviewJob.updateMany).toHaveBeenCalledWith({
+      where: {
+        settlementTemplateVersionId: "version-1",
+        status: { in: ["queued", "processing", "succeeded"] }
+      },
+      data: expect.objectContaining({
+        status: "stale",
+        previewXlsxFileId: null,
+        previewPdfFileId: null
+      })
+    });
+    expect(audit.record).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects stale settlement template discard before references and preview invalidation", async () => {
+    const settlementDraft = { findFirst: jest.fn() };
+    const settlement = { findFirst: jest.fn() };
+    const settlementImport = { findFirst: jest.fn() };
+    const tx = governanceTx({
+      id: "version-1",
+      settlementTemplateId: "template-1",
+      status: "draft",
+      draftRevision: 4,
+      submittedByUserId: null,
+      publishedAt: null,
+      stoppedAt: null,
+      discardedAt: null
+    }, {
+      settlementDraft,
+      settlement,
+      settlementImport
+    });
+    const service = new SettlementTemplateService(
+      { $transaction: jest.fn(async (callback) => callback(tx)) } as never,
+      { record: jest.fn() } as never,
+      {} as never
+    );
+
+    await expect(service.discard("version-1", "director-1", "误传模板", 3))
+      .rejects.toMatchObject({ status: 409 });
+    expect(settlementDraft.findFirst).not.toHaveBeenCalled();
+    expect(tx.settlementTemplateVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.settlementTemplatePreviewJob.updateMany).not.toHaveBeenCalled();
   });
 });
