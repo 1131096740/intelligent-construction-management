@@ -389,6 +389,31 @@ function buildFixture() {
 }
 
 describe("SpotProcurementReadService", () => {
+  it("excludes abandoned payment drafts by default and exposes them only through the explicit ended filter", async () => {
+    const fixture = buildFixture();
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    await service.listPayments("finance-1", {});
+    expect(fixture.prisma.spotProcurementPayment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: { not: "invalidated" } })
+      })
+    );
+
+    fixture.prisma.spotProcurementPayment.findMany.mockClear();
+    await service.listPayments("finance-1", { status: "invalidated" });
+    expect(fixture.prisma.spotProcurementPayment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: "invalidated" })
+      })
+    );
+  });
+
   it("offers payment draft recreation only after the prior draft is invalidated and no active payment remains", async () => {
     const fixture = buildFixture();
     const invalidated = paymentRow({

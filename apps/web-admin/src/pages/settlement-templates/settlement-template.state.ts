@@ -24,7 +24,8 @@ const statusLabels: Record<SettlementTemplateVersionStatus, string> = {
   draft: "草稿",
   submitted: "待发布",
   published: "已发布",
-  stopped: "已停用"
+  stopped: "已停用",
+  discarded: "已废弃"
 };
 
 export function settlementTemplateStatusLabel(status: SettlementTemplateVersionStatus) {

@@ -241,6 +241,14 @@
       :bordered="true"
       class="panel"
     >
+      <BusinessDraftAction
+        class="version-lifecycle-action"
+        :actions="currentVersion.availableActions ?? []"
+        :blocked-reasons="currentVersion.blockedReasons ?? []"
+        :subject="versionActionSubject"
+        :execute="discardCurrentVersion"
+        @completed="handleDiscardCompleted"
+      />
       <div class="publication-row">
         <t-input
           v-model="publicationSummary"
@@ -305,6 +313,7 @@ import { uploadPrivateFile } from "../../api/core-flow-read.api";
 import {
   cloneSettlementTemplateVersion,
   createSettlementTemplate,
+  discardSettlementTemplateVersion,
   downloadSettlementTemplatePreview,
   generateSettlementTemplatePreview,
   getSettlementTemplate,
@@ -315,6 +324,9 @@ import {
   updateSettlementTemplateVersion,
   type SettlementTemplateDetailReadModel
 } from "../../api/settlement-template.api";
+import BusinessDraftAction, {
+  type BusinessDraftActionRequest
+} from "../../components/BusinessDraftAction.vue";
 import {
   settlementTemplateAmountRoleOptions,
   settlementTemplateContractTypeOptions,
@@ -372,6 +384,12 @@ const previewStatus = computed(() => {
 const canDownloadPreview = computed(
   () => governance.value.previewCurrent && Boolean(downloadReason.value.trim())
 );
+const versionActionSubject = computed(() => ({
+  businessCode: detail.value?.template.code ?? "—",
+  name: `${detail.value?.template.name ?? "结算模板"} V${currentVersion.value?.versionNo ?? "—"}`,
+  lastSavedAt: formatDateTime(currentVersion.value?.updatedAt),
+  impactScope: "仅废弃当前从未提交的草稿版本；已发布版本和正式结算引用不受影响。"
+}));
 
 function selectedFile() {
   const raw = sourceFiles.value[0]?.raw;
@@ -512,6 +530,22 @@ async function runAction(action: "submit" | "publish" | "stop" | "clone") {
   }
 }
 
+async function discardCurrentVersion(request: BusinessDraftActionRequest) {
+  const version = currentVersion.value;
+  if (!version || request.action !== "discard_version") {
+    throw new Error("当前结算模板版本不支持该操作，请刷新后重试");
+  }
+  await discardSettlementTemplateVersion(version.id, {
+    reason: request.reason,
+    expectedRevision: version.draftRevision
+  });
+  await loadDetail(version.id);
+}
+
+function handleDiscardCompleted() {
+  showSuccess("草稿版本已废弃，已提交、发布和引用记录均未改变。");
+}
+
 function openConfirmation(action: "publish" | "stop") {
   confirmAction.value = action;
   confirmVisible.value = true;
@@ -524,7 +558,7 @@ function confirmGovernanceAction() {
 async function loadDetail(preferredVersionId = "") {
   const templateId = String(route.params.templateId ?? "");
   if (!templateId || templateId === "new") return;
-  detail.value = await getSettlementTemplate(templateId);
+  detail.value = await getSettlementTemplate(templateId, true);
   form.name = detail.value.template.name;
   form.code = detail.value.template.code;
   selectedVersionId.value =
@@ -532,6 +566,14 @@ async function loadDetail(preferredVersionId = "") {
     detail.value.versions[0]?.id ??
     "";
   syncVersionForm();
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : date.toLocaleString("zh-CN", { hour12: false });
 }
 
 function showSuccess(value: string) {
@@ -591,6 +633,10 @@ onMounted(async () => {
 
 .panel {
   margin-bottom: var(--jg-space-lg);
+}
+
+.version-lifecycle-action {
+  margin-bottom: var(--jg-space-md);
 }
 
 .form-grid,

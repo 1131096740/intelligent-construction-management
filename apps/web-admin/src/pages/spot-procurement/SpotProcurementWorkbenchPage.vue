@@ -88,6 +88,8 @@ const statusOptions = [
   { label: "审批中", value: "approval_pending" },
   { label: "办理中", value: "approved_in_progress" },
   { label: "已办结", value: "closed" },
+  { label: "异常终止", value: "abnormally_terminated" },
+  { label: "已放弃", value: "abandoned" },
   { label: "已撤销", value: "voided" }
 ];
 
@@ -168,7 +170,7 @@ function countStatus(status: SpotProcurementStatus) {
 
 function statusTheme(status: SpotProcurementStatus) {
   if (status === "closed") return "success" as const;
-  if (status === "voided") return "danger" as const;
+  if (["voided", "abandoned", "abnormally_terminated"].includes(status)) return "danger" as const;
   if (status === "approval_pending") return "warning" as const;
   if (status === "approved_in_progress") return "primary" as const;
   return "default" as const;

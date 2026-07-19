@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiFetch } from "./api-fetch";
 import {
   appendSpotProcurementPaymentInvoice,
+  abandonSpotProcurementDraft,
+  abandonSpotProcurementPaymentDraft,
   createSpotProcurementDiscrepancy,
   createSpotProcurementDraft,
   fetchSpotProcurementCreateProjectOptions,
@@ -17,6 +19,8 @@ import {
   fetchVatRateOptions,
   recordSpotProcurementPaymentExecution,
   recordSpotProcurementRefund,
+  recreateSpotProcurementPaymentDraft,
+  resetSpotProcurementReceiptDraft,
   submitSpotProcurementReceipt,
   reviewSpotProcurement,
   reviewSpotProcurementPayment,
@@ -110,6 +114,35 @@ describe("spot procurement API client", () => {
     expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
       "/spot-procurements/procurement%2F1/receipt",
       "/spot-procurements/procurement%2F1/receipt/submission"
+    ]);
+  });
+
+  it("connects semantic procurement, payment draft and receipt lifecycle routes with CAS", async () => {
+    await abandonSpotProcurementDraft("procurement/1", {
+      action: "abandon_application",
+      reason: "现场需求取消"
+    });
+    await abandonSpotProcurementPaymentDraft("payment/1", {
+      expectedUpdatedAt: "2026-07-19T10:00:00.000Z",
+      reason: "付款对象需要重新确认"
+    });
+    await recreateSpotProcurementPaymentDraft("procurement/1");
+    await resetSpotProcurementReceiptDraft("procurement/1", 3);
+
+    expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
+      "/spot-procurements/procurement%2F1/abandonment",
+      "/spot-procurement-payments/payment%2F1/abandonment",
+      "/spot-procurements/procurement%2F1/payment-drafts",
+      "/spot-procurements/procurement%2F1/receipt/draft-reset"
+    ]);
+    expect(mockApiFetch.mock.calls.map(([, init]) => init?.body)).toEqual([
+      JSON.stringify({ action: "abandon_application", reason: "现场需求取消" }),
+      JSON.stringify({
+        expectedUpdatedAt: "2026-07-19T10:00:00.000Z",
+        reason: "付款对象需要重新确认"
+      }),
+      JSON.stringify({}),
+      JSON.stringify({ expectedRevision: 3 })
     ]);
   });
 

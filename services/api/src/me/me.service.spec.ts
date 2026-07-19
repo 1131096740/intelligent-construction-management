@@ -398,6 +398,107 @@ describe("MeService", () => {
     });
   });
 
+  it("separates pristine takeover drafts from pending and blocked work items", async () => {
+    const draft = {
+      id: "takeover-draft",
+      projectId: "project-1",
+      contractId: "contract-draft",
+      contractVersionId: "version-draft",
+      updatedAt: new Date("2026-07-20T01:00:00.000Z")
+    };
+    const supplement = {
+      id: "takeover-supplement",
+      projectId: "project-1",
+      contractId: "contract-supplement",
+      contractVersionId: "version-supplement",
+      updatedAt: new Date("2026-07-20T02:00:00.000Z")
+    };
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([
+          { projectId: "project-1", positionKey: "contract_staff" }
+        ])
+      },
+      project: {
+        findMany: jest.fn().mockImplementation(({ where }: { where?: { isActive?: boolean } }) =>
+          where?.isActive ? [{ id: "project-1" }] : [{ id: "project-1", name: "测试项目" }]
+        )
+      },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      contractTakeover: {
+        findMany: jest.fn().mockImplementation(({ where }: { where: Record<string, unknown> }) => {
+          const statuses = (where.takeoverStatus as { in?: string[] })?.in ?? [];
+          if (where.OR) return [];
+          if (statuses.includes("draft")) return [draft];
+          if (statuses.includes("needs_supplement")) return [supplement];
+          return [];
+        }),
+        count: jest.fn()
+      },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn() },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalActionLog: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: { findMany: jest.fn().mockResolvedValue([]) },
+      contractVersion: {
+        findMany: jest.fn().mockImplementation(({ where }: { where: Record<string, unknown> }) =>
+          where.id
+            ? [
+                { id: "version-draft", amountCents: 10_000n },
+                { id: "version-supplement", amountCents: 20_000n }
+              ]
+            : []
+        )
+      },
+      contract: {
+        findMany: jest.fn().mockImplementation(({ where }: { where: Record<string, unknown> }) =>
+          where.id
+            ? [
+                {
+                  id: "contract-draft",
+                  code: null,
+                  temporaryCode: "LS-001",
+                  name: "历史合同草稿",
+                  counterparty: "乙方一"
+                },
+                {
+                  id: "contract-supplement",
+                  code: null,
+                  temporaryCode: "LS-002",
+                  name: "待补充历史合同",
+                  counterparty: "乙方二"
+                }
+              ]
+            : []
+        )
+      }
+    };
+    const service = new MeService(prisma as never, {} as never);
+
+    const result = await service.getWorkItems("user-1");
+
+    expect(result.queues.drafts).toEqual([
+      expect.objectContaining({
+        id: "takeover:takeover-draft",
+        businessCode: "LS-001",
+        currentNode: "草稿填写",
+        nextAction: "继续补录后提交复核"
+      })
+    ]);
+    expect(result.queues.pending).toEqual([
+      expect.objectContaining({
+        id: "takeover:takeover-supplement",
+        businessCode: "LS-002"
+      })
+    ]);
+    expect(result.queues.blocked).toEqual([]);
+    expect(result.approvalCenter.pendingApproval).toEqual([]);
+    const blockedCall = prisma.contractTakeover.findMany.mock.calls.find(
+      ([input]) => Boolean(input.where.OR)
+    );
+    expect(blockedCall?.[0].where.takeoverStatus.in).not.toContain("draft");
+  });
+
   it("returns visible approval work items with business jump targets", async () => {
     const prisma = {
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },

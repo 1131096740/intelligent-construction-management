@@ -18,7 +18,7 @@ export interface WorkbenchQueueViewModel {
 }
 
 export interface WorkItemQueueViewModel {
-  id: "pending" | "blocked" | "started";
+  id: "pending" | "blocked" | "started" | "drafts";
   title: string;
   description: string;
   items: WorkItemViewModel[];
@@ -241,6 +241,11 @@ const queueDefs: Array<Omit<WorkItemQueueViewModel, "items">> = [
     id: "started",
     title: "我发起的进行中",
     description: "由你发起、还在审批或办理中的单据。"
+  },
+  {
+    id: "drafts",
+    title: "我的草稿",
+    description: "已保存但尚未提交的草稿，不计入待审批。"
   }
 ];
 
@@ -262,6 +267,7 @@ function workItemStatusLabel(queueId: WorkItemQueueViewModel["id"], item: WorkIt
   const text = `${item.title} ${item.currentNode} ${item.nextAction}`;
   if (/超时|逾期/.test(text)) return "超时";
   if (queueId === "blocked" || item.type === "blocker") return "阻塞";
+  if (queueId === "drafts") return "草稿";
   if (queueId === "started") return "进行中";
   return "待处理";
 }
@@ -272,6 +278,7 @@ function workItemStatusTone(
 ): HomeWorkItemRow["statusTone"] {
   const status = workItemStatusLabel(queueId, item);
   if (status === "超时" || status === "阻塞") return "danger";
+  if (status === "草稿") return "default";
   if (status === "进行中") return "default";
   return item.tone;
 }

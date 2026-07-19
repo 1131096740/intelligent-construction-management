@@ -25,4 +25,12 @@ describe("layout template revision governance structure", () => {
     expect(page).not.toContain("预览文件编号");
     expect(page).not.toContain("latestPreview.previewPdfFileId");
   });
+
+  it("uses server lifecycle actions and revision CAS to discard only a pristine draft", () => {
+    expect(page).toContain("<BusinessDraftAction");
+    expect(page).toContain("currentVersion.availableActions ?? []");
+    expect(page).toContain("discardLayoutTemplateVersion");
+    expect(page).toContain("expectedRevision: version.draftRevision");
+    expect(page).toContain("getLayoutTemplate(templateId, true)");
+  });
 });

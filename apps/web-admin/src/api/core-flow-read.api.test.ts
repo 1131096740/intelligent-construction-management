@@ -546,12 +546,21 @@ describe("core flow read API client", () => {
   it("requests the personal work items endpoint", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => ({ queues: {}, approvalCenter: {} })
+      json: async () => ({
+        queues: {
+          pending: [],
+          blocked: [],
+          started: [],
+          drafts: [{ id: "takeover:draft-1" }]
+        },
+        approvalCenter: {}
+      })
     } as Response);
 
-    await fetchWorkItems();
+    const result = await fetchWorkItems();
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(["/api/me/work-items"]);
+    expect(result.queues.drafts).toEqual([{ id: "takeover:draft-1" }]);
   });
 
   it("requests project operating overview endpoints", async () => {

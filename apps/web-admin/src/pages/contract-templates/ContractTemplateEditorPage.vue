@@ -47,7 +47,7 @@
           :disabled="!governance.canSave && !governance.canPublish"
         /></label>
         <label><span>版本状态</span><t-input
-          :value="selectedVersion ? templateStatusLabel(selectedVersion.status) : '暂无状态记录'"
+          :value="selectedVersion ? businessTemplateStatusLabel(selectedVersion.status) : '暂无状态记录'"
           readonly
         /></label>
         <t-button
@@ -59,6 +59,15 @@
           保存草稿版本
         </t-button>
       </div>
+      <BusinessDraftAction
+        v-if="selectedVersion"
+        class="version-lifecycle-action"
+        :actions="selectedVersion.availableActions ?? []"
+        :blocked-reasons="selectedVersion.blockedReasons ?? []"
+        :subject="versionActionSubject"
+        :execute="discardSelectedVersion"
+        @completed="handleDiscardCompleted"
+      />
     </t-card>
 
     <div class="tab-bar">
@@ -394,6 +403,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute } from "vue-router";
 import {
   cloneContractTemplateVersion,
+  discardContractTemplateVersion,
   getContractTemplate,
   publishContractTemplateVersion,
   submitContractTemplateVersion,
@@ -403,6 +413,9 @@ import {
   updateContractTemplateVersion
 } from "../../api/contract-workbench.api";
 import { useAuthStore } from "../../auth/auth.store";
+import BusinessDraftAction, {
+  type BusinessDraftActionRequest
+} from "../../components/BusinessDraftAction.vue";
 import { templateStatusLabel } from "../contracts/contract-labels";
 import {
   billAmountRoleOptions,
@@ -459,6 +472,12 @@ const governance = computed(() => {
     canClone: statusGovernance.canClone && canMaintainTemplates.value
   };
 });
+const versionActionSubject = computed(() => ({
+  businessCode: template.value?.businessCode ?? template.value?.code ?? "—",
+  name: `${templateName.value} V${selectedVersion.value?.versionNo ?? "—"}`,
+  lastSavedAt: formatVersionTime(selectedVersion.value?.updatedAt),
+  impactScope: "仅废弃当前从未提交的草稿版本；已发布版本和正式引用不受影响。"
+}));
 
 const schema = reactive({
   fields: [] as Array<Record<string, unknown>>,
@@ -603,7 +622,7 @@ function selectVersion(value: unknown) {
 
 async function loadTemplate(preferredVersionId?: string) {
   const detail = normalizeContractTemplateDetail(
-    await getContractTemplate(String(route.params.templateId))
+    await getContractTemplate(String(route.params.templateId), true)
   );
   const targetId = preferredVersionId ?? detail.defaultVersionId;
   const version = detail.versions.find((item) => item.id === targetId);
@@ -614,6 +633,38 @@ async function loadTemplate(preferredVersionId?: string) {
   versions.value = detail.versions;
   templateName.value = detail.template.businessCode ?? detail.template.name;
   applyVersion(version);
+}
+
+function formatVersionTime(value?: string) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function businessTemplateStatusLabel(status: string) {
+  return status === "discarded" ? "已废弃" : templateStatusLabel(status);
+}
+
+async function discardSelectedVersion(request: BusinessDraftActionRequest) {
+  const version = selectedVersion.value;
+  if (!version || request.action !== "discard_version") {
+    throw new Error("当前模板版本不支持该操作，请刷新后重试");
+  }
+  if (!version.updatedAt) {
+    throw new Error("模板版本更新时间缺失，请刷新后重试");
+  }
+  await discardContractTemplateVersion(version.id, {
+    reason: request.reason,
+    expectedUpdatedAt: version.updatedAt
+  });
+  await loadTemplate(version.id);
+}
+
+function handleDiscardCompleted() {
+  message.value = "草稿版本已废弃，已提交、发布和引用记录均未改变";
+  tone.value = "success";
 }
 
 function requireVersion(action: keyof Omit<ReturnType<typeof contractTemplateVersionGovernance>, "readOnly">) {
@@ -868,6 +919,7 @@ onMounted(async () => {
 .page-head h1 { margin: 0 0 8px; font-size: 24px; line-height: 1.2; }
 .page-head p, label span { margin: 0; color: #767f8d; font-size: 12px; }
 .panel { margin-bottom: 16px; border-radius: 3px; }
+.version-lifecycle-action { margin-top: var(--jg-space-md); }
 .form-grid { display: grid; grid-template-columns: 1.5fr 1.5fr 1fr auto; gap: 12px; align-items: end; }
 label { display: grid; gap: 4px; }
 .tab-bar { display: flex; gap: 8px; margin-bottom: 12px; }

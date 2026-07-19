@@ -123,6 +123,29 @@ describe("spot procurement web pages", () => {
     expect(payment).not.toContain("router.push('/零星材料付款')");
   });
 
+  it("uses server-owned lifecycle actions for procurement, A5 payment and receipt drafts", () => {
+    const procurement = pageSource("SpotProcurementDetailPage.vue");
+    const payment = pageSource("SpotProcurementPaymentDetailPage.vue");
+    const paymentWorkbench = pageSource("SpotProcurementPaymentWorkbenchPage.vue");
+    const receipt = pageSource("SpotProcurementReceiptPage.vue");
+
+    expect(procurement).toContain("<BusinessDraftAction");
+    expect(procurement).toContain("abandonSpotProcurementDraft");
+    expect(procurement).toContain('"delete_pristine_draft"');
+    expect(procurement).toContain('"abandon_application"');
+    expect(procurement).toContain("recreateSpotProcurementPaymentDraft");
+    expect(procurement).toContain('actionEnabled("create_payment_draft")');
+    expect(payment).toContain("abandonSpotProcurementPaymentDraft");
+    expect(payment).toContain("expectedUpdatedAt: current.payment.updatedAt");
+    expect(payment).toContain("放弃付款草稿");
+    expect(paymentWorkbench).toContain('row.status !== "invalidated"');
+    expect(receipt).toContain("resetSpotProcurementReceiptDraft");
+    expect(receipt).toContain("receiptResetAction");
+    expect(receipt).toContain("expectedRevision");
+    expect(receipt).toContain("不删除收货单、旧修订、锁定照片");
+    expect(receipt).not.toContain("删除收货单按钮");
+  });
+
   it("keeps both workbench ledgers inside their own horizontal scroll regions", () => {
     const procurement = pageSource("SpotProcurementWorkbenchPage.vue");
     const payment = pageSource("SpotProcurementPaymentWorkbenchPage.vue");

@@ -426,7 +426,8 @@ export type ContractTemplateVersionStatus =
   | "submitted"
   | "published"
   | "stopped"
-  | "revoked";
+  | "revoked"
+  | "discarded";
 
 export interface ContractTemplateVersionReadModel {
   id: string;
@@ -442,6 +443,11 @@ export interface ContractTemplateVersionReadModel {
   changeSummary?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  discardedAt?: string | null;
+  discardedByUserId?: string | null;
+  discardReason?: string | null;
+  availableActions?: DetailActionReadModel[];
+  blockedReasons?: string[];
 }
 
 export interface ContractTemplateDetailReadModel {
@@ -459,8 +465,9 @@ export interface ContractTemplateDetailReadModel {
   versions: ContractTemplateVersionReadModel[];
 }
 
-export function getContractTemplate(templateId: string) {
-  return readJson<ContractTemplateDetailReadModel>(`/contract-templates/${templateId}`);
+export function getContractTemplate(templateId: string, includeHistory = false) {
+  const query = includeHistory ? "?includeHistory=true" : "";
+  return readJson<ContractTemplateDetailReadModel>(`/contract-templates/${templateId}${query}`);
 }
 
 export interface CreateContractTemplatePayload {
@@ -512,6 +519,13 @@ export function revokeContractTemplateVersion(versionId: string) {
   return postJson<unknown>(`/contract-template-versions/${versionId}/revoke`);
 }
 
+export function discardContractTemplateVersion(
+  versionId: string,
+  body: { reason: string; expectedUpdatedAt: string }
+) {
+  return postJson<unknown>(`/contract-template-versions/${versionId}/discard`, body);
+}
+
 export function listPublishedLayoutTemplates(contractTypeKey?: string) {
   const qs = contractTypeKey ? `?contractTypeKey=${encodeURIComponent(contractTypeKey)}` : "";
   return readJson<unknown[]>(`/contract-layout-templates${qs}`);
@@ -544,6 +558,13 @@ export interface LayoutTemplateVersionReadModel {
   inspectionRevision?: number | null;
   previewPdfFileId?: string | null;
   latestPreview?: LayoutTemplatePreviewReadModel | null;
+  createdAt?: string;
+  updatedAt?: string;
+  discardedAt?: string | null;
+  discardedByUserId?: string | null;
+  discardReason?: string | null;
+  availableActions?: DetailActionReadModel[];
+  blockedReasons?: string[];
 }
 
 export interface LayoutTemplateDetailReadModel {
@@ -564,8 +585,9 @@ export function createLayoutTemplate(body: CreateLayoutTemplatePayload) {
   return postJson<CreateLayoutTemplateReadModel>("/contract-layout-templates", body);
 }
 
-export function getLayoutTemplate(templateId: string) {
-  return readJson<LayoutTemplateDetailReadModel>(`/contract-layout-templates/${templateId}`);
+export function getLayoutTemplate(templateId: string, includeHistory = false) {
+  const query = includeHistory ? "?includeHistory=true" : "";
+  return readJson<LayoutTemplateDetailReadModel>(`/contract-layout-templates/${templateId}${query}`);
 }
 
 export function updateLayoutTemplateVersion(
@@ -629,6 +651,13 @@ export function revokeLayoutTemplateVersion(versionId: string) {
   return postJson<unknown>(`/contract-layout-template-versions/${versionId}/revoke`);
 }
 
+export function discardLayoutTemplateVersion(
+  versionId: string,
+  body: { reason: string; expectedRevision: number }
+) {
+  return postJson<unknown>(`/contract-layout-template-versions/${versionId}/discard`, body);
+}
+
 export interface PublishedStandardClause {
   standardClauseVersionId: string;
   versionId: string;
@@ -641,9 +670,38 @@ export interface PublishedStandardClause {
   category: string;
 }
 
+export interface StandardClauseVersionReadModel {
+  id: string;
+  clauseId: string;
+  versionNo: number;
+  status: ContractTemplateVersionStatus;
+  title: string;
+  content: unknown;
+  createdAt: string;
+  updatedAt: string;
+  discardedAt?: string | null;
+  discardedByUserId?: string | null;
+  discardReason?: string | null;
+  availableActions: DetailActionReadModel[];
+  blockedReasons: string[];
+}
+
+export interface StandardClauseHistoryReadModel {
+  id: string;
+  code: string;
+  category: string;
+  name: string;
+  versions: StandardClauseVersionReadModel[];
+}
+
 export function listPublishedStandardClauses(category?: string) {
   const qs = category ? `?category=${encodeURIComponent(category)}` : "";
   return readJson<PublishedStandardClause[]>(`/standard-clauses${qs}`);
+}
+
+export function listStandardClauseHistory(category?: string) {
+  const qs = category ? `?category=${encodeURIComponent(category)}` : "";
+  return readJson<StandardClauseHistoryReadModel[]>(`/standard-clauses/history${qs}`);
 }
 
 export interface CreateStandardClausePayload {
@@ -667,6 +725,13 @@ export function publishStandardClauseVersion(
   body: { changeSummary: string }
 ) {
   return postJson<unknown>(`/standard-clause-versions/${versionId}/publication`, body);
+}
+
+export function discardStandardClauseVersion(
+  versionId: string,
+  body: { reason: string; expectedUpdatedAt: string }
+) {
+  return postJson<unknown>(`/standard-clause-versions/${versionId}/discard`, body);
 }
 
 // ---------------------------------------------------------------------------

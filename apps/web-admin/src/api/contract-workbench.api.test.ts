@@ -18,6 +18,9 @@ import {
   createStandardClause,
   createWorkbenchDraft,
   deleteBillRow,
+  discardContractTemplateVersion,
+  discardLayoutTemplateVersion,
+  discardStandardClauseVersion,
   downloadBillExcelTemplate,
   fetchContractWorkbench,
   setContractAuthorization,
@@ -35,6 +38,7 @@ import {
   listPublishedContractTemplates,
   listPublishedLayoutTemplates,
   listPublishedStandardClauses,
+  listStandardClauseHistory,
   type PublishedStandardClause,
   previewBillExcelImport,
   previewContractTypeChange,
@@ -583,6 +587,32 @@ describe("contract workbench API client", () => {
     expect((mockApiFetch.mock.calls[2][1] as RequestInit).method).toBe("PATCH");
   });
 
+  it("reads contract template history and discards a draft with the saved timestamp", async () => {
+    mockApiFetch.mockImplementation(() => makeOkJson({ id: "template-version-1" }));
+
+    await getContractTemplate("template-1", true);
+    await discardContractTemplateVersion("template-version-1", {
+      reason: "重复草稿",
+      expectedUpdatedAt: "2026-07-20T01:02:03.000Z"
+    });
+
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      1,
+      "/contract-templates/template-1?includeHistory=true"
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      2,
+      "/contract-template-versions/template-version-1/discard",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          reason: "重复草稿",
+          expectedUpdatedAt: "2026-07-20T01:02:03.000Z"
+        })
+      })
+    );
+  });
+
   it("listPublishedLayoutTemplates – GET /contract-layout-templates?contractTypeKey=material_purchase", async () => {
     mockApiFetch.mockReturnValue(makeOkJson([]));
 
@@ -633,6 +663,29 @@ describe("contract workbench API client", () => {
     expect((mockApiFetch.mock.calls[5][1] as RequestInit | undefined)?.method).toBeUndefined();
   });
 
+  it("reads layout history and discards a draft with its revision", async () => {
+    mockApiFetch.mockImplementation(() => makeOkJson({ id: "layout-version-1" }));
+
+    await getLayoutTemplate("layout-template-1", true);
+    await discardLayoutTemplateVersion("layout-version-1", {
+      reason: "重复版式",
+      expectedRevision: 3
+    });
+
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      1,
+      "/contract-layout-templates/layout-template-1?includeHistory=true"
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      2,
+      "/contract-layout-template-versions/layout-version-1/discard",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ reason: "重复版式", expectedRevision: 3 })
+      })
+    );
+  });
+
   it("listPublishedStandardClauses – GET /standard-clauses?category=payment", async () => {
     mockApiFetch.mockReturnValue(
       makeOkJson([
@@ -675,6 +728,32 @@ describe("contract workbench API client", () => {
       "/standard-clause-versions/clause-version-1/submission",
       "/standard-clause-versions/clause-version-1/publication"
     ]);
+  });
+
+  it("reads standard clause history and discards a draft with the saved timestamp", async () => {
+    mockApiFetch.mockImplementation(() => makeOkJson([]));
+
+    await listStandardClauseHistory("付款");
+    await discardStandardClauseVersion("clause-version-1", {
+      reason: "条款重复",
+      expectedUpdatedAt: "2026-07-20T02:03:04.000Z"
+    });
+
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      1,
+      "/standard-clauses/history?category=%E4%BB%98%E6%AC%BE"
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      2,
+      "/standard-clause-versions/clause-version-1/discard",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          reason: "条款重复",
+          expectedUpdatedAt: "2026-07-20T02:03:04.000Z"
+        })
+      })
+    );
   });
 
   it("addBillRow – POST /contract-bills/:billId/rows", async () => {

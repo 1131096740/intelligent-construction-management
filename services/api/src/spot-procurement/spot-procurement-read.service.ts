@@ -793,7 +793,7 @@ export class SpotProcurementReadService {
       .map((row) => row.id);
     const where: Prisma.SpotProcurementPaymentWhereInput = {
       projectId: { in: projectIds },
-      ...(status ? { status } : {}),
+      ...(status ? { status } : { status: { not: "invalidated" } }),
       ...(keyword
         ? {
             OR: [

@@ -61,4 +61,12 @@ describe("settlement template governance structure", () => {
     expect(businessOptions).not.toContain("buildSettlementCreatePayload");
     expect(businessOptions).not.toContain("amountYuan");
   });
+
+  it("uses server lifecycle actions and revision CAS for settlement template drafts", () => {
+    expect(editorPage).toContain("<BusinessDraftAction");
+    expect(editorPage).toContain("currentVersion.availableActions ?? []");
+    expect(editorPage).toContain("discardSettlementTemplateVersion");
+    expect(editorPage).toContain("expectedRevision: version.draftRevision");
+    expect(editorPage).toContain("getSettlementTemplate(templateId, true)");
+  });
 });

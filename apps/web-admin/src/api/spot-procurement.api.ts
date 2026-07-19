@@ -240,6 +240,17 @@ export interface SpotProcurementReceiptSummaryReadModel {
   submittedAt: string | null;
   lockedAt: string | null;
   discrepancyStatus?: string | null;
+  workflow?: {
+    stage: string;
+    stageLabel: string;
+    resetAction: {
+      key: "reset_receipt_draft";
+      label: string;
+      enabled: boolean;
+      disabledReason: string | null;
+      expectedRevision: number;
+    };
+  };
 }
 
 export interface SpotProcurementListItemReadModel {
@@ -414,6 +425,8 @@ export interface SpotProcurementDetailReadModel {
     closedAt: string | null;
     voidedAt: string | null;
     voidReason: string | null;
+    abandonedAt?: string | null;
+    abandonReason?: string | null;
     createdAt: string;
     updatedAt: string;
     form?: "real_application" | "legacy";
@@ -527,6 +540,8 @@ export interface SpotProcurementPaymentDetailReadModel {
     approvedAt: string | null;
     invalidatedAt: string | null;
     invalidatedReason: string | null;
+    draftOrigin?: string;
+    sourcePaymentId?: string | null;
     createdAt: string;
     updatedAt: string;
   };
@@ -710,6 +725,16 @@ export interface ReviewSpotProcurementPaymentPayload
 }
 
 export interface VoidSpotProcurementPayload {
+  reason: string;
+}
+
+export interface AbandonSpotProcurementDraftPayload {
+  action: "delete_pristine_draft" | "abandon_application";
+  reason?: string;
+}
+
+export interface AbandonSpotProcurementPaymentDraftPayload {
+  expectedUpdatedAt: string;
   reason: string;
 }
 
@@ -1078,9 +1103,25 @@ export function voidSpotProcurement(
   );
 }
 
+export function abandonSpotProcurementDraft(
+  procurementId: string,
+  body: AbandonSpotProcurementDraftPayload
+) {
+  return postJson<SpotProcurementWriteReadModel>(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/abandonment`,
+    body
+  );
+}
+
 export function createSpotProcurementPaymentDraft(procurementId: string) {
   return postJson<SpotProcurementPaymentWriteReadModel>(
     `/spot-procurements/${encodeURIComponent(procurementId)}/payments`
+  );
+}
+
+export function recreateSpotProcurementPaymentDraft(procurementId: string) {
+  return postJson<SpotProcurementPaymentWriteReadModel>(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/payment-drafts`
   );
 }
 
@@ -1123,6 +1164,26 @@ export function voidSpotProcurementPayment(
   return postJson<SpotProcurementPaymentWriteReadModel>(
     `/spot-procurement-payments/${encodeURIComponent(paymentId)}/voiding`,
     body
+  );
+}
+
+export function abandonSpotProcurementPaymentDraft(
+  paymentId: string,
+  body: AbandonSpotProcurementPaymentDraftPayload
+) {
+  return postJson<SpotProcurementPaymentWriteReadModel>(
+    `/spot-procurement-payments/${encodeURIComponent(paymentId)}/abandonment`,
+    body
+  );
+}
+
+export function resetSpotProcurementReceiptDraft(
+  procurementId: string,
+  expectedRevision: number
+) {
+  return postJson<unknown>(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/draft-reset`,
+    { expectedRevision }
   );
 }
 

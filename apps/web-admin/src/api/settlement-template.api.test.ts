@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  discardSettlementTemplateVersion,
   downloadSettlementTemplatePreview,
   fetchSettlementTemplateRecommendations,
+  getSettlementTemplate,
   listSettlementTemplates,
   publishSettlementTemplateVersion,
   updateSettlementTemplateVersion
@@ -52,6 +54,31 @@ describe("settlement template API", () => {
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       4,
       "/settlement-workbench/projects/project%2F1/contract-versions/contract%2F1/template-recommendations"
+    );
+  });
+
+  it("reads settlement template history and discards only the selected draft revision", async () => {
+    mockApiFetch
+      .mockResolvedValueOnce(new Response(JSON.stringify({ template: {}, versions: [] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "version-1", status: "discarded" }), { status: 200 }));
+
+    await getSettlementTemplate("template/1", true);
+    await discardSettlementTemplateVersion("version/1", {
+      reason: "重复模板",
+      expectedRevision: 4
+    });
+
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      1,
+      "/settlement-templates/template%2F1?includeHistory=true"
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      2,
+      "/settlement-template-versions/version%2F1/discard",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ reason: "重复模板", expectedRevision: 4 })
+      })
     );
   });
 

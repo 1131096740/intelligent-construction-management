@@ -34,6 +34,7 @@ const statusOptions = [
   { label: "公司付款已付", value: "paid" },
   { label: "已结清", value: "settled" },
   { label: "已退回", value: "returned" },
+  { label: "草稿已放弃", value: "invalidated" },
   { label: "已作废", value: "voided" }
 ];
 const columns = [
@@ -54,7 +55,9 @@ const projectOptions = computed(() => [
     value: project.id
   }))
 ]);
-const realRows = computed(() => rows.value.filter((row) => row.form === "real_payment"));
+const realRows = computed(() =>
+  rows.value.filter((row) => row.form === "real_payment" && row.status !== "invalidated")
+);
 const amountSummary = computed(() => ({
   approval: sumCents(realRows.value.map((row) => row.approvalAmountCents)),
   actual: sumCents(realRows.value.map((row) => row.actualPaidAmountCents)),

@@ -1,5 +1,6 @@
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import type { DetailActionReadModel } from "@jiangkong/shared-domain";
 import {
   expectHorizontalScrollOwner,
   expectNoDocumentHorizontalOverflow,
@@ -16,7 +17,29 @@ const approval = {
   currentNodeName: "审批完成",
   currentRoleKeys: []
 };
-const receiptSummary = {
+const receiptSummary: {
+  available: boolean;
+  status: string;
+  statusLabel: string;
+  openAfterActualPayment: boolean;
+  blockedReason: null;
+  currentRevisionNo: number;
+  firstSubmittedAt: null;
+  submittedAt: null;
+  lockedAt: null;
+  discrepancyStatus: null;
+  workflow?: {
+    stage: string;
+    stageLabel: string;
+    resetAction: {
+      key: "reset_receipt_draft";
+      label: string;
+      enabled: boolean;
+      disabledReason: null;
+      expectedRevision: number;
+    };
+  };
+} = {
   available: true,
   status: "draft",
   statusLabel: "待确认收货",
@@ -140,7 +163,7 @@ function procurementDetail() {
     invoiceLedger: { available: false, currentCoordinates: null, invoices: [], allocations: [], noInvoiceConfirmations: [], invoiceExceptions: [] },
     discrepancy: { available: false, status: "not_available", label: "收货复核后可处理少货" },
     applicationPdf: { available: true, generated: true, businessType: "spot_procurement_version", businessId: "version-1", disabledReason: null },
-    availableActions: [], primaryAction: null, disabledReasons: []
+    availableActions: [] as DetailActionReadModel[], primaryAction: null, disabledReasons: []
   };
 }
 
@@ -166,7 +189,8 @@ function paymentDetail() {
       paymentType: "company_direct", paymentTypeLabel: "公司直付", merchantName: "利民建材店", merchantPayeeMismatchNote: null,
       payerCompanyName: "四川建工智管建筑工程有限公司", payee: { name: "利民建材店", accountName: "利民建材店", primaryChannel: { id: "channel-1", sortOrder: 1, channelType: "bank_transfer", channelTypeLabel: "银行转账", accountName: "利民建材店", bankName: "建设银行", accountNumberLast4: "1234", note: null, primary: true } },
       approvalAmountCents: "440000", actualPaidAmountCents: "220000", refundAmountCents: "0", netPaidAmountCents: "220000", remainingAmountCents: "220000", paymentFactConsistent: true,
-      handler, payerManagement: { visible: false, enabled: false, disabledReason: null, requiresReapproval: false }
+      handler, payerManagement: { visible: false, enabled: false, disabledReason: null, requiresReapproval: false },
+      updatedAt: now
     },
     procurementVersion: procurementDetail().currentVersion, approval, approvalTimeline: [], executions: [{
       id: "execution-1", amountCents: "220000", paidAt: now, paymentMethod: "bank_transfer", paymentMethodLabel: "银行转账", executedBy: { id: "finance-1", name: "财务甲" }, voucherFileId: "voucher-1", voucherFileName: "付款凭证.pdf", voidedAt: null, voidReason: null, active: true, vouchers: [{ id: "voucher-link-1", fileId: "voucher-1", sortOrder: 1 }]
@@ -177,7 +201,7 @@ function paymentDetail() {
     paymentMethods: [{ value: "bank_transfer", label: "银行转账" }], paymentChannels: [{ id: "channel-1", sortOrder: 1, channelType: "bank_transfer", channelTypeLabel: "银行转账", accountName: "利民建材店", bankName: "建设银行", accountNumberLast4: "1234", note: null, primary: true }],
     discrepancy: { status: "none", nextStep: null, refund: null }, approvalOriginal: { documentId: "payment-original", fileId: "a5-original", templateKey: "spot_procurement_payment_approval_original_v1", createdAt: now, immutable: true }, archives: [], archiveStatus: { status: "generated", label: "归档包已生成", canRetry: false, latestVersionNo: 1 },
     invoice: { status: "pending", statusLabel: "待补发票", activeCount: 0, invoices: [] },
-    paymentPdf: { available: true, businessType: "spot_procurement_payment", businessId: "payment-1", disabledReason: null }, availableActions: [], primaryAction: null, disabledReasons: []
+    paymentPdf: { available: true, businessType: "spot_procurement_payment", businessId: "payment-1", disabledReason: null }, availableActions: [] as DetailActionReadModel[], primaryAction: null, disabledReasons: []
   };
 }
 
@@ -292,4 +316,89 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   await expect(page.getByText("一次最终收货", { exact: true })).toBeVisible();
   await expect(page.getByText("没有商户余额路径", { exact: true })).toBeVisible();
   await expect(page.getByText("发票是整张付款申请的可选附件", { exact: true })).toBeVisible();
+});
+
+test("executes server-owned procurement, A5 payment and receipt draft lifecycle actions", async ({ page }) => {
+  await mockLogin(page);
+  const requests: Array<{ path: string; body: unknown }> = [];
+  const draftProcurement = procurementDetail();
+  draftProcurement.procurement.status = "draft";
+  draftProcurement.procurement.statusLabel = "草稿";
+  draftProcurement.currentVersion.status = "draft";
+  draftProcurement.currentVersion.statusLabel = "草稿";
+  draftProcurement.availableActions = [{
+    key: "delete_pristine_draft", label: "删除采购草稿", kind: "danger", enabled: true,
+    disabledReason: null, requiresComment: false, requiresPassword: false
+  }];
+  draftProcurement.primaryAction = null;
+  draftProcurement.receipt = {
+    ...receiptSummary,
+    workflow: {
+      stage: "reset_unsubmitted_receipt",
+      stageLabel: "可重置未提交收货",
+      resetAction: {
+        key: "reset_receipt_draft",
+        label: "重置未提交收货",
+        enabled: true,
+        disabledReason: null,
+        expectedRevision: 1
+      }
+    }
+  };
+  const draftPayment = paymentDetail();
+  draftPayment.payment.status = "draft";
+  draftPayment.payment.statusLabel = "付款草稿";
+  draftPayment.payment.updatedAt = now;
+  draftPayment.availableActions = [{
+    key: "abandon_payment_draft", label: "放弃付款草稿", kind: "danger", enabled: true,
+    disabledReason: null, requiresComment: true, requiresPassword: false
+  }];
+  draftPayment.primaryAction = null;
+
+  await page.route("**/api/spot-procurements/**", async (route) => {
+    const request = route.request();
+    const pathName = new URL(request.url()).pathname;
+    if (request.method() !== "GET") {
+      requests.push({ path: pathName, body: request.postDataJSON() });
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "ok" }) });
+    }
+    const body = pathName.endsWith("/receipt") ? receiptDetail() : draftProcurement;
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
+  });
+  await page.route("**/api/spot-procurement-payments/**", async (route) => {
+    const request = route.request();
+    if (request.method() !== "GET") {
+      requests.push({ path: new URL(request.url()).pathname, body: request.postDataJSON() });
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "payment-1" }) });
+    }
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(draftPayment) });
+  });
+
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+
+  await page.goto("/零星采购/procurement-1");
+  await page.getByText("审批与动作", { exact: true }).click();
+  await page.getByRole("button", { name: "删除采购草稿" }).click();
+  await page.getByRole("button", { name: "确认删除草稿" }).click();
+  await expect.poll(() => requests.some((request) => request.path.endsWith("/procurement-1/abandonment"))).toBe(true);
+
+  await page.goto("/零星材料付款/payment-1");
+  await page.getByText("审批与办理", { exact: true }).click();
+  await page.getByRole("button", { name: "放弃付款草稿" }).click();
+  await page.getByPlaceholder("说明本次操作原因").fill("付款对象需要重新确认");
+  await page.getByRole("button", { name: "确认放弃付款草稿" }).click();
+  await expect.poll(() => requests.some((request) => request.path.endsWith("/payment-1/abandonment"))).toBe(true);
+
+  await page.goto("/零星采购收货/procurement-1");
+  await page.getByRole("button", { name: "重置未提交收货" }).click();
+  await page.getByRole("button", { name: "确认重置" }).click();
+  await expect.poll(() => requests.some((request) => request.path.endsWith("/receipt/draft-reset"))).toBe(true);
+  expect(requests).toEqual(expect.arrayContaining([
+    expect.objectContaining({ body: { action: "delete_pristine_draft" } }),
+    expect.objectContaining({ body: { expectedUpdatedAt: now, reason: "付款对象需要重新确认" } }),
+    expect.objectContaining({ body: { expectedRevision: 1 } })
+  ]));
 });

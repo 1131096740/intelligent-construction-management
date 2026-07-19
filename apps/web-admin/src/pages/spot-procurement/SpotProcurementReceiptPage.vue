@@ -12,6 +12,7 @@ import {
   fetchSpotProcurementPaymentDetail,
   fetchSpotProcurementReceipt,
   recordSpotProcurementRefund,
+  resetSpotProcurementReceiptDraft,
   reviewSpotProcurementReceipt,
   revokeSpotProcurementReceiptReview,
   submitSpotProcurementReceipt,
@@ -25,6 +26,7 @@ import { uploadPrivateFile } from "../../api/core-flow-read.api";
 import BusinessDetailHeader from "../../components/BusinessDetailHeader.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import { CORE_ARCHIVE_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
+import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import ReceiptLineEditor from "./components/ReceiptLineEditor.vue";
 import ReceiptPhotoUploader from "./components/ReceiptPhotoUploader.vue";
@@ -38,6 +40,8 @@ const busy = ref(false);
 const error = ref("");
 const message = ref("");
 const paymentNotice = ref("");
+const resetVisible = ref(false);
+const resetError = ref("");
 const delegateUserId = ref("");
 const invoiceFiles = ref<UploadFile[]>([]);
 const refundFiles = ref<UploadFile[]>([]);
@@ -61,6 +65,12 @@ const hasActualPayment = computed(() => Boolean(paymentDetail.value?.executions.
 const activeInvoices = computed(() => paymentDetail.value?.invoice?.invoices ?? []);
 const discrepancy = computed(() => receipt.value?.discrepancy ?? { status: "none", nextStep: null });
 const canHandleDiscrepancy = computed(() => receipt.value?.receipt.status === "reviewed" && !isLocked.value);
+const receiptWorkflow = computed(() =>
+  detail.value?.receipt && !("label" in detail.value.receipt)
+    ? detail.value.receipt.workflow
+    : undefined
+);
+const receiptResetAction = computed(() => receiptWorkflow.value?.resetAction);
 
 function money(value: string | null | undefined) {
   if (!value) return "—";
@@ -160,6 +170,23 @@ function saveReceiptDraft() {
     }),
     "收货草稿已保存"
   );
+}
+
+async function resetReceiptDraft() {
+  const action = receiptResetAction.value;
+  if (!action?.enabled) return;
+  busy.value = true;
+  resetError.value = "";
+  try {
+    await resetSpotProcurementReceiptDraft(procurementId.value, action.expectedRevision);
+    resetVisible.value = false;
+    message.value = "未提交的收货填写已重置，收货单及历史证据未被删除。";
+    await load();
+  } catch (actionError) {
+    resetError.value = actionError instanceof Error ? actionError.message : "重置收货草稿失败";
+  } finally {
+    busy.value = false;
+  }
 }
 
 async function uploadReceiptPhoto(payload: { file: File; source: "camera" | "album"; category: "material_scene" | "delivery_note"; note: string; appendReason: string }) {
@@ -307,6 +334,15 @@ onMounted(() => void load());
           class="actions"
         >
           <t-button
+            v-if="receiptResetAction?.enabled"
+            theme="danger"
+            variant="outline"
+            :disabled="busy"
+            @click="resetVisible = true"
+          >
+            {{ receiptResetAction.label }}
+          </t-button>
+          <t-button
             variant="outline"
             :loading="busy"
             @click="saveReceiptDraft"
@@ -322,6 +358,19 @@ onMounted(() => void load());
           </t-button>
         </div>
       </t-card>
+
+      <SensitiveActionDialog
+        v-model="resetVisible"
+        title="重置未提交收货"
+        description="仅清空当前尚未提交的收货填写，不删除收货单、旧修订、锁定照片或其他业务证据。"
+        confirm-text="确认重置"
+        confirm-theme="danger"
+        :require-reason="false"
+        :require-password="false"
+        :loading="busy"
+        :error="resetError"
+        @confirm="resetReceiptDraft"
+      />
 
       <t-card title="收货照片与乙方送货单">
         <ReceiptPhotoUploader

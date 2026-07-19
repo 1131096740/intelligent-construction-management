@@ -80,7 +80,7 @@
             <t-option
               v-for="version in versions"
               :key="version.id"
-              :label="`V${version.versionNo} · ${templateStatusLabel(version.status)}`"
+              :label="`V${version.versionNo} · ${layoutStatusLabel(version.status)}`"
               :value="version.id"
             />
           </t-select>
@@ -101,7 +101,7 @@
           <span>草稿修订</span>
           <strong>R{{ currentVersion.draftRevision }}</strong>
           <t-tag :theme="currentVersion.status === 'published' ? 'success' : 'default'">
-            {{ templateStatusLabel(currentVersion.status) }}
+            {{ layoutStatusLabel(currentVersion.status) }}
           </t-tag>
         </div>
       </div>
@@ -136,6 +136,15 @@
       <p class="warning">
         已发布版本不可覆盖。固定公司名称、联系人、账号等跨公司内容应改用占位符。
       </p>
+      <BusinessDraftAction
+        v-if="currentVersion"
+        class="version-lifecycle-action"
+        :actions="currentVersion.availableActions ?? []"
+        :blocked-reasons="currentVersion.blockedReasons ?? []"
+        :subject="versionActionSubject"
+        :execute="discardCurrentVersion"
+        @completed="handleDiscardCompleted"
+      />
     </t-card>
 
     <t-card
@@ -217,6 +226,7 @@ import { useAuthStore } from "../../auth/auth.store";
 import {
   cloneLayoutTemplateVersion,
   createLayoutTemplate,
+  discardLayoutTemplateVersion,
   getLatestLayoutTemplatePreview,
   getLayoutTemplate,
   inspectLayoutTemplateVersion,
@@ -228,6 +238,9 @@ import {
   updateLayoutTemplateVersion
 } from "../../api/contract-workbench.api";
 import { templateStatusLabel } from "../contracts/contract-labels";
+import BusinessDraftAction, {
+  type BusinessDraftActionRequest
+} from "../../components/BusinessDraftAction.vue";
 import { canPublishLayoutVersion, contractTypeOptions } from "./contract-template.config";
 import {
   canMaintainContractTemplates,
@@ -258,6 +271,12 @@ const governance = computed(() => ({
   canSubmit: currentVersion.value?.status === "draft" && canMaintainTemplates.value,
   canPublish: currentVersion.value?.status === "submitted" && canPublishTemplates.value,
   canClone: currentVersion.value?.status === "published" && canMaintainTemplates.value
+}));
+const versionActionSubject = computed(() => ({
+  businessCode: detail.value?.template.id ?? "—",
+  name: `${detail.value?.template.name ?? "合同版式"} V${currentVersion.value?.versionNo ?? "—"}`,
+  lastSavedAt: formatDateTime(currentVersion.value?.updatedAt),
+  impactScope: "仅废弃当前从未提交的版式草稿；已发布版式和合同生成文件不受影响。"
 }));
 const latestPreview = computed<LayoutTemplatePreviewReadModel | null>(() =>
   currentVersion.value?.latestPreview ?? null
@@ -415,6 +434,22 @@ async function cloneCurrent() {
   }
 }
 
+async function discardCurrentVersion(request: BusinessDraftActionRequest) {
+  const version = currentVersion.value;
+  if (!version || request.action !== "discard_version") {
+    throw new Error("当前版式版本不支持该操作，请刷新后重试");
+  }
+  await discardLayoutTemplateVersion(version.id, {
+    reason: request.reason,
+    expectedRevision: version.draftRevision
+  });
+  await refreshDetail(version.id);
+}
+
+function handleDiscardCompleted() {
+  showSuccess("版式草稿版本已废弃，已发布版式和正式引用均未改变");
+}
+
 async function runVersionAction(action: () => Promise<unknown>, success: string, versionId: string) {
   try {
     await action();
@@ -428,7 +463,7 @@ async function runVersionAction(action: () => Promise<unknown>, success: string,
 async function refreshDetail(preferredVersionId?: string) {
   const templateId = String(route.params.layoutTemplateId ?? "");
   if (!templateId || templateId === "new") return;
-  const result = await getLayoutTemplate(templateId);
+  const result = await getLayoutTemplate(templateId, true);
   detail.value = result;
   form.name = result.template.name;
   form.contractTypeKey = result.template.contractTypeKey;
@@ -438,6 +473,18 @@ async function refreshDetail(preferredVersionId?: string) {
     result.versions.find((version) => version.status === "published")?.id ??
     result.versions[0]?.id ??
     "";
+}
+
+function layoutStatusLabel(status: string) {
+  return status === "discarded" ? "已废弃" : templateStatusLabel(status);
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : date.toLocaleString("zh-CN", { hour12: false });
 }
 
 function clearTransientState() {
@@ -594,6 +641,10 @@ function translateInspectionList(value: string) {
 
 .warning {
   color: var(--jg-warning);
+}
+
+.version-lifecycle-action {
+  margin-top: var(--jg-space-md);
 }
 
 .reference-list {

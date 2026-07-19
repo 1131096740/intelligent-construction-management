@@ -1221,7 +1221,7 @@ export interface WorkbenchSummaryReadModel {
   cards: WorkbenchSummaryCardReadModel[];
 }
 
-export type WorkItemQueueKey = "pending" | "blocked" | "started";
+export type WorkItemQueueKey = "pending" | "blocked" | "started" | "drafts";
 export type ApprovalCenterViewKey =
   | "pendingApproval"
   | "startedByMe"

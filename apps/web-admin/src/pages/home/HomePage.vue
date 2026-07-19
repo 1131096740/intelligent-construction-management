@@ -53,7 +53,7 @@
       <template v-else>
         <BusinessTableToolbar
           title="工作项"
-          description="筛选与排序作用于当前已加载的工作项。"
+          description="筛选与排序作用于当前已加载的工作项；未提交草稿单独列示，不计入待审批。"
           appearance="plain"
         >
           <template #actions>

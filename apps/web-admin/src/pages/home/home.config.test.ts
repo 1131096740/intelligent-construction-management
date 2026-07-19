@@ -125,7 +125,8 @@ describe("home workbench card helpers", () => {
           }
         ],
         blocked: [],
-        started: []
+        started: [],
+        drafts: []
       },
       approvalCenter: {
         pendingApproval: [],
@@ -156,6 +157,30 @@ describe("home workbench card helpers", () => {
       { label: "我发起的进行中", value: "1", tone: "default" },
       { label: "可见项目", value: "2", tone: "default" }
     ]);
+  });
+
+  it("keeps saved drafts in an independent queue without counting them as pending", () => {
+    const queues = toWorkItemQueues(workItemsFixture());
+    const rows = toHomeWorkItemRows(queues);
+
+    expect(queues.map((queue) => queue.title)).toEqual([
+      "待我处理",
+      "阻塞事项",
+      "我发起的进行中",
+      "我的草稿"
+    ]);
+    expect(queues[0].items.map((item) => item.id)).not.toContain("takeover:draft-1");
+    expect(queues[3].items.map((item) => item.id)).toEqual(["takeover:draft-1"]);
+    expect(rows.find((row) => row.id === "takeover:draft-1")).toMatchObject({
+      queueId: "drafts",
+      statusLabel: "草稿",
+      statusTone: "default"
+    });
+    expect(homeWorkItemSummaryItems(queues, 2)[0]).toEqual({
+      label: "待我处理",
+      value: "2",
+      tone: "primary"
+    });
   });
 
   it("filters work items by project, business type, status and keyword", () => {
@@ -236,6 +261,18 @@ function workItemsFixture(): WorkItemsReadModel {
           businessCode: "FK-004",
           amountText: "¥5,000.00",
           stayedText: "已停留 1 小时",
+          tone: "default"
+        }
+      ],
+      drafts: [
+        {
+          ...base,
+          id: "takeover:draft-1",
+          type: "contract_takeover",
+          title: "历史合同草稿",
+          businessCode: "LS-001",
+          currentNode: "草稿填写",
+          nextAction: "继续补录后提交复核",
           tone: "default"
         }
       ]

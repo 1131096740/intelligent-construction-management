@@ -47,7 +47,7 @@ export interface WorkbenchSummary {
   cards: WorkbenchCard[];
 }
 
-export type WorkItemQueueKey = "pending" | "blocked" | "started";
+export type WorkItemQueueKey = "pending" | "blocked" | "started" | "drafts";
 export type ApprovalCenterViewKey =
   | "pendingApproval"
   | "startedByMe"
@@ -307,10 +307,14 @@ export class MeService {
     const projectIds = scopes.map((scope) => scope.projectId);
     const projectNameById = await this.projectNames(projectIds);
 
+    const contractDraftProjectIds = this.projectIdsFor(scopes, [
+      "contract.create",
+      "contract.submit"
+    ]);
     const pending = [
       ...(await this.contractTakeoverWorkItems(
-        this.projectIdsFor(scopes, ["contract.create", "contract.submit"]),
-        ["draft", "needs_supplement"],
+        contractDraftProjectIds,
+        ["needs_supplement"],
         projectNameById,
         "补录历史合同",
         "补齐资料后提交复核",
@@ -408,9 +412,18 @@ export class MeService {
       ...(await this.approvalWorkItems(scopes, userId, "pending", evaluatedAt))
     ];
 
+    const drafts = await this.contractTakeoverWorkItems(
+      contractDraftProjectIds,
+      ["draft"],
+      projectNameById,
+      "草稿填写",
+      "继续补录后提交复核",
+      "default"
+    );
+
     const blocked = await this.contractTakeoverWorkItems(
       this.projectIdsFor(scopes, ["contract.create", "contract.archive.confirm", "payment.create"]),
-      activeTakeoverStatuses,
+      activeTakeoverStatuses.filter((status) => status !== "draft"),
       projectNameById,
       "历史余额未确认",
       "确认余额后付款容量才可信",
@@ -437,7 +450,8 @@ export class MeService {
       queues: {
         pending: pending.slice(0, 30),
         blocked: blocked.slice(0, 30),
-        started: started.slice(0, 30)
+        started: started.slice(0, 30),
+        drafts: drafts.slice(0, 30)
       },
       approvalCenter: {
         pendingApproval: pending.filter((item) => item.type === "approval").slice(0, 30),
