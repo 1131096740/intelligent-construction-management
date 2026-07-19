@@ -1,4 +1,11 @@
-import { BadRequestException, Injectable, NotFoundException, Optional } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  Optional
+} from "@nestjs/common";
 import {
   CONTRACT_INVOICE_TYPES,
   CONTRACT_TAX_FACT_SOURCES,
@@ -18,6 +25,7 @@ import type {
   ReviewContractTaxFactRevisionDto,
   SaveContractTaxFactRevisionDto
 } from "./dto/contract-tax-fact-revision.dto";
+import type { AbandonContractTaxFactRevisionDto } from "./dto/abandon-contract-tax-fact-revision.dto";
 
 type CandidateRowFact = {
   contractBillRowId: string;
@@ -136,6 +144,108 @@ export class ContractTaxFactsService {
       });
       return this.revisionReadModel(revision);
     });
+  }
+
+  async abandon(
+    projectId: string,
+    takeoverId: string,
+    revisionId: string,
+    input: AbandonContractTaxFactRevisionDto,
+    actorUserId: string
+  ) {
+    const reason = input.reason?.trim() ?? "";
+    if (input.action === "abandon_application" && !reason) {
+      throw new BadRequestException("放弃税务修订必须填写原因");
+    }
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+      const context = await this.loadContext(tx, projectId, takeoverId);
+      const [revision] = await tx.$queryRaw<Array<NonNullable<Awaited<ReturnType<typeof tx.contractTaxFactRevision.findUnique>>>>>(Prisma.sql`
+        SELECT * FROM "ContractTaxFactRevision"
+        WHERE "id" = ${revisionId} AND "contractVersionId" = ${context.version.id}
+        FOR UPDATE
+      `);
+      if (!revision) throw new NotFoundException("未找到税务事实修订，请刷新后重试");
+      if (revision.createdByUserId !== actorUserId) {
+        throw new ForbiddenException("只能删除或放弃自己创建的税务事实修订");
+      }
+      if (revision.status === "abandoned") {
+        return { ...this.revisionReadModel(revision), idempotent: true };
+      }
+      if (revision.status === "confirmed") {
+        throw new ConflictException("已确认的税务事实不能放弃，请发起新的税务修订");
+      }
+      if (!new Set([
+        "draft", "pending_finance_review", "pending_contract_confirmation", "rejected"
+      ]).has(revision.status)) {
+        throw new ConflictException("税务修订状态已变化，请刷新后重试");
+      }
+      const expectedUpdatedAt = new Date(input.expectedUpdatedAt);
+      if (revision.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+        throw new ConflictException("税务修订已被更新，请刷新后重试");
+      }
+      const pristine = revision.status === "draft" && !revision.submittedAt;
+      const expectedAction = pristine ? "delete_pristine_draft" : "abandon_application";
+      if (input.action !== expectedAction) {
+        throw new ConflictException(
+          pristine
+            ? "当前税务修订仍是纯净草稿，请刷新后使用“删除草稿”"
+            : "当前税务修订已进入复核，只能放弃修订并保留历史"
+        );
+      }
+      const now = new Date();
+      const updated = await tx.contractTaxFactRevision.updateMany({
+        where: { id: revision.id, status: revision.status, updatedAt: expectedUpdatedAt },
+        data: {
+          status: "abandoned",
+          abandonedAt: now,
+          abandonedByUserId: actorUserId,
+          abandonReason: pristine ? null : reason
+        }
+      });
+      if (updated.count !== 1) {
+        throw new ConflictException("税务修订已被其他操作处理，请刷新后重试");
+      }
+      await this.audit.record(tx, {
+        actorUserId,
+        action: pristine
+          ? "contract.tax_fact_revision.draft.delete"
+          : "contract.tax_fact_revision.abandon",
+        businessType: "contract_tax_fact_revision",
+        businessId: revision.id,
+        metadata: {
+          projectId,
+          takeoverId,
+          contractVersionId: context.version.id,
+          previousStatus: revision.status,
+          reason: pristine ? null : reason
+        }
+      });
+      return {
+        ...this.revisionReadModel({
+          ...revision,
+          status: "abandoned",
+          abandonedAt: now,
+          abandonedByUserId: actorUserId,
+          abandonReason: pristine ? null : reason,
+          updatedAt: now
+        }),
+        action: expectedAction,
+        idempotent: false
+      };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (
+        error instanceof BadRequestException || error instanceof ConflictException ||
+        error instanceof ForbiddenException || error instanceof NotFoundException
+      ) {
+        throw error;
+      }
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+        throw new ConflictException("税务修订正在被其他操作处理，请刷新后重试");
+      }
+      throw error;
+    }
   }
 
   update(
@@ -719,6 +829,9 @@ export class ContractTaxFactsService {
     confirmedByUserId: string | null;
     confirmedAt: Date | null;
     contractReviewComment: string | null;
+    abandonedAt?: Date | null;
+    abandonedByUserId?: string | null;
+    abandonReason?: string | null;
     createdAt: Date;
     updatedAt: Date;
   }) {

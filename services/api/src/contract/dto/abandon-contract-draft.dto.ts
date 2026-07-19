@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsOptional, IsString, MaxLength, Min, ValidateIf } from "class-validator";
+import { IsIn, IsInt, IsString, MaxLength, Min, ValidateIf } from "class-validator";
 
 export class AbandonContractDraftDto {
   @IsInt({ message: "草稿修订号必须是整数" })
@@ -13,6 +13,5 @@ export class AbandonContractDraftDto {
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "放弃原因必须是文字" })
   @MaxLength(200, { message: "放弃原因不能超过 200 个字" })
-  @IsOptional()
   reason?: string;
 }

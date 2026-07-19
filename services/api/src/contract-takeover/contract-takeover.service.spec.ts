@@ -4377,4 +4377,113 @@ describe("ContractTakeoverService", () => {
       preTakeoverPositiveIncreaseCents: "200000"
     });
   });
+
+  function abandonmentTx(record = takeoverRecord()) {
+    return {
+      $queryRaw: jest.fn().mockResolvedValue([record]),
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(record),
+        findMany: jest.fn().mockResolvedValue([record]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contractTakeoverBatch: { findFirst: jest.fn(), findUnique: jest.fn() },
+      archiveRecord: { count: jest.fn().mockResolvedValue(0) },
+      contractTakeoverCorrection: { count: jest.fn().mockResolvedValue(0) },
+      settlement: { count: jest.fn().mockResolvedValue(0) },
+      paymentRequest: { count: jest.fn().mockResolvedValue(0) },
+      contractVersion: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      paymentTermsVersion: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) }
+    };
+  }
+
+  it("closes a pristine takeover and its generated draft version without deleting facts", async () => {
+    const record = takeoverRecord();
+    const tx = abandonmentTx(record);
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const service = new ContractTakeoverService(prisma as never, audit as never);
+
+    const result = await service.abandonDraft(
+      "project-1",
+      "takeover-1",
+      {
+        expectedUpdatedAt: record.updatedAt.toISOString(),
+        action: "delete_pristine_draft"
+      },
+      "contract-user"
+    );
+
+    expect(result).toMatchObject({ status: "abandoned", action: "delete_pristine_draft" });
+    expect(tx.contractTakeover.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ takeoverStatus: "abandoned", abandonReason: null })
+    }));
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "abandoned" })
+    }));
+    expect(tx.paymentTermsVersion.updateMany).toHaveBeenCalledWith({
+      where: { id: "terms-version-1", status: "draft" },
+      data: { status: "voided" }
+    });
+    expect((tx.contractTakeover as Record<string, unknown>).delete).toBeUndefined();
+  });
+
+  it("keeps evidence and requires abandonment semantics for a reviewed takeover", async () => {
+    const record = takeoverRecord({
+      takeoverStatus: "needs_supplement",
+      submittedAt: new Date("2026-07-03T01:00:00.000Z")
+    });
+    const tx = abandonmentTx(record);
+    tx.archiveRecord.count.mockResolvedValue(1);
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const service = new ContractTakeoverService(prisma as never, audit as never);
+
+    await expect(service.abandonDraft(
+      "project-1", "takeover-1",
+      { expectedUpdatedAt: record.updatedAt.toISOString(), action: "delete_pristine_draft" },
+      "contract-user"
+    )).rejects.toThrow("只能放弃申请");
+
+    await expect(service.abandonDraft(
+      "project-1", "takeover-1",
+      {
+        expectedUpdatedAt: record.updatedAt.toISOString(),
+        action: "abandon_application",
+        reason: "资料无法补齐"
+      },
+      "contract-user"
+    )).resolves.toMatchObject({ status: "abandoned", action: "abandon_application" });
+    expect(tx.archiveRecord.count).toHaveBeenCalled();
+  });
+
+  it("returns a stable batch preview hash and rejects an apply with a stale hash", async () => {
+    const record = takeoverRecord({ takeoverBatchId: "batch-1", importRowNo: 1 });
+    const batch = { id: "batch-1", projectId: "project-1", batchNo: "BATCH-1" };
+    const previewTx = abandonmentTx(record);
+    previewTx.contractTakeoverBatch.findFirst.mockResolvedValue(batch);
+    const previewPrisma = { $transaction: jest.fn(async (callback) => callback(previewTx)) };
+    const previewService = new ContractTakeoverService(previewPrisma as never, audit as never);
+
+    const first = await previewService.previewBatchAbandonment(
+      "project-1", "batch-1", "contract-user"
+    );
+    const second = await previewService.previewBatchAbandonment(
+      "project-1", "batch-1", "contract-user"
+    );
+    expect(first).toMatchObject({ total: 1, eligible: 1, blocked: 0 });
+    expect(first.previewHash).toMatch(/^[a-f0-9]{64}$/u);
+    expect(second.previewHash).toBe(first.previewHash);
+
+    const applyTx = abandonmentTx(record);
+    applyTx.$queryRaw = jest.fn()
+      .mockResolvedValueOnce([batch])
+      .mockResolvedValueOnce([]);
+    const applyPrisma = { $transaction: jest.fn(async (callback) => callback(applyTx)) };
+    const applyService = new ContractTakeoverService(applyPrisma as never, audit as never);
+    await expect(applyService.applyBatchAbandonment(
+      "project-1",
+      "batch-1",
+      { previewHash: "0".repeat(64), reason: "整批录入错误" },
+      "contract-user"
+    )).rejects.toThrow("预览后已发生变化");
+    expect(applyTx.contractTakeover.updateMany).not.toHaveBeenCalled();
+  });
 });
