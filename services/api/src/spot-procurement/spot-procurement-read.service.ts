@@ -949,6 +949,8 @@ export class SpotProcurementReadService {
       paymentAttachments,
       receipt,
       discrepancy,
+      refundDiscrepancies,
+      refundOwnerCandidates,
       refunds,
       approvalOriginal,
       archives
@@ -1016,6 +1018,30 @@ export class SpotProcurementReadService {
           invalidatedAt: null
         },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+      }),
+      this.prisma.spotProcurementDiscrepancy.findMany({
+        where: {
+          procurementId: payment.procurementId,
+          procurementVersionId: payment.procurementVersionId
+        },
+        select: {
+          id: true,
+          procurementId: true,
+          procurementVersionId: true
+        }
+      }),
+      this.prisma.spotProcurementPayment.findMany({
+        where: {
+          procurementId: payment.procurementId,
+          procurementVersionId: payment.procurementVersionId
+        },
+        select: {
+          id: true,
+          procurementId: true,
+          procurementVersionId: true,
+          status: true,
+          createdAt: true
+        }
       }),
       this.prisma.spotProcurementRefund.findMany({
         where: {
@@ -1096,12 +1122,19 @@ export class SpotProcurementReadService {
     ]);
     const userById = new Map(users.map((user) => [user.id, user]));
     const fileById = new Map(files.map((file) => [file.id, file]));
+    const refundDiscrepancyById = new Map(
+      refundDiscrepancies.map((refundDiscrepancy) => [
+        refundDiscrepancy.id,
+        refundDiscrepancy
+      ])
+    );
     const paymentRefunds = refunds.filter(
       (refund) =>
-        refund.paymentId === payment.id ||
-        (refund.paymentId === null &&
-          discrepancy?.id === refund.discrepancyId &&
-          discrepancy.procurementVersionId === payment.procurementVersionId)
+        refundOwnerPaymentId(
+          refund,
+          refundDiscrepancyById.get(refund.discrepancyId) ?? null,
+          refundOwnerCandidates
+        ) === payment.id
     );
     const activeExecutions = executions.filter(
       (execution) => execution.voidedAt === null
@@ -1817,6 +1850,20 @@ export class SpotProcurementReadService {
     const versionIds = [
       ...new Set(rows.map((row) => row.procurementVersionId))
     ];
+    const versionCoordinates = [
+      ...new Map(
+        rows.map((row) => [
+          procurementVersionCoordinate(
+            row.procurementId,
+            row.procurementVersionId
+          ),
+          {
+            procurementId: row.procurementId,
+            procurementVersionId: row.procurementVersionId
+          }
+        ])
+      ).values()
+    ];
     const [
       loadedProjects,
       loadedProcurements,
@@ -1829,6 +1876,7 @@ export class SpotProcurementReadService {
       receipts,
       refunds,
       discrepancies,
+      refundOwnerCandidates,
       roleContextByProjectId
     ] =
       await Promise.all([
@@ -1897,10 +1945,21 @@ export class SpotProcurementReadService {
         }),
         this.prisma.spotProcurementDiscrepancy.findMany({
           where: {
-            procurementId: { in: procurementIds },
-            invalidatedAt: null
+            procurementId: { in: procurementIds }
           },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+        }),
+        this.prisma.spotProcurementPayment.findMany({
+          where: {
+            OR: versionCoordinates
+          },
+          select: {
+            id: true,
+            procurementId: true,
+            procurementVersionId: true,
+            status: true,
+            createdAt: true
+          }
         }),
         suppliedRoleContexts
           ? Promise.resolve(suppliedRoleContexts)
@@ -1972,15 +2031,20 @@ export class SpotProcurementReadService {
         discrepancy.procurementId,
         discrepancy.procurementVersionId
       );
-      if (!discrepancyByCoordinate.has(coordinate)) {
+      if (
+        !discrepancy.invalidatedAt &&
+        !discrepancyByCoordinate.has(coordinate)
+      ) {
         discrepancyByCoordinate.set(coordinate, discrepancy);
       }
     }
-    const paymentsByVersionCoordinate = groupBy(rows, (payment) =>
-      procurementVersionCoordinate(
-        payment.procurementId,
-        payment.procurementVersionId
-      )
+    const paymentsByVersionCoordinate = groupBy(
+      refundOwnerCandidates,
+      (payment) =>
+        procurementVersionCoordinate(
+          payment.procurementId,
+          payment.procurementVersionId
+        )
     );
     const paymentIds = new Set(rows.map((payment) => payment.id));
     const refundsByPaymentId = new Map<
@@ -1988,26 +2052,23 @@ export class SpotProcurementReadService {
       Array<(typeof refunds)[number]>
     >();
     for (const refund of refunds) {
-      const directPaymentId =
-        refund.paymentId && paymentIds.has(refund.paymentId)
-          ? refund.paymentId
-          : null;
       const discrepancy = discrepancyById.get(refund.discrepancyId);
-      const inferredPayment = refund.paymentId === null && discrepancy
-        ? paymentForRefund(
-            paymentsByVersionCoordinate.get(
+      const ownerPaymentId = refundOwnerPaymentId(
+        refund,
+        discrepancy ?? null,
+        discrepancy
+          ? paymentsByVersionCoordinate.get(
               procurementVersionCoordinate(
                 discrepancy.procurementId,
                 discrepancy.procurementVersionId
               )
             ) ?? []
-          )
-        : null;
-      const paymentId = directPaymentId ?? inferredPayment?.id ?? null;
-      if (!paymentId) continue;
-      const grouped = refundsByPaymentId.get(paymentId) ?? [];
+          : []
+      );
+      if (!ownerPaymentId || !paymentIds.has(ownerPaymentId)) continue;
+      const grouped = refundsByPaymentId.get(ownerPaymentId) ?? [];
       grouped.push(refund);
-      refundsByPaymentId.set(paymentId, grouped);
+      refundsByPaymentId.set(ownerPaymentId, grouped);
     }
     const invoiceCoverageByPaymentId = this.invoiceLedger
       ? await this.invoiceLedger.coverageForPaymentIds(
@@ -2732,29 +2793,58 @@ function procurementVersionCoordinate(
   return `${procurementId}\u0000${procurementVersionId}`;
 }
 
-function paymentForRefund(payments: SpotProcurementPayment[]) {
+function refundOwnerPaymentId(
+  refund: Pick<
+    SpotProcurementRefund,
+    "discrepancyId" | "procurementId" | "paymentId"
+  >,
+  discrepancy: Pick<
+    SpotProcurementDiscrepancy,
+    "id" | "procurementId" | "procurementVersionId"
+  > | null,
+  payments: Array<
+    Pick<
+      SpotProcurementPayment,
+      "id" | "procurementId" | "procurementVersionId" | "status" | "createdAt"
+    >
+  >
+) {
+  if (refund.paymentId !== null) return refund.paymentId;
+  if (
+    !discrepancy ||
+    discrepancy.id !== refund.discrepancyId ||
+    discrepancy.procurementId !== refund.procurementId
+  ) {
+    return null;
+  }
   const refundSettlementStatuses = new Set([
     "partially_paid",
     "paid",
     "settled"
   ]);
-  return [...payments].sort((left, right) => {
-    const leftPriority = refundSettlementStatuses.has(left.status)
-      ? 2
-      : ["voided", "invalidated"].includes(left.status)
-        ? 0
-        : 1;
-    const rightPriority = refundSettlementStatuses.has(right.status)
-      ? 2
-      : ["voided", "invalidated"].includes(right.status)
-        ? 0
-        : 1;
-    return (
-      rightPriority - leftPriority ||
-      right.createdAt.getTime() - left.createdAt.getTime() ||
-      right.id.localeCompare(left.id)
-    );
-  })[0] ?? null;
+  return [...payments]
+    .filter(
+      (payment) =>
+        payment.procurementId === discrepancy.procurementId &&
+        payment.procurementVersionId === discrepancy.procurementVersionId
+    )
+    .sort((left, right) => {
+      const leftPriority = refundSettlementStatuses.has(left.status)
+        ? 2
+        : ["voided", "invalidated"].includes(left.status)
+          ? 0
+          : 1;
+      const rightPriority = refundSettlementStatuses.has(right.status)
+        ? 2
+        : ["voided", "invalidated"].includes(right.status)
+          ? 0
+          : 1;
+      return (
+        rightPriority - leftPriority ||
+        right.createdAt.getTime() - left.createdAt.getTime() ||
+        right.id.localeCompare(left.id)
+      );
+    })[0]?.id ?? null;
 }
 
 function paymentTaskFactAt(

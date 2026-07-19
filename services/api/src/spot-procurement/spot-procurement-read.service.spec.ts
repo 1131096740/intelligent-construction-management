@@ -1625,7 +1625,7 @@ describe("SpotProcurementReadService", () => {
     expect(result.items.map((item) => item.id)).toEqual(["task-after-limit"]);
     expect(result.viewCounts).toEqual({ mine: 1, all: 201, closed: 0 });
     expect(result.truncated).toBe(false);
-    expect(fixture.prisma.spotProcurementPayment.findMany).toHaveBeenCalledTimes(2);
+    expect(fixture.prisma.spotProcurementPayment.findMany).toHaveBeenCalledTimes(3);
   });
 
   it("does not stop a fully visible payment scan at 201 rows", async () => {
@@ -1642,7 +1642,8 @@ describe("SpotProcurementReadService", () => {
       .fn()
       .mockResolvedValueOnce(rows.slice(0, 200))
       .mockResolvedValueOnce(rows.slice(200))
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([]);
     fixture.access.accessiblePaymentIds.mockImplementation(
       (paymentIds: string[]) => Promise.resolve(new Set(paymentIds))
     );
@@ -1663,7 +1664,7 @@ describe("SpotProcurementReadService", () => {
       approvalAmountCents: "400",
       complete: true
     });
-    expect(fixture.prisma.spotProcurementPayment.findMany).toHaveBeenCalledTimes(3);
+    expect(fixture.prisma.spotProcurementPayment.findMany).toHaveBeenCalledTimes(4);
   });
 
   it("does not assign a handler draft task to a material director without material staff", () => {
@@ -1684,47 +1685,56 @@ describe("SpotProcurementReadService", () => {
     ).toMatchObject({ key: "none", scope: "none", priority: 0 });
   });
 
-  it("matches discrepancies to the payment procurement version and attributes null-payment refunds", async () => {
+  it("keeps legacy null-payment refund ownership stable when the owner is excluded from the list", async () => {
     const fixture = buildFixture();
-    const oldPayment = paymentRow({
-      id: "payment-old",
-      code: "LXFK-OLD",
-      procurementVersionId: "version-old",
+    const visiblePayment = paymentRow({
+      id: "payment-visible",
+      code: "LXFK-VISIBLE",
+      paymentType: "company_direct",
       status: "approved_pending_payment",
       payerCompanyEntityId: "company-1",
       payerCompanyNameSnapshot: "云南建工",
       approvalAmountCents: 7_000n,
       paidAmountCents: 0n
     });
-    const currentPayment = paymentRow({
+    const ownerPayment = paymentRow({
+      id: "payment-owner",
+      code: "LXFK-OWNER",
       paymentType: "company_direct",
       status: "paid",
       payerCompanyEntityId: "company-1",
       payerCompanyNameSnapshot: "云南建工",
       approvalAmountCents: 12_000n
     });
-    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([
-      oldPayment,
-      currentPayment
-    ]);
-    fixture.prisma.spotProcurementPayment.findUnique.mockResolvedValue(
-      currentPayment
+    fixture.prisma.spotProcurementPayment.findMany.mockImplementation(
+      ({ select }: { select?: { procurementVersionId?: boolean } }) =>
+        Promise.resolve(
+          select?.procurementVersionId
+            ? [visiblePayment, ownerPayment]
+            : [visiblePayment]
+        )
+    );
+    fixture.prisma.spotProcurementPayment.findUnique.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        Promise.resolve(
+          [visiblePayment, ownerPayment].find((row) => row.id === where.id) ??
+            null
+        )
     );
     fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([
-      versionRow({ id: "version-old", versionNo: 0 }),
       versionRow()
     ]);
     const currentDiscrepancy = {
-        id: "discrepancy-current",
-        procurementId: "procurement-1",
-        procurementVersionId: "version-1",
-        status: "resolved",
-        resolutionType: "full_refund",
-        replenishedAt: null,
-        refundExpectedAmountCents: 500n,
-        createdAt: now,
-        updatedAt: now
-      };
+      id: "discrepancy-current",
+      procurementId: "procurement-1",
+      procurementVersionId: "version-1",
+      status: "resolved",
+      resolutionType: "full_refund",
+      replenishedAt: null,
+      refundExpectedAmountCents: 500n,
+      createdAt: now,
+      updatedAt: now
+    };
     fixture.prisma.spotProcurementDiscrepancy.findMany.mockResolvedValue([
       currentDiscrepancy
     ]);
@@ -1741,17 +1751,26 @@ describe("SpotProcurementReadService", () => {
         receivedAt: now
       }
     ]);
-    fixture.prisma.spotProcurementPaymentExecution.findMany.mockResolvedValue([
-      {
-        id: "execution-1",
-        paymentId: "payment-1",
-        amountCents: 5_000n,
-        paidAt: now,
-        voucherFileId: "voucher-1",
-        voidedAt: null,
-        createdAt: now
+    const ownerExecution = {
+      id: "execution-1",
+      paymentId: "payment-owner",
+      amountCents: 5_000n,
+      paidAt: now,
+      voucherFileId: "voucher-1",
+      voidedAt: null,
+      createdAt: now
+    };
+    fixture.prisma.spotProcurementPaymentExecution.findMany.mockImplementation(
+      ({ where }: { where: { paymentId: string | { in: string[] } } }) => {
+        const paymentIds =
+          typeof where.paymentId === "string"
+            ? [where.paymentId]
+            : where.paymentId.in;
+        return Promise.resolve(
+          paymentIds.includes("payment-owner") ? [ownerExecution] : []
+        );
       }
-    ]);
+    );
     const service = new SpotProcurementReadService(
       fixture.prisma as never,
       fixture.visibility as never,
@@ -1759,23 +1778,56 @@ describe("SpotProcurementReadService", () => {
       fixture.pilot as never
     );
 
-    const result = await service.listPayments("finance-1", { view: "all" });
+    fixture.access.accessiblePaymentIds.mockResolvedValue(
+      new Set(["payment-visible"])
+    );
+    const result = await service.listPayments("finance-1", {
+      view: "all",
+      keyword: "VISIBLE"
+    });
 
-    expect(result.items.find((item) => item.id === "payment-old")?.currentTask).toMatchObject({
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      id: "payment-visible",
+      refundAmountCents: "0",
+      netPaidAmountCents: "0"
+    });
+    expect(result.items[0]?.currentTask).toMatchObject({
       key: "record_execution",
       priority: 300
     });
-    expect(
-      result.items.find((item) => item.id === "payment-1")
-    ).toMatchObject({ refundAmountCents: "500", netPaidAmountCents: "4500" });
     expect(result.amountSummary).toMatchObject({
-      refundAmountCents: "500",
-      netPaidAmountCents: "4500"
+      refundAmountCents: "0",
+      netPaidAmountCents: "0"
+    });
+    expect(
+      fixture.prisma.spotProcurementPayment.findMany
+    ).toHaveBeenNthCalledWith(2, {
+      where: {
+        OR: [
+          {
+            procurementId: "procurement-1",
+            procurementVersionId: "version-1"
+          }
+        ]
+      },
+      select: {
+        id: true,
+        procurementId: true,
+        procurementVersionId: true,
+        status: true,
+        createdAt: true
+      }
     });
     await expect(
-      service.getPayment("payment-1", "finance-1")
+      service.getPayment("payment-owner", "finance-1")
     ).resolves.toMatchObject({
       payment: { refundAmountCents: "500", netPaidAmountCents: "4500" }
+    });
+    await expect(
+      service.getPayment("payment-visible", "finance-1")
+    ).resolves.toMatchObject({
+      payment: { refundAmountCents: "0", netPaidAmountCents: "0" }
     });
   });
 
