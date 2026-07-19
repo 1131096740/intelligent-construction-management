@@ -39,6 +39,10 @@ export type SpotProcurementReviewDecision =
   | "reject"
   | "return_to_applicant";
 
+export type SpotProcurementA5ReviewDecision =
+  | "approve"
+  | "return_to_applicant";
+
 export interface SpotProcurementProjectSummary {
   id: string;
   code: string;

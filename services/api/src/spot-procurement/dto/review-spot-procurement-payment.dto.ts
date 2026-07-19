@@ -12,6 +12,7 @@ import {
 
 export const SPOT_PROCUREMENT_PAYMENT_REVIEW_DECISIONS = [
   "approve",
+  // Legacy payment approvals still read and process reject; real A5 rejects it in the service.
   "reject",
   "return_to_applicant"
 ] as const;

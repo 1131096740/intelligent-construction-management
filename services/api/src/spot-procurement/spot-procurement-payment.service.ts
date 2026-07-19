@@ -1149,6 +1149,15 @@ export class SpotProcurementPaymentService {
           version.procurementId
         );
         const payment = this.requirePayment(payments, paymentId);
+        const realPaymentForm = isRealPaymentForm(payment, version);
+        if (
+          realPaymentForm &&
+          input.decision === "reject"
+        ) {
+          throw new BadRequestException(
+            "项目零星付款只允许通过或退回申请人修改"
+          );
+        }
         if (payment.status !== "approval_pending") {
           throw new ConflictException("当前付款申请不在审批中");
         }
@@ -1184,7 +1193,14 @@ export class SpotProcurementPaymentService {
             this.auth.confirmPassword(actorUserId, password)
         });
         const selfReviewMetadata = selfReview.metadata;
-        const comment = optionalText(input.comment);
+        const comment = realPaymentForm
+          ? input.decision === "approve"
+            ? optionalText(input.comment) ?? "同意"
+            : requiredText(
+                input.comment,
+                "退回付款申请时必须填写原因"
+              )
+          : optionalText(input.comment);
         const adjustedBalanceText =
           input.adjustedSupplierBalanceAmountCents;
         const isFinanceDirectorNode =
@@ -3459,6 +3475,19 @@ function requiredText(value: string | null | undefined, message: string) {
   const text = value?.trim() ?? "";
   if (!text) throw new BadRequestException(message);
   return text;
+}
+
+function isRealPaymentForm(
+  payment: Pick<PaymentLockRow, "paymentType" | "status">,
+  version?: { totalAmountCents: bigint | null }
+) {
+  if (payment.paymentType) return true;
+
+  return (
+    payment.status === "draft" &&
+    version !== undefined &&
+    version.totalAmountCents === null
+  );
 }
 
 function hasRealFormPaymentFacts(input: UpdateSpotProcurementPaymentDraftDto) {

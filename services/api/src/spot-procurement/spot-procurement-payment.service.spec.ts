@@ -322,6 +322,50 @@ function expectNoPaymentReviewWrites(
   expect(current.audit.record).not.toHaveBeenCalled();
 }
 
+function realPaymentReviewHarness() {
+  const current = harness();
+  const submitted = {
+    ...draftPayment,
+    status: "approval_pending",
+    paymentType: "company_direct",
+    merchantNameSnapshot: "北京某某商贸",
+    payerCompanyEntityId: "company-1",
+    payerCompanyNameSnapshot: "云南建工集团",
+    submittedAt: new Date("2026-07-20T02:00:00.000Z")
+  };
+  current.tx.$queryRaw
+    .mockResolvedValueOnce([version])
+    .mockResolvedValueOnce([submitted])
+    .mockResolvedValueOnce([
+      {
+        id: "approval-1",
+        status: "approval_pending",
+        currentNodeIndex: 1,
+        applicantUserId: "material-1",
+        frozenNodes: [
+          {
+            name: "综合部主管审批",
+            mode: "any",
+            roleKeys: ["comprehensive_director"],
+            approvedRoleKeys: ["comprehensive_director"]
+          },
+          {
+            name: "项目经理审批",
+            mode: "any",
+            roleKeys: ["project_manager"]
+          },
+          {
+            name: "财务主管审批",
+            mode: "any",
+            roleKeys: ["finance_director"]
+          }
+        ]
+      }
+    ]);
+  roles(current.tx, { project: ["project_manager"] });
+  return { ...current, submitted };
+}
+
 function validDraftInput(): UpdateSpotProcurementPaymentDraftDto {
   return {
     settlementAmountCents: "8000",
@@ -1395,6 +1439,100 @@ describe("SpotProcurementPaymentService", () => {
       "chairman-1",
       "approval.approve"
     );
+  });
+
+  it("rejects a terminal reject decision for the real A5 form without writing business facts", async () => {
+    const current = realPaymentReviewHarness();
+
+    await expect(
+      current.service.review("payment-1", "project-manager-1", {
+        decision: "reject",
+        comment: "不同意"
+      })
+    ).rejects.toEqual(
+      new BadRequestException(
+        "项目零星付款只允许通过或退回申请人修改"
+      )
+    );
+    expectNoPaymentReviewWrites(current);
+  });
+
+  it("freezes a default approval comment for the real A5 form", async () => {
+    const { service, tx } = realPaymentReviewHarness();
+
+    await service.review("payment-1", "project-manager-1", {
+      decision: "approve"
+    });
+
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "approve",
+        actorUserId: "project-manager-1",
+        comment: "同意"
+      })
+    });
+  });
+
+  it("requires a reason before returning the real A5 form to its applicant", async () => {
+    const current = realPaymentReviewHarness();
+
+    await expect(
+      current.service.review("payment-1", "project-manager-1", {
+        decision: "return_to_applicant",
+        comment: "   "
+      })
+    ).rejects.toEqual(
+      new BadRequestException("退回付款申请时必须填写原因")
+    );
+    expectNoPaymentReviewWrites(current);
+  });
+
+  it("returns the real A5 form into a new draft that restarts from comprehensive review", async () => {
+    const { service, tx, submitted } = realPaymentReviewHarness();
+    tx.spotProcurementPayment.update.mockResolvedValue({
+      ...submitted,
+      status: "returned"
+    });
+    tx.spotProcurementPayment.create.mockResolvedValue({
+      ...submitted,
+      id: "payment-2",
+      code: "LXCG-001-V1-P002",
+      status: "draft",
+      submittedAt: null
+    });
+
+    const result = await service.review(
+      "payment-1",
+      "project-manager-1",
+      {
+        decision: "return_to_applicant",
+        comment: "  请补充付款依据  "
+      }
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "returned",
+        newDraftPaymentId: "payment-2"
+      })
+    );
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "return_to_applicant",
+        comment: "请补充付款依据"
+      })
+    });
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-1" },
+      data: { status: "returned_to_applicant" }
+    });
+    expect(tx.spotProcurementPayment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        status: "draft",
+        handlerUserId: "material-1"
+      })
+    });
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
   });
 
   it("uses canonical global/project role resolution at the current project-manager node", async () => {
