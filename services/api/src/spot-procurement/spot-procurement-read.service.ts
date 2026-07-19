@@ -1136,6 +1136,11 @@ export class SpotProcurementReadService {
           refundOwnerCandidates
         ) === payment.id
     );
+    const taskDiscrepancy = paymentTaskDiscrepancy(
+      payment,
+      discrepancy,
+      refundOwnerCandidates
+    );
     const activeExecutions = executions.filter(
       (execution) => execution.voidedAt === null
     );
@@ -1178,7 +1183,7 @@ export class SpotProcurementReadService {
       payment,
       approval,
       receipt,
-      discrepancy,
+      discrepancy: taskDiscrepancy,
       refunds: paymentRefunds,
       actorUserId,
       roleKeys,
@@ -2109,6 +2114,16 @@ export class SpotProcurementReadService {
             row.procurementVersionId
           )
         ) ?? null;
+      const taskDiscrepancy = paymentTaskDiscrepancy(
+        row,
+        discrepancy,
+        paymentsByVersionCoordinate.get(
+          procurementVersionCoordinate(
+            row.procurementId,
+            row.procurementVersionId
+          )
+        ) ?? []
+      );
       const realPayment = isRealPaymentForm(row, version);
       const approval = approvalByBusinessId.get(row.id) ?? null;
       const roleContext = roleContextByProjectId.get(row.projectId) ?? {
@@ -2133,7 +2148,7 @@ export class SpotProcurementReadService {
         payment: row,
         approval,
         receipt: receiptByProcurementId.get(row.procurementId) ?? null,
-        discrepancy,
+        discrepancy: taskDiscrepancy,
         refunds: rowRefunds,
         actorUserId,
         roleKeys: roleContext.effectiveRoleKeys,
@@ -2146,7 +2161,7 @@ export class SpotProcurementReadService {
             row,
             approval,
             currentTask,
-            discrepancy,
+            taskDiscrepancy,
             voucher.status === "anomaly"
               ? earliestVoucherAnomalyAt(
                   rowExecutions,
@@ -2793,6 +2808,11 @@ function procurementVersionCoordinate(
   return `${procurementId}\u0000${procurementVersionId}`;
 }
 
+type RefundOwnerPayment = Pick<
+  SpotProcurementPayment,
+  "id" | "procurementId" | "procurementVersionId" | "status" | "createdAt"
+>;
+
 function refundOwnerPaymentId(
   refund: Pick<
     SpotProcurementRefund,
@@ -2802,12 +2822,7 @@ function refundOwnerPaymentId(
     SpotProcurementDiscrepancy,
     "id" | "procurementId" | "procurementVersionId"
   > | null,
-  payments: Array<
-    Pick<
-      SpotProcurementPayment,
-      "id" | "procurementId" | "procurementVersionId" | "status" | "createdAt"
-    >
-  >
+  payments: RefundOwnerPayment[]
 ) {
   if (refund.paymentId !== null) return refund.paymentId;
   if (
@@ -2817,6 +2832,32 @@ function refundOwnerPaymentId(
   ) {
     return null;
   }
+  return nullPaymentRefundOwnerId(discrepancy, payments);
+}
+
+function paymentTaskDiscrepancy(
+  payment: Pick<SpotProcurementPayment, "id">,
+  discrepancy: SpotProcurementDiscrepancy | null,
+  payments: RefundOwnerPayment[]
+) {
+  if (
+    discrepancy?.status !== "awaiting_refund" ||
+    discrepancy.resolutionType !== "full_refund"
+  ) {
+    return discrepancy;
+  }
+  return nullPaymentRefundOwnerId(discrepancy, payments) === payment.id
+    ? discrepancy
+    : null;
+}
+
+function nullPaymentRefundOwnerId(
+  discrepancy: Pick<
+    SpotProcurementDiscrepancy,
+    "procurementId" | "procurementVersionId"
+  >,
+  payments: RefundOwnerPayment[]
+) {
   const refundSettlementStatuses = new Set([
     "partially_paid",
     "paid",

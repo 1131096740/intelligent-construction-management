@@ -1831,6 +1831,92 @@ describe("SpotProcurementReadService", () => {
     });
   });
 
+  it("assigns an awaiting-refund task only to the unique owner payment", async () => {
+    const fixture = buildFixture();
+    const voidedPayment = paymentRow({
+      id: "payment-voided",
+      code: "LXFK-VOIDED",
+      status: "voided",
+      invalidatedAt: now
+    });
+    const invalidatedPayment = paymentRow({
+      id: "payment-invalidated",
+      code: "LXFK-INVALIDATED",
+      status: "invalidated",
+      invalidatedAt: now
+    });
+    const replacementPayment = paymentRow({
+      id: "payment-replacement",
+      code: "LXFK-REPLACEMENT",
+      status: "paid"
+    });
+    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([
+      voidedPayment,
+      invalidatedPayment,
+      replacementPayment
+    ]);
+    fixture.prisma.spotProcurementPayment.findUnique.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        Promise.resolve(
+          [voidedPayment, invalidatedPayment, replacementPayment].find(
+            (payment) => payment.id === where.id
+          ) ?? null
+        )
+    );
+    fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([
+      versionRow()
+    ]);
+    const awaitingRefund = {
+      id: "discrepancy-awaiting-refund",
+      procurementId: "procurement-1",
+      procurementVersionId: "version-1",
+      status: "awaiting_refund",
+      resolutionType: "full_refund",
+      replenishedAt: null,
+      refundExpectedAmountCents: 500n,
+      createdAt: now,
+      updatedAt: now
+    };
+    fixture.prisma.spotProcurementDiscrepancy.findMany.mockResolvedValue([
+      awaitingRefund
+    ]);
+    fixture.prisma.spotProcurementDiscrepancy.findFirst.mockResolvedValue(
+      awaitingRefund
+    );
+    fixture.prisma.spotProcurementRefund.findMany.mockResolvedValue([]);
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const mine = await service.listPayments("finance-1", { view: "mine" });
+
+    expect(mine.items.map((item) => item.id)).toEqual([
+      "payment-replacement"
+    ]);
+    expect(mine.items[0]?.currentTask).toMatchObject({
+      key: "record_refund",
+      priority: 400
+    });
+    await expect(
+      service.getPayment("payment-replacement", "finance-1")
+    ).resolves.toMatchObject({
+      currentTask: { key: "record_refund", priority: 400 }
+    });
+    await expect(
+      service.getPayment("payment-voided", "finance-1")
+    ).resolves.toMatchObject({
+      currentTask: { key: "none", priority: 0 }
+    });
+    await expect(
+      service.getPayment("payment-invalidated", "finance-1")
+    ).resolves.toMatchObject({
+      currentTask: { key: "none", priority: 0 }
+    });
+  });
+
   it("orders blocking tasks by their discrepancy fact time before payment update time", async () => {
     const fixture = buildFixture();
     const latePaymentUpdate = new Date("2026-07-19T10:00:00.000Z");
