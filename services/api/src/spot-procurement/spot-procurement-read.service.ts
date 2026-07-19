@@ -25,6 +25,7 @@ import {
   GLOBAL_BUSINESS_ROLE_KEYS,
   SPOT_PROCUREMENT_PAYMENT_STATUSES,
   SPOT_PROCUREMENT_STATUSES,
+  resolveEffectiveRoleKeys,
   type DetailActionReadModel,
   type RoleKey
 } from "@jiangkong/shared-domain";
@@ -50,6 +51,8 @@ import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
 const LIST_LIMIT = 200;
 const LIST_SCAN_BATCH_SIZE = 200;
 const LIST_SCAN_MAX_ROWS = 2_000;
+const PAYMENT_TASK_SORT_AT = Symbol("paymentTaskSortAt");
+const PAYMENT_AMOUNT_FACTS = Symbol("paymentAmountFacts");
 const RESOURCE_FORBIDDEN_MESSAGE = "零星采购资源不存在或当前账号无权访问";
 const PROCUREMENT_CREATE_ROLES = new Set<RoleKey>([
   "material_staff",
@@ -127,7 +130,28 @@ export interface SpotProcurementPaymentListQuery {
   projectId?: string;
   status?: string;
   keyword?: string;
+  view?: string;
 }
+
+export const SPOT_PAYMENT_WORKBENCH_VIEWS = ["mine", "all", "closed"] as const;
+export type SpotPaymentWorkbenchView =
+  (typeof SPOT_PAYMENT_WORKBENCH_VIEWS)[number];
+export type SpotPaymentCurrentTask = {
+  key: string;
+  label: string;
+  hint: string;
+  priority: 400 | 300 | 200 | 0;
+  scope: "personal" | "shared" | "none";
+  enabled: boolean;
+  disabledReason: string | null;
+};
+export type SpotPaymentListAmountSummary = {
+  approvalAmountCents: string;
+  actualPaidAmountCents: string;
+  refundAmountCents: string;
+  netPaidAmountCents: string;
+  complete: boolean;
+};
 
 export interface ProjectSummary {
   id: string;
@@ -150,6 +174,159 @@ export interface ApprovalSummary {
   statusLabel: string;
   currentNodeName: string;
   currentRoleKeys: RoleKey[];
+}
+
+const NO_SPOT_PAYMENT_TASK: SpotPaymentCurrentTask = {
+  key: "none",
+  label: "无需办理",
+  hint: "当前付款无需您办理",
+  priority: 0,
+  scope: "none",
+  enabled: false,
+  disabledReason: null
+};
+
+export function deriveSpotPaymentCurrentTask(input: {
+  payment: Pick<
+    SpotProcurementPayment,
+    | "status"
+    | "handlerUserId"
+    | "payerCompanyEntityId"
+    | "payerCompanyNameSnapshot"
+  >;
+  approval: Pick<
+    ApprovalInstance,
+    "status" | "currentNodeIndex" | "frozenNodes" | "applicantUserId"
+  > | null;
+  receipt: Pick<SpotProcurementReceipt, "status"> | null;
+  discrepancy: Pick<
+    SpotProcurementDiscrepancy,
+    "status" | "resolutionType"
+  > | null;
+  refunds: Array<Pick<SpotProcurementRefund, "amountCents">>;
+  actorUserId: string;
+  roleKeys: readonly RoleKey[];
+  projectScopedRoleKeys: readonly RoleKey[];
+  availableActions: Array<
+    Pick<DetailActionReadModel, "key" | "label" | "enabled" | "disabledReason">
+  >;
+}): SpotPaymentCurrentTask {
+  void input.receipt;
+  void input.refunds;
+  const action = (key: string) =>
+    input.availableActions.find((candidate) => candidate.key === key);
+  const projectFinance = input.projectScopedRoleKeys.includes("finance_staff");
+  const executionAction = action("record_execution");
+  const payerRoles = [
+    "finance_staff",
+    "comprehensive_director",
+    "finance_director"
+  ] as const;
+  const pendingApprovalRoleKeys = input.approval
+    ? pendingRoleKeysForFrozenApprovalNode(
+        input.approval.frozenNodes,
+        input.approval.currentNodeIndex
+      )
+    : [];
+  const canCompletePayerAtCurrentStage =
+    input.payment.status === "draft" ||
+    (input.payment.status === "approval_pending" &&
+      input.approval?.status === "approval_pending" &&
+      (input.approval.currentNodeIndex === 0 ||
+        (input.roleKeys.includes("finance_director") &&
+          pendingApprovalRoleKeys.includes("finance_director"))));
+
+  if (
+    projectFinance &&
+    input.discrepancy?.status === "awaiting_refund" &&
+    input.discrepancy.resolutionType === "full_refund"
+  ) {
+    return {
+      key: "record_refund",
+      label: "登记供应商退款",
+      hint: "收货差异已确认整笔退款，等待项目财务登记到账",
+      priority: 400,
+      scope: "personal",
+      enabled: true,
+      disabledReason: null
+    };
+  }
+  if (
+    projectFinance &&
+    executionAction?.enabled === false &&
+    executionAction.disabledReason?.includes("凭证")
+  ) {
+    return {
+      key: "view_only",
+      label: "核对付款凭证异常",
+      hint: executionAction.disabledReason,
+      priority: 400,
+      scope: "personal",
+      enabled: true,
+      disabledReason: null
+    };
+  }
+  if (
+    input.payment.status === "draft" &&
+    input.payment.handlerUserId === input.actorUserId &&
+    action("edit_draft")?.enabled
+  ) {
+    return {
+      key: "complete_payment_draft",
+      label: "完善付款草稿",
+      hint: "补齐付款构成、收款信息与支撑附件后提交审批",
+      priority: 300,
+      scope: "personal",
+      enabled: true,
+      disabledReason: null
+    };
+  }
+  if (
+    input.approval?.status === "approval_pending" &&
+    action("review_approval")?.enabled
+  ) {
+    return {
+      key: "review_payment",
+      label: "处理付款审批",
+      hint: "当前冻结审批节点等待您处理",
+      priority: 300,
+      scope: "personal",
+      enabled: true,
+      disabledReason: null
+    };
+  }
+  if (
+    projectFinance &&
+    PAYMENT_EXECUTABLE_STATUSES.has(input.payment.status) &&
+    executionAction?.enabled
+  ) {
+    return {
+      key: "record_execution",
+      label: "登记公司实际付款",
+      hint: "当前付款已批，等待项目财务登记实付与凭证",
+      priority: 300,
+      scope: "personal",
+      enabled: true,
+      disabledReason: null
+    };
+  }
+  if (
+    canCompletePayerAtCurrentStage &&
+    (!input.payment.payerCompanyEntityId ||
+      !input.payment.payerCompanyNameSnapshot) &&
+    input.roleKeys.some((role) => payerRoles.includes(role as (typeof payerRoles)[number]))
+  ) {
+    return {
+      key: "complete_payer",
+      label: "补充付款主体",
+      hint: "付款主体缺失，等待有权岗位共享补录",
+      priority: 200,
+      scope: "shared",
+      enabled: true,
+      disabledReason: null
+    };
+  }
+  return { ...NO_SPOT_PAYMENT_TASK };
 }
 
 @Injectable()
@@ -453,12 +630,15 @@ export class SpotProcurementReadService {
       actorUserId,
       procurement.projectId
     );
-    const paymentRows = await this.paymentListItems(
-      accessiblePayments,
-      new Map([[project.id, project]]),
-      new Map([[procurement.id, procurement]]),
-      userById
-    );
+    const paymentRows = (
+      await this.paymentListItems(
+        accessiblePayments,
+        actorUserId,
+        new Map([[project.id, project]]),
+        new Map([[procurement.id, procurement]]),
+        userById
+      )
+    ).map(stripPaymentInternalFacts);
     const actualPaidByPaymentId = sumActiveExecutionsByPaymentId(executions);
     const paymentSummary = summarizePayments(
       accessiblePayments,
@@ -617,12 +797,20 @@ export class SpotProcurementReadService {
     actorUserId: string,
     query: SpotProcurementPaymentListQuery
   ) {
+    const view = paymentWorkbenchView(query.view);
     const projectIds = await this.visibleProjectIdsForQuery(
       actorUserId,
       query.projectId
     );
     if (!projectIds.length) {
-      return { items: [], truncated: false, limit: LIST_LIMIT };
+      return {
+        view,
+        items: [],
+        viewCounts: { mine: 0, all: 0, closed: 0 },
+        amountSummary: null,
+        truncated: false,
+        limit: LIST_LIMIT
+      };
     }
     const status = optionalQueryText(query.status);
     if (
@@ -687,15 +875,51 @@ export class SpotProcurementReadService {
         : {})
     };
     const scan = await this.scanAccessiblePayments(where, actorUserId);
-    const truncated =
-      keywordSourceTruncated ||
-      scan.sourceTruncated ||
-      scan.rows.length > LIST_LIMIT;
-    const items = await this.paymentListItems(
-      scan.rows.slice(0, LIST_LIMIT)
+    const roleContextByProjectId = await this.paymentRoleContexts(
+      actorUserId,
+      projectIds
     );
+    const projected = await this.paymentListItems(
+      scan.rows,
+      actorUserId,
+      undefined,
+      undefined,
+      undefined,
+      roleContextByProjectId
+    );
+    const mine = projected.filter(
+      (item) => item.currentTask.enabled && item.currentTask.scope !== "none"
+    );
+    const closed = projected.filter((item) =>
+      ["settled", "voided", "invalidated"].includes(item.status)
+    );
+    const selected = view === "mine" ? mine : view === "closed" ? closed : projected;
+    selected.sort(comparePaymentWorkbenchItems);
+    const sourceTruncated = keywordSourceTruncated || scan.sourceTruncated;
+    const truncated = sourceTruncated || selected.length > LIST_LIMIT;
+    const amountSummary =
+      view === "all" &&
+      [...roleContextByProjectId.values()].some((context) =>
+        context.effectiveRoleKeys.some((role) =>
+          ["finance_staff", "finance_director"].includes(role)
+        )
+      )
+        ? paymentAmountSummary(projected, !sourceTruncated)
+        : null;
+    const items = selected.slice(0, LIST_LIMIT).map(stripPaymentInternalFacts);
 
-    return { items, truncated, limit: LIST_LIMIT };
+    return {
+      view,
+      items,
+      viewCounts: {
+        mine: mine.length,
+        all: projected.length,
+        closed: closed.length
+      },
+      amountSummary,
+      truncated,
+      limit: LIST_LIMIT
+    };
   }
 
   async getPayment(paymentId: string, actorUserId: string) {
@@ -905,6 +1129,19 @@ export class SpotProcurementReadService {
       paymentFactConsistent:
         payment.paidAmountCents === actualPaidAmountCents,
       voucherFactConsistent: voucher.status !== "anomaly"
+    });
+    const currentTask = deriveSpotPaymentCurrentTask({
+      payment,
+      approval,
+      receipt,
+      discrepancy,
+      refunds,
+      actorUserId,
+      roleKeys,
+      projectScopedRoleKeys: isProjectFinanceStaff
+        ? ["finance_staff"]
+        : [],
+      availableActions
     });
     const usesRealPaymentForm = isRealPaymentForm(payment, version);
     const invoiceCoverageByPaymentId =
@@ -1202,6 +1439,7 @@ export class SpotProcurementReadService {
             ? null
             : "付款审批完成后才可下载正式审批单"
       },
+      currentTask,
       availableActions,
       primaryAction: primaryActionKey(availableActions),
       disabledReasons: [
@@ -1273,10 +1511,7 @@ export class SpotProcurementReadService {
     let scannedRows = 0;
     let sourceTruncated = false;
 
-    while (
-      accessible.length <= LIST_LIMIT &&
-      scannedRows < LIST_SCAN_MAX_ROWS
-    ) {
+    while (scannedRows < LIST_SCAN_MAX_ROWS) {
       const batch = await this.prisma.spotProcurement.findMany({
         where,
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
@@ -1300,7 +1535,7 @@ export class SpotProcurementReadService {
     }
 
     return {
-      rows: accessible.slice(0, LIST_LIMIT + 1),
+      rows: accessible,
       sourceTruncated
     };
   }
@@ -1559,9 +1794,14 @@ export class SpotProcurementReadService {
 
   private async paymentListItems(
     rows: SpotProcurementPayment[],
+    actorUserId: string,
     suppliedProjects?: Map<string, ProjectSummary>,
     suppliedProcurements?: Map<string, SpotProcurement>,
-    suppliedUsers?: Map<string, UserNameRow>
+    suppliedUsers?: Map<string, UserNameRow>,
+    suppliedRoleContexts?: Map<
+      string,
+      { effectiveRoleKeys: RoleKey[]; projectScopedRoleKeys: RoleKey[] }
+    >
   ) {
     if (!rows.length) return [];
     const projectIds = [...new Set(rows.map((row) => row.projectId))];
@@ -1579,7 +1819,9 @@ export class SpotProcurementReadService {
       paymentLines,
       paymentInvoices,
       receipts,
-      refunds
+      refunds,
+      discrepancies,
+      roleContextByProjectId
     ] =
       await Promise.all([
         suppliedProjects
@@ -1638,7 +1880,17 @@ export class SpotProcurementReadService {
         this.prisma.spotProcurementRefund.findMany({
           where: { paymentId: { in: rows.map((row) => row.id) } },
           select: { paymentId: true, amountCents: true, receivedAt: true }
-        })
+        }),
+        this.prisma.spotProcurementDiscrepancy.findMany({
+          where: {
+            procurementId: { in: procurementIds },
+            invalidatedAt: null
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+        }),
+        suppliedRoleContexts
+          ? Promise.resolve(suppliedRoleContexts)
+          : this.paymentRoleContexts(actorUserId, projectIds)
       ]);
     const projectById =
       suppliedProjects ??
@@ -1698,6 +1950,15 @@ export class SpotProcurementReadService {
       refunds.filter((refund) => refund.paymentId !== null),
       (refund) => refund.paymentId as string
     );
+    const discrepancyByProcurementId = new Map<
+      string,
+      (typeof discrepancies)[number]
+    >();
+    for (const discrepancy of discrepancies) {
+      if (!discrepancyByProcurementId.has(discrepancy.procurementId)) {
+        discrepancyByProcurementId.set(discrepancy.procurementId, discrepancy);
+      }
+    }
     const invoiceCoverageByPaymentId = this.invoiceLedger
       ? await this.invoiceLedger.coverageForPaymentIds(
           rows.map((row) => row.id)
@@ -1731,8 +1992,47 @@ export class SpotProcurementReadService {
       const voucher = voucherFact(rowExecutions, activeVoucherFileIds);
       const rowRefunds = refundsByPaymentId.get(row.id) ?? [];
       const realPayment = isRealPaymentForm(row, version);
+      const approval = approvalByBusinessId.get(row.id) ?? null;
+      const roleContext = roleContextByProjectId.get(row.projectId) ?? {
+        effectiveRoleKeys: [] as RoleKey[],
+        projectScopedRoleKeys: [] as RoleKey[]
+      };
+      const remainingCompanyPaymentAmountCents = nonNegative(
+        effectiveCompany - actualPaidAmountCents
+      );
+      const availableActions = this.paymentActions({
+        payment: row,
+        approval,
+        roleKeys: roleContext.effectiveRoleKeys,
+        actorUserId,
+        remainingCompanyPaymentAmountCents,
+        isProjectFinanceStaff:
+          roleContext.projectScopedRoleKeys.includes("finance_staff"),
+        paymentFactConsistent: row.paidAmountCents === actualPaidAmountCents,
+        voucherFactConsistent: voucher.status !== "anomaly"
+      });
+      const currentTask = deriveSpotPaymentCurrentTask({
+        payment: row,
+        approval,
+        receipt: receiptByProcurementId.get(row.procurementId) ?? null,
+        discrepancy: discrepancyByProcurementId.get(row.procurementId) ?? null,
+        refunds: rowRefunds,
+        actorUserId,
+        roleKeys: roleContext.effectiveRoleKeys,
+        projectScopedRoleKeys: roleContext.projectScopedRoleKeys,
+        availableActions
+      });
       return [
         {
+          [PAYMENT_TASK_SORT_AT]: paymentTaskFactAt(row, approval, currentTask),
+          [PAYMENT_AMOUNT_FACTS]: {
+            approvalAmountCents: row.approvalAmountCents,
+            actualPaidAmountCents,
+            refundAmountCents: rowRefunds.reduce(
+              (total, refund) => total + refund.amountCents,
+              0n
+            )
+          },
           id: row.id,
           code: row.code,
           procurement: {
@@ -1746,9 +2046,8 @@ export class SpotProcurementReadService {
             row,
             actualPaidAmountCents
           ),
-          approval: approvalSummary(
-            approvalByBusinessId.get(row.id) ?? null
-          ),
+          approval: approvalSummary(approval),
+          currentTask,
           handler: userSummary(
             row.handlerUserId,
             userById,
@@ -1805,7 +2104,7 @@ export class SpotProcurementReadService {
                 effectiveCompanyPaymentAmountCents: moneyText(effectiveCompany),
                 paidAmountCents: moneyText(actualPaidAmountCents),
                 remainingCompanyPaymentAmountCents: moneyText(
-                  nonNegative(effectiveCompany - actualPaidAmountCents)
+                  remainingCompanyPaymentAmountCents
                 ),
                 executedSupplierBalanceAmountCents: moneyText(
                   row.executedSupplierBalanceAmountCents
@@ -2227,6 +2526,64 @@ export class SpotProcurementReadService {
       );
   }
 
+  private async paymentRoleContexts(
+    actorUserId: string,
+    projectIds: string[]
+  ) {
+    const [assignments, memberships] = await Promise.all([
+      this.prisma.userPosition.findMany({
+        where: {
+          userId: actorUserId,
+          OR: [{ projectId: null }, { projectId: { in: projectIds } }]
+        },
+        select: { positionId: true, projectId: true }
+      }),
+      this.prisma.projectMember.findMany({
+        where: { userId: actorUserId, projectId: { in: projectIds } },
+        select: { projectId: true, positionKey: true }
+      })
+    ]);
+    const positionIds = [
+      ...new Set(assignments.map((assignment) => assignment.positionId))
+    ];
+    const positions = positionIds.length
+      ? await this.prisma.position.findMany({
+          where: { id: { in: positionIds } },
+          select: { id: true, key: true }
+        })
+      : [];
+    const positionKeyById = new Map(
+      positions.map((position) => [position.id, position.key as RoleKey])
+    );
+    const globalRoleKeys = assignments
+      .filter((assignment) => assignment.projectId === null)
+      .map((assignment) => positionKeyById.get(assignment.positionId))
+      .filter((role): role is RoleKey => Boolean(role));
+    const contexts = new Map<
+      string,
+      { effectiveRoleKeys: RoleKey[]; projectScopedRoleKeys: RoleKey[] }
+    >();
+    for (const projectId of projectIds) {
+      const projectScopedRoleKeys = [
+        ...assignments
+          .filter((assignment) => assignment.projectId === projectId)
+          .map((assignment) => positionKeyById.get(assignment.positionId))
+          .filter((role): role is RoleKey => Boolean(role)),
+        ...memberships
+          .filter((membership) => membership.projectId === projectId)
+          .map((membership) => membership.positionKey as RoleKey)
+      ];
+      contexts.set(projectId, {
+        effectiveRoleKeys: resolveEffectiveRoleKeys(
+          globalRoleKeys,
+          projectScopedRoleKeys
+        ),
+        projectScopedRoleKeys: [...new Set(projectScopedRoleKeys)]
+      });
+    }
+    return contexts;
+  }
+
   private async hasProjectScopedRole(
     actorUserId: string,
     projectId: string,
@@ -2285,6 +2642,119 @@ function approvalSummary(
     statusLabel: approvalStatusLabel(approval.status),
     currentNodeName,
     currentRoleKeys
+  };
+}
+
+function paymentWorkbenchView(value?: string): SpotPaymentWorkbenchView {
+  const normalized = optionalQueryText(value) ?? "mine";
+  if (
+    !SPOT_PAYMENT_WORKBENCH_VIEWS.includes(
+      normalized as SpotPaymentWorkbenchView
+    )
+  ) {
+    throw new BadRequestException("零星采购付款工作台视图不正确");
+  }
+  return normalized as SpotPaymentWorkbenchView;
+}
+
+function paymentTaskFactAt(
+  payment: SpotProcurementPayment,
+  approval: ApprovalInstance | null,
+  currentTask: SpotPaymentCurrentTask
+) {
+  if (currentTask.key === "review_payment") {
+    return approval?.updatedAt ?? payment.updatedAt;
+  }
+  if (currentTask.key === "record_execution") {
+    return payment.approvedAt ?? payment.updatedAt;
+  }
+  if (currentTask.key === "complete_payment_draft") {
+    return payment.createdAt;
+  }
+  return payment.updatedAt;
+}
+
+function comparePaymentWorkbenchItems(
+  left: {
+    id: string;
+    currentTask: SpotPaymentCurrentTask;
+    [PAYMENT_TASK_SORT_AT]: Date;
+  },
+  right: {
+    id: string;
+    currentTask: SpotPaymentCurrentTask;
+    [PAYMENT_TASK_SORT_AT]: Date;
+  }
+) {
+  return (
+    right.currentTask.priority - left.currentTask.priority ||
+    left[PAYMENT_TASK_SORT_AT].getTime() -
+      right[PAYMENT_TASK_SORT_AT].getTime() ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+function stripPaymentInternalFacts<
+  T extends {
+    id: string;
+    status: string;
+    currentTask: SpotPaymentCurrentTask;
+    [PAYMENT_TASK_SORT_AT]: Date;
+    [PAYMENT_AMOUNT_FACTS]: {
+      approvalAmountCents: bigint;
+      actualPaidAmountCents: bigint;
+      refundAmountCents: bigint;
+    };
+  }
+>(item: T): {
+  id: string;
+  status: string;
+  currentTask: SpotPaymentCurrentTask;
+  [key: string]: unknown;
+} {
+  const {
+    [PAYMENT_TASK_SORT_AT]: _taskSortAt,
+    [PAYMENT_AMOUNT_FACTS]: _amountFacts,
+    ...readModel
+  } = item;
+  return readModel;
+}
+
+function paymentAmountSummary(
+  items: Array<{
+    [PAYMENT_AMOUNT_FACTS]: {
+      approvalAmountCents: bigint;
+      actualPaidAmountCents: bigint;
+      refundAmountCents: bigint;
+    };
+  }>,
+  complete: boolean
+): SpotPaymentListAmountSummary {
+  const totals = items.reduce(
+    (sum, item) => ({
+      approvalAmountCents:
+        sum.approvalAmountCents +
+        item[PAYMENT_AMOUNT_FACTS].approvalAmountCents,
+      actualPaidAmountCents:
+        sum.actualPaidAmountCents +
+        item[PAYMENT_AMOUNT_FACTS].actualPaidAmountCents,
+      refundAmountCents:
+        sum.refundAmountCents + item[PAYMENT_AMOUNT_FACTS].refundAmountCents
+    }),
+    {
+      approvalAmountCents: 0n,
+      actualPaidAmountCents: 0n,
+      refundAmountCents: 0n
+    }
+  );
+  return {
+    approvalAmountCents: totals.approvalAmountCents.toString(),
+    actualPaidAmountCents: totals.actualPaidAmountCents.toString(),
+    refundAmountCents: totals.refundAmountCents.toString(),
+    netPaidAmountCents: (
+      totals.actualPaidAmountCents - totals.refundAmountCents
+    ).toString(),
+    complete
   };
 }
 

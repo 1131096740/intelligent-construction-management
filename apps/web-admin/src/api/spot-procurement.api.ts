@@ -286,6 +286,26 @@ export interface SpotProcurementApplicationTextSuggestionReadModel {
 
 export type SpotProcurementVoucherStatus = "none" | "complete" | "anomaly";
 
+export const SPOT_PAYMENT_WORKBENCH_VIEWS = ["mine", "all", "closed"] as const;
+export type SpotPaymentWorkbenchView =
+  (typeof SPOT_PAYMENT_WORKBENCH_VIEWS)[number];
+export interface SpotPaymentCurrentTask {
+  key: string;
+  label: string;
+  hint: string;
+  priority: 400 | 300 | 200 | 0;
+  scope: "personal" | "shared" | "none";
+  enabled: boolean;
+  disabledReason: string | null;
+}
+export interface SpotPaymentListAmountSummary {
+  approvalAmountCents: string;
+  actualPaidAmountCents: string;
+  refundAmountCents: string;
+  netPaidAmountCents: string;
+  complete: boolean;
+}
+
 export interface SpotProcurementPaymentListItemReadModel {
   id: string;
   code: string;
@@ -335,13 +355,17 @@ export interface SpotProcurementPaymentListItemReadModel {
   voucherStatus: SpotProcurementVoucherStatus;
   voucherStatusLabel: string;
   paymentFactConsistent: boolean;
+  currentTask: SpotPaymentCurrentTask;
   invoiceCoverage?: SpotProcurementFutureUnavailableReadModel;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface SpotProcurementPaymentListReadModel {
+  view: SpotPaymentWorkbenchView;
   items: SpotProcurementPaymentListItemReadModel[];
+  viewCounts: Record<SpotPaymentWorkbenchView, number>;
+  amountSummary: SpotPaymentListAmountSummary | null;
   truncated: boolean;
   limit: number;
 }
@@ -598,6 +622,7 @@ export interface SpotProcurementPaymentDetailReadModel {
     invoices: Array<Record<string, unknown>>;
   };
   paymentPdf: SpotProcurementApprovalPdfReadModel;
+  currentTask: SpotPaymentCurrentTask;
   availableActions: DetailActionReadModel[];
   primaryAction: string | null;
   disabledReasons: string[];
@@ -663,6 +688,7 @@ export interface SpotProcurementPaymentListQuery {
   projectId?: string;
   status?: SpotProcurementPaymentStatus;
   keyword?: string;
+  view?: SpotPaymentWorkbenchView;
 }
 
 export interface SpotProcurementLinePayload {
@@ -1197,12 +1223,14 @@ function withQuery(
     projectId?: string;
     status?: string;
     keyword?: string;
+    view?: string;
   }
 ): string {
   const search = new URLSearchParams();
   appendTrimmed(search, "projectId", query.projectId);
   appendTrimmed(search, "status", query.status);
   appendTrimmed(search, "keyword", query.keyword);
+  appendTrimmed(search, "view", query.view);
   const text = search.toString();
   return text ? `${path}?${text}` : path;
 }

@@ -1,5 +1,8 @@
 import { ForbiddenException } from "@nestjs/common";
-import { SpotProcurementReadService } from "./spot-procurement-read.service";
+import {
+  deriveSpotPaymentCurrentTask,
+  SpotProcurementReadService
+} from "./spot-procurement-read.service";
 
 const now = new Date("2026-07-17T08:00:00.000Z");
 
@@ -296,7 +299,11 @@ function buildFixture() {
     },
     userPosition: {
       findMany: jest.fn().mockResolvedValue([
-        { positionId: "position-finance-staff" }
+        {
+          userId: "finance-1",
+          projectId: "project-1",
+          positionId: "position-finance-staff"
+        }
       ])
     },
     projectMember: {
@@ -306,7 +313,9 @@ function buildFixture() {
       findFirst: jest.fn().mockResolvedValue({
         id: "position-finance-staff"
       }),
-      findMany: jest.fn().mockResolvedValue([])
+      findMany: jest.fn().mockResolvedValue([
+        { id: "position-finance-staff", key: "finance_staff" }
+      ])
     },
     fileObject: {
       findMany: jest.fn().mockResolvedValue([
@@ -838,6 +847,16 @@ describe("SpotProcurementReadService", () => {
     fixture.prisma.spotProcurementPaymentInvoice.findMany.mockResolvedValue([]);
     fixture.prisma.spotProcurementRefund.findMany.mockResolvedValue([]);
     fixture.visibility.effectiveRoleKeys.mockResolvedValue(["material_staff"]);
+    fixture.prisma.userPosition.findMany.mockResolvedValue([
+      {
+        userId: "handler-1",
+        projectId: "project-1",
+        positionId: "position-material-staff"
+      }
+    ]);
+    fixture.prisma.position.findMany.mockResolvedValue([
+      { id: "position-material-staff", key: "material_staff" }
+    ]);
     const service = new SpotProcurementReadService(
       fixture.prisma as never,
       fixture.visibility as never,
@@ -1289,5 +1308,319 @@ describe("SpotProcurementReadService", () => {
       disabledReason:
         "已有实际付款缺少有效凭证，请先核对凭证事实，禁止继续登记实付"
     });
+  });
+
+  it("derives personal draft and frozen-node approval tasks without granting material directors view-only work", () => {
+    const draftInput = {
+      payment: paymentRow({ status: "draft" }) as never,
+      approval: null,
+      receipt: null,
+      discrepancy: null,
+      refunds: [],
+      actorUserId: "handler-1",
+      roleKeys: ["material_staff"] as const,
+      projectScopedRoleKeys: ["material_staff"] as const,
+      availableActions: [
+        { key: "edit_draft", label: "编辑付款草稿", enabled: true }
+      ] as never
+    };
+    expect(deriveSpotPaymentCurrentTask(draftInput)).toMatchObject({
+      key: "complete_payment_draft",
+      scope: "personal",
+      priority: 300,
+      enabled: true
+    });
+    expect(
+      deriveSpotPaymentCurrentTask({
+        ...draftInput,
+        actorUserId: "another-material-1",
+        availableActions: []
+      })
+    ).toMatchObject({ key: "none", scope: "none", priority: 0 });
+
+    const approval = {
+      status: "approval_pending",
+      currentNodeIndex: 1,
+      frozenNodes: [
+        { name: "综合部主管", roleKeys: ["comprehensive_director"] },
+        { name: "项目经理", roleKeys: ["project_manager"] }
+      ],
+      applicantUserId: "handler-1"
+    };
+    expect(
+      deriveSpotPaymentCurrentTask({
+        payment: paymentRow({ status: "approval_pending" }) as never,
+        approval: approval as never,
+        receipt: null,
+        discrepancy: null,
+        refunds: [],
+        actorUserId: "manager-1",
+        roleKeys: ["project_manager"],
+        projectScopedRoleKeys: ["project_manager"],
+        availableActions: [
+          { key: "review_approval", label: "处理付款审批", enabled: true }
+        ] as never
+      })
+    ).toMatchObject({ key: "review_payment", scope: "personal", priority: 300 });
+    expect(
+      deriveSpotPaymentCurrentTask({
+        payment: paymentRow({ status: "approval_pending" }) as never,
+        approval: approval as never,
+        receipt: null,
+        discrepancy: null,
+        refunds: [],
+        actorUserId: "material-director-1",
+        roleKeys: ["material_director"],
+        projectScopedRoleKeys: ["material_director"],
+        availableActions: []
+      })
+    ).toMatchObject({ key: "none", scope: "none", priority: 0 });
+  });
+
+  it("derives shared payer completion and project-finance blocking tasks", () => {
+    const missingPayer = paymentRow({
+      status: "draft",
+      payerCompanyEntityId: null,
+      payerCompanyNameSnapshot: null
+    });
+    for (const role of [
+      "finance_staff",
+      "comprehensive_director",
+      "finance_director"
+    ] as const) {
+      expect(
+        deriveSpotPaymentCurrentTask({
+          payment: missingPayer as never,
+          approval: null,
+          receipt: null,
+          discrepancy: null,
+          refunds: [],
+          actorUserId: `${role}-1`,
+          roleKeys: [role],
+          projectScopedRoleKeys: [role],
+          availableActions: []
+        })
+      ).toMatchObject({ key: "complete_payer", scope: "shared", priority: 200 });
+    }
+    expect(
+      deriveSpotPaymentCurrentTask({
+        payment: paymentRow({
+          status: "approval_pending",
+          payerCompanyEntityId: "company-1",
+          payerCompanyNameSnapshot: "云南建工"
+        }) as never,
+        approval: null,
+        receipt: null,
+        discrepancy: null,
+        refunds: [],
+        actorUserId: "finance-1",
+        roleKeys: ["finance_staff"],
+        projectScopedRoleKeys: ["finance_staff"],
+        availableActions: []
+      })
+    ).toMatchObject({ key: "none", priority: 0 });
+
+    const executionInput = {
+      payment: paymentRow({
+        status: "approved_pending_payment",
+        payerCompanyEntityId: "company-1",
+        payerCompanyNameSnapshot: "云南建工"
+      }) as never,
+      approval: null,
+      receipt: null,
+      refunds: [],
+      actorUserId: "finance-1",
+      roleKeys: ["finance_staff"] as const,
+      projectScopedRoleKeys: ["finance_staff"] as const,
+      availableActions: [
+        { key: "record_execution", label: "登记公司实际付款", enabled: true }
+      ] as never
+    };
+    expect(
+      deriveSpotPaymentCurrentTask({ ...executionInput, discrepancy: null })
+    ).toMatchObject({ key: "record_execution", scope: "personal", priority: 300 });
+    expect(
+      deriveSpotPaymentCurrentTask({
+        ...executionInput,
+        discrepancy: {
+          status: "awaiting_refund",
+          resolutionType: "full_refund"
+        } as never
+      })
+    ).toMatchObject({ key: "record_refund", priority: 400 });
+    expect(
+      deriveSpotPaymentCurrentTask({
+        ...executionInput,
+        discrepancy: null,
+        availableActions: [
+          {
+            key: "record_execution",
+            label: "登记公司实际付款",
+            enabled: false,
+            disabledReason: "已有实际付款缺少有效凭证"
+          }
+        ] as never
+      })
+    ).toMatchObject({ key: "view_only", priority: 400 });
+  });
+
+  it("defaults the payment workbench to mine, validates views, and reuses its task in detail", async () => {
+    const fixture = buildFixture();
+    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([
+      paymentRow({
+        status: "approved_pending_payment",
+        payerCompanyEntityId: "company-1",
+        payerCompanyNameSnapshot: "云南建工"
+      }),
+      paymentRow({ id: "closed-1", code: "LXFK-CLOSED", status: "settled" })
+    ]);
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    await expect(
+      service.listPayments("finance-1", { view: "bad" })
+    ).rejects.toThrow("零星采购付款工作台视图不正确");
+    const mine = await service.listPayments("finance-1", {});
+    expect(mine.items.map((item) => item.id)).toEqual(["payment-1"]);
+    expect(mine.items[0]?.currentTask).toMatchObject({ key: "record_execution" });
+    expect(mine).toMatchObject({
+      view: "mine",
+      viewCounts: { mine: 1, all: 2, closed: 1 },
+      amountSummary: null
+    });
+    await expect(
+      service.listPayments("finance-1", { view: "closed" })
+    ).resolves.toMatchObject({
+      items: [expect.objectContaining({ id: "closed-1" })],
+      amountSummary: null
+    });
+
+    const detail = await service.getPayment("payment-1", "finance-1");
+    expect(detail.currentTask).toEqual(mine.items[0]?.currentTask);
+  });
+
+  it("returns an all-view financial summary from the complete server scan", async () => {
+    const fixture = buildFixture();
+    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([
+      paymentRow({
+        paymentType: "company_direct",
+        approvalAmountCents: 12_000n,
+        payerCompanyEntityId: "company-1",
+        payerCompanyNameSnapshot: "云南建工"
+      })
+    ]);
+    fixture.prisma.spotProcurementRefund.findMany.mockResolvedValue([
+      { paymentId: "payment-1", amountCents: 500n, receivedAt: now }
+    ]);
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    await expect(service.listPayments("finance-1", { view: "all" })).resolves.toMatchObject({
+      amountSummary: {
+        approvalAmountCents: "12000",
+        actualPaidAmountCents: "5000",
+        refundAmountCents: "500",
+        netPaidAmountCents: "4500",
+        complete: true
+      }
+    });
+    expect(fixture.visibility.effectiveRoleKeys).not.toHaveBeenCalled();
+
+    fixture.prisma.userPosition.findMany.mockResolvedValue([
+      {
+        userId: "material-1",
+        projectId: "project-1",
+        positionId: "position-material-staff"
+      }
+    ]);
+    fixture.prisma.position.findMany.mockResolvedValue([
+      { id: "position-material-staff", key: "material_staff" }
+    ]);
+    await expect(
+      service.listPayments("material-1", { view: "all" })
+    ).resolves.toMatchObject({ amountSummary: null });
+
+    fixture.prisma.spotProcurement.findMany.mockImplementation(
+      ({ select }: { select?: { id?: boolean } }) =>
+        Promise.resolve(
+          select?.id
+            ? Array.from({ length: 2_001 }, (_value, index) => ({
+                id: `match-${index}`
+              }))
+            : [procurementRow()]
+        )
+    );
+    fixture.prisma.userPosition.findMany.mockResolvedValue([
+      {
+        userId: "finance-1",
+        projectId: "project-1",
+        positionId: "position-finance-staff"
+      }
+    ]);
+    fixture.prisma.position.findMany.mockResolvedValue([
+      { id: "position-finance-staff", key: "finance_staff" }
+    ]);
+    await expect(
+      service.listPayments("finance-1", { view: "all", keyword: "建材" })
+    ).resolves.toMatchObject({
+      truncated: true,
+      amountSummary: { complete: false }
+    });
+  });
+
+  it("projects and filters the complete accessible source before applying the list limit", async () => {
+    const fixture = buildFixture();
+    const nonTasks = Array.from({ length: 200 }, (_value, index) =>
+      paymentRow({
+        id: `non-task-${index}`,
+        code: `LXFK-NON-TASK-${index}`,
+        status: "draft",
+        handlerUserId: "another-handler"
+      })
+    );
+    const task = paymentRow({
+      id: "task-after-limit",
+      code: "LXFK-TASK-AFTER-LIMIT",
+      status: "draft",
+      handlerUserId: "handler-1"
+    });
+    fixture.prisma.spotProcurementPayment.findMany = jest.fn(
+      ({ cursor }: { cursor?: { id: string } }) =>
+        Promise.resolve(cursor ? [task] : nonTasks)
+    );
+    fixture.access.accessiblePaymentIds.mockImplementation(
+      (paymentIds: string[]) => Promise.resolve(new Set(paymentIds))
+    );
+    fixture.prisma.userPosition.findMany.mockResolvedValue([
+      {
+        userId: "handler-1",
+        projectId: "project-1",
+        positionId: "position-material-staff"
+      }
+    ]);
+    fixture.prisma.position.findMany.mockResolvedValue([
+      { id: "position-material-staff", key: "material_staff" }
+    ]);
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const result = await service.listPayments("handler-1", {});
+
+    expect(result.items.map((item) => item.id)).toEqual(["task-after-limit"]);
+    expect(result.viewCounts).toEqual({ mine: 1, all: 201, closed: 0 });
+    expect(result.truncated).toBe(false);
+    expect(fixture.prisma.spotProcurementPayment.findMany).toHaveBeenCalledTimes(2);
   });
 });

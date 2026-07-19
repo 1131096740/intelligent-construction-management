@@ -104,6 +104,16 @@ describe("spot procurement API client", () => {
     ]);
   });
 
+  it("passes the server-owned payment workbench view while keeping omission compatible", async () => {
+    await fetchSpotProcurementPayments({ view: "all" });
+    await fetchSpotProcurementPayments();
+
+    expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
+      "/spot-procurement-payments?view=all",
+      "/spot-procurement-payments"
+    ]);
+  });
+
   it("connects the final receipt read and submission routes", async () => {
     await fetchSpotProcurementReceipt("procurement/1");
     await submitSpotProcurementReceipt("procurement/1");
