@@ -368,6 +368,7 @@ export class SpotProcurementReadService {
           id: true,
           status: true,
           currentRevisionNo: true,
+          handlerUserId: true,
           firstSubmittedAt: true,
           submittedAt: true,
           lockedAt: true,
@@ -396,6 +397,13 @@ export class SpotProcurementReadService {
     if (!currentVersion) {
       throw new ConflictException("零星采购当前版本不存在，请联系管理员核对");
     }
+
+    const receiptWorkflowFacts = receipt
+      ? await this.receiptWorkflowFacts(
+          receipt.id,
+          receipt.currentRevisionNo
+        )
+      : null;
 
     const [approvalInstances, accessiblePaymentIds] = await Promise.all([
       this.prisma.approvalInstance.findMany({
@@ -529,7 +537,14 @@ export class SpotProcurementReadService {
       ? receiptReadSummary(
           receipt,
           discrepancy,
-          executions.some((execution) => execution.voidedAt === null)
+          executions.some((execution) => execution.voidedAt === null),
+          receiptWorkflowFacts
+            ? {
+                ...receiptWorkflowFacts,
+                actorUserId,
+                refundCount: refunds.length
+              }
+            : undefined
         )
       : futureUnavailable();
 
@@ -633,6 +648,101 @@ export class SpotProcurementReadService {
           ? []
           : ["收货确认、收货差异和发票覆盖将在代码阶段 B 开放"])
       ]
+    };
+  }
+
+  private async receiptWorkflowFacts(
+    receiptId: string,
+    currentRevisionNo: number
+  ) {
+    const [
+      revision,
+      activeDelegation,
+      review,
+      pdfDocument,
+      line,
+      photo,
+      invoiceAllocation,
+      noInvoiceConfirmation,
+      invoiceException
+    ] = await Promise.all([
+      this.prisma.spotProcurementReceiptRevision.findUnique({
+        where: {
+          receiptId_revisionNo: {
+            receiptId,
+            revisionNo: currentRevisionNo
+          }
+        },
+        select: {
+          submittedAt: true,
+          note: true,
+          actualCostCents: true
+        }
+      }),
+      this.prisma.spotProcurementReceiptDelegation.findFirst({
+        where: { receiptId, revokedAt: null },
+        orderBy: [{ delegatedAt: "desc" }, { id: "desc" }],
+        select: {
+          delegatorUserId: true,
+          delegateUserId: true,
+          scope: true
+        }
+      }),
+      this.prisma.spotProcurementReceiptReview.findFirst({
+        where: { receiptId },
+        orderBy: [{ sequenceNo: "desc" }, { id: "desc" }],
+        select: { id: true }
+      }),
+      this.prisma.pdfDocument.findFirst({
+        where: {
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.receipt,
+          businessId: receiptId
+        },
+        select: { id: true }
+      }),
+      this.prisma.spotProcurementReceiptLine.findFirst({
+        where: {
+          receiptId,
+          receiptRevisionNo: currentRevisionNo
+        },
+        select: { id: true }
+      }),
+      this.prisma.spotProcurementReceiptPhoto.findFirst({
+        where: {
+          receiptId,
+          receiptRevisionNo: currentRevisionNo
+        },
+        select: { id: true }
+      }),
+      this.prisma.invoiceAllocation.findFirst({
+        where: { receiptId },
+        select: { id: true }
+      }),
+      this.prisma.noInvoiceConfirmation.findFirst({
+        where: { receiptId },
+        select: { id: true }
+      }),
+      this.prisma.invoiceExceptionConfirmation.findFirst({
+        where: { receiptId },
+        select: { id: true }
+      })
+    ]);
+    return {
+      currentRevisionSubmittedAt: revision?.submittedAt ?? null,
+      activeDelegation,
+      hasReview: Boolean(review),
+      hasPdf: Boolean(pdfDocument),
+      hasInvoiceFact: Boolean(
+        invoiceAllocation ||
+          noInvoiceConfirmation ||
+          invoiceException
+      ),
+      hasDraftContent: Boolean(
+        line ||
+          photo ||
+          revision?.note ||
+          (revision?.actualCostCents ?? 0n) !== 0n
+      )
     };
   }
 
@@ -2634,17 +2744,39 @@ function maskedPaymentChannelReadModel(
 }
 
 function receiptReadSummary(
-  receipt: Pick<
-    SpotProcurementReceipt,
-    | "id"
-    | "status"
-    | "currentRevisionNo"
-    | "firstSubmittedAt"
-    | "submittedAt"
-    | "lockedAt"
-  > | null,
+  receipt:
+    | (Pick<
+        SpotProcurementReceipt,
+        | "id"
+        | "status"
+        | "currentRevisionNo"
+        | "firstSubmittedAt"
+        | "submittedAt"
+        | "lockedAt"
+      > &
+        Partial<
+          Pick<
+            SpotProcurementReceipt,
+            "handlerUserId" | "invalidatedAt"
+          >
+        >)
+    | null,
   discrepancy: Pick<SpotProcurementDiscrepancy, "status"> | null,
-  openedByActualPayment = false
+  openedByActualPayment = false,
+  workflowFacts?: {
+    actorUserId: string;
+    currentRevisionSubmittedAt: Date | null;
+    activeDelegation: {
+      delegatorUserId: string;
+      delegateUserId: string;
+      scope: string;
+    } | null;
+    hasReview: boolean;
+    hasPdf: boolean;
+    hasInvoiceFact: boolean;
+    hasDraftContent: boolean;
+    refundCount: number;
+  }
 ) {
   if (!receipt) {
     return {
@@ -2674,7 +2806,111 @@ function receiptReadSummary(
     firstSubmittedAt: isoOrNull(receipt.firstSubmittedAt),
     submittedAt: isoOrNull(receipt.submittedAt),
     lockedAt: isoOrNull(receipt.lockedAt),
-    discrepancyStatus: discrepancy?.status ?? null
+    discrepancyStatus: discrepancy?.status ?? null,
+    ...(workflowFacts
+      ? {
+          workflow: receiptWorkflowReadModel({
+            receipt,
+            discrepancy,
+            openedByActualPayment,
+            ...workflowFacts
+          })
+        }
+      : {})
+  };
+}
+
+function receiptWorkflowReadModel(input: {
+  receipt: Pick<
+    SpotProcurementReceipt,
+    | "status"
+    | "currentRevisionNo"
+    | "firstSubmittedAt"
+    | "submittedAt"
+  > &
+    Partial<
+      Pick<
+        SpotProcurementReceipt,
+        "handlerUserId" | "invalidatedAt"
+      >
+    >;
+  discrepancy: Pick<SpotProcurementDiscrepancy, "status"> | null;
+  openedByActualPayment: boolean;
+  actorUserId: string;
+  currentRevisionSubmittedAt: Date | null;
+  activeDelegation: {
+    delegatorUserId: string;
+    delegateUserId: string;
+    scope: string;
+  } | null;
+  hasReview: boolean;
+  hasPdf: boolean;
+  hasInvoiceFact: boolean;
+  hasDraftContent: boolean;
+  refundCount: number;
+}) {
+  const isHandler =
+    input.actorUserId === input.receipt.handlerUserId;
+  const isActiveDelegate = Boolean(
+    input.activeDelegation &&
+      input.activeDelegation.delegatorUserId ===
+        input.receipt.handlerUserId &&
+      input.activeDelegation.delegateUserId ===
+        input.actorUserId &&
+      input.activeDelegation.scope === "receipt_confirmation"
+  );
+  const blocker = !input.openedByActualPayment
+    ? "待财务登记实际付款后开放收货确认"
+    : input.receipt.invalidatedAt
+      ? "收货单已失效，只能查看历史"
+      : input.receipt.status !== "draft" ||
+          input.receipt.firstSubmittedAt !== null ||
+          input.receipt.submittedAt !== null ||
+          input.currentRevisionSubmittedAt !== null
+        ? "只能重置从未提交的当前收货草稿"
+        : input.hasReview
+          ? "收货单已形成主管复核记录"
+          : input.hasPdf
+            ? "收货单已形成正式 PDF 或归档证据"
+            : input.hasInvoiceFact
+              ? "收货单已形成发票或无票业务事实"
+              : input.discrepancy
+                ? "收货单已形成差异或补货事实"
+                : input.refundCount > 0
+                  ? "收货单已关联退款事实"
+                  : !isHandler && !isActiveDelegate
+                    ? "只有采购经办人或当前有效受托人可以重置收货草稿"
+                    : !input.hasDraftContent
+                      ? "当前收货草稿尚未填写，无需重置"
+                      : null;
+  const stage = !input.openedByActualPayment
+    ? "waiting_payment"
+    : input.receipt.status === "submitted"
+      ? "awaiting_supervisor_review"
+      : input.receipt.status === "draft" &&
+          input.receipt.firstSubmittedAt === null &&
+          input.currentRevisionSubmittedAt === null
+        ? input.hasDraftContent
+          ? "reset_unsubmitted_receipt"
+          : "fill_receipt"
+        : "readonly_history";
+  const stageLabels: Record<string, string> = {
+    waiting_payment: "等待实际付款",
+    fill_receipt: "填写收货",
+    reset_unsubmitted_receipt: "可重置未提交收货",
+    awaiting_supervisor_review: "待物资主管复核",
+    readonly_history: "只读历史"
+  };
+  return {
+    stage,
+    stageLabel: stageLabels[stage],
+    resetAction: {
+      key: "reset_receipt_draft",
+      label: "重置未提交收货",
+      enabled: blocker === null,
+      disabledReason: blocker,
+      expectedRevision: input.receipt.currentRevisionNo
+    }
   };
 }
 

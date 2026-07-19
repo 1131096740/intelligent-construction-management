@@ -34,6 +34,7 @@ import {
   type ReviewReceiptDto
 } from "./dto/review-receipt.dto";
 import type { RevokeReceiptReviewDto } from "./dto/revoke-receipt-review.dto";
+import type { ResetSpotProcurementReceiptDto } from "./dto/reset-spot-procurement-receipt.dto";
 import { SpotProcurementClosureService } from "./spot-procurement-closure.service";
 import {
   isSpotProcurementReceiptQuantity,
@@ -879,6 +880,148 @@ export class SpotProcurementReceiptService {
           currentRevisionNo: context.receipt.currentRevisionNo,
           actualCostCents: totalActualCostCents.toString(),
           lineCount: prepared.length
+        };
+      })
+    );
+  }
+
+  resetDraft(
+    procurementId: string,
+    actorUserId: string,
+    input: ResetSpotProcurementReceiptDto
+  ) {
+    return this.runWrite(() =>
+      this.runSerializable(async (tx) => {
+        const context = await this.requireLockedContext(
+          tx,
+          procurementId
+        );
+        if (
+          !Number.isInteger(input.expectedRevision) ||
+          input.expectedRevision < 1 ||
+          context.receipt.currentRevisionNo !==
+            input.expectedRevision
+        ) {
+          throw new ConflictException(
+            "收货草稿修订已变化，请刷新后重试"
+          );
+        }
+        await this.requireActiveUser(
+          tx,
+          actorUserId,
+          "当前操作人不存在或已停用"
+        );
+        if (
+          context.receipt.status !== "draft" ||
+          context.receipt.firstSubmittedAt !== null ||
+          context.receipt.submittedAt !== null ||
+          context.revision.submittedAt !== null
+        ) {
+          throw new ConflictException(
+            "只能重置从未提交的当前收货草稿"
+          );
+        }
+
+        const allPhotos = await this.lockReceiptPhotos(tx, context);
+        const currentPhotos = allPhotos.filter(
+          (photo) =>
+            photo.receiptRevisionNo ===
+            context.receipt.currentRevisionNo
+        );
+        const activeDelegation = await this.lockActiveDelegation(
+          tx,
+          context.receipt.id
+        );
+        if (
+          actorUserId !== context.receipt.handlerUserId &&
+          (!activeDelegation ||
+            activeDelegation.delegatorUserId !==
+              context.receipt.handlerUserId ||
+            activeDelegation.delegateUserId !== actorUserId ||
+            activeDelegation.scope !== "receipt_confirmation")
+        ) {
+          throw new ForbiddenException(
+            "只有采购经办人或当前有效受托人可以重置收货草稿"
+          );
+        }
+        if (actorUserId !== context.receipt.handlerUserId) {
+          await this.requireActiveProjectMember(
+            tx,
+            actorUserId,
+            context.receipt.projectId
+          );
+        }
+        await this.assertReceiptBusinessOpen(tx, context);
+        const formalBlocker = await this.lockReceiptResetFormalFacts(
+          tx,
+          context
+        );
+        if (formalBlocker) {
+          throw new ConflictException(formalBlocker);
+        }
+
+        for (const photo of currentPhotos) {
+          await this.deleteResettablePhotoBinding(
+            tx,
+            context,
+            photo,
+            actorUserId
+          );
+        }
+
+        const nextRevisionNo =
+          context.receipt.currentRevisionNo + 1;
+        await tx.spotProcurementReceiptRevision.create({
+          data: {
+            receiptId: context.receipt.id,
+            revisionNo: nextRevisionNo,
+            procurementId: context.procurement.id,
+            procurementVersionId: context.version.id,
+            handlerUserId: context.receipt.handlerUserId,
+            note: null,
+            actualCostCents: 0n,
+            submittedAt: null,
+            submittedByUserId: null,
+            submissionDelegationId: null,
+            createdByUserId: actorUserId
+          }
+        });
+        await tx.spotProcurementReceipt.update({
+          where: { id: context.receipt.id },
+          data: {
+            status: "draft",
+            currentRevisionNo: nextRevisionNo,
+            note: null,
+            actualCostCents: 0n,
+            submittedAt: null,
+            submittedByUserId: null,
+            submissionDelegationId: null,
+            lockedAt: null
+          }
+        });
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "spot_procurement.receipt.draft.reset",
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.receipt,
+          businessId: context.receipt.id,
+          metadata: {
+            projectId: context.receipt.projectId,
+            procurementId,
+            previousRevisionNo:
+              context.receipt.currentRevisionNo,
+            currentRevisionNo: nextRevisionNo,
+            clearedPhotoCount: currentPhotos.length,
+            activeDelegationId: activeDelegation?.id ?? null
+          }
+        });
+        return {
+          receiptId: context.receipt.id,
+          procurementId,
+          previousRevisionNo:
+            context.receipt.currentRevisionNo,
+          currentRevisionNo: nextRevisionNo,
+          status: "draft",
+          reset: true
         };
       })
     );
@@ -3019,6 +3162,197 @@ export class SpotProcurementReceiptService {
       ORDER BY photo."id"
       FOR UPDATE OF photo
     `);
+  }
+
+  private async lockReceiptResetFormalFacts(
+    tx: Prisma.TransactionClient,
+    context: LockedReceiptContext
+  ): Promise<string | null> {
+    const reviews = await tx.$queryRaw<Array<{ id: string }>>(
+      Prisma.sql`
+        SELECT "id"
+        FROM "SpotProcurementReceiptReview"
+        WHERE "receiptId" = ${context.receipt.id}
+        ORDER BY "id"
+        FOR UPDATE
+      `
+    );
+    if (reviews.length) {
+      return "收货单已形成主管复核记录，不能重置草稿";
+    }
+
+    const pdfDocuments = await tx.$queryRaw<
+      Array<{ id: string }>
+    >(Prisma.sql`
+      SELECT "id"
+      FROM "PdfDocument"
+      WHERE "businessType" = ${SPOT_PROCUREMENT_BUSINESS_TYPES.receipt}
+        AND "businessId" = ${context.receipt.id}
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    if (pdfDocuments.length) {
+      return "收货单已形成正式 PDF 或归档证据，不能重置草稿";
+    }
+
+    const discrepancies = await tx.$queryRaw<
+      Array<{ id: string; replenishedAt: Date | null }>
+    >(Prisma.sql`
+      SELECT "id", "replenishedAt"
+      FROM "SpotProcurementDiscrepancy"
+      WHERE "receiptId" = ${context.receipt.id}
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    if (discrepancies.length) {
+      return discrepancies.some(
+        (discrepancy) => discrepancy.replenishedAt !== null
+      )
+        ? "收货单已形成补货事实，不能重置草稿"
+        : "收货单已形成差异处理记录，不能重置草稿";
+    }
+
+    const refunds = await tx.$queryRaw<Array<{ id: string }>>(
+      Prisma.sql`
+        SELECT "id"
+        FROM "SpotProcurementRefund"
+        WHERE "procurementId" = ${context.procurement.id}
+        ORDER BY "id"
+        FOR UPDATE
+      `
+    );
+    if (refunds.length) {
+      return "收货单已关联退款事实，不能重置草稿";
+    }
+
+    const invoiceAllocations = await tx.$queryRaw<
+      Array<{ id: string }>
+    >(Prisma.sql`
+      SELECT "id"
+      FROM "InvoiceAllocation"
+      WHERE "receiptId" = ${context.receipt.id}
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    const noInvoiceConfirmations = await tx.$queryRaw<
+      Array<{ id: string }>
+    >(Prisma.sql`
+      SELECT "id"
+      FROM "NoInvoiceConfirmation"
+      WHERE "receiptId" = ${context.receipt.id}
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    const invoiceExceptions = await tx.$queryRaw<
+      Array<{ id: string }>
+    >(Prisma.sql`
+      SELECT "id"
+      FROM "InvoiceExceptionConfirmation"
+      WHERE "receiptId" = ${context.receipt.id}
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    if (
+      invoiceAllocations.length ||
+      noInvoiceConfirmations.length ||
+      invoiceExceptions.length
+    ) {
+      return "收货单已形成发票或无票业务事实，不能重置草稿";
+    }
+    return null;
+  }
+
+  private async deleteResettablePhotoBinding(
+    tx: Prisma.TransactionClient,
+    context: LockedReceiptContext,
+    photo: ReceiptPhotoLockRow,
+    actorUserId: string
+  ): Promise<void> {
+    if (
+      photo.lockedAt ||
+      photo.lockedAtFirstSubmission ||
+      photo.receiptRevisionNo !==
+        context.receipt.currentRevisionNo
+    ) {
+      throw new ConflictException(
+        "收货照片已锁定或修订已变化，不能重置草稿"
+      );
+    }
+    const generatedFileIds = [
+      photo.originalFileId,
+      photo.watermarkedFileId
+    ];
+    const generatedFiles = await this.lockFiles(
+      tx,
+      generatedFileIds
+    );
+    if (
+      new Set(generatedFileIds).size !== 2 ||
+      generatedFiles.length !== 2 ||
+      generatedFiles.some(
+        (file) =>
+          file.storageStatus !== "active" ||
+          file.uploadedByUserId !== photo.uploadedByUserId
+      )
+    ) {
+      throw new ConflictException(
+        "收货照片文件状态已变化，请刷新后重试"
+      );
+    }
+    const otherBinding =
+      await tx.spotProcurementReceiptPhoto.findFirst({
+        where: {
+          id: { not: photo.id },
+          OR: [
+            { originalFileId: { in: generatedFileIds } },
+            { watermarkedFileId: { in: generatedFileIds } }
+          ]
+        },
+        select: { id: true }
+      });
+    if (
+      otherBinding ||
+      (await hasNonReceiptBusinessFileBinding(
+        tx,
+        generatedFileIds
+      ))
+    ) {
+      throw new ConflictException(
+        "收货照片文件仍被其他业务使用，不能重置草稿"
+      );
+    }
+    await tx.spotProcurementReceiptPhoto.delete({
+      where: { id: photo.id }
+    });
+    const quarantined = await tx.fileObject.updateMany({
+      where: {
+        id: { in: generatedFileIds },
+        uploadedByUserId: photo.uploadedByUserId,
+        storageStatus: "active"
+      },
+      data: { storageStatus: "quarantined" }
+    });
+    if (quarantined.count !== 2) {
+      throw new ConflictException(
+        "收货照片文件状态已变化，请刷新后重试"
+      );
+    }
+    for (const [fileKind, fileId] of [
+      ["receipt_original", photo.originalFileId],
+      ["receipt_watermarked", photo.watermarkedFileId]
+    ] as const) {
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "file.quarantine.receipt_draft_reset",
+        businessType: "file_object",
+        businessId: fileId,
+        metadata: {
+          receiptId: context.receipt.id,
+          photoId: photo.id,
+          fileKind
+        }
+      });
+    }
   }
 
   private async lockFiles(

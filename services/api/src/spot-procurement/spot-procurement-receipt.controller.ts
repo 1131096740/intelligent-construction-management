@@ -14,6 +14,7 @@ import { AttachReceiptPhotoDto } from "./dto/attach-receipt-photo.dto";
 import { CreateReceiptDelegationDto } from "./dto/create-receipt-delegation.dto";
 import { ReviewReceiptDto } from "./dto/review-receipt.dto";
 import { RevokeReceiptReviewDto } from "./dto/revoke-receipt-review.dto";
+import { ResetSpotProcurementReceiptDto } from "./dto/reset-spot-procurement-receipt.dto";
 import { UpdateReceiptDraftDto } from "./dto/update-receipt-draft.dto";
 import { SpotProcurementReceiptService } from "./spot-procurement-receipt.service";
 
@@ -53,6 +54,20 @@ export class SpotProcurementReceiptController {
     @Body() body: UpdateReceiptDraftDto
   ) {
     return this.receipts.updateDraft(procurementId, user.id, body);
+  }
+
+  @Post(":procurementId/receipt/draft-reset")
+  @RequireProjectRole("spot_procurement.receipt.confirm")
+  resetDraft(
+    @Param("procurementId") procurementId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ResetSpotProcurementReceiptDto
+  ) {
+    return this.receipts.resetDraft(
+      procurementId,
+      user.id,
+      body
+    );
   }
 
   @Post(":procurementId/receipt/photos")

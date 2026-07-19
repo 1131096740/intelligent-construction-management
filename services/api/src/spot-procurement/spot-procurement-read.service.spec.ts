@@ -261,6 +261,34 @@ function buildFixture() {
       findUnique: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([])
     },
+    spotProcurementReceiptRevision: {
+      findUnique: jest.fn().mockResolvedValue({
+        submittedAt: null,
+        note: null,
+        actualCostCents: 0n
+      })
+    },
+    spotProcurementReceiptDelegation: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
+    spotProcurementReceiptReview: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
+    spotProcurementReceiptLine: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
+    spotProcurementReceiptPhoto: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
+    invoiceAllocation: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
+    noInvoiceConfirmation: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
+    invoiceExceptionConfirmation: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
     spotProcurementDiscrepancy: {
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([])
@@ -402,6 +430,63 @@ describe("SpotProcurementReadService", () => {
     expect(detail.paymentSummary).toMatchObject({
       paymentCount: 0,
       activeSettlementAmountCents: "0"
+    });
+  });
+
+  it("returns a server-derived receipt reset action for a note-only draft", async () => {
+    const fixture = buildFixture();
+    fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([
+      versionRow({
+        totalAmountCents: null,
+        applicationDepartmentSnapshot: "物资部",
+        applicationNameSnapshot: "采购经办人",
+        purchaserNameSnapshot: "采购经办人",
+        purchaserDepartmentNameSnapshot: "物资部",
+        requestedArrivalAt: now
+      })
+    ]);
+    fixture.prisma.spotProcurementReceipt.findUnique.mockResolvedValue({
+      id: "receipt-1",
+      procurementId: "procurement-1",
+      status: "draft",
+      currentRevisionNo: 3,
+      handlerUserId: "handler-1",
+      firstSubmittedAt: null,
+      submittedAt: null,
+      lockedAt: null,
+      invalidatedAt: null
+    });
+    fixture.prisma.spotProcurementReceiptRevision.findUnique.mockResolvedValue({
+      submittedAt: null,
+      note: "货物已到场，明细待补",
+      actualCostCents: 0n
+    });
+    fixture.visibility.effectiveRoleKeys.mockResolvedValue([
+      "material_staff"
+    ]);
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const detail = await service.getProcurement(
+      "procurement-1",
+      "handler-1"
+    );
+
+    expect(detail.receipt).toMatchObject({
+      workflow: {
+        stage: "reset_unsubmitted_receipt",
+        stageLabel: "可重置未提交收货",
+        resetAction: {
+          key: "reset_receipt_draft",
+          enabled: true,
+          disabledReason: null,
+          expectedRevision: 3
+        }
+      }
     });
   });
 
@@ -805,9 +890,11 @@ describe("SpotProcurementReadService", () => {
       procurementId: "procurement-1",
       status: "draft",
       currentRevisionNo: 1,
+      handlerUserId: "handler-1",
       firstSubmittedAt: null,
       submittedAt: null,
-      lockedAt: null
+      lockedAt: null,
+      invalidatedAt: null
     };
     fixture.prisma.spotProcurementReceipt.findUnique.mockResolvedValue(receipt);
     fixture.prisma.spotProcurementReceipt.findMany.mockResolvedValue([receipt]);
