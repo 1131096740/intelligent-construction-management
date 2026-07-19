@@ -37,13 +37,14 @@ const statusOptions = [
   { label: "已作废", value: "voided" }
 ];
 const columns = [
-  { colKey: "code", title: "付款 / 采购单", width: 160, fixed: "left" as const },
-  { colKey: "project", title: "项目", width: 170 },
-  { colKey: "merchantPayee", title: "商户 / 收款对象", width: 165 },
-  { colKey: "amounts", title: "付款金额", width: 145, align: "right" as const },
-  { colKey: "fulfillment", title: "收货与发票", width: 145 },
-  { colKey: "approval", title: "审批状态", width: 145 },
-  { colKey: "handlerUpdated", title: "经办与更新", width: 140 }
+  { colKey: "code", title: "付款 / 采购单", width: 150, fixed: "left" as const },
+  { colKey: "project", title: "项目", width: 160 },
+  { colKey: "merchantPayee", title: "商户 / 收款对象", width: 155 },
+  { colKey: "amounts", title: "付款金额", width: 135, align: "right" as const },
+  { colKey: "fulfillment", title: "收货与发票", width: 130 },
+  { colKey: "approval", title: "审批状态", width: 130 },
+  { colKey: "handlerUpdated", title: "经办与更新", width: 120 },
+  { colKey: "operation", title: "操作", width: 90, fixed: "right" as const }
 ];
 
 const projectOptions = computed(() => [
@@ -70,7 +71,7 @@ function money(cents: string | null | undefined) {
   }
 }
 
-function sumCents(values: Array<string | undefined>) {
+function sumCents(values: Array<string | null | undefined>) {
   try {
     return values.reduce((total, value) => total + BigInt(value ?? "0"), 0n).toString();
   } catch {
@@ -99,6 +100,10 @@ function primaryChannel(row: SpotProcurementPaymentListItemReadModel) {
 function receiptLabel(row: SpotProcurementPaymentListItemReadModel) {
   if (!row.receipt || "available" in row.receipt && !row.receipt.available) return "首笔实付后开放";
   return row.receipt.statusLabel;
+}
+
+function operationLabel(row: SpotProcurementPaymentListItemReadModel) {
+  return row.status === "draft" ? "填写付款申请" : "查看详情";
 }
 
 function openDetail(paymentId: string) {
@@ -326,6 +331,15 @@ onMounted(() => void Promise.all([loadProjects(), loadPayments()]));
               <strong>{{ row.handler.name }}</strong>
               <span>{{ dateTime(row.updatedAt) }}</span>
             </div>
+          </template>
+          <template #operation="{ row }">
+            <t-button
+              size="small"
+              variant="outline"
+              @click="openDetail(row.id)"
+            >
+              {{ operationLabel(row) }}
+            </t-button>
           </template>
         </t-table>
       </div>

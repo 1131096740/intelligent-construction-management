@@ -906,7 +906,7 @@ export class SpotProcurementReadService {
         payment.paidAmountCents === actualPaidAmountCents,
       voucherFactConsistent: voucher.status !== "anomaly"
     });
-    const usesRealPaymentForm = Boolean(payment.paymentType);
+    const usesRealPaymentForm = isRealPaymentForm(payment, version);
     const invoiceCoverageByPaymentId =
       !usesRealPaymentForm && this.invoiceLedger
         ? await this.invoiceLedger.coverageForPaymentIds([payment.id])
@@ -1595,7 +1595,7 @@ export class SpotProcurementReadService {
             }),
         this.prisma.spotProcurementVersion.findMany({
           where: { id: { in: versionIds } },
-          select: { id: true, procurementId: true }
+          select: { id: true, procurementId: true, totalAmountCents: true }
         }),
         this.prisma.approvalInstance.findMany({
           where: {
@@ -1730,7 +1730,7 @@ export class SpotProcurementReadService {
       );
       const voucher = voucherFact(rowExecutions, activeVoucherFileIds);
       const rowRefunds = refundsByPaymentId.get(row.id) ?? [];
-      const realPayment = isRealPaymentForm(row);
+      const realPayment = isRealPaymentForm(row, version);
       return [
         {
           id: row.id,
@@ -2135,7 +2135,7 @@ export class SpotProcurementReadService {
   private async realProcurementInvoiceSummary(
     payments: SpotProcurementPayment[]
   ) {
-    const payment = payments.find(isRealPaymentForm);
+    const payment = payments.find((candidate) => isRealPaymentForm(candidate));
     if (!payment || !this.paymentInvoices) {
       return realInvoiceSummaryUnavailable();
     }
@@ -2391,9 +2391,18 @@ function isRealProcurementForm(
 }
 
 function isRealPaymentForm(
-  payment: Pick<SpotProcurementPayment, "paymentType">
+  payment: Pick<SpotProcurementPayment, "paymentType" | "status">,
+  version?: Pick<SpotProcurementVersion, "totalAmountCents">
 ) {
-  return Boolean(payment.paymentType);
+  if (payment.paymentType) {
+    return true;
+  }
+
+  return (
+    payment.status === "draft" &&
+    version !== undefined &&
+    isRealProcurementForm(version)
+  );
 }
 
 function summarizeRealPaymentFacts(
@@ -2401,7 +2410,7 @@ function summarizeRealPaymentFacts(
   actualPaidByPaymentId: ReadonlyMap<string, bigint>,
   refunds: Array<Pick<SpotProcurementRefund, "paymentId" | "amountCents">>
 ) {
-  const captured = payments.filter(isRealPaymentForm);
+  const captured = payments.filter((payment) => Boolean(payment.paymentType));
   if (!captured.length) {
     return {
       status: "pending_determination",
@@ -2448,6 +2457,15 @@ function realPaymentFactReadModel(
   actualPaidAmountCents: bigint,
   refunds: Array<Pick<SpotProcurementRefund, "amountCents">>
 ) {
+  if (!payment.paymentType) {
+    return {
+      approvalAmountCents: null,
+      actualPaidAmountCents: null,
+      refundAmountCents: null,
+      netPaidAmountCents: null,
+      remainingAmountCents: null
+    };
+  }
   const refundAmountCents = refunds.reduce(
     (total, refund) => total + refund.amountCents,
     0n

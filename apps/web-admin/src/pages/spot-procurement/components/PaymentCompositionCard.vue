@@ -2,16 +2,18 @@
 import { centsTextToYuanText } from "../../../lib/money";
 
 defineProps<{
-  approvalAmountCents?: string;
-  actualPaidAmountCents?: string;
-  refundAmountCents?: string;
-  netPaidAmountCents?: string;
-  remainingAmountCents?: string;
+  approvalAmountCents?: string | null;
+  actualPaidAmountCents?: string | null;
+  refundAmountCents?: string | null;
+  netPaidAmountCents?: string | null;
+  remainingAmountCents?: string | null;
   paymentFactConsistent?: boolean;
 }>();
 
-function money(value: string | undefined) {
-  return value === undefined ? "待确定" : `¥${centsTextToYuanText(value)}`;
+function money(value: string | null | undefined) {
+  return value === null || value === undefined
+    ? "待确定"
+    : `¥${centsTextToYuanText(value)}`;
 }
 </script>
 

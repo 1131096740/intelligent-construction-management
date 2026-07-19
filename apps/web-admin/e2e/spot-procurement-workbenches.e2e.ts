@@ -144,7 +144,7 @@ function procurementDetail() {
   };
 }
 
-function paymentListRow() {
+function paymentListRow(overrides = {}) {
   return {
     id: "payment-1", code: "LXFK-E2E-001", procurement: { id: "procurement-1", code: "LXCG-E2E-001" }, project,
     form: "real_payment", paymentType: "company_direct", paymentTypeLabel: "公司直付", merchantName: "利民建材店",
@@ -153,7 +153,8 @@ function paymentListRow() {
     approvalAmountCents: "440000", actualPaidAmountCents: "220000", refundAmountCents: "0", netPaidAmountCents: "220000", remainingAmountCents: "220000",
     receipt: receiptSummary, invoice: { status: "pending", statusLabel: "待补发票", activeCount: 0 },
     status: "partially_paid", statusLabel: "部分已付", companyPaymentStatusLabel: "部分已付", approval, handler,
-    voucherStatus: "complete", voucherStatusLabel: "付款凭证完整", paymentFactConsistent: true, createdAt: now, updatedAt: now
+    voucherStatus: "complete", voucherStatusLabel: "付款凭证完整", paymentFactConsistent: true, createdAt: now, updatedAt: now,
+    ...overrides
   };
 }
 
@@ -202,7 +203,15 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   });
   await page.route("**/api/spot-procurement-payments**", (route) => {
     const path = new URL(route.request().url()).pathname;
-    const body = path.endsWith("/payment-1") ? paymentDetail() : { items: [paymentListRow()], truncated: false, limit: 200 };
+    const body = path.endsWith("/payment-1") ? paymentDetail() : {
+      items: [paymentListRow({
+        status: "draft",
+        statusLabel: "付款草稿",
+        approval: { ...approval, currentNodeName: "尚未发起审批" }
+      })],
+      truncated: false,
+      limit: 200
+    };
     return route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
   });
   await page.route("**/api/spot-procurements/create-project-options", (route) =>
@@ -255,6 +264,7 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   await expect(page.getByText("利民建材店", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("发票：待补发票", { exact: true })).toBeVisible();
   await expect(page.getByText("转商户余额", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "填写付款申请" })).toBeVisible();
   await expectNoDocumentHorizontalOverflow(page);
   await expectNoNestedHorizontalScrollers(page);
   await page.screenshot({
@@ -267,7 +277,7 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   await expectHorizontalScrollOwner(page.locator(".jg-table-region .t-table__content"));
   await page.setViewportSize({ width: 1366, height: 768 });
 
-  await page.goto("/零星材料付款/payment-1");
+  await page.getByRole("button", { name: "填写付款申请" }).click();
   await expect(page.getByRole("heading", { name: "项目零星付款申请单" })).toBeVisible();
   await page.getByRole("button", { name: "返回工作台" }).click();
   await expect(page.getByRole("heading", { name: "零星材料付款工作台" })).toBeVisible();

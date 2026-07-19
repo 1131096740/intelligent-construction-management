@@ -136,6 +136,7 @@ describe("spot procurement web pages", () => {
     expect(procurement).toContain('title: "付款与收货"');
     expect(payment).toContain('title: "付款 / 采购单"');
     expect(payment).toContain('title: "商户 / 收款对象"');
+    expect(payment).toContain('return row.status === "draft" ? "填写付款申请" : "查看详情"');
   });
 
   it("connects final receipt, shortage handling, invoice append and archive facts without location or batches", () => {

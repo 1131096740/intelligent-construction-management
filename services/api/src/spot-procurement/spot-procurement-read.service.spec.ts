@@ -791,6 +791,98 @@ describe("SpotProcurementReadService", () => {
     expect(JSON.stringify(paymentDetail)).not.toContain("6222020202021234");
   });
 
+  it("keeps an auto-created A5 draft editable before the handler selects its payment type", async () => {
+    const fixture = buildFixture();
+    const realProcurement = procurementRow({
+      supplierPartyId: null,
+      supplierKey: null,
+      supplierNameSnapshot: null,
+      approvedAmountCents: null
+    });
+    const realVersion = versionRow({
+      totalAmountCents: null,
+      applicationDepartmentSnapshot: "工程部",
+      applicationNameSnapshot: "赵凤平",
+      purchaserNameSnapshot: "杨帅",
+      purchaserDepartmentId: "department-material",
+      purchaserDepartmentNameSnapshot: "物资部",
+      requestedArrivalAt: now
+    });
+    const unfilledPayment = paymentRow({
+      status: "draft",
+      settlementAmountCents: 0n,
+      supplierBalanceAmountCents: 0n,
+      companyPaymentAmountCents: 0n,
+      paymentType: null,
+      merchantNameSnapshot: null,
+      payerCompanyNameSnapshot: null,
+      payeeNameSnapshot: null,
+      payeeAccountNameSnapshot: null,
+      payeeBankNameSnapshot: null,
+      payeeBankAccountSnapshot: null,
+      approvalAmountCents: 0n,
+      submittedAt: null,
+      approvedAt: null,
+      factsFrozenAt: null
+    });
+    fixture.prisma.spotProcurement.findMany.mockResolvedValue([realProcurement]);
+    fixture.prisma.spotProcurement.findUnique.mockResolvedValue(realProcurement);
+    fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([realVersion]);
+    fixture.prisma.spotProcurementVersion.findUnique.mockResolvedValue(realVersion);
+    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([unfilledPayment]);
+    fixture.prisma.spotProcurementPayment.findUnique.mockResolvedValue(unfilledPayment);
+    fixture.prisma.spotProcurementPaymentExecution.findMany.mockResolvedValue([]);
+    fixture.prisma.spotProcurementPaymentLine.findMany.mockResolvedValue([]);
+    fixture.prisma.spotProcurementPaymentChannel.findMany.mockResolvedValue([]);
+    fixture.prisma.spotProcurementPaymentMethodOption.findMany.mockResolvedValue([]);
+    fixture.prisma.spotProcurementPaymentInvoice.findMany.mockResolvedValue([]);
+    fixture.prisma.spotProcurementRefund.findMany.mockResolvedValue([]);
+    fixture.visibility.effectiveRoleKeys.mockResolvedValue(["material_staff"]);
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const [procurementList, paymentList, paymentDetail] = await Promise.all([
+      service.listProcurements("handler-1", {}),
+      service.listPayments("handler-1", {}),
+      service.getPayment("payment-1", "handler-1")
+    ]);
+
+    expect(procurementList.items[0]).toMatchObject({
+      form: "real_application",
+      payment: {
+        status: "pending_determination",
+        statusLabel: "付款金额待确定",
+        approvalAmountCents: null
+      }
+    });
+    expect(paymentList.items[0]).toMatchObject({
+      form: "real_payment",
+      paymentType: null,
+      paymentTypeLabel: "付款类型待确认",
+      approvalAmountCents: null,
+      merchantName: null
+    });
+    expect(paymentDetail.payment).toMatchObject({
+      form: "real_payment",
+      paymentType: null,
+      paymentTypeLabel: "付款类型待确认",
+      approvalAmountCents: null,
+      merchantName: null
+    });
+    expect((paymentDetail as { procurementMaterials: unknown }).procurementMaterials).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "line-1", materialName: "免烧砖" })
+      ])
+    );
+    expect(
+      paymentDetail.availableActions.find((action) => action.key === "edit_draft")
+    ).toMatchObject({ enabled: true });
+  });
+
   it("does not add an inaccessible payment refund into a procurement money summary", async () => {
     const fixture = buildFixture();
     const version = versionRow({
