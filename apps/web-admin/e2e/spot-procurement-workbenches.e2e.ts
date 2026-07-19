@@ -1,4 +1,10 @@
+import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import {
+  expectHorizontalScrollOwner,
+  expectNoDocumentHorizontalOverflow,
+  expectNoNestedHorizontalScrollers
+} from "./helpers/responsive-assertions";
 
 const now = "2026-07-18T08:00:00.000Z";
 const project = { id: "project-1", code: "XM-001", name: "一号项目" };
@@ -187,7 +193,7 @@ function receiptDetail() {
   };
 }
 
-test("renders A4 application, A5 payment and payment-opened final receipt without legacy balance fields", async ({ page }) => {
+test("renders A4 application, A5 payment and payment-opened final receipt without legacy balance fields", async ({ page }, testInfo) => {
   await mockLogin(page);
   await page.route("**/api/spot-procurements**", (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -223,13 +229,21 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Spot@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await page.setViewportSize({ width: 1366, height: 768 });
 
   await page.goto("/零星采购工作台");
   await expect(page.getByRole("heading", { name: "零星采购工作台" })).toBeVisible();
   await expect(page.getByText("LXCG-E2E-001", { exact: true })).toBeVisible();
-  await expect(page.getByText("部分已付", { exact: true })).toBeVisible();
-  await expect(page.getByText("待确认收货", { exact: true })).toBeVisible();
+  await expect(page.getByText("付款：部分已付", { exact: true })).toBeVisible();
+  await expect(page.getByText("收货：待确认收货", { exact: true })).toBeVisible();
   await expect(page.getByText("供应商余额抵扣", { exact: true })).toHaveCount(0);
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalScrollers(page);
+  await page.screenshot({
+    path: path.join(testInfo.outputDir, "spot-procurement-workbench-1366x768.png"),
+    fullPage: true
+  });
+
   await page.getByRole("button", { name: "新建采购申请" }).click();
   await expect(page.getByText("采购申请单号会在保存草稿时由系统自动生成。")).toBeVisible();
   await expect(page.getByText("XM-001 · 一号项目", { exact: true })).toBeVisible();
@@ -239,8 +253,25 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   await expect(page.getByRole("heading", { name: "零星材料付款工作台" })).toBeVisible();
   await expect(page.getByLabel("当前真实付款金额摘要").getByText("累计实付", { exact: true })).toBeVisible();
   await expect(page.getByText("利民建材店", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("待补发票", { exact: true })).toBeVisible();
+  await expect(page.getByText("发票：待补发票", { exact: true })).toBeVisible();
   await expect(page.getByText("转商户余额", { exact: true })).toHaveCount(0);
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalScrollers(page);
+  await page.screenshot({
+    path: path.join(testInfo.outputDir, "spot-procurement-payment-workbench-1366x768.png"),
+    fullPage: true
+  });
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalScrollers(page);
+  await expectHorizontalScrollOwner(page.locator(".jg-table-region .t-table__content"));
+  await page.setViewportSize({ width: 1366, height: 768 });
+
+  await page.goto("/零星材料付款/payment-1");
+  await expect(page.getByRole("heading", { name: "项目零星付款申请单" })).toBeVisible();
+  await page.getByRole("button", { name: "返回工作台" }).click();
+  await expect(page.getByRole("heading", { name: "零星材料付款工作台" })).toBeVisible();
+  expect(decodeURIComponent(new URL(page.url()).pathname)).toBe("/零星材料付款工作台");
 
   await page.goto("/收货确认工作台");
   await expect(page.getByRole("heading", { name: "收货确认工作台" })).toBeVisible();

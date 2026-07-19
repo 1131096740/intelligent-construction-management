@@ -45,4 +45,11 @@ describe("contract template responsive governance", () => {
     expect(source).toContain("@container jg-template-preview");
     expect(source).not.toContain("@media (max-width: 720px)");
   });
+
+  it("keeps template names separate from the use actions in compact cards", () => {
+    const source = readPage("ContractTemplateListPage.vue");
+
+    expect(source).toContain('class="template-card-actions"');
+    expect(source).not.toContain("<template #actions>");
+  });
 });

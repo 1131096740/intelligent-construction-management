@@ -73,19 +73,13 @@ const createForm = reactive({
 });
 
 const columns = [
-  { colKey: "code", title: "申请单编号", width: 155, fixed: "left" as const },
-  { colKey: "project", title: "项目名称", width: 210 },
-  { colKey: "applicationDepartment", title: "申请部门", width: 120 },
-  { colKey: "applicationName", title: "申请人", width: 100 },
-  { colKey: "purchaser", title: "采购人", width: 105 },
-  { colKey: "requestedArrivalAt", title: "要求到位日期", width: 130 },
-  { colKey: "reason", title: "物资用途及采购原因", width: 230 },
-  { colKey: "payment", title: "关联付款事实", width: 155 },
-  { colKey: "receipt", title: "收货确认", width: 125 },
-  { colKey: "status", title: "当前状态", width: 110 },
-  { colKey: "currentNode", title: "当前处理节点", width: 130 },
-  { colKey: "updatedAt", title: "更新时间", width: 165 },
-  { colKey: "operation", title: "操作", width: 90, fixed: "right" as const }
+  { colKey: "code", title: "申请单编号", width: 130, fixed: "left" as const },
+  { colKey: "project", title: "项目", width: 180 },
+  { colKey: "participants", title: "申请 / 采购", width: 135 },
+  { colKey: "reason", title: "采购原因", width: 160 },
+  { colKey: "fulfillment", title: "付款与收货", width: 140 },
+  { colKey: "status", title: "当前状态", width: 140 },
+  { colKey: "operation", title: "操作", width: 80, fixed: "right" as const }
 ];
 
 const statusOptions = [
@@ -170,19 +164,6 @@ function isQuantity(value: string) {
 
 function countStatus(status: SpotProcurementStatus) {
   return rows.value.filter((row) => row.status === status).length;
-}
-
-function dateOnly(value: string | undefined) {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("zh-CN");
-}
-
-function dateTime(value: string) {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime())
-    ? value
-    : parsed.toLocaleString("zh-CN", { hour12: false });
 }
 
 function statusTheme(status: SpotProcurementStatus) {
@@ -401,7 +382,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="spot-procurement-workbench">
+  <section class="spot-procurement-workbench jg-responsive-ledger">
     <BusinessPageHeader
       title="零星采购工作台"
       description="沿用公司《零星/小额材料采购申请表》：本单只确认材料、数量、到位日期与采购原因，价格和商户在后续付款申请中确定。"
@@ -517,72 +498,64 @@ onMounted(() => {
         </div>
         <span>当前返回 {{ rows.length }} 条</span>
       </header>
-      <t-table
+      <div
         v-if="rows.length"
-        row-key="id"
-        size="small"
-        table-layout="fixed"
-        :columns="columns"
-        :data="rows"
-        :loading="loading"
-        :scroll="{ x: 1950 }"
+        class="jg-table-region jg-table-region--wide"
       >
-        <template #code="{ row }">
-          <t-link
-            theme="primary"
-            @click="openDetail(row.id)"
-          >
-            {{ row.code }}
-          </t-link>
-        </template>
-        <template #project="{ row }">
-          {{ row.project.code }} · {{ row.project.name }}
-        </template>
-        <template #applicationDepartment="{ row }">
-          {{ row.applicationDepartment ?? "—" }}
-        </template>
-        <template #applicationName="{ row }">
-          {{ row.applicationName ?? row.applicant.name }}
-        </template>
-        <template #purchaser="{ row }">
-          {{ row.purchaserName ?? row.handler.name }}
-        </template>
-        <template #requestedArrivalAt="{ row }">
-          {{ dateOnly(row.requestedArrivalAt) }}
-        </template>
-        <template #payment="{ row }">
-          <t-tag variant="outline">
-            {{ paymentLabel(row) }}
-          </t-tag>
-        </template>
-        <template #receipt="{ row }">
-          <t-tag variant="outline">
-            {{ receiptLabel(row) }}
-          </t-tag>
-        </template>
-        <template #status="{ row }">
-          <t-tag
-            :theme="statusTheme(row.status)"
-            variant="light"
-          >
-            {{ row.statusLabel }}
-          </t-tag>
-        </template>
-        <template #currentNode="{ row }">
-          {{ row.approval.currentNodeName || "—" }}
-        </template>
-        <template #updatedAt="{ row }">
-          {{ dateTime(row.updatedAt) }}
-        </template>
-        <template #operation="{ row }">
-          <t-link
-            theme="primary"
-            @click="openDetail(row.id)"
-          >
-            查看详情
-          </t-link>
-        </template>
-      </t-table>
+        <t-table
+          row-key="id"
+          size="small"
+          table-layout="fixed"
+          :columns="columns"
+          :data="rows"
+          :loading="loading"
+          :scroll="{ x: 1000 }"
+          horizontal-scroll-affixed-bottom
+        >
+          <template #code="{ row }">
+            <t-link
+              theme="primary"
+              @click="openDetail(row.id)"
+            >
+              {{ row.code }}
+            </t-link>
+          </template>
+          <template #project="{ row }">
+            {{ row.project.code }} · {{ row.project.name }}
+          </template>
+          <template #participants="{ row }">
+            <div class="two-line-cell">
+              <strong>申请：{{ row.applicationName ?? row.applicant.name }}</strong>
+              <span>采购：{{ row.purchaserName ?? row.handler.name }}</span>
+            </div>
+          </template>
+          <template #fulfillment="{ row }">
+            <div class="two-line-cell">
+              <span>付款：{{ paymentLabel(row) }}</span>
+              <span>收货：{{ receiptLabel(row) }}</span>
+            </div>
+          </template>
+          <template #status="{ row }">
+            <div class="two-line-cell">
+              <t-tag
+                :theme="statusTheme(row.status)"
+                variant="light"
+              >
+                {{ row.statusLabel }}
+              </t-tag>
+              <span>{{ row.approval.currentNodeName || "—" }}</span>
+            </div>
+          </template>
+          <template #operation="{ row }">
+            <t-link
+              theme="primary"
+              @click="openDetail(row.id)"
+            >
+              查看详情
+            </t-link>
+          </template>
+        </t-table>
+      </div>
       <EmptyBusinessState
         v-else
         title="当前条件下暂无零星采购"
@@ -801,6 +774,23 @@ onMounted(() => {
 .section-heading p,
 .attachment-section p {
   margin-top: var(--jg-space-xs);
+}
+
+.two-line-cell {
+  display: grid;
+  gap: var(--jg-space-xs);
+  min-width: 0;
+}
+
+.two-line-cell span {
+  color: var(--jg-color-text-tertiary);
+  font-size: var(--jg-font-size-meta);
+}
+
+.two-line-cell strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .attachment-section {

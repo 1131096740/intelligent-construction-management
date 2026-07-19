@@ -448,7 +448,7 @@ onMounted(() => void loadDetail());
             刷新
           </t-button><t-button
             variant="outline"
-            @click="router.push('/零星材料付款')"
+            @click="router.push('/零星材料付款工作台')"
           >
             返回工作台
           </t-button>
