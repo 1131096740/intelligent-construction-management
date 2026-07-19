@@ -3924,7 +3924,7 @@ describe("ContractTakeoverService", () => {
         historicalSettledCents: "600000"
       })
     ]);
-    const [row] = await service.list("project-1");
+    const [row] = await service.list("project-1", "contract-user");
     expect(row).not.toHaveProperty("contractVersionId");
     expect(row).not.toHaveProperty("paymentTermsVersionId");
     expect(row).not.toHaveProperty("createdByUserId");
@@ -4375,6 +4375,11 @@ describe("ContractTakeoverService", () => {
       changeBaselineConfirmed: true,
       originalBaseAmountCents: "1000000",
       preTakeoverPositiveIncreaseCents: "200000"
+    });
+    expect(row).toMatchObject({
+      lifecycleKind: "formal_record",
+      availableActions: [],
+      lifecycleBlockers: expect.arrayContaining(["接管已确认"])
     });
   });
 

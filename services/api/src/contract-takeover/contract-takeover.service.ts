@@ -264,6 +264,7 @@ type ContractTakeoverRecord = {
   responsibleUserId: string | null;
   reviewComment: string | null;
   acceptanceConclusion: string | null;
+  createdByUserId: string;
   submittedAt: Date | null;
   confirmedAt: Date | null;
   historicalBalanceConfirmedAt: Date | null;
@@ -328,6 +329,12 @@ export interface ContractTakeoverBusinessReadModel {
   evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
   corrections: ContractTakeoverCorrectionReadModel[];
   postConfirmationVerification: ContractTakeoverPostConfirmationVerificationReadModel;
+  lifecycleKind: "pristine_draft" | "approval_draft" | "formal_record";
+  lifecycleBlockers: string[];
+  availableActions: Array<{
+    key: string; label: string; kind: "danger"; enabled: boolean;
+    disabledReason: string | null; requiresComment?: boolean;
+  }>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -1206,13 +1213,13 @@ export class ContractTakeoverService {
     }
   }
 
-  async list(projectId: string) {
+  async list(projectId: string, actorUserId?: string) {
     const takeovers = await this.prisma.contractTakeover.findMany({
       where: { projectId, takeoverStatus: { not: "abandoned" } },
       orderBy: { createdAt: "desc" }
     });
 
-    return this.toReadModels(this.prisma, takeovers);
+    return this.toReadModels(this.prisma, takeovers, actorUserId);
   }
 
   async listImportBatches(projectId: string) {
@@ -1373,9 +1380,9 @@ export class ContractTakeoverService {
     });
   }
 
-  async detail(projectId: string, takeoverId: string) {
+  async detail(projectId: string, takeoverId: string, actorUserId?: string) {
     const takeover = await this.getProjectTakeover(this.prisma, projectId, takeoverId);
-    return this.toReadModelFromDatabase(this.prisma, takeover);
+    return this.toReadModelFromDatabase(this.prisma, takeover, actorUserId);
   }
 
   async precheckImport(
@@ -1888,7 +1895,8 @@ export class ContractTakeoverService {
 
   private async toReadModels(
     client: TakeoverReadClient,
-    takeovers: ContractTakeoverRecord[]
+    takeovers: ContractTakeoverRecord[],
+    actorUserId?: string
   ): Promise<ContractTakeoverBusinessReadModel[]> {
     if (!takeovers.length) {
       return [];
@@ -2263,15 +2271,16 @@ export class ContractTakeoverService {
           postConfirmationVerificationByVersionId.get(takeover.contractVersionId) ??
             emptyPostConfirmationVerificationStats()
         )
-      })
+      }, actorUserId)
     );
   }
 
   private async toReadModelFromDatabase(
     client: TakeoverReadClient,
-    takeover: ContractTakeoverRecord
+    takeover: ContractTakeoverRecord,
+    actorUserId?: string
   ) {
-    const [readModel] = await this.toReadModels(client, [takeover]);
+    const [readModel] = await this.toReadModels(client, [takeover], actorUserId);
     return readModel;
   }
 
@@ -2294,7 +2303,8 @@ export class ContractTakeoverService {
       evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
       corrections: ContractTakeoverCorrectionReadModel[];
       postConfirmationVerification: ContractTakeoverPostConfirmationVerificationReadModel;
-    }
+    },
+    actorUserId?: string
   ): ContractTakeoverBusinessReadModel {
     const evidenceChecklist = takeoverEvidenceChecklist(takeover, contract.evidenceFiles);
     const invoiceType = contract.contractVersion?.invoiceType ?? null;
@@ -2302,6 +2312,34 @@ export class ContractTakeoverService {
       contract.contractVersion?.defaultTaxRatePercent?.toString() ?? null;
     const pricingItems = contract.pricingItems ?? [];
     const changeBaselineConfirmed = contract.contractVersion?.originalBaseAmountCents != null;
+
+    const terminal = takeover.takeoverStatus === "confirmed" || Boolean(takeover.confirmedAt);
+    const allowed = ["draft", "needs_supplement", "pending_review"].includes(takeover.takeoverStatus);
+    const owns = Boolean(actorUserId) && (
+      takeover.createdByUserId === actorUserId || takeover.responsibleUserId === actorUserId
+    );
+    const downstream = contract.postConfirmationVerification;
+    const lifecycleBlockers = [
+      ...(takeover.takeoverStatus === "abandoned" ? ["接管记录已放弃"] : []),
+      ...(terminal ? ["接管已确认"] : []),
+      ...(!terminal && !allowed && takeover.takeoverStatus !== "abandoned" ? ["接管状态不能放弃"] : []),
+      ...(downstream.newSettlementCount ? ["存在关联结算"] : []),
+      ...(downstream.paymentRequestCount ? ["存在关联付款"] : []),
+      ...(!owns && actorUserId ? ["当前账号不是该接管记录责任人"] : []),
+      ...(!actorUserId ? ["未提供当前操作人"] : [])
+    ];
+    const pristine = takeover.takeoverStatus === "draft" && !takeover.submittedAt &&
+      contract.evidenceFiles.length === 0 && contract.corrections.length === 0;
+    const lifecycleKind = takeover.takeoverStatus === "abandoned" || terminal
+      ? "formal_record" : pristine ? "pristine_draft" : "approval_draft";
+    const availableActions = lifecycleKind === "formal_record" ? [] : [{
+      key: pristine ? "delete_pristine_draft" : "abandon_application",
+      label: pristine ? "删除草稿" : "放弃历史接管申请",
+      kind: "danger" as const,
+      enabled: lifecycleBlockers.length === 0,
+      disabledReason: lifecycleBlockers.length ? lifecycleBlockers.join("；") : null,
+      ...(pristine ? {} : { requiresComment: true })
+    }];
 
     return {
       id: takeover.id,
@@ -2374,6 +2412,9 @@ export class ContractTakeoverService {
       evidenceFiles: contract.evidenceFiles,
       corrections: contract.corrections,
       postConfirmationVerification: contract.postConfirmationVerification,
+      lifecycleKind,
+      lifecycleBlockers,
+      availableActions,
       createdAt: takeover.createdAt,
       updatedAt: takeover.updatedAt
     };
@@ -2498,6 +2539,8 @@ export class ContractTakeoverService {
     actorUserId: string
   ): Promise<Array<{
     id: string;
+    contractNo: string;
+    contractName: string;
     importRowNo: number | null;
     updatedAt: string;
     action: "delete_pristine_draft" | "abandon_application";
@@ -2508,6 +2551,16 @@ export class ContractTakeoverService {
       where: { projectId, takeoverBatchId: batchId },
       orderBy: [{ importRowNo: "asc" }, { id: "asc" }]
     });
+    const contractReader = (tx as unknown as {
+      contract?: { findMany(args: unknown): Promise<Array<{
+        id: string; code: string | null; temporaryCode: string | null; name: string;
+      }>> }
+    }).contract;
+    const contracts = takeovers.length && contractReader ? await contractReader.findMany({
+      where: { id: { in: unique(takeovers.map((takeover) => takeover.contractId)) } },
+      select: { id: true, code: true, temporaryCode: true, name: true }
+    }) : [];
+    const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
     const rows = [];
     for (const takeover of takeovers) {
       const facts = await this.takeoverAbandonmentFacts(tx, takeover);
@@ -2519,6 +2572,9 @@ export class ContractTakeoverService {
       ];
       rows.push({
         id: takeover.id,
+        contractNo: contractById.get(takeover.contractId)?.code ??
+          contractById.get(takeover.contractId)?.temporaryCode ?? takeover.contractId,
+        contractName: contractById.get(takeover.contractId)?.name ?? "合同名称未读取",
         importRowNo: takeover.importRowNo,
         updatedAt: takeover.updatedAt.toISOString(),
         action: facts.action,
@@ -2536,8 +2592,11 @@ export class ContractTakeoverService {
     eligible: boolean;
     blockers: string[];
   }>) {
+    const atomicRows = rows.map(({ id, updatedAt, action, eligible, blockers }) => ({
+      id, updatedAt, action, eligible, blockers
+    }));
     return createHash("sha256")
-      .update(JSON.stringify(stableObject({ batchId, rows })))
+      .update(JSON.stringify(stableObject({ batchId, rows: atomicRows })))
       .digest("hex");
   }
 

@@ -34,12 +34,39 @@ describe("contract ledger page configuration", () => {
 
   it("keeps the compact summary strip focused on contract states", () => {
     expect(contractSummaryItems.map((item) => item.label)).toEqual([
-      "全部合同",
-      "审批中",
-      "待用章",
-      "待归档",
-      "已生效"
+      "正式台账",
+      "我的草稿",
+      "退回待修改",
+      "已结束"
     ]);
+  });
+
+  it("keeps ended draft history visible without linking to an unrelated contract detail", () => {
+    const source = readFileSync(new URL("./ContractListPage.vue", import.meta.url), "utf8");
+    expect(source).toContain("row.abandonReason || '—'");
+    expect(source).toContain("历史已保留");
+    expect(source).not.toContain("查看历史");
+    expect(source).not.toMatch(/activeTab\.value === "ended"[\s\S]{0,160}router\.push/);
+  });
+
+  it("defaults an unqualified ledger visit to the formal ledger", () => {
+    const source = readFileSync(new URL("./ContractListPage.vue", import.meta.url), "utf8");
+    expect(source).toMatch(
+      /const requested =[^;]+\? value as DraftLedgerView\s*: "formal_ledger";/s
+    );
+    expect(source).not.toMatch(
+      /: canManageContracts\.value \? "my_drafts" : "formal_ledger"/
+    );
+  });
+
+  it("executes only server-advertised workbench actions after saving with CAS", () => {
+    const source = readFileSync(new URL("./ContractWorkbenchPage.vue", import.meta.url), "utf8");
+    expect(source).toContain("<BusinessDraftAction");
+    expect(source).toContain("workbench.value?.availableActions ?? []");
+    expect(source).toContain("useUnsavedChangesGuard");
+    expect(source).toContain("const saved = await saveNow()");
+    expect(source).toContain("expectedRevision: latest.version.draftRevision");
+    expect(source).not.toContain("enabled: true");
   });
 
   it("builds stable select options from the currently loaded contract ledger", () => {
@@ -88,7 +115,7 @@ describe("contract ledger page configuration", () => {
         { label: "条款 v2", value: "条款 v2" }
       ]
     });
-    expect(contractPaginationBlockReason).toContain("暂不支持翻页");
+    expect(contractPaginationBlockReason).toContain("服务端分页");
   });
 
   it("shows version, archive, owner, and next-node columns in the ledger", () => {

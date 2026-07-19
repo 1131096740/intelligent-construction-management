@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  abandonSettlementDraftRecord,
   createSettlementDraftRecord,
   fetchSettlementDraftRecord,
   generateSettlementFrozenDocument,
@@ -91,6 +92,41 @@ describe("settlement drafts API", () => {
       })
     );
     expect(mockApiFetch.mock.calls.some(([path]) => path === "/settlements")).toBe(false);
+  });
+
+  it("abandons an encoded settlement draft with the exact CAS body", async () => {
+    await abandonSettlementDraftRecord("project/1", "draft/1", {
+      expectedRevision: 5,
+      action: "abandon_application",
+      reason: "乙方签章资料需要重做"
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/projects/project%2F1/settlement-drafts/draft%2F1/abandonment",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: 5,
+          action: "abandon_application",
+          reason: "乙方签章资料需要重做"
+        })
+      }
+    );
+  });
+
+  it("preserves the Chinese settlement abandonment failure", async () => {
+    mockApiFetch.mockResolvedValue(
+      new Response(JSON.stringify({ message: "结算草稿已被更新，请刷新后重试" }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+
+    await expect(abandonSettlementDraftRecord("project-1", "draft-1", {
+      expectedRevision: 4,
+      action: "delete_pristine_draft"
+    })).rejects.toThrow("结算草稿已被更新，请刷新后重试");
   });
 
   it("generates the exact draft revision and links the declared counterparty-signed original", async () => {

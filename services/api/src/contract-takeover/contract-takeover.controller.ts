@@ -57,8 +57,8 @@ export class ContractTakeoverController {
 
   @Get()
   @RequirePositions(...HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS)
-  list(@Param("projectId") projectId: string) {
-    return this.takeovers.list(projectId);
+  list(@Param("projectId") projectId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.takeovers.list(projectId, user.id);
   }
 
   @Get("import-batches")
@@ -175,18 +175,20 @@ export class ContractTakeoverController {
   @RequirePositions(...HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS)
   detail(
     @Param("projectId") projectId: string,
-    @Param("takeoverId") takeoverId: string
+    @Param("takeoverId") takeoverId: string,
+    @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.takeovers.detail(projectId, takeoverId);
+    return this.takeovers.detail(projectId, takeoverId, user.id);
   }
 
   @Get(":takeoverId/tax-fact-revisions")
   @RequirePositions(...HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS)
   listTaxFactRevisions(
     @Param("projectId") projectId: string,
-    @Param("takeoverId") takeoverId: string
+    @Param("takeoverId") takeoverId: string,
+    @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.requireTaxFacts().list(projectId, takeoverId);
+    return this.requireTaxFacts().list(projectId, takeoverId, user.id);
   }
 
   @Post(":takeoverId/tax-fact-revisions")

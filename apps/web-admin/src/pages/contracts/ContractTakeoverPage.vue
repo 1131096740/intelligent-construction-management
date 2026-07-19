@@ -319,50 +319,54 @@
       >
         <template #operation="{ row }">
           <t-space
-            v-if="canConfirmTakeovers"
+            v-if="canConfirmTakeovers || canManageTakeovers"
             size="small"
           >
-            <t-link
-              v-if="row.status === 'drafts_generated'"
-              theme="primary"
-              :disabled="Boolean(reviewingImportBatchAction)"
-              :title="importBatchReviewDisabledReason"
-              @click="reviewImportBatch(row, 'under_review')"
-            >
-              提交复核
-            </t-link>
-            <template v-else-if="row.status === 'under_review'">
+            <template v-if="canConfirmTakeovers">
               <t-link
+                v-if="row.status === 'drafts_generated'"
                 theme="primary"
                 :disabled="Boolean(reviewingImportBatchAction)"
                 :title="importBatchReviewDisabledReason"
-                @click="reviewImportBatch(row, 'accepted')"
+                @click="reviewImportBatch(row, 'under_review')"
               >
-                验收通过
+                提交复核
               </t-link>
-              <t-link
-                theme="warning"
-                :disabled="Boolean(reviewingImportBatchAction)"
-                :title="importBatchReviewDisabledReason"
-                @click="reviewImportBatch(row, 'limited_accepted')"
-              >
-                受限验收
-              </t-link>
-              <t-link
-                theme="danger"
-                :disabled="Boolean(reviewingImportBatchAction)"
-                :title="importBatchReviewDisabledReason"
-                @click="reviewImportBatch(row, 'disputed')"
-              >
-                标记争议
-              </t-link>
+              <template v-else-if="row.status === 'under_review'">
+                <t-link
+                  theme="primary"
+                  :disabled="Boolean(reviewingImportBatchAction)"
+                  :title="importBatchReviewDisabledReason"
+                  @click="reviewImportBatch(row, 'accepted')"
+                >
+                  验收通过
+                </t-link>
+                <t-link
+                  theme="warning"
+                  :disabled="Boolean(reviewingImportBatchAction)"
+                  :title="importBatchReviewDisabledReason"
+                  @click="reviewImportBatch(row, 'limited_accepted')"
+                >
+                  受限验收
+                </t-link>
+                <t-link
+                  theme="danger"
+                  :disabled="Boolean(reviewingImportBatchAction)"
+                  :title="importBatchReviewDisabledReason"
+                  @click="reviewImportBatch(row, 'disputed')"
+                >
+                  标记争议
+                </t-link>
+              </template>
             </template>
-            <span
-              v-else
-              class="issue-muted"
+            <t-link
+              v-if="canManageTakeovers"
+              theme="danger"
+              :disabled="batchAbandonPreviewing || batchAbandonApplying"
+              @click="openBatchAbandonment(row)"
             >
-              已形成批次结论
-            </span>
+              清理草稿
+            </t-link>
           </t-space>
           <span
             v-else
@@ -967,6 +971,18 @@
             <strong>{{ selectedRow.contractNo }}</strong>
             <span>{{ selectedRow.contractName }}</span>
           </div>
+
+          <BusinessDraftAction
+            :actions="selectedRow.takeover.availableActions ?? []"
+            :blocked-reasons="selectedRow.takeover.lifecycleBlockers ?? []"
+            :subject="{
+              businessCode: selectedRow.contractNo,
+              name: selectedRow.contractName,
+              lastSavedAt: selectedRow.takeover.updatedAt,
+              impactScope: '只结束当前历史合同接管草稿或申请，不影响已确认合同事实'
+            }"
+            :execute="abandonSelectedTakeover"
+          />
 
           <dl class="detail-list">
             <div
@@ -1629,6 +1645,61 @@
     </SensitiveActionDialog>
 
     <SensitiveActionDialog
+      v-model="batchAbandonVisible"
+      title="确认清理接管批次草稿"
+      description="批次清理采用全有或全无规则。只有全部记录均通过预览校验时才能提交；只要存在一条阻断记录，本批次就不会发生任何改变。"
+      confirm-text="确认清理可处理记录"
+      confirm-theme="danger"
+      require-reason
+      reason-label="清理原因"
+      :loading="batchAbandonApplying"
+      :error="batchAbandonError"
+      @confirm="applyBatchAbandonment"
+      @cancel="resetBatchAbandonment"
+    >
+      <div
+        v-if="batchAbandonPreview"
+        class="batch-abandon-preview"
+      >
+        <dl class="detail-list compact">
+          <div><dt>批次号</dt><dd>{{ batchAbandonPreview.batchNo }}</dd></div>
+          <div><dt>记录总数</dt><dd>{{ batchAbandonPreview.total }} 条</dd></div>
+          <div><dt>可处理</dt><dd>{{ batchAbandonPreview.eligible }} 条</dd></div>
+          <div><dt>被阻断</dt><dd>{{ batchAbandonPreview.blocked }} 条</dd></div>
+        </dl>
+        <t-table
+          row-key="id"
+          size="small"
+          :columns="batchAbandonPreviewColumns"
+          :data="batchAbandonPreview.rows"
+          horizontal-scroll-affixed-bottom
+        >
+          <template #action="{ row }">
+            {{ row.action === 'delete_pristine_draft' ? '删除纯净草稿' : '放弃申请' }}
+          </template>
+          <template #result="{ row }">
+            <t-tag
+              size="small"
+              :theme="row.eligible ? 'success' : 'warning'"
+              variant="light"
+            >
+              {{ row.eligible ? '可处理' : '已阻断' }}
+            </t-tag>
+          </template>
+          <template #blockers="{ row }">
+            {{ row.blockers.length ? row.blockers.join('；') : '—' }}
+          </template>
+        </t-table>
+        <t-alert
+          v-if="batchAbandonDisabledReason"
+          theme="warning"
+          title="当前批次不能清理"
+          :message="batchAbandonDisabledReason"
+        />
+      </div>
+    </SensitiveActionDialog>
+
+    <SensitiveActionDialog
       v-if="canConfirmTakeovers"
       v-model="importBatchReviewVisible"
       title="确认更新接管批次状态"
@@ -1689,6 +1760,8 @@ import type { UploadFile } from "tdesign-vue-next";
 import { computed, nextTick, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
+  abandonContractTakeover,
+  applyContractTakeoverBatchAbandonment,
   applyContractTakeoverExcelImport,
   attachContractTakeoverEvidenceFile,
   confirmContractTakeover,
@@ -1706,6 +1779,7 @@ import {
   listHistoricalCompanyEntityCandidates,
   listContractTakeovers,
   precheckContractTakeoverImport,
+  previewContractTakeoverBatchAbandonment,
   previewContractTakeoverExcelImport,
   recordContractTakeoverCorrection,
   reviewContractTakeoverCompanyEntityCorrection,
@@ -1718,6 +1792,7 @@ import {
   type ContractTaxFactSource,
   type ContractTaxMode,
   type ContractTakeoverCorrectionType,
+  type ContractTakeoverBatchAbandonmentPreviewReadModel,
   type ContractTakeoverExcelPreviewReadModel,
   type ContractTakeoverImportBatchReadModel,
   type ContractTakeoverImportBatchReviewStatus,
@@ -1733,6 +1808,9 @@ import {
 import type { ContractTaxFactCurrentReadModel } from "../../api/contract-tax-facts.api";
 import { useAuthStore } from "../../auth/auth.store";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
+import BusinessDraftAction, {
+  type BusinessDraftActionRequest
+} from "../../components/BusinessDraftAction.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { centsTextToYuanText } from "../../lib/money";
 import {
@@ -1768,6 +1846,7 @@ import {
   parseContractTakeoverImportPrecheckRows,
   suggestTakeoverLevel,
   takeoverActionDisabledReason,
+  takeoverBatchAbandonmentDisabledReason,
   takeoverConfirmDisabledReason,
   takeoverCorrectionDisabledReason,
   takeoverCorrectionRows,
@@ -1909,6 +1988,17 @@ const detailExporting = ref(false);
 const excelPreviewing = ref(false);
 const excelApplying = ref(false);
 const reviewingImportBatchAction = ref("");
+const batchAbandonPreviewing = ref(false);
+const batchAbandonApplying = ref(false);
+const batchAbandonVisible = ref(false);
+const batchAbandonError = ref("");
+const batchAbandonTargetId = ref("");
+const batchAbandonPreview = ref<ContractTakeoverBatchAbandonmentPreviewReadModel | null>(null);
+const batchAbandonDisabledReason = computed(() =>
+  batchAbandonPreview.value
+    ? takeoverBatchAbandonmentDisabledReason(batchAbandonPreview.value)
+    : ""
+);
 const editingTakeoverId = ref("");
 const confirming = ref(false);
 const evidenceUploading = ref(false);
@@ -2003,7 +2093,16 @@ const importBatchColumns = [
   { colKey: "riskText", title: "复核提示", minWidth: 200 },
   { colKey: "reviewComment", title: "批次复核意见", minWidth: 220 },
   { colKey: "acceptanceConclusion", title: "批次验收结论", minWidth: 220 },
-  { colKey: "operation", title: "批次操作", width: 210, fixed: "right" }
+  { colKey: "operation", title: "批次操作", width: 280, fixed: "right" }
+];
+
+const batchAbandonPreviewColumns = [
+  { colKey: "importRowNo", title: "导入行", width: 88 },
+  { colKey: "contractNo", title: "合同编号", minWidth: 150 },
+  { colKey: "contractName", title: "合同名称", minWidth: 200 },
+  { colKey: "action", title: "处理方式", width: 126 },
+  { colKey: "result", title: "预检结果", width: 96 },
+  { colKey: "blockers", title: "阻断原因", minWidth: 220 }
 ];
 
 const tableRows = computed(() =>
@@ -2811,6 +2910,99 @@ async function confirmImportBatchReview() {
   } finally {
     reviewingImportBatchAction.value = "";
   }
+}
+
+async function openBatchAbandonment(batch: ContractTakeoverImportBatchReadModel) {
+  if (!canManageTakeovers.value) {
+    setMessage("当前岗位不能清理历史合同接管草稿", "danger");
+    return;
+  }
+  const projectId = selectedProjectId.value;
+  if (!projectId || batchAbandonPreviewing.value) return;
+
+  batchAbandonPreviewing.value = true;
+  batchAbandonError.value = "";
+  try {
+    const preview = await previewContractTakeoverBatchAbandonment(projectId, batch.id);
+    batchAbandonTargetId.value = batch.id;
+    batchAbandonPreview.value = preview;
+    batchAbandonError.value = takeoverBatchAbandonmentDisabledReason(preview);
+    batchAbandonVisible.value = true;
+  } catch (error) {
+    setMessage(
+      error instanceof Error
+        ? `${error.message}。未改变任何接管记录，请重试预览。`
+        : "批次草稿预览失败，未改变任何接管记录，请稍后重试。",
+      "danger"
+    );
+  } finally {
+    batchAbandonPreviewing.value = false;
+  }
+}
+
+async function applyBatchAbandonment(values: { reason: string; password: string }) {
+  const projectId = selectedProjectId.value;
+  const batchId = batchAbandonTargetId.value;
+  const preview = batchAbandonPreview.value;
+  if (!projectId || !batchId || !preview) return;
+  const disabledReason = takeoverBatchAbandonmentDisabledReason(preview);
+  if (disabledReason) {
+    batchAbandonError.value = disabledReason;
+    return;
+  }
+  if (!values.reason.trim()) {
+    batchAbandonError.value = "请填写清理原因，说明为什么结束这批草稿或申请。";
+    return;
+  }
+
+  batchAbandonApplying.value = true;
+  batchAbandonError.value = "";
+  try {
+    const result = await applyContractTakeoverBatchAbandonment(projectId, batchId, {
+      previewHash: preview.previewHash,
+      reason: values.reason.trim()
+    });
+    batchAbandonApplying.value = false;
+    resetBatchAbandonment();
+    setMessage(`已清理 ${result.abandonedCount} 条接管草稿或申请`, "success");
+    await loadTakeovers();
+  } catch (error) {
+    batchAbandonError.value = error instanceof Error
+      ? `${error.message}。未完成批次清理，请重新预览后再试。`
+      : "批次清理未完成，请重新预览后再试。";
+  } finally {
+    batchAbandonApplying.value = false;
+  }
+}
+
+function resetBatchAbandonment() {
+  if (batchAbandonApplying.value) return;
+  batchAbandonVisible.value = false;
+  batchAbandonTargetId.value = "";
+  batchAbandonPreview.value = null;
+  batchAbandonError.value = "";
+}
+
+async function abandonSelectedTakeover(request: BusinessDraftActionRequest) {
+  const projectId = selectedProjectId.value;
+  const takeover = selectedRow.value?.takeover;
+  if (!projectId || !takeover) throw new Error("请先选择历史合同接管记录");
+  if (request.action !== "delete_pristine_draft" && request.action !== "abandon_application") {
+    throw new Error("当前操作与接管记录状态不匹配，请刷新后重试");
+  }
+
+  await abandonContractTakeover(projectId, takeover.id, {
+    expectedUpdatedAt: takeover.updatedAt,
+    action: request.action,
+    ...(request.reason.trim() ? { reason: request.reason.trim() } : {})
+  });
+  if (editingTakeoverId.value === takeover.id) cancelEdit();
+  selectedTakeoverId.value = "";
+  await loadTakeovers();
+  setMessage(
+    request.action === "delete_pristine_draft" ? "历史合同接管草稿已删除" : "历史合同接管申请已放弃",
+    "success"
+  );
 }
 
 async function selectTakeover(takeover: ContractTakeoverReadModel) {
@@ -4504,6 +4696,13 @@ input[type="date"] {
 
 .confirm-body p {
   margin: 0;
+}
+
+.batch-abandon-preview {
+  display: grid;
+  gap: var(--jg-space-md);
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
 }
 
 @container jg-page (max-width: 1120px) {

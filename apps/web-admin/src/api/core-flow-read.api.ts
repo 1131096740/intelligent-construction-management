@@ -2,6 +2,9 @@ import type {
   ContractBusinessOptionReadModel,
   ContractDetailReadModel,
   ContractPaymentApplicationPreviewReadModel,
+  DetailActionReadModel,
+  DraftLedgerView,
+  LifecycleLedgerPage,
   PaymentDetailReadModel,
   ProjectExpenseApprovalDetailReadModel,
   SettlementDetailReadModel
@@ -297,6 +300,9 @@ export interface ContractTakeoverReadModel {
   importRowNo: number | null;
   contractNo: string;
   contractName: string;
+  /** Compatibility aliases used by lifecycle-ledger and batch previews. */
+  code?: string;
+  name?: string;
   counterparty: string;
   companyEntityId: string | null;
   companyEntityName: string | null;
@@ -348,8 +354,57 @@ export interface ContractTakeoverReadModel {
   evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
   corrections: ContractTakeoverCorrectionReadModel[];
   postConfirmationVerification: ContractTakeoverPostConfirmationVerificationReadModel;
+  lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";
+  lifecycleBlockers?: string[];
+  availableActions?: DetailActionReadModel[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AbandonContractTakeoverPayload {
+  expectedUpdatedAt: string;
+  action: "delete_pristine_draft" | "abandon_application";
+  reason?: string;
+}
+
+export interface AbandonContractTakeoverReadModel {
+  takeoverId: string;
+  status: "abandoned";
+  action?: "delete_pristine_draft" | "abandon_application";
+  abandonedAt?: string;
+  idempotent: boolean;
+}
+
+export interface ContractTakeoverBatchAbandonmentRowReadModel {
+  id: string;
+  importRowNo: number | null;
+  updatedAt: string;
+  action: "delete_pristine_draft" | "abandon_application";
+  eligible: boolean;
+  blockers: string[];
+  contractNo: string;
+  contractName: string;
+}
+
+export interface ContractTakeoverBatchAbandonmentPreviewReadModel {
+  batchId: string;
+  batchNo: string;
+  previewHash: string;
+  total: number;
+  eligible: number;
+  blocked: number;
+  rows: ContractTakeoverBatchAbandonmentRowReadModel[];
+}
+
+export interface ApplyContractTakeoverBatchAbandonmentPayload {
+  previewHash: string;
+  reason: string;
+}
+
+export interface ApplyContractTakeoverBatchAbandonmentReadModel {
+  batchId: string;
+  abandonedCount: number;
+  previewHash: string;
 }
 
 export interface HistoricalTakeoverDirectPaymentStageReadModel {
@@ -1383,6 +1438,30 @@ export function fetchContractLedger() {
   return readJson<ContractLedgerListReadModel>("/contracts");
 }
 
+export type ContractLifecycleLedgerRow = ContractLedgerListReadModel["rows"][number] & {
+  contractVersionId?: string;
+  lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";
+  draftRevision?: number;
+  lifecycleUpdatedAt?: string;
+  abandonedAt?: string | null;
+  abandonReason?: string | null;
+};
+
+export function fetchContractLifecycleLedger(
+  view: DraftLedgerView,
+  page: number,
+  pageSize: number
+) {
+  const query = new URLSearchParams({
+    view,
+    page: String(page),
+    pageSize: String(pageSize)
+  });
+  return readJson<LifecycleLedgerPage<ContractLifecycleLedgerRow>>(
+    `/contracts/lifecycle-ledger?${query.toString()}`
+  );
+}
+
 export function downloadContractLedgerExport() {
   return downloadWorkbook("/contracts/ledger-export", "合同台账.xlsx", "导出合同台账失败");
 }
@@ -1401,6 +1480,31 @@ export function fetchPaymentContractOptions(projectId: string) {
 
 export function fetchSettlementLedger() {
   return readJson<SettlementLedgerListReadModel>("/settlements");
+}
+
+export type SettlementLifecycleLedgerRow = SettlementLedgerListReadModel["rows"][number] & {
+  projectId: string;
+  settlementId?: string;
+  lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";
+  revision?: number;
+  lifecycleUpdatedAt?: string;
+  abandonedAt?: string | null;
+  abandonReason?: string | null;
+};
+
+export function fetchSettlementLifecycleLedger(
+  view: DraftLedgerView,
+  page: number,
+  pageSize: number
+) {
+  const query = new URLSearchParams({
+    view,
+    page: String(page),
+    pageSize: String(pageSize)
+  });
+  return readJson<LifecycleLedgerPage<SettlementLifecycleLedgerRow>>(
+    `/settlements/lifecycle-ledger?${query.toString()}`
+  );
 }
 
 export function downloadSettlementLedgerExport() {
@@ -1499,6 +1603,26 @@ export function listContractTakeoverImportBatches(projectId: string) {
   );
 }
 
+export function previewContractTakeoverBatchAbandonment(
+  projectId: string,
+  batchId: string
+) {
+  return postJson<ContractTakeoverBatchAbandonmentPreviewReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/contract-takeovers/import-batches/${encodeURIComponent(batchId)}/draft-abandonment-preview`
+  );
+}
+
+export function applyContractTakeoverBatchAbandonment(
+  projectId: string,
+  batchId: string,
+  body: ApplyContractTakeoverBatchAbandonmentPayload
+) {
+  return postJson<ApplyContractTakeoverBatchAbandonmentReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/contract-takeovers/import-batches/${encodeURIComponent(batchId)}/draft-abandonment-apply`,
+    body
+  );
+}
+
 export function reviewContractTakeoverImportBatch(
   projectId: string,
   batchId: string,
@@ -1530,6 +1654,17 @@ export function updateContractTakeover(
 ) {
   return patchJson<ContractTakeoverReadModel>(
     `/projects/${projectId}/contract-takeovers/${takeoverId}`,
+    body
+  );
+}
+
+export function abandonContractTakeover(
+  projectId: string,
+  takeoverId: string,
+  body: AbandonContractTakeoverPayload
+) {
+  return postJson<AbandonContractTakeoverReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/contract-takeovers/${encodeURIComponent(takeoverId)}/abandonment`,
     body
   );
 }

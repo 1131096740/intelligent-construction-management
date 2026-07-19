@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ContractWorkbenchReadModel } from "../../../api/contract-workbench.api";
 
 // The composable talks to the Task 16 client; mock the whole module so no HTTP
 // runs and every call is observable. Factory must not reference outer variables.
@@ -48,7 +49,9 @@ function memoryStorage(): Storage {
 }
 
 /** Minimal workbench read model the composable consumes for a loaded version. */
-function makeWorkbench(overrides: Record<string, unknown> = {}) {
+function makeWorkbench(
+  overrides: Partial<ContractWorkbenchReadModel> = {}
+): ContractWorkbenchReadModel {
   return {
     contract: {
       id: "ct-1",
@@ -93,7 +96,7 @@ function makeWorkbench(overrides: Record<string, unknown> = {}) {
     documents: [],
     readiness: { ready: false, blockingMessages: [], warningMessages: [] },
     ...overrides
-  };
+  } as ContractWorkbenchReadModel;
 }
 
 function makeDraft() {
@@ -284,10 +287,45 @@ describe("useContractDraft", () => {
 
     draft.model.contractName = "待保存修改";
     draft.markDirty();
+    expect(draft.dirty.value).toBe(true);
+    expect(draft.isDirty.value).toBe(true);
     mockSaveDraft.mockRejectedValueOnce(new Error("网络异常"));
     await expect(draft.saveNow()).resolves.toBe(false);
     expect(draft.saveState.value).toBe("failed");
     expect(draft.model.contractName).toBe("待保存修改");
+    expect(draft.isDirty.value).toBe(true);
+  });
+
+  it("clears only local editing state after server abandonment succeeds", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench());
+    await draft.load("ct-1");
+
+    draft.model.contractName = "即将放弃的本地修改";
+    draft.markDirty();
+    expect(globalThis.localStorage.getItem("contract-draft:cv-1")).toContain("即将放弃");
+
+    draft.discardLocalState();
+    expect(draft.isDirty.value).toBe(false);
+    expect(draft.saveState.value).toBe("idle");
+    expect(globalThis.localStorage.getItem("contract-draft:cv-1")).toBeNull();
+
+    await vi.runOnlyPendingTimersAsync();
+    expect(mockSaveDraft).not.toHaveBeenCalled();
+  });
+
+  it("ignores a pending old-route load after local state is discarded", async () => {
+    const draft = makeDraft();
+    let resolveLoad!: (value: ReturnType<typeof makeWorkbench>) => void;
+    mockFetchWorkbench.mockReturnValueOnce(new Promise((resolve) => { resolveLoad = resolve; }));
+
+    const pending = draft.load("ct-old");
+    draft.discardLocalState();
+    resolveLoad(makeWorkbench());
+    await pending;
+
+    expect(draft.workbench.value).toBeNull();
+    expect(draft.isDirty.value).toBe(false);
   });
 
   it("coalesces an in-flight autosave and preserves edits made during the request", async () => {
@@ -392,7 +430,6 @@ describe("useContractDraft", () => {
             name: "合同约定付款",
             basis: "contract_amount",
             ratioBps: 7000,
-            triggerAnchor: "contract_effective",
             triggerEvent: "合同归档确认生效",
             dueDays: 30,
             requiresInvoice: true,

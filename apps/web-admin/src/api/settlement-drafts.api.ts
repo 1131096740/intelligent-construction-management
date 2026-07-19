@@ -1,5 +1,6 @@
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
+import type { DetailActionReadModel } from "@jiangkong/shared-domain";
 import type {
   SettlementFieldReviewerRoleKey,
   SettlementLineDraftPayload
@@ -47,15 +48,37 @@ export interface SettlementDraftReadModel {
   finalNoFurtherOrdinarySettlements: boolean | null;
   lines: SettlementLineDraftPayload[];
   revision: number;
-  status: "draft" | "submitted";
+  status: "draft" | "submitted" | "abandoned";
   ownerUserId: string;
   submittedSettlementId: string | null;
   submittedAt: string | null;
+  abandonedAt?: string | null;
+  abandonedByUserId?: string | null;
+  abandonReason?: string | null;
+  lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";
+  lifecycleBlockers?: string[];
+  availableActions?: DetailActionReadModel[];
+  blockedReasons?: string[];
   createdAt: string;
   updatedAt: string;
   submissionBlockingReason: string | null;
   /** Present on the draft detail endpoint; create/update/list responses remain scalar-only. */
   documents?: SettlementDraftDocumentsReadModel;
+}
+
+export interface AbandonSettlementDraftPayload {
+  expectedRevision: number;
+  action: "delete_pristine_draft" | "abandon_application";
+  reason?: string;
+}
+
+export interface AbandonSettlementDraftReadModel {
+  draftId: string;
+  status: "abandoned";
+  action?: "delete_pristine_draft" | "abandon_application";
+  abandonedAt?: string;
+  releasedFinalSettlementOccupancy?: boolean;
+  idempotent: boolean;
 }
 
 export interface SubmittedSettlementReadModel {
@@ -181,6 +204,22 @@ export function submitSettlementDraftRecord(
       body: JSON.stringify({ expectedRevision })
     },
     "提交结算审批失败"
+  );
+}
+
+export function abandonSettlementDraftRecord(
+  projectId: string,
+  draftId: string,
+  body: AbandonSettlementDraftPayload
+) {
+  return requestDraft<AbandonSettlementDraftReadModel>(
+    `${draftItemPath(projectId, draftId)}/abandonment`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    },
+    "结束结算草稿失败"
   );
 }
 

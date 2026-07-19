@@ -182,6 +182,34 @@ describe("ContractTaxFactsService", () => {
     });
   });
 
+  it("returns server-owned lifecycle actions and abandoned facts for tax revisions", async () => {
+    const { prisma, tx } = createPrisma();
+    tx.contractTaxFactRevision.findMany.mockResolvedValue([
+      revision(),
+      revision({
+        id: "revision-2",
+        revisionNo: 2,
+        status: "abandoned",
+        abandonedAt: new Date("2026-07-20T01:00:00.000Z"),
+        abandonedByUserId: "contract-staff-1",
+        abandonReason: "不再修订"
+      })
+    ]);
+    const service = new ContractTaxFactsService(prisma as never);
+
+    const result = await service.list("project-1", "takeover-1", "contract-staff-1");
+    expect(result.revisions[0]).toEqual(expect.objectContaining({
+      lifecycleKind: "pristine_draft",
+      availableActions: [expect.objectContaining({ key: "delete_pristine_draft", enabled: true })]
+    }));
+    expect(result.revisions[1]).toEqual(expect.objectContaining({
+      lifecycleKind: "formal_record",
+      abandonedByUserId: "contract-staff-1",
+      abandonReason: "不再修订",
+      availableActions: []
+    }));
+  });
+
   it("saves a candidate revision without changing current contract or bill facts", async () => {
     const { prisma, tx } = createPrisma();
     tx.contractTaxFactRevision.findFirst

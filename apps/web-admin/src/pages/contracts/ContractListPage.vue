@@ -27,22 +27,26 @@
       class="contract-tabs"
     >
       <t-tab-panel
-        value="ledger"
-        label="合同台账"
+        value="formal_ledger"
+        :label="`正式台账 ${lifecycleSummary.formal_ledger}`"
       />
       <t-tab-panel
         v-if="canManageContracts"
-        value="my"
-        label="我的草稿"
+        value="my_drafts"
+        :label="`我的草稿 ${lifecycleSummary.my_drafts}`"
       />
       <t-tab-panel
         v-if="canManageContracts"
-        value="voided"
-        label="已作废草稿"
+        value="returned_for_revision"
+        :label="`退回待修改 ${lifecycleSummary.returned_for_revision}`"
+      />
+      <t-tab-panel
+        value="ended"
+        :label="`已结束 ${lifecycleSummary.ended}`"
       />
     </t-tabs>
 
-    <template v-if="activeTab === 'ledger'">
+    <template v-if="activeTab === 'formal_ledger'">
       <BusinessStatusSummary
         :items="summaryValues"
         appearance="metrics"
@@ -177,6 +181,14 @@
           </template>
         </t-table>
 
+        <t-pagination
+          v-if="!noticeMessage && lifecycleMeta.total > lifecycleMeta.pageSize"
+          :current="lifecycleMeta.page"
+          :page-size="lifecycleMeta.pageSize"
+          :total="lifecycleMeta.total"
+          @current-change="changeLifecyclePage"
+        />
+
         <EmptyBusinessState
           v-else-if="!noticeMessage"
           title="当前条件下暂无合同记录"
@@ -197,117 +209,75 @@
     </template>
 
     <section
-      v-else-if="canManageContracts && activeTab === 'my'"
+      v-else
       class="data-section"
       aria-labelledby="contract-draft-title"
     >
       <header class="data-heading">
         <div>
           <h2 id="contract-draft-title">
-            我的草稿
+            {{ activeLifecycleTitle }}
           </h2>
-          <p>仅显示当前账号可继续办理的合同草稿；进入工作台后继续使用原自动保存和提交逻辑。</p>
+          <p>{{ activeLifecycleDescription }}</p>
         </div>
-        <span>{{ draftsError ? "当前草稿暂不可用" : `当前显示 ${myDrafts.length} 条` }}</span>
+        <span>{{ noticeMessage ? "当前记录暂不可用" : `共 ${lifecycleMeta.total} 条` }}</span>
       </header>
 
       <BusinessFeedback
-        v-if="draftsError"
+        v-if="noticeMessage"
         class="data-feedback"
         state="error"
         title="合同草稿暂时无法读取"
-        :description="draftsError"
+        :description="noticeMessage"
         action-label="重新加载"
-        @action="loadMyDrafts"
+        @action="loadContractLifecycleLedger"
       />
 
       <t-table
-        v-if="!draftsError && (draftsLoading || myDrafts.length)"
+        v-if="!noticeMessage && (ledgerLoading || contractLedgerRows.length)"
         row-key="id"
         size="small"
         table-layout="fixed"
-        :columns="draftColumns"
-        :data="myDrafts"
-        :loading="draftsLoading"
+        :columns="visibleContractLedgerColumns"
+        :data="contractLedgerRows"
+        :loading="ledgerLoading"
       >
-        <template #contractTypeKey="{ row }">
-          {{ contractTypeLabel(row.contractTypeKey) }}
+        <template #currentNode="{ row }">
+          <t-tag
+            size="small"
+            :theme="statusTagTheme(row.nodeTone)"
+            variant="light"
+          >
+            {{ row.currentNode }}
+          </t-tag>
         </template>
-        <template #updatedAt="{ row }">
-          {{ formatDraftUpdatedAt(row.updatedAt) }}
+        <template #returnReason="{ row }">
+          {{ activeTab === 'ended' ? (row.abandonReason || '—') : row.returnReason }}
         </template>
         <template #operation="{ row }">
+          <span v-if="activeTab === 'ended'">历史已保留</span>
           <t-link
+            v-else
             theme="primary"
-            @click="openWorkbench(row.id)"
+            @click="openLifecycleRow(row)"
           >
             进入工作台
           </t-link>
         </template>
       </t-table>
 
-      <EmptyBusinessState
-        v-else-if="!draftsError"
-        title="暂无可继续办理的合同草稿"
-        description="如需创建合同，请使用页头唯一的“新建合同”入口并选择项目和业务场景。"
-      />
-    </section>
-
-    <section
-      v-else-if="canManageContracts"
-      class="data-section"
-      aria-labelledby="voided-draft-title"
-    >
-      <header class="data-heading">
-        <div>
-          <h2 id="voided-draft-title">
-            已作废草稿
-          </h2>
-          <p>只读查看当前账号可见的已作废合同草稿，不改变作废状态和历史记录。</p>
-        </div>
-        <span>{{ voidedError ? "当前记录暂不可用" : `当前显示 ${voidedDrafts.length} 条` }}</span>
-      </header>
-
-      <BusinessFeedback
-        v-if="voidedError"
-        class="data-feedback"
-        state="error"
-        title="作废草稿暂时无法读取"
-        :description="voidedError"
-        action-label="重新加载"
-        @action="loadVoidedDrafts"
+      <t-pagination
+        v-if="!noticeMessage && lifecycleMeta.total > lifecycleMeta.pageSize"
+        :current="lifecycleMeta.page"
+        :page-size="lifecycleMeta.pageSize"
+        :total="lifecycleMeta.total"
+        @current-change="changeLifecyclePage"
       />
 
-      <t-table
-        v-if="!voidedError && (voidedLoading || voidedDrafts.length)"
-        row-key="id"
-        size="small"
-        table-layout="fixed"
-        :columns="draftColumns"
-        :data="voidedDrafts"
-        :loading="voidedLoading"
-      >
-        <template #contractTypeKey="{ row }">
-          {{ contractTypeLabel(row.contractTypeKey) }}
-        </template>
-        <template #updatedAt="{ row }">
-          {{ formatDraftUpdatedAt(row.updatedAt) }}
-        </template>
-        <template #operation="{ row }">
-          <t-link
-            theme="primary"
-            @click="openWorkbench(row.id)"
-          >
-            查看
-          </t-link>
-        </template>
-      </t-table>
-
       <EmptyBusinessState
-        v-else-if="!voidedError"
-        title="暂无已作废草稿"
-        description="当前账号没有可见的已作废合同草稿。"
-        :actions="[]"
+        v-else-if="!noticeMessage"
+        :title="`${activeLifecycleTitle}暂无记录`"
+        description="当前视图没有符合条件的合同记录。"
       />
     </section>
   </section>
@@ -315,13 +285,14 @@
 
 <script setup lang="ts">
 import { MessagePlugin } from "tdesign-vue-next";
+import type { DraftLedgerView } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   downloadContractLedgerExport,
-  fetchContractLedger
+  fetchContractLifecycleLedger,
+  type ContractLifecycleLedgerRow
 } from "../../api/core-flow-read.api";
-import { listContractDrafts } from "../../api/contract-workbench.api";
 import {
   normalizeVisibleColumnKeys,
   readPersonalTablePreferences,
@@ -352,8 +323,6 @@ import {
   emptyContractLedgerFilters,
   filterContractLedgerRows
 } from "./contract-list.config";
-import { contractTypeLabel } from "./contract-labels";
-
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
@@ -366,10 +335,19 @@ const canExportLedger = computed(() =>
   canExportContractSettlementLedger(roleKeys.value)
 );
 const noticeMessage = ref("");
-const activeTab = ref<"ledger" | "my" | "voided">(
-  canManageContracts.value ? "my" : "ledger"
-);
-const contractLedgerRows = ref<ContractLedgerRow[]>([]);
+const lifecycleViews = new Set<DraftLedgerView>([
+  "formal_ledger", "my_drafts", "returned_for_revision", "ended"
+]);
+function routeLifecycleView(value: unknown): DraftLedgerView {
+  const requested = typeof value === "string" && lifecycleViews.has(value as DraftLedgerView)
+    ? value as DraftLedgerView
+    : "formal_ledger";
+  return !canManageContracts.value && ["my_drafts", "returned_for_revision"].includes(requested)
+    ? "formal_ledger"
+    : requested;
+}
+const activeTab = ref<DraftLedgerView>(routeLifecycleView(route.query.view));
+const contractLedgerRows = ref<Array<ContractLedgerRow & ContractLifecycleLedgerRow>>([]);
 const contractFilters = reactive(emptyContractLedgerFilters());
 const ledgerLoading = ref(false);
 const exportLoading = ref(false);
@@ -378,21 +356,25 @@ const configurableContractColumnKeys = contractLedgerColumns
   .map((column) => String(column.colKey))
   .filter((key) => key !== "operation");
 const visibleContractColumnKeys = ref<string[]>([...configurableContractColumnKeys]);
-const ledgerSummary = ref({
+const lifecycleSummary = ref({
+  formal_ledger: 0,
+  my_drafts: 0,
+  returned_for_revision: 0,
+  ended: 0
+});
+const lifecycleMeta = ref({
+  page: 1,
+  pageSize: 20,
   total: 0,
-  inApproval: 0,
-  pendingSeal: 0,
-  pendingArchive: 0,
-  effective: 0
+  totalPages: 0
 });
 
 const summaryValues = computed(() => {
   const values = [
-    ledgerSummary.value.total,
-    ledgerSummary.value.inApproval,
-    ledgerSummary.value.pendingSeal,
-    ledgerSummary.value.pendingArchive,
-    ledgerSummary.value.effective
+    lifecycleSummary.value.formal_ledger,
+    lifecycleSummary.value.my_drafts,
+    lifecycleSummary.value.returned_for_revision,
+    lifecycleSummary.value.ended
   ];
 
   return contractSummaryItems.map((item, index) => ({
@@ -419,84 +401,49 @@ const visibleContractLedgerColumns = computed(() => {
   );
 });
 
-interface ContractDraftRow {
-  id: string;
-  name?: string | null;
-  temporaryCode?: string | null;
-  code?: string | null;
-  contractTypeKey?: string | null;
-  updatedAt?: string | null;
-}
-
-const draftColumns = [
-  { colKey: "temporaryCode", title: "草稿编号", minWidth: 180 },
-  { colKey: "name", title: "合同名称", minWidth: 160 },
-  { colKey: "contractTypeKey", title: "合同类型", width: 140 },
-  { colKey: "updatedAt", title: "更新时间", width: 180 },
-  { colKey: "operation", title: "操作", width: 120, fixed: "right" as const }
-];
-
-const myDrafts = ref<ContractDraftRow[]>([]);
-const draftsLoading = ref(false);
-const draftsError = ref("");
-const voidedDrafts = ref<ContractDraftRow[]>([]);
-const voidedLoading = ref(false);
-const voidedError = ref("");
-const draftUpdatedAtFormatter = new Intl.DateTimeFormat("zh-CN", {
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false
-});
+const activeLifecycleTitle = computed(() => ({
+  formal_ledger: "正式台账",
+  my_drafts: "我的草稿",
+  returned_for_revision: "退回待修改",
+  ended: "已结束"
+})[activeTab.value]);
+const activeLifecycleDescription = computed(() => ({
+  formal_ledger: "只展示已形成正式业务事实的合同。",
+  my_drafts: "仅显示当前账号可继续办理的合同草稿。",
+  returned_for_revision: "仅显示退回给当前账号修改的合同申请。",
+  ended: "只读保留已放弃、已作废合同及其历史事实。"
+})[activeTab.value]);
 
 function optionsForFilter(key: ContractFilterKey) {
   if (key === "keyword") return [];
   return filterOptions.value[key];
 }
 
-async function loadMyDrafts() {
-  if (!canManageContracts.value) return;
-  draftsLoading.value = true;
-  draftsError.value = "";
-  try {
-    myDrafts.value = (await listContractDrafts("my")) as ContractDraftRow[];
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : "未知错误";
-    draftsError.value = `合同草稿读取失败：${reason}。这不代表已有草稿丢失；当前列表暂不可用于判断，请检查网络与权限后重试。`;
-  } finally {
-    draftsLoading.value = false;
-  }
-}
-
-async function loadVoidedDrafts() {
-  if (!canManageContracts.value) return;
-  voidedLoading.value = true;
-  voidedError.value = "";
-  try {
-    voidedDrafts.value = (await listContractDrafts("voided")) as ContractDraftRow[];
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : "未知错误";
-    voidedError.value = `作废草稿读取失败：${reason}。这不代表没有作废记录；当前列表暂不可用于判断，请检查网络与权限后重试。`;
-  } finally {
-    voidedLoading.value = false;
-  }
-}
-
-async function loadContractLedger() {
+async function loadContractLifecycleLedger() {
   ledgerLoading.value = true;
   noticeMessage.value = "";
   try {
-    const result = await fetchContractLedger();
+    const result = await fetchContractLifecycleLedger(
+      activeTab.value,
+      lifecycleMeta.value.page,
+      lifecycleMeta.value.pageSize
+    );
     contractLedgerRows.value = result.rows;
-    ledgerSummary.value = result.summary;
+    lifecycleSummary.value = result.summary;
+    lifecycleMeta.value = result.meta;
   } catch (error) {
     const reason = error instanceof Error ? error.message : "未知错误";
     noticeMessage.value = `合同记录读取失败：${reason}。这不代表当前没有合同记录；本页统计与台账暂不可用于判断，请检查网络与权限后重试。`;
   } finally {
     ledgerLoading.value = false;
   }
+}
+
+const loadContractLedger = loadContractLifecycleLedger;
+
+function changeLifecyclePage(page: number) {
+  lifecycleMeta.value.page = page;
+  void loadContractLifecycleLedger();
 }
 
 async function exportContractLedger() {
@@ -518,7 +465,7 @@ async function exportContractLedger() {
 function applyRouteProjectFilter(value: unknown) {
   if (typeof value !== "string" || !value.trim()) return;
   contractFilters.project = value.trim();
-  activeTab.value = "ledger";
+  activeTab.value = "formal_ledger";
 }
 
 function goContractTakeover() {
@@ -533,8 +480,11 @@ function openDetail(contractId: string) {
   void router.push(`/contracts/${contractId}`);
 }
 
-function openWorkbench(contractId: string) {
-  void router.push(`/contracts/${contractId}/workbench`);
+function openLifecycleRow(row: ContractLedgerRow & ContractLifecycleLedgerRow) {
+  void router.push({
+    path: `/contracts/${row.id}/workbench`,
+    query: row.contractVersionId ? { versionId: row.contractVersionId } : undefined
+  });
 }
 
 function resetContractFilters() {
@@ -579,34 +529,33 @@ function getPreferenceStorage(): Storage | null {
   }
 }
 
-function formatDraftUpdatedAt(value?: string | null) {
-  if (!value) return "暂无更新时间";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "暂无更新时间";
-  return draftUpdatedAtFormatter.format(date);
-}
-
 function statusTagTheme(tone: ContractStatusTone) {
   return tone;
 }
 
 watch(() => route.query.project, applyRouteProjectFilter, { immediate: true });
+watch(() => route.query.view, (value) => {
+  const next = routeLifecycleView(value);
+  if (activeTab.value !== next) activeTab.value = next;
+});
 watch(contractPreferenceStorageKey, loadContractColumnPreferences, { immediate: true });
 watch(activeTab, (tab) => {
-  if (tab === "ledger") void loadContractLedger();
-  if (canManageContracts.value && tab === "my") void loadMyDrafts();
-  if (canManageContracts.value && tab === "voided") void loadVoidedDrafts();
+  lifecycleMeta.value.page = 1;
+  void loadContractLifecycleLedger();
+  if (route.query.view !== tab) {
+    void router.replace({ query: { ...route.query, view: tab } });
+  }
 });
 watch(canManageContracts, (allowed) => {
-  if (allowed || activeTab.value === "ledger") return;
-  activeTab.value = "ledger";
-  myDrafts.value = [];
-  voidedDrafts.value = [];
+  if (allowed || !["my_drafts", "returned_for_revision"].includes(activeTab.value)) return;
+  activeTab.value = "formal_ledger";
 });
 
 onMounted(() => {
+  if (route.query.view !== activeTab.value) {
+    void router.replace({ query: { ...route.query, view: activeTab.value } });
+  }
   void loadContractLedger();
-  if (canManageContracts.value) void loadMyDrafts();
 });
 </script>
 

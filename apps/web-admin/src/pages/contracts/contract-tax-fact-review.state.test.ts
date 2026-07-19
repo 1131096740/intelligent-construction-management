@@ -212,6 +212,65 @@ describe("contract tax fact review state", () => {
       "合同部意见：合同部确认完成"
     ]);
   });
+
+  it.each([
+    ["draft", "delete_pristine_draft"],
+    ["pending_finance_review", "abandon_application"],
+    ["pending_contract_confirmation", "abandon_application"],
+    ["rejected", "abandon_application"]
+  ] as const)("uses the server action for an endable %s revision", (status, actionKey) => {
+    const state = buildContractTaxFactReviewState({
+      data: list({
+        revisions: [revision({
+          status,
+          availableActions: [{
+            key: actionKey,
+            label: actionKey === "delete_pristine_draft" ? "删除草稿" : "放弃申请",
+            kind: "danger",
+            enabled: true,
+            disabledReason: null,
+            requiresComment: actionKey === "abandon_application",
+            requiresPassword: false
+          }]
+        })]
+      }),
+      missingFields: [],
+      userId: "contract-staff-1",
+      roleKeys: ["contract_staff"]
+    });
+
+    expect(state.activeRevision?.status).toBe(status);
+    expect(state.canAbandon).toBe(true);
+    expect(state.abandonmentAction?.key).toBe(actionKey);
+  });
+
+  it.each(["confirmed", "abandoned"] as const)(
+    "keeps a %s revision read-only without inventing an end action",
+    (status) => {
+      const state = buildContractTaxFactReviewState({
+        data: list({ revisions: [revision({ status, availableActions: [] })] }),
+        missingFields: [],
+        userId: "contract-staff-1",
+        roleKeys: ["contract_staff"]
+      });
+
+      expect(state.activeRevision).toBeNull();
+      expect(state.canAbandon).toBe(false);
+      expect(state.abandonmentAction).toBeNull();
+    }
+  );
+
+  it("does not create an abandonment permission when the server omits the action", () => {
+    const state = buildContractTaxFactReviewState({
+      data: list({ revisions: [revision({ status: "rejected" })] }),
+      missingFields: [],
+      userId: "contract-staff-1",
+      roleKeys: ["contract_staff"]
+    });
+
+    expect(state.activeRevision?.status).toBe("rejected");
+    expect(state.canAbandon).toBe(false);
+  });
 });
 
 function list(
@@ -260,6 +319,9 @@ function revision(
     confirmedByUserId: null,
     confirmedAt: null,
     contractReviewComment: null,
+    abandonedAt: null,
+    abandonedByUserId: null,
+    abandonReason: null,
     createdAt: "2026-07-17T01:00:00.000Z",
     updatedAt: "2026-07-17T01:00:00.000Z",
     ...overrides

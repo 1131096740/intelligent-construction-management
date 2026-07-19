@@ -7,6 +7,8 @@ import {
   type ContractTaxMode,
   type CoreFlowTone,
   type DetailActionReadModel,
+  type DraftLedgerView,
+  type LifecycleLedgerPage,
   type RoleKey,
   type SettlementDetailReadModel
 } from "@jiangkong/shared-domain";
@@ -532,27 +534,12 @@ export class SettlementReadService {
     const rows = settlements.map((settlement) => {
       const contract = contractById.get(settlement.contractId);
       const termsVersion = termsById.get(settlement.paymentTermsVersionId);
-      const status = this.statusView(settlement.status);
-      const nextAction = this.nextActionLabel(settlement.status);
-      const pendingOwner = this.currentOwnerLabel(settlement.status);
-
-      return {
-        id: settlement.code,
-        settlementNo: settlement.code,
-        contractNo: contract?.code ?? contract?.temporaryCode ?? settlement.contractId,
-        project: projectById.get(settlement.projectId)?.name ?? settlement.projectId,
-        period: settlement.periodLabel,
-        amount: this.formatMoney(settlement.amountCents),
-        paymentTermsVersion: termsVersion ? `v${termsVersion.versionNo}` : "-",
-        currentNode: nextAction,
-        nodeTone: status.tone,
-        ownerDepartment: pendingOwner,
-        pendingOwner,
-        stalledFor: this.stalledFor(settlement.updatedAt),
-        returnReason: this.returnReason(settlement.status),
-        nextAction,
-        updatedAt: this.date(settlement.updatedAt)
-      };
+      return this.settlementLedgerRow(
+        settlement,
+        contract,
+        termsVersion,
+        projectById.get(settlement.projectId)
+      );
     });
 
     return {
@@ -570,6 +557,118 @@ export class SettlementReadService {
         ).length,
         effective: settlements.filter((settlement) => settlement.status === "effective").length,
         payable: settlements.filter((settlement) => settlement.status === "effective").length
+      }
+    };
+  }
+
+  async lifecycleLedger(
+    view: DraftLedgerView,
+    rawPage: string | number | undefined,
+    rawPageSize: string | number | undefined,
+    visibleProjectIds: string[],
+    actorUserId: string
+  ): Promise<LifecycleLedgerPage<Record<string, unknown>>> {
+    const page = this.page(rawPage);
+    const pageSize = this.pageSize(rawPageSize);
+    const [settlements, drafts] = await Promise.all([
+      this.prisma.settlement.findMany({
+        where: { projectId: { in: visibleProjectIds } },
+        orderBy: { updatedAt: "desc" }
+      }),
+      this.prisma.settlementDraft.findMany({
+        where: { projectId: { in: visibleProjectIds }, ownerUserId: actorUserId },
+        orderBy: { updatedAt: "desc" }
+      })
+    ]);
+    const contractIds = [...new Set([
+      ...settlements.map((item) => item.contractId),
+      ...drafts.map((item) => item.contractId)
+    ])];
+    const termsIds = [...new Set(settlements.map((item) => item.paymentTermsVersionId))];
+    const [contracts, terms, projects, draftDocuments] = await Promise.all([
+      contractIds.length ? this.prisma.contract.findMany({ where: { id: { in: contractIds } } }) : [],
+      termsIds.length ? this.prisma.paymentTermsVersion.findMany({ where: { id: { in: termsIds } } }) : [],
+      visibleProjectIds.length ? this.prisma.project.findMany({ where: { id: { in: visibleProjectIds } } }) : [],
+      drafts.length ? this.prisma.settlementSignedDocument.findMany({
+        where: {
+          settlementDraftId: { in: drafts.map((draft) => draft.id) },
+          purpose: { in: ["frozen_counterparty_copy", "counterparty_signed_original"] }
+        },
+        select: { settlementDraftId: true, purpose: true, status: true }
+      }) : []
+    ]);
+    const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
+    const termsById = new Map(terms.map((term) => [term.id, term]));
+    const projectById = new Map(projects.map((project) => [project.id, project]));
+    const historicalEvidenceDraftIds = new Set(draftDocuments.flatMap((item) =>
+      item.settlementDraftId ? [item.settlementDraftId] : []
+    ));
+    const activeEvidenceDraftIds = new Set(draftDocuments.flatMap((item) =>
+      item.status === "active" && item.settlementDraftId ? [item.settlementDraftId] : []
+    ));
+    const formal = settlements.filter((item) => !["approval_rejected", "withdrawn", "voided"].includes(item.status));
+    const returned = settlements.filter((item) => item.status === "approval_rejected" && item.preparedByUserId === actorUserId);
+    const endedFormal = settlements.filter((item) => ["withdrawn", "voided"].includes(item.status));
+    const activeDrafts = drafts.filter((item) => item.status === "draft");
+    const endedDrafts = drafts.filter((item) => item.status === "abandoned");
+    const selectedFormal = view === "formal_ledger" ? formal
+      : view === "returned_for_revision" ? returned
+        : view === "ended" ? endedFormal
+          : [];
+    const formalRows = selectedFormal.map((settlement) => this.settlementLedgerRow(
+      settlement,
+      contractById.get(settlement.contractId),
+      termsById.get(settlement.paymentTermsVersionId),
+      projectById.get(settlement.projectId),
+      {
+        settlementId: settlement.id,
+        projectId: settlement.projectId,
+        lifecycleKind: "formal_record",
+        lifecycleUpdatedAt: settlement.updatedAt.toISOString()
+      }
+    ));
+    const selectedDrafts = view === "my_drafts" ? activeDrafts : view === "ended" ? endedDrafts : [];
+    const draftRows = selectedDrafts.map((draft) => ({
+      id: draft.id,
+      projectId: draft.projectId,
+      settlementNo: draft.code,
+      contractNo: contractById.get(draft.contractId)?.code ?? contractById.get(draft.contractId)?.temporaryCode ?? draft.contractId,
+      project: projectById.get(draft.projectId)?.name ?? draft.projectId,
+      period: draft.periodLabel,
+      amount: "-",
+      paymentTermsVersion: "-",
+      currentNode: draft.status === "abandoned" ? "已放弃" : "填写结算草稿",
+      nodeTone: draft.status === "abandoned" ? "default" : "warning",
+      ownerDepartment: "合同部",
+      pendingOwner: "本人",
+      stalledFor: this.stalledFor(draft.updatedAt),
+      returnReason: draft.abandonReason ?? "-",
+      nextAction: draft.status === "abandoned" ? "查看历史" : "继续填写",
+      updatedAt: this.date(draft.updatedAt),
+      lifecycleKind: (
+        draft.status === "abandoned"
+          ? historicalEvidenceDraftIds.has(draft.id)
+          : activeEvidenceDraftIds.has(draft.id)
+      ) ? "approval_draft" : "pristine_draft",
+      revision: draft.revision,
+      lifecycleUpdatedAt: draft.updatedAt.toISOString(),
+      abandonedAt: draft.abandonedAt?.toISOString() ?? null,
+      abandonReason: draft.abandonReason ?? null
+    }));
+    const rows = [...formalRows, ...draftRows].sort((a, b) => {
+      const aTime = "lifecycleUpdatedAt" in a ? a.lifecycleUpdatedAt : "";
+      const bTime = "lifecycleUpdatedAt" in b ? b.lifecycleUpdatedAt : "";
+      return String(bTime).localeCompare(String(aTime));
+    });
+    const start = (page - 1) * pageSize;
+    return {
+      rows: rows.slice(start, start + pageSize),
+      meta: { page, pageSize, total: rows.length, totalPages: Math.ceil(rows.length / pageSize) },
+      summary: {
+        formal_ledger: formal.length,
+        my_drafts: activeDrafts.length,
+        returned_for_revision: returned.length,
+        ended: endedFormal.length + endedDrafts.length
       }
     };
   }
@@ -1425,6 +1524,49 @@ export class SettlementReadService {
       .toString()
       .replace(/(\.\d*?)0+$/, "$1")
       .replace(/\.$/, "");
+  }
+
+  private settlementLedgerRow(
+    settlement: {
+      id: string; code: string; contractId: string; projectId: string; periodLabel: string;
+      status: string; amountCents: bigint; paymentTermsVersionId: string; updatedAt: Date;
+    },
+    contract?: { code: string | null; temporaryCode: string | null } | null,
+    termsVersion?: { versionNo: number } | null,
+    project?: { name: string } | null,
+    lifecycle: Record<string, unknown> = {}
+  ) {
+    const status = this.statusView(settlement.status);
+    const nextAction = this.nextActionLabel(settlement.status);
+    const pendingOwner = this.currentOwnerLabel(settlement.status);
+    return {
+      id: settlement.code,
+      settlementNo: settlement.code,
+      contractNo: contract?.code ?? contract?.temporaryCode ?? settlement.contractId,
+      project: project?.name ?? settlement.projectId,
+      period: settlement.periodLabel,
+      amount: this.formatMoney(settlement.amountCents),
+      paymentTermsVersion: termsVersion ? `v${termsVersion.versionNo}` : "-",
+      currentNode: nextAction,
+      nodeTone: status.tone,
+      ownerDepartment: pendingOwner,
+      pendingOwner,
+      stalledFor: this.stalledFor(settlement.updatedAt),
+      returnReason: this.returnReason(settlement.status),
+      nextAction,
+      updatedAt: this.date(settlement.updatedAt),
+      ...lifecycle
+    };
+  }
+
+  private page(raw?: string | number) {
+    const parsed = typeof raw === "number" ? raw : Number(raw ?? 1);
+    return Number.isFinite(parsed) ? Math.max(1, Math.trunc(parsed)) : 1;
+  }
+
+  private pageSize(raw?: string | number) {
+    const parsed = typeof raw === "number" ? raw : Number(raw ?? 20);
+    return Number.isFinite(parsed) ? Math.min(100, Math.max(1, Math.trunc(parsed))) : 20;
   }
 
   private limit(rawLimit?: string | number) {

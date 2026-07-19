@@ -526,4 +526,23 @@ describe("SettlementDraftService", () => {
     });
     expect((tx.settlementSignedDocument as Record<string, unknown>).delete).toBeUndefined();
   });
+  it("projects server-owned abandonment action from frozen or signed evidence", () => {
+    const service = new SettlementDraftService({} as never);
+    const read = (service as unknown as {
+      readModel<T>(draft: T, reason: string | null, evidence: boolean): T & {
+        lifecycleKind: string;
+        availableActions: Array<{ key: string; requiresComment?: boolean }>;
+      };
+    }).readModel({
+      id: "draft-1", status: "draft", revision: 4, submittedSettlementId: null,
+      abandonedAt: null, abandonedByUserId: null, abandonReason: null,
+      updatedAt: new Date("2026-07-20T01:00:00.000Z")
+    }, null, true);
+
+    expect(read.lifecycleKind).toBe("approval_draft");
+    expect(read.availableActions).toContainEqual(expect.objectContaining({
+      key: "abandon_application",
+      requiresComment: true
+    }));
+  });
 });

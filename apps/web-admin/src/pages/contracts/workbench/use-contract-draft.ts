@@ -4,16 +4,16 @@ import type {
   ContractInvoiceType,
   ContractReadinessResult,
   ContractTemplateSchema,
-  ContractTaxMode,
-  ContractWorkbenchReadModel
+  ContractTaxMode
 } from "@jiangkong/shared-domain";
-import { computed, reactive, ref, type ComputedRef, type Ref } from "vue";
+import { computed, reactive, readonly, ref, type ComputedRef, type Ref } from "vue";
 import {
   createDraftCheckpoint,
   createWorkbenchDraft,
   fetchContractWorkbench,
   restoreDraftCheckpoint,
   saveContractDraft,
+  type ContractWorkbenchReadModel,
   type SaveContractDraftPayload
 } from "../../../api/contract-workbench.api";
 
@@ -136,9 +136,14 @@ export interface UseContractDraft {
   workbench: Ref<ContractWorkbenchReadModel | null>;
   saveState: Ref<ContractDraftSaveState>;
   conflict: Ref<ContractDraftConflict | null>;
+  /** Read-only dirty facts for route and component-close guards. */
+  dirty: Readonly<Ref<boolean>>;
+  isDirty: Readonly<Ref<boolean>>;
   initializeDraft: InitializeDraftController;
   load: (contractId: string) => Promise<void>;
   markDirty: () => void;
+  /** Clears only client-side editing state after a successful server termination. */
+  discardLocalState: () => void;
   /** Flushes dirty draft data. Clean state is a successful no-op. */
   saveNow: () => Promise<boolean>;
   createCheckpoint: (options?: {
@@ -356,8 +361,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   const contractVersionId = ref<string | null>(null);
   const currentRevision = ref<number>(0);
 
-  // Internal-only. Autosave is paused while a conflict awaits a user decision;
-  // these are not part of the public composable surface (brief: exactly 12 members).
+  // Internal-only. Autosave is paused while a conflict awaits a user decision.
   const pausedRef = ref(false);
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -411,6 +415,19 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       clearTimeout(debounceTimer);
       debounceTimer = null;
     }
+  }
+
+  function discardLocalState(): void {
+    cancelScheduledSave();
+    clearBackup();
+    // Invalidate pending loads and make any in-flight save response stale.
+    loadRequestId += 1;
+    contractVersionId.value = null;
+    editGeneration += 1;
+    dirtyRef.value = false;
+    pausedRef.value = false;
+    conflict.value = null;
+    saveState.value = "idle";
   }
 
   // -- Loading ----------------------------------------------------------------
@@ -736,9 +753,12 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     workbench,
     saveState,
     conflict,
+    dirty: readonly(dirtyRef),
+    isDirty: readonly(dirtyRef),
     initializeDraft,
     load,
     markDirty,
+    discardLocalState,
     saveNow,
     createCheckpoint,
     restoreCheckpoint,

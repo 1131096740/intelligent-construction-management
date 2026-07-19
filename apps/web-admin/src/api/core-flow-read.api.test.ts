@@ -4,12 +4,14 @@ import {
   fetchContractDetail,
   fetchContractChangeEligibility,
   fetchContractLedger,
+  fetchContractLifecycleLedger,
   fetchPaymentDetail,
   fetchPaymentLedger,
   fetchPaymentContractOptions,
   fetchSettlementDetail,
   fetchSettlementContractOptions,
   fetchSettlementLedger,
+  fetchSettlementLifecycleLedger,
   fetchWorkbenchSummary,
   fetchContractPaymentApplication,
   fetchArchives,
@@ -45,6 +47,8 @@ import {
   createContractDraft,
   createContractChangeDraft,
   createContractTakeover,
+  abandonContractTakeover,
+  applyContractTakeoverBatchAbandonment,
   createContractTakeoverDraftsFromImport,
   applyContractTakeoverExcelImport,
   downloadContractLedgerExport,
@@ -56,6 +60,7 @@ import {
   listHistoricalCompanyEntityCandidates,
   createPaymentRequest,
   precheckContractTakeoverImport,
+  previewContractTakeoverBatchAbandonment,
   previewContractTakeoverExcelImport,
   createPrivateFileDownloadTicket,
   createSettlementDraft,
@@ -122,6 +127,104 @@ describe("core flow read API client", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("calls the encoded single-takeover abandonment resource with exact CAS facts", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ takeoverId: "takeover/1", status: "abandoned" })
+    } as Response);
+
+    await abandonContractTakeover("project/1", "takeover/1", {
+      expectedUpdatedAt: "2026-07-20T02:03:04.000Z",
+      action: "abandon_application",
+      reason: "接管资料不再继续补充"
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/projects/project%2F1/contract-takeovers/takeover%2F1/abandonment",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          expectedUpdatedAt: "2026-07-20T02:03:04.000Z",
+          action: "abandon_application",
+          reason: "接管资料不再继续补充"
+        })
+      })
+    );
+  });
+
+  it("loads contract and settlement lifecycle ledgers with server-owned pagination", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        rows: [],
+        meta: { page: 2, pageSize: 20, total: 0, totalPages: 0 },
+        summary: { formal_ledger: 0, my_drafts: 0, returned_for_revision: 0, ended: 0 }
+      })
+    } as Response);
+
+    await fetchContractLifecycleLedger("returned_for_revision", 2, 20);
+    await fetchSettlementLifecycleLedger("ended", 3, 50);
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/contracts/lifecycle-ledger?view=returned_for_revision&page=2&pageSize=20",
+      "/api/settlements/lifecycle-ledger?view=ended&page=3&pageSize=50"
+    ]);
+  });
+
+  it("passes the server batch preview hash back unchanged on apply", async () => {
+    const previewHash = "a".repeat(64);
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        previewHash,
+        rows: [{
+          id: "takeover-1",
+          importRowNo: 2,
+          updatedAt: "2026-07-20T02:03:04.000Z",
+          action: "delete_pristine_draft",
+          eligible: true,
+          blockers: [],
+          contractNo: "HT-001",
+          contractName: "零星材料采购合同"
+        }]
+      })
+    } as Response);
+
+    const preview = await previewContractTakeoverBatchAbandonment("project/1", "batch/1");
+    expect(preview.rows[0]).toMatchObject({
+      contractNo: "HT-001",
+      contractName: "零星材料采购合同"
+    });
+    await applyContractTakeoverBatchAbandonment("project/1", "batch/1", {
+      previewHash: preview.previewHash,
+      reason: "整批导入有误"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project%2F1/contract-takeovers/import-batches/batch%2F1/draft-abandonment-preview",
+      "/api/projects/project%2F1/contract-takeovers/import-batches/batch%2F1/draft-abandonment-apply"
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(JSON.stringify({
+      previewHash,
+      reason: "整批导入有误"
+    }));
+  });
+
+  it("preserves the Chinese takeover abandonment conflict", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 409,
+      clone() { return this; },
+      json: async () => ({ message: "批次草稿在预览后已发生变化，请重新预览" })
+    } as unknown as Response);
+
+    await expect(applyContractTakeoverBatchAbandonment(
+      "project-1",
+      "batch-1",
+      { previewHash: "b".repeat(64), reason: "整批放弃" }
+    )).rejects.toThrow("批次草稿在预览后已发生变化，请重新预览");
   });
 
   it("loads project-scoped historical company entity candidates", async () => {

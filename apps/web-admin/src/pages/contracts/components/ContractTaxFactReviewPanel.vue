@@ -8,6 +8,7 @@ import type {
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import {
+  abandonContractTaxFactRevision,
   confirmContractTaxFactRevision,
   createContractTaxFactRevision,
   fetchContractTaxFactRevisions,
@@ -19,6 +20,9 @@ import {
   type ContractTaxFactRevisionReadModel
 } from "../../../api/contract-tax-facts.api";
 import { uploadPrivateFile } from "../../../api/core-flow-read.api";
+import BusinessDraftAction, {
+  type BusinessDraftActionRequest
+} from "../../../components/BusinessDraftAction.vue";
 import {
   invoiceTypeOptions,
   taxFactSourceOptions,
@@ -296,6 +300,24 @@ async function submitReviewDecision() {
   });
 }
 
+async function abandonRevision(request: BusinessDraftActionRequest) {
+  const active = activeRevision.value;
+  if (!active) throw new Error("当前没有可处理的税务事实修订");
+  if (request.action !== "delete_pristine_draft" && request.action !== "abandon_application") {
+    throw new Error("当前操作与税务事实修订状态不匹配，请刷新后重试");
+  }
+  await abandonContractTaxFactRevision(props.projectId, props.takeoverId, active.id, {
+    expectedUpdatedAt: active.updatedAt,
+    action: request.action,
+    ...(request.reason.trim() ? { reason: request.reason.trim() } : {})
+  });
+  editing.value = false;
+  uploadFiles.value = [];
+  await reloadAfterAction(
+    request.action === "delete_pristine_draft" ? "税务事实草稿已删除" : "税务事实修订已放弃"
+  );
+}
+
 async function saveDraftWithoutMessage(): Promise<ContractTaxFactRevisionReadModel> {
   const payload = await prepareDraftPayload();
   const active = activeRevision.value;
@@ -514,6 +536,17 @@ function currentStatusLabel(value: string) {
             合同部意见：{{ activeRevision.contractReviewComment }}
           </p>
         </div>
+        <BusinessDraftAction
+          :actions="activeRevision.availableActions ?? []"
+          :blocked-reasons="activeRevision.blockedReasons ?? activeRevision.lifecycleBlockers ?? []"
+          :subject="{
+            businessCode: contractNo,
+            name: `第 ${activeRevision.revisionNo} 次税务事实修订`,
+            lastSavedAt: activeRevision.updatedAt,
+            impactScope: '只结束本次税务事实修订，不改变已确认合同事实'
+          }"
+          :execute="abandonRevision"
+        />
       </div>
 
       <div

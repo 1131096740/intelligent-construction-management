@@ -53,7 +53,7 @@ export class ContractTaxFactsService {
     private readonly files?: FileService
   ) {}
 
-  list(projectId: string, takeoverId: string) {
+  list(projectId: string, takeoverId: string, actorUserId?: string) {
     return this.prisma.$transaction(async (tx) => {
       const context = await this.loadContext(tx, projectId, takeoverId);
       const revisions = await tx.contractTaxFactRevision.findMany({
@@ -64,7 +64,7 @@ export class ContractTaxFactsService {
         contractId: context.contract.id,
         current: this.currentFacts(context.version),
         rows: this.currentRows(context.bills, context.rows),
-        revisions: revisions.map((revision) => this.revisionReadModel(revision))
+        revisions: revisions.map((revision) => this.revisionReadModel(revision, actorUserId))
       };
     });
   }
@@ -834,12 +834,32 @@ export class ContractTaxFactsService {
     abandonReason?: string | null;
     createdAt: Date;
     updatedAt: Date;
-  }) {
+  }, actorUserId?: string) {
+    const terminal = ["confirmed", "abandoned"].includes(revision.status);
+    const pristine = revision.status === "draft" && !revision.submittedAt;
+    const owns = Boolean(actorUserId) && revision.createdByUserId === actorUserId;
+    const lifecycleBlockers = [
+      ...(terminal ? [revision.status === "confirmed" ? "税务事实已确认" : "税务修订已放弃"] : []),
+      ...(!owns && actorUserId ? ["当前账号不是该税务修订创建人"] : []),
+      ...(!actorUserId && !terminal ? ["未提供当前操作人"] : [])
+    ];
+    const lifecycleKind = terminal ? "formal_record" : pristine ? "pristine_draft" : "approval_draft";
+    const availableActions = terminal ? [] : [{
+      key: pristine ? "delete_pristine_draft" : "abandon_application",
+      label: pristine ? "删除草稿" : "放弃税务修订",
+      kind: "danger" as const,
+      enabled: lifecycleBlockers.length === 0,
+      disabledReason: lifecycleBlockers.length ? lifecycleBlockers.join("；") : null,
+      ...(pristine ? {} : { requiresComment: true })
+    }];
     return {
       ...revision,
       defaultTaxRatePercent: revision.defaultTaxRatePercent?.toString() ?? null,
       rowFacts: parseCandidateRows(revision.rowFacts),
-      beforeSnapshot: jsonObject(revision.beforeSnapshot)
+      beforeSnapshot: jsonObject(revision.beforeSnapshot),
+      lifecycleKind,
+      lifecycleBlockers,
+      availableActions
     };
   }
 

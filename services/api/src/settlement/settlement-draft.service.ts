@@ -9,7 +9,8 @@ import { Prisma } from "@prisma/client";
 import {
   canCreateSettlementFromContractStatus,
   SETTLEMENT_OCCUPANCY_STATUSES,
-  type ContractVersionStatus
+  type ContractVersionStatus,
+  type DetailActionReadModel
 } from "@jiangkong/shared-domain";
 import { lockContractAndAssertCurrentEffective } from "../contract/contract-current-version-lock";
 import { PrismaService } from "../database/prisma.service";
@@ -73,9 +74,21 @@ export class SettlementDraftService {
       select: { id: true, contractTypeKey: true }
     }) : [];
     const typeByContract = new Map(contracts.map((contract) => [contract.id, contract.contractTypeKey]));
+    const documents = drafts.length ? await this.prisma.settlementSignedDocument.findMany({
+      where: {
+        settlementDraftId: { in: drafts.map((draft) => draft.id) },
+        status: "active",
+        purpose: { in: ["frozen_counterparty_copy", "counterparty_signed_original"] }
+      },
+      select: { settlementDraftId: true, purpose: true }
+    }) : [];
+    const evidenceDraftIds = new Set(documents.flatMap((document) =>
+      document.settlementDraftId ? [document.settlementDraftId] : []
+    ));
     return drafts.map((draft) => this.readModel(
       draft,
-      settlementContractTypeBlockReason(typeByContract.get(draft.contractId))
+      settlementContractTypeBlockReason(typeByContract.get(draft.contractId)),
+      evidenceDraftIds.has(draft.id)
     ));
   }
 
@@ -89,8 +102,15 @@ export class SettlementDraftService {
       select: { contractTypeKey: true }
     });
     const documents = await this.draftDocuments(draftId);
+    const hasApprovalEvidence = Boolean(
+      documents.frozenDocument || documents.counterpartySignedOriginal
+    );
     return {
-      ...this.readModel(draft!, settlementContractTypeBlockReason(contract?.contractTypeKey)),
+      ...this.readModel(
+        draft!,
+        settlementContractTypeBlockReason(contract?.contractTypeKey),
+        hasApprovalEvidence
+      ),
       documents
     };
   }
@@ -433,15 +453,44 @@ export class SettlementDraftService {
 
   private readModel<T>(
     draft: T,
-    submissionBlockingReason: string | null = null
-  ): T & { submissionBlockingReason: string | null } {
+    submissionBlockingReason: string | null = null,
+    hasApprovalEvidence = false
+  ): T & {
+    submissionBlockingReason: string | null;
+    lifecycleKind: "pristine_draft" | "approval_draft" | "formal_record";
+    lifecycleBlockers: string[];
+    availableActions: DetailActionReadModel[];
+  } {
+    const facts = draft as T & {
+      status?: string; revision?: number; submittedSettlementId?: string | null;
+      abandonedAt?: Date | null; abandonedByUserId?: string | null;
+      abandonReason?: string | null; updatedAt?: Date;
+    };
+    const blockers = [
+      ...(facts.status !== "draft" ? ["该结算草稿已不处于可编辑状态"] : []),
+      ...(facts.submittedSettlementId ? ["该草稿已形成正式结算"] : [])
+    ];
+    const lifecycleKind = facts.status === "abandoned" || facts.submittedSettlementId
+      ? "formal_record"
+      : hasApprovalEvidence ? "approval_draft" : "pristine_draft";
+    const availableActions: DetailActionReadModel[] = lifecycleKind === "formal_record" ? [] : [{
+      key: lifecycleKind === "pristine_draft" ? "delete_pristine_draft" : "abandon_application",
+      label: lifecycleKind === "pristine_draft" ? "删除草稿" : "放弃结算申请",
+      kind: "danger",
+      enabled: blockers.length === 0,
+      disabledReason: blockers.length ? blockers.join("；") : null,
+      requiresComment: lifecycleKind === "approval_draft"
+    }];
     return {
       ...(JSON.parse(
       JSON.stringify(draft, (_key, value: unknown) =>
         typeof value === "bigint" ? value.toString() : value
       )
       ) as T),
-      submissionBlockingReason
+      submissionBlockingReason,
+      lifecycleKind,
+      lifecycleBlockers: blockers,
+      availableActions
     };
   }
 }

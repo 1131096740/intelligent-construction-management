@@ -61,6 +61,27 @@ export interface DraftLifecyclePresentation {
   blockingReasons: string[];
 }
 
+export interface LifecycleLedgerPageMeta {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface LifecycleLedgerViewCount {
+  formal_ledger: number;
+  my_drafts: number;
+  returned_for_revision: number;
+  ended: number;
+}
+
+/** A server-owned ledger slice. Counts always describe the full visible set. */
+export interface LifecycleLedgerPage<T> {
+  rows: T[];
+  meta: LifecycleLedgerPageMeta;
+  summary: LifecycleLedgerViewCount;
+}
+
 export function draftLifecycleKindLabel(value: DraftLifecycleKind) {
   return DRAFT_LIFECYCLE_KIND_LABELS[value];
 }

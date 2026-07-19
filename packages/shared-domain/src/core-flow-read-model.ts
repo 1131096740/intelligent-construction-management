@@ -219,6 +219,8 @@ export interface ContractDetailReadModel {
   availableActions: DetailActionReadModel[];
   lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";
   lifecycleBlockers?: string[];
+  draftRevision?: number;
+  lifecycleUpdatedAt?: string;
   primaryAction: string | null;
   disabledReasons: string[];
   chainLinks: BusinessChainLink[];

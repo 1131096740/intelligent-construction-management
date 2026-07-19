@@ -78,11 +78,10 @@ export const contractFilterFields: ContractFilterField[] = [
 ];
 
 export const contractSummaryItems: ContractSummaryItem[] = [
-  { label: "全部合同", value: "0", tone: "default" },
-  { label: "审批中", value: "0", tone: "warning" },
-  { label: "待用章", value: "0", tone: "warning" },
-  { label: "待归档", value: "0", tone: "primary" },
-  { label: "已生效", value: "0", tone: "success" }
+  { label: "正式台账", value: "0", tone: "success" },
+  { label: "我的草稿", value: "0", tone: "primary" },
+  { label: "退回待修改", value: "0", tone: "warning" },
+  { label: "已结束", value: "0", tone: "default" }
 ];
 
 export const contractLedgerColumns: PrimaryTableCol<ContractLedgerRow>[] = [
@@ -104,7 +103,7 @@ export const contractLedgerColumns: PrimaryTableCol<ContractLedgerRow>[] = [
 export const contractLedgerRows: ContractLedgerRow[] = [];
 
 export const contractPaginationBlockReason =
-  "当前仅显示系统本次返回的记录，暂不支持翻页；请使用筛选缩小范围，避免把当前列表误认为全部记录。";
+  "当前视图由服务端分页并统计全部可见记录；切换视图或页码会重新读取。";
 
 export function contractLedgerFilterOptions(rows: readonly ContractLedgerRow[]) {
   return {

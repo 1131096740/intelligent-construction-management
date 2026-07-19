@@ -2,6 +2,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addBillRow,
+  abandonContractDraft,
   addContractParty,
   applyBillExcelImport,
   applyContractTypeChange,
@@ -129,9 +130,43 @@ describe("contract workbench API client", () => {
   it("fetchContractWorkbench – GET /contract-workbench/:contractId", async () => {
     mockApiFetch.mockReturnValue(makeOkJson({ id: "contract-1" }));
 
-    await fetchContractWorkbench("contract-1");
+    await fetchContractWorkbench("contract/1");
 
-    expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/contract-1");
+    expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/contract%2F1");
+  });
+
+  it("abandons the exact encoded contract version with revision, action and reason", async () => {
+    mockApiFetch.mockReturnValue(makeOkJson({ status: "abandoned" }));
+
+    await abandonContractDraft("version/1", {
+      expectedRevision: 7,
+      action: "abandon_application",
+      reason: "不再继续签订"
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/contracts/version%2F1/abandonment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expectedRevision: 7,
+        action: "abandon_application",
+        reason: "不再继续签订"
+      })
+    });
+  });
+
+  it("preserves the Chinese contract abandonment failure", async () => {
+    mockApiFetch.mockResolvedValue(
+      new Response(JSON.stringify({ message: "合同草稿已被更新，请刷新后再处理" }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+
+    await expect(abandonContractDraft("version-1", {
+      expectedRevision: 6,
+      action: "delete_pristine_draft"
+    })).rejects.toThrow("合同草稿已被更新，请刷新后再处理");
   });
 
   it("connects the governed signing facts and unique workbench submission routes", async () => {

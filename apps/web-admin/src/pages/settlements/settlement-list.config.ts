@@ -79,11 +79,10 @@ export const settlementFilterFields: SettlementFilterField[] = [
 ];
 
 export const settlementSummaryItems: SettlementSummaryItem[] = [
-  { label: "全部结算", value: "0", tone: "default" },
-  { label: "审批中", value: "0", tone: "warning" },
-  { label: "待归档确认", value: "0", tone: "primary" },
-  { label: "已生效", value: "0", tone: "success" },
-  { label: "可申请付款", value: "0", tone: "success" }
+  { label: "正式台账", value: "0", tone: "primary" },
+  { label: "我的草稿", value: "0", tone: "default" },
+  { label: "退回待修改", value: "0", tone: "warning" },
+  { label: "已结束", value: "0", tone: "default" }
 ];
 
 export const settlementLedgerColumns: PrimaryTableCol<SettlementLedgerRow>[] = [
@@ -150,7 +149,7 @@ export const settlementRules = [
 ];
 
 export const settlementPaginationBlockReason =
-  "当前仅显示系统本次返回的记录，暂不支持翻页；请使用筛选缩小范围，避免把当前列表误认为全部记录。";
+  "台账按服务端分页展示；页签统计反映当前账号可见范围，筛选作用于当前页。";
 
 export function settlementLedgerFilterOptions(rows: readonly SettlementLedgerRow[]) {
   return {

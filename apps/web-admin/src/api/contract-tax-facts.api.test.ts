@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  abandonContractTaxFactRevision,
   confirmContractTaxFactRevision,
   createContractTaxFactRevision,
   fetchContractTaxFactRevisions,
@@ -56,6 +57,16 @@ describe("contract tax facts API", () => {
       "revision/1",
       { decision: "reject", comment: "请补充合同签署页说明" }
     );
+    await abandonContractTaxFactRevision(
+      "project/1",
+      "takeover/1",
+      "revision/1",
+      {
+        expectedUpdatedAt: "2026-07-20T01:02:03.000Z",
+        action: "abandon_application",
+        reason: "依据需要重新核对"
+      }
+    );
 
     expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
       "/projects/project%2F1/contract-takeovers/takeover%2F1/tax-fact-revisions",
@@ -63,12 +74,14 @@ describe("contract tax facts API", () => {
       "/projects/project%2F1/contract-takeovers/takeover%2F1/tax-fact-revisions/revision%2F1",
       "/projects/project%2F1/contract-takeovers/takeover%2F1/tax-fact-revisions/revision%2F1/finance-review-submission",
       "/projects/project%2F1/contract-takeovers/takeover%2F1/tax-fact-revisions/revision%2F1/finance-review",
-      "/projects/project%2F1/contract-takeovers/takeover%2F1/tax-fact-revisions/revision%2F1/contract-confirmation"
+      "/projects/project%2F1/contract-takeovers/takeover%2F1/tax-fact-revisions/revision%2F1/contract-confirmation",
+      "/projects/project%2F1/contract-takeovers/takeover%2F1/tax-fact-revisions/revision%2F1/abandonment"
     ]);
     expect(mockApiFetch.mock.calls.map(([, init]) => init?.method)).toEqual([
       undefined,
       "POST",
       "PATCH",
+      "POST",
       "POST",
       "POST",
       "POST"
@@ -77,6 +90,30 @@ describe("contract tax facts API", () => {
     expect(mockApiFetch.mock.calls[4]?.[1]?.body).toBe(
       JSON.stringify({ decision: "approve", comment: "财务已核对税率依据" })
     );
+    expect(mockApiFetch.mock.calls[6]?.[1]?.body).toBe(JSON.stringify({
+      expectedUpdatedAt: "2026-07-20T01:02:03.000Z",
+      action: "abandon_application",
+      reason: "依据需要重新核对"
+    }));
+  });
+
+  it("preserves the Chinese tax abandonment failure", async () => {
+    mockApiFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: "税务修订已被更新，请刷新后重试" }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+
+    await expect(abandonContractTaxFactRevision(
+      "project-1",
+      "takeover-1",
+      "revision-1",
+      {
+        expectedUpdatedAt: "2026-07-20T01:02:03.000Z",
+        action: "delete_pristine_draft"
+      }
+    )).rejects.toThrow("税务修订已被更新，请刷新后重试");
   });
 
   it("surfaces the backend business message instead of hiding the next step", async () => {

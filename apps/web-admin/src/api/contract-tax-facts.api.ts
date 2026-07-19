@@ -2,7 +2,8 @@ import type {
   ContractInvoiceType,
   ContractTaxFactSource,
   ContractTaxFactStatus,
-  ContractTaxMode
+  ContractTaxMode,
+  DetailActionReadModel
 } from "@jiangkong/shared-domain";
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
@@ -13,7 +14,8 @@ export type ContractTaxFactRevisionStatus =
   | "pending_finance_review"
   | "pending_contract_confirmation"
   | "confirmed"
-  | "rejected";
+  | "rejected"
+  | "abandoned";
 
 export interface ContractTaxFactCurrentReadModel {
   invoiceType: ContractInvoiceType | null;
@@ -62,6 +64,12 @@ export interface ReviewContractTaxFactRevisionPayload {
   comment?: string;
 }
 
+export interface AbandonContractTaxFactRevisionPayload {
+  expectedUpdatedAt: string;
+  action: "delete_pristine_draft" | "abandon_application";
+  reason?: string;
+}
+
 export interface ContractTaxFactRevisionReadModel {
   id: string;
   revisionNo: number;
@@ -88,6 +96,13 @@ export interface ContractTaxFactRevisionReadModel {
   confirmedByUserId: string | null;
   confirmedAt: string | null;
   contractReviewComment: string | null;
+  abandonedAt: string | null;
+  abandonedByUserId: string | null;
+  abandonReason: string | null;
+  lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";
+  lifecycleBlockers?: string[];
+  availableActions?: DetailActionReadModel[];
+  blockedReasons?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -156,6 +171,18 @@ export function confirmContractTaxFactRevision(
 ) {
   return postJson<ContractTaxFactRevisionReadModel>(
     `${revisionPath(projectId, takeoverId, revisionId)}/contract-confirmation`,
+    body
+  );
+}
+
+export function abandonContractTaxFactRevision(
+  projectId: string,
+  takeoverId: string,
+  revisionId: string,
+  body: AbandonContractTaxFactRevisionPayload
+) {
+  return postJson<ContractTaxFactRevisionReadModel>(
+    `${revisionPath(projectId, takeoverId, revisionId)}/abandonment`,
     body
   );
 }

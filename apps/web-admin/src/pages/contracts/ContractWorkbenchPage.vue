@@ -333,6 +333,14 @@
         </div>
       </div>
 
+      <BusinessDraftAction
+        v-if="workbench && contractDraftActions.length"
+        :actions="contractDraftActions"
+        :blocked-reasons="workbench.lifecycleBlockers ?? []"
+        :subject="contractDraftActionSubject"
+        :execute="executeContractDraftAction"
+      />
+
       <t-alert
         v-if="workbench && !exactVersionError && isChangeVersion"
         :theme="changePolicy.valid ? 'info' : 'error'"
@@ -627,6 +635,15 @@
       @confirm="confirmSubmission"
     />
 
+    <SensitiveActionDialog
+      v-model="leaveConfirmVisible"
+      title="离开合同工作台？"
+      description="当前填写尚未保存。继续离开将保留服务端已有内容，但本次未保存修改不会生效。"
+      confirm-text="确认离开"
+      @confirm="resolveLeaveDecision(true)"
+      @cancel="resolveLeaveDecision(false)"
+    />
+
     <!-- Ownership transfer --------------------------------------------------->
     <t-dialog
       v-model:visible="transferVisible"
@@ -654,6 +671,7 @@ import type {
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
+  abandonContractDraft,
   applyContractTypeChange,
   checkContractSubmissionReadiness,
   listPublishedContractTemplates,
@@ -672,7 +690,11 @@ import {
   recommendContractScenarioTemplates
 } from "../../api/contract-scenario.api";
 import ContractTemplateUsagePreviewDrawer from "../../components/ContractTemplateUsagePreviewDrawer.vue";
+import BusinessDraftAction, {
+  type BusinessDraftActionRequest
+} from "../../components/BusinessDraftAction.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
+import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import {
   normalizePublishedContractTemplates,
   publishedTemplateForSelection
@@ -740,15 +762,76 @@ const {
   workbench,
   saveState,
   conflict,
+  dirty,
+  isDirty,
   initializeDraft,
   load,
   markDirty,
+  discardLocalState,
   saveNow,
   createCheckpoint,
   restoreCheckpoint,
   keepLocalAfterConflict,
   loadServerAfterConflict
 } = draft;
+
+const leaveConfirmVisible = ref(false);
+const navigationBypass = ref(false);
+let resolvePendingLeave: ((decision: boolean) => void) | null = null;
+
+useUnsavedChangesGuard({
+  isDirty: () => isDirty.value && !navigationBypass.value,
+  confirmLeave: () => new Promise<boolean>((resolve) => {
+    resolvePendingLeave?.(false);
+    resolvePendingLeave = resolve;
+    leaveConfirmVisible.value = true;
+  })
+});
+
+function resolveLeaveDecision(decision: boolean) {
+  leaveConfirmVisible.value = false;
+  const resolve = resolvePendingLeave;
+  resolvePendingLeave = null;
+  resolve?.(decision);
+}
+
+const contractDraftActions = computed(() => workbench.value?.availableActions ?? []);
+const contractDraftActionSubject = computed(() => ({
+  businessCode: workbench.value?.contract.code ?? workbench.value?.contract.temporaryCode ?? "—",
+  name: workbench.value?.contract.name ?? "合同草稿",
+  lastSavedAt: dirty.value ? "存在未保存修改" : "已保存至当前修订",
+  impactScope: workbench.value?.lifecycleKind === "approval_draft"
+    ? "结束申请；审批、文件及操作历史继续保留"
+    : "结束当前纯净草稿；不影响正式合同"
+}));
+
+async function executeContractDraftAction(request: BusinessDraftActionRequest) {
+  if (
+    request.action !== "delete_pristine_draft" &&
+    request.action !== "abandon_application"
+  ) {
+    throw new Error("当前合同草稿不支持该操作，请刷新后重试");
+  }
+  const current = workbench.value;
+  if (!current) throw new Error("合同草稿尚未加载，请刷新后重试");
+  const allowed = contractDraftActions.value.find(
+    (action) => action.key === request.action && action.enabled
+  );
+  if (!allowed) throw new Error("当前结束操作已不可用，请刷新合同工作台后重试");
+  const saved = await saveNow();
+  if (!saved) throw new Error("合同草稿保存失败，已保留当前填写，本次未执行结束操作");
+  await loadExpectedWorkbench(current.contract.id);
+  const latest = workbench.value;
+  if (!latest) throw new Error("合同草稿刷新失败，本次未执行结束操作");
+  await abandonContractDraft(latest.version.id, {
+    expectedRevision: latest.version.draftRevision,
+    action: request.action,
+    ...(request.reason.trim() ? { reason: request.reason.trim() } : {})
+  });
+  discardLocalState();
+  navigationBypass.value = true;
+  await router.push({ path: "/contracts", query: { view: "ended" } });
+}
 
 // Sections are presentational: they emit a patch instead of mutating the shared
 // model directly. The page owns the (non-prop) composable model and applies it,
@@ -1474,6 +1557,7 @@ async function confirmSubmission() {
     submissionConfirmVisible.value = false;
     submissionMessageTone.value = "success";
     submissionMessage.value = "合同已提交审批。";
+    navigationBypass.value = true;
     await router.push(`/contracts/${latest.contract.id}`);
   } catch (error) {
     submissionError.value = error instanceof Error

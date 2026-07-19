@@ -2,7 +2,9 @@ import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 import type {
   ContractInvoiceType,
-  ContractTaxMode
+  ContractTaxMode,
+  ContractWorkbenchReadModel as SharedContractWorkbenchReadModel,
+  DetailActionReadModel
 } from "@jiangkong/shared-domain";
 
 // ---------------------------------------------------------------------------
@@ -103,8 +105,41 @@ export function createWorkbenchDraft(body: CreateWorkbenchDraftPayload) {
   return postJson<CreateWorkbenchDraftReadModel>("/contracts", body);
 }
 
+export interface ContractWorkbenchReadModel extends SharedContractWorkbenchReadModel {
+  availableActions?: DetailActionReadModel[];
+}
+
 export function fetchContractWorkbench(contractId: string) {
-  return readJson<unknown>(`/contract-workbench/${contractId}`);
+  return readJson<ContractWorkbenchReadModel>(
+    `/contract-workbench/${encodeURIComponent(contractId)}`
+  );
+}
+
+export interface AbandonContractDraftPayload {
+  expectedRevision: number;
+  action: "delete_pristine_draft" | "abandon_application";
+  reason?: string;
+}
+
+export interface AbandonContractDraftReadModel {
+  contractVersionId: string;
+  status: "abandoned";
+  lifecycleKind: "pristine_draft" | "approval_draft";
+  action: "delete_pristine_draft" | "abandon_application";
+  abandonedAt: string | null;
+  abandonedByUserId: string | null;
+  reason: string | null;
+  idempotent: boolean;
+}
+
+export function abandonContractDraft(
+  contractVersionId: string,
+  body: AbandonContractDraftPayload
+) {
+  return postJson<AbandonContractDraftReadModel>(
+    `/contracts/${encodeURIComponent(contractVersionId)}/abandonment`,
+    body
+  );
 }
 
 export type ContractAuthorizationSide = "first_party" | "counterparty";

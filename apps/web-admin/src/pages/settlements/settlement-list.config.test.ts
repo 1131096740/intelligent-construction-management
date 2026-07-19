@@ -26,13 +26,30 @@ describe("settlement ledger page configuration", () => {
     expect(source).not.toContain("<input");
   });
 
-  it("shows the current user's saved drafts without changing formal ledger statistics", () => {
+  it("uses the unified lifecycle ledger without per-project draft fan-out", () => {
     const source = readFileSync(new URL("./SettlementListPage.vue", import.meta.url), "utf8");
     expect(source).toContain("我的草稿");
-    expect(source).toContain("listSettlementDraftRecords");
+    expect(source).toContain("fetchSettlementLifecycleLedger");
+    expect(source).toContain("<t-pagination");
     expect(source).toContain("继续填写");
     expect(source).toContain("draftId: row.id");
-    expect(source).toContain("税务缺口");
+    expect(source).not.toContain("listSettlementDraftRecords");
+    expect(source).not.toContain("fetchProjects");
+  });
+
+  it("shows ended reasons without exposing an editable draft entry", () => {
+    const source = readFileSync(new URL("./SettlementListPage.vue", import.meta.url), "utf8");
+    expect(source).toContain("row.abandonReason || '—'");
+    expect(source).toContain("历史已保留");
+    expect(source).toContain('v-if="activeView === \'ended\'"');
+  });
+
+  it("labels returned formal records as detail processing rather than draft editing", () => {
+    const source = readFileSync(new URL("./SettlementListPage.vue", import.meta.url), "utf8");
+    expect(source).toContain("'查看并处理'");
+    expect(source).toMatch(
+      /activeView === 'my_drafts'[\s\S]{0,80}\? '继续填写'[\s\S]{0,120}activeView === 'returned_for_revision'[\s\S]{0,80}\? '查看并处理'/
+    );
   });
 
   it("uses compact enterprise settlement filter fields", () => {
@@ -45,13 +62,12 @@ describe("settlement ledger page configuration", () => {
     ]);
   });
 
-  it("keeps settlement summaries focused on approval, archive, and payment readiness", () => {
+  it("keeps settlement summaries aligned with the four lifecycle views", () => {
     expect(settlementSummaryItems.map((item) => item.label)).toEqual([
-      "全部结算",
-      "审批中",
-      "待归档确认",
-      "已生效",
-      "可申请付款"
+      "正式台账",
+      "我的草稿",
+      "退回待修改",
+      "已结束"
     ]);
   });
 
@@ -80,7 +96,7 @@ describe("settlement ledger page configuration", () => {
       "结算未生效前不可创建付款申请",
       "历史结算绑定当时的付款条款版本"
     ]);
-    expect(settlementPaginationBlockReason).toContain("暂不支持翻页");
+    expect(settlementPaginationBlockReason).toContain("服务端分页");
   });
 
   it("builds stable select options from the currently loaded ledger", () => {

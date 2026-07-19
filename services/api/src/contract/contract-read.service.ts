@@ -9,6 +9,8 @@ import {
   ContractSettlementPaymentReadModel,
   CoreFlowTone,
   type DetailActionReadModel,
+  type DraftLedgerView,
+  type LifecycleLedgerPage,
   type RoleKey
 } from "@jiangkong/shared-domain";
 import {
@@ -277,27 +279,7 @@ export class ContractReadService {
       const version = versionByContractId.get(contract.id);
       if (!version) return [];
       const termsVersion = termsByContractId.get(contract.id);
-      const status = this.statusView(version?.status ?? "draft");
-      const nextAction = this.nextActionLabel(version?.status ?? "draft");
-      const pendingOwner = this.currentOwnerLabel(version?.status ?? "draft");
-      return [{
-        id: contract.code ?? contract.id,
-        contractNo: contract.code ?? contract.temporaryCode ?? contract.id,
-        name: contract.name,
-        project: projectById.get(contract.projectId)?.name ?? contract.projectId,
-        counterparty: contract.counterparty,
-        amount: version ? this.formatContractAmount(version) : "-",
-        version: version ? `v${version.versionNo}` : "-",
-        currentNode: nextAction,
-        nodeTone: status.tone,
-        ownerDepartment: pendingOwner,
-        pendingOwner,
-        stalledFor: this.stalledFor(contract.updatedAt),
-        returnReason: this.returnReason(version?.status ?? "draft"),
-        nextAction,
-        updatedAt: this.date(contract.updatedAt),
-        paymentTermsVersion: termsVersion ? `v${termsVersion.versionNo}` : "-"
-      }];
+      return [this.contractLedgerRow(contract, version, termsVersion, projectById.get(contract.projectId))];
     });
 
     return {
@@ -309,6 +291,116 @@ export class ContractReadService {
         pendingArchive: rows.filter((row) => row.currentNode.includes("归档")).length,
         effective: rows.filter((row) => row.currentNode === "可发起结算").length
       }
+    };
+  }
+
+  async lifecycleLedger(
+    view: DraftLedgerView,
+    rawPage: string | number | undefined,
+    rawPageSize: string | number | undefined,
+    visibleProjectIds: string[],
+    actorUserId: string
+  ): Promise<LifecycleLedgerPage<Record<string, unknown>>> {
+    const page = this.page(rawPage);
+    const pageSize = this.pageSize(rawPageSize);
+    const contracts = await this.prisma.contract.findMany({
+      where: { projectId: { in: visibleProjectIds } },
+      orderBy: { updatedAt: "desc" }
+    });
+    const contractIds = contracts.map((contract) => contract.id);
+    const versions = contractIds.length
+      ? await this.prisma.contractVersion.findMany({
+          where: { contractId: { in: contractIds } },
+          orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
+        })
+      : [];
+    const terms = contractIds.length
+      ? await this.prisma.paymentTermsVersion.findMany({
+          where: { contractId: { in: contractIds } },
+          orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
+        })
+      : [];
+    const projects = visibleProjectIds.length
+      ? await this.prisma.project.findMany({ where: { id: { in: visibleProjectIds } } })
+      : [];
+    const versionIds = versions.map((version) => version.id);
+    const evidenceReaders = this.prisma as unknown as {
+      approvalInstance?: { findMany(args: unknown): Promise<Array<{ businessId: string }>> };
+      contractFormalFile?: { findMany(args: unknown): Promise<Array<{ contractVersionId: string }>> };
+      contractVersionAuthorizationLink?: {
+        findMany(args: unknown): Promise<Array<{ contractVersionId: string }>>;
+      };
+    };
+    const [approvalFacts, formalFileFacts, authorizationFacts] = versionIds.length
+      ? await Promise.all([
+          evidenceReaders.approvalInstance?.findMany({
+            where: { businessType: "contract_version", businessId: { in: versionIds } },
+            select: { businessId: true }
+          }) ?? Promise.resolve([]),
+          evidenceReaders.contractFormalFile?.findMany({
+            where: { contractVersionId: { in: versionIds } },
+            select: { contractVersionId: true }
+          }) ?? Promise.resolve([]),
+          evidenceReaders.contractVersionAuthorizationLink?.findMany({
+            where: { contractVersionId: { in: versionIds } },
+            select: { contractVersionId: true }
+          }) ?? Promise.resolve([])
+        ])
+      : [[], [], []];
+    const approvedVersionIds = new Set(approvalFacts.map((fact) => fact.businessId));
+    const formalFileVersionIds = new Set(formalFileFacts.map((fact) => fact.contractVersionId));
+    const authorizedVersionIds = new Set(authorizationFacts.map((fact) => fact.contractVersionId));
+    const projectById = new Map(projects.map((project) => [project.id, project]));
+    const versionsByContract = new Map<string, typeof versions>();
+    for (const version of versions) {
+      versionsByContract.set(version.contractId, [
+        ...(versionsByContract.get(version.contractId) ?? []),
+        version
+      ]);
+    }
+    const termsByVersion = new Map(terms.map((term) => [term.contractVersionId, term]));
+    const classified = contracts.flatMap((contract) => {
+      const all = versionsByContract.get(contract.id) ?? [];
+      const lifecycle = this.classifyContractLifecycle(contract, all, actorUserId);
+      const rowVersion = lifecycle.versionByView[view];
+      if (!lifecycle.matches[view] || !rowVersion) return [];
+      return [this.contractLedgerRow(
+        contract,
+        rowVersion,
+        termsByVersion.get(rowVersion.id),
+        projectById.get(contract.projectId),
+        {
+          contractVersionId: rowVersion.id,
+          lifecycleKind: this.contractLedgerLifecycleKind(rowVersion, {
+            hasApproval: approvedVersionIds.has(rowVersion.id),
+            hasFormalFile: formalFileVersionIds.has(rowVersion.id),
+            hasAuthorization: authorizedVersionIds.has(rowVersion.id)
+          }),
+          lifecycleBlockers: [
+            ...(rowVersion.changeType !== "original" || rowVersion.versionNo !== 1
+              ? ["合同变更或派生版本"] : []),
+            ...(approvedVersionIds.has(rowVersion.id) ? ["存在审批记录"] : []),
+            ...(formalFileVersionIds.has(rowVersion.id) ? ["存在正式合同文件"] : []),
+            ...(authorizedVersionIds.has(rowVersion.id) ? ["存在授权委托书"] : [])
+          ],
+          draftRevision: rowVersion.draftRevision,
+          lifecycleUpdatedAt: rowVersion.updatedAt.toISOString(),
+          abandonedAt: rowVersion.abandonedAt?.toISOString() ?? null,
+          abandonReason: rowVersion.abandonReason ?? null
+        }
+      )];
+    });
+    const summary = {
+      formal_ledger: this.lifecycleCount(contracts, versionsByContract, actorUserId, "formal_ledger"),
+      my_drafts: this.lifecycleCount(contracts, versionsByContract, actorUserId, "my_drafts"),
+      returned_for_revision: this.lifecycleCount(contracts, versionsByContract, actorUserId, "returned_for_revision"),
+      ended: this.lifecycleCount(contracts, versionsByContract, actorUserId, "ended")
+    };
+    const start = (page - 1) * pageSize;
+    return {
+      rows: classified.slice(start, start + pageSize),
+      meta: { page, pageSize, total: classified.length, totalPages: Math.ceil(classified.length / pageSize) },
+      summary
     };
   }
 
@@ -780,6 +872,8 @@ export class ContractReadService {
       availableActions,
       lifecycleKind,
       lifecycleBlockers,
+      draftRevision: version.draftRevision,
+      lifecycleUpdatedAt: version.updatedAt?.toISOString() ?? contract.updatedAt?.toISOString() ?? "",
       primaryAction: primaryActionKey(availableActions),
       disabledReasons: disabledActionReasons(availableActions),
       chainLinks: [
@@ -1849,6 +1943,119 @@ export class ContractReadService {
 
   private toBigIntCents(amountCents: bigint): bigint {
     return dbMoneyToBigInt(amountCents, "合同金额");
+  }
+
+  private contractLedgerRow(
+    contract: {
+      id: string; code: string | null; temporaryCode: string | null; name: string;
+      projectId: string; counterparty: string; updatedAt: Date;
+    },
+    version: {
+      id: string; status: string; versionNo: number; amountCents: bigint;
+      amountLimitType?: string | null; pricingNature?: string | null;
+    },
+    termsVersion?: { versionNo: number } | null,
+    project?: { name: string } | null,
+    lifecycle: Record<string, unknown> = {}
+  ) {
+    const status = this.statusView(version.status);
+    const nextAction = this.nextActionLabel(version.status);
+    const pendingOwner = this.currentOwnerLabel(version.status);
+    return {
+      id: contract.code ?? contract.id,
+      contractNo: contract.code ?? contract.temporaryCode ?? contract.id,
+      name: contract.name,
+      project: project?.name ?? contract.projectId,
+      counterparty: contract.counterparty,
+      amount: this.formatContractAmount(version),
+      version: `v${version.versionNo}`,
+      currentNode: nextAction,
+      nodeTone: status.tone,
+      ownerDepartment: pendingOwner,
+      pendingOwner,
+      stalledFor: this.stalledFor(contract.updatedAt),
+      returnReason: this.returnReason(version.status),
+      nextAction,
+      updatedAt: this.date(contract.updatedAt),
+      paymentTermsVersion: termsVersion ? `v${termsVersion.versionNo}` : "-",
+      ...lifecycle
+    };
+  }
+
+  private lifecycleCount(
+    contracts: Array<{ id: string; ownerUserId: string | null; voidedAt: Date | null }>,
+    versionsByContract: Map<string, Array<{ status: string }>>,
+    actorUserId: string,
+    view: DraftLedgerView
+  ) {
+    return contracts.filter((contract) => this.classifyContractLifecycle(
+      contract,
+      versionsByContract.get(contract.id) ?? [],
+      actorUserId
+    ).matches[view]).length;
+  }
+
+  private classifyContractLifecycle<V extends { status: string }>(
+    contract: { ownerUserId: string | null; voidedAt: Date | null },
+    versions: V[],
+    actorUserId: string
+  ) {
+    const latest = versions[0];
+    const latestNotAbandoned = versions.find((candidate) => candidate.status !== "abandoned");
+    const latestFormal = versions.find((candidate) =>
+      !["draft", "approval_rejected", "abandoned", "voided"].includes(candidate.status)
+    );
+    const matches = {
+      formal_ledger: Boolean(
+        latest && !contract.voidedAt && latest.status !== "voided" && latestFormal
+      ),
+      my_drafts: Boolean(
+        latestNotAbandoned?.status === "draft" && contract.ownerUserId === actorUserId
+      ),
+      returned_for_revision: Boolean(
+        latestNotAbandoned?.status === "approval_rejected" && contract.ownerUserId === actorUserId
+      ),
+      ended: Boolean(
+        latest && (contract.voidedAt || ["abandoned", "voided"].includes(latest.status))
+      )
+    };
+    return {
+      matches,
+      versionByView: {
+        formal_ledger: latestFormal,
+        my_drafts: latestNotAbandoned,
+        returned_for_revision: latestNotAbandoned,
+        ended: latest && ["abandoned", "voided"].includes(latest.status)
+          ? latest
+          : latestNotAbandoned ?? latest
+      } satisfies Record<DraftLedgerView, V | undefined>
+    };
+  }
+
+  private contractLedgerLifecycleKind(
+    version: { status: string; changeType: string; versionNo: number },
+    evidence: { hasApproval: boolean; hasFormalFile: boolean; hasAuthorization: boolean }
+  ): "pristine_draft" | "approval_draft" | "formal_record" {
+    if (version.status === "voided") return "formal_record";
+    if (version.status === "abandoned") {
+      return version.changeType !== "original" || version.versionNo !== 1 ||
+        evidence.hasApproval || evidence.hasFormalFile || evidence.hasAuthorization
+        ? "approval_draft"
+        : "pristine_draft";
+    }
+    if (version.status === "draft") return "pristine_draft";
+    if (version.status === "approval_rejected") return "approval_draft";
+    return "formal_record";
+  }
+
+  private page(raw?: string | number) {
+    const parsed = typeof raw === "number" ? raw : Number(raw ?? 1);
+    return Number.isFinite(parsed) ? Math.max(1, Math.trunc(parsed)) : 1;
+  }
+
+  private pageSize(raw?: string | number) {
+    const parsed = typeof raw === "number" ? raw : Number(raw ?? 20);
+    return Number.isFinite(parsed) ? Math.min(100, Math.max(1, Math.trunc(parsed))) : 20;
   }
 
   private limit(rawLimit?: string | number) {
