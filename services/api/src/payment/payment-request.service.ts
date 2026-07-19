@@ -1,4 +1,10 @@
-import { BadRequestException, ForbiddenException, Injectable, Optional } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Optional
+} from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
   approvalElapsedHours,
@@ -40,6 +46,7 @@ import {
 } from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
 import type { AssignPaymentApprovalDto } from "./dto/assign-payment-approval.dto";
+import type { AbandonPaymentRequestDto } from "./dto/abandon-payment-request.dto";
 import type { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
 import type { GeneratePaymentPdfArchiveDto } from "./dto/generate-payment-pdf-archive.dto";
 import type { RecordFinanceRecordDto } from "./dto/record-finance-record.dto";
@@ -1952,6 +1959,181 @@ export class PaymentRequestService {
       });
 
       return updated;
+    });
+  }
+
+  async abandonReturnedRequest(
+    paymentId: string,
+    actorUserId: string,
+    input: AbandonPaymentRequestDto
+  ) {
+    if (!this.prisma) {
+      throw new Error("付款申请放弃服务暂不可用，请稍后重试或联系管理员");
+    }
+
+    const expectedUpdatedAt = new Date(input.expectedUpdatedAt);
+    const reason = input.reason.trim();
+    if (!reason) {
+      throw new BadRequestException("放弃原因不能为空");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const payment = await this.lockPaymentRequestForUpdate(tx, paymentId);
+      if (!payment) {
+        throw new Error("未找到付款申请，请刷新付款台账后重试");
+      }
+
+      const current = await tx.paymentRequest.findUnique({ where: { id: payment.id } });
+      if (!current) {
+        throw new Error("未找到付款申请，请刷新付款台账后重试");
+      }
+      if (current.status === "abandoned") {
+        if (current.abandonedByUserId !== actorUserId) {
+          throw new ForbiddenException("只有当前付款申请人可以查看放弃结果");
+        }
+        return paymentPostResponseToApi(current);
+      }
+      if (current.status !== "draft") {
+        throw new ConflictException("当前付款申请不是退回待修改状态，不能放弃申请");
+      }
+      if (current.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+        throw new ConflictException("付款申请已被更新，请刷新后重试");
+      }
+
+      const approvalRows = await tx.$queryRaw<Array<{
+        id: string;
+        status: string;
+        applicantUserId: string;
+      }>>(Prisma.sql`
+        SELECT "id", "status", "applicantUserId"
+        FROM "ApprovalInstance"
+        WHERE "businessType" = 'payment_request'
+          AND "businessId" = ${payment.id}
+          AND "flowType" = 'payment.approve'
+        ORDER BY "createdAt" DESC, "id" DESC
+        LIMIT 1
+        FOR UPDATE
+      `);
+      const latestApproval = approvalRows[0];
+      if (!latestApproval || latestApproval.status !== "returned_to_applicant") {
+        throw new ConflictException("付款申请没有有效的退回待修改审批记录，不能放弃申请");
+      }
+      if (latestApproval.applicantUserId !== actorUserId) {
+        throw new ForbiddenException("只有当前付款申请人可以放弃申请");
+      }
+
+      const returnAction = await tx.approvalActionLog.findFirst({
+        where: {
+          approvalInstanceId: latestApproval.id,
+          action: "return_to_applicant"
+        },
+        select: { id: true }
+      });
+      if (!returnAction) {
+        throw new ConflictException("付款申请缺少退回审批动作记录，不能放弃申请");
+      }
+
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id" FROM "PaymentExecution"
+        WHERE "paymentRequestId" = ${payment.id}
+        FOR UPDATE
+      `);
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id" FROM "ProjectFinancingQuotaUsage"
+        WHERE "paymentRequestId" = ${payment.id}
+        FOR UPDATE
+      `);
+
+      const [executionCount, allocationCount, financeRecordCount, pdfArchiveCount, archiveCount] =
+        await Promise.all([
+          tx.paymentExecution.count({ where: { paymentRequestId: payment.id } }),
+          tx.paymentExecutionAllocation.count({ where: { paymentRequestId: payment.id } }),
+          tx.financeRecord.count({ where: { paymentRequestId: payment.id } }),
+          tx.pdfDocument.count({
+            where: { businessType: "payment_request", businessId: payment.id }
+          }),
+          tx.archiveRecord.count({
+            where: { businessType: "payment_request", businessId: payment.id }
+          })
+        ]);
+      if (executionCount > 0) {
+        throw new ConflictException("付款申请已有实际付款或付款凭证，不能放弃申请");
+      }
+      if (allocationCount > 0) {
+        throw new ConflictException("付款申请已有实付分摊记录，不能放弃申请");
+      }
+      if (financeRecordCount > 0) {
+        throw new ConflictException("付款申请已有财务入账记录，不能放弃申请");
+      }
+      if (pdfArchiveCount > 0) {
+        throw new ConflictException("付款申请已有 PDF 归档，不能放弃申请");
+      }
+      if (archiveCount > 0) {
+        throw new ConflictException("付款申请已有业务归档记录，不能放弃申请");
+      }
+      if (dbMoneyToBigInt(payment.paidAmountCents, "付款实付金额") > 0n) {
+        throw new ConflictException("付款申请已有实付金额，不能放弃申请");
+      }
+      const occupiedBefore = await this.financingUsageTotals(tx, payment.id);
+      if (occupiedBefore.used > 0n) {
+        throw new ConflictException("付款申请已有融资额度转为实付使用，不能放弃申请");
+      }
+
+      const updated = await tx.paymentRequest.updateMany({
+        where: {
+          id: payment.id,
+          status: "draft",
+          updatedAt: expectedUpdatedAt,
+          abandonedAt: null
+        },
+        data: {
+          status: "abandoned",
+          abandonedAt: new Date(),
+          abandonedByUserId: actorUserId,
+          abandonReason: reason
+        }
+      });
+      if (updated.count !== 1) {
+        throw new ConflictException("付款申请已被更新，请刷新后重试");
+      }
+
+      if (occupiedBefore.occupied > 0n) {
+        await this.releaseFinancingQuotaUsage(
+          tx,
+          payment.id,
+          actorUserId,
+          "payment.financing_quota.release.abandonment"
+        );
+      }
+
+      await tx.approvalActionLog.create({
+        data: {
+          approvalInstanceId: latestApproval.id,
+          action: "abandon_application",
+          actorUserId,
+          comment: reason
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "payment.request.abandon",
+        businessType: "payment_request",
+        businessId: payment.id,
+        metadata: {
+          fromStatus: "draft",
+          toStatus: "abandoned",
+          approvalInstanceId: latestApproval.id,
+          reason,
+          residualOccupiedAmountCents: occupiedBefore.occupied.toString()
+        }
+      });
+
+      const abandoned = await tx.paymentRequest.findUnique({ where: { id: payment.id } });
+      if (!abandoned) {
+        throw new Error("付款申请放弃结果未找到，请刷新付款台账后重试");
+      }
+      return paymentPostResponseToApi(abandoned);
     });
   }
 

@@ -11,6 +11,13 @@ describe("ProjectExpenseService", () => {
     auth.confirmPassword.mockResolvedValue({ ok: true });
   });
 
+  it("keeps project expenses as submit-on-create records without a draft abandonment API", () => {
+    const service = new ProjectExpenseService({} as never, audit as never, auth as never);
+
+    expect((service as unknown as Record<string, unknown>).abandonDraft).toBeUndefined();
+    expect((service as unknown as Record<string, unknown>).deleteDraft).toBeUndefined();
+  });
+
   function pdfHexText(value: string) {
     const buffer = Buffer.from(value, "utf16le");
     for (let index = 0; index < buffer.length; index += 2) {
