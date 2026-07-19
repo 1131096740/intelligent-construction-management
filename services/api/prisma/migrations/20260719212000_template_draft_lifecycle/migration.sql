@@ -8,7 +8,7 @@ BEGIN
   IF EXISTS (
     SELECT 1
     FROM pg_constraint
-    WHERE conrelid = 'ContractBusinessTemplateVersion'::regclass
+    WHERE conrelid = '"ContractBusinessTemplateVersion"'::regclass
       AND conname = 'ContractBusinessTemplateVersion_status_check'
   ) THEN
     RAISE EXCEPTION 'unexpected ContractBusinessTemplateVersion_status_check definition';
@@ -17,7 +17,7 @@ BEGIN
   IF EXISTS (
     SELECT 1
     FROM pg_constraint
-    WHERE conrelid = 'StandardClauseVersion'::regclass
+    WHERE conrelid = '"StandardClauseVersion"'::regclass
       AND conname = 'StandardClauseVersion_status_check'
   ) THEN
     RAISE EXCEPTION 'unexpected StandardClauseVersion_status_check definition';
@@ -26,7 +26,7 @@ BEGIN
   IF EXISTS (
     SELECT 1
     FROM pg_constraint
-    WHERE conrelid = 'ContractLayoutTemplateVersion'::regclass
+    WHERE conrelid = '"ContractLayoutTemplateVersion"'::regclass
       AND conname = 'ContractLayoutTemplateVersion_status_check'
   ) THEN
     RAISE EXCEPTION 'unexpected ContractLayoutTemplateVersion_status_check definition';
@@ -34,7 +34,7 @@ BEGIN
 
   SELECT pg_get_constraintdef(oid) INTO definition
   FROM pg_constraint
-  WHERE conrelid = 'SettlementTemplateVersion'::regclass
+  WHERE conrelid = '"SettlementTemplateVersion"'::regclass
     AND conname = 'SettlementTemplateVersion_status_check'
     AND contype = 'c';
   IF definition IS NULL
@@ -50,7 +50,7 @@ BEGIN
   FROM pg_indexes
   WHERE schemaname = current_schema()
     AND indexname = 'SettlementTemplateVersion_status_publishedAt_idx';
-  IF definition IS NULL OR position('("status", "publishedAt")' IN definition) = 0 THEN
+  IF definition IS NULL OR position('(status, "publishedAt")' IN definition) = 0 THEN
     RAISE EXCEPTION 'unexpected SettlementTemplateVersion_status_publishedAt_idx definition';
   END IF;
 

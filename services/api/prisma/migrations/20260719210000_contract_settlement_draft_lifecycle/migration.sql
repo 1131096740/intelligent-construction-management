@@ -7,7 +7,7 @@ DECLARE
 BEGIN
   SELECT pg_get_constraintdef(oid) INTO definition
   FROM pg_constraint
-  WHERE conrelid = 'ContractVersion'::regclass
+  WHERE conrelid = '"ContractVersion"'::regclass
     AND conname = 'ContractVersion_status_check'
     AND contype = 'c';
   IF definition IS NULL OR position('''draft''' IN definition) = 0 OR position('''voided''' IN definition) = 0 THEN
@@ -16,7 +16,7 @@ BEGIN
 
   SELECT pg_get_constraintdef(oid) INTO definition
   FROM pg_constraint
-  WHERE conrelid = 'ContractTakeover'::regclass
+  WHERE conrelid = '"ContractTakeover"'::regclass
     AND conname = 'ContractTakeover_status_check'
     AND contype = 'c';
   IF definition IS NULL OR position('''draft''' IN definition) = 0 OR position('''confirmed''' IN definition) = 0 THEN
@@ -25,7 +25,7 @@ BEGIN
 
   SELECT pg_get_constraintdef(oid) INTO definition
   FROM pg_constraint
-  WHERE conrelid = 'ContractTaxFactRevision'::regclass
+  WHERE conrelid = '"ContractTaxFactRevision"'::regclass
     AND conname = 'ContractTaxFactRevision_status_check'
     AND contype = 'c';
   IF definition IS NULL OR position('''draft''' IN definition) = 0 OR position('''confirmed''' IN definition) = 0 THEN
@@ -34,7 +34,7 @@ BEGIN
 
   SELECT pg_get_constraintdef(oid) INTO definition
   FROM pg_constraint
-  WHERE conrelid = 'SettlementDraft'::regclass
+  WHERE conrelid = '"SettlementDraft"'::regclass
     AND conname = 'SettlementDraft_status_check'
     AND contype = 'c';
   IF definition IS NULL OR position('''draft''' IN definition) = 0 OR position('''submitted''' IN definition) = 0 THEN
@@ -43,7 +43,7 @@ BEGIN
 
   SELECT pg_get_constraintdef(oid) INTO definition
   FROM pg_constraint
-  WHERE conrelid = 'SettlementDraft'::regclass
+  WHERE conrelid = '"SettlementDraft"'::regclass
     AND conname = 'SettlementDraft_submission_state_check'
     AND contype = 'c';
   IF definition IS NULL OR position('"submittedSettlementId"' IN definition) = 0 OR position('"submittedAt"' IN definition) = 0 THEN

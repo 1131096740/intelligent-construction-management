@@ -115,13 +115,22 @@ test("全局管理员安全创建待本人确认人员并在成功后清空确�
   await expect(page.getByRole("heading", { name: "组织权限" })).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole("button", { name: "新增人员" }).click();
-  await page.getByPlaceholder("请输入 11 位中国大陆手机号").fill("13800000001");
-  await page.getByPlaceholder("请选择启用部门").click();
+  const userDialog = page.locator(".t-drawer__header:visible").filter({ hasText: /^新增人员$/u }).locator("..");
+  await userDialog.getByPlaceholder("请输入 11 位中国大陆手机号").fill("13800000001");
+  await userDialog.getByPlaceholder("请选择启用部门").click();
   await page.locator(".t-select__dropdown:visible").getByText("合同部", { exact: true }).click();
-  await page.getByPlaceholder("请选择允许授予的初始岗位").click();
+  await userDialog.getByPlaceholder("请选择允许授予的初始岗位").click();
   await page.locator(".t-select__dropdown:visible").getByText("财务员", { exact: true }).click();
-  await page.getByText("我已通过线下安全渠道告知公司统一初始密码", { exact: true }).click();
-  await page.getByPlaceholder("请验证管理员当前密码").fill(" current-password ");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".t-select__dropdown:visible")).toHaveCount(0);
+  const passwordNotice = userDialog.getByRole("checkbox", {
+    name: "我已通过线下安全渠道告知公司统一初始密码"
+  });
+  await userDialog.locator(".t-checkbox").filter({
+    hasText: "我已通过线下安全渠道告知公司统一初始密码"
+  }).click();
+  await expect(passwordNotice).toBeChecked();
+  await userDialog.getByPlaceholder("请验证管理员当前密码").fill(" current-password ");
   await page.getByRole("button", { name: "确认创建人员" }).click();
 
   await expect(page.getByText(/人员已创建但尚未授岗/u)).toBeVisible();

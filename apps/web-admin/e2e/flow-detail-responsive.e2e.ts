@@ -111,7 +111,7 @@ async function mockSession(page: Page) {
       handlerOptions: []
     })
   }));
-  await page.route("**/api/projects/project-responsive/expense-requests", (route) => route.fulfill({
+  await page.route("**/api/projects/project-responsive/expense-requests?*", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
       rows: [{
@@ -144,7 +144,10 @@ async function mockSession(page: Page) {
         paymentBlocked: 0,
         totalRequestedCents: "120000",
         totalPaidCents: "0"
-      }
+      },
+      view: "formal_ledger",
+      pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+      viewCounts: { formal_ledger: 1, my_drafts: 0, returned_for_revision: 0, ended: 0 }
     })
   }));
   await page.route("**/api/contracts/payment-create-options*", (route) => route.fulfill({
@@ -167,6 +170,10 @@ async function mockSession(page: Page) {
       requestedAmountCents: "120000",
       approvedAmountCents: null,
       currentNodeName: "财务审核",
+      lifecycleKind: "approval_draft",
+      lifecycleUpdatedAt: "2026-07-14T08:00:00.000Z",
+      availableActions: [],
+      blockedReasons: ["当前账号只读"],
       canSetApprovedAmount: false,
       reviewAction: {
         key: "review",

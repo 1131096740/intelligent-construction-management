@@ -20,7 +20,7 @@ export default defineConfig({
   webServer: {
     command: isCI
       ? "pnpm preview --host 127.0.0.1 --port 4173 --strictPort"
-      : "pnpm dev --host 127.0.0.1",
+      : "pnpm dev --host 127.0.0.1 --force",
     url: baseURL,
     reuseExistingServer: !isCI,
     timeout: 120_000

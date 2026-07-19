@@ -7,7 +7,7 @@ DECLARE
 BEGIN
   SELECT pg_get_constraintdef(oid) INTO definition
   FROM pg_constraint
-  WHERE conrelid = 'PaymentRequest'::regclass
+  WHERE conrelid = '"PaymentRequest"'::regclass
     AND conname = 'PaymentRequest_status_check'
     AND contype = 'c';
   IF definition IS NULL OR position('''draft''' IN definition) = 0 OR position('''paid''' IN definition) = 0 THEN
@@ -16,7 +16,7 @@ BEGIN
 
   SELECT pg_get_constraintdef(oid) INTO definition
   FROM pg_constraint
-  WHERE conrelid = 'SpotProcurementReceipt'::regclass
+  WHERE conrelid = '"SpotProcurementReceipt"'::regclass
     AND conname = 'SpotProcurementReceipt_status_check'
     AND contype = 'c';
   IF definition IS NULL OR position('''draft''' IN definition) = 0 OR position('''locked''' IN definition) = 0 THEN

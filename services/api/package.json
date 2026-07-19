@@ -16,6 +16,8 @@
     "verify:money-bigint:local": "node prisma/run-money-bigint-local.cjs",
     "preverify:spot-procurement-concurrency:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
     "verify:spot-procurement-concurrency:local": "node prisma/run-spot-procurement-concurrency-local.cjs",
+    "preverify:draft-lifecycle:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
+    "verify:draft-lifecycle:local": "node prisma/run-draft-lifecycle-local.cjs",
     "preverify:contract-workbench": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
     "verify:contract-workbench": "node prisma/verify-contract-workbench.cjs",
     "preverify:trial-run": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",

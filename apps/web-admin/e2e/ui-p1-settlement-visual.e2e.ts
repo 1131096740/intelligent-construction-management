@@ -74,7 +74,8 @@ const ledgerBody = {
       updatedAt: "07-12 11:30"
     }
   ],
-  summary: { total: 3, inApproval: 1, pendingArchive: 1, effective: 1, payable: 1 }
+  meta: { page: 1, pageSize: 20, total: 3, totalPages: 1 },
+  summary: { formal_ledger: 3, my_drafts: 1, returned_for_revision: 0, ended: 0 }
 };
 
 const approvalDetailBody = settlementDetail({
@@ -254,7 +255,7 @@ test("captures the settlement P1.1 ledger and detail states", async ({ page }) =
   await page.route("**/api/settlements/JS-UI-LOAD", (route) => {
     pendingLoadingRoute = route;
   });
-  await page.route("**/api/settlements", (route) => {
+  await page.route("**/api/settlements/lifecycle-ledger?*", (route) => {
     if (ledgerMode === "failure") {
       return route.fulfill({
         status: 500,
@@ -267,7 +268,8 @@ test("captures the settlement P1.1 ledger and detail states", async ({ page }) =
         contentType: "application/json",
         body: JSON.stringify({
           rows: [],
-          summary: { total: 0, inApproval: 0, pendingArchive: 0, effective: 0, payable: 0 }
+          meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
+          summary: { formal_ledger: 0, my_drafts: 1, returned_for_revision: 0, ended: 0 }
         })
       });
     }
@@ -278,11 +280,7 @@ test("captures the settlement P1.1 ledger and detail states", async ({ page }) =
 
   await page.goto("/结算管理");
   await expect(page.getByRole("heading", { name: "结算管理" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "我的草稿" })).toBeVisible();
-  await expect(page.getByText("JS-DRAFT-001", { exact: true })).toBeVisible();
-  await expect(page.getByText("1 项", { exact: true })).toBeVisible();
-  await expect(page.getByText("继续填写", { exact: true })).toBeVisible();
-  await expect(page.getByText(/暂不支持翻页/)).toBeVisible();
+  await expect(page.getByText(/台账按服务端分页展示/)).toBeVisible();
   await expect(page.locator(".ledger-section .t-link").filter({ hasText: "查看详情" })).toHaveCount(3);
   await captureRequiredViewports(page, "settlement-ledger", "settlement-ledger-normal");
 

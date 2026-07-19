@@ -39,7 +39,7 @@ describe("M70 contract and settlement draft lifecycle schema", () => {
   });
 
   it.each(TARGETS)("allows abandoned only after checking the existing $table constraint", ({ table }) => {
-    expect(migration).toContain(`'${table}'::regclass`);
+    expect(migration).toContain(`'"${table}"'::regclass`);
     expect(migration).toContain(`"${table}_status_check"`);
     expect(migration).toMatch(
       new RegExp(`ALTER TABLE "${table}"[\\s\\S]*ADD CONSTRAINT "${table}_status_check"[\\s\\S]*'abandoned'`, "u")
