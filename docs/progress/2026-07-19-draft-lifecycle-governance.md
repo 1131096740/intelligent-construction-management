@@ -1,7 +1,7 @@
 # 全系统草稿生命周期治理进度记录
 
 > 规格日期：2026-07-19
-> 当前记录状态：Task 17 自动化证据已完成，真实岗位与生产证据待补
+> 当前记录状态：Task 18 阶段 A 候选审计已完成，真实岗位与生产证据待补
 > 唯一规格：`docs/superpowers/specs/2026-07-19-draft-lifecycle-governance-design.md`
 > 唯一实施计划：`docs/superpowers/plans/2026-07-19-draft-lifecycle-governance-implementation.md`
 
@@ -13,7 +13,8 @@
 - Task 17 已完成本地全量门禁、空 PostgreSQL 16 的 72 个迁移、回滚不变量探针、自动场景和六档浏览器矩阵。
 - 空库验证发现并修复 M70–M72 大小写 `regclass` 和 M72 PostgreSQL `indexdef` 规范输出两项迁移阻断；回归测试已锁定。
 - 真实岗位 UAT、当前生产 A/B/C/D 只读盘点和生产备份 69→72 隔离迁移仍待单独授权/签认，不以本地自动化冒充。
-- 当前不具备发布结论；Task 18 阶段 A 尚未生成最终精确候选 SHA。
+- Task 18 阶段 A 已完成候选审计；运行时代码证据 SHA 为 `fae3200f7ab0f198f870aa699f813a92a886d1d1`，最终文档提交 SHA 在提交完成后另行精确报告。
+- 当前发布结论仍为 No-Go，必须等待真实岗位 UAT、生产 A/B/C/D 只读盘点和生产备份 69→72 隔离迁移。
 - 未推送、未部署、未执行生产迁移、未治理生产存量。
 
 ## 2. 已确认业务规则
@@ -60,8 +61,9 @@ Task 1 已提供默认只读、固定 SQL 白名单的 `inspect:draft-lifecycle-
 | 14 | `000713c3` | 合同/接管/税务/结算 Web 与四视图 |
 | 15 | `ec2c8c99` | 普通付款/项目支出 Web 语义 |
 | 16 | `f4ad4ddf` | 零星采购/模板/首页/台账 Web 收口 |
+| 17 | `fae3200f` | 全量门禁、72 迁移、本地回滚探针和浏览器证据 |
 
-Task 0–16 的详细文件模块、迁移和测试证据见根目录 `DRAFT_LIFECYCLE_IMPLEMENTATION_REPORT.md`。
+Task 0–17 的详细文件模块、迁移和测试证据见根目录 `DRAFT_LIFECYCLE_IMPLEMENTATION_REPORT.md`。
 
 ## 5. 三个前向迁移
 
@@ -115,7 +117,7 @@ Task 0–16 均在各自提交前运行定向测试和相应 typecheck/lint/静�
 - [x] Shared 106/106、API 184 套 4112 通过（4 套/15 项按既有条件跳过）、Web 100 文件 839/839；三包 typecheck/lint、API/Web build、业务错误检查、UI 检查和 E2E typecheck 通过。
 - [x] P0 E2E 57 通过、2 项按既有条件跳过、0 失败；六档浏览器无页面整体横溢出和嵌套横滚，8 张专项截图位于 `apps/web-admin/test-results/**/draft-lifecycle-*.png`。
 - [ ] 真实岗位人员本人完成核心 UAT 并签认；不得由开发者代签。
-- [~] `PROGRESS.md` 与报告已更新，待形成独立 `test: verify draft lifecycle governance` 提交。
+- [x] `PROGRESS.md` 与报告已更新，并形成独立 `test: verify draft lifecycle governance` 提交 `fae3200f7ab0f198f870aa699f813a92a886d1d1`。
 
 ## 10. 当前未执行的生产事项
 
@@ -127,8 +129,10 @@ Task 0–16 均在各自提交前运行定向测试和相应 typecheck/lint/静�
 
 ## 11. 发布与回滚边界
 
-Task 18 阶段 A 只能在 Task 17 证据闭环后执行。届时应审计分支、精确 HEAD、提交列表、迁移、工作区、worktree、业务 DELETE/硬删除、审批/金额/权限漂移和文件对象处理，然后输出精确目标 SHA 并停止。
+Task 18 阶段 A 已完成：已审计分支、运行时代码证据 SHA、相对主线提交、三条迁移、工作区、worktree、HTTP 方法、Prisma 删除、审批/金额/权限漂移和文件对象处理。完整结果见根目录 `DRAFT_LIFECYCLE_RELEASE_READINESS.md`。
 
-只有用户明确批准该精确 SHA 后，才可以进入推送、`main` 合并、生产备份、隔离迁移、部署和生产迁移。
+审计确认没有 HTTP `DELETE` 业务根接口、破坏性迁移、审批引擎或金额算法漂移，也没有 COS 物理删除。唯一新增的 Prisma 删除是重置从未提交收货草稿时清除未锁定、未复用的照片技术绑定；收货根单、修订和 `FileObject` 事实保留，文件只进入隔离。
+
+Task 18 文档提交后必须停止。只有用户明确批准提交完成后的精确 40 位 SHA，且后续补齐真实岗位与生产证据门禁后，才可以进入推送、`main` 合并、生产备份、隔离迁移、部署和生产迁移。
 
 M70–M72 不做破坏性 down migration。应用若需回滚，必须保留已经产生的 `abandoned`、`invalidated`、`discarded`、来源链和审计事实；旧代码不能安全识别新状态时，先关闭新动作入口，不得强制回写旧状态或删列。
