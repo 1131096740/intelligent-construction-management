@@ -198,12 +198,10 @@ export function deriveSpotPaymentCurrentTask(input: {
     ApprovalInstance,
     "status" | "currentNodeIndex" | "frozenNodes" | "applicantUserId"
   > | null;
-  receipt: Pick<SpotProcurementReceipt, "status"> | null;
   discrepancy: Pick<
     SpotProcurementDiscrepancy,
     "status" | "resolutionType"
   > | null;
-  refunds: Array<Pick<SpotProcurementRefund, "amountCents">>;
   actorUserId: string;
   roleKeys: readonly RoleKey[];
   projectScopedRoleKeys: readonly RoleKey[];
@@ -211,8 +209,6 @@ export function deriveSpotPaymentCurrentTask(input: {
     Pick<DetailActionReadModel, "key" | "label" | "enabled" | "disabledReason">
   >;
 }): SpotPaymentCurrentTask {
-  void input.receipt;
-  void input.refunds;
   const action = (key: string) =>
     input.availableActions.find((candidate) => candidate.key === key);
   const projectFinance = input.projectScopedRoleKeys.includes("finance_staff");
@@ -1153,7 +1149,15 @@ export class SpotProcurementReadService {
         .filter((file) => file.storageStatus === "active")
         .map((file) => file.id)
     );
-    const voucher = voucherFact(activeExecutions, activeVoucherFileIds);
+    const voucherFilesByExecutionId = groupBy(
+      executionVouchers,
+      (executionVoucher) => executionVoucher.paymentExecutionId
+    );
+    const voucher = voucherFact(
+      activeExecutions,
+      activeVoucherFileIds,
+      voucherFilesByExecutionId
+    );
     const effectiveCompanyPaymentAmountCents = nonNegative(
       payment.companyPaymentAmountCents -
         payment.canceledCompanyPaymentAmountCents
@@ -1182,9 +1186,7 @@ export class SpotProcurementReadService {
     const currentTask = deriveSpotPaymentCurrentTask({
       payment,
       approval,
-      receipt,
       discrepancy: taskDiscrepancy,
-      refunds: paymentRefunds,
       actorUserId,
       roleKeys,
       projectScopedRoleKeys: isProjectFinanceStaff
@@ -1561,26 +1563,34 @@ export class SpotProcurementReadService {
     let sourceTruncated = false;
 
     while (scannedRows < LIST_SCAN_MAX_ROWS) {
+      const remainingRows = LIST_SCAN_MAX_ROWS - scannedRows;
+      const take =
+        remainingRows <= LIST_SCAN_BATCH_SIZE
+          ? remainingRows + 1
+          : LIST_SCAN_BATCH_SIZE;
       const batch = await this.prisma.spotProcurement.findMany({
         where,
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-        take: LIST_SCAN_BATCH_SIZE,
+        take,
         ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {})
       });
       if (!batch.length) break;
-      scannedRows += batch.length;
+      const scannedBatch = batch.slice(0, remainingRows);
+      scannedRows += scannedBatch.length;
       const allowedIds = await this.access.accessibleProcurementIds(
-        batch.map((row) => row.id),
+        scannedBatch.map((row) => row.id),
         actorUserId
       );
-      accessible.push(...batch.filter((row) => allowedIds.has(row.id)));
-      if (batch.length < LIST_SCAN_BATCH_SIZE) break;
-      cursorId = batch.at(-1)?.id;
-      if (!cursorId) break;
-      if (scannedRows >= LIST_SCAN_MAX_ROWS) {
+      accessible.push(
+        ...scannedBatch.filter((row) => allowedIds.has(row.id))
+      );
+      if (batch.length > remainingRows) {
         sourceTruncated = true;
         break;
       }
+      if (batch.length < take) break;
+      cursorId = scannedBatch.at(-1)?.id;
+      if (!cursorId) break;
     }
 
     return {
@@ -1599,26 +1609,34 @@ export class SpotProcurementReadService {
     let sourceTruncated = false;
 
     while (scannedRows < LIST_SCAN_MAX_ROWS) {
+      const remainingRows = LIST_SCAN_MAX_ROWS - scannedRows;
+      const take =
+        remainingRows <= LIST_SCAN_BATCH_SIZE
+          ? remainingRows + 1
+          : LIST_SCAN_BATCH_SIZE;
       const batch = await this.prisma.spotProcurementPayment.findMany({
         where,
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-        take: LIST_SCAN_BATCH_SIZE,
+        take,
         ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {})
       });
       if (!batch.length) break;
-      scannedRows += batch.length;
+      const scannedBatch = batch.slice(0, remainingRows);
+      scannedRows += scannedBatch.length;
       const allowedIds = await this.access.accessiblePaymentIds(
-        batch.map((row) => row.id),
+        scannedBatch.map((row) => row.id),
         actorUserId
       );
-      accessible.push(...batch.filter((row) => allowedIds.has(row.id)));
-      if (batch.length < LIST_SCAN_BATCH_SIZE) break;
-      cursorId = batch.at(-1)?.id;
-      if (!cursorId) break;
-      if (scannedRows >= LIST_SCAN_MAX_ROWS) {
+      accessible.push(
+        ...scannedBatch.filter((row) => allowedIds.has(row.id))
+      );
+      if (batch.length > remainingRows) {
         sourceTruncated = true;
         break;
       }
+      if (batch.length < take) break;
+      cursorId = scannedBatch.at(-1)?.id;
+      if (!cursorId) break;
     }
 
     return {
@@ -1855,20 +1873,6 @@ export class SpotProcurementReadService {
     const versionIds = [
       ...new Set(rows.map((row) => row.procurementVersionId))
     ];
-    const versionCoordinates = [
-      ...new Map(
-        rows.map((row) => [
-          procurementVersionCoordinate(
-            row.procurementId,
-            row.procurementVersionId
-          ),
-          {
-            procurementId: row.procurementId,
-            procurementVersionId: row.procurementVersionId
-          }
-        ])
-      ).values()
-    ];
     const [
       loadedProjects,
       loadedProcurements,
@@ -1950,13 +1954,13 @@ export class SpotProcurementReadService {
         }),
         this.prisma.spotProcurementDiscrepancy.findMany({
           where: {
-            procurementId: { in: procurementIds }
+            procurementVersionId: { in: versionIds }
           },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }]
         }),
         this.prisma.spotProcurementPayment.findMany({
           where: {
-            OR: versionCoordinates
+            procurementVersionId: { in: versionIds }
           },
           select: {
             id: true,
@@ -1970,6 +1974,16 @@ export class SpotProcurementReadService {
           ? Promise.resolve(suppliedRoleContexts)
           : this.paymentRoleContexts(actorUserId, projectIds)
       ]);
+    const executionVouchers = activeExecutions.length
+      ? await this.prisma.spotProcurementPaymentExecutionVoucher.findMany({
+          where: {
+            paymentExecutionId: {
+              in: activeExecutions.map((execution) => execution.id)
+            }
+          },
+          select: { paymentExecutionId: true, fileId: true }
+        })
+      : [];
     const projectById =
       suppliedProjects ??
       new Map(loadedProjects.map((project) => [project.id, project]));
@@ -1993,9 +2007,12 @@ export class SpotProcurementReadService {
     );
     const voucherFileIds = [
       ...new Set(
-        activeExecutions.flatMap((execution) =>
-          execution.voucherFileId ? [execution.voucherFileId] : []
-        )
+        [
+          ...activeExecutions.flatMap((execution) =>
+            execution.voucherFileId ? [execution.voucherFileId] : []
+          ),
+          ...executionVouchers.map((voucher) => voucher.fileId)
+        ]
       )
     ];
     const voucherFiles = voucherFileIds.length
@@ -2008,6 +2025,10 @@ export class SpotProcurementReadService {
       voucherFiles
         .filter((file) => file.storageStatus === "active")
         .map((file) => file.id)
+    );
+    const voucherFilesByExecutionId = groupBy(
+      executionVouchers,
+      (executionVoucher) => executionVoucher.paymentExecutionId
     );
     const executionsByPaymentId = groupBy(
       activeExecutions,
@@ -2105,7 +2126,11 @@ export class SpotProcurementReadService {
         (total, execution) => total + execution.amountCents,
         0n
       );
-      const voucher = voucherFact(rowExecutions, activeVoucherFileIds);
+      const voucher = voucherFact(
+        rowExecutions,
+        activeVoucherFileIds,
+        voucherFilesByExecutionId
+      );
       const rowRefunds = refundsByPaymentId.get(row.id) ?? [];
       const discrepancy =
         discrepancyByCoordinate.get(
@@ -2147,9 +2172,7 @@ export class SpotProcurementReadService {
       const currentTask = deriveSpotPaymentCurrentTask({
         payment: row,
         approval,
-        receipt: receiptByProcurementId.get(row.procurementId) ?? null,
         discrepancy: taskDiscrepancy,
-        refunds: rowRefunds,
         actorUserId,
         roleKeys: roleContext.effectiveRoleKeys,
         projectScopedRoleKeys: roleContext.projectScopedRoleKeys,
@@ -2165,7 +2188,8 @@ export class SpotProcurementReadService {
             voucher.status === "anomaly"
               ? earliestVoucherAnomalyAt(
                   rowExecutions,
-                  activeVoucherFileIds
+                  activeVoucherFileIds,
+                  voucherFilesByExecutionId
                 )
               : null
           ),
@@ -2917,16 +2941,23 @@ function earliestVoucherAnomalyAt(
   executions: Array<
     Pick<
       SpotProcurementPaymentExecution,
-      "paidAt" | "createdAt" | "voucherFileId"
+      "id" | "paidAt" | "createdAt" | "voucherFileId"
     >
   >,
-  activeVoucherFileIds: ReadonlySet<string>
+  activeVoucherFileIds: ReadonlySet<string>,
+  voucherFilesByExecutionId: ReadonlyMap<
+    string,
+    Array<{ fileId: string }>
+  >
 ) {
   return executions
     .filter(
       (execution) =>
-        !execution.voucherFileId ||
-        !activeVoucherFileIds.has(execution.voucherFileId)
+        !executionHasActiveVoucher(
+          execution,
+          activeVoucherFileIds,
+          voucherFilesByExecutionId
+        )
     )
     .reduce<Date | null>((earliest, execution) => {
       const factAt = execution.paidAt ?? execution.createdAt;
@@ -3724,9 +3755,13 @@ function sumActiveExecutionsByPaymentId(
 
 function voucherFact(
   executions: Array<
-    Pick<SpotProcurementPaymentExecution, "voucherFileId">
+    Pick<SpotProcurementPaymentExecution, "id" | "voucherFileId">
   >,
-  activeVoucherFileIds: ReadonlySet<string>
+  activeVoucherFileIds: ReadonlySet<string>,
+  voucherFilesByExecutionId: ReadonlyMap<
+    string,
+    Array<{ fileId: string }>
+  >
 ) {
   if (!executions.length) {
     return { status: "none", label: "暂无实付凭证" } as const;
@@ -3734,8 +3769,11 @@ function voucherFact(
   if (
     executions.every(
       (execution) =>
-        Boolean(execution.voucherFileId) &&
-        activeVoucherFileIds.has(execution.voucherFileId as string)
+        executionHasActiveVoucher(
+          execution,
+          activeVoucherFileIds,
+          voucherFilesByExecutionId
+        )
     )
   ) {
     return {
@@ -3747,6 +3785,30 @@ function voucherFact(
     status: "anomaly",
     label: "实付记录的凭证缺失或已失效"
   } as const;
+}
+
+function executionHasActiveVoucher(
+  execution: Pick<
+    SpotProcurementPaymentExecution,
+    "id" | "voucherFileId"
+  >,
+  activeVoucherFileIds: ReadonlySet<string>,
+  voucherFilesByExecutionId: ReadonlyMap<
+    string,
+    Array<{ fileId: string }>
+  >
+) {
+  const associatedVouchers =
+    voucherFilesByExecutionId.get(execution.id) ?? [];
+  if (associatedVouchers.length) {
+    return associatedVouchers.some((voucher) =>
+      activeVoucherFileIds.has(voucher.fileId)
+    );
+  }
+  return Boolean(
+    execution.voucherFileId &&
+      activeVoucherFileIds.has(execution.voucherFileId)
+  );
 }
 
 function paymentPathLabel(value: string | null) {
