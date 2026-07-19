@@ -25,6 +25,7 @@
     "verify:production-readiness": "node scripts/verify-production-readiness.cjs",
     "inspect:contract-tax-facts": "node scripts/inspect-contract-tax-facts-readiness.cjs",
     "inspect:contract-settlement-governance-readiness": "node scripts/inspect-contract-settlement-governance-readiness.cjs",
+    "inspect:draft-lifecycle-readiness": "node scripts/inspect-draft-lifecycle-readiness.cjs",
     "create:trial-users": "node scripts/create-trial-users.cjs",
     "contract-master:review-pack": "node scripts/generate-contract-master-review-pack.cjs",
     "check:business-errors": "node scripts/check-business-errors.cjs",
