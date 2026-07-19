@@ -1,5 +1,6 @@
 import {
   IsIn,
+  MaxLength,
   IsOptional,
   IsString,
   ValidateIf
@@ -27,8 +28,7 @@ export class ReviewSpotProcurementPaymentDto {
 
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "审批意见必须是文字" })
-  @IsMaxUnicodeTextLength({
-    max: 500,
+  @MaxLength(500, {
     message: "审批意见不能超过 500 个字符"
   })
   comment?: string;

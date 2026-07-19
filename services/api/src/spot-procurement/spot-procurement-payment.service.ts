@@ -142,8 +142,12 @@ type PaymentLockRow = {
   invalidatedReason: string | null;
   paymentType: string | null;
   merchantNameSnapshot: string | null;
+  merchantPayeeMismatchNote: string | null;
   payerCompanyEntityId: string | null;
   payerCompanyNameSnapshot: string | null;
+  payerUnifiedSocialCreditCodeSnapshot: string | null;
+  approvalAmountCents: bigint;
+  primaryPaymentChannelId: string | null;
 };
 
 type ApprovalLockRow = {
@@ -1205,7 +1209,7 @@ export class SpotProcurementPaymentService {
           input.adjustedSupplierBalanceAmountCents;
         const isFinanceDirectorNode =
           approvedRoleKey === "finance_director";
-        if (adjustedBalanceText !== undefined) {
+        if (!realPaymentForm && adjustedBalanceText !== undefined) {
           if (!isFinanceDirectorNode) {
             throw new BadRequestException(
               "只有财务主管在退回申请人时可以指定调整后的供应商余额抵扣金额"
@@ -1218,6 +1222,7 @@ export class SpotProcurementPaymentService {
           }
         }
         if (
+          !realPaymentForm &&
           isFinanceDirectorNode &&
           input.decision === "return_to_applicant"
         ) {
@@ -1318,7 +1323,7 @@ export class SpotProcurementPaymentService {
         }
 
         if (input.decision === "return_to_applicant") {
-          if (isFinanceDirectorNode) {
+          if (!realPaymentForm && isFinanceDirectorNode) {
             const adjustedSupplierBalanceAmountCents = parseMoney(
               adjustedBalanceText,
               0n
@@ -1433,13 +1438,23 @@ export class SpotProcurementPaymentService {
             where: { id: payment.id },
             data: { status: "returned" }
           });
-          const newDraft = await this.cloneSubmittedPaymentToDraft(
-            tx,
-            version,
-            payments,
-            payment,
-            actorUserId
-          );
+          const realClone = realPaymentForm
+            ? await this.cloneSubmittedRealPaymentToDraft(
+                tx,
+                version,
+                payments,
+                payment,
+                actorUserId
+              )
+            : null;
+          const newDraft = realClone?.payment ??
+            (await this.cloneSubmittedPaymentToDraft(
+              tx,
+              version,
+              payments,
+              payment,
+              actorUserId
+            ));
           await this.recordReviewAudit(
             tx,
             actorUserId,
@@ -1448,7 +1463,20 @@ export class SpotProcurementPaymentService {
             input.decision,
             approvedRoleKey,
             {
+              oldPaymentId: payment.id,
               newDraftPaymentId: newDraft.id,
+              ...(realClone
+                ? {
+                    retainedOriginalAttachmentCount:
+                      realClone.retainedOriginalAttachmentCount,
+                    clonedPaymentLineCount:
+                      realClone.clonedPaymentLineCount,
+                    clonedPaymentChannelCount:
+                      realClone.clonedPaymentChannelCount,
+                    clonedPaymentMethodCount:
+                      realClone.clonedPaymentMethodCount
+                  }
+                : {}),
               ...selfReviewMetadata
             }
           );
@@ -2201,8 +2229,12 @@ export class SpotProcurementPaymentService {
         "invalidatedReason",
         "paymentType",
         "merchantNameSnapshot",
+        "merchantPayeeMismatchNote",
         "payerCompanyEntityId",
-        "payerCompanyNameSnapshot"
+        "payerCompanyNameSnapshot",
+        "payerUnifiedSocialCreditCodeSnapshot",
+        "approvalAmountCents",
+        "primaryPaymentChannelId"
       FROM "SpotProcurementPayment"
       WHERE "procurementId" = ${procurementId}
       ORDER BY "id"
@@ -2733,6 +2765,171 @@ export class SpotProcurementPaymentService {
     );
   }
 
+  private async cloneSubmittedRealPaymentToDraft(
+    tx: Prisma.TransactionClient,
+    version: VersionLockRow,
+    payments: PaymentLockRow[],
+    source: PaymentLockRow,
+    actorUserId: string
+  ) {
+    const [lines, channels, methods, attachments] = await Promise.all([
+      tx.spotProcurementPaymentLine.findMany({
+        where: { paymentId: source.id },
+        orderBy: { sortOrder: "asc" }
+      }),
+      tx.spotProcurementPaymentChannel.findMany({
+        where: { paymentId: source.id },
+        orderBy: { sortOrder: "asc" }
+      }),
+      tx.spotProcurementPaymentMethodOption.findMany({
+        where: { paymentId: source.id },
+        orderBy: { sortOrder: "asc" }
+      }),
+      tx.spotProcurementPaymentAttachment.findMany({
+        where: { paymentId: source.id },
+        orderBy: { createdAt: "asc" }
+      })
+    ]);
+    const primaryChannels = channels.filter(
+      (channel) => channel.isPrimary
+    );
+    if (
+      !source.paymentType ||
+      !source.merchantNameSnapshot ||
+      !source.payeeNameSnapshot ||
+      !lines.length ||
+      !channels.length ||
+      !methods.length ||
+      primaryChannels.length !== 1
+    ) {
+      throw new ConflictException(
+        "付款申请冻结事实不完整，不能退回修改"
+      );
+    }
+    const versionPaymentCount = payments.filter(
+      (payment) => payment.procurementVersionId === version.id
+    ).length;
+    const suffix = String(versionPaymentCount + 1).padStart(3, "0");
+    const draft = await tx.spotProcurementPayment.create({
+      data: {
+        projectId: version.projectId,
+        procurementId: version.procurementId,
+        procurementVersionId: version.id,
+        code: `${version.procurementCode}-V${version.versionNo}-P${suffix}`,
+        status: "draft",
+        settlementAmountCents: source.settlementAmountCents,
+        supplierBalanceAmountCents:
+          source.supplierBalanceAmountCents,
+        companyPaymentAmountCents:
+          source.companyPaymentAmountCents,
+        paidAmountCents: 0n,
+        executedSupplierBalanceAmountCents: 0n,
+        canceledAmountCents: 0n,
+        canceledCompanyPaymentAmountCents: 0n,
+        canceledSupplierBalanceAmountCents: 0n,
+        paymentPath: source.paymentPath,
+        paymentMethod: source.paymentMethod,
+        paymentType: source.paymentType,
+        merchantNameSnapshot: source.merchantNameSnapshot,
+        merchantPayeeMismatchNote:
+          source.merchantPayeeMismatchNote,
+        payeePartyId: source.payeePartyId,
+        payeeUserId: source.payeeUserId,
+        payeeNameSnapshot: source.payeeNameSnapshot,
+        payeeAccountNameSnapshot:
+          source.payeeAccountNameSnapshot,
+        payeeBankNameSnapshot: source.payeeBankNameSnapshot,
+        payeeBankAccountSnapshot:
+          source.payeeBankAccountSnapshot,
+        expectedPaymentAt: source.expectedPaymentAt,
+        paymentNote: source.paymentNote,
+        supportingAttachmentFileId: null,
+        merchantPaymentProofFileId: null,
+        balanceOverrideReason: null,
+        payerCompanyEntityId: source.payerCompanyEntityId,
+        payerCompanyNameSnapshot:
+          source.payerCompanyNameSnapshot,
+        payerUnifiedSocialCreditCodeSnapshot:
+          source.payerUnifiedSocialCreditCodeSnapshot,
+        approvalAmountCents: source.approvalAmountCents,
+        primaryPaymentChannelId: null,
+        handlerUserId: source.handlerUserId,
+        createdByUserId: actorUserId
+      }
+    });
+    await tx.spotProcurementPaymentLine.createMany({
+      data: lines.map((line) => ({
+        paymentId: draft.id,
+        procurementVersionId: line.procurementVersionId,
+        procurementLineId: line.procurementLineId,
+        sortOrder: line.sortOrder,
+        approvedQuantitySnapshot:
+          line.approvedQuantitySnapshot,
+        paymentQuantity: line.paymentQuantity,
+        unitPrice: line.unitPrice,
+        amountCents: line.amountCents,
+        expectedInvoiceCondition:
+          line.expectedInvoiceCondition,
+        vatRateOptionId: line.vatRateOptionId,
+        vatRateValueSnapshot: line.vatRateValueSnapshot,
+        vatRateLabelSnapshot: line.vatRateLabelSnapshot
+      }))
+    });
+    const clonedChannels = await Promise.all(
+      channels.map((channel) =>
+        tx.spotProcurementPaymentChannel.create({
+          data: {
+            paymentId: draft.id,
+            sortOrder: channel.sortOrder,
+            channelType: channel.channelType,
+            accountNameSnapshot:
+              channel.accountNameSnapshot,
+            accountNumberSnapshot:
+              channel.accountNumberSnapshot,
+            bankNameSnapshot: channel.bankNameSnapshot,
+            channelNote: channel.channelNote,
+            isPrimary: channel.isPrimary
+          }
+        })
+      )
+    );
+    await tx.spotProcurementPaymentMethodOption.createMany({
+      data: methods.map((method) => ({
+        paymentId: draft.id,
+        paymentMethod: method.paymentMethod,
+        sortOrder: method.sortOrder
+      }))
+    });
+    const primaryChannel = clonedChannels.find(
+      (channel) => channel.isPrimary
+    );
+    if (!primaryChannel) {
+      throw new ConflictException(
+        "付款申请主收款渠道缺失，不能退回修改"
+      );
+    }
+    const payment = await tx.spotProcurementPayment.update({
+      where: { id: draft.id },
+      data: {
+        primaryPaymentChannelId: primaryChannel.id,
+        paymentMethod: primaryChannel.channelType,
+        payeeAccountNameSnapshot:
+          primaryChannel.accountNameSnapshot,
+        payeeBankNameSnapshot:
+          primaryChannel.bankNameSnapshot,
+        payeeBankAccountSnapshot:
+          primaryChannel.accountNumberSnapshot
+      }
+    });
+    return {
+      payment,
+      retainedOriginalAttachmentCount: attachments.length,
+      clonedPaymentLineCount: lines.length,
+      clonedPaymentChannelCount: channels.length,
+      clonedPaymentMethodCount: methods.length
+    };
+  }
+
   private async requireLockedApproval(
     tx: Prisma.TransactionClient,
     paymentId: string
@@ -3081,7 +3278,8 @@ export class SpotProcurementPaymentService {
             procurementId: payment.procurementId,
             procurementVersionId: payment.procurementVersionId,
             approvalAmountCents: total.toString(),
-            payerCompanyEntityId: null
+            payerCompanyEntityId:
+              payment.payerCompanyEntityId
           }
         });
         return this.paymentReadModel(updated);

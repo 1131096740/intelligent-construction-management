@@ -92,10 +92,16 @@ function transactionDelegate() {
       ])
     },
     spotProcurementPayment: {
+      findUnique: jest.fn(),
       findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn()
+    },
+    spotProcurementVersion: { findUnique: jest.fn() },
+    spotProcurementPaymentLine: {
+      findMany: jest.fn().mockResolvedValue([]),
+      createMany: jest.fn()
     },
     spotProcurementDiscrepancy: {
       findFirst: jest.fn().mockResolvedValue(null)
@@ -117,8 +123,19 @@ function transactionDelegate() {
       findMany: jest.fn().mockResolvedValue([]),
       createMany: jest.fn()
     },
-    spotProcurementPaymentMethodOption: { findMany: jest.fn().mockResolvedValue([]) },
-    spotProcurementPaymentChannel: { findMany: jest.fn().mockResolvedValue([]) },
+    spotProcurementPaymentMethodOption: {
+      findMany: jest.fn().mockResolvedValue([]),
+      createMany: jest.fn()
+    },
+    spotProcurementPaymentChannel: {
+      findMany: jest.fn().mockResolvedValue([]),
+      create: jest.fn()
+    },
+    spotProcurementPaymentAttachment: {
+      findMany: jest.fn().mockResolvedValue([]),
+      deleteMany: jest.fn(),
+      createMany: jest.fn()
+    },
     projectReceipt: { findMany: jest.fn() },
     paymentRequest: { findMany: jest.fn() },
     projectExpenseRequest: { findMany: jest.fn() },
@@ -327,10 +344,21 @@ function realPaymentReviewHarness() {
   const submitted = {
     ...draftPayment,
     status: "approval_pending",
+    paymentPath: "supplier_direct",
+    paymentMethod: "bank_transfer",
     paymentType: "company_direct",
     merchantNameSnapshot: "北京某某商贸",
+    merchantPayeeMismatchNote: "商户委托关联公司收款",
+    payeePartyId: null,
+    payeeNameSnapshot: "北京某某供应链",
+    payeeAccountNameSnapshot: "北京某某供应链",
+    payeeBankNameSnapshot: "中国建设银行",
+    payeeBankAccountSnapshot: "6222000012345678",
     payerCompanyEntityId: "company-1",
     payerCompanyNameSnapshot: "云南建工集团",
+    payerUnifiedSocialCreditCodeSnapshot: "91530000TEST000001",
+    approvalAmountCents: 10_000n,
+    primaryPaymentChannelId: "channel-old-primary",
     submittedAt: new Date("2026-07-20T02:00:00.000Z")
   };
   current.tx.$queryRaw
@@ -606,6 +634,7 @@ describe("Spot procurement payment DTOs", () => {
   });
 
   it("limits payment review decisions and comment shape at runtime", async () => {
+    const pipe = createApiValidationPipe();
     const invalidDecision = await validationErrors(
       { decision: "return_to_previous" },
       ReviewSpotProcurementPaymentDto
@@ -618,10 +647,36 @@ describe("Spot procurement payment DTOs", () => {
       { decision: "approve", comment: "审".repeat(501) },
       ReviewSpotProcurementPaymentDto
     );
+    const overlongWhitespace = await validationErrors(
+      { decision: "approve", comment: " ".repeat(501) },
+      ReviewSpotProcurementPaymentDto
+    );
+    const overlongAstral = await validationErrors(
+      { decision: "approve", comment: "🚀".repeat(501) },
+      ReviewSpotProcurementPaymentDto
+    );
 
     expect(invalidDecision.errors).toContain("付款审批决定不正确");
     expect(invalidCommentType.errors).toContain("审批意见必须是文字");
     expect(overlongComment.errors).toContain("审批意见不能超过 500 个字符");
+    expect(overlongWhitespace.errors).toContain("审批意见不能超过 500 个字符");
+    expect(overlongAstral.errors).toContain("审批意见不能超过 500 个字符");
+    await expect(
+      pipe.transform(
+        { decision: "approve", comment: " ".repeat(500) },
+        { type: "body", metatype: ReviewSpotProcurementPaymentDto }
+      )
+    ).resolves.toEqual(
+      expect.objectContaining({ comment: " ".repeat(500) })
+    );
+    await expect(
+      pipe.transform(
+        { decision: "approve", comment: "🚀".repeat(500) },
+        { type: "body", metatype: ReviewSpotProcurementPaymentDto }
+      )
+    ).resolves.toEqual(
+      expect.objectContaining({ comment: "🚀".repeat(500) })
+    );
   });
 
   it("lets blank A5 comments cross the global validation boundary for service normalization", async () => {
@@ -1535,18 +1590,93 @@ describe("SpotProcurementPaymentService", () => {
   });
 
   it("returns the real A5 form into a new draft that restarts from comprehensive review", async () => {
-    const { service, tx, submitted } = realPaymentReviewHarness();
-    tx.spotProcurementPayment.update.mockResolvedValue({
-      ...submitted,
-      status: "returned"
-    });
-    tx.spotProcurementPayment.create.mockResolvedValue({
-      ...submitted,
-      id: "payment-2",
-      code: "LXCG-001-V1-P002",
-      status: "draft",
-      submittedAt: null
-    });
+    const { service, prisma, tx, audit, submitted } =
+      realPaymentReviewHarness();
+    const sourceLines = [
+      {
+        id: "payment-line-old",
+        paymentId: "payment-1",
+        procurementVersionId: "version-1",
+        procurementLineId: "procurement-line-1",
+        sortOrder: 1,
+        approvedQuantitySnapshot: new Prisma.Decimal("12.5"),
+        paymentQuantity: new Prisma.Decimal("10"),
+        unitPrice: new Prisma.Decimal("10.00"),
+        amountCents: 10_000n,
+        expectedInvoiceCondition: "vat_general",
+        vatRateOptionId: "vat-13",
+        vatRateValueSnapshot: new Prisma.Decimal("0.13"),
+        vatRateLabelSnapshot: "13%"
+      }
+    ];
+    const sourceChannels = [
+      {
+        id: "channel-old-primary",
+        paymentId: "payment-1",
+        sortOrder: 1,
+        channelType: "bank_transfer",
+        accountNameSnapshot: "北京某某供应链",
+        accountNumberSnapshot: "6222000012345678",
+        bankNameSnapshot: "中国建设银行",
+        channelNote: "对公账户",
+        isPrimary: true
+      }
+    ];
+    const sourceMethods = [
+      {
+        id: "method-old",
+        paymentId: "payment-1",
+        paymentMethod: "bank_transfer",
+        sortOrder: 1
+      }
+    ];
+    const sourceAttachments = [
+      {
+        id: "attachment-old",
+        paymentId: "payment-1",
+        fileId: "file-old-evidence",
+        category: "merchant_quote",
+        uploadedByUserId: "material-1"
+      }
+    ];
+    const clonedLines = sourceLines.map((line) => ({
+      ...line,
+      id: "payment-line-new",
+      paymentId: "payment-2"
+    }));
+    const clonedChannels = sourceChannels.map((channel) => ({
+      ...channel,
+      id: "channel-new-primary",
+      paymentId: "payment-2"
+    }));
+    const clonedMethods = sourceMethods.map((method) => ({
+      ...method,
+      id: "method-new",
+      paymentId: "payment-2"
+    }));
+    tx.spotProcurementPaymentLine.findMany
+      .mockResolvedValueOnce(sourceLines)
+      .mockResolvedValueOnce(clonedLines);
+    tx.spotProcurementPaymentChannel.findMany
+      .mockResolvedValueOnce(sourceChannels)
+      .mockResolvedValueOnce(clonedChannels);
+    tx.spotProcurementPaymentMethodOption.findMany
+      .mockResolvedValueOnce(sourceMethods)
+      .mockResolvedValueOnce(clonedMethods);
+    tx.spotProcurementPaymentAttachment.findMany.mockResolvedValue(
+      sourceAttachments
+    );
+    tx.spotProcurementPayment.create.mockImplementation(({ data }) =>
+      Promise.resolve({ id: "payment-2", ...data })
+    );
+    tx.spotProcurementPaymentChannel.create.mockImplementation(
+      ({ data }) =>
+        Promise.resolve({ id: "channel-new-primary", ...data })
+    );
+    tx.spotProcurementPayment.update.mockImplementation(
+      ({ where, data }) =>
+        Promise.resolve({ ...submitted, id: where.id, ...data })
+    );
 
     const result = await service.review(
       "payment-1",
@@ -1574,12 +1704,145 @@ describe("SpotProcurementPaymentService", () => {
       data: { status: "returned_to_applicant" }
     });
     expect(tx.spotProcurementPayment.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+      data: {
+        projectId: "project-1",
+        procurementId: "procurement-1",
+        procurementVersionId: "version-1",
+        code: "LXCG-001-V1-P002",
         status: "draft",
-        handlerUserId: "material-1"
+        settlementAmountCents: 10_000n,
+        supplierBalanceAmountCents: 0n,
+        companyPaymentAmountCents: 10_000n,
+        paidAmountCents: 0n,
+        executedSupplierBalanceAmountCents: 0n,
+        canceledAmountCents: 0n,
+        canceledCompanyPaymentAmountCents: 0n,
+        canceledSupplierBalanceAmountCents: 0n,
+        paymentPath: "supplier_direct",
+        paymentMethod: "bank_transfer",
+        paymentType: "company_direct",
+        merchantNameSnapshot: "北京某某商贸",
+        merchantPayeeMismatchNote: "商户委托关联公司收款",
+        payeePartyId: null,
+        payeeUserId: null,
+        payeeNameSnapshot: "北京某某供应链",
+        payeeAccountNameSnapshot: "北京某某供应链",
+        payeeBankNameSnapshot: "中国建设银行",
+        payeeBankAccountSnapshot: "6222000012345678",
+        expectedPaymentAt: null,
+        paymentNote: null,
+        supportingAttachmentFileId: null,
+        merchantPaymentProofFileId: null,
+        balanceOverrideReason: null,
+        payerCompanyEntityId: "company-1",
+        payerCompanyNameSnapshot: "云南建工集团",
+        payerUnifiedSocialCreditCodeSnapshot: "91530000TEST000001",
+        approvalAmountCents: 10_000n,
+        primaryPaymentChannelId: null,
+        handlerUserId: "material-1",
+        createdByUserId: "project-manager-1"
+      }
+    });
+    expect(tx.spotProcurementPaymentLine.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          paymentId: "payment-2",
+          procurementLineId: "procurement-line-1",
+          paymentQuantity: new Prisma.Decimal("10"),
+          amountCents: 10_000n
+        })
+      ]
+    });
+    expect(tx.spotProcurementPaymentChannel.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        paymentId: "payment-2",
+        channelType: "bank_transfer",
+        isPrimary: true
       })
     });
+    expect(
+      tx.spotProcurementPaymentMethodOption.createMany
+    ).toHaveBeenCalledWith({
+      data: [
+        {
+          paymentId: "payment-2",
+          paymentMethod: "bank_transfer",
+          sortOrder: 1
+        }
+      ]
+    });
+    expect(tx.spotProcurementPayment.update).toHaveBeenCalledWith({
+      where: { id: "payment-2" },
+      data: {
+        primaryPaymentChannelId: "channel-new-primary",
+        paymentMethod: "bank_transfer",
+        payeeAccountNameSnapshot: "北京某某供应链",
+        payeeBankNameSnapshot: "中国建设银行",
+        payeeBankAccountSnapshot: "6222000012345678"
+      }
+    });
+    expect(
+      tx.spotProcurementPaymentAttachment.findMany
+    ).toHaveBeenCalledWith({
+      where: { paymentId: "payment-1" },
+      orderBy: { createdAt: "asc" }
+    });
+    expect(
+      tx.spotProcurementPaymentAttachment.createMany
+    ).not.toHaveBeenCalled();
+    expect(
+      tx.spotProcurementPaymentAttachment.deleteMany
+    ).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: "spot_procurement.payment.approval.return_to_applicant",
+        metadata: expect.objectContaining({
+          oldPaymentId: "payment-1",
+          newDraftPaymentId: "payment-2",
+          retainedOriginalAttachmentCount: 1,
+          clonedPaymentLineCount: 1,
+          clonedPaymentChannelCount: 1,
+          clonedPaymentMethodCount: 1
+        })
+      })
+    );
     expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+
+    const newDraft = await tx.spotProcurementPayment.create.mock.results[0]
+      ?.value;
+    prisma.spotProcurementPayment.findUnique.mockResolvedValue(newDraft);
+    tx.spotProcurementPayment.findUnique.mockResolvedValue(newDraft);
+    tx.spotProcurementVersion.findUnique.mockResolvedValue({
+      id: "version-1",
+      status: "approved",
+      versionNo: 1
+    });
+
+    await service.submit("payment-2", "material-1");
+
+    expect(tx.approvalInstance.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        businessId: "payment-2",
+        currentNodeIndex: 0,
+        frozenNodes: expect.arrayContaining([
+          expect.objectContaining({
+            name: "综合部主管审批",
+            roleKeys: ["comprehensive_director"]
+          })
+        ])
+      })
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: "spot_procurement.payment.approval.submit",
+        businessId: "payment-2",
+        metadata: expect.objectContaining({
+          payerCompanyEntityId: "company-1"
+        })
+      })
+    );
   });
 
   it("uses canonical global/project role resolution at the current project-manager node", async () => {
