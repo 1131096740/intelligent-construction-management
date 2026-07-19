@@ -1559,6 +1559,29 @@ describe("SpotProcurementPaymentService", () => {
     expectNoPaymentReviewWrites(current);
   });
 
+  it.each(["0", "999"])(
+    "rejects legacy supplier-balance field %s on the real A5 form without writing approval metadata",
+    async (adjustedSupplierBalanceAmountCents) => {
+      const current = realPaymentReviewHarness();
+
+      await expect(
+        current.service.review(
+          "payment-1",
+          "project-manager-1",
+          {
+            decision: "approve",
+            adjustedSupplierBalanceAmountCents
+          }
+        )
+      ).rejects.toEqual(
+        new BadRequestException(
+          "项目零星付款不支持调整供应商余额抵扣金额"
+        )
+      );
+      expectNoPaymentReviewWrites(current);
+    }
+  );
+
   it("freezes a default approval comment for the real A5 form", async () => {
     const { service, tx } = realPaymentReviewHarness();
 

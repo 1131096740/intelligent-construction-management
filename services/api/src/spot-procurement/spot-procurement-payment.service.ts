@@ -1162,6 +1162,14 @@ export class SpotProcurementPaymentService {
             "项目零星付款只允许通过或退回申请人修改"
           );
         }
+        if (
+          realPaymentForm &&
+          input.adjustedSupplierBalanceAmountCents !== undefined
+        ) {
+          throw new BadRequestException(
+            "项目零星付款不支持调整供应商余额抵扣金额"
+          );
+        }
         if (payment.status !== "approval_pending") {
           throw new ConflictException("当前付款申请不在审批中");
         }
