@@ -681,12 +681,16 @@ model SettlementTemplateVersion {
   publishedByUserId          String?
   publishedAt                DateTime?
   stoppedAt                  DateTime?
+  discardedAt                DateTime?
+  discardedByUserId          String?
+  discardReason              String?
   changeSummary              String?
   createdAt                  DateTime  @default(now())
   updatedAt                  DateTime  @updatedAt
 
   @@unique([settlementTemplateId, versionNo])
   @@index([status, publishedAt])
+  @@index([status, updatedAt])
 }
 
 model SettlementTemplatePreviewJob {
@@ -1916,11 +1920,15 @@ model ContractBusinessTemplateVersion {
   publishedAt            DateTime?
   stoppedAt              DateTime?
   revokedAt              DateTime?
+  discardedAt            DateTime?
+  discardedByUserId      String?
+  discardReason          String?
   changeSummary          String?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
   @@unique([templateId, versionNo])
+  @@index([status, updatedAt])
 }
 
 model ContractBusinessScenario {
@@ -1974,11 +1982,15 @@ model StandardClauseVersion {
   submittedByUserId String?
   publishedByUserId String?
   publishedAt       DateTime?
+  discardedAt       DateTime?
+  discardedByUserId String?
+  discardReason     String?
   changeSummary     String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
   @@unique([clauseId, versionNo])
+  @@index([status, updatedAt])
 }
 
 model BusinessParty {
@@ -2039,11 +2051,15 @@ model ContractLayoutTemplateVersion {
   publishedAt        DateTime?
   stoppedAt          DateTime?
   revokedAt          DateTime?
+  discardedAt        DateTime?
+  discardedByUserId  String?
+  discardReason      String?
   changeSummary      String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
   @@unique([layoutTemplateId, versionNo])
+  @@index([status, updatedAt])
 }
 
 model ContractLayoutPreviewJob {
