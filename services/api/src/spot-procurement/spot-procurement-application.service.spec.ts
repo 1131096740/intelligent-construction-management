@@ -110,7 +110,11 @@ function context(roleKey = "material_staff") {
       updateMany: jest.fn().mockResolvedValue({ count: 0 })
     },
     spotProcurementReceipt: {
-      create: jest.fn().mockResolvedValue({ id: "receipt-1" })
+      create: jest.fn().mockResolvedValue({ id: "receipt-1" }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 })
+    },
+    spotProcurementReceiptDelegation: {
+      updateMany: jest.fn().mockResolvedValue({ count: 0 })
     },
     spotProcurementReceiptRevision: {
       create: jest.fn().mockResolvedValue({ id: "receipt-revision-1" })
@@ -135,17 +139,96 @@ function context(roleKey = "material_staff") {
   const audit = { record: jest.fn().mockResolvedValue(undefined) };
   const pilot = { assertEnabled: jest.fn() };
   const approvalForms = { tryRefreshLatestForBusiness: jest.fn().mockResolvedValue(undefined) };
+  const balances = { releaseForShortage: jest.fn().mockResolvedValue({}) };
   return {
     tx,
+    audit,
+    balances,
     pilot,
     approvalForms,
     service: new SpotProcurementApplicationService(
       prisma as never,
       audit as never,
       pilot as never,
-      approvalForms as never
+      approvalForms as never,
+      undefined,
+      balances as never
     )
   };
+}
+
+function mockAbandonmentLocks(
+  tx: ReturnType<typeof context>["tx"],
+  options: {
+    root?: ReturnType<typeof procurement>;
+    currentVersion?: ReturnType<typeof version>;
+    versions?: Array<{ id: string; submittedAt: Date | null }>;
+    payments?: Array<{
+      id: string;
+      status: string;
+      submittedAt: Date | null;
+      supplierBalanceAmountCents: bigint;
+    }>;
+    approvals?: Array<{ id: string; businessType: string; status: string }>;
+    approvalActions?: Array<{ id: string }>;
+    reservations?: Array<{
+      accountId: string;
+      paymentId: string;
+      amountCents: bigint;
+      releasedAmountCents: bigint;
+      status: string;
+    }>;
+    executions?: Array<{ id: string }>;
+    receipt?: Record<string, unknown> | null;
+    receiptRevision?: Array<{ id: string }>;
+    delegations?: Array<{ id: string; revokedAt: Date | null }>;
+    reviews?: Array<{ id: string }>;
+    discrepancies?: Array<{ id: string }>;
+    refunds?: Array<{ id: string }>;
+    paymentArchives?: Array<{ id: string }>;
+    archiveRecords?: Array<{ id: string }>;
+    lockCurrentVersion?: boolean;
+  } = {}
+) {
+  const versions = options.versions ?? [{ id: "version-1", submittedAt: null }];
+  const payments = options.payments ?? [];
+  const approvals = options.approvals ?? [];
+  tx.$queryRaw
+    .mockResolvedValueOnce([options.root ?? procurement()]);
+  if (options.lockCurrentVersion !== false) {
+    tx.$queryRaw.mockResolvedValueOnce([options.currentVersion ?? version()]);
+  }
+  tx.$queryRaw
+    .mockResolvedValueOnce(versions)
+    .mockResolvedValueOnce(payments)
+    .mockResolvedValueOnce(approvals);
+  if (approvals.length) {
+    tx.$queryRaw.mockResolvedValueOnce(options.approvalActions ?? []);
+  }
+  if (payments.length) {
+    const reservations = options.reservations ?? [];
+    tx.$queryRaw.mockResolvedValueOnce(reservations);
+    if (reservations.length) {
+      tx.$queryRaw.mockResolvedValueOnce(
+        reservations.map((reservation) => ({ id: reservation.accountId }))
+      );
+    }
+    tx.$queryRaw.mockResolvedValueOnce(options.executions ?? []);
+  }
+  tx.$queryRaw.mockResolvedValueOnce(options.receipt ? [options.receipt] : []);
+  if (options.receipt) {
+    tx.$queryRaw
+      .mockResolvedValueOnce(options.receiptRevision ?? [{ id: "receipt-revision-1" }])
+      .mockResolvedValueOnce(options.delegations ?? [])
+      .mockResolvedValueOnce(options.reviews ?? []);
+  }
+  tx.$queryRaw
+    .mockResolvedValueOnce(options.discrepancies ?? [])
+    .mockResolvedValueOnce(options.refunds ?? []);
+  if (payments.length) {
+    tx.$queryRaw.mockResolvedValueOnce(options.paymentArchives ?? []);
+  }
+  tx.$queryRaw.mockResolvedValueOnce(options.archiveRecords ?? []);
 }
 
 describe("SpotProcurementApplicationService real-form application", () => {
@@ -340,14 +423,16 @@ describe("SpotProcurementApplicationService real-form application", () => {
 
   it("keeps normal voiding available only before real payment", async () => {
     const { service, tx } = context("project_manager");
-    tx.$queryRaw.mockResolvedValueOnce([
-      procurement("approved_in_progress")
-    ]);
-    tx.spotProcurementPayment.findMany.mockResolvedValue([
-      { id: "payment-1" }
-    ]);
-    tx.spotProcurementPaymentExecution.findFirst.mockResolvedValue({
-      id: "execution-1"
+    mockAbandonmentLocks(tx, {
+      root: procurement("approved_in_progress"),
+      payments: [{
+        id: "payment-1",
+        status: "draft",
+        submittedAt: null,
+        supplierBalanceAmountCents: 0n
+      }],
+      executions: [{ id: "execution-1" }]
+      ,lockCurrentVersion: false
     });
 
     await expect(
@@ -356,9 +441,234 @@ describe("SpotProcurementApplicationService real-form application", () => {
         "manager-1",
         "已付款，改走异常终止"
       )
-    ).rejects.toEqual(
-      new ConflictException("采购已发生真实付款，不能直接撤销")
+    ).rejects.toMatchObject({ message: "采购已发生实际付款历史，不能放弃或撤销" });
+  });
+
+  it("deletes a never-submitted procurement draft without deleting evidence", async () => {
+    const { service, tx, audit } = context("material_staff");
+    mockAbandonmentLocks(tx);
+
+    await expect(
+      service.abandonDraft("procurement-1", "material-1", {
+        action: "delete_pristine_draft"
+      })
+    ).resolves.toMatchObject({
+      status: "abandoned",
+      action: "delete_pristine_draft",
+      idempotent: false
+    });
+    expect(tx.spotProcurementVersion.update).toHaveBeenCalledWith({
+      where: { id: "version-1" },
+      data: expect.objectContaining({ status: "abandoned", abandonReason: null })
+    });
+    expect(tx.spotProcurement.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "procurement-1",
+        status: "draft",
+        currentVersionId: "version-1"
+      },
+      data: expect.objectContaining({ status: "abandoned", abandonReason: null })
+    });
+    expect(tx.fileObject.findMany).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "spot_procurement.draft.delete",
+      businessId: "procurement-1"
+    }));
+  });
+
+  it("requires abandonment with a reason when any procurement version was submitted", async () => {
+    const { service, tx } = context("material_staff");
+    mockAbandonmentLocks(tx, {
+      versions: [
+        { id: "version-0", submittedAt: new Date("2026-07-18T00:00:00.000Z") },
+        { id: "version-1", submittedAt: null }
+      ],
+      approvals: [{
+        id: "approval-1",
+        businessType: "spot_procurement_version",
+        status: "returned_to_applicant"
+      }],
+      approvalActions: [{ id: "action-1" }]
+    });
+    await expect(
+      service.abandonDraft("procurement-1", "material-1", {
+        action: "delete_pristine_draft"
+      })
+    ).rejects.toThrow("只能放弃申请");
+
+    const second = context("material_staff");
+    mockAbandonmentLocks(second.tx, {
+      versions: [
+        { id: "version-0", submittedAt: new Date("2026-07-18T00:00:00.000Z") },
+        { id: "version-1", submittedAt: null }
+      ],
+      approvals: [{
+        id: "approval-1",
+        businessType: "spot_procurement_version",
+        status: "returned_to_applicant"
+      }],
+      approvalActions: [{ id: "action-1" }]
+    });
+    await expect(
+      second.service.abandonDraft("procurement-1", "material-1", {
+        action: "abandon_application",
+        reason: "   "
+      })
+    ).rejects.toThrow("必须填写原因");
+  });
+
+  it("allows only the current handler who still has a material role", async () => {
+    const other = context("material_staff");
+    other.tx.$queryRaw
+      .mockResolvedValueOnce([procurement()])
+      .mockResolvedValueOnce([version()]);
+    await expect(
+      other.service.abandonDraft("procurement-1", "other-material-user", {
+        action: "delete_pristine_draft"
+      })
+    ).rejects.toThrow("只有当前采购经办人");
+
+    const noRole = context("employee");
+    noRole.tx.$queryRaw
+      .mockResolvedValueOnce([procurement()])
+      .mockResolvedValueOnce([version()]);
+    await expect(
+      noRole.service.abandonDraft("procurement-1", "material-1", {
+        action: "delete_pristine_draft"
+      })
+    ).rejects.toThrow("不再具备物资岗位");
+  });
+
+  it("invalidates only safe child drafts, revokes receipt delegation, and closes returned approvals", async () => {
+    const { service, tx } = context("material_staff");
+    mockAbandonmentLocks(tx, {
+      versions: [
+        { id: "version-0", submittedAt: new Date("2026-07-18T00:00:00.000Z") },
+        { id: "version-1", submittedAt: null }
+      ],
+      payments: [{
+        id: "payment-draft",
+        status: "draft",
+        submittedAt: null,
+        supplierBalanceAmountCents: 0n
+      }],
+      approvals: [{
+        id: "approval-returned",
+        businessType: "spot_procurement_version",
+        status: "returned_to_applicant"
+      }],
+      receipt: {
+        id: "receipt-1",
+        status: "draft",
+        currentRevisionNo: 1,
+        firstSubmittedAt: null,
+        submittedAt: null,
+        invalidatedAt: null
+      },
+      delegations: [{ id: "delegation-1", revokedAt: null }]
+    });
+
+    await service.abandonDraft("procurement-1", "material-1", {
+      action: "abandon_application",
+      reason: "现场需求已取消"
+    });
+
+    expect(tx.spotProcurementPayment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: { in: ["payment-draft"] }, submittedAt: null })
+      })
     );
+    expect(tx.spotProcurementReceipt.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "invalidated" })
+      })
+    );
+    expect(tx.spotProcurementReceiptDelegation.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ["delegation-1"] }, revokedAt: null }
+      })
+    );
+    expect(tx.approvalInstance.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ["approval-returned"] },
+        status: {
+          in: ["approval_pending", "in_progress", "returned_to_applicant"]
+        }
+      },
+      data: { status: "cancelled" }
+    });
+  });
+
+  it("releases only the residual reserved balance once before invalidating a child draft", async () => {
+    const { service, tx, balances } = context("material_staff");
+    mockAbandonmentLocks(tx, {
+      root: { ...procurement(), supplierKey: "party:supplier-1" } as never,
+      payments: [{
+        id: "payment-draft",
+        status: "draft",
+        submittedAt: null,
+        supplierBalanceAmountCents: 100n
+      }],
+      reservations: [{
+        accountId: "balance-account-1",
+        paymentId: "payment-draft",
+        amountCents: 100n,
+        releasedAmountCents: 40n,
+        status: "reserved"
+      }]
+    });
+
+    await service.abandonDraft("procurement-1", "material-1", {
+      action: "delete_pristine_draft"
+    });
+
+    expect(balances.releaseForShortage).toHaveBeenCalledTimes(1);
+    expect(balances.releaseForShortage).toHaveBeenCalledWith(tx, {
+      paymentId: "payment-draft",
+      expectedReservedAmountCents: 100n,
+      releaseAmountCents: 60n,
+      expectedProjectId: "project-1",
+      expectedSupplierKey: "party:supplier-1",
+      actorUserId: "material-1",
+      reason: "删除从未提交的采购草稿"
+    });
+  });
+
+  it.each([
+    ["submitted payment", { payments: [{ id: "payment-1", status: "approval_pending", submittedAt: new Date(), supplierBalanceAmountCents: 0n }] }, "正式付款申请"],
+    ["executed balance", { payments: [{ id: "payment-1", status: "draft", submittedAt: null, supplierBalanceAmountCents: 100n }], reservations: [{ accountId: "balance-account-1", paymentId: "payment-1", amountCents: 100n, releasedAmountCents: 0n, status: "executed" }] }, "余额抵扣"],
+    ["submitted receipt", { receipt: { id: "receipt-1", status: "submitted", currentRevisionNo: 1, firstSubmittedAt: new Date(), submittedAt: new Date(), invalidatedAt: null } }, "收货单已提交"],
+    ["discrepancy", { discrepancies: [{ id: "discrepancy-1" }] }, "收货差异"],
+    ["refund", { refunds: [{ id: "refund-1" }] }, "退款事实"],
+    ["archive", { archiveRecords: [{ id: "archive-1" }] }, "归档证据"]
+  ])("fails closed on %s facts", async (_name, options, message) => {
+    const { service, tx } = context("material_staff");
+    mockAbandonmentLocks(tx, options as never);
+    await expect(
+      service.abandonDraft("procurement-1", "material-1", {
+        action: "delete_pristine_draft"
+      })
+    ).rejects.toThrow(message as string);
+    expect(tx.spotProcurement.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("returns an existing abandonment without releasing or auditing twice", async () => {
+    const { service, tx, audit, balances } = context("material_staff");
+    tx.$queryRaw.mockResolvedValueOnce([{
+      ...procurement("abandoned"),
+      abandonedAt: new Date("2026-07-19T10:00:00.000Z"),
+      abandonedByUserId: "material-1",
+      abandonReason: "现场取消"
+    }]);
+
+    await expect(
+      service.abandonDraft("procurement-1", "material-1", {
+        action: "abandon_application",
+        reason: "现场取消"
+      })
+    ).resolves.toMatchObject({ status: "abandoned", idempotent: true });
+    expect(balances.releaseForShortage).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("lets the handler request paid-procurement termination and makes the same request idempotent", async () => {

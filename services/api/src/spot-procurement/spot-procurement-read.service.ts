@@ -100,7 +100,8 @@ const PROCUREMENT_STATUS_LABELS: Record<string, string> = {
   approved_in_progress: "采购已批，办理中",
   closed: "已办结",
   abnormally_terminated: "异常终止",
-  voided: "已撤销"
+  voided: "已撤销",
+  abandoned: "已放弃"
 };
 const PAYMENT_STATUS_LABELS: Record<string, string> = {
   draft: "付款草稿",
@@ -268,7 +269,7 @@ export class SpotProcurementReadService {
       : { ids: [] as string[], sourceTruncated: false };
     const where: Prisma.SpotProcurementWhereInput = {
       projectId: { in: projectIds },
-      ...(status ? { status } : {}),
+      ...(status ? { status } : { status: { not: "abandoned" } }),
       ...(keyword
         ? {
             OR: [
@@ -369,7 +370,8 @@ export class SpotProcurementReadService {
           currentRevisionNo: true,
           firstSubmittedAt: true,
           submittedAt: true,
-          lockedAt: true
+          lockedAt: true,
+          invalidatedAt: true
         }
       }),
       this.prisma.spotProcurementDiscrepancy.findFirst({
@@ -419,15 +421,25 @@ export class SpotProcurementReadService {
         refund.paymentId !== null && accessiblePaymentIdSet.has(refund.paymentId)
     );
     const executionPaymentIds = allPayments.map((payment) => payment.id);
-    const executions = executionPaymentIds.length
-      ? await this.prisma.spotProcurementPaymentExecution.findMany({
-          where: {
-            paymentId: { in: executionPaymentIds },
-            voidedAt: null
-          },
-          orderBy: [{ paidAt: "asc" }, { id: "asc" }]
-        })
-      : [];
+    const [executionHistory, reservations, paymentArchives] = executionPaymentIds.length
+      ? await Promise.all([
+          this.prisma.spotProcurementPaymentExecution.findMany({
+            where: { paymentId: { in: executionPaymentIds } },
+            orderBy: [{ paidAt: "asc" }, { id: "asc" }]
+          }),
+          this.prisma.supplierBalanceReservation.findMany({
+            where: { paymentId: { in: executionPaymentIds } },
+            orderBy: { paymentId: "asc" }
+          }),
+          this.prisma.spotProcurementPaymentArchive.findMany({
+            where: { paymentId: { in: executionPaymentIds } },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+          })
+        ])
+      : [[], [], []];
+    const executions = executionHistory.filter(
+      (execution) => execution.voidedAt === null
+    );
     const fileIds = attachments.map((attachment) => attachment.fileId);
     const files = fileIds.length
       ? await this.prisma.fileObject.findMany({
@@ -484,9 +496,18 @@ export class SpotProcurementReadService {
       activePayments: allPayments.filter((payment) =>
         ACTIVE_PAYMENT_STATUSES.has(payment.status)
       ),
+      allPayments,
       executions,
+      executionHistory,
       paymentSummary,
-      currentPdfExists: Boolean(currentPdf)
+      currentPdfExists: Boolean(currentPdf),
+      versions,
+      approvalInstances,
+      receipt,
+      discrepancy,
+      refunds,
+      reservations,
+      paymentArchives
     });
     const invoiceCoverageByProcurementId =
       !usesRealProcurementForm && this.invoiceLedger
@@ -532,6 +553,8 @@ export class SpotProcurementReadService {
         closedAt: isoOrNull(procurement.closedAt),
         voidedAt: isoOrNull(procurement.voidedAt),
         voidReason: procurement.voidReason,
+        abandonedAt: isoOrNull(procurement.abandonedAt),
+        abandonReason: procurement.abandonReason,
         createdAt: procurement.createdAt.toISOString(),
         updatedAt: procurement.updatedAt.toISOString(),
         ...(usesRealProcurementForm
@@ -1827,9 +1850,21 @@ export class SpotProcurementReadService {
     roleKeys: RoleKey[];
     actorUserId: string;
     activePayments: SpotProcurementPayment[];
+    allPayments: SpotProcurementPayment[];
     executions: SpotProcurementPaymentExecution[];
+    executionHistory: SpotProcurementPaymentExecution[];
     paymentSummary: ReturnType<typeof summarizePayments>;
     currentPdfExists: boolean;
+    versions: SpotProcurementVersion[];
+    approvalInstances: ApprovalInstance[];
+    receipt: Pick<
+      SpotProcurementReceipt,
+      "status" | "firstSubmittedAt" | "submittedAt" | "invalidatedAt"
+    > | null;
+    discrepancy: SpotProcurementDiscrepancy | null;
+    refunds: SpotProcurementRefund[];
+    reservations: Array<{ status: string }>;
+    paymentArchives: SpotProcurementPaymentArchive[];
   }): DetailActionReadModel[] {
     const isOwner =
       input.actorUserId === input.procurement.applicantUserId ||
@@ -1868,8 +1903,35 @@ export class SpotProcurementReadService {
       canCreate &&
       !hasActualPayment &&
       input.activePayments.length === 0;
+    const hasApprovalHistory =
+      input.versions.some((version) => version.submittedAt !== null) ||
+      input.approvalInstances.some(
+        (approval) =>
+          approval.businessType === SPOT_PROCUREMENT_BUSINESS_TYPES.application
+      );
+    const formalBlocker = procurementAbandonmentBlocker(input);
+    const canAbandon =
+      input.procurement.status === "draft" &&
+      input.currentVersion.status === "draft" &&
+      input.actorUserId === input.procurement.handlerUserId &&
+      canCreate &&
+      formalBlocker === null;
 
     return [
+      detailAction({
+        key: hasApprovalHistory
+          ? "abandon_application"
+          : "delete_pristine_draft",
+        label: hasApprovalHistory ? "放弃采购申请" : "删除采购草稿",
+        kind: "danger",
+        roleKeys: input.roleKeys,
+        requiredAction: "spot_procurement.create",
+        enabled: canAbandon,
+        disabledReason:
+          formalBlocker ??
+          "只有保留物资岗位的当前采购经办人可放弃采购草稿",
+        requiresComment: hasApprovalHistory
+      }),
       detailAction({
         key: "edit_draft",
         label: "编辑采购草稿",
@@ -2817,6 +2879,8 @@ function versionReadModel(
     changeSummary: version.changeSummary,
     submittedAt: isoOrNull(version.submittedAt),
     approvedAt: isoOrNull(version.approvedAt),
+    abandonedAt: isoOrNull(version.abandonedAt),
+    abandonReason: version.abandonReason,
     createdByUserId: version.createdByUserId,
     createdAt: version.createdAt.toISOString(),
     updatedAt: version.updatedAt.toISOString()
@@ -2935,6 +2999,61 @@ function procurementStatusLabel(status: string) {
   return PROCUREMENT_STATUS_LABELS[status] ?? "采购状态未读取";
 }
 
+function procurementAbandonmentBlocker(input: {
+  procurement: SpotProcurement;
+  currentVersion: SpotProcurementVersion;
+  allPayments: SpotProcurementPayment[];
+  executionHistory: SpotProcurementPaymentExecution[];
+  approvalInstances: ApprovalInstance[];
+  receipt: Pick<
+    SpotProcurementReceipt,
+    "status" | "firstSubmittedAt" | "submittedAt" | "invalidatedAt"
+  > | null;
+  discrepancy: SpotProcurementDiscrepancy | null;
+  refunds: SpotProcurementRefund[];
+  reservations: Array<{ status: string }>;
+  paymentArchives: SpotProcurementPaymentArchive[];
+}) {
+  if (
+    input.procurement.status !== "draft" ||
+    input.currentVersion.status !== "draft"
+  ) {
+    return "当前采购应使用撤销或异常终止";
+  }
+  if (
+    input.allPayments.some(
+      (payment) =>
+        payment.submittedAt !== null ||
+        !["draft", "invalidated"].includes(payment.status)
+    ) ||
+    input.approvalInstances.some(
+      (approval) =>
+        approval.businessType === SPOT_PROCUREMENT_BUSINESS_TYPES.payment
+    )
+  ) {
+    return "已形成正式付款申请，不能放弃";
+  }
+  if (input.executionHistory.length > 0) {
+    return "已发生实际付款历史，不能放弃";
+  }
+  if (input.reservations.some((reservation) => reservation.status === "executed")) {
+    return "已执行供应商余额抵扣，不能放弃";
+  }
+  if (
+    input.receipt &&
+    input.receipt.invalidatedAt === null &&
+    (input.receipt.firstSubmittedAt !== null ||
+      input.receipt.submittedAt !== null ||
+      input.receipt.status !== "draft")
+  ) {
+    return "收货单已提交或生效，不能放弃";
+  }
+  if (input.discrepancy) return "已形成收货差异事实，不能放弃";
+  if (input.refunds.length > 0) return "已形成退款事实，不能放弃";
+  if (input.paymentArchives.length > 0) return "已形成归档证据，不能放弃";
+  return null;
+}
+
 function paymentStatusLabel(status: string) {
   return PAYMENT_STATUS_LABELS[status] ?? "付款状态未读取";
 }
@@ -2946,7 +3065,8 @@ function versionStatusLabel(status: string) {
     approved: "审批通过",
     returned: "已退回",
     withdrawn: "已撤回",
-    invalidated: "已失效"
+    invalidated: "已失效",
+    abandoned: "已放弃"
   };
   return labels[status] ?? "版本状态未读取";
 }

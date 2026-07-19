@@ -423,6 +423,66 @@ describe("SpotProcurementReadService", () => {
       ["procurement-1", "procurement-denied"],
       "finance-1"
     );
+    expect(fixture.prisma.spotProcurement.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: { not: "abandoned" } })
+      })
+    );
+  });
+
+  it("returns the server-derived parent abandonment action and exact downstream blocker", async () => {
+    const fixture = buildFixture();
+    const draftProcurement = procurementRow({
+      status: "draft",
+      applicantUserId: "handler-1",
+      handlerUserId: "handler-1"
+    });
+    const draftVersion = versionRow({
+      status: "draft",
+      submittedAt: null,
+      approvedAt: null
+    });
+    fixture.prisma.spotProcurement.findUnique.mockResolvedValue(draftProcurement);
+    fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([draftVersion]);
+    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([]);
+    fixture.prisma.spotProcurementPaymentExecution.findMany.mockResolvedValue([]);
+    fixture.prisma.approvalInstance.findMany.mockResolvedValue([]);
+    fixture.prisma.spotProcurementReceipt.findUnique.mockResolvedValue(null);
+    fixture.prisma.spotProcurementDiscrepancy.findFirst.mockResolvedValue(null);
+    fixture.prisma.spotProcurementRefund.findMany.mockResolvedValue([]);
+    fixture.visibility.effectiveRoleKeys.mockResolvedValue(["material_staff"]);
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const pristine = await service.getProcurement("procurement-1", "handler-1");
+    expect(
+      pristine.availableActions.find(
+        (action) => action.key === "delete_pristine_draft"
+      )
+    ).toMatchObject({ enabled: true, label: "删除采购草稿" });
+
+    fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([{
+      ...draftVersion,
+      submittedAt: now
+    }]);
+    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([{
+      ...paymentRow(),
+      status: "approval_pending",
+      submittedAt: now
+    }]);
+    const blocked = await service.getProcurement("procurement-1", "handler-1");
+    expect(
+      blocked.availableActions.find(
+        (action) => action.key === "abandon_application"
+      )
+    ).toMatchObject({
+      enabled: false,
+      disabledReason: "已形成正式付款申请，不能放弃"
+    });
   });
 
   it("projects the shared ticket coverage into procurement and payment reads without double-counting payment attribution", async () => {

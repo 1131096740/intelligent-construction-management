@@ -4,6 +4,7 @@ import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { CreateSpotProcurementDto } from "./dto/create-spot-procurement.dto";
+import { AbandonSpotProcurementDraftDto } from "./dto/abandon-spot-procurement-draft.dto";
 import { SpotProcurementController } from "./spot-procurement.controller";
 
 const realFormDraft = {
@@ -26,6 +27,31 @@ const realFormDraft = {
 };
 
 describe("SpotProcurementController real-form input", () => {
+  it("exposes semantic parent-draft abandonment under the existing material create permission", async () => {
+    const target = SpotProcurementController.prototype.abandonDraft as unknown as object;
+    expect(Reflect.getMetadata(METHOD_METADATA, target)).toBe(RequestMethod.POST);
+    expect(Reflect.getMetadata(PATH_METADATA, target)).toBe(":procurementId/abandonment");
+    expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, target)).toBe(
+      "spot_procurement.create"
+    );
+
+    const pipe = createApiValidationPipe();
+    await expect(
+      pipe.transform(
+        { action: "abandon_application", reason: "现场需求已取消" },
+        { type: "body", metatype: AbandonSpotProcurementDraftDto }
+      )
+    ).resolves.toEqual({
+      action: "abandon_application",
+      reason: "现场需求已取消"
+    });
+    await expect(
+      pipe.transform(
+        { action: "physical_delete", reason: "删除" },
+        { type: "body", metatype: AbandonSpotProcurementDraftDto }
+      )
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
   it("exposes abnormal termination as separate request and finance-confirmation actions", () => {
     const expectations = [
       [

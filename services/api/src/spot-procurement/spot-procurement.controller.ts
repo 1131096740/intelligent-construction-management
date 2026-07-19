@@ -10,6 +10,7 @@ import {
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { AbandonSpotProcurementDraftDto } from "./dto/abandon-spot-procurement-draft.dto";
 import { CreateProcurementDiscrepancyDto } from "./dto/create-procurement-discrepancy.dto";
 import { ConfirmAbnormalTerminationDto } from "./dto/confirm-abnormal-termination.dto";
 import { CreateSpotProcurementDto } from "./dto/create-spot-procurement.dto";
@@ -148,6 +149,16 @@ export class SpotProcurementController {
       user.id,
       body.reason
     );
+  }
+
+  @Post(":procurementId/abandonment")
+  @RequireProjectRole("spot_procurement.create")
+  abandonDraft(
+    @Param("procurementId") procurementId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: AbandonSpotProcurementDraftDto
+  ) {
+    return this.applications.abandonDraft(procurementId, user.id, body);
   }
 
   @Post(":procurementId/abnormal-termination")
