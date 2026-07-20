@@ -21,15 +21,6 @@ export const spotPaymentLedgerGroups = [
   { key: "actions", label: "操作" }
 ] as const;
 
-const PAYMENT_TASK_ROUTES: Readonly<Record<string, SpotPaymentTaskRoute>> = {
-  complete_payment_draft: "edit-draft",
-  review_payment: "review",
-  complete_payer: "payer",
-  record_execution: "execution",
-  record_refund: "refund",
-  view_only: "readonly"
-};
-
 export function selectSpotPaymentTaskCards<T>(
   serverOrderedTasks: readonly T[]
 ): T[] {
@@ -43,5 +34,13 @@ export function paymentTaskRoute(taskKey: string):
   | "execution"
   | "refund"
   | "readonly" {
-  return PAYMENT_TASK_ROUTES[taskKey] ?? "readonly";
+  switch (taskKey) {
+    case "complete_payment_draft": return "edit-draft";
+    case "review_payment": return "review";
+    case "complete_payer": return "payer";
+    case "record_execution": return "execution";
+    case "record_refund": return "refund";
+    case "view_only": return "readonly";
+    default: return "readonly";
+  }
 }

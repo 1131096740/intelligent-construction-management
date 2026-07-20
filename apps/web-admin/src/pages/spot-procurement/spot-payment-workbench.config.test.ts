@@ -52,5 +52,8 @@ describe("spot payment workbench configuration", () => {
     expect(paymentTaskRoute("view_only")).toBe("readonly");
     expect(paymentTaskRoute("https://example.com/unsafe")).toBe("readonly");
     expect(paymentTaskRoute("unknown_task")).toBe("readonly");
+    expect(paymentTaskRoute("toString")).toBe("readonly");
+    expect(paymentTaskRoute("constructor")).toBe("readonly");
+    expect(paymentTaskRoute("__proto__")).toBe("readonly");
   });
 });
