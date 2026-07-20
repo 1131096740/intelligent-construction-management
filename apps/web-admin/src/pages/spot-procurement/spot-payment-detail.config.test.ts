@@ -74,6 +74,21 @@ describe("spot payment detail configuration", () => {
     }))).toBe(2);
   });
 
+  it("keeps channel recovery on step three when no channel is primary", () => {
+    expect(firstIncompletePaymentStep(detail({}, {
+      paymentChannels: [cashChannel("channel-1", false)]
+    }))).toBe(2);
+  });
+
+  it("keeps channel recovery on step three when multiple channels are primary", () => {
+    expect(firstIncompletePaymentStep(detail({}, {
+      paymentChannels: [
+        cashChannel("channel-1", true),
+        cashChannel("channel-2", true)
+      ]
+    }))).toBe(2);
+  });
+
   it("defaults a company-direct payee to the merchant", () => {
     expect(resolveSpotPaymentMerchantPayee({
       paymentType: "company_direct",
@@ -183,4 +198,18 @@ function detail(
     }],
     ...rest
   } as SpotProcurementPaymentDetailReadModel;
+}
+
+function cashChannel(id: string, primary: boolean) {
+  return {
+    id,
+    sortOrder: 1,
+    channelType: "cash" as const,
+    channelTypeLabel: "现金",
+    accountName: null,
+    bankName: null,
+    accountNumberLast4: null,
+    note: null,
+    primary
+  };
 }

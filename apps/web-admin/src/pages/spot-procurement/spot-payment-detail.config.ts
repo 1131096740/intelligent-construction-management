@@ -121,7 +121,8 @@ function hasCompletePaymentChannels(
   detail: SpotProcurementPaymentDetailReadModel
 ): boolean {
   const channels = detail.paymentChannels ?? [];
-  return channels.length > 0 && channels.some((channel) => channel.primary) &&
+  return channels.length > 0 &&
+    channels.filter((channel) => channel.primary).length === 1 &&
     channels.every((channel) => channel.channelType !== "bank_transfer");
 }
 
