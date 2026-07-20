@@ -9,13 +9,26 @@ export const spotPaymentDetailTabs = [
   { value: "archives", label: "归档资料" }
 ] as const;
 
-export interface SpotPaymentMerchantPayeeInput {
-  paymentType: "company_direct" | "handler_reimbursement";
+interface SpotPaymentMerchantPayeeBaseInput {
   merchantName: string;
+}
+
+export type SpotPaymentMerchantPayeeInput =
+  | SpotPaymentCompanyDirectPayeeInput
+  | SpotPaymentHandlerReimbursementPayeeInput;
+
+export interface SpotPaymentCompanyDirectPayeeInput
+  extends SpotPaymentMerchantPayeeBaseInput {
+  paymentType: "company_direct";
   payeeDiffersFromMerchant: boolean;
   payeeName: string;
   mismatchNote: string;
-  handlerNameSnapshot: string;
+}
+
+export interface SpotPaymentHandlerReimbursementPayeeInput
+  extends SpotPaymentMerchantPayeeBaseInput {
+  paymentType: "handler_reimbursement";
+  handlerPayeeNameSnapshot: string;
 }
 
 export interface SpotPaymentMerchantPayee {
@@ -32,7 +45,10 @@ export function resolveSpotPaymentMerchantPayee(
   if (input.paymentType === "handler_reimbursement") {
     return {
       merchantName,
-      payeeName: requiredText(input.handlerNameSnapshot, "当前经办人冻结值缺失"),
+      payeeName: requiredText(
+        input.handlerPayeeNameSnapshot,
+        "经办人冻结收款人缺失"
+      ),
       merchantPayeeMismatchNote: "经办人垫付后报回"
     };
   }
@@ -83,8 +99,7 @@ function hasCompletePaymentBasics(
   }
 
   if (payment.paymentType === "handler_reimbursement") {
-    return hasText(payment.handler.name) &&
-      payment.payee?.name.trim() === payment.handler.name.trim();
+    return hasText(payment.payee?.name);
   }
 
   return payment.payee?.name.trim() === payment.merchantName.trim() ||
@@ -107,11 +122,7 @@ function hasCompletePaymentChannels(
 ): boolean {
   const channels = detail.paymentChannels ?? [];
   return channels.length > 0 && channels.some((channel) => channel.primary) &&
-    channels.every((channel) => channel.channelType !== "bank_transfer" || (
-      hasText(channel.accountName) &&
-      hasText(channel.bankName) &&
-      hasText(channel.accountNumberLast4)
-    ));
+    channels.every((channel) => channel.channelType !== "bank_transfer");
 }
 
 function hasText(value: string | null | undefined): value is string {

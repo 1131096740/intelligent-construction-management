@@ -45,14 +45,42 @@ describe("spot payment detail configuration", () => {
     }))).toBe(1);
   });
 
+  it("uses the frozen payee snapshot when the handler directory name changed", () => {
+    expect(firstIncompletePaymentStep(detail({
+      paymentType: "handler_reimbursement",
+      payee: {
+        name: "经办人原名",
+        accountName: null,
+        primaryChannel: null
+      },
+      handler: { id: "handler-1", name: "经办人新名" }
+    }))).toBe(3);
+  });
+
+  it("does not treat a masked bank account suffix as channel completion", () => {
+    expect(firstIncompletePaymentStep(detail({}, {
+      paymentMethods: [{ value: "bank_transfer", label: "银行转账" }],
+      paymentChannels: [{
+        id: "channel-1",
+        sortOrder: 1,
+        channelType: "bank_transfer",
+        channelTypeLabel: "银行转账",
+        accountName: "昆明建材商行",
+        bankName: "建设银行",
+        accountNumberLast4: "1234",
+        note: null,
+        primary: true
+      }]
+    }))).toBe(2);
+  });
+
   it("defaults a company-direct payee to the merchant", () => {
     expect(resolveSpotPaymentMerchantPayee({
       paymentType: "company_direct",
       merchantName: " 昆明建材商行 ",
       payeeDiffersFromMerchant: false,
       payeeName: "",
-      mismatchNote: "",
-      handlerNameSnapshot: "经办人甲"
+      mismatchNote: ""
     })).toEqual({
       merchantName: "昆明建材商行",
       payeeName: "昆明建材商行",
@@ -66,8 +94,7 @@ describe("spot payment detail configuration", () => {
       merchantName: "昆明建材商行",
       payeeDiffersFromMerchant: true,
       payeeName: "昆明建材商行",
-      mismatchNote: "商户指定代收",
-      handlerNameSnapshot: "经办人甲"
+      mismatchNote: "商户指定代收"
     })).toThrow("例外收款对象必须与实际商户不同");
 
     expect(() => resolveSpotPaymentMerchantPayee({
@@ -75,8 +102,7 @@ describe("spot payment detail configuration", () => {
       merchantName: "昆明建材商行",
       payeeDiffersFromMerchant: true,
       payeeName: "张三",
-      mismatchNote: " ",
-      handlerNameSnapshot: "经办人甲"
+      mismatchNote: " "
     })).toThrow("请填写商户与收款对象不一致说明");
 
     expect(resolveSpotPaymentMerchantPayee({
@@ -84,8 +110,7 @@ describe("spot payment detail configuration", () => {
       merchantName: "昆明建材商行",
       payeeDiffersFromMerchant: true,
       payeeName: "张三",
-      mismatchNote: " 商户指定代收 ",
-      handlerNameSnapshot: "经办人甲"
+      mismatchNote: " 商户指定代收 "
     })).toEqual({
       merchantName: "昆明建材商行",
       payeeName: "张三",
@@ -93,19 +118,22 @@ describe("spot payment detail configuration", () => {
     });
   });
 
-  it("freezes the current handler as payee for handler reimbursement", () => {
+  it("requires the caller to provide the frozen handler payee snapshot", () => {
     expect(resolveSpotPaymentMerchantPayee({
       paymentType: "handler_reimbursement",
       merchantName: "昆明建材商行",
-      payeeDiffersFromMerchant: true,
-      payeeName: "不应采用",
-      mismatchNote: "不应采用",
-      handlerNameSnapshot: " 经办人甲 "
+      handlerPayeeNameSnapshot: " 经办人原名 "
     })).toEqual({
       merchantName: "昆明建材商行",
-      payeeName: "经办人甲",
+      payeeName: "经办人原名",
       merchantPayeeMismatchNote: "经办人垫付后报回"
     });
+
+    expect(() => resolveSpotPaymentMerchantPayee({
+      paymentType: "handler_reimbursement",
+      merchantName: "昆明建材商行",
+      handlerPayeeNameSnapshot: " "
+    })).toThrow("经办人冻结收款人缺失");
   });
 });
 
@@ -141,15 +169,15 @@ function detail(
       vatRateOptionId: null,
       vatRateLabel: null
     }],
-    paymentMethods: [{ value: "bank_transfer", label: "银行转账" }],
+    paymentMethods: [{ value: "cash", label: "现金" }],
     paymentChannels: [{
       id: "channel-1",
       sortOrder: 1,
-      channelType: "bank_transfer",
-      channelTypeLabel: "银行转账",
-      accountName: "昆明建材商行",
-      bankName: "建设银行",
-      accountNumberLast4: "1234",
+      channelType: "cash",
+      channelTypeLabel: "现金",
+      accountName: null,
+      bankName: null,
+      accountNumberLast4: null,
       note: null,
       primary: true
     }],
