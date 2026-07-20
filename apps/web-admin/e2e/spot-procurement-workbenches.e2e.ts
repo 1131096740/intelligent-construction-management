@@ -876,6 +876,7 @@ test("opens one responsive A5 approval drawer and restores focus after close", a
   await trigger.click();
   const drawer = page.locator(".payment-approval-drawer");
   await expect(drawer).toBeVisible();
+  await expect(drawer.getByRole("heading", { name: "办理项目零星付款审批", exact: true })).toBeFocused();
   const drawerContent = drawer.locator(".t-drawer__content-wrapper");
   const desktopViewportWidth = page.viewportSize()?.width ?? 1280;
   await expect.poll(async () => {
@@ -900,6 +901,7 @@ test("opens one responsive A5 approval drawer and restores focus after close", a
   await page.setViewportSize({ width: 390, height: 844 });
   await trigger.click();
   await expect(drawer).toBeVisible();
+  await expect(drawer.getByRole("heading", { name: "办理项目零星付款审批", exact: true })).toBeFocused();
   await expect.poll(async () => {
     const box = await drawerContent.boundingBox();
     return Math.round(box?.x ?? -1);
@@ -934,7 +936,10 @@ test("refreshes the completed payer task after a stale shared-role save gets 409
     return route.fulfill({
       status: 409,
       contentType: "application/json",
-      body: JSON.stringify({ message: "付款主体任务已由其他岗位完成，请刷新后查看最新事实" })
+      body: JSON.stringify({
+        code: "SPOT_PAYMENT_PAYER_TASK_COMPLETED",
+        message: "共享任务已经结束"
+      })
     });
   });
   await page.route("**/api/spot-procurement-payments/payment-payer", (route) => {

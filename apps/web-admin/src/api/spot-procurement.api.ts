@@ -12,6 +12,18 @@ import type {
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 
+export class SpotProcurementApiError extends Error {
+  readonly status: number;
+  readonly code: string | null;
+
+  constructor(message: string, status: number, code: string | null = null) {
+    super(message);
+    this.name = "SpotProcurementApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
 export type SpotProcurementVersionStatus =
   | "draft"
   | "approval_pending"
@@ -1222,8 +1234,10 @@ async function ensureOk(response: Response, fallback: string): Promise<void> {
   if (response.ok) return;
 
   let message = `${fallback}：${response.status}`;
+  let code: string | null = null;
   try {
-    const data = (await response.clone().json()) as { message?: unknown };
+    const data = (await response.clone().json()) as { code?: unknown; message?: unknown };
+    if (typeof data.code === "string") code = data.code;
     if (typeof data.message === "string") {
       message = formatApiErrorMessage(data.message, response.status, fallback);
     } else if (Array.isArray(data.message)) {
@@ -1236,7 +1250,7 @@ async function ensureOk(response: Response, fallback: string): Promise<void> {
   } catch {
     message = formatApiErrorMessage(message, response.status, fallback);
   }
-  throw new Error(message);
+  throw new SpotProcurementApiError(message, response.status, code);
 }
 
 function withQuery(

@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { BadRequestException, ConflictException } from "@nestjs/common";
+import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { SpotProcurementPaymentService } from "./spot-procurement-payment.service";
 
@@ -116,7 +116,7 @@ function createHarness() {
     { tryRefreshLatestForBusiness: jest.fn().mockResolvedValue(undefined) } as never,
     {} as never
   );
-  return { service, tx };
+  return { service, tx, prisma };
 }
 
 const realFormInput = {
@@ -295,11 +295,72 @@ describe("SpotProcurementPaymentService real-form draft", () => {
         companyEntityId: "company-1",
         paymentMethods: ["bank_transfer"]
       })
-    ).rejects.toEqual(
-      new ConflictException("付款主体任务已由其他岗位完成，请刷新后查看最新事实")
-    );
+    ).rejects.toMatchObject({
+      status: 409,
+      response: {
+        code: "SPOT_PAYMENT_PAYER_TASK_COMPLETED",
+        message: "付款主体任务已由其他岗位完成，请刷新后查看最新事实"
+      }
+    });
 
     expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.spotProcurementPaymentMethodOption.deleteMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("retries one payer serialization conflict and then returns the stable completed-task conflict", async () => {
+    const { service, tx, prisma } = createHarness();
+    prisma.$transaction
+      .mockRejectedValueOnce(Object.assign(new Error("serialization conflict"), { code: "P2034" }))
+      .mockImplementationOnce((operation) => operation(tx));
+    tx.$queryRaw.mockResolvedValueOnce([
+      {
+        ...payment,
+        payerCompanyEntityId: "company-already-selected",
+        payerCompanyNameSnapshot: "已选付款主体"
+      }
+    ]);
+
+    await expect(
+      service.updatePayer("payment-1", "finance-1", {
+        companyEntityId: "company-1",
+        paymentMethods: ["bank_transfer"]
+      })
+    ).rejects.toMatchObject({
+      status: 409,
+      response: {
+        code: "SPOT_PAYMENT_PAYER_TASK_COMPLETED",
+        message: "付款主体任务已由其他岗位完成，请刷新后查看最新事实"
+      }
+    });
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(tx.spotProcurementPaymentMethodOption.deleteMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("maps a second payer serialization conflict to the same stable conflict without writes", async () => {
+    const { service, tx, prisma } = createHarness();
+    prisma.$transaction.mockRejectedValue(
+      Object.assign(new Error("serialization conflict"), { code: "P2034" })
+    );
+
+    await expect(
+      service.updatePayer("payment-1", "finance-1", {
+        companyEntityId: "company-1",
+        paymentMethods: ["bank_transfer"]
+      })
+    ).rejects.toMatchObject({
+      status: 409,
+      response: {
+        code: "SPOT_PAYMENT_PAYER_TASK_COMPLETED",
+        message: "付款主体任务已由其他岗位完成，请刷新后查看最新事实"
+      }
+    });
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
     expect(tx.spotProcurementPaymentMethodOption.deleteMany).not.toHaveBeenCalled();
     expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
     expect(tx.auditLog.create).not.toHaveBeenCalled();

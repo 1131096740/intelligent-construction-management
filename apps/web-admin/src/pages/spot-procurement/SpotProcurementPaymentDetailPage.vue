@@ -14,6 +14,7 @@ import {
   updateSpotProcurementPaymentPayer,
   voidSpotProcurementPayment,
   withdrawSpotProcurementPayment,
+  SpotProcurementApiError,
   type SpotProcurementPaymentDetailReadModel,
   type SpotProcurementPaymentMethod,
   type VatRateOptionReadModel
@@ -484,7 +485,10 @@ async function savePayer() {
   } catch (error) {
     if (paymentId.value !== operationPaymentId) return;
     const message = error instanceof Error ? error.message : "付款主体保存失败";
-    if (message.includes("付款主体任务已由其他岗位完成")) {
+    if (
+      error instanceof SpotProcurementApiError &&
+      error.code === "SPOT_PAYMENT_PAYER_TASK_COMPLETED"
+    ) {
       payerVisible.value = false;
       showSuccess("任务已由其他岗位完成，已刷新最新付款事实。");
       await loadDetail();

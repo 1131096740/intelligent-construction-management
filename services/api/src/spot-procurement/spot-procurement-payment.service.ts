@@ -67,6 +67,10 @@ const ACTIVE_CAPACITY_STATUSES = new Set([
   "settled"
 ]);
 const PLANNED_PAYMENT_STATUSES = ACTIVE_CAPACITY_STATUSES;
+const PAYER_TASK_COMPLETED_ERROR = {
+  code: "SPOT_PAYMENT_PAYER_TASK_COMPLETED",
+  message: "付款主体任务已由其他岗位完成，请刷新后查看最新事实"
+} as const;
 const NON_VOIDABLE_EXECUTION_STATUSES = new Set([
   "partially_paid",
   "paid",
@@ -895,7 +899,7 @@ export class SpotProcurementPaymentService {
     actorUserId: string,
     input: UpdateSpotPaymentPayerDto
   ) {
-    return this.runWrite(() => this.runSerializable(async (tx) => {
+    return this.runPayerWriteWithRetry(() => this.runSerializable(async (tx) => {
       const payment = await this.lockPaymentForPayerUpdate(tx, paymentId);
       if (!payment) throw new NotFoundException("零星材料付款申请不存在");
       this.pilot.assertEnabled(payment.projectId);
@@ -929,9 +933,7 @@ export class SpotProcurementPaymentService {
         pendingRoles.includes("finance_director") &&
         roles.includes("finance_director");
       if (payment.payerCompanyEntityId && !isFinanceDirectorReapproval) {
-        throw new ConflictException(
-          "付款主体任务已由其他岗位完成，请刷新后查看最新事实"
-        );
+        throw new ConflictException(PAYER_TASK_COMPLETED_ERROR);
       }
       if (approval && !isFinanceDirectorReapproval && approval.currentNodeIndex !== 0) {
         throw new ConflictException("综合部主管审批完成后，只有财务主管可在本节点调整付款主体");
@@ -3709,6 +3711,34 @@ export class SpotProcurementPaymentService {
       }
       throw error;
     }
+  }
+
+  private async runPayerWriteWithRetry<T>(
+    operation: () => Promise<T>
+  ): Promise<T> {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        return await operation();
+      } catch (error) {
+        if (error instanceof HttpException) throw error;
+        const code = prismaErrorCode(error);
+        if (code === "P2034") {
+          if (attempt === 0) continue;
+          throw new ConflictException(PAYER_TASK_COMPLETED_ERROR);
+        }
+        if (
+          code === "P2002" ||
+          code === "P2003" ||
+          code === "P2025"
+        ) {
+          throw new ConflictException(
+            "零星采购付款数据已变化，请刷新后重试"
+          );
+        }
+        throw error;
+      }
+    }
+    throw new ConflictException(PAYER_TASK_COMPLETED_ERROR);
   }
 }
 

@@ -221,12 +221,18 @@ describe("spot procurement web pages", () => {
     expect(drawer).toContain("<ApprovalSelfReviewFields");
     expect(drawer).not.toMatch(/reviewSpotProcurement|fetch\(|apiFetch|useRoute|useRouter/u);
     expect(drawer).toContain('size="min(560px, 100vw)"');
+    expect(drawer).toContain("focusTitle()");
+    expect(drawer).toContain(':on-before-open="focusTitle"');
+    expect(drawer).toContain("nextTick");
+    expect(drawer).toContain('tabindex="-1"');
+    expect(drawer).toContain("MutationObserver");
   });
 
   it("refreshes payer facts after a shared-role conflict instead of retrying the stale write", () => {
     const detail = pageSource("SpotProcurementPaymentDetailPage.vue");
 
-    expect(detail).toContain("付款主体任务已由其他岗位完成");
+    expect(detail).toContain("SPOT_PAYMENT_PAYER_TASK_COMPLETED");
+    expect(detail).toContain("error instanceof SpotProcurementApiError");
     expect(detail).toContain("任务已由其他岗位完成，已刷新最新付款事实。");
     expect(detail).toContain("const operationPaymentId = current.payment.id");
     expect(detail).toContain("paymentId.value !== operationPaymentId");

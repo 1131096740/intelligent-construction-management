@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
 import ApprovalSelfReviewFields from "../../../components/ApprovalSelfReviewFields.vue";
 
 export type A5ApprovalResult = "approve" | "return_to_applicant";
@@ -31,6 +31,9 @@ const emit = defineEmits<{
 const result = ref<A5ApprovalResult>("approve");
 const confirming = ref(false);
 const validationError = ref("");
+const titleElement = ref<HTMLElement | null>(null);
+let titleFocusObserver: MutationObserver | null = null;
+let titleFocusTimeout: number | null = null;
 const form = reactive({
   comment: "",
   selfReviewReason: "",
@@ -53,7 +56,10 @@ const resultLabel = computed(() =>
 watch(
   () => props.visible,
   (visible) => {
-    if (!visible) return;
+    if (!visible) {
+      clearTitleFocusAttempt();
+      return;
+    }
     result.value = "approve";
     confirming.value = false;
     validationError.value = "";
@@ -87,18 +93,71 @@ function submit() {
     confirmationPassword: form.confirmationPassword
   });
 }
+
+function clearTitleFocusAttempt() {
+  titleFocusObserver?.disconnect();
+  titleFocusObserver = null;
+  if (titleFocusTimeout !== null) window.clearTimeout(titleFocusTimeout);
+  titleFocusTimeout = null;
+}
+
+function focusVisibleTitle() {
+  const referencedTitle = titleElement.value;
+  const title = referencedTitle?.getClientRects().length
+    ? referencedTitle
+    : [...document.querySelectorAll<HTMLElement>(
+        ".payment-approval-drawer__title"
+      )].find((element) => element.getClientRects().length > 0);
+  if (!title) return false;
+  title.focus();
+  if (document.activeElement !== title) return false;
+  clearTitleFocusAttempt();
+  return true;
+}
+
+function focusTitle() {
+  clearTitleFocusAttempt();
+  let remainingMutations = 12;
+  titleFocusObserver = new MutationObserver(() => {
+    if (focusVisibleTitle()) return;
+    remainingMutations -= 1;
+    if (remainingMutations <= 0) clearTitleFocusAttempt();
+  });
+  titleFocusObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["class", "style"]
+  });
+  titleFocusTimeout = window.setTimeout(() => {
+    focusVisibleTitle();
+    clearTitleFocusAttempt();
+  }, 750);
+  void nextTick(() => focusVisibleTitle());
+}
+
+onBeforeUnmount(clearTitleFocusAttempt);
 </script>
 
 <template>
   <t-drawer
     v-model:visible="drawerVisible"
-    header="办理项目零星付款审批"
     placement="right"
     size="min(560px, 100vw)"
     :close-on-overlay-click="false"
     :close-btn="!busy"
     :class="['payment-approval-drawer', { 'payment-approval-drawer--confirming': confirming }]"
+    :on-before-open="focusTitle"
   >
+    <template #header>
+      <h2
+        ref="titleElement"
+        class="payment-approval-drawer__title"
+        tabindex="-1"
+      >
+        办理项目零星付款审批
+      </h2>
+    </template>
     <div class="payment-approval-drawer__body">
       <template v-if="!confirming">
         <section>
@@ -183,6 +242,18 @@ function submit() {
 
 .payment-approval-drawer__body section h3 {
   margin: 0;
+}
+
+.payment-approval-drawer__title {
+  margin: 0;
+  font-size: var(--jg-font-size-section-title);
+  outline: none;
+}
+
+.payment-approval-drawer__title:focus-visible {
+  border-radius: var(--jg-radius-control);
+  outline: var(--jg-border-width-accent) solid var(--jg-color-focus-outline);
+  outline-offset: 2px;
 }
 
 .payment-approval-drawer__facts {
