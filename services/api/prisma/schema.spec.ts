@@ -59,14 +59,18 @@ describe("spot procurement real-form schema", () => {
     expect(realFormMigration).toContain("jg_file_business_binding_columns");
   });
 
-  it("allows returned payments beside one active current payment", () => {
+  it("atomically allows returned payments beside one active current payment", () => {
     expect(returnedDraftMigration.trim()).toBe(
       [
+        "BEGIN;",
+        "",
         'DROP INDEX IF EXISTS "SpotProcurementPayment_one_current_per_procurement";',
         "",
         'CREATE UNIQUE INDEX "SpotProcurementPayment_one_current_per_procurement"',
         '  ON "SpotProcurementPayment"("procurementId")',
-        `  WHERE "status" NOT IN ('invalidated', 'voided', 'withdrawn', 'rejected', 'returned');`
+        `  WHERE "status" NOT IN ('invalidated', 'voided', 'withdrawn', 'rejected', 'returned');`,
+        "",
+        "COMMIT;"
       ].join("\n")
     );
 
