@@ -31,6 +31,10 @@ import {
   activeSpotProcurementAttachmentIds,
   retainedSpotProcurementAttachments
 } from "./spot-procurement-attachments";
+import {
+  paymentTaskRoute,
+  spotPaymentTaskPresentation
+} from "./spot-payment-workbench.config";
 
 type ActionKind =
   | "review_approve"
@@ -96,11 +100,7 @@ const linkedPayment = computed(() => {
 const linkedPaymentActionLabel = computed(() => {
   const payment = linkedPayment.value;
   if (!payment) return "";
-  if (payment.status === "draft") return "填写付款申请";
-  if (payment.currentTask.enabled && payment.currentTask.scope !== "none") {
-    return "处理付款";
-  }
-  return "查看付款申请";
+  return paymentActionLabel(payment);
 });
 const materialColumns = [
   { colKey: "sortOrder", title: "序号", width: 70 },
@@ -160,6 +160,20 @@ function actionLabel(key: string) {
 
 function paymentDetailUrl(paymentId: string) {
   return `/零星材料付款/${encodeURIComponent(paymentId)}?tab=current`;
+}
+
+function paymentActionLabel(
+  payment: SpotProcurementDetailReadModel["payments"][number]
+) {
+  const presentation = spotPaymentTaskPresentation(payment.currentTask);
+  if (
+    presentation.actionLabel === "填写" &&
+    paymentTaskRoute(payment.currentTask.key) === "edit-draft"
+  ) {
+    return "填写付款申请";
+  }
+  if (presentation.actionLabel === "处理") return "处理付款";
+  return "查看付款申请";
 }
 
 function openLinkedPayment() {
@@ -680,9 +694,10 @@ onMounted(() => void loadDetail());
           <template #operation="{ row }">
             <t-link
               theme="primary"
-              @click="router.push(paymentDetailUrl(row.id))"
+              :href="paymentDetailUrl(row.id)"
+              @click.prevent="router.push(paymentDetailUrl(row.id))"
             >
-              查看
+              {{ paymentActionLabel(row) }}
             </t-link>
           </template>
         </t-table>

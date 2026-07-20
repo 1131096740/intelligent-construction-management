@@ -99,7 +99,7 @@ function procurementListRow() {
   };
 }
 
-function procurementDetail() {
+function procurementDetail(paymentOverrides = {}) {
   return {
     procurement: {
       id: "procurement-1",
@@ -136,7 +136,7 @@ function procurementDetail() {
       unitPrice: "0", amountCents: "0", usageLocation: null, note: "免烧砖"
     }],
     invoiceComposition: "unknown", attachments: [], approval, approvalTimeline: [],
-    payments: [paymentListRow()], paymentSummary: procurementListRow().payment, receipt: receiptSummary,
+    payments: [paymentListRow(paymentOverrides)], paymentSummary: procurementListRow().payment, receipt: receiptSummary,
     invoiceCoverage: { available: false, status: "not_available", label: "新表单不使用结构化票据覆盖" },
     invoiceLedger: { available: false, currentCoordinates: null, invoices: [], allocations: [], noInvoiceConfirmations: [], invoiceExceptions: [] },
     discrepancy: { available: false, status: "not_available", label: "收货复核后可处理少货" },
@@ -201,7 +201,29 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   await mockLogin(page);
   await page.route("**/api/spot-procurements**", (route) => {
     const path = new URL(route.request().url()).pathname;
-    const body = path.endsWith("/receipt") ? receiptDetail() : path.endsWith("/procurement-1") ? procurementDetail() : { items: [procurementListRow()], truncated: false, limit: 200 };
+    const body = path.endsWith("/receipt")
+      ? receiptDetail()
+      : path.endsWith("/procurement-fill")
+        ? procurementDetail({
+            status: "draft",
+            statusLabel: "付款草稿",
+            currentTask: { key: "complete_payment_draft", label: "完善付款草稿", hint: "补齐付款信息", priority: 300, scope: "personal", enabled: true, disabledReason: null }
+          })
+        : path.endsWith("/procurement-view")
+          ? procurementDetail({
+              status: "draft",
+              statusLabel: "付款草稿",
+              currentTask: { key: "complete_payment_draft", label: "完善付款草稿", hint: "当前账号无办理权", priority: 300, scope: "personal", enabled: false, disabledReason: "当前账号无办理权" }
+            })
+          : path.endsWith("/procurement-unknown")
+            ? procurementDetail({
+                status: "draft",
+                statusLabel: "付款草稿",
+                currentTask: { key: "unknown_task", label: "未知任务", hint: "只读查看", priority: 300, scope: "personal", enabled: true, disabledReason: null }
+              })
+            : path.endsWith("/procurement-1")
+              ? procurementDetail()
+              : { items: [procurementListRow()], truncated: false, limit: 200 };
     return route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
   });
   await page.route("**/api/spot-procurement-payments**", (route) => {
@@ -268,14 +290,29 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
     const url = new URL(page.url());
     return `${decodeURIComponent(url.pathname)}${url.search}`;
   }).toBe("/零星材料付款/payment-1?tab=current");
+  await expect(page.getByRole("heading", { name: "A5 付款申请", exact: true })).toBeVisible();
+  await page.goto("/零星材料付款/payment-1?tab=unknown");
+  await expect(page.getByRole("heading", { name: "A5 付款申请", exact: true })).toBeVisible();
   await page.goto("/零星采购/procurement-1");
   await page.locator(".t-tabs").getByText("关联付款", { exact: true }).click();
   await expect(page.getByRole("button", { name: "处理付款", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "处理付款", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "处理付款", exact: true }).click();
   await expect.poll(() => {
     const url = new URL(page.url());
     return `${decodeURIComponent(url.pathname)}${url.search}`;
   }).toBe("/零星材料付款/payment-1?tab=current");
+  await page.goto("/零星采购/procurement-fill");
+  await page.locator(".t-tabs").getByText("关联付款", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "填写付款申请", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "填写付款申请", exact: true })).toBeVisible();
+  await page.goto("/零星采购/procurement-view");
+  await page.locator(".t-tabs").getByText("关联付款", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "查看付款申请", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "查看付款申请", exact: true })).toBeVisible();
+  await page.goto("/零星采购/procurement-unknown");
+  await page.locator(".t-tabs").getByText("关联付款", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "查看付款申请", exact: true })).toBeVisible();
   await page.goto("/零星采购工作台");
   await expect(page.getByText("供应商余额抵扣", { exact: true })).toHaveCount(0);
   await expectNoDocumentHorizontalOverflow(page);

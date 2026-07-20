@@ -75,7 +75,8 @@ const actionBusy = ref(false);
 const loadError = ref("");
 const actionMessage = ref("");
 const actionState = ref<"success" | "error">("success");
-const activeTab = ref("overview");
+type ExistingPaymentDetailTab = "overview" | "process" | "archive";
+const activeTab = ref<ExistingPaymentDetailTab>(paymentTabFromQuery(route.query.tab));
 const editVisible = ref(false);
 const payerVisible = ref(false);
 const editError = ref("");
@@ -164,6 +165,13 @@ const channelOptions = computed(() => (detail.value?.paymentChannels ?? []).filt
 })));
 const payerOptions = computed(() => companies.value.map((company) => ({ label: company.name, value: company.id })));
 
+watch(
+  () => route.query.tab,
+  (tab) => {
+    activeTab.value = paymentTabFromQuery(tab);
+  }
+);
+
 watch(() => executionForm.paymentMethod, () => {
   const channels = channelOptions.value;
   executionForm.paymentChannelId = channels.find((channel) => detail.value?.paymentChannels?.find((item) => item.id === channel.value)?.primary)?.value ?? channels[0]?.value ?? "";
@@ -196,6 +204,14 @@ function dateTime(value: string | null | undefined) {
 
 function readStatusLabel(value: { statusLabel?: string; label?: string }) {
   return value.statusLabel ?? value.label ?? "状态待读取";
+}
+
+function paymentTabFromQuery(value: unknown): ExistingPaymentDetailTab {
+  const tab = Array.isArray(value) ? value[0] : value;
+  if (tab === "current" || tab === "overview") return "overview";
+  if (tab === "process") return "process";
+  if (tab === "archive") return "archive";
+  return "overview";
 }
 
 function actionEnabled(key: string) {
