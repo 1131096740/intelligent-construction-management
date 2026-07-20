@@ -1693,7 +1693,31 @@ describe("SpotProcurementReadService", () => {
         projectScopedRoleKeys: ["material_director"],
         availableActions: []
       })
-    ).toMatchObject({ key: "none", scope: "none", priority: 0 });
+    ).toMatchObject({
+      key: "none",
+      scope: "none",
+      priority: 0,
+      enabled: false,
+      hint: "当前无需办理付款；后续需复核收货"
+    });
+
+    expect(
+      deriveSpotPaymentCurrentTask({
+        payment: paymentRow({ status: "approval_pending" }) as never,
+        approval: approval as never,
+        discrepancy: null,
+        actorUserId: "readonly-1",
+        roleKeys: ["employee"],
+        projectScopedRoleKeys: ["employee"],
+        availableActions: []
+      })
+    ).toMatchObject({
+      key: "none",
+      scope: "none",
+      priority: 0,
+      enabled: false,
+      hint: "当前付款无需您办理"
+    });
   });
 
   it("derives shared payer completion and project-finance blocking tasks", () => {

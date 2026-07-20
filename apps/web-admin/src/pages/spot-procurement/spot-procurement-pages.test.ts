@@ -120,6 +120,32 @@ describe("spot procurement web pages", () => {
     expect(`${component}\n${detail}`).not.toMatch(/转商户余额/u);
   });
 
+  it("reorganizes payment detail into six routed fact tabs and a server-driven current task", () => {
+    const detail = pageSource("SpotProcurementPaymentDetailPage.vue");
+    const panel = pageSource("components/PaymentCurrentTaskPanel.vue");
+
+    expect(detail).toContain("spotPaymentDetailTabs");
+    expect(detail).toContain("resolveSpotPaymentDetailTab(route.query.tab)");
+    expect(detail).toContain("router.replace({ query: { ...route.query, tab } })");
+    for (const tab of ["current", "application", "approval", "executions", "fulfillment", "archives"]) {
+      expect(detail).toContain(`activeTab === '${tab}'`);
+    }
+    expect(detail).not.toMatch(/label="(?:付款事实|审批与办理|审批原件与归档)"/u);
+    expect(detail.match(/<PaymentCurrentTaskPanel/gu)).toHaveLength(1);
+    expect(detail.match(/<PaymentCompositionCard/gu)).toHaveLength(1);
+    expect(detail.match(/<ApprovalTimeline/gu)).toHaveLength(1);
+    expect(detail.match(/<EvidenceFileCards/gu)).toHaveLength(1);
+
+    expect(panel).toContain("currentTask: SpotPaymentCurrentTask");
+    expect(panel).toContain("availableActions: DetailActionReadModel[]");
+    expect(panel).toContain("summary: SpotPaymentCurrentTaskSummary");
+    expect(panel).toContain("spotPaymentCurrentTaskPresentation");
+    expect(panel).toContain("<BusinessStatusText");
+    expect(panel).toContain("<t-button");
+    expect(panel).not.toMatch(/fetchSpot|useRoute|useRouter|roleKeys|material_director/u);
+    expect(panel).not.toContain(":disabled=");
+  });
+
   it("reuses one locked idempotency payload across execution retries", () => {
     const detail = pageSource(
       "SpotProcurementPaymentDetailPage.vue"

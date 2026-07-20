@@ -24,14 +24,22 @@ import {
 } from "../../api/company-entity.api";
 import { downloadApprovalForm, uploadPrivateFile } from "../../api/core-flow-read.api";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
-import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import BusinessDetailHeader from "../../components/BusinessDetailHeader.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
+import BusinessStatusText from "../../components/BusinessStatusText.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import { CORE_ARCHIVE_UPLOAD_POLICY, SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { centsTextToYuanText } from "../../lib/money";
 import PaymentCompositionCard from "./components/PaymentCompositionCard.vue";
+import PaymentCurrentTaskPanel from "./components/PaymentCurrentTaskPanel.vue";
+import {
+  resolveSpotPaymentDetailTab,
+  spotPaymentDetailTabs,
+  type SpotPaymentCurrentTaskAction,
+  type SpotPaymentDetailTab
+} from "./spot-payment-detail.config";
+import { spotPaymentStatusSemantic } from "./spot-payment-workbench.config";
 import {
   prepareSpotExecutionWithUploads,
   prepareSpotPaymentDraftWithUploads
@@ -75,8 +83,7 @@ const actionBusy = ref(false);
 const loadError = ref("");
 const actionMessage = ref("");
 const actionState = ref<"success" | "error">("success");
-type ExistingPaymentDetailTab = "overview" | "process" | "archive";
-const activeTab = ref<ExistingPaymentDetailTab>(paymentTabFromQuery(route.query.tab));
+const activeTab = ref<SpotPaymentDetailTab>(resolveSpotPaymentDetailTab(route.query.tab));
 const editVisible = ref(false);
 const payerVisible = ref(false);
 const editError = ref("");
@@ -127,7 +134,6 @@ let latestDetailRequestId = 0;
 const paymentId = computed(() => typeof route.params.paymentId === "string" ? route.params.paymentId : "");
 const payment = computed(() => detail.value?.payment ?? null);
 const isRealPayment = computed(() => payment.value?.form === "real_payment");
-const primaryAction = computed(() => detail.value?.availableActions.find((action) => action.key === detail.value?.primaryAction));
 const reviewAction = computed(() => detail.value?.availableActions.find((action) => action.key === "review_approval"));
 const payerManagement = computed(() => payment.value?.payerManagement ?? null);
 const nextStepLabel = computed(() => {
@@ -165,12 +171,26 @@ const channelOptions = computed(() => (detail.value?.paymentChannels ?? []).filt
   value: channel.id
 })));
 const payerOptions = computed(() => companies.value.map((company) => ({ label: company.name, value: company.id })));
+const currentTaskSummary = computed(() => ({
+  currentNodeName: detail.value?.approval.currentNodeName ?? "—",
+  status: payment.value?.status ?? "draft",
+  statusLabel: payment.value?.statusLabel ?? "状态待读取",
+  approvalAmountText: money(payment.value?.approvalAmountCents),
+  remainingAmountText: money(payment.value?.remainingAmountCents),
+  payerCompanyName: payment.value?.payerCompanyName ?? null
+}));
 
 watch(
   () => route.query.tab,
   (tab) => {
-    activeTab.value = paymentTabFromQuery(tab);
-  }
+    const normalized = resolveSpotPaymentDetailTab(tab);
+    activeTab.value = normalized;
+    const raw = Array.isArray(tab) ? tab[0] : tab;
+    if (raw !== normalized) {
+      void router.replace({ query: { ...route.query, tab: normalized } });
+    }
+  },
+  { immediate: true }
 );
 
 watch(() => executionForm.paymentMethod, () => {
@@ -207,21 +227,14 @@ function readStatusLabel(value: { statusLabel?: string; label?: string }) {
   return value.statusLabel ?? value.label ?? "状态待读取";
 }
 
-function paymentTabFromQuery(value: unknown): ExistingPaymentDetailTab {
-  const tab = Array.isArray(value) ? value[0] : value;
-  if (tab === "current") return "process";
-  if (tab === "overview") return "overview";
-  if (tab === "process") return "process";
-  if (tab === "archive") return "archive";
-  return "process";
+function selectPaymentTab(value: unknown) {
+  const tab = resolveSpotPaymentDetailTab(value);
+  activeTab.value = tab;
+  return router.replace({ query: { ...route.query, tab } });
 }
 
 function actionEnabled(key: string) {
   return Boolean(detail.value?.availableActions.find((action) => action.key === key)?.enabled);
-}
-
-function actionLabel(key: string) {
-  return detail.value?.availableActions.find((action) => action.key === key)?.label ?? "办理";
 }
 
 function showSuccess(message: string) { actionState.value = "success"; actionMessage.value = message; }
@@ -370,13 +383,13 @@ async function submitPayment() {
 
 function openConfirmation(kind: ConfirmationKind) {
   const configs: Record<ConfirmationKind, Omit<typeof confirmation, "visible" | "kind">> = {
-    review_approve: { title: "确认通过付款审批", description: "审批通过只进入待付款；不会自动产生实际付款事实。", confirmText: "确认通过", confirmTheme: "primary", requireReason: false, requirePassword: Boolean(reviewAction.value?.requiresSelfReviewConfirmation), reasonLabel: "审批意见" },
+    review_approve: { title: "确认通过付款审批", description: "审批通过只进入待付款；不会自动生成实际付款记录。", confirmText: "确认通过", confirmTheme: "primary", requireReason: false, requirePassword: Boolean(reviewAction.value?.requiresSelfReviewConfirmation), reasonLabel: "审批意见" },
     review_reject: { title: "驳回付款申请", description: "驳回将中止当前付款审批，请填写可执行的原因。", confirmText: "确认驳回", confirmTheme: "danger", requireReason: true, requirePassword: Boolean(reviewAction.value?.requiresSelfReviewConfirmation), reasonLabel: "驳回原因" },
     review_return: { title: "退回付款申请人", description: "退回会保留当前审批历史并生成新的付款草稿。", confirmText: "确认退回", confirmTheme: "danger", requireReason: true, requirePassword: Boolean(reviewAction.value?.requiresSelfReviewConfirmation), reasonLabel: "退回原因" },
     withdraw: { title: "撤回付款审批", description: "仅经办人可撤回审批中的付款申请。", confirmText: "确认撤回", confirmTheme: "danger", requireReason: false, requirePassword: false, reasonLabel: "撤回说明" },
     void: { title: "作废付款申请", description: "付款执行前可作废；作废会保留完整审计历史。", confirmText: "确认作废", confirmTheme: "danger", requireReason: true, requirePassword: false, reasonLabel: "作废原因" },
     download: { title: "下载付款审批单", description: "审批单下载会写入下载人、原因和审计轨迹。", confirmText: "确认下载", confirmTheme: "primary", requireReason: true, requirePassword: true, reasonLabel: "下载用途" },
-    execution: { title: "登记实际付款", description: "请登记本次实际付款事实。现金支付上传收据；其他方式上传成功付款凭证。", confirmText: "确认登记", confirmTheme: "primary", requireReason: false, requirePassword: true, reasonLabel: "登记说明" }
+    execution: { title: "登记实际付款", description: "请登记本次实际付款记录。现金支付上传收据；其他方式上传成功付款凭证。", confirmText: "确认登记", confirmTheme: "primary", requireReason: false, requirePassword: true, reasonLabel: "登记说明" }
   };
   Object.assign(confirmation, configs[kind], { visible: true, kind }); confirmationError.value = "";
   if (kind === "execution") fillExecutionDefaults();
@@ -444,7 +457,14 @@ async function prepareExecutionAttempt(): Promise<ExecutionAttempt> {
   );
 }
 
-function runPrimaryAction() { const key = primaryAction.value?.key; if (key === "submit_approval") void submitPayment(); else if (key === "review_approval") openConfirmation("review_approve"); else if (key === "record_execution") openConfirmation("execution"); }
+function handleCurrentTaskAction(key: SpotPaymentCurrentTaskAction["key"]) {
+  if (key === "edit_draft") openEdit();
+  else if (key === "submit_approval") void submitPayment();
+  else if (key === "review_approval") void selectPaymentTab("approval");
+  else if (key === "complete_payer") openPayer();
+  else if (key === "record_execution") openConfirmation("execution");
+  else if (key === "record_refund") void selectPaymentTab("fulfillment");
+}
 async function cancelConfirmation() { confirmationError.value = ""; if (confirmation.kind === "execution" && executionAttempt.value) { showSuccess("本次付款登记参数已安全保留；重试会沿用同一幂等键和已上传凭证。"); await loadDetail(); } }
 function resetExecutionAttempt() { executionAttempt.value = null; voucherFiles.value = []; }
 function selectedUploadFiles(files: UploadFile[]) { return files.map((file) => file.raw).filter((file): file is File => file instanceof File); }
@@ -491,9 +511,6 @@ watch(
         :next-step="nextStepLabel"
         :requested-amount="money(payment.approvalAmountCents)"
         amount-label="审批金额"
-        :primary-action-label="primaryAction?.label"
-        :primary-action-disabled="!primaryAction?.enabled || actionBusy"
-        @primary-action="runPrimaryAction"
       >
         <template #actions>
           <t-button
@@ -519,34 +536,34 @@ watch(
       <t-tabs
         v-model="activeTab"
         class="detail-tabs"
+        @change="selectPaymentTab"
       >
         <t-tab-panel
-          value="overview"
-          label="付款事实"
-        />
-        <t-tab-panel
-          value="process"
-          label="审批与办理"
-        />
-        <t-tab-panel
-          value="archive"
-          label="审批原件与归档"
+          v-for="tab in spotPaymentDetailTabs"
+          :key="tab.value"
+          :value="tab.value"
+          :label="tab.label"
         />
       </t-tabs>
 
       <section
-        v-if="activeTab === 'overview'"
+        v-if="activeTab === 'current'"
         class="detail-panel"
       >
-        <header><h2>A5 付款申请</h2><p>商户、收款对象、付款材料和渠道以付款申请冻结事实为准；采购申请不填写价格。</p></header>
-        <PaymentCompositionCard
-          :approval-amount-cents="payment.approvalAmountCents"
-          :actual-paid-amount-cents="payment.actualPaidAmountCents"
-          :refund-amount-cents="payment.refundAmountCents"
-          :net-paid-amount-cents="payment.netPaidAmountCents"
-          :remaining-amount-cents="payment.remainingAmountCents"
-          :payment-fact-consistent="payment.paymentFactConsistent"
+        <PaymentCurrentTaskPanel
+          :current-task="detail.currentTask"
+          :available-actions="detail.availableActions"
+          :summary="currentTaskSummary"
+          :busy="actionBusy"
+          @action="handleCurrentTaskAction"
         />
+      </section>
+
+      <section
+        v-else-if="activeTab === 'application'"
+        class="detail-panel"
+      >
+        <header><h2>付款申请</h2><p>展示 A5 冻结申请事实、材料、渠道与依据；采购申请不填写价格。</p></header>
         <div class="detail-grid">
           <div><dt>付款类型</dt><dd>{{ payment.paymentTypeLabel ?? "—" }}</dd></div><div><dt>实际商户</dt><dd>{{ payment.merchantName ?? "待填写" }}</dd></div><div><dt>收款对象</dt><dd>{{ payment.payee?.name ?? "待填写" }}</dd></div><div><dt>主收款渠道</dt><dd>{{ payment.payee?.primaryChannel?.channelTypeLabel ?? "待填写" }} {{ payment.payee?.primaryChannel?.accountNumberLast4 ? `· 尾号 ${payment.payee.primaryChannel.accountNumberLast4}` : "" }}</dd></div><div><dt>我方付款主体</dt><dd>{{ payment.payerCompanyName ?? "待财务/综合部确定" }}</dd></div><div><dt>商户/收款差异</dt><dd>{{ payment.merchantPayeeMismatchNote ?? "一致或未填写" }}</dd></div>
         </div>
@@ -582,13 +599,10 @@ watch(
             <template #accountNumberLast4="{ row }">
               {{ row.accountNumberLast4 ? `尾号 ${row.accountNumberLast4}` : "—" }}
             </template><template #primary="{ row }">
-              <t-tag
-                size="small"
-                :theme="row.primary ? 'success' : 'default'"
-                variant="light"
-              >
-                {{ row.primary ? "是" : "否" }}
-              </t-tag>
+              <BusinessStatusText
+                :text="row.primary ? '主渠道' : '备选渠道'"
+                :semantic="row.primary ? 'success' : 'neutral'"
+              />
             </template>
           </t-table><t-empty
             v-else
@@ -596,76 +610,21 @@ watch(
           />
         </section>
         <section><h3>付款依据（可选）</h3><EvidenceFileCards :files="detail.evidenceFiles" /></section>
-        <section>
-          <h3>逐笔实际付款</h3><t-table
-            v-if="detail.executions.length"
-            row-key="id"
-            size="small"
-            :data="detail.executions"
-            :columns="[{colKey:'paidAt',title:'付款时间',width:180},{colKey:'amountCents',title:'实付金额',width:130},{colKey:'paymentMethodLabel',title:'方式',width:110},{colKey:'executedBy',title:'登记人',width:110},{colKey:'vouchers',title:'凭证',width:150},{colKey:'active',title:'状态',width:100}]"
-          >
-            <template #paidAt="{row}">
-              {{ dateTime(row.paidAt) }}
-            </template><template #amountCents="{row}">
-              <strong>{{ money(row.amountCents) }}</strong>
-            </template><template #executedBy="{row}">
-              {{ row.executedBy.name }}
-            </template><template #vouchers="{row}">
-              {{ row.vouchers?.length ? `已关联 ${row.vouchers.length} 份` : row.voucherFileId ? '已关联 1 份' : '凭证待核对' }}
-            </template><template #active="{row}">
-              <t-tag
-                size="small"
-                :theme="row.active ? 'success' : 'default'"
-                variant="light"
-              >
-                {{ row.active ? '有效' : '已作废' }}
-              </t-tag>
-            </template>
-          </t-table><t-empty
-            v-else
-            description="付款审批通过后，由财务逐笔登记实际付款。"
-          />
-        </section>
-        <section>
-          <h3>收货、差异与发票</h3><t-alert
-            theme="info"
-            title="收货确认"
-            :message="readStatusLabel(detail.receipt)"
-          /><t-alert
-            v-if="detail.discrepancy"
-            theme="warning"
-            title="少货处理"
-            :message="detail.discrepancy.nextStep ?? '少货且已付款时仅允许商户补货或财务登记退款凭证。'"
-          /><t-alert
-            theme="info"
-            title="付款级发票"
-            :message="detail.invoice?.statusLabel ?? '发票资料可在付款后追加，关联整张付款申请。'"
-          />
-        </section>
       </section>
 
       <section
-        v-else-if="activeTab === 'process'"
+        v-else-if="activeTab === 'approval'"
         class="detail-panel"
       >
-        <header><h2>审批与办理</h2><p>审批通过不代表已付款；付款主体只在受控岗位和合法阶段可维护。</p></header>
-        <BusinessActionPanel :actions="detail.availableActions" />
-        <div class="action-buttons">
-          <t-button
-            v-if="actionEnabled('edit_draft') && isRealPayment"
-            variant="outline"
-            @click="openEdit"
-          >
-            编辑 A5 付款草稿
-          </t-button>
-          <t-button
-            v-if="actionEnabled('submit_approval')"
-            theme="primary"
-            :loading="actionBusy"
-            @click="submitPayment"
-          >
-            {{ actionLabel('submit_approval') }}
-          </t-button>
+        <header><h2>审批进度</h2><p>展示节点、人员、时间、结果、意见以及退回后重新提交的完整历史。</p></header>
+        <BusinessStatusText
+          :text="detail.approval.statusLabel"
+          :semantic="spotPaymentStatusSemantic(payment.status)"
+        />
+        <div
+          v-if="actionEnabled('review_approval') || actionEnabled('withdraw_approval') || actionEnabled('void_payment')"
+          class="action-buttons"
+        >
           <template v-if="actionEnabled('review_approval')">
             <t-button
               theme="primary"
@@ -673,6 +632,7 @@ watch(
             >
               审批通过
             </t-button><t-button
+              v-if="!isRealPayment"
               theme="danger"
               variant="outline"
               @click="openConfirmation('review_reject')"
@@ -693,13 +653,6 @@ watch(
             撤回审批
           </t-button>
           <t-button
-            v-if="actionEnabled('record_execution')"
-            theme="primary"
-            @click="openConfirmation('execution')"
-          >
-            登记实际付款
-          </t-button>
-          <t-button
             v-if="actionEnabled('void_payment')"
             theme="danger"
             variant="outline"
@@ -707,49 +660,137 @@ watch(
           >
             作废付款申请
           </t-button>
-          <t-button
-            v-if="actionEnabled('download_payment_pdf')"
-            variant="outline"
-            @click="openConfirmation('download')"
-          >
-            下载付款审批单
-          </t-button>
         </div>
         <t-card
           v-if="payerManagement?.visible"
           bordered
           title="我方付款主体与拟付款方式"
         >
-          <p>{{ payment.payerCompanyName ?? '尚未确定付款主体' }}；{{ detail.paymentMethods?.map((method) => method.label).join('、') || '尚未确定拟付款方式' }}</p><t-alert
+          <p>{{ payment.payerCompanyName ?? '尚未确定付款主体' }}；{{ detail.paymentMethods?.map((method) => method.label).join('、') || '尚未确定拟付款方式' }}</p>
+          <BusinessStatusText
             v-if="payerManagement.requiresReapproval"
-            theme="warning"
-            title="财务主管调整将重审"
-            message="确认变更后，综合部主管、项目经理和财务主管需要从综合部节点重新审批。"
-          /><t-button
-            :disabled="!payerManagement.enabled"
+            text="财务主管调整后将从综合部节点重新审批"
+            semantic="progress"
+          />
+          <t-button
+            v-if="payerManagement.enabled"
             @click="openPayer"
           >
             维护付款主体
-          </t-button><small v-if="payerManagement.disabledReason">{{ payerManagement.disabledReason }}</small>
+          </t-button>
+          <small v-else-if="payerManagement.disabledReason">{{ payerManagement.disabledReason }}</small>
         </t-card>
         <ApprovalTimeline :items="detail.approvalTimeline" />
       </section>
 
       <section
-        v-else
+        v-else-if="activeTab === 'executions'"
         class="detail-panel"
       >
-        <header><h2>审批原件与归档</h2><p>审批通过时冻结 A5 原件；后续实付、退款、收货和发票只追加归档版本，不改写原件。</p></header>
-        <t-alert
-          theme="info"
-          title="不可变审批原件"
-          :message="detail.approvalOriginal ? `已冻结于 ${dateTime(detail.approvalOriginal.createdAt)}` : '付款审批完成后生成。'"
+        <header><h2>实际付款与凭证</h2><p>审批通过不代表已付款；此处仅展示实付、退款、净付、剩余与逐笔凭证事实。</p></header>
+        <PaymentCompositionCard
+          :approval-amount-cents="payment.approvalAmountCents"
+          :actual-paid-amount-cents="payment.actualPaidAmountCents"
+          :refund-amount-cents="payment.refundAmountCents"
+          :net-paid-amount-cents="payment.netPaidAmountCents"
+          :remaining-amount-cents="payment.remainingAmountCents"
+          :payment-fact-consistent="payment.paymentFactConsistent"
         />
-        <t-alert
-          theme="info"
-          title="付款归档包"
-          :message="detail.archiveStatus?.label ?? '待付款审批完成后生成。'"
-        />
+        <section>
+          <h3>逐笔实际付款</h3><t-table
+            v-if="detail.executions.length"
+            row-key="id"
+            size="small"
+            :data="detail.executions"
+            :columns="[{colKey:'paidAt',title:'付款时间',width:180},{colKey:'amountCents',title:'实付金额',width:130},{colKey:'paymentMethodLabel',title:'方式',width:110},{colKey:'executedBy',title:'登记人',width:110},{colKey:'vouchers',title:'凭证',width:150},{colKey:'active',title:'状态',width:100}]"
+          >
+            <template #paidAt="{row}">
+              {{ dateTime(row.paidAt) }}
+            </template><template #amountCents="{row}">
+              <strong>{{ money(row.amountCents) }}</strong>
+            </template><template #executedBy="{row}">
+              {{ row.executedBy.name }}
+            </template><template #vouchers="{row}">
+              {{ row.vouchers?.length ? `已关联 ${row.vouchers.length} 份` : row.voucherFileId ? '已关联 1 份' : '凭证待核对' }}
+            </template><template #active="{row}">
+              <BusinessStatusText
+                :text="row.active ? '有效' : '已作废'"
+                :semantic="row.active ? 'success' : 'danger'"
+              />
+            </template>
+          </t-table><t-empty
+            v-else
+            description="付款审批通过后，由财务逐笔登记实际付款。"
+          />
+        </section>
+      </section>
+
+      <section
+        v-else-if="activeTab === 'fulfillment'"
+        class="detail-panel"
+      >
+        <section>
+          <header><h2>收货与发票</h2><p>只读展示收货进度、差异、退款衔接和付款级发票。</p></header>
+          <div class="detail-grid">
+            <div>
+              <dt>收货确认</dt><dd>
+                <BusinessStatusText
+                  :text="readStatusLabel(detail.receipt)"
+                  semantic="neutral"
+                />
+              </dd>
+            </div>
+            <div v-if="detail.discrepancy">
+              <dt>少货处理</dt><dd>
+                <BusinessStatusText
+                  :text="detail.discrepancy.nextStep ?? '少货且已付款时仅允许商户补货或财务登记退款凭证。'"
+                  semantic="progress"
+                />
+              </dd>
+            </div>
+            <div>
+              <dt>付款级发票</dt><dd>
+                <BusinessStatusText
+                  :text="detail.invoice?.statusLabel ?? '发票资料可在付款后追加，关联整张付款申请。'"
+                  semantic="neutral"
+                />
+              </dd>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section
+        v-else-if="activeTab === 'archives'"
+        class="detail-panel"
+      >
+        <header><h2>归档资料</h2><p>展示不可变 A5 审批文件、A4 采购来源、PDF 与追加归档包。</p></header>
+        <div class="detail-grid">
+          <div><dt>A4 采购申请</dt><dd>{{ payment.procurement.code }}</dd></div>
+          <div>
+            <dt>A5 审批文件</dt><dd>
+              <BusinessStatusText
+                :text="detail.approvalOriginal ? `已冻结于 ${dateTime(detail.approvalOriginal.createdAt)}` : '付款审批完成后生成'"
+                :semantic="detail.approvalOriginal ? 'success' : 'neutral'"
+              />
+            </dd>
+          </div>
+          <div>
+            <dt>付款归档包</dt><dd>
+              <BusinessStatusText
+                :text="detail.archiveStatus?.label ?? '待付款审批完成后生成'"
+                :semantic="detail.archiveStatus?.status === 'generated' ? 'success' : 'neutral'"
+              />
+            </dd>
+          </div>
+        </div>
+        <t-button
+          v-if="actionEnabled('download_payment_pdf')"
+          variant="outline"
+          @click="openConfirmation('download')"
+        >
+          下载付款审批单
+        </t-button>
         <t-table
           v-if="detail.archives?.length"
           row-key="id"
@@ -759,6 +800,11 @@ watch(
         >
           <template #versionNo="{row}">
             V{{ row.versionNo }}
+          </template><template #status="{row}">
+            <BusinessStatusText
+              :text="row.statusLabel ?? (row.status === 'generated' ? '已生成' : '待重试')"
+              :semantic="row.status === 'generated' ? 'success' : 'danger'"
+            />
           </template><template #files="{row}">
             {{ row.files.length }} 份
           </template><template #createdAt="{row}">

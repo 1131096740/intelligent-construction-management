@@ -3,6 +3,8 @@ import type { SpotProcurementPaymentDetailReadModel } from "../../api/spot-procu
 import {
   firstIncompletePaymentStep,
   resolveSpotPaymentMerchantPayee,
+  resolveSpotPaymentDetailTab,
+  spotPaymentCurrentTaskPresentation,
   spotPaymentDetailTabs
 } from "./spot-payment-detail.config";
 
@@ -16,6 +18,114 @@ describe("spot payment detail configuration", () => {
       { value: "fulfillment", label: "收货与发票" },
       { value: "archives", label: "归档资料" }
     ]);
+  });
+
+  it.each([
+    [undefined, "current"],
+    ["unknown", "current"],
+    [["approval", "current"], "approval"],
+    ["current", "current"],
+    ["application", "application"],
+    ["approval", "approval"],
+    ["executions", "executions"],
+    ["fulfillment", "fulfillment"],
+    ["archives", "archives"]
+  ])("normalizes route tab %j without leaving the page blank", (query, expected) => {
+    expect(resolveSpotPaymentDetailTab(query)).toBe(expected);
+  });
+
+  it.each([
+    {
+      role: "物资员",
+      task: task("complete_payment_draft", "完善付款草稿", "personal", 300),
+      currentNodeName: "待提交",
+      expectedTitle: "补全付款信息并提交",
+      expectedAction: "edit_draft"
+    },
+    {
+      role: "物资主管",
+      task: task("none", "无需办理", "none", 0, false, "当前无需办理付款；后续负责收货复核"),
+      currentNodeName: "综合部主管审批",
+      expectedTitle: "当前无需办理付款",
+      expectedAction: null,
+      expectedDescription: "当前无需办理付款；后续负责收货复核"
+    },
+    {
+      role: "综合部主管",
+      task: task("review_payment", "处理付款审批", "personal", 300),
+      currentNodeName: "综合部主管审批",
+      expectedTitle: "办理付款审批",
+      expectedAction: "review_approval"
+    },
+    {
+      role: "项目经理",
+      task: task("review_payment", "处理付款审批", "personal", 300),
+      currentNodeName: "项目经理审批",
+      expectedTitle: "办理付款审批",
+      expectedAction: "review_approval"
+    },
+    {
+      role: "财务人员审批前",
+      task: task("complete_payer", "补充付款主体", "shared", 200),
+      currentNodeName: "综合部主管审批",
+      expectedTitle: "协作补全付款主体与方式",
+      expectedAction: "complete_payer"
+    },
+    {
+      role: "财务人员审批完成后",
+      task: task("record_execution", "登记公司实际付款", "personal", 300),
+      currentNodeName: "审批完成",
+      expectedTitle: "登记实际付款",
+      expectedAction: "record_execution"
+    },
+    {
+      role: "财务主管",
+      task: task("review_payment", "处理付款审批", "personal", 300),
+      currentNodeName: "财务主管审批",
+      expectedTitle: "办理付款审批",
+      expectedAction: "review_approval"
+    },
+    {
+      role: "董事长/总经理",
+      task: task("review_payment", "处理付款审批", "personal", 300),
+      currentNodeName: "董事长/总经理 OR 签",
+      expectedTitle: "办理最终审批",
+      expectedAction: "review_approval"
+    }
+  ])("derives the $role scene from server task facts", ({ task: currentTask, currentNodeName, expectedTitle, expectedAction, expectedDescription }) => {
+    const presentation = spotPaymentCurrentTaskPresentation({
+      currentTask,
+      availableActions: actionFixtures(),
+      summary: {
+        currentNodeName,
+        status: "approval_pending",
+        statusLabel: "审批中",
+        approvalAmountText: "¥3,000.00",
+        remainingAmountText: "¥1,200.00",
+        payerCompanyName: "云南建工有限公司"
+      }
+    });
+
+    expect(presentation.title).toBe(expectedTitle);
+    expect(presentation.actions[0]?.key ?? null).toBe(expectedAction);
+    if (expectedDescription) expect(presentation.description).toBe(expectedDescription);
+  });
+
+  it("does not expose disabled high-risk actions for a read-only task", () => {
+    const presentation = spotPaymentCurrentTaskPresentation({
+      currentTask: task("review_payment", "处理付款审批", "personal", 300),
+      availableActions: actionFixtures().map((action) => ({ ...action, enabled: false })),
+      summary: {
+        currentNodeName: "财务主管审批",
+        status: "approval_pending",
+        statusLabel: "审批中",
+        approvalAmountText: "¥3,000.00",
+        remainingAmountText: "¥3,000.00",
+        payerCompanyName: null
+      }
+    });
+
+    expect(presentation.actions).toEqual([]);
   });
 
   it("returns the first incomplete saved draft step", () => {
@@ -212,4 +322,24 @@ function cashChannel(id: string, primary: boolean) {
     note: null,
     primary
   };
+}
+
+function task(
+  key: string,
+  label: string,
+  scope: "personal" | "shared" | "none",
+  priority: 400 | 300 | 200 | 0,
+  enabled = true,
+  hint = label
+) {
+  return { key, label, hint, scope, priority, enabled, disabledReason: null };
+}
+
+function actionFixtures() {
+  return [
+    { key: "edit_draft", label: "编辑 A5 付款草稿", kind: "normal" as const, enabled: true, disabledReason: null },
+    { key: "submit_approval", label: "提交付款审批", kind: "primary" as const, enabled: true, disabledReason: null },
+    { key: "review_approval", label: "处理付款审批", kind: "primary" as const, enabled: true, disabledReason: null },
+    { key: "record_execution", label: "登记实际付款", kind: "primary" as const, enabled: true, disabledReason: null }
+  ];
 }

@@ -330,6 +330,12 @@ export function deriveSpotPaymentCurrentTask(input: {
       disabledReason: null
     };
   }
+  if (input.roleKeys.includes("material_director")) {
+    return {
+      ...NO_SPOT_PAYMENT_TASK,
+      hint: "当前无需办理付款；后续需复核收货"
+    };
+  }
   return { ...NO_SPOT_PAYMENT_TASK };
 }
 
