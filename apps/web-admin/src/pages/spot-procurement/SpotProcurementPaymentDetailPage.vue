@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { UploadFile } from "tdesign-vue-next";
-import { computed, reactive, ref, watch } from "vue";
+import { computed, nextTick, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   fetchSpotProcurementPaymentDetail,
@@ -26,12 +26,17 @@ import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import BusinessStatusText from "../../components/BusinessStatusText.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
-import { CORE_ARCHIVE_UPLOAD_POLICY, SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
+import { CORE_ARCHIVE_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { centsTextToYuanText } from "../../lib/money";
 import PaymentCompositionCard from "./components/PaymentCompositionCard.vue";
+import PaymentApplicationStepper, {
+  type PaymentApplicationDraft
+} from "./components/PaymentApplicationStepper.vue";
 import PaymentCurrentTaskPanel from "./components/PaymentCurrentTaskPanel.vue";
 import {
+  firstIncompletePaymentStep,
+  resolveSpotPaymentMerchantPayee,
   resolveSpotPaymentDetailTab,
   spotPaymentApprovalStatusSemantic,
   spotPaymentDetailTabs,
@@ -45,26 +50,6 @@ import {
 } from "./spot-procurement-write-validation";
 
 type ConfirmationKind = "review_approve" | "review_reject" | "review_return" | "withdraw" | "void" | "download" | "execution";
-type PaymentLineDraft = {
-  procurementLineId: string;
-  materialName: string;
-  specification: string | null;
-  unit: string;
-  approvedQuantity: string;
-  included: boolean;
-  paymentQuantity: string;
-  unitPrice: string;
-  expectedInvoiceCondition: "vat_general" | "vat_special" | "no_invoice";
-  vatRateOptionId: string;
-};
-type ChannelDraft = {
-  channelType: SpotProcurementPaymentMethod;
-  accountName: string;
-  accountNumber: string;
-  bankName: string;
-  note: string;
-  isPrimary: boolean;
-};
 interface ExecutionAttempt {
   idempotencyKey: string;
   amountCents: string;
@@ -83,9 +68,10 @@ const loadError = ref("");
 const actionMessage = ref("");
 const actionState = ref<"success" | "error">("success");
 const activeTab = ref<SpotPaymentDetailTab>(resolveSpotPaymentDetailTab(route.query.tab));
-const editVisible = ref(false);
+const applicationVisible = ref(false);
+const applicationInitialStep = ref<0 | 1 | 2 | 3>(0);
 const payerVisible = ref(false);
-const editError = ref("");
+const applicationError = ref("");
 const payerError = ref("");
 const vatOptions = ref<VatRateOptionReadModel[]>([]);
 const companies = ref<CompanyEntityModel[]>([]);
@@ -94,14 +80,15 @@ const attachmentFiles = ref<UploadFile[]>([]);
 const voucherFiles = ref<UploadFile[]>([]);
 const executionAttempt = ref<ExecutionAttempt | null>(null);
 const retainedAttachmentIds = ref<string[]>([]);
-const editForm = reactive({
+const editForm = reactive<PaymentApplicationDraft>({
   paymentType: "company_direct" as "company_direct" | "handler_reimbursement",
   merchantName: "",
+  payeeDiffersFromMerchant: false,
   payeeName: "",
   merchantPayeeMismatchNote: "",
-  paymentMethods: ["bank_transfer"] as SpotProcurementPaymentMethod[],
-  lines: [] as PaymentLineDraft[],
-  channels: [] as ChannelDraft[],
+  paymentMethods: [] as SpotProcurementPaymentMethod[],
+  lines: [],
+  channels: [],
   attachmentCategory: "merchant_quote" as "merchant_receipt" | "merchant_quote" | "merchant_invoice" | "other"
 });
 const payerForm = reactive({
@@ -148,11 +135,6 @@ const paymentMethodOptions = [
   { label: "微信", value: "wechat" },
   { label: "支付宝", value: "alipay" },
   { label: "其他", value: "other" }
-];
-const invoiceConditionOptions = [
-  { label: "普通增值税发票", value: "vat_general" },
-  { label: "专用增值税发票", value: "vat_special" },
-  { label: "无发票", value: "no_invoice" }
 ];
 const materialColumns = [
   { colKey: "sortOrder", title: "序号", width: 68 },
@@ -272,6 +254,10 @@ function openEdit() {
   editForm.merchantName = current.payment.merchantName ?? "";
   editForm.payeeName = current.payment.payee?.name ?? "";
   editForm.merchantPayeeMismatchNote = current.payment.merchantPayeeMismatchNote ?? "";
+  editForm.payeeDiffersFromMerchant = editForm.paymentType === "company_direct" && Boolean(
+    editForm.payeeName.trim() &&
+    editForm.payeeName.trim() !== editForm.merchantName.trim()
+  );
   editForm.paymentMethods = (current.paymentMethods ?? []).map((method) => method.value);
   editForm.lines = (current.procurementMaterials ?? []).map((material) => {
     const line = paymentLines.get(material.id);
@@ -287,36 +273,51 @@ function openEdit() {
   editForm.channels = (current.paymentChannels ?? []).map((channel) => ({
     channelType: channel.channelType, accountName: channel.accountName ?? "", accountNumber: "", bankName: channel.bankName ?? "", note: channel.note ?? "", isPrimary: channel.primary
   }));
-  if (!editForm.channels.length) editForm.channels = [newChannel("bank_transfer", true)];
   retainedAttachmentIds.value = current.evidenceFiles.filter((file) => file.status === "active").map((file) => file.fileId);
-  attachmentFiles.value = []; editError.value = ""; editVisible.value = true;
+  attachmentFiles.value = [];
+  applicationError.value = "";
+  applicationInitialStep.value = firstIncompletePaymentStep(current);
+  applicationVisible.value = true;
   void Promise.all([loadHistoricalMerchants(current.payment.project.id), loadVatOptions()]);
 }
 
 async function loadVatOptions() {
-  try { vatOptions.value = await fetchVatRateOptions(); } catch (error) { editError.value = error instanceof Error ? error.message : "税率选项读取失败"; }
+  try { vatOptions.value = await fetchVatRateOptions(); } catch (error) { applicationError.value = error instanceof Error ? error.message : "税率选项读取失败"; }
 }
 
-function newChannel(type: SpotProcurementPaymentMethod, isPrimary = false): ChannelDraft {
-  return { channelType: type, accountName: "", accountNumber: "", bankName: "", note: "", isPrimary };
-}
-function addChannel() { editForm.channels.push(newChannel(editForm.paymentMethods[0] ?? "bank_transfer", editForm.channels.length === 0)); }
-function removeChannel(index: number) { if (editForm.channels.length === 1) return; const removed = editForm.channels[index]; editForm.channels.splice(index, 1); if (removed?.isPrimary) editForm.channels[0]!.isPrimary = true; }
-function setPrimary(index: number) { editForm.channels.forEach((channel, channelIndex) => { channel.isPrimary = channelIndex === index; }); }
-
-async function saveDraft() {
+async function saveApplicationDraft(
+  exitAfterSave: boolean,
+  draftSnapshot?: PaymentApplicationDraft
+) {
   const current = detail.value;
-  if (!current) return;
-  actionBusy.value = true; editError.value = "";
+  if (!current) return false;
+  if (draftSnapshot) Object.assign(editForm, draftSnapshot);
+  actionBusy.value = true; applicationError.value = "";
   try {
     const lines = editForm.lines.filter((line) => line.included);
+    assertPaymentQuantitiesWithinApproval(lines);
+    const payee = resolveSpotPaymentMerchantPayee(
+      editForm.paymentType === "handler_reimbursement"
+        ? {
+            paymentType: "handler_reimbursement",
+            merchantName: editForm.merchantName,
+            handlerPayeeNameSnapshot: current.payment.handler.name
+          }
+        : {
+            paymentType: "company_direct",
+            merchantName: editForm.merchantName,
+            payeeDiffersFromMerchant: editForm.payeeDiffersFromMerchant,
+            payeeName: editForm.payeeName,
+            mismatchNote: editForm.merchantPayeeMismatchNote
+          }
+    );
     const retained = current.evidenceFiles.filter((file) => retainedAttachmentIds.value.includes(file.fileId) && file.status === "active").map((file) => ({ fileId: file.fileId, category: normalizeAttachmentCategory(file.purpose) }));
     const payload = await prepareSpotPaymentDraftWithUploads(
       {
         paymentType: editForm.paymentType,
-        merchantName: editForm.merchantName,
-        payeeName: editForm.paymentType === "handler_reimbursement" ? current.payment.handler.name : editForm.payeeName,
-        merchantPayeeMismatchNote: editForm.merchantPayeeMismatchNote,
+        merchantName: payee.merchantName,
+        payeeName: payee.payeeName,
+        merchantPayeeMismatchNote: payee.merchantPayeeMismatchNote,
         paymentLines: lines,
         paymentMethods: editForm.paymentMethods,
         channels: editForm.channels
@@ -327,9 +328,37 @@ async function saveDraft() {
       uploadPrivateFile
     );
     await updateSpotProcurementPaymentDraft(current.payment.id, payload);
-    editVisible.value = false; showSuccess("A5 付款申请草稿已保存，审批金额已按付款材料重新计算。"); await loadDetail();
-  } catch (error) { editError.value = error instanceof Error ? error.message : "付款草稿保存失败"; }
-  finally { actionBusy.value = false; }
+    showSuccess("A5 付款申请草稿已保存，审批金额已按付款材料重新计算。");
+    await loadDetail();
+    if (exitAfterSave) {
+      applicationVisible.value = false;
+      await restoreApplicationTriggerFocus();
+    }
+    return true;
+  } catch (error) {
+    applicationError.value = error instanceof Error ? error.message : "付款草稿保存失败";
+    return false;
+  } finally { actionBusy.value = false; }
+}
+
+async function submitApplication(draftSnapshot: PaymentApplicationDraft) {
+  const current = detail.value;
+  if (!current || !(await saveApplicationDraft(false, draftSnapshot))) return;
+  actionBusy.value = true;
+  try {
+    await submitSpotProcurementPayment(current.payment.id);
+    applicationVisible.value = false;
+    showSuccess("付款申请已提交审批。综合部主管通过前必须确定我方付款主体和拟付款方式。");
+    await loadDetail();
+    await restoreApplicationTriggerFocus();
+  } catch (error) {
+    applicationError.value = error instanceof Error ? error.message : "付款申请提交失败";
+  } finally { actionBusy.value = false; }
+}
+
+async function cancelApplication() {
+  applicationVisible.value = false;
+  await restoreApplicationTriggerFocus();
 }
 
 function openPayer() {
@@ -362,14 +391,6 @@ async function savePayer() {
     await updateSpotProcurementPaymentPayer(current.payment.id, { companyEntityId: requiredText(payerForm.companyEntityId, "付款主体"), paymentMethods: payerForm.paymentMethods, ...(payerForm.changeReason.trim() ? { changeReason: payerForm.changeReason.trim() } : {}) });
     payerVisible.value = false; showSuccess(current.payment.payerManagement?.requiresReapproval ? "付款主体已调整，综合部、项目经理和财务主管将从综合部节点重新审批。" : "付款主体和拟付款方式已保存。"); await loadDetail();
   } catch (error) { payerError.value = error instanceof Error ? error.message : "付款主体保存失败"; }
-  finally { actionBusy.value = false; }
-}
-
-async function submitPayment() {
-  const current = detail.value; if (!current) return;
-  actionBusy.value = true;
-  try { await submitSpotProcurementPayment(current.payment.id); showSuccess("付款申请已提交审批。综合部主管通过前必须确定我方付款主体和拟付款方式。"); await loadDetail(); }
-  catch (error) { showError(error, "付款申请提交失败"); }
   finally { actionBusy.value = false; }
 }
 
@@ -450,8 +471,7 @@ async function prepareExecutionAttempt(): Promise<ExecutionAttempt> {
 }
 
 function handleCurrentTaskAction(key: SpotPaymentCurrentTaskAction["key"]) {
-  if (key === "edit_draft") openEdit();
-  else if (key === "submit_approval") void submitPayment();
+  if (key === "edit_draft" || key === "submit_approval") openEdit();
   else if (key === "review_approval") void selectPaymentTab("approval");
   else if (key === "complete_payer") openPayer();
   else if (key === "record_execution") openConfirmation("execution");
@@ -467,6 +487,29 @@ function handleCurrentTaskAction(key: SpotPaymentCurrentTaskAction["key"]) {
 async function cancelConfirmation() { confirmationError.value = ""; if (confirmation.kind === "execution" && executionAttempt.value) { showSuccess("本次付款登记参数已安全保留；重试会沿用同一幂等键和已上传凭证。"); await loadDetail(); } }
 function resetExecutionAttempt() { executionAttempt.value = null; voucherFiles.value = []; }
 function selectedUploadFiles(files: UploadFile[]) { return files.map((file) => file.raw).filter((file): file is File => file instanceof File); }
+function assertPaymentQuantitiesWithinApproval(lines: PaymentApplicationDraft["lines"]) {
+  for (const line of lines) {
+    if (
+      /^\d+(?:\.\d{1,2})?$/u.test(line.paymentQuantity.trim()) &&
+      /^\d+(?:\.\d{1,2})?$/u.test(line.approvedQuantity.trim()) &&
+      compareDecimalText(line.paymentQuantity, line.approvedQuantity) > 0
+    ) {
+      throw new Error(`${line.materialName}的付款数量不能超过采购批准数量 ${line.approvedQuantity}`);
+    }
+  }
+}
+function compareDecimalText(left: string, right: string) {
+  const normalize = (value: string) => {
+    const [integer = "0", fraction = ""] = value.trim().split(".");
+    return BigInt(`${integer}${fraction.padEnd(2, "0").slice(0, 2)}`);
+  };
+  const difference = normalize(left) - normalize(right);
+  return difference < 0n ? -1 : difference > 0n ? 1 : 0;
+}
+async function restoreApplicationTriggerFocus() {
+  await nextTick();
+  document.querySelector<HTMLButtonElement>(".payment-current-task__actions button")?.focus();
+}
 function requiredText(value: string, label: string) { const normalized = value.trim(); if (!normalized) throw new Error(`请填写${label}`); return normalized; }
 function normalizeAttachmentCategory(value: string) { return ["merchant_receipt", "merchant_quote", "merchant_invoice", "other"].includes(value) ? value as "merchant_receipt" | "merchant_quote" | "merchant_invoice" | "other" : "other" as const; }
 function localDateTimeValue(date: Date) { const offset = date.getTimezoneOffset() * 60_000; return new Date(date.getTime() - offset).toISOString().slice(0, 19); }
@@ -561,6 +604,23 @@ watch(
           :summary="currentTaskSummary"
           :busy="actionBusy"
           @action="handleCurrentTaskAction"
+        />
+        <PaymentApplicationStepper
+          v-if="applicationVisible"
+          :detail="detail"
+          :draft="editForm"
+          :initial-step="applicationInitialStep"
+          :vat-options="vatOptions"
+          :historical-merchants="historicalMerchants"
+          :attachment-files="attachmentFiles"
+          :retained-attachment-ids="retainedAttachmentIds"
+          :busy="actionBusy"
+          :error="applicationError"
+          @update:attachment-files="attachmentFiles = $event"
+          @update:retained-attachment-ids="retainedAttachmentIds = $event"
+          @save="saveApplicationDraft(true, $event)"
+          @submit="submitApplication"
+          @cancel="cancelApplication"
         />
       </section>
 
@@ -866,140 +926,6 @@ watch(
           description="暂无付款归档版本"
         />
       </section>
-
-      <t-dialog
-        v-model:visible="editVisible"
-        header="编辑项目零星付款申请单"
-        width="min(1180px, 94vw)"
-        :close-on-overlay-click="false"
-        :confirm-btn="{ content: '保存付款草稿', loading: actionBusy }"
-        @confirm="saveDraft"
-      >
-        <div class="edit-form">
-          <t-alert
-            theme="info"
-            title="填写实际付款条件"
-            message="采购申请无价；这里才填写实际商户、收款对象、含税/无票单价、税率和付款方式。付款依据均为可选。"
-          />
-          <div class="edit-form__grid">
-            <label><span>付款类型</span><t-radio-group v-model="editForm.paymentType"><t-radio value="company_direct">公司直付</t-radio><t-radio value="handler_reimbursement">经办人垫付报回</t-radio></t-radio-group></label><label><span>实际商户名称</span><t-input
-              v-model="editForm.merchantName"
-              placeholder="实际购买的商户"
-            /></label><label><span>收款对象</span><t-input
-              v-model="editForm.payeeName"
-              :disabled="editForm.paymentType === 'handler_reimbursement'"
-              :placeholder="editForm.paymentType === 'handler_reimbursement' ? '自动为采购经办人' : '一张付款申请只能有一个收款对象'"
-            /></label>
-          </div>
-          <div
-            v-if="historicalMerchants.length"
-            class="merchant-suggestions"
-          >
-            <span>同项目历史商户名称（仅复制名称，不复制账户）</span><t-button
-              v-for="name in historicalMerchants"
-              :key="name"
-              size="small"
-              variant="outline"
-              @click="editForm.merchantName = name"
-            >
-              {{ name }}
-            </t-button>
-          </div>
-          <label v-if="editForm.paymentType === 'company_direct' && editForm.merchantName.trim() !== editForm.payeeName.trim()"><span>商户与收款对象不一致说明</span><t-textarea
-            v-model="editForm.merchantPayeeMismatchNote"
-            :autosize="{ minRows: 2, maxRows: 4 }"
-            placeholder="例如由商户指定个人或关联账户收款"
-          /></label>
-          <label><span>拟付款方式</span><t-checkbox-group
-            v-model="editForm.paymentMethods"
-            :options="paymentMethodOptions"
-          /></label>
-          <section class="edit-section">
-            <header><h3>付款材料</h3><p>可只选择本次实际付款材料；数量不得超过采购审批数量，单价填写含税或无票单价。</p></header><article
-              v-for="line in editForm.lines"
-              :key="line.procurementLineId"
-              class="payment-line"
-            >
-              <t-checkbox v-model="line.included">
-                {{ line.materialName }} {{ line.specification ? `· ${line.specification}` : '' }}（{{ line.unit }}，审批数量 {{ line.approvedQuantity }}）
-              </t-checkbox><div
-                v-if="line.included"
-                class="payment-line__fields"
-              >
-                <label><span>付款数量</span><t-input
-                  v-model="line.paymentQuantity"
-                  placeholder="最多 2 位小数"
-                /></label><label><span>含税/无票单价</span><t-input
-                  v-model="line.unitPrice"
-                  placeholder="最多 2 位小数，例如 4.00"
-                /></label><label><span>预计票据</span><t-select
-                  v-model="line.expectedInvoiceCondition"
-                  :options="invoiceConditionOptions"
-                /></label><label v-if="line.expectedInvoiceCondition !== 'no_invoice'"><span>税率</span><t-select
-                  v-model="line.vatRateOptionId"
-                  :options="vatOptions.map((option) => ({ label: option.label, value: option.id }))"
-                  placeholder="选择税率"
-                /></label>
-              </div>
-            </article>
-          </section>
-          <section class="edit-section">
-            <header><h3>收款渠道</h3><p>同一收款对象可登记多个渠道；仅一个主渠道。银行转账请完整填写账户名、账号和开户行。</p></header><article
-              v-for="(channel, index) in editForm.channels"
-              :key="index"
-              class="payment-channel"
-            >
-              <div class="payment-channel__head">
-                <strong>渠道 {{ index + 1 }}</strong><t-button
-                  size="small"
-                  variant="text"
-                  :disabled="editForm.channels.length === 1"
-                  @click="removeChannel(index)"
-                >
-                  删除
-                </t-button>
-              </div><div class="payment-line__fields">
-                <label><span>方式</span><t-select
-                  v-model="channel.channelType"
-                  :options="paymentMethodOptions"
-                /></label><label><span>账户名称</span><t-input v-model="channel.accountName" /></label><label><span>账号</span><t-input v-model="channel.accountNumber" /></label><label><span>开户银行</span><t-input v-model="channel.bankName" /></label><label><span>备注</span><t-input v-model="channel.note" /></label><label><span>主渠道</span><t-radio-group
-                  :model-value="channel.isPrimary ? String(index) : ''"
-                  @update:model-value="setPrimary(index)"
-                ><t-radio :value="String(index)">设为主渠道</t-radio></t-radio-group></label>
-              </div>
-            </article><t-button
-              variant="outline"
-              @click="addChannel"
-            >
-              新增收款渠道
-            </t-button>
-          </section>
-          <section class="edit-section">
-            <header><h3>付款依据（可选）</h3><p>可上传商家收据、报价单、商家发票或其他资料；付款后仍可按规则追加发票。</p></header><label><span>资料类别</span><t-select
-              v-model="editForm.attachmentCategory"
-              :options="[{label:'商家收据',value:'merchant_receipt'},{label:'商家报价单',value:'merchant_quote'},{label:'商家发票',value:'merchant_invoice'},{label:'其他',value:'other'}]"
-            /></label><t-upload
-              v-model="attachmentFiles"
-              theme="file-flow"
-              multiple
-              :auto-upload="false"
-              :accept="SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.acceptAttribute"
-              :size-limit="{ size: SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.limitBytes, unit: 'B' }"
-            /><label v-if="detail.evidenceFiles.length"><span>保留已有付款依据</span><t-checkbox-group v-model="retainedAttachmentIds"><t-checkbox
-              v-for="file in detail.evidenceFiles"
-              :key="file.fileId"
-              :value="file.fileId"
-              :disabled="file.status !== 'active'"
-            >{{ file.fileName }} · {{ file.purpose }}</t-checkbox></t-checkbox-group></label>
-          </section>
-          <t-alert
-            v-if="editError"
-            theme="error"
-            title="暂时无法保存"
-            :message="editError"
-          />
-        </div>
-      </t-dialog>
 
       <t-dialog
         v-model:visible="payerVisible"

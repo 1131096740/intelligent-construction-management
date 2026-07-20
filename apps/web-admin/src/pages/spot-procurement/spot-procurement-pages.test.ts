@@ -159,6 +159,28 @@ describe("spot procurement web pages", () => {
     expect(panel).not.toContain(":disabled=");
   });
 
+  it("uses an inline four-step A5 application instead of a full-form dialog", () => {
+    const detail = pageSource("SpotProcurementPaymentDetailPage.vue");
+    const stepper = pageSource("components/PaymentApplicationStepper.vue");
+
+    expect(detail).toContain("<PaymentApplicationStepper");
+    expect(detail).toContain("updateSpotProcurementPaymentDraft");
+    expect(detail).toContain("await saveApplicationDraft(false, draftSnapshot)");
+    expect(detail).toContain("await submitSpotProcurementPayment");
+    expect(detail).not.toContain('header="编辑项目零星付款申请单"');
+    expect(stepper).toContain("1. 付款与商户");
+    expect(stepper).toContain("2. 付款材料");
+    expect(stepper).toContain("3. 收款渠道与依据");
+    expect(stepper).toContain("4. 核对并提交");
+    expect(stepper).toContain("保存并退出");
+    expect(stepper).toContain("继续填写");
+    expect(stepper).toContain("上一步");
+    expect(stepper).toContain("下一步");
+    expect(stepper).toContain("提交付款审批");
+    expect(stepper).not.toMatch(/预计\s*3\s*[–—-]\s*5\s*分钟/u);
+    expect(stepper).not.toMatch(/updateSpotProcurementPaymentDraft|submitSpotProcurementPayment|fetch\(/u);
+  });
+
   it("reuses one locked idempotency payload across execution retries", () => {
     const detail = pageSource(
       "SpotProcurementPaymentDetailPage.vue"

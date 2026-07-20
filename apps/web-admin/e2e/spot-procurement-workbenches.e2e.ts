@@ -412,6 +412,103 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   await expect(page.getByText("发票是整张付款申请的可选附件", { exact: true })).toBeVisible();
 });
 
+test("keeps the inline A5 draft after a failed save and resumes from the first incomplete step", async ({ page }) => {
+  let saved = false;
+  let draftAttempts = 0;
+  const writeOrder: string[] = [];
+
+  await mockLogin(page);
+  await page.route("**/api/vat-rate-options", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
+  await page.route("**/api/spot-procurement-payments?*", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ items: [], viewCounts: { mine: 0, all: 0, closed: 0 }, amountSummary: null, truncated: false, limit: 200 })
+    })
+  );
+  await page.route("**/api/spot-procurement-payments/payment-stepper/draft", async (route) => {
+    draftAttempts += 1;
+    writeOrder.push("save");
+    const payload = route.request().postDataJSON();
+    expect(payload.payeeName).toBe("利民建材店");
+    expect(payload.paymentLines[0]).toMatchObject({ paymentQuantity: "10.00", unitPrice: "4.40" });
+    if (draftAttempts === 1) {
+      await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ message: "模拟保存失败" }) });
+      return;
+    }
+    saved = true;
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "payment-stepper", status: "draft" }) });
+  });
+  await page.route("**/api/spot-procurement-payments/payment-stepper/submission", async (route) => {
+    writeOrder.push("submit");
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "payment-stepper", status: "approval_pending" }) });
+  });
+  await page.route("**/api/spot-procurement-payments/payment-stepper", (route) => {
+    const base = paymentDetail();
+    const cashChannel = {
+      id: "channel-cash",
+      sortOrder: 1,
+      channelType: "cash",
+      channelTypeLabel: "现金",
+      accountName: null,
+      bankName: null,
+      accountNumberLast4: null,
+      note: null,
+      primary: true
+    };
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...base,
+        payment: {
+          ...base.payment,
+          id: "payment-stepper",
+          code: "LXFK-STEPPER",
+          payee: { ...base.payment.payee, primaryChannel: cashChannel }
+        },
+        materials: saved ? [{ ...base.materials[0], paymentQuantity: "10.00", unitPrice: "4.40", amountCents: "4400", expectedInvoiceCondition: "no_invoice", vatRateOptionId: null, vatRateLabel: null }] : [],
+        paymentMethods: [{ value: "cash", label: "现金" }],
+        paymentChannels: [cashChannel],
+        availableActions: [
+          { key: "edit_draft", label: "编辑 A5 付款草稿", kind: "normal", enabled: true, disabledReason: null },
+          { key: "submit_approval", label: "提交付款审批", kind: "primary", enabled: true, disabledReason: null }
+        ]
+      })
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await page.goto("/零星材料付款/payment-stepper?tab=current");
+  await page.getByRole("button", { name: "编辑 A5 付款草稿", exact: true }).click();
+
+  await expect(page.getByRole("heading", { name: "继续填写付款申请", exact: true })).toBeVisible();
+  await expect(page.locator(".t-dialog").filter({ hasText: "编辑项目零星付款申请单" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "2. 付款材料", exact: true })).toHaveAttribute("aria-current", "step");
+  await page.locator(".payment-application-stepper__card .t-checkbox").click();
+  const materialInputs = page.locator(".payment-application-stepper__card .payment-application-stepper__grid input");
+  await materialInputs.nth(0).fill("10.00");
+  await materialInputs.nth(1).fill("4.40");
+
+  await page.getByRole("button", { name: "保存并退出", exact: true }).click();
+  await expect(page.getByText("模拟保存失败", { exact: true })).toBeVisible();
+  await expect(materialInputs.nth(0)).toHaveValue("10.00");
+  await expect(materialInputs.nth(1)).toHaveValue("4.40");
+
+  await page.getByRole("button", { name: "保存并退出", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "继续填写付款申请", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await page.getByRole("button", { name: "编辑 A5 付款草稿", exact: true }).click();
+  await expect(page.getByRole("button", { name: "4. 核对并提交", exact: true })).toHaveAttribute("aria-current", "step");
+
+  writeOrder.length = 0;
+  await page.getByRole("region", { name: "继续填写付款申请" }).getByRole("button", { name: "提交付款审批", exact: true }).click();
+  await expect.poll(() => writeOrder).toEqual(["save", "submit"]);
+});
+
 test("routes an enabled refund task to the real receipt workflow and preserves frozen archive facts", async ({ page }) => {
   await mockLogin(page);
   await page.route("**/api/spot-procurement-payments/payment-refund", (route) => {
@@ -567,6 +664,7 @@ test("keeps the latest spot payment detail and reloads a replacement draft", asy
   await expect(page.getByText("LXFK-B", { exact: true })).toBeVisible();
   await expect(page.getByText("LXFK-A", { exact: true })).toHaveCount(0);
 
+  await page.locator(".t-tabs").getByText("审批进度", { exact: true }).click();
   await page.getByRole("button", { name: "撤回审批", exact: true }).click();
   const dialog = page.locator(".t-dialog").filter({ hasText: "撤回付款审批" });
   await dialog.getByRole("button", { name: "确认撤回", exact: true }).click();
