@@ -54,6 +54,33 @@ export interface ContractFieldDefinition {
   visibleWhen?: { fieldKey: string; operator: "eq" | "neq"; value: unknown };
 }
 
+const MATERIAL_PURCHASE_REMOVED_FIELDS = new Set(["deliveryDeadline"]);
+const OPTIONAL_PERIOD_FIELDS: Readonly<Record<string, ReadonlySet<string>>> = {
+  equipment_rental: new Set(["rentalStartDate", "rentalEndDate"]),
+  labor_subcontract: new Set(["plannedStartDate", "plannedEndDate"])
+};
+
+/**
+ * Applies company-wide field policy to historical template snapshots without
+ * mutating the immutable snapshot stored on a contract version.
+ */
+export function contractFieldsForBusinessUse(
+  contractTypeKey: string | null | undefined,
+  fields: ReadonlyArray<ContractFieldDefinition>
+): ContractFieldDefinition[] {
+  const typeKey = contractTypeKey ?? "";
+  const optionalKeys = OPTIONAL_PERIOD_FIELDS[typeKey];
+  return fields
+    .filter((field) =>
+      typeKey !== "material_purchase" || !MATERIAL_PURCHASE_REMOVED_FIELDS.has(field.key)
+    )
+    .map((field) =>
+      optionalKeys?.has(field.key) && field.required
+        ? { ...field, required: false }
+        : { ...field }
+    );
+}
+
 export interface ContractBillDefinition {
   key: string;
   name: string;

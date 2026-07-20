@@ -113,8 +113,8 @@ describe("settlement creation workbench structure", () => {
     expect(page).toContain("activeDraft.value?.availableActions ?? []");
     expect(page).toContain("activeDraft.lifecycleBlockers");
     expect(page).toContain("abandonSettlementDraftRecord");
-    expect(page).toContain("expectedRevision: saved.revision");
-    expect(page).toContain("const saved = await persistDraft(false)");
+    expect(page).toContain("expectedRevision: current.revision");
+    expect(page).not.toContain("const saved = await persistDraft(false)");
     expect(page).not.toContain("enabled: true");
   });
 

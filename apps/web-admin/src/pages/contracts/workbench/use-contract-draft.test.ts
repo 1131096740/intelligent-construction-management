@@ -115,6 +115,20 @@ afterEach(() => {
 });
 
 describe("useContractDraft", () => {
+  it("persists an incomplete manual amount as zero so autosave remains available", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench());
+    mockSaveDraft.mockResolvedValue({ version: { draftRevision: 4 } });
+
+    await draft.load("ct-1");
+    draft.model.amountSource = "manual";
+    draft.model.manualAmountCents = null;
+    draft.markDirty();
+
+    await expect(draft.saveNow()).resolves.toBe(true);
+    expect(mockSaveDraft.mock.calls[0]?.[1]).toMatchObject({ manualAmountCents: "0" });
+  });
+
   it("does not report an unavailable selection while candidate loading failed", () => {
     expect(companyEntitySelectionUnavailable({
       loaded: true,

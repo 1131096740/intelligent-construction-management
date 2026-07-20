@@ -488,6 +488,8 @@
                 v-else-if="activeSection === 'bills'"
                 :workbench="billWorkbench"
                 :disabled="editorDisabled"
+                :prepare-mutation="prepareGovernanceMutation"
+                :complete-mutation="completeGovernanceMutation"
                 @reload="reloadCurrent"
               />
               <ContractPaymentTermsSection
@@ -513,6 +515,8 @@
                   :workbench="workbench"
                   :disabled="editorDisabled"
                   :negotiation-refresh-token="negotiationRefreshToken"
+                  :prepare-mutation="prepareGovernanceMutation"
+                  :complete-mutation="completeGovernanceMutation"
                   @reload="reloadCurrent"
                   @negotiation-selection="selectedNegotiation = $event"
                   @negotiation-changed="onNegotiationChanged"
@@ -761,6 +765,7 @@ const {
   model,
   workbench,
   saveState,
+  saveError,
   conflict,
   dirty,
   isDirty,
@@ -768,6 +773,9 @@ const {
   load,
   markDirty,
   discardLocalState,
+  suspendAutosaveForLifecycleAction,
+  resumeAutosaveAfterLifecycleAction,
+  savedRevision,
   saveNow,
   createCheckpoint,
   restoreCheckpoint,
@@ -818,19 +826,22 @@ async function executeContractDraftAction(request: BusinessDraftActionRequest) {
     (action) => action.key === request.action && action.enabled
   );
   if (!allowed) throw new Error("当前结束操作已不可用，请刷新合同工作台后重试");
-  const saved = await saveNow();
-  if (!saved) throw new Error("合同草稿保存失败，已保留当前填写，本次未执行结束操作");
-  await loadExpectedWorkbench(current.contract.id);
-  const latest = workbench.value;
-  if (!latest) throw new Error("合同草稿刷新失败，本次未执行结束操作");
-  await abandonContractDraft(latest.version.id, {
-    expectedRevision: latest.version.draftRevision,
-    action: request.action,
-    ...(request.reason.trim() ? { reason: request.reason.trim() } : {})
-  });
-  discardLocalState();
-  navigationBypass.value = true;
-  await router.push({ path: "/contracts", query: { view: "ended" } });
+  if (!suspendAutosaveForLifecycleAction()) {
+    throw new Error("合同草稿正在保存，请等待保存完成后再结束草稿");
+  }
+  try {
+    await abandonContractDraft(current.version.id, {
+      expectedRevision: savedRevision.value,
+      action: request.action,
+      ...(request.reason.trim() ? { reason: request.reason.trim() } : {})
+    });
+    discardLocalState();
+    navigationBypass.value = true;
+    await router.push({ path: "/contracts", query: { view: "ended" } });
+  } catch (error) {
+    resumeAutosaveAfterLifecycleAction();
+    throw error;
+  }
 }
 
 // Sections are presentational: they emit a patch instead of mutating the shared
@@ -1486,7 +1497,7 @@ async function onSave() {
   if (writeLocked.value) return;
   const saved = await saveNow();
   if (!saved) {
-    errorMessage.value = "合同草稿未保存成功，已保留当前内容，请重试。";
+    errorMessage.value = saveError.value || "合同草稿未保存成功，已保留当前内容，请重试。";
   }
 }
 
@@ -1497,7 +1508,7 @@ async function prepareGovernanceMutation() {
   const saved = await saveNow();
   if (!saved) {
     submissionMessageTone.value = "error";
-    submissionMessage.value = "草稿保存失败，已保留当前内容，本次文件操作未执行。";
+    submissionMessage.value = `${saveError.value || "草稿保存失败"}；已保留当前内容，本次文件操作未执行。`;
     governanceMutationLocked.value = false;
     return null;
   }

@@ -59,13 +59,18 @@ describe("contract ledger page configuration", () => {
     );
   });
 
-  it("executes only server-advertised workbench actions after saving with CAS", () => {
+  it("executes only server-advertised workbench actions without forcing an invalid save", () => {
     const source = readFileSync(new URL("./ContractWorkbenchPage.vue", import.meta.url), "utf8");
     expect(source).toContain("<BusinessDraftAction");
     expect(source).toContain("workbench.value?.availableActions ?? []");
     expect(source).toContain("useUnsavedChangesGuard");
-    expect(source).toContain("const saved = await saveNow()");
-    expect(source).toContain("expectedRevision: latest.version.draftRevision");
+    expect(source).toContain("suspendAutosaveForLifecycleAction");
+    expect(source).toContain("expectedRevision: savedRevision.value");
+    const lifecycleActionSource = source.slice(
+      source.indexOf("async function executeContractDraftAction"),
+      source.indexOf("// Sections are presentational")
+    );
+    expect(lifecycleActionSource).not.toContain("saveNow()");
     expect(source).not.toContain("enabled: true");
   });
 

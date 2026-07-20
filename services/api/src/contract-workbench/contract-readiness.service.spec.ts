@@ -164,6 +164,41 @@ describe("ContractReadinessService", () => {
 
   const contract = { contractTypeKey: "material_purchase" };
 
+  it("does not block removed material deadlines or optional labor and rental dates", async () => {
+    const service = new ContractReadinessService();
+    const fieldVersion = {
+      ...version,
+      contractId: "contract-1",
+      templateSnapshot: {
+        ...version.templateSnapshot,
+        fieldSchema: [
+          { key: "deliveryDeadline", label: "交货期限", type: "date", required: true },
+          { key: "plannedStartDate", label: "计划开工日期", type: "date", required: true },
+          { key: "rentalStartDate", label: "租赁开始日期", type: "date", required: true }
+        ]
+      },
+      draftData: {}
+    };
+
+    const material = await service.check(tx() as never, fieldVersion, contract, false);
+    const labor = await service.check(
+      tx() as never,
+      fieldVersion,
+      { contractTypeKey: "labor_subcontract" },
+      false
+    );
+    const rental = await service.check(
+      tx() as never,
+      fieldVersion,
+      { contractTypeKey: "equipment_rental" },
+      false
+    );
+
+    expect(material.blocking).not.toContainEqual(expect.objectContaining({ key: "field.deliveryDeadline" }));
+    expect(labor.blocking).not.toContainEqual(expect.objectContaining({ key: "field.plannedStartDate" }));
+    expect(rental.blocking).not.toContainEqual(expect.objectContaining({ key: "field.rentalStartDate" }));
+  });
+
   function prismaForCheckAndStore(overrides: Record<string, unknown> = {}) {
     const transactionClient = {
       contractVersion: {

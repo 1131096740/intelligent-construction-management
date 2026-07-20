@@ -1900,19 +1900,8 @@ async function executeSettlementDraftAction(request: BusinessDraftActionRequest)
     throw new Error("该操作已不可用，请刷新草稿后重新确认。");
   }
 
-  const saved = await persistDraft(false);
-  if (!saved) {
-    throw new Error("当前填写内容尚未保存，草稿未终止；请先按页面提示修正后重试。");
-  }
-  const latestAction = saved.availableActions?.find(
-    (action) => action.key === request.action && action.enabled
-  );
-  if (!latestAction) {
-    throw new Error("草稿状态已经变化，本次未执行；请刷新后重新确认。");
-  }
-
-  await abandonSettlementDraftRecord(saved.projectId, saved.id, {
-    expectedRevision: saved.revision,
+  await abandonSettlementDraftRecord(current.projectId, current.id, {
+    expectedRevision: current.revision,
     action: request.action,
     ...(request.reason.trim() ? { reason: request.reason.trim() } : {})
   });

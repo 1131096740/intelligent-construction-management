@@ -7,6 +7,7 @@ import {
 import {
   CONTRACT_INVOICE_TYPES,
   CONTRACT_TAX_MODES,
+  contractFieldsForBusinessUse,
   contractPricingPolicy,
   normalizeTaxRatePercent,
   type ContractBillDefinition,
@@ -233,7 +234,10 @@ export class ContractReadinessService {
     const fieldData = this.fieldData(draftData);
     const clauses = this.clauses(version.clauseSnapshot);
 
-    for (const field of template.fieldSchema) {
+    for (const field of contractFieldsForBusinessUse(
+      contract.contractTypeKey,
+      template.fieldSchema
+    )) {
       if (
         field.required &&
         this.isVisible(field, fieldData) &&

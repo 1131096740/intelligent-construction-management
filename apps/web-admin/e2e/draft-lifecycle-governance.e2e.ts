@@ -274,6 +274,137 @@ test("结算模板只废弃未提交草稿版本且请求携带修订号", async
   });
 });
 
+test("合同工作台丢弃未保存修改后直接删除服务端草稿", async ({ page }) => {
+  await installSession(page);
+  let saveCalls = 0;
+  let abandonBody: Record<string, unknown> | null = null;
+  await page.route("**/api/projects/contract-create-options", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
+  await page.route("**/api/contract-number-rules", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
+  await page.route("**/api/contract-templates*", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
+  await page.route("**/api/contract-layout-templates*", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
+  await page.route("**/api/company-entities?*", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
+  await page.route("**/api/contract-workbench/version-delete/negotiation-rounds", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
+  await page.route("**/api/contract-workbench/version-delete", (route) => {
+    saveCalls += 1;
+    return route.fulfill({ contentType: "application/json", body: "{}" });
+  });
+  await page.route("**/api/contracts/version-delete/abandonment", (route) => {
+    abandonBody = route.request().postDataJSON() as Record<string, unknown>;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        contractVersionId: "version-delete",
+        status: "abandoned",
+        lifecycleKind: "pristine_draft",
+        action: "delete_pristine_draft",
+        abandonedAt: savedAt,
+        abandonedByUserId: "draft-governance-user",
+        reason: null,
+        idempotent: false
+      })
+    });
+  });
+  await page.route("**/api/contract-workbench/contract-delete", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      lifecycleKind: "pristine_draft",
+      availableLifecycleActions: ["delete_pristine_draft"],
+      availableActions: [{
+        key: "delete_pristine_draft",
+        label: "删除草稿",
+        kind: "danger",
+        enabled: true,
+        disabledReason: null,
+        requiresComment: false
+      }],
+      lifecycleBlockers: [],
+      lifecycleUpdatedAt: savedAt,
+      expectedDraftRevision: 7,
+      contract: {
+        id: "contract-delete",
+        temporaryCode: "草稿-20260720-0001",
+        code: null,
+        projectId: "project-1",
+        contractTypeKey: "material_purchase",
+        ownerUserId: "draft-governance-user",
+        name: "待删除材料采购合同"
+      },
+      version: {
+        id: "version-delete",
+        versionNo: 1,
+        status: "draft",
+        changeType: "original",
+        draftRevision: 7,
+        amountCents: "0",
+        pricingNature: "fixed_total",
+        amountSource: "manual",
+        taxFacts: {
+          invoiceType: "vat_special",
+          taxMode: "single_rate",
+          defaultTaxRatePercent: "3",
+          status: "draft",
+          source: "contract_document",
+          revision: 1,
+          frozenAt: null
+        },
+        draftData: { contractName: "待删除材料采购合同" },
+        clauseSnapshot: [],
+        templateSnapshot: {
+          fieldSchema: [{ key: "deliveryDeadline", label: "交货期限", type: "date", required: true }],
+          billSchema: [],
+          clauseSchema: [],
+          attachmentSchema: [],
+          validationSchema: []
+        }
+      },
+      parties: [],
+      bills: [],
+      paymentTerms: { originalText: "", stages: [] },
+      checkpoints: [],
+      documents: [],
+      readiness: { ready: false, blockingMessages: [], warningMessages: [] }
+    })
+  }));
+  await page.route("**/api/contracts/lifecycle-ledger?*", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      rows: [],
+      view: "ended",
+      summary: { formal_ledger: 0, my_drafts: 0, returned_for_revision: 0, ended: 1 },
+      meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 }
+    })
+  }));
+
+  await login(page);
+  await page.goto("/contracts/contract-delete/workbench");
+  await page.getByText("信息", { exact: true }).click();
+  await page.getByPlaceholder("请输入合同名称").fill("不会保存的本地修改");
+  await expect(page.getByRole("button", { name: "删除草稿" })).toBeVisible();
+  await page.getByRole("button", { name: "删除草稿" }).click();
+  await page.getByRole("button", { name: "确认删除草稿" }).click();
+
+  await expect.poll(() => abandonBody).toEqual({
+    expectedRevision: 7,
+    action: "delete_pristine_draft"
+  });
+  expect(saveCalls).toBe(0);
+  await expect
+    .poll(() => decodeURIComponent(new URL(page.url()).pathname + new URL(page.url()).search))
+    .toBe("/合同管理?view=ended");
+});
+
 test("合同已放弃记录只在已结束视图只读展示", async ({ page }, testInfo) => {
   await installSession(page);
   await page.route("**/api/contracts/lifecycle-ledger?*", (route) => {

@@ -28,6 +28,8 @@
         v-if="activeBill"
         :bill="activeBill"
         :disabled="disabled"
+        :prepare-mutation="prepareMutation"
+        :complete-mutation="completeMutation"
         @reload="emit('reload')"
       />
     </template>
@@ -43,6 +45,8 @@ import type { WorkbenchBill } from "./contract-bill-editor";
 const props = defineProps<{
   workbench: ContractWorkbenchReadModel | null;
   disabled: boolean;
+  prepareMutation?: () => Promise<ContractWorkbenchReadModel | null>;
+  completeMutation?: (reload: boolean) => Promise<void>;
 }>();
 
 const emit = defineEmits<{

@@ -1,6 +1,7 @@
 import {
   CONTRACT_INVOICE_TYPES,
   CONTRACT_TAX_MODES,
+  contractFieldsForBusinessUse,
   contractInvoiceTypeLabel,
   contractTaxModeLabel,
   normalizeTaxRatePercent,
@@ -43,9 +44,11 @@ const QUICK_TAX_RATES = new Set<TaxRateQuickValue>(["1", "3", "6", "9", "13"]);
 const LEGACY_TAX_FACT_FIELD_KEYS = new Set(["invoiceType", "taxRatePercent"]);
 
 export function contractProfessionalFields(
-  fields: ContractFieldDefinition[]
+  fields: ContractFieldDefinition[],
+  contractTypeKey?: string | null
 ): ContractFieldDefinition[] {
-  return fields.filter((field) => !LEGACY_TAX_FACT_FIELD_KEYS.has(field.key));
+  return contractFieldsForBusinessUse(contractTypeKey, fields)
+    .filter((field) => !LEGACY_TAX_FACT_FIELD_KEYS.has(field.key));
 }
 
 export function resolveTaxRatePercent(
