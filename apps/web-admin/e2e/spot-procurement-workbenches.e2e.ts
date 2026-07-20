@@ -305,6 +305,7 @@ async function loginAndOpenReceipt(page: Page) {
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Spot@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
   await page.goto("/零星采购收货/procurement-A");
 }
 
@@ -389,6 +390,7 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Spot@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
   await page.setViewportSize({ width: 1366, height: 768 });
 
   await page.goto("/零星采购工作台");
@@ -632,6 +634,7 @@ test("renders the seven trial roles from server tasks without privileged cross-r
     await rolePage.getByPlaceholder("请输入手机号").fill(`1390000000${index}`);
     await rolePage.getByPlaceholder("请输入密码").fill("Spot@2026");
     await rolePage.getByRole("button", { name: "登录" }).click();
+    await expect(rolePage).not.toHaveURL(/\/login(?:\?|$)/u);
     await rolePage.goto(`/零星材料付款/${paymentId}?tab=current`);
     await expect(rolePage.getByRole("heading", { name: current.title, exact: true })).toBeVisible();
     if (current.button) {
@@ -672,6 +675,7 @@ test("recovers a failed payment detail read without a blank screen", async ({ pa
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Spot@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
   await page.goto("/零星材料付款/payment-read-retry?tab=current");
   await expect(page.getByText("付款申请暂不可用", { exact: true })).toBeVisible();
   await expect(page.getByText("模拟读取失败", { exact: true })).toBeVisible();
@@ -756,6 +760,7 @@ test("locally resumes an incomplete A5 draft without inventing payment facts and
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Spot@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
   await page.goto("/零星材料付款/payment-stepper?tab=current");
   const secondEntry = page.getByRole("button", { name: "提交付款审批", exact: true });
   await secondEntry.click();
@@ -921,6 +926,7 @@ test("fails closed when switching A5 payment routes and discards stale option re
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Spot@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
   await page.goto("/零星材料付款/payment-A?tab=current");
   await page.getByRole("button", { name: "提交付款审批", exact: true }).click();
   await page.getByPlaceholder("实际购买的商户").fill("A敏感商户");
@@ -1098,6 +1104,7 @@ test("routes an enabled refund task to the real receipt workflow and preserves f
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Spot@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
 
   await page.goto("/零星材料付款/payment-refund?tab=current");
   const taskPanel = page.locator(".payment-current-task");
@@ -1198,6 +1205,7 @@ test("records two controlled executions from the frozen channel and refreshes se
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Spot@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
   await page.goto("/零星材料付款/payment-execution?tab=current");
 
   for (const expectedExecutionNo of [1, 2]) {
@@ -1319,6 +1327,7 @@ test("retries a failed execution with one upload, the same frozen attempt and a 
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Spot@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
   await page.goto("/零星材料付款/payment-execution-retry?tab=current");
 
   await page.getByRole("button", { name: "登记实际付款", exact: true }).click();
@@ -1369,6 +1378,7 @@ test("restores focus to the actual execution trigger after the drawer has closed
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Spot@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
   await page.goto("/零星材料付款/payment-execution-focus?tab=current");
 
   for (const width of [1280, 390]) {
@@ -1438,6 +1448,7 @@ test("opens one responsive A5 approval drawer, confirms facts, and posts the fro
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Spot@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
   await page.goto("/零星材料付款/payment-review?tab=current");
 
   const trigger = page.locator(".payment-current-task").getByRole("button", { name: "办理审批", exact: true });
@@ -1583,6 +1594,7 @@ test("closes payer and approval editors on an SPA payment switch without writing
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Spot@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
   await page.goto("/零星材料付款/payment-A?tab=current");
   await page.getByRole("button", { name: "维护付款主体", exact: true }).click();
   await expect(page.locator(".t-dialog").filter({ hasText: "维护我方付款主体" })).toBeVisible();
@@ -1692,6 +1704,7 @@ test("refreshes the completed payer task after a stale shared-role save gets 409
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Spot@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
   await page.goto("/零星材料付款/payment-payer?tab=current");
   await page.getByRole("button", { name: "维护付款主体", exact: true }).click();
   const dialog = page.locator(".t-dialog").filter({ hasText: "维护我方付款主体" });
@@ -1763,6 +1776,7 @@ test("keeps the latest spot payment detail and reloads a replacement draft", asy
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Spot@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
   await page.goto("/零星材料付款/payment-A?tab=current");
   await expect(page.getByText("LXFK-A", { exact: true })).toBeVisible();
 
@@ -1838,6 +1852,7 @@ test("keeps only the latest payment workbench request when views resolve out of 
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Spot@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
   await page.goto("/零星材料付款工作台");
   await expect.poll(() => pendingRequests.length).toBe(1);
   expect(pendingRequests[0]!.view).toBe("mine");
