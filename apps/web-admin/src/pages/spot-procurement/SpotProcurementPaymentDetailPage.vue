@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { BusinessSummaryTone } from "../../components/business-status-summary.config";
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -24,7 +23,6 @@ import {
 } from "../../api/company-entity.api";
 import { downloadApprovalForm, uploadPrivateFile } from "../../api/core-flow-read.api";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
-import BusinessDetailHeader from "../../components/BusinessDetailHeader.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import BusinessStatusText from "../../components/BusinessStatusText.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
@@ -208,13 +206,6 @@ watch(() => editForm.paymentType, (type) => {
 function money(value: string | null | undefined) {
   if (value === null || value === undefined) return "待确定";
   try { return `¥${centsTextToYuanText(value)}`; } catch { return "金额异常"; }
-}
-
-function statusTone(status: string): BusinessSummaryTone {
-  if (["paid", "settled"].includes(status)) return "success";
-  if (["approval_pending", "approved_pending_payment", "partially_paid"].includes(status)) return "warning";
-  if (["voided", "rejected", "invalidated"].includes(status)) return "danger";
-  return "primary";
 }
 
 function dateTime(value: string | null | undefined) {
@@ -501,18 +492,24 @@ watch(
       @action="loadDetail"
     />
     <template v-else-if="detail && payment">
-      <BusinessDetailHeader
-        :business-code="payment.code"
-        title="项目零星付款申请单"
-        :status="payment.statusLabel"
-        :status-tone="statusTone(payment.status)"
-        :owner="payment.handler.name"
-        :current-node="detail.approval.currentNodeName"
-        :next-step="nextStepLabel"
-        :requested-amount="money(payment.approvalAmountCents)"
-        amount-label="审批金额"
-      >
-        <template #actions>
+      <header class="payment-detail-header">
+        <div class="payment-detail-header__main">
+          <span class="payment-detail-header__code">{{ payment.code }}</span>
+          <div class="payment-detail-header__title-row">
+            <h1>项目零星付款申请单</h1>
+            <BusinessStatusText
+              :text="payment.statusLabel"
+              :semantic="spotPaymentStatusSemantic(payment.status)"
+            />
+          </div>
+          <dl class="payment-detail-header__facts">
+            <div><dt>审批金额</dt><dd>{{ money(payment.approvalAmountCents) }}</dd></div>
+            <div><dt>责任人</dt><dd>{{ payment.handler.name }}</dd></div>
+            <div><dt>当前节点</dt><dd>{{ detail.approval.currentNodeName }}</dd></div>
+            <div><dt>下一步</dt><dd>{{ nextStepLabel }}</dd></div>
+          </dl>
+        </div>
+        <div class="payment-detail-header__actions">
           <t-button
             variant="outline"
             :loading="loading"
@@ -525,8 +522,8 @@ watch(
           >
             返回工作台
           </t-button>
-        </template>
-      </BusinessDetailHeader>
+        </div>
+      </header>
       <t-alert
         v-if="!isRealPayment"
         theme="warning"
@@ -765,8 +762,54 @@ watch(
         class="detail-panel"
       >
         <header><h2>归档资料</h2><p>展示不可变 A5 审批文件、A4 采购来源、PDF 与追加归档包。</p></header>
+        <section>
+          <header><h3>关联采购原单</h3><p>以 A4 冻结版本和采购材料为准，不与 A5 付款材料、价格或票据条件混合。</p></header>
+          <div class="detail-grid">
+            <div><dt>A4 申请编号 / 版本</dt><dd>{{ payment.procurement.code }} / V{{ detail.procurementVersion.versionNo }}</dd></div>
+            <div><dt>采购项目</dt><dd>{{ payment.project.name }}</dd></div>
+            <div><dt>采购事由</dt><dd>{{ detail.procurementVersion.reason || "—" }}</dd></div>
+            <div><dt>采购备注</dt><dd>{{ detail.procurementVersion.note || "—" }}</dd></div>
+            <div>
+              <dt>A4 审批状态</dt><dd>
+                <BusinessStatusText
+                  :text="detail.procurementVersion.statusLabel"
+                  :semantic="detail.procurementVersion.status === 'approved' ? 'success' : 'neutral'"
+                />
+              </dd>
+            </div>
+            <div><dt>A4 审批时间</dt><dd>{{ dateTime(detail.procurementVersion.approvedAt) }}</dd></div>
+          </div>
+          <t-table
+            v-if="detail.procurementMaterials?.length"
+            row-key="id"
+            size="small"
+            table-layout="fixed"
+            :data="detail.procurementMaterials"
+            :columns="[{colKey:'sortOrder',title:'序号',width:68},{colKey:'materialName',title:'材料名称',width:180},{colKey:'specification',title:'规格型号',width:150},{colKey:'unit',title:'单位',width:80},{colKey:'approvedQuantity',title:'审批数量',width:110},{colKey:'note',title:'备注',width:180}]"
+            :scroll="{ x: 800 }"
+          >
+            <template #specification="{row}">
+              {{ row.specification ?? "—" }}
+            </template><template #approvedQuantity="{row}">
+              {{ row.approvedQuantity }}
+            </template><template #note="{row}">
+              {{ row.note ?? "—" }}
+            </template>
+          </t-table><t-empty
+            v-else
+            description="暂无可读取的 A4 冻结材料明细"
+          />
+          <div class="action-buttons">
+            <t-button
+              variant="outline"
+              @click="router.push(`/零星采购/${payment.procurement.id}`)"
+            >
+              查看 A4 原单、审批与 PDF 可用性
+            </t-button>
+          </div>
+          <small>审批单与 PDF 是否可下载，以关联采购原单当前返回的服务端事实为准。</small>
+        </section>
         <div class="detail-grid">
-          <div><dt>A4 采购申请</dt><dd>{{ payment.procurement.code }}</dd></div>
           <div>
             <dt>A5 审批文件</dt><dd>
               <BusinessStatusText
@@ -1041,5 +1084,7 @@ watch(
 </template>
 
 <style scoped>
+.payment-detail-header{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--jg-space-xl);padding-bottom:var(--jg-space-lg);border-bottom:var(--jg-border-width-base) solid var(--jg-color-border)}.payment-detail-header__main{display:grid;min-width:0;flex:1;gap:var(--jg-space-xs)}.payment-detail-header__code{color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta);font-weight:var(--jg-font-weight-semibold)}.payment-detail-header__title-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--jg-space-md)}.payment-detail-header__title-row h1{margin:0;color:var(--jg-color-text-primary);font-size:var(--jg-font-size-page-title);line-height:var(--jg-line-height-title)}.payment-detail-header__facts{display:flex;flex-wrap:wrap;gap:var(--jg-space-xl);margin:var(--jg-space-md) 0 0}.payment-detail-header__facts>div{display:grid;min-width:132px;gap:var(--jg-space-xs)}.payment-detail-header__facts dt{color:var(--jg-color-text-muted);font-size:var(--jg-font-size-meta)}.payment-detail-header__facts dd{margin:0;color:var(--jg-color-text-secondary);font-weight:var(--jg-font-weight-medium)}.payment-detail-header__actions{display:flex;flex:0 0 auto;flex-wrap:wrap;gap:var(--jg-space-sm)}
 .spot-payment-detail,.detail-panel,.edit-form,.edit-section,.confirmation-fields{display:grid;gap:var(--jg-space-lg);min-width:0;color:var(--jg-color-text-primary)}.detail-tabs{margin-top:var(--jg-space-lg)}.detail-panel{padding-top:var(--jg-space-md)}.detail-panel>header h2,.detail-panel>header p,.detail-panel h3,.edit-section h3,.edit-section p{margin:0}.detail-panel>header p,.edit-section p{margin-top:var(--jg-space-xs);color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}.detail-grid,.edit-form__grid,.payment-line__fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:var(--jg-space-md)}.detail-grid>div,.payment-line,.payment-channel{display:grid;gap:var(--jg-space-xs);padding:var(--jg-space-md);border:var(--jg-border-width-base) solid var(--jg-color-border);border-radius:var(--jg-radius-panel);background:var(--jg-color-bg-surface)}.detail-grid dt,.edit-form label>span,.confirmation-fields label>span,.merchant-suggestions>span{color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}.detail-grid dd{margin:0}.detail-panel>section{display:grid;gap:var(--jg-space-md)}.action-buttons,.merchant-suggestions{display:flex;flex-wrap:wrap;gap:var(--jg-space-sm);align-items:center}.edit-section{padding:var(--jg-space-md);border:var(--jg-border-width-base) solid var(--jg-color-border);border-radius:var(--jg-radius-panel)}.payment-channel__head{display:flex;align-items:center;justify-content:space-between;gap:var(--jg-space-sm)}.edit-form label,.confirmation-fields label{display:grid;gap:var(--jg-space-xs)}small{color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}
+@media(max-width:720px){.payment-detail-header{flex-direction:column}.payment-detail-header__actions{width:100%}}
 </style>

@@ -135,6 +135,13 @@ describe("spot procurement web pages", () => {
     expect(detail.match(/<PaymentCompositionCard/gu)).toHaveLength(1);
     expect(detail.match(/<ApprovalTimeline/gu)).toHaveLength(1);
     expect(detail.match(/<EvidenceFileCards/gu)).toHaveLength(1);
+    expect(detail).not.toContain("<BusinessDetailHeader");
+    expect(detail).not.toContain("<t-tag");
+    expect(detail).toContain(':text="payment.statusLabel"');
+    expect(detail).toContain(':data="detail.procurementMaterials"');
+    expect(detail).toContain("关联采购原单");
+    expect(detail).toContain("row.approvedQuantity");
+    expect(detail).toContain("router.push(`/零星采购/${payment.procurement.id}`)");
 
     expect(panel).toContain("currentTask: SpotPaymentCurrentTask");
     expect(panel).toContain("availableActions: DetailActionReadModel[]");
