@@ -73,13 +73,14 @@ function procurementListRow() {
     actualCost: { available: false, status: "not_available", label: "收货复核后按付款材料单价形成" },
     invoiceComposition: "unknown",
     payment: {
-      status: "partially_paid",
-      statusLabel: "部分已付",
-      approvalAmountCents: "440000",
-      actualPaidAmountCents: "220000",
-      refundAmountCents: "0",
-      netPaidAmountCents: "220000",
-      remainingAmountCents: "220000",
+      paymentId: "payment-1",
+      status: "pending_determination",
+      statusLabel: "付款金额待确定",
+      approvalAmountCents: null,
+      actualPaidAmountCents: null,
+      refundAmountCents: null,
+      netPaidAmountCents: null,
+      remainingAmountCents: null,
       visibilityRestricted: false
     },
     receipt: receiptSummary,
@@ -259,8 +260,23 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   await page.goto("/零星采购工作台");
   await expect(page.getByRole("heading", { name: "零星采购工作台" })).toBeVisible();
   await expect(page.getByText("LXCG-E2E-001", { exact: true })).toBeVisible();
-  await expect(page.getByText("付款：部分已付", { exact: true })).toBeVisible();
+  await expect(page.getByText("付款：付款金额待确定", { exact: true })).toBeVisible();
   await expect(page.getByText("收货：待确认收货", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "填写付款申请", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "填写付款申请", exact: true }).click();
+  await expect.poll(() => {
+    const url = new URL(page.url());
+    return `${decodeURIComponent(url.pathname)}${url.search}`;
+  }).toBe("/零星材料付款/payment-1?tab=current");
+  await page.goto("/零星采购/procurement-1");
+  await page.locator(".t-tabs").getByText("关联付款", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "处理付款", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "处理付款", exact: true }).click();
+  await expect.poll(() => {
+    const url = new URL(page.url());
+    return `${decodeURIComponent(url.pathname)}${url.search}`;
+  }).toBe("/零星材料付款/payment-1?tab=current");
+  await page.goto("/零星采购工作台");
   await expect(page.getByText("供应商余额抵扣", { exact: true })).toHaveCount(0);
   await expectNoDocumentHorizontalOverflow(page);
   await expectNoNestedHorizontalScrollers(page);

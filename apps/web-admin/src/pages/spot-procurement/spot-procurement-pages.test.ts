@@ -421,6 +421,21 @@ describe("spot procurement web pages", () => {
     expect(payment).not.toMatch(/title: "(?:付款主体|收款渠道|累计实付|收货|发票)/u);
   });
 
+  it("links an approved procurement only to the server-selected payment task", () => {
+    const workbench = pageSource("SpotProcurementWorkbenchPage.vue");
+    const detail = pageSource("SpotProcurementDetailPage.vue");
+
+    expect(workbench).toContain("填写付款申请");
+    expect(workbench).toContain("payment.paymentId");
+    expect(detail).toContain("填写付款申请");
+    expect(detail).toContain("处理付款");
+    expect(detail).toContain("查看付款申请");
+    expect(`${workbench}\n${detail}`).toContain("?tab=current");
+    expect(`${workbench}\n${detail}`).toContain("采购审批完成后将自动生成付款草稿");
+    expect(`${workbench}\n${detail}`).not.toContain("createSpotProcurementPaymentDraft");
+    expect(`${workbench}\n${detail}`).not.toContain("新建第二张付款申请");
+  });
+
   it("builds the payment workbench around server tasks and server summaries", () => {
     const payment = pageSource("SpotProcurementPaymentWorkbenchPage.vue");
     const queue = pageSource("components/PaymentTaskQueue.vue");

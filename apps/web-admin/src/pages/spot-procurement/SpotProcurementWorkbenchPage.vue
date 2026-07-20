@@ -15,7 +15,8 @@ import {
   type SpotProcurementApplicationTextSuggestionReadModel,
   type SpotProcurementCapabilitiesReadModel,
   type SpotProcurementCreateProjectOptionReadModel,
-  type SpotProcurementListItemReadModel
+  type SpotProcurementListItemReadModel,
+  type SpotProcurementRealPaymentSummaryReadModel
 } from "../../api/spot-procurement.api";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
@@ -77,7 +78,7 @@ const columns = [
   { colKey: "project", title: "项目", width: 180 },
   { colKey: "participants", title: "申请 / 采购", width: 135 },
   { colKey: "reason", title: "采购原因", width: 160 },
-  { colKey: "fulfillment", title: "付款与收货", width: 140 },
+  { colKey: "fulfillment", title: "付款与收货", width: 210 },
   { colKey: "status", title: "当前状态", width: 140 },
   { colKey: "operation", title: "操作", width: 80, fixed: "right" as const }
 ];
@@ -188,8 +189,21 @@ function receiptLabel(row: SpotProcurementListItemReadModel) {
 
 function isRealPaymentSummary(
   value: SpotProcurementListItemReadModel["payment"]
-) {
+): value is SpotProcurementRealPaymentSummaryReadModel {
   return "approvalAmountCents" in value;
+}
+
+function canFillPaymentDraft(row: SpotProcurementListItemReadModel) {
+  return (
+    row.status === "approved_in_progress" &&
+    isRealPaymentSummary(row.payment) &&
+    row.payment.paymentId !== null &&
+    ["pending_determination", "draft"].includes(row.payment.status)
+  );
+}
+
+function paymentDetailUrl(paymentId: string) {
+  return `/零星材料付款/${encodeURIComponent(paymentId)}?tab=current`;
 }
 
 function openDetail(procurementId: string) {
@@ -533,6 +547,20 @@ onMounted(() => {
             <div class="two-line-cell">
               <span>付款：{{ paymentLabel(row) }}</span>
               <span>收货：{{ receiptLabel(row) }}</span>
+              <t-link
+                v-if="canFillPaymentDraft(row)"
+                theme="primary"
+                :href="paymentDetailUrl(row.payment.paymentId)"
+                @click.prevent="router.push(paymentDetailUrl(row.payment.paymentId))"
+              >
+                填写付款申请
+              </t-link>
+              <span
+                v-else-if="row.status === 'approved_in_progress' && isRealPaymentSummary(row.payment) && row.payment.paymentId === null"
+                class="payment-draft-hint"
+              >
+                采购审批完成后将自动生成付款草稿
+              </span>
             </div>
           </template>
           <template #status="{ row }">

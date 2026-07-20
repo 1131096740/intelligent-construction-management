@@ -70,6 +70,13 @@ const ACTIVE_PAYMENT_STATUSES = new Set([
   "paid",
   "settled"
 ]);
+const TERMINAL_PAYMENT_STATUSES = new Set([
+  "invalidated",
+  "voided",
+  "withdrawn",
+  "rejected",
+  "returned"
+]);
 const PAYMENT_VOIDABLE_STATUSES = new Set([
   "draft",
   "approval_pending",
@@ -646,6 +653,10 @@ export class SpotProcurementReadService {
       actualPaidByPaymentId,
       accessibleRefunds
     );
+    const currentPaymentId = uniqueVisibleCurrentPaymentId(
+      allPayments,
+      accessiblePaymentIds
+    );
     const usesRealProcurementForm = isRealProcurementForm(currentVersion);
     const currentApprovalTimeline = await approvalTimelineForBusiness(
       this.prisma,
@@ -714,7 +725,10 @@ export class SpotProcurementReadService {
         ...(usesRealProcurementForm
           ? {
               form: "real_application",
-              payment: realPaymentSummary
+              payment: {
+                paymentId: currentPaymentId,
+                ...realPaymentSummary
+              }
             }
           : {
               form: "legacy",
@@ -748,6 +762,7 @@ export class SpotProcurementReadService {
       payments: paymentRows,
       paymentSummary: usesRealProcurementForm
         ? {
+            paymentId: currentPaymentId,
             ...realPaymentSummary,
             visibilityRestricted:
               accessiblePayments.length !== allPayments.length
@@ -1787,6 +1802,10 @@ export class SpotProcurementReadService {
             accessiblePaymentIds.has(refund.paymentId)
         )
       );
+      const currentPaymentId = uniqueVisibleCurrentPaymentId(
+        allRowPayments,
+        accessiblePaymentIds
+      );
       return [
         {
           id: row.id,
@@ -1819,6 +1838,7 @@ export class SpotProcurementReadService {
                 purchaserDepartment: version.purchaserDepartmentNameSnapshot,
                 requestedArrivalAt: version.requestedArrivalAt.toISOString(),
                 payment: {
+                  paymentId: currentPaymentId,
                   ...realPayment,
                   visibilityRestricted:
                     visiblePayments.length !== allRowPayments.length
@@ -3175,7 +3195,9 @@ function summarizeRealPaymentFacts(
   actualPaidByPaymentId: ReadonlyMap<string, bigint>,
   refunds: Array<Pick<SpotProcurementRefund, "paymentId" | "amountCents">>
 ) {
-  const captured = payments.filter((payment) => Boolean(payment.paymentType));
+  const captured = payments.filter(
+    (payment) => isCurrentPayment(payment) && Boolean(payment.paymentType)
+  );
   if (!captured.length) {
     return {
       status: "pending_determination",
@@ -3215,6 +3237,25 @@ function summarizeRealPaymentFacts(
       approvalAmountCents - actualPaidAmountCents
     ).toString()
   };
+}
+
+function uniqueVisibleCurrentPaymentId(
+  payments: readonly SpotProcurementPayment[],
+  accessiblePaymentIds: ReadonlySet<string>
+) {
+  const currentPayments = payments.filter(isCurrentPayment);
+  if (currentPayments.length !== 1) return null;
+  const [currentPayment] = currentPayments;
+  return currentPayment && accessiblePaymentIds.has(currentPayment.id)
+    ? currentPayment.id
+    : null;
+}
+
+function isCurrentPayment(payment: SpotProcurementPayment) {
+  return (
+    !TERMINAL_PAYMENT_STATUSES.has(payment.status) &&
+    payment.invalidatedAt === null
+  );
 }
 
 function realPaymentFactReadModel(

@@ -223,6 +223,7 @@ export interface SpotProcurementPaymentSummaryReadModel {
 }
 
 export interface SpotProcurementRealPaymentSummaryReadModel {
+  paymentId: string | null;
   status: string;
   statusLabel: string;
   approvalAmountCents: string | null;

@@ -88,6 +88,20 @@ const procurementId = computed(() =>
 const primaryAction = computed(() =>
   detail.value?.availableActions.find((action) => action.key === detail.value?.primaryAction)
 );
+const linkedPayment = computed(() => {
+  const paymentId = detail.value?.procurement.payment?.paymentId;
+  if (!paymentId) return null;
+  return detail.value?.payments.find((payment) => payment.id === paymentId) ?? null;
+});
+const linkedPaymentActionLabel = computed(() => {
+  const payment = linkedPayment.value;
+  if (!payment) return "";
+  if (payment.status === "draft") return "填写付款申请";
+  if (payment.currentTask.enabled && payment.currentTask.scope !== "none") {
+    return "处理付款";
+  }
+  return "查看付款申请";
+});
 const materialColumns = [
   { colKey: "sortOrder", title: "序号", width: 70 },
   { colKey: "materialName", title: "名称", width: 180 },
@@ -142,6 +156,15 @@ function actionEnabled(key: string) {
 
 function actionLabel(key: string) {
   return detail.value?.availableActions.find((action) => action.key === key)?.label ?? "";
+}
+
+function paymentDetailUrl(paymentId: string) {
+  return `/零星材料付款/${encodeURIComponent(paymentId)}?tab=current`;
+}
+
+function openLinkedPayment() {
+  if (!linkedPayment.value) return;
+  void router.push(paymentDetailUrl(linkedPayment.value.id));
 }
 
 async function loadDetail() {
@@ -630,6 +653,17 @@ onMounted(() => void loadDetail());
           title="付款事实"
           :message="paymentSummaryLabel(detail)"
         />
+        <t-button
+          v-if="linkedPayment"
+          theme="primary"
+          @click="openLinkedPayment"
+        >
+          {{ linkedPaymentActionLabel }}
+        </t-button>
+        <t-empty
+          v-if="!linkedPayment"
+          description="采购审批完成后将自动生成付款草稿"
+        />
         <t-table
           v-if="detail.payments.length"
           row-key="id"
@@ -646,16 +680,12 @@ onMounted(() => void loadDetail());
           <template #operation="{ row }">
             <t-link
               theme="primary"
-              @click="router.push(`/零星材料付款/${row.id}`)"
+              @click="router.push(paymentDetailUrl(row.id))"
             >
               查看
             </t-link>
           </template>
         </t-table>
-        <t-empty
-          v-else
-          description="采购审批完成后将自动生成付款草稿"
-        />
       </section>
 
       <section

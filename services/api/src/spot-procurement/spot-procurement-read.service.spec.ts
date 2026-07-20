@@ -802,6 +802,7 @@ describe("SpotProcurementReadService", () => {
       applicationName: "赵凤平",
       requestedArrivalAt: now.toISOString(),
       payment: {
+        paymentId: "payment-1",
         approvalAmountCents: "12000",
         actualPaidAmountCents: "5000",
         remainingAmountCents: "7000"
@@ -823,7 +824,7 @@ describe("SpotProcurementReadService", () => {
     expect(paymentList.items[0]).not.toHaveProperty("supplierBalanceAmountCents");
     expect(procurementDetail.procurement).toMatchObject({
       form: "real_application",
-      payment: { approvalAmountCents: "12000" }
+      payment: { paymentId: "payment-1", approvalAmountCents: "12000" }
     });
     expect(paymentDetail.payment).toMatchObject({
       form: "real_payment",
@@ -862,6 +863,77 @@ describe("SpotProcurementReadService", () => {
     ]);
     expect(paymentDetail).not.toHaveProperty("balanceExecution");
     expect(JSON.stringify(paymentDetail)).not.toContain("6222020202021234");
+  });
+
+  it.each([
+    {
+      name: "returns the only current visible payment",
+      payments: [
+        paymentRow({
+          id: "payment-old",
+          status: "returned",
+          paymentType: "company_direct"
+        }),
+        paymentRow({
+          id: "payment-current",
+          status: "draft",
+          paymentType: "company_direct"
+        })
+      ],
+      visibleIds: ["payment-old", "payment-current"],
+      expectedPaymentId: "payment-current",
+      expectedPaymentStatus: "draft"
+    },
+    {
+      name: "does not expose a current payment without payment access",
+      payments: [paymentRow({ id: "payment-current", status: "draft" })],
+      visibleIds: [],
+      expectedPaymentId: null,
+      expectedPaymentStatus: "pending_determination"
+    },
+    {
+      name: "fails closed instead of choosing an arbitrary current payment",
+      payments: [
+        paymentRow({ id: "payment-current-a", status: "draft" }),
+        paymentRow({ id: "payment-current-b", status: "approval_pending" })
+      ],
+      visibleIds: ["payment-current-a", "payment-current-b"],
+      expectedPaymentId: null,
+      expectedPaymentStatus: "pending_determination"
+    }
+  ])("$name", async ({ payments, visibleIds, expectedPaymentId, expectedPaymentStatus }) => {
+    const fixture = buildFixture();
+    const realVersion = versionRow({
+      totalAmountCents: null,
+      applicationDepartmentSnapshot: "工程部",
+      applicationNameSnapshot: "申请人",
+      purchaserNameSnapshot: "采购经办人",
+      purchaserDepartmentNameSnapshot: "物资部",
+      requestedArrivalAt: now
+    });
+    fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([realVersion]);
+    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue(payments);
+    fixture.access.accessiblePaymentIds.mockResolvedValue(new Set(visibleIds));
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const [list, detail] = await Promise.all([
+      service.listProcurements("finance-1", {}),
+      service.getProcurement("procurement-1", "finance-1")
+    ]);
+
+    expect(list.items[0]?.payment).toMatchObject({
+      paymentId: expectedPaymentId,
+      status: expectedPaymentStatus
+    });
+    expect(
+      (detail.procurement as { payment: unknown }).payment
+    ).toMatchObject({ paymentId: expectedPaymentId });
+    expect(detail.paymentSummary).toMatchObject({ paymentId: expectedPaymentId });
   });
 
   it("keeps an auto-created A5 draft editable before the handler selects its payment type", async () => {
