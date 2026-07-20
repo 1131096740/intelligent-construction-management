@@ -150,6 +150,7 @@ export interface SpotProcurementReceiptDetailReadModel {
     resolvedAt?: string | null;
     nextStep: string | null;
   };
+  availableActions: DetailActionReadModel[];
 }
 
 export interface SpotProcurementReceiptLineReadModel {

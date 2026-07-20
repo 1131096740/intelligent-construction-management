@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import type { RoleKey } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { AttachReceiptPhotoDto } from "./dto/attach-receipt-photo.dto";
@@ -253,6 +254,7 @@ describe("SpotProcurementReceiptService workflow", () => {
       procurementLineId: string;
       unitPrice: Prisma.Decimal;
     }>;
+    actionProjectRoleKeys?: RoleKey[];
   }) {
     const receiptStatus = options?.receiptStatus ?? "draft";
     const revisionSubmittedAt =
@@ -571,8 +573,16 @@ describe("SpotProcurementReceiptService workflow", () => {
         )
       },
       projectMember: {
-        findFirst: jest.fn().mockResolvedValue(null),
-        findMany: jest.fn().mockResolvedValue([])
+        findFirst: jest.fn().mockResolvedValue(
+          options?.actionProjectRoleKeys?.length
+            ? { id: "project-member-1" }
+            : null
+        ),
+        findMany: jest.fn().mockResolvedValue(
+          (options?.actionProjectRoleKeys ?? []).map((positionKey) => ({
+            positionKey
+          }))
+        )
       },
       projectRosterMember: {
         findFirst: jest.fn().mockResolvedValue(null)
@@ -880,6 +890,101 @@ describe("SpotProcurementReceiptService workflow", () => {
       harness.tx.spotProcurementReceipt.findUnique
     ).toHaveBeenCalled();
     expect(harness.tx.user.findMany).toHaveBeenCalled();
+  });
+
+  it("projects receipt actions from server-side actor, role and workflow facts", async () => {
+    const handler = createHarness({
+      actionProjectRoleKeys: ["material_staff"]
+    });
+    const handlerDetail = await handler.service.getReceipt(
+      "procurement-1",
+      "handler-1"
+    );
+    expect(
+      handlerDetail.availableActions
+        .filter((action) => action.enabled)
+        .map((action) => action.key)
+    ).toEqual([
+      "delegate_receipt",
+      "edit_receipt",
+      "append_receipt_photo",
+      "submit_receipt",
+      "append_invoice"
+    ]);
+
+    const delegate = createHarness({
+      activeDelegation: true,
+      actionProjectRoleKeys: ["employee"]
+    });
+    const delegateDetail = await delegate.service.getReceipt(
+      "procurement-1",
+      "delegate-1"
+    );
+    expect(
+      delegateDetail.availableActions
+        .filter((action) => action.enabled)
+        .map((action) => action.key)
+    ).toEqual([
+      "edit_receipt",
+      "append_receipt_photo",
+      "submit_receipt"
+    ]);
+
+    const viewer = createHarness({
+      actionProjectRoleKeys: ["employee"]
+    });
+    const viewerDetail = await viewer.service.getReceipt(
+      "procurement-1",
+      "employee-viewer"
+    );
+    expect(viewerDetail.availableActions.every((action) => !action.enabled)).toBe(true);
+  });
+
+  it("keeps material review and project-finance refund actions mutually scoped", async () => {
+    const submittedAt = new Date("2026-07-17T08:30:00.000Z");
+    const materialDirector = createHarness({
+      receiptStatus: "submitted",
+      revisionSubmittedAt: submittedAt,
+      materialDirector: true,
+      actionProjectRoleKeys: ["material_director"]
+    });
+    const reviewDetail = await materialDirector.service.getReceipt(
+      "procurement-1",
+      "material-director-1"
+    );
+    expect(
+      reviewDetail.availableActions
+        .filter((action) => action.enabled)
+        .map((action) => action.key)
+    ).toEqual(["review_receipt"]);
+
+    const finance = createHarness({
+      receiptStatus: "reviewed",
+      revisionSubmittedAt: submittedAt,
+      actionProjectRoleKeys: ["finance_staff"],
+      activeDiscrepancy: {
+        status: "awaiting_refund",
+        resolutionType: "full_refund"
+      }
+    });
+    finance.tx.spotProcurementDiscrepancy.findFirst.mockResolvedValue({
+      id: "discrepancy-1",
+      status: "awaiting_refund",
+      resolutionType: "full_refund",
+      replenishedAt: null,
+      refundExpectedAmountCents: 333n,
+      resolvedAt: null
+    });
+    const financeDetail = await finance.service.getReceipt(
+      "procurement-1",
+      "finance-1"
+    );
+    const enabledFinanceActions = financeDetail.availableActions
+      .filter((action) => action.enabled)
+      .map((action) => action.key);
+    expect(enabledFinanceActions).toContain("record_refund");
+    expect(enabledFinanceActions).not.toContain("review_receipt");
+    expect(enabledFinanceActions).not.toContain("edit_receipt");
   });
 
   it("fails closed for receipt writes until at least one actual payment is recorded", async () => {

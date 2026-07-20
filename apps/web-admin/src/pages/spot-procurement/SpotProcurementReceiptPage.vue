@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { UploadFile } from "tdesign-vue-next";
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import {
   appendSpotProcurementPaymentInvoice,
@@ -39,6 +39,7 @@ const busy = ref(false);
 const error = ref("");
 const message = ref("");
 const paymentNotice = ref("");
+const routeSafetyNotice = ref("");
 const delegateUserId = ref("");
 const invoiceFiles = ref<UploadFile[]>([]);
 const refundFiles = ref<UploadFile[]>([]);
@@ -55,13 +56,56 @@ const refundForm = reactive({
 const procurementId = computed(() => String(route.params.procurementId || ""));
 const isLocked = computed(() => receipt.value?.receipt.status === "locked" || detail.value?.procurement.status === "closed");
 const receiptOpen = computed(() => Boolean(receipt.value?.receipt.receiptOpen));
-const canEditReceipt = computed(() => receiptOpen.value && !isLocked.value && ["draft", "returned", "review_revoked"].includes(receipt.value?.receipt.status ?? ""));
-const canAppendPhoto = computed(() => receiptOpen.value && !isLocked.value);
+const canEditReceipt = computed(() => actionEnabled("edit_receipt"));
+const canAppendPhoto = computed(() => actionEnabled("append_receipt_photo"));
 const latestApprovedReview = computed(() => [...(receipt.value?.reviews ?? [])].reverse().find((item) => item.decision === "approved"));
 const hasActualPayment = computed(() => Boolean(paymentDetail.value?.executions.some((execution) => execution.active)));
 const activeInvoices = computed(() => paymentDetail.value?.invoice?.invoices ?? []);
 const discrepancy = computed(() => receipt.value?.discrepancy ?? { status: "none", nextStep: null });
-const canHandleDiscrepancy = computed(() => receipt.value?.receipt.status === "reviewed" && !isLocked.value);
+const ROUTE_CHANGED_MESSAGE = "页面已切换到另一笔采购；过期操作未绑定任何收货、照片或退款事实，请在当前单据重新办理。";
+let routeGeneration = 0;
+let loadRequestId = 0;
+
+type ReceiptPageContext = { procurementId: string; generation: number };
+class StaleReceiptContextError extends Error {}
+
+function actionEnabled(key: string) {
+  return Boolean(receipt.value?.availableActions?.find((action) => action.key === key)?.enabled);
+}
+
+function captureContext(): ReceiptPageContext {
+  return { procurementId: procurementId.value, generation: routeGeneration };
+}
+
+function contextIsCurrent(context: ReceiptPageContext) {
+  return Boolean(context.procurementId) && context.procurementId === procurementId.value && context.generation === routeGeneration;
+}
+
+function assertCurrentContext(context: ReceiptPageContext) {
+  if (!contextIsCurrent(context)) throw new StaleReceiptContextError(ROUTE_CHANGED_MESSAGE);
+}
+
+function clearTransientState() {
+  receipt.value = null;
+  detail.value = null;
+  paymentDetail.value = null;
+  lines.value = [];
+  invoiceFiles.value = [];
+  refundFiles.value = [];
+  delegateUserId.value = "";
+  discrepancyForm.resolutionType = "replenishment";
+  discrepancyForm.note = "";
+  refundForm.amountYuan = "";
+  refundForm.receivedAt = new Date().toISOString().slice(0, 10);
+  refundForm.refundMethod = "bank_transfer";
+  error.value = "";
+  message.value = "";
+  paymentNotice.value = "";
+  busy.value = false;
+  if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
+}
 
 function money(value: string | null | undefined) {
   if (!value) return "—";
@@ -82,67 +126,88 @@ function invoiceLabel(invoice: Record<string, unknown>) {
 }
 
 async function load() {
+  const context = captureContext();
+  const requestId = ++loadRequestId;
+  if (!context.procurementId) return;
   busy.value = true;
   error.value = "";
   paymentNotice.value = "";
   try {
     const [receiptResult, procurementDetail] = await Promise.all([
-      fetchSpotProcurementReceipt(procurementId.value),
-      fetchSpotProcurementDetail(procurementId.value)
+      fetchSpotProcurementReceipt(context.procurementId),
+      fetchSpotProcurementDetail(context.procurementId)
     ]);
-    receipt.value = receiptResult;
-    detail.value = procurementDetail;
-    lines.value = receiptResult.lines.map((line) => ({
+    if (requestId !== loadRequestId || !contextIsCurrent(context)) return;
+    const nextLines = receiptResult.lines.map((line) => ({
       ...line,
       qualifiedQuantity: line.qualifiedQuantity ?? line.approvedQuantity,
       unqualifiedQuantity: line.unqualifiedQuantity ?? "0",
       freeGiftQuantity: line.freeGiftQuantity ?? "0",
       replenishmentPending: false
     }));
+    let nextRefundAmountYuan = "";
     if (
       receiptResult.discrepancy.status === "awaiting_refund" &&
       receiptResult.discrepancy.refundExpectedAmountCents
     ) {
-      refundForm.amountYuan = centsTextToYuanText(
+      nextRefundAmountYuan = centsTextToYuanText(
         receiptResult.discrepancy.refundExpectedAmountCents
       );
     }
     const payment = procurementDetail.payments.find((item) => item.form === "real_payment") ?? procurementDetail.payments[0];
+    let nextPaymentDetail: SpotProcurementPaymentDetailReadModel | null = null;
+    let nextPaymentNotice = "";
     if (!payment) {
-      paymentDetail.value = null;
-      paymentNotice.value = "尚未生成付款申请；收货会在付款审批通过并登记首笔实际付款后开放。";
-      return;
+      nextPaymentNotice = "尚未生成付款申请；收货会在付款审批通过并登记首笔实际付款后开放。";
+    } else {
+      try {
+        nextPaymentDetail = await fetchSpotProcurementPaymentDetail(payment.id);
+      } catch (paymentError) {
+        nextPaymentNotice = paymentError instanceof Error ? `付款、发票与归档资料按最小权限展示：${paymentError.message}` : "付款、发票与归档资料按最小权限展示。";
+      }
     }
-    try {
-      paymentDetail.value = await fetchSpotProcurementPaymentDetail(payment.id);
-    } catch (paymentError) {
-      paymentDetail.value = null;
-      paymentNotice.value = paymentError instanceof Error ? `付款、发票与归档资料按最小权限展示：${paymentError.message}` : "付款、发票与归档资料按最小权限展示。";
-    }
+    if (requestId !== loadRequestId || !contextIsCurrent(context)) return;
+    receipt.value = receiptResult;
+    detail.value = procurementDetail;
+    lines.value = nextLines;
+    paymentDetail.value = nextPaymentDetail;
+    paymentNotice.value = nextPaymentNotice;
+    refundForm.amountYuan = nextRefundAmountYuan;
   } catch (loadError) {
+    if (requestId !== loadRequestId || !contextIsCurrent(context)) return;
     error.value = loadError instanceof Error ? loadError.message : "读取收货详情失败";
   } finally {
-    busy.value = false;
+    if (requestId === loadRequestId && contextIsCurrent(context)) busy.value = false;
   }
 }
 
-async function act(task: () => Promise<unknown>, success: string) {
+async function act(task: (context: ReceiptPageContext) => Promise<unknown>, success: string) {
+  const context = captureContext();
+  if (!context.procurementId) return;
   busy.value = true;
   error.value = "";
   try {
-    await task();
+    assertCurrentContext(context);
+    await task(context);
+    assertCurrentContext(context);
     message.value = success;
     await load();
   } catch (actionError) {
-    error.value = actionError instanceof Error ? actionError.message : "操作失败";
+    if (actionError instanceof StaleReceiptContextError) {
+      routeSafetyNotice.value = ROUTE_CHANGED_MESSAGE;
+    } else if (contextIsCurrent(context)) {
+      error.value = actionError instanceof Error ? actionError.message : "操作失败";
+    }
   } finally {
-    busy.value = false;
+    if (contextIsCurrent(context)) busy.value = false;
   }
 }
 
 function saveReceiptDraft() {
   return act(
-    () => updateSpotProcurementReceiptDraft(procurementId.value, {
+    async (context) => {
+      assertCurrentContext(context);
+      await updateSpotProcurementReceiptDraft(context.procurementId, {
       note: receipt.value?.receipt.note,
       lines: lines.value.map((line) => ({
         procurementLineId: line.procurementLineId,
@@ -153,48 +218,64 @@ function saveReceiptDraft() {
         replenishmentPending: false,
         ...(line.discrepancyNote ? { discrepancyNote: line.discrepancyNote } : {})
       }))
-    }),
+      });
+      assertCurrentContext(context);
+    },
     "收货草稿已保存"
   );
 }
 
 async function uploadReceiptPhoto(payload: { file: File; source: "camera" | "album"; category: "material_scene" | "delivery_note"; note: string; appendReason: string }) {
-  await act(async () => {
+  await act(async (context) => {
     const file = await uploadPrivateFile(payload.file, payload.file.name);
-    await attachSpotProcurementReceiptPhoto(procurementId.value, {
+    assertCurrentContext(context);
+    await attachSpotProcurementReceiptPhoto(context.procurementId, {
       originalFileId: file.id,
       source: payload.source,
       category: payload.category,
       ...(payload.note.trim() ? { note: payload.note.trim() } : {}),
       ...(payload.appendReason.trim() ? { appendReason: payload.appendReason.trim() } : {})
     });
+    assertCurrentContext(context);
   }, "照片已上传并由服务端生成水印");
 }
 
 function submitReceipt() {
-  return act(() => submitSpotProcurementReceipt(procurementId.value), "已提交物资主管复核");
+  return act(async (context) => {
+    assertCurrentContext(context);
+    await submitSpotProcurementReceipt(context.procurementId);
+    assertCurrentContext(context);
+  }, "已提交物资主管复核");
 }
 
 function initiateDiscrepancy() {
   return act(
-    () => createSpotProcurementDiscrepancy(procurementId.value, {
+    async (context) => {
+      assertCurrentContext(context);
+      await createSpotProcurementDiscrepancy(context.procurementId, {
       operation: "initiate",
       resolutionType: discrepancyForm.resolutionType,
       ...(discrepancyForm.note.trim() ? { note: discrepancyForm.note.trim() } : {})
-    }),
+      });
+      assertCurrentContext(context);
+    },
     discrepancyForm.resolutionType === "replenishment" ? "少货差异已发起，待物资主管确认；商户补货后需重新复核收货事实。" : "少货退款差异已发起，待物资主管确认。"
   );
 }
 
 function confirmDiscrepancy() {
   return act(
-    () => createSpotProcurementDiscrepancy(procurementId.value, { operation: "confirm" }),
+    async (context) => {
+      assertCurrentContext(context);
+      await createSpotProcurementDiscrepancy(context.procurementId, { operation: "confirm" });
+      assertCurrentContext(context);
+    },
     "少货差异已由物资主管确认"
   );
 }
 
 async function recordRefund() {
-  await act(async () => {
+  await act(async (context) => {
     const file = selectedUploadFiles(refundFiles.value)[0];
     const payload = await prepareSpotRefundWithUpload(
       {
@@ -208,24 +289,34 @@ async function recordRefund() {
       file,
       uploadPrivateFile
     );
-    await recordSpotProcurementRefund(procurementId.value, payload);
+    assertCurrentContext(context);
+    await recordSpotProcurementRefund(context.procurementId, payload);
+    assertCurrentContext(context);
   }, "退款到账事实和凭证已登记");
 }
 
 async function appendInvoice() {
-  await act(async () => {
+  await act(async (context) => {
     const payment = paymentDetail.value;
     const file = selectedUploadFiles(invoiceFiles.value)[0];
     if (!payment) throw new Error("当前无权限读取关联付款申请");
     if (!hasActualPayment.value) throw new Error("请先登记实际付款，再追加整单发票");
     if (!file) throw new Error("请选择发票图片或 PDF 文件");
     const uploaded = await uploadPrivateFile(file, file.name);
+    assertCurrentContext(context);
     await appendSpotProcurementPaymentInvoice(payment.payment.id, uploaded.id);
+    assertCurrentContext(context);
     invoiceFiles.value = [];
   }, "发票已关联整张付款申请，并追加生成新的归档版本");
 }
 
-onMounted(() => void load());
+watch(procurementId, () => {
+  routeGeneration += 1;
+  loadRequestId += 1;
+  routeSafetyNotice.value = "";
+  clearTransientState();
+  void load();
+}, { immediate: true });
 </script>
 
 <template>
@@ -267,6 +358,14 @@ onMounted(() => void load());
         :title="error ? '操作未完成' : '操作已完成'"
         :description="error || message"
       />
+      <t-alert
+        v-if="routeSafetyNotice"
+        theme="warning"
+        title="已阻止跨单写入"
+        :message="routeSafetyNotice"
+        closable
+        @close="routeSafetyNotice = ''"
+      />
 
       <t-card title="人员与委托">
         <dl class="people">
@@ -275,7 +374,7 @@ onMounted(() => void load());
           <div><dt>当前受托人</dt><dd>{{ receipt.delegation?.delegateName || '未委托' }}</dd></div>
         </dl>
         <div
-          v-if="canEditReceipt"
+          v-if="actionEnabled('delegate_receipt')"
           class="delegate"
         >
           <t-input
@@ -284,7 +383,7 @@ onMounted(() => void load());
           />
           <t-button
             :disabled="!delegateUserId"
-            @click="act(() => createSpotProcurementReceiptDelegation(procurementId, delegateUserId), '收货委托已生效')"
+            @click="act(async context => { assertCurrentContext(context); await createSpotProcurementReceiptDelegation(context.procurementId, delegateUserId); assertCurrentContext(context); }, '收货委托已生效')"
           >
             确认委托
           </t-button>
@@ -303,10 +402,11 @@ onMounted(() => void load());
           @change="lines = $event"
         />
         <div
-          v-if="canEditReceipt"
+          v-if="actionEnabled('edit_receipt') || actionEnabled('submit_receipt')"
           class="actions"
         >
           <t-button
+            v-if="actionEnabled('edit_receipt')"
             variant="outline"
             :loading="busy"
             @click="saveReceiptDraft"
@@ -314,6 +414,7 @@ onMounted(() => void load());
             保存草稿
           </t-button>
           <t-button
+            v-if="actionEnabled('submit_receipt')"
             theme="primary"
             :loading="busy"
             @click="submitReceipt"
@@ -329,26 +430,26 @@ onMounted(() => void load());
           :readonly="!canAppendPhoto"
           :busy="busy"
           @upload="uploadReceiptPhoto"
-          @remove="id => act(() => deleteSpotProcurementReceiptPhoto(procurementId, id), '照片已删除')"
+          @remove="id => act(async context => { assertCurrentContext(context); await deleteSpotProcurementReceiptPhoto(context.procurementId, id); assertCurrentContext(context); }, '照片已删除')"
         />
       </t-card>
 
       <t-card title="物资主管复核">
         <div
-          v-if="!isLocked && receiptOpen && receipt.receipt.status === 'submitted'"
+          v-if="actionEnabled('review_receipt')"
           class="actions"
         >
           <t-button
             theme="primary"
             :loading="busy"
-            @click="act(() => reviewSpotProcurementReceipt(procurementId, { decision: 'approved' }), '收货复核已通过')"
+            @click="act(async context => { assertCurrentContext(context); await reviewSpotProcurementReceipt(context.procurementId, { decision: 'approved' }); assertCurrentContext(context); }, '收货复核已通过')"
           >
             复核通过
           </t-button>
           <t-button
             variant="outline"
             :loading="busy"
-            @click="act(() => reviewSpotProcurementReceipt(procurementId, { decision: 'returned', comment: '请经办人核对最终收货事实' }), '已退回经办人')"
+            @click="act(async context => { assertCurrentContext(context); await reviewSpotProcurementReceipt(context.procurementId, { decision: 'returned', comment: '请经办人核对最终收货事实' }); assertCurrentContext(context); }, '已退回经办人')"
           >
             退回
           </t-button>
@@ -362,9 +463,9 @@ onMounted(() => void load());
           </p>
         </div>
         <t-popconfirm
-          v-if="!isLocked && receiptOpen && receipt.receipt.status === 'reviewed' && latestApprovedReview"
+          v-if="actionEnabled('revoke_receipt_review') && latestApprovedReview"
           content="补货后需要重新确认最终收货事实。确认后将打开新的收货修订。"
-          @confirm="act(() => revokeSpotProcurementReceiptReview(procurementId, { targetReviewId: latestApprovedReview!.id, reason: '商户补货后重新确认最终收货', confirmReviewRevocation: true }), '已打开新的收货修订')"
+          @confirm="act(async context => { assertCurrentContext(context); await revokeSpotProcurementReceiptReview(context.procurementId, { targetReviewId: latestApprovedReview!.id, reason: '商户补货后重新确认最终收货', confirmReviewRevocation: true }); assertCurrentContext(context); }, '已打开新的收货修订')"
         >
           <t-button
             theme="danger"
@@ -382,7 +483,7 @@ onMounted(() => void load());
           :message="discrepancy.nextStep ?? '少货且已付款时，只允许商户继续补货，或由财务人员登记退款并上传凭证。'"
         />
         <div
-          v-if="canHandleDiscrepancy && discrepancy.status === 'none'"
+          v-if="actionEnabled('initiate_discrepancy')"
           class="discrepancy-form"
         >
           <label><span>处理方式</span><t-radio-group v-model="discrepancyForm.resolutionType"><t-radio value="replenishment">商户继续补货</t-radio><t-radio value="full_refund">商户退回差额</t-radio></t-radio-group></label>
@@ -401,7 +502,7 @@ onMounted(() => void load());
           </t-popconfirm>
         </div>
         <t-popconfirm
-          v-else-if="canHandleDiscrepancy && discrepancy.status === 'pending_resolution'"
+          v-else-if="actionEnabled('confirm_discrepancy')"
           content="确认后只会进入商户补货或财务退款路径。"
           @confirm="confirmDiscrepancy"
         >
@@ -416,7 +517,7 @@ onMounted(() => void load());
           商户补货后，请使用上方“补货后重新确认收货”，更新实际到货与照片并再次提交物资主管复核。
         </div>
         <div
-          v-else-if="discrepancy.status === 'awaiting_refund' && !isLocked"
+          v-else-if="discrepancy.status === 'awaiting_refund' && actionEnabled('record_refund')"
           class="refund-form"
         >
           <t-alert
@@ -450,6 +551,12 @@ onMounted(() => void load());
             </t-button>
           </t-popconfirm>
         </div>
+        <div
+          v-else-if="discrepancy.status === 'awaiting_refund'"
+          class="discrepancy-note"
+        >
+          退款到账由当前项目财务人员办理；当前账号仅可查看退款进度。
+        </div>
       </t-card>
 
       <t-card title="整单发票与归档">
@@ -482,11 +589,12 @@ onMounted(() => void load());
               theme="file-flow"
               :auto-upload="false"
               :multiple="false"
-              :disabled="!hasActualPayment"
+              :disabled="!hasActualPayment || !actionEnabled('append_invoice')"
               :accept="CORE_ARCHIVE_UPLOAD_POLICY.acceptAttribute"
               :size-limit="{ size: CORE_ARCHIVE_UPLOAD_POLICY.limitBytes, unit: 'B' }"
             />
             <t-button
+              v-if="actionEnabled('append_invoice')"
               :disabled="!hasActualPayment"
               :loading="busy"
               @click="appendInvoice"

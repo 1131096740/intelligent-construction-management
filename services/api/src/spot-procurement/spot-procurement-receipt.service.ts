@@ -10,6 +10,7 @@ import {
 import { Prisma } from "@prisma/client";
 import {
   resolveEffectiveRoleKeys,
+  type DetailActionReadModel,
   type RoleKey
 } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
@@ -66,6 +67,16 @@ const RECEIPT_EDITABLE_STATUSES = new Set([
 const RECEIPT_PHOTO_APPENDABLE_STATUSES = new Set([
   ...RECEIPT_EDITABLE_STATUSES,
   "submitted"
+]);
+const RECEIPT_CONFIRM_ROLES = new Set<RoleKey>([
+  "employee",
+  "material_staff",
+  "material_director",
+  "project_manager"
+]);
+const RECEIPT_HANDLER_ROLES = new Set<RoleKey>([
+  "material_staff",
+  "material_director"
 ]);
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const PNG_SIGNATURE = Buffer.from("89504e470d0a1a0a", "hex");
@@ -209,6 +220,13 @@ type FileLockRow = {
   uploadedByUserId: string;
   contentSha256: string | null;
   storageStatus: string;
+};
+
+type ReceiptActionScope = {
+  active: boolean;
+  effectiveRoleKeys: RoleKey[];
+  projectRoleKeys: RoleKey[];
+  hasProjectMembership: boolean;
 };
 
 type LockedReceiptContext = {
@@ -362,11 +380,13 @@ export class SpotProcurementReceiptService {
           tx.spotProcurement.findUnique({
           where: { id: procurementId },
           select: {
+            id: true,
             code: true,
             projectId: true,
             applicantUserId: true,
             handlerUserId: true,
-              currentVersionId: true
+              currentVersionId: true,
+              status: true
             }
           }),
           tx.spotProcurementVersion.findUnique({
@@ -495,6 +515,11 @@ export class SpotProcurementReceiptService {
             procurementId,
             receipt.procurementVersionId
           );
+        const actorScope = await this.loadReceiptActionScope(
+          tx,
+          actorUserId,
+          receipt.projectId
+        );
         const versionRevisionNos = versionRevisions.map(
           (item) => item.revisionNo
         );
@@ -686,7 +711,19 @@ export class SpotProcurementReceiptService {
             : {
                 status: "none",
                 nextStep: null
-              }
+              },
+          availableActions: this.receiptActions({
+            actorUserId,
+            actorScope,
+            procurement,
+            version,
+            receipt,
+            revision,
+            delegation,
+            latestReview,
+            discrepancy,
+            firstActualPayment
+          })
         };
       },
       {
@@ -694,6 +731,171 @@ export class SpotProcurementReceiptService {
           Prisma.TransactionIsolationLevel.RepeatableRead
       }
     );
+  }
+
+  private receiptActions(input: {
+    actorUserId: string;
+    actorScope: ReceiptActionScope;
+    procurement: { id: string; projectId: string; handlerUserId: string; currentVersionId: string | null; status: string };
+    version: { id: string; status: string; handlerUserId: string };
+    receipt: { id: string; handlerUserId: string; procurementVersionId: string; status: string; lockedAt: Date | null };
+    revision: { procurementVersionId: string; submittedAt: Date | null };
+    delegation: { delegatorUserId: string; delegateUserId: string; scope: string; revokedAt: Date | null } | null;
+    latestReview: { id: string; decision: string } | undefined;
+    discrepancy: { status: string } | null;
+    firstActualPayment: { id: string; paymentId: string; paidAt: Date } | null;
+  }): DetailActionReadModel[] {
+    const action = (
+      key: string,
+      label: string,
+      kind: DetailActionReadModel["kind"],
+      enabled: boolean,
+      disabledReason: string
+    ): DetailActionReadModel => ({
+      key,
+      label,
+      kind,
+      enabled,
+      disabledReason: enabled ? null : disabledReason
+    });
+    const { actorScope } = input;
+    const businessOpen =
+      input.procurement.status === "approved_in_progress" &&
+      input.version.status === "approved" &&
+      input.procurement.currentVersionId === input.version.id &&
+      input.receipt.procurementVersionId === input.version.id &&
+      input.revision.procurementVersionId === input.version.id &&
+      input.receipt.lockedAt === null &&
+      Boolean(input.firstActualPayment);
+    const hasConfirmRole = actorScope.effectiveRoleKeys.some((role) =>
+      RECEIPT_CONFIRM_ROLES.has(role)
+    );
+    const isHandler = input.actorUserId === input.receipt.handlerUserId;
+    const isActiveDelegate = Boolean(
+      input.delegation &&
+      input.delegation.revokedAt === null &&
+      input.delegation.scope === "receipt_confirmation" &&
+      input.delegation.delegatorUserId === input.receipt.handlerUserId &&
+      input.delegation.delegateUserId === input.actorUserId &&
+      actorScope.hasProjectMembership
+    );
+    const canConfirm =
+      actorScope.active &&
+      hasConfirmRole &&
+      (isHandler || isActiveDelegate);
+    const editable =
+      businessOpen &&
+      canConfirm &&
+      RECEIPT_EDITABLE_STATUSES.has(input.receipt.status) &&
+      input.revision.submittedAt === null;
+    const photoAppendable =
+      businessOpen &&
+      canConfirm &&
+      RECEIPT_PHOTO_APPENDABLE_STATUSES.has(input.receipt.status);
+    const isMaterialDirector =
+      actorScope.active &&
+      actorScope.effectiveRoleKeys.includes("material_director");
+    const isCurrentHandler =
+      actorScope.active &&
+      isHandler &&
+      actorScope.effectiveRoleKeys.some((role) =>
+        RECEIPT_HANDLER_ROLES.has(role)
+      );
+    const isProjectFinanceStaff =
+      actorScope.active &&
+      actorScope.effectiveRoleKeys.includes("finance_staff") &&
+      actorScope.projectRoleKeys.includes("finance_staff");
+    const canAppendInvoice =
+      Boolean(input.firstActualPayment) &&
+      actorScope.active &&
+      (isHandler ||
+        actorScope.effectiveRoleKeys.includes("finance_staff") ||
+        actorScope.effectiveRoleKeys.includes("finance_director"));
+
+    return [
+      action("delegate_receipt", "委托收货办理", "normal", editable && isHandler, "仅当前采购经办人可在收货草稿阶段委托"),
+      action("edit_receipt", "编辑收货草稿", "normal", editable, "仅当前采购经办人或有效受托人可编辑收货草稿"),
+      action("append_receipt_photo", "上传收货照片", "normal", photoAppendable, "仅当前采购经办人或有效受托人可上传收货照片"),
+      action("submit_receipt", "提交最终收货", "primary", editable, "仅当前采购经办人或有效受托人可提交最终收货"),
+      action("review_receipt", "复核最终收货", "primary", businessOpen && isMaterialDirector && input.receipt.status === "submitted", "仅本项目物资主管可在待复核阶段办理"),
+      action("revoke_receipt_review", "补货后重新确认收货", "danger", businessOpen && isMaterialDirector && input.receipt.status === "reviewed" && input.latestReview?.decision === "approved", "仅本项目物资主管可撤销当前有效复核"),
+      action("initiate_discrepancy", "发起少货处理", "primary", businessOpen && isCurrentHandler && input.receipt.status === "reviewed" && !input.discrepancy, "仅当前采购经办人可对已复核收货发起少货处理"),
+      action("confirm_discrepancy", "确认少货事实", "primary", businessOpen && isMaterialDirector && input.discrepancy?.status === "pending_resolution", "仅本项目物资主管可确认待处理少货事实"),
+      action("record_refund", "登记退款", "primary", businessOpen && isProjectFinanceStaff && input.discrepancy?.status === "awaiting_refund", "仅本项目财务人员可登记待退款事实"),
+      action("append_invoice", "追加整单发票", "normal", canAppendInvoice, "仅采购经办人或财务人员可在实际付款后追加发票")
+    ];
+  }
+
+  private async loadReceiptActionScope(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    projectId: string
+  ): Promise<ReceiptActionScope> {
+    const [actor, globalAssignments, projectAssignments, memberships, roster] =
+      await Promise.all([
+        tx.user.findUnique({
+          where: { id: actorUserId },
+          select: { id: true, isActive: true }
+        }),
+        tx.userPosition.findMany({
+          where: { userId: actorUserId, projectId: null },
+          select: { positionId: true }
+        }),
+        tx.userPosition.findMany({
+          where: { userId: actorUserId, projectId },
+          select: { positionId: true }
+        }),
+        tx.projectMember.findMany({
+          where: { userId: actorUserId, projectId },
+          select: { positionKey: true }
+        }),
+        tx.projectRosterMember.findFirst({
+          where: { userId: actorUserId, projectId },
+          select: { id: true }
+        })
+      ]);
+    if (!actor?.isActive) {
+      return {
+        active: false,
+        effectiveRoleKeys: [],
+        projectRoleKeys: [],
+        hasProjectMembership: false
+      };
+    }
+    const positionIds = [
+      ...new Set(
+        [...globalAssignments, ...projectAssignments].map(
+          (assignment) => assignment.positionId
+        )
+      )
+    ];
+    const positions = positionIds.length
+      ? await tx.position.findMany({
+          where: { id: { in: positionIds } },
+          select: { id: true, key: true }
+        })
+      : [];
+    const keyById = new Map(
+      positions.map((position) => [position.id, position.key as RoleKey])
+    );
+    const globalRoleKeys = globalAssignments.flatMap((assignment) => {
+      const role = keyById.get(assignment.positionId);
+      return role ? [role] : [];
+    });
+    const projectRoleKeys = [
+      ...projectAssignments.flatMap((assignment) => {
+        const role = keyById.get(assignment.positionId);
+        return role ? [role] : [];
+      }),
+      ...memberships.map((membership) => membership.positionKey as RoleKey)
+    ];
+    return {
+      active: true,
+      effectiveRoleKeys: resolveEffectiveRoleKeys(globalRoleKeys, projectRoleKeys),
+      projectRoleKeys: [...new Set(projectRoleKeys)],
+      hasProjectMembership:
+        projectAssignments.length > 0 || memberships.length > 0 || Boolean(roster)
+    };
   }
 
   createDelegation(

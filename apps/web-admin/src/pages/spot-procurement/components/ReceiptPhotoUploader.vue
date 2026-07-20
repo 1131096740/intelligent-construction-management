@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { UploadFile } from "tdesign-vue-next";
 import type { SpotProcurementReceiptPhotoReadModel } from "../../../api/spot-procurement.api";
 
 defineProps<{ photos: SpotProcurementReceiptPhotoReadModel[]; readonly?: boolean; busy?: boolean }>();
@@ -13,8 +12,8 @@ let category: "material_scene" | "delivery_note" = "material_scene";
 let note = "";
 let appendReason = "";
 
-function select(context: { files?: UploadFile[] }) {
-  selectedFile = context.files?.[0]?.raw ?? null;
+function select(files: File[]) {
+  selectedFile = files[0] ?? null;
 }
 function submit() {
   if (!selectedFile) return;

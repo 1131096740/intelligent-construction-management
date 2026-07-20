@@ -223,10 +223,89 @@ function receiptDetail() {
       receiptOpen: true, firstActualPayment: { executionId: "execution-1", paidAt: now }, blockedReason: null, handler,
       note: null, actualCostCents: "0", firstSubmittedAt: null, submittedAt: null, submittedBy: null, lockedAt: null
     },
-    delegation: null, latestPdf: null,
+    delegation: null, latestPdf: null, availableActions: [],
     lines: [{ procurementLineId: "line-1", sortOrder: 1, materialName: "免烧砖", specification: "240×115×53", unit: "块", approvedQuantity: "1000", frozenUnitPrice: "4.4", qualifiedQuantity: null, unqualifiedQuantity: null, unqualifiedReason: null, freeGiftQuantity: null, replenishmentPending: false, discrepancyNote: null, actualCostCents: null }],
     photos: [], reviews: [], discrepancy: { status: "none", nextStep: null }
   };
+}
+
+function receiptDetailFor(
+  procurementId: string,
+  code: string,
+  availableActions: Array<{ key: string; label: string; kind: string; enabled: boolean; disabledReason: string | null }> = [],
+  overrides: Record<string, unknown> = {}
+) {
+  const base = receiptDetail();
+  return {
+    ...base,
+    ...overrides,
+    receipt: {
+      ...base.receipt,
+      id: `receipt-${procurementId}`,
+      procurementId,
+      procurementCode: code
+    },
+    availableActions
+  };
+}
+
+function procurementDetailFor(procurementId: string, code: string, projectName: string) {
+  const base = procurementDetail();
+  return {
+    ...base,
+    procurement: {
+      ...base.procurement,
+      id: procurementId,
+      code,
+      project: { ...project, id: `project-${procurementId}`, name: projectName }
+    },
+    payments: [],
+    paymentSummary: null
+  };
+}
+
+async function switchReceiptRoute(page: Page, procurementId: string) {
+  await page.evaluate((nextProcurementId) => {
+    history.pushState({}, "", `/零星采购收货/${nextProcurementId}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, procurementId);
+}
+
+async function mockReceiptPair(
+  page: Page,
+  receiptA: ReturnType<typeof receiptDetailFor>,
+  options: { delayA?: Promise<void>; onARead?: () => void } = {}
+) {
+  await page.route("**/api/spot-procurements/**", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const pathname = decodeURIComponent(new URL(route.request().url()).pathname);
+    const isA = pathname.includes("procurement-A");
+    if (isA) {
+      options.onARead?.();
+      await options.delayA;
+    }
+    if (pathname === "/api/spot-procurements/procurement-A/receipt") {
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify(receiptA) });
+    }
+    if (pathname === "/api/spot-procurements/procurement-A") {
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify(procurementDetailFor("procurement-A", "LXCG-A", "项目A")) });
+    }
+    if (pathname === "/api/spot-procurements/procurement-B/receipt") {
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify(receiptDetailFor("procurement-B", "LXCG-B")) });
+    }
+    if (pathname === "/api/spot-procurements/procurement-B") {
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify(procurementDetailFor("procurement-B", "LXCG-B", "项目B")) });
+    }
+    return route.fallback();
+  });
+}
+
+async function loginAndOpenReceipt(page: Page) {
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await page.goto("/零星采购收货/procurement-A");
 }
 
 test("renders A4 application, A5 payment and payment-opened final receipt without legacy balance fields", async ({ page }, testInfo) => {
@@ -1795,4 +1874,93 @@ test("keeps only the latest payment workbench request when views resolve out of 
   await pendingRequests[2]!.completed;
   await expect(page.getByText("NEW-CLOSED", { exact: true })).toBeVisible();
   await expect(page.getByText("零星材料付款暂不可用", { exact: true })).toHaveCount(0);
+});
+
+test("keeps receipt B visible when delayed receipt A reads finish after an SPA route switch", async ({ page }) => {
+  const releaseA = deferred();
+  let pendingAReads = 0;
+  await mockLogin(page);
+  await mockReceiptPair(page, receiptDetailFor("procurement-A", "LXCG-A"), {
+    delayA: releaseA.promise,
+    onARead: () => { pendingAReads += 1; }
+  });
+
+  await loginAndOpenReceipt(page);
+  await expect.poll(() => pendingAReads).toBe(2);
+  await switchReceiptRoute(page, "procurement-B");
+  await expect(page.getByRole("heading", { name: "项目B · 最终收货", exact: true })).toBeVisible();
+  releaseA.resolve();
+  await expect(page.getByRole("heading", { name: "项目B · 最终收货", exact: true })).toBeVisible();
+  await expect(page.getByText("LXCG-A", { exact: true })).toHaveCount(0);
+});
+
+test("does not bind a delayed receipt photo upload after switching from receipt A to B", async ({ page }) => {
+  const uploadStarted = deferred();
+  const releaseUpload = deferred();
+  let photoBindings = 0;
+  await mockLogin(page);
+  await mockReceiptPair(page, receiptDetailFor("procurement-A", "LXCG-A", [
+    { key: "append_receipt_photo", label: "补充收货照片", kind: "primary", enabled: true, disabledReason: null }
+  ]));
+  await page.route("**/api/spot-procurements/*/receipt/photos", async (route) => {
+    photoBindings += 1;
+    await route.fulfill({ contentType: "application/json", body: "{}" });
+  });
+  await page.route("**/api/files", async (route) => {
+    uploadStarted.resolve();
+    await releaseUpload.promise;
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "uploaded-photo-A" }) });
+  });
+
+  await loginAndOpenReceipt(page);
+  await expect(page.getByRole("heading", { name: "项目A · 最终收货", exact: true })).toBeVisible();
+  await page.locator(".photo-form input[type=file]").setInputFiles({
+    name: "现场照片.jpg", mimeType: "image/jpeg", buffer: Buffer.from("receipt-photo")
+  });
+  await page.getByRole("button", { name: "上传并生成水印", exact: true }).click();
+  await uploadStarted.promise;
+  await switchReceiptRoute(page, "procurement-B");
+  await expect(page.getByRole("heading", { name: "项目B · 最终收货", exact: true })).toBeVisible();
+  releaseUpload.resolve();
+  await expect(page.getByText("已阻止跨单写入", { exact: true })).toBeVisible();
+  await expect.poll(() => photoBindings).toBe(0);
+});
+
+test("does not record a delayed refund upload after switching from receipt A to B", async ({ page }) => {
+  const uploadStarted = deferred();
+  const releaseUpload = deferred();
+  let refundWrites = 0;
+  const refundReceipt = receiptDetailFor("procurement-A", "LXCG-A", [
+    { key: "record_refund", label: "登记退款", kind: "danger", enabled: true, disabledReason: null }
+  ], {
+    discrepancy: {
+      status: "awaiting_refund", resolutionType: "full_refund",
+      refundExpectedAmountCents: "44000", nextStep: "待财务登记退款"
+    }
+  });
+  await mockLogin(page, { id: "finance-1", name: "财务甲", roleKeys: ["finance_staff"] });
+  await mockReceiptPair(page, refundReceipt);
+  await page.route("**/api/spot-procurements/*/refunds", async (route) => {
+    refundWrites += 1;
+    await route.fulfill({ contentType: "application/json", body: "{}" });
+  });
+  await page.route("**/api/files", async (route) => {
+    uploadStarted.resolve();
+    await releaseUpload.promise;
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "refund-voucher-A" }) });
+  });
+
+  await loginAndOpenReceipt(page);
+  await expect(page.getByRole("heading", { name: "项目A · 最终收货", exact: true })).toBeVisible();
+  await page.locator(".refund-form input[type=file]").setInputFiles({
+    name: "退款凭证.pdf", mimeType: "application/pdf", buffer: Buffer.from("refund-proof")
+  });
+  await page.getByRole("button", { name: "确认登记退款", exact: true }).click();
+  await page.getByRole("button", { name: "确定", exact: true }).click();
+  await uploadStarted.promise;
+  await switchReceiptRoute(page, "procurement-B");
+  await expect(page.getByRole("heading", { name: "项目B · 最终收货", exact: true })).toBeVisible();
+  releaseUpload.resolve();
+  await expect(page.getByText("已阻止跨单写入", { exact: true })).toBeVisible();
+  await expect.poll(() => refundWrites).toBe(0);
 });

@@ -642,6 +642,8 @@ describe("spot procurement web pages", () => {
     expect(uploader).toContain("相册上传");
     expect(uploader).toContain("送货单可选");
     expect(uploader).toContain("watermarkedFileId");
+    expect(uploader).toContain("function select(files: File[])");
+    expect(uploader).toContain("selectedFile = files[0] ?? null");
     expect(uploader).toContain("已提交照片不可删除或替换");
     expect(`${workbench}\n${receipt}\n${uploader}`).not.toMatch(/navigator\.geolocation/iu);
     expect(`${workbench}\n${receipt}`).not.toMatch(/createReceiptBatch|fetchReceiptBatches/iu);
