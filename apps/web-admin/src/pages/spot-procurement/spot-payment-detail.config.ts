@@ -50,6 +50,27 @@ export function resolveSpotPaymentDetailTab(value: unknown): SpotPaymentDetailTa
     : "current";
 }
 
+export function spotPaymentApprovalStatusSemantic(
+  status: string
+): BusinessStatusSemantic {
+  switch (status) {
+    case "approved":
+      return "success";
+    case "approval_pending":
+    case "pending":
+    case "in_progress":
+      return "progress";
+    case "returned":
+    case "rejected":
+    case "withdrawn":
+    case "voided":
+    case "invalidated":
+      return "danger";
+    default:
+      return "neutral";
+  }
+}
+
 export function spotPaymentCurrentTaskPresentation(input: {
   currentTask: SpotPaymentCurrentTask;
   availableActions: DetailActionReadModel[];
@@ -141,7 +162,7 @@ export function spotPaymentCurrentTaskPresentation(input: {
         focus: [
           "进入收货与发票页签核对应退差额、到账时间、方式与凭证。"
         ],
-        actions: [action("record_refund", "查看退款办理", "danger")]
+        actions: [action("record_refund", "办理退款", "danger")]
       };
     default:
       return {

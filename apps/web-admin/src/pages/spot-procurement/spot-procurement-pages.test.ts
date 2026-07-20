@@ -142,11 +142,17 @@ describe("spot procurement web pages", () => {
     expect(detail).toContain("关联采购原单");
     expect(detail).toContain("row.approvedQuantity");
     expect(detail).toContain("router.push(`/零星采购/${payment.procurement.id}`)");
+    expect(detail).toContain("colKey:'trigger'");
+    expect(detail).not.toContain("colKey:'archiveTrigger'");
+    expect(detail).toContain("查看当前采购单、审批与 PDF 可用性");
+    expect(detail).toContain("spotPaymentApprovalStatusSemantic(detail.approval.status)");
+    expect(detail).toContain("router.push(`/零星采购收货/${procurementId}`)");
 
     expect(panel).toContain("currentTask: SpotPaymentCurrentTask");
     expect(panel).toContain("availableActions: DetailActionReadModel[]");
     expect(panel).toContain("summary: SpotPaymentCurrentTaskSummary");
     expect(panel).toContain("spotPaymentCurrentTaskPresentation");
+    expect(panel).toContain("spotPaymentStatusSemantic(summary.status)");
     expect(panel).toContain("<BusinessStatusText");
     expect(panel).toContain("<t-button");
     expect(panel).not.toMatch(/fetchSpot|useRoute|useRouter|roleKeys|material_director/u);

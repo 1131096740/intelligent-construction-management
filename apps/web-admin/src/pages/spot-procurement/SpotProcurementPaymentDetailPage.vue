@@ -33,6 +33,7 @@ import PaymentCompositionCard from "./components/PaymentCompositionCard.vue";
 import PaymentCurrentTaskPanel from "./components/PaymentCurrentTaskPanel.vue";
 import {
   resolveSpotPaymentDetailTab,
+  spotPaymentApprovalStatusSemantic,
   spotPaymentDetailTabs,
   type SpotPaymentCurrentTaskAction,
   type SpotPaymentDetailTab
@@ -454,7 +455,14 @@ function handleCurrentTaskAction(key: SpotPaymentCurrentTaskAction["key"]) {
   else if (key === "review_approval") void selectPaymentTab("approval");
   else if (key === "complete_payer") openPayer();
   else if (key === "record_execution") openConfirmation("execution");
-  else if (key === "record_refund") void selectPaymentTab("fulfillment");
+  else if (
+    key === "record_refund" &&
+    detail.value?.currentTask.key === "record_refund" &&
+    detail.value.currentTask.enabled
+  ) {
+    const procurementId = payment.value?.procurement.id;
+    if (procurementId) void router.push(`/零星采购收货/${procurementId}`);
+  }
 }
 async function cancelConfirmation() { confirmationError.value = ""; if (confirmation.kind === "execution" && executionAttempt.value) { showSuccess("本次付款登记参数已安全保留；重试会沿用同一幂等键和已上传凭证。"); await loadDetail(); } }
 function resetExecutionAttempt() { executionAttempt.value = null; voucherFiles.value = []; }
@@ -561,9 +569,9 @@ watch(
         class="detail-panel"
       >
         <header><h2>付款申请</h2><p>展示 A5 冻结申请事实、材料、渠道与依据；采购申请不填写价格。</p></header>
-        <div class="detail-grid">
+        <dl class="detail-grid">
           <div><dt>付款类型</dt><dd>{{ payment.paymentTypeLabel ?? "—" }}</dd></div><div><dt>实际商户</dt><dd>{{ payment.merchantName ?? "待填写" }}</dd></div><div><dt>收款对象</dt><dd>{{ payment.payee?.name ?? "待填写" }}</dd></div><div><dt>主收款渠道</dt><dd>{{ payment.payee?.primaryChannel?.channelTypeLabel ?? "待填写" }} {{ payment.payee?.primaryChannel?.accountNumberLast4 ? `· 尾号 ${payment.payee.primaryChannel.accountNumberLast4}` : "" }}</dd></div><div><dt>我方付款主体</dt><dd>{{ payment.payerCompanyName ?? "待财务/综合部确定" }}</dd></div><div><dt>商户/收款差异</dt><dd>{{ payment.merchantPayeeMismatchNote ?? "一致或未填写" }}</dd></div>
-        </div>
+        </dl>
         <section>
           <h3>付款材料明细</h3><t-table
             v-if="detail.materials?.length"
@@ -616,7 +624,7 @@ watch(
         <header><h2>审批进度</h2><p>展示节点、人员、时间、结果、意见以及退回后重新提交的完整历史。</p></header>
         <BusinessStatusText
           :text="detail.approval.statusLabel"
-          :semantic="spotPaymentStatusSemantic(payment.status)"
+          :semantic="spotPaymentApprovalStatusSemantic(detail.approval.status)"
         />
         <div
           v-if="actionEnabled('review_approval') || actionEnabled('withdraw_approval') || actionEnabled('void_payment')"
@@ -728,7 +736,7 @@ watch(
       >
         <section>
           <header><h2>收货与发票</h2><p>只读展示收货进度、差异、退款衔接和付款级发票。</p></header>
-          <div class="detail-grid">
+          <dl class="detail-grid">
             <div>
               <dt>收货确认</dt><dd>
                 <BusinessStatusText
@@ -753,7 +761,7 @@ watch(
                 />
               </dd>
             </div>
-          </div>
+          </dl>
         </section>
       </section>
 
@@ -764,7 +772,7 @@ watch(
         <header><h2>归档资料</h2><p>展示不可变 A5 审批文件、A4 采购来源、PDF 与追加归档包。</p></header>
         <section>
           <header><h3>关联采购原单</h3><p>以 A4 冻结版本和采购材料为准，不与 A5 付款材料、价格或票据条件混合。</p></header>
-          <div class="detail-grid">
+          <dl class="detail-grid">
             <div><dt>A4 申请编号 / 版本</dt><dd>{{ payment.procurement.code }} / V{{ detail.procurementVersion.versionNo }}</dd></div>
             <div><dt>采购项目</dt><dd>{{ payment.project.name }}</dd></div>
             <div><dt>采购事由</dt><dd>{{ detail.procurementVersion.reason || "—" }}</dd></div>
@@ -778,7 +786,7 @@ watch(
               </dd>
             </div>
             <div><dt>A4 审批时间</dt><dd>{{ dateTime(detail.procurementVersion.approvedAt) }}</dd></div>
-          </div>
+          </dl>
           <t-table
             v-if="detail.procurementMaterials?.length"
             row-key="id"
@@ -804,12 +812,12 @@ watch(
               variant="outline"
               @click="router.push(`/零星采购/${payment.procurement.id}`)"
             >
-              查看 A4 原单、审批与 PDF 可用性
+              查看当前采购单、审批与 PDF 可用性
             </t-button>
           </div>
           <small>审批单与 PDF 是否可下载，以关联采购原单当前返回的服务端事实为准。</small>
         </section>
-        <div class="detail-grid">
+        <dl class="detail-grid">
           <div>
             <dt>A5 审批文件</dt><dd>
               <BusinessStatusText
@@ -826,7 +834,7 @@ watch(
               />
             </dd>
           </div>
-        </div>
+        </dl>
         <t-button
           v-if="actionEnabled('download_payment_pdf')"
           variant="outline"
@@ -839,7 +847,7 @@ watch(
           row-key="id"
           size="small"
           :data="detail.archives"
-          :columns="[{colKey:'versionNo',title:'归档版本'},{colKey:'archiveTrigger',title:'生成原因'},{colKey:'status',title:'状态'},{colKey:'files',title:'关联资料'},{colKey:'createdAt',title:'生成时间'}]"
+          :columns="[{colKey:'versionNo',title:'归档版本'},{colKey:'trigger',title:'生成原因'},{colKey:'status',title:'状态'},{colKey:'files',title:'关联资料'},{colKey:'createdAt',title:'生成时间'}]"
         >
           <template #versionNo="{row}">
             V{{ row.versionNo }}
@@ -1085,6 +1093,6 @@ watch(
 
 <style scoped>
 .payment-detail-header{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--jg-space-xl);padding-bottom:var(--jg-space-lg);border-bottom:var(--jg-border-width-base) solid var(--jg-color-border)}.payment-detail-header__main{display:grid;min-width:0;flex:1;gap:var(--jg-space-xs)}.payment-detail-header__code{color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta);font-weight:var(--jg-font-weight-semibold)}.payment-detail-header__title-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--jg-space-md)}.payment-detail-header__title-row h1{margin:0;color:var(--jg-color-text-primary);font-size:var(--jg-font-size-page-title);line-height:var(--jg-line-height-title)}.payment-detail-header__facts{display:flex;flex-wrap:wrap;gap:var(--jg-space-xl);margin:var(--jg-space-md) 0 0}.payment-detail-header__facts>div{display:grid;min-width:132px;gap:var(--jg-space-xs)}.payment-detail-header__facts dt{color:var(--jg-color-text-muted);font-size:var(--jg-font-size-meta)}.payment-detail-header__facts dd{margin:0;color:var(--jg-color-text-secondary);font-weight:var(--jg-font-weight-medium)}.payment-detail-header__actions{display:flex;flex:0 0 auto;flex-wrap:wrap;gap:var(--jg-space-sm)}
-.spot-payment-detail,.detail-panel,.edit-form,.edit-section,.confirmation-fields{display:grid;gap:var(--jg-space-lg);min-width:0;color:var(--jg-color-text-primary)}.detail-tabs{margin-top:var(--jg-space-lg)}.detail-panel{padding-top:var(--jg-space-md)}.detail-panel>header h2,.detail-panel>header p,.detail-panel h3,.edit-section h3,.edit-section p{margin:0}.detail-panel>header p,.edit-section p{margin-top:var(--jg-space-xs);color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}.detail-grid,.edit-form__grid,.payment-line__fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:var(--jg-space-md)}.detail-grid>div,.payment-line,.payment-channel{display:grid;gap:var(--jg-space-xs);padding:var(--jg-space-md);border:var(--jg-border-width-base) solid var(--jg-color-border);border-radius:var(--jg-radius-panel);background:var(--jg-color-bg-surface)}.detail-grid dt,.edit-form label>span,.confirmation-fields label>span,.merchant-suggestions>span{color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}.detail-grid dd{margin:0}.detail-panel>section{display:grid;gap:var(--jg-space-md)}.action-buttons,.merchant-suggestions{display:flex;flex-wrap:wrap;gap:var(--jg-space-sm);align-items:center}.edit-section{padding:var(--jg-space-md);border:var(--jg-border-width-base) solid var(--jg-color-border);border-radius:var(--jg-radius-panel)}.payment-channel__head{display:flex;align-items:center;justify-content:space-between;gap:var(--jg-space-sm)}.edit-form label,.confirmation-fields label{display:grid;gap:var(--jg-space-xs)}small{color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}
+.spot-payment-detail,.detail-panel,.edit-form,.edit-section,.confirmation-fields{display:grid;gap:var(--jg-space-lg);min-width:0;color:var(--jg-color-text-primary)}.detail-tabs{margin-top:var(--jg-space-lg)}.detail-panel{padding-top:var(--jg-space-md)}.detail-panel>header h2,.detail-panel>header p,.detail-panel h3,.edit-section h3,.edit-section p{margin:0}.detail-panel>header p,.edit-section p{margin-top:var(--jg-space-xs);color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}.detail-grid,.edit-form__grid,.payment-line__fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:var(--jg-space-md)}.detail-grid{margin:0}.detail-grid>div,.payment-line,.payment-channel{display:grid;gap:var(--jg-space-xs);padding:var(--jg-space-md);border:var(--jg-border-width-base) solid var(--jg-color-border);border-radius:var(--jg-radius-panel);background:var(--jg-color-bg-surface)}.detail-grid dt,.edit-form label>span,.confirmation-fields label>span,.merchant-suggestions>span{color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}.detail-grid dd{margin:0}.detail-panel>section{display:grid;gap:var(--jg-space-md)}.action-buttons,.merchant-suggestions{display:flex;flex-wrap:wrap;gap:var(--jg-space-sm);align-items:center}.edit-section{padding:var(--jg-space-md);border:var(--jg-border-width-base) solid var(--jg-color-border);border-radius:var(--jg-radius-panel)}.payment-channel__head{display:flex;align-items:center;justify-content:space-between;gap:var(--jg-space-sm)}.edit-form label,.confirmation-fields label{display:grid;gap:var(--jg-space-xs)}small{color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}
 @media(max-width:720px){.payment-detail-header{flex-direction:column}.payment-detail-header__actions{width:100%}}
 </style>

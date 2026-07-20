@@ -412,6 +412,98 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   await expect(page.getByText("发票是整张付款申请的可选附件", { exact: true })).toBeVisible();
 });
 
+test("routes an enabled refund task to the real receipt workflow and preserves frozen archive facts", async ({ page }) => {
+  await mockLogin(page);
+  await page.route("**/api/spot-procurement-payments/payment-refund", (route) => {
+    const base = paymentDetail();
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...base,
+        payment: {
+          ...base.payment,
+          id: "payment-refund",
+          code: "LXFK-REFUND",
+          status: "partially_paid",
+          statusLabel: "部分已付"
+        },
+        currentTask: {
+          key: "record_refund",
+          label: "登记供应商退款",
+          hint: "收货差异已确认，等待登记退款到账",
+          priority: 400,
+          scope: "personal",
+          enabled: true,
+          disabledReason: null
+        },
+        availableActions: [],
+        archives: [{
+          id: "archive-1",
+          versionNo: 1,
+          status: "generated",
+          statusLabel: "已生成",
+          trigger: "付款审批完成",
+          createdAt: now,
+          files: []
+        }]
+      })
+    });
+  });
+  await page.route("**/api/spot-procurement-payments/payment-refund-disabled", (route) => {
+    const base = paymentDetail();
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...base,
+        payment: { ...base.payment, id: "payment-refund-disabled", code: "LXFK-REFUND-DISABLED" },
+        currentTask: {
+          key: "record_refund",
+          label: "登记供应商退款",
+          hint: "当前账号无退款办理权",
+          priority: 400,
+          scope: "personal",
+          enabled: false,
+          disabledReason: "当前账号无退款办理权"
+        },
+        availableActions: []
+      })
+    });
+  });
+  await page.route("**/api/spot-procurements/procurement-1/receipt", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(receiptDetail()) })
+  );
+  await page.route("**/api/spot-procurements/procurement-1", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(procurementDetail()) })
+  );
+
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+
+  await page.goto("/零星材料付款/payment-refund?tab=current");
+  const taskPanel = page.locator(".payment-current-task");
+  await expect(taskPanel.locator(".payment-current-task__heading .business-status-text--danger")).toBeVisible();
+  await expect(taskPanel.locator(".payment-current-task__summary .business-status-text--progress")).toBeVisible();
+  await expect(taskPanel.getByRole("button", { name: "办理退款", exact: true })).toBeVisible();
+
+  await page.locator(".t-tabs").getByText("审批进度", { exact: true }).click();
+  await expect(page.locator(".detail-panel > .business-status-text--success")).toBeVisible();
+
+  await page.locator(".t-tabs").getByText("归档资料", { exact: true }).click();
+  await expect(page.getByText("LXCG-E2E-001 / V1", { exact: true })).toBeVisible();
+  await expect(page.getByText("付款审批完成", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "查看当前采购单、审批与 PDF 可用性", exact: true })).toBeVisible();
+
+  await page.locator(".t-tabs").getByText("当前办理", { exact: true }).click();
+  await taskPanel.getByRole("button", { name: "办理退款", exact: true }).click();
+  await expect.poll(() => decodeURIComponent(new URL(page.url()).pathname)).toBe("/零星采购收货/procurement-1");
+
+  await page.goto("/零星材料付款/payment-refund-disabled?tab=current");
+  await expect(page.getByRole("button", { name: "办理退款", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "当前无需办理付款", exact: true })).toBeVisible();
+});
+
 test("keeps the latest spot payment detail and reloads a replacement draft", async ({ page }) => {
   const slowAStarted = deferred();
   const releaseSlowA = deferred();

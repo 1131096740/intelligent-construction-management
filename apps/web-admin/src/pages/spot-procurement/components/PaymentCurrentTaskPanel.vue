@@ -8,6 +8,7 @@ import {
   type SpotPaymentCurrentTaskAction,
   type SpotPaymentCurrentTaskSummary
 } from "../spot-payment-detail.config";
+import { spotPaymentStatusSemantic } from "../spot-payment-workbench.config";
 
 const props = defineProps<{
   currentTask: SpotPaymentCurrentTask;
@@ -49,7 +50,7 @@ const presentation = computed(() => spotPaymentCurrentTaskPresentation({
         <dd>
           <BusinessStatusText
             :text="summary.statusLabel"
-            :semantic="presentation.semantic"
+            :semantic="spotPaymentStatusSemantic(summary.status)"
           />
         </dd>
       </div>

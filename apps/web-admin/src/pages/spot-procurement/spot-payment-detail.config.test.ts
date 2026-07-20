@@ -4,9 +4,11 @@ import {
   firstIncompletePaymentStep,
   resolveSpotPaymentMerchantPayee,
   resolveSpotPaymentDetailTab,
+  spotPaymentApprovalStatusSemantic,
   spotPaymentCurrentTaskPresentation,
   spotPaymentDetailTabs
 } from "./spot-payment-detail.config";
+import { spotPaymentStatusSemantic } from "./spot-payment-workbench.config";
 
 describe("spot payment detail configuration", () => {
   it("fixes the six detail tabs in business order", () => {
@@ -32,6 +34,41 @@ describe("spot payment detail configuration", () => {
     ["archives", "archives"]
   ])("normalizes route tab %j without leaving the page blank", (query, expected) => {
     expect(resolveSpotPaymentDetailTab(query)).toBe(expected);
+  });
+
+  it("keeps approval semantics independent from payment semantics", () => {
+    expect(spotPaymentStatusSemantic("paid")).toBe("success");
+    expect(spotPaymentApprovalStatusSemantic("approved")).toBe("success");
+    expect(spotPaymentApprovalStatusSemantic("approval_pending")).toBe("progress");
+    expect(spotPaymentApprovalStatusSemantic("returned")).toBe("danger");
+    expect(spotPaymentApprovalStatusSemantic("rejected")).toBe("danger");
+    expect(spotPaymentApprovalStatusSemantic("unknown")).toBe("neutral");
+  });
+
+  it("exposes the refund CTA only for an enabled server refund task", () => {
+    const summary = {
+      currentNodeName: "收货差异退款",
+      status: "partially_paid",
+      statusLabel: "部分已付",
+      approvalAmountText: "¥3,000.00",
+      remainingAmountText: "¥1,000.00",
+      payerCompanyName: "云南建工有限公司"
+    };
+    const enabled = spotPaymentCurrentTaskPresentation({
+      currentTask: task("record_refund", "登记供应商退款", "personal", 400),
+      availableActions: [],
+      summary
+    });
+    const disabled = spotPaymentCurrentTaskPresentation({
+      currentTask: task("record_refund", "登记供应商退款", "personal", 400, false),
+      availableActions: [],
+      summary
+    });
+
+    expect(enabled.actions).toEqual([
+      { key: "record_refund", label: "办理退款", kind: "danger" }
+    ]);
+    expect(disabled.actions).toEqual([]);
   });
 
   it.each([
