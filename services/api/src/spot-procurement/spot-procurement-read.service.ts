@@ -47,6 +47,7 @@ import { SpotProcurementInvoiceService } from "./spot-procurement-invoice.servic
 import { SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY } from "./spot-procurement-form-renderer";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 import { isSpotPaymentPayerTaskComplete } from "./spot-payment-payer-task";
+import { spotPaymentRefundOwnerId } from "./spot-payment-refund-owner";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
 
 const LIST_LIMIT = 200;
@@ -2901,7 +2902,7 @@ function refundOwnerPaymentId(
   ) {
     return null;
   }
-  return nullPaymentRefundOwnerId(discrepancy, payments);
+  return spotPaymentRefundOwnerId(discrepancy, payments);
 }
 
 function paymentTaskDiscrepancy(
@@ -2915,46 +2916,9 @@ function paymentTaskDiscrepancy(
   ) {
     return discrepancy;
   }
-  return nullPaymentRefundOwnerId(discrepancy, payments) === payment.id
+  return spotPaymentRefundOwnerId(discrepancy, payments) === payment.id
     ? discrepancy
     : null;
-}
-
-function nullPaymentRefundOwnerId(
-  discrepancy: Pick<
-    SpotProcurementDiscrepancy,
-    "procurementId" | "procurementVersionId"
-  >,
-  payments: RefundOwnerPayment[]
-) {
-  const refundSettlementStatuses = new Set([
-    "partially_paid",
-    "paid",
-    "settled"
-  ]);
-  return [...payments]
-    .filter(
-      (payment) =>
-        payment.procurementId === discrepancy.procurementId &&
-        payment.procurementVersionId === discrepancy.procurementVersionId
-    )
-    .sort((left, right) => {
-      const leftPriority = refundSettlementStatuses.has(left.status)
-        ? 2
-        : ["voided", "invalidated"].includes(left.status)
-          ? 0
-          : 1;
-      const rightPriority = refundSettlementStatuses.has(right.status)
-        ? 2
-        : ["voided", "invalidated"].includes(right.status)
-          ? 0
-          : 1;
-      return (
-        rightPriority - leftPriority ||
-        right.createdAt.getTime() - left.createdAt.getTime() ||
-        right.id.localeCompare(left.id)
-      );
-    })[0]?.id ?? null;
 }
 
 function paymentTaskFactAt(

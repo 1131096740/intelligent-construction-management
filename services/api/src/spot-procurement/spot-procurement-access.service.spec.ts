@@ -16,10 +16,15 @@ type AccessFixture = {
     projectId: string;
     handlerUserId: string;
     status?: string;
+    procurementVersionId?: string;
+    payerCompanyEntityId?: string | null;
+    payerCompanyNameSnapshot?: string | null;
+    createdAt?: Date;
     invalidatedByUserId?: string | null;
     supportingAttachmentFileId?: string | null;
     merchantPaymentProofFileId?: string | null;
   }>;
+  paymentMethods?: Array<{ paymentId: string; paymentMethod: string }>;
   paymentInvoices?: Array<{
     paymentId: string;
     fileId: string;
@@ -99,7 +104,12 @@ type AccessFixture = {
   }>;
   discrepancies?: Array<{
     id: string;
+    projectId?: string;
     procurementId: string;
+    procurementVersionId?: string;
+    status?: string;
+    resolutionType?: string | null;
+    invalidatedAt?: Date | null;
   }>;
   refunds?: Array<{
     id: string;
@@ -151,6 +161,7 @@ type AccessFixture = {
     action: string;
   }>;
   projectRoleKeys?: string[];
+  projectRoleKeysByProjectId?: Record<string, string[]>;
   globalRoleKeys?: string[];
 };
 
@@ -160,6 +171,13 @@ function buildPrisma(fixture: AccessFixture = {}) {
       id: `project-position-${index}`,
       key
     })),
+    ...Object.entries(fixture.projectRoleKeysByProjectId ?? {}).flatMap(
+      ([projectId, keys]) =>
+        keys.map((key, index) => ({
+          id: `project-position-${projectId}-${index}`,
+          key
+        }))
+    ),
     ...(fixture.globalRoleKeys ?? []).map((key, index) => ({
       id: `global-position-${index}`,
       key
@@ -213,6 +231,7 @@ function buildPrisma(fixture: AccessFixture = {}) {
         ({ where }: {
           where: {
             id?: { in: string[] };
+            procurementId?: { in: string[] };
             OR?: Array<
               | { supportingAttachmentFileId: string }
               | { merchantPaymentProofFileId: string }
@@ -222,6 +241,11 @@ function buildPrisma(fixture: AccessFixture = {}) {
           const rows = fixture.payments ?? [];
           if (where.id) {
             return Promise.resolve(rows.filter((row) => where.id?.in.includes(row.id)));
+          }
+          if (where.procurementId) {
+            return Promise.resolve(
+              rows.filter((row) => where.procurementId?.in.includes(row.procurementId))
+            );
           }
           const fileIds = new Set(
             (where.OR ?? []).flatMap((condition) => Object.values(condition))
@@ -245,6 +269,16 @@ function buildPrisma(fixture: AccessFixture = {}) {
             (row) => row.fileId === where.fileId
           )
         )
+      )
+    },
+    spotProcurementPaymentMethodOption: {
+      findMany: jest.fn(
+        ({ where }: { where: { paymentId: { in: string[] } } }) =>
+          Promise.resolve(
+            (fixture.paymentMethods ?? []).filter((row) =>
+              where.paymentId.in.includes(row.paymentId)
+            )
+          )
       )
     },
     spotProcurementReceipt: {
@@ -382,12 +416,28 @@ function buildPrisma(fixture: AccessFixture = {}) {
     },
     spotProcurementDiscrepancy: {
       findMany: jest.fn(
-        ({ where }: { where: { id: { in: string[] } } }) =>
-          Promise.resolve(
-            (fixture.discrepancies ?? []).filter((row) =>
-              where.id.in.includes(row.id)
-            )
-          )
+        ({ where }: {
+          where: {
+            id?: { in: string[] };
+            procurementId?: { in: string[] };
+            status?: string;
+            resolutionType?: string;
+            invalidatedAt?: null;
+          };
+        }) => Promise.resolve(
+          (fixture.discrepancies ?? []).filter((row) => {
+            if (where.id && !where.id.in.includes(row.id)) return false;
+            if (where.procurementId && !where.procurementId.in.includes(row.procurementId)) {
+              return false;
+            }
+            if (where.status && row.status !== where.status) return false;
+            if (where.resolutionType && row.resolutionType !== where.resolutionType) {
+              return false;
+            }
+            if (where.invalidatedAt === null && row.invalidatedAt != null) return false;
+            return true;
+          })
+        )
       )
     },
     spotProcurementRefund: {
@@ -528,11 +578,17 @@ function buildPrisma(fixture: AccessFixture = {}) {
         ({ where }: { where: { userId: string; projectId: string | null } }) =>
           Promise.resolve([
             ...(where.projectId === null
-              ? fixture.globalRoleKeys ?? []
-              : fixture.projectRoleKeys ?? []
-            ).map((_, index) => ({
-              positionId: `${where.projectId === null ? "global" : "project"}-position-${index}`
-            })),
+              ? (fixture.globalRoleKeys ?? []).map((_, index) => ({
+                  positionId: `global-position-${index}`
+                }))
+              : (
+                  fixture.projectRoleKeysByProjectId?.[where.projectId] ??
+                  fixture.projectRoleKeys ?? []
+                ).map((_, index) => ({
+                  positionId: fixture.projectRoleKeysByProjectId?.[where.projectId!]
+                    ? `project-position-${where.projectId}-${index}`
+                    : `project-position-${index}`
+                }))),
             ...(where.projectId !== null &&
             (fixture.projectPositionUserIds ?? []).includes(where.userId)
               ? [{ positionId: "affiliation-position" }]
@@ -1509,6 +1565,215 @@ describe("SpotProcurementAccessService", () => {
           globalRoleKeys: ["finance_staff"]
         }) as never
       ).accessiblePaymentIds(["payment-1"], "global-finance")
+    ).resolves.toEqual(new Set());
+  });
+
+  it("lets either current-project finance staff continue an incomplete shared payer task through list and detail ACL", async () => {
+    const fixture: AccessFixture = {
+      procurements: [
+        {
+          id: "procurement-1",
+          projectId: "project-1",
+          applicantUserId: "applicant-1",
+          handlerUserId: "handler-1"
+        }
+      ],
+      payments: [
+        {
+          id: "payment-draft",
+          procurementId: "procurement-1",
+          procurementVersionId: "version-1",
+          projectId: "project-1",
+          handlerUserId: "handler-1",
+          status: "draft",
+          payerCompanyEntityId: null,
+          payerCompanyNameSnapshot: null,
+          createdAt: new Date("2026-07-20T08:00:00.000Z")
+        },
+        {
+          id: "payment-pending",
+          procurementId: "procurement-1",
+          procurementVersionId: "version-1",
+          projectId: "project-1",
+          handlerUserId: "handler-1",
+          status: "approval_pending",
+          payerCompanyEntityId: "company-1",
+          payerCompanyNameSnapshot: "云南某某公司",
+          createdAt: new Date("2026-07-20T09:00:00.000Z")
+        }
+      ],
+      approvals: [
+        {
+          id: "approval-pending",
+          businessType: "spot_procurement_payment",
+          businessId: "payment-pending",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            { roleKeys: ["comprehensive_director"] },
+            { roleKeys: ["project_manager"] },
+            { roleKeys: ["finance_director"] }
+          ],
+          applicantUserId: "handler-1"
+        }
+      ],
+      projectRoleKeys: ["finance_staff"]
+    };
+    const service = new SpotProcurementAccessService(buildPrisma(fixture) as never);
+
+    await expect(
+      service.accessiblePaymentIds(
+        ["payment-draft", "payment-pending"],
+        "finance-a"
+      )
+    ).resolves.toEqual(new Set(["payment-draft", "payment-pending"]));
+    await expect(
+      service.resolvePaymentViewAccess("payment-pending", "finance-b")
+    ).resolves.toBe("allowed");
+  });
+
+  it("withdraws shared payer visibility once complete and never grants it to unrelated project roles or later approval nodes", async () => {
+    const base: AccessFixture = {
+      procurements: [
+        {
+          id: "procurement-1",
+          projectId: "project-1",
+          applicantUserId: "applicant-1",
+          handlerUserId: "handler-1"
+        }
+      ],
+      payments: [
+        {
+          id: "payment-1",
+          procurementId: "procurement-1",
+          procurementVersionId: "version-1",
+          projectId: "project-1",
+          handlerUserId: "handler-1",
+          status: "approval_pending",
+          payerCompanyEntityId: "company-1",
+          payerCompanyNameSnapshot: "云南某某公司",
+          createdAt: new Date("2026-07-20T08:00:00.000Z")
+        }
+      ],
+      approvals: [
+        {
+          id: "approval-1",
+          businessType: "spot_procurement_payment",
+          businessId: "payment-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          frozenNodes: [{ roleKeys: ["comprehensive_director"] }],
+          applicantUserId: "handler-1"
+        }
+      ],
+      paymentMethods: [{ paymentId: "payment-1", paymentMethod: "bank_transfer" }]
+    };
+
+    await expect(
+      new SpotProcurementAccessService(
+        buildPrisma({ ...base, projectRoleKeys: ["finance_staff"] }) as never
+      ).accessiblePaymentIds(["payment-1"], "finance-a")
+    ).resolves.toEqual(new Set());
+    for (const role of ["material_director", "employee"]) {
+      await expect(
+        new SpotProcurementAccessService(
+          buildPrisma({
+            ...base,
+            paymentMethods: [],
+            projectRoleKeys: [role]
+          }) as never
+        ).accessiblePaymentIds(["payment-1"], `${role}-1`)
+      ).resolves.toEqual(new Set());
+    }
+    await expect(
+      new SpotProcurementAccessService(
+        buildPrisma({
+          ...base,
+          paymentMethods: [],
+          approvals: [{ ...base.approvals![0]!, currentNodeIndex: 1 }],
+          projectRoleKeys: ["finance_staff"]
+        }) as never
+      ).accessiblePaymentIds(["payment-1"], "finance-a")
+    ).resolves.toEqual(new Set());
+  });
+
+  it("grants awaiting-refund visibility only to current-project finance and only for the projected owner payment", async () => {
+    const base: AccessFixture = {
+      procurements: [
+        {
+          id: "procurement-1",
+          projectId: "project-1",
+          applicantUserId: "applicant-1",
+          handlerUserId: "handler-1"
+        }
+      ],
+      payments: [
+        {
+          id: "payment-old",
+          procurementId: "procurement-1",
+          procurementVersionId: "version-1",
+          projectId: "project-1",
+          handlerUserId: "handler-1",
+          status: "paid",
+          createdAt: new Date("2026-07-19T08:00:00.000Z")
+        },
+        {
+          id: "payment-owner",
+          procurementId: "procurement-1",
+          procurementVersionId: "version-1",
+          projectId: "project-1",
+          handlerUserId: "handler-1",
+          status: "settled",
+          createdAt: new Date("2026-07-20T08:00:00.000Z")
+        }
+      ],
+      discrepancies: [
+        {
+          id: "discrepancy-1",
+          projectId: "project-1",
+          procurementId: "procurement-1",
+          procurementVersionId: "version-1",
+          status: "awaiting_refund",
+          resolutionType: "full_refund",
+          invalidatedAt: null
+        }
+      ],
+      projectRoleKeysByProjectId: { "project-1": ["finance_staff"] }
+    };
+    const service = new SpotProcurementAccessService(buildPrisma(base) as never);
+
+    await expect(
+      service.accessiblePaymentIds(["payment-old", "payment-owner"], "finance-a")
+    ).resolves.toEqual(new Set(["payment-owner"]));
+    await expect(
+      service.resolvePaymentViewAccess("payment-owner", "finance-b")
+    ).resolves.toBe("allowed");
+
+    await expect(
+      new SpotProcurementAccessService(
+        buildPrisma({
+          ...base,
+          discrepancies: [{ ...base.discrepancies![0]!, status: "refunded" }]
+        }) as never
+      ).accessiblePaymentIds(["payment-owner"], "finance-a")
+    ).resolves.toEqual(new Set());
+    await expect(
+      new SpotProcurementAccessService(
+        buildPrisma({
+          ...base,
+          projectRoleKeysByProjectId: { "project-other": ["finance_staff"] }
+        }) as never
+      ).accessiblePaymentIds(["payment-owner"], "cross-project-finance")
+    ).resolves.toEqual(new Set());
+    await expect(
+      new SpotProcurementAccessService(
+        buildPrisma({
+          ...base,
+          discrepancies: [
+            { ...base.discrepancies![0]!, projectId: "project-other" }
+          ]
+        }) as never
+      ).accessiblePaymentIds(["payment-owner"], "finance-a")
     ).resolves.toEqual(new Set());
   });
 

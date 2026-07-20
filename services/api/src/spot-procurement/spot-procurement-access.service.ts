@@ -13,6 +13,8 @@ import {
   isCurrentFormalReceiptPdfFact,
   RECEIPT_PDF_REFRESH_ACTION
 } from "./spot-procurement-receipt-pdf-facts";
+import { isSpotPaymentPayerTaskComplete } from "./spot-payment-payer-task";
+import { spotPaymentRefundOwnerId } from "./spot-payment-refund-owner";
 
 export type SpotProcurementFileAccessDecision =
   | "not_spot"
@@ -248,7 +250,11 @@ export class SpotProcurementAccessService {
         projectId: true,
         handlerUserId: true,
         invalidatedByUserId: true,
-        status: true
+        status: true,
+        procurementVersionId: true,
+        payerCompanyEntityId: true,
+        payerCompanyNameSnapshot: true,
+        createdAt: true
       }
     });
     if (!payments.length) return new Set();
@@ -273,7 +279,14 @@ export class SpotProcurementAccessService {
     if (!validPayments.length) return new Set();
 
     const validPaymentIds = validPayments.map((payment) => payment.id);
-    const [approvals, executions, reservations, balanceEntries] = await Promise.all([
+    const [
+      approvals,
+      executions,
+      reservations,
+      balanceEntries,
+      paymentMethods,
+      refundDiscrepancies
+    ] = await Promise.all([
       client.approvalInstance.findMany({
         where: {
           OR: validPaymentIds.map((paymentId) => ({
@@ -312,8 +325,55 @@ export class SpotProcurementAccessService {
       client.supplierBalanceEntry.findMany({
         where: { paymentId: { in: validPaymentIds } },
         select: { paymentId: true, actorUserId: true }
+      }),
+      client.spotProcurementPaymentMethodOption.findMany({
+        where: { paymentId: { in: validPaymentIds } },
+        select: { paymentId: true }
+      }),
+      client.spotProcurementDiscrepancy.findMany({
+        where: {
+          procurementId: {
+            in: [...new Set(validPayments.map((payment) => payment.procurementId))]
+          },
+          status: "awaiting_refund",
+          resolutionType: "full_refund",
+          invalidatedAt: null
+        },
+        select: {
+          id: true,
+          projectId: true,
+          procurementId: true,
+          procurementVersionId: true
+        }
       })
     ]);
+    const validRefundDiscrepancies = refundDiscrepancies.filter(
+      (discrepancy) =>
+        procurementById.get(discrepancy.procurementId)?.projectId ===
+        discrepancy.projectId
+    );
+    const refundCandidatePayments = validRefundDiscrepancies.length
+      ? await client.spotProcurementPayment.findMany({
+          where: {
+            procurementId: {
+              in: [
+                ...new Set(
+                  validRefundDiscrepancies.map(
+                    (discrepancy) => discrepancy.procurementId
+                  )
+                )
+              ]
+            }
+          },
+          select: {
+            id: true,
+            procurementId: true,
+            procurementVersionId: true,
+            status: true,
+            createdAt: true
+          }
+        })
+      : [];
     const actions = approvals.length
       ? await client.approvalActionLog.findMany({
           where: {
@@ -384,6 +444,31 @@ export class SpotProcurementAccessService {
       globalRoleKeys,
       projectRolesByProjectId
     );
+    const paymentMethodCountByPaymentId = new Map<string, number>();
+    for (const method of paymentMethods) {
+      paymentMethodCountByPaymentId.set(
+        method.paymentId,
+        (paymentMethodCountByPaymentId.get(method.paymentId) ?? 0) + 1
+      );
+    }
+    const latestApprovalByBusinessId = new Map<
+      string,
+      (typeof approvals)[number]
+    >();
+    for (const approval of approvals) {
+      if (!latestApprovalByBusinessId.has(approval.businessId)) {
+        latestApprovalByBusinessId.set(approval.businessId, approval);
+      }
+    }
+    const refundOwnerPaymentIds = new Set(
+      validRefundDiscrepancies.flatMap((discrepancy) => {
+        const ownerId = spotPaymentRefundOwnerId(
+          discrepancy,
+          refundCandidatePayments
+        );
+        return ownerId ? [ownerId] : [];
+      })
+    );
     for (const payment of validPayments) {
       const requiredRoles = requiredRolesByPaymentId.get(payment.id);
       if (
@@ -402,18 +487,27 @@ export class SpotProcurementAccessService {
       ) {
         allowedIds.add(payment.id);
       }
-    }
-
-    const latestApprovalByBusinessId = new Map<
-      string,
-      (typeof approvals)[number]
-    >();
-    for (const approval of approvals) {
-      if (!latestApprovalByBusinessId.has(approval.businessId)) {
-        latestApprovalByBusinessId.set(
-          approval.businessId,
-          approval
-        );
+      const projectFinance = (
+        projectRolesByProjectId.get(payment.projectId) ?? []
+      ).includes("finance_staff");
+      const latestApproval = latestApprovalByBusinessId.get(payment.id);
+      const payerTaskStageIsOpen =
+        payment.status === "draft" ||
+        (payment.status === "approval_pending" &&
+          latestApproval?.status === "approval_pending" &&
+          latestApproval.currentNodeIndex === 0);
+      if (
+        projectFinance &&
+        payerTaskStageIsOpen &&
+        !isSpotPaymentPayerTaskComplete(
+          payment,
+          paymentMethodCountByPaymentId.get(payment.id) ?? 0
+        )
+      ) {
+        allowedIds.add(payment.id);
+      }
+      if (projectFinance && refundOwnerPaymentIds.has(payment.id)) {
+        allowedIds.add(payment.id);
       }
     }
     const actorFinalRoles = globalRoleKeys.filter((roleKey) => FINAL_OR_ROLES.has(roleKey));
