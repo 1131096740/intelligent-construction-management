@@ -1,5 +1,5 @@
 import path from "node:path";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 import {
   expectHorizontalScrollOwner,
   expectNoDocumentHorizontalOverflow,
@@ -542,6 +542,10 @@ test("locally resumes an incomplete A5 draft without inventing payment facts and
   await page.getByRole("button", { name: "3. 收款渠道与依据", exact: true }).click();
   await page.getByRole("button", { name: "新增收款渠道", exact: true }).click();
   await expect(page.getByText("渠道 1", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "1. 付款与商户", exact: true }).click();
+  await expect(page.getByText("现金已关联收款渠道；如需取消，请先在第 3 步删除对应渠道。", { exact: true })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "现金", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "3. 收款渠道与依据", exact: true }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
 
   writeOrder.length = 0;
@@ -556,6 +560,132 @@ test("locally resumes an incomplete A5 draft without inventing payment facts and
     { length: sessionStorage.length },
     (_, index) => sessionStorage.key(index) ?? ""
   ).join("\n"))).not.toContain("spot-payment-local-draft");
+});
+
+test("fails closed when switching A5 payment routes and discards stale option responses", async ({ page }) => {
+  const pendingAHistory: Route[] = [];
+  const pendingAVat: Route[] = [];
+  let paymentBWrites = 0;
+  const draftDetail = (id: string, projectId: string, projectName: string, materialName: string) => {
+    const base = paymentDetail();
+    return {
+      ...base,
+      payment: {
+        ...base.payment,
+        id,
+        code: id === "payment-A" ? "PAY-A" : "PAY-B",
+        project: { id: projectId, code: projectId, name: projectName },
+        paymentType: null,
+        paymentTypeLabel: null,
+        merchantName: null,
+        payee: { name: null, accountName: null, primaryChannel: null }
+      },
+      materials: [],
+      procurementMaterials: [{
+        id: `${id}-line`, sortOrder: 1, materialName, specification: null,
+        unit: "件", approvedQuantity: "2.00", note: null
+      }],
+      paymentMethods: [],
+      paymentChannels: [],
+      availableActions: [
+        { key: "edit_draft", label: "编辑 A5 付款草稿", kind: "normal", enabled: true, disabledReason: null },
+        { key: "submit_approval", label: "提交付款审批", kind: "primary", enabled: true, disabledReason: null }
+      ]
+    };
+  };
+
+  await mockLogin(page);
+  await page.route("**/api/spot-procurement-payments/payment-A", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(draftDetail("payment-A", "project-A", "项目A", "A材料")) })
+  );
+  await page.route("**/api/spot-procurement-payments/payment-B", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(draftDetail("payment-B", "project-B", "项目B", "B材料")) })
+  );
+  await page.route("**/api/spot-procurement-payments/payment-B/draft", async (route) => {
+    paymentBWrites += 1;
+    await route.fulfill({ contentType: "application/json", body: "{}" });
+  });
+  await page.route("**/api/spot-procurement-payments?*", async (route) => {
+    const projectId = new URL(route.request().url()).searchParams.get("projectId");
+    if (projectId === "project-A") {
+      pendingAHistory.push(route);
+      return;
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [{ merchantName: "B历史商户" }],
+        viewCounts: { mine: 0, all: 0, closed: 0 }, amountSummary: null, truncated: false, limit: 200
+      })
+    });
+  });
+  await page.route("**/api/vat-rate-options", async (route) => {
+    if (!pendingAVat.length) {
+      pendingAVat.push(route);
+      return;
+    }
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify([{ id: "vat-b", label: "B税率" }]) });
+  });
+
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await page.goto("/零星材料付款/payment-A?tab=current");
+  await page.getByRole("button", { name: "提交付款审批", exact: true }).click();
+  await page.getByPlaceholder("实际购买的商户").fill("A敏感商户");
+  await page.getByText("银行转账", { exact: true }).click();
+  await page.getByRole("button", { name: "2. 付款材料", exact: true }).click();
+  await page.locator(".payment-application-stepper__card .t-checkbox").click();
+  const aMaterialInputs = page.locator(".payment-application-stepper__card .payment-application-stepper__grid input");
+  await aMaterialInputs.nth(0).fill("1.00");
+  await aMaterialInputs.nth(1).fill("99.00");
+  await page.getByRole("button", { name: "3. 收款渠道与依据", exact: true }).click();
+  await page.getByRole("button", { name: "新增收款渠道", exact: true }).click();
+  const aChannelInputs = page.locator(".payment-application-stepper__card").filter({ hasText: "渠道 1" }).locator("input");
+  await aChannelInputs.nth(1).fill("A账户");
+  await aChannelInputs.nth(2).fill("6222000011112222");
+  await aChannelInputs.nth(3).fill("A银行");
+  await page.locator(".payment-application-stepper__evidence input[type=file]").setInputFiles({
+    name: "A付款依据.pdf", mimeType: "application/pdf", buffer: Buffer.from("A")
+  });
+
+  await page.evaluate(() => {
+    history.pushState({}, "", "/零星材料付款/payment-B?tab=current");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(page.getByText("PAY-B", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "继续填写付款申请", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "提交付款审批", exact: true }).click();
+  await expect(page.getByPlaceholder("实际购买的商户")).toHaveValue("");
+  await expect(page.getByText("A敏感商户", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".payment-application-stepper input[type=checkbox]:checked")).toHaveCount(0);
+  await page.getByRole("button", { name: "2. 付款材料", exact: true }).click();
+  await expect(page.getByText("B材料", { exact: false })).toBeVisible();
+  await expect(page.getByText("A材料", { exact: false })).toHaveCount(0);
+  await page.getByRole("button", { name: "3. 收款渠道与依据", exact: true }).click();
+  await expect(page.getByText("渠道 1", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".payment-application-stepper__evidence input[type=file]")).toHaveValue("");
+
+  await pendingAHistory[0]?.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ items: [{ merchantName: "A慢响应商户" }], viewCounts: { mine: 0, all: 0, closed: 0 }, amountSummary: null, truncated: false, limit: 200 })
+  });
+  await pendingAVat[0]?.fulfill({ contentType: "application/json", body: JSON.stringify([{ id: "vat-a", label: "A慢响应税率" }]) });
+  await page.getByRole("button", { name: "1. 付款与商户", exact: true }).click();
+  await expect(page.getByText("B历史商户", { exact: true })).toBeVisible();
+  await expect(page.getByText("A慢响应商户", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "2. 付款材料", exact: true }).click();
+  const bMaterialCard = page.locator(".payment-application-stepper__card").filter({ hasText: "B材料" });
+  await bMaterialCard.locator(".t-checkbox").click();
+  await bMaterialCard.locator(".t-select").first().click();
+  await page.getByText("普通增值税发票", { exact: true }).click();
+  await bMaterialCard.locator(".t-select").nth(1).click();
+  await expect(page.getByText("B税率", { exact: true })).toBeVisible();
+  await expect(page.getByText("A慢响应税率", { exact: true })).toHaveCount(0);
+  await page.getByText("B税率", { exact: true }).click();
+  await page.getByRole("button", { name: "保存并退出", exact: true }).click();
+  expect(paymentBWrites).toBe(0);
 });
 
 test("routes an enabled refund task to the real receipt workflow and preserves frozen archive facts", async ({ page }) => {

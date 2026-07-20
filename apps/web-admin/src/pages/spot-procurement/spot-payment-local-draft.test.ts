@@ -69,4 +69,41 @@ describe("spot payment local draft", () => {
     clearSpotPaymentLocalDraft(target, "payment-1", "user-1");
     expect(readSpotPaymentLocalDraft(target, "payment-1", "user-1", 1_001)).toBeNull();
   });
+
+  it("rebuilds restored lines from the whitelist and drops forged server facts", () => {
+    const target = storage();
+    writeSpotPaymentLocalDraft(target, "payment-1", "user-1", 2, safeDraft, 1_000);
+    const key = target.key(0) ?? "";
+    const forged = JSON.parse(target.getItem(key) ?? "{}") as {
+      draft: { lines: Array<Record<string, unknown>> };
+    };
+    Object.assign(forged.draft.lines[0]!, {
+      materialName: "伪造材料",
+      approvedQuantity: "999999.00",
+      unit: "伪造单位",
+      channels: [{ accountNumber: "62220000" }]
+    });
+    target.setItem(key, JSON.stringify(forged));
+
+    const restored = readSpotPaymentLocalDraft(target, "payment-1", "user-1", 1_001);
+    expect(restored?.draft.lines[0]).toEqual(safeDraft.lines[0]);
+    expect(restored?.draft.lines[0]).not.toHaveProperty("materialName");
+    expect(restored?.draft.lines[0]).not.toHaveProperty("approvedQuantity");
+    expect(restored?.draft.lines[0]).not.toHaveProperty("channels");
+  });
+
+  it("fails open when storage get, cleanup, or JSON parsing throws", () => {
+    const getFailure = storage();
+    getFailure.getItem = () => { throw new Error("blocked"); };
+    getFailure.removeItem = () => { throw new Error("cleanup blocked"); };
+    expect(() => readSpotPaymentLocalDraft(getFailure, "payment-1", "user-1")).not.toThrow();
+    expect(readSpotPaymentLocalDraft(getFailure, "payment-1", "user-1")).toBeNull();
+
+    const parseFailure = storage();
+    writeSpotPaymentLocalDraft(parseFailure, "payment-1", "user-1", 2, safeDraft, 1_000);
+    parseFailure.setItem(parseFailure.key(0) ?? "", "not-json");
+    parseFailure.removeItem = () => { throw new Error("cleanup blocked"); };
+    expect(() => readSpotPaymentLocalDraft(parseFailure, "payment-1", "user-1", 1_001)).not.toThrow();
+    expect(readSpotPaymentLocalDraft(parseFailure, "payment-1", "user-1", 1_001)).toBeNull();
+  });
 });

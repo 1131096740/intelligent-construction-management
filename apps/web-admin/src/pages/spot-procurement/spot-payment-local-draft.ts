@@ -109,25 +109,39 @@ export function readSpotPaymentLocalDraft(
   now = Date.now()
 ): SpotPaymentLocalDraft | null {
   const key = storageKey(paymentId, userId);
+  let raw: string | null;
   try {
-    const raw = storage.getItem(key);
-    if (!raw) return null;
+    raw = storage.getItem(key);
+  } catch {
+    return null;
+  }
+  if (!raw) return null;
+  try {
     const value = JSON.parse(raw) as Partial<SpotPaymentLocalDraft>;
     if (
       value.schemaVersion !== SCHEMA_VERSION ||
       value.paymentId !== paymentId ||
       value.userId !== userId ||
+      typeof value.savedAt !== "number" ||
       typeof value.expiresAt !== "number" ||
       value.expiresAt <= now ||
       ![0, 1, 2, 3].includes(value.resumeStep as number) ||
       !isSafeDraft(value.draft)
     ) {
-      storage.removeItem(key);
+      safeRemove(storage, key);
       return null;
     }
-    return value as SpotPaymentLocalDraft;
+    return {
+      schemaVersion: SCHEMA_VERSION,
+      paymentId,
+      userId,
+      savedAt: value.savedAt as number,
+      expiresAt: value.expiresAt,
+      resumeStep: value.resumeStep as 0 | 1 | 2 | 3,
+      draft: rebuildSafeDraft(value.draft as SpotPaymentLocalDraft["draft"])
+    };
   } catch {
-    storage.removeItem(key);
+    safeRemove(storage, key);
     return null;
   }
 }
@@ -137,11 +151,31 @@ export function clearSpotPaymentLocalDraft(
   paymentId: string,
   userId: string
 ) {
-  try {
-    storage.removeItem(storageKey(paymentId, userId));
-  } catch {
-    // A storage cleanup failure must not turn a successful server save into failure.
-  }
+  safeRemove(storage, storageKey(paymentId, userId));
+}
+
+function safeRemove(storage: Storage, key: string) {
+  try { storage.removeItem(key); }
+  catch { /* Storage cleanup is best effort. */ }
+}
+
+function rebuildSafeDraft(draft: SpotPaymentLocalDraft["draft"]): SpotPaymentLocalDraft["draft"] {
+  return {
+    paymentType: draft.paymentType,
+    merchantName: draft.merchantName,
+    payeeDiffersFromMerchant: draft.payeeDiffersFromMerchant,
+    payeeName: draft.payeeName,
+    merchantPayeeMismatchNote: draft.merchantPayeeMismatchNote,
+    paymentMethods: [...draft.paymentMethods],
+    lines: draft.lines.map((line) => ({
+      procurementLineId: line.procurementLineId,
+      included: line.included,
+      paymentQuantity: line.paymentQuantity,
+      unitPrice: line.unitPrice,
+      expectedInvoiceCondition: line.expectedInvoiceCondition,
+      vatRateOptionId: line.vatRateOptionId
+    }))
+  };
 }
 
 function isSafeDraft(value: unknown): value is SpotPaymentLocalDraft["draft"] {

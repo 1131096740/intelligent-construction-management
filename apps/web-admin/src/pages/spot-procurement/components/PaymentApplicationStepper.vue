@@ -67,6 +67,7 @@ const emit = defineEmits<{
 
 const step = ref<0 | 1 | 2 | 3>(props.initialStep);
 const channelAddError = ref("");
+const paymentMethodChangeError = ref("");
 const form = reactive<PaymentApplicationDraft>({
   ...props.draft,
   paymentMethods: [...props.draft.paymentMethods],
@@ -91,6 +92,13 @@ const paymentMethodOptions = [
 const selectedPaymentMethodOptions = computed(() => paymentMethodOptions.filter(
   (option) => form.paymentMethods.includes(option.value as SpotProcurementPaymentMethod)
 ));
+const paymentMethodSelectionOptions = computed(() => paymentMethodOptions.map((option) => ({
+  ...option,
+  disabled: form.channels.some((channel) => channel.channelType === option.value)
+})));
+const lockedPaymentMethodLabels = computed(() => paymentMethodSelectionOptions.value
+  .filter((option) => option.disabled)
+  .map((option) => option.label));
 const invoiceConditionOptions = [
   { label: "普通增值税发票", value: "vat_general" },
   { label: "专用增值税发票", value: "vat_special" },
@@ -149,11 +157,31 @@ function addChannel() {
   });
 }
 
+function updatePaymentMethods(values: Array<string | number>) {
+  const nextMethods = values.map(String).filter(
+    (value): value is SpotProcurementPaymentMethod => paymentMethodOptions.some((option) => option.value === value)
+  );
+  const blockedMethods = form.paymentMethods.filter(
+    (method) => !nextMethods.includes(method) && form.channels.some((channel) => channel.channelType === method)
+  );
+  if (blockedMethods.length) {
+    const labels = blockedMethods.map(
+      (method) => paymentMethodOptions.find((option) => option.value === method)?.label ?? method
+    );
+    paymentMethodChangeError.value = `请先删除${labels.join("、")}对应的收款渠道，再取消该拟付款方式。`;
+    form.paymentMethods = [...form.paymentMethods];
+    return;
+  }
+  paymentMethodChangeError.value = "";
+  form.paymentMethods = nextMethods;
+}
+
 function removeChannel(index: number) {
   if (form.channels.length === 1) return;
   const wasPrimary = form.channels[index]?.isPrimary;
   form.channels.splice(index, 1);
   if (wasPrimary && form.channels[0]) form.channels[0].isPrimary = true;
+  paymentMethodChangeError.value = "";
 }
 
 function setPrimary(index: number) {
@@ -267,9 +295,22 @@ function snapshot() {
         </div>
       </template>
       <label><span>拟付款方式</span><t-checkbox-group
-        v-model="form.paymentMethods"
-        :options="paymentMethodOptions"
+        :model-value="form.paymentMethods"
+        :options="paymentMethodSelectionOptions"
+        @update:model-value="updatePaymentMethods"
       /></label>
+      <t-alert
+        v-if="lockedPaymentMethodLabels.length"
+        theme="info"
+        title="已有渠道的付款方式不可直接取消"
+        :message="`${lockedPaymentMethodLabels.join('、')}已关联收款渠道；如需取消，请先在第 3 步删除对应渠道。`"
+      />
+      <t-alert
+        v-if="paymentMethodChangeError"
+        theme="warning"
+        title="付款方式仍有关联渠道"
+        :message="paymentMethodChangeError"
+      />
     </div>
 
     <div

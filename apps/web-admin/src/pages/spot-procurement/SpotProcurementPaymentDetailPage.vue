@@ -125,6 +125,8 @@ const confirmation = reactive({
 });
 const confirmationError = ref("");
 let latestDetailRequestId = 0;
+let historicalMerchantRequestId = 0;
+let vatOptionsRequestId = 0;
 let applicationTriggerElement: HTMLElement | null = null;
 
 const paymentId = computed(() => typeof route.params.paymentId === "string" ? route.params.paymentId : "");
@@ -249,11 +251,19 @@ async function loadDetail() {
   }
 }
 
-async function loadHistoricalMerchants(projectId: string) {
+async function loadHistoricalMerchants(projectId: string, paymentIdCoordinate: string) {
+  const requestId = ++historicalMerchantRequestId;
   try {
     const result = await fetchSpotProcurementPayments({ projectId });
+    if (
+      requestId !== historicalMerchantRequestId ||
+      paymentId.value !== paymentIdCoordinate ||
+      detail.value?.payment.project.id !== projectId
+    ) return;
     historicalMerchants.value = [...new Set(result.items.map((item) => item.merchantName?.trim()).filter((name): name is string => Boolean(name)))].slice(0, 20);
-  } catch { historicalMerchants.value = []; }
+  } catch {
+    if (requestId === historicalMerchantRequestId && paymentId.value === paymentIdCoordinate) historicalMerchants.value = [];
+  }
 }
 
 function openEdit(trigger: HTMLElement | null = null) {
@@ -312,11 +322,23 @@ function openEdit(trigger: HTMLElement | null = null) {
     }
   }
   applicationVisible.value = true;
-  void Promise.all([loadHistoricalMerchants(current.payment.project.id), loadVatOptions()]);
+  void Promise.all([
+    loadHistoricalMerchants(current.payment.project.id, current.payment.id),
+    loadVatOptions(current.payment.id)
+  ]);
 }
 
-async function loadVatOptions() {
-  try { vatOptions.value = await fetchVatRateOptions(); } catch (error) { applicationError.value = error instanceof Error ? error.message : "税率选项读取失败"; }
+async function loadVatOptions(paymentIdCoordinate: string) {
+  const requestId = ++vatOptionsRequestId;
+  try {
+    const result = await fetchVatRateOptions();
+    if (requestId !== vatOptionsRequestId || paymentId.value !== paymentIdCoordinate) return;
+    vatOptions.value = result;
+  } catch (error) {
+    if (requestId === vatOptionsRequestId && paymentId.value === paymentIdCoordinate) {
+      applicationError.value = error instanceof Error ? error.message : "税率选项读取失败";
+    }
+  }
 }
 
 async function saveApplicationDraft(
@@ -341,6 +363,7 @@ async function saveApplicationDraft(
     );
     await updateSpotProcurementPaymentDraft(current.payment.id, payload);
     clearLocalApplicationDraft(current.payment.id);
+    if (paymentId.value !== current.payment.id) return "stale" as const;
     applicationLocalDraftNotice.value = "";
     showSuccess("A5 付款申请草稿已保存，审批金额已按付款材料重新计算。");
     await loadDetail();
@@ -350,6 +373,7 @@ async function saveApplicationDraft(
     }
     return "server" as const;
   } catch (error) {
+    if (paymentId.value !== current.payment.id) return "stale" as const;
     if (exitAfterSave && persistLocalApplicationDraft(current.payment.id, currentStep)) {
       applicationVisible.value = false;
       showSuccess("已在当前标签页本机暂存，尚未同步服务器。账号、开户行和附件不会写入本机草稿，继续办理时需在第 3 步重新填写。");
@@ -594,10 +618,36 @@ async function restoreApplicationTriggerFocus() {
 function requiredText(value: string, label: string) { const normalized = value.trim(); if (!normalized) throw new Error(`请填写${label}`); return normalized; }
 function normalizeAttachmentCategory(value: string) { return ["merchant_receipt", "merchant_quote", "merchant_invoice", "other"].includes(value) ? value as "merchant_receipt" | "merchant_quote" | "merchant_invoice" | "other" : "other" as const; }
 function localDateTimeValue(date: Date) { const offset = date.getTimezoneOffset() * 60_000; return new Date(date.getTime() - offset).toISOString().slice(0, 19); }
+function resetApplicationEditorState() {
+  historicalMerchantRequestId += 1;
+  vatOptionsRequestId += 1;
+  applicationVisible.value = false;
+  applicationInitialStep.value = 0;
+  applicationError.value = "";
+  applicationLocalDraftNotice.value = "";
+  attachmentFiles.value = [];
+  retainedAttachmentIds.value = [];
+  historicalMerchants.value = [];
+  vatOptions.value = [];
+  applicationTriggerElement = null;
+  actionBusy.value = false;
+  Object.assign(editForm, {
+    paymentType: "company_direct",
+    merchantName: "",
+    payeeDiffersFromMerchant: false,
+    payeeName: "",
+    merchantPayeeMismatchNote: "",
+    paymentMethods: [],
+    lines: [],
+    channels: [],
+    attachmentCategory: "merchant_quote"
+  });
+}
 
 watch(
   paymentId,
   () => {
+    resetApplicationEditorState();
     detail.value = null;
     loadError.value = "";
     actionMessage.value = "";
@@ -688,6 +738,7 @@ watch(
         />
         <PaymentApplicationStepper
           v-if="applicationVisible"
+          :key="detail.payment.id"
           :detail="detail"
           :draft="editForm"
           :initial-step="applicationInitialStep"
