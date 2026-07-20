@@ -113,7 +113,7 @@ function removeLine(index: number) {
         <t-input
           :value="row.quantity"
           :disabled="readonly"
-          placeholder="最多6位小数"
+          placeholder="最多 2 位小数"
           @change="(value: unknown) => updateLine(row.index, { quantity: String(value ?? '') })"
         />
       </template>

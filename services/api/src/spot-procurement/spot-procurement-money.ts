@@ -8,7 +8,7 @@ import {
 } from "@jiangkong/shared-domain";
 import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
 
-const DECIMAL_TEXT = /^(0|[1-9]\d*)(?:\.(\d{1,6}))?$/u;
+const DECIMAL_TEXT = /^(0|[1-9]\d*)(?:\.(\d{1,2}))?$/u;
 const MAX_INTEGER_DIGITS = 18;
 const HUNDRED = "100";
 const ExactDecimal = Prisma.Decimal.clone({
@@ -62,7 +62,7 @@ export function isSpotProcurementUnitPrice(value: unknown): value is string {
 function parseQuantity(value: unknown) {
   if (!isSpotProcurementQuantity(value)) {
     throw new BadRequestException(
-      "采购数量必须是大于 0、最多 6 位小数且可保存的普通十进制字符串"
+      "采购数量必须是大于 0、最多 2 位小数且可保存的普通十进制字符串"
     );
   }
   return new ExactDecimal(value);
@@ -71,7 +71,7 @@ function parseQuantity(value: unknown) {
 function parseUnitPrice(value: unknown) {
   if (!isSpotProcurementUnitPrice(value)) {
     throw new BadRequestException(
-      "采购单价必须是大于等于 0、最多 6 位小数且可保存的普通十进制字符串"
+      "采购单价必须是大于等于 0、最多 2 位小数且可保存的普通十进制字符串"
     );
   }
   return new ExactDecimal(value);

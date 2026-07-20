@@ -137,7 +137,7 @@ const createDisabledReason = computed(() => {
     const rowNumber = index + 1;
     if (!line.materialName.trim()) return `第 ${rowNumber} 行请填写材料名称。`;
     if (!line.unit.trim()) return `第 ${rowNumber} 行请填写单位。`;
-    if (!isQuantity(line.quantity)) return `第 ${rowNumber} 行数量必须大于 0，最多保留 6 位小数。`;
+    if (!isQuantity(line.quantity)) return `第 ${rowNumber} 行数量必须大于 0，最多 2 位小数。`;
   }
   return "";
 });
@@ -159,7 +159,7 @@ function blankLine(): ProcurementLineDraft {
 }
 
 function isQuantity(value: string) {
-  return /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/.test(value.trim()) && Number(value) > 0;
+  return /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(value.trim()) && Number(value) > 0;
 }
 
 function countStatus(status: SpotProcurementStatus) {

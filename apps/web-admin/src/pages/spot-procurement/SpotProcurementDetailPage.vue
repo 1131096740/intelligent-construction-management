@@ -376,8 +376,8 @@ function requiredText(value: string, label: string) {
 
 function requiredQuantity(value: string) {
   const normalized = value.trim();
-  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/.test(normalized) || Number(normalized) <= 0) {
-    throw new Error("采购数量必须大于 0，最多保留 6 位小数");
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(normalized) || Number(normalized) <= 0) {
+    throw new Error("采购数量必须大于 0，最多 2 位小数");
   }
   return normalized;
 }

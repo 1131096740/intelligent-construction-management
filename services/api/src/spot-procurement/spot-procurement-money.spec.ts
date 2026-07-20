@@ -21,7 +21,7 @@ const validDraft = {
       materialName: "HRB400E 钢筋",
       specification: "Φ12",
       unit: "吨",
-      quantity: "12.500000",
+      quantity: "12.50",
       note: "首批进场"
     }
   ],
@@ -60,17 +60,17 @@ describe("spot procurement exact money", () => {
   it("calculates quantity times the applicable unit price without Number coercion", () => {
     expect(
       calculateSpotProcurementLine({
-        quantity: "12.500000",
+        quantity: "12.50",
         unitPrice: "3.28"
       })
     ).toEqual({ amountCents: 4100n });
   });
 
-  it("uses ROUND_HALF_UP when the exact yuan amount lands on half a cent", () => {
+  it("uses ROUND_HALF_UP when two-place inputs land on half a cent", () => {
     expect(
       calculateSpotProcurementLine({
-        quantity: "1",
-        unitPrice: "0.005"
+        quantity: "0.01",
+        unitPrice: "0.50"
       })
     ).toEqual({ amountCents: 1n });
   });
@@ -79,7 +79,7 @@ describe("spot procurement exact money", () => {
     expect(
       calculateSpotProcurementLine({
         quantity: "1",
-        unitPrice: "92233720368547758.074999"
+        unitPrice: "92233720368547758.07"
       })
     ).toEqual({ amountCents: 9_223_372_036_854_775_807n });
   });
@@ -95,28 +95,28 @@ describe("spot procurement exact money", () => {
     ["unit price newline", { quantity: "1", unitPrice: "1\n" }],
     ["blank quantity", { quantity: "", unitPrice: "1" }],
     ["blank unit price", { quantity: "1", unitPrice: "" }],
-    ["zero quantity", { quantity: "0.000000", unitPrice: "1" }],
+    ["zero quantity", { quantity: "0.00", unitPrice: "1" }],
     ["negative quantity", { quantity: "-1", unitPrice: "1" }],
     ["negative unit price", { quantity: "1", unitPrice: "-1" }],
-    ["quantity over scale", { quantity: "1.0000001", unitPrice: "1" }],
-    ["unit price over scale", { quantity: "1", unitPrice: "1.0000001" }],
+    ["quantity over scale", { quantity: "1.001", unitPrice: "1" }],
+    ["unit price over scale", { quantity: "1", unitPrice: "0.005" }],
     [
       "quantity over Decimal(24,6)",
       { quantity: "1000000000000000000", unitPrice: "0" }
     ],
     [
       "unit price over Decimal(24,6)",
-      { quantity: "0.000001", unitPrice: "1000000000000000000" }
+      { quantity: "0.01", unitPrice: "1000000000000000000" }
     ]
   ])("rejects non-canonical or unstorable %s", (_label, input) => {
     expect(() => calculateSpotProcurementLine(input as never)).toThrow();
   });
 
-  it("accepts six decimal places and a zero unit price", () => {
+  it("accepts two decimal places and a zero unit price", () => {
     expect(
       calculateSpotProcurementLine({
-        quantity: "0.000001",
-        unitPrice: "0.000000"
+        quantity: "0.01",
+        unitPrice: "0.00"
       })
     ).toEqual({ amountCents: 0n });
   });

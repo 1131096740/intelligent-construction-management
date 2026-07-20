@@ -126,7 +126,7 @@ const realFormInput = {
   paymentLines: [
     {
       procurementLineId: "procurement-line-1",
-      paymentQuantity: "2",
+      paymentQuantity: "1.00",
       unitPrice: "3.50",
       expectedInvoiceCondition: "vat_general" as const,
       vatRateOptionId: "vat-13"
@@ -155,7 +155,7 @@ describe("SpotProcurementPaymentService real-form draft", () => {
       data: [
         expect.objectContaining({
           procurementLineId: "procurement-line-1",
-          amountCents: 700n,
+          amountCents: 350n,
           expectedInvoiceCondition: "vat_general",
           vatRateOptionId: "vat-13"
         })
@@ -167,11 +167,27 @@ describe("SpotProcurementPaymentService real-form draft", () => {
         merchantNameSnapshot: "昆明建材商行",
         payeeNameSnapshot: "昆明建材商行",
         paymentType: "company_direct",
-        approvalAmountCents: 700n,
-        settlementAmountCents: 700n
+        approvalAmountCents: 350n,
+        settlementAmountCents: 350n
       })
     });
-    expect(result).toMatchObject({ settlementAmountCents: "700" });
+    expect(result).toMatchObject({ settlementAmountCents: "350" });
+  });
+
+  it.each([
+    ["付款数量", { paymentQuantity: "1.001" }],
+    ["含税或无票单价", { unitPrice: "3.333" }]
+  ])("rejects a three-place %s before saving the payment draft", async (_label, override) => {
+    const { service, tx } = createHarness();
+
+    await expect(
+      service.updateDraft("payment-1", "material-1", {
+        ...realFormInput,
+        paymentLines: [{ ...realFormInput.paymentLines[0], ...override }]
+      })
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(tx.spotProcurementPaymentLine.createMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
   });
 
   it("requires a concise explanation when company-paid merchant and payee differ", async () => {

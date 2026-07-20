@@ -63,6 +63,10 @@ interface ExecutionAttempt {
   voucherFileIds: string[];
 }
 
+const SPOT_PROCUREMENT_DECIMAL_TEXT = /^(0|[1-9]\d*)(?:\.\d{1,2})?$/;
+const MAX_SPOT_PROCUREMENT_INTEGER_DIGITS = 18;
+const YUAN_AMOUNT_TEXT = /^\d+(?:\.\d{1,2})?$/;
+
 const route = useRoute();
 const router = useRouter();
 const detail = ref<SpotProcurementPaymentDetailReadModel | null>(null);
@@ -274,12 +278,19 @@ async function saveDraft() {
     if (editForm.channels.some((channel) => !editForm.paymentMethods.includes(channel.channelType))) {
       throw new Error("拟付款方式必须包含已填写的收款渠道方式");
     }
+    const paymentLines = lines.map((line) => ({
+      procurementLineId: line.procurementLineId,
+      paymentQuantity: requiredSpotProcurementDecimal(line.paymentQuantity, "付款数量", true),
+      unitPrice: requiredSpotProcurementDecimal(line.unitPrice, "含税或无票单价", false),
+      expectedInvoiceCondition: line.expectedInvoiceCondition,
+      ...(line.expectedInvoiceCondition === "no_invoice" ? {} : { vatRateOptionId: requiredText(line.vatRateOptionId, `${line.materialName}税率`) })
+    }));
     const retained = current.evidenceFiles.filter((file) => retainedAttachmentIds.value.includes(file.fileId) && file.status === "active").map((file) => ({ fileId: file.fileId, category: normalizeAttachmentCategory(file.purpose) }));
     const uploaded = await Promise.all(selectedUploadFiles(attachmentFiles.value).map(async (file) => ({ fileId: (await uploadPrivateFile(file, file.name)).id, category: editForm.attachmentCategory })));
     await updateSpotProcurementPaymentDraft(current.payment.id, {
       paymentType: editForm.paymentType, merchantName, payeeName,
       merchantPayeeMismatchNote: editForm.paymentType === "company_direct" && merchantName !== payeeName ? requiredText(editForm.merchantPayeeMismatchNote, "商户与收款对象不一致说明") : null,
-      paymentLines: lines.map((line) => ({ procurementLineId: line.procurementLineId, paymentQuantity: requiredText(line.paymentQuantity, `${line.materialName}付款数量`), unitPrice: requiredText(line.unitPrice, `${line.materialName}单价`), expectedInvoiceCondition: line.expectedInvoiceCondition, ...(line.expectedInvoiceCondition === "no_invoice" ? {} : { vatRateOptionId: requiredText(line.vatRateOptionId, `${line.materialName}税率`) }) })),
+      paymentLines,
       paymentMethods: editForm.paymentMethods,
       channels: editForm.channels.map((channel) => ({ channelType: channel.channelType, accountName: optionalText(channel.accountName), accountNumber: optionalText(channel.accountNumber), bankName: optionalText(channel.bankName), note: optionalText(channel.note), isPrimary: channel.isPrimary })),
       attachments: [...retained, ...uploaded]
@@ -384,7 +395,7 @@ async function confirmAction(values: { reason: string; password: string }) {
 }
 
 async function prepareExecutionAttempt(): Promise<ExecutionAttempt> {
-  const amountCents = yuanTextToCentsText(executionForm.amountYuan);
+  const amountCents = yuanTextToCentsText(requiredYuanAmount(executionForm.amountYuan, "本次实际付款金额"));
   const paidAt = toIsoDateTime(executionForm.paidAt);
   const paymentChannelId = requiredText(executionForm.paymentChannelId, "实际付款渠道");
   const files = selectedUploadFiles(voucherFiles.value);
@@ -400,6 +411,19 @@ function resetExecutionAttempt() { executionAttempt.value = null; voucherFiles.v
 function selectedUploadFiles(files: UploadFile[]) { return files.map((file) => file.raw).filter((file): file is File => file instanceof File); }
 function optionalText(value: string) { const normalized = value.trim(); return normalized || null; }
 function requiredText(value: string, label: string) { const normalized = value.trim(); if (!normalized) throw new Error(`请填写${label}`); return normalized; }
+function requiredSpotProcurementDecimal(value: string, label: string, positive: boolean) {
+  const normalized = value.trim();
+  const integerDigits = normalized.split(".", 1)[0]?.length ?? 0;
+  const validValue = SPOT_PROCUREMENT_DECIMAL_TEXT.test(normalized) && integerDigits <= MAX_SPOT_PROCUREMENT_INTEGER_DIGITS;
+  if (!validValue || (positive ? Number(normalized) <= 0 : Number(normalized) < 0)) {
+    throw new Error(`${label}必须是${positive ? "大于 0" : "大于等于 0"}、最多 2 位小数且可保存的普通十进制字符串`);
+  }
+  return normalized;
+}
+function requiredYuanAmount(value: string, label: string) {
+  if (!YUAN_AMOUNT_TEXT.test(value)) throw new Error(`${label}必须是非负数字，最多 2 位小数`);
+  return value;
+}
 function normalizeAttachmentCategory(value: string) { return ["merchant_receipt", "merchant_quote", "merchant_invoice", "other"].includes(value) ? value as "merchant_receipt" | "merchant_quote" | "merchant_invoice" | "other" : "other" as const; }
 function createIdempotencyKey() { if (!globalThis.crypto?.randomUUID) throw new Error("当前浏览器无法生成安全幂等键，请升级浏览器后重试"); return `spot-payment-${globalThis.crypto.randomUUID()}`; }
 function toIsoDateTime(value: string) { const date = new Date(value); if (!value || Number.isNaN(date.getTime())) throw new Error("请选择有效的实际付款时间"); return date.toISOString(); }
@@ -773,9 +797,12 @@ onMounted(() => void loadDetail());
                 v-if="line.included"
                 class="payment-line__fields"
               >
-                <label><span>付款数量</span><t-input v-model="line.paymentQuantity" /></label><label><span>含税/无票单价</span><t-input
+                <label><span>付款数量</span><t-input
+                  v-model="line.paymentQuantity"
+                  placeholder="最多 2 位小数"
+                /></label><label><span>含税/无票单价</span><t-input
                   v-model="line.unitPrice"
-                  placeholder="例如 4.00"
+                  placeholder="最多 2 位小数，例如 4.00"
                 /></label><label><span>预计票据</span><t-select
                   v-model="line.expectedInvoiceCondition"
                   :options="invoiceConditionOptions"
@@ -899,7 +926,7 @@ onMounted(() => void loadDetail());
         >
           <label><span>本次实际付款金额</span><t-input
             v-model="executionForm.amountYuan"
-            placeholder="元"
+            placeholder="元，最多 2 位小数"
             :disabled="Boolean(executionAttempt)"
           /></label><label><span>实际付款时间</span><t-date-picker
             v-model="executionForm.paidAt"

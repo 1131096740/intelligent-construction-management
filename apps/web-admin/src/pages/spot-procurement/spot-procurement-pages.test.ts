@@ -44,6 +44,8 @@ describe("spot procurement web pages", () => {
     expect(`${workbench}\n${editor}`).not.toMatch(
       /fetchVatRateOptions|unitPrice|invoiceMode|vatRateOptionId|supplierName/u
     );
+    expect(`${workbench}\n${detail}\n${editor}`).toContain("最多 2 位小数");
+    expect(`${workbench}\n${detail}\n${editor}`).not.toMatch(/最多\s*6\s*位小数/u);
   });
 
   it("presents the A5 payment fact separately from the earlier A4 procurement request", () => {
@@ -82,6 +84,34 @@ describe("spot procurement web pages", () => {
       .toBeLessThan(detail.lastIndexOf("uploadPrivateFile(file, file.name)"));
     expect(detail.indexOf("toIsoDateTime(executionForm.paidAt)"))
       .toBeLessThan(detail.lastIndexOf("uploadPrivateFile(file, file.name)"));
+  });
+
+  it("rejects three-place procurement payment inputs before draft or voucher uploads", () => {
+    const detail = pageSource(
+      "SpotProcurementPaymentDetailPage.vue"
+    );
+
+    expect(detail).toContain("最多 2 位小数");
+    expect(detail).not.toMatch(/最多\s*6\s*位小数/u);
+    expect(detail).toContain(
+      'requiredSpotProcurementDecimal(line.paymentQuantity, "付款数量", true)'
+    );
+    expect(detail).toContain(
+      'requiredSpotProcurementDecimal(line.unitPrice, "含税或无票单价", false)'
+    );
+    expect(detail).toContain(
+      'requiredYuanAmount(executionForm.amountYuan, "本次实际付款金额")'
+    );
+    expect(
+      detail.indexOf(
+        'requiredSpotProcurementDecimal(line.paymentQuantity, "付款数量", true)'
+      )
+    ).toBeLessThan(detail.indexOf("selectedUploadFiles(attachmentFiles.value)"));
+    expect(
+      detail.indexOf(
+        'requiredYuanAmount(executionForm.amountYuan, "本次实际付款金额")'
+      )
+    ).toBeLessThan(detail.lastIndexOf("uploadPrivateFile(file, file.name)"));
   });
 
   it("exposes the existing return and procurement revision workflows", () => {

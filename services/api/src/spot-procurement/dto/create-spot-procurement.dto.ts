@@ -32,7 +32,7 @@ export function IsSpotProcurementQuantity(): PropertyDecorator {
       propertyName: String(propertyKey),
       options: {
         message:
-          "采购数量必须是大于 0、最多 6 位小数且可保存的普通十进制字符串"
+          "采购数量必须是大于 0、最多 2 位小数且可保存的普通十进制字符串"
       },
       validator: { validate: isSpotProcurementQuantity }
     });

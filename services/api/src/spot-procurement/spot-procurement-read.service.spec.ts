@@ -3,6 +3,7 @@ import {
   deriveSpotPaymentCurrentTask,
   SpotProcurementReadService
 } from "./spot-procurement-read.service";
+import * as spotProcurementMoney from "./spot-procurement-money";
 
 const now = new Date("2026-07-17T08:00:00.000Z");
 
@@ -370,6 +371,52 @@ function buildFixture() {
 }
 
 describe("SpotProcurementReadService", () => {
+  it("returns historical three-place decimal text unchanged without applying new-write validation", async () => {
+    const fixture = buildFixture();
+    fixture.prisma.spotProcurementLine.findMany.mockResolvedValue([
+      {
+        id: "line-historical",
+        versionId: "version-1",
+        sortOrder: 1,
+        materialName: "历史零配件",
+        specification: null,
+        unit: "套",
+        quantity: { toString: () => "3.335" },
+        invoiceMode: "no_invoice",
+        invoiceType: null,
+        vatRateOptionId: null,
+        vatRateValueSnapshot: null,
+        vatRateLabelSnapshot: null,
+        unitPrice: { toString: () => "3.335" },
+        amountCents: 1_112n,
+        usageLocation: null,
+        note: null,
+        createdAt: now
+      }
+    ]);
+    const writeValidator = jest.spyOn(
+      spotProcurementMoney,
+      "isSpotProcurementQuantity"
+    );
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const result = await service.getProcurement(
+      "procurement-1",
+      "finance-1"
+    );
+
+    expect(result.lines).toEqual([
+      expect.objectContaining({ quantity: "3.335", unitPrice: "3.335" })
+    ]);
+    expect(writeValidator).not.toHaveBeenCalled();
+    writeValidator.mockRestore();
+  });
+
   it("returns only pilot projects where the current user can create a procurement", async () => {
     const fixture = buildFixture();
     fixture.prisma.project.findMany.mockResolvedValue([
