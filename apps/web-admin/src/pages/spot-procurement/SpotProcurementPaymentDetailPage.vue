@@ -29,7 +29,6 @@ import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import BusinessStatusText from "../../components/BusinessStatusText.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
-import { CORE_ARCHIVE_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { centsTextToYuanText } from "../../lib/money";
 import PaymentCompositionCard from "./components/PaymentCompositionCard.vue";
@@ -40,6 +39,10 @@ import PaymentApprovalDrawer, {
   type A5ApprovalSubmitPayload
 } from "./components/PaymentApprovalDrawer.vue";
 import PaymentCurrentTaskPanel from "./components/PaymentCurrentTaskPanel.vue";
+import PaymentExecutionDrawer, {
+  type PaymentExecutionLockedAttempt,
+  type PaymentExecutionSubmitPayload
+} from "./components/PaymentExecutionDrawer.vue";
 import {
   firstIncompletePaymentStep,
   resolveSpotPaymentMerchantPayee,
@@ -61,8 +64,10 @@ import {
   writeSpotPaymentLocalDraft
 } from "./spot-payment-local-draft";
 
-type ConfirmationKind = "review_approve" | "review_reject" | "review_return" | "withdraw" | "void" | "download" | "execution";
+type ConfirmationKind = "review_approve" | "review_reject" | "review_return" | "withdraw" | "void" | "download";
 interface ExecutionAttempt {
+  amountYuan: string;
+  paidAtInput: string;
   idempotencyKey: string;
   amountCents: string;
   paidAt: string;
@@ -85,15 +90,16 @@ const applicationVisible = ref(false);
 const applicationInitialStep = ref<0 | 1 | 2 | 3>(0);
 const payerVisible = ref(false);
 const approvalVisible = ref(false);
+const executionVisible = ref(false);
 const applicationError = ref("");
 const applicationLocalDraftNotice = ref("");
 const payerError = ref("");
 const approvalError = ref("");
+const executionError = ref("");
 const vatOptions = ref<VatRateOptionReadModel[]>([]);
 const companies = ref<CompanyEntityModel[]>([]);
 const historicalMerchants = ref<string[]>([]);
 const attachmentFiles = ref<UploadFile[]>([]);
-const voucherFiles = ref<UploadFile[]>([]);
 const executionAttempt = ref<ExecutionAttempt | null>(null);
 const retainedAttachmentIds = ref<string[]>([]);
 const editForm = reactive<PaymentApplicationDraft>({
@@ -112,12 +118,6 @@ const payerForm = reactive({
   paymentMethods: [] as SpotProcurementPaymentMethod[],
   changeReason: "",
   confirmed: false
-});
-const executionForm = reactive({
-  amountYuan: "",
-  paidAt: localDateTimeValue(new Date()),
-  paymentMethod: "bank_transfer" as SpotProcurementPaymentMethod,
-  paymentChannelId: ""
 });
 const confirmation = reactive({
   visible: false,
@@ -139,6 +139,8 @@ let payerTriggerElement: HTMLElement | null = null;
 let approvalTriggerElement: HTMLElement | null = null;
 let payerOpenedPaymentId: string | null = null;
 let approvalOpenedPaymentId: string | null = null;
+let executionOpenedPaymentId: string | null = null;
+let executionTriggerElement: HTMLElement | null = null;
 
 const paymentId = computed(() => typeof route.params.paymentId === "string" ? route.params.paymentId : "");
 const payment = computed(() => detail.value?.payment ?? null);
@@ -179,10 +181,13 @@ const materialColumns = [
   { colKey: "amountCents", title: "金额", width: 118 },
   { colKey: "expectedInvoiceCondition", title: "预计票据", width: 150 }
 ];
-const channelOptions = computed(() => (detail.value?.paymentChannels ?? []).filter((channel) => channel.channelType === executionForm.paymentMethod).map((channel) => ({
-  label: `${channel.channelTypeLabel} · ${channel.accountName ?? "未填账户名"}${channel.accountNumberLast4 ? `（尾号 ${channel.accountNumberLast4}）` : ""}`,
-  value: channel.id
-})));
+const executionLockedAttempt = computed<PaymentExecutionLockedAttempt | null>(() => executionAttempt.value ? ({
+  amountYuan: executionAttempt.value.amountYuan,
+  paidAt: executionAttempt.value.paidAtInput,
+  paymentMethod: executionAttempt.value.paymentMethod,
+  paymentChannelId: executionAttempt.value.paymentChannelId,
+  voucherCount: executionAttempt.value.voucherFileIds.length
+}) : null);
 const payerOptions = computed(() => companies.value.map((company) => ({ label: company.name, value: company.id })));
 const selectedPayerCompanyName = computed(() =>
   companies.value.find((company) => company.id === payerForm.companyEntityId)?.name ?? "待选择"
@@ -208,11 +213,6 @@ watch(
   },
   { immediate: true }
 );
-
-watch(() => executionForm.paymentMethod, () => {
-  const channels = channelOptions.value;
-  executionForm.paymentChannelId = channels.find((channel) => detail.value?.paymentChannels?.find((item) => item.id === channel.value)?.primary)?.value ?? channels[0]?.value ?? "";
-});
 
 watch(() => editForm.paymentType, (type) => {
   if (type === "handler_reimbursement") {
@@ -634,19 +634,8 @@ function openConfirmation(kind: ConfirmationKind) {
     withdraw: { title: "撤回付款审批", description: "仅经办人可撤回审批中的付款申请。", confirmText: "确认撤回", confirmTheme: "danger", requireReason: false, requirePassword: false, reasonLabel: "撤回说明" },
     void: { title: "作废付款申请", description: "付款执行前可作废；作废会保留完整审计历史。", confirmText: "确认作废", confirmTheme: "danger", requireReason: true, requirePassword: false, reasonLabel: "作废原因" },
     download: { title: "下载付款审批单", description: "审批单下载会写入下载人、原因和审计轨迹。", confirmText: "确认下载", confirmTheme: "primary", requireReason: true, requirePassword: true, reasonLabel: "下载用途" },
-    execution: { title: "登记实际付款", description: "请登记本次实际付款记录。现金支付上传收据；其他方式上传成功付款凭证。", confirmText: "确认登记", confirmTheme: "primary", requireReason: false, requirePassword: true, reasonLabel: "登记说明" }
   };
   Object.assign(confirmation, configs[kind], { visible: true, kind }); confirmationError.value = "";
-  if (kind === "execution") fillExecutionDefaults();
-}
-
-function fillExecutionDefaults() {
-  const current = detail.value; if (!current) return;
-  executionForm.amountYuan = current.payment.remainingAmountCents ? centsTextToYuanText(current.payment.remainingAmountCents) : "";
-  executionForm.paidAt = localDateTimeValue(new Date());
-  executionForm.paymentMethod = current.paymentMethods?.[0]?.value ?? "bank_transfer";
-  executionForm.paymentChannelId = channelOptions.value.find((option) => current.paymentChannels?.find((channel) => channel.id === option.value)?.primary)?.value ?? channelOptions.value[0]?.value ?? "";
-  voucherFiles.value = [];
 }
 
 async function confirmAction(values: { reason: string; password: string }) {
@@ -666,11 +655,6 @@ async function confirmAction(values: { reason: string; password: string }) {
       await voidSpotProcurementPayment(current.payment.id, { reason: values.reason }); showSuccess("付款申请已作废。");
     } else if (confirmation.kind === "download") {
       await downloadApprovalForm(current.paymentPdf.businessType, current.paymentPdf.businessId, { confirmationPassword: values.password, downloadReason: values.reason }); showSuccess("付款审批单已开始下载。");
-    } else {
-      const attempt = executionAttempt.value ?? (await prepareExecutionAttempt());
-      executionAttempt.value = attempt;
-      await recordSpotProcurementPaymentExecution(current.payment.id, { ...attempt, confirmationPassword: values.password });
-      showSuccess("实际付款与凭证已登记。收货确认会在首笔实际付款后开放。"); resetExecutionAttempt();
     }
     confirmation.visible = false;
     if (nextPaymentId) {
@@ -684,22 +668,110 @@ async function confirmAction(values: { reason: string; password: string }) {
   finally { actionBusy.value = false; }
 }
 
-async function prepareExecutionAttempt(): Promise<ExecutionAttempt> {
-  const files = selectedUploadFiles(voucherFiles.value);
-  return prepareSpotExecutionWithUploads(
+async function prepareExecutionAttempt(
+  payload: PaymentExecutionSubmitPayload
+): Promise<ExecutionAttempt> {
+  const prepared = await prepareSpotExecutionWithUploads(
     {
-      amountYuan: executionForm.amountYuan,
-      paidAt: executionForm.paidAt,
-      paymentMethod: executionForm.paymentMethod,
-      paymentChannelId: executionForm.paymentChannelId,
+      amountYuan: payload.amountYuan,
+      paidAt: payload.paidAt,
+      paymentMethod: payload.paymentMethod,
+      paymentChannelId: payload.paymentChannelId,
       randomUUID: globalThis.crypto?.randomUUID
         ? () => globalThis.crypto.randomUUID()
         : null
     },
-    files,
+    payload.files,
     uploadPrivateFile,
-    executionForm.paymentMethod === "cash" ? "请上传现金收据" : "请上传成功付款凭证"
+    payload.paymentMethod === "cash" ? "请上传商家收据" : "请上传付款成功凭证"
   );
+  return { ...prepared, amountYuan: payload.amountYuan, paidAtInput: payload.paidAt };
+}
+
+function openExecution(trigger: HTMLElement | null = null) {
+  const current = detail.value;
+  if (!current || !actionEnabled("record_execution")) return;
+  executionOpenedPaymentId = current.payment.id;
+  executionTriggerElement = trigger;
+  executionError.value = "";
+  executionVisible.value = true;
+}
+
+async function submitExecution(payload: PaymentExecutionSubmitPayload) {
+  const current = detail.value;
+  if (
+    !current ||
+    !executionOpenedPaymentId ||
+    paymentId.value !== executionOpenedPaymentId ||
+    current.payment.id !== executionOpenedPaymentId
+  ) {
+    resetExecutionEditorState();
+    stopStaleApplicationOperation();
+    return;
+  }
+  const operationPaymentId = executionOpenedPaymentId;
+  actionBusy.value = true;
+  executionError.value = "";
+  try {
+    const attempt = executionAttempt.value ?? (await prepareExecutionAttempt(payload));
+    if (
+      paymentId.value !== operationPaymentId ||
+      executionOpenedPaymentId !== operationPaymentId
+    ) return;
+    executionAttempt.value = attempt;
+    await recordSpotProcurementPaymentExecution(operationPaymentId, {
+      idempotencyKey: attempt.idempotencyKey,
+      amountCents: attempt.amountCents,
+      paidAt: attempt.paidAt,
+      paymentMethod: attempt.paymentMethod,
+      paymentChannelId: attempt.paymentChannelId,
+      voucherFileIds: attempt.voucherFileIds,
+      confirmationPassword: payload.confirmationPassword
+    });
+    if (
+      paymentId.value !== operationPaymentId ||
+      executionOpenedPaymentId !== operationPaymentId
+    ) return;
+    resetExecutionAttempt();
+    executionVisible.value = false;
+    showSuccess("实际付款与凭证已登记。累计实付和剩余待付已按服务端事实刷新。");
+    await loadDetail();
+    if (paymentId.value !== operationPaymentId) return;
+    await selectPaymentTab("executions");
+    await restoreExecutionTriggerFocus();
+  } catch (error) {
+    if (paymentId.value !== operationPaymentId) return;
+    executionError.value = error instanceof Error ? error.message : "实际付款登记失败";
+  } finally {
+    if (paymentId.value === operationPaymentId) actionBusy.value = false;
+  }
+}
+
+async function closeExecution() {
+  executionVisible.value = false;
+  executionError.value = "";
+  if (executionAttempt.value) {
+    showSuccess("本次付款登记参数已安全保留；下次重试会沿用同一幂等键和已上传凭证。");
+  }
+  await restoreExecutionTriggerFocus();
+}
+
+async function restoreExecutionTriggerFocus() {
+  await nextTick();
+  const trigger = executionTriggerElement;
+  window.setTimeout(() => {
+    if (trigger?.isConnected) trigger.focus();
+  }, 0);
+  executionTriggerElement = null;
+  executionOpenedPaymentId = null;
+}
+
+function resetExecutionEditorState() {
+  executionVisible.value = false;
+  executionError.value = "";
+  executionOpenedPaymentId = null;
+  executionTriggerElement = null;
+  resetExecutionAttempt();
 }
 
 function handleCurrentTaskAction(
@@ -712,7 +784,7 @@ function handleCurrentTaskAction(
     else void selectPaymentTab("approval");
   }
   else if (key === "complete_payer") openPayer(trigger);
-  else if (key === "record_execution") openConfirmation("execution");
+  else if (key === "record_execution") openExecution(trigger);
   else if (
     key === "record_refund" &&
     detail.value?.currentTask.key === "record_refund" &&
@@ -722,8 +794,8 @@ function handleCurrentTaskAction(
     if (procurementId) void router.push(`/零星采购收货/${procurementId}`);
   }
 }
-async function cancelConfirmation() { confirmationError.value = ""; if (confirmation.kind === "execution" && executionAttempt.value) { showSuccess("本次付款登记参数已安全保留；重试会沿用同一幂等键和已上传凭证。"); await loadDetail(); } }
-function resetExecutionAttempt() { executionAttempt.value = null; voucherFiles.value = []; }
+function cancelConfirmation() { confirmationError.value = ""; }
+function resetExecutionAttempt() { executionAttempt.value = null; executionError.value = ""; }
 function selectedUploadFiles(files: UploadFile[]) { return files.map((file) => file.raw).filter((file): file is File => file instanceof File); }
 function paymentDraftPreparationInput(current: SpotProcurementPaymentDetailReadModel) {
   const lines = editForm.lines.filter((line) => line.included);
@@ -801,7 +873,6 @@ async function restoreApplicationTriggerFocus() {
 }
 function requiredText(value: string, label: string) { const normalized = value.trim(); if (!normalized) throw new Error(`请填写${label}`); return normalized; }
 function normalizeAttachmentCategory(value: string) { return ["merchant_receipt", "merchant_quote", "merchant_invoice", "other"].includes(value) ? value as "merchant_receipt" | "merchant_quote" | "merchant_invoice" | "other" : "other" as const; }
-function localDateTimeValue(date: Date) { const offset = date.getTimezoneOffset() * 60_000; return new Date(date.getTime() - offset).toISOString().slice(0, 19); }
 function resetApplicationEditorState() {
   historicalMerchantRequestId += 1;
   vatOptionsRequestId += 1;
@@ -832,11 +903,12 @@ watch(
   paymentId,
   () => {
     const interruptedPaymentAction = Boolean(
-      payerOpenedPaymentId || approvalOpenedPaymentId
+      payerOpenedPaymentId || approvalOpenedPaymentId || executionOpenedPaymentId
     );
     resetPayerEditorState();
     resetApprovalEditorState();
     resetApplicationEditorState();
+    resetExecutionEditorState();
     detail.value = null;
     loadError.value = "";
     actionMessage.value = "";
@@ -1315,6 +1387,20 @@ watch(
         @submit="submitA5Approval"
       />
 
+      <PaymentExecutionDrawer
+        :visible="executionVisible"
+        :busy="actionBusy"
+        :error="executionError"
+        :remaining-amount-cents="payment.remainingAmountCents"
+        :payment-methods="detail.paymentMethods ?? []"
+        :payment-channels="detail.paymentChannels ?? []"
+        :existing-executions="detail.executions"
+        :locked-attempt="executionLockedAttempt"
+        @close="closeExecution"
+        @submit="submitExecution"
+        @reset-attempt="resetExecutionAttempt"
+      />
+
       <SensitiveActionDialog
         v-model="confirmation.visible"
         :title="confirmation.title"
@@ -1328,51 +1414,13 @@ watch(
         :error="confirmationError"
         @confirm="confirmAction"
         @cancel="cancelConfirmation"
-      >
-        <div
-          v-if="confirmation.kind === 'execution'"
-          class="confirmation-fields"
-        >
-          <label><span>本次实际付款金额</span><t-input
-            v-model="executionForm.amountYuan"
-            placeholder="元，最多 2 位小数"
-            :disabled="Boolean(executionAttempt)"
-          /></label><label><span>实际付款时间</span><t-date-picker
-            v-model="executionForm.paidAt"
-            enable-time-picker
-            need-confirm
-            value-type="YYYY-MM-DD HH:mm:ss"
-            :disabled="Boolean(executionAttempt)"
-          /></label><label><span>实际付款方式</span><t-select
-            v-model="executionForm.paymentMethod"
-            :options="detail.paymentMethods ?? []"
-            :disabled="Boolean(executionAttempt)"
-          /></label><label><span>实际付款渠道</span><t-select
-            v-model="executionForm.paymentChannelId"
-            :options="channelOptions"
-            :disabled="Boolean(executionAttempt)"
-          /></label><label><span>{{ executionForm.paymentMethod === 'cash' ? '现金收据' : '成功付款凭证' }}</span><t-upload
-            v-model="voucherFiles"
-            theme="file-flow"
-            multiple
-            :auto-upload="false"
-            :accept="CORE_ARCHIVE_UPLOAD_POLICY.acceptAttribute"
-            :size-limit="{ size: CORE_ARCHIVE_UPLOAD_POLICY.limitBytes, unit: 'B' }"
-            :disabled="Boolean(executionAttempt)"
-          /></label><t-alert
-            v-if="executionAttempt"
-            theme="warning"
-            title="本次重试参数已锁定"
-            message="网络重试将沿用同一幂等键、金额、时间、方式、渠道和已上传凭证。"
-          />
-        </div>
-      </SensitiveActionDialog>
+      />
     </template>
   </section>
 </template>
 
 <style scoped>
 .payment-detail-header{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--jg-space-xl);padding-bottom:var(--jg-space-lg);border-bottom:var(--jg-border-width-base) solid var(--jg-color-border)}.payment-detail-header__main{display:grid;min-width:0;flex:1;gap:var(--jg-space-xs)}.payment-detail-header__code{color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta);font-weight:var(--jg-font-weight-semibold)}.payment-detail-header__title-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--jg-space-md)}.payment-detail-header__title-row h1{margin:0;color:var(--jg-color-text-primary);font-size:var(--jg-font-size-page-title);line-height:var(--jg-line-height-title)}.payment-detail-header__facts{display:flex;flex-wrap:wrap;gap:var(--jg-space-xl);margin:var(--jg-space-md) 0 0}.payment-detail-header__facts>div{display:grid;min-width:132px;gap:var(--jg-space-xs)}.payment-detail-header__facts dt{color:var(--jg-color-text-muted);font-size:var(--jg-font-size-meta)}.payment-detail-header__facts dd{margin:0;color:var(--jg-color-text-secondary);font-weight:var(--jg-font-weight-medium)}.payment-detail-header__actions{display:flex;flex:0 0 auto;flex-wrap:wrap;gap:var(--jg-space-sm)}
-.spot-payment-detail,.detail-panel,.edit-form,.edit-section,.confirmation-fields{display:grid;gap:var(--jg-space-lg);min-width:0;color:var(--jg-color-text-primary)}.detail-tabs{margin-top:var(--jg-space-lg)}.detail-panel{padding-top:var(--jg-space-md)}.detail-panel>header h2,.detail-panel>header p,.detail-panel h3,.edit-section h3,.edit-section p{margin:0}.detail-panel>header p,.edit-section p{margin-top:var(--jg-space-xs);color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}.detail-grid,.edit-form__grid,.payment-line__fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:var(--jg-space-md)}.detail-grid{margin:0}.detail-grid>div,.payment-line,.payment-channel{display:grid;gap:var(--jg-space-xs);padding:var(--jg-space-md);border:var(--jg-border-width-base) solid var(--jg-color-border);border-radius:var(--jg-radius-panel);background:var(--jg-color-bg-surface)}.detail-grid dt,.edit-form label>span,.confirmation-fields label>span,.merchant-suggestions>span{color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}.detail-grid dd{margin:0}.detail-panel>section{display:grid;gap:var(--jg-space-md)}.action-buttons,.merchant-suggestions{display:flex;flex-wrap:wrap;gap:var(--jg-space-sm);align-items:center}.edit-section{padding:var(--jg-space-md);border:var(--jg-border-width-base) solid var(--jg-color-border);border-radius:var(--jg-radius-panel)}.payment-channel__head{display:flex;align-items:center;justify-content:space-between;gap:var(--jg-space-sm)}.edit-form label,.confirmation-fields label{display:grid;gap:var(--jg-space-xs)}small{color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}
+.spot-payment-detail,.detail-panel,.edit-form,.edit-section{display:grid;gap:var(--jg-space-lg);min-width:0;color:var(--jg-color-text-primary)}.detail-tabs{margin-top:var(--jg-space-lg)}.detail-panel{padding-top:var(--jg-space-md)}.detail-panel>header h2,.detail-panel>header p,.detail-panel h3,.edit-section h3,.edit-section p{margin:0}.detail-panel>header p,.edit-section p{margin-top:var(--jg-space-xs);color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}.detail-grid,.edit-form__grid,.payment-line__fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:var(--jg-space-md)}.detail-grid{margin:0}.detail-grid>div,.payment-line,.payment-channel{display:grid;gap:var(--jg-space-xs);padding:var(--jg-space-md);border:var(--jg-border-width-base) solid var(--jg-color-border);border-radius:var(--jg-radius-panel);background:var(--jg-color-bg-surface)}.detail-grid dt,.edit-form label>span,.merchant-suggestions>span{color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}.detail-grid dd{margin:0}.detail-panel>section{display:grid;gap:var(--jg-space-md)}.action-buttons,.merchant-suggestions{display:flex;flex-wrap:wrap;gap:var(--jg-space-sm);align-items:center}.edit-section{padding:var(--jg-space-md);border:var(--jg-border-width-base) solid var(--jg-color-border);border-radius:var(--jg-radius-panel)}.payment-channel__head{display:flex;align-items:center;justify-content:space-between;gap:var(--jg-space-sm)}.edit-form label{display:grid;gap:var(--jg-space-xs)}small{color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}
 @media(max-width:720px){.payment-detail-header{flex-direction:column}.payment-detail-header__actions{width:100%}}
 </style>

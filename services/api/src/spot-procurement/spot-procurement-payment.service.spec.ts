@@ -3655,6 +3655,39 @@ describe("SpotProcurementPaymentService", () => {
     );
   });
 
+  it.each([
+    { paymentMethod: "cash" as const, paymentChannelId: "channel-cash" },
+    { paymentMethod: "bank_transfer" as const, paymentChannelId: "channel-bank" }
+  ])(
+    "requires an uploaded voucher before recording a real-form $paymentMethod execution",
+    async ({ paymentMethod, paymentChannelId }) => {
+      const current = executionHarness({
+        payment: approvedExecutionPayment({
+          paymentType: "company_direct",
+          payerCompanyEntityId: "company-1",
+          payerCompanyNameSnapshot: "云南建工集团",
+          payeeNameSnapshot: "昆明建材商行"
+        })
+      });
+
+      await expect(
+        current.service.recordExecution(
+          "payment-1",
+          "finance-1",
+          validExecutionInput({
+            paymentMethod,
+            paymentChannelId,
+            voucherFileId: undefined,
+            voucherFileIds: []
+          })
+        )
+      ).rejects.toThrow("付款凭证不能为空");
+      expect(current.prisma.$transaction).not.toHaveBeenCalled();
+      expect(current.tx.spotProcurementPaymentExecution.create).not.toHaveBeenCalled();
+      expect(current.tx.spotProcurementPayment.updateMany).not.toHaveBeenCalled();
+    }
+  );
+
   it("converts the current payment's own outstanding occupation into paid cash and keeps a company-only payment at paid", async () => {
     const current = executionHarness();
     current.tx.spotProcurementPaymentExecution.create.mockResolvedValue({

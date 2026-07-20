@@ -823,6 +823,121 @@ test("routes an enabled refund task to the real receipt workflow and preserves f
   await expect(page.getByRole("heading", { name: "当前无需办理付款", exact: true })).toBeVisible();
 });
 
+test("records two controlled executions from the frozen channel and refreshes server payment facts", async ({ page }) => {
+  await mockLogin(page);
+  let paidCents = 0;
+  let uploadNo = 0;
+  const executionPayloads: Array<Record<string, unknown>> = [];
+  const executionDetail = () => {
+    const base = paymentDetail();
+    const remainingCents = 440000 - paidCents;
+    const status = paidCents === 0 ? "approved_pending_payment" : remainingCents ? "partially_paid" : "paid";
+    const statusLabel = paidCents === 0 ? "待付款" : remainingCents ? "部分已付" : "已付款";
+    const executions = Array.from({ length: paidCents / 220000 }, (_, index) => ({
+      id: `execution-${index + 1}`,
+      amountCents: "220000",
+      paidAt: now,
+      paymentMethod: "bank_transfer",
+      paymentMethodLabel: "银行转账",
+      executedBy: { id: "finance-1", name: "财务甲" },
+      voucherFileId: null,
+      voucherFileName: `付款成功凭证${index + 1}.pdf`,
+      voidedAt: null,
+      voidReason: null,
+      active: true,
+      vouchers: [{ id: `voucher-link-${index + 1}`, fileId: `voucher-${index + 1}`, sortOrder: 1 }]
+    }));
+    return {
+      ...base,
+      payment: {
+        ...base.payment,
+        id: "payment-execution",
+        code: "LXFK-EXECUTION",
+        status,
+        statusLabel,
+        actualPaidAmountCents: String(paidCents),
+        netPaidAmountCents: String(paidCents),
+        remainingAmountCents: String(remainingCents)
+      },
+      executions,
+      receipt: {
+        ...receiptSummary,
+        statusLabel: paidCents ? "待确认收货" : "待首笔实付后开放",
+        blockedReason: paidCents ? null : "待财务登记首笔实际付款"
+      },
+      currentTask: remainingCents
+        ? { key: "record_execution", label: "登记实际付款", hint: "选择冻结渠道并上传付款成功凭证", priority: 300, scope: "personal", enabled: true, disabledReason: null }
+        : { key: "none", label: "无需办理", hint: "已完成付款", priority: 0, scope: "none", enabled: false, disabledReason: null },
+      availableActions: remainingCents
+        ? [{ key: "record_execution", label: "登记实际付款", kind: "primary", enabled: true, disabledReason: null }]
+        : [],
+      paymentPdf: { ...base.paymentPdf, businessId: "payment-execution" }
+    };
+  };
+
+  await page.route("**/api/spot-procurement-payments/payment-execution/executions", async (route) => {
+    const payload = route.request().postDataJSON() as Record<string, unknown>;
+    executionPayloads.push(payload);
+    paidCents += Number(payload.amountCents);
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ execution: { id: `execution-${executionPayloads.length}` }, payment: { id: "payment-execution" } })
+    });
+  });
+  await page.route("**/api/spot-procurement-payments/payment-execution", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(executionDetail()) })
+  );
+  await page.route("**/api/files", (route) => {
+    uploadNo += 1;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ id: `voucher-${uploadNo}` })
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await page.goto("/零星材料付款/payment-execution?tab=current");
+
+  for (const expectedExecutionNo of [1, 2]) {
+    await page.getByRole("button", { name: "登记实际付款", exact: true }).click();
+    const amountInput = page.getByPlaceholder("元，最多 2 位小数");
+    await expect(amountInput).toHaveValue(
+      expectedExecutionNo === 1 ? "4400.00" : "2200.00"
+    );
+    if (expectedExecutionNo === 1) await amountInput.fill("2200.00");
+    await page.locator(".payment-execution-drawer__body input[type=file]").setInputFiles({
+      name: `付款成功凭证${expectedExecutionNo}.pdf`,
+      mimeType: "application/pdf",
+      buffer: Buffer.from(`voucher-${expectedExecutionNo}`)
+    });
+    await page.getByRole("button", { name: "继续核对", exact: true }).click();
+    const passwordInput = page.locator('.payment-execution-drawer__body input[aria-label="当前登录密码"]:visible');
+    await expect(passwordInput).toHaveAttribute("aria-label", "当前登录密码");
+    await page.getByLabel("当前登录密码", { exact: true }).fill("Spot@2026");
+    await page.getByRole("button", { name: "确认登记", exact: true }).click();
+    await expect.poll(() => executionPayloads.length).toBe(expectedExecutionNo);
+    await expect(page.getByText(`已关联 1 份`, { exact: true })).toHaveCount(expectedExecutionNo);
+    if (expectedExecutionNo === 1) {
+      await expect(page.getByText("部分已付", { exact: true }).first()).toBeVisible();
+      await page.locator(".t-tabs").getByText("收货与发票", { exact: true }).click();
+      await expect(page.getByText("待确认收货", { exact: true })).toBeVisible();
+      await page.locator(".t-tabs").getByText("当前办理", { exact: true }).click();
+    }
+  }
+
+  expect(executionPayloads).toHaveLength(2);
+  expect(executionPayloads.map((payload) => payload.paymentChannelId)).toEqual(["channel-1", "channel-1"]);
+  expect(executionPayloads.map((payload) => payload.amountCents)).toEqual(["220000", "220000"]);
+  await expect(page.getByText("已付款", { exact: true }).first()).toBeVisible();
+  await expect(
+    page.locator(".payment-composition-card__facts > div").filter({ hasText: "剩余待付" }).getByText("¥0.00", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "登记实际付款", exact: true })).toHaveCount(0);
+});
+
 test("opens one responsive A5 approval drawer, confirms facts, and posts the frozen decision", async ({ page }) => {
   await mockLogin(page);
   let approvalPayload: unknown = null;

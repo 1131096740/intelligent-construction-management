@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { SpotProcurementPaymentDetailReadModel } from "../../api/spot-procurement.api";
 import {
+  defaultSpotPaymentExecutionDraft,
+  spotPaymentExecutionVoucherLabel,
   firstIncompletePaymentStep,
   resolveSpotPaymentMerchantPayee,
   resolveSpotPaymentDetailTab,
@@ -11,6 +13,59 @@ import {
 import { spotPaymentStatusSemantic } from "./spot-payment-workbench.config";
 
 describe("spot payment detail configuration", () => {
+  it("defaults an execution to the full remaining amount and one frozen primary channel", () => {
+    expect(defaultSpotPaymentExecutionDraft({
+      remainingAmountCents: "12345",
+      paymentMethods: [
+        { value: "bank_transfer", label: "银行转账" },
+        { value: "cash", label: "现金" }
+      ],
+      paymentChannels: [
+        cashChannel("cash-secondary", false),
+        {
+          id: "bank-primary",
+          sortOrder: 2,
+          channelType: "bank_transfer",
+          channelTypeLabel: "银行转账",
+          accountName: "昆明建材商行",
+          bankName: "建设银行",
+          accountNumberLast4: "1234",
+          note: null,
+          primary: true
+        }
+      ],
+      now: new Date("2026-07-21T08:30:00+08:00")
+    })).toEqual({
+      amountYuan: "123.45",
+      paidAt: "2026-07-21 08:30:00",
+      paymentMethod: "bank_transfer",
+      paymentChannelId: "bank-primary"
+    });
+  });
+
+  it("uses the business-required voucher wording for cash and non-cash execution", () => {
+    expect(spotPaymentExecutionVoucherLabel("cash")).toBe("商家收据");
+    expect(spotPaymentExecutionVoucherLabel("bank_transfer")).toBe("付款成功凭证");
+    expect(spotPaymentExecutionVoucherLabel("wechat")).toBe("付款成功凭证");
+  });
+
+  it("keeps a four-digit remaining amount as an ungrouped editable value", () => {
+    expect(defaultSpotPaymentExecutionDraft({
+      remainingAmountCents: "440000",
+      paymentMethods: [{ value: "bank_transfer", label: "银行转账" }],
+      paymentChannels: [{
+        id: "channel-1",
+        sortOrder: 1,
+        channelType: "bank_transfer",
+        channelTypeLabel: "银行转账",
+        accountName: null,
+        bankName: null,
+        accountNumberLast4: null,
+        note: null,
+        primary: true
+      }]
+    }).amountYuan).toBe("4400.00");
+  });
   it("fixes the six detail tabs in business order", () => {
     expect(spotPaymentDetailTabs).toEqual([
       { value: "current", label: "当前办理" },

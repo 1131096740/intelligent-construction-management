@@ -2,6 +2,11 @@ import type { SpotProcurementPaymentDetailReadModel } from "../../api/spot-procu
 import type { DetailActionReadModel } from "@jiangkong/shared-domain";
 import type { BusinessStatusSemantic } from "../../components/business-status-text.config";
 import type { SpotPaymentCurrentTask } from "../../api/spot-procurement.api";
+import type {
+  SpotProcurementPaymentChannelReadModel,
+  SpotProcurementPaymentMethod
+} from "../../api/spot-procurement.api";
+import { centsTextToYuanText } from "../../lib/money";
 
 export const spotPaymentDetailTabs = [
   { value: "current", label: "当前办理" },
@@ -13,6 +18,42 @@ export const spotPaymentDetailTabs = [
 ] as const;
 
 export type SpotPaymentDetailTab = (typeof spotPaymentDetailTabs)[number]["value"];
+
+export interface SpotPaymentExecutionDraft {
+  amountYuan: string;
+  paidAt: string;
+  paymentMethod: SpotProcurementPaymentMethod;
+  paymentChannelId: string;
+}
+
+export function spotPaymentExecutionVoucherLabel(
+  paymentMethod: SpotProcurementPaymentMethod
+) {
+  return paymentMethod === "cash" ? "商家收据" : "付款成功凭证";
+}
+
+export function defaultSpotPaymentExecutionDraft(input: {
+  remainingAmountCents: string | null | undefined;
+  paymentMethods: ReadonlyArray<{ value: SpotProcurementPaymentMethod; label: string }>;
+  paymentChannels: readonly SpotProcurementPaymentChannelReadModel[];
+  now?: Date;
+}): SpotPaymentExecutionDraft {
+  const method = input.paymentMethods[0]?.value ?? "bank_transfer";
+  const methodChannels = input.paymentChannels.filter(
+    (channel) => channel.channelType === method
+  );
+  const channel = methodChannels.find((item) => item.primary) ?? methodChannels[0];
+  const now = input.now ?? new Date();
+  const part = (value: number) => String(value).padStart(2, "0");
+  return {
+    amountYuan: input.remainingAmountCents
+      ? centsTextToYuanText(input.remainingAmountCents).replaceAll(",", "")
+      : "",
+    paidAt: `${now.getFullYear()}-${part(now.getMonth() + 1)}-${part(now.getDate())} ${part(now.getHours())}:${part(now.getMinutes())}:${part(now.getSeconds())}`,
+    paymentMethod: method,
+    paymentChannelId: channel?.id ?? ""
+  };
+}
 
 export interface SpotPaymentCurrentTaskSummary {
   currentNodeName: string;

@@ -246,18 +246,26 @@ describe("spot procurement web pages", () => {
     const detail = pageSource(
       "SpotProcurementPaymentDetailPage.vue"
     );
+    const drawer = pageSource(
+      "components/PaymentExecutionDrawer.vue"
+    );
 
     expect(detail).toContain(
-      "executionAttempt.value ?? (await prepareExecutionAttempt())"
+      "executionAttempt.value ?? (await prepareExecutionAttempt(payload))"
     );
-    expect(detail).toContain("本次重试参数已锁定");
+    expect(detail).toContain("executionOpenedPaymentId");
+    expect(detail).toContain("operationPaymentId");
+    expect(detail).toContain("paymentId.value !== operationPaymentId");
+    expect(detail).toContain("selectPaymentTab(\"executions\")");
     expect(detail).toContain("resetExecutionAttempt()");
-    expect(detail).toContain(
-      "本次付款登记参数已安全保留"
-    );
     expect(detail).toContain("await loadDetail()");
     expect(detail).toContain("prepareSpotExecutionWithUploads(");
     expect(detail).toContain("prepareSpotPaymentDraftWithUploads(");
+    expect(drawer).toContain("本次重试参数已锁定");
+    expect(drawer).toContain("修改本次付款");
+    expect(drawer).toContain("spotPaymentExecutionVoucherLabel");
+    expect(drawer).toContain("existingExecutions");
+    expect(drawer).not.toMatch(/recordSpotProcurement|uploadPrivateFile|fetch\(|apiFetch|useRoute|useRouter/u);
   });
 
   it.each([
