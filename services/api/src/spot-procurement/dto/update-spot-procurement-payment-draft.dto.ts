@@ -6,6 +6,7 @@ import {
   IsDateString,
   IsIn,
   IsOptional,
+  registerDecorator,
   ValidateIf,
   ValidateNested
 } from "class-validator";
@@ -21,6 +22,7 @@ import {
   IsOptionalNonBlankText
 } from "../../validation/static-field-validation";
 import { IsSpotProcurementQuantity } from "./create-spot-procurement.dto";
+import { isSpotProcurementUnitPrice } from "../spot-procurement-money";
 
 const PAYMENT_PATHS = [
   "supplier_direct",
@@ -29,6 +31,21 @@ const PAYMENT_PATHS = [
 export { SPOT_PROCUREMENT_PAYMENT_METHODS };
 
 export type SpotProcurementPaymentPath = (typeof PAYMENT_PATHS)[number];
+
+function IsSpotProcurementUnitPrice(): PropertyDecorator {
+  return (target, propertyKey) => {
+    registerDecorator({
+      name: "spotProcurementUnitPrice",
+      target: target.constructor,
+      propertyName: String(propertyKey),
+      options: {
+        message:
+          "采购单价必须是大于等于 0、最多 2 位小数且可保存的普通十进制字符串"
+      },
+      validator: { validate: isSpotProcurementUnitPrice }
+    });
+  };
+}
 
 export class SpotProcurementPaymentLineDto {
   @IsOptionalNonBlankText({
@@ -44,6 +61,7 @@ export class SpotProcurementPaymentLineDto {
     typeMessage: "含税或无票单价必须是文字",
     blankMessage: "请填写含税或无票单价"
   })
+  @IsSpotProcurementUnitPrice()
   unitPrice!: string;
 
   @IsIn(SPOT_PROCUREMENT_EXPECTED_INVOICE_CONDITIONS, {

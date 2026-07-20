@@ -30,8 +30,13 @@ import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import { CORE_ARCHIVE_UPLOAD_POLICY, SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
-import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
+import { centsTextToYuanText } from "../../lib/money";
 import PaymentCompositionCard from "./components/PaymentCompositionCard.vue";
+import {
+  requiredPositiveYuanCents,
+  validateSpotPaymentLines,
+  validateThenUpload
+} from "./spot-procurement-write-validation";
 
 type ConfirmationKind = "review_approve" | "review_reject" | "review_return" | "withdraw" | "void" | "download" | "execution";
 type PaymentLineDraft = {
@@ -62,10 +67,6 @@ interface ExecutionAttempt {
   paymentChannelId: string;
   voucherFileIds: string[];
 }
-
-const SPOT_PROCUREMENT_DECIMAL_TEXT = /^(0|[1-9]\d*)(?:\.\d{1,2})?$/;
-const MAX_SPOT_PROCUREMENT_INTEGER_DIGITS = 18;
-const YUAN_AMOUNT_TEXT = /^\d+(?:\.\d{1,2})?$/;
 
 const route = useRoute();
 const router = useRouter();
@@ -278,15 +279,20 @@ async function saveDraft() {
     if (editForm.channels.some((channel) => !editForm.paymentMethods.includes(channel.channelType))) {
       throw new Error("拟付款方式必须包含已填写的收款渠道方式");
     }
-    const paymentLines = lines.map((line) => ({
+    const candidatePaymentLines = lines.map((line) => ({
       procurementLineId: line.procurementLineId,
-      paymentQuantity: requiredSpotProcurementDecimal(line.paymentQuantity, "付款数量", true),
-      unitPrice: requiredSpotProcurementDecimal(line.unitPrice, "含税或无票单价", false),
+      paymentQuantity: line.paymentQuantity,
+      unitPrice: line.unitPrice,
       expectedInvoiceCondition: line.expectedInvoiceCondition,
       ...(line.expectedInvoiceCondition === "no_invoice" ? {} : { vatRateOptionId: requiredText(line.vatRateOptionId, `${line.materialName}税率`) })
     }));
     const retained = current.evidenceFiles.filter((file) => retainedAttachmentIds.value.includes(file.fileId) && file.status === "active").map((file) => ({ fileId: file.fileId, category: normalizeAttachmentCategory(file.purpose) }));
-    const uploaded = await Promise.all(selectedUploadFiles(attachmentFiles.value).map(async (file) => ({ fileId: (await uploadPrivateFile(file, file.name)).id, category: editForm.attachmentCategory })));
+    const { validatedValue: paymentLines, uploads } = await validateThenUpload(
+      () => validateSpotPaymentLines(candidatePaymentLines),
+      selectedUploadFiles(attachmentFiles.value),
+      uploadPrivateFile
+    );
+    const uploaded = uploads.map((file) => ({ fileId: file.id, category: editForm.attachmentCategory }));
     await updateSpotProcurementPaymentDraft(current.payment.id, {
       paymentType: editForm.paymentType, merchantName, payeeName,
       merchantPayeeMismatchNote: editForm.paymentType === "company_direct" && merchantName !== payeeName ? requiredText(editForm.merchantPayeeMismatchNote, "商户与收款对象不一致说明") : null,
@@ -395,13 +401,16 @@ async function confirmAction(values: { reason: string; password: string }) {
 }
 
 async function prepareExecutionAttempt(): Promise<ExecutionAttempt> {
-  const amountCents = yuanTextToCentsText(requiredYuanAmount(executionForm.amountYuan, "本次实际付款金额"));
   const paidAt = toIsoDateTime(executionForm.paidAt);
   const paymentChannelId = requiredText(executionForm.paymentChannelId, "实际付款渠道");
   const files = selectedUploadFiles(voucherFiles.value);
   if (!files.length) throw new Error(executionForm.paymentMethod === "cash" ? "请上传现金收据" : "请上传成功付款凭证");
-  const voucherFileIds: string[] = [];
-  for (const file of files) voucherFileIds.push((await uploadPrivateFile(file, file.name)).id);
+  const { validatedValue: amountCents, uploads } = await validateThenUpload(
+    () => requiredPositiveYuanCents(executionForm.amountYuan, "本次实际付款金额"),
+    files,
+    uploadPrivateFile
+  );
+  const voucherFileIds = uploads.map((file) => file.id);
   return { idempotencyKey: createIdempotencyKey(), amountCents, paidAt, paymentMethod: executionForm.paymentMethod, paymentChannelId, voucherFileIds };
 }
 
@@ -411,19 +420,6 @@ function resetExecutionAttempt() { executionAttempt.value = null; voucherFiles.v
 function selectedUploadFiles(files: UploadFile[]) { return files.map((file) => file.raw).filter((file): file is File => file instanceof File); }
 function optionalText(value: string) { const normalized = value.trim(); return normalized || null; }
 function requiredText(value: string, label: string) { const normalized = value.trim(); if (!normalized) throw new Error(`请填写${label}`); return normalized; }
-function requiredSpotProcurementDecimal(value: string, label: string, positive: boolean) {
-  const normalized = value.trim();
-  const integerDigits = normalized.split(".", 1)[0]?.length ?? 0;
-  const validValue = SPOT_PROCUREMENT_DECIMAL_TEXT.test(normalized) && integerDigits <= MAX_SPOT_PROCUREMENT_INTEGER_DIGITS;
-  if (!validValue || (positive ? Number(normalized) <= 0 : Number(normalized) < 0)) {
-    throw new Error(`${label}必须是${positive ? "大于 0" : "大于等于 0"}、最多 2 位小数且可保存的普通十进制字符串`);
-  }
-  return normalized;
-}
-function requiredYuanAmount(value: string, label: string) {
-  if (!YUAN_AMOUNT_TEXT.test(value)) throw new Error(`${label}必须是非负数字，最多 2 位小数`);
-  return value;
-}
 function normalizeAttachmentCategory(value: string) { return ["merchant_receipt", "merchant_quote", "merchant_invoice", "other"].includes(value) ? value as "merchant_receipt" | "merchant_quote" | "merchant_invoice" | "other" : "other" as const; }
 function createIdempotencyKey() { if (!globalThis.crypto?.randomUUID) throw new Error("当前浏览器无法生成安全幂等键，请升级浏览器后重试"); return `spot-payment-${globalThis.crypto.randomUUID()}`; }
 function toIsoDateTime(value: string) { const date = new Date(value); if (!value || Number.isNaN(date.getTime())) throw new Error("请选择有效的实际付款时间"); return date.toISOString(); }

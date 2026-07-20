@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import {
+  requiredPositiveYuanCents,
+  validateSpotPaymentLines,
+  validateThenUpload
+} from "./spot-procurement-write-validation";
 
 function pageSource(name: string) {
   return readFileSync(
@@ -80,38 +85,75 @@ describe("spot procurement web pages", () => {
       "本次付款登记参数已安全保留"
     );
     expect(detail).toContain("await loadDetail()");
-    expect(detail.indexOf("yuanTextToCentsText(executionForm.amountYuan)"))
-      .toBeLessThan(detail.lastIndexOf("uploadPrivateFile(file, file.name)"));
-    expect(detail.indexOf("toIsoDateTime(executionForm.paidAt)"))
-      .toBeLessThan(detail.lastIndexOf("uploadPrivateFile(file, file.name)"));
+    expect(detail).toContain(
+      "requiredPositiveYuanCents(executionForm.amountYuan"
+    );
+    expect(detail).toContain("validateThenUpload(");
+    expect(detail).toContain("toIsoDateTime(executionForm.paidAt)");
   });
 
-  it("rejects three-place procurement payment inputs before draft or voucher uploads", () => {
-    const detail = pageSource(
-      "SpotProcurementPaymentDetailPage.vue"
-    );
+  it.each([
+    ["付款数量", { paymentQuantity: "1.001", unitPrice: "3.50" }],
+    ["含税或无票单价", { paymentQuantity: "1.00", unitPrice: "3.333" }]
+  ])("does not upload A5 attachments when %s has three decimal places", async (_label, line) => {
+    const upload = vi.fn(async () => ({ id: "uploaded-file" }));
 
-    expect(detail).toContain("最多 2 位小数");
-    expect(detail).not.toMatch(/最多\s*6\s*位小数/u);
-    expect(detail).toContain(
-      'requiredSpotProcurementDecimal(line.paymentQuantity, "付款数量", true)'
-    );
-    expect(detail).toContain(
-      'requiredSpotProcurementDecimal(line.unitPrice, "含税或无票单价", false)'
-    );
-    expect(detail).toContain(
-      'requiredYuanAmount(executionForm.amountYuan, "本次实际付款金额")'
-    );
-    expect(
-      detail.indexOf(
-        'requiredSpotProcurementDecimal(line.paymentQuantity, "付款数量", true)'
+    await expect(
+      validateThenUpload(
+        () => validateSpotPaymentLines([line]),
+        [{ name: "付款依据.pdf" }],
+        upload
       )
-    ).toBeLessThan(detail.indexOf("selectedUploadFiles(attachmentFiles.value)"));
-    expect(
-      detail.indexOf(
-        'requiredYuanAmount(executionForm.amountYuan, "本次实际付款金额")'
+    ).rejects.toThrow("最多 2 位小数");
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it.each(["1.001", "0", "0.00", "invalid"])(
+    "does not upload an execution voucher for invalid or zero yuan input %s",
+    async (amountYuan) => {
+      const upload = vi.fn(async () => ({ id: "voucher-file" }));
+
+      await expect(
+        validateThenUpload(
+          () => requiredPositiveYuanCents(amountYuan, "本次实际付款金额"),
+          [{ name: "付款凭证.png" }],
+          upload
+        )
+      ).rejects.toThrow("本次实际付款金额必须是大于 0、最多 2 位小数的金额");
+      expect(upload).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(["3.333", "0", "0.00", "invalid"])(
+    "does not upload a refund voucher for invalid or zero yuan input %s",
+    async (amountYuan) => {
+      const upload = vi.fn(async () => ({ id: "refund-file" }));
+
+      await expect(
+        validateThenUpload(
+          () => requiredPositiveYuanCents(amountYuan, "退款到账金额"),
+          [{ name: "退款凭证.png" }],
+          upload
+        )
+      ).rejects.toThrow("退款到账金额必须是大于 0、最多 2 位小数的金额");
+      expect(upload).not.toHaveBeenCalled();
+    }
+  );
+
+  it("uploads only after a valid positive yuan amount becomes integer cents", async () => {
+    const upload = vi.fn(async () => ({ id: "voucher-file" }));
+
+    await expect(
+      validateThenUpload(
+        () => requiredPositiveYuanCents("1.00", "本次实际付款金额"),
+        [{ name: "付款凭证.png" }],
+        upload
       )
-    ).toBeLessThan(detail.lastIndexOf("uploadPrivateFile(file, file.name)"));
+    ).resolves.toEqual({
+      validatedValue: "100",
+      uploads: [{ id: "voucher-file" }]
+    });
+    expect(upload).toHaveBeenCalledTimes(1);
   });
 
   it("exposes the existing return and procurement revision workflows", () => {
@@ -182,6 +224,10 @@ describe("spot procurement web pages", () => {
     expect(receipt).toContain("revokeSpotProcurementReceiptReview");
     expect(receipt).toContain("createSpotProcurementDiscrepancy");
     expect(receipt).toContain("recordSpotProcurementRefund");
+    expect(receipt).toContain(
+      "requiredPositiveYuanCents(refundForm.amountYuan"
+    );
+    expect(receipt).toContain("validateThenUpload(");
     expect(receipt).toContain("appendSpotProcurementPaymentInvoice");
     expect(receipt).toContain("委托");
     expect(receipt).toContain("待财务登记首笔实际付款后开放收货");

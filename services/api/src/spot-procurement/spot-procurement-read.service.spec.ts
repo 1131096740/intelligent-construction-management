@@ -728,9 +728,9 @@ describe("SpotProcurementReadService", () => {
         paymentId: "payment-1",
         procurementLineId: "line-1",
         sortOrder: 1,
-        approvedQuantitySnapshot: { toString: () => "100" },
-        paymentQuantity: { toString: () => "100" },
-        unitPrice: { toString: () => "1.2" },
+        approvedQuantitySnapshot: { toString: () => "3.335" },
+        paymentQuantity: { toString: () => "3.335" },
+        unitPrice: { toString: () => "3.335" },
         amountCents: 12_000n,
         expectedInvoiceCondition: "vat_general",
         vatRateOptionId: "vat-13",
@@ -771,6 +771,14 @@ describe("SpotProcurementReadService", () => {
         invoices: []
       })
     };
+    const quantityWriteValidator = jest.spyOn(
+      spotProcurementMoney,
+      "isSpotProcurementQuantity"
+    );
+    const unitPriceWriteValidator = jest.spyOn(
+      spotProcurementMoney,
+      "isSpotProcurementUnitPrice"
+    );
     const service = new SpotProcurementReadService(
       fixture.prisma as never,
       fixture.visibility as never,
@@ -838,8 +846,17 @@ describe("SpotProcurementReadService", () => {
       ])
     );
     expect((paymentDetail as { materials: unknown }).materials).toEqual([
-      expect.objectContaining({ vatRateOptionId: "vat-13" })
+      expect.objectContaining({
+        approvedQuantity: "3.335",
+        paymentQuantity: "3.335",
+        unitPrice: "3.335",
+        vatRateOptionId: "vat-13"
+      })
     ]);
+    expect(quantityWriteValidator).not.toHaveBeenCalled();
+    expect(unitPriceWriteValidator).not.toHaveBeenCalled();
+    quantityWriteValidator.mockRestore();
+    unitPriceWriteValidator.mockRestore();
     expect((paymentDetail as { paymentChannels: unknown }).paymentChannels).toEqual([
       expect.objectContaining({ accountNumberLast4: "1234" })
     ]);

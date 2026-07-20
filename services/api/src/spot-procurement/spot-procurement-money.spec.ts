@@ -5,6 +5,7 @@ import {
   SpotProcurementLineDto
 } from "./dto/create-spot-procurement.dto";
 import { UpdateSpotProcurementDraftDto } from "./dto/update-spot-procurement-draft.dto";
+import { UpdateSpotProcurementPaymentDraftDto } from "./dto/update-spot-procurement-payment-draft.dto";
 import {
   calculateSpotProcurementDraft,
   calculateSpotProcurementLine
@@ -310,6 +311,33 @@ describe("spot procurement exact money", () => {
 });
 
 describe("spot procurement runtime DTO validation", () => {
+  it("validates A5 payment unit prices through the real ValidationPipe", async () => {
+    const validPaymentLine = {
+      procurementLineId: "procurement-line-1",
+      paymentQuantity: "1.00",
+      unitPrice: "3.50",
+      expectedInvoiceCondition: "no_invoice"
+    };
+
+    await expect(
+      validateBody(
+        { paymentLines: [validPaymentLine] },
+        UpdateSpotProcurementPaymentDraftDto
+      )
+    ).resolves.toBeInstanceOf(UpdateSpotProcurementPaymentDraftDto);
+
+    const response = await getValidationResponse(
+      {
+        paymentLines: [{ ...validPaymentLine, unitPrice: "3.333" }]
+      },
+      UpdateSpotProcurementPaymentDraftDto
+    );
+
+    expect(response.errors).toContain(
+      "采购单价必须是大于等于 0、最多 2 位小数且可保存的普通十进制字符串"
+    );
+  });
+
   it("transforms a complete A4 application body without supplier or money facts", async () => {
     const result = await validateBody(
       {

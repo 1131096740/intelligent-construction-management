@@ -25,9 +25,13 @@ import { uploadPrivateFile } from "../../api/core-flow-read.api";
 import BusinessDetailHeader from "../../components/BusinessDetailHeader.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import { CORE_ARCHIVE_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
-import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
+import { centsTextToYuanText } from "../../lib/money";
 import ReceiptLineEditor from "./components/ReceiptLineEditor.vue";
 import ReceiptPhotoUploader from "./components/ReceiptPhotoUploader.vue";
+import {
+  requiredPositiveYuanCents,
+  validateThenUpload
+} from "./spot-procurement-write-validation";
 
 const route = useRoute();
 const receipt = ref<SpotProcurementReceiptDetailReadModel | null>(null);
@@ -201,9 +205,14 @@ async function recordRefund() {
   await act(async () => {
     const file = selectedUploadFiles(refundFiles.value)[0];
     if (!file) throw new Error("请上传退款到账凭证");
-    const voucher = await uploadPrivateFile(file, file.name);
+    const { validatedValue: amountCents, uploads } = await validateThenUpload(
+      () => requiredPositiveYuanCents(refundForm.amountYuan, "退款到账金额"),
+      [file],
+      uploadPrivateFile
+    );
+    const voucher = uploads[0]!;
     await recordSpotProcurementRefund(procurementId.value, {
-      amountCents: yuanTextToCentsText(refundForm.amountYuan),
+      amountCents,
       receivedAt: refundForm.receivedAt,
       refundMethod: refundForm.refundMethod,
       voucherFileId: voucher.id,
