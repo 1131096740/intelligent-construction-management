@@ -1724,6 +1724,129 @@ describe("SpotProcurementReadService", () => {
     });
   });
 
+  it("keeps the seven trial roles on their own payment task and never infers a privileged action", () => {
+    const approvalFor = (roleKey: string, nodeName: string) => ({
+      status: "approval_pending",
+      currentNodeIndex: 0,
+      frozenNodes: [{ name: nodeName, roleKeys: [roleKey] }],
+      applicantUserId: "handler-1"
+    });
+    const cases = [
+      {
+        roleKey: "material_staff",
+        actorUserId: "handler-1",
+        payment: paymentRow({ status: "draft" }),
+        approval: null,
+        paymentMethodCount: 0,
+        availableActions: [{ key: "edit_draft", label: "编辑付款草稿", enabled: true }],
+        expectedTask: "complete_payment_draft",
+        forbiddenActions: ["review_approval", "complete_payer", "record_execution"]
+      },
+      {
+        roleKey: "material_director",
+        actorUserId: "material-director-1",
+        payment: paymentRow({
+          status: "approval_pending",
+          payerCompanyEntityId: "company-1",
+          payerCompanyNameSnapshot: "云南建工"
+        }),
+        approval: approvalFor("comprehensive_director", "综合部主管审批"),
+        paymentMethodCount: 1,
+        availableActions: [],
+        expectedTask: "none",
+        forbiddenActions: ["edit_draft", "review_approval", "complete_payer", "record_execution"]
+      },
+      {
+        roleKey: "comprehensive_director",
+        actorUserId: "comprehensive-1",
+        payment: paymentRow({
+          status: "approval_pending",
+          payerCompanyEntityId: "company-1",
+          payerCompanyNameSnapshot: "云南建工"
+        }),
+        approval: approvalFor("comprehensive_director", "综合部主管审批"),
+        paymentMethodCount: 1,
+        availableActions: [{ key: "review_approval", label: "办理审批", enabled: true }],
+        expectedTask: "review_payment",
+        forbiddenActions: ["edit_draft", "record_execution"]
+      },
+      {
+        roleKey: "project_manager",
+        actorUserId: "project-manager-1",
+        payment: paymentRow({
+          status: "approval_pending",
+          payerCompanyEntityId: "company-1",
+          payerCompanyNameSnapshot: "云南建工"
+        }),
+        approval: approvalFor("project_manager", "项目经理审批"),
+        paymentMethodCount: 1,
+        availableActions: [{ key: "review_approval", label: "办理审批", enabled: true }],
+        expectedTask: "review_payment",
+        forbiddenActions: ["edit_draft", "complete_payer", "record_execution"]
+      },
+      {
+        roleKey: "finance_staff",
+        actorUserId: "finance-1",
+        payment: paymentRow({
+          status: "approval_pending",
+          payerCompanyEntityId: null,
+          payerCompanyNameSnapshot: null
+        }),
+        approval: approvalFor("comprehensive_director", "综合部主管审批"),
+        paymentMethodCount: 0,
+        availableActions: [],
+        expectedTask: "complete_payer",
+        forbiddenActions: ["edit_draft", "review_approval", "record_execution"]
+      },
+      {
+        roleKey: "finance_director",
+        actorUserId: "finance-director-1",
+        payment: paymentRow({
+          status: "approval_pending",
+          payerCompanyEntityId: "company-1",
+          payerCompanyNameSnapshot: "云南建工"
+        }),
+        approval: approvalFor("finance_director", "财务主管审批"),
+        paymentMethodCount: 1,
+        availableActions: [{ key: "review_approval", label: "办理审批", enabled: true }],
+        expectedTask: "review_payment",
+        forbiddenActions: ["edit_draft", "record_execution"]
+      },
+      {
+        roleKey: "chairman",
+        actorUserId: "chairman-1",
+        payment: paymentRow({
+          status: "approval_pending",
+          payerCompanyEntityId: "company-1",
+          payerCompanyNameSnapshot: "云南建工"
+        }),
+        approval: approvalFor("chairman", "董事长或总经理审批"),
+        paymentMethodCount: 1,
+        availableActions: [{ key: "review_approval", label: "办理审批", enabled: true }],
+        expectedTask: "review_payment",
+        forbiddenActions: ["edit_draft", "complete_payer", "record_execution"]
+      }
+    ] as const;
+
+    for (const current of cases) {
+      const task = deriveSpotPaymentCurrentTask({
+        payment: current.payment as never,
+        approval: current.approval as never,
+        discrepancy: null,
+        actorUserId: current.actorUserId,
+        roleKeys: [current.roleKey],
+        projectScopedRoleKeys: [current.roleKey],
+        paymentMethodCount: current.paymentMethodCount,
+        availableActions: current.availableActions as never
+      });
+
+      expect(task.key).toBe(current.expectedTask);
+      expect(current.availableActions.map((action) => action.key)).toEqual(
+        expect.not.arrayContaining([...current.forbiddenActions])
+      );
+    }
+  });
+
   it("derives shared payer completion and project-finance blocking tasks", () => {
     const missingPayer = paymentRow({
       status: "draft",

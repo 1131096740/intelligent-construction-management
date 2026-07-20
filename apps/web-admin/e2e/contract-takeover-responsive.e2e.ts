@@ -533,7 +533,7 @@ test("keeps the takeover ledger as the only horizontal scroller across six deskt
   expect(runtimeErrors).toEqual([]);
 });
 
-test("keeps takeover evidence controls reachable through the final 390px page fallback", async ({ page }) => {
+test("keeps takeover evidence controls reachable without a 390px page overflow", async ({ page }) => {
   const runtimeErrors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await loginWithMocks(page);
@@ -554,10 +554,8 @@ test("keeps takeover evidence controls reachable through the final 390px page fa
   const uploadButtonBox = await uploadButton.boundingBox();
   expect(uploadButtonBox).not.toBeNull();
   expect(uploadButtonBox!.x).toBeGreaterThanOrEqual(-1);
-  expect(uploadButtonBox!.x + uploadButtonBox!.width).toBeLessThanOrEqual(720);
-  expect(
-    await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
-  ).toBe(true);
+  expect(uploadButtonBox!.x + uploadButtonBox!.width).toBeLessThanOrEqual(390);
+  await expectNoDocumentHorizontalOverflow(page);
   expect(runtimeErrors).toEqual([]);
 });
 

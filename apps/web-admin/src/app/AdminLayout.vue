@@ -396,10 +396,4 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
   }
 }
 
-@media (max-width: 720px) {
-  .content {
-    min-width: var(--jg-layout-page-min-width-fallback);
-    overflow-x: auto;
-  }
-}
 </style>

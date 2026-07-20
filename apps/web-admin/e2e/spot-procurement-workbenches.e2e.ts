@@ -37,17 +37,26 @@ function deferred() {
   return { promise, resolve };
 }
 
-async function mockLogin(page: Page) {
+async function mockLogin(
+  page: Page,
+  user: {
+    id?: string;
+    name?: string;
+    phone?: string;
+    roleKeys?: string[];
+    globalRoleKeys?: string[];
+  } = {}
+) {
   await page.route("**/api/auth/login", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
       user: {
-        id: "handler-1",
-        name: "物资员甲",
-        phone: "13900000000",
+        id: user.id ?? "handler-1",
+        name: user.name ?? "物资员甲",
+        phone: user.phone ?? "13900000000",
         mustChangePassword: false,
-        roleKeys: ["material_staff"],
-        globalRoleKeys: []
+        roleKeys: user.roleKeys ?? ["material_staff"],
+        globalRoleKeys: user.globalRoleKeys ?? []
       },
       tokens: { accessToken: "spot-e2e-access-token", refreshToken: "spot-e2e-refresh-token", expiresIn: 900 }
     })
@@ -388,11 +397,25 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
     path: path.join(testInfo.outputDir, "spot-procurement-payment-workbench-all-1024x768.png"),
     fullPage: true
   });
-  await page.setViewportSize({ width: 720, height: 768 });
+  await page.setViewportSize({ width: 768, height: 768 });
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalScrollers(page);
+  await page.screenshot({
+    path: path.join(testInfo.outputDir, "spot-procurement-payment-workbench-768x768.png"),
+    fullPage: true
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
   const taskGridColumns = await page.locator(".payment-task-queue__cards").evaluate(
     (element) => getComputedStyle(element).gridTemplateColumns
   );
   expect(taskGridColumns.trim().split(/\s+/)).toHaveLength(1);
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalScrollers(page);
+  await expectHorizontalScrollOwner(page.locator(".jg-table-region .t-table__content"));
+  await page.screenshot({
+    path: path.join(testInfo.outputDir, "spot-procurement-payment-workbench-390x844.png"),
+    fullPage: true
+  });
   await page.setViewportSize({ width: 1366, height: 768 });
 
   await page.locator(".payment-task-queue").getByRole("button", { name: "填写", exact: true }).click();
@@ -412,7 +435,174 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   await expect(page.getByText("发票是整张付款申请的可选附件", { exact: true })).toBeVisible();
 });
 
-test("locally resumes an incomplete A5 draft without inventing payment facts and submits only after server save", async ({ page }) => {
+test("renders the seven trial roles from server tasks without privileged cross-role actions", async ({ browser }) => {
+  test.slow();
+  const matrix = [
+    {
+      roleKey: "material_staff",
+      name: "物资员",
+      task: { key: "complete_payment_draft", label: "完善付款草稿", hint: "补齐付款信息", priority: 300, scope: "personal", enabled: true, disabledReason: null },
+      actions: [{ key: "edit_draft", label: "编辑付款草稿", enabled: true, disabledReason: null }],
+      node: "尚未发起审批",
+      title: "补全付款信息并提交",
+      button: "编辑 A5 付款草稿",
+      forbidden: ["办理审批", "维护付款主体", "登记实际付款"]
+    },
+    {
+      roleKey: "material_director",
+      name: "物资主管",
+      task: { key: "none", label: "当前无需办理", hint: "当前无需办理付款；后续需复核收货", priority: 0, scope: "none", enabled: false, disabledReason: null },
+      actions: [],
+      node: "综合部主管审批",
+      title: "当前无需办理付款",
+      button: null,
+      forbidden: ["编辑 A5 付款草稿", "办理审批", "维护付款主体", "登记实际付款"]
+    },
+    {
+      roleKey: "comprehensive_director",
+      name: "综合部主管",
+      task: { key: "review_payment", label: "待我审批", hint: "核对资料与付款主体", priority: 300, scope: "personal", enabled: true, disabledReason: null },
+      actions: [{ key: "review_approval", label: "办理审批", enabled: true, disabledReason: null }],
+      node: "综合部主管审批",
+      title: "办理付款审批",
+      button: "办理审批",
+      forbidden: ["编辑 A5 付款草稿", "维护付款主体", "登记实际付款"]
+    },
+    {
+      roleKey: "project_manager",
+      name: "项目经理",
+      task: { key: "review_payment", label: "待我审批", hint: "核对项目需要与付款材料", priority: 300, scope: "personal", enabled: true, disabledReason: null },
+      actions: [{ key: "review_approval", label: "办理审批", enabled: true, disabledReason: null }],
+      node: "项目经理审批",
+      title: "办理付款审批",
+      button: "办理审批",
+      forbidden: ["编辑 A5 付款草稿", "维护付款主体", "登记实际付款"]
+    },
+    {
+      roleKey: "finance_staff",
+      name: "财务人员",
+      task: { key: "complete_payer", label: "待补全付款主体", hint: "共享岗位协作补全", priority: 200, scope: "shared", enabled: true, disabledReason: null },
+      actions: [{ key: "complete_payer", label: "维护付款主体", enabled: true, disabledReason: null }],
+      node: "综合部主管审批",
+      title: "协作补全付款主体与方式",
+      button: "维护付款主体",
+      forbidden: ["编辑 A5 付款草稿", "办理审批", "登记实际付款"]
+    },
+    {
+      roleKey: "finance_director",
+      name: "财务主管",
+      task: { key: "review_payment", label: "待我审批", hint: "核对金额、主体与收款风险", priority: 300, scope: "personal", enabled: true, disabledReason: null },
+      actions: [{ key: "review_approval", label: "办理审批", enabled: true, disabledReason: null }],
+      node: "财务主管审批",
+      title: "办理付款审批",
+      button: "办理审批",
+      forbidden: ["编辑 A5 付款草稿", "维护付款主体", "登记实际付款"]
+    },
+    {
+      roleKey: "chairman",
+      name: "董事长或总经理",
+      task: { key: "review_payment", label: "待我审批", hint: "办理最终审批", priority: 300, scope: "personal", enabled: true, disabledReason: null },
+      actions: [{ key: "review_approval", label: "办理审批", enabled: true, disabledReason: null }],
+      node: "董事长或总经理审批",
+      title: "办理最终审批",
+      button: "办理审批",
+      forbidden: ["编辑 A5 付款草稿", "维护付款主体", "登记实际付款"]
+    }
+  ] as const;
+
+  for (const [index, current] of matrix.entries()) {
+    const context = await browser.newContext();
+    const rolePage = await context.newPage();
+    const paymentId = `payment-role-${index + 1}`;
+    await mockLogin(rolePage, {
+      id: `${current.roleKey}-1`,
+      name: current.name,
+      phone: `1390000000${index}`,
+      roleKeys: [current.roleKey]
+    });
+    await rolePage.route(`**/api/spot-procurement-payments/${paymentId}`, (route) => {
+      const base = paymentDetail();
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...base,
+          payment: {
+            ...base.payment,
+            id: paymentId,
+            code: `LXFK-ROLE-${index + 1}`,
+            status: current.roleKey === "material_staff" ? "draft" : "approval_pending",
+            statusLabel: current.roleKey === "material_staff" ? "付款草稿" : "审批中",
+            payerManagement: current.roleKey === "finance_staff"
+              ? { visible: true, enabled: true, disabledReason: null, requiresReapproval: false }
+              : { visible: false, enabled: false, disabledReason: null, requiresReapproval: false }
+          },
+          approval: {
+            status: current.roleKey === "material_staff" ? "draft" : "approval_pending",
+            statusLabel: current.roleKey === "material_staff" ? "尚未发起审批" : "审批中",
+            currentNodeName: current.node,
+            currentRoleKeys: [current.roleKey]
+          },
+          currentTask: current.task,
+          availableActions: current.actions,
+          paymentPdf: { ...base.paymentPdf, businessId: paymentId }
+        })
+      });
+    });
+
+    await rolePage.goto("/login");
+    await rolePage.getByPlaceholder("请输入手机号").fill(`1390000000${index}`);
+    await rolePage.getByPlaceholder("请输入密码").fill("Spot@2026");
+    await rolePage.getByRole("button", { name: "登录" }).click();
+    await rolePage.goto(`/零星材料付款/${paymentId}?tab=current`);
+    await expect(rolePage.getByRole("heading", { name: current.title, exact: true })).toBeVisible();
+    if (current.button) {
+      await expect(rolePage.locator(".payment-current-task").getByRole("button", { name: current.button, exact: true })).toBeVisible();
+    }
+    for (const forbidden of current.forbidden) {
+      await expect(rolePage.locator(".payment-current-task").getByRole("button", { name: forbidden, exact: true })).toHaveCount(0);
+    }
+    await context.close();
+  }
+});
+
+test("recovers a failed payment detail read without a blank screen", async ({ page }) => {
+  let readCount = 0;
+  await mockLogin(page);
+  await page.route("**/api/spot-procurement-payments/payment-read-retry", async (route) => {
+    readCount += 1;
+    if (readCount === 1) {
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "模拟读取失败" })
+      });
+      return;
+    }
+    const base = paymentDetail();
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...base,
+        payment: { ...base.payment, id: "payment-read-retry", code: "LXFK-READ-RETRY" },
+        paymentPdf: { ...base.paymentPdf, businessId: "payment-read-retry" }
+      })
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await page.goto("/零星材料付款/payment-read-retry?tab=current");
+  await expect(page.getByText("付款申请暂不可用", { exact: true })).toBeVisible();
+  await expect(page.getByText("模拟读取失败", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "重新读取", exact: true }).click();
+  await expect(page.getByText("LXFK-READ-RETRY", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "项目零星付款申请单", exact: true })).toBeVisible();
+  expect(readCount).toBe(2);
+});
+
+test("locally resumes an incomplete A5 draft without inventing payment facts and submits only after server save", async ({ page }, testInfo) => {
   let saved = false;
   let draftAttempts = 0;
   const writeOrder: string[] = [];
@@ -539,6 +729,10 @@ test("locally resumes an incomplete A5 draft without inventing payment facts and
   await page.setViewportSize({ width: 390, height: 844 });
   const stepColumns = await page.locator(".payment-application-stepper__steps").evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length);
   expect(stepColumns).toBe(1);
+  await page.screenshot({
+    path: path.join(testInfo.outputDir, "spot-payment-application-stepper-390x844.png"),
+    fullPage: true
+  });
   await page.getByRole("button", { name: "3. 收款渠道与依据", exact: true }).click();
   await page.getByRole("button", { name: "新增收款渠道", exact: true }).click();
   await expect(page.getByText("渠道 1", { exact: true })).toBeVisible();
@@ -1084,7 +1278,7 @@ test("restores focus to the actual execution trigger after the drawer has closed
   }
 });
 
-test("opens one responsive A5 approval drawer, confirms facts, and posts the frozen decision", async ({ page }) => {
+test("opens one responsive A5 approval drawer, confirms facts, and posts the frozen decision", async ({ page }, testInfo) => {
   await mockLogin(page);
   let approvalPayload: unknown = null;
   await page.route("**/api/spot-procurement-payments/payment-review/approval", async (route) => {
@@ -1156,6 +1350,10 @@ test("opens one responsive A5 approval drawer, confirms facts, and posts the fro
   expect(desktopBox?.width).toBeGreaterThanOrEqual(540);
   expect(desktopBox?.width).toBeLessThanOrEqual(570);
   expect(Math.round((desktopBox?.x ?? 0) + (desktopBox?.width ?? 0))).toBe(desktopViewportWidth);
+  await page.screenshot({
+    path: path.join(testInfo.outputDir, "spot-payment-approval-drawer-1280x720.png"),
+    fullPage: true
+  });
   await expect(drawer.getByText("审批金额", { exact: true })).toBeVisible();
   await expect(drawer.getByText("云南建工测试公司", { exact: true })).toBeVisible();
   await expect(drawer.getByText("利民建材店", { exact: true })).toBeVisible();
@@ -1178,6 +1376,10 @@ test("opens one responsive A5 approval drawer, confirms facts, and posts the fro
   const mobileBox = await drawerContent.boundingBox();
   expect(Math.round(mobileBox?.width ?? 0)).toBe(390);
   expect(Math.round(mobileBox?.x ?? -1)).toBe(0);
+  await page.screenshot({
+    path: path.join(testInfo.outputDir, "spot-payment-approval-drawer-390x844.png"),
+    fullPage: true
+  });
   await drawer.getByRole("button", { name: "取消", exact: true }).click();
   await expect(trigger).toBeFocused();
 
