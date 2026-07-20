@@ -75,7 +75,7 @@
         >
           <t-select
             v-model="selectedVersionId"
-            @change="clearTransientState"
+            @change="selectVersion"
           >
             <t-option
               v-for="version in versions"
@@ -214,6 +214,15 @@
         </div>
       </div>
     </t-card>
+    <SensitiveActionDialog
+      v-model="leaveDialogVisible"
+      title="放弃未保存的版式修改？"
+      description="继续后会丢弃尚未上传保存的版式源文件和当前页面填写内容。"
+      confirm-text="放弃并离开"
+      confirm-theme="danger"
+      @confirm="resolveLeaveDecision(true)"
+      @cancel="resolveLeaveDecision(false)"
+    />
   </section>
 </template>
 
@@ -241,6 +250,8 @@ import { templateStatusLabel } from "../contracts/contract-labels";
 import BusinessDraftAction, {
   type BusinessDraftActionRequest
 } from "../../components/BusinessDraftAction.vue";
+import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
+import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import { canPublishLayoutVersion, contractTypeOptions } from "./contract-template.config";
 import {
   canMaintainContractTemplates,
@@ -259,6 +270,11 @@ const publicationSummary = ref("");
 const message = ref("");
 const tone = ref<"success" | "danger">("success");
 const timer = ref<number | undefined>();
+const editorBaseline = ref("");
+const lastValidVersionId = ref("");
+const leaveDialogVisible = ref(false);
+const allowNavigation = ref(false);
+let resolvePendingLeave: ((decision: boolean) => void) | null = null;
 const isCreateMode = computed(() => String(route.params.layoutTemplateId ?? "") === "new");
 const versions = computed(() => detail.value?.versions ?? []);
 const currentVersion = computed(() =>
@@ -315,6 +331,45 @@ const placeholders = [
   "{交货地点}",
   "{#材料清单}{名称}{/材料清单}"
 ];
+const isDirty = computed(() => Boolean(editorBaseline.value) && editorSnapshot() !== editorBaseline.value);
+const leaveGuard = useUnsavedChangesGuard({
+  isDirty: () => isDirty.value && !allowNavigation.value,
+  confirmLeave: () => new Promise<boolean>((resolve) => {
+    resolvePendingLeave?.(false);
+    resolvePendingLeave = resolve;
+    leaveDialogVisible.value = true;
+  })
+});
+
+function editorSnapshot() {
+  return JSON.stringify({
+    name: form.name,
+    contractTypeKey: form.contractTypeKey,
+    sourceFiles: sourceFiles.value.map((file) => file.name),
+    publicationSummary: publicationSummary.value
+  });
+}
+
+function syncEditorBaseline() {
+  editorBaseline.value = editorSnapshot();
+  lastValidVersionId.value = selectedVersionId.value;
+}
+
+function resolveLeaveDecision(decision: boolean) {
+  leaveDialogVisible.value = false;
+  const resolve = resolvePendingLeave;
+  resolvePendingLeave = null;
+  resolve?.(decision);
+}
+
+async function selectVersion() {
+  if (!(await leaveGuard.requestClose())) {
+    selectedVersionId.value = lastValidVersionId.value;
+    return;
+  }
+  clearTransientState();
+  syncEditorBaseline();
+}
 
 function selectedFile() {
   const raw = sourceFiles.value[0]?.raw;
@@ -333,14 +388,18 @@ async function createLayout() {
       docxFileId: uploaded.id,
       placeholderSchema: { bills: [] }
     });
+    allowNavigation.value = true;
     await router.replace(`/合同模板库/版式/${created.template.id}`);
+    allowNavigation.value = false;
     detail.value = { template: created.template, versions: [created.version] };
     selectedVersionId.value = created.version.id;
     sourceFiles.value = [];
+    syncEditorBaseline();
     showSuccess("版式草稿已创建");
   } catch (error) {
     showError(error instanceof Error ? error.message : "创建失败");
   } finally {
+    allowNavigation.value = false;
     saving.value = false;
   }
 }
@@ -473,6 +532,8 @@ async function refreshDetail(preferredVersionId?: string) {
     result.versions.find((version) => version.status === "published")?.id ??
     result.versions[0]?.id ??
     "";
+  clearTransientState();
+  syncEditorBaseline();
 }
 
 function layoutStatusLabel(status: string) {
@@ -515,6 +576,8 @@ onMounted(async () => {
     } catch (error) {
       showError(error instanceof Error ? error.message : "读取版式失败");
     }
+  } else {
+    syncEditorBaseline();
   }
 });
 onBeforeUnmount(() => window.clearInterval(timer.value));

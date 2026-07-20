@@ -16,6 +16,7 @@
         <t-button
           v-if="governance.canSubmit"
           :loading="submitting"
+          :disabled="isDirty"
           @click="submitVersion"
         >
           提交
@@ -395,6 +396,16 @@
     >
       {{ message }}
     </p>
+
+    <SensitiveActionDialog
+      v-model="leaveDialogVisible"
+      title="放弃未保存的模板修改？"
+      description="继续后会丢弃当前模板版本尚未保存的字段、清单、条款、附件和校验修改。"
+      confirm-text="放弃并离开"
+      confirm-theme="danger"
+      @confirm="resolveLeaveDecision(true)"
+      @cancel="resolveLeaveDecision(false)"
+    />
   </section>
 </template>
 
@@ -416,6 +427,8 @@ import { useAuthStore } from "../../auth/auth.store";
 import BusinessDraftAction, {
   type BusinessDraftActionRequest
 } from "../../components/BusinessDraftAction.vue";
+import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
+import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import { templateStatusLabel } from "../contracts/contract-labels";
 import {
   billAmountRoleOptions,
@@ -455,6 +468,9 @@ const message = ref("");
 const tone = ref<"success" | "danger">("success");
 const loading = ref(false);
 const submitting = ref(false);
+const editorBaseline = ref("");
+const leaveDialogVisible = ref(false);
+let resolvePendingLeave: ((decision: boolean) => void) | null = null;
 
 const selectedVersion = computed(() =>
   versions.value.find((version) => version.id === selectedVersionId.value)
@@ -486,6 +502,32 @@ const schema = reactive({
   attachments: [] as Array<Record<string, unknown>>,
   validations: [] as Array<Record<string, unknown>>
 });
+const isDirty = computed(() =>
+  governance.value.canSave && Boolean(editorBaseline.value) && editorSnapshot() !== editorBaseline.value
+);
+const leaveGuard = useUnsavedChangesGuard({
+  isDirty,
+  confirmLeave: () => new Promise<boolean>((resolve) => {
+    resolvePendingLeave?.(false);
+    resolvePendingLeave = resolve;
+    leaveDialogVisible.value = true;
+  })
+});
+
+function editorSnapshot() {
+  return JSON.stringify({ changeSummary: changeSummary.value, schema: buildSchema() });
+}
+
+function syncEditorBaseline() {
+  editorBaseline.value = editorSnapshot();
+}
+
+function resolveLeaveDecision(decision: boolean) {
+  leaveDialogVisible.value = false;
+  const resolve = resolvePendingLeave;
+  resolvePendingLeave = null;
+  resolve?.(decision);
+}
 
 function move<T>(items: T[], index: number, delta: -1 | 1) {
   const next = index + delta;
@@ -605,15 +647,20 @@ function applyVersion(version: ContractTemplateVersionReadModel) {
   lastValidVersionId.value = version.id;
   changeSummary.value = version.changeSummary ?? "";
   applySchema(version.schema);
+  syncEditorBaseline();
 }
 
-function selectVersion(value: unknown) {
+async function selectVersion(value: unknown) {
   const id = typeof value === "string" ? value : "";
   const version = versions.value.find((item) => item.id === id);
   if (!version) {
     selectedVersionId.value = lastValidVersionId.value;
     message.value = "模板版本不存在，请刷新后重试";
     tone.value = "danger";
+    return;
+  }
+  if (!(await leaveGuard.requestClose())) {
+    selectedVersionId.value = lastValidVersionId.value;
     return;
   }
   applyVersion(version);

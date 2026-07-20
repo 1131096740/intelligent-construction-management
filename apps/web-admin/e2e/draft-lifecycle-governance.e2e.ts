@@ -100,15 +100,15 @@ function paymentLedger(view: string) {
   };
 }
 
-function returnedPaymentDetail() {
+function returnedPaymentDetail(abandoned = false) {
   return {
     id: "FK-RETURN-001",
-    title: "FK-RETURN-001 · 退回待修改付款申请",
-    lifecycleKind: "approval_draft",
-    ledgerView: "returned_for_revision",
+    title: abandoned ? "FK-RETURN-001 · 已放弃付款申请" : "FK-RETURN-001 · 退回待修改付款申请",
+    lifecycleKind: abandoned ? "ended" : "approval_draft",
+    ledgerView: abandoned ? "ended" : "returned_for_revision",
     lifecycleUpdatedAt: savedAt,
     meta: [
-      { label: "审批状态", value: "已退回", tone: "warning" },
+      { label: "审批状态", value: abandoned ? "已放弃" : "已退回", tone: abandoned ? "default" : "warning" },
       { label: "实付状态", value: "未实付" },
       { label: "当前节点", value: "申请人修改" },
       { label: "下一步动作", value: "修改后重新提交" }
@@ -124,7 +124,7 @@ function returnedPaymentDetail() {
     executionCoverages: [],
     evidenceFiles: [],
     approvalTimeline: [],
-    availableActions: [
+    availableActions: abandoned ? [] : [
       {
         key: "abandon_application",
         label: "放弃申请",
@@ -154,12 +154,14 @@ test("付款生命周期视图隔离已放弃记录，并以保存时间执行 C
   test.setTimeout(60_000);
   await installSession(page);
   let abandonBody: Record<string, unknown> | null = null;
+  let abandoned = false;
   await page.route("**/api/payments/FK-RETURN-001/abandonment", (route) => {
     abandonBody = route.request().postDataJSON() as Record<string, unknown>;
+    abandoned = true;
     return route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "FK-RETURN-001", status: "abandoned" }) });
   });
   await page.route("**/api/payments/FK-RETURN-001", (route) =>
-    route.fulfill({ contentType: "application/json", body: JSON.stringify(returnedPaymentDetail()) })
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(returnedPaymentDetail(abandoned)) })
   );
   await page.route("**/api/payments?*", (route) => {
     const view = new URL(route.request().url()).searchParams.get("view") ?? "formal_ledger";
@@ -198,6 +200,8 @@ test("付款生命周期视图隔离已放弃记录，并以保存时间执行 C
     expectedUpdatedAt: savedAt,
     reason: "业务人员确认不再继续办理"
   });
+  await expect(page.getByText("操作已提交，付款详情已刷新。", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "放弃申请" })).toHaveCount(0);
 });
 
 function settlementTemplateDetail(discarded = false) {
@@ -272,6 +276,148 @@ test("结算模板只废弃未提交草稿版本且请求携带修订号", async
     path: path.join(process.env.UI_RESPONSIVE_SCREENSHOT_DIR ?? testInfo.outputDir, "draft-lifecycle-template-discarded-900x768.png"),
     fullPage: true
   });
+});
+
+test("合同业务模板保护未保存修改并废弃当前草稿版本", async ({ page }) => {
+  await installSession(page);
+  let discarded = false;
+  let discardBody: Record<string, unknown> | null = null;
+  const detail = () => ({
+    template: {
+      id: "business-template-draft", code: "TPL-DRAFT", businessCode: "YW-TPL-DRAFT",
+      name: "材料采购模板", contractTypeKey: "material_purchase", status: "draft"
+    },
+    versions: [{
+      id: "business-template-version-draft", templateId: "business-template-draft", versionNo: 1,
+      status: discarded ? "discarded" : "draft", changeSummary: "", createdAt: savedAt, updatedAt: savedAt,
+      schema: { fields: [], bills: [], clauses: [], attachments: [], validations: [] },
+      availableActions: discarded ? [] : [{ key: "discard_version", label: "废弃版本", kind: "danger", enabled: true, disabledReason: null }],
+      blockedReasons: discarded ? ["草稿版本已废弃"] : []
+    }]
+  });
+  await page.route("**/api/contract-templates/business-template-draft?includeHistory=true", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(detail()) })
+  );
+  await page.route("**/api/contract-template-versions/business-template-version-draft/discard", (route) => {
+    discardBody = route.request().postDataJSON() as Record<string, unknown>;
+    discarded = true;
+    return route.fulfill({ contentType: "application/json", body: "{}" });
+  });
+  await login(page);
+  await page.goto("/合同模板库/business-template-draft");
+  await page.getByText("新增字段", { exact: true }).click();
+  await page.getByText("首页", { exact: true }).click();
+  await expect(page.getByText("放弃未保存的模板修改？", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "取消" }).click();
+  await expect.poll(() => decodeURIComponent(new URL(page.url()).pathname)).toBe(
+    "/合同模板库/business-template-draft"
+  );
+  await page.getByRole("button", { name: "废弃版本" }).click();
+  await page.getByRole("button", { name: "确认废弃版本" }).click();
+  await expect.poll(() => discardBody).toEqual({ reason: "", expectedUpdatedAt: savedAt });
+  await expect(page.getByRole("button", { name: "废弃版本" })).toHaveCount(0);
+});
+
+test("合同版式模板废弃使用服务端修订号并刷新版本状态", async ({ page }) => {
+  await installSession(page);
+  let discarded = false;
+  let discardBody: Record<string, unknown> | null = null;
+  const detail = () => ({
+    template: { id: "layout-draft", name: "材料合同版式", contractTypeKey: "material_purchase" },
+    versions: [{
+      id: "layout-version-draft", layoutTemplateId: "layout-draft", versionNo: 1,
+      status: discarded ? "discarded" : "draft", docxFileId: "docx-1", placeholderSchema: {},
+      draftRevision: 4, inspectionReport: null, inspectionRevision: null, latestPreview: null,
+      createdAt: savedAt, updatedAt: savedAt,
+      availableActions: discarded ? [] : [{ key: "discard_version", label: "废弃版本", kind: "danger", enabled: true, disabledReason: null }],
+      blockedReasons: discarded ? ["草稿版本已废弃"] : []
+    }]
+  });
+  await page.route("**/api/contract-layout-templates/layout-draft?includeHistory=true", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(detail()) })
+  );
+  await page.route("**/api/contract-layout-template-versions/layout-version-draft/discard", (route) => {
+    discardBody = route.request().postDataJSON() as Record<string, unknown>;
+    discarded = true;
+    return route.fulfill({ contentType: "application/json", body: "{}" });
+  });
+  await login(page);
+  await page.goto("/合同模板库/版式/layout-draft");
+  await page.getByRole("button", { name: "废弃版本" }).click();
+  await page.getByRole("button", { name: "确认废弃版本" }).click();
+  await expect.poll(() => discardBody).toEqual({ reason: "", expectedRevision: 4 });
+  await expect(page.getByRole("button", { name: "废弃版本" })).toHaveCount(0);
+});
+
+test("标准条款模板废弃使用保存时间并保留历史行", async ({ page }) => {
+  await installSession(page);
+  let discarded = false;
+  let discardBody: Record<string, unknown> | null = null;
+  const history = () => [{
+    id: "clause-draft", code: "CLAUSE-DRAFT", category: "付款", name: "付款条款",
+    versions: [{
+      id: "clause-version-draft", clauseId: "clause-draft", versionNo: 1,
+      status: discarded ? "discarded" : "draft", title: "付款方式", content: { text: "按合同约定支付" },
+      createdAt: savedAt, updatedAt: savedAt,
+      availableActions: discarded ? [] : [{ key: "discard_version", label: "废弃版本", kind: "danger", enabled: true, disabledReason: null }],
+      blockedReasons: discarded ? ["草稿版本已废弃"] : []
+    }]
+  }];
+  await page.route("**/api/standard-clauses", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
+  await page.route("**/api/standard-clauses/history*", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(history()) })
+  );
+  await page.route("**/api/standard-clause-versions/clause-version-draft/discard", (route) => {
+    discardBody = route.request().postDataJSON() as Record<string, unknown>;
+    discarded = true;
+    return route.fulfill({ contentType: "application/json", body: "{}" });
+  });
+  await login(page);
+  await page.goto("/合同模板库/标准条款");
+  await page.getByText("治理版本", { exact: true }).click();
+  await page.getByRole("button", { name: "废弃版本" }).click();
+  await page.getByRole("button", { name: "确认废弃版本" }).click();
+  await expect.poll(() => discardBody).toEqual({ reason: "", expectedUpdatedAt: savedAt });
+  await expect(page.getByText("已废弃", { exact: true })).toBeVisible();
+});
+
+test("项目支出作废成功后刷新详情并移除重复动作", async ({ page }) => {
+  await installSession(page);
+  let voided = false;
+  let voidBody: Record<string, unknown> | null = null;
+  const detail = () => ({
+    id: "expense-lifecycle", projectId: "project-1", code: "ZC-DRAFT-001",
+    title: "项目临时支出", status: voided ? "voided" : "approval_pending",
+    statusLabel: voided ? "已作废" : "审批中", expenseTypeLabel: "现场零星采购",
+    expenseSubtypeLabel: "材料", paymentSubject: "临时材料", reason: "现场急需",
+    requestedAmountCents: "120000", approvedAmountCents: null, currentNodeName: voided ? "流程已结束" : "财务审核",
+    lifecycleKind: voided ? "ended" : "approval_draft", lifecycleUpdatedAt: savedAt,
+    availableActions: voided ? [] : [{
+      key: "void", label: "作废支出单", kind: "danger", enabled: true,
+      disabledReason: null, requiresComment: true
+    }],
+    blockedReasons: [], canSetApprovedAmount: false,
+    reviewAction: { key: "review", label: "审批", kind: "primary", enabled: false, disabledReason: "当前状态不能审批" },
+    approvalTimeline: []
+  });
+  await page.route("**/api/projects/project-1/expense-requests/expense-lifecycle/approval-detail", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(detail()) })
+  );
+  await page.route("**/api/projects/project-1/expense-requests/expense-lifecycle/voiding", (route) => {
+    voidBody = route.request().postDataJSON() as Record<string, unknown>;
+    voided = true;
+    return route.fulfill({ contentType: "application/json", body: "{}" });
+  });
+  await login(page);
+  await page.goto("/项目支出/project-1/expense-lifecycle");
+  await page.getByRole("button", { name: "作废支出单" }).click();
+  await page.getByPlaceholder("说明本次操作原因").fill("重复申请，确认终止");
+  await page.getByRole("button", { name: "确认作废" }).click();
+  await expect.poll(() => voidBody).toEqual({ reason: "重复申请，确认终止" });
+  await expect(page.getByText("已作废", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "作废支出单" })).toHaveCount(0);
 });
 
 test("合同工作台丢弃未保存修改后直接删除服务端草稿", async ({ page }) => {

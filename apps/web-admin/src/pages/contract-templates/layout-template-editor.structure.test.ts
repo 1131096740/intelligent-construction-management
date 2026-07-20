@@ -33,4 +33,11 @@ describe("layout template revision governance structure", () => {
     expect(page).toContain("expectedRevision: version.draftRevision");
     expect(page).toContain("getLayoutTemplate(templateId, true)");
   });
+
+  it("protects unsaved files and version switching", () => {
+    expect(page).toContain("useUnsavedChangesGuard");
+    expect(page).toContain("leaveGuard.requestClose()");
+    expect(page).toContain("<SensitiveActionDialog");
+    expect(page).toContain('@change="selectVersion"');
+  });
 });

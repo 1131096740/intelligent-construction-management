@@ -6,7 +6,7 @@ import type {
   RoleKey
 } from "@jiangkong/shared-domain";
 import type { UploadFile } from "tdesign-vue-next";
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import {
   abandonContractTaxFactRevision,
   confirmContractTaxFactRevision,
@@ -49,6 +49,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   changed: [];
+  "dirty-change": [dirty: boolean];
   "go-contract-change": [contractId: string];
 }>();
 
@@ -66,6 +67,7 @@ const reviewVisible = ref(false);
 const reviewStage = ref<"finance" | "contract">("finance");
 const reviewDecision = ref<"approve" | "reject">("approve");
 const reviewComment = ref("");
+const draftBaseline = ref("");
 
 const effectiveData = computed<ContractTaxFactRevisionListReadModel>(() =>
   data.value ?? { contractId: "", current: props.currentFacts, rows: [], revisions: [] }
@@ -87,6 +89,11 @@ const selectedEvidenceFile = computed(() => {
   const raw = uploadFiles.value[0]?.raw;
   return raw instanceof File ? raw : null;
 });
+const isDirty = computed(() =>
+  editing.value && Boolean(draftBaseline.value) && (
+    JSON.stringify(draft) !== draftBaseline.value || uploadFiles.value.length > 0
+  )
+);
 const currentFactItems = computed(() => [
   {
     label: "当前状态",
@@ -129,6 +136,8 @@ watch(
     load();
   }
 );
+watch(isDirty, (dirty) => emit("dirty-change", dirty), { immediate: true });
+onBeforeUnmount(() => emit("dirty-change", false));
 watch(
   () => props.roleKeys.join(","),
   () => {
@@ -343,6 +352,7 @@ async function prepareDraftPayload() {
 async function reloadAfterAction(successMessage: string) {
   uploadFiles.value = [];
   data.value = await fetchContractTaxFactRevisions(props.projectId, props.takeoverId);
+  draftBaseline.value = JSON.stringify(draft);
   setMessage(successMessage, "success");
   emit("changed");
 }
@@ -373,6 +383,7 @@ function resetDraft(
     draft,
     createContractTaxFactDraft(current, revision, effectiveData.value.rows)
   );
+  draftBaseline.value = JSON.stringify(draft);
 }
 
 function setMessage(text: string, tone: "success" | "error" | "info") {

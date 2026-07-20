@@ -167,6 +167,15 @@
     >
       {{ message }}
     </p>
+    <SensitiveActionDialog
+      v-model="leaveDialogVisible"
+      title="放弃未保存的条款草稿？"
+      description="继续后会丢弃尚未创建的条款编码、分类、名称、标题和正文。"
+      confirm-text="放弃并离开"
+      confirm-theme="danger"
+      @confirm="resolveLeaveDecision(true)"
+      @cancel="resolveLeaveDecision(false)"
+    />
   </section>
 </template>
 
@@ -186,6 +195,8 @@ import { useAuthStore } from "../../auth/auth.store";
 import BusinessDraftAction, {
   type BusinessDraftActionRequest
 } from "../../components/BusinessDraftAction.vue";
+import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
+import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import {
   canMaintainContractTemplates,
   canPublishContractTemplates
@@ -229,6 +240,33 @@ const tone = ref<"success" | "danger">("success");
 const form = reactive({ code: "", category: "", name: "", title: "", text: "" });
 const submitForm = reactive({ versionId: "" });
 const publishForm = reactive({ versionId: "", changeSummary: "" });
+const createBaseline = ref("");
+const leaveDialogVisible = ref(false);
+let resolvePendingLeave: ((decision: boolean) => void) | null = null;
+const isDirty = computed(() => Boolean(createBaseline.value) && createSnapshot() !== createBaseline.value);
+useUnsavedChangesGuard({
+  isDirty,
+  confirmLeave: () => new Promise<boolean>((resolve) => {
+    resolvePendingLeave?.(false);
+    resolvePendingLeave = resolve;
+    leaveDialogVisible.value = true;
+  })
+});
+
+function createSnapshot() {
+  return JSON.stringify(form);
+}
+
+function syncCreateBaseline() {
+  createBaseline.value = createSnapshot();
+}
+
+function resolveLeaveDecision(decision: boolean) {
+  leaveDialogVisible.value = false;
+  const resolve = resolvePendingLeave;
+  resolvePendingLeave = null;
+  resolve?.(decision);
+}
 const selectedActionSubject = computed(() => ({
   businessCode: selectedHistoryVersion.value?.code ?? "—",
   name: `${selectedHistoryVersion.value?.name ?? "标准条款"} V${selectedHistoryVersion.value?.versionNo ?? "—"}`,
@@ -279,6 +317,8 @@ async function createClause() {
     await loadClauses();
     selectedHistoryVersion.value =
       historyVersions.value.find((version) => version.id === submitForm.versionId) ?? null;
+    Object.assign(form, { code: "", category: "", name: "", title: "", text: "" });
+    syncCreateBaseline();
     message.value = "条款草稿已创建";
     tone.value = "success";
   } catch (error) {
@@ -369,7 +409,10 @@ async function publishClause() {
   }
 }
 
-onMounted(loadClauses);
+onMounted(() => {
+  syncCreateBaseline();
+  void loadClauses();
+});
 
 function clauseText(content: unknown) {
   if (!content || typeof content !== "object" || Array.isArray(content)) {

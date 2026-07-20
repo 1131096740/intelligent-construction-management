@@ -43,7 +43,7 @@
         <select
           v-model="selectedProjectId"
           :disabled="loadingProjects || projects.length === 0"
-          @change="loadTakeovers"
+          @change="changeProject"
         >
           <option
             v-for="project in projects"
@@ -1030,6 +1030,7 @@
             :user-id="auth.user?.id || ''"
             :role-keys="auth.user?.roleKeys || []"
             @changed="refreshSelectedTaxFacts"
+            @dirty-change="taxFactDirty = $event"
             @go-contract-change="goToContractChange"
           />
 
@@ -1752,6 +1753,15 @@
       @confirm="submitEvidenceFileDownload"
       @cancel="evidenceDownloadConfirmError = ''"
     />
+    <SensitiveActionDialog
+      v-model="leaveDialogVisible"
+      title="放弃未保存的接管修改？"
+      description="继续后会丢弃当前接管表单或税务事实修订中尚未保存的本地修改。"
+      confirm-text="放弃并离开"
+      confirm-theme="danger"
+      @confirm="resolveLeaveDecision(true)"
+      @cancel="resolveLeaveDecision(false)"
+    />
   </section>
 </template>
 
@@ -1813,6 +1823,7 @@ import BusinessDraftAction, {
 } from "../../components/BusinessDraftAction.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { centsTextToYuanText } from "../../lib/money";
+import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import {
   canConfirmHistoricalContractTakeovers,
   canExportContractSettlementLedger,
@@ -1975,6 +1986,7 @@ const takeovers = ref<ContractTakeoverReadModel[]>([]);
 const companyEntityCandidates = ref<HistoricalCompanyEntityCandidateReadModel[]>([]);
 const importBatches = ref<ContractTakeoverImportBatchReadModel[]>([]);
 const selectedProjectId = ref("");
+const lastValidProjectId = ref("");
 const selectedTakeoverId = ref("");
 const loadingProjects = ref(false);
 const loadingTakeovers = ref(false);
@@ -2011,6 +2023,10 @@ const companyEntityCorrectionReviewDecision = ref<"approve" | "reject">("approve
 const companyEntityCorrectionReviewTargetId = ref("");
 const companyEntityCorrectionReviewError = ref("");
 const showCreateForm = ref(false);
+const createFormBaseline = ref("");
+const taxFactDirty = ref(false);
+const leaveDialogVisible = ref(false);
+let resolvePendingLeave: ((decision: boolean) => void) | null = null;
 const showPrecheckPanel = ref(false);
 const confirmVisible = ref(false);
 const importBatchReviewVisible = ref(false);
@@ -2052,6 +2068,36 @@ const correctionForm = reactive<CorrectionFormState>(createEmptyCorrectionForm()
 const companyEntityCorrectionForm = reactive<CompanyEntityCorrectionFormState>(
   createEmptyCompanyEntityCorrectionForm()
 );
+const hasUnsavedTakeoverChanges = computed(() =>
+  (showCreateForm.value && Boolean(createFormBaseline.value) &&
+    JSON.stringify(createForm) !== createFormBaseline.value) || taxFactDirty.value
+);
+const takeoverLeaveGuard = useUnsavedChangesGuard({
+  isDirty: hasUnsavedTakeoverChanges,
+  confirmLeave: () => new Promise<boolean>((resolve) => {
+    resolvePendingLeave?.(false);
+    resolvePendingLeave = resolve;
+    leaveDialogVisible.value = true;
+  })
+});
+
+function syncCreateFormBaseline() {
+  createFormBaseline.value = JSON.stringify(createForm);
+}
+
+function resolveLeaveDecision(decision: boolean) {
+  leaveDialogVisible.value = false;
+  const resolve = resolvePendingLeave;
+  resolvePendingLeave = null;
+  resolve?.(decision);
+}
+
+function closeCreateForm() {
+  editingTakeoverId.value = "";
+  resetCreateForm();
+  syncCreateFormBaseline();
+  showCreateForm.value = false;
+}
 const importPrecheckText = ref("");
 const importPrecheckResult = ref<ContractTakeoverImportPrecheckReadModel | null>(null);
 const excelImportFiles = ref<UploadFile[]>([]);
@@ -2512,6 +2558,7 @@ const selectedBalanceInfo = computed(() => {
 });
 
 onMounted(async () => {
+  syncCreateFormBaseline();
   await Promise.all([
     loadProjects(),
     canManageTakeovers.value || canConfirmTakeovers.value
@@ -2526,6 +2573,7 @@ async function loadProjects() {
   try {
     projects.value = await fetchProjects();
     selectedProjectId.value = projects.value[0]?.id ?? "";
+    lastValidProjectId.value = selectedProjectId.value;
     if (selectedProjectId.value) {
       await loadTakeovers();
     } else {
@@ -2536,6 +2584,18 @@ async function loadProjects() {
   } finally {
     loadingProjects.value = false;
   }
+}
+
+async function changeProject() {
+  const nextProjectId = selectedProjectId.value;
+  if (!(await takeoverLeaveGuard.requestClose())) {
+    selectedProjectId.value = lastValidProjectId.value;
+    return;
+  }
+  closeCreateForm();
+  taxFactDirty.value = false;
+  lastValidProjectId.value = nextProjectId;
+  await loadTakeovers();
 }
 
 async function loadResponsibleUsers() {
@@ -2996,7 +3056,7 @@ async function abandonSelectedTakeover(request: BusinessDraftActionRequest) {
     action: request.action,
     ...(request.reason.trim() ? { reason: request.reason.trim() } : {})
   });
-  if (editingTakeoverId.value === takeover.id) cancelEdit();
+  if (editingTakeoverId.value === takeover.id) closeCreateForm();
   selectedTakeoverId.value = "";
   await loadTakeovers();
   setMessage(
@@ -3013,6 +3073,11 @@ async function selectTakeover(takeover: ContractTakeoverReadModel) {
   }
 
   const previousId = selectedTakeoverId.value;
+  if (previousId !== takeover.id && !(await takeoverLeaveGuard.requestClose())) return;
+  if (previousId !== takeover.id) {
+    closeCreateForm();
+    taxFactDirty.value = false;
+  }
   selectedTakeoverId.value = takeover.id;
   if (previousId !== takeover.id) {
     invalidateChangeBaselineContext(true);
@@ -3131,6 +3196,7 @@ async function submitCreate() {
       ? await updateContractTakeover(projectId, editingId, payload)
       : await createContractTakeover(projectId, payload);
     resetCreateForm();
+    syncCreateFormBaseline();
     showCreateForm.value = false;
     editingTakeoverId.value = "";
     selectedTakeoverId.value = saved.id;
@@ -3148,6 +3214,7 @@ function startCreate() {
   if (!canManageTakeovers.value) return;
   editingTakeoverId.value = "";
   resetCreateForm();
+  syncCreateFormBaseline();
   showCreateForm.value = true;
 }
 
@@ -3171,6 +3238,7 @@ function startEdit(takeover: ContractTakeoverReadModel) {
 
   editingTakeoverId.value = takeover.id;
   Object.assign(createForm, formFromTakeover(takeover));
+  syncCreateFormBaseline();
   selectedTakeoverId.value = takeover.id;
   showCreateForm.value = true;
 }
@@ -3179,10 +3247,9 @@ function applyTakeoverLevelSuggestion() {
   createForm.takeoverLevel = takeoverLevelSuggestionView.value.level;
 }
 
-function cancelEdit() {
-  editingTakeoverId.value = "";
-  resetCreateForm();
-  showCreateForm.value = false;
+async function cancelEdit() {
+  if (!(await takeoverLeaveGuard.requestClose())) return;
+  closeCreateForm();
 }
 
 async function submitReview(takeover: ContractTakeoverReadModel) {

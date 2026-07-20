@@ -49,4 +49,14 @@ describe("contract template editor version governance structure", () => {
     expect(clauseSource).toContain("discardStandardClauseVersion");
     expect(clauseSource).toContain("expectedUpdatedAt: version.updatedAt");
   });
+
+  it("protects unsaved business-template and clause edits before leaving", () => {
+    for (const page of [source, clauseSource]) {
+      expect(page).toContain("useUnsavedChangesGuard");
+      expect(page).toContain("<SensitiveActionDialog");
+    }
+    expect(source).toContain("editorBaseline");
+    expect(source).toContain("leaveGuard.requestClose()");
+    expect(clauseSource).toContain("createBaseline");
+  });
 });
