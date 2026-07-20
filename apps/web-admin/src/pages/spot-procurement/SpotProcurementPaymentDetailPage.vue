@@ -76,6 +76,8 @@ interface ExecutionAttempt {
   voucherFileIds: string[];
 }
 
+class StaleApplicationOperationError extends Error {}
+
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
@@ -139,6 +141,8 @@ let payerTriggerElement: HTMLElement | null = null;
 let approvalTriggerElement: HTMLElement | null = null;
 let payerOpenedPaymentId: string | null = null;
 let approvalOpenedPaymentId: string | null = null;
+let applicationOpenedPaymentId: string | null = null;
+let applicationOperationToken = 0;
 let executionOpenedPaymentId: string | null = null;
 let executionTriggerElement: HTMLElement | null = null;
 let executionFocusObserver: MutationObserver | null = null;
@@ -297,6 +301,7 @@ async function loadHistoricalMerchants(projectId: string, paymentIdCoordinate: s
 function openEdit(trigger: HTMLElement | null = null) {
   const current = detail.value;
   if (!current || !isRealPayment.value) return;
+  applicationOpenedPaymentId = current.payment.id;
   applicationTriggerElement = trigger;
   const paymentLines = new Map((current.materials ?? []).map((line) => [line.procurementLineId, line]));
   editForm.paymentType = current.payment.paymentType ?? "company_direct";
@@ -376,45 +381,64 @@ async function saveApplicationDraft(
 ) {
   const current = detail.value;
   if (!current) return "failed" as const;
-  if (draftSnapshot) Object.assign(editForm, draftSnapshot);
+  const operationPaymentId = current.payment.id;
+  const operationToken = ++applicationOperationToken;
+  const operationDraft = clonePaymentApplicationDraft(draftSnapshot ?? editForm);
+  const operationRetainedAttachmentIds = [...retainedAttachmentIds.value];
+  const operationUploadFiles = selectedUploadFiles(attachmentFiles.value);
+  if (draftSnapshot) Object.assign(editForm, operationDraft);
   actionBusy.value = true; applicationError.value = "";
   try {
-    const preparationInput = paymentDraftPreparationInput(current);
+    assertCurrentApplicationOperation(operationToken, operationPaymentId);
+    const preparationInput = paymentDraftPreparationInput(current, operationDraft);
     prepareSpotPaymentDraft(preparationInput);
-    const retained = current.evidenceFiles.filter((file) => retainedAttachmentIds.value.includes(file.fileId) && file.status === "active").map((file) => ({ fileId: file.fileId, category: normalizeAttachmentCategory(file.purpose) }));
+    const retained = current.evidenceFiles.filter((file) => operationRetainedAttachmentIds.includes(file.fileId) && file.status === "active").map((file) => ({ fileId: file.fileId, category: normalizeAttachmentCategory(file.purpose) }));
     const payload = await prepareSpotPaymentDraftWithUploads(
       preparationInput,
       retained,
-      selectedUploadFiles(attachmentFiles.value),
-      editForm.attachmentCategory,
-      uploadPrivateFile
+      operationUploadFiles,
+      operationDraft.attachmentCategory,
+      async (file, fileName) => {
+        const uploaded = await uploadPrivateFile(file, fileName);
+        assertCurrentApplicationOperation(operationToken, operationPaymentId);
+        return uploaded;
+      }
     );
-    await updateSpotProcurementPaymentDraft(current.payment.id, payload);
-    clearLocalApplicationDraft(current.payment.id);
-    if (paymentId.value !== current.payment.id) return "stale" as const;
+    assertCurrentApplicationOperation(operationToken, operationPaymentId);
+    await updateSpotProcurementPaymentDraft(operationPaymentId, payload);
+    assertCurrentApplicationOperation(operationToken, operationPaymentId);
+    clearLocalApplicationDraft(operationPaymentId);
     applicationLocalDraftNotice.value = "";
     showSuccess("A5 付款申请草稿已保存，审批金额已按付款材料重新计算。");
     await loadDetail();
-    if (paymentId.value !== current.payment.id) {
-      stopStaleApplicationOperation();
-      return "stale" as const;
-    }
+    assertCurrentApplicationOperation(operationToken, operationPaymentId);
     if (exitAfterSave) {
       applicationVisible.value = false;
+      applicationOpenedPaymentId = null;
       await restoreApplicationTriggerFocus();
     }
     return "server" as const;
   } catch (error) {
-    if (paymentId.value !== current.payment.id) return "stale" as const;
-    if (exitAfterSave && persistLocalApplicationDraft(current.payment.id, currentStep)) {
+    if (error instanceof StaleApplicationOperationError) {
+      persistLocalApplicationDraft(operationPaymentId, currentStep, operationDraft, false);
+      return "stale" as const;
+    }
+    if (!isCurrentApplicationOperation(operationToken, operationPaymentId)) {
+      persistLocalApplicationDraft(operationPaymentId, currentStep, operationDraft, false);
+      return "stale" as const;
+    }
+    if (exitAfterSave && persistLocalApplicationDraft(operationPaymentId, currentStep, operationDraft)) {
       applicationVisible.value = false;
+      applicationOpenedPaymentId = null;
       showSuccess("已在当前标签页本机暂存，尚未同步服务器。账号、开户行和附件不会写入本机草稿，继续办理时需在第 3 步重新填写。");
       await restoreApplicationTriggerFocus();
       return "local" as const;
     }
     applicationError.value = error instanceof Error ? error.message : "付款草稿保存失败";
     return "failed" as const;
-  } finally { actionBusy.value = false; }
+  } finally {
+    if (isCurrentApplicationOperation(operationToken, operationPaymentId)) actionBusy.value = false;
+  }
 }
 
 async function submitApplication(draftSnapshot: PaymentApplicationDraft) {
@@ -423,22 +447,33 @@ async function submitApplication(draftSnapshot: PaymentApplicationDraft) {
   const saveResult = await saveApplicationDraft(false, draftSnapshot);
   if (saveResult !== "server") return;
   if (paymentId.value !== current.payment.id) {
-    stopStaleApplicationOperation();
     return;
   }
+  const operationPaymentId = current.payment.id;
+  const operationToken = ++applicationOperationToken;
   actionBusy.value = true;
   try {
-    await submitSpotProcurementPayment(current.payment.id);
+    assertCurrentApplicationOperation(operationToken, operationPaymentId);
+    await submitSpotProcurementPayment(operationPaymentId);
+    assertCurrentApplicationOperation(operationToken, operationPaymentId);
     applicationVisible.value = false;
+    applicationOpenedPaymentId = null;
     showSuccess("付款申请已提交审批。综合部主管通过前必须确定我方付款主体和拟付款方式。");
     await loadDetail();
+    assertCurrentApplicationOperation(operationToken, operationPaymentId);
     await restoreApplicationTriggerFocus();
   } catch (error) {
+    if (error instanceof StaleApplicationOperationError) return;
     applicationError.value = error instanceof Error ? error.message : "付款申请提交失败";
-  } finally { actionBusy.value = false; }
+  } finally {
+    if (isCurrentApplicationOperation(operationToken, operationPaymentId)) actionBusy.value = false;
+  }
 }
 
 async function cancelApplication() {
+  applicationOperationToken += 1;
+  applicationOpenedPaymentId = null;
+  actionBusy.value = false;
   applicationVisible.value = false;
   await restoreApplicationTriggerFocus();
 }
@@ -845,45 +880,77 @@ function handleCurrentTaskAction(
 function cancelConfirmation() { confirmationError.value = ""; }
 function resetExecutionAttempt() { executionAttempt.value = null; executionError.value = ""; }
 function selectedUploadFiles(files: UploadFile[]) { return files.map((file) => file.raw).filter((file): file is File => file instanceof File); }
-function paymentDraftPreparationInput(current: SpotProcurementPaymentDetailReadModel) {
-  const lines = editForm.lines.filter((line) => line.included);
+function paymentDraftPreparationInput(
+  current: SpotProcurementPaymentDetailReadModel,
+  source: PaymentApplicationDraft = editForm
+) {
+  const lines = source.lines.filter((line) => line.included);
   assertPaymentQuantitiesWithinApproval(lines);
   const payee = resolveSpotPaymentMerchantPayee(
-    editForm.paymentType === "handler_reimbursement"
+    source.paymentType === "handler_reimbursement"
       ? {
           paymentType: "handler_reimbursement",
-          merchantName: editForm.merchantName,
+          merchantName: source.merchantName,
           handlerPayeeNameSnapshot: current.payment.handler.name
         }
       : {
           paymentType: "company_direct",
-          merchantName: editForm.merchantName,
-          payeeDiffersFromMerchant: editForm.payeeDiffersFromMerchant,
-          payeeName: editForm.payeeName,
-          mismatchNote: editForm.merchantPayeeMismatchNote
+          merchantName: source.merchantName,
+          payeeDiffersFromMerchant: source.payeeDiffersFromMerchant,
+          payeeName: source.payeeName,
+          mismatchNote: source.merchantPayeeMismatchNote
         }
   );
   return {
-    paymentType: editForm.paymentType,
+    paymentType: source.paymentType,
     merchantName: payee.merchantName,
     payeeName: payee.payeeName,
     merchantPayeeMismatchNote: payee.merchantPayeeMismatchNote,
     paymentLines: lines,
-    paymentMethods: editForm.paymentMethods,
-    channels: editForm.channels
+    paymentMethods: source.paymentMethods,
+    channels: source.channels
   };
 }
 function getSessionStorage() {
   try { return typeof sessionStorage === "undefined" ? null : sessionStorage; }
   catch { return null; }
 }
-function persistLocalApplicationDraft(paymentIdValue: string, currentStep: 0 | 1 | 2 | 3) {
+function clonePaymentApplicationDraft(source: PaymentApplicationDraft): PaymentApplicationDraft {
+  return {
+    ...source,
+    paymentMethods: [...source.paymentMethods],
+    lines: source.lines.map((line) => ({ ...line })),
+    channels: source.channels.map((channel) => ({ ...channel }))
+  };
+}
+function isCurrentApplicationOperation(token: number, paymentIdValue: string) {
+  return token === applicationOperationToken &&
+    paymentId.value === paymentIdValue &&
+    detail.value?.payment.id === paymentIdValue;
+}
+function assertCurrentApplicationOperation(token: number, paymentIdValue: string) {
+  if (!isCurrentApplicationOperation(token, paymentIdValue)) {
+    throw new StaleApplicationOperationError();
+  }
+}
+function persistLocalApplicationDraft(
+  paymentIdValue: string,
+  currentStep: 0 | 1 | 2 | 3,
+  source: PaymentApplicationDraft = editForm,
+  updateNotice = true
+) {
   const storage = getSessionStorage();
   const userId = auth.user?.id;
   if (!storage || !userId) return false;
   const resumeStep = Math.min(currentStep, 2) as 0 | 1 | 2;
-  const saved = writeSpotPaymentLocalDraft(storage, paymentIdValue, userId, resumeStep, editForm);
-  if (saved) {
+  const saved = writeSpotPaymentLocalDraft(
+    storage,
+    paymentIdValue,
+    userId,
+    resumeStep,
+    source as PaymentApplicationDraft & { [key: string]: unknown }
+  );
+  if (saved && updateNotice) {
     applicationLocalDraftNotice.value = "本机草稿只保存第 1—2 步业务字段，尚未同步服务器；账号、开户行和附件未保存。";
   }
   return saved;
@@ -922,6 +989,8 @@ async function restoreApplicationTriggerFocus() {
 function requiredText(value: string, label: string) { const normalized = value.trim(); if (!normalized) throw new Error(`请填写${label}`); return normalized; }
 function normalizeAttachmentCategory(value: string) { return ["merchant_receipt", "merchant_quote", "merchant_invoice", "other"].includes(value) ? value as "merchant_receipt" | "merchant_quote" | "merchant_invoice" | "other" : "other" as const; }
 function resetApplicationEditorState() {
+  applicationOperationToken += 1;
+  applicationOpenedPaymentId = null;
   historicalMerchantRequestId += 1;
   vatOptionsRequestId += 1;
   applicationVisible.value = false;
@@ -951,7 +1020,7 @@ watch(
   paymentId,
   () => {
     const interruptedPaymentAction = Boolean(
-      payerOpenedPaymentId || approvalOpenedPaymentId || executionOpenedPaymentId
+      applicationOpenedPaymentId || payerOpenedPaymentId || approvalOpenedPaymentId || executionOpenedPaymentId
     );
     resetPayerEditorState();
     resetApprovalEditorState();

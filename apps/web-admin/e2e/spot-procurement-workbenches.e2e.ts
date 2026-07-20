@@ -759,8 +759,7 @@ test("locally resumes an incomplete A5 draft without inventing payment facts and
 test("fails closed when switching A5 payment routes and discards stale option responses", async ({ page }) => {
   const pendingAHistory: Route[] = [];
   const pendingAVat: Route[] = [];
-  const pendingADetailRefresh: Route[] = [];
-  let paymentADetailReads = 0;
+  const pendingUploads: Route[] = [];
   let paymentAWrites = 0;
   let paymentASubmits = 0;
   let paymentBWrites = 0;
@@ -795,11 +794,6 @@ test("fails closed when switching A5 payment routes and discards stale option re
 
   await mockLogin(page);
   await page.route("**/api/spot-procurement-payments/payment-A", (route) => {
-    paymentADetailReads += 1;
-    if (paymentADetailReads > 1) {
-      pendingADetailRefresh.push(route);
-      return;
-    }
     return route.fulfill({ contentType: "application/json", body: JSON.stringify(draftDetail("payment-A", "project-A", "项目A", "A材料")) });
   });
   await page.route("**/api/spot-procurement-payments/payment-B", (route) =>
@@ -821,14 +815,7 @@ test("fails closed when switching A5 payment routes and discards stale option re
     paymentBSubmits += 1;
     await route.fulfill({ contentType: "application/json", body: "{}" });
   });
-  await page.route("**/api/files", (route) => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({
-      id: "a-evidence-file", bucket: "private", objectKey: "test/a-evidence-file",
-      originalName: "A付款依据.pdf", mimeType: "application/pdf", sizeBytes: 1,
-      uploadedByUserId: "handler-1", createdAt: now
-    })
-  }));
+  await page.route("**/api/files", (route) => { pendingUploads.push(route); });
   await page.route("**/api/spot-procurement-payments?*", async (route) => {
     const projectId = new URL(route.request().url()).searchParams.get("projectId");
     if (projectId === "project-A") {
@@ -875,18 +862,14 @@ test("fails closed when switching A5 payment routes and discards stale option re
   });
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await page.getByRole("region", { name: "继续填写付款申请" }).getByRole("button", { name: "提交付款审批", exact: true }).click();
-  await expect.poll(() => paymentAWrites).toBe(1);
-  await expect.poll(() => pendingADetailRefresh.length).toBe(1);
+  await expect.poll(() => pendingUploads.length).toBe(1);
+  expect(paymentAWrites).toBe(0);
 
   await page.evaluate(() => {
     history.pushState({}, "", "/零星材料付款/payment-B?tab=current");
     window.dispatchEvent(new PopStateEvent("popstate"));
   });
   await expect(page.getByText("PAY-B", { exact: true })).toBeVisible();
-  await pendingADetailRefresh[0]?.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify(draftDetail("payment-A", "project-A", "项目A", "A材料"))
-  });
   await expect(page.getByText("页面已切换到另一张付款申请，原操作已停止，请在当前单据重新办理。", { exact: true })).toBeVisible();
   expect(paymentASubmits).toBe(0);
   expect(paymentBSubmits).toBe(0);
@@ -913,16 +896,59 @@ test("fails closed when switching A5 payment routes and discards stale option re
   await page.getByRole("button", { name: "2. 付款材料", exact: true }).click();
   const bMaterialCard = page.locator(".payment-application-stepper__card").filter({ hasText: "B材料" });
   await bMaterialCard.locator(".t-checkbox").click();
+  const bMaterialInputs = bMaterialCard.locator(".payment-application-stepper__grid input");
+  await bMaterialInputs.nth(0).fill("1.00");
+  await bMaterialInputs.nth(1).fill("88.00");
   await bMaterialCard.locator(".t-select").first().click();
   await page.getByText("普通增值税发票", { exact: true }).click();
   await bMaterialCard.locator(".t-select").nth(1).click();
   await expect(page.getByText("B税率", { exact: true })).toBeVisible();
   await expect(page.getByText("A慢响应税率", { exact: true })).toHaveCount(0);
   await page.getByText("B税率", { exact: true }).click();
-  await page.getByRole("button", { name: "保存并退出", exact: true }).click();
+
+  await page.getByRole("button", { name: "1. 付款与商户", exact: true }).click();
+  await page.getByPlaceholder("实际购买的商户").fill("B安全商户");
+  await page.getByText("现金", { exact: true }).click();
+  await page.getByRole("button", { name: "3. 收款渠道与依据", exact: true }).click();
+  await page.getByRole("button", { name: "新增收款渠道", exact: true }).click();
+  await page.locator(".payment-application-stepper__evidence input[type=file]").setInputFiles({
+    name: "B付款依据.pdf", mimeType: "application/pdf", buffer: Buffer.from("B")
+  });
+  const bSave = page.getByRole("button", { name: "保存并退出", exact: true });
+  await bSave.click();
+  await expect.poll(() => pendingUploads.length).toBe(2);
+  await expect(bSave).toBeDisabled();
+
+  await pendingUploads[0]?.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      id: "a-evidence-file", bucket: "private", objectKey: "test/a-evidence-file",
+      originalName: "A付款依据.pdf", mimeType: "application/pdf", sizeBytes: 1,
+      uploadedByUserId: "handler-1", createdAt: now
+    })
+  });
+  await expect(page.getByText("页面已切换到另一张付款申请，原操作已停止，请在当前单据重新办理。", { exact: true })).toBeVisible();
+  await expect(bSave).toBeDisabled();
   expect(paymentBWrites).toBe(0);
+  expect(paymentAWrites).toBe(0);
   expect(paymentASubmits).toBe(0);
   expect(paymentBSubmits).toBe(0);
+
+  await pendingUploads[1]?.fulfill({
+    status: 500,
+    contentType: "application/json",
+    body: JSON.stringify({ message: "B附件上传失败" })
+  });
+  await expect(page.getByRole("heading", { name: "继续填写付款申请", exact: true })).toHaveCount(0);
+  const localDrafts = await page.evaluate(() => Array.from(
+    { length: sessionStorage.length },
+    (_, index) => `${sessionStorage.key(index) ?? ""}:${sessionStorage.getItem(sessionStorage.key(index) ?? "") ?? ""}`
+  ).join("\n"));
+  expect(localDrafts).toContain("payment-A");
+  expect(localDrafts).toContain("A敏感商户");
+  expect(localDrafts).toContain("payment-B");
+  expect(localDrafts).toContain("B安全商户");
+  expect(localDrafts).not.toMatch(/6222000011112222|A银行|attachmentFiles/u);
 });
 
 test("routes an enabled refund task to the real receipt workflow and preserves frozen archive facts", async ({ page }) => {
