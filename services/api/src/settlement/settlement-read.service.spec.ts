@@ -1206,7 +1206,8 @@ describe("SettlementReadService", () => {
         id: "d2",
         projectId: "p1",
         lifecycleKind: "approval_draft",
-        abandonReason: "不再继续"
+        abandonReason: "不再继续",
+        copyAvailable: true
       })
     ]));
     const formal = await service.lifecycleLedger("formal_ledger", 1, 20, ["p1"], "u1");

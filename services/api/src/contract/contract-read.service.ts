@@ -386,7 +386,10 @@ export class ContractReadService {
           draftRevision: rowVersion.draftRevision,
           lifecycleUpdatedAt: rowVersion.updatedAt.toISOString(),
           abandonedAt: rowVersion.abandonedAt?.toISOString() ?? null,
-          abandonReason: rowVersion.abandonReason ?? null
+          abandonReason: rowVersion.abandonReason ?? null,
+          copyAvailable: view === "ended" && rowVersion.status === "abandoned" &&
+            rowVersion.changeType === "original" && rowVersion.versionNo === 1 &&
+            contract.ownerUserId === actorUserId
         }
       )];
     });

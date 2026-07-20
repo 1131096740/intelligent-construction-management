@@ -17,6 +17,7 @@ import { PrismaService } from "../database/prisma.service";
 import { parseMoneyCentsInput } from "../money/decimal-money";
 import type { SaveSettlementDraftDto } from "./dto/settlement-draft.dto";
 import type { AbandonSettlementDraftDto } from "./dto/abandon-settlement-draft.dto";
+import type { CopySettlementDraftDto } from "./dto/copy-settlement-draft.dto";
 import { AuditService } from "../audit/audit.service";
 import {
   assertSettlementContractType,
@@ -59,6 +60,84 @@ export class SettlementDraftService {
           fieldReviewerRoleKey: input.fieldReviewerRoleKey ?? null,
           ...this.finalConfirmations(input)
         }
+      });
+      return this.readModel(created);
+    });
+  }
+
+  async copyAbandoned(
+    projectId: string,
+    draftId: string,
+    actorUserId: string,
+    input: CopySettlementDraftDto
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const [source] = await tx.$queryRaw<Array<{
+        id: string;
+        projectId: string;
+        contractId: string;
+        contractVersionId: string;
+        paymentTermsVersionId: string;
+        settlementTemplateVersionId: string | null;
+        code: string;
+        periodLabel: string;
+        isFinal: boolean;
+        finalCumulativeAmountCents: bigint | null;
+        lines: Prisma.JsonValue;
+        status: string;
+        ownerUserId: string;
+        fieldReviewerUserId: string | null;
+        fieldReviewerRoleKey: string | null;
+        finalScopeCompleted: boolean | null;
+        finalPriorSettlementsIncluded: boolean | null;
+        finalNoOutstandingSettlements: boolean | null;
+        finalWithinContractCap: boolean | null;
+        finalNoFurtherOrdinarySettlements: boolean | null;
+        updatedAt: Date;
+      }>>(Prisma.sql`
+        SELECT * FROM "SettlementDraft"
+        WHERE "id" = ${draftId}
+        FOR UPDATE
+      `);
+      this.assertOwnedDraft(source, projectId, actorUserId);
+      if (source!.status !== "abandoned") {
+        throw new ConflictException("只有已放弃的结算草稿可以复制为新草稿");
+      }
+      if (source!.updatedAt.toISOString() !== input.expectedUpdatedAt) {
+        throw new ConflictException("来源结算草稿已变化，请刷新台账后重试");
+      }
+      const context = await this.contractContext(tx, projectId, source!.contractVersionId);
+      const suffix = new Date().toISOString().replace(/\D/gu, "").slice(4, 14);
+      const created = await tx.settlementDraft.create({
+        data: {
+          projectId: source!.projectId,
+          contractId: context.version.contractId,
+          contractVersionId: context.version.id,
+          paymentTermsVersionId: context.terms.id,
+          settlementTemplateVersionId: source!.settlementTemplateVersionId,
+          code: `${source!.code}-副本-${suffix}`,
+          periodLabel: source!.periodLabel,
+          isFinal: source!.isFinal,
+          finalCumulativeAmountCents: source!.finalCumulativeAmountCents,
+          lines: source!.lines as Prisma.InputJsonValue,
+          ownerUserId: actorUserId,
+          governanceVersion: 1,
+          fieldReviewerUserId: source!.fieldReviewerUserId,
+          fieldReviewerRoleKey: source!.fieldReviewerRoleKey,
+          finalScopeCompleted: source!.finalScopeCompleted,
+          finalPriorSettlementsIncluded: source!.finalPriorSettlementsIncluded,
+          finalNoOutstandingSettlements: source!.finalNoOutstandingSettlements,
+          finalWithinContractCap: source!.finalWithinContractCap,
+          finalNoFurtherOrdinarySettlements: source!.finalNoFurtherOrdinarySettlements,
+          copiedFromDraftId: source!.id
+        }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "settlement.draft.copy",
+        businessType: "settlement_draft",
+        businessId: created.id,
+        metadata: { copiedFromDraftId: source!.id, projectId }
       });
       return this.readModel(created);
     });

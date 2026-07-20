@@ -1,18 +1,19 @@
 const { PrismaClient } = require("@prisma/client");
 
 const DATABASE_NAME = "jiangkong_draft_lifecycle_verify";
-const EXPECTED_MIGRATION_COUNT = 72;
+const EXPECTED_MIGRATION_COUNT = 73;
 const LIFECYCLE_MIGRATIONS = [
   "20260719210000_contract_settlement_draft_lifecycle",
   "20260719211000_payment_spot_draft_lifecycle",
-  "20260719212000_template_draft_lifecycle"
+  "20260719212000_template_draft_lifecycle",
+  "20260720183000_draft_copy_source"
 ];
 
 const EXPECTED_COLUMNS = {
-  ContractVersion: ["abandonedAt", "abandonedByUserId", "abandonReason"],
+  ContractVersion: ["abandonedAt", "abandonedByUserId", "abandonReason", "copiedFromContractVersionId"],
   ContractTakeover: ["abandonedAt", "abandonedByUserId", "abandonReason"],
   ContractTaxFactRevision: ["abandonedAt", "abandonedByUserId", "abandonReason"],
-  SettlementDraft: ["abandonedAt", "abandonedByUserId", "abandonReason"],
+  SettlementDraft: ["abandonedAt", "abandonedByUserId", "abandonReason", "copiedFromDraftId"],
   PaymentRequest: ["abandonedAt", "abandonedByUserId", "abandonReason"],
   SpotProcurement: ["abandonedAt", "abandonedByUserId", "abandonReason"],
   SpotProcurementVersion: ["abandonedAt", "abandonedByUserId", "abandonReason"],
@@ -65,7 +66,9 @@ const EXPECTED_INDEXES = [
   "ContractBusinessTemplateVersion_status_updatedAt_idx",
   "StandardClauseVersion_status_updatedAt_idx",
   "ContractLayoutTemplateVersion_status_updatedAt_idx",
-  "SettlementTemplateVersion_status_updatedAt_idx"
+  "SettlementTemplateVersion_status_updatedAt_idx",
+  "ContractVersion_copiedFromContractVersionId_idx",
+  "SettlementDraft_copiedFromDraftId_idx"
 ];
 
 function assert(condition, message) {

@@ -92,6 +92,61 @@ describe("SettlementDraftService", () => {
     finalNoFurtherOrdinarySettlements: true
   };
 
+  it("copies an abandoned draft into a new identity and records its source", async () => {
+    const sourceUpdatedAt = new Date("2026-07-20T02:00:00.000Z");
+    const { tx, audit, service } = context();
+    tx.$queryRaw
+      .mockResolvedValueOnce([{
+        id: "abandoned-draft",
+        projectId: "project-1",
+        contractId: "contract-1",
+        contractVersionId: "version-1",
+        paymentTermsVersionId: "terms-1",
+        settlementTemplateVersionId: "template-1",
+        code: "JS-OLD",
+        periodLabel: "2026-06",
+        isFinal: false,
+        finalCumulativeAmountCents: null,
+        lines: [{ itemName: "旧明细" }],
+        status: "abandoned",
+        ownerUserId: "owner-1",
+        fieldReviewerUserId: null,
+        fieldReviewerRoleKey: null,
+        finalScopeCompleted: null,
+        finalPriorSettlementsIncluded: null,
+        finalNoOutstandingSettlements: null,
+        finalWithinContractCap: null,
+        finalNoFurtherOrdinarySettlements: null,
+        updatedAt: sourceUpdatedAt
+      }])
+      .mockResolvedValueOnce([{
+        id: "version-1",
+        contractId: "contract-1",
+        status: "effective",
+        contractGovernanceVersion: 1
+      }]);
+
+    const result = await service.copyAbandoned(
+      "project-1",
+      "abandoned-draft",
+      "owner-1",
+      { expectedUpdatedAt: sourceUpdatedAt.toISOString() }
+    );
+
+    expect(tx.settlementDraft.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        copiedFromDraftId: "abandoned-draft",
+        ownerUserId: "owner-1",
+        lines: [{ itemName: "旧明细" }]
+      })
+    });
+    expect(result).toMatchObject({ id: "draft-1", status: "draft" });
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "settlement.draft.copy",
+      metadata: expect.objectContaining({ copiedFromDraftId: "abandoned-draft" })
+    }));
+  });
+
   it("persists selected participants and all five final-settlement confirmations separately", async () => {
     const { tx, service } = context();
 

@@ -40,6 +40,7 @@ import { SubmitContractApprovalDto } from "./dto/submit-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 import { CreateContractChangeDraftDto } from "./dto/create-contract-change-draft.dto";
 import { AbandonContractDraftDto } from "./dto/abandon-contract-draft.dto";
+import { CopyContractDraftDto } from "./dto/copy-contract-draft.dto";
 import { UploadContractFormalFileDto } from "./dto/contract-formal-file.dto";
 import { SetContractAuthorizationDto } from "./dto/contract-authorization.dto";
 import { ContractFormalFileService } from "./contract-formal-file.service";
@@ -85,6 +86,16 @@ export class ContractController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.contracts.createChangeDraft(contractVersionId, body, user.id);
+  }
+
+  @Post(":contractVersionId/copies")
+  @RequireProjectRole("contract.create")
+  copyAbandonedDraft(
+    @Param("contractVersionId") contractVersionId: string,
+    @Body() body: CopyContractDraftDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.contracts.copyAbandonedDraft(contractVersionId, user.id, body);
   }
 
   @Post(":contractVersionId/abandonment")

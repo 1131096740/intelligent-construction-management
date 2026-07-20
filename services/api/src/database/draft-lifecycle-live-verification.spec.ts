@@ -57,19 +57,20 @@ describe("draft lifecycle live verification", () => {
     ).toThrow();
   });
 
-  it("固定全部 72 个迁移和 M70-M72，不把旧版本冒充已验证", () => {
-    expect(verification.EXPECTED_MIGRATION_COUNT).toBe(72);
+  it("固定全部 73 个迁移和 M70-M73，不把旧版本冒充已验证", () => {
+    expect(verification.EXPECTED_MIGRATION_COUNT).toBe(73);
     expect(verification.LIFECYCLE_MIGRATIONS).toEqual([
       "20260719210000_contract_settlement_draft_lifecycle",
       "20260719211000_payment_spot_draft_lifecycle",
-      "20260719212000_template_draft_lifecycle"
+      "20260719212000_template_draft_lifecycle",
+      "20260720183000_draft_copy_source"
     ]);
     expect(script).toContain("SET TRANSACTION READ ONLY");
     expect(script).toContain("--probe-rollback");
     expect(script).toContain("ROLLBACK_DRAFT_LIFECYCLE_PROBE");
   });
 
-  it("M70-M72 只增加生命周期列、约束和索引，不包含业务 DML 或金额改写", () => {
+  it("M70-M73 只增加生命周期列、约束和索引，不包含业务 DML 或金额改写", () => {
     for (const sql of migrations) {
       expect(sql).not.toMatch(/\bDELETE\s+FROM\b/iu);
       expect(sql).not.toMatch(/\bTRUNCATE\b/iu);
@@ -85,6 +86,8 @@ describe("draft lifecycle live verification", () => {
     expect(migrations[1]).toContain(`'"PaymentRequest"'::regclass`);
     expect(migrations[2]).toContain(`'"SettlementTemplateVersion"'::regclass`);
     expect(migrations[2]).toContain(`position('(status, "publishedAt")' IN definition)`);
+    expect(migrations[3]).toContain(`ADD COLUMN "copiedFromContractVersionId" TEXT`);
+    expect(migrations[3]).toContain(`ADD COLUMN "copiedFromDraftId" TEXT`);
   });
 
   it("计数和金额摘要把 bigint 规范为可稳定比较的十进制字符串", () => {

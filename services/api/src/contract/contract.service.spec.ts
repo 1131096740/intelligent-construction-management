@@ -7,6 +7,92 @@ import { ContractService } from "./contract.service";
 import { ContractGovernanceDenial } from "./contract-formal-file.service";
 
 describe("ContractService", () => {
+  it("copies an abandoned original contract into a new draft identity without workflow evidence", async () => {
+    const updatedAt = new Date("2026-07-20T02:00:00.000Z");
+    const sourceVersion = {
+      id: "source-version",
+      contractId: "source-contract",
+      versionNo: 1,
+      changeType: "original",
+      status: "abandoned",
+      amountCents: 1200n,
+      amountLimitType: "capped",
+      businessTemplateVersionId: "template-version",
+      layoutTemplateVersionId: null,
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      amountAdjustmentReason: null,
+      invoiceType: "vat_special",
+      taxMode: "single_rate",
+      defaultTaxRatePercent: null,
+      taxFactSource: "contract",
+      taxFactExplanation: null,
+      companyEntityIdSnapshot: null,
+      companyEntityVersionId: null,
+      companyEntityNameSnapshot: null,
+      companyEntityCreditCodeSnapshot: null,
+      companyEntityRegisteredAddressSnapshot: null,
+      draftData: { fieldValues: { projectName: "示例项目" } },
+      templateSnapshot: { fieldSchema: [] },
+      clauseSnapshot: [],
+      updatedAt
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([sourceVersion]),
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "source-contract",
+          projectId: "project-1",
+          source: "system",
+          name: "旧合同",
+          counterparty: "乙方",
+          companyEntityId: null,
+          companyEntityName: null,
+          contractTypeKey: "material_purchase",
+          ownerUserId: "owner-1",
+          businessScenarioId: null,
+          scenarioTemplateMappingId: null,
+          scenarioSnapshot: null
+        }),
+        create: jest.fn().mockImplementation(({ data }) => ({ id: "new-contract", ...data }))
+      },
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue(sourceVersion),
+        create: jest.fn().mockImplementation(({ data }) => ({ id: "new-version", ...data }))
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "source-terms", originalText: "归档后付款" }),
+        create: jest.fn().mockResolvedValue({ id: "new-terms" })
+      },
+      paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]), createMany: jest.fn() },
+      contractBill: { findMany: jest.fn().mockResolvedValue([]) },
+      contractPartySnapshot: { findMany: jest.fn().mockResolvedValue([]), createMany: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const audit = { record: jest.fn() };
+    const service = new ContractService(prisma as never, audit as never);
+
+    const result = await service.copyAbandonedDraft(
+      "source-version",
+      "owner-1",
+      { expectedUpdatedAt: updatedAt.toISOString() }
+    );
+
+    expect(tx.contractVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        contractId: "new-contract",
+        status: "draft",
+        copiedFromContractVersionId: "source-version",
+        taxFactStatus: "draft"
+      })
+    });
+    expect(result).toMatchObject({ contract: { id: "new-contract" }, version: { id: "new-version" } });
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "contract.draft.copy"
+    }));
+  });
+
   const audit = {
     record: jest.fn()
   };

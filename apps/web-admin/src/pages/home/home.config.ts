@@ -279,6 +279,8 @@ function workItemStatusLabel(queueId: WorkItemQueueViewModel["id"], item: WorkIt
   const text = `${item.title} ${item.currentNode} ${item.nextAction}`;
   if (/超时|逾期/.test(text)) return "超时";
   if (queueId === "blocked" || item.type === "blocker") return "阻塞";
+  if (queueId === "drafts" && item.agingStatus === "stale") return "90天以上草稿";
+  if (queueId === "drafts" && item.agingStatus === "long_running") return "长期未处理";
   if (queueId === "drafts") return "草稿";
   if (queueId === "started") return "进行中";
   return "待处理";
@@ -290,6 +292,7 @@ function workItemStatusTone(
 ): HomeWorkItemRow["statusTone"] {
   const status = workItemStatusLabel(queueId, item);
   if (status === "超时" || status === "阻塞") return "danger";
+  if (status === "90天以上草稿" || status === "长期未处理") return "warning";
   if (status === "草稿") return "default";
   if (status === "进行中") return "default";
   return item.tone;

@@ -187,7 +187,15 @@
           {{ activeView === 'ended' ? (row.abandonReason || '—') : row.returnReason }}
         </template>
         <template #operation="{ row }">
-          <span v-if="activeView === 'ended'">历史已保留</span>
+          <t-link
+            v-if="activeView === 'ended' && row.copyAvailable"
+            theme="primary"
+            :disabled="copyingId === row.id"
+            @click="copyEndedSettlement(row)"
+          >
+            {{ copyingId === row.id ? '复制中' : '复制为新草稿' }}
+          </t-link>
+          <span v-else-if="activeView === 'ended'">历史已保留</span>
           <t-link
             v-else
             theme="primary"
@@ -237,6 +245,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { DraftLedgerView } from "@jiangkong/shared-domain";
 import {
+  copyAbandonedSettlementDraft,
   fetchSettlementLifecycleLedger,
   type SettlementLifecycleLedgerRow,
   downloadSettlementLedgerExport
@@ -304,6 +313,7 @@ const settlementLedgerRows = ref<(SettlementLedgerRow & SettlementLifecycleLedge
 const settlementFilters = reactive(emptySettlementLedgerFilters());
 const ledgerLoading = ref(false);
 const exportLoading = ref(false);
+const copyingId = ref("");
 const showColumnSettings = ref(false);
 const showSettlementRules = ref(false);
 const configurableSettlementColumnKeys = settlementLedgerColumns
@@ -373,6 +383,20 @@ function openLifecycleRow(row: SettlementLedgerRow & SettlementLifecycleLedgerRo
     return;
   }
   void router.push(`/settlements/${row.settlementId ?? row.id}`);
+}
+
+async function copyEndedSettlement(row: SettlementLedgerRow & SettlementLifecycleLedgerRow) {
+  if (!row.copyAvailable || !row.lifecycleUpdatedAt) return;
+  copyingId.value = row.id;
+  try {
+    const created = await copyAbandonedSettlementDraft(row.projectId, row.id, row.lifecycleUpdatedAt);
+    await MessagePlugin.success("已复制为新的结算草稿，旧记录保持只读历史。");
+    await router.push({ path: "/结算工作台", query: { project: row.projectId, draftId: created.id } });
+  } catch (error) {
+    await MessagePlugin.error(error instanceof Error ? error.message : "结算草稿复制失败，请刷新后重试。");
+  } finally {
+    copyingId.value = "";
+  }
 }
 
 function resetSettlementFilters() {

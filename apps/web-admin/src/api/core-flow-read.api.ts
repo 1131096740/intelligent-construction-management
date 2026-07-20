@@ -1244,6 +1244,8 @@ export interface WorkItemReadModel {
   nextAction: string;
   targetPath: string;
   tone: WorkbenchCardTone;
+  ageDays?: number;
+  agingStatus?: "current" | "long_running" | "stale";
 }
 
 export interface WorkItemsReadModel {
@@ -1264,6 +1266,28 @@ export function fetchWorkbenchSummary() {
 
 export function fetchWorkItems() {
   return readJson<WorkItemsReadModel>("/me/work-items");
+}
+
+export interface DraftRetentionPreviewReadModel {
+  generatedAt: string;
+  mode: "preview_only";
+  executionAllowed: false;
+  policyVersion: string;
+  totalCandidateCount: number;
+  categories: Array<{
+    key: string;
+    label: string;
+    retentionDays: number;
+    candidateCount: number;
+    oldestCandidateAt: string | null;
+    rule: string;
+  }>;
+  fileScanTruncated: boolean;
+  notice: string;
+}
+
+export function fetchDraftRetentionPreview() {
+  return readJson<DraftRetentionPreviewReadModel>("/draft-retention/preview");
 }
 
 export function fetchProjects() {
@@ -1496,7 +1520,15 @@ export type ContractLifecycleLedgerRow = ContractLedgerListReadModel["rows"][num
   lifecycleUpdatedAt?: string;
   abandonedAt?: string | null;
   abandonReason?: string | null;
+  copyAvailable?: boolean;
 };
+
+export function copyAbandonedContractDraft(contractVersionId: string, expectedUpdatedAt: string) {
+  return postJson<{ contract: { id: string }; version: { id: string } }>(
+    `/contracts/${encodeURIComponent(contractVersionId)}/copies`,
+    { expectedUpdatedAt }
+  );
+}
 
 export function fetchContractLifecycleLedger(
   view: DraftLedgerView,
@@ -1541,7 +1573,19 @@ export type SettlementLifecycleLedgerRow = SettlementLedgerListReadModel["rows"]
   lifecycleUpdatedAt?: string;
   abandonedAt?: string | null;
   abandonReason?: string | null;
+  copyAvailable?: boolean;
 };
+
+export function copyAbandonedSettlementDraft(
+  projectId: string,
+  draftId: string,
+  expectedUpdatedAt: string
+) {
+  return postJson<{ id: string }>(
+    `/projects/${encodeURIComponent(projectId)}/settlement-drafts/${encodeURIComponent(draftId)}/copies`,
+    { expectedUpdatedAt }
+  );
+}
 
 export function fetchSettlementLifecycleLedger(
   view: DraftLedgerView,

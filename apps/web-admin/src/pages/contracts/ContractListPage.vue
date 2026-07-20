@@ -255,7 +255,15 @@
           {{ activeTab === 'ended' ? (row.abandonReason || '—') : row.returnReason }}
         </template>
         <template #operation="{ row }">
-          <span v-if="activeTab === 'ended'">历史已保留</span>
+          <t-link
+            v-if="activeTab === 'ended' && row.copyAvailable"
+            theme="primary"
+            :disabled="copyingId === row.contractVersionId"
+            @click="copyEndedContract(row)"
+          >
+            {{ copyingId === row.contractVersionId ? '复制中' : '复制为新草稿' }}
+          </t-link>
+          <span v-else-if="activeTab === 'ended'">历史已保留</span>
           <t-link
             v-else
             theme="primary"
@@ -289,6 +297,7 @@ import type { DraftLedgerView } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
+  copyAbandonedContractDraft,
   downloadContractLedgerExport,
   fetchContractLifecycleLedger,
   type ContractLifecycleLedgerRow
@@ -351,6 +360,7 @@ const contractLedgerRows = ref<Array<ContractLedgerRow & ContractLifecycleLedger
 const contractFilters = reactive(emptyContractLedgerFilters());
 const ledgerLoading = ref(false);
 const exportLoading = ref(false);
+const copyingId = ref("");
 const showColumnSettings = ref(false);
 const configurableContractColumnKeys = contractLedgerColumns
   .map((column) => String(column.colKey))
@@ -485,6 +495,20 @@ function openLifecycleRow(row: ContractLedgerRow & ContractLifecycleLedgerRow) {
     path: `/contracts/${row.id}/workbench`,
     query: row.contractVersionId ? { versionId: row.contractVersionId } : undefined
   });
+}
+
+async function copyEndedContract(row: ContractLedgerRow & ContractLifecycleLedgerRow) {
+  if (!row.copyAvailable || !row.contractVersionId || !row.lifecycleUpdatedAt) return;
+  copyingId.value = row.contractVersionId;
+  try {
+    const result = await copyAbandonedContractDraft(row.contractVersionId, row.lifecycleUpdatedAt);
+    await MessagePlugin.success("已复制为新的合同草稿，旧记录保持只读历史。");
+    await router.push({ path: `/contracts/${result.contract.id}/workbench`, query: { versionId: result.version.id } });
+  } catch (error) {
+    await MessagePlugin.error(error instanceof Error ? error.message : "合同草稿复制失败，请刷新后重试。");
+  } finally {
+    copyingId.value = "";
+  }
 }
 
 function resetContractFilters() {

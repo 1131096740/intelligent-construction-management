@@ -306,3 +306,23 @@ function workItemsFixture(): WorkItemsReadModel {
     }
   };
 }
+
+describe("draft aging labels", () => {
+  it("marks 31-day and 91-day drafts without changing their lifecycle identity", () => {
+    const model = workItemsFixture();
+    model.queues.drafts = [
+      { ...model.queues.drafts[0]!, id: "draft-long", agingStatus: "long_running", ageDays: 31 },
+      { ...model.queues.drafts[0]!, id: "draft-stale", agingStatus: "stale", ageDays: 91 }
+    ];
+
+    const rows = toHomeWorkItemRows(toWorkItemQueues(model));
+    expect(rows.filter((row) => row.queueId === "drafts").map((row) => ({
+      id: row.id,
+      statusLabel: row.statusLabel,
+      statusTone: row.statusTone
+    }))).toEqual([
+      { id: "draft-long", statusLabel: "长期未处理", statusTone: "warning" },
+      { id: "draft-stale", statusLabel: "90天以上草稿", statusTone: "warning" }
+    ]);
+  });
+});

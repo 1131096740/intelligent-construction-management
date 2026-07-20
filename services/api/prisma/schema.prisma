@@ -156,6 +156,7 @@ model ContractVersion {
   amountCents                            BigInt
   baseVersionId                          String?
   supersedesVersionId                    String?
+  copiedFromContractVersionId            String?
   changeReason                           String?
   changeDirection                        String?
   changeAmountCents                      BigInt?
@@ -198,6 +199,7 @@ model ContractVersion {
   @@unique([contractId, versionNo])
   @@index([baseVersionId])
   @@index([supersedesVersionId])
+  @@index([copiedFromContractVersionId])
   @@index([companyEntityIdSnapshot])
   @@index([companyEntityVersionId])
   @@index([status, updatedAt])
@@ -498,6 +500,7 @@ model SettlementDraft {
   finalWithinContractCap            Boolean?
   finalNoFurtherOrdinarySettlements Boolean?
   submittedSettlementId             String?   @unique
+  copiedFromDraftId                  String?
   submittedAt                       DateTime?
   abandonedAt                       DateTime?
   abandonedByUserId                 String?
@@ -507,6 +510,7 @@ model SettlementDraft {
 
   @@index([projectId, ownerUserId, status, updatedAt])
   @@index([contractVersionId, status])
+  @@index([copiedFromDraftId])
   @@index([status, updatedAt])
 }
 

@@ -1719,7 +1719,7 @@ describe("ContractReadService", () => {
     expect(ended.rows).toEqual(expect.arrayContaining([
       expect.objectContaining({ contractVersionId: "c1-v2", lifecycleKind: "approval_draft", abandonReason: "不再继续" }),
       expect.objectContaining({ contractVersionId: "c4-v1", lifecycleKind: "formal_record" }),
-      expect.objectContaining({ contractVersionId: "c5-v1", lifecycleKind: "pristine_draft" }),
+      expect.objectContaining({ contractVersionId: "c5-v1", lifecycleKind: "pristine_draft", copyAvailable: true }),
       expect.objectContaining({ contractVersionId: "c6-v2", lifecycleKind: "approval_draft" })
     ]));
     const formal = await service.lifecycleLedger("formal_ledger", 1, 1, ["p1"], "u1");

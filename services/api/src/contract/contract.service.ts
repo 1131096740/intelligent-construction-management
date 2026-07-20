@@ -45,6 +45,7 @@ import { SubmitContractApprovalDto } from "./dto/submit-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 import { CreateContractChangeDraftDto } from "./dto/create-contract-change-draft.dto";
 import { AbandonContractDraftDto } from "./dto/abandon-contract-draft.dto";
+import { CopyContractDraftDto } from "./dto/copy-contract-draft.dto";
 import { assertContractChangeContentAllowed } from "./contract-change-policy";
 import { evaluateContractIncreaseLimit } from "./contract-change-limit-policy";
 import { resolveContractVersionRoot } from "./contract-version-root";
@@ -349,6 +350,189 @@ export class ContractService {
       });
 
       return { contract, version: { ...version, amountCents: String(version.amountCents ?? 0n) }, terms };
+    });
+  }
+
+  async copyAbandonedDraft(
+    sourceVersionId: string,
+    actorUserId: string,
+    input: CopyContractDraftDto
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const [locked] = await tx.$queryRaw<Array<{
+        id: string;
+        contractId: string;
+        status: string;
+        changeType: string;
+        versionNo: number;
+        updatedAt: Date;
+      }>>(Prisma.sql`
+        SELECT "id", "contractId", "status", "changeType", "versionNo", "updatedAt"
+        FROM "ContractVersion"
+        WHERE "id" = ${sourceVersionId}
+        FOR UPDATE
+      `);
+      if (!locked) throw new NotFoundException("未找到来源合同草稿");
+      const sourceContract = await tx.contract.findUnique({ where: { id: locked.contractId } });
+      if (!sourceContract || sourceContract.ownerUserId !== actorUserId) {
+        throw new ForbiddenException("只能复制本人已放弃的合同草稿");
+      }
+      if (locked.status !== "abandoned") {
+        throw new ConflictException("只有已放弃的合同草稿可以复制为新草稿");
+      }
+      if (locked.changeType !== "original" || locked.versionNo !== 1) {
+        throw new ConflictException("合同变更不能复制为独立合同，请从当前有效合同发起新变更");
+      }
+      if (locked.updatedAt.toISOString() !== input.expectedUpdatedAt) {
+        throw new ConflictException("来源合同草稿已变化，请刷新台账后重试");
+      }
+      const source = await tx.contractVersion.findUnique({ where: { id: sourceVersionId } });
+      if (!source) throw new NotFoundException("未找到来源合同草稿");
+      const project = await tx.project.findUnique({ where: { id: sourceContract.projectId } });
+      if (!project?.isActive) throw new ConflictException("来源合同所属项目已停用，不能复制");
+
+      const now = new Date();
+      const datePart = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+      const randomPart = Math.floor(Math.random() * 100_000_000).toString().padStart(8, "0");
+      const contract = await tx.contract.create({
+        data: {
+          projectId: sourceContract.projectId,
+          source: "system",
+          name: `${sourceContract.name || "未命名合同"}（副本）`,
+          counterparty: sourceContract.counterparty,
+          companyEntityId: sourceContract.companyEntityId,
+          companyEntityName: sourceContract.companyEntityName,
+          contractTypeKey: sourceContract.contractTypeKey,
+          ownerUserId: actorUserId,
+          businessScenarioId: sourceContract.businessScenarioId,
+          scenarioTemplateMappingId: sourceContract.scenarioTemplateMappingId,
+          scenarioSnapshot: sourceContract.scenarioSnapshot ?? undefined,
+          temporaryCode: `草稿-${datePart}-${randomPart}`
+        }
+      });
+      const version = await tx.contractVersion.create({
+        data: {
+          contractId: contract.id,
+          versionNo: 1,
+          changeType: "original",
+          status: "draft",
+          amountCents: source.amountCents,
+          amountLimitType: source.amountLimitType,
+          businessTemplateVersionId: source.businessTemplateVersionId,
+          layoutTemplateVersionId: source.layoutTemplateVersionId,
+          pricingNature: source.pricingNature,
+          amountSource: source.amountSource,
+          amountAdjustmentReason: source.amountAdjustmentReason,
+          invoiceType: source.invoiceType,
+          taxMode: source.taxMode,
+          defaultTaxRatePercent: source.defaultTaxRatePercent,
+          taxFactStatus: "draft",
+          taxFactSource: source.taxFactSource,
+          taxFactExplanation: source.taxFactExplanation,
+          contractGovernanceVersion: 1,
+          companyEntityIdSnapshot: source.companyEntityIdSnapshot,
+          companyEntityVersionId: source.companyEntityVersionId,
+          companyEntityNameSnapshot: source.companyEntityNameSnapshot,
+          companyEntityCreditCodeSnapshot: source.companyEntityCreditCodeSnapshot,
+          companyEntityRegisteredAddressSnapshot: source.companyEntityRegisteredAddressSnapshot,
+          draftData: source.draftData as Prisma.InputJsonValue,
+          templateSnapshot: source.templateSnapshot as Prisma.InputJsonValue,
+          clauseSnapshot: source.clauseSnapshot as Prisma.InputJsonValue,
+          copiedFromContractVersionId: source.id
+        }
+      });
+
+      const [sourceTerms, sourceBills, sourceParties] = await Promise.all([
+        tx.paymentTermsVersion.findFirst({ where: { contractVersionId: source.id }, orderBy: { versionNo: "desc" } }),
+        tx.contractBill.findMany({ where: { contractVersionId: source.id }, orderBy: { createdAt: "asc" } }),
+        tx.contractPartySnapshot.findMany({ where: { contractVersionId: source.id }, orderBy: { displayOrder: "asc" } })
+      ]);
+      if (sourceTerms) {
+        const terms = await tx.paymentTermsVersion.create({
+          data: { contractId: contract.id, contractVersionId: version.id, versionNo: 1, status: "draft", originalText: sourceTerms.originalText }
+        });
+        const stages = await tx.paymentTermsStage.findMany({ where: { paymentTermsVersionId: sourceTerms.id } });
+        if (stages.length) await tx.paymentTermsStage.createMany({
+          data: stages.map((stage) => ({
+            paymentTermsVersionId: terms.id,
+            name: stage.name,
+            stageType: stage.stageType,
+            basis: stage.basis,
+            ratioBps: stage.ratioBps,
+            fixedAmountCents: stage.fixedAmountCents,
+            triggerAnchor: stage.triggerAnchor,
+            triggerEvent: stage.triggerEvent,
+            dueDays: stage.dueDays,
+            advanceDeductionMode: stage.advanceDeductionMode,
+            advanceDeductionRatioBps: stage.advanceDeductionRatioBps,
+            advanceDeductionStartRatioBps: stage.advanceDeductionStartRatioBps,
+            requiresInvoice: stage.requiresInvoice,
+            allowsEarlyPayment: stage.allowsEarlyPayment,
+            allowsInstallments: stage.allowsInstallments,
+            retentionBps: stage.retentionBps,
+            originalText: stage.originalText
+          }))
+        });
+      }
+      for (const sourceBill of sourceBills) {
+        const bill = await tx.contractBill.create({
+          data: {
+            contractVersionId: version.id,
+            billKey: sourceBill.billKey,
+            name: sourceBill.name,
+            amountRole: sourceBill.amountRole,
+            pricingMode: sourceBill.pricingMode,
+            quantityScale: sourceBill.quantityScale,
+            unitPriceScale: sourceBill.unitPriceScale,
+            schemaSnapshot: sourceBill.schemaSnapshot as Prisma.InputJsonValue,
+            revision: 1,
+            taxInclusiveAmountCents: sourceBill.taxInclusiveAmountCents,
+            taxExclusiveAmountCents: sourceBill.taxExclusiveAmountCents,
+            taxAmountCents: sourceBill.taxAmountCents
+          }
+        });
+        const rows = await tx.contractBillRow.findMany({ where: { contractBillId: sourceBill.id }, orderBy: { sortOrder: "asc" } });
+        if (rows.length) await tx.contractBillRow.createMany({
+          data: rows.map((row) => ({
+            contractBillId: bill.id,
+            rowKey: row.rowKey,
+            sortOrder: row.sortOrder,
+            itemCode: row.itemCode,
+            itemName: row.itemName,
+            specification: row.specification,
+            unit: row.unit,
+            quantity: row.quantity,
+            unitPrice: row.unitPrice,
+            taxRate: row.taxRate,
+            taxRateSource: row.taxRateSource,
+            pricingFactStatus: row.pricingFactStatus,
+            precisionPolicy: row.precisionPolicy,
+            taxInclusiveAmountCents: row.taxInclusiveAmountCents,
+            taxExclusiveAmountCents: row.taxExclusiveAmountCents,
+            taxAmountCents: row.taxAmountCents,
+            isProvisional: row.isProvisional,
+            settlementBasis: row.settlementBasis,
+            customData: row.customData as Prisma.InputJsonValue
+          }))
+        });
+      }
+      if (sourceParties.length) await tx.contractPartySnapshot.createMany({
+        data: sourceParties.map((party) => ({
+          contractVersionId: version.id,
+          roleKey: party.roleKey,
+          displayOrder: party.displayOrder,
+          businessPartyVersionId: party.businessPartyVersionId,
+          snapshot: party.snapshot as Prisma.InputJsonValue
+        }))
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract.draft.copy",
+        businessType: "contract",
+        businessId: contract.id,
+        metadata: { copiedFromContractVersionId: source.id, projectId: contract.projectId }
+      });
+      return { contract, version: { ...version, amountCents: String(version.amountCents) } };
     });
   }
 

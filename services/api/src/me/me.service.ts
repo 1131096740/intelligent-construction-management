@@ -77,6 +77,8 @@ export interface WorkItem {
   nextAction: string;
   targetPath: string;
   tone: WorkbenchCardTone;
+  ageDays?: number;
+  agingStatus?: "current" | "long_running" | "stale";
 }
 
 export interface WorkItemsReadModel {
@@ -535,8 +537,7 @@ export class MeService {
       visibleProjectIds.length
         ? this.prisma.settlementDraft.findMany({
             where: { projectId: { in: visibleProjectIds }, ownerUserId: userId, status: "draft" },
-            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-            take: 31
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
           })
         : Promise.resolve([]),
       contractProjectIds.length
@@ -547,7 +548,6 @@ export class MeService {
               OR: [{ responsibleUserId: userId }, { createdByUserId: userId }]
             },
             orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-            take: 31,
             select: {
               id: true,
               projectId: true,
@@ -564,8 +564,7 @@ export class MeService {
               status: "draft",
               OR: [{ applicantUserId: userId }, { handlerUserId: userId }]
             },
-            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-            take: 31
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
           })
         : Promise.resolve([]),
       visibleProjectIds.length
@@ -575,8 +574,7 @@ export class MeService {
               status: "draft",
               OR: [{ createdByUserId: userId }, { handlerUserId: userId }]
             },
-            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-            take: 31
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
           })
         : Promise.resolve([])
     ]);
@@ -621,7 +619,6 @@ export class MeService {
       ? await this.prisma.contractVersion.findMany({
           where: { contractId: { in: contractIds }, status: "draft" },
           orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-          take: 31,
           select: { id: true, contractId: true, amountCents: true, updatedAt: true }
         })
       : [];
@@ -748,12 +745,27 @@ export class MeService {
       ...templateDrafts.items
     ];
 
+    for (const draft of businessDrafts) {
+      const ageDays = Math.max(0, Math.floor((Date.now() - draft.updatedAt.getTime()) / 86_400_000));
+      draft.ageDays = ageDays;
+      draft.agingStatus = ageDays > 90
+        ? "stale"
+        : ageDays > 30
+          ? "long_running"
+          : "current";
+      if (draft.agingStatus !== "current") {
+        draft.tone = "warning";
+      }
+    }
+
     const total = contractTotal + settlementTotal + takeoverTotal +
       procurementTotal + paymentTotal + templateDrafts.total;
+    const sorted = businessDrafts
+      .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime());
+    const recent = sorted.filter((entry) => entry.agingStatus !== "stale").slice(0, 30);
+    const stale = sorted.filter((entry) => entry.agingStatus === "stale").slice(0, 30);
     return {
-      items: businessDrafts
-        .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())
-        .slice(0, 30)
+      items: [...recent, ...stale]
         .map((entry) => {
           const item: WorkItem & { updatedAt?: Date } = { ...entry };
           delete item.updatedAt;
@@ -794,7 +806,6 @@ export class MeService {
         ? this.prisma.contractBusinessTemplateVersion.findMany({
             where: { templateId: { in: businessRoots.map((row) => row.id) }, status: "draft" },
             orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-            take: 31,
             select: { id: true, templateId: true, versionNo: true, updatedAt: true }
           })
         : Promise.resolve([]),
@@ -802,7 +813,6 @@ export class MeService {
         ? this.prisma.contractLayoutTemplateVersion.findMany({
             where: { layoutTemplateId: { in: layoutRoots.map((row) => row.id) }, status: "draft" },
             orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-            take: 31,
             select: { id: true, layoutTemplateId: true, versionNo: true, updatedAt: true }
           })
         : Promise.resolve([]),
@@ -810,7 +820,6 @@ export class MeService {
         ? this.prisma.standardClauseVersion.findMany({
             where: { clauseId: { in: clauseRoots.map((row) => row.id) }, status: "draft" },
             orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-            take: 31,
             select: { id: true, clauseId: true, versionNo: true, updatedAt: true }
           })
         : Promise.resolve([]),
@@ -818,7 +827,6 @@ export class MeService {
         ? this.prisma.settlementTemplateVersion.findMany({
             where: { settlementTemplateId: { in: settlementRoots.map((row) => row.id) }, status: "draft" },
             orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-            take: 31,
             select: { id: true, settlementTemplateId: true, versionNo: true, updatedAt: true }
           })
         : Promise.resolve([])

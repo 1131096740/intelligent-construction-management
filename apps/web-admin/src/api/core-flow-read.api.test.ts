@@ -5,6 +5,9 @@ import {
   fetchContractChangeEligibility,
   fetchContractLedger,
   fetchContractLifecycleLedger,
+  copyAbandonedContractDraft,
+  copyAbandonedSettlementDraft,
+  fetchDraftRetentionPreview,
   fetchPaymentDetail,
   fetchPaymentLedger,
   fetchPaymentLifecycleLedger,
@@ -129,6 +132,27 @@ describe("core flow read API client", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("copies ended contract and settlement records into new draft resources", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "new-draft", contract: { id: "new-contract" }, version: { id: "new-version" } })
+    } as Response);
+
+    await copyAbandonedContractDraft("version/1", "2026-07-20T01:00:00.000Z");
+    await copyAbandonedSettlementDraft("project/1", "draft/1", "2026-07-20T02:00:00.000Z");
+    await fetchDraftRetentionPreview();
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/contracts/version%2F1/copies",
+      "/api/projects/project%2F1/settlement-drafts/draft%2F1/copies",
+      "/api/draft-retention/preview"
+    ]);
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ expectedUpdatedAt: "2026-07-20T01:00:00.000Z" })
+    }));
   });
 
   it("calls the encoded single-takeover abandonment resource with exact CAS facts", async () => {

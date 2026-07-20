@@ -129,8 +129,20 @@
             v-if="activeQueueModel?.truncated"
             theme="info"
             title="草稿较多"
-            :message="`该队列共 ${activeQueueModel.total} 条，首页展示最近 ${activeQueueModel.items.length} 条；完整记录请进入对应业务台账。`"
+            :message="activeQueue === 'drafts'
+              ? `该队列共 ${activeQueueModel.total} 条，首页最多展示 30 条近期草稿和 30 条 90 天以上草稿；完整记录请进入对应业务台账。`
+              : `该队列共 ${activeQueueModel.total} 条，首页展示最近 ${activeQueueModel.items.length} 条；完整记录请进入对应业务台账。`"
           />
+
+          <div
+            v-if="activeQueue === 'drafts'"
+            class="draft-aging-filter"
+          >
+            <t-checkbox v-model="showStaleDrafts">
+              显示 90 天以上草稿
+            </t-checkbox>
+            <span>长期草稿只提示和折叠，系统不会自动删除。</span>
+          </div>
 
           <EmptyBusinessState
             v-if="!visibleRows.length && !loading"
@@ -201,6 +213,7 @@ const loading = ref(false);
 const errorMessage = ref("");
 const workItems = ref<WorkItemsReadModel | null>(null);
 const activeQueue = ref("pending");
+const showStaleDrafts = ref(false);
 const filters = reactive(emptyHomeWorkItemFilters());
 
 const columns: PrimaryTableCol<HomeWorkItemRow>[] = [
@@ -234,7 +247,10 @@ const hasPermissionData = computed(() => hasWorkItemPermissionData(workItems.val
 const hasOpenItems = computed(() => hasOpenWorkItems(queues.value));
 const visibleRows = computed(() =>
   filterAndSortHomeWorkItemRows(
-    allRows.value.filter((row) => row.queueId === activeQueue.value),
+    allRows.value.filter((row) =>
+      row.queueId === activeQueue.value &&
+      (row.queueId !== "drafts" || showStaleDrafts.value || row.agingStatus !== "stale")
+    ),
     filters
   )
 );
@@ -295,6 +311,16 @@ onMounted(() => {
   border: var(--jg-border-width-base) solid var(--jg-color-border);
   border-radius: var(--jg-radius-panel);
   background: var(--jg-color-bg-surface);
+}
+
+.draft-aging-filter {
+  display: flex;
+  gap: var(--jg-space-md);
+  align-items: center;
+  padding: var(--jg-space-sm) var(--jg-space-lg);
+  color: var(--jg-color-text-secondary);
+  font-size: var(--jg-font-size-meta);
+  border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
 }
 
 .work-items-tabs {

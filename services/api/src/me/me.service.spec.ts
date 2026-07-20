@@ -506,7 +506,9 @@ describe("MeService", () => {
       projectId: "project-1",
       code: `JS-DRAFT-${index}`,
       periodLabel: "2026-07",
-      updatedAt: new Date(updatedAt.getTime() + index)
+      updatedAt: index === 0
+        ? new Date("2026-01-01T00:00:00.000Z")
+        : new Date(updatedAt.getTime() + index)
     }));
     const prisma = {
       contract: {
@@ -573,7 +575,7 @@ describe("MeService", () => {
         contractProjectIds: string[],
         visibleProjectIds: string[],
         projectNames: ReadonlyMap<string, string>
-      ): Promise<{ items: Array<{ id: string; businessType?: string }>; total: number }>;
+      ): Promise<{ items: Array<{ id: string; businessType?: string; agingStatus?: string }>; total: number }>;
     };
 
     const result = await service.myDraftWorkItems(
@@ -584,7 +586,11 @@ describe("MeService", () => {
     );
 
     expect(result.total).toBe(40);
-    expect(result.items).toHaveLength(30);
+    expect(result.items).toHaveLength(31);
+    expect(result.items).toContainEqual(expect.objectContaining({
+      id: "settlement-draft:settlement-draft-0",
+      agingStatus: "stale"
+    }));
     expect(result.items.some((item) => item.id.startsWith("settlement-draft:"))).toBe(true);
     expect(prisma.contract.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ source: { not: "historical_takeover" } })

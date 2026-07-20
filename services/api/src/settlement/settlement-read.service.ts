@@ -653,7 +653,8 @@ export class SettlementReadService {
       revision: draft.revision,
       lifecycleUpdatedAt: draft.updatedAt.toISOString(),
       abandonedAt: draft.abandonedAt?.toISOString() ?? null,
-      abandonReason: draft.abandonReason ?? null
+      abandonReason: draft.abandonReason ?? null,
+      copyAvailable: draft.status === "abandoned" && draft.ownerUserId === actorUserId
     }));
     const rows = [...formalRows, ...draftRows].sort((a, b) => {
       const aTime = "lifecycleUpdatedAt" in a ? a.lifecycleUpdatedAt : "";
