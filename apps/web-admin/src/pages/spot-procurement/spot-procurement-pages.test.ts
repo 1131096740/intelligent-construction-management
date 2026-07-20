@@ -167,7 +167,9 @@ describe("spot procurement web pages", () => {
 
     expect(detail).toContain("<PaymentApplicationStepper");
     expect(detail).toContain("updateSpotProcurementPaymentDraft");
-    expect(detail).toContain("await saveApplicationDraft(false, draftSnapshot)");
+    expect(detail).toContain("const saveResult = await saveApplicationDraft(false, draftSnapshot)");
+    expect(detail).toContain("await loadDetail();\n    if (paymentId.value !== current.payment.id)");
+    expect(detail).toContain("页面已切换到另一张付款申请，原操作已停止，请在当前单据重新办理。");
     expect(detail).toContain("await submitSpotProcurementPayment");
     expect(detail).not.toContain('header="编辑项目零星付款申请单"');
     expect(stepper).toContain("1. 付款与商户");

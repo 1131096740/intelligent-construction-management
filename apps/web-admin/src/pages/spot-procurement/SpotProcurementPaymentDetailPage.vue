@@ -225,6 +225,9 @@ function actionEnabled(key: string) {
 
 function showSuccess(message: string) { actionState.value = "success"; actionMessage.value = message; }
 function showError(error: unknown, fallback: string) { actionState.value = "error"; actionMessage.value = error instanceof Error ? error.message : fallback; }
+function stopStaleApplicationOperation() {
+  showError(new Error("页面已切换到另一张付款申请，原操作已停止，请在当前单据重新办理。"), "原付款申请操作已停止");
+}
 
 async function loadDetail() {
   const requestId = ++latestDetailRequestId;
@@ -367,6 +370,10 @@ async function saveApplicationDraft(
     applicationLocalDraftNotice.value = "";
     showSuccess("A5 付款申请草稿已保存，审批金额已按付款材料重新计算。");
     await loadDetail();
+    if (paymentId.value !== current.payment.id) {
+      stopStaleApplicationOperation();
+      return "stale" as const;
+    }
     if (exitAfterSave) {
       applicationVisible.value = false;
       await restoreApplicationTriggerFocus();
@@ -387,7 +394,13 @@ async function saveApplicationDraft(
 
 async function submitApplication(draftSnapshot: PaymentApplicationDraft) {
   const current = detail.value;
-  if (!current || await saveApplicationDraft(false, draftSnapshot) !== "server") return;
+  if (!current) return;
+  const saveResult = await saveApplicationDraft(false, draftSnapshot);
+  if (saveResult !== "server") return;
+  if (paymentId.value !== current.payment.id) {
+    stopStaleApplicationOperation();
+    return;
+  }
   actionBusy.value = true;
   try {
     await submitSpotProcurementPayment(current.payment.id);
@@ -706,6 +719,13 @@ watch(
           </t-button>
         </div>
       </header>
+      <t-alert
+        v-if="actionMessage"
+        :theme="actionState"
+        :message="actionMessage"
+        closable
+        @close="actionMessage = ''"
+      />
       <t-alert
         v-if="!isRealPayment"
         theme="warning"

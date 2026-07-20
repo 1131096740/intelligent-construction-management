@@ -565,7 +565,12 @@ test("locally resumes an incomplete A5 draft without inventing payment facts and
 test("fails closed when switching A5 payment routes and discards stale option responses", async ({ page }) => {
   const pendingAHistory: Route[] = [];
   const pendingAVat: Route[] = [];
+  const pendingADetailRefresh: Route[] = [];
+  let paymentADetailReads = 0;
+  let paymentAWrites = 0;
+  let paymentASubmits = 0;
   let paymentBWrites = 0;
+  let paymentBSubmits = 0;
   const draftDetail = (id: string, projectId: string, projectName: string, materialName: string) => {
     const base = paymentDetail();
     return {
@@ -595,16 +600,41 @@ test("fails closed when switching A5 payment routes and discards stale option re
   };
 
   await mockLogin(page);
-  await page.route("**/api/spot-procurement-payments/payment-A", (route) =>
-    route.fulfill({ contentType: "application/json", body: JSON.stringify(draftDetail("payment-A", "project-A", "项目A", "A材料")) })
-  );
+  await page.route("**/api/spot-procurement-payments/payment-A", (route) => {
+    paymentADetailReads += 1;
+    if (paymentADetailReads > 1) {
+      pendingADetailRefresh.push(route);
+      return;
+    }
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(draftDetail("payment-A", "project-A", "项目A", "A材料")) });
+  });
   await page.route("**/api/spot-procurement-payments/payment-B", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(draftDetail("payment-B", "project-B", "项目B", "B材料")) })
   );
+  await page.route("**/api/spot-procurement-payments/payment-A/draft", async (route) => {
+    paymentAWrites += 1;
+    await route.fulfill({ contentType: "application/json", body: "{}" });
+  });
+  await page.route("**/api/spot-procurement-payments/payment-A/submission", async (route) => {
+    paymentASubmits += 1;
+    await route.fulfill({ contentType: "application/json", body: "{}" });
+  });
   await page.route("**/api/spot-procurement-payments/payment-B/draft", async (route) => {
     paymentBWrites += 1;
     await route.fulfill({ contentType: "application/json", body: "{}" });
   });
+  await page.route("**/api/spot-procurement-payments/payment-B/submission", async (route) => {
+    paymentBSubmits += 1;
+    await route.fulfill({ contentType: "application/json", body: "{}" });
+  });
+  await page.route("**/api/files", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      id: "a-evidence-file", bucket: "private", objectKey: "test/a-evidence-file",
+      originalName: "A付款依据.pdf", mimeType: "application/pdf", sizeBytes: 1,
+      uploadedByUserId: "handler-1", createdAt: now
+    })
+  }));
   await page.route("**/api/spot-procurement-payments?*", async (route) => {
     const projectId = new URL(route.request().url()).searchParams.get("projectId");
     if (projectId === "project-A") {
@@ -649,12 +679,23 @@ test("fails closed when switching A5 payment routes and discards stale option re
   await page.locator(".payment-application-stepper__evidence input[type=file]").setInputFiles({
     name: "A付款依据.pdf", mimeType: "application/pdf", buffer: Buffer.from("A")
   });
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await page.getByRole("region", { name: "继续填写付款申请" }).getByRole("button", { name: "提交付款审批", exact: true }).click();
+  await expect.poll(() => paymentAWrites).toBe(1);
+  await expect.poll(() => pendingADetailRefresh.length).toBe(1);
 
   await page.evaluate(() => {
     history.pushState({}, "", "/零星材料付款/payment-B?tab=current");
     window.dispatchEvent(new PopStateEvent("popstate"));
   });
   await expect(page.getByText("PAY-B", { exact: true })).toBeVisible();
+  await pendingADetailRefresh[0]?.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify(draftDetail("payment-A", "project-A", "项目A", "A材料"))
+  });
+  await expect(page.getByText("页面已切换到另一张付款申请，原操作已停止，请在当前单据重新办理。", { exact: true })).toBeVisible();
+  expect(paymentASubmits).toBe(0);
+  expect(paymentBSubmits).toBe(0);
   await expect(page.getByRole("heading", { name: "继续填写付款申请", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "提交付款审批", exact: true }).click();
   await expect(page.getByPlaceholder("实际购买的商户")).toHaveValue("");
@@ -686,6 +727,8 @@ test("fails closed when switching A5 payment routes and discards stale option re
   await page.getByText("B税率", { exact: true }).click();
   await page.getByRole("button", { name: "保存并退出", exact: true }).click();
   expect(paymentBWrites).toBe(0);
+  expect(paymentASubmits).toBe(0);
+  expect(paymentBSubmits).toBe(0);
 });
 
 test("routes an enabled refund task to the real receipt workflow and preserves frozen archive facts", async ({ page }) => {
