@@ -163,7 +163,7 @@ test("岗位新增手动预览后原样提交快照与密码并双刷新", async
   expect(previewBodies).toHaveLength(0);
   await page.getByRole("button", { name: "预览新增影响" }).click();
   await expect(page.getByText("服务端判定可新增")).toBeVisible();
-  const passwordInput = page.getByPlaceholder("请输入当前登录密码");
+  const passwordInput = page.locator('input[placeholder="请输入当前登录密码"]:visible');
   await passwordInput.fill("  current password  ");
   await page.getByRole("button", { name: "确认新增该岗位" }).click();
   await expect(page.getByText("岗位已新增，组织目录和岗位数据预检已刷新。")).toBeVisible();

@@ -214,7 +214,7 @@ test("全局合同主管可管理场景和 exact 模板映射", async ({ page },
     reason: "常规主材采购且需要完整清单",
     priority: 10
   });
-  await expect(page.locator(".t-dialog")).toBeHidden();
+  await expect(page.locator(".t-dialog:visible")).toHaveCount(0);
 
   await page.setViewportSize({ width: 1100, height: 800 });
   await expect(page.getByRole("heading", { name: "材料采购·模板映射" })).toBeVisible();

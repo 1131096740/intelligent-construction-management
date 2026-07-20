@@ -10,12 +10,13 @@ const {
 } = require("./money-bigint-runner-runtime.cjs");
 const {
   DATABASE_NAME,
+  EXPECTED_MIGRATION_COUNT,
   assertDedicatedLocalDatabase
 } = require("./verify-draft-lifecycle.cjs");
 
 const root = path.resolve(__dirname, "../../..");
-const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
+const prismaCli = require.resolve("prisma/build/index.js");
 const commandRuntime = createCommandRuntime({ defaultCwd: root });
 const { command } = commandRuntime;
 
@@ -141,13 +142,13 @@ async function main() {
     console.log(`临时 PostgreSQL 16 已就绪：${containerName}（仅 127.0.0.1）`);
 
     await command(
-      pnpm,
-      ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"],
+      process.execPath,
+      [prismaCli, "migrate", "deploy", "--schema", path.join(root, "services/api/prisma/schema.prisma")],
       { env: runtimeEnv, forwardOutput: true, timeoutMs: 15 * 60 * 1000 }
     );
     await command(
-      pnpm,
-      ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "status"],
+      process.execPath,
+      [prismaCli, "migrate", "status", "--schema", path.join(root, "services/api/prisma/schema.prisma")],
       { env: runtimeEnv, forwardOutput: true }
     );
     await command(process.execPath, [path.join(root, "services/api/prisma/seed.cjs")], {
@@ -161,7 +162,7 @@ async function main() {
       [path.join(root, "services/api/prisma/verify-draft-lifecycle.cjs"), "--probe-rollback"],
       { env: runtimeEnv, forwardOutput: true }
     );
-    console.log("草稿生命周期 72 迁移与本地回滚不变量验证通过");
+    console.log(`草稿生命周期 ${EXPECTED_MIGRATION_COUNT} 迁移与本地回滚不变量验证通过`);
   } finally {
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);

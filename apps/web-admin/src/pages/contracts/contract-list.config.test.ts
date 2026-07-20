@@ -47,6 +47,8 @@ describe("contract ledger page configuration", () => {
     expect(source).toContain("历史已保留");
     expect(source).not.toContain("查看历史");
     expect(source).not.toMatch(/activeTab\.value === "ended"[\s\S]{0,160}router\.push/);
+    expect(source).toContain("activeTab === 'ended' && row.copyAvailable");
+    expect(source).toContain("copyAbandonedContractDraft");
   });
 
   it("defaults an unqualified ledger visit to the formal ledger", () => {

@@ -600,11 +600,11 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
   await expect(unselectedCheckbox).not.toBeChecked();
 
   await normalCheckbox.click({ force: true });
-  await page.getByPlaceholder("本期数量").fill("9");
-  await page.getByPlaceholder("本期数量").press("Tab");
+  await page.getByPlaceholder("本期数量", { exact: true }).fill("9");
+  await page.getByPlaceholder("本期数量", { exact: true }).press("Tab");
   await normalCheckbox.click({ force: true });
   await normalCheckbox.click({ force: true });
-  await expect(page.getByPlaceholder("本期数量")).toHaveValue("");
+  await expect(page.getByPlaceholder("本期数量", { exact: true })).toHaveValue("");
   await normalCheckbox.click({ force: true });
 
   await page.getByRole("button", { name: "粘贴多行" }).click();
@@ -670,7 +670,7 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
   await expect(manualCheckbox).toBeChecked();
   await expect(unselectedCheckbox).not.toBeChecked();
   await expect(page.getByPlaceholder("本期数量").first()).toHaveValue("3");
-  await expect(page.getByPlaceholder("金额（元）")).toHaveValue("400.00");
+  await expect(page.getByPlaceholder("金额（元）", { exact: true })).toHaveValue("400.00");
   await expect(page.getByPlaceholder("调整名称")).toHaveValue("Excel 质量扣款");
   await expect(page.getByPlaceholder("可正可负（元）")).toHaveValue("-50.00");
   await page

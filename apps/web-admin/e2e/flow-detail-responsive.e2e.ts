@@ -244,7 +244,7 @@ test("普通表单、费用详情、项目概览和设置页在六档桌面窗�
 
     await page.goto("/项目支出/project-responsive/expense-responsive");
     await expect(page.getByRole("heading", { name: "项目支出审批详情" })).toBeVisible();
-    await expect(page.getByText("ZC-20260714-001", { exact: true })).toBeVisible();
+    await expect(page.getByText("ZC-20260714-001", { exact: true }).first()).toBeVisible();
     await assertPageShell(page);
     await page.screenshot({
       path: path.join(screenshotDir, `project-expense-detail-${viewport.width}x${viewport.height}.png`),

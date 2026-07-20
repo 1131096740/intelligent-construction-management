@@ -24,7 +24,7 @@ async function installSession(page: Page) {
         name: "生命周期验收用户",
         phone: "13900000000",
         mustChangePassword: false,
-        roleKeys: ["contract_director", "finance_staff", "material_staff"],
+        roleKeys: ["contract_director", "contract_staff", "finance_staff", "material_staff"],
         globalRoleKeys: ["contract_director", "finance_staff"]
       },
       tokens: { accessToken: "draft-governance-access", refreshToken: "draft-governance-refresh", expiresIn: 900 }
@@ -551,8 +551,16 @@ test("合同工作台丢弃未保存修改后直接删除服务端草稿", async
     .toBe("/合同管理?view=ended");
 });
 
-test("合同已放弃记录只在已结束视图只读展示", async ({ page }, testInfo) => {
+test("合同已放弃记录可携带保存时间复制为全新草稿", async ({ page }, testInfo) => {
   await installSession(page);
+  let copyBody: Record<string, unknown> | null = null;
+  await page.route("**/api/contracts/contract-version-abandoned-1/copies", (route) => {
+    copyBody = route.request().postDataJSON() as Record<string, unknown>;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ contract: { id: "contract-copy-1" }, version: { id: "contract-version-copy-1" } })
+    });
+  });
   await page.route("**/api/contracts/lifecycle-ledger?*", (route) => {
     const view = new URL(route.request().url()).searchParams.get("view") ?? "formal_ledger";
     const endedRows = view === "ended" ? [{
@@ -576,7 +584,8 @@ test("合同已放弃记录只在已结束视图只读展示", async ({ page }, 
       draftRevision: 3,
       lifecycleUpdatedAt: savedAt,
       abandonedAt: savedAt,
-      abandonReason: "供应计划取消"
+      abandonReason: "供应计划取消",
+      copyAvailable: true
     }] : [];
     return route.fulfill({
       contentType: "application/json",
@@ -592,7 +601,7 @@ test("合同已放弃记录只在已结束视图只读展示", async ({ page }, 
   await page.goto("/合同管理?view=ended");
   await expect(page.getByText("HT-END-001", { exact: true })).toBeVisible();
   await expect(page.getByText("供应计划取消", { exact: true })).toBeVisible();
-  await expect(page.getByText("历史已保留", { exact: true })).toBeVisible();
+  await expect(page.getByText("复制为新草稿", { exact: true })).toBeVisible();
   await expect(page.getByText("进入工作台", { exact: true })).toHaveCount(0);
 
   await page.setViewportSize({ width: 900, height: 768 });
@@ -602,4 +611,62 @@ test("合同已放弃记录只在已结束视图只读展示", async ({ page }, 
     path: path.join(process.env.UI_RESPONSIVE_SCREENSHOT_DIR ?? testInfo.outputDir, "draft-lifecycle-contract-ended-900x768.png"),
     fullPage: true
   });
+
+  await page.getByText("复制为新草稿", { exact: true }).click();
+  await expect.poll(() => copyBody).toEqual({ expectedUpdatedAt: savedAt });
+  await expect.poll(() => decodeURIComponent(new URL(page.url()).pathname + new URL(page.url()).search))
+    .toBe("/合同工作台/contract-copy-1?versionId=contract-version-copy-1");
+});
+
+test("结算已放弃记录可携带保存时间复制为全新草稿", async ({ page }) => {
+  await installSession(page);
+  let copyBody: Record<string, unknown> | null = null;
+  await page.route("**/api/projects/project-1/settlement-drafts/settlement-draft-abandoned-1/copies", (route) => {
+    copyBody = route.request().postDataJSON() as Record<string, unknown>;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ id: "settlement-draft-copy-1" })
+    });
+  });
+  await page.route("**/api/settlements/lifecycle-ledger?*", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      rows: [{
+        id: "settlement-draft-abandoned-1",
+        projectId: "project-1",
+        settlementNo: "JSC-END-001",
+        contractNo: "HT-2026-001",
+        project: "一号项目",
+        period: "2026-07",
+        amount: "—",
+        paymentTermsVersion: "—",
+        currentNode: "已放弃",
+        nodeTone: "default",
+        ownerDepartment: "合同部",
+        pendingOwner: "本人",
+        stalledFor: "—",
+        returnReason: "重复结算草稿",
+        nextAction: "查看历史",
+        updatedAt: "2026-07-20",
+        lifecycleKind: "approval_draft",
+        revision: 4,
+        lifecycleUpdatedAt: savedAt,
+        abandonedAt: savedAt,
+        abandonReason: "重复结算草稿",
+        copyAvailable: true
+      }],
+      view: "ended",
+      summary: { formal_ledger: 0, my_drafts: 0, returned_for_revision: 0, ended: 1 },
+      meta: { page: 1, pageSize: 20, total: 1, totalPages: 1 }
+    })
+  }));
+
+  await login(page);
+  await page.goto("/结算管理?view=ended");
+  await expect(page.getByText("JSC-END-001", { exact: true })).toBeVisible();
+  await expect(page.getByText("重复结算草稿", { exact: true })).toBeVisible();
+  await page.getByText("复制为新草稿", { exact: true }).click();
+  await expect.poll(() => copyBody).toEqual({ expectedUpdatedAt: savedAt });
+  await expect.poll(() => decodeURIComponent(new URL(page.url()).pathname + new URL(page.url()).search))
+    .toBe("/结算工作台?project=project-1&draftId=settlement-draft-copy-1");
 });

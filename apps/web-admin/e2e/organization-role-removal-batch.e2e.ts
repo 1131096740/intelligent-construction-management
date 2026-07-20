@@ -226,7 +226,7 @@ test("批量撤岗只手动预览累计阻断且切换目标清空结果", async
   await expect(page.getByText("合同审批", { exact: true })).toBeVisible();
   await expect(page.getByText("项目经理审批", { exact: true })).toBeVisible();
   await expect(page.getByText(combinedSnapshotHash)).toBeVisible();
-  await expect(page.getByPlaceholder("请输入当前登录密码")).toHaveCount(0);
+  await expect(page.locator('input[placeholder="请输入当前登录密码"]:visible')).toHaveCount(0);
   expect(previewBodies).toEqual([
     {
       targets: [

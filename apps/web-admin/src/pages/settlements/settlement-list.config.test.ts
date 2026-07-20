@@ -37,11 +37,13 @@ describe("settlement ledger page configuration", () => {
     expect(source).not.toContain("fetchProjects");
   });
 
-  it("shows ended reasons without exposing an editable draft entry", () => {
+  it("keeps ended history read-only while offering server-advertised copy as a new draft", () => {
     const source = readFileSync(new URL("./SettlementListPage.vue", import.meta.url), "utf8");
     expect(source).toContain("row.abandonReason || '—'");
     expect(source).toContain("历史已保留");
-    expect(source).toContain('v-if="activeView === \'ended\'"');
+    expect(source).toContain("activeView === 'ended' && row.copyAvailable");
+    expect(source).toContain("复制为新草稿");
+    expect(source).toContain("copyAbandonedSettlementDraft");
   });
 
   it("labels returned formal records as detail processing rather than draft editing", () => {
