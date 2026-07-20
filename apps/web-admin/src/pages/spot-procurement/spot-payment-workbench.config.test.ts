@@ -3,6 +3,7 @@ import {
   paymentTaskRoute,
   selectSpotPaymentTaskCards,
   spotPaymentTaskPresentation,
+  spotPaymentStatusSemantic,
   spotPaymentLedgerGroups,
   spotPaymentWorkbenchViews
 } from "./spot-payment-workbench.config";
@@ -60,19 +61,41 @@ describe("spot payment workbench configuration", () => {
 
   it("shares fail-closed labels, actionability and semantics across task surfaces", () => {
     expect(spotPaymentTaskPresentation({
-      key: "complete_payment_draft", enabled: true, scope: "personal"
+      key: "complete_payment_draft", enabled: true, scope: "personal", priority: 300
     })).toEqual({ actionLabel: "填写", actionable: true, semantic: "required" });
     expect(spotPaymentTaskPresentation({
-      key: "review_payment", enabled: true, scope: "personal"
+      key: "review_payment", enabled: true, scope: "personal", priority: 300
+    })).toEqual({ actionLabel: "处理", actionable: true, semantic: "required" });
+    expect(spotPaymentTaskPresentation({
+      key: "record_execution", enabled: true, scope: "personal", priority: 300
+    })).toEqual({ actionLabel: "处理", actionable: true, semantic: "required" });
+    expect(spotPaymentTaskPresentation({
+      key: "complete_payer", enabled: true, scope: "shared", priority: 200
     })).toEqual({ actionLabel: "处理", actionable: true, semantic: "progress" });
     expect(spotPaymentTaskPresentation({
-      key: "view_only", enabled: true, scope: "personal"
+      key: "record_refund", enabled: true, scope: "personal", priority: 400
+    })).toEqual({ actionLabel: "处理", actionable: true, semantic: "danger" });
+    expect(spotPaymentTaskPresentation({
+      key: "view_only", enabled: true, scope: "personal", priority: 400
+    })).toEqual({ actionLabel: "查看", actionable: true, semantic: "danger" });
+    expect(spotPaymentTaskPresentation({
+      key: "unknown_task", enabled: true, scope: "shared", priority: 400
     })).toEqual({ actionLabel: "查看", actionable: true, semantic: "neutral" });
     expect(spotPaymentTaskPresentation({
-      key: "unknown_task", enabled: true, scope: "shared"
-    })).toEqual({ actionLabel: "查看", actionable: true, semantic: "neutral" });
-    expect(spotPaymentTaskPresentation({
-      key: "record_execution", enabled: false, scope: "personal"
+      key: "record_execution", enabled: false, scope: "personal", priority: 400
     })).toEqual({ actionLabel: "查看", actionable: false, semantic: "neutral" });
+  });
+
+  it("maps payment status independently from the current task", () => {
+    expect(spotPaymentStatusSemantic("draft")).toBe("neutral");
+    expect(spotPaymentStatusSemantic("approval_pending")).toBe("progress");
+    expect(spotPaymentStatusSemantic("approved_pending_payment")).toBe("progress");
+    expect(spotPaymentStatusSemantic("partially_paid")).toBe("progress");
+    expect(spotPaymentStatusSemantic("paid")).toBe("success");
+    expect(spotPaymentStatusSemantic("settled")).toBe("success");
+    for (const status of ["returned", "rejected", "withdrawn", "voided", "invalidated"]) {
+      expect(spotPaymentStatusSemantic(status)).toBe("danger");
+    }
+    expect(spotPaymentStatusSemantic("unknown_status")).toBe("neutral");
   });
 });

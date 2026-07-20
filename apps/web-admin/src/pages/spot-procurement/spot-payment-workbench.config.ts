@@ -6,11 +6,17 @@ export type SpotPaymentTaskRoute =
   | "refund"
   | "readonly";
 
-export type SpotPaymentTaskSemantic = "neutral" | "progress" | "required";
+export type SpotPaymentTaskSemantic =
+  | "neutral"
+  | "progress"
+  | "required"
+  | "success"
+  | "danger";
 
 export interface SpotPaymentTaskPresentationInput {
   key: string;
   enabled: boolean;
+  priority: 400 | 300 | 200 | 0;
   scope: "personal" | "shared" | "none";
 }
 
@@ -64,11 +70,40 @@ export function spotPaymentTaskPresentation(
 ): SpotPaymentTaskPresentation {
   const route = paymentTaskRoute(task.key);
   const canHandle = task.enabled && task.scope !== "none" && route !== "readonly";
+  const actionable = task.enabled;
+  if (task.enabled && task.scope !== "none" && task.key === "view_only" && task.priority === 400) {
+    return { actionLabel: "查看", actionable, semantic: "danger" };
+  }
   if (!canHandle) {
-    return { actionLabel: "查看", actionable: task.enabled, semantic: "neutral" };
+    return { actionLabel: "查看", actionable, semantic: "neutral" };
   }
-  if (route === "edit-draft") {
-    return { actionLabel: "填写", actionable: true, semantic: "required" };
+  const actionLabel = route === "edit-draft" ? "填写" : "处理";
+  if (task.priority === 400) return { actionLabel, actionable, semantic: "danger" };
+  if (task.priority === 300 && task.scope === "personal") {
+    return { actionLabel, actionable, semantic: "required" };
   }
-  return { actionLabel: "处理", actionable: true, semantic: "progress" };
+  if (task.priority === 200 && task.scope === "shared") {
+    return { actionLabel, actionable, semantic: "progress" };
+  }
+  return { actionLabel, actionable, semantic: "neutral" };
+}
+
+export function spotPaymentStatusSemantic(status: string): SpotPaymentTaskSemantic {
+  switch (status) {
+    case "approval_pending":
+    case "approved_pending_payment":
+    case "partially_paid":
+      return "progress";
+    case "paid":
+    case "settled":
+      return "success";
+    case "returned":
+    case "rejected":
+    case "withdrawn":
+    case "voided":
+    case "invalidated":
+      return "danger";
+    default:
+      return "neutral";
+  }
 }

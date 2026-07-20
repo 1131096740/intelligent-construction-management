@@ -286,6 +286,9 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   }
   await expect(page.getByText("收货与发票", { exact: true })).toHaveCount(0);
   await expect(page.getByText("转商户余额", { exact: true })).toHaveCount(0);
+  const paymentLedgerRow = page.getByRole("row").filter({ hasText: "LXFK-E2E-001" });
+  await expect(paymentLedgerRow.locator(".business-status-text--neutral")).toHaveCount(1);
+  await expect(paymentLedgerRow.locator(".business-status-text--required")).toHaveCount(1);
   await expect(page.locator(".payment-task-queue").getByRole("button", { name: "填写", exact: true })).toBeVisible();
   await page.screenshot({
     path: path.join(testInfo.outputDir, "spot-procurement-payment-workbench-mine-1366x768.png"),
@@ -403,6 +406,9 @@ test("keeps only the latest payment workbench request when views resolve out of 
   await expect(page.getByRole("button", { name: "全部申请 1", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "处理", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "查看", exact: true })).toHaveCount(2);
+  await expect(page.locator(".payment-task-card .business-status-text--neutral")).toHaveCount(1);
+  const unknownTaskRow = page.getByRole("row").filter({ hasText: "NEW-ALL" });
+  await expect(unknownTaskRow.locator(".business-status-text--neutral")).toHaveCount(1);
 
   await page.getByRole("button", { name: "待我办理 1", exact: true }).click();
   await expect.poll(() => pendingRequests.length).toBe(3);

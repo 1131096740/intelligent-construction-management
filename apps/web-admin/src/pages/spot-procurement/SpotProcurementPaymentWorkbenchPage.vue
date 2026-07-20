@@ -15,7 +15,10 @@ import BusinessTableToolbar from "../../components/BusinessTableToolbar.vue";
 import { centsTextToYuanText } from "../../lib/money";
 import type { SpotProcurementPaymentStatus } from "@jiangkong/shared-domain";
 import PaymentTaskQueue from "./components/PaymentTaskQueue.vue";
-import { spotPaymentTaskPresentation } from "./spot-payment-workbench.config";
+import {
+  spotPaymentStatusSemantic,
+  spotPaymentTaskPresentation
+} from "./spot-payment-workbench.config";
 
 const router = useRouter();
 const loading = ref(false);
@@ -73,14 +76,6 @@ function money(cents: string | null | undefined) {
   } catch {
     return "金额异常";
   }
-}
-
-function statusSemantic(status: SpotProcurementPaymentStatus) {
-  if (status === "paid" || status === "settled") return "success" as const;
-  if (["approval_pending", "approved_pending_payment", "partially_paid"].includes(status)) return "progress" as const;
-  if (["rejected", "voided", "invalidated"].includes(status)) return "danger" as const;
-  if (status === "draft" || status === "returned") return "required" as const;
-  return "neutral" as const;
 }
 
 function taskPresentation(row: SpotProcurementPaymentListItemReadModel) {
@@ -306,7 +301,7 @@ onMounted(() => void Promise.all([loadProjects(), loadPayments()]));
           <template #status="{ row }">
             <BusinessStatusText
               :text="row.statusLabel"
-              :semantic="statusSemantic(row.status)"
+              :semantic="spotPaymentStatusSemantic(row.status)"
             />
           </template>
           <template #task="{ row }">
