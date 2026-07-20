@@ -28,10 +28,7 @@ import { CORE_ARCHIVE_UPLOAD_POLICY } from "../../components/file-upload-policy.
 import { centsTextToYuanText } from "../../lib/money";
 import ReceiptLineEditor from "./components/ReceiptLineEditor.vue";
 import ReceiptPhotoUploader from "./components/ReceiptPhotoUploader.vue";
-import {
-  requiredPositiveYuanCents,
-  validateThenUpload
-} from "./spot-procurement-write-validation";
+import { prepareSpotRefundWithUpload } from "./spot-procurement-write-validation";
 
 const route = useRoute();
 const receipt = ref<SpotProcurementReceiptDetailReadModel | null>(null);
@@ -77,11 +74,6 @@ function money(value: string | null | undefined) {
 
 function selectedUploadFiles(files: UploadFile[]) {
   return files.map((file) => file.raw).filter((file): file is File => file instanceof File);
-}
-
-function createIdempotencyKey(prefix: string) {
-  if (!globalThis.crypto?.randomUUID) throw new Error("当前浏览器无法生成安全幂等键，请升级浏览器后重试");
-  return `${prefix}-${globalThis.crypto.randomUUID()}`;
 }
 
 function invoiceLabel(invoice: Record<string, unknown>) {
@@ -204,20 +196,19 @@ function confirmDiscrepancy() {
 async function recordRefund() {
   await act(async () => {
     const file = selectedUploadFiles(refundFiles.value)[0];
-    if (!file) throw new Error("请上传退款到账凭证");
-    const { validatedValue: amountCents, uploads } = await validateThenUpload(
-      () => requiredPositiveYuanCents(refundForm.amountYuan, "退款到账金额"),
-      [file],
+    const payload = await prepareSpotRefundWithUpload(
+      {
+        amountYuan: refundForm.amountYuan,
+        receivedAt: refundForm.receivedAt,
+        refundMethod: refundForm.refundMethod,
+        randomUUID: globalThis.crypto?.randomUUID
+          ? () => globalThis.crypto.randomUUID()
+          : null
+      },
+      file,
       uploadPrivateFile
     );
-    const voucher = uploads[0]!;
-    await recordSpotProcurementRefund(procurementId.value, {
-      amountCents,
-      receivedAt: refundForm.receivedAt,
-      refundMethod: refundForm.refundMethod,
-      voucherFileId: voucher.id,
-      idempotencyKey: createIdempotencyKey("spot-refund")
-    });
+    await recordSpotProcurementRefund(procurementId.value, payload);
   }, "退款到账事实和凭证已登记");
 }
 

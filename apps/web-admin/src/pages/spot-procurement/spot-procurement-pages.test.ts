@@ -2,9 +2,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import {
-  requiredPositiveYuanCents,
-  validateSpotPaymentLines,
-  validateThenUpload
+  prepareSpotExecutionWithUploads,
+  prepareSpotPaymentDraftWithUploads,
+  prepareSpotRefundWithUpload,
+  type SpotPaymentDraftPreparationInput
 } from "./spot-procurement-write-validation";
 
 function pageSource(name: string) {
@@ -13,6 +14,51 @@ function pageSource(name: string) {
     "utf8"
   );
 }
+
+function validPaymentDraft(
+  overrides: Partial<SpotPaymentDraftPreparationInput> = {}
+): SpotPaymentDraftPreparationInput {
+  return {
+    paymentType: "company_direct",
+    merchantName: "昆明建材商行",
+    payeeName: "昆明建材商行",
+    merchantPayeeMismatchNote: null,
+    paymentLines: [
+      {
+        procurementLineId: "line-1",
+        paymentQuantity: "1.00",
+        unitPrice: "3.50",
+        expectedInvoiceCondition: "no_invoice"
+      }
+    ],
+    paymentMethods: ["bank_transfer"],
+    channels: [
+      {
+        channelType: "bank_transfer",
+        accountName: "昆明建材商行",
+        accountNumber: "622200001",
+        bankName: "建设银行",
+        isPrimary: true
+      }
+    ],
+    ...overrides
+  };
+}
+
+const validExecution = {
+  amountYuan: "1.00",
+  paidAt: "2020-01-01T00:00:00.000Z",
+  paymentMethod: "bank_transfer",
+  paymentChannelId: "channel-1",
+  randomUUID: () => "uuid-1"
+};
+
+const validRefund = {
+  amountYuan: "1.00",
+  receivedAt: "2020-01-01",
+  refundMethod: "bank_transfer",
+  randomUUID: () => "uuid-1"
+};
 
 describe("spot procurement web pages", () => {
   it("connects both workbenches to real list endpoints without sample fallback", () => {
@@ -85,11 +131,8 @@ describe("spot procurement web pages", () => {
       "本次付款登记参数已安全保留"
     );
     expect(detail).toContain("await loadDetail()");
-    expect(detail).toContain(
-      "requiredPositiveYuanCents(executionForm.amountYuan"
-    );
-    expect(detail).toContain("validateThenUpload(");
-    expect(detail).toContain("toIsoDateTime(executionForm.paidAt)");
+    expect(detail).toContain("prepareSpotExecutionWithUploads(");
+    expect(detail).toContain("prepareSpotPaymentDraftWithUploads(");
   });
 
   it.each([
@@ -97,14 +140,38 @@ describe("spot procurement web pages", () => {
     ["含税或无票单价", { paymentQuantity: "1.00", unitPrice: "3.333" }]
   ])("does not upload A5 attachments when %s has three decimal places", async (_label, line) => {
     const upload = vi.fn(async () => ({ id: "uploaded-file" }));
+    const draft = validPaymentDraft();
 
     await expect(
-      validateThenUpload(
-        () => validateSpotPaymentLines([line]),
+      prepareSpotPaymentDraftWithUploads(
+        {
+          ...draft,
+          paymentLines: [{ ...draft.paymentLines[0]!, ...line }]
+        },
+        [],
         [{ name: "付款依据.pdf" }],
+        "merchant_quote",
         upload
       )
     ).rejects.toThrow("最多 2 位小数");
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it("does not upload A5 attachments when a merchant/payee mismatch note is blank", async () => {
+    const upload = vi.fn(async () => ({ id: "uploaded-file" }));
+
+    await expect(
+      prepareSpotPaymentDraftWithUploads(
+        validPaymentDraft({
+          payeeName: "张三",
+          merchantPayeeMismatchNote: "   "
+        }),
+        [],
+        [{ name: "付款依据.pdf" }],
+        "merchant_quote",
+        upload
+      )
+    ).rejects.toThrow("商户与收款对象不一致说明不能为空");
     expect(upload).not.toHaveBeenCalled();
   });
 
@@ -114,8 +181,8 @@ describe("spot procurement web pages", () => {
       const upload = vi.fn(async () => ({ id: "voucher-file" }));
 
       await expect(
-        validateThenUpload(
-          () => requiredPositiveYuanCents(amountYuan, "本次实际付款金额"),
+        prepareSpotExecutionWithUploads(
+          { ...validExecution, amountYuan },
           [{ name: "付款凭证.png" }],
           upload
         )
@@ -124,15 +191,34 @@ describe("spot procurement web pages", () => {
     }
   );
 
+  it.each([
+    ["invalid paidAt", { paidAt: "invalid" }],
+    ["future paidAt", { paidAt: "2999-01-01T00:00:00.000Z" }],
+    ["invalid method", { paymentMethod: "wire" }],
+    ["missing channel", { paymentChannelId: "   " }],
+    ["missing UUID", { randomUUID: null }]
+  ])("does not upload an execution voucher for %s", async (_label, override) => {
+    const upload = vi.fn(async () => ({ id: "voucher-file" }));
+
+    await expect(
+      prepareSpotExecutionWithUploads(
+        { ...validExecution, ...override },
+        [{ name: "付款凭证.png" }],
+        upload
+      )
+    ).rejects.toThrow();
+    expect(upload).not.toHaveBeenCalled();
+  });
+
   it.each(["3.333", "0", "0.00", "invalid"])(
     "does not upload a refund voucher for invalid or zero yuan input %s",
     async (amountYuan) => {
       const upload = vi.fn(async () => ({ id: "refund-file" }));
 
       await expect(
-        validateThenUpload(
-          () => requiredPositiveYuanCents(amountYuan, "退款到账金额"),
-          [{ name: "退款凭证.png" }],
+        prepareSpotRefundWithUpload(
+          { ...validRefund, amountYuan },
+          { name: "退款凭证.png" },
           upload
         )
       ).rejects.toThrow("退款到账金额必须是大于 0、最多 2 位小数的金额");
@@ -140,20 +226,66 @@ describe("spot procurement web pages", () => {
     }
   );
 
-  it("uploads only after a valid positive yuan amount becomes integer cents", async () => {
-    const upload = vi.fn(async () => ({ id: "voucher-file" }));
+  it.each([
+    ["invalid receivedAt", { receivedAt: "invalid" }],
+    ["future receivedAt", { receivedAt: "2999-01-01" }],
+    ["invalid method", { refundMethod: "wire" }],
+    ["missing UUID", { randomUUID: null }]
+  ])("does not upload a refund voucher for %s", async (_label, override) => {
+    const upload = vi.fn(async () => ({ id: "refund-file" }));
 
     await expect(
-      validateThenUpload(
-        () => requiredPositiveYuanCents("1.00", "本次实际付款金额"),
-        [{ name: "付款凭证.png" }],
+      prepareSpotRefundWithUpload(
+        { ...validRefund, ...override },
+        { name: "退款凭证.png" },
         upload
       )
-    ).resolves.toEqual({
-      validatedValue: "100",
-      uploads: [{ id: "voucher-file" }]
+    ).rejects.toThrow();
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it("uploads once for each fully prepared valid payload", async () => {
+    const draftUpload = vi.fn(async () => ({ id: "draft-file" }));
+    const executionUpload = vi.fn(async () => ({ id: "voucher-file" }));
+    const refundUpload = vi.fn(async () => ({ id: "refund-file" }));
+
+    await expect(
+      prepareSpotPaymentDraftWithUploads(
+        validPaymentDraft(),
+        [],
+        [{ name: "付款依据.pdf" }],
+        "merchant_quote",
+        draftUpload
+      )
+    ).resolves.toMatchObject({
+      paymentType: "company_direct",
+      attachments: [{ fileId: "draft-file", category: "merchant_quote" }]
     });
-    expect(upload).toHaveBeenCalledTimes(1);
+    await expect(
+      prepareSpotExecutionWithUploads(
+        validExecution,
+        [{ name: "付款凭证.png" }],
+        executionUpload
+      )
+    ).resolves.toMatchObject({
+      amountCents: "100",
+      idempotencyKey: "spot-payment-uuid-1",
+      voucherFileIds: ["voucher-file"]
+    });
+    await expect(
+      prepareSpotRefundWithUpload(
+        validRefund,
+        { name: "退款凭证.png" },
+        refundUpload
+      )
+    ).resolves.toMatchObject({
+      amountCents: "100",
+      idempotencyKey: "spot-refund-uuid-1",
+      voucherFileId: "refund-file"
+    });
+    expect(draftUpload).toHaveBeenCalledTimes(1);
+    expect(executionUpload).toHaveBeenCalledTimes(1);
+    expect(refundUpload).toHaveBeenCalledTimes(1);
   });
 
   it("exposes the existing return and procurement revision workflows", () => {
@@ -224,10 +356,7 @@ describe("spot procurement web pages", () => {
     expect(receipt).toContain("revokeSpotProcurementReceiptReview");
     expect(receipt).toContain("createSpotProcurementDiscrepancy");
     expect(receipt).toContain("recordSpotProcurementRefund");
-    expect(receipt).toContain(
-      "requiredPositiveYuanCents(refundForm.amountYuan"
-    );
-    expect(receipt).toContain("validateThenUpload(");
+    expect(receipt).toContain("prepareSpotRefundWithUpload(");
     expect(receipt).toContain("appendSpotProcurementPaymentInvoice");
     expect(receipt).toContain("委托");
     expect(receipt).toContain("待财务登记首笔实际付款后开放收货");

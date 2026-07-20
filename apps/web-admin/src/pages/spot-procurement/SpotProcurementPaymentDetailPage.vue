@@ -33,9 +33,8 @@ import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { centsTextToYuanText } from "../../lib/money";
 import PaymentCompositionCard from "./components/PaymentCompositionCard.vue";
 import {
-  requiredPositiveYuanCents,
-  validateSpotPaymentLines,
-  validateThenUpload
+  prepareSpotExecutionWithUploads,
+  prepareSpotPaymentDraftWithUploads
 } from "./spot-procurement-write-validation";
 
 type ConfirmationKind = "review_approve" | "review_reject" | "review_return" | "withdraw" | "void" | "download" | "execution";
@@ -270,37 +269,24 @@ async function saveDraft() {
   if (!current) return;
   actionBusy.value = true; editError.value = "";
   try {
-    const merchantName = requiredText(editForm.merchantName, "实际商户名称");
-    const payeeName = editForm.paymentType === "handler_reimbursement" ? current.payment.handler.name : requiredText(editForm.payeeName, "收款对象");
-    if (!editForm.paymentMethods.length) throw new Error("请至少选择一种拟付款方式");
     const lines = editForm.lines.filter((line) => line.included);
-    if (!lines.length) throw new Error("请至少选择一项付款材料");
-    if (editForm.channels.filter((channel) => channel.isPrimary).length !== 1) throw new Error("请且仅选择一个主收款渠道");
-    if (editForm.channels.some((channel) => !editForm.paymentMethods.includes(channel.channelType))) {
-      throw new Error("拟付款方式必须包含已填写的收款渠道方式");
-    }
-    const candidatePaymentLines = lines.map((line) => ({
-      procurementLineId: line.procurementLineId,
-      paymentQuantity: line.paymentQuantity,
-      unitPrice: line.unitPrice,
-      expectedInvoiceCondition: line.expectedInvoiceCondition,
-      ...(line.expectedInvoiceCondition === "no_invoice" ? {} : { vatRateOptionId: requiredText(line.vatRateOptionId, `${line.materialName}税率`) })
-    }));
     const retained = current.evidenceFiles.filter((file) => retainedAttachmentIds.value.includes(file.fileId) && file.status === "active").map((file) => ({ fileId: file.fileId, category: normalizeAttachmentCategory(file.purpose) }));
-    const { validatedValue: paymentLines, uploads } = await validateThenUpload(
-      () => validateSpotPaymentLines(candidatePaymentLines),
+    const payload = await prepareSpotPaymentDraftWithUploads(
+      {
+        paymentType: editForm.paymentType,
+        merchantName: editForm.merchantName,
+        payeeName: editForm.paymentType === "handler_reimbursement" ? current.payment.handler.name : editForm.payeeName,
+        merchantPayeeMismatchNote: editForm.merchantPayeeMismatchNote,
+        paymentLines: lines,
+        paymentMethods: editForm.paymentMethods,
+        channels: editForm.channels
+      },
+      retained,
       selectedUploadFiles(attachmentFiles.value),
+      editForm.attachmentCategory,
       uploadPrivateFile
     );
-    const uploaded = uploads.map((file) => ({ fileId: file.id, category: editForm.attachmentCategory }));
-    await updateSpotProcurementPaymentDraft(current.payment.id, {
-      paymentType: editForm.paymentType, merchantName, payeeName,
-      merchantPayeeMismatchNote: editForm.paymentType === "company_direct" && merchantName !== payeeName ? requiredText(editForm.merchantPayeeMismatchNote, "商户与收款对象不一致说明") : null,
-      paymentLines,
-      paymentMethods: editForm.paymentMethods,
-      channels: editForm.channels.map((channel) => ({ channelType: channel.channelType, accountName: optionalText(channel.accountName), accountNumber: optionalText(channel.accountNumber), bankName: optionalText(channel.bankName), note: optionalText(channel.note), isPrimary: channel.isPrimary })),
-      attachments: [...retained, ...uploaded]
-    });
+    await updateSpotProcurementPaymentDraft(current.payment.id, payload);
     editVisible.value = false; showSuccess("A5 付款申请草稿已保存，审批金额已按付款材料重新计算。"); await loadDetail();
   } catch (error) { editError.value = error instanceof Error ? error.message : "付款草稿保存失败"; }
   finally { actionBusy.value = false; }
@@ -401,28 +387,29 @@ async function confirmAction(values: { reason: string; password: string }) {
 }
 
 async function prepareExecutionAttempt(): Promise<ExecutionAttempt> {
-  const paidAt = toIsoDateTime(executionForm.paidAt);
-  const paymentChannelId = requiredText(executionForm.paymentChannelId, "实际付款渠道");
   const files = selectedUploadFiles(voucherFiles.value);
-  if (!files.length) throw new Error(executionForm.paymentMethod === "cash" ? "请上传现金收据" : "请上传成功付款凭证");
-  const { validatedValue: amountCents, uploads } = await validateThenUpload(
-    () => requiredPositiveYuanCents(executionForm.amountYuan, "本次实际付款金额"),
+  return prepareSpotExecutionWithUploads(
+    {
+      amountYuan: executionForm.amountYuan,
+      paidAt: executionForm.paidAt,
+      paymentMethod: executionForm.paymentMethod,
+      paymentChannelId: executionForm.paymentChannelId,
+      randomUUID: globalThis.crypto?.randomUUID
+        ? () => globalThis.crypto.randomUUID()
+        : null
+    },
     files,
-    uploadPrivateFile
+    uploadPrivateFile,
+    executionForm.paymentMethod === "cash" ? "请上传现金收据" : "请上传成功付款凭证"
   );
-  const voucherFileIds = uploads.map((file) => file.id);
-  return { idempotencyKey: createIdempotencyKey(), amountCents, paidAt, paymentMethod: executionForm.paymentMethod, paymentChannelId, voucherFileIds };
 }
 
 function runPrimaryAction() { const key = primaryAction.value?.key; if (key === "submit_approval") void submitPayment(); else if (key === "review_approval") openConfirmation("review_approve"); else if (key === "record_execution") openConfirmation("execution"); }
 async function cancelConfirmation() { confirmationError.value = ""; if (confirmation.kind === "execution" && executionAttempt.value) { showSuccess("本次付款登记参数已安全保留；重试会沿用同一幂等键和已上传凭证。"); await loadDetail(); } }
 function resetExecutionAttempt() { executionAttempt.value = null; voucherFiles.value = []; }
 function selectedUploadFiles(files: UploadFile[]) { return files.map((file) => file.raw).filter((file): file is File => file instanceof File); }
-function optionalText(value: string) { const normalized = value.trim(); return normalized || null; }
 function requiredText(value: string, label: string) { const normalized = value.trim(); if (!normalized) throw new Error(`请填写${label}`); return normalized; }
 function normalizeAttachmentCategory(value: string) { return ["merchant_receipt", "merchant_quote", "merchant_invoice", "other"].includes(value) ? value as "merchant_receipt" | "merchant_quote" | "merchant_invoice" | "other" : "other" as const; }
-function createIdempotencyKey() { if (!globalThis.crypto?.randomUUID) throw new Error("当前浏览器无法生成安全幂等键，请升级浏览器后重试"); return `spot-payment-${globalThis.crypto.randomUUID()}`; }
-function toIsoDateTime(value: string) { const date = new Date(value); if (!value || Number.isNaN(date.getTime())) throw new Error("请选择有效的实际付款时间"); return date.toISOString(); }
 function localDateTimeValue(date: Date) { const offset = date.getTimezoneOffset() * 60_000; return new Date(date.getTime() - offset).toISOString().slice(0, 19); }
 
 onMounted(() => void loadDetail());
