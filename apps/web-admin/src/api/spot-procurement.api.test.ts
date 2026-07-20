@@ -84,12 +84,16 @@ describe("spot procurement API client", () => {
     await fetchSpotProcurements({
       projectId: "project/1",
       status: "approval_pending",
-      keyword: " 水泥/砖 "
+      keyword: " 水泥/砖 ",
+      view: "active",
+      surface: "receipt",
+      page: 2,
+      pageSize: 20
     });
     await fetchSpotProcurementDetail("procurement/1");
 
     expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
-      "/spot-procurements?projectId=project%2F1&status=approval_pending&keyword=%E6%B0%B4%E6%B3%A5%2F%E7%A0%96",
+      "/spot-procurements?projectId=project%2F1&status=approval_pending&keyword=%E6%B0%B4%E6%B3%A5%2F%E7%A0%96&view=active&surface=receipt&page=2&pageSize=20",
       "/spot-procurements/procurement%2F1"
     ]);
   });
@@ -98,12 +102,15 @@ describe("spot procurement API client", () => {
     await fetchSpotProcurementPayments({
       projectId: "project/1",
       status: "approved_pending_payment",
-      keyword: "  "
+      keyword: "  ",
+      view: "ended",
+      page: 3,
+      pageSize: 50
     });
     await fetchSpotProcurementPaymentDetail("payment/1");
 
     expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
-      "/spot-procurement-payments?projectId=project%2F1&status=approved_pending_payment",
+      "/spot-procurement-payments?projectId=project%2F1&status=approved_pending_payment&view=ended&page=3&pageSize=50",
       "/spot-procurement-payments/payment%2F1"
     ]);
   });

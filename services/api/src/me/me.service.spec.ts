@@ -499,6 +499,100 @@ describe("MeService", () => {
     expect(blockedCall?.[0].where.takeoverStatus.in).not.toContain("draft");
   });
 
+  it("aggregates every owned draft domain and reports an exact truncated total", async () => {
+    const updatedAt = new Date("2026-07-20T08:00:00.000Z");
+    const settlementDrafts = Array.from({ length: 35 }, (_value, index) => ({
+      id: `settlement-draft-${index}`,
+      projectId: "project-1",
+      code: `JS-DRAFT-${index}`,
+      periodLabel: "2026-07",
+      updatedAt: new Date(updatedAt.getTime() + index)
+    }));
+    const prisma = {
+      contract: {
+        findMany: jest.fn(({ where }: { where: Record<string, unknown> }) => Promise.resolve(
+          where.ownerUserId
+            ? [{ id: "contract-1", projectId: "project-1", code: null, temporaryCode: "HT-DRAFT-1", name: "合同草稿" }]
+            : [{ id: "takeover-contract", code: null, temporaryCode: "LS-DRAFT-1", name: "接管草稿" }]
+        ))
+      },
+      contractVersion: {
+        findMany: jest.fn(({ where }: { where: Record<string, unknown> }) => Promise.resolve(
+          where.contractId
+            ? [{ id: "contract-version-1", contractId: "contract-1", amountCents: 100n, updatedAt }]
+            : [{ id: "takeover-version", amountCents: 200n }]
+        )),
+        count: jest.fn().mockResolvedValue(1)
+      },
+      settlementDraft: {
+        findMany: jest.fn().mockResolvedValue(settlementDrafts),
+        count: jest.fn().mockResolvedValue(35)
+      },
+      contractTakeover: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "takeover-1",
+          projectId: "project-1",
+          contractId: "takeover-contract",
+          contractVersionId: "takeover-version",
+          updatedAt
+        }]),
+        count: jest.fn().mockResolvedValue(1)
+      },
+      spotProcurement: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "spot-1", projectId: "project-1", code: "LXCG-DRAFT-1", updatedAt
+        }]),
+        count: jest.fn().mockResolvedValue(1)
+      },
+      spotProcurementPayment: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "spot-payment-1", projectId: "project-1", code: "LXFK-DRAFT-1",
+          approvalAmountCents: 300n, updatedAt
+        }]),
+        count: jest.fn().mockResolvedValue(1)
+      },
+      contractBusinessTemplate: {
+        findMany: jest.fn().mockResolvedValue([{ id: "template-1", code: "TPL-1", name: "材料合同模板" }])
+      },
+      contractBusinessTemplateVersion: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "template-version-1", templateId: "template-1", versionNo: 1, updatedAt
+        }]),
+        count: jest.fn().mockResolvedValue(1)
+      },
+      contractLayoutTemplate: { findMany: jest.fn().mockResolvedValue([]) },
+      contractLayoutTemplateVersion: { findMany: jest.fn(), count: jest.fn() },
+      standardClause: { findMany: jest.fn().mockResolvedValue([]) },
+      standardClauseVersion: { findMany: jest.fn(), count: jest.fn() },
+      settlementTemplate: { findMany: jest.fn().mockResolvedValue([]) },
+      settlementTemplateVersion: { findMany: jest.fn(), count: jest.fn() }
+    };
+    const service = new MeService(prisma as never, {} as never) as unknown as {
+      myDraftWorkItems(
+        userId: string,
+        contractProjectIds: string[],
+        visibleProjectIds: string[],
+        projectNames: ReadonlyMap<string, string>
+      ): Promise<{ items: Array<{ id: string; businessType?: string }>; total: number }>;
+    };
+
+    const result = await service.myDraftWorkItems(
+      "user-1",
+      ["project-1"],
+      ["project-1"],
+      new Map([["project-1", "测试项目"]])
+    );
+
+    expect(result.total).toBe(40);
+    expect(result.items).toHaveLength(30);
+    expect(result.items.some((item) => item.id.startsWith("settlement-draft:"))).toBe(true);
+    expect(prisma.contract.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ source: { not: "historical_takeover" } })
+    }));
+    expect(prisma.settlementDraft.count).toHaveBeenCalled();
+    expect(prisma.contractBusinessTemplateVersion.count).toHaveBeenCalled();
+  });
+
   it("returns visible approval work items with business jump targets", async () => {
     const prisma = {
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },

@@ -18,11 +18,20 @@ const loadError = ref("");
 const projectError = ref("");
 const rows = ref<SpotProcurementPaymentListItemReadModel[]>([]);
 const projects = ref<ProjectOptionReadModel[]>([]);
-const listMeta = ref({ limit: 0, truncated: false });
+const listMeta = ref({ page: 1, pageSize: 20, total: 0, totalPages: 0 });
+const serverStatistics = ref({
+  total: 0,
+  byStatus: {} as Record<string, number>,
+  approvalAmountCents: "0",
+  actualPaidAmountCents: "0",
+  refundAmountCents: "0",
+  netPaidAmountCents: "0"
+});
 const filters = reactive({
   projectId: "",
   status: "" as SpotProcurementPaymentStatus | "",
-  keyword: ""
+  keyword: "",
+  view: "active" as "active" | "ended"
 });
 
 const statusOptions = [
@@ -37,6 +46,11 @@ const statusOptions = [
   { label: "草稿已放弃", value: "invalidated" },
   { label: "已作废", value: "voided" }
 ];
+const visibleStatusOptions = computed(() =>
+  filters.view === "ended"
+    ? statusOptions.filter((option) => !option.value || option.value === "invalidated")
+    : statusOptions.filter((option) => option.value !== "invalidated")
+);
 const columns = [
   { colKey: "code", title: "付款 / 采购单", width: 150, fixed: "left" as const },
   { colKey: "project", title: "项目", width: 160 },
@@ -55,14 +69,11 @@ const projectOptions = computed(() => [
     value: project.id
   }))
 ]);
-const realRows = computed(() =>
-  rows.value.filter((row) => row.form === "real_payment" && row.status !== "invalidated")
-);
 const amountSummary = computed(() => ({
-  approval: sumCents(realRows.value.map((row) => row.approvalAmountCents)),
-  actual: sumCents(realRows.value.map((row) => row.actualPaidAmountCents)),
-  refund: sumCents(realRows.value.map((row) => row.refundAmountCents)),
-  net: sumCents(realRows.value.map((row) => row.netPaidAmountCents))
+  approval: serverStatistics.value.approvalAmountCents,
+  actual: serverStatistics.value.actualPaidAmountCents,
+  refund: serverStatistics.value.refundAmountCents,
+  net: serverStatistics.value.netPaidAmountCents
 }));
 
 function money(cents: string | null | undefined) {
@@ -71,14 +82,6 @@ function money(cents: string | null | undefined) {
     return `¥${centsTextToYuanText(cents)}`;
   } catch {
     return "金额异常";
-  }
-}
-
-function sumCents(values: Array<string | null | undefined>) {
-  try {
-    return values.reduce((total, value) => total + BigInt(value ?? "0"), 0n).toString();
-  } catch {
-    return null;
   }
 }
 
@@ -113,17 +116,28 @@ function openDetail(paymentId: string) {
   void router.push(`/零星材料付款/${encodeURIComponent(paymentId)}`);
 }
 
-async function loadPayments() {
+async function loadPayments(page = 1) {
   loading.value = true;
   loadError.value = "";
   try {
     const result = await fetchSpotProcurementPayments({
       projectId: filters.projectId || undefined,
       status: filters.status || undefined,
-      keyword: filters.keyword.trim() || undefined
+      keyword: filters.keyword.trim() || undefined,
+      view: filters.view,
+      page,
+      pageSize: listMeta.value.pageSize
     });
     rows.value = result.items;
-    listMeta.value = { limit: result.limit, truncated: result.truncated };
+    listMeta.value = result.pagination;
+    serverStatistics.value = {
+      total: result.statistics.total,
+      byStatus: result.statistics.byStatus,
+      approvalAmountCents: result.statistics.approvalAmountCents ?? "0",
+      actualPaidAmountCents: result.statistics.actualPaidAmountCents ?? "0",
+      refundAmountCents: result.statistics.refundAmountCents ?? "0",
+      netPaidAmountCents: result.statistics.netPaidAmountCents ?? "0"
+    };
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : "零星材料付款工作台读取失败";
   } finally {
@@ -144,7 +158,17 @@ function resetFilters() {
   filters.projectId = "";
   filters.status = "";
   filters.keyword = "";
-  void loadPayments();
+  filters.view = "active";
+  void loadPayments(1);
+}
+
+function changePage(page: number) {
+  void loadPayments(page);
+}
+
+function changeLifecycleView() {
+  filters.status = "";
+  void loadPayments(1);
 }
 
 onMounted(() => void Promise.all([loadProjects(), loadPayments()]));
@@ -160,7 +184,7 @@ onMounted(() => void Promise.all([loadProjects(), loadPayments()]));
         <t-button
           variant="outline"
           :loading="loading"
-          @click="loadPayments"
+          @click="loadPayments(1)"
         >
           刷新数据
         </t-button>
@@ -216,7 +240,7 @@ onMounted(() => void Promise.all([loadProjects(), loadPayments()]));
           size="small"
           variant="outline"
           :loading="loading"
-          @click="loadPayments"
+          @click="loadPayments(1)"
         >
           查询
         </t-button>
@@ -226,15 +250,20 @@ onMounted(() => void Promise.all([loadProjects(), loadPayments()]));
         :options="projectOptions"
         placeholder="全部项目"
       /></label>
+      <label class="filter-field"><span>生命周期</span><t-select
+        v-model="filters.view"
+        :options="[{ label: '办理中记录', value: 'active' }, { label: '已放弃草稿', value: 'ended' }]"
+        @change="changeLifecycleView"
+      /></label>
       <label class="filter-field"><span>付款状态</span><t-select
         v-model="filters.status"
-        :options="statusOptions"
+        :options="visibleStatusOptions"
       /></label>
       <label class="filter-field filter-field--keyword"><span>关键词</span><t-input
         v-model="filters.keyword"
         clearable
         placeholder="付款编号、采购编号、商户或收款对象"
-        @enter="loadPayments"
+        @enter="loadPayments(1)"
       /></label>
     </BusinessTableToolbar>
 
@@ -250,7 +279,7 @@ onMounted(() => void Promise.all([loadProjects(), loadPayments()]));
       title="零星材料付款暂不可用"
       :description="loadError"
       action-label="重新加载"
-      @action="loadPayments"
+      @action="loadPayments(1)"
     />
 
     <section
@@ -264,14 +293,8 @@ onMounted(() => void Promise.all([loadProjects(), loadPayments()]));
             付款申请记录
           </h2><p>每张申请只有一个收款对象，可登记多个收款渠道和多次实际付款；历史单据保持可读，不混入新表单金额汇总。</p>
         </div>
-        <span>当前返回 {{ rows.length }} / {{ listMeta.limit || "—" }} 条</span>
+        <span>共 {{ listMeta.total }} 条，当前第 {{ listMeta.page }} 页</span>
       </header>
-      <t-alert
-        v-if="listMeta.truncated"
-        theme="warning"
-        title="结果已截断"
-        message="为保护查询性能，当前只返回可访问结果的前一部分；请缩小项目、状态或关键词范围。"
-      />
       <div
         v-if="rows.length"
         class="jg-table-region jg-table-region--wide"
@@ -349,6 +372,13 @@ onMounted(() => void Promise.all([loadProjects(), loadPayments()]));
       <t-empty
         v-else
         description="暂无可查看的零星材料付款申请"
+      />
+      <t-pagination
+        v-if="listMeta.total > listMeta.pageSize"
+        :current="listMeta.page"
+        :page-size="listMeta.pageSize"
+        :total="listMeta.total"
+        @current-change="changePage"
       />
       <t-alert
         v-if="rows.some((row) => row.voucherStatus === 'anomaly')"

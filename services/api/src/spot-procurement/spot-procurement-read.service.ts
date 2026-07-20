@@ -47,9 +47,9 @@ import { SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY } from "./spot-procurem
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
 
-const LIST_LIMIT = 200;
 const LIST_SCAN_BATCH_SIZE = 200;
-const LIST_SCAN_MAX_ROWS = 2_000;
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 100;
 const RESOURCE_FORBIDDEN_MESSAGE = "零星采购资源不存在或当前账号无权访问";
 const PROCUREMENT_CREATE_ROLES = new Set<RoleKey>([
   "material_staff",
@@ -122,12 +122,19 @@ export interface SpotProcurementListQuery {
   projectId?: string;
   status?: string;
   keyword?: string;
+  page?: string | number;
+  pageSize?: string | number;
+  view?: string;
+  surface?: string;
 }
 
 export interface SpotProcurementPaymentListQuery {
   projectId?: string;
   status?: string;
   keyword?: string;
+  page?: string | number;
+  pageSize?: string | number;
+  view?: string;
 }
 
 export interface ProjectSummary {
@@ -251,9 +258,10 @@ export class SpotProcurementReadService {
       actorUserId,
       query.projectId
     );
-    if (!projectIds.length) {
-      return { items: [], truncated: false, limit: LIST_LIMIT };
-    }
+    const pagination = listPagination(query.page, query.pageSize);
+    const view = lifecycleView(query.view);
+    const surface = query.surface === "receipt" ? "receipt" : "procurement";
+    if (!projectIds.length) return emptyPagedList(pagination, view);
     const status = optionalQueryText(query.status);
     if (
       status &&
@@ -266,10 +274,9 @@ export class SpotProcurementReadService {
     const keyword = optionalQueryText(query.keyword);
     const keywordMatch = keyword
       ? await this.procurementIdsMatchingVersionKeyword(projectIds, keyword)
-      : { ids: [] as string[], sourceTruncated: false };
+      : [];
     const where: Prisma.SpotProcurementWhereInput = {
       projectId: { in: projectIds },
-      ...(status ? { status } : { status: { not: "abandoned" } }),
       ...(keyword
         ? {
             OR: [
@@ -280,25 +287,34 @@ export class SpotProcurementReadService {
                   mode: "insensitive"
                 }
               },
-              { id: { in: keywordMatch.ids } }
+              { id: { in: keywordMatch } }
             ]
           }
         : {})
     };
-    const scan = await this.scanAccessibleProcurements(
-      where,
-      actorUserId
+    const accessible = await this.scanAccessibleProcurements(where, actorUserId);
+    const lifecycleRows = accessible.filter((row) =>
+      view === "ended" ? row.status === "abandoned" : row.status !== "abandoned"
     );
-    const truncated =
-      keywordMatch.sourceTruncated ||
-      scan.sourceTruncated ||
-      scan.rows.length > LIST_LIMIT;
+    const surfaceRows = surface === "receipt"
+      ? lifecycleRows.filter((row) => ["approved_in_progress", "closed"].includes(row.status))
+      : lifecycleRows;
+    const filteredRows = status
+      ? surfaceRows.filter((row) => row.status === status)
+      : surfaceRows;
+    const pageRows = filteredRows.slice(pagination.skip, pagination.skip + pagination.pageSize);
     const items = await this.procurementListItems(
-      scan.rows.slice(0, LIST_LIMIT),
+      pageRows,
       actorUserId
     );
 
-    return { items, truncated, limit: LIST_LIMIT };
+    return {
+      items,
+      view,
+      surface,
+      pagination: paginationResult(pagination, filteredRows.length),
+      statistics: statusCounts(surfaceRows)
+    };
   }
 
   async getProcurement(procurementId: string, actorUserId: string) {
@@ -754,9 +770,9 @@ export class SpotProcurementReadService {
       actorUserId,
       query.projectId
     );
-    if (!projectIds.length) {
-      return { items: [], truncated: false, limit: LIST_LIMIT };
-    }
+    const pagination = listPagination(query.page, query.pageSize);
+    const view = lifecycleView(query.view);
+    if (!projectIds.length) return emptyPagedList(pagination, view);
     const status = optionalQueryText(query.status);
     if (
       status &&
@@ -783,17 +799,12 @@ export class SpotProcurementReadService {
           },
           select: { id: true },
           orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-          take: LIST_SCAN_MAX_ROWS + 1
         })
       : [];
-    const keywordSourceTruncated =
-      matchingProcurements.length > LIST_SCAN_MAX_ROWS;
     const matchingProcurementIds = matchingProcurements
-      .slice(0, LIST_SCAN_MAX_ROWS)
       .map((row) => row.id);
     const where: Prisma.SpotProcurementPaymentWhereInput = {
       projectId: { in: projectIds },
-      ...(status ? { status } : { status: { not: "invalidated" } }),
       ...(keyword
         ? {
             OR: [
@@ -819,16 +830,28 @@ export class SpotProcurementReadService {
           }
         : {})
     };
-    const scan = await this.scanAccessiblePayments(where, actorUserId);
-    const truncated =
-      keywordSourceTruncated ||
-      scan.sourceTruncated ||
-      scan.rows.length > LIST_LIMIT;
-    const items = await this.paymentListItems(
-      scan.rows.slice(0, LIST_LIMIT)
+    const accessible = await this.scanAccessiblePayments(where, actorUserId);
+    const lifecycleRows = accessible.filter((row) =>
+      view === "ended" ? row.status === "invalidated" : row.status !== "invalidated"
     );
+    const lifecycleItems = await this.paymentListItems(lifecycleRows);
+    const filteredItems = status
+      ? lifecycleItems.filter((row) => row.status === status)
+      : lifecycleItems;
+    const items = filteredItems.slice(pagination.skip, pagination.skip + pagination.pageSize);
 
-    return { items, truncated, limit: LIST_LIMIT };
+    return {
+      items,
+      view,
+      pagination: paginationResult(pagination, filteredItems.length),
+      statistics: {
+        ...statusCounts(lifecycleRows),
+        approvalAmountCents: sumMoneyField(lifecycleItems, "approvalAmountCents"),
+        actualPaidAmountCents: sumMoneyField(lifecycleItems, "actualPaidAmountCents"),
+        refundAmountCents: sumMoneyField(lifecycleItems, "refundAmountCents"),
+        netPaidAmountCents: sumMoneyField(lifecycleItems, "netPaidAmountCents")
+      }
+    };
   }
 
   async getPayment(paymentId: string, actorUserId: string) {
@@ -1360,19 +1383,16 @@ export class SpotProcurementReadService {
         ]
       },
       select: { procurementId: true },
-      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-      take: LIST_SCAN_MAX_ROWS + 1
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
     });
-    const sourceTruncated = versions.length > LIST_SCAN_MAX_ROWS;
     const candidateIds = [
       ...new Set(
         versions
-          .slice(0, LIST_SCAN_MAX_ROWS)
           .map((version) => version.procurementId)
       )
     ];
     if (!candidateIds.length) {
-      return { ids: [], sourceTruncated };
+      return [];
     }
     const procurements = await this.prisma.spotProcurement.findMany({
       where: {
@@ -1381,10 +1401,7 @@ export class SpotProcurementReadService {
       },
       select: { id: true }
     });
-    return {
-      ids: procurements.map((procurement) => procurement.id),
-      sourceTruncated
-    };
+    return procurements.map((procurement) => procurement.id);
   }
 
   private async visibleProjectIdsForQuery(
@@ -1405,13 +1422,7 @@ export class SpotProcurementReadService {
   ) {
     const accessible: SpotProcurement[] = [];
     let cursorId: string | undefined;
-    let scannedRows = 0;
-    let sourceTruncated = false;
-
-    while (
-      accessible.length <= LIST_LIMIT &&
-      scannedRows < LIST_SCAN_MAX_ROWS
-    ) {
+    for (;;) {
       const batch = await this.prisma.spotProcurement.findMany({
         where,
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
@@ -1419,25 +1430,17 @@ export class SpotProcurementReadService {
         ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {})
       });
       if (!batch.length) break;
-      scannedRows += batch.length;
       const allowedIds = await this.access.accessibleProcurementIds(
         batch.map((row) => row.id),
         actorUserId
       );
       accessible.push(...batch.filter((row) => allowedIds.has(row.id)));
       if (batch.length < LIST_SCAN_BATCH_SIZE) break;
-      cursorId = batch.at(-1)?.id;
-      if (!cursorId) break;
-      if (scannedRows >= LIST_SCAN_MAX_ROWS) {
-        sourceTruncated = true;
-        break;
-      }
+      const nextCursorId = batch.at(-1)?.id;
+      if (!nextCursorId || nextCursorId === cursorId) break;
+      cursorId = nextCursorId;
     }
-
-    return {
-      rows: accessible.slice(0, LIST_LIMIT + 1),
-      sourceTruncated
-    };
+    return accessible;
   }
 
   private async scanAccessiblePayments(
@@ -1446,13 +1449,7 @@ export class SpotProcurementReadService {
   ) {
     const accessible: SpotProcurementPayment[] = [];
     let cursorId: string | undefined;
-    let scannedRows = 0;
-    let sourceTruncated = false;
-
-    while (
-      accessible.length <= LIST_LIMIT &&
-      scannedRows < LIST_SCAN_MAX_ROWS
-    ) {
+    for (;;) {
       const batch = await this.prisma.spotProcurementPayment.findMany({
         where,
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
@@ -1460,25 +1457,17 @@ export class SpotProcurementReadService {
         ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {})
       });
       if (!batch.length) break;
-      scannedRows += batch.length;
       const allowedIds = await this.access.accessiblePaymentIds(
         batch.map((row) => row.id),
         actorUserId
       );
       accessible.push(...batch.filter((row) => allowedIds.has(row.id)));
       if (batch.length < LIST_SCAN_BATCH_SIZE) break;
-      cursorId = batch.at(-1)?.id;
-      if (!cursorId) break;
-      if (scannedRows >= LIST_SCAN_MAX_ROWS) {
-        sourceTruncated = true;
-        break;
-      }
+      const nextCursorId = batch.at(-1)?.id;
+      if (!nextCursorId || nextCursorId === cursorId) break;
+      cursorId = nextCursorId;
     }
-
-    return {
-      rows: accessible.slice(0, LIST_LIMIT + 1),
-      sourceTruncated
-    };
+    return accessible;
   }
 
   private async procurementListItems(
@@ -3450,6 +3439,72 @@ function optionalQueryText(value: unknown) {
   return typeof value === "string" && value.trim()
     ? value.trim()
     : undefined;
+}
+
+interface ListPagination {
+  page: number;
+  pageSize: number;
+  skip: number;
+}
+
+function listPagination(pageValue: unknown, pageSizeValue: unknown): ListPagination {
+  const page = positiveInteger(pageValue, 1, "页码");
+  const pageSize = positiveInteger(pageSizeValue, DEFAULT_PAGE_SIZE, "每页条数");
+  if (pageSize > MAX_PAGE_SIZE) {
+    throw new BadRequestException(`每页最多查询 ${MAX_PAGE_SIZE} 条记录`);
+  }
+  return { page, pageSize, skip: (page - 1) * pageSize };
+}
+
+function positiveInteger(value: unknown, fallback: number, label: string) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new BadRequestException(`${label}必须为正整数`);
+  }
+  return parsed;
+}
+
+function lifecycleView(value: unknown): "active" | "ended" {
+  const normalized = optionalQueryText(value) ?? "active";
+  if (normalized !== "active" && normalized !== "ended") {
+    throw new BadRequestException("生命周期视图筛选值不正确");
+  }
+  return normalized;
+}
+
+function paginationResult(pagination: ListPagination, total: number) {
+  return {
+    page: pagination.page,
+    pageSize: pagination.pageSize,
+    total,
+    totalPages: total === 0 ? 0 : Math.ceil(total / pagination.pageSize)
+  };
+}
+
+function emptyPagedList(pagination: ListPagination, view: "active" | "ended") {
+  return {
+    items: [],
+    view,
+    pagination: paginationResult(pagination, 0),
+    statistics: { total: 0, byStatus: {} as Record<string, number> }
+  };
+}
+
+function statusCounts(rows: Array<{ status: string }>) {
+  const byStatus: Record<string, number> = {};
+  for (const row of rows) byStatus[row.status] = (byStatus[row.status] ?? 0) + 1;
+  return { total: rows.length, byStatus };
+}
+
+function sumMoneyField(rows: unknown[], field: string) {
+  let total = 0n;
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const value = (row as Record<string, unknown>)[field];
+    if (typeof value === "string" && /^-?\d+$/u.test(value)) total += BigInt(value);
+  }
+  return total.toString();
 }
 
 function groupBy<T>(

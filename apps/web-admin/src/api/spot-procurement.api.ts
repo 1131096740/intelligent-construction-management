@@ -285,8 +285,18 @@ export interface SpotProcurementListItemReadModel {
 
 export interface SpotProcurementListReadModel {
   items: SpotProcurementListItemReadModel[];
-  truncated: boolean;
-  limit: number;
+  view: "active" | "ended";
+  surface?: "procurement" | "receipt";
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+  statistics: {
+    total: number;
+    byStatus: Record<string, number>;
+  };
 }
 
 export interface SpotProcurementApplicationTextSuggestionReadModel {
@@ -353,8 +363,21 @@ export interface SpotProcurementPaymentListItemReadModel {
 
 export interface SpotProcurementPaymentListReadModel {
   items: SpotProcurementPaymentListItemReadModel[];
-  truncated: boolean;
-  limit: number;
+  view: "active" | "ended";
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+  statistics: {
+    total: number;
+    byStatus: Record<string, number>;
+    approvalAmountCents?: string;
+    actualPaidAmountCents?: string;
+    refundAmountCents?: string;
+    netPaidAmountCents?: string;
+  };
 }
 
 export interface SpotProcurementVersionReadModel {
@@ -672,12 +695,19 @@ export interface SpotProcurementListQuery {
   projectId?: string;
   status?: SpotProcurementStatus;
   keyword?: string;
+  page?: number;
+  pageSize?: number;
+  view?: "active" | "ended";
+  surface?: "procurement" | "receipt";
 }
 
 export interface SpotProcurementPaymentListQuery {
   projectId?: string;
   status?: SpotProcurementPaymentStatus;
   keyword?: string;
+  page?: number;
+  pageSize?: number;
+  view?: "active" | "ended";
 }
 
 export interface SpotProcurementLinePayload {
@@ -1258,12 +1288,20 @@ function withQuery(
     projectId?: string;
     status?: string;
     keyword?: string;
+    page?: number;
+    pageSize?: number;
+    view?: string;
+    surface?: string;
   }
 ): string {
   const search = new URLSearchParams();
   appendTrimmed(search, "projectId", query.projectId);
   appendTrimmed(search, "status", query.status);
   appendTrimmed(search, "keyword", query.keyword);
+  appendTrimmed(search, "view", query.view);
+  appendTrimmed(search, "surface", query.surface);
+  if (query.page !== undefined) search.set("page", String(query.page));
+  if (query.pageSize !== undefined) search.set("pageSize", String(query.pageSize));
   const text = search.toString();
   return text ? `${path}?${text}` : path;
 }

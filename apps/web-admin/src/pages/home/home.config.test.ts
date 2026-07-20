@@ -155,6 +155,7 @@ describe("home workbench card helpers", () => {
       { label: "待我处理", value: "2", tone: "primary" },
       { label: "阻塞事项", value: "1", tone: "danger" },
       { label: "我发起的进行中", value: "1", tone: "default" },
+      { label: "我的草稿", value: "1", tone: "default" },
       { label: "可见项目", value: "2", tone: "default" }
     ]);
   });
@@ -180,6 +181,25 @@ describe("home workbench card helpers", () => {
       label: "待我处理",
       value: "2",
       tone: "primary"
+    });
+  });
+
+  it("uses the server draft total when the returned draft queue is truncated", () => {
+    const workItems = workItemsFixture();
+    workItems.queueMeta = {
+      pending: { total: 2, returned: 2, truncated: false },
+      blocked: { total: 1, returned: 1, truncated: false },
+      started: { total: 1, returned: 1, truncated: false },
+      drafts: { total: 42, returned: 1, truncated: true }
+    };
+
+    const queues = toWorkItemQueues(workItems);
+
+    expect(queues[3]).toMatchObject({ total: 42, truncated: true });
+    expect(homeWorkItemSummaryItems(queues, 2)).toContainEqual({
+      label: "我的草稿",
+      value: "42",
+      tone: "default"
     });
   });
 

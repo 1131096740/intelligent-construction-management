@@ -53,12 +53,20 @@ export class SpotProcurementController {
     @CurrentUser() user: AuthenticatedUser,
     @Query("projectId") projectId?: string,
     @Query("status") status?: string,
-    @Query("keyword") keyword?: string
+    @Query("keyword") keyword?: string,
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string,
+    @Query("view") view?: string,
+    @Query("surface") surface?: string
   ) {
     return this.reads.listProcurements(user.id, {
       projectId,
       status,
-      keyword
+      keyword,
+      page,
+      pageSize,
+      view,
+      surface
     });
   }
 

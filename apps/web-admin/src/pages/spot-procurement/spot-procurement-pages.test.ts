@@ -29,6 +29,23 @@ describe("spot procurement web pages", () => {
     );
   });
 
+  it("uses server pagination, lifecycle views and full-set statistics on all three ledgers", () => {
+    const procurement = pageSource("SpotProcurementWorkbenchPage.vue");
+    const payment = pageSource("SpotProcurementPaymentWorkbenchPage.vue");
+    const receipt = pageSource("SpotProcurementReceiptWorkbenchPage.vue");
+
+    for (const source of [procurement, payment, receipt]) {
+      expect(source).toContain("<t-pagination");
+      expect(source).toContain("result.pagination");
+    }
+    expect(procurement).toContain("result.statistics");
+    expect(procurement).toContain("changeLifecycleView");
+    expect(payment).toContain("result.statistics");
+    expect(payment).toContain("changeLifecycleView");
+    expect(receipt).toMatch(/surface:\s*"receipt"/u);
+    expect(`${procurement}\n${payment}\n${receipt}`).not.toContain("limit: 200");
+  });
+
   it("keeps the procurement application free of supplier, price and tax fields", () => {
     const workbench = pageSource("SpotProcurementWorkbenchPage.vue");
     const detail = pageSource("SpotProcurementDetailPage.vue");
@@ -138,7 +155,9 @@ describe("spot procurement web pages", () => {
     expect(payment).toContain("abandonSpotProcurementPaymentDraft");
     expect(payment).toContain("expectedUpdatedAt: current.payment.updatedAt");
     expect(payment).toContain("放弃付款草稿");
-    expect(paymentWorkbench).toContain('row.status !== "invalidated"');
+    expect(paymentWorkbench).toContain('view: filters.view');
+    expect(paymentWorkbench).toContain('result.statistics');
+    expect(paymentWorkbench).toContain('<t-pagination');
     expect(receipt).toContain("resetSpotProcurementReceiptDraft");
     expect(receipt).toContain("receiptResetAction");
     expect(receipt).toContain("expectedRevision");

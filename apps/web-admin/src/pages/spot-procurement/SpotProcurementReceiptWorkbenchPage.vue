@@ -7,6 +7,8 @@ import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import BusinessTableToolbar from "../../components/BusinessTableToolbar.vue";
 
 const router=useRouter(); const rows=ref<SpotProcurementListItemReadModel[]>([]); const loading=ref(false); const error=ref("");
+const listMeta=ref({page:1,pageSize:20,total:0,totalPages:0});
+const status=ref<""|"approved_in_progress"|"closed">("");
 const receiptSummary=(row: SpotProcurementListItemReadModel) => row.receipt as SpotProcurementReceiptSummaryReadModel;
 const receiptStatus=(row:SpotProcurementListItemReadModel)=>{
   if (row.status === "closed") return "已办结";
@@ -22,7 +24,8 @@ const tableRows=computed(()=>rows.value.map(row=>({
   paymentStatus:paymentStatus(row),
   receiptStatus:receiptStatus(row)
 })));
-async function load(){loading.value=true;error.value="";try{rows.value=(await fetchSpotProcurements()).items.filter(row=>['approved_in_progress','closed'].includes(row.status));}catch(e){error.value=e instanceof Error?e.message:'读取收货工作台失败';}finally{loading.value=false;}}
+async function load(page=1){loading.value=true;error.value="";try{const result=await fetchSpotProcurements({surface:"receipt",view:"active",status:status.value||undefined,page,pageSize:listMeta.value.pageSize});rows.value=result.items;listMeta.value=result.pagination;}catch(e){error.value=e instanceof Error?e.message:'读取收货工作台失败';}finally{loading.value=false;}}
+function changePage(page:number){void load(page);}
 onMounted(load);
 </script>
 <template>
@@ -38,11 +41,16 @@ onMounted(load);
         <t-button
           variant="outline"
           :loading="loading"
-          @click="load"
+          @click="load(1)"
         >
           刷新
         </t-button>
       </template>
+      <label class="filter-field"><span>生命周期</span><t-select
+        v-model="status"
+        :options="[{label:'全部收货记录',value:''},{label:'办理中',value:'approved_in_progress'},{label:'已办结',value:'closed'}]"
+        @change="load(1)"
+      /></label>
     </BusinessTableToolbar><BusinessFeedback
       v-if="error"
       state="permission"
@@ -63,7 +71,13 @@ onMounted(load);
           办理
         </t-link>
       </template>
-    </t-table>
+    </t-table><t-pagination
+      v-if="listMeta.total>listMeta.pageSize"
+      :current="listMeta.page"
+      :page-size="listMeta.pageSize"
+      :total="listMeta.total"
+      @current-change="changePage"
+    />
   </section>
 </template>
-<style scoped>.page{display:grid;gap:var(--jg-space-lg)}</style>
+<style scoped>.page{display:grid;gap:var(--jg-space-lg)}.filter-field{display:grid;gap:var(--jg-space-xs);min-width:180px}.filter-field span{color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}</style>

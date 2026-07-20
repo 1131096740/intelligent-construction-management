@@ -222,7 +222,13 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   await mockLogin(page);
   await page.route("**/api/spot-procurements**", (route) => {
     const path = new URL(route.request().url()).pathname;
-    const body = path.endsWith("/receipt") ? receiptDetail() : path.endsWith("/procurement-1") ? procurementDetail() : { items: [procurementListRow()], truncated: false, limit: 200 };
+    const body = path.endsWith("/receipt") ? receiptDetail() : path.endsWith("/procurement-1") ? procurementDetail() : {
+      items: [procurementListRow()],
+      view: "active",
+      surface: "procurement",
+      pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+      statistics: { total: 1, byStatus: { approved_in_progress: 1 } }
+    };
     return route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
   });
   await page.route("**/api/spot-procurement-payments**", (route) => {
@@ -233,8 +239,16 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
         statusLabel: "付款草稿",
         approval: { ...approval, currentNodeName: "尚未发起审批" }
       })],
-      truncated: false,
-      limit: 200
+      view: "active",
+      pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+      statistics: {
+        total: 1,
+        byStatus: { draft: 1 },
+        approvalAmountCents: "440000",
+        actualPaidAmountCents: "0",
+        refundAmountCents: "0",
+        netPaidAmountCents: "0"
+      }
     };
     return route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
   });

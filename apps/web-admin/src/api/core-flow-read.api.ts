@@ -1231,7 +1231,7 @@ export type ApprovalCenterViewKey =
 
 export interface WorkItemReadModel {
   id: string;
-  type: "contract_takeover" | "archive" | "approval" | "payment_execution" | "blocker";
+  type: "draft" | "contract_takeover" | "archive" | "approval" | "payment_execution" | "blocker";
   title: string;
   projectName: string;
   projectId?: string;
@@ -1250,6 +1250,11 @@ export interface WorkItemsReadModel {
   generatedAt: string;
   visibleProjectCount: number;
   queues: Record<WorkItemQueueKey, WorkItemReadModel[]>;
+  queueMeta?: Record<WorkItemQueueKey, {
+    total: number;
+    returned: number;
+    truncated: boolean;
+  }>;
   approvalCenter: Record<ApprovalCenterViewKey, WorkItemReadModel[]>;
 }
 

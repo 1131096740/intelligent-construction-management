@@ -391,6 +391,11 @@ function buildFixture() {
 describe("SpotProcurementReadService", () => {
   it("excludes abandoned payment drafts by default and exposes them only through the explicit ended filter", async () => {
     const fixture = buildFixture();
+    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([
+      paymentRow(),
+      paymentRow({ id: "payment-invalidated", code: "LXFK-END-001", status: "invalidated" })
+    ]);
+    fixture.access.accessiblePaymentIds.mockImplementation((ids: string[]) => Promise.resolve(new Set(ids)));
     const service = new SpotProcurementReadService(
       fixture.prisma as never,
       fixture.visibility as never,
@@ -398,20 +403,15 @@ describe("SpotProcurementReadService", () => {
       fixture.pilot as never
     );
 
-    await service.listPayments("finance-1", {});
-    expect(fixture.prisma.spotProcurementPayment.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ status: { not: "invalidated" } })
-      })
-    );
-
-    fixture.prisma.spotProcurementPayment.findMany.mockClear();
-    await service.listPayments("finance-1", { status: "invalidated" });
-    expect(fixture.prisma.spotProcurementPayment.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ status: "invalidated" })
-      })
-    );
+    await expect(service.listPayments("finance-1", {})).resolves.toMatchObject({
+      view: "active",
+      pagination: { total: 1 }
+    });
+    await expect(service.listPayments("finance-1", { view: "ended" })).resolves.toMatchObject({
+      view: "ended",
+      pagination: { total: 1 },
+      items: [expect.objectContaining({ id: "payment-invalidated" })]
+    });
   });
 
   it("offers payment draft recreation only after the prior draft is invalidated and no active payment remains", async () => {
@@ -577,11 +577,11 @@ describe("SpotProcurementReadService", () => {
       ["procurement-1", "procurement-denied"],
       "finance-1"
     );
-    expect(fixture.prisma.spotProcurement.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ status: { not: "abandoned" } })
-      })
-    );
+    expect(result).toMatchObject({
+      view: "active",
+      pagination: { page: 1, pageSize: 20, total: 1 },
+      statistics: { total: 1, byStatus: { approved_in_progress: 1 } }
+    });
   });
 
   it("returns the server-derived parent abandonment action and exact downstream blocker", async () => {
@@ -1316,36 +1316,35 @@ describe("SpotProcurementReadService", () => {
     const result = await service.listProcurements("finance-1", {});
 
     expect(result.items.map((item) => item.id)).toEqual(["procurement-1"]);
-    expect(result.truncated).toBe(false);
+    expect(result.pagination).toMatchObject({ total: 1, page: 1, pageSize: 20 });
     expect(fixture.prisma.spotProcurement.findMany).toHaveBeenCalledTimes(2);
   });
 
-  it("stops procurement and payment ACL scans at the fixed source-row ceiling", async () => {
+  it("paginates every ACL-authorized row without the former 200-row truncation", async () => {
     const fixture = buildFixture();
-    const deniedProcurements = Array.from(
+    const firstProcurements = Array.from(
       { length: 200 },
       (_value, index) =>
         procurementRow({
-          id: `denied-${index}`,
-          code: `LXCG-DENIED-${index}`
+          id: `procurement-${index}`,
+          code: `LXCG-${index}`
         })
     );
-    const deniedPayments = Array.from(
-      { length: 200 },
+    const remainingProcurements = Array.from(
+      { length: 50 },
       (_value, index) =>
-        paymentRow({
-          id: `payment-denied-${index}`,
-          code: `LXFK-DENIED-${index}`
+        procurementRow({
+          id: `procurement-${index + 200}`,
+          code: `LXCG-${index + 200}`
         })
     );
-    fixture.prisma.spotProcurement.findMany = jest
-      .fn()
-      .mockResolvedValue(deniedProcurements);
-    fixture.prisma.spotProcurementPayment.findMany = jest
-      .fn()
-      .mockResolvedValue(deniedPayments);
-    fixture.access.accessibleProcurementIds.mockResolvedValue(new Set());
-    fixture.access.accessiblePaymentIds.mockResolvedValue(new Set());
+    fixture.prisma.spotProcurement.findMany = jest.fn(
+      ({ cursor }: { cursor?: { id: string } }) =>
+        Promise.resolve(cursor ? remainingProcurements : firstProcurements)
+    );
+    fixture.access.accessibleProcurementIds.mockImplementation(
+      (ids: string[]) => Promise.resolve(new Set(ids) as never)
+    );
     const service = new SpotProcurementReadService(
       fixture.prisma as never,
       fixture.visibility as never,
@@ -1353,17 +1352,12 @@ describe("SpotProcurementReadService", () => {
       fixture.pilot as never
     );
 
-    await expect(
-      service.listProcurements("unrelated-user", {})
-    ).resolves.toMatchObject({ items: [], truncated: true });
-    expect(fixture.prisma.spotProcurement.findMany).toHaveBeenCalledTimes(10);
+    const rows = await (service as unknown as {
+      scanAccessibleProcurements(where: object, actorUserId: string): Promise<Array<{ id: string }>>;
+    }).scanAccessibleProcurements({}, "finance-1");
 
-    await expect(
-      service.listPayments("unrelated-user", {})
-    ).resolves.toMatchObject({ items: [], truncated: true });
-    expect(
-      fixture.prisma.spotProcurementPayment.findMany
-    ).toHaveBeenCalledTimes(10);
+    expect(rows).toHaveLength(250);
+    expect(fixture.prisma.spotProcurement.findMany).toHaveBeenCalledTimes(2);
   });
 
   it("fails closed when a payment points at a version owned by another procurement", async () => {

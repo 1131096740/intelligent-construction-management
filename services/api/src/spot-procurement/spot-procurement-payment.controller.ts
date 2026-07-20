@@ -34,12 +34,18 @@ export class SpotProcurementPaymentController {
     @CurrentUser() user: AuthenticatedUser,
     @Query("projectId") projectId?: string,
     @Query("status") status?: string,
-    @Query("keyword") keyword?: string
+    @Query("keyword") keyword?: string,
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string,
+    @Query("view") view?: string
   ) {
     return this.reads.listPayments(user.id, {
       projectId,
       status,
-      keyword
+      keyword,
+      page,
+      pageSize,
+      view
     });
   }
 

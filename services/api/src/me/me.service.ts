@@ -55,6 +55,7 @@ export type ApprovalCenterViewKey =
   | "delegatedToMe"
   | "overdueReminder";
 export type WorkItemKind =
+  | "draft"
   | "contract_takeover"
   | "archive"
   | "approval"
@@ -82,6 +83,11 @@ export interface WorkItemsReadModel {
   generatedAt: string;
   visibleProjectCount: number;
   queues: Record<WorkItemQueueKey, WorkItem[]>;
+  queueMeta: Record<WorkItemQueueKey, {
+    total: number;
+    returned: number;
+    truncated: boolean;
+  }>;
   approvalCenter: Record<ApprovalCenterViewKey, WorkItem[]>;
 }
 
@@ -132,6 +138,31 @@ interface ApprovalBusinessDetail {
   title: string;
   amountCents: bigint;
   targetPath: string;
+}
+
+function queueMeta(items: WorkItem[]) {
+  return {
+    total: items.length,
+    returned: Math.min(items.length, 30),
+    truncated: items.length > 30
+  };
+}
+
+function supportsDraftAggregation(prisma: PrismaService) {
+  const delegates = prisma as unknown as Record<string, unknown>;
+  return [
+    "settlementDraft",
+    "spotProcurement",
+    "spotProcurementPayment",
+    "contractBusinessTemplate",
+    "contractBusinessTemplateVersion",
+    "contractLayoutTemplate",
+    "contractLayoutTemplateVersion",
+    "standardClause",
+    "standardClauseVersion",
+    "settlementTemplate",
+    "settlementTemplateVersion"
+  ].every((name) => Boolean(delegates[name]));
 }
 
 @Injectable()
@@ -412,13 +443,11 @@ export class MeService {
       ...(await this.approvalWorkItems(scopes, userId, "pending", evaluatedAt))
     ];
 
-    const drafts = await this.contractTakeoverWorkItems(
+    const draftResult = await this.myDraftWorkItems(
+      userId,
       contractDraftProjectIds,
-      ["draft"],
-      projectNameById,
-      "草稿填写",
-      "继续补录后提交复核",
-      "default"
+      projectIds,
+      projectNameById
     );
 
     const blocked = await this.contractTakeoverWorkItems(
@@ -451,7 +480,17 @@ export class MeService {
         pending: pending.slice(0, 30),
         blocked: blocked.slice(0, 30),
         started: started.slice(0, 30),
-        drafts: drafts.slice(0, 30)
+        drafts: draftResult.items
+      },
+      queueMeta: {
+        pending: queueMeta(pending),
+        blocked: queueMeta(blocked),
+        started: queueMeta(started),
+        drafts: {
+          total: draftResult.total,
+          returned: draftResult.items.length,
+          truncated: draftResult.total > draftResult.items.length
+        }
       },
       approvalCenter: {
         pendingApproval: pending.filter((item) => item.type === "approval").slice(0, 30),
@@ -460,6 +499,423 @@ export class MeService {
         delegatedToMe,
         overdueReminder: []
       }
+    };
+  }
+
+  private async myDraftWorkItems(
+    userId: string,
+    contractProjectIds: string[],
+    visibleProjectIds: string[],
+    projectNameById: ReadonlyMap<string, string>
+  ): Promise<{ items: WorkItem[]; total: number }> {
+    if (!supportsDraftAggregation(this.prisma)) {
+      const items = await this.contractTakeoverWorkItems(
+        contractProjectIds,
+        ["draft"],
+        projectNameById,
+        "草稿填写",
+        "继续补录后提交复核",
+        "default"
+      );
+      return { items: items.slice(0, 30), total: items.length };
+    }
+
+    const [contracts, settlementDrafts, takeovers, procurements, payments] = await Promise.all([
+      contractProjectIds.length
+        ? this.prisma.contract.findMany({
+            where: {
+              projectId: { in: contractProjectIds },
+              ownerUserId: userId,
+              source: { not: "historical_takeover" },
+              voidedAt: null
+            },
+            select: { id: true, projectId: true, code: true, temporaryCode: true, name: true }
+          })
+        : Promise.resolve([]),
+      visibleProjectIds.length
+        ? this.prisma.settlementDraft.findMany({
+            where: { projectId: { in: visibleProjectIds }, ownerUserId: userId, status: "draft" },
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+            take: 31
+          })
+        : Promise.resolve([]),
+      contractProjectIds.length
+        ? this.prisma.contractTakeover.findMany({
+            where: {
+              projectId: { in: contractProjectIds },
+              takeoverStatus: "draft",
+              OR: [{ responsibleUserId: userId }, { createdByUserId: userId }]
+            },
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+            take: 31,
+            select: {
+              id: true,
+              projectId: true,
+              contractId: true,
+              contractVersionId: true,
+              updatedAt: true
+            }
+          })
+        : Promise.resolve([]),
+      visibleProjectIds.length
+        ? this.prisma.spotProcurement.findMany({
+            where: {
+              projectId: { in: visibleProjectIds },
+              status: "draft",
+              OR: [{ applicantUserId: userId }, { handlerUserId: userId }]
+            },
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+            take: 31
+          })
+        : Promise.resolve([]),
+      visibleProjectIds.length
+        ? this.prisma.spotProcurementPayment.findMany({
+            where: {
+              projectId: { in: visibleProjectIds },
+              status: "draft",
+              OR: [{ createdByUserId: userId }, { handlerUserId: userId }]
+            },
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+            take: 31
+          })
+        : Promise.resolve([])
+    ]);
+
+    const [settlementTotal, takeoverTotal, procurementTotal, paymentTotal] = await Promise.all([
+      visibleProjectIds.length
+        ? this.prisma.settlementDraft.count({
+            where: { projectId: { in: visibleProjectIds }, ownerUserId: userId, status: "draft" }
+          })
+        : Promise.resolve(0),
+      contractProjectIds.length
+        ? this.prisma.contractTakeover.count({
+            where: {
+              projectId: { in: contractProjectIds },
+              takeoverStatus: "draft",
+              OR: [{ responsibleUserId: userId }, { createdByUserId: userId }]
+            }
+          })
+        : Promise.resolve(0),
+      visibleProjectIds.length
+        ? this.prisma.spotProcurement.count({
+            where: {
+              projectId: { in: visibleProjectIds },
+              status: "draft",
+              OR: [{ applicantUserId: userId }, { handlerUserId: userId }]
+            }
+          })
+        : Promise.resolve(0),
+      visibleProjectIds.length
+        ? this.prisma.spotProcurementPayment.count({
+            where: {
+              projectId: { in: visibleProjectIds },
+              status: "draft",
+              OR: [{ createdByUserId: userId }, { handlerUserId: userId }]
+            }
+          })
+        : Promise.resolve(0)
+    ]);
+
+    const contractIds = contracts.map((contract) => contract.id);
+    const contractVersions = contractIds.length
+      ? await this.prisma.contractVersion.findMany({
+          where: { contractId: { in: contractIds }, status: "draft" },
+          orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+          take: 31,
+          select: { id: true, contractId: true, amountCents: true, updatedAt: true }
+        })
+      : [];
+    const contractTotal = contractIds.length
+      ? await this.prisma.contractVersion.count({
+          where: { contractId: { in: contractIds }, status: "draft" }
+        })
+      : 0;
+    const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
+
+    const takeoverContractIds = [...new Set(takeovers.map((row) => row.contractId))];
+    const takeoverVersionIds = [...new Set(takeovers.map((row) => row.contractVersionId))];
+    const [takeoverContracts, takeoverVersions, templateDrafts] = await Promise.all([
+      takeoverContractIds.length
+        ? this.prisma.contract.findMany({
+            where: { id: { in: takeoverContractIds } },
+            select: { id: true, code: true, temporaryCode: true, name: true }
+          })
+        : Promise.resolve([]),
+      takeoverVersionIds.length
+        ? this.prisma.contractVersion.findMany({
+            where: { id: { in: takeoverVersionIds } },
+            select: { id: true, amountCents: true }
+          })
+        : Promise.resolve([]),
+      this.myTemplateDraftWorkItems(userId)
+    ]);
+    const takeoverContractById = new Map(takeoverContracts.map((row) => [row.id, row]));
+    const takeoverVersionById = new Map(takeoverVersions.map((row) => [row.id, row]));
+
+    const businessDrafts: Array<WorkItem & { updatedAt: Date }> = [
+      ...contractVersions.flatMap((version) => {
+        const contract = contractById.get(version.contractId);
+        if (!contract) return [];
+        return [{
+          id: `contract-draft:${version.id}`,
+          type: "draft" as const,
+          title: contract.name,
+          projectName: projectNameById.get(contract.projectId) ?? contract.projectId,
+          projectId: contract.projectId,
+          businessCode: contract.code ?? contract.temporaryCode ?? contract.id,
+          businessType: "contract",
+          businessId: contract.id,
+          amountText: this.amountText(version.amountCents),
+          currentNode: "合同草稿",
+          stayedText: this.stayedText(version.updatedAt),
+          nextAction: "继续填写合同",
+          targetPath: `/contracts/${encodeURIComponent(contract.id)}/workbench`,
+          tone: "default" as const,
+          updatedAt: version.updatedAt
+        }];
+      }),
+      ...settlementDrafts.map((draft) => ({
+        id: `settlement-draft:${draft.id}`,
+        type: "draft" as const,
+        title: `${draft.periodLabel} 结算草稿`,
+        projectName: projectNameById.get(draft.projectId) ?? draft.projectId,
+        projectId: draft.projectId,
+        businessCode: draft.code,
+        businessType: "settlement",
+        businessId: draft.id,
+        amountText: "—",
+        currentNode: "结算草稿",
+        stayedText: this.stayedText(draft.updatedAt),
+        nextAction: "继续填写结算",
+        targetPath: `/结算工作台?project=${encodeURIComponent(draft.projectId)}&draftId=${encodeURIComponent(draft.id)}`,
+        tone: "default" as const,
+        updatedAt: draft.updatedAt
+      })),
+      ...takeovers.map((takeover) => {
+        const contract = takeoverContractById.get(takeover.contractId);
+        return {
+          id: `takeover:${takeover.id}`,
+          type: "contract_takeover" as const,
+          title: contract?.name ?? "历史合同接管",
+          projectName: projectNameById.get(takeover.projectId) ?? takeover.projectId,
+          projectId: takeover.projectId,
+          businessCode: contract?.code ?? contract?.temporaryCode ?? takeover.contractId,
+          businessType: "contract_takeover",
+          businessId: takeover.id,
+          amountText: this.amountText(takeoverVersionById.get(takeover.contractVersionId)?.amountCents ?? 0n),
+          currentNode: "历史接管草稿",
+          stayedText: this.stayedText(takeover.updatedAt),
+          nextAction: "继续补录后提交复核",
+          targetPath: "/历史合同接管",
+          tone: "default" as const,
+          updatedAt: takeover.updatedAt
+        };
+      }),
+      ...procurements.map((draft) => ({
+        id: `spot-procurement-draft:${draft.id}`,
+        type: "draft" as const,
+        title: "零星采购草稿",
+        projectName: projectNameById.get(draft.projectId) ?? draft.projectId,
+        projectId: draft.projectId,
+        businessCode: draft.code,
+        businessType: "spot_procurement",
+        businessId: draft.id,
+        amountText: "—",
+        currentNode: "采购草稿",
+        stayedText: this.stayedText(draft.updatedAt),
+        nextAction: "继续填写采购",
+        targetPath: `/零星采购/${encodeURIComponent(draft.id)}`,
+        tone: "default" as const,
+        updatedAt: draft.updatedAt
+      })),
+      ...payments.map((draft) => ({
+        id: `spot-payment-draft:${draft.id}`,
+        type: "draft" as const,
+        title: "零星材料付款草稿",
+        projectName: projectNameById.get(draft.projectId) ?? draft.projectId,
+        projectId: draft.projectId,
+        businessCode: draft.code,
+        businessType: "spot_payment",
+        businessId: draft.id,
+        amountText: this.amountText(draft.approvalAmountCents),
+        currentNode: "付款草稿",
+        stayedText: this.stayedText(draft.updatedAt),
+        nextAction: "继续填写付款",
+        targetPath: `/零星材料付款/${encodeURIComponent(draft.id)}`,
+        tone: "default" as const,
+        updatedAt: draft.updatedAt
+      })),
+      ...templateDrafts.items
+    ];
+
+    const total = contractTotal + settlementTotal + takeoverTotal +
+      procurementTotal + paymentTotal + templateDrafts.total;
+    return {
+      items: businessDrafts
+        .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())
+        .slice(0, 30)
+        .map((entry) => {
+          const item: WorkItem & { updatedAt?: Date } = { ...entry };
+          delete item.updatedAt;
+          return item;
+        }),
+      total
+    };
+  }
+
+  private async myTemplateDraftWorkItems(userId: string): Promise<{
+    items: Array<WorkItem & { updatedAt: Date }>;
+    total: number;
+  }> {
+    const [businessRoots, layoutRoots, clauseRoots, settlementRoots] = await Promise.all([
+      this.prisma.contractBusinessTemplate.findMany({
+        where: { createdByUserId: userId },
+        select: { id: true, code: true, name: true }
+      }),
+      this.prisma.contractLayoutTemplate.findMany({
+        where: { createdByUserId: userId },
+        select: { id: true, name: true }
+      }),
+      this.prisma.standardClause.findMany({
+        where: { createdByUserId: userId },
+        select: { id: true, code: true, name: true }
+      }),
+      this.prisma.settlementTemplate.findMany({
+        where: { createdByUserId: userId },
+        select: { id: true, code: true, name: true }
+      })
+    ]);
+    const businessById = new Map(businessRoots.map((row) => [row.id, row]));
+    const layoutById = new Map(layoutRoots.map((row) => [row.id, row]));
+    const clauseById = new Map(clauseRoots.map((row) => [row.id, row]));
+    const settlementById = new Map(settlementRoots.map((row) => [row.id, row]));
+    const [businessVersions, layoutVersions, clauseVersions, settlementVersions] = await Promise.all([
+      businessRoots.length
+        ? this.prisma.contractBusinessTemplateVersion.findMany({
+            where: { templateId: { in: businessRoots.map((row) => row.id) }, status: "draft" },
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+            take: 31,
+            select: { id: true, templateId: true, versionNo: true, updatedAt: true }
+          })
+        : Promise.resolve([]),
+      layoutRoots.length
+        ? this.prisma.contractLayoutTemplateVersion.findMany({
+            where: { layoutTemplateId: { in: layoutRoots.map((row) => row.id) }, status: "draft" },
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+            take: 31,
+            select: { id: true, layoutTemplateId: true, versionNo: true, updatedAt: true }
+          })
+        : Promise.resolve([]),
+      clauseRoots.length
+        ? this.prisma.standardClauseVersion.findMany({
+            where: { clauseId: { in: clauseRoots.map((row) => row.id) }, status: "draft" },
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+            take: 31,
+            select: { id: true, clauseId: true, versionNo: true, updatedAt: true }
+          })
+        : Promise.resolve([]),
+      settlementRoots.length
+        ? this.prisma.settlementTemplateVersion.findMany({
+            where: { settlementTemplateId: { in: settlementRoots.map((row) => row.id) }, status: "draft" },
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+            take: 31,
+            select: { id: true, settlementTemplateId: true, versionNo: true, updatedAt: true }
+          })
+        : Promise.resolve([])
+    ]);
+    const [businessTotal, layoutTotal, clauseTotal, settlementTotal] = await Promise.all([
+      businessRoots.length
+        ? this.prisma.contractBusinessTemplateVersion.count({
+            where: { templateId: { in: businessRoots.map((row) => row.id) }, status: "draft" }
+          })
+        : Promise.resolve(0),
+      layoutRoots.length
+        ? this.prisma.contractLayoutTemplateVersion.count({
+            where: { layoutTemplateId: { in: layoutRoots.map((row) => row.id) }, status: "draft" }
+          })
+        : Promise.resolve(0),
+      clauseRoots.length
+        ? this.prisma.standardClauseVersion.count({
+            where: { clauseId: { in: clauseRoots.map((row) => row.id) }, status: "draft" }
+          })
+        : Promise.resolve(0),
+      settlementRoots.length
+        ? this.prisma.settlementTemplateVersion.count({
+            where: { settlementTemplateId: { in: settlementRoots.map((row) => row.id) }, status: "draft" }
+          })
+        : Promise.resolve(0)
+    ]);
+
+    const item = (
+      id: string,
+      title: string,
+      code: string,
+      currentNode: string,
+      targetPath: string,
+      updatedAt: Date
+    ): WorkItem & { updatedAt: Date } => ({
+      id,
+      type: "draft",
+      title,
+      projectName: "系统模板",
+      businessCode: code,
+      businessType: "template",
+      amountText: "—",
+      currentNode,
+      stayedText: this.stayedText(updatedAt),
+      nextAction: "继续维护模板",
+      targetPath,
+      tone: "default",
+      updatedAt
+    });
+    return {
+      items: [
+        ...businessVersions.flatMap((version) => {
+          const root = businessById.get(version.templateId);
+          return root ? [item(
+            `contract-template-draft:${version.id}`,
+            root.name,
+            `${root.code} v${version.versionNo}`,
+            "合同业务模板草稿",
+            `/合同模板库/${encodeURIComponent(root.id)}`,
+            version.updatedAt
+          )] : [];
+        }),
+        ...layoutVersions.flatMap((version) => {
+          const root = layoutById.get(version.layoutTemplateId);
+          return root ? [item(
+            `layout-template-draft:${version.id}`,
+            root.name,
+            `版式 v${version.versionNo}`,
+            "合同版式草稿",
+            `/合同模板库/版式/${encodeURIComponent(root.id)}`,
+            version.updatedAt
+          )] : [];
+        }),
+        ...clauseVersions.flatMap((version) => {
+          const root = clauseById.get(version.clauseId);
+          return root ? [item(
+            `clause-template-draft:${version.id}`,
+            root.name,
+            `${root.code} v${version.versionNo}`,
+            "标准条款草稿",
+            "/合同模板库/标准条款",
+            version.updatedAt
+          )] : [];
+        }),
+        ...settlementVersions.flatMap((version) => {
+          const root = settlementById.get(version.settlementTemplateId);
+          return root ? [item(
+            `settlement-template-draft:${version.id}`,
+            root.name,
+            `${root.code} v${version.versionNo}`,
+            "结算模板草稿",
+            `/结算模板库/${encodeURIComponent(root.id)}`,
+            version.updatedAt
+          )] : [];
+        })
+      ],
+      total: businessTotal + layoutTotal + clauseTotal + settlementTotal
     };
   }
 

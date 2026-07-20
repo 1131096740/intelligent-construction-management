@@ -125,6 +125,13 @@
             />
           </t-tabs>
 
+          <t-alert
+            v-if="activeQueueModel?.truncated"
+            theme="info"
+            title="草稿较多"
+            :message="`该队列共 ${activeQueueModel.total} 条，首页展示最近 ${activeQueueModel.items.length} 条；完整记录请进入对应业务台账。`"
+          />
+
           <EmptyBusinessState
             v-if="!visibleRows.length && !loading"
             title="当前条件下暂无工作项"
@@ -215,6 +222,9 @@ const sortOptions = [
 ];
 
 const queues = computed(() => toWorkItemQueues(workItems.value));
+const activeQueueModel = computed(() =>
+  queues.value.find((queue) => queue.id === activeQueue.value) ?? null
+);
 const allRows = computed(() => toHomeWorkItemRows(queues.value));
 const filterOptions = computed(() => homeWorkItemFilterOptions(allRows.value));
 const summaryItems = computed(() =>
