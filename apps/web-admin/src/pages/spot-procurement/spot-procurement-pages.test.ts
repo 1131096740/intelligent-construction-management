@@ -60,6 +60,9 @@ const validRefund = {
   randomUUID: () => "uuid-1"
 };
 
+const postgresBigIntMaxYuan = "92233720368547758.07";
+const postgresBigIntOverflowYuan = "92233720368547758.08";
+
 describe("spot procurement web pages", () => {
   it("connects both workbenches to real list endpoints without sample fallback", () => {
     const procurement = pageSource("SpotProcurementWorkbenchPage.vue");
@@ -175,6 +178,42 @@ describe("spot procurement web pages", () => {
     expect(upload).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["zero total", [{ paymentQuantity: "1.00", unitPrice: "0.00" }]],
+    [
+      "single-line BIGINT overflow",
+      [{ paymentQuantity: "1.00", unitPrice: postgresBigIntOverflowYuan }]
+    ],
+    [
+      "incremental total BIGINT overflow",
+      [
+        { paymentQuantity: "1.00", unitPrice: postgresBigIntMaxYuan },
+        { paymentQuantity: "1.00", unitPrice: "0.01" }
+      ]
+    ]
+  ])("does not upload A5 attachments for %s", async (_label, amounts) => {
+    const upload = vi.fn(async () => ({ id: "uploaded-file" }));
+    const draft = validPaymentDraft();
+
+    await expect(
+      prepareSpotPaymentDraftWithUploads(
+        {
+          ...draft,
+          paymentLines: amounts.map((amount, index) => ({
+            ...draft.paymentLines[0]!,
+            procurementLineId: `line-${index + 1}`,
+            ...amount
+          }))
+        },
+        [],
+        [{ name: "付款依据.pdf" }],
+        "merchant_quote",
+        upload
+      )
+    ).rejects.toThrow();
+    expect(upload).not.toHaveBeenCalled();
+  });
+
   it.each(["1.001", "0", "0.00", "invalid"])(
     "does not upload an execution voucher for invalid or zero yuan input %s",
     async (amountYuan) => {
@@ -190,6 +229,19 @@ describe("spot procurement web pages", () => {
       expect(upload).not.toHaveBeenCalled();
     }
   );
+
+  it("does not upload an execution voucher above the BIGINT cents range", async () => {
+    const upload = vi.fn(async () => ({ id: "voucher-file" }));
+
+    await expect(
+      prepareSpotExecutionWithUploads(
+        { ...validExecution, amountYuan: postgresBigIntOverflowYuan },
+        [{ name: "付款凭证.png" }],
+        upload
+      )
+    ).rejects.toThrow("本次实际付款金额超出系统可保存范围");
+    expect(upload).not.toHaveBeenCalled();
+  });
 
   it.each([
     ["invalid paidAt", { paidAt: "invalid" }],
@@ -226,6 +278,19 @@ describe("spot procurement web pages", () => {
     }
   );
 
+  it("does not upload a refund voucher above the BIGINT cents range", async () => {
+    const upload = vi.fn(async () => ({ id: "refund-file" }));
+
+    await expect(
+      prepareSpotRefundWithUpload(
+        { ...validRefund, amountYuan: postgresBigIntOverflowYuan },
+        { name: "退款凭证.png" },
+        upload
+      )
+    ).rejects.toThrow("退款到账金额超出系统可保存范围");
+    expect(upload).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["invalid receivedAt", { receivedAt: "invalid" }],
     ["future receivedAt", { receivedAt: "2999-01-01" }],
@@ -251,7 +316,16 @@ describe("spot procurement web pages", () => {
 
     await expect(
       prepareSpotPaymentDraftWithUploads(
-        validPaymentDraft(),
+        validPaymentDraft({
+          paymentLines: [
+            {
+              procurementLineId: "line-max",
+              paymentQuantity: "1.00",
+              unitPrice: postgresBigIntMaxYuan,
+              expectedInvoiceCondition: "no_invoice"
+            }
+          ]
+        }),
         [],
         [{ name: "付款依据.pdf" }],
         "merchant_quote",
@@ -263,23 +337,23 @@ describe("spot procurement web pages", () => {
     });
     await expect(
       prepareSpotExecutionWithUploads(
-        validExecution,
+        { ...validExecution, amountYuan: postgresBigIntMaxYuan },
         [{ name: "付款凭证.png" }],
         executionUpload
       )
     ).resolves.toMatchObject({
-      amountCents: "100",
+      amountCents: "9223372036854775807",
       idempotencyKey: "spot-payment-uuid-1",
       voucherFileIds: ["voucher-file"]
     });
     await expect(
       prepareSpotRefundWithUpload(
-        validRefund,
+        { ...validRefund, amountYuan: postgresBigIntMaxYuan },
         { name: "退款凭证.png" },
         refundUpload
       )
     ).resolves.toMatchObject({
-      amountCents: "100",
+      amountCents: "9223372036854775807",
       idempotencyKey: "spot-refund-uuid-1",
       voucherFileId: "refund-file"
     });

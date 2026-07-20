@@ -1,14 +1,16 @@
 import {
   SPOT_PROCUREMENT_EXPECTED_INVOICE_CONDITIONS,
   SPOT_PROCUREMENT_PAYMENT_METHODS,
-  SPOT_PROCUREMENT_PAYMENT_TYPES,
-  type SpotProcurementPaymentMethod,
-  type SpotProcurementPaymentType
+  SPOT_PROCUREMENT_PAYMENT_TYPES
 } from "@jiangkong/shared-domain";
-import { yuanTextToCentsText } from "../../lib/money";
+import {
+  calculateSpotProcurementLineAmountCents,
+  yuanTextToCentsText
+} from "../../lib/money";
 
 const SPOT_PROCUREMENT_DECIMAL_TEXT = /^(0|[1-9]\d*)(?:\.\d{1,2})?$/;
 const MAX_SPOT_PROCUREMENT_INTEGER_DIGITS = 18;
+const POSTGRES_BIGINT_MAX_CENTS = 9_223_372_036_854_775_807n;
 const REFUND_METHODS = ["bank_transfer", "cash"] as const;
 const ATTACHMENT_CATEGORIES = [
   "merchant_receipt",
@@ -17,7 +19,6 @@ const ATTACHMENT_CATEGORIES = [
   "other"
 ] as const;
 
-type RefundMethod = (typeof REFUND_METHODS)[number];
 type AttachmentCategory = (typeof ATTACHMENT_CATEGORIES)[number];
 type NamedUpload = { name: string };
 type UploadedFile = { id: string };
@@ -137,10 +138,18 @@ export function requiredPositiveYuanCents(value: string, label: string) {
   } catch {
     throw new Error(`${label}必须是大于 0、最多 2 位小数的金额`);
   }
-  if (BigInt(amountCents) <= 0n) {
+  const amount = BigInt(amountCents);
+  if (amount <= 0n) {
     throw new Error(`${label}必须是大于 0、最多 2 位小数的金额`);
   }
+  assertCentsWithinPostgresBigInt(amount, label);
   return amountCents;
+}
+
+function assertCentsWithinPostgresBigInt(amount: bigint, label: string) {
+  if (amount > POSTGRES_BIGINT_MAX_CENTS) {
+    throw new Error(`${label}超出系统可保存范围`);
+  }
 }
 
 export function prepareSpotPaymentDraft(
@@ -199,6 +208,22 @@ export function prepareSpotPaymentDraft(
   ) {
     throw new Error("同一付款申请不能重复引用采购材料明细");
   }
+  let approvalAmountCents = 0n;
+  for (const line of paymentLines) {
+    approvalAmountCents += BigInt(
+      calculateSpotProcurementLineAmountCents(
+        line.paymentQuantity,
+        line.unitPrice
+      )
+    );
+    assertCentsWithinPostgresBigInt(
+      approvalAmountCents,
+      "付款申请金额合计"
+    );
+  }
+  if (approvalAmountCents <= 0n) {
+    throw new Error("付款申请金额必须大于 0");
+  }
   if (!input.paymentMethods.length) throw new Error("请至少选择一种拟付款方式");
   const paymentMethods = input.paymentMethods.map((method) =>
     requiredEnum(method, SPOT_PROCUREMENT_PAYMENT_METHODS, "拟付款方式不正确")
@@ -238,12 +263,12 @@ export function prepareSpotPaymentDraft(
     };
   });
   return {
-    paymentType: paymentType as SpotProcurementPaymentType,
+    paymentType,
     merchantName,
     payeeName,
     merchantPayeeMismatchNote,
     paymentLines,
-    paymentMethods: paymentMethods as SpotProcurementPaymentMethod[],
+    paymentMethods,
     channels
   };
 }
@@ -338,7 +363,7 @@ export function prepareSpotRefund(input: SpotRefundPreparationInput) {
     "退款到账方式不正确"
   );
   const idempotencyKey = createIdempotencyKey("spot-refund", input.randomUUID);
-  return { amountCents, receivedAt, refundMethod: refundMethod as RefundMethod, idempotencyKey };
+  return { amountCents, receivedAt, refundMethod, idempotencyKey };
 }
 
 export async function prepareSpotRefundWithUpload<
