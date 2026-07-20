@@ -226,6 +226,7 @@ interface RenderInput {
   summary: Array<{ label: string; value: string }>;
   nodes: FrozenNode[];
   logs: Array<{
+    actionKey?: string;
     name: string;
     position: string;
     action: string;
@@ -444,6 +445,19 @@ function approvalSignatureForRoles(
     name: log?.name ?? null,
     signedAt: log ? new Date(log.signedAt) : null
   };
+}
+
+function currentSpotPaymentApprovalRoundLogs(
+  logs: RenderInput["logs"]
+): RenderInput["logs"] {
+  let boundaryIndex = -1;
+  for (let index = logs.length - 1; index >= 0; index -= 1) {
+    if (logs[index]?.actionKey === "payer_changed_reapproval") {
+      boundaryIndex = index;
+      break;
+    }
+  }
+  return boundaryIndex < 0 ? logs : logs.slice(boundaryIndex + 1);
 }
 
 function spotPaymentTypeLabel(value: string | null): string {
@@ -1126,6 +1140,7 @@ export class ApprovalFormService {
           relationshipText = `代批关系：${nameById.get(log.representedUserId) ?? "原审批人未读取"} → ${nameById.get(log.actorUserId) ?? "实际审批人未读取"}（${log.approvedRoleKey ? (ROLE_LABELS[log.approvedRoleKey] ?? "审批岗位未读取") : "审批岗位未冻结"}）`;
         }
         return {
+          actionKey: log.action,
           name: nameById.get(log.actorUserId) ?? "处理人未读取",
           position: log.approvedRoleKey
             ? roleLabel(log.approvedRoleKey as RoleKey)
@@ -1155,12 +1170,15 @@ export class ApprovalFormService {
     }
     const prisma = this.prisma as ApprovalFormClient;
     const rendered = await this.buildRenderInput(instance, prisma);
+    const signatureLogs = instance.businessType === "spot_procurement_payment"
+      ? currentSpotPaymentApprovalRoundLogs(rendered.logs)
+      : rendered.logs;
     const signatures = {
-      materialDirector: approvalSignatureForRoles(rendered.logs, ["物资主管"]),
-      projectManager: approvalSignatureForRoles(rendered.logs, ["项目经理"]),
-      comprehensiveDirector: approvalSignatureForRoles(rendered.logs, ["综合部主管"]),
-      financeDirector: approvalSignatureForRoles(rendered.logs, ["财务主管"]),
-      finalApprover: approvalSignatureForRoles(rendered.logs, ["董事长", "总经理"])
+      materialDirector: approvalSignatureForRoles(signatureLogs, ["物资主管"]),
+      projectManager: approvalSignatureForRoles(signatureLogs, ["项目经理"]),
+      comprehensiveDirector: approvalSignatureForRoles(signatureLogs, ["综合部主管"]),
+      financeDirector: approvalSignatureForRoles(signatureLogs, ["财务主管"]),
+      finalApprover: approvalSignatureForRoles(signatureLogs, ["董事长", "总经理"])
     };
 
     if (instance.businessType === "spot_procurement_version") {

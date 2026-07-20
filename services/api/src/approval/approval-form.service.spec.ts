@@ -1238,6 +1238,112 @@ describe("ApprovalFormService", () => {
     );
   });
 
+  it("付款主体变更后 A5 固定签字格只使用当前重审轮次", async () => {
+    const allLogs = [
+      {
+        actionKey: "approve",
+        name: "旧综合部主管",
+        position: "综合部主管",
+        action: "通过",
+        signedAt: "2026-07-18 09:00:00",
+        comment: "",
+        relationship: "",
+        signature: null
+      },
+      {
+        actionKey: "approve",
+        name: "旧项目经理",
+        position: "项目经理",
+        action: "通过",
+        signedAt: "2026-07-18 10:00:00",
+        comment: "",
+        relationship: "",
+        signature: null
+      },
+      {
+        actionKey: "payer_changed_reapproval",
+        name: "财务主管",
+        position: "财务主管",
+        action: "变更付款主体并重审",
+        signedAt: "2026-07-18 11:00:00",
+        comment: "换为实际出款公司",
+        relationship: "",
+        signature: null
+      },
+      {
+        actionKey: "approve",
+        name: "新综合部主管",
+        position: "综合部主管",
+        action: "通过",
+        signedAt: "2026-07-18 12:00:00",
+        comment: "",
+        relationship: "",
+        signature: null
+      }
+    ];
+    const prisma = {
+      spotProcurementPayment: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "LXCG-001-V1-P001",
+          procurementVersionId: "version-1",
+          projectId: "project-1",
+          submittedAt: new Date("2026-07-18T08:00:00.000Z"),
+          createdAt: new Date("2026-07-18T07:00:00.000Z"),
+          payerCompanyNameSnapshot: "云南建工测试公司",
+          paymentNote: "零星材料付款",
+          approvalAmountCents: 440000n,
+          paymentType: "company_direct",
+          paymentMethod: "bank_transfer"
+        })
+      },
+      spotProcurementVersion: {
+        findUnique: jest.fn().mockResolvedValue({ reason: "现场急用" })
+      },
+      project: {
+        findUnique: jest.fn().mockResolvedValue({ name: "一号项目" })
+      },
+      spotProcurementPaymentChannel: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      spotProcurementPaymentMethodOption: {
+        findMany: jest.fn().mockResolvedValue([{ paymentMethod: "bank_transfer" }])
+      }
+    };
+    const service = new ApprovalFormService(prisma as never);
+    const internal = service as unknown as {
+      buildRenderInput: jest.Mock;
+      buildSpotProcurementApprovalFormInput(
+        instance: object
+      ): Promise<{
+        kind: string;
+        signatures: Record<string, { name: string | null }>;
+      }>;
+    };
+    internal.buildRenderInput = jest.fn().mockResolvedValue({
+      title: "项目零星付款申请单",
+      companyName: "",
+      businessCode: "LXCG-001-V1-P001",
+      applicantName: "杨帅",
+      summary: [],
+      nodes: [],
+      logs: allLogs
+    });
+
+    const result = await internal.buildSpotProcurementApprovalFormInput({
+      id: "approval-1",
+      businessType: "spot_procurement_payment",
+      businessId: "payment-1",
+      applicantUserId: "material-1",
+      frozenNodes: []
+    });
+
+    expect(result.signatures.comprehensiveDirector?.name).toBe("新综合部主管");
+    expect(result.signatures.projectManager?.name).toBeNull();
+    expect(allLogs).toHaveLength(4);
+    expect(internal.buildRenderInput).toHaveBeenCalledTimes(1);
+  });
+
   it("付款审批单展示退款结算且退款不改写公司实际付款事实", async () => {
     const prisma = {
       spotProcurementPayment: {

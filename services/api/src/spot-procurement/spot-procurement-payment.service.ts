@@ -932,7 +932,19 @@ export class SpotProcurementPaymentService {
       const isFinanceDirectorReapproval =
         pendingRoles.includes("finance_director") &&
         roles.includes("finance_director");
-      if (payment.payerCompanyEntityId && !isFinanceDirectorReapproval) {
+      if (
+        !input.paymentMethods?.length ||
+        new Set(input.paymentMethods).size !== input.paymentMethods.length
+      ) {
+        throw new BadRequestException("拟付款方式至少保留一种且不能重复");
+      }
+      const existingMethodCount =
+        await tx.spotProcurementPaymentMethodOption.count({
+          where: { paymentId: payment.id }
+        });
+      const payerTaskComplete = Boolean(payment.payerCompanyEntityId) &&
+        existingMethodCount > 0;
+      if (payerTaskComplete && !isFinanceDirectorReapproval) {
         throw new ConflictException(PAYER_TASK_COMPLETED_ERROR);
       }
       if (approval && !isFinanceDirectorReapproval && approval.currentNodeIndex !== 0) {
@@ -941,34 +953,49 @@ export class SpotProcurementPaymentService {
       if (isFinanceDirectorReapproval && !optionalText(input.changeReason)) {
         throw new BadRequestException("财务主管调整付款主体时必须填写变更原因");
       }
-      const company = await tx.companyEntity.findFirst({
-        where: { id: requiredText(input.companyEntityId, "请选择付款主体"), isActive: true },
-        select: { id: true, name: true, unifiedSocialCreditCode: true }
-      });
-      if (!company) throw new BadRequestException("付款主体不存在或已停用");
-      if (input.paymentMethods) {
-        if (!input.paymentMethods.length || new Set(input.paymentMethods).size !== input.paymentMethods.length) {
-          throw new BadRequestException("拟付款方式至少保留一种且不能重复");
-        }
-        if (
-          payment.paymentMethod &&
-          !input.paymentMethods.includes(
-            payment.paymentMethod as SpotProcurementPaymentMethod
-          )
-        ) {
-          throw new BadRequestException("拟付款方式必须包含当前主收款渠道");
-        }
-        await tx.spotProcurementPaymentMethodOption.deleteMany({
-          where: { paymentId: payment.id }
-        });
-        await tx.spotProcurementPaymentMethodOption.createMany({
-          data: input.paymentMethods.map((paymentMethod, index) => ({
-            paymentId: payment.id,
-            paymentMethod,
-            sortOrder: index + 1
-          }))
-        });
+      const requestedCompanyEntityId = requiredText(
+        input.companyEntityId,
+        "请选择付款主体"
+      );
+      const completesLegacyMethods = Boolean(payment.payerCompanyEntityId) &&
+        existingMethodCount === 0 &&
+        !isFinanceDirectorReapproval;
+      if (
+        completesLegacyMethods &&
+        requestedCompanyEntityId !== payment.payerCompanyEntityId
+      ) {
+        throw new ConflictException("历史付款主体只能补齐拟付款方式，不能变更主体");
       }
+      const company = completesLegacyMethods
+        ? {
+            id: payment.payerCompanyEntityId as string,
+            name: payment.payerCompanyNameSnapshot,
+            unifiedSocialCreditCode:
+              payment.payerUnifiedSocialCreditCodeSnapshot
+          }
+        : await tx.companyEntity.findFirst({
+            where: { id: requestedCompanyEntityId, isActive: true },
+            select: { id: true, name: true, unifiedSocialCreditCode: true }
+          });
+      if (!company) throw new BadRequestException("付款主体不存在或已停用");
+      if (
+        payment.paymentMethod &&
+        !input.paymentMethods.includes(
+          payment.paymentMethod as SpotProcurementPaymentMethod
+        )
+      ) {
+        throw new BadRequestException("拟付款方式必须包含当前主收款渠道");
+      }
+      await tx.spotProcurementPaymentMethodOption.deleteMany({
+        where: { paymentId: payment.id }
+      });
+      await tx.spotProcurementPaymentMethodOption.createMany({
+        data: input.paymentMethods.map((paymentMethod, index) => ({
+          paymentId: payment.id,
+          paymentMethod,
+          sortOrder: index + 1
+        }))
+      });
       const frozenNodes = isFinanceDirectorReapproval && approval
         ? resetPaymentApprovalToComprehensive(approval.frozenNodes)
         : undefined;
@@ -995,17 +1022,19 @@ export class SpotProcurementPaymentService {
           }
         });
       }
-      const updated = await tx.spotProcurementPayment.update({
-        where: { id: payment.id },
-        data: {
-          payerCompanyEntityId: company.id,
-          payerCompanyNameSnapshot: company.name,
-          payerUnifiedSocialCreditCodeSnapshot: company.unifiedSocialCreditCode,
-          factsFrozenAt: isFinanceDirectorReapproval
-            ? new Date()
-            : payment.factsFrozenAt
-        }
-      });
+      const updated = completesLegacyMethods
+        ? payment
+        : await tx.spotProcurementPayment.update({
+            where: { id: payment.id },
+            data: {
+              payerCompanyEntityId: company.id,
+              payerCompanyNameSnapshot: company.name,
+              payerUnifiedSocialCreditCodeSnapshot: company.unifiedSocialCreditCode,
+              factsFrozenAt: isFinanceDirectorReapproval
+                ? new Date()
+                : payment.factsFrozenAt
+            }
+          });
       await this.audit.record(tx, {
         actorUserId,
         action: "spot_procurement.payment.payer.update",
@@ -1015,7 +1044,8 @@ export class SpotProcurementPaymentService {
           companyEntityId: company.id,
           companyName: company.name,
           changeReason: optionalText(input.changeReason),
-          reapprovalFromComprehensive: isFinanceDirectorReapproval
+          reapprovalFromComprehensive: isFinanceDirectorReapproval,
+          completedLegacyPaymentMethods: completesLegacyMethods
         }
       });
       return this.paymentReadModel(updated);

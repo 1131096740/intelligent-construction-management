@@ -137,6 +137,8 @@ let vatOptionsRequestId = 0;
 let applicationTriggerElement: HTMLElement | null = null;
 let payerTriggerElement: HTMLElement | null = null;
 let approvalTriggerElement: HTMLElement | null = null;
+let payerOpenedPaymentId: string | null = null;
+let approvalOpenedPaymentId: string | null = null;
 
 const paymentId = computed(() => typeof route.params.paymentId === "string" ? route.params.paymentId : "");
 const payment = computed(() => detail.value?.payment ?? null);
@@ -449,6 +451,7 @@ function saveAndExitApplication(
 function openPayer(trigger: HTMLElement | null = null) {
   const current = detail.value;
   if (!current || !current.payment.payerManagement?.visible) return;
+  payerOpenedPaymentId = current.payment.id;
   payerTriggerElement = trigger;
   payerForm.companyEntityId = companies.value.find((company) => company.name === current.payment.payerCompanyName)?.id ?? "";
   payerForm.paymentMethods = (current.paymentMethods ?? []).map((method) => method.value);
@@ -469,8 +472,17 @@ async function loadCompanies() {
 }
 async function savePayer() {
   const current = detail.value;
-  if (!current) return;
-  const operationPaymentId = current.payment.id;
+  if (
+    !current ||
+    !payerOpenedPaymentId ||
+    paymentId.value !== payerOpenedPaymentId ||
+    current.payment.id !== payerOpenedPaymentId
+  ) {
+    resetPayerEditorState();
+    stopStaleApplicationOperation();
+    return;
+  }
+  const operationPaymentId = payerOpenedPaymentId;
   actionBusy.value = true; payerError.value = "";
   try {
     if (!payerForm.confirmed) throw new Error("请确认已知悉付款主体变更影响");
@@ -503,16 +515,34 @@ async function savePayer() {
 async function closePayer() {
   payerVisible.value = false;
   await restorePayerTriggerFocus();
+  resetPayerEditorState();
 }
 
 async function restorePayerTriggerFocus() {
   await nextTick();
   if (payerTriggerElement?.isConnected) payerTriggerElement.focus();
   payerTriggerElement = null;
+  payerOpenedPaymentId = null;
+  payerForm.companyEntityId = "";
+  payerForm.paymentMethods = [];
+  payerForm.changeReason = "";
+  payerForm.confirmed = false;
+}
+
+function resetPayerEditorState() {
+  payerVisible.value = false;
+  payerError.value = "";
+  payerForm.companyEntityId = "";
+  payerForm.paymentMethods = [];
+  payerForm.changeReason = "";
+  payerForm.confirmed = false;
+  payerOpenedPaymentId = null;
+  payerTriggerElement = null;
 }
 
 function openApproval(trigger: HTMLElement | null = null) {
   if (!isRealPayment.value || !actionEnabled("review_approval")) return;
+  approvalOpenedPaymentId = paymentId.value;
   approvalTriggerElement = trigger;
   approvalError.value = "";
   approvalVisible.value = true;
@@ -530,6 +560,7 @@ async function closeApproval() {
   approvalVisible.value = false;
   approvalError.value = "";
   await restoreApprovalTriggerFocus();
+  approvalOpenedPaymentId = null;
 }
 
 async function restoreApprovalTriggerFocus() {
@@ -537,12 +568,22 @@ async function restoreApprovalTriggerFocus() {
   await new Promise<void>((resolve) => window.setTimeout(resolve, 320));
   if (approvalTriggerElement?.isConnected) approvalTriggerElement.focus();
   approvalTriggerElement = null;
+  approvalOpenedPaymentId = null;
 }
 
 async function submitA5Approval(payload: A5ApprovalSubmitPayload) {
   const current = detail.value;
-  if (!current) return;
-  const operationPaymentId = current.payment.id;
+  if (
+    !current ||
+    !approvalOpenedPaymentId ||
+    paymentId.value !== approvalOpenedPaymentId ||
+    current.payment.id !== approvalOpenedPaymentId
+  ) {
+    resetApprovalEditorState();
+    stopStaleApplicationOperation();
+    return;
+  }
+  const operationPaymentId = approvalOpenedPaymentId;
   actionBusy.value = true;
   approvalError.value = "";
   try {
@@ -560,6 +601,8 @@ async function submitA5Approval(payload: A5ApprovalSubmitPayload) {
     approvalVisible.value = false;
     if (payload.result === "return_to_applicant" && result.newDraftPaymentId) {
       showSuccess("付款申请已退回，并生成新的付款草稿。");
+      approvalOpenedPaymentId = null;
+      approvalTriggerElement = null;
       await router.replace(
         `/零星材料付款/${encodeURIComponent(result.newDraftPaymentId)}?tab=current`
       );
@@ -574,6 +617,13 @@ async function submitA5Approval(payload: A5ApprovalSubmitPayload) {
   } finally {
     actionBusy.value = false;
   }
+}
+
+function resetApprovalEditorState() {
+  approvalVisible.value = false;
+  approvalError.value = "";
+  approvalOpenedPaymentId = null;
+  approvalTriggerElement = null;
 }
 
 function openConfirmation(kind: ConfirmationKind) {
@@ -781,10 +831,16 @@ function resetApplicationEditorState() {
 watch(
   paymentId,
   () => {
+    const interruptedPaymentAction = Boolean(
+      payerOpenedPaymentId || approvalOpenedPaymentId
+    );
+    resetPayerEditorState();
+    resetApprovalEditorState();
     resetApplicationEditorState();
     detail.value = null;
     loadError.value = "";
     actionMessage.value = "";
+    if (interruptedPaymentAction) stopStaleApplicationOperation();
     void loadDetail();
   },
   { immediate: true }

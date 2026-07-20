@@ -823,8 +823,16 @@ test("routes an enabled refund task to the real receipt workflow and preserves f
   await expect(page.getByRole("heading", { name: "当前无需办理付款", exact: true })).toBeVisible();
 });
 
-test("opens one responsive A5 approval drawer and restores focus after close", async ({ page }) => {
+test("opens one responsive A5 approval drawer, confirms facts, and posts the frozen decision", async ({ page }) => {
   await mockLogin(page);
+  let approvalPayload: unknown = null;
+  await page.route("**/api/spot-procurement-payments/payment-review/approval", async (route) => {
+    approvalPayload = route.request().postDataJSON();
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ id: "payment-review", status: "approval_pending" })
+    });
+  });
   await page.route("**/api/spot-procurement-payments/payment-review", (route) => {
     const base = paymentDetail();
     return route.fulfill({
@@ -911,6 +919,126 @@ test("opens one responsive A5 approval drawer and restores focus after close", a
   expect(Math.round(mobileBox?.x ?? -1)).toBe(0);
   await drawer.getByRole("button", { name: "取消", exact: true }).click();
   await expect(trigger).toBeFocused();
+
+  await trigger.click();
+  await drawer.getByRole("button", { name: "继续确认", exact: true }).click();
+  await expect(drawer.getByText("提交前请再次核对", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("通过", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("¥4,400.00", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("云南建工测试公司", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("利民建材店", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("董事长/总经理审批", { exact: true })).toBeVisible();
+  await drawer.getByRole("button", { name: "确认提交", exact: true }).click();
+  await expect.poll(() => approvalPayload).toEqual({
+    decision: "approve",
+    comment: ""
+  });
+});
+
+test("closes payer and approval editors on an SPA payment switch without writing to either record", async ({ page }) => {
+  await mockLogin(page);
+  let payerWrites = 0;
+  let approvalWrites = 0;
+  let currentTaskMode: "payer" | "approval" = "payer";
+  await page.route("**/api/company-entities", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify([{
+      id: "company-1",
+      name: "云南建工测试公司",
+      unifiedSocialCreditCode: "91530000TEST000001",
+      registeredAddress: null,
+      dataStatus: "confirmed",
+      isActive: true,
+      currentVersionNo: 1,
+      createdAt: now,
+      updatedAt: now
+    }])
+  }));
+  await page.route("**/api/spot-procurement-payments/payment-*", (route) => {
+    const requestUrl = new URL(route.request().url());
+    if (requestUrl.pathname.endsWith("/payer")) {
+      payerWrites += 1;
+      return route.fulfill({ contentType: "application/json", body: "{}" });
+    }
+    if (requestUrl.pathname.endsWith("/approval")) {
+      approvalWrites += 1;
+      return route.fulfill({ contentType: "application/json", body: "{}" });
+    }
+    const id = requestUrl.pathname.includes("payment-B") ? "payment-B" : "payment-A";
+    const base = paymentDetailFor(id, id === "payment-A" ? "LXFK-A" : "LXFK-B", [
+      { key: "complete_payer", label: "维护付款主体", kind: "primary", enabled: true, disabledReason: null },
+      { key: "review_approval", label: "办理审批", kind: "primary", enabled: true, disabledReason: null, requiresSelfReviewConfirmation: false }
+    ]);
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...base,
+        payment: {
+          ...base.payment,
+          status: "approval_pending",
+          statusLabel: "审批中",
+          payerManagement: {
+            visible: true,
+            enabled: true,
+            disabledReason: null,
+            requiresReapproval: false
+          }
+        },
+        approval: {
+          status: "approval_pending",
+          statusLabel: "审批中",
+          currentNodeName: "综合部主管审批",
+          currentRoleKeys: ["comprehensive_director"]
+        },
+        currentTask: currentTaskMode === "payer" ? {
+          key: "complete_payer",
+          label: "待补全主体",
+          hint: "补全付款主体和方式",
+          priority: 350,
+          scope: "shared",
+          enabled: true,
+          disabledReason: null
+        } : {
+          key: "review_payment",
+          label: "待我审批",
+          hint: "核对付款事实并办理审批",
+          priority: 400,
+          scope: "personal",
+          enabled: true,
+          disabledReason: null
+        }
+      })
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await page.goto("/零星材料付款/payment-A?tab=current");
+  await page.getByRole("button", { name: "维护付款主体", exact: true }).click();
+  await expect(page.locator(".t-dialog").filter({ hasText: "维护我方付款主体" })).toBeVisible();
+
+  await page.evaluate(() => {
+    history.pushState({}, "", "/零星材料付款/payment-B?tab=current");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(page.getByText("LXFK-B", { exact: true })).toBeVisible();
+  await expect(page.locator(".t-dialog").filter({ hasText: "维护我方付款主体" })).toBeHidden();
+  await expect(page.getByText("页面已切换到另一张付款申请，原操作已停止，请在当前单据重新办理。", { exact: true })).toBeVisible();
+
+  currentTaskMode = "approval";
+  await page.goto("/零星材料付款/payment-A?tab=current");
+  await page.getByRole("button", { name: "办理审批", exact: true }).click();
+  await expect(page.locator(".payment-approval-drawer")).toBeVisible();
+  await page.evaluate(() => {
+    history.pushState({}, "", "/零星材料付款/payment-B?tab=current");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(page.getByText("LXFK-B", { exact: true })).toBeVisible();
+  await expect(page.locator(".payment-approval-drawer")).not.toHaveClass(/t-drawer--open/u);
+  expect(payerWrites).toBe(0);
+  expect(approvalWrites).toBe(0);
 });
 
 test("refreshes the completed payer task after a stale shared-role save gets 409", async ({ page }) => {

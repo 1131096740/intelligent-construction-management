@@ -234,7 +234,11 @@ describe("spot procurement web pages", () => {
     expect(detail).toContain("SPOT_PAYMENT_PAYER_TASK_COMPLETED");
     expect(detail).toContain("error instanceof SpotProcurementApiError");
     expect(detail).toContain("任务已由其他岗位完成，已刷新最新付款事实。");
-    expect(detail).toContain("const operationPaymentId = current.payment.id");
+    expect(detail).toContain("const operationPaymentId = payerOpenedPaymentId");
+    expect(detail).toContain("paymentId.value !== payerOpenedPaymentId");
+    expect(detail).toContain("paymentId.value !== approvalOpenedPaymentId");
+    expect(detail).toContain("resetPayerEditorState();");
+    expect(detail).toContain("resetApprovalEditorState();");
     expect(detail).toContain("paymentId.value !== operationPaymentId");
   });
 

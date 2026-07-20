@@ -282,6 +282,7 @@ describe("SpotProcurementPaymentService real-form draft", () => {
 
   it("locks the payment row and rejects a stale shared-task save without duplicate writes", async () => {
     const { service, tx } = createHarness();
+    tx.spotProcurementPaymentMethodOption.count.mockResolvedValue(1);
     tx.$queryRaw.mockResolvedValueOnce([
       {
         ...payment,
@@ -311,6 +312,7 @@ describe("SpotProcurementPaymentService real-form draft", () => {
 
   it("retries one payer serialization conflict and then returns the stable completed-task conflict", async () => {
     const { service, tx, prisma } = createHarness();
+    tx.spotProcurementPaymentMethodOption.count.mockResolvedValue(1);
     prisma.$transaction
       .mockRejectedValueOnce(Object.assign(new Error("serialization conflict"), { code: "P2034" }))
       .mockImplementationOnce((operation) => operation(tx));
@@ -339,6 +341,86 @@ describe("SpotProcurementPaymentService real-form draft", () => {
     expect(tx.spotProcurementPaymentMethodOption.deleteMany).not.toHaveBeenCalled();
     expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
     expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["finance_staff", "finance-1"],
+    ["comprehensive_director", "comprehensive-1"],
+    ["finance_director", "finance-director-1"]
+  ])("lets %s complete payment methods on a legacy payer without changing it", async (positionKey, actorUserId) => {
+    const { service, tx } = createHarness();
+    const legacyHalfComplete = {
+      ...payment,
+      payerCompanyEntityId: "company-legacy",
+      payerCompanyNameSnapshot: "历史付款主体",
+      payerUnifiedSocialCreditCodeSnapshot: "91530000LEGACY0001"
+    };
+    tx.$queryRaw.mockResolvedValueOnce([legacyHalfComplete]);
+    tx.projectMember.findMany.mockResolvedValue([{ positionKey }]);
+
+    await service.updatePayer("payment-1", actorUserId, {
+      companyEntityId: "company-legacy",
+      paymentMethods: ["bank_transfer"]
+    });
+
+    expect(tx.spotProcurementPaymentMethodOption.createMany).toHaveBeenCalledTimes(1);
+    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
+    expect(tx.companyEntity.findFirst).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        metadata: expect.objectContaining({
+          completedLegacyPaymentMethods: true
+        })
+      })
+    });
+  });
+
+  it("returns the stable shared-task conflict after a legacy payer method completion", async () => {
+    const { service, tx } = createHarness();
+    const legacyHalfComplete = {
+      ...payment,
+      payerCompanyEntityId: "company-legacy",
+      payerCompanyNameSnapshot: "历史付款主体",
+      payerUnifiedSocialCreditCodeSnapshot: "91530000LEGACY0001"
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([legacyHalfComplete])
+      .mockResolvedValueOnce([legacyHalfComplete]);
+    tx.spotProcurementPaymentMethodOption.count
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(1);
+
+    await service.updatePayer("payment-1", "finance-1", {
+      companyEntityId: "company-legacy",
+      paymentMethods: ["bank_transfer"]
+    });
+    await expect(
+      service.updatePayer("payment-1", "finance-1", {
+        companyEntityId: "company-legacy",
+        paymentMethods: ["bank_transfer"]
+      })
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: "SPOT_PAYMENT_PAYER_TASK_COMPLETED" }
+    });
+
+    expect(tx.spotProcurementPaymentMethodOption.createMany).toHaveBeenCalledTimes(1);
+    expect(tx.auditLog.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an empty planned payment method list before completing the shared task", async () => {
+    const { service, tx } = createHarness();
+    tx.$queryRaw.mockResolvedValueOnce([payment]);
+
+    await expect(
+      service.updatePayer("payment-1", "finance-1", {
+        companyEntityId: "company-1",
+        paymentMethods: []
+      })
+    ).rejects.toThrow("拟付款方式至少保留一种");
+
+    expect(tx.spotProcurementPaymentMethodOption.createMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
   });
 
   it("maps a second payer serialization conflict to the same stable conflict without writes", async () => {
@@ -472,6 +554,43 @@ describe("SpotProcurementPaymentService real-form draft", () => {
       paymentType: "company_direct",
       payerCompanyEntityId: null,
       payerCompanyNameSnapshot: null
+    });
+
+    await expect(
+      service.review("payment-1", "comprehensive-1", { decision: "approve" })
+    ).rejects.toThrow("综合部主管审批通过前必须确定付款主体和至少一种拟付款方式");
+  });
+
+  it("blocks comprehensive approval when a legacy payer still has no planned method", async () => {
+    const { service, tx } = createHarness();
+    const pending = { ...payment, status: "approval_pending", paymentType: "company_direct" };
+    const internal = service as unknown as {
+      requireLockedVersionForPayment: jest.Mock;
+      lockProcurementPayments: jest.Mock;
+      requireLockedApproval: jest.Mock;
+      requireActiveUser: jest.Mock;
+      loadActorRoleKeys: jest.Mock;
+    };
+    internal.requireLockedVersionForPayment = jest.fn().mockResolvedValue({
+      id: "version-1",
+      projectId: "project-1",
+      procurementId: "procurement-1"
+    });
+    internal.lockProcurementPayments = jest.fn().mockResolvedValue([pending]);
+    internal.requireLockedApproval = jest.fn().mockResolvedValue({
+      id: "approval-1",
+      applicantUserId: "material-1",
+      currentNodeIndex: 0,
+      frozenNodes: [
+        { name: "综合部主管审批", mode: "any", roleKeys: ["comprehensive_director"] }
+      ]
+    });
+    internal.requireActiveUser = jest.fn().mockResolvedValue(undefined);
+    internal.loadActorRoleKeys = jest.fn().mockResolvedValue(["comprehensive_director"]);
+    tx.spotProcurementPayment.findUnique.mockResolvedValue({
+      paymentType: "company_direct",
+      payerCompanyEntityId: "company-legacy",
+      payerCompanyNameSnapshot: "历史付款主体"
     });
 
     await expect(
