@@ -6,6 +6,20 @@ export type SpotPaymentTaskRoute =
   | "refund"
   | "readonly";
 
+export type SpotPaymentTaskSemantic = "neutral" | "progress" | "required";
+
+export interface SpotPaymentTaskPresentationInput {
+  key: string;
+  enabled: boolean;
+  scope: "personal" | "shared" | "none";
+}
+
+export interface SpotPaymentTaskPresentation {
+  actionLabel: "填写" | "处理" | "查看";
+  actionable: boolean;
+  semantic: SpotPaymentTaskSemantic;
+}
+
 export const spotPaymentWorkbenchViews = [
   { value: "mine", label: "待我办理" },
   { value: "all", label: "全部申请" },
@@ -43,4 +57,18 @@ export function paymentTaskRoute(taskKey: string):
     case "view_only": return "readonly";
     default: return "readonly";
   }
+}
+
+export function spotPaymentTaskPresentation(
+  task: SpotPaymentTaskPresentationInput
+): SpotPaymentTaskPresentation {
+  const route = paymentTaskRoute(task.key);
+  const canHandle = task.enabled && task.scope !== "none" && route !== "readonly";
+  if (!canHandle) {
+    return { actionLabel: "查看", actionable: task.enabled, semantic: "neutral" };
+  }
+  if (route === "edit-draft") {
+    return { actionLabel: "填写", actionable: true, semantic: "required" };
+  }
+  return { actionLabel: "处理", actionable: true, semantic: "progress" };
 }

@@ -331,3 +331,90 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   await expect(page.getByText("没有商户余额路径", { exact: true })).toBeVisible();
   await expect(page.getByText("发票是整张付款申请的可选附件", { exact: true })).toBeVisible();
 });
+
+test("keeps only the latest payment workbench request when views resolve out of order", async ({ page }) => {
+  await mockLogin(page);
+  await page.route("**/api/projects", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify([project])
+  }));
+
+  type Outcome = "success" | "failure";
+  type PendingRequest = {
+    view: string;
+    release: (outcome: Outcome) => void;
+    completed: Promise<void>;
+  };
+  const pendingRequests: PendingRequest[] = [];
+
+  await page.route("**/api/spot-procurement-payments**", async (route) => {
+    const view = new URL(route.request().url()).searchParams.get("view") ?? "mine";
+    let release!: (outcome: Outcome) => void;
+    let complete!: () => void;
+    const outcome = new Promise<Outcome>((resolve) => { release = resolve; });
+    const completed = new Promise<void>((resolve) => { complete = resolve; });
+    pendingRequests.push({ view, release, completed });
+
+    try {
+      if (await outcome === "failure") {
+        await route.abort("failed");
+        return;
+      }
+      const code = view === "mine" ? "OLD-MINE" : view === "all" ? "NEW-ALL" : "NEW-CLOSED";
+      const currentTask = view === "all"
+        ? { key: "unknown_task", label: "未知服务端任务", hint: "仅允许查看", priority: 300, scope: "personal", enabled: true, disabledReason: null }
+        : { key: "view_only", label: "无需办理", hint: "当前为只读记录", priority: 0, scope: "none", enabled: false, disabledReason: null };
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          view,
+          items: [paymentListRow({ id: `payment-${view}`, code, currentTask })],
+          viewCounts: { mine: 1, all: 1, closed: 1 },
+          amountSummary: null,
+          truncated: false,
+          limit: 200
+        })
+      });
+    } finally {
+      complete();
+    }
+  });
+
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await page.goto("/零星材料付款工作台");
+  await expect.poll(() => pendingRequests.length).toBe(1);
+  expect(pendingRequests[0]!.view).toBe("mine");
+  await expect(page.getByRole("button", { name: "待我办理 0", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+  await page.getByRole("button", { name: "全部申请 0", exact: true }).click();
+  await expect.poll(() => pendingRequests.length).toBe(2);
+  expect(pendingRequests[1]!.view).toBe("all");
+  pendingRequests[0]!.release("success");
+  await pendingRequests[0]!.completed;
+  await expect(page.getByText("正在读取零星材料付款", { exact: true })).toBeVisible();
+  await expect(page.getByText("OLD-MINE", { exact: true })).toHaveCount(0);
+
+  pendingRequests[1]!.release("success");
+  await pendingRequests[1]!.completed;
+  await expect(page.getByText("NEW-ALL", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "全部申请 1", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "处理", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "查看", exact: true })).toHaveCount(2);
+
+  await page.getByRole("button", { name: "待我办理 1", exact: true }).click();
+  await expect.poll(() => pendingRequests.length).toBe(3);
+  await page.getByRole("button", { name: "已办结 1", exact: true }).click();
+  await expect.poll(() => pendingRequests.length).toBe(4);
+  expect(pendingRequests[2]!.view).toBe("mine");
+  expect(pendingRequests[3]!.view).toBe("closed");
+  pendingRequests[3]!.release("success");
+  await pendingRequests[3]!.completed;
+  await expect(page.getByText("NEW-CLOSED", { exact: true })).toBeVisible();
+  pendingRequests[2]!.release("failure");
+  await pendingRequests[2]!.completed;
+  await expect(page.getByText("NEW-CLOSED", { exact: true })).toBeVisible();
+  await expect(page.getByText("零星材料付款暂不可用", { exact: true })).toHaveCount(0);
+});

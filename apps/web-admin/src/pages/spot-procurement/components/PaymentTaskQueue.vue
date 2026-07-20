@@ -6,8 +6,8 @@ import type {
 } from "../../../api/spot-procurement.api";
 import BusinessStatusText from "../../../components/BusinessStatusText.vue";
 import {
-  paymentTaskRoute,
   selectSpotPaymentTaskCards,
+  spotPaymentTaskPresentation,
   spotPaymentWorkbenchViews
 } from "../spot-payment-workbench.config";
 
@@ -25,29 +25,10 @@ const emit = defineEmits<{
 
 const taskCards = computed(() => selectSpotPaymentTaskCards(
   props.rows.filter((row) => row.currentTask.scope !== "none")
-));
-
-function taskActionLabel(taskKey: string) {
-  switch (paymentTaskRoute(taskKey)) {
-    case "edit-draft": return "填写";
-    case "review":
-    case "payer":
-    case "execution":
-    case "refund": return "处理";
-    default: return "查看";
-  }
-}
-
-function taskSemantic(taskKey: string) {
-  switch (paymentTaskRoute(taskKey)) {
-    case "edit-draft": return "required" as const;
-    case "review":
-    case "payer":
-    case "execution":
-    case "refund": return "progress" as const;
-    default: return "neutral" as const;
-  }
-}
+).map((row) => ({
+  row,
+  presentation: spotPaymentTaskPresentation(row.currentTask)
+})));
 </script>
 
 <template>
@@ -73,6 +54,7 @@ function taskSemantic(taskKey: string) {
           :theme="activeView === view.value ? 'primary' : 'default'"
           :variant="activeView === view.value ? 'light' : 'outline'"
           :loading="loading && activeView === view.value"
+          :aria-pressed="activeView === view.value"
           @click="emit('viewChange', view.value)"
         >
           {{ view.label }} {{ counts[view.value] }}
@@ -85,25 +67,25 @@ function taskSemantic(taskKey: string) {
       class="payment-task-queue__cards"
     >
       <t-card
-        v-for="row in taskCards"
-        :key="row.id"
+        v-for="card in taskCards"
+        :key="card.row.id"
         bordered
         class="payment-task-card"
       >
         <div class="payment-task-card__content">
           <BusinessStatusText
-            :text="row.currentTask.label"
-            :semantic="taskSemantic(row.currentTask.key)"
+            :text="card.row.currentTask.label"
+            :semantic="card.presentation.semantic"
           />
-          <strong>{{ row.currentTask.hint }}</strong>
-          <span>{{ row.code }} · {{ row.project.name }}</span>
+          <strong>{{ card.row.currentTask.hint }}</strong>
+          <span>{{ card.row.code }} · {{ card.row.project.name }}</span>
         </div>
         <t-button
           size="small"
-          :disabled="!row.currentTask.enabled"
-          @click="emit('openDetail', row.id)"
+          :disabled="!card.presentation.actionable"
+          @click="emit('openDetail', card.row.id)"
         >
-          {{ taskActionLabel(row.currentTask.key) }}
+          {{ card.presentation.actionLabel }}
         </t-button>
       </t-card>
     </div>

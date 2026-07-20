@@ -15,7 +15,7 @@ import BusinessTableToolbar from "../../components/BusinessTableToolbar.vue";
 import { centsTextToYuanText } from "../../lib/money";
 import type { SpotProcurementPaymentStatus } from "@jiangkong/shared-domain";
 import PaymentTaskQueue from "./components/PaymentTaskQueue.vue";
-import { paymentTaskRoute } from "./spot-payment-workbench.config";
+import { spotPaymentTaskPresentation } from "./spot-payment-workbench.config";
 
 const router = useRouter();
 const loading = ref(false);
@@ -31,6 +31,7 @@ const viewCounts = ref<Record<SpotPaymentWorkbenchView, number>>({
 });
 const amountSummary = ref<SpotPaymentListAmountSummary | null>(null);
 const listMeta = ref({ limit: 0, truncated: false });
+let latestPaymentRequestId = 0;
 const filters = reactive({
   projectId: "",
   status: "" as SpotProcurementPaymentStatus | "",
@@ -82,9 +83,8 @@ function statusSemantic(status: SpotProcurementPaymentStatus) {
   return "neutral" as const;
 }
 
-function operationLabel(row: SpotProcurementPaymentListItemReadModel) {
-  if (!row.currentTask.enabled || row.currentTask.scope === "none") return "查看";
-  return paymentTaskRoute(row.currentTask.key) === "edit-draft" ? "填写" : "处理";
+function taskPresentation(row: SpotProcurementPaymentListItemReadModel) {
+  return spotPaymentTaskPresentation(row.currentTask);
 }
 
 function openDetail(paymentId: string) {
@@ -92,6 +92,7 @@ function openDetail(paymentId: string) {
 }
 
 async function loadPayments() {
+  const requestId = ++latestPaymentRequestId;
   loading.value = true;
   loadError.value = "";
   try {
@@ -101,21 +102,26 @@ async function loadPayments() {
       status: filters.status || undefined,
       keyword: filters.keyword.trim() || undefined
     });
+    if (requestId !== latestPaymentRequestId) return;
     activeView.value = result.view;
     rows.value = result.items;
     viewCounts.value = result.viewCounts;
     amountSummary.value = result.amountSummary;
     listMeta.value = { limit: result.limit, truncated: result.truncated };
   } catch (error) {
+    if (requestId !== latestPaymentRequestId) return;
     loadError.value = error instanceof Error ? error.message : "零星材料付款工作台读取失败";
   } finally {
-    loading.value = false;
+    if (requestId === latestPaymentRequestId) loading.value = false;
   }
 }
 
 function changeView(view: SpotPaymentWorkbenchView) {
   if (view === activeView.value) return;
   activeView.value = view;
+  rows.value = [];
+  amountSummary.value = null;
+  listMeta.value = { limit: 0, truncated: false };
   void loadPayments();
 }
 
@@ -306,7 +312,7 @@ onMounted(() => void Promise.all([loadProjects(), loadPayments()]));
           <template #task="{ row }">
             <BusinessStatusText
               :text="row.currentTask.label"
-              :semantic="row.currentTask.enabled ? 'progress' : 'neutral'"
+              :semantic="taskPresentation(row).semantic"
             />
           </template>
           <template #operation="{ row }">
@@ -315,7 +321,7 @@ onMounted(() => void Promise.all([loadProjects(), loadPayments()]));
               variant="outline"
               @click="openDetail(row.id)"
             >
-              {{ operationLabel(row) }}
+              {{ taskPresentation(row).actionLabel }}
             </t-button>
           </template>
         </t-table>

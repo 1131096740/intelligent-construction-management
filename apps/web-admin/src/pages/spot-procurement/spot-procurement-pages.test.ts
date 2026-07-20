@@ -433,11 +433,15 @@ describe("spot procurement web pages", () => {
     expect(payment).toContain("view: activeView.value");
     expect(payment).toContain("result.amountSummary");
     expect(payment).toContain("result.viewCounts");
+    expect(payment).toContain("latestPaymentRequestId");
+    expect(payment).toContain("requestId !== latestPaymentRequestId");
+    expect(payment).toContain("rows.value = []");
     expect(payment).toContain("<PaymentTaskQueue");
     expect(payment).toContain("<BusinessStatusText");
     expect(payment).not.toContain("sumCents");
     expect(queue).toContain("selectSpotPaymentTaskCards");
-    expect(queue).toContain("paymentTaskRoute");
+    expect(queue).toContain("spotPaymentTaskPresentation");
+    expect(queue).toContain(':aria-pressed="activeView === view.value"');
     expect(queue).not.toContain("fetchSpotProcurementPayments");
     expect(status).toContain('aria-hidden="true"');
     expect(status).not.toMatch(/<t-tag|<t-button|<button/u);

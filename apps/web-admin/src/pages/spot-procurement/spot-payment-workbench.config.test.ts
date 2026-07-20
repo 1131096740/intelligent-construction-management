@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   paymentTaskRoute,
   selectSpotPaymentTaskCards,
+  spotPaymentTaskPresentation,
   spotPaymentLedgerGroups,
   spotPaymentWorkbenchViews
 } from "./spot-payment-workbench.config";
@@ -55,5 +56,23 @@ describe("spot payment workbench configuration", () => {
     expect(paymentTaskRoute("toString")).toBe("readonly");
     expect(paymentTaskRoute("constructor")).toBe("readonly");
     expect(paymentTaskRoute("__proto__")).toBe("readonly");
+  });
+
+  it("shares fail-closed labels, actionability and semantics across task surfaces", () => {
+    expect(spotPaymentTaskPresentation({
+      key: "complete_payment_draft", enabled: true, scope: "personal"
+    })).toEqual({ actionLabel: "填写", actionable: true, semantic: "required" });
+    expect(spotPaymentTaskPresentation({
+      key: "review_payment", enabled: true, scope: "personal"
+    })).toEqual({ actionLabel: "处理", actionable: true, semantic: "progress" });
+    expect(spotPaymentTaskPresentation({
+      key: "view_only", enabled: true, scope: "personal"
+    })).toEqual({ actionLabel: "查看", actionable: true, semantic: "neutral" });
+    expect(spotPaymentTaskPresentation({
+      key: "unknown_task", enabled: true, scope: "shared"
+    })).toEqual({ actionLabel: "查看", actionable: true, semantic: "neutral" });
+    expect(spotPaymentTaskPresentation({
+      key: "record_execution", enabled: false, scope: "personal"
+    })).toEqual({ actionLabel: "查看", actionable: false, semantic: "neutral" });
   });
 });
