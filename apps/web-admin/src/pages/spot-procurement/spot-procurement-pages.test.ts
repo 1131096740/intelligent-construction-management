@@ -412,9 +412,35 @@ describe("spot procurement web pages", () => {
     }
     expect(procurement).toContain('title: "申请 / 采购"');
     expect(procurement).toContain('title: "付款与收货"');
-    expect(payment).toContain('title: "付款 / 采购单"');
-    expect(payment).toContain('title: "商户 / 收款对象"');
-    expect(payment).toContain('return row.status === "draft" ? "填写付款申请" : "查看详情"');
+    expect(payment).toContain('title: "付款申请"');
+    expect(payment).toContain('title: "项目 / 商户"');
+    expect(payment).toContain('title: "金额"');
+    expect(payment).toContain('title: "当前状态"');
+    expect(payment).toContain('title: "当前任务"');
+    expect(payment).toContain('title: "操作"');
+    expect(payment).not.toMatch(/title: "(?:付款主体|收款渠道|累计实付|收货|发票)/u);
+  });
+
+  it("builds the payment workbench around server tasks and server summaries", () => {
+    const payment = pageSource("SpotProcurementPaymentWorkbenchPage.vue");
+    const queue = pageSource("components/PaymentTaskQueue.vue");
+    const status = readFileSync(
+      fileURLToPath(new URL("../../components/BusinessStatusText.vue", import.meta.url)),
+      "utf8"
+    );
+
+    expect(payment).toContain('ref<SpotPaymentWorkbenchView>("mine")');
+    expect(payment).toContain("view: activeView.value");
+    expect(payment).toContain("result.amountSummary");
+    expect(payment).toContain("result.viewCounts");
+    expect(payment).toContain("<PaymentTaskQueue");
+    expect(payment).toContain("<BusinessStatusText");
+    expect(payment).not.toContain("sumCents");
+    expect(queue).toContain("selectSpotPaymentTaskCards");
+    expect(queue).toContain("paymentTaskRoute");
+    expect(queue).not.toContain("fetchSpotProcurementPayments");
+    expect(status).toContain('aria-hidden="true"');
+    expect(status).not.toMatch(/<t-tag|<t-button|<button/u);
   });
 
   it("connects final receipt, shortage handling, invoice append and archive facts without location or batches", () => {
