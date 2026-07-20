@@ -29,6 +29,14 @@ const receiptSummary = {
   discrepancyStatus: null
 };
 
+function deferred() {
+  let resolve: () => void = () => undefined;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 async function mockLogin(page: Page) {
   await page.route("**/api/auth/login", (route) => route.fulfill({
     contentType: "application/json",
@@ -163,7 +171,7 @@ function paymentListRow(overrides = {}) {
 function paymentDetail() {
   return {
     payment: {
-      id: "payment-1", code: "LXFK-E2E-001", status: "partially_paid", statusLabel: "部分已付", project,
+      id: "payment-1", code: "LXFK-E2E-001", status: "draft", statusLabel: "付款草稿", project,
       procurement: { id: "procurement-1", code: "LXCG-E2E-001" }, procurementVersionId: "version-1", form: "real_payment",
       paymentType: "company_direct", paymentTypeLabel: "公司直付", merchantName: "利民建材店", merchantPayeeMismatchNote: null,
       payerCompanyName: "四川建工智管建筑工程有限公司", payee: { name: "利民建材店", accountName: "利民建材店", primaryChannel: { id: "channel-1", sortOrder: 1, channelType: "bank_transfer", channelTypeLabel: "银行转账", accountName: "利民建材店", bankName: "建设银行", accountNumberLast4: "1234", note: null, primary: true } },
@@ -179,7 +187,23 @@ function paymentDetail() {
     paymentMethods: [{ value: "bank_transfer", label: "银行转账" }], paymentChannels: [{ id: "channel-1", sortOrder: 1, channelType: "bank_transfer", channelTypeLabel: "银行转账", accountName: "利民建材店", bankName: "建设银行", accountNumberLast4: "1234", note: null, primary: true }],
     discrepancy: { status: "none", nextStep: null, refund: null }, approvalOriginal: { documentId: "payment-original", fileId: "a5-original", templateKey: "spot_procurement_payment_approval_original_v1", createdAt: now, immutable: true }, archives: [], archiveStatus: { status: "generated", label: "归档包已生成", canRetry: false, latestVersionNo: 1 },
     invoice: { status: "pending", statusLabel: "待补发票", activeCount: 0, invoices: [] },
-    paymentPdf: { available: true, businessType: "spot_procurement_payment", businessId: "payment-1", disabledReason: null }, availableActions: [], primaryAction: null, disabledReasons: []
+    paymentPdf: { available: true, businessType: "spot_procurement_payment", businessId: "payment-1", disabledReason: null },
+    currentTask: { key: "complete_payment_draft", label: "完善付款草稿", hint: "补齐付款信息", priority: 300, scope: "personal", enabled: true, disabledReason: null },
+    availableActions: [{ key: "edit_draft", label: "编辑付款草稿", kind: "normal", enabled: true, disabledReason: null }], primaryAction: null, disabledReasons: []
+  };
+}
+
+function paymentDetailFor(
+  id: string,
+  code: string,
+  availableActions: Array<Record<string, unknown>>
+) {
+  const base = paymentDetail();
+  return {
+    ...base,
+    payment: { ...base.payment, id, code },
+    paymentPdf: { ...base.paymentPdf, businessId: id },
+    availableActions
   };
 }
 
@@ -290,9 +314,9 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
     const url = new URL(page.url());
     return `${decodeURIComponent(url.pathname)}${url.search}`;
   }).toBe("/零星材料付款/payment-1?tab=current");
-  await expect(page.getByRole("heading", { name: "A5 付款申请", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "编辑 A5 付款草稿", exact: true })).toBeVisible();
   await page.goto("/零星材料付款/payment-1?tab=unknown");
-  await expect(page.getByRole("heading", { name: "A5 付款申请", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "编辑 A5 付款草稿", exact: true })).toBeVisible();
   await page.goto("/零星采购/procurement-1");
   await page.locator(".t-tabs").getByText("关联付款", { exact: true }).click();
   await expect(page.getByRole("button", { name: "处理付款", exact: true })).toBeVisible();
@@ -386,6 +410,80 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   await expect(page.getByText("一次最终收货", { exact: true })).toBeVisible();
   await expect(page.getByText("没有商户余额路径", { exact: true })).toBeVisible();
   await expect(page.getByText("发票是整张付款申请的可选附件", { exact: true })).toBeVisible();
+});
+
+test("keeps the latest spot payment detail and reloads a replacement draft", async ({ page }) => {
+  const slowAStarted = deferred();
+  const releaseSlowA = deferred();
+  let paymentARequests = 0;
+
+  await mockLogin(page);
+  await page.route("**/api/spot-procurement-payments/payment-A", async (route) => {
+    paymentARequests += 1;
+    if (paymentARequests > 1) {
+      slowAStarted.resolve();
+      await releaseSlowA.promise;
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(paymentDetailFor("payment-A", "LXFK-A", []))
+    });
+  });
+  await page.route("**/api/spot-procurement-payments/payment-B", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(paymentDetailFor("payment-B", "LXFK-B", [{
+        key: "withdraw_approval",
+        label: "撤回付款审批",
+        kind: "danger",
+        enabled: true,
+        disabledReason: null
+      }]))
+    })
+  );
+  await page.route("**/api/spot-procurement-payments/payment-new", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(paymentDetailFor("payment-new", "LXFK-NEW", [{
+        key: "edit_draft",
+        label: "编辑付款草稿",
+        kind: "normal",
+        enabled: true,
+        disabledReason: null
+      }]))
+    })
+  );
+  await page.route("**/api/spot-procurement-payments/payment-B/approval-withdrawal", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ newDraftPaymentId: "payment-new" })
+    })
+  );
+
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await page.goto("/零星材料付款/payment-A?tab=current");
+  await expect(page.getByText("LXFK-A", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await slowAStarted.promise;
+  await page.goto("/零星材料付款/payment-B?tab=current");
+  await expect(page.getByText("LXFK-B", { exact: true })).toBeVisible();
+  releaseSlowA.resolve();
+  await expect(page.getByText("LXFK-B", { exact: true })).toBeVisible();
+  await expect(page.getByText("LXFK-A", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "撤回审批", exact: true }).click();
+  const dialog = page.locator(".t-dialog").filter({ hasText: "撤回付款审批" });
+  await dialog.getByRole("button", { name: "确认撤回", exact: true }).click();
+  await expect.poll(() => {
+    const url = new URL(page.url());
+    return `${decodeURIComponent(url.pathname)}${url.search}`;
+  }).toBe("/零星材料付款/payment-new?tab=current");
+  await expect(page.getByText("LXFK-NEW", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "编辑 A5 付款草稿", exact: true })).toBeVisible();
 });
 
 test("keeps only the latest payment workbench request when views resolve out of order", async ({ page }) => {

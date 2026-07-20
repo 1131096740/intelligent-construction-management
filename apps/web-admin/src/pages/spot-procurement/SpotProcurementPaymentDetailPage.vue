@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { BusinessSummaryTone } from "../../components/business-status-summary.config";
 import type { UploadFile } from "tdesign-vue-next";
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   fetchSpotProcurementPaymentDetail,
@@ -122,6 +122,7 @@ const confirmation = reactive({
   reasonLabel: "操作说明"
 });
 const confirmationError = ref("");
+let latestDetailRequestId = 0;
 
 const paymentId = computed(() => typeof route.params.paymentId === "string" ? route.params.paymentId : "");
 const payment = computed(() => detail.value?.payment ?? null);
@@ -208,10 +209,11 @@ function readStatusLabel(value: { statusLabel?: string; label?: string }) {
 
 function paymentTabFromQuery(value: unknown): ExistingPaymentDetailTab {
   const tab = Array.isArray(value) ? value[0] : value;
-  if (tab === "current" || tab === "overview") return "overview";
+  if (tab === "current") return "process";
+  if (tab === "overview") return "overview";
   if (tab === "process") return "process";
   if (tab === "archive") return "archive";
-  return "overview";
+  return "process";
 }
 
 function actionEnabled(key: string) {
@@ -226,11 +228,28 @@ function showSuccess(message: string) { actionState.value = "success"; actionMes
 function showError(error: unknown, fallback: string) { actionState.value = "error"; actionMessage.value = error instanceof Error ? error.message : fallback; }
 
 async function loadDetail() {
-  if (!paymentId.value) { loadError.value = "付款申请编号缺失"; return; }
+  const requestId = ++latestDetailRequestId;
+  const requestedPaymentId = paymentId.value;
+  if (!requestedPaymentId) {
+    detail.value = null;
+    loading.value = false;
+    loadError.value = "付款申请编号缺失";
+    return;
+  }
   loading.value = true; loadError.value = "";
-  try { detail.value = await fetchSpotProcurementPaymentDetail(paymentId.value); }
-  catch (error) { detail.value = null; loadError.value = error instanceof Error ? error.message : "付款申请读取失败"; }
-  finally { loading.value = false; }
+  try {
+    const result = await fetchSpotProcurementPaymentDetail(requestedPaymentId);
+    if (requestId !== latestDetailRequestId || requestedPaymentId !== paymentId.value) return;
+    detail.value = result;
+  } catch (error) {
+    if (requestId !== latestDetailRequestId || requestedPaymentId !== paymentId.value) return;
+    detail.value = null;
+    loadError.value = error instanceof Error ? error.message : "付款申请读取失败";
+  } finally {
+    if (requestId === latestDetailRequestId && requestedPaymentId === paymentId.value) {
+      loading.value = false;
+    }
+  }
 }
 
 async function loadHistoricalMerchants(projectId: string) {
@@ -396,7 +415,12 @@ async function confirmAction(values: { reason: string; password: string }) {
       showSuccess("实际付款与凭证已登记。收货确认会在首笔实际付款后开放。"); resetExecutionAttempt();
     }
     confirmation.visible = false;
-    if (nextPaymentId) { await router.push(`/零星材料付款/${encodeURIComponent(nextPaymentId)}`); return; }
+    if (nextPaymentId) {
+      await router.replace(
+        `/零星材料付款/${encodeURIComponent(nextPaymentId)}?tab=current`
+      );
+      return;
+    }
     await loadDetail();
   } catch (error) { confirmationError.value = error instanceof Error ? error.message : "操作失败"; showError(error, "操作失败"); }
   finally { actionBusy.value = false; }
@@ -428,7 +452,16 @@ function requiredText(value: string, label: string) { const normalized = value.t
 function normalizeAttachmentCategory(value: string) { return ["merchant_receipt", "merchant_quote", "merchant_invoice", "other"].includes(value) ? value as "merchant_receipt" | "merchant_quote" | "merchant_invoice" | "other" : "other" as const; }
 function localDateTimeValue(date: Date) { const offset = date.getTimezoneOffset() * 60_000; return new Date(date.getTime() - offset).toISOString().slice(0, 19); }
 
-onMounted(() => void loadDetail());
+watch(
+  paymentId,
+  () => {
+    detail.value = null;
+    loadError.value = "";
+    actionMessage.value = "";
+    void loadDetail();
+  },
+  { immediate: true }
+);
 </script>
 
 <template>

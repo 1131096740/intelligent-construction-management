@@ -599,7 +599,7 @@ export class SpotProcurementReadService {
       (refund) =>
         refund.paymentId !== null && accessiblePaymentIdSet.has(refund.paymentId)
     );
-    const executionPaymentIds = allPayments.map((payment) => payment.id);
+    const executionPaymentIds = accessiblePayments.map((payment) => payment.id);
     const executions = executionPaymentIds.length
       ? await this.prisma.spotProcurementPaymentExecution.findMany({
           where: {

@@ -1094,6 +1094,45 @@ describe("SpotProcurementReadService", () => {
     });
   });
 
+  it("does not expose hidden payment execution through the procurement receipt summary", async () => {
+    const fixture = buildFixture();
+    fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([
+      versionRow({
+        totalAmountCents: null,
+        applicationDepartmentSnapshot: "工程部",
+        applicationNameSnapshot: "赵凤平",
+        purchaserNameSnapshot: "杨帅",
+        purchaserDepartmentNameSnapshot: "物资部",
+        requestedArrivalAt: now
+      })
+    ]);
+    fixture.access.accessiblePaymentIds.mockResolvedValue(new Set());
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const result = await service.getProcurement(
+      "procurement-1",
+      "unrelated-user"
+    );
+
+    expect(result.paymentSummary).toMatchObject({
+      paymentId: null,
+      actualPaidAmountCents: null,
+      visibilityRestricted: true
+    });
+    expect(result.receipt).toMatchObject({
+      openAfterActualPayment: false,
+      blockedReason: "待财务登记实际付款后开放收货确认"
+    });
+    expect(
+      fixture.prisma.spotProcurementPaymentExecution.findMany
+    ).not.toHaveBeenCalled();
+  });
+
   it("offers a real revision action for an owner after rejection without exposing false draft editing", async () => {
     const fixture = buildFixture();
     const rejectedProcurement = procurementRow({ status: "draft" });
