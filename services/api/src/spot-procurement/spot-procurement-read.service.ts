@@ -46,6 +46,7 @@ import { SpotProcurementAccessService } from "./spot-procurement-access.service"
 import { SpotProcurementInvoiceService } from "./spot-procurement-invoice.service";
 import { SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY } from "./spot-procurement-form-renderer";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
+import { isSpotPaymentPayerTaskComplete } from "./spot-payment-payer-task";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
 
 const LIST_LIMIT = 200;
@@ -212,6 +213,7 @@ export function deriveSpotPaymentCurrentTask(input: {
   actorUserId: string;
   roleKeys: readonly RoleKey[];
   projectScopedRoleKeys: readonly RoleKey[];
+  paymentMethodCount: number;
   availableActions: Array<
     Pick<DetailActionReadModel, "key" | "label" | "enabled" | "disabledReason">
   >;
@@ -238,6 +240,10 @@ export function deriveSpotPaymentCurrentTask(input: {
       (input.approval.currentNodeIndex === 0 ||
         (input.roleKeys.includes("finance_director") &&
           pendingApprovalRoleKeys.includes("finance_director"))));
+  const payerTaskComplete = isSpotPaymentPayerTaskComplete(
+    input.payment,
+    input.paymentMethodCount
+  );
 
   if (
     projectFinance &&
@@ -286,6 +292,23 @@ export function deriveSpotPaymentCurrentTask(input: {
     };
   }
   if (
+    canCompletePayerAtCurrentStage &&
+    !payerTaskComplete &&
+    input.roleKeys.some((role) =>
+      payerRoles.includes(role as (typeof payerRoles)[number])
+    )
+  ) {
+    return {
+      key: "complete_payer",
+      label: "补充付款主体与方式",
+      hint: "付款主体或付款方式未补齐，等待有权岗位共享补录",
+      priority: 200,
+      scope: "shared",
+      enabled: true,
+      disabledReason: null
+    };
+  }
+  if (
     input.approval?.status === "approval_pending" &&
     action("review_approval")?.enabled
   ) {
@@ -310,22 +333,6 @@ export function deriveSpotPaymentCurrentTask(input: {
       hint: "当前付款已批，等待项目财务登记实付与凭证",
       priority: 300,
       scope: "personal",
-      enabled: true,
-      disabledReason: null
-    };
-  }
-  if (
-    canCompletePayerAtCurrentStage &&
-    (!input.payment.payerCompanyEntityId ||
-      !input.payment.payerCompanyNameSnapshot) &&
-    input.roleKeys.some((role) => payerRoles.includes(role as (typeof payerRoles)[number]))
-  ) {
-    return {
-      key: "complete_payer",
-      label: "补充付款主体",
-      hint: "付款主体缺失，等待有权岗位共享补录",
-      priority: 200,
-      scope: "shared",
       enabled: true,
       disabledReason: null
     };
@@ -1213,6 +1220,7 @@ export class SpotProcurementReadService {
       projectScopedRoleKeys: isProjectFinanceStaff
         ? ["finance_staff"]
         : [],
+      paymentMethodCount: paymentMethods.length,
       availableActions
     });
     const usesRealPaymentForm = isRealPaymentForm(payment, version);
@@ -1907,6 +1915,7 @@ export class SpotProcurementReadService {
       loadedUsers,
       activeExecutions,
       paymentLines,
+      paymentMethods,
       paymentInvoices,
       receipts,
       refunds,
@@ -1951,6 +1960,10 @@ export class SpotProcurementReadService {
         this.prisma.spotProcurementPaymentLine.findMany({
           where: { paymentId: { in: rows.map((row) => row.id) } },
           select: { paymentId: true, expectedInvoiceCondition: true }
+        }),
+        this.prisma.spotProcurementPaymentMethodOption.findMany({
+          where: { paymentId: { in: rows.map((row) => row.id) } },
+          select: { paymentId: true }
         }),
         this.prisma.spotProcurementPaymentInvoice.findMany({
           where: { paymentId: { in: rows.map((row) => row.id) } },
@@ -2063,6 +2076,10 @@ export class SpotProcurementReadService {
     const paymentLinesByPaymentId = groupBy(
       paymentLines,
       (line) => line.paymentId
+    );
+    const paymentMethodsByPaymentId = groupBy(
+      paymentMethods,
+      (method) => method.paymentId
     );
     const paymentInvoicesByPaymentId = groupBy(
       paymentInvoices,
@@ -2202,6 +2219,8 @@ export class SpotProcurementReadService {
         actorUserId,
         roleKeys: roleContext.effectiveRoleKeys,
         projectScopedRoleKeys: roleContext.projectScopedRoleKeys,
+        paymentMethodCount:
+          paymentMethodsByPaymentId.get(row.id)?.length ?? 0,
         availableActions
       });
       return [

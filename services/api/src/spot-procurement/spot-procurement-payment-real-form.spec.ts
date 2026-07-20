@@ -310,6 +310,35 @@ describe("SpotProcurementPaymentService real-form draft", () => {
     expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
+  it("repairs a missing payer name snapshot instead of treating methods alone as task completion", async () => {
+    const { service, tx } = createHarness();
+    tx.spotProcurementPaymentMethodOption.count.mockResolvedValue(1);
+    tx.$queryRaw.mockResolvedValueOnce([
+      {
+        ...payment,
+        payerCompanyEntityId: "company-1",
+        payerCompanyNameSnapshot: null
+      }
+    ]);
+
+    await service.updatePayer("payment-1", "finance-1", {
+      companyEntityId: "company-1",
+      paymentMethods: ["bank_transfer"]
+    });
+
+    expect(tx.companyEntity.findFirst).toHaveBeenCalledWith({
+      where: { id: "company-1", isActive: true },
+      select: { id: true, name: true, unifiedSocialCreditCode: true }
+    });
+    expect(tx.spotProcurementPayment.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: expect.objectContaining({
+        payerCompanyEntityId: "company-1",
+        payerCompanyNameSnapshot: "云南建工集团"
+      })
+    });
+  });
+
   it("retries one payer serialization conflict and then returns the stable completed-task conflict", async () => {
     const { service, tx, prisma } = createHarness();
     tx.spotProcurementPaymentMethodOption.count.mockResolvedValue(1);

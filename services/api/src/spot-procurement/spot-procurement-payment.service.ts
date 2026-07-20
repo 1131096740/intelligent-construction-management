@@ -45,6 +45,7 @@ import {
   type SpotProcurementApprovalNode
 } from "./spot-procurement-approval-nodes";
 import { deriveSpotProcurementPaymentExecutionStatus } from "./spot-procurement-payment-status";
+import { isSpotPaymentPayerTaskComplete } from "./spot-payment-payer-task";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 import { SpotProcurementPaymentArchiveService } from "./spot-procurement-payment-archive.service";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
@@ -942,8 +943,10 @@ export class SpotProcurementPaymentService {
         await tx.spotProcurementPaymentMethodOption.count({
           where: { paymentId: payment.id }
         });
-      const payerTaskComplete = Boolean(payment.payerCompanyEntityId) &&
-        existingMethodCount > 0;
+      const payerTaskComplete = isSpotPaymentPayerTaskComplete(
+        payment,
+        existingMethodCount
+      );
       if (payerTaskComplete && !isFinanceDirectorReapproval) {
         throw new ConflictException(PAYER_TASK_COMPLETED_ERROR);
       }
@@ -957,7 +960,9 @@ export class SpotProcurementPaymentService {
         input.companyEntityId,
         "请选择付款主体"
       );
-      const completesLegacyMethods = Boolean(payment.payerCompanyEntityId) &&
+      const completesLegacyMethods = Boolean(
+        payment.payerCompanyEntityId && payment.payerCompanyNameSnapshot?.trim()
+      ) &&
         existingMethodCount === 0 &&
         !isFinanceDirectorReapproval;
       if (

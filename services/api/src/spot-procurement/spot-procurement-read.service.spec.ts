@@ -1643,6 +1643,7 @@ describe("SpotProcurementReadService", () => {
       actorUserId: "handler-1",
       roleKeys: ["material_staff"] as const,
       projectScopedRoleKeys: ["material_staff"] as const,
+      paymentMethodCount: 0,
       availableActions: [
         { key: "edit_draft", label: "编辑付款草稿", enabled: true }
       ] as never
@@ -1678,6 +1679,7 @@ describe("SpotProcurementReadService", () => {
         actorUserId: "manager-1",
         roleKeys: ["project_manager"],
         projectScopedRoleKeys: ["project_manager"],
+        paymentMethodCount: 1,
         availableActions: [
           { key: "review_approval", label: "处理付款审批", enabled: true }
         ] as never
@@ -1691,6 +1693,7 @@ describe("SpotProcurementReadService", () => {
         actorUserId: "material-director-1",
         roleKeys: ["material_director"],
         projectScopedRoleKeys: ["material_director"],
+        paymentMethodCount: 0,
         availableActions: []
       })
     ).toMatchObject({
@@ -1709,6 +1712,7 @@ describe("SpotProcurementReadService", () => {
         actorUserId: "readonly-1",
         roleKeys: ["employee"],
         projectScopedRoleKeys: ["employee"],
+        paymentMethodCount: 0,
         availableActions: []
       })
     ).toMatchObject({
@@ -1739,10 +1743,81 @@ describe("SpotProcurementReadService", () => {
           actorUserId: `${role}-1`,
           roleKeys: [role],
           projectScopedRoleKeys: [role],
+          paymentMethodCount: 0,
           availableActions: []
         })
       ).toMatchObject({ key: "complete_payer", scope: "shared", priority: 200 });
     }
+    const payerWithoutMethods = paymentRow({
+      status: "approval_pending",
+      payerCompanyEntityId: "company-1",
+      payerCompanyNameSnapshot: "云南建工"
+    });
+    const comprehensiveApproval = {
+      status: "approval_pending",
+      currentNodeIndex: 0,
+      frozenNodes: [
+        { name: "综合部主管", roleKeys: ["comprehensive_director"] }
+      ],
+      applicantUserId: "handler-1"
+    };
+    for (const role of [
+      "finance_staff",
+      "comprehensive_director",
+      "finance_director"
+    ] as const) {
+      expect(
+        deriveSpotPaymentCurrentTask({
+          payment: payerWithoutMethods as never,
+          approval: comprehensiveApproval as never,
+          discrepancy: null,
+          actorUserId: `${role}-1`,
+          roleKeys: [role],
+          projectScopedRoleKeys: [role],
+          paymentMethodCount: 0,
+          availableActions:
+            role === "comprehensive_director"
+              ? ([
+                  {
+                    key: "review_approval",
+                    label: "处理付款审批",
+                    enabled: true
+                  }
+                ] as never)
+              : []
+        })
+      ).toMatchObject({ key: "complete_payer", scope: "shared" });
+    }
+    expect(
+      deriveSpotPaymentCurrentTask({
+        payment: payerWithoutMethods as never,
+        approval: comprehensiveApproval as never,
+        discrepancy: null,
+        actorUserId: "material-director-1",
+        roleKeys: ["material_director"],
+        projectScopedRoleKeys: ["material_director"],
+        paymentMethodCount: 0,
+        availableActions: []
+      })
+    ).toMatchObject({ key: "none", scope: "none" });
+    expect(
+      deriveSpotPaymentCurrentTask({
+        payment: payerWithoutMethods as never,
+        approval: comprehensiveApproval as never,
+        discrepancy: null,
+        actorUserId: "comprehensive-1",
+        roleKeys: ["comprehensive_director"],
+        projectScopedRoleKeys: ["comprehensive_director"],
+        paymentMethodCount: 1,
+        availableActions: [
+          {
+            key: "review_approval",
+            label: "处理付款审批",
+            enabled: true
+          }
+        ] as never
+      })
+    ).toMatchObject({ key: "review_payment", scope: "personal" });
     expect(
       deriveSpotPaymentCurrentTask({
         payment: paymentRow({
@@ -1755,6 +1830,7 @@ describe("SpotProcurementReadService", () => {
         actorUserId: "finance-1",
         roleKeys: ["finance_staff"],
         projectScopedRoleKeys: ["finance_staff"],
+        paymentMethodCount: 1,
         availableActions: []
       })
     ).toMatchObject({ key: "none", priority: 0 });
@@ -1769,6 +1845,7 @@ describe("SpotProcurementReadService", () => {
       actorUserId: "finance-1",
       roleKeys: ["finance_staff"] as const,
       projectScopedRoleKeys: ["finance_staff"] as const,
+      paymentMethodCount: 1,
       availableActions: [
         { key: "record_execution", label: "登记公司实际付款", enabled: true }
       ] as never
@@ -1799,6 +1876,49 @@ describe("SpotProcurementReadService", () => {
         ] as never
       })
     ).toMatchObject({ key: "view_only", priority: 400 });
+  });
+
+  it("keeps a half-complete payer task in the finance mine view until methods exist", async () => {
+    const fixture = buildFixture();
+    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([
+      paymentRow({
+        status: "draft",
+        handlerUserId: "another-handler",
+        payerCompanyEntityId: "company-1",
+        payerCompanyNameSnapshot: "云南建工"
+      })
+    ]);
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const halfComplete = await service.listPayments("finance-1", {});
+
+    expect(halfComplete.items).toEqual([
+      expect.objectContaining({
+        id: "payment-1",
+        currentTask: expect.objectContaining({
+          key: "complete_payer",
+          scope: "shared"
+        })
+      })
+    ]);
+    expect(
+      fixture.prisma.spotProcurementPaymentMethodOption.findMany
+    ).toHaveBeenCalledWith({
+      where: { paymentId: { in: ["payment-1"] } },
+      select: { paymentId: true }
+    });
+
+    fixture.prisma.spotProcurementPaymentMethodOption.findMany.mockResolvedValue([
+      { paymentId: "payment-1" }
+    ]);
+    const completed = await service.listPayments("finance-1", {});
+    expect(completed.items).toEqual([]);
+    expect(completed.viewCounts.mine).toBe(0);
   });
 
   it("defaults the payment workbench to mine, validates views, and reuses its task in detail", async () => {
@@ -2058,6 +2178,7 @@ describe("SpotProcurementReadService", () => {
         actorUserId: "director-1",
         roleKeys: ["material_director"],
         projectScopedRoleKeys: ["material_director"],
+        paymentMethodCount: 0,
         availableActions: [
           { key: "edit_draft", label: "编辑付款草稿", enabled: true }
         ] as never
