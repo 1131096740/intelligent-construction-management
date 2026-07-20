@@ -72,6 +72,10 @@ const PAYER_TASK_COMPLETED_ERROR = {
   code: "SPOT_PAYMENT_PAYER_TASK_COMPLETED",
   message: "付款主体任务已由其他岗位完成，请刷新后查看最新事实"
 } as const;
+const EXISTING_PAYER_IMMUTABLE_ERROR = {
+  code: "SPOT_PAYMENT_EXISTING_PAYER_IMMUTABLE",
+  message: "已有付款主体只能补齐名称或拟付款方式，不能变更主体"
+} as const;
 const NON_VOIDABLE_EXECUTION_STATUSES = new Set([
   "partially_paid",
   "paid",
@@ -960,17 +964,23 @@ export class SpotProcurementPaymentService {
         input.companyEntityId,
         "请选择付款主体"
       );
+      const preservesExistingPayer = Boolean(
+        payment.payerCompanyEntityId && !isFinanceDirectorReapproval
+      );
+      if (
+        preservesExistingPayer &&
+        requestedCompanyEntityId !== payment.payerCompanyEntityId
+      ) {
+        throw new ConflictException(EXISTING_PAYER_IMMUTABLE_ERROR);
+      }
       const completesLegacyMethods = Boolean(
-        payment.payerCompanyEntityId && payment.payerCompanyNameSnapshot?.trim()
+        preservesExistingPayer && payment.payerCompanyNameSnapshot?.trim()
       ) &&
         existingMethodCount === 0 &&
         !isFinanceDirectorReapproval;
-      if (
-        completesLegacyMethods &&
-        requestedCompanyEntityId !== payment.payerCompanyEntityId
-      ) {
-        throw new ConflictException("历史付款主体只能补齐拟付款方式，不能变更主体");
-      }
+      const repairsExistingPayerSnapshot =
+        preservesExistingPayer &&
+        !payment.payerCompanyNameSnapshot?.trim();
       const company = completesLegacyMethods
         ? {
             id: payment.payerCompanyEntityId as string,
@@ -978,11 +988,21 @@ export class SpotProcurementPaymentService {
             unifiedSocialCreditCode:
               payment.payerUnifiedSocialCreditCodeSnapshot
           }
+        : repairsExistingPayerSnapshot
+          ? await tx.companyEntity.findFirst({
+              where: { id: payment.payerCompanyEntityId as string },
+              select: { id: true, name: true, unifiedSocialCreditCode: true }
+            })
         : await tx.companyEntity.findFirst({
             where: { id: requestedCompanyEntityId, isActive: true },
             select: { id: true, name: true, unifiedSocialCreditCode: true }
           });
-      if (!company) throw new BadRequestException("付款主体不存在或已停用");
+      if (!company) {
+        if (repairsExistingPayerSnapshot) {
+          throw new ConflictException("原付款主体档案不存在，无法补齐冻结名称");
+        }
+        throw new BadRequestException("付款主体不存在或已停用");
+      }
       if (
         payment.paymentMethod &&
         !input.paymentMethods.includes(

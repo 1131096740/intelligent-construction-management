@@ -327,7 +327,7 @@ describe("SpotProcurementPaymentService real-form draft", () => {
     });
 
     expect(tx.companyEntity.findFirst).toHaveBeenCalledWith({
-      where: { id: "company-1", isActive: true },
+      where: { id: "company-1" },
       select: { id: true, name: true, unifiedSocialCreditCode: true }
     });
     expect(tx.spotProcurementPayment.update).toHaveBeenCalledWith({
@@ -337,6 +337,70 @@ describe("SpotProcurementPaymentService real-form draft", () => {
         payerCompanyNameSnapshot: "云南建工集团"
       })
     });
+  });
+
+  it("rejects changing an existing payer while repairing its missing snapshot without writes", async () => {
+    const { service, tx } = createHarness();
+    tx.$queryRaw.mockResolvedValueOnce([
+      {
+        ...payment,
+        payerCompanyEntityId: "company-legacy",
+        payerCompanyNameSnapshot: null
+      }
+    ]);
+
+    await expect(
+      service.updatePayer("payment-1", "finance-1", {
+        companyEntityId: "company-different",
+        paymentMethods: ["bank_transfer"]
+      })
+    ).rejects.toMatchObject({
+      status: 409,
+      response: {
+        code: "SPOT_PAYMENT_EXISTING_PAYER_IMMUTABLE",
+        message: "已有付款主体只能补齐名称或拟付款方式，不能变更主体"
+      }
+    });
+
+    expect(tx.companyEntity.findFirst).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPaymentMethodOption.deleteMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPaymentMethodOption.createMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("repairs a missing payer snapshot from the frozen company id even when the company is inactive", async () => {
+    const { service, tx } = createHarness();
+    tx.$queryRaw.mockResolvedValueOnce([
+      {
+        ...payment,
+        payerCompanyEntityId: "company-inactive",
+        payerCompanyNameSnapshot: null
+      }
+    ]);
+    tx.companyEntity.findFirst.mockResolvedValue({
+      id: "company-inactive",
+      name: "历史停用主体",
+      unifiedSocialCreditCode: "91530000INACTIVE01"
+    });
+
+    await service.updatePayer("payment-1", "finance-1", {
+      companyEntityId: "company-inactive",
+      paymentMethods: ["bank_transfer"]
+    });
+
+    expect(tx.companyEntity.findFirst).toHaveBeenCalledWith({
+      where: { id: "company-inactive" },
+      select: { id: true, name: true, unifiedSocialCreditCode: true }
+    });
+    expect(tx.spotProcurementPayment.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: expect.objectContaining({
+        payerCompanyEntityId: "company-inactive",
+        payerCompanyNameSnapshot: "历史停用主体"
+      })
+    });
+    expect(tx.spotProcurementPaymentMethodOption.createMany).toHaveBeenCalledTimes(1);
   });
 
   it("retries one payer serialization conflict and then returns the stable completed-task conflict", async () => {
