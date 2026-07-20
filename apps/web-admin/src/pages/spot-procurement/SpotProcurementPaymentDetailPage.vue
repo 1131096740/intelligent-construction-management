@@ -22,6 +22,7 @@ import {
   type CompanyEntityModel
 } from "../../api/company-entity.api";
 import { downloadApprovalForm, uploadPrivateFile } from "../../api/core-flow-read.api";
+import { useAuthStore } from "../../auth/auth.store";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import BusinessStatusText from "../../components/BusinessStatusText.vue";
@@ -45,9 +46,15 @@ import {
 } from "./spot-payment-detail.config";
 import { spotPaymentStatusSemantic } from "./spot-payment-workbench.config";
 import {
+  prepareSpotPaymentDraft,
   prepareSpotExecutionWithUploads,
   prepareSpotPaymentDraftWithUploads
 } from "./spot-procurement-write-validation";
+import {
+  clearSpotPaymentLocalDraft,
+  readSpotPaymentLocalDraft,
+  writeSpotPaymentLocalDraft
+} from "./spot-payment-local-draft";
 
 type ConfirmationKind = "review_approve" | "review_reject" | "review_return" | "withdraw" | "void" | "download" | "execution";
 interface ExecutionAttempt {
@@ -61,6 +68,7 @@ interface ExecutionAttempt {
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
 const detail = ref<SpotProcurementPaymentDetailReadModel | null>(null);
 const loading = ref(false);
 const actionBusy = ref(false);
@@ -72,6 +80,7 @@ const applicationVisible = ref(false);
 const applicationInitialStep = ref<0 | 1 | 2 | 3>(0);
 const payerVisible = ref(false);
 const applicationError = ref("");
+const applicationLocalDraftNotice = ref("");
 const payerError = ref("");
 const vatOptions = ref<VatRateOptionReadModel[]>([]);
 const companies = ref<CompanyEntityModel[]>([]);
@@ -116,6 +125,7 @@ const confirmation = reactive({
 });
 const confirmationError = ref("");
 let latestDetailRequestId = 0;
+let applicationTriggerElement: HTMLElement | null = null;
 
 const paymentId = computed(() => typeof route.params.paymentId === "string" ? route.params.paymentId : "");
 const payment = computed(() => detail.value?.payment ?? null);
@@ -246,9 +256,10 @@ async function loadHistoricalMerchants(projectId: string) {
   } catch { historicalMerchants.value = []; }
 }
 
-function openEdit() {
+function openEdit(trigger: HTMLElement | null = null) {
   const current = detail.value;
   if (!current || !isRealPayment.value) return;
+  applicationTriggerElement = trigger;
   const paymentLines = new Map((current.materials ?? []).map((line) => [line.procurementLineId, line]));
   editForm.paymentType = current.payment.paymentType ?? "company_direct";
   editForm.merchantName = current.payment.merchantName ?? "";
@@ -276,7 +287,30 @@ function openEdit() {
   retainedAttachmentIds.value = current.evidenceFiles.filter((file) => file.status === "active").map((file) => file.fileId);
   attachmentFiles.value = [];
   applicationError.value = "";
-  applicationInitialStep.value = firstIncompletePaymentStep(current);
+  applicationLocalDraftNotice.value = "";
+  const serverStep = firstIncompletePaymentStep(current);
+  const storage = getSessionStorage();
+  const userId = auth.user?.id;
+  const localDraft = storage && userId
+    ? readSpotPaymentLocalDraft(storage, current.payment.id, userId)
+    : null;
+  if (localDraft && serverStep < 3) {
+    editForm.paymentType = localDraft.draft.paymentType;
+    editForm.merchantName = localDraft.draft.merchantName;
+    editForm.payeeDiffersFromMerchant = localDraft.draft.payeeDiffersFromMerchant;
+    editForm.payeeName = localDraft.draft.payeeName;
+    editForm.merchantPayeeMismatchNote = localDraft.draft.merchantPayeeMismatchNote;
+    editForm.paymentMethods = [...localDraft.draft.paymentMethods];
+    const localLines = new Map(localDraft.draft.lines.map((line) => [line.procurementLineId, line]));
+    editForm.lines = editForm.lines.map((line) => ({ ...line, ...localLines.get(line.procurementLineId) }));
+    applicationInitialStep.value = Math.max(serverStep, localDraft.resumeStep) as 0 | 1 | 2 | 3;
+    applicationLocalDraftNotice.value = "已恢复当前账号在本标签页保存的第 1—2 步业务草稿。收款账号、开户行和附件未在本机保存，请在第 3 步重新填写；完整校验通过前不会同步服务器。";
+  } else {
+    applicationInitialStep.value = serverStep;
+    if (storage && userId && serverStep === 3) {
+      clearSpotPaymentLocalDraft(storage, current.payment.id, userId);
+    }
+  }
   applicationVisible.value = true;
   void Promise.all([loadHistoricalMerchants(current.payment.project.id), loadVatOptions()]);
 }
@@ -287,63 +321,49 @@ async function loadVatOptions() {
 
 async function saveApplicationDraft(
   exitAfterSave: boolean,
-  draftSnapshot?: PaymentApplicationDraft
+  draftSnapshot?: PaymentApplicationDraft,
+  currentStep: 0 | 1 | 2 | 3 = 3
 ) {
   const current = detail.value;
-  if (!current) return false;
+  if (!current) return "failed" as const;
   if (draftSnapshot) Object.assign(editForm, draftSnapshot);
   actionBusy.value = true; applicationError.value = "";
   try {
-    const lines = editForm.lines.filter((line) => line.included);
-    assertPaymentQuantitiesWithinApproval(lines);
-    const payee = resolveSpotPaymentMerchantPayee(
-      editForm.paymentType === "handler_reimbursement"
-        ? {
-            paymentType: "handler_reimbursement",
-            merchantName: editForm.merchantName,
-            handlerPayeeNameSnapshot: current.payment.handler.name
-          }
-        : {
-            paymentType: "company_direct",
-            merchantName: editForm.merchantName,
-            payeeDiffersFromMerchant: editForm.payeeDiffersFromMerchant,
-            payeeName: editForm.payeeName,
-            mismatchNote: editForm.merchantPayeeMismatchNote
-          }
-    );
+    const preparationInput = paymentDraftPreparationInput(current);
+    prepareSpotPaymentDraft(preparationInput);
     const retained = current.evidenceFiles.filter((file) => retainedAttachmentIds.value.includes(file.fileId) && file.status === "active").map((file) => ({ fileId: file.fileId, category: normalizeAttachmentCategory(file.purpose) }));
     const payload = await prepareSpotPaymentDraftWithUploads(
-      {
-        paymentType: editForm.paymentType,
-        merchantName: payee.merchantName,
-        payeeName: payee.payeeName,
-        merchantPayeeMismatchNote: payee.merchantPayeeMismatchNote,
-        paymentLines: lines,
-        paymentMethods: editForm.paymentMethods,
-        channels: editForm.channels
-      },
+      preparationInput,
       retained,
       selectedUploadFiles(attachmentFiles.value),
       editForm.attachmentCategory,
       uploadPrivateFile
     );
     await updateSpotProcurementPaymentDraft(current.payment.id, payload);
+    clearLocalApplicationDraft(current.payment.id);
+    applicationLocalDraftNotice.value = "";
     showSuccess("A5 付款申请草稿已保存，审批金额已按付款材料重新计算。");
     await loadDetail();
     if (exitAfterSave) {
       applicationVisible.value = false;
       await restoreApplicationTriggerFocus();
     }
-    return true;
+    return "server" as const;
   } catch (error) {
+    if (exitAfterSave && persistLocalApplicationDraft(current.payment.id, currentStep)) {
+      applicationVisible.value = false;
+      showSuccess("已在当前标签页本机暂存，尚未同步服务器。账号、开户行和附件不会写入本机草稿，继续办理时需在第 3 步重新填写。");
+      await restoreApplicationTriggerFocus();
+      return "local" as const;
+    }
     applicationError.value = error instanceof Error ? error.message : "付款草稿保存失败";
-    return false;
+    return "failed" as const;
   } finally { actionBusy.value = false; }
 }
 
 async function submitApplication(draftSnapshot: PaymentApplicationDraft) {
   const current = detail.value;
-  if (!current || !(await saveApplicationDraft(false, draftSnapshot))) return;
+  if (!current || await saveApplicationDraft(false, draftSnapshot) !== "server") return;
   actionBusy.value = true;
   try {
     await submitSpotProcurementPayment(current.payment.id);
@@ -359,6 +379,13 @@ async function submitApplication(draftSnapshot: PaymentApplicationDraft) {
 async function cancelApplication() {
   applicationVisible.value = false;
   await restoreApplicationTriggerFocus();
+}
+
+function saveAndExitApplication(
+  draftSnapshot: PaymentApplicationDraft,
+  currentStep: 0 | 1 | 2 | 3
+) {
+  void saveApplicationDraft(true, draftSnapshot, currentStep);
 }
 
 function openPayer() {
@@ -470,8 +497,11 @@ async function prepareExecutionAttempt(): Promise<ExecutionAttempt> {
   );
 }
 
-function handleCurrentTaskAction(key: SpotPaymentCurrentTaskAction["key"]) {
-  if (key === "edit_draft" || key === "submit_approval") openEdit();
+function handleCurrentTaskAction(
+  key: SpotPaymentCurrentTaskAction["key"],
+  trigger: HTMLElement | null
+) {
+  if (key === "edit_draft" || key === "submit_approval") openEdit(trigger);
   else if (key === "review_approval") void selectPaymentTab("approval");
   else if (key === "complete_payer") openPayer();
   else if (key === "record_execution") openConfirmation("execution");
@@ -487,6 +517,54 @@ function handleCurrentTaskAction(key: SpotPaymentCurrentTaskAction["key"]) {
 async function cancelConfirmation() { confirmationError.value = ""; if (confirmation.kind === "execution" && executionAttempt.value) { showSuccess("本次付款登记参数已安全保留；重试会沿用同一幂等键和已上传凭证。"); await loadDetail(); } }
 function resetExecutionAttempt() { executionAttempt.value = null; voucherFiles.value = []; }
 function selectedUploadFiles(files: UploadFile[]) { return files.map((file) => file.raw).filter((file): file is File => file instanceof File); }
+function paymentDraftPreparationInput(current: SpotProcurementPaymentDetailReadModel) {
+  const lines = editForm.lines.filter((line) => line.included);
+  assertPaymentQuantitiesWithinApproval(lines);
+  const payee = resolveSpotPaymentMerchantPayee(
+    editForm.paymentType === "handler_reimbursement"
+      ? {
+          paymentType: "handler_reimbursement",
+          merchantName: editForm.merchantName,
+          handlerPayeeNameSnapshot: current.payment.handler.name
+        }
+      : {
+          paymentType: "company_direct",
+          merchantName: editForm.merchantName,
+          payeeDiffersFromMerchant: editForm.payeeDiffersFromMerchant,
+          payeeName: editForm.payeeName,
+          mismatchNote: editForm.merchantPayeeMismatchNote
+        }
+  );
+  return {
+    paymentType: editForm.paymentType,
+    merchantName: payee.merchantName,
+    payeeName: payee.payeeName,
+    merchantPayeeMismatchNote: payee.merchantPayeeMismatchNote,
+    paymentLines: lines,
+    paymentMethods: editForm.paymentMethods,
+    channels: editForm.channels
+  };
+}
+function getSessionStorage() {
+  try { return typeof sessionStorage === "undefined" ? null : sessionStorage; }
+  catch { return null; }
+}
+function persistLocalApplicationDraft(paymentIdValue: string, currentStep: 0 | 1 | 2 | 3) {
+  const storage = getSessionStorage();
+  const userId = auth.user?.id;
+  if (!storage || !userId) return false;
+  const resumeStep = Math.min(currentStep, 2) as 0 | 1 | 2;
+  const saved = writeSpotPaymentLocalDraft(storage, paymentIdValue, userId, resumeStep, editForm);
+  if (saved) {
+    applicationLocalDraftNotice.value = "本机草稿只保存第 1—2 步业务字段，尚未同步服务器；账号、开户行和附件未保存。";
+  }
+  return saved;
+}
+function clearLocalApplicationDraft(paymentIdValue: string) {
+  const storage = getSessionStorage();
+  const userId = auth.user?.id;
+  if (storage && userId) clearSpotPaymentLocalDraft(storage, paymentIdValue, userId);
+}
 function assertPaymentQuantitiesWithinApproval(lines: PaymentApplicationDraft["lines"]) {
   for (const line of lines) {
     if (
@@ -508,7 +586,10 @@ function compareDecimalText(left: string, right: string) {
 }
 async function restoreApplicationTriggerFocus() {
   await nextTick();
-  document.querySelector<HTMLButtonElement>(".payment-current-task__actions button")?.focus();
+  const trigger = applicationTriggerElement;
+  window.setTimeout(() => {
+    if (trigger?.isConnected) trigger.focus();
+  }, 0);
 }
 function requiredText(value: string, label: string) { const normalized = value.trim(); if (!normalized) throw new Error(`请填写${label}`); return normalized; }
 function normalizeAttachmentCategory(value: string) { return ["merchant_receipt", "merchant_quote", "merchant_invoice", "other"].includes(value) ? value as "merchant_receipt" | "merchant_quote" | "merchant_invoice" | "other" : "other" as const; }
@@ -616,9 +697,10 @@ watch(
           :retained-attachment-ids="retainedAttachmentIds"
           :busy="actionBusy"
           :error="applicationError"
+          :local-draft-notice="applicationLocalDraftNotice"
           @update:attachment-files="attachmentFiles = $event"
           @update:retained-attachment-ids="retainedAttachmentIds = $event"
-          @save="saveApplicationDraft(true, $event)"
+          @save="saveAndExitApplication"
           @submit="submitApplication"
           @cancel="cancelApplication"
         />

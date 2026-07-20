@@ -412,7 +412,7 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   await expect(page.getByText("发票是整张付款申请的可选附件", { exact: true })).toBeVisible();
 });
 
-test("keeps the inline A5 draft after a failed save and resumes from the first incomplete step", async ({ page }) => {
+test("locally resumes an incomplete A5 draft without inventing payment facts and submits only after server save", async ({ page }) => {
   let saved = false;
   let draftAttempts = 0;
   const writeOrder: string[] = [];
@@ -465,11 +465,16 @@ test("keeps the inline A5 draft after a failed save and resumes from the first i
           ...base.payment,
           id: "payment-stepper",
           code: "LXFK-STEPPER",
-          payee: { ...base.payment.payee, primaryChannel: cashChannel }
+          paymentType: saved ? "company_direct" : null,
+          paymentTypeLabel: saved ? "公司直付" : null,
+          merchantName: saved ? "利民建材店" : null,
+          payee: saved
+            ? { ...base.payment.payee, name: "利民建材店", primaryChannel: cashChannel }
+            : { name: null, accountName: null, primaryChannel: null }
         },
         materials: saved ? [{ ...base.materials[0], paymentQuantity: "10.00", unitPrice: "4.40", amountCents: "4400", expectedInvoiceCondition: "no_invoice", vatRateOptionId: null, vatRateLabel: null }] : [],
-        paymentMethods: [{ value: "cash", label: "现金" }],
-        paymentChannels: [cashChannel],
+        paymentMethods: saved ? [{ value: "cash", label: "现金" }] : [],
+        paymentChannels: saved ? [cashChannel] : [],
         availableActions: [
           { key: "edit_draft", label: "编辑 A5 付款草稿", kind: "normal", enabled: true, disabledReason: null },
           { key: "submit_approval", label: "提交付款审批", kind: "primary", enabled: true, disabledReason: null }
@@ -483,30 +488,74 @@ test("keeps the inline A5 draft after a failed save and resumes from the first i
   await page.getByPlaceholder("请输入密码").fill("Spot@2026");
   await page.getByRole("button", { name: "登录" }).click();
   await page.goto("/零星材料付款/payment-stepper?tab=current");
-  await page.getByRole("button", { name: "编辑 A5 付款草稿", exact: true }).click();
+  const secondEntry = page.getByRole("button", { name: "提交付款审批", exact: true });
+  await secondEntry.click();
 
   await expect(page.getByRole("heading", { name: "继续填写付款申请", exact: true })).toBeVisible();
   await expect(page.locator(".t-dialog").filter({ hasText: "编辑项目零星付款申请单" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "2. 付款材料", exact: true })).toHaveAttribute("aria-current", "step");
+  await expect(page.getByRole("button", { name: "1. 付款与商户", exact: true })).toHaveAttribute("aria-current", "step");
+  await expect(page.locator(".payment-application-stepper input[type=checkbox]:checked")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "3. 收款渠道与依据", exact: true }).click();
+  await page.getByRole("button", { name: "新增收款渠道", exact: true }).click();
+  await expect(page.getByText("请先在第 1 步选择拟付款方式，再新增收款渠道。", { exact: true })).toBeVisible();
+  await expect(page.getByText("渠道 1", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "1. 付款与商户", exact: true }).click();
+  await page.getByPlaceholder("实际购买的商户").fill("利民建材店");
+  await page.getByText("现金", { exact: true }).click();
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
   await page.locator(".payment-application-stepper__card .t-checkbox").click();
   const materialInputs = page.locator(".payment-application-stepper__card .payment-application-stepper__grid input");
   await materialInputs.nth(0).fill("10.00");
   await materialInputs.nth(1).fill("4.40");
-
-  await page.getByRole("button", { name: "保存并退出", exact: true }).click();
-  await expect(page.getByText("模拟保存失败", { exact: true })).toBeVisible();
-  await expect(materialInputs.nth(0)).toHaveValue("10.00");
-  await expect(materialInputs.nth(1)).toHaveValue("4.40");
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
 
   await page.getByRole("button", { name: "保存并退出", exact: true }).click();
   await expect(page.getByRole("heading", { name: "继续填写付款申请", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "刷新", exact: true }).click();
-  await page.getByRole("button", { name: "编辑 A5 付款草稿", exact: true }).click();
-  await expect(page.getByRole("button", { name: "4. 核对并提交", exact: true })).toHaveAttribute("aria-current", "step");
+  await expect(secondEntry).toBeFocused();
+  expect(draftAttempts).toBe(0);
+  const serializedLocalDraft = await page.evaluate(() => Array.from(
+    { length: sessionStorage.length },
+    (_, index) => {
+      const key = sessionStorage.key(index) ?? "";
+      return `${key}:${sessionStorage.getItem(key) ?? ""}`;
+    }
+  ).join("\n"));
+  expect(serializedLocalDraft).toContain('"resumeStep":2');
+  expect(serializedLocalDraft).not.toMatch(/channels|accountNumber|bankName|attachment|password|bank_transfer/i);
+
+  await page.reload();
+  const refreshedSecondEntry = page.getByRole("button", { name: "提交付款审批", exact: true });
+  await refreshedSecondEntry.click();
+  await expect(page.getByRole("button", { name: "3. 收款渠道与依据", exact: true })).toHaveAttribute("aria-current", "step");
+  await expect(page.getByText("本机暂存，尚未同步服务器", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "1. 付款与商户", exact: true }).click();
+  await expect(page.getByPlaceholder("实际购买的商户")).toHaveValue("利民建材店");
+  await page.getByRole("button", { name: "2. 付款材料", exact: true }).click();
+  await expect(page.locator(".payment-application-stepper__card .payment-application-stepper__grid input").nth(0)).toHaveValue("10.00");
+  await expect(page.locator(".payment-application-stepper__card .payment-application-stepper__grid input").nth(1)).toHaveValue("4.40");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const stepColumns = await page.locator(".payment-application-stepper__steps").evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length);
+  expect(stepColumns).toBe(1);
+  await page.getByRole("button", { name: "3. 收款渠道与依据", exact: true }).click();
+  await page.getByRole("button", { name: "新增收款渠道", exact: true }).click();
+  await expect(page.getByText("渠道 1", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
 
   writeOrder.length = 0;
   await page.getByRole("region", { name: "继续填写付款申请" }).getByRole("button", { name: "提交付款审批", exact: true }).click();
+  await expect(page.getByText("模拟保存失败", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "继续填写付款申请", exact: true })).toBeVisible();
+  expect(writeOrder).toEqual(["save"]);
+  writeOrder.length = 0;
+  await page.getByRole("region", { name: "继续填写付款申请" }).getByRole("button", { name: "提交付款审批", exact: true }).click();
   await expect.poll(() => writeOrder).toEqual(["save", "submit"]);
+  await expect.poll(() => page.evaluate(() => Array.from(
+    { length: sessionStorage.length },
+    (_, index) => sessionStorage.key(index) ?? ""
+  ).join("\n"))).not.toContain("spot-payment-local-draft");
 });
 
 test("routes an enabled refund task to the real receipt workflow and preserves frozen archive facts", async ({ page }) => {

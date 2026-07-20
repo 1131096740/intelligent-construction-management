@@ -54,10 +54,11 @@ const props = defineProps<{
   retainedAttachmentIds: string[];
   busy?: boolean;
   error?: string;
+  localDraftNotice?: string;
 }>();
 
 const emit = defineEmits<{
-  save: [draft: PaymentApplicationDraft];
+  save: [draft: PaymentApplicationDraft, step: 0 | 1 | 2 | 3];
   submit: [draft: PaymentApplicationDraft];
   cancel: [];
   "update:attachmentFiles": [files: UploadFile[]];
@@ -65,6 +66,7 @@ const emit = defineEmits<{
 }>();
 
 const step = ref<0 | 1 | 2 | 3>(props.initialStep);
+const channelAddError = ref("");
 const form = reactive<PaymentApplicationDraft>({
   ...props.draft,
   paymentMethods: [...props.draft.paymentMethods],
@@ -86,6 +88,9 @@ const paymentMethodOptions = [
   { label: "支付宝", value: "alipay" },
   { label: "其他", value: "other" }
 ];
+const selectedPaymentMethodOptions = computed(() => paymentMethodOptions.filter(
+  (option) => form.paymentMethods.includes(option.value as SpotProcurementPaymentMethod)
+));
 const invoiceConditionOptions = [
   { label: "普通增值税发票", value: "vat_general" },
   { label: "专用增值税发票", value: "vat_special" },
@@ -128,8 +133,14 @@ function updatePaymentType(value: string | number) {
 }
 
 function addChannel() {
+  const selectedMethod = form.paymentMethods[0];
+  if (!selectedMethod) {
+    channelAddError.value = "请先在第 1 步选择拟付款方式，再新增收款渠道。";
+    return;
+  }
+  channelAddError.value = "";
   form.channels.push({
-    channelType: form.paymentMethods[0] ?? "bank_transfer",
+    channelType: selectedMethod,
     accountName: "",
     accountNumber: "",
     bankName: "",
@@ -172,7 +183,7 @@ function snapshot() {
         <h2 id="payment-application-title">
           继续填写付款申请
         </h2>
-        <p>按业务顺序补全付款条件；离开前保存的是一份完整草稿快照。</p>
+        <p>完整条件会同步服务器；未完成时仅在当前标签页暂存非凭证业务字段。</p>
       </div>
       <t-button
         variant="text"
@@ -325,7 +336,7 @@ function snapshot() {
         <div class="payment-application-stepper__grid">
           <label><span>方式</span><t-select
             v-model="channel.channelType"
-            :options="paymentMethodOptions"
+            :options="selectedPaymentMethodOptions"
           /></label>
           <label><span>账户名称</span><t-input v-model="channel.accountName" /></label>
           <label><span>账号</span><t-input v-model="channel.accountNumber" /></label>
@@ -343,6 +354,12 @@ function snapshot() {
       >
         新增收款渠道
       </t-button>
+      <t-alert
+        v-if="channelAddError"
+        theme="warning"
+        title="暂不能新增渠道"
+        :message="channelAddError"
+      />
       <section class="payment-application-stepper__evidence">
         <header><h3>付款依据（可选）</h3><p>可上传商家收据、报价单、商家发票或其他资料。</p></header>
         <label><span>资料类别</span><t-select
@@ -389,6 +406,12 @@ function snapshot() {
     </div>
 
     <t-alert
+      v-if="localDraftNotice"
+      theme="info"
+      title="本机暂存，尚未同步服务器"
+      :message="localDraftNotice"
+    />
+    <t-alert
       v-if="error"
       theme="error"
       title="暂时无法保存"
@@ -398,7 +421,7 @@ function snapshot() {
       <t-button
         variant="outline"
         :loading="busy"
-        @click="emit('save', snapshot())"
+        @click="emit('save', snapshot(), step)"
       >
         保存并退出
       </t-button>

@@ -18,7 +18,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  action: [key: SpotPaymentCurrentTaskAction["key"]];
+  action: [key: SpotPaymentCurrentTaskAction["key"], trigger: HTMLElement | null];
 }>();
 
 const presentation = computed(() => spotPaymentCurrentTaskPresentation({
@@ -26,6 +26,10 @@ const presentation = computed(() => spotPaymentCurrentTaskPresentation({
   availableActions: props.availableActions,
   summary: props.summary
 }));
+
+function emitAction(key: SpotPaymentCurrentTaskAction["key"], event: MouseEvent) {
+  emit("action", key, event.currentTarget instanceof HTMLElement ? event.currentTarget : null);
+}
 </script>
 
 <template>
@@ -87,7 +91,7 @@ const presentation = computed(() => spotPaymentCurrentTaskPresentation({
         :theme="item.kind === 'danger' ? 'danger' : item.kind === 'primary' ? 'primary' : 'default'"
         :variant="item.kind === 'normal' ? 'outline' : 'base'"
         :loading="busy"
-        @click="emit('action', item.key)"
+        @click="emitAction(item.key, $event)"
       >
         {{ item.label }}
       </t-button>

@@ -162,6 +162,8 @@ describe("spot procurement web pages", () => {
   it("uses an inline four-step A5 application instead of a full-form dialog", () => {
     const detail = pageSource("SpotProcurementPaymentDetailPage.vue");
     const stepper = pageSource("components/PaymentApplicationStepper.vue");
+    const panel = pageSource("components/PaymentCurrentTaskPanel.vue");
+    const localDraft = pageSource("spot-payment-local-draft.ts");
 
     expect(detail).toContain("<PaymentApplicationStepper");
     expect(detail).toContain("updateSpotProcurementPaymentDraft");
@@ -179,6 +181,14 @@ describe("spot procurement web pages", () => {
     expect(stepper).toContain("提交付款审批");
     expect(stepper).not.toMatch(/预计\s*3\s*[–—-]\s*5\s*分钟/u);
     expect(stepper).not.toMatch(/updateSpotProcurementPaymentDraft|submitSpotProcurementPayment|fetch\(/u);
+    expect(stepper).not.toContain('?? "bank_transfer"');
+    expect(stepper).toContain("请先在第 1 步选择拟付款方式");
+    expect(detail).toContain("readSpotPaymentLocalDraft");
+    expect(detail).toContain("clearLocalApplicationDraft");
+    expect(detail).toContain("trigger?.isConnected");
+    expect(panel).toContain("event.currentTarget instanceof HTMLElement");
+    expect(localDraft).toContain("SPOT_PAYMENT_LOCAL_DRAFT_TTL_MS");
+    expect(localDraft).not.toMatch(/accountNumber|bankName|attachmentFiles|password/u);
   });
 
   it("reuses one locked idempotency payload across execution retries", () => {
