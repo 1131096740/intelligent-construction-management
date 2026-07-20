@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { UploadFile } from "tdesign-vue-next";
-import { computed, nextTick, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   fetchSpotProcurementPaymentDetail,
@@ -141,6 +141,8 @@ let payerOpenedPaymentId: string | null = null;
 let approvalOpenedPaymentId: string | null = null;
 let executionOpenedPaymentId: string | null = null;
 let executionTriggerElement: HTMLElement | null = null;
+let executionFocusObserver: MutationObserver | null = null;
+let executionFocusTimeout: number | null = null;
 
 const paymentId = computed(() => typeof route.params.paymentId === "string" ? route.params.paymentId : "");
 const payment = computed(() => detail.value?.payment ?? null);
@@ -692,6 +694,7 @@ function openExecution(trigger: HTMLElement | null = null) {
   const current = detail.value;
   if (!current || !actionEnabled("record_execution")) return;
   executionOpenedPaymentId = current.payment.id;
+  clearExecutionFocusRestore();
   executionTriggerElement = trigger;
   executionError.value = "";
   executionVisible.value = true;
@@ -759,20 +762,65 @@ async function closeExecution() {
 async function restoreExecutionTriggerFocus() {
   await nextTick();
   const trigger = executionTriggerElement;
-  window.setTimeout(() => {
-    if (trigger?.isConnected) trigger.focus();
-  }, 0);
+  clearExecutionFocusRestore();
+  if (!trigger?.isConnected) {
+    clearExecutionCoordinates();
+    return;
+  }
+  const focusAfterClose = () => {
+    const openDrawer = [...document.querySelectorAll<HTMLElement>(
+      ".payment-execution-drawer.t-drawer--open"
+    )].some((element) => element.getClientRects().length > 0);
+    if (openDrawer) return false;
+    if (trigger.isConnected) trigger.focus();
+    clearExecutionFocusRestore();
+    clearExecutionCoordinates();
+    return true;
+  };
+  if (focusAfterClose()) return;
+  let remainingMutations = 12;
+  executionFocusObserver = new MutationObserver(() => {
+    if (focusAfterClose()) return;
+    remainingMutations -= 1;
+    if (remainingMutations <= 0) {
+      clearExecutionFocusRestore();
+      clearExecutionCoordinates();
+    }
+  });
+  executionFocusObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["class", "style"]
+  });
+  executionFocusTimeout = window.setTimeout(() => {
+    focusAfterClose();
+    clearExecutionFocusRestore();
+    clearExecutionCoordinates();
+  }, 750);
+}
+
+function clearExecutionFocusRestore() {
+  executionFocusObserver?.disconnect();
+  executionFocusObserver = null;
+  if (executionFocusTimeout !== null) window.clearTimeout(executionFocusTimeout);
+  executionFocusTimeout = null;
+}
+
+function clearExecutionCoordinates() {
   executionTriggerElement = null;
   executionOpenedPaymentId = null;
 }
 
 function resetExecutionEditorState() {
+  clearExecutionFocusRestore();
   executionVisible.value = false;
   executionError.value = "";
-  executionOpenedPaymentId = null;
-  executionTriggerElement = null;
+  clearExecutionCoordinates();
   resetExecutionAttempt();
 }
+
+onBeforeUnmount(clearExecutionFocusRestore);
 
 function handleCurrentTaskAction(
   key: SpotPaymentCurrentTaskAction["key"],

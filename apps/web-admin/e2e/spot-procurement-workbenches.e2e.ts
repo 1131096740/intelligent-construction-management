@@ -929,13 +929,159 @@ test("records two controlled executions from the frozen channel and refreshes se
   }
 
   expect(executionPayloads).toHaveLength(2);
+  expect(uploadNo).toBe(2);
   expect(executionPayloads.map((payload) => payload.paymentChannelId)).toEqual(["channel-1", "channel-1"]);
   expect(executionPayloads.map((payload) => payload.amountCents)).toEqual(["220000", "220000"]);
+  expect(executionPayloads.map((payload) => payload.voucherFileIds)).toEqual([
+    ["voucher-1"],
+    ["voucher-2"]
+  ]);
   await expect(page.getByText("已付款", { exact: true }).first()).toBeVisible();
   await expect(
     page.locator(".payment-composition-card__facts > div").filter({ hasText: "剩余待付" }).getByText("¥0.00", { exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "登记实际付款", exact: true })).toHaveCount(0);
+});
+
+test("retries a failed execution with one upload, the same frozen attempt and a re-entered password", async ({ page }) => {
+  await mockLogin(page);
+  let paid = false;
+  let uploadNo = 0;
+  const executionPayloads: Array<Record<string, unknown>> = [];
+  const executionDetail = () => {
+    const base = paymentDetail();
+    return {
+      ...base,
+      payment: {
+        ...base.payment,
+        id: "payment-execution-retry",
+        code: "LXFK-EXECUTION-RETRY",
+        status: paid ? "paid" : "approved_pending_payment",
+        statusLabel: paid ? "已付款" : "待付款",
+        approvalAmountCents: "440000",
+        actualPaidAmountCents: paid ? "440000" : "0",
+        netPaidAmountCents: paid ? "440000" : "0",
+        remainingAmountCents: paid ? "0" : "440000"
+      },
+      executions: paid
+        ? [{
+            id: "execution-retry-1",
+            amountCents: "440000",
+            paidAt: now,
+            paymentMethod: "bank_transfer",
+            paymentMethodLabel: "银行转账",
+            executedBy: { id: "finance-1", name: "财务甲" },
+            voucherFileId: null,
+            voucherFileName: "付款成功凭证.pdf",
+            voidedAt: null,
+            voidReason: null,
+            active: true,
+            vouchers: [{ id: "voucher-link-retry", fileId: "voucher-retry", sortOrder: 1 }]
+          }]
+        : [],
+      currentTask: paid
+        ? { key: "none", label: "无需办理", hint: "已完成付款", priority: 0, scope: "none", enabled: false, disabledReason: null }
+        : { key: "record_execution", label: "登记实际付款", hint: "选择冻结渠道并上传付款成功凭证", priority: 300, scope: "personal", enabled: true, disabledReason: null },
+      availableActions: paid
+        ? []
+        : [{ key: "record_execution", label: "登记实际付款", kind: "primary", enabled: true, disabledReason: null }],
+      paymentPdf: { ...base.paymentPdf, businessId: "payment-execution-retry" }
+    };
+  };
+
+  await page.route("**/api/spot-procurement-payments/payment-execution-retry/executions", async (route) => {
+    executionPayloads.push(route.request().postDataJSON() as Record<string, unknown>);
+    if (executionPayloads.length === 1) {
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "模拟网络失败" })
+      });
+      return;
+    }
+    paid = true;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ execution: { id: "execution-retry-1" }, payment: { id: "payment-execution-retry" } })
+    });
+  });
+  await page.route("**/api/spot-procurement-payments/payment-execution-retry", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(executionDetail()) })
+  );
+  await page.route("**/api/files", (route) => {
+    uploadNo += 1;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ id: "voucher-retry" })
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await page.goto("/零星材料付款/payment-execution-retry?tab=current");
+
+  await page.getByRole("button", { name: "登记实际付款", exact: true }).click();
+  await page.locator(".payment-execution-drawer__body input[type=file]").setInputFiles({
+    name: "付款成功凭证.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("voucher-retry")
+  });
+  await page.getByRole("button", { name: "继续核对", exact: true }).click();
+  const passwordInput = page.getByLabel("当前登录密码", { exact: true });
+  await passwordInput.fill("first-password");
+  await page.getByRole("button", { name: "确认登记", exact: true }).click();
+  await expect.poll(() => executionPayloads.length).toBe(1);
+  await expect(passwordInput).toHaveValue("");
+  await expect(page.getByText("本次重试参数已锁定", { exact: true })).toBeVisible();
+
+  await passwordInput.fill("second-password");
+  await page.getByRole("button", { name: "确认登记", exact: true }).click();
+  await expect.poll(() => executionPayloads.length).toBe(2);
+  await expect(page.getByText("已关联 1 份", { exact: true })).toBeVisible();
+
+  expect(uploadNo).toBe(1);
+  expect(executionPayloads[0]?.confirmationPassword).toBe("first-password");
+  expect(executionPayloads[1]?.confirmationPassword).toBe("second-password");
+  expect(executionPayloads[1]?.idempotencyKey).toBe(executionPayloads[0]?.idempotencyKey);
+  expect(executionPayloads[1]?.voucherFileIds).toEqual(executionPayloads[0]?.voucherFileIds);
+  expect(executionPayloads[1]?.voucherFileIds).toEqual(["voucher-retry"]);
+  await expect(page.getByText("已付款", { exact: true }).first()).toBeVisible();
+});
+
+test("restores focus to the actual execution trigger after the drawer has closed", async ({ page }) => {
+  await mockLogin(page);
+  await page.route("**/api/spot-procurement-payments/payment-execution-focus", async (route) => {
+    const base = paymentDetail();
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...base,
+        payment: { ...base.payment, id: "payment-execution-focus" },
+        currentTask: { key: "record_execution", label: "登记实际付款", hint: "登记实付", priority: 300, scope: "personal", enabled: true, disabledReason: null },
+        availableActions: [{ key: "record_execution", label: "登记实际付款", kind: "primary", enabled: true, disabledReason: null }],
+        paymentPdf: { ...base.paymentPdf, businessId: "payment-execution-focus" }
+      })
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await page.goto("/零星材料付款/payment-execution-focus?tab=current");
+
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const trigger = page.getByRole("button", { name: "登记实际付款", exact: true });
+    await trigger.click();
+    const drawer = page.locator(".payment-execution-drawer");
+    await expect(drawer.getByText("实际付款与凭证", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "取消", exact: true }).click();
+    await expect(drawer.getByText("实际付款与凭证", { exact: true })).toBeHidden();
+    await expect(trigger).toBeFocused();
+  }
 });
 
 test("opens one responsive A5 approval drawer, confirms facts, and posts the frozen decision", async ({ page }) => {

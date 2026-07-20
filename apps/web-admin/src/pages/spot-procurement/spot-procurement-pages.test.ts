@@ -265,6 +265,18 @@ describe("spot procurement web pages", () => {
     expect(drawer).toContain("修改本次付款");
     expect(drawer).toContain("spotPaymentExecutionVoucherLabel");
     expect(drawer).toContain("existingExecutions");
+    const submitSource = drawer.slice(
+      drawer.indexOf("function submit()"),
+      drawer.indexOf("function resetAttempt()")
+    );
+    expect(submitSource.indexOf("const confirmationPassword = form.confirmationPassword")).toBeLessThan(
+      submitSource.indexOf('form.confirmationPassword = ""')
+    );
+    expect(submitSource.indexOf('form.confirmationPassword = ""')).toBeLessThan(
+      submitSource.indexOf('emit("submit"')
+    );
+    expect(detail).toContain("executionFocusObserver = new MutationObserver");
+    expect(detail).toContain(".payment-execution-drawer.t-drawer--open");
     expect(drawer).not.toMatch(/recordSpotProcurement|uploadPrivateFile|fetch\(|apiFetch|useRoute|useRouter/u);
   });
 

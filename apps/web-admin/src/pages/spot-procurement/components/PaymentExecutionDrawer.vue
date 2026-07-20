@@ -170,13 +170,15 @@ function submit() {
     validationError.value = "请输入当前登录密码";
     return;
   }
+  const confirmationPassword = form.confirmationPassword;
+  form.confirmationPassword = "";
   emit("submit", Object.freeze({
     amountYuan: form.amountYuan.trim(),
     paidAt: form.paidAt,
     paymentMethod: form.paymentMethod,
     paymentChannelId: form.paymentChannelId,
     files: [...selectedFiles()],
-    confirmationPassword: form.confirmationPassword
+    confirmationPassword
   }));
 }
 
@@ -204,6 +206,7 @@ function setInnerInputLabel(
     size="min(600px, 100vw)"
     :close-on-overlay-click="false"
     :close-btn="!busy"
+    drawer-class-name="payment-execution-drawer"
   >
     <template #header>
       <div class="payment-execution-drawer__title">
