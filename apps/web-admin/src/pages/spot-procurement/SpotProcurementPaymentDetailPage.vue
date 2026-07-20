@@ -7,6 +7,7 @@ import {
   fetchSpotProcurementPayments,
   fetchVatRateOptions,
   recordSpotProcurementPaymentExecution,
+  reviewSpotProcurementA5Payment,
   reviewSpotProcurementPayment,
   submitSpotProcurementPayment,
   updateSpotProcurementPaymentDraft,
@@ -34,6 +35,9 @@ import PaymentCompositionCard from "./components/PaymentCompositionCard.vue";
 import PaymentApplicationStepper, {
   type PaymentApplicationDraft
 } from "./components/PaymentApplicationStepper.vue";
+import PaymentApprovalDrawer, {
+  type A5ApprovalSubmitPayload
+} from "./components/PaymentApprovalDrawer.vue";
 import PaymentCurrentTaskPanel from "./components/PaymentCurrentTaskPanel.vue";
 import {
   firstIncompletePaymentStep,
@@ -79,9 +83,11 @@ const activeTab = ref<SpotPaymentDetailTab>(resolveSpotPaymentDetailTab(route.qu
 const applicationVisible = ref(false);
 const applicationInitialStep = ref<0 | 1 | 2 | 3>(0);
 const payerVisible = ref(false);
+const approvalVisible = ref(false);
 const applicationError = ref("");
 const applicationLocalDraftNotice = ref("");
 const payerError = ref("");
+const approvalError = ref("");
 const vatOptions = ref<VatRateOptionReadModel[]>([]);
 const companies = ref<CompanyEntityModel[]>([]);
 const historicalMerchants = ref<string[]>([]);
@@ -128,12 +134,23 @@ let latestDetailRequestId = 0;
 let historicalMerchantRequestId = 0;
 let vatOptionsRequestId = 0;
 let applicationTriggerElement: HTMLElement | null = null;
+let payerTriggerElement: HTMLElement | null = null;
+let approvalTriggerElement: HTMLElement | null = null;
 
 const paymentId = computed(() => typeof route.params.paymentId === "string" ? route.params.paymentId : "");
 const payment = computed(() => detail.value?.payment ?? null);
 const isRealPayment = computed(() => payment.value?.form === "real_payment");
 const reviewAction = computed(() => detail.value?.availableActions.find((action) => action.key === "review_approval"));
 const payerManagement = computed(() => payment.value?.payerManagement ?? null);
+const approvalApproveDestination = computed(() => {
+  const node = detail.value?.approval.currentNodeName ?? "";
+  if (/综合部/u.test(node)) return "项目经理审批";
+  if (/项目经理/u.test(node)) return "财务主管审批";
+  if (/财务主管/u.test(node)) return "董事长/总经理审批";
+  if (/(董事长|总经理)/u.test(node)) return "审批完成，进入待付款";
+  return "下一审批节点";
+});
+const approvalReturnDestination = "退回申请人修改，并生成新的付款草稿";
 const nextStepLabel = computed(() => {
   if (!payment.value || !detail.value) return "—";
   if (payment.value.status === "approved_pending_payment") return "财务登记实际付款";
@@ -164,6 +181,9 @@ const channelOptions = computed(() => (detail.value?.paymentChannels ?? []).filt
   value: channel.id
 })));
 const payerOptions = computed(() => companies.value.map((company) => ({ label: company.name, value: company.id })));
+const selectedPayerCompanyName = computed(() =>
+  companies.value.find((company) => company.id === payerForm.companyEntityId)?.name ?? "待选择"
+);
 const currentTaskSummary = computed(() => ({
   currentNodeName: detail.value?.approval.currentNodeName ?? "—",
   status: payment.value?.status ?? "draft",
@@ -425,9 +445,10 @@ function saveAndExitApplication(
   void saveApplicationDraft(true, draftSnapshot, currentStep);
 }
 
-function openPayer() {
+function openPayer(trigger: HTMLElement | null = null) {
   const current = detail.value;
   if (!current || !current.payment.payerManagement?.visible) return;
+  payerTriggerElement = trigger;
   payerForm.companyEntityId = companies.value.find((company) => company.name === current.payment.payerCompanyName)?.id ?? "";
   payerForm.paymentMethods = (current.paymentMethods ?? []).map((method) => method.value);
   payerForm.changeReason = ""; payerForm.confirmed = false; payerError.value = ""; payerVisible.value = true;
@@ -448,14 +469,107 @@ async function loadCompanies() {
 async function savePayer() {
   const current = detail.value;
   if (!current) return;
+  const operationPaymentId = current.payment.id;
   actionBusy.value = true; payerError.value = "";
   try {
     if (!payerForm.confirmed) throw new Error("请确认已知悉付款主体变更影响");
+    if (!payerForm.paymentMethods.length) throw new Error("请至少选择一种拟付款方式");
     if (current.payment.payerManagement?.requiresReapproval && !payerForm.changeReason.trim()) throw new Error("财务主管调整付款主体时必须填写变更原因");
     await updateSpotProcurementPaymentPayer(current.payment.id, { companyEntityId: requiredText(payerForm.companyEntityId, "付款主体"), paymentMethods: payerForm.paymentMethods, ...(payerForm.changeReason.trim() ? { changeReason: payerForm.changeReason.trim() } : {}) });
-    payerVisible.value = false; showSuccess(current.payment.payerManagement?.requiresReapproval ? "付款主体已调整，综合部、项目经理和财务主管将从综合部节点重新审批。" : "付款主体和拟付款方式已保存。"); await loadDetail();
-  } catch (error) { payerError.value = error instanceof Error ? error.message : "付款主体保存失败"; }
+    if (paymentId.value !== operationPaymentId) return;
+    payerVisible.value = false;
+    showSuccess(current.payment.payerManagement?.requiresReapproval ? "付款主体已调整，综合部、项目经理和财务主管将从综合部节点重新审批。" : "付款主体和拟付款方式已保存。");
+    await loadDetail();
+    await restorePayerTriggerFocus();
+  } catch (error) {
+    if (paymentId.value !== operationPaymentId) return;
+    const message = error instanceof Error ? error.message : "付款主体保存失败";
+    if (message.includes("付款主体任务已由其他岗位完成")) {
+      payerVisible.value = false;
+      showSuccess("任务已由其他岗位完成，已刷新最新付款事实。");
+      await loadDetail();
+      await restorePayerTriggerFocus();
+    } else {
+      payerError.value = message;
+    }
+  }
   finally { actionBusy.value = false; }
+}
+
+async function closePayer() {
+  payerVisible.value = false;
+  await restorePayerTriggerFocus();
+}
+
+async function restorePayerTriggerFocus() {
+  await nextTick();
+  if (payerTriggerElement?.isConnected) payerTriggerElement.focus();
+  payerTriggerElement = null;
+}
+
+function openApproval(trigger: HTMLElement | null = null) {
+  if (!isRealPayment.value || !actionEnabled("review_approval")) return;
+  approvalTriggerElement = trigger;
+  approvalError.value = "";
+  approvalVisible.value = true;
+}
+
+function openApprovalFromEvent(event: MouseEvent) {
+  openApproval(event.currentTarget instanceof HTMLElement ? event.currentTarget : null);
+}
+
+function openPayerFromEvent(event: MouseEvent) {
+  openPayer(event.currentTarget instanceof HTMLElement ? event.currentTarget : null);
+}
+
+async function closeApproval() {
+  approvalVisible.value = false;
+  approvalError.value = "";
+  await restoreApprovalTriggerFocus();
+}
+
+async function restoreApprovalTriggerFocus() {
+  await nextTick();
+  await new Promise<void>((resolve) => window.setTimeout(resolve, 320));
+  if (approvalTriggerElement?.isConnected) approvalTriggerElement.focus();
+  approvalTriggerElement = null;
+}
+
+async function submitA5Approval(payload: A5ApprovalSubmitPayload) {
+  const current = detail.value;
+  if (!current) return;
+  const operationPaymentId = current.payment.id;
+  actionBusy.value = true;
+  approvalError.value = "";
+  try {
+    const result = await reviewSpotProcurementA5Payment(operationPaymentId, {
+      decision: payload.result,
+      comment: payload.comment,
+      ...(reviewAction.value?.requiresSelfReviewConfirmation
+        ? {
+            selfReviewReason: payload.selfReviewReason,
+            confirmationPassword: payload.confirmationPassword
+          }
+        : {})
+    });
+    if (paymentId.value !== operationPaymentId) return;
+    approvalVisible.value = false;
+    if (payload.result === "return_to_applicant" && result.newDraftPaymentId) {
+      showSuccess("付款申请已退回，并生成新的付款草稿。");
+      await router.replace(
+        `/零星材料付款/${encodeURIComponent(result.newDraftPaymentId)}?tab=current`
+      );
+      return;
+    }
+    showSuccess("付款审批已通过。");
+    await loadDetail();
+    await restoreApprovalTriggerFocus();
+  } catch (error) {
+    if (paymentId.value !== operationPaymentId) return;
+    approvalError.value = error instanceof Error ? error.message : "付款审批提交失败";
+  } finally {
+    actionBusy.value = false;
+  }
 }
 
 function openConfirmation(kind: ConfirmationKind) {
@@ -539,8 +653,11 @@ function handleCurrentTaskAction(
   trigger: HTMLElement | null
 ) {
   if (key === "edit_draft" || key === "submit_approval") openEdit(trigger);
-  else if (key === "review_approval") void selectPaymentTab("approval");
-  else if (key === "complete_payer") openPayer();
+  else if (key === "review_approval") {
+    if (isRealPayment.value) openApproval(trigger);
+    else void selectPaymentTab("approval");
+  }
+  else if (key === "complete_payer") openPayer(trigger);
   else if (key === "record_execution") openConfirmation("execution");
   else if (
     key === "record_refund" &&
@@ -845,23 +962,25 @@ watch(
         >
           <template v-if="actionEnabled('review_approval')">
             <t-button
+              v-if="isRealPayment"
               theme="primary"
-              @click="openConfirmation('review_approve')"
+              @click="openApprovalFromEvent"
             >
-              审批通过
-            </t-button><t-button
-              v-if="!isRealPayment"
-              theme="danger"
-              variant="outline"
-              @click="openConfirmation('review_reject')"
-            >
-              驳回
-            </t-button><t-button
-              variant="outline"
-              @click="openConfirmation('review_return')"
-            >
-              退回申请人
+              办理审批
             </t-button>
+            <template v-else>
+              <t-button
+                theme="primary"
+                @click="openConfirmation('review_approve')"
+              >
+                审批通过
+              </t-button><t-button
+                variant="outline"
+                @click="openConfirmation('review_return')"
+              >
+                退回申请人
+              </t-button>
+            </template>
           </template>
           <t-button
             v-if="actionEnabled('withdraw_approval')"
@@ -892,7 +1011,7 @@ watch(
           />
           <t-button
             v-if="payerManagement.enabled"
-            @click="openPayer"
+            @click="openPayerFromEvent"
           >
             维护付款主体
           </t-button>
@@ -1087,13 +1206,21 @@ watch(
         :close-on-overlay-click="false"
         :confirm-btn="{ content: '确认变更', loading: actionBusy }"
         @confirm="savePayer"
+        @close="closePayer"
       >
         <div class="edit-form">
           <t-alert
             theme="warning"
             title="受控变更"
             :message="payerManagement?.requiresReapproval ? '财务主管变更后将从综合部节点重新审批，请再次确认原因。' : '付款主体与拟付款方式只可由财务人员、综合部主管或财务主管在当前合法阶段维护。'"
-          /><label><span>我方付款主体</span><t-select
+          /><dl
+            v-if="payerManagement?.requiresReapproval"
+            class="detail-grid"
+          >
+            <div><dt>原付款主体</dt><dd>{{ payment.payerCompanyName ?? "未确定" }}</dd></div>
+            <div><dt>新付款主体</dt><dd>{{ selectedPayerCompanyName }}</dd></div>
+            <div><dt>审批影响</dt><dd>清除综合部主管和项目经理本轮通过事实，从综合部主管重新审批</dd></div>
+          </dl><label><span>我方付款主体</span><t-select
             v-model="payerForm.companyEntityId"
             :options="payerOptions"
             placeholder="选择公司主体"
@@ -1113,6 +1240,20 @@ watch(
           />
         </div>
       </t-dialog>
+
+      <PaymentApprovalDrawer
+        :visible="approvalVisible"
+        :busy="actionBusy"
+        :error="approvalError"
+        :approval-amount-text="money(payment.approvalAmountCents)"
+        :payer-company-name="payment.payerCompanyName ?? '尚未确定付款主体'"
+        :payee-name="payment.payee?.name ?? payment.payeeName ?? '尚未填写收款对象'"
+        :approve-destination="approvalApproveDestination"
+        :return-destination="approvalReturnDestination"
+        :requires-self-review-confirmation="reviewAction?.requiresSelfReviewConfirmation === true"
+        @close="closeApproval"
+        @submit="submitA5Approval"
+      />
 
       <SensitiveActionDialog
         v-model="confirmation.visible"

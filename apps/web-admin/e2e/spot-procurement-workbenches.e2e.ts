@@ -823,6 +823,193 @@ test("routes an enabled refund task to the real receipt workflow and preserves f
   await expect(page.getByRole("heading", { name: "当前无需办理付款", exact: true })).toBeVisible();
 });
 
+test("opens one responsive A5 approval drawer and restores focus after close", async ({ page }) => {
+  await mockLogin(page);
+  await page.route("**/api/spot-procurement-payments/payment-review", (route) => {
+    const base = paymentDetail();
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...base,
+        payment: {
+          ...base.payment,
+          id: "payment-review",
+          code: "LXFK-REVIEW",
+          status: "approval_pending",
+          statusLabel: "审批中",
+          payerCompanyName: "云南建工测试公司"
+        },
+        approval: {
+          status: "approval_pending",
+          statusLabel: "审批中",
+          currentNodeName: "财务主管审批",
+          currentRoleKeys: ["finance_director"]
+        },
+        currentTask: {
+          key: "review_payment",
+          label: "待我审批",
+          hint: "核对付款事实并办理审批",
+          priority: 400,
+          scope: "personal",
+          enabled: true,
+          disabledReason: null
+        },
+        availableActions: [{
+          key: "review_approval",
+          label: "办理审批",
+          kind: "primary",
+          enabled: true,
+          disabledReason: null,
+          requiresSelfReviewConfirmation: false
+        }]
+      })
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await page.goto("/零星材料付款/payment-review?tab=current");
+
+  const trigger = page.locator(".payment-current-task").getByRole("button", { name: "办理审批", exact: true });
+  await trigger.click();
+  const drawer = page.locator(".payment-approval-drawer");
+  await expect(drawer).toBeVisible();
+  const drawerContent = drawer.locator(".t-drawer__content-wrapper");
+  const desktopViewportWidth = page.viewportSize()?.width ?? 1280;
+  await expect.poll(async () => {
+    const box = await drawerContent.boundingBox();
+    return Math.round((box?.x ?? 0) + (box?.width ?? 0));
+  }).toBe(desktopViewportWidth);
+  const desktopBox = await drawerContent.boundingBox();
+  expect(desktopBox?.width).toBeGreaterThanOrEqual(540);
+  expect(desktopBox?.width).toBeLessThanOrEqual(570);
+  expect(Math.round((desktopBox?.x ?? 0) + (desktopBox?.width ?? 0))).toBe(desktopViewportWidth);
+  await expect(drawer.getByText("审批金额", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("云南建工测试公司", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("利民建材店", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("董事长/总经理审批", { exact: true })).toBeVisible();
+  await drawer.getByText("退回申请人修改", { exact: true }).click();
+  await drawer.getByRole("button", { name: "继续确认", exact: true }).click();
+  await expect(drawer.getByText("退回原因不能为空", { exact: true })).toBeVisible();
+  await drawer.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(drawer).not.toHaveClass(/t-drawer--open/u);
+  await expect(trigger).toBeFocused();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await trigger.click();
+  await expect(drawer).toBeVisible();
+  await expect.poll(async () => {
+    const box = await drawerContent.boundingBox();
+    return Math.round(box?.x ?? -1);
+  }).toBe(0);
+  const mobileBox = await drawerContent.boundingBox();
+  expect(Math.round(mobileBox?.width ?? 0)).toBe(390);
+  expect(Math.round(mobileBox?.x ?? -1)).toBe(0);
+  await drawer.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(trigger).toBeFocused();
+});
+
+test("refreshes the completed payer task after a stale shared-role save gets 409", async ({ page }) => {
+  await mockLogin(page);
+  let detailReads = 0;
+  let payerWrites = 0;
+  await page.route("**/api/company-entities", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify([{
+      id: "company-new",
+      name: "云南新付款主体有限公司",
+      unifiedSocialCreditCode: "91530000TEST000009",
+      registeredAddress: null,
+      dataStatus: "confirmed",
+      isActive: true,
+      currentVersionNo: 1,
+      createdAt: now,
+      updatedAt: now
+    }])
+  }));
+  await page.route("**/api/spot-procurement-payments/payment-payer/payer", (route) => {
+    payerWrites += 1;
+    return route.fulfill({
+      status: 409,
+      contentType: "application/json",
+      body: JSON.stringify({ message: "付款主体任务已由其他岗位完成，请刷新后查看最新事实" })
+    });
+  });
+  await page.route("**/api/spot-procurement-payments/payment-payer", (route) => {
+    detailReads += 1;
+    const base = paymentDetail();
+    const completed = detailReads > 1;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...base,
+        payment: {
+          ...base.payment,
+          id: "payment-payer",
+          code: "LXFK-PAYER",
+          status: "approval_pending",
+          statusLabel: "审批中",
+          payerCompanyName: completed ? "其他岗位已选主体" : null,
+          payerManagement: {
+            visible: true,
+            enabled: !completed,
+            disabledReason: completed ? "付款主体已确定" : null,
+            requiresReapproval: false
+          }
+        },
+        currentTask: completed ? {
+          key: "none",
+          label: "当前无需办理付款",
+          hint: "付款主体已由其他岗位补全",
+          priority: 0,
+          scope: "none",
+          enabled: false,
+          disabledReason: "付款主体已确定"
+        } : {
+          key: "complete_payer",
+          label: "待补全主体",
+          hint: "共享岗位首位保存者完成任务",
+          priority: 350,
+          scope: "shared",
+          enabled: true,
+          disabledReason: null
+        },
+        availableActions: completed ? [] : [{
+          key: "complete_payer",
+          label: "维护付款主体",
+          kind: "primary",
+          enabled: true,
+          disabledReason: null
+        }]
+      })
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await page.goto("/零星材料付款/payment-payer?tab=current");
+  await page.getByRole("button", { name: "维护付款主体", exact: true }).click();
+  const dialog = page.locator(".t-dialog").filter({ hasText: "维护我方付款主体" });
+  await expect(dialog).toBeVisible();
+  await dialog.locator(".t-select").click();
+  await page.getByText("云南新付款主体有限公司", { exact: true }).click();
+  await dialog.getByRole("checkbox", { name: /银行转账/u }).check();
+  await dialog.getByText("我已确认本次付款主体变更及其审批影响", { exact: true }).click();
+  await dialog.getByRole("button", { name: "确认变更", exact: true }).click();
+
+  await expect(page.getByText("任务已由其他岗位完成，已刷新最新付款事实。", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "当前无需办理付款", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "维护付款主体", exact: true })).toHaveCount(0);
+  await page.locator(".t-tabs").getByText("付款申请", { exact: true }).click();
+  await expect(page.locator(".detail-panel").getByText("其他岗位已选主体", { exact: true })).toBeVisible();
+  expect(payerWrites).toBe(1);
+  expect(detailReads).toBeGreaterThanOrEqual(2);
+});
+
 test("keeps the latest spot payment detail and reloads a replacement draft", async ({ page }) => {
   const slowAStarted = deferred();
   const releaseSlowA = deferred();

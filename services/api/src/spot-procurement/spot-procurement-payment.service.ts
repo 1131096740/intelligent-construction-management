@@ -148,6 +148,7 @@ type PaymentLockRow = {
   payerUnifiedSocialCreditCodeSnapshot: string | null;
   approvalAmountCents: bigint;
   primaryPaymentChannelId: string | null;
+  factsFrozenAt: Date | null;
 };
 
 type ApprovalLockRow = {
@@ -895,7 +896,7 @@ export class SpotProcurementPaymentService {
     input: UpdateSpotPaymentPayerDto
   ) {
     return this.runWrite(() => this.runSerializable(async (tx) => {
-      const payment = await tx.spotProcurementPayment.findUnique({ where: { id: paymentId } });
+      const payment = await this.lockPaymentForPayerUpdate(tx, paymentId);
       if (!payment) throw new NotFoundException("零星材料付款申请不存在");
       this.pilot.assertEnabled(payment.projectId);
       if (!["draft", "approval_pending"].includes(payment.status)) {
@@ -927,6 +928,11 @@ export class SpotProcurementPaymentService {
       const isFinanceDirectorReapproval =
         pendingRoles.includes("finance_director") &&
         roles.includes("finance_director");
+      if (payment.payerCompanyEntityId && !isFinanceDirectorReapproval) {
+        throw new ConflictException(
+          "付款主体任务已由其他岗位完成，请刷新后查看最新事实"
+        );
+      }
       if (approval && !isFinanceDirectorReapproval && approval.currentNodeIndex !== 0) {
         throw new ConflictException("综合部主管审批完成后，只有财务主管可在本节点调整付款主体");
       }
@@ -1012,6 +1018,62 @@ export class SpotProcurementPaymentService {
       });
       return this.paymentReadModel(updated);
     }));
+  }
+
+  private async lockPaymentForPayerUpdate(
+    tx: Prisma.TransactionClient,
+    paymentId: string
+  ) {
+    const rows = await tx.$queryRaw<Array<PaymentLockRow>>(Prisma.sql`
+      SELECT
+        "id",
+        "projectId",
+        "procurementId",
+        "procurementVersionId",
+        "code",
+        "status",
+        "settlementAmountCents",
+        "supplierBalanceAmountCents",
+        "companyPaymentAmountCents",
+        "paidAmountCents",
+        "executedSupplierBalanceAmountCents",
+        "canceledAmountCents",
+        "canceledCompanyPaymentAmountCents",
+        "canceledSupplierBalanceAmountCents",
+        "paymentPath",
+        "paymentMethod",
+        "payeePartyId",
+        "payeeUserId",
+        "payeeNameSnapshot",
+        "payeeAccountNameSnapshot",
+        "payeeBankNameSnapshot",
+        "payeeBankAccountSnapshot",
+        "expectedPaymentAt",
+        "paymentNote",
+        "supportingAttachmentFileId",
+        "merchantPaymentProofFileId",
+        "balanceOverrideReason",
+        "handlerUserId",
+        "createdByUserId",
+        "submittedAt",
+        "approvedAt",
+        "invalidatedAt",
+        "invalidatedByUserId",
+        "invalidatedReason",
+        "paymentType",
+        "merchantNameSnapshot",
+        "merchantPayeeMismatchNote",
+        "payerCompanyEntityId",
+        "payerCompanyNameSnapshot",
+        "payerUnifiedSocialCreditCodeSnapshot",
+        "approvalAmountCents",
+        "primaryPaymentChannelId",
+        "factsFrozenAt"
+      FROM "SpotProcurementPayment"
+      WHERE "id" = ${paymentId}
+      FOR UPDATE
+    `);
+    return rows[0] ?? null;
   }
 
   submit(paymentId: string, actorUserId: string) {

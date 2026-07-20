@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ConflictException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { SpotProcurementPaymentService } from "./spot-procurement-payment.service";
 
@@ -238,6 +238,7 @@ describe("SpotProcurementPaymentService real-form draft", () => {
 
   it("lets a project finance staff select only an active payer company on the draft", async () => {
     const { service, tx } = createHarness();
+    tx.$queryRaw.mockResolvedValueOnce([payment]);
 
     await service.updatePayer("payment-1", "finance-1", {
       companyEntityId: "company-1",
@@ -262,6 +263,48 @@ describe("SpotProcurementPaymentService real-form draft", () => {
     });
   });
 
+  it.each([
+    ["finance_staff", "finance-1"],
+    ["comprehensive_director", "comprehensive-1"],
+    ["finance_director", "finance-director-1"]
+  ])("shares the first payer completion task with %s", async (positionKey, actorUserId) => {
+    const { service, tx } = createHarness();
+    tx.$queryRaw.mockResolvedValueOnce([payment]);
+    tx.projectMember.findMany.mockResolvedValue([{ positionKey }]);
+
+    await service.updatePayer("payment-1", actorUserId, {
+      companyEntityId: "company-1",
+      paymentMethods: ["bank_transfer"]
+    });
+
+    expect(tx.spotProcurementPayment.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("locks the payment row and rejects a stale shared-task save without duplicate writes", async () => {
+    const { service, tx } = createHarness();
+    tx.$queryRaw.mockResolvedValueOnce([
+      {
+        ...payment,
+        payerCompanyEntityId: "company-already-selected",
+        payerCompanyNameSnapshot: "已选付款主体"
+      }
+    ]);
+
+    await expect(
+      service.updatePayer("payment-1", "finance-1", {
+        companyEntityId: "company-1",
+        paymentMethods: ["bank_transfer"]
+      })
+    ).rejects.toEqual(
+      new ConflictException("付款主体任务已由其他岗位完成，请刷新后查看最新事实")
+    );
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.spotProcurementPaymentMethodOption.deleteMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
   it("returns a finance-director payer change to comprehensive approval and preserves the prior approval trail", async () => {
     const { service, tx } = createHarness();
     const submitted = {
@@ -270,35 +313,36 @@ describe("SpotProcurementPaymentService real-form draft", () => {
       paymentMethod: "bank_transfer",
       payerCompanyEntityId: "company-before"
     };
-    tx.spotProcurementPayment.findUnique.mockResolvedValue(submitted);
+    tx.$queryRaw
+      .mockResolvedValueOnce([submitted])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 2,
+          applicantUserId: "material-1",
+          frozenNodes: [
+            {
+              name: "综合部主管审批",
+              mode: "any",
+              roleKeys: ["comprehensive_director"],
+              approvedRoleKeys: ["comprehensive_director"]
+            },
+            {
+              name: "项目经理审批",
+              mode: "any",
+              roleKeys: ["project_manager"],
+              approvedRoleKeys: ["project_manager"]
+            },
+            {
+              name: "财务主管审批",
+              mode: "any",
+              roleKeys: ["finance_director"]
+            }
+          ]
+        }
+      ]);
     tx.projectMember.findMany.mockResolvedValue([{ positionKey: "finance_director" }]);
-    tx.$queryRaw.mockResolvedValue([
-      {
-        id: "approval-1",
-        status: "approval_pending",
-        currentNodeIndex: 2,
-        applicantUserId: "material-1",
-        frozenNodes: [
-          {
-            name: "综合部主管审批",
-            mode: "any",
-            roleKeys: ["comprehensive_director"],
-            approvedRoleKeys: ["comprehensive_director"]
-          },
-          {
-            name: "项目经理审批",
-            mode: "any",
-            roleKeys: ["project_manager"],
-            approvedRoleKeys: ["project_manager"]
-          },
-          {
-            name: "财务主管审批",
-            mode: "any",
-            roleKeys: ["finance_director"]
-          }
-        ]
-      }
-    ]);
 
     await service.updatePayer("payment-1", "finance-director", {
       companyEntityId: "company-1",
@@ -326,6 +370,7 @@ describe("SpotProcurementPaymentService real-form draft", () => {
 
   it("does not allow a payer change after any effective actual payment", async () => {
     const { service, tx } = createHarness();
+    tx.$queryRaw.mockResolvedValueOnce([payment]);
     tx.spotProcurementPaymentExecution.findFirst.mockResolvedValue({ id: "execution-1" });
 
     await expect(

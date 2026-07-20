@@ -199,6 +199,39 @@ describe("spot procurement web pages", () => {
     expect(stepper).toContain("已有渠道的付款方式不可直接取消");
   });
 
+  it("uses one controlled A5 approval drawer with explicit confirmation facts", () => {
+    const detail = pageSource("SpotProcurementPaymentDetailPage.vue");
+    const drawer = pageSource("components/PaymentApprovalDrawer.vue");
+
+    expect(detail).toContain("<PaymentApprovalDrawer");
+    expect(detail).toContain("办理审批");
+    expect(detail).toContain("reviewSpotProcurementA5Payment");
+    expect(detail).toContain("approvalTriggerElement");
+    expect(drawer).toContain('type A5ApprovalResult = "approve" | "return_to_applicant"');
+    expect(drawer).toContain("通过");
+    expect(drawer).toContain("退回申请人修改");
+    expect(drawer).not.toContain("拒绝");
+    expect(drawer).not.toContain("驳回");
+    expect(drawer).toContain("审批结果");
+    expect(drawer).toContain("审批金额");
+    expect(drawer).toContain("付款主体");
+    expect(drawer).toContain("收款对象");
+    expect(drawer).toContain("下一去向");
+    expect(drawer).toContain("退回原因不能为空");
+    expect(drawer).toContain("<ApprovalSelfReviewFields");
+    expect(drawer).not.toMatch(/reviewSpotProcurement|fetch\(|apiFetch|useRoute|useRouter/u);
+    expect(drawer).toContain('size="min(560px, 100vw)"');
+  });
+
+  it("refreshes payer facts after a shared-role conflict instead of retrying the stale write", () => {
+    const detail = pageSource("SpotProcurementPaymentDetailPage.vue");
+
+    expect(detail).toContain("付款主体任务已由其他岗位完成");
+    expect(detail).toContain("任务已由其他岗位完成，已刷新最新付款事实。");
+    expect(detail).toContain("const operationPaymentId = current.payment.id");
+    expect(detail).toContain("paymentId.value !== operationPaymentId");
+  });
+
   it("reuses one locked idempotency payload across execution retries", () => {
     const detail = pageSource(
       "SpotProcurementPaymentDetailPage.vue"
