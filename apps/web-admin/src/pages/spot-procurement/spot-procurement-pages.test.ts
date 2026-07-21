@@ -216,7 +216,10 @@ describe("spot procurement web pages", () => {
     expect(detail).toContain("resetApplicationEditorState()");
     expect(detail).toContain(':key="detail.payment.id"');
     expect(detail).toContain("requestId !== historicalMerchantRequestId");
-    expect(detail).toContain("requestId !== vatOptionsRequestId");
+    expect(detail).not.toContain("fetchVatRateOptions");
+    expect(detail).not.toContain("vatOptionsRequestId");
+    expect(stepper).toContain("vatRatePercent");
+    expect(stepper).toContain("免税填 0");
     expect(panel).toContain("event.currentTarget instanceof HTMLElement");
     expect(localDraft).toContain("SPOT_PAYMENT_LOCAL_DRAFT_TTL_MS");
     expect(localDraft).not.toMatch(/accountNumber|bankName|attachmentFiles|password/u);

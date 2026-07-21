@@ -288,7 +288,7 @@ describe("spot procurement API client", () => {
       paymentType: "company_direct" as const,
       merchantName: "朝阳建材",
       payeeName: "朝阳建材",
-      paymentLines: [{ procurementLineId: "line-1", paymentQuantity: "100", unitPrice: "4.00", expectedInvoiceCondition: "vat_general" as const, vatRateOptionId: "vat-13" }],
+      paymentLines: [{ procurementLineId: "line-1", paymentQuantity: "100", unitPrice: "4.00", expectedInvoiceCondition: "vat_general" as const, vatRatePercent: "13" }],
       channels: [{ channelType: "bank_transfer" as const, accountName: "朝阳建材", accountNumber: "6222000012345678", bankName: "建设银行", isPrimary: true }],
       paymentMethods: ["bank_transfer" as const],
       attachments: [{ fileId: "quote-1", category: "merchant_quote" as const }]

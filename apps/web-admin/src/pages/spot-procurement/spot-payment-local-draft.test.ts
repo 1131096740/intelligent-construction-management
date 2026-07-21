@@ -31,7 +31,7 @@ const safeDraft = {
     paymentQuantity: "10.00",
     unitPrice: "4.40",
     expectedInvoiceCondition: "no_invoice" as const,
-    vatRateOptionId: ""
+    vatRatePercent: ""
   }]
 };
 

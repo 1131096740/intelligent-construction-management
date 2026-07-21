@@ -28,7 +28,7 @@ export interface SpotPaymentLinePreparationInput {
   paymentQuantity: string;
   unitPrice: string;
   expectedInvoiceCondition: string;
-  vatRateOptionId?: string;
+  vatRatePercent?: string;
 }
 
 export interface SpotPaymentChannelPreparationInput {
@@ -131,6 +131,14 @@ export function requiredSpotProcurementDecimal(
   return normalized;
 }
 
+export function requiredSpotProcurementVatRatePercent(value: string) {
+  const normalized = value.trim();
+  if (!/^(?:(?:0|[1-9]\d?)(?:\.\d{1,3})?|100(?:\.0{1,3})?)$/u.test(normalized)) {
+    throw new Error("税率必须是 0 到 100、最多 3 位小数的数字");
+  }
+  return normalized;
+}
+
 export function requiredPositiveYuanCents(value: string, label: string) {
   let amountCents: string;
   try {
@@ -195,9 +203,8 @@ export function prepareSpotPaymentDraft(
       ...(expectedInvoiceCondition === "no_invoice"
         ? {}
         : {
-            vatRateOptionId: requiredText(
-              line.vatRateOptionId,
-              "有票明细必须选择税率"
+            vatRatePercent: requiredSpotProcurementVatRatePercent(
+              line.vatRatePercent ?? ""
             )
           })
     };

@@ -74,10 +74,10 @@ export class SpotProcurementPaymentLineDto {
       value.expectedInvoiceCondition !== "no_invoice"
   )
   @IsOptionalNonBlankText({
-    typeMessage: "税率选项必须是文字",
-    blankMessage: "有票明细必须选择税率"
+    typeMessage: "税率必须是文字",
+    blankMessage: "有票明细必须填写税率"
   })
-  vatRateOptionId?: string;
+  vatRatePercent?: string;
 }
 
 export class SpotProcurementPaymentChannelDto {

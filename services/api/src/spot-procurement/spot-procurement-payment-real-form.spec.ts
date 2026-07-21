@@ -129,7 +129,7 @@ const realFormInput = {
       paymentQuantity: "1.00",
       unitPrice: "3.50",
       expectedInvoiceCondition: "vat_general" as const,
-      vatRateOptionId: "vat-13"
+      vatRatePercent: "13"
     }
   ],
   channels: [
@@ -157,7 +157,9 @@ describe("SpotProcurementPaymentService real-form draft", () => {
           procurementLineId: "procurement-line-1",
           amountCents: 350n,
           expectedInvoiceCondition: "vat_general",
-          vatRateOptionId: "vat-13"
+          vatRateOptionId: null,
+          vatRateValueSnapshot: new Prisma.Decimal("13"),
+          vatRateLabelSnapshot: "13%"
         })
       ]
     });
@@ -189,6 +191,39 @@ describe("SpotProcurementPaymentService real-form draft", () => {
     expect(tx.spotProcurementPaymentLine.createMany).not.toHaveBeenCalled();
     expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["0", "0%"],
+    ["13.125", "13.125%"]
+  ])("freezes %s%% as a payment-line tax snapshot", async (vatRatePercent, label) => {
+    const { service, tx } = createHarness();
+
+    await service.updateDraft("payment-1", "material-1", {
+      ...realFormInput,
+      paymentLines: [{ ...realFormInput.paymentLines[0], vatRatePercent }]
+    });
+
+    expect(tx.spotProcurementPaymentLine.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({
+        vatRateOptionId: null,
+        vatRateValueSnapshot: new Prisma.Decimal(vatRatePercent),
+        vatRateLabelSnapshot: label
+      })]
+    });
+  });
+
+  it.each(["100.001", "13.1234", "-1", "税率13"])(
+    "rejects invalid free tax rate %s",
+    async (vatRatePercent) => {
+      const { service, tx } = createHarness();
+
+      await expect(service.updateDraft("payment-1", "material-1", {
+        ...realFormInput,
+        paymentLines: [{ ...realFormInput.paymentLines[0], vatRatePercent }]
+      })).rejects.toThrow("税率必须是 0 到 100、最多 3 位小数的数字");
+      expect(tx.spotProcurementPaymentLine.createMany).not.toHaveBeenCalled();
+    }
+  );
 
   it("requires a concise explanation when company-paid merchant and payee differ", async () => {
     const { service } = createHarness();

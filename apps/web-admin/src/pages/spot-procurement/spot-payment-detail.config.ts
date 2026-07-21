@@ -336,7 +336,9 @@ function hasCompletePaymentMaterials(
     hasText(material.paymentQuantity) &&
     hasText(material.unitPrice) &&
     hasText(material.expectedInvoiceCondition) &&
-    (material.expectedInvoiceCondition === "no_invoice" || hasText(material.vatRateOptionId))
+    (material.expectedInvoiceCondition === "no_invoice" ||
+      hasText(material.vatRateValue) ||
+      hasText(material.vatRateOptionId))
   );
 }
 

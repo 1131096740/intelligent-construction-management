@@ -245,6 +245,7 @@ describe("spot payment detail configuration", () => {
         amountCents: "600000",
         expectedInvoiceCondition: "vat_special",
         vatRateOptionId: null,
+        vatRateValue: null,
         vatRateLabel: null
       }]
     }))).toBe(1);

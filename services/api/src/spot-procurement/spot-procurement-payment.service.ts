@@ -90,6 +90,7 @@ const VOIDABLE_PAYMENT_STATUSES = new Set([
 const PAYMENT_METHODS = new Set<string>(
   SPOT_PROCUREMENT_PAYMENT_METHODS
 );
+const VAT_RATE_PERCENT = /^(?:(?:0|[1-9]\d?)(?:\.\d{1,3})?|100(?:\.0{1,3})?)$/u;
 const PROJECT_CASH_REQUEST_STATUSES = [
   "approval_pending",
   "in_approval",
@@ -3776,16 +3777,6 @@ export class SpotProcurementPaymentService {
     if (new Set(input.paymentLines.map((line) => line.procurementLineId)).size !== input.paymentLines.length) {
       throw new BadRequestException("同一付款申请不能重复引用采购材料明细");
     }
-    const vatRateOptionIds = input.paymentLines
-      .filter((line) => line.expectedInvoiceCondition !== "no_invoice")
-      .map((line) => requiredText(line.vatRateOptionId, "有票明细必须选择税率"));
-    const vatRates = vatRateOptionIds.length
-      ? await tx.vatRateOption.findMany({
-          where: { id: { in: vatRateOptionIds }, enabled: true },
-          select: { id: true, rateValue: true, label: true }
-        })
-      : [];
-    const vatRateById = new Map(vatRates.map((rate) => [rate.id, rate]));
     const lines = input.paymentLines.map((line) => {
       const source = lineById.get(line.procurementLineId);
       if (!source) throw new BadRequestException("付款材料明细必须引用当前采购批准材料");
@@ -3800,10 +3791,7 @@ export class SpotProcurementPaymentService {
       const vatRate =
         line.expectedInvoiceCondition === "no_invoice"
           ? null
-          : vatRateById.get(requiredText(line.vatRateOptionId, "有票明细必须选择税率"));
-      if (line.expectedInvoiceCondition !== "no_invoice" && !vatRate) {
-        throw new BadRequestException("所选税率不存在或已停用");
-      }
+          : normalizeVatRatePercent(line.vatRatePercent);
       return {
         procurementLineId: source.id,
         approvedQuantity: source.quantity,
@@ -3811,8 +3799,8 @@ export class SpotProcurementPaymentService {
         unitPrice: new Prisma.Decimal(line.unitPrice),
         amountCents: calculated.amountCents,
         expectedInvoiceCondition: line.expectedInvoiceCondition,
-        vatRateOptionId: vatRate?.id ?? null,
-        vatRateValueSnapshot: vatRate?.rateValue ?? null,
+        vatRateOptionId: null,
+        vatRateValueSnapshot: vatRate?.value ?? null,
         vatRateLabelSnapshot: vatRate?.label ?? null
       };
     });
@@ -4143,6 +4131,15 @@ function mergedText(
 function optionalText(value: string | null | undefined) {
   const text = value?.trim();
   return text || null;
+}
+
+function normalizeVatRatePercent(value: string | null | undefined) {
+  const normalized = requiredText(value, "有票明细必须填写税率");
+  if (!VAT_RATE_PERCENT.test(normalized)) {
+    throw new BadRequestException("税率必须是 0 到 100、最多 3 位小数的数字");
+  }
+  const decimal = new Prisma.Decimal(normalized);
+  return { value: decimal, label: `${decimal.toString()}%` };
 }
 
 function requiredText(value: string | null | undefined, message: string) {

@@ -1,6 +1,6 @@
 import type { SpotProcurementPaymentMethod } from "../../api/spot-procurement.api";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 export const SPOT_PAYMENT_LOCAL_DRAFT_TTL_MS = 2 * 60 * 60 * 1_000;
 const PAYMENT_METHODS = new Set<SpotProcurementPaymentMethod>([
   "bank_transfer",
@@ -25,13 +25,13 @@ export interface SpotPaymentLocalDraftSource {
     paymentQuantity: string;
     unitPrice: string;
     expectedInvoiceCondition: InvoiceCondition;
-    vatRateOptionId: string;
+    vatRatePercent: string;
   }[];
   [key: string]: unknown;
 }
 
 export interface SpotPaymentLocalDraft {
-  schemaVersion: 1;
+  schemaVersion: 2;
   paymentId: string;
   userId: string;
   savedAt: number;
@@ -50,7 +50,7 @@ export interface SpotPaymentLocalDraft {
       paymentQuantity: string;
       unitPrice: string;
       expectedInvoiceCondition: InvoiceCondition;
-      vatRateOptionId: string;
+      vatRatePercent: string;
     }>;
   };
 }
@@ -89,7 +89,7 @@ export function writeSpotPaymentLocalDraft(
         paymentQuantity: line.paymentQuantity,
         unitPrice: line.unitPrice,
         expectedInvoiceCondition: line.expectedInvoiceCondition,
-        vatRateOptionId: line.vatRateOptionId
+        vatRatePercent: line.vatRatePercent
       }))
     }
   };
@@ -173,7 +173,7 @@ function rebuildSafeDraft(draft: SpotPaymentLocalDraft["draft"]): SpotPaymentLoc
       paymentQuantity: line.paymentQuantity,
       unitPrice: line.unitPrice,
       expectedInvoiceCondition: line.expectedInvoiceCondition,
-      vatRateOptionId: line.vatRateOptionId
+      vatRatePercent: line.vatRatePercent
     }))
   };
 }
@@ -197,7 +197,7 @@ function isSafeDraft(value: unknown): value is SpotPaymentLocalDraft["draft"] {
       typeof line.paymentQuantity === "string" &&
       typeof line.unitPrice === "string" &&
       ["vat_general", "vat_special", "no_invoice"].includes(line.expectedInvoiceCondition) &&
-      typeof line.vatRateOptionId === "string"
+      typeof line.vatRatePercent === "string"
     ))
   );
 }

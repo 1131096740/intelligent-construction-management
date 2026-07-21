@@ -6,7 +6,6 @@ import {
   abandonSpotProcurementPaymentDraft,
   fetchSpotProcurementPaymentDetail,
   fetchSpotProcurementPayments,
-  fetchVatRateOptions,
   recordSpotProcurementPaymentExecution,
   reviewSpotProcurementA5Payment,
   reviewSpotProcurementPayment,
@@ -18,7 +17,6 @@ import {
   SpotProcurementApiError,
   type SpotProcurementPaymentDetailReadModel,
   type SpotProcurementPaymentMethod,
-  type VatRateOptionReadModel
 } from "../../api/spot-procurement.api";
 import {
   fetchActiveCompanyEntities,
@@ -99,7 +97,6 @@ const applicationLocalDraftNotice = ref("");
 const payerError = ref("");
 const approvalError = ref("");
 const executionError = ref("");
-const vatOptions = ref<VatRateOptionReadModel[]>([]);
 const companies = ref<CompanyEntityModel[]>([]);
 const historicalMerchants = ref<string[]>([]);
 const attachmentFiles = ref<UploadFile[]>([]);
@@ -136,7 +133,6 @@ const confirmation = reactive({
 const confirmationError = ref("");
 let latestDetailRequestId = 0;
 let historicalMerchantRequestId = 0;
-let vatOptionsRequestId = 0;
 let applicationTriggerElement: HTMLElement | null = null;
 let payerTriggerElement: HTMLElement | null = null;
 let approvalTriggerElement: HTMLElement | null = null;
@@ -329,7 +325,7 @@ function openEdit(trigger: HTMLElement | null = null) {
       paymentQuantity: line?.paymentQuantity ?? material.approvedQuantity,
       unitPrice: line?.unitPrice ?? "",
       expectedInvoiceCondition: line?.expectedInvoiceCondition ?? "no_invoice",
-      vatRateOptionId: line?.vatRateOptionId ?? ""
+      vatRatePercent: line?.vatRateValue ?? ""
     };
   });
   editForm.channels = (current.paymentChannels ?? []).map((channel) => ({
@@ -363,23 +359,7 @@ function openEdit(trigger: HTMLElement | null = null) {
     }
   }
   applicationVisible.value = true;
-  void Promise.all([
-    loadHistoricalMerchants(current.payment.project.id, current.payment.id),
-    loadVatOptions(current.payment.id)
-  ]);
-}
-
-async function loadVatOptions(paymentIdCoordinate: string) {
-  const requestId = ++vatOptionsRequestId;
-  try {
-    const result = await fetchVatRateOptions();
-    if (requestId !== vatOptionsRequestId || paymentId.value !== paymentIdCoordinate) return;
-    vatOptions.value = result;
-  } catch (error) {
-    if (requestId === vatOptionsRequestId && paymentId.value === paymentIdCoordinate) {
-      applicationError.value = error instanceof Error ? error.message : "税率选项读取失败";
-    }
-  }
+  void loadHistoricalMerchants(current.payment.project.id, current.payment.id);
 }
 
 async function saveApplicationDraft(
@@ -1007,7 +987,6 @@ function resetApplicationEditorState() {
   applicationOperationToken += 1;
   applicationOpenedPaymentId = null;
   historicalMerchantRequestId += 1;
-  vatOptionsRequestId += 1;
   applicationVisible.value = false;
   applicationInitialStep.value = 0;
   applicationError.value = "";
@@ -1015,7 +994,6 @@ function resetApplicationEditorState() {
   attachmentFiles.value = [];
   retainedAttachmentIds.value = [];
   historicalMerchants.value = [];
-  vatOptions.value = [];
   applicationTriggerElement = null;
   actionBusy.value = false;
   Object.assign(editForm, {
@@ -1143,7 +1121,6 @@ watch(
           :detail="detail"
           :draft="editForm"
           :initial-step="applicationInitialStep"
-          :vat-options="vatOptions"
           :historical-merchants="historicalMerchants"
           :attachment-files="attachmentFiles"
           :retained-attachment-ids="retainedAttachmentIds"

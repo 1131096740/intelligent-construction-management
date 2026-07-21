@@ -3,8 +3,7 @@ import type { UploadFile } from "tdesign-vue-next";
 import { computed, reactive, ref, watch } from "vue";
 import type {
   SpotProcurementPaymentDetailReadModel,
-  SpotProcurementPaymentMethod,
-  VatRateOptionReadModel
+  SpotProcurementPaymentMethod
 } from "../../../api/spot-procurement.api";
 import { centsTextToYuanText } from "../../../lib/money";
 import { calculateSpotProcurementLineAmountCents } from "../../../lib/money";
@@ -20,7 +19,7 @@ export type PaymentApplicationLineDraft = {
   paymentQuantity: string;
   unitPrice: string;
   expectedInvoiceCondition: "vat_general" | "vat_special" | "no_invoice";
-  vatRateOptionId: string;
+  vatRatePercent: string;
 };
 
 export type PaymentApplicationChannelDraft = {
@@ -48,7 +47,6 @@ const props = defineProps<{
   detail: SpotProcurementPaymentDetailReadModel;
   draft: PaymentApplicationDraft;
   initialStep: 0 | 1 | 2 | 3;
-  vatOptions: VatRateOptionReadModel[];
   historicalMerchants: string[];
   attachmentFiles: UploadFile[];
   retainedAttachmentIds: string[];
@@ -342,10 +340,9 @@ function snapshot() {
             v-model="line.expectedInvoiceCondition"
             :options="invoiceConditionOptions"
           /></label>
-          <label v-if="line.expectedInvoiceCondition !== 'no_invoice'"><span>税率</span><t-select
-            v-model="line.vatRateOptionId"
-            :options="vatOptions.map((option) => ({ label: option.label, value: option.id }))"
-            placeholder="选择税率"
+          <label v-if="line.expectedInvoiceCondition !== 'no_invoice'"><span>税率（%）</span><t-input
+            v-model="line.vatRatePercent"
+            placeholder="如 13；免税填 0"
           /></label>
         </div>
       </article>

@@ -684,6 +684,7 @@ export interface SpotProcurementPaymentMaterialReadModel {
   amountCents: string;
   expectedInvoiceCondition: "vat_general" | "vat_special" | "no_invoice";
   vatRateOptionId: string | null;
+  vatRateValue: string | null;
   vatRateLabel: string | null;
 }
 
@@ -813,7 +814,7 @@ export interface UpdateSpotProcurementPaymentDraftPayload {
     paymentQuantity: string;
     unitPrice: string;
     expectedInvoiceCondition: "vat_general" | "vat_special" | "no_invoice";
-    vatRateOptionId?: string;
+    vatRatePercent?: string;
   }>;
   channels?: Array<{
     channelType: SpotProcurementPaymentMethod;

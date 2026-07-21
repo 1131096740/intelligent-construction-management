@@ -1529,6 +1529,7 @@ export class SpotProcurementReadService {
               amountCents: moneyText(line.amountCents),
               expectedInvoiceCondition: line.expectedInvoiceCondition,
               vatRateOptionId: line.vatRateOptionId,
+              vatRateValue: line.vatRateValueSnapshot?.toString() ?? null,
               vatRateLabel: line.vatRateLabelSnapshot
             })),
             procurementMaterials: procurementMaterials.map((line) => ({
