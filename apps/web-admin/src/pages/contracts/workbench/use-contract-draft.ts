@@ -201,8 +201,18 @@ const KNOWN_DRAFT_KEYS = new Set([
 /** Projects a server read model into the flat editing model. */
 function modelFromWorkbench(workbench: ContractWorkbenchReadModel): ContractDraftModel {
   const draftData = workbench.version.draftData ?? {};
+  const fieldKeys = templateFieldKeySet(workbench);
+  const fieldValues = isRecord(draftData["fieldValues"])
+    ? { ...draftData["fieldValues"] }
+    : {};
   const extraDraftData: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(draftData)) {
+    if (fieldKeys.has(key)) {
+      if (!Object.hasOwn(fieldValues, key)) {
+        fieldValues[key] = value;
+      }
+      continue;
+    }
     if (!KNOWN_DRAFT_KEYS.has(key)) {
       extraDraftData[key] = value;
     }
@@ -239,13 +249,33 @@ function modelFromWorkbench(workbench: ContractWorkbenchReadModel): ContractDraf
     invoiceType: workbench.version.taxFacts.invoiceType,
     taxMode: workbench.version.taxFacts.taxMode,
     defaultTaxRatePercent: workbench.version.taxFacts.defaultTaxRatePercent,
-    fieldValues: isRecord(draftData["fieldValues"]) ? { ...draftData["fieldValues"] } : {},
+    fieldValues,
     partyValues: isRecord(draftData["partyValues"]) ? { ...draftData["partyValues"] } : {},
     extraDraftData,
     clauses: Array.isArray(workbench.version.clauseSnapshot)
       ? [...workbench.version.clauseSnapshot]
       : []
   };
+}
+
+function templateFieldKeySet(workbench: ContractWorkbenchReadModel): Set<string> {
+  return new Set(workbench.version.templateSnapshot.fieldSchema.map((field) => field.key));
+}
+
+function normalizeBackupTemplateFields(
+  model: ContractDraftModel,
+  fieldKeys: Set<string>
+): ContractDraftModel {
+  const fieldValues = isRecord(model.fieldValues) ? { ...model.fieldValues } : {};
+  const extraDraftData = isRecord(model.extraDraftData) ? { ...model.extraDraftData } : {};
+  for (const key of fieldKeys) {
+    if (!Object.hasOwn(extraDraftData, key)) continue;
+    if (!Object.hasOwn(fieldValues, key)) {
+      fieldValues[key] = extraDraftData[key];
+    }
+    delete extraDraftData[key];
+  }
+  return { ...model, fieldValues, extraDraftData };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -472,7 +502,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     // Surface any unsaved local edits left over from a prior session.
     const backup = readBackup();
     if (backup) {
-      assignModel(model, backup);
+      assignModel(model, normalizeBackupTemplateFields(backup, templateFieldKeySet(result)));
       dirtyRef.value = true;
     }
   }

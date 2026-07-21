@@ -29,6 +29,7 @@
         :bill="activeBill"
         :disabled="disabled"
         :prepare-mutation="prepareMutation"
+        :preparation-error="preparationError"
         :complete-mutation="completeMutation"
         @reload="emit('reload')"
       />
@@ -46,6 +47,7 @@ const props = defineProps<{
   workbench: ContractWorkbenchReadModel | null;
   disabled: boolean;
   prepareMutation?: () => Promise<ContractWorkbenchReadModel | null>;
+  preparationError?: string;
   completeMutation?: (reload: boolean) => Promise<void>;
 }>();
 

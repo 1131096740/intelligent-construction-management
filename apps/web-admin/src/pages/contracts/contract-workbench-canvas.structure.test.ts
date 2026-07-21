@@ -91,8 +91,11 @@ describe("contract workbench document canvas structure", () => {
 
   it("saves current tax facts before bill import and document generation", () => {
     expect(pageSource).toMatch(/ContractBillsSection[\s\S]*:prepare-mutation="prepareGovernanceMutation"/u);
+    expect(pageSource).toMatch(/ContractBillsSection[\s\S]*:preparation-error="saveError"/u);
     expect(pageSource).toMatch(/ContractDocumentsSection[\s\S]*:prepare-mutation="prepareGovernanceMutation"/u);
     expect(billEditorSource).toContain("await props.prepareMutation()");
+    expect(billEditorSource).toContain("preparationError?: string");
+    expect(billEditorSource).toContain("props.preparationError");
     expect(documentsSource).toContain("await props.prepareMutation()");
   });
 
