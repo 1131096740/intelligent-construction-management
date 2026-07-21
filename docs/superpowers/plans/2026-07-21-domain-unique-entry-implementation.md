@@ -26,11 +26,11 @@ No application source, database, deployment workflow, firewall rule, certificate
 - Create: /root/jiangkong-domain-boundary/<UTC timestamp>/nginx.before.txt
 - Modify: none
 
-- [ ] **Step 1: Obtain the dedicated domain-boundary production authorization**
+- [x] **Step 1: Obtain the dedicated domain-boundary production authorization**
 
 Record the approval scope before connecting: replace only the Nginx virtual-host file, reload Nginx only after syntax validation, and permit immediate restoration from the generated backup. Do not combine this authorization with Cockpit installation, application deployment, database migration, backup restoration, firewall changes, or business-data writes.
 
-- [ ] **Step 2: Create the root-only backup and collect service baseline**
+- [x] **Step 2: Create the root-only backup and collect service baseline**
 
 Run on the production server through the existing ubuntu SSH-key account:
 
@@ -57,7 +57,7 @@ printf 'backup_dir=%s\n' "$backup_dir"
 
 Expected: all four units are active; the renewal file shows authenticator = manual and pref_challs = dns-01,; UFW has no 9090 allow rule; the active sites-enabled file is a regular file; the backup directory is mode 0700 and contains that active file plus its checksum.
 
-- [ ] **Step 3: Record the externally visible baseline from the administrator computer**
+- [x] **Step 3: Record the externally visible baseline from the administrator computer**
 
 ~~~bash
 set -euo pipefail
@@ -73,7 +73,7 @@ printf 'ip_https_curl_exit=%s\n' "$ip_https_exit"
 
 Expected before change: canonical_https=200, ip_http=200, ip_https=200. Retain only the three status lines in the operation receipt; do not retain cookies, response bodies, authorization headers, or credentials.
 
-- [ ] **Step 4: Stop at the defined no-go conditions**
+- [x] **Step 4: Stop at the defined no-go conditions**
 
 Do not modify Nginx if any service is inactive, the backup cannot be read back with sha256sum -c, the certificate renewal configuration is not DNS-01 manual hooks, or the active file no longer matches the inspected baseline. Report the observed difference and wait for a new plan; do not improvise an HTTP-01 challenge exception.
 
@@ -84,7 +84,7 @@ Do not modify Nginx if any service is inactive, the backup cannot be read back w
 - Read for rollback: /root/jiangkong-domain-boundary/<UTC timestamp>/jiangkong.active.before
 - Test: Nginx syntax test and live curl acceptance commands in Task 3
 
-- [ ] **Step 1: Stage the exact candidate configuration outside the Nginx include path**
+- [x] **Step 1: Stage the exact candidate configuration outside the Nginx include path**
 
 Run on the production server in the same shell that retains backup_dir from Task 1:
 
@@ -193,7 +193,7 @@ grep -Fq 'limit_req zone=jgzg_refresh burst=10 nodelay;' "$candidate"
 
 Expected: the candidate has no IP business server, no redirect built from $host, and exactly one default server on each of ports 80 and 443.
 
-- [ ] **Step 2: Install the candidate, validate it, and reload only if validation passes**
+- [x] **Step 2: Install the candidate, validate it, and reload only if validation passes**
 
 ~~~bash
 set -euo pipefail
@@ -218,7 +218,7 @@ sudo -n systemctl is-active nginx.service
 
 Expected: nginx -t reports successful syntax and the final service-state command prints active. On either failure branch, the backup is restored before the command exits nonzero.
 
-- [ ] **Step 3: Remove only the temporary candidate after a successful reload**
+- [x] **Step 3: Remove only the temporary candidate after a successful reload**
 
 ~~~bash
 set -euo pipefail
@@ -235,7 +235,7 @@ Expected: the root-only backup retains before and after checksums; no temporary 
 - Read: systemd journals for nginx.service and jiangkong-api.service
 - Modify: none
 
-- [ ] **Step 1: Verify canonical redirects and canonical Web/API behavior from the administrator computer**
+- [x] **Step 1: Verify canonical redirects and canonical Web/API behavior from the administrator computer**
 
 ~~~bash
 set -euo pipefail
@@ -255,7 +255,7 @@ done
 
 Expected: each redirect has the fixed jgzg.site location, canonical_https=200, health=200, the unauthenticated projects response is 401, and all five security headers remain present.
 
-- [ ] **Step 2: Prove raw IP and an unknown TLS host receive no business response**
+- [x] **Step 2: Prove raw IP and an unknown TLS host receive no business response**
 
 ~~~bash
 set -euo pipefail
@@ -275,7 +275,7 @@ test "$unknown_code" = 000
 
 Expected: both requests are closed by Nginx return 444, so curl returns a nonzero transport result and HTTP code 000. A browser certificate warning for an IP remains normal; bypassing it must not expose a page or API response.
 
-- [ ] **Step 3: Verify system logs and certificate-renewal continuity**
+- [x] **Step 3: Verify system logs and certificate-renewal continuity**
 
 Run on the production server:
 
@@ -293,7 +293,7 @@ sudo -n journalctl -u jiangkong-api.service --since '10 minutes ago' -p warning 
 
 Expected: all services are active. The renewal mode remains DNS-01 and needs no HTTP exception. Review any new warning or error line before declaring success.
 
-- [ ] **Step 4: Restore immediately if any acceptance assertion fails**
+- [x] **Step 4: Restore immediately if any acceptance assertion fails**
 
 Run on the production server in the same shell that retains backup_dir:
 
@@ -314,15 +314,15 @@ Then rerun the Task 3 canonical health and unauthorized-API checks. Do not attem
 - Modify: PROGRESS.md
 - Create: docs/progress/2026-07-21-domain-unique-entry.md
 
-- [ ] **Step 1: Write the factual operation receipt**
+- [x] **Step 1: Write the factual operation receipt**
 
 Create the receipt only after all Task 3 checks pass. It must contain the UTC window, Nginx before and after SHA-256 values, the backup directory, the five accepted HTTP results, the fact that Certbot remains DNS-01, and the result of checking the Nginx/API/Certbot units. It must not include certificate private-key paths beyond the existing public configuration, DNSPod token values, cookies, authorization headers, response bodies, or any environment-file content.
 
-- [ ] **Step 2: Update the one-line current status**
+- [x] **Step 2: Update the one-line current status**
 
 Replace the current single-operator domain-boundary pending entry in PROGRESS.md with a completed entry that links the receipt and states that Cockpit remains uninstalled and separately authorized.
 
-- [ ] **Step 3: Commit the evidence-only documentation**
+- [x] **Step 3: Commit the evidence-only documentation**
 
 ~~~bash
 git add PROGRESS.md docs/progress/2026-07-21-domain-unique-entry.md
