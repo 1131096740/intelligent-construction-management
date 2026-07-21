@@ -12,7 +12,7 @@
 
 ## File Structure
 
-- Modify on production: /etc/nginx/sites-available/jiangkong — the complete active virtual-host configuration.
+- Modify on production: /etc/nginx/sites-enabled/jiangkong — the verified regular file that Nginx actually includes as its active virtual-host configuration.
 - Create on production: /root/jiangkong-domain-boundary/<UTC timestamp>/ — root-only before-state config, Nginx dump, and SHA-256 receipt.
 - Modify in repository after acceptance: PROGRESS.md — concise factual completion record with the actual backup path and acceptance outcome.
 
@@ -21,8 +21,8 @@ No application source, database, deployment workflow, firewall rule, certificate
 ### Task 1: Capture a reversible production baseline
 
 **Files:**
-- Create: /root/jiangkong-domain-boundary/<UTC timestamp>/jiangkong.before
-- Create: /root/jiangkong-domain-boundary/<UTC timestamp>/jiangkong.before.sha256
+- Create: /root/jiangkong-domain-boundary/<UTC timestamp>/jiangkong.active.before
+- Create: /root/jiangkong-domain-boundary/<UTC timestamp>/jiangkong.active.before.sha256
 - Create: /root/jiangkong-domain-boundary/<UTC timestamp>/nginx.before.txt
 - Modify: none
 
@@ -41,8 +41,10 @@ stamp=$(date -u +%Y%m%dT%H%M%SZ)
 backup_dir=/root/jiangkong-domain-boundary/$stamp
 
 sudo -n install -d -m 0700 "$backup_dir"
-sudo -n cp -a /etc/nginx/sites-available/jiangkong "$backup_dir/jiangkong.before"
-sudo -n sha256sum "$backup_dir/jiangkong.before" | sudo -n tee "$backup_dir/jiangkong.before.sha256" >/dev/null
+sudo -n test -f /etc/nginx/sites-enabled/jiangkong
+test ! -L /etc/nginx/sites-enabled/jiangkong
+sudo -n cp -a /etc/nginx/sites-enabled/jiangkong "$backup_dir/jiangkong.active.before"
+sudo -n sha256sum "$backup_dir/jiangkong.active.before" | sudo -n tee "$backup_dir/jiangkong.active.before.sha256" >/dev/null
 sudo -n sh -c 'nginx -T > "$1"' sh "$backup_dir/nginx.before.txt"
 sudo -n systemctl is-active nginx.service
 sudo -n systemctl is-active jiangkong-api.service
@@ -53,7 +55,7 @@ sudo -n ufw status verbose
 printf 'backup_dir=%s\n' "$backup_dir"
 ~~~
 
-Expected: all four units are active; the renewal file shows authenticator = manual and pref_challs = dns-01,; UFW has no 9090 allow rule; the backup directory is mode 0700 and contains the original site file plus its checksum.
+Expected: all four units are active; the renewal file shows authenticator = manual and pref_challs = dns-01,; UFW has no 9090 allow rule; the active sites-enabled file is a regular file; the backup directory is mode 0700 and contains that active file plus its checksum.
 
 - [ ] **Step 3: Record the externally visible baseline from the administrator computer**
 
@@ -78,8 +80,8 @@ Do not modify Nginx if any service is inactive, the backup cannot be read back w
 ### Task 2: Replace the virtual-host configuration atomically
 
 **Files:**
-- Modify: /etc/nginx/sites-available/jiangkong
-- Read for rollback: /root/jiangkong-domain-boundary/<UTC timestamp>/jiangkong.before
+- Modify: /etc/nginx/sites-enabled/jiangkong
+- Read for rollback: /root/jiangkong-domain-boundary/<UTC timestamp>/jiangkong.active.before
 - Test: Nginx syntax test and live curl acceptance commands in Task 3
 
 - [ ] **Step 1: Stage the exact candidate configuration outside the Nginx include path**
@@ -196,16 +198,16 @@ Expected: the candidate has no IP business server, no redirect built from $host,
 ~~~bash
 set -euo pipefail
 
-sudo -n install -m 0644 "$candidate" /etc/nginx/sites-available/jiangkong
+sudo -n install -m 0644 "$candidate" /etc/nginx/sites-enabled/jiangkong
 
 if ! sudo -n nginx -t; then
-  sudo -n install -m 0644 "$backup_dir/jiangkong.before" /etc/nginx/sites-available/jiangkong
+  sudo -n install -m 0644 "$backup_dir/jiangkong.active.before" /etc/nginx/sites-enabled/jiangkong
   sudo -n nginx -t
   exit 1
 fi
 
 if ! sudo -n systemctl reload nginx.service; then
-  sudo -n install -m 0644 "$backup_dir/jiangkong.before" /etc/nginx/sites-available/jiangkong
+  sudo -n install -m 0644 "$backup_dir/jiangkong.active.before" /etc/nginx/sites-enabled/jiangkong
   sudo -n nginx -t
   sudo -n systemctl reload nginx.service
   exit 1
@@ -221,7 +223,7 @@ Expected: nginx -t reports successful syntax and the final service-state command
 ~~~bash
 set -euo pipefail
 rm -f "$candidate"
-sudo -n sha256sum /etc/nginx/sites-available/jiangkong | sudo -n tee "$backup_dir/jiangkong.after.sha256" >/dev/null
+sudo -n sha256sum /etc/nginx/sites-enabled/jiangkong | sudo -n tee "$backup_dir/jiangkong.after.sha256" >/dev/null
 ~~~
 
 Expected: the root-only backup retains before and after checksums; no temporary Nginx file remains under /tmp.
@@ -229,7 +231,7 @@ Expected: the root-only backup retains before and after checksums; no temporary 
 ### Task 3: Prove canonical routing and preserve application safety invariants
 
 **Files:**
-- Read: /etc/nginx/sites-available/jiangkong
+- Read: /etc/nginx/sites-enabled/jiangkong
 - Read: systemd journals for nginx.service and jiangkong-api.service
 - Modify: none
 
@@ -298,7 +300,7 @@ Run on the production server in the same shell that retains backup_dir:
 ~~~bash
 set -euo pipefail
 
-sudo -n install -m 0644 "$backup_dir/jiangkong.before" /etc/nginx/sites-available/jiangkong
+sudo -n install -m 0644 "$backup_dir/jiangkong.active.before" /etc/nginx/sites-enabled/jiangkong
 sudo -n nginx -t
 sudo -n systemctl reload nginx.service
 sudo -n systemctl is-active nginx.service
