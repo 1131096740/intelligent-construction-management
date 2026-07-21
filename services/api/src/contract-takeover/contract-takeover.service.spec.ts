@@ -294,7 +294,7 @@ describe("ContractTakeoverService", () => {
             suggestedTakeoverLevel: "B",
             takeoverLevelAdjustmentReason: "预算和财务已完成期初复核。",
             takeoverCutoffDate: new Date("2026-06-30T00:00:00.000Z"),
-            responsibleUserId: "contract-director-1",
+            responsibleUserId: "contract-user",
             reviewComment: "预算和财务已完成期初复核。",
             acceptanceConclusion: "作为第一批 A 级活跃合同继续办理后续结算付款。"
           })
@@ -336,7 +336,6 @@ describe("ContractTakeoverService", () => {
         balanceSourceSummary: "Finance ledger checked.",
         evidenceSummary: "Signed scan and finance ledger.",
         takeoverCutoffDate: "2026-06-30",
-        responsibleUserId: "contract-director-1",
         reviewComment: "预算和财务已完成期初复核。",
         acceptanceConclusion: "作为第一批 A 级活跃合同继续办理后续结算付款。"
       },
@@ -354,7 +353,7 @@ describe("ContractTakeoverService", () => {
       suggestedTakeoverLevel: "B",
       takeoverLevelAdjustmentReason: "预算和财务已完成期初复核。",
       takeoverCutoffDate: new Date("2026-06-30T00:00:00.000Z"),
-      responsibleUserId: "contract-director-1",
+      responsibleUserId: "contract-user",
       reviewComment: "预算和财务已完成期初复核。",
       acceptanceConclusion: "作为第一批 A 级活跃合同继续办理后续结算付款。"
     });
@@ -410,7 +409,7 @@ describe("ContractTakeoverService", () => {
         takeoverStatus: "draft",
         lifecycleStatus: "in_progress",
         takeoverCutoffDate: new Date("2026-06-30T00:00:00.000Z"),
-        responsibleUserId: "contract-director-1",
+        responsibleUserId: "contract-user",
         reviewComment: "预算和财务已完成期初复核。",
         acceptanceConclusion: "作为第一批 A 级活跃合同继续办理后续结算付款。",
         historicalApprovalPendingPaymentCents: BigInt(40_000),
@@ -3486,6 +3485,91 @@ describe("ContractTakeoverService", () => {
     await expect(
       service.submitReview("project-1", "takeover-1", "contract-user")
     ).rejects.toThrow("当前接管记录不能提交复核，请确认仍处于草稿或待补充状态");
+    expect(tx.contractTakeover.update).not.toHaveBeenCalled();
+  });
+
+  it("returns a pending takeover for supplement with a required reason and audit", async () => {
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "pending_review" })),
+        update: jest.fn().mockResolvedValue(
+          takeoverRecord({ takeoverStatus: "needs_supplement" })
+        )
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ code: "HT-HIS-001", temporaryCode: null }),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-1",
+            code: "HT-HIS-001",
+            temporaryCode: null,
+            name: "Historical material contract",
+            counterparty: "Supplier A"
+          }
+        ])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-version-1", amountCents: 1_000_000n }
+        ])
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const result = await service.returnForSupplement(
+      "project-1",
+      "takeover-1",
+      { reason: " 缺少历史付款凭证，请补齐后重新提交 " },
+      "contract-director-1"
+    );
+
+    expect(result.takeoverStatus).toBe("needs_supplement");
+    expect(tx.contractTakeover.update).toHaveBeenCalledWith({
+      where: { id: "takeover-1" },
+      data: { takeoverStatus: "needs_supplement" }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "contract-director-1",
+      action: "contract_takeover.return_for_supplement",
+      businessType: "contract_takeover",
+      businessId: "takeover-1",
+      metadata: {
+        projectId: "project-1",
+        fromStatus: "pending_review",
+        toStatus: "needs_supplement",
+        reason: "缺少历史付款凭证，请补齐后重新提交"
+      }
+    });
+  });
+
+  it("does not return a takeover that is no longer pending review", async () => {
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "confirmed" })),
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.returnForSupplement(
+        "project-1",
+        "takeover-1",
+        { reason: "资料不完整" },
+        "contract-director-1"
+      )
+    ).rejects.toThrow("只有待复核的接管记录可以退回补充");
     expect(tx.contractTakeover.update).not.toHaveBeenCalled();
   });
 

@@ -465,6 +465,47 @@ export function canConfirmTakeover(takeover: Pick<ContractTakeoverReadModel, "ta
   return takeover.takeoverStatus === "pending_review";
 }
 
+export function canReturnTakeoverForSupplement(
+  takeover: Pick<ContractTakeoverReadModel, "takeoverStatus">
+) {
+  return takeover.takeoverStatus === "pending_review";
+}
+
+export function takeoverConfirmationEvidenceBlockReason(
+  takeover: Pick<ContractTakeoverReadModel, "evidenceChecklist">
+): string {
+  const missingEvidenceLabels = takeover.evidenceChecklist
+    .filter((item) => item.required && !item.uploaded)
+    .map((item) => item.purposeLabel);
+  if (!missingEvidenceLabels.length) return "";
+  return `缺少必需接管资料：${missingEvidenceLabels.join("、")}。请先退回补充，补齐后重新提交复核。`;
+}
+
+export function takeoverResponsibleUserOptions(
+  users: readonly { id: string; name: string }[],
+  currentUser: { id: string; name: string } | null | undefined
+): Array<{ label: string; value: string }> {
+  const options: Array<{ label: string; value: string }> = [];
+  const includedIds = new Set<string>();
+  const currentUserId = currentUser?.id.trim() ?? "";
+  const currentUserName = currentUser?.name.trim() ?? "";
+
+  if (currentUserId && currentUserName) {
+    options.push({ label: `${currentUserName}（本人）`, value: currentUserId });
+    includedIds.add(currentUserId);
+  }
+
+  for (const user of users) {
+    const id = user.id.trim();
+    const name = user.name.trim();
+    if (!id || !name || includedIds.has(id)) continue;
+    options.push({ label: name, value: id });
+    includedIds.add(id);
+  }
+
+  return options;
+}
+
 export interface HistoricalChangeBaselineView {
   status: "unconfirmed" | "confirmed" | "invalid";
   statusLabel: string;
@@ -743,7 +784,7 @@ export function takeoverWorkbenchSteps(
     ["接管准备", "明确项目、接管日和责任人"],
     ["导入预检", "预检通过后生成草稿，避免逐份重复录入"],
     ["资料核验", "单合同补录并核对合同、结算、付款凭证"],
-    ["复核确认", "多部门复核后由主管用当前密码确认"],
+    ["复核确认", "主管先核对必需资料；缺资料点“退回补充”，齐全后输入当前密码确认"],
     ["接管后核验", "用新结算和付款验证账本"]
   ].map(([label, description], index) => {
     if (isConfirmed && index === 4) {
@@ -788,7 +829,7 @@ export const takeoverOperationSections: TakeoverOperationSection[] = [
   {
     id: "takeover-step-review",
     label: "复核确认",
-    description: "批次复核、主管确认和更正记录都要留下业务原因。"
+    description: "主管先核对必需资料；缺资料退回补充，资料齐全后再输入当前密码确认接管。"
   },
   {
     id: "takeover-step-after",

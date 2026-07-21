@@ -23,3 +23,17 @@ describe("historical takeover unsaved-change governance", () => {
     expect(taxPanel).toContain("已保留当前填写内容");
   });
 });
+
+describe("historical takeover review recovery", () => {
+  it("keeps confirmation failures inside the dialog and offers a supplement return", () => {
+    expect(page).toContain('v-if="confirmError"');
+    expect(page).toContain('v-model="supplementReturnVisible"');
+    expect(page).toContain("returnContractTakeoverForSupplement");
+    expect(page).toContain("退回补充");
+  });
+
+  it("defaults new takeover responsibility to the signed-in initiator", () => {
+    expect(page).toContain("takeoverResponsibleUserOptions");
+    expect(page).toContain('responsibleUserId: auth.user?.id ?? ""');
+  });
+});

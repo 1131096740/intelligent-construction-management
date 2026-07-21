@@ -607,6 +607,10 @@ export interface ConfirmContractTakeoverPayload {
   confirmationPassword: string;
 }
 
+export interface ReturnContractTakeoverForSupplementPayload {
+  reason: string;
+}
+
 export interface AttachContractTakeoverEvidencePayload {
   fileId: string;
   purpose: ContractTakeoverEvidencePurpose;
@@ -1887,6 +1891,17 @@ export function reviewContractTakeoverCompanyEntityCorrection(
 export function submitContractTakeoverReview(projectId: string, takeoverId: string) {
   return postJson<ContractTakeoverReadModel>(
     `/projects/${projectId}/contract-takeovers/${takeoverId}/review-submission`
+  );
+}
+
+export function returnContractTakeoverForSupplement(
+  projectId: string,
+  takeoverId: string,
+  body: ReturnContractTakeoverForSupplementPayload
+) {
+  return postJson<ContractTakeoverReadModel>(
+    `/projects/${projectId}/contract-takeovers/${takeoverId}/supplement-return`,
+    body
   );
 }
 

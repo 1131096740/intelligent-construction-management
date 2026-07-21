@@ -28,6 +28,7 @@ const takeoverBodyRoutes = [
   ["confirmTaxFactsByContract", 3],
   ["abandonTaxFactRevision", 3],
   ["confirm", 3],
+  ["returnForSupplement", 3],
   ["confirmChangeBaseline", 3]
 ] as const;
 
@@ -163,6 +164,7 @@ const validTakeoverRouteBodies = [
     action: "delete_pristine_draft"
   }],
   ["confirm", 3, { confirmationPassword: "current password" }],
+  ["returnForSupplement", 3, { reason: "缺少历史付款凭证，请补齐后重新提交" }],
   ["confirmChangeBaseline", 3, {
     originalSignedAmountCents: "100000000",
     preTakeoverPositiveIncreaseCents: "5000000",
@@ -480,6 +482,7 @@ describe("ContractTakeoverController", () => {
       "reviewTaxFactsByFinance",
       "confirmTaxFactsByContract",
       "submitReview",
+      "returnForSupplement",
       "confirm",
       "confirmChangeBaseline"
     ] as const) {
@@ -495,6 +498,10 @@ describe("ContractTakeoverController", () => {
   it("protects confirmation with contract archive confirmation role", () => {
     expectProjectAction(
       ContractTakeoverController.prototype.reviewImportBatch,
+      "contract.archive.confirm"
+    );
+    expectProjectAction(
+      ContractTakeoverController.prototype.returnForSupplement,
       "contract.archive.confirm"
     );
     expectProjectAction(

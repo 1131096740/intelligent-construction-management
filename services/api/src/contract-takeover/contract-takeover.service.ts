@@ -47,6 +47,7 @@ import type {
   ReviewContractTakeoverCompanyEntityCorrectionDto,
   SubmitContractTakeoverCompanyEntityCorrectionDto
 } from "./dto/contract-takeover-company-entity-correction.dto";
+import type { ReturnContractTakeoverForSupplementDto } from "./dto/return-contract-takeover-for-supplement.dto";
 
 const TAKEOVER_LEVELS = ["A", "B", "C"] as const;
 const LIFECYCLE_STATUSES = [
@@ -655,7 +656,7 @@ export class ContractTakeoverService {
           balanceSourceSummary: data.balanceSourceSummary ?? null,
           evidenceSummary: data.evidenceSummary ?? null,
           takeoverCutoffDate: data.takeoverCutoffDate,
-          responsibleUserId: data.responsibleUserId,
+          responsibleUserId: data.responsibleUserId ?? actorUserId,
           reviewComment: data.reviewComment,
           acceptanceConclusion: data.acceptanceConclusion,
           createdByUserId: actorUserId
@@ -1581,6 +1582,45 @@ export class ContractTakeoverService {
           contractVersionId: takeover.contractVersionId,
           fromStatus: takeover.takeoverStatus,
           toStatus: "pending_review"
+        }
+      });
+
+      return this.toReadModelFromDatabase(tx, updated);
+    });
+  }
+
+  async returnForSupplement(
+    projectId: string,
+    takeoverId: string,
+    input: ReturnContractTakeoverForSupplementDto,
+    actorUserId: string
+  ) {
+    const reason = input.reason?.trim();
+    if (!reason) {
+      throw new Error("请填写退回补充原因");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const takeover = await this.getProjectTakeover(tx, projectId, takeoverId);
+      if (takeover.takeoverStatus !== "pending_review") {
+        throw new Error("只有待复核的接管记录可以退回补充");
+      }
+
+      const updated = await tx.contractTakeover.update({
+        where: { id: takeover.id },
+        data: { takeoverStatus: "needs_supplement" }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract_takeover.return_for_supplement",
+        businessType: "contract_takeover",
+        businessId: takeover.id,
+        metadata: {
+          projectId,
+          fromStatus: "pending_review",
+          toStatus: "needs_supplement",
+          reason
         }
       });
 

@@ -42,6 +42,7 @@ import {
   SubmitContractTakeoverCompanyEntityCorrectionDto
 } from "./dto/contract-takeover-company-entity-correction.dto";
 import { ReviewContractTakeoverImportBatchDto } from "./dto/review-contract-takeover-import-batch.dto";
+import { ReturnContractTakeoverForSupplementDto } from "./dto/return-contract-takeover-for-supplement.dto";
 import { AbandonContractTakeoverDto } from "./dto/abandon-contract-takeover.dto";
 import { AbandonContractTakeoverBatchDto } from "./dto/abandon-contract-takeover-batch.dto";
 import { AbandonContractTaxFactRevisionDto } from "../contract-tax-facts/dto/abandon-contract-tax-fact-revision.dto";
@@ -410,6 +411,17 @@ export class ContractTakeoverController {
     @Body() body: ConfirmContractTakeoverDto
   ) {
     return this.takeovers.confirm(projectId, takeoverId, user.id, body);
+  }
+
+  @Post(":takeoverId/supplement-return")
+  @RequireProjectRole("contract.archive.confirm")
+  returnForSupplement(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ReturnContractTakeoverForSupplementDto
+  ) {
+    return this.takeovers.returnForSupplement(projectId, takeoverId, body, user.id);
   }
 
   @Post(":takeoverId/change-baseline-confirmation")

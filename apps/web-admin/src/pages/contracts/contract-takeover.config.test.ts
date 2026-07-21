@@ -11,6 +11,7 @@ import {
   companyEntityMatchStatus,
   canConfirmHistoricalChangeBaseline,
   canConfirmTakeover,
+  canReturnTakeoverForSupplement,
   canEditTakeover,
   canSubmitTakeoverReview,
   centsToYuanText,
@@ -27,12 +28,14 @@ import {
   takeoverActionDisabledReason,
   takeoverBatchAbandonmentDisabledReason,
   takeoverConfirmDisabledReason,
+  takeoverConfirmationEvidenceBlockReason,
   takeoverCorrectionDisabledReason,
   takeoverCorrectionRows,
   takeoverEvidenceDownloadDisabledReason,
   takeoverEvidenceUploadDisabledReason,
   takeoverLevelAdjustmentDisabledReason,
   takeoverResponsibleUserText,
+  takeoverResponsibleUserOptions,
   takeoverLevelSelectionHint,
   takeoverLevelReviewText,
   takeoverOperationSections,
@@ -409,6 +412,45 @@ describe("contract takeover page configuration", () => {
     expect(canEditTakeover({ takeoverStatus: "draft" })).toBe(true);
     expect(canEditTakeover({ takeoverStatus: "needs_supplement" })).toBe(true);
     expect(canEditTakeover({ takeoverStatus: "pending_review" })).toBe(false);
+    expect(canReturnTakeoverForSupplement({ takeoverStatus: "pending_review" })).toBe(true);
+    expect(canReturnTakeoverForSupplement({ takeoverStatus: "draft" })).toBe(false);
+  });
+
+  it("blocks confirmation before the required historical evidence is complete", () => {
+    expect(takeoverConfirmationEvidenceBlockReason(takeover())).toBe(
+      "缺少必需接管资料：历史付款凭证。请先退回补充，补齐后重新提交复核。"
+    );
+    expect(
+      takeoverConfirmationEvidenceBlockReason({
+        ...takeover(),
+        evidenceChecklist: takeover().evidenceChecklist.map((item) => ({
+          ...item,
+          uploaded: true,
+          statusLabel: "已上传"
+        }))
+      })
+    ).toBe("");
+  });
+
+  it("keeps the initiator first and selectable as the default takeover owner", () => {
+    expect(
+      takeoverResponsibleUserOptions(
+        [{ id: "duan", name: "段红霞" }],
+        { id: "zhang", name: "张志娟" }
+      )
+    ).toEqual([
+      { label: "张志娟（本人）", value: "zhang" },
+      { label: "段红霞", value: "duan" }
+    ]);
+    expect(
+      takeoverResponsibleUserOptions(
+        [
+          { id: "zhang", name: "张志娟" },
+          { id: "duan", name: "段红霞" }
+        ],
+        { id: "zhang", name: "张志娟" }
+      )
+    ).toHaveLength(2);
   });
 
   it("explains disabled takeover actions in business Chinese", () => {
@@ -672,7 +714,7 @@ describe("contract takeover page configuration", () => {
       "明确项目、接管日和责任人",
       "预检通过后生成草稿，避免逐份重复录入",
       "单合同补录并核对合同、结算、付款凭证",
-      "多部门复核后由主管用当前密码确认",
+      "主管先核对必需资料；缺资料点“退回补充”，齐全后输入当前密码确认",
       "用新结算和付款验证账本"
     ]);
 
