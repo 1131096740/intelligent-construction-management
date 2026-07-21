@@ -77,9 +77,9 @@ function requiredText(value: unknown, message: string) {
 }
 
 function optionalText(value: unknown) {
-  if (value === undefined || value === null) return null;
+  if (value === undefined || value === null) return undefined;
   const normalized = typeof value === "string" ? value.trim() : "";
-  if (!normalized) return null;
+  if (!normalized) return undefined;
   return normalized;
 }
 
@@ -273,7 +273,7 @@ export function prepareSpotPaymentDraft(
     paymentType,
     merchantName,
     payeeName,
-    merchantPayeeMismatchNote,
+    ...(merchantPayeeMismatchNote ? { merchantPayeeMismatchNote } : {}),
     paymentLines,
     paymentMethods,
     channels

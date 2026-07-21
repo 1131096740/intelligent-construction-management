@@ -18,7 +18,7 @@ describe("spot procurement payment tax-rate validation", () => {
   );
 
   it("keeps a zero-percent tax rate for an invoiced payment material", () => {
-    expect(prepareSpotPaymentDraft({
+    const prepared = prepareSpotPaymentDraft({
       paymentType: "company_direct",
       merchantName: "建材商行",
       payeeName: "建材商行",
@@ -31,6 +31,12 @@ describe("spot procurement payment tax-rate validation", () => {
       }],
       paymentMethods: ["cash"],
       channels: [{ channelType: "cash", isPrimary: true }]
-    }).paymentLines[0]).toMatchObject({ vatRatePercent: "0" });
+    });
+
+    expect(prepared.paymentLines[0]).toMatchObject({ vatRatePercent: "0" });
+    expect(prepared).toMatchObject({
+      channels: [{ channelType: "cash", isPrimary: true }]
+    });
+    expect(JSON.stringify(prepared)).not.toContain("null");
   });
 });
