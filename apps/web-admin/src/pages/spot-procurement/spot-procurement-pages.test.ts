@@ -293,6 +293,9 @@ describe("spot procurement web pages", () => {
     expect(drawer).toContain("修改本次付款");
     expect(drawer).toContain("spotPaymentExecutionVoucherLabel");
     expect(drawer).toContain("existingExecutions");
+    expect(drawer).toContain(':upload-button="null"');
+    expect(drawer).toContain(':cancel-upload-button="null"');
+    expect(drawer).toContain("凭证将在确认登记时上传并与本次实付一并登记。");
     const submitSource = drawer.slice(
       drawer.indexOf("function submit()"),
       drawer.indexOf("function resetAttempt()")

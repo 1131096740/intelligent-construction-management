@@ -262,8 +262,11 @@ function setInnerInputLabel(
           theme="file-flow"
           multiple
           :auto-upload="false"
+          :upload-button="null"
+          :cancel-upload-button="null"
           :accept="CORE_ARCHIVE_UPLOAD_POLICY.acceptAttribute"
           :size-limit="{ size: CORE_ARCHIVE_UPLOAD_POLICY.limitBytes, unit: 'B' }"
+          tips="凭证将在确认登记时上传并与本次实付一并登记。"
         /></label>
         <t-button
           v-else

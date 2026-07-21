@@ -167,6 +167,11 @@ function supportsDraftAggregation(prisma: PrismaService) {
   ].every((name) => Boolean(delegates[name]));
 }
 
+function supportsSpotPaymentExecutionAggregation(prisma: PrismaService) {
+  const delegates = prisma as unknown as Record<string, unknown>;
+  return Boolean(delegates.spotProcurementPayment);
+}
+
 @Injectable()
 export class MeService {
   constructor(
@@ -363,6 +368,10 @@ export class MeService {
       )),
       ...(await this.paymentExecutionWorkItems(
         this.projectIdsFor(scopes, ["payment.execution"]),
+        projectNameById
+      )),
+      ...(await this.spotPaymentExecutionWorkItems(
+        this.projectIdsFor(scopes, ["spot_procurement.payment.execute"]),
         projectNameById
       )),
       ...(await this.contractArchiveWorkItems(
@@ -1098,6 +1107,56 @@ export class MeService {
         stayedText: this.stayedText(payment.updatedAt),
         nextAction: "登记实付并上传凭证",
         targetPath: `/付款管理/${payment.code}`,
+        tone: "warning"
+      };
+    });
+  }
+
+  private async spotPaymentExecutionWorkItems(
+    projectIds: string[],
+    projectNameById: ReadonlyMap<string, string>
+  ): Promise<WorkItem[]> {
+    if (!projectIds.length || !supportsSpotPaymentExecutionAggregation(this.prisma)) {
+      return [];
+    }
+
+    const payments = await this.prisma.spotProcurementPayment.findMany({
+      where: {
+        projectId: { in: projectIds },
+        status: { in: ["approved_pending_payment", "partially_paid"] }
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 30,
+      select: {
+        id: true,
+        projectId: true,
+        code: true,
+        approvalAmountCents: true,
+        paidAmountCents: true,
+        updatedAt: true
+      }
+    });
+
+    return payments.map((payment) => {
+      const balance = payment.approvalAmountCents - payment.paidAmountCents;
+      const remainingAmountCents = balance > 0n ? balance : 0n;
+
+      return {
+        id: `spot-payment-execution:${payment.id}`,
+        type: "payment_execution",
+        title: "登记零星材料实付与凭证",
+        projectName: projectNameById.get(payment.projectId) ?? payment.projectId,
+        projectId: payment.projectId,
+        businessCode: payment.code,
+        businessType: "spot_payment",
+        businessId: payment.id,
+        amountText: this.amountText(
+          remainingAmountCents !== 0n ? remainingAmountCents : payment.approvalAmountCents
+        ),
+        currentNode: "财务登记实际付款",
+        stayedText: this.stayedText(payment.updatedAt),
+        nextAction: "登记实付并上传凭证",
+        targetPath: `/零星材料付款/${encodeURIComponent(payment.id)}?tab=current`,
         tone: "warning"
       };
     });

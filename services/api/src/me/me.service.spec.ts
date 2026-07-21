@@ -1,4 +1,4 @@
-import { MeService } from "./me.service";
+import { MeService, type WorkItem } from "./me.service";
 
 const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=",
@@ -1187,6 +1187,48 @@ describe("MeService", () => {
         type: "payment_execution",
         businessCode: "FK-001",
         amountText: "¥30,000.00"
+      })
+    );
+  });
+
+  it("shows approved spot-payment execution work items to project finance", async () => {
+    const prisma = {
+      spotProcurementPayment: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "spot-payment-1",
+            projectId: "project-1",
+            code: "LXCG-001-V1-P001",
+            approvalAmountCents: 410000n,
+            paidAmountCents: 0n,
+            updatedAt: new Date("2026-07-21T08:00:00.000Z")
+          }
+        ])
+      }
+    };
+    const service = new MeService(prisma as never, {} as never) as unknown as {
+      spotPaymentExecutionWorkItems(
+        projectIds: string[],
+        projectNames: ReadonlyMap<string, string>
+      ): Promise<WorkItem[]>;
+    };
+
+    await expect(service.spotPaymentExecutionWorkItems(
+      ["project-1"],
+      new Map([["project-1", "测试项目"]])
+    )).resolves.toEqual([
+      expect.objectContaining({
+        id: "spot-payment-execution:spot-payment-1",
+        title: "登记零星材料实付与凭证",
+        amountText: "¥4,100.00",
+        targetPath: "/零星材料付款/spot-payment-1?tab=current"
+      })
+    ]);
+    expect(prisma.spotProcurementPayment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: { in: ["approved_pending_payment", "partially_paid"] }
+        })
       })
     );
   });
