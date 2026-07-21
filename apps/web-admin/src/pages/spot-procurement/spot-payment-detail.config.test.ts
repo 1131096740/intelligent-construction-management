@@ -34,7 +34,10 @@ describe("spot payment detail configuration", () => {
           primary: true
         }
       ],
-      now: new Date("2026-07-21T08:30:00+08:00")
+      // The drawer shows the operator's local wall-clock time. Constructing the
+      // fixture as a local Date keeps that contract stable in both UTC CI and
+      // China-standard-time browser sessions.
+      now: new Date(2026, 6, 21, 8, 30, 0)
     })).toEqual({
       amountYuan: "123.45",
       paidAt: "2026-07-21 08:30:00",
