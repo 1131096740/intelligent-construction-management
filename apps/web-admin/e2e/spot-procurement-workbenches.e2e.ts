@@ -846,9 +846,8 @@ test("locally resumes an incomplete A5 draft without inventing payment facts and
   ).join("\n"))).not.toContain("spot-payment-local-draft");
 });
 
-test("fails closed when switching A5 payment routes and discards stale option responses", async ({ page }) => {
+test("fails closed when switching A5 payment routes and discards stale merchant responses", async ({ page }) => {
   const pendingAHistory: Route[] = [];
-  const pendingAVat: Route[] = [];
   const pendingUploads: Route[] = [];
   let paymentAWrites = 0;
   let paymentASubmits = 0;
@@ -920,14 +919,6 @@ test("fails closed when switching A5 payment routes and discards stale option re
       })
     });
   });
-  await page.route("**/api/vat-rate-options", async (route) => {
-    if (!pendingAVat.length) {
-      pendingAVat.push(route);
-      return;
-    }
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify([{ id: "vat-b", label: "B税率" }]) });
-  });
-
   await page.goto("/login");
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Spot@2026");
@@ -980,7 +971,6 @@ test("fails closed when switching A5 payment routes and discards stale option re
     contentType: "application/json",
     body: JSON.stringify({ items: [{ merchantName: "A慢响应商户" }], viewCounts: { mine: 0, all: 0, closed: 0 }, amountSummary: null, truncated: false, limit: 200 })
   });
-  await pendingAVat[0]?.fulfill({ contentType: "application/json", body: JSON.stringify([{ id: "vat-a", label: "A慢响应税率" }]) });
   await page.getByRole("button", { name: "1. 付款与商户", exact: true }).click();
   await expect(page.getByText("B历史商户", { exact: true })).toBeVisible();
   await expect(page.getByText("A慢响应商户", { exact: true })).toHaveCount(0);
@@ -992,10 +982,9 @@ test("fails closed when switching A5 payment routes and discards stale option re
   await bMaterialInputs.nth(1).fill("88.00");
   await bMaterialCard.locator(".t-select").first().click();
   await page.getByText("普通增值税发票", { exact: true }).click();
-  await bMaterialCard.locator(".t-select").nth(1).click();
-  await expect(page.getByText("B税率", { exact: true })).toBeVisible();
-  await expect(page.getByText("A慢响应税率", { exact: true })).toHaveCount(0);
-  await page.getByText("B税率", { exact: true }).click();
+  const bTaxRateInput = bMaterialCard.getByLabel("税率（%）", { exact: true });
+  await bTaxRateInput.fill("0");
+  await expect(bTaxRateInput).toHaveValue("0");
 
   await page.getByRole("button", { name: "1. 付款与商户", exact: true }).click();
   await page.getByPlaceholder("实际购买的商户").fill("B安全商户");
