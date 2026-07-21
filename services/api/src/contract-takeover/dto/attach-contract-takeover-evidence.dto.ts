@@ -26,3 +26,12 @@ export class AttachContractTakeoverEvidenceDto {
   )
   purpose!: ContractTakeoverEvidencePurpose;
 }
+
+export class AttachHistoricalPaymentVoucherDto {
+  @IsRequiredText({
+    requiredMessage: "请先选择要挂接的历史付款凭证文件",
+    typeMessage: "历史付款凭证文件编号必须是文字",
+    blankMessage: "请先选择要挂接的历史付款凭证文件"
+  })
+  fileId!: string;
+}

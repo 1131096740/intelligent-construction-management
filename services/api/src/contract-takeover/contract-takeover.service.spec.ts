@@ -2588,6 +2588,110 @@ describe("ContractTakeoverService", () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it("历史付款凭证不能通过合同岗的通用资料入口补充", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(
+      service.attachEvidenceFile(
+        "project-1",
+        "takeover-1",
+        { fileId: "file-1", purpose: "historical_payment_voucher" },
+        "contract-user"
+      )
+    ).rejects.toThrow("历史付款凭证只能由财务部成员或财务部主管在专用入口补充");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("财务只能在待补充状态补充确有付款事实的历史付款凭证", async () => {
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "needs_supplement" }))
+      },
+      archiveRecord: {
+        create: jest.fn().mockResolvedValue({ id: "archive-record-payment-1" })
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-1", code: "HT-HIS-001", temporaryCode: null, name: "历史合同", counterparty: "供应商" }
+        ])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([{ id: "contract-version-1", amountCents: 1_000_000n }])
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await service.attachHistoricalPaymentVoucher(
+      "project-1",
+      "takeover-1",
+      { fileId: "file-1" },
+      "finance-user"
+    );
+
+    expect(tx.archiveRecord.create).toHaveBeenCalledWith({
+      data: {
+        businessType: "contract_takeover",
+        businessId: "takeover-1",
+        fileId: "file-1",
+        departmentScope: "historical_payment_voucher"
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "finance-user",
+      action: "contract_takeover.payment_evidence.attach",
+      businessType: "contract_takeover",
+      businessId: "takeover-1",
+      metadata: expect.objectContaining({
+        archiveRecordId: "archive-record-payment-1",
+        purpose: "historical_payment_voucher"
+      })
+    });
+  });
+
+  it("财务不能绕过主管退回直接补充历史付款凭证", async () => {
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" }))
+      },
+      archiveRecord: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(
+      service.attachHistoricalPaymentVoucher(
+        "project-1",
+        "takeover-1",
+        { fileId: "file-1" },
+        "finance-user"
+      )
+    ).rejects.toThrow("历史付款凭证只能在主管退回补充后由财务补充");
+    expect(tx.archiveRecord.create).not.toHaveBeenCalled();
+  });
+
   it("接管记录状态不允许时不能挂接资料", async () => {
     const tx = {
       contractTakeover: {

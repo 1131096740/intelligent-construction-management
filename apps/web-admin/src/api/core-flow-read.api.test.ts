@@ -116,6 +116,7 @@ import {
   listApprovalDelegations,
   createApprovalDelegation,
   attachContractTakeoverEvidenceFile,
+  attachHistoricalPaymentVoucher,
   recordContractTakeoverCorrection,
   reviewContractTakeoverCompanyEntityCorrection,
   fetchApprovalDelegationUserOptions,
@@ -1167,6 +1168,7 @@ describe("core flow read API client", () => {
       fileId: "file-1",
       purpose: "historical_contract_scan"
     });
+    await attachHistoricalPaymentVoucher("project-1", "takeover-1", { fileId: "file-2" });
     await recordContractTakeoverCorrection("project-1", "takeover-1", {
       correctionType: "evidence",
       reason: "补充历史付款凭证复核说明",
@@ -1192,6 +1194,7 @@ describe("core flow read API client", () => {
       "/api/projects/project-1/contract-takeovers/import-precheck",
       "/api/projects/project-1/contract-takeovers/import-drafts",
       "/api/projects/project-1/contract-takeovers/takeover-1/evidence-files",
+      "/api/projects/project-1/contract-takeovers/takeover-1/payment-evidence-files",
       "/api/projects/project-1/contract-takeovers/takeover-1/corrections",
       "/api/projects/project-1/contract-takeovers/takeover-1/review-submission",
       "/api/projects/project-1/contract-takeovers/takeover-1/supplement-return",
@@ -1203,6 +1206,7 @@ describe("core flow read API client", () => {
       undefined,
       "POST",
       "PATCH",
+      "POST",
       "POST",
       "POST",
       "POST",
@@ -1233,6 +1237,9 @@ describe("core flow read API client", () => {
       JSON.stringify({ fileId: "file-1", purpose: "historical_contract_scan" })
     );
     expect(fetchMock.mock.calls[8][1]?.body).toBe(
+      JSON.stringify({ fileId: "file-2" })
+    );
+    expect(fetchMock.mock.calls[9][1]?.body).toBe(
       JSON.stringify({
         correctionType: "evidence",
         reason: "补充历史付款凭证复核说明",
@@ -1242,10 +1249,10 @@ describe("core flow read API client", () => {
         currentPassword: "current-password"
       })
     );
-    expect(fetchMock.mock.calls[10][1]?.body).toBe(
+    expect(fetchMock.mock.calls[11][1]?.body).toBe(
       JSON.stringify({ reason: "缺少历史付款凭证" })
     );
-    expect(fetchMock.mock.calls[11][1]?.body).toBe(
+    expect(fetchMock.mock.calls[12][1]?.body).toBe(
       JSON.stringify({ confirmationPassword: "current-password" })
     );
   });

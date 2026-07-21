@@ -359,6 +359,19 @@ export class MeService {
         "primary"
       )),
       ...(await this.contractTakeoverWorkItems(
+        this.projectIdsFor(scopes, ["contract.takeover.payment_evidence.upload"]),
+        ["needs_supplement"],
+        projectNameById,
+        "补充历史付款凭证",
+        "上传后请通知合同岗核对并重新提交复核",
+        "primary",
+        {},
+        {
+          idPrefix: "takeover-payment-evidence",
+          requiresMissingHistoricalPaymentVoucher: true
+        }
+      )),
+      ...(await this.contractTakeoverWorkItems(
         this.projectIdsFor(scopes, ["contract.archive.confirm"]),
         ["pending_review"],
         projectNameById,
@@ -1005,7 +1018,11 @@ export class MeService {
     currentNode: string,
     nextAction: string,
     tone: WorkbenchCardTone,
-    extraWhere: Prisma.ContractTakeoverWhereInput = {}
+    extraWhere: Prisma.ContractTakeoverWhereInput = {},
+    options: {
+      idPrefix?: string;
+      requiresMissingHistoricalPaymentVoucher?: boolean;
+    } = {}
   ): Promise<WorkItem[]> {
     if (!projectIds.length) {
       return [];
@@ -1024,19 +1041,32 @@ export class MeService {
         projectId: true,
         contractId: true,
         contractVersionId: true,
+        historicalApprovalPendingPaymentCents: true,
+        historicalApprovedPendingPaymentCents: true,
+        historicalPaidCents: true,
+        historicalProxyPaidCents: true,
+        historicalAdvancePaidCents: true,
+        historicalRetentionWithheldCents: true,
+        otherConfirmedOccupancyCents: true,
         updatedAt: true
       }
     });
+    const missingVoucherTakeoverIds = options.requiresMissingHistoricalPaymentVoucher
+      ? await this.missingHistoricalPaymentVoucherTakeoverIds(takeovers)
+      : null;
+    const visibleTakeovers = missingVoucherTakeoverIds
+      ? takeovers.filter((takeover) => missingVoucherTakeoverIds.has(takeover.id))
+      : takeovers;
     const [contracts, versions] = await Promise.all([
-      takeovers.length
+      visibleTakeovers.length
         ? this.prisma.contract.findMany({
-            where: { id: { in: [...new Set(takeovers.map((item) => item.contractId))] } },
+            where: { id: { in: [...new Set(visibleTakeovers.map((item) => item.contractId))] } },
             select: { id: true, code: true, temporaryCode: true, name: true, counterparty: true }
           })
         : Promise.resolve([]),
-      takeovers.length
+      visibleTakeovers.length
         ? this.prisma.contractVersion.findMany({
-            where: { id: { in: [...new Set(takeovers.map((item) => item.contractVersionId))] } },
+            where: { id: { in: [...new Set(visibleTakeovers.map((item) => item.contractVersionId))] } },
             select: { id: true, amountCents: true }
           })
         : Promise.resolve([])
@@ -1044,11 +1074,11 @@ export class MeService {
     const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
     const versionById = new Map(versions.map((version) => [version.id, version]));
 
-    return takeovers.map((takeover) => {
+    return visibleTakeovers.map((takeover) => {
       const contract = contractById.get(takeover.contractId);
       const code = contract?.code ?? contract?.temporaryCode ?? takeover.contractId;
       return {
-        id: `takeover:${takeover.id}`,
+        id: `${options.idPrefix ?? "takeover"}:${takeover.id}`,
         type: tone === "danger" ? "blocker" : "contract_takeover",
         title: contract?.name ?? "历史合同接管",
         projectName: projectNameById.get(takeover.projectId) ?? takeover.projectId,
@@ -1061,6 +1091,45 @@ export class MeService {
         tone
       };
     });
+  }
+
+  private async missingHistoricalPaymentVoucherTakeoverIds(
+    takeovers: Array<{
+      id: string;
+      historicalApprovalPendingPaymentCents: bigint;
+      historicalApprovedPendingPaymentCents: bigint;
+      historicalPaidCents: bigint;
+      historicalProxyPaidCents: bigint;
+      historicalAdvancePaidCents: bigint;
+      historicalRetentionWithheldCents: bigint;
+      otherConfirmedOccupancyCents: bigint;
+    }>
+  ) {
+    const paymentRelatedTakeoverIds = takeovers
+      .filter((takeover) => [
+        takeover.historicalApprovalPendingPaymentCents,
+        takeover.historicalApprovedPendingPaymentCents,
+        takeover.historicalPaidCents,
+        takeover.historicalProxyPaidCents,
+        takeover.historicalAdvancePaidCents,
+        takeover.historicalRetentionWithheldCents,
+        takeover.otherConfirmedOccupancyCents
+      ].some((amount) => dbMoneyToBigInt(amount, "历史付款金额") > 0n))
+      .map((takeover) => takeover.id);
+    if (!paymentRelatedTakeoverIds.length) {
+      return new Set<string>();
+    }
+
+    const archiveRecords = await this.prisma.archiveRecord.findMany({
+      where: {
+        businessType: "contract_takeover",
+        businessId: { in: paymentRelatedTakeoverIds },
+        departmentScope: "historical_payment_voucher"
+      },
+      select: { businessId: true }
+    });
+    const uploadedTakeoverIds = new Set(archiveRecords.map((record) => record.businessId));
+    return new Set(paymentRelatedTakeoverIds.filter((id) => !uploadedTakeoverIds.has(id)));
   }
 
   private async paymentExecutionWorkItems(

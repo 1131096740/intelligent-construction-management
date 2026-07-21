@@ -21,7 +21,10 @@ import {
 } from "../contract-tax-facts/dto/contract-tax-fact-revision.dto";
 import { ContractTakeoverService } from "./contract-takeover.service";
 import { ContractTakeoverExcelService } from "./contract-takeover-excel.service";
-import { AttachContractTakeoverEvidenceDto } from "./dto/attach-contract-takeover-evidence.dto";
+import {
+  AttachContractTakeoverEvidenceDto,
+  AttachHistoricalPaymentVoucherDto
+} from "./dto/attach-contract-takeover-evidence.dto";
 import { ConfirmContractTakeoverDto } from "./dto/confirm-contract-takeover.dto";
 import { ConfirmContractChangeBaselineDto } from "./dto/confirm-contract-change-baseline.dto";
 import {
@@ -345,6 +348,17 @@ export class ContractTakeoverController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.takeovers.attachEvidenceFile(projectId, takeoverId, body, user.id);
+  }
+
+  @Post(":takeoverId/payment-evidence-files")
+  @RequireProjectRole("contract.takeover.payment_evidence.upload")
+  attachHistoricalPaymentVoucher(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Body() body: AttachHistoricalPaymentVoucherDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.takeovers.attachHistoricalPaymentVoucher(projectId, takeoverId, body, user.id);
   }
 
   @Post(":takeoverId/corrections")

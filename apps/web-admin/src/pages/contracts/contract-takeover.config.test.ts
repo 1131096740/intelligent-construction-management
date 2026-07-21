@@ -17,6 +17,7 @@ import {
   centsToYuanText,
   contractTakeoverColumns,
   historicalChangeBaselineView,
+  historicalPaymentVoucherUploadDisabledReason,
   invoiceTypeLabel,
   lifecycleStatusLabel,
   importPrecheckRowStatusLabel,
@@ -53,6 +54,30 @@ import {
 } from "./contract-takeover.config";
 
 describe("contract takeover page configuration", () => {
+  it("only enables finance payment-voucher supplementation after a supervisor return", () => {
+    const base = {
+      takeoverStatus: "needs_supplement" as const,
+      evidenceChecklist: [{
+        purpose: "historical_payment_voucher" as const,
+        purposeLabel: "历史付款凭证",
+        required: true,
+        uploaded: false,
+        statusLabel: "待补齐",
+        riskText: "缺少历史付款凭证"
+      }]
+    };
+
+    expect(historicalPaymentVoucherUploadDisabledReason(base, false)).toBe("请先选择历史付款凭证文件");
+    expect(historicalPaymentVoucherUploadDisabledReason(base, true)).toBe("");
+    expect(historicalPaymentVoucherUploadDisabledReason({ ...base, takeoverStatus: "pending_review" }, true)).toBe(
+      "请等待合同部主管退回补充后，再由财务补充付款凭证"
+    );
+    expect(historicalPaymentVoucherUploadDisabledReason({
+      ...base,
+      evidenceChecklist: [{ ...base.evidenceChecklist[0], uploaded: true, statusLabel: "已上传" }]
+    }, true)).toBe("历史付款凭证已补齐，请由合同岗核对并重新提交复核");
+  });
+
   it("requires a server preview before atomically cleaning an import batch", () => {
     const source = readFileSync(resolve(__dirname, "ContractTakeoverPage.vue"), "utf8");
 

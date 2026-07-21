@@ -19,6 +19,7 @@ const takeoverBodyRoutes = [
   ["updateDraft", 2],
   ["abandonDraft", 2],
   ["attachEvidence", 2],
+  ["attachHistoricalPaymentVoucher", 2],
   ["recordCorrection", 2],
   ["submitCompanyEntityCorrection", 2],
   ["reviewCompanyEntityCorrection", 3],
@@ -93,6 +94,7 @@ const validTakeoverRouteBodies = [
   ],
   ["updateDraft", 2, validTakeover],
   ["attachEvidence", 2, { fileId: "file-1", purpose: "historical_contract_scan" }],
+  ["attachHistoricalPaymentVoucher", 2, { fileId: "file-1" }],
   [
     "recordCorrection",
     2,
@@ -239,6 +241,13 @@ describe("ContractTakeoverController", () => {
         method as keyof ContractTakeoverController
       ] as object,
       action
+    );
+  });
+
+  it("protects historical payment-voucher attachment with its finance-only action", () => {
+    expectProjectAction(
+      ContractTakeoverController.prototype.attachHistoricalPaymentVoucher,
+      "contract.takeover.payment_evidence.upload"
     );
   });
 

@@ -29,6 +29,10 @@ export function canConfirmHistoricalContractTakeovers(roleKeys: readonly RoleKey
   return canPerform("contract.archive.confirm", roleKeys);
 }
 
+export function canUploadHistoricalPaymentVoucher(roleKeys: readonly RoleKey[]) {
+  return canPerform("contract.takeover.payment_evidence.upload", roleKeys);
+}
+
 export function canManageContractRecords(roleKeys: readonly RoleKey[]) {
   return canPerform("contract.create", roleKeys);
 }

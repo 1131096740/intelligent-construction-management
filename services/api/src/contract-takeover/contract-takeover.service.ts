@@ -21,6 +21,7 @@ import {
 } from "../money/decimal-money";
 import type {
   AttachContractTakeoverEvidenceDto,
+  AttachHistoricalPaymentVoucherDto,
   ContractTakeoverEvidencePurpose
 } from "./dto/attach-contract-takeover-evidence.dto";
 import type { ConfirmContractTakeoverDto } from "./dto/confirm-contract-takeover.dto";
@@ -865,6 +866,9 @@ export class ContractTakeoverService {
     if (!EVIDENCE_PURPOSES.includes(input.purpose)) {
       throw new Error("接管资料类型不正确，请重新选择资料类型");
     }
+    if (input.purpose === "historical_payment_voucher") {
+      throw new Error("历史付款凭证只能由财务部成员或财务部主管在专用入口补充");
+    }
 
     return this.prisma.$transaction(async (tx) => {
       const takeover = await this.getProjectTakeover(tx, projectId, takeoverId);
@@ -904,6 +908,60 @@ export class ContractTakeoverService {
           fileId,
           archiveRecordId: archiveRecord.id,
           purpose: input.purpose
+        }
+      });
+
+      return this.toReadModelFromDatabase(tx, takeover);
+    });
+  }
+
+  async attachHistoricalPaymentVoucher(
+    projectId: string,
+    takeoverId: string,
+    input: AttachHistoricalPaymentVoucherDto,
+    actorUserId: string
+  ) {
+    const fileId = input.fileId?.trim();
+    if (!fileId) {
+      throw new Error("请先选择要挂接的历史付款凭证文件");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const takeover = await this.getProjectTakeover(tx, projectId, takeoverId);
+      if (takeover.takeoverStatus !== "needs_supplement") {
+        throw new Error("历史付款凭证只能在主管退回补充后由财务补充");
+      }
+      if (!requiresHistoricalPaymentVoucher(takeover)) {
+        throw new Error("当前接管记录不需要补充历史付款凭证");
+      }
+      if (!this.files) {
+        throw new Error("系统暂不能读取历史付款凭证文件，请稍后重试");
+      }
+      try {
+        await this.files.assertCanDownloadFile(tx, fileId, actorUserId);
+      } catch {
+        throw new Error("当前账号无权读取该历史付款凭证文件");
+      }
+
+      const archiveRecord = await tx.archiveRecord.create({
+        data: {
+          businessType: "contract_takeover",
+          businessId: takeover.id,
+          fileId,
+          departmentScope: "historical_payment_voucher"
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract_takeover.payment_evidence.attach",
+        businessType: "contract_takeover",
+        businessId: takeover.id,
+        metadata: {
+          projectId,
+          fileId,
+          archiveRecordId: archiveRecord.id,
+          purpose: "historical_payment_voucher"
         }
       });
 
@@ -3873,17 +3931,7 @@ function takeoverEvidenceChecklist(
   if (positiveCents(takeover.historicalSettledCents)) {
     requiredPurposes.push("historical_settlement_ledger");
   }
-  if (
-    [
-      takeover.historicalApprovalPendingPaymentCents,
-      takeover.historicalApprovedPendingPaymentCents,
-      takeover.historicalPaidCents,
-      takeover.historicalProxyPaidCents,
-      takeover.historicalAdvancePaidCents,
-      takeover.historicalRetentionWithheldCents,
-      takeover.otherConfirmedOccupancyCents
-    ].some(positiveCents)
-  ) {
+  if (requiresHistoricalPaymentVoucher(takeover)) {
     requiredPurposes.push("historical_payment_voucher");
   }
 
@@ -3898,6 +3946,29 @@ function takeoverEvidenceChecklist(
       riskText: uploaded ? "已上传，可作为接管复核依据。" : missingEvidenceRiskText(purpose)
     };
   });
+}
+
+function requiresHistoricalPaymentVoucher(
+  takeover: Pick<
+    ContractTakeoverRecord,
+    | "historicalApprovalPendingPaymentCents"
+    | "historicalApprovedPendingPaymentCents"
+    | "historicalPaidCents"
+    | "historicalProxyPaidCents"
+    | "historicalAdvancePaidCents"
+    | "historicalRetentionWithheldCents"
+    | "otherConfirmedOccupancyCents"
+  >
+) {
+  return [
+    takeover.historicalApprovalPendingPaymentCents,
+    takeover.historicalApprovedPendingPaymentCents,
+    takeover.historicalPaidCents,
+    takeover.historicalProxyPaidCents,
+    takeover.historicalAdvancePaidCents,
+    takeover.historicalRetentionWithheldCents,
+    takeover.otherConfirmedOccupancyCents
+  ].some(positiveCents);
 }
 
 function positiveCents(value: bigint): boolean {

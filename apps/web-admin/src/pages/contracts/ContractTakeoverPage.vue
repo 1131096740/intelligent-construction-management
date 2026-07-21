@@ -1177,6 +1177,45 @@
               上传接管资料
             </t-button>
           </div>
+          <div
+            v-if="canUploadHistoricalPaymentVouchers"
+            class="evidence-uploader finance-payment-evidence-uploader"
+          >
+            <div>
+              <strong>财务补充：历史付款凭证</strong>
+              <p>仅可补充付款凭证；不能编辑接管事实、提交复核或确认接管。上传后请通知合同岗核对并重新提交复核。</p>
+            </div>
+            <label>
+              <span>付款凭证文件</span>
+              <input
+                ref="historicalPaymentVoucherInputRef"
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
+                @change="onHistoricalPaymentVoucherFileChange"
+              >
+            </label>
+            <t-tooltip
+              v-if="selectedHistoricalPaymentVoucherUploadDisabledReason"
+              :content="selectedHistoricalPaymentVoucherUploadDisabledReason"
+            >
+              <t-button
+                theme="primary"
+                variant="outline"
+                disabled
+              >
+                上传历史付款凭证
+              </t-button>
+            </t-tooltip>
+            <t-button
+              v-else
+              theme="primary"
+              variant="outline"
+              :loading="historicalPaymentVoucherUploading"
+              @click="submitHistoricalPaymentVoucher"
+            >
+              上传历史付款凭证
+            </t-button>
+          </div>
           <EvidenceFileCards :files="selectedEvidenceFiles" />
           <div
             v-if="selectedEvidenceFiles.length"
@@ -1802,6 +1841,7 @@ import {
   applyContractTakeoverBatchAbandonment,
   applyContractTakeoverExcelImport,
   attachContractTakeoverEvidenceFile,
+  attachHistoricalPaymentVoucher,
   confirmContractTakeover,
   confirmContractTakeoverChangeBaseline,
   createPrivateFileDownloadTicket,
@@ -1857,7 +1897,8 @@ import {
   canConfirmHistoricalContractTakeovers,
   canExportContractSettlementLedger,
   canManageHistoricalContractTakeovers,
-  canSubmitHistoricalContractTakeovers
+  canSubmitHistoricalContractTakeovers,
+  canUploadHistoricalPaymentVoucher
 } from "../business-readonly-access";
 import ContractTaxFactReviewPanel from "./components/ContractTaxFactReviewPanel.vue";
 import HistoricalCompanyEntityMatchPanel from "./components/HistoricalCompanyEntityMatchPanel.vue";
@@ -1877,6 +1918,7 @@ import {
   formatTakeoverDate,
   importPrecheckRowStatusLabel,
   historicalChangeBaselineView,
+  historicalPaymentVoucherUploadDisabledReason,
   invoiceTypeLabel,
   invoiceTypeOptions,
   lifecycleStatusLabel,
@@ -2009,6 +2051,9 @@ const canSubmitTakeovers = computed(() =>
 const canConfirmTakeovers = computed(() =>
   canConfirmHistoricalContractTakeovers(roleKeys.value)
 );
+const canUploadHistoricalPaymentVouchers = computed(() =>
+  canUploadHistoricalPaymentVoucher(roleKeys.value)
+);
 const canExportTakeovers = computed(() =>
   canExportContractSettlementLedger(roleKeys.value)
 );
@@ -2047,6 +2092,7 @@ const editingTakeoverId = ref("");
 const confirming = ref(false);
 const supplementReturning = ref(false);
 const evidenceUploading = ref(false);
+const historicalPaymentVoucherUploading = ref(false);
 const evidenceDownloading = ref(false);
 const correctionSubmitting = ref(false);
 const companyEntityCorrectionSubmitting = ref(false);
@@ -2092,6 +2138,8 @@ const confirmationPassword = ref("");
 const evidencePurpose = ref<ContractTakeoverEvidencePurpose>("historical_contract_scan");
 const evidenceFile = ref<File | null>(null);
 const evidenceInputRef = ref<HTMLInputElement | null>(null);
+const historicalPaymentVoucherFile = ref<File | null>(null);
+const historicalPaymentVoucherInputRef = ref<HTMLInputElement | null>(null);
 const evidenceDownloadFileId = ref("");
 const evidenceDownloadPassword = ref("");
 const evidenceDownloadReason = ref("");
@@ -2299,6 +2347,14 @@ const selectedEvidenceUploadDisabledReason = computed(() => {
   if (!takeover) return "请先选择需要补充资料的接管合同";
   return takeoverEvidenceUploadDisabledReason(takeover, Boolean(evidenceFile.value));
 });
+const selectedHistoricalPaymentVoucherUploadDisabledReason = computed(() => {
+  const takeover = selectedRow.value?.takeover;
+  if (!takeover) return "请先选择需要补充付款凭证的接管合同";
+  return historicalPaymentVoucherUploadDisabledReason(
+    takeover,
+    Boolean(historicalPaymentVoucherFile.value)
+  );
+});
 const takeoverLevelSuggestionView = computed(() => suggestTakeoverLevel(createForm));
 const takeoverLevelSelectionHintView = computed(() =>
   takeoverLevelSelectionHint(createForm.takeoverLevel, takeoverLevelSuggestionView.value)
@@ -2418,7 +2474,6 @@ const generateImportDraftsDisabledReason = computed(() => {
 const evidencePurposeOptions: Array<{ value: ContractTakeoverEvidencePurpose; label: string }> = [
   { value: "historical_contract_scan", label: "历史合同扫描件" },
   { value: "historical_settlement_ledger", label: "历史结算台账" },
-  { value: "historical_payment_voucher", label: "历史付款凭证" },
   { value: "other", label: "其他接管资料" }
 ];
 const correctionTypeOptions: Array<{ value: ContractTakeoverCorrectionType; label: string }> = [
@@ -3321,6 +3376,11 @@ function onEvidenceFileChange(event: Event) {
   evidenceFile.value = input.files?.[0] ?? null;
 }
 
+function onHistoricalPaymentVoucherFileChange(event: Event) {
+  const input = event.target as HTMLInputElement;
+  historicalPaymentVoucherFile.value = input.files?.[0] ?? null;
+}
+
 async function submitEvidenceFile() {
   if (!canManageTakeovers.value) {
     setMessage("当前岗位不能上传历史合同接管资料", "danger");
@@ -3358,6 +3418,46 @@ async function submitEvidenceFile() {
     setMessage(error instanceof Error ? error.message : "上传接管资料失败", "danger");
   } finally {
     evidenceUploading.value = false;
+  }
+}
+
+async function submitHistoricalPaymentVoucher() {
+  if (!canUploadHistoricalPaymentVouchers.value) {
+    setMessage("当前岗位不能补充历史付款凭证", "danger");
+    return;
+  }
+  const disabledReason = selectedHistoricalPaymentVoucherUploadDisabledReason.value;
+  if (disabledReason) {
+    setMessage(disabledReason, "danger");
+    return;
+  }
+  const projectId = selectedProjectId.value;
+  const takeover = selectedRow.value?.takeover;
+  const file = historicalPaymentVoucherFile.value;
+  if (!projectId || !takeover || !file) {
+    setMessage("请先选择接管记录和历史付款凭证文件", "danger");
+    return;
+  }
+
+  historicalPaymentVoucherUploading.value = true;
+  message.value = "";
+  try {
+    const uploaded = await uploadPrivateFile(file, file.name);
+    const updated = await attachHistoricalPaymentVoucher(projectId, takeover.id, {
+      fileId: uploaded.id
+    });
+    takeovers.value = takeovers.value.map((item) => (item.id === updated.id ? updated : item));
+    selectedTakeoverId.value = updated.id;
+    resetEvidenceDownloadForm(updated);
+    historicalPaymentVoucherFile.value = null;
+    if (historicalPaymentVoucherInputRef.value) {
+      historicalPaymentVoucherInputRef.value.value = "";
+    }
+    setMessage("历史付款凭证已补齐，请由接管责任人核对后重新提交复核", "success");
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : "上传历史付款凭证失败", "danger");
+  } finally {
+    historicalPaymentVoucherUploading.value = false;
   }
 }
 

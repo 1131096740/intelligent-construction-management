@@ -4,7 +4,8 @@ import {
   canManageContractRecords,
   canManageHistoricalContractTakeovers,
   canManageSettlementRecords,
-  canReadHistoricalContractTakeovers
+  canReadHistoricalContractTakeovers,
+  canUploadHistoricalPaymentVoucher
 } from "./business-readonly-access";
 
 describe("business read-only access", () => {
@@ -20,6 +21,9 @@ describe("business read-only access", () => {
       expect(canManageHistoricalContractTakeovers([roleKey])).toBe(false);
       expect(canManageContractRecords([roleKey])).toBe(false);
       expect(canManageSettlementRecords([roleKey])).toBe(false);
+      expect(canUploadHistoricalPaymentVoucher([roleKey])).toBe(
+        roleKey === "finance_staff" || roleKey === "finance_director"
+      );
     }
   );
 
@@ -30,5 +34,6 @@ describe("business read-only access", () => {
     expect(canExportContractSettlementLedger(["contract_staff"])).toBe(true);
     expect(canExportContractSettlementLedger(["budget_staff"])).toBe(false);
     expect(canReadHistoricalContractTakeovers(["budget_director"])).toBe(false);
+    expect(canUploadHistoricalPaymentVoucher(["contract_staff"])).toBe(false);
   });
 });

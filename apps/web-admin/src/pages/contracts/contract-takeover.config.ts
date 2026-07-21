@@ -609,6 +609,27 @@ export function takeoverEvidenceUploadDisabledReason(
   return "";
 }
 
+export function historicalPaymentVoucherUploadDisabledReason(
+  takeover: Pick<ContractTakeoverReadModel, "takeoverStatus" | "evidenceChecklist">,
+  hasFile: boolean
+): string {
+  const paymentVoucher = takeover.evidenceChecklist.find(
+    (item) => item.purpose === "historical_payment_voucher"
+  );
+  if (!paymentVoucher?.required) return "当前接管记录不需要补充历史付款凭证";
+  if (paymentVoucher.uploaded) return "历史付款凭证已补齐，请由合同岗核对并重新提交复核";
+  if (takeover.takeoverStatus !== "needs_supplement") {
+    if (takeover.takeoverStatus === "pending_review") {
+      return "请等待合同部主管退回补充后，再由财务补充付款凭证";
+    }
+    if (takeover.takeoverStatus === "confirmed") return "已完成主管确认，不能静默补充历史付款凭证";
+    if (takeover.takeoverStatus === "voided") return "接管记录已作废，不能补充历史付款凭证";
+    return "请等待合同岗提交复核并由主管退回补充";
+  }
+  if (!hasFile) return "请先选择历史付款凭证文件";
+  return "";
+}
+
 export function takeoverEvidenceDownloadDisabledReason(
   draft: TakeoverEvidenceDownloadDraft
 ): string {

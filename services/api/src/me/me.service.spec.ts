@@ -1233,6 +1233,75 @@ describe("MeService", () => {
     );
   });
 
+  it("routes missing historical payment vouchers to finance without granting takeover resubmission", async () => {
+    const missingPaymentVoucher = {
+      id: "takeover-payment-voucher-1",
+      projectId: "project-1",
+      contractId: "contract-1",
+      contractVersionId: "version-1",
+      historicalApprovalPendingPaymentCents: 0n,
+      historicalApprovedPendingPaymentCents: 0n,
+      historicalPaidCents: 30_000n,
+      historicalProxyPaidCents: 0n,
+      historicalAdvancePaidCents: 0n,
+      historicalRetentionWithheldCents: 0n,
+      otherConfirmedOccupancyCents: 0n,
+      updatedAt: new Date("2026-07-21T08:00:00.000Z")
+    };
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ projectId: "project-1", positionKey: "finance_staff" }])
+      },
+      project: {
+        findMany: jest.fn().mockImplementation(({ where }: { where?: { isActive?: boolean } }) =>
+          where?.isActive ? [{ id: "project-1" }] : [{ id: "project-1", name: "测试项目" }]
+        )
+      },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      contractTakeover: {
+        findMany: jest.fn().mockImplementation(({ where }: { where: { takeoverStatus?: { in?: string[] } } }) => {
+          const statuses = where.takeoverStatus?.in ?? [];
+          return statuses.length === 1 && statuses[0] === "needs_supplement"
+            ? [missingPaymentVoucher]
+            : [];
+        }),
+        count: jest.fn()
+      },
+      archiveRecord: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn() },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalActionLog: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: { findMany: jest.fn().mockResolvedValue([]) },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([{ id: "version-1", amountCents: 100_000n }])
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-1", code: "HT-001", temporaryCode: null, name: "历史材料合同", counterparty: "供应商" }
+        ])
+      }
+    };
+    const service = new MeService(prisma as never, {} as never);
+
+    const result = await service.getWorkItems("finance-user");
+
+    expect(result.queues.pending).toContainEqual(expect.objectContaining({
+      id: "takeover-payment-evidence:takeover-payment-voucher-1",
+      type: "contract_takeover",
+      currentNode: "补充历史付款凭证",
+      nextAction: "上传后请通知合同岗核对并重新提交复核"
+    }));
+    expect(prisma.archiveRecord.findMany).toHaveBeenCalledWith({
+      where: {
+        businessType: "contract_takeover",
+        businessId: { in: ["takeover-payment-voucher-1"] },
+        departmentScope: "historical_payment_voucher"
+      },
+      select: { businessId: true }
+    });
+  });
+
   it("returns no workbench cards when the user has no relevant business permission", async () => {
     const prisma = {
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },

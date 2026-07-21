@@ -214,6 +214,14 @@ describe("role-specific gates", () => {
     expect(canPerform("contract.tax_fact.confirm", ["super_admin"])).toBe(false);
   });
 
+  it("limits historical payment-voucher supplementation to finance roles", () => {
+    expect(canPerform("contract.takeover.payment_evidence.upload", ["finance_staff"])).toBe(true);
+    expect(canPerform("contract.takeover.payment_evidence.upload", ["finance_director"])).toBe(true);
+    expect(canPerform("contract.takeover.payment_evidence.upload", ["contract_staff"])).toBe(false);
+    expect(canPerform("contract.takeover.payment_evidence.upload", ["contract_director"])).toBe(false);
+    expect(canPerform("contract.takeover.payment_evidence.upload", ["super_admin"])).toBe(false);
+  });
+
   it("allows contract staff and directors to create and submit contract drafts", () => {
     expect(canPerform("contract.create", ["contract_staff"])).toBe(true);
     expect(canPerform("contract.submit", ["contract_staff"])).toBe(true);

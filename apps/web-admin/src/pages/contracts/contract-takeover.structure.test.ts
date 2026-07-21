@@ -36,4 +36,11 @@ describe("historical takeover review recovery", () => {
     expect(page).toContain("takeoverResponsibleUserOptions");
     expect(page).toContain('responsibleUserId: auth.user?.id ?? ""');
   });
+
+  it("gives finance a dedicated payment-voucher handoff without takeover editing authority", () => {
+    expect(page).toContain("canUploadHistoricalPaymentVouchers");
+    expect(page).toContain("attachHistoricalPaymentVoucher");
+    expect(page).toContain("仅可补充付款凭证；不能编辑接管事实、提交复核或确认接管。");
+    expect(page).toContain("请由接管责任人核对后重新提交复核");
+  });
 });
