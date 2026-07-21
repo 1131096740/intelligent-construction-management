@@ -1,10 +1,12 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import type { DetailActionReadModel } from "@jiangkong/shared-domain";
 import * as ExcelJS from "exceljs";
 import type { Cell, Worksheet } from "exceljs";
 import PizZip from "pizzip";
@@ -153,9 +155,9 @@ export class SettlementTemplateService {
     private readonly files: FileService
   ) {}
 
-  async listGovernance(actorUserId: string) {
+  async listGovernance(actorUserId: string, includeHistory = false) {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertGovernance(tx, actorUserId);
+      const roles = await this.assertGovernance(tx, actorUserId);
       const templates = await tx.settlementTemplate.findMany({ orderBy: { createdAt: "asc" } });
       const versions = templates.length
         ? await tx.settlementTemplateVersion.findMany({
@@ -163,12 +165,33 @@ export class SettlementTemplateService {
             orderBy: [{ settlementTemplateId: "asc" }, { versionNo: "desc" }]
           })
         : [];
-      return templates.map((template) => ({
-        ...template,
-        versions: versions
-          .filter((version) => version.settlementTemplateId === template.id)
-          .map((version) => this.versionReadModel(version))
-      }));
+      const actionByVersion = new Map<string, ReturnType<SettlementTemplateService["discardAction"]>>();
+      for (const version of versions) {
+        actionByVersion.set(
+          version.id,
+          this.discardAction(
+            version,
+            await this.settlementDiscardReferenceReason(tx, version.id),
+            roles.includes("contract_director")
+          )
+        );
+      }
+      return templates.flatMap((template) => {
+        const visibleVersions = versions.filter(
+          (version) =>
+            version.settlementTemplateId === template.id &&
+            (includeHistory || version.status !== "discarded")
+        );
+        return visibleVersions.length
+          ? [{
+              ...template,
+              versions: visibleVersions.map((version) => ({
+                ...this.versionReadModel(version),
+                ...actionByVersion.get(version.id)
+              }))
+            }]
+          : [];
+      });
     });
   }
 
@@ -208,25 +231,39 @@ export class SettlementTemplateService {
     });
   }
 
-  async get(templateId: string, actorUserId: string) {
+  async get(templateId: string, actorUserId: string, includeHistory = false) {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertGovernance(tx, actorUserId);
+      const roles = await this.assertGovernance(tx, actorUserId);
       const template = await tx.settlementTemplate.findUnique({ where: { id: templateId } });
       if (!template) throw new NotFoundException("未找到结算模板，请刷新后重试");
       const versions = await tx.settlementTemplateVersion.findMany({
-        where: { settlementTemplateId: templateId },
+        where: {
+          settlementTemplateId: templateId,
+          ...(includeHistory ? {} : { status: { not: "discarded" } })
+        },
         orderBy: { versionNo: "desc" }
       });
+      if (!includeHistory && versions.length === 0) {
+        throw new NotFoundException("未找到结算模板，请刷新后重试");
+      }
       const jobs = versions.length
         ? await tx.settlementTemplatePreviewJob.findMany({
             where: { settlementTemplateVersionId: { in: versions.map((version) => version.id) } },
             orderBy: { createdAt: "desc" }
           })
         : [];
+      const actionModels = await Promise.all(versions.map(async (version) =>
+        this.discardAction(
+          version,
+          await this.settlementDiscardReferenceReason(tx, version.id),
+          roles.includes("contract_director")
+        )
+      ));
       return {
         template,
-        versions: versions.map((version) => ({
+        versions: versions.map((version, index) => ({
           ...this.versionReadModel(version),
+          ...actionModels[index],
           latestPreview:
             this.previewReadModel(
               jobs.find(
@@ -545,6 +582,89 @@ export class SettlementTemplateService {
       }
       throw error;
     }
+  }
+
+  async discard(
+    versionId: string,
+    actorUserId: string,
+    reason: string,
+    expectedRevision: number
+  ) {
+    const discardReason = reason.trim();
+    if (!discardReason) throw new BadRequestException("请填写结算模板草稿废弃原因");
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertDiscardGovernance(tx, actorUserId);
+      await this.lockTemplateVersionFamily(tx, versionId);
+      const version = await this.findVersion(tx, versionId);
+      if (version.status === "discarded") {
+        return { id: versionId, status: "discarded", discardedAt: version.discardedAt };
+      }
+      if (version.draftRevision !== expectedRevision) {
+        throw new ConflictException("结算模板草稿已被更新，请刷新页面后重试");
+      }
+      if (
+        version.status !== "draft" ||
+        version.submittedByUserId ||
+        version.publishedAt ||
+        version.stoppedAt
+      ) {
+        throw new BadRequestException("该结算模板版本已提交、发布或停用，不能废弃");
+      }
+      const [draft, settlement, imported] = await Promise.all([
+        tx.settlementDraft.findFirst({
+          where: { settlementTemplateVersionId: versionId },
+          select: { id: true }
+        }),
+        tx.settlement.findFirst({
+          where: { settlementTemplateVersionId: versionId },
+          select: { id: true }
+        }),
+        tx.settlementImport.findFirst({
+          where: { settlementTemplateVersionId: versionId },
+          select: { id: true }
+        })
+      ]);
+      if (draft || settlement || imported) {
+        throw new BadRequestException("该结算模板版本已被结算草稿、正式结算或导入记录引用，不能废弃");
+      }
+      const discardedAt = new Date();
+      const changed = await tx.settlementTemplateVersion.updateMany({
+        where: {
+          id: versionId,
+          status: "draft",
+          draftRevision: expectedRevision,
+          discardedAt: null
+        },
+        data: {
+          status: "discarded",
+          discardedAt,
+          discardedByUserId: actorUserId,
+          discardReason,
+          previewXlsxFileId: null,
+          previewPdfFileId: null
+        }
+      });
+      if (changed.count !== 1) {
+        throw new ConflictException("结算模板草稿已被更新，请刷新页面后重试");
+      }
+      await tx.settlementTemplatePreviewJob.updateMany({
+        where: {
+          settlementTemplateVersionId: versionId,
+          status: { in: ["queued", "processing", "succeeded"] }
+        },
+        data: {
+          status: "stale",
+          previewXlsxFileId: null,
+          previewPdfFileId: null,
+          completedAt: discardedAt,
+          errorMessage: "结算模板草稿已废弃，预览失效"
+        }
+      });
+      await this.record(tx, actorUserId, "discard_version", versionId, {
+        reason: discardReason
+      });
+      return { id: versionId, status: "discarded", discardedAt };
+    });
   }
 
   async stop(versionId: string, actorUserId: string) {
@@ -1356,6 +1476,21 @@ export class SettlementTemplateService {
     if (!positions.some((position) => GOVERNANCE_ROLES.includes(position.key as typeof GOVERNANCE_ROLES[number]))) {
       throw new ForbiddenException("只有合同主管或系统管理员可以治理结算模板");
     }
+    return positions.map((position) => position.key);
+  }
+
+  private async assertDiscardGovernance(tx: GovernanceClient, actorUserId: string) {
+    const assignments = await tx.userPosition.findMany({
+      where: { userId: actorUserId, projectId: null }
+    });
+    const positions = assignments.length
+      ? await tx.position.findMany({
+          where: { id: { in: assignments.map((assignment) => assignment.positionId) } }
+        })
+      : [];
+    if (!positions.some((position) => position.key === "contract_director")) {
+      throw new ForbiddenException("只有合同主管可以废弃结算模板草稿版本");
+    }
   }
 
   private versionReadModel<
@@ -1371,6 +1506,60 @@ export class SettlementTemplateService {
       hasSourceXlsx: Boolean(xlsxFileId),
       hasPreviewXlsx: Boolean(previewXlsxFileId),
       hasPreviewPdf: Boolean(previewPdfFileId)
+    };
+  }
+
+  private async settlementDiscardReferenceReason(
+    tx: Prisma.TransactionClient,
+    versionId: string
+  ): Promise<string | null> {
+    const [draft, settlement, imported] = await Promise.all([
+      tx.settlementDraft.findFirst({
+        where: { settlementTemplateVersionId: versionId },
+        select: { id: true }
+      }),
+      tx.settlement.findFirst({
+        where: { settlementTemplateVersionId: versionId },
+        select: { id: true }
+      }),
+      tx.settlementImport.findFirst({
+        where: { settlementTemplateVersionId: versionId },
+        select: { id: true }
+      })
+    ]);
+    return draft || settlement || imported
+      ? "该版本已被结算草稿、正式结算或导入记录引用"
+      : null;
+  }
+
+  private discardAction(
+    version: {
+      status: string;
+      submittedByUserId?: string | null;
+      publishedAt?: Date | null;
+      stoppedAt?: Date | null;
+    },
+    referenceReason: string | null,
+    canDiscard: boolean
+  ): { availableActions: DetailActionReadModel[]; blockedReasons: string[] } {
+    const blockedReasons: string[] = [];
+    if (!canDiscard) blockedReasons.push("只有合同主管可以废弃结算模板草稿版本");
+    if (version.status === "discarded") blockedReasons.push("该草稿版本已废弃");
+    else if (version.status !== "draft") blockedReasons.push("只有从未提交的草稿版本可以废弃");
+    if (version.submittedByUserId || version.publishedAt || version.stoppedAt) {
+      blockedReasons.push("该版本已形成提交、发布或停用历史");
+    }
+    if (referenceReason) blockedReasons.push(referenceReason);
+    return {
+      availableActions: [{
+        key: "discard_version",
+        label: "废弃草稿版本",
+        kind: "danger",
+        enabled: blockedReasons.length === 0,
+        disabledReason: blockedReasons.length ? blockedReasons.join("；") : null,
+        requiresComment: true
+      }],
+      blockedReasons
     };
   }
 

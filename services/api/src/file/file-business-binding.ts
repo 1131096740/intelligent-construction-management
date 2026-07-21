@@ -148,8 +148,16 @@ export async function hasNonReceiptBusinessFileBinding(
   fileIds: string[],
   excludedBindings: readonly NonReceiptFileBindingExclusion[] = []
 ): Promise<boolean> {
+  return (await nonReceiptBusinessFileBindingIds(tx, fileIds, excludedBindings)).length > 0;
+}
+
+export async function nonReceiptBusinessFileBindingIds(
+  tx: Prisma.TransactionClient,
+  fileIds: string[],
+  excludedBindings: readonly NonReceiptFileBindingExclusion[] = []
+): Promise<string[]> {
   const uniqueIds = [...new Set(fileIds)].sort();
-  if (!uniqueIds.length) return false;
+  if (!uniqueIds.length) return [];
   const registeredBindings = new Set(
     NON_RECEIPT_FILE_BINDINGS.flatMap(({ table, columns }) =>
       columns.map((column) => `${table}.${column}`)
@@ -184,7 +192,7 @@ export async function hasNonReceiptBusinessFileBinding(
     Prisma.sql`
       /* receipt_non_receipt_file_binding */
       WITH candidates("id") AS (VALUES ${candidates})
-      SELECT bindings."fileId"
+      SELECT DISTINCT bindings."fileId"
       FROM (
         ${Prisma.join(bindingQueries, " UNION ALL ")}
         UNION ALL
@@ -197,8 +205,7 @@ export async function hasNonReceiptBusinessFileBinding(
         FROM "FileObject" x
         JOIN candidates c ON c."id" = x."supersedesFileObjectId"
       ) bindings
-      LIMIT 1
     `
   );
-  return rows.length > 0;
+  return rows.map((row) => row.fileId);
 }

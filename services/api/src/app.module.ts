@@ -13,6 +13,7 @@ import { ContractTakeoverModule } from "./contract-takeover/contract-takeover.mo
 import { ContractWorkbenchModule } from "./contract-workbench/contract-workbench.module";
 import { DatabaseModule } from "./database/database.module";
 import { FileModule } from "./file/file.module";
+import { DraftRetentionModule } from "./draft-retention/draft-retention.module";
 import { HealthController } from "./health.controller";
 import { InvoiceLedgerModule } from "./invoice-ledger/invoice-ledger.module";
 import { MeModule } from "./me/me.module";
@@ -44,6 +45,7 @@ import { SpotProcurementModule } from "./spot-procurement/spot-procurement.modul
     InvoiceLedgerModule,
     ApprovalModule,
     FileModule,
+    DraftRetentionModule,
     MeModule,
     ArchiveModule,
     AuditModule,

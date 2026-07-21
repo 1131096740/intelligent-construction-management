@@ -26,6 +26,7 @@ import type {
 import type { CreateSpotProcurementDto } from "./dto/create-spot-procurement.dto";
 import type { CreateSpotProcurementVersionDto } from "./dto/create-spot-procurement-version.dto";
 import type { ConfirmAbnormalTerminationDto } from "./dto/confirm-abnormal-termination.dto";
+import type { AbandonSpotProcurementDraftDto } from "./dto/abandon-spot-procurement-draft.dto";
 import type { ReviewSpotProcurementDto } from "./dto/review-spot-procurement.dto";
 import type { RequestAbnormalTerminationDto } from "./dto/request-abnormal-termination.dto";
 import type { UpdateSpotProcurementDraftDto } from "./dto/update-spot-procurement-draft.dto";
@@ -35,6 +36,7 @@ import {
 } from "./spot-procurement-approval-nodes";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 import { SpotProcurementPaymentArchiveService } from "./spot-procurement-payment-archive.service";
+import { SpotProcurementBalanceService } from "./spot-procurement-balance.service";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
 
 const CREATE_ROLES = new Set<RoleKey>([
@@ -58,6 +60,53 @@ type ProcurementLockRow = {
   currentVersionId: string | null;
   status: string;
   closedAt: Date | null;
+  supplierKey: string | null;
+  abandonedAt: Date | null;
+  abandonedByUserId: string | null;
+  abandonReason: string | null;
+};
+
+type AbandonmentVersionRow = { id: string; submittedAt: Date | null };
+type AbandonmentPaymentRow = {
+  id: string;
+  status: string;
+  submittedAt: Date | null;
+  supplierBalanceAmountCents: bigint;
+};
+type AbandonmentApprovalRow = {
+  id: string;
+  businessType: string;
+  status: string;
+};
+type AbandonmentReservationRow = {
+  accountId: string;
+  paymentId: string;
+  amountCents: bigint;
+  releasedAmountCents: bigint;
+  status: string;
+};
+type AbandonmentReceiptRow = {
+  id: string;
+  status: string;
+  currentRevisionNo: number;
+  firstSubmittedAt: Date | null;
+  submittedAt: Date | null;
+  invalidatedAt: Date | null;
+};
+
+type TerminationFacts = {
+  versions: AbandonmentVersionRow[];
+  payments: AbandonmentPaymentRow[];
+  approvals: AbandonmentApprovalRow[];
+  approvalActionCount: number;
+  reservations: AbandonmentReservationRow[];
+  executionCount: number;
+  receipt: AbandonmentReceiptRow | null;
+  activeDelegationIds: string[];
+  receiptReviewCount: number;
+  discrepancyCount: number;
+  refundCount: number;
+  archiveCount: number;
 };
 
 type VersionLockRow = {
@@ -136,7 +185,8 @@ export class SpotProcurementApplicationService {
     private readonly audit: AuditService,
     private readonly pilot: SpotProcurementPilotService,
     private readonly approvalForms: ApprovalFormService,
-    private readonly archives?: SpotProcurementPaymentArchiveService
+    private readonly archives?: SpotProcurementPaymentArchiveService,
+    private readonly balances?: SpotProcurementBalanceService
   ) {}
 
   createDraft(actorUserId: string, input: CreateSpotProcurementDto) {
@@ -494,7 +544,8 @@ export class SpotProcurementApplicationService {
             payeeNameSnapshot: null,
             handlerUserId: version.handlerUserId,
             createdByUserId: actorUserId,
-            paymentNote: null
+            paymentNote: null,
+            draftOrigin: "auto_after_procurement_approval"
           }
         });
         const receipt = await tx.spotProcurementReceipt.create({
@@ -573,7 +624,7 @@ export class SpotProcurementApplicationService {
       this.prisma.$transaction(async (tx) => {
         const procurement = await this.requireLockedProcurement(tx, procurementId);
         this.pilot.assertEnabled(procurement.projectId);
-        if (["closed", "voided", "abnormally_terminated"].includes(procurement.status)) {
+        if (["closed", "voided", "abandoned", "abnormally_terminated"].includes(procurement.status)) {
           throw new ConflictException("当前采购状态不允许创建新版本");
         }
         const previous = await this.requireLockedCurrentVersion(tx, procurement);
@@ -640,32 +691,173 @@ export class SpotProcurementApplicationService {
     );
   }
 
+  abandonDraft(
+    procurementId: string,
+    actorUserId: string,
+    input: AbandonSpotProcurementDraftDto
+  ) {
+    return this.runWrite(() =>
+      this.prisma.$transaction(async (tx) => {
+        const procurement = await this.requireLockedProcurement(tx, procurementId);
+        this.pilot.assertEnabled(procurement.projectId);
+        if (procurement.status === "abandoned") {
+          if (procurement.abandonedByUserId !== actorUserId) {
+            throw new ForbiddenException("只有当前采购经办人可以查看放弃结果");
+          }
+          return {
+            procurementId,
+            status: "abandoned",
+            action: procurement.abandonReason
+              ? "abandon_application"
+              : "delete_pristine_draft",
+            abandonedAt: procurement.abandonedAt,
+            idempotent: true
+          };
+        }
+        if (procurement.status !== "draft") {
+          throw new ConflictException("当前采购应使用撤销或异常终止，不能放弃草稿");
+        }
+        const currentVersion = await this.requireLockedCurrentVersion(tx, procurement);
+        if (currentVersion.status !== "draft") {
+          throw new ConflictException("当前采购版本不是可放弃草稿");
+        }
+        await this.requireDraftHandlerRole(tx, procurement, actorUserId);
+        const facts = await this.lockTerminationFacts(tx, procurement);
+        this.assertNoFormalTerminationFacts(facts);
+
+        const hasApprovalHistory =
+          facts.versions.some((version) => version.submittedAt !== null) ||
+          facts.approvals.length > 0 ||
+          facts.approvalActionCount > 0;
+        const expectedAction = hasApprovalHistory
+          ? "abandon_application"
+          : "delete_pristine_draft";
+        if (input.action !== expectedAction) {
+          throw new ConflictException(
+            hasApprovalHistory
+              ? "该采购已有提交或审批历史，只能放弃申请"
+              : "该采购从未提交，请使用删除草稿"
+          );
+        }
+        const reason = hasApprovalHistory
+          ? requiredText(input.reason, "放弃采购申请必须填写原因")
+          : null;
+        const now = new Date();
+        await this.releaseResidualReservations(
+          tx,
+          procurement,
+          facts,
+          actorUserId,
+          reason ?? "删除从未提交的采购草稿"
+        );
+        await this.invalidateSafeChildren(
+          tx,
+          procurementId,
+          facts,
+          actorUserId,
+          `采购${hasApprovalHistory ? "申请放弃" : "草稿删除"}：${reason ?? "从未提交"}`,
+          now
+        );
+        await tx.approvalInstance.updateMany({
+          where: {
+            id: { in: facts.approvals.map((approval) => approval.id) },
+            status: {
+              in: ["approval_pending", "in_progress", "returned_to_applicant"]
+            }
+          },
+          data: { status: "cancelled" }
+        });
+        await tx.spotProcurementVersion.update({
+          where: { id: currentVersion.id },
+          data: {
+            status: "abandoned",
+            abandonedAt: now,
+            abandonedByUserId: actorUserId,
+            abandonReason: reason
+          }
+        });
+        const updated = await tx.spotProcurement.updateMany({
+          where: { id: procurementId, status: "draft", currentVersionId: currentVersion.id },
+          data: {
+            status: "abandoned",
+            abandonedAt: now,
+            abandonedByUserId: actorUserId,
+            abandonReason: reason
+          }
+        });
+        if (updated.count !== 1) {
+          throw new ConflictException("采购草稿已变化，请刷新后重试");
+        }
+        await this.audit.record(tx, {
+          actorUserId,
+          action: hasApprovalHistory
+            ? "spot_procurement.application.abandon"
+            : "spot_procurement.draft.delete",
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.application,
+          businessId: procurementId,
+          metadata: {
+            projectId: procurement.projectId,
+            currentVersionId: currentVersion.id,
+            reason,
+            invalidatedPaymentIds: facts.payments
+              .filter((payment) => payment.status === "draft")
+              .map((payment) => payment.id),
+            invalidatedReceiptId:
+              facts.receipt && facts.receipt.invalidatedAt === null
+                ? facts.receipt.id
+                : null
+          }
+        });
+        return {
+          procurementId,
+          status: "abandoned",
+          action: expectedAction,
+          abandonedAt: now,
+          idempotent: false
+        };
+      })
+    );
+  }
+
   voidProcurement(procurementId: string, actorUserId: string, reasonInput: string) {
     return this.runWrite(() =>
       this.prisma.$transaction(async (tx) => {
         const procurement = await this.requireLockedProcurement(tx, procurementId);
         this.pilot.assertEnabled(procurement.projectId);
-        if (["closed", "voided", "abnormally_terminated"].includes(procurement.status)) {
+        if (["closed", "voided", "abandoned", "abnormally_terminated"].includes(procurement.status)) {
           throw new ConflictException("当前采购状态不允许撤销");
         }
         const actorRoles = await this.loadActorRoleKeys(tx, actorUserId, procurement.projectId);
         this.requireAnyRole(actorRoles, VOID_ROLES, "当前用户无权撤销零星采购");
         const reason = requiredText(reasonInput, "请填写采购撤销原因");
-        const payments = await tx.spotProcurementPayment.findMany({ where: { procurementId }, select: { id: true } });
-        const execution = await tx.spotProcurementPaymentExecution.findFirst({
-          where: { paymentId: { in: payments.map((payment) => payment.id) }, voidedAt: null },
-          select: { id: true }
-        });
-        if (execution) throw new ConflictException("采购已发生真实付款，不能直接撤销");
+        const facts = await this.lockTerminationFacts(tx, procurement);
+        this.assertNoFormalTerminationFacts(facts);
         const now = new Date();
-        await tx.spotProcurementPayment.updateMany({
-          where: { procurementId, status: "draft" },
-          data: { status: "invalidated", invalidatedAt: now, invalidatedByUserId: actorUserId, invalidatedReason: `采购撤销：${reason}` }
-        });
+        await this.releaseResidualReservations(
+          tx,
+          procurement,
+          facts,
+          actorUserId,
+          `采购撤销：${reason}`
+        );
+        await this.invalidateSafeChildren(
+          tx,
+          procurementId,
+          facts,
+          actorUserId,
+          `采购撤销：${reason}`,
+          now
+        );
         if (procurement.currentVersionId) {
           await tx.spotProcurementVersion.update({ where: { id: procurement.currentVersionId }, data: { status: "invalidated" } });
           await tx.approvalInstance.updateMany({
-            where: { businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.application, businessId: procurement.currentVersionId, status: "approval_pending" },
+            where: {
+              businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.application,
+              businessId: procurement.currentVersionId,
+              status: {
+                in: ["approval_pending", "in_progress", "returned_to_applicant"]
+              }
+            },
             data: { status: "cancelled" }
           });
         }
@@ -1151,6 +1343,288 @@ export class SpotProcurementApplicationService {
     if (!project.isActive) throw new BadRequestException("采购项目已停用");
   }
 
+  private async lockTerminationFacts(
+    tx: Prisma.TransactionClient,
+    procurement: ProcurementLockRow
+  ): Promise<TerminationFacts> {
+    const versions = await tx.$queryRaw<AbandonmentVersionRow[]>(Prisma.sql`
+      SELECT "id", "submittedAt"
+      FROM "SpotProcurementVersion"
+      WHERE "procurementId" = ${procurement.id}
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    const payments = await tx.$queryRaw<AbandonmentPaymentRow[]>(Prisma.sql`
+      SELECT "id", "status", "submittedAt", "supplierBalanceAmountCents"
+      FROM "SpotProcurementPayment"
+      WHERE "procurementId" = ${procurement.id}
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    const versionIds = versions.map((version) => version.id);
+    const paymentIds = payments.map((payment) => payment.id);
+    const approvals = await tx.$queryRaw<AbandonmentApprovalRow[]>(Prisma.sql`
+      SELECT "id", "businessType", "status"
+      FROM "ApprovalInstance"
+      WHERE
+        ("businessType" = ${SPOT_PROCUREMENT_BUSINESS_TYPES.application}
+          AND "businessId" IN (${Prisma.join(versionIds)}))
+        ${paymentIds.length
+          ? Prisma.sql`OR ("businessType" = ${SPOT_PROCUREMENT_BUSINESS_TYPES.payment}
+              AND "businessId" IN (${Prisma.join(paymentIds)}))`
+          : Prisma.empty}
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    const approvalIds = approvals.map((approval) => approval.id);
+    const approvalActions = approvalIds.length
+      ? await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          SELECT "id"
+          FROM "ApprovalActionLog"
+          WHERE "approvalInstanceId" IN (${Prisma.join(approvalIds)})
+          ORDER BY "id"
+          FOR UPDATE
+        `)
+      : [];
+    const reservations = paymentIds.length
+      ? await tx.$queryRaw<AbandonmentReservationRow[]>(Prisma.sql`
+          SELECT "accountId", "paymentId", "amountCents", "releasedAmountCents", "status"
+          FROM "SupplierBalanceReservation"
+          WHERE "paymentId" IN (${Prisma.join(paymentIds)})
+          ORDER BY "paymentId"
+          FOR UPDATE
+        `)
+      : [];
+    const reservationAccountIds = [...new Set(
+      reservations.map((reservation) => reservation.accountId)
+    )].sort();
+    if (reservationAccountIds.length) {
+      await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT "id"
+        FROM "SupplierBalanceAccount"
+        WHERE "id" IN (${Prisma.join(reservationAccountIds)})
+        ORDER BY "id"
+        FOR UPDATE
+      `);
+    }
+    const executions = paymentIds.length
+      ? await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          SELECT "id"
+          FROM "SpotProcurementPaymentExecution"
+          WHERE "paymentId" IN (${Prisma.join(paymentIds)})
+          ORDER BY "id"
+          FOR UPDATE
+        `)
+      : [];
+    const receipts = await tx.$queryRaw<AbandonmentReceiptRow[]>(Prisma.sql`
+      SELECT "id", "status", "currentRevisionNo", "firstSubmittedAt",
+        "submittedAt", "invalidatedAt"
+      FROM "SpotProcurementReceipt"
+      WHERE "procurementId" = ${procurement.id}
+      FOR UPDATE
+    `);
+    const receipt = receipts[0] ?? null;
+    if (receipt) {
+      await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT "id"
+        FROM "SpotProcurementReceiptRevision"
+        WHERE "receiptId" = ${receipt.id}
+          AND "revisionNo" = ${receipt.currentRevisionNo}
+        FOR UPDATE
+      `);
+    }
+    const delegations = receipt
+      ? await tx.$queryRaw<Array<{ id: string; revokedAt: Date | null }>>(Prisma.sql`
+          SELECT "id", "revokedAt"
+          FROM "SpotProcurementReceiptDelegation"
+          WHERE "receiptId" = ${receipt.id}
+          ORDER BY "id"
+          FOR UPDATE
+        `)
+      : [];
+    const reviews = receipt
+      ? await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          SELECT "id"
+          FROM "SpotProcurementReceiptReview"
+          WHERE "receiptId" = ${receipt.id}
+          ORDER BY "id"
+          FOR UPDATE
+        `)
+      : [];
+    const discrepancies = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id"
+      FROM "SpotProcurementDiscrepancy"
+      WHERE "procurementId" = ${procurement.id}
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    const refunds = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id"
+      FROM "SpotProcurementRefund"
+      WHERE "procurementId" = ${procurement.id}
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    const paymentArchives = paymentIds.length
+      ? await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          SELECT "id"
+          FROM "SpotProcurementPaymentArchive"
+          WHERE "paymentId" IN (${Prisma.join(paymentIds)})
+          ORDER BY "id"
+          FOR UPDATE
+        `)
+      : [];
+    const archiveBusinessIds = [...versionIds, ...paymentIds, procurement.id];
+    const archiveRecords = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id"
+      FROM "ArchiveRecord"
+      WHERE "businessId" IN (${Prisma.join(archiveBusinessIds)})
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    return {
+      versions,
+      payments,
+      approvals,
+      approvalActionCount: approvalActions.length,
+      reservations,
+      executionCount: executions.length,
+      receipt,
+      activeDelegationIds: delegations
+        .filter((delegation) => delegation.revokedAt === null)
+        .map((delegation) => delegation.id),
+      receiptReviewCount: reviews.length,
+      discrepancyCount: discrepancies.length,
+      refundCount: refunds.length,
+      archiveCount: paymentArchives.length + archiveRecords.length
+    };
+  }
+
+  private assertNoFormalTerminationFacts(facts: TerminationFacts) {
+    const paymentApprovalIds = new Set(
+      facts.approvals
+        .filter(
+          (approval) =>
+            approval.businessType === SPOT_PROCUREMENT_BUSINESS_TYPES.payment
+        )
+        .map((approval) => approval.id)
+    );
+    if (
+      facts.payments.some(
+        (payment) =>
+          payment.submittedAt !== null ||
+          !["draft", "invalidated"].includes(payment.status)
+      ) ||
+      paymentApprovalIds.size > 0
+    ) {
+      throw new ConflictException("采购已形成正式付款申请，不能放弃或撤销");
+    }
+    if (facts.executionCount > 0) {
+      throw new ConflictException("采购已发生实际付款历史，不能放弃或撤销");
+    }
+    if (facts.reservations.some((reservation) => reservation.status === "executed")) {
+      throw new ConflictException("采购已执行供应商余额抵扣，不能放弃或撤销");
+    }
+    if (
+      facts.receipt &&
+      facts.receipt.invalidatedAt === null &&
+      (facts.receipt.firstSubmittedAt !== null ||
+        facts.receipt.submittedAt !== null ||
+        facts.receipt.status !== "draft")
+    ) {
+      throw new ConflictException("采购收货单已提交或生效，不能放弃或撤销");
+    }
+    if (facts.receiptReviewCount > 0) {
+      throw new ConflictException("采购已有收货复核历史，不能放弃或撤销");
+    }
+    if (facts.discrepancyCount > 0) {
+      throw new ConflictException("采购已形成收货差异事实，不能放弃或撤销");
+    }
+    if (facts.refundCount > 0) {
+      throw new ConflictException("采购已形成退款事实，不能放弃或撤销");
+    }
+    if (facts.archiveCount > 0) {
+      throw new ConflictException("采购已形成归档证据，不能放弃或撤销");
+    }
+  }
+
+  private async releaseResidualReservations(
+    tx: Prisma.TransactionClient,
+    procurement: ProcurementLockRow,
+    facts: TerminationFacts,
+    actorUserId: string,
+    reason: string
+  ) {
+    for (const reservation of facts.reservations) {
+      const remaining = reservation.amountCents - reservation.releasedAmountCents;
+      if (reservation.status !== "reserved" || remaining <= 0n) continue;
+      if (!procurement.supplierKey || !this.balances) {
+        throw new ConflictException("供应商余额预留信息异常，请联系财务处理");
+      }
+      await this.balances.releaseForShortage(tx, {
+        paymentId: reservation.paymentId,
+        expectedReservedAmountCents: reservation.amountCents,
+        releaseAmountCents: remaining,
+        expectedProjectId: procurement.projectId,
+        expectedSupplierKey: procurement.supplierKey,
+        actorUserId,
+        reason
+      });
+    }
+  }
+
+  private async invalidateSafeChildren(
+    tx: Prisma.TransactionClient,
+    procurementId: string,
+    facts: TerminationFacts,
+    actorUserId: string,
+    reason: string,
+    now: Date
+  ) {
+    const draftPaymentIds = facts.payments
+      .filter((payment) => payment.status === "draft")
+      .map((payment) => payment.id);
+    if (draftPaymentIds.length) {
+      await tx.spotProcurementPayment.updateMany({
+        where: { id: { in: draftPaymentIds }, status: "draft", submittedAt: null },
+        data: {
+          status: "invalidated",
+          invalidatedAt: now,
+          invalidatedByUserId: actorUserId,
+          invalidatedReason: reason
+        }
+      });
+    }
+    if (facts.receipt && facts.receipt.invalidatedAt === null) {
+      await tx.spotProcurementReceipt.updateMany({
+        where: {
+          id: facts.receipt.id,
+          procurementId,
+          status: "draft",
+          firstSubmittedAt: null,
+          submittedAt: null,
+          invalidatedAt: null
+        },
+        data: {
+          status: "invalidated",
+          invalidatedAt: now,
+          invalidatedByUserId: actorUserId,
+          invalidationReason: reason
+        }
+      });
+      if (facts.activeDelegationIds.length) {
+        await tx.spotProcurementReceiptDelegation.updateMany({
+          where: { id: { in: facts.activeDelegationIds }, revokedAt: null },
+          data: {
+            revokedAt: now,
+            revokedByUserId: actorUserId,
+            revocationReason: reason
+          }
+        });
+      }
+    }
+  }
+
   private async requireDraftOwnerRole(tx: Prisma.TransactionClient, procurement: ProcurementLockRow, actorUserId: string) {
     if (actorUserId !== procurement.applicantUserId || actorUserId !== procurement.handlerUserId) {
       throw new ForbiddenException("只有采购人可以修改并提交采购");
@@ -1158,6 +1632,22 @@ export class SpotProcurementApplicationService {
     const roles = await this.loadActorRoleKeys(tx, actorUserId, procurement.projectId);
     this.requireAnyRole(roles, CREATE_ROLES, "当前用户不再具备采购创建岗位");
     return roles;
+  }
+
+  private async requireDraftHandlerRole(
+    tx: Prisma.TransactionClient,
+    procurement: ProcurementLockRow,
+    actorUserId: string
+  ) {
+    if (actorUserId !== procurement.handlerUserId) {
+      throw new ForbiddenException("只有当前采购经办人可以放弃采购草稿");
+    }
+    const roles = await this.loadActorRoleKeys(
+      tx,
+      actorUserId,
+      procurement.projectId
+    );
+    this.requireAnyRole(roles, CREATE_ROLES, "当前经办人不再具备物资岗位");
   }
 
   private assertEditableDraft(procurement: ProcurementLockRow, version: VersionLockRow) {
@@ -1168,7 +1658,8 @@ export class SpotProcurementApplicationService {
 
   private async requireLockedProcurement(tx: Prisma.TransactionClient, procurementId: string) {
     const rows = await tx.$queryRaw<Array<ProcurementLockRow>>(Prisma.sql`
-      SELECT "id", "projectId", "code", "applicantUserId", "handlerUserId", "currentVersionId", "status", "closedAt"
+      SELECT "id", "projectId", "code", "applicantUserId", "handlerUserId", "currentVersionId", "status", "closedAt",
+        "supplierKey", "abandonedAt", "abandonedByUserId", "abandonReason"
       FROM "SpotProcurement" WHERE "id" = ${procurementId} LIMIT 1 FOR UPDATE
     `);
     if (!rows[0]) throw new NotFoundException("零星采购不存在");

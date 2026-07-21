@@ -98,6 +98,10 @@ async function mockSession(page: Page) {
       category: "付款"
     }])
   }));
+  await page.route("**/api/standard-clauses/history*", (route) => route.fulfill({
+    contentType: "application/json",
+    body: "[]"
+  }));
   await page.route("**/api/contract-business-scenarios", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify([{
@@ -127,7 +131,7 @@ async function mockSession(page: Page) {
     contentType: "application/json",
     body: JSON.stringify([publishedTemplate])
   }));
-  await page.route("**/api/contract-layout-templates/layout-responsive", (route) => route.fulfill({
+  await page.route("**/api/contract-layout-templates/layout-responsive?*", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
       template: {
@@ -191,7 +195,7 @@ test("合同模板治理子页面在六档桌面窗口中保持局部横向滚�
     await expect(page.getByText("材料采购合同编号")).toBeVisible();
     await assertPageFrame(page);
     if (viewport.width <= 1280) {
-      await expectHorizontalScrollOwner(page.locator(".jg-table-region .t-table__content"));
+      await expectHorizontalScrollOwner(page.locator(".jg-table-region .t-table__content").last());
     }
     await page.screenshot({
       path: path.join(screenshotDir, `contract-number-rules-${viewport.width}x${viewport.height}.png`),
@@ -203,7 +207,7 @@ test("合同模板治理子页面在六档桌面窗口中保持局部横向滚�
     await expect(page.getByText("材料付款标准条款")).toBeVisible();
     await assertPageFrame(page);
     if (viewport.width <= 1280) {
-      await expectHorizontalScrollOwner(page.locator(".jg-table-region .t-table__content"));
+      await expectHorizontalScrollOwner(page.locator(".jg-table-region .t-table__content").last());
     }
     await page.screenshot({
       path: path.join(screenshotDir, `standard-clause-library-${viewport.width}x${viewport.height}.png`),

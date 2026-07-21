@@ -3,6 +3,7 @@ import type { UploadFile } from "tdesign-vue-next";
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
+  abandonSpotProcurementPaymentDraft,
   fetchSpotProcurementPaymentDetail,
   fetchSpotProcurementPayments,
   fetchVatRateOptions,
@@ -64,7 +65,7 @@ import {
   writeSpotPaymentLocalDraft
 } from "./spot-payment-local-draft";
 
-type ConfirmationKind = "review_approve" | "review_reject" | "review_return" | "withdraw" | "void" | "download";
+type ConfirmationKind = "review_approve" | "review_reject" | "review_return" | "withdraw" | "void" | "download" | "abandon_payment_draft";
 interface ExecutionAttempt {
   amountYuan: string;
   paidAtInput: string;
@@ -152,6 +153,9 @@ const paymentId = computed(() => typeof route.params.paymentId === "string" ? ro
 const payment = computed(() => detail.value?.payment ?? null);
 const isRealPayment = computed(() => payment.value?.form === "real_payment");
 const reviewAction = computed(() => detail.value?.availableActions.find((action) => action.key === "review_approval"));
+const operationalActions = computed(() =>
+  detail.value?.availableActions.filter((action) => action.key !== "abandon_payment_draft") ?? []
+);
 const payerManagement = computed(() => payment.value?.payerManagement ?? null);
 const approvalApproveDestination = computed(() => {
   const node = detail.value?.approval.currentNodeName ?? "";
@@ -250,6 +254,10 @@ function selectPaymentTab(value: unknown) {
 
 function actionEnabled(key: string) {
   return Boolean(detail.value?.availableActions.find((action) => action.key === key)?.enabled);
+}
+
+function actionLabel(key: string) {
+  return detail.value?.availableActions.find((action) => action.key === key)?.label ?? "办理";
 }
 
 function showSuccess(message: string) { actionState.value = "success"; actionMessage.value = message; }
@@ -669,6 +677,7 @@ function openConfirmation(kind: ConfirmationKind) {
     review_reject: { title: "驳回付款申请", description: "驳回将中止当前付款审批，请填写可执行的原因。", confirmText: "确认驳回", confirmTheme: "danger", requireReason: true, requirePassword: Boolean(reviewAction.value?.requiresSelfReviewConfirmation), reasonLabel: "驳回原因" },
     review_return: { title: "退回付款申请人", description: "退回会保留当前审批历史并生成新的付款草稿。", confirmText: "确认退回", confirmTheme: "danger", requireReason: true, requirePassword: Boolean(reviewAction.value?.requiresSelfReviewConfirmation), reasonLabel: "退回原因" },
     withdraw: { title: "撤回付款审批", description: "仅经办人可撤回审批中的付款申请。", confirmText: "确认撤回", confirmTheme: "danger", requireReason: false, requirePassword: false, reasonLabel: "撤回说明" },
+    abandon_payment_draft: { title: "放弃付款草稿", description: "当前付款草稿将结束并保留历史。返回采购详情后，可重新创建新的付款草稿。", confirmText: "确认放弃付款草稿", confirmTheme: "danger", requireReason: true, requirePassword: false, reasonLabel: "放弃原因" },
     void: { title: "作废付款申请", description: "付款执行前可作废；作废会保留完整审计历史。", confirmText: "确认作废", confirmTheme: "danger", requireReason: true, requirePassword: false, reasonLabel: "作废原因" },
     download: { title: "下载付款审批单", description: "审批单下载会写入下载人、原因和审计轨迹。", confirmText: "确认下载", confirmTheme: "primary", requireReason: true, requirePassword: true, reasonLabel: "下载用途" },
   };
@@ -688,6 +697,12 @@ async function confirmAction(values: { reason: string; password: string }) {
       const result = await reviewSpotProcurementPayment(current.payment.id, { decision: "return_to_applicant", comment: values.reason, ...(reviewAction.value?.requiresSelfReviewConfirmation ? { selfReviewReason: values.reason, confirmationPassword: values.password } : {}) }); nextPaymentId = result.newDraftPaymentId ?? null; showSuccess("付款申请已退回，并生成新的付款草稿。");
     } else if (confirmation.kind === "withdraw") {
       const result = await withdrawSpotProcurementPayment(current.payment.id); nextPaymentId = result.newDraftPaymentId ?? null; showSuccess("付款审批已撤回。");
+    } else if (confirmation.kind === "abandon_payment_draft") {
+      await abandonSpotProcurementPaymentDraft(current.payment.id, {
+        expectedUpdatedAt: current.payment.updatedAt,
+        reason: values.reason
+      });
+      showSuccess("付款草稿已放弃。原记录继续保留，可从采购详情重新创建付款申请。");
     } else if (confirmation.kind === "void") {
       await voidSpotProcurementPayment(current.payment.id, { reason: values.reason }); showSuccess("付款申请已作废。");
     } else if (confirmation.kind === "download") {
@@ -1117,7 +1132,7 @@ watch(
       >
         <PaymentCurrentTaskPanel
           :current-task="detail.currentTask"
-          :available-actions="detail.availableActions"
+          :available-actions="operationalActions"
           :summary="currentTaskSummary"
           :busy="actionBusy"
           @action="handleCurrentTaskAction"
@@ -1206,7 +1221,7 @@ watch(
           :semantic="spotPaymentApprovalStatusSemantic(detail.approval.status)"
         />
         <div
-          v-if="actionEnabled('review_approval') || actionEnabled('withdraw_approval') || actionEnabled('void_payment')"
+          v-if="actionEnabled('review_approval') || actionEnabled('withdraw_approval') || actionEnabled('abandon_payment_draft') || actionEnabled('void_payment')"
           class="action-buttons"
         >
           <template v-if="actionEnabled('review_approval')">
@@ -1237,6 +1252,14 @@ watch(
             @click="openConfirmation('withdraw')"
           >
             撤回审批
+          </t-button>
+          <t-button
+            v-if="actionEnabled('abandon_payment_draft')"
+            theme="danger"
+            variant="outline"
+            @click="openConfirmation('abandon_payment_draft')"
+          >
+            {{ actionLabel('abandon_payment_draft') }}
           </t-button>
           <t-button
             v-if="actionEnabled('void_payment')"

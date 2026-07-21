@@ -4,12 +4,18 @@ import {
   fetchContractDetail,
   fetchContractChangeEligibility,
   fetchContractLedger,
+  fetchContractLifecycleLedger,
+  copyAbandonedContractDraft,
+  copyAbandonedSettlementDraft,
+  fetchDraftRetentionPreview,
   fetchPaymentDetail,
   fetchPaymentLedger,
+  fetchPaymentLifecycleLedger,
   fetchPaymentContractOptions,
   fetchSettlementDetail,
   fetchSettlementContractOptions,
   fetchSettlementLedger,
+  fetchSettlementLifecycleLedger,
   fetchWorkbenchSummary,
   fetchContractPaymentApplication,
   fetchArchives,
@@ -45,6 +51,8 @@ import {
   createContractDraft,
   createContractChangeDraft,
   createContractTakeover,
+  abandonContractTakeover,
+  applyContractTakeoverBatchAbandonment,
   createContractTakeoverDraftsFromImport,
   applyContractTakeoverExcelImport,
   downloadContractLedgerExport,
@@ -56,6 +64,7 @@ import {
   listHistoricalCompanyEntityCandidates,
   createPaymentRequest,
   precheckContractTakeoverImport,
+  previewContractTakeoverBatchAbandonment,
   previewContractTakeoverExcelImport,
   createPrivateFileDownloadTicket,
   createSettlementDraft,
@@ -95,6 +104,7 @@ import {
   reviewPaymentApproval,
   withdrawContractApproval,
   withdrawPaymentApproval,
+  abandonPaymentRequest,
   withdrawSettlementApproval,
   transferSettlementApproval,
   delegateSettlementApproval,
@@ -122,6 +132,150 @@ describe("core flow read API client", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("copies ended contract and settlement records into new draft resources", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "new-draft", contract: { id: "new-contract" }, version: { id: "new-version" } })
+    } as Response);
+
+    await copyAbandonedContractDraft("version/1", "2026-07-20T01:00:00.000Z");
+    await copyAbandonedSettlementDraft("project/1", "draft/1", "2026-07-20T02:00:00.000Z");
+    await fetchDraftRetentionPreview();
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/contracts/version%2F1/copies",
+      "/api/projects/project%2F1/settlement-drafts/draft%2F1/copies",
+      "/api/draft-retention/preview"
+    ]);
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ expectedUpdatedAt: "2026-07-20T01:00:00.000Z" })
+    }));
+  });
+
+  it("calls the encoded single-takeover abandonment resource with exact CAS facts", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ takeoverId: "takeover/1", status: "abandoned" })
+    } as Response);
+
+    await abandonContractTakeover("project/1", "takeover/1", {
+      expectedUpdatedAt: "2026-07-20T02:03:04.000Z",
+      action: "abandon_application",
+      reason: "接管资料不再继续补充"
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/projects/project%2F1/contract-takeovers/takeover%2F1/abandonment",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          expectedUpdatedAt: "2026-07-20T02:03:04.000Z",
+          action: "abandon_application",
+          reason: "接管资料不再继续补充"
+        })
+      })
+    );
+  });
+
+  it("loads contract, settlement and payment lifecycle ledgers with server-owned pagination", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        rows: [],
+        meta: { page: 2, pageSize: 20, total: 0, totalPages: 0 },
+        summary: { formal_ledger: 0, my_drafts: 0, returned_for_revision: 0, ended: 0 }
+      })
+    } as Response);
+
+    await fetchContractLifecycleLedger("returned_for_revision", 2, 20);
+    await fetchSettlementLifecycleLedger("ended", 3, 50);
+    await fetchPaymentLifecycleLedger("my_drafts", 1, 20);
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/contracts/lifecycle-ledger?view=returned_for_revision&page=2&pageSize=20",
+      "/api/settlements/lifecycle-ledger?view=ended&page=3&pageSize=50",
+      "/api/payments?view=my_drafts&page=1&pageSize=20"
+    ]);
+  });
+
+  it("abandons a returned payment with exact CAS facts and encoded identity", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "payment/1", status: "abandoned" })
+    } as Response);
+
+    await abandonPaymentRequest("payment/1", {
+      expectedUpdatedAt: "2026-07-20T02:03:04.000Z",
+      reason: "本次付款不再办理"
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/payments/payment%2F1/abandonment",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          expectedUpdatedAt: "2026-07-20T02:03:04.000Z",
+          reason: "本次付款不再办理"
+        })
+      })
+    );
+  });
+
+  it("passes the server batch preview hash back unchanged on apply", async () => {
+    const previewHash = "a".repeat(64);
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        previewHash,
+        rows: [{
+          id: "takeover-1",
+          importRowNo: 2,
+          updatedAt: "2026-07-20T02:03:04.000Z",
+          action: "delete_pristine_draft",
+          eligible: true,
+          blockers: [],
+          contractNo: "HT-001",
+          contractName: "零星材料采购合同"
+        }]
+      })
+    } as Response);
+
+    const preview = await previewContractTakeoverBatchAbandonment("project/1", "batch/1");
+    expect(preview.rows[0]).toMatchObject({
+      contractNo: "HT-001",
+      contractName: "零星材料采购合同"
+    });
+    await applyContractTakeoverBatchAbandonment("project/1", "batch/1", {
+      previewHash: preview.previewHash,
+      reason: "整批导入有误"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project%2F1/contract-takeovers/import-batches/batch%2F1/draft-abandonment-preview",
+      "/api/projects/project%2F1/contract-takeovers/import-batches/batch%2F1/draft-abandonment-apply"
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(JSON.stringify({
+      previewHash,
+      reason: "整批导入有误"
+    }));
+  });
+
+  it("preserves the Chinese takeover abandonment conflict", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 409,
+      clone() { return this; },
+      json: async () => ({ message: "批次草稿在预览后已发生变化，请重新预览" })
+    } as unknown as Response);
+
+    await expect(applyContractTakeoverBatchAbandonment(
+      "project-1",
+      "batch-1",
+      { previewHash: "b".repeat(64), reason: "整批放弃" }
+    )).rejects.toThrow("批次草稿在预览后已发生变化，请重新预览");
   });
 
   it("loads project-scoped historical company entity candidates", async () => {
@@ -416,12 +570,21 @@ describe("core flow read API client", () => {
   it("requests the personal work items endpoint", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => ({ queues: {}, approvalCenter: {} })
+      json: async () => ({
+        queues: {
+          pending: [],
+          blocked: [],
+          started: [],
+          drafts: [{ id: "takeover:draft-1" }]
+        },
+        approvalCenter: {}
+      })
     } as Response);
 
-    await fetchWorkItems();
+    const result = await fetchWorkItems();
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(["/api/me/work-items"]);
+    expect(result.queues.drafts).toEqual([{ id: "takeover:draft-1" }]);
   });
 
   it("requests project operating overview endpoints", async () => {
@@ -441,6 +604,23 @@ describe("core flow read API client", () => {
       "/api/projects/project-1/operating-funds-overview",
       "/api/projects/project-1/expense-requests"
     ]);
+  });
+
+  it("loads project expense lifecycle views without widening the resource route", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ rows: [], summary: {} })
+    } as Response);
+
+    await fetchProjectExpenseRequests("project/1", {
+      view: "ended",
+      page: 2,
+      pageSize: 20
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/projects/project%2F1/expense-requests?view=ended&page=2&pageSize=20"
+    );
   });
 
   it("creates projects through the backend", async () => {
@@ -846,10 +1026,20 @@ describe("core flow read API client", () => {
   it("reads project expense approval detail and preserves self-review password exactly", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => ({ id: "expense-1" })
+      json: async () => ({
+        id: "expense-1",
+        availableActions: [{
+          key: "withdraw",
+          label: "撤回项目支出申请",
+          kind: "danger",
+          enabled: true,
+          disabledReason: null
+        }],
+        blockedReasons: []
+      })
     } as Response);
 
-    await fetchProjectExpenseApprovalDetail("project-1", "expense-1");
+    const detail = await fetchProjectExpenseApprovalDetail("project-1", "expense-1");
     await reviewProjectExpenseApproval("project-1", "expense-1", {
       decision: "approve",
       selfReviewReason: "业务紧急",
@@ -860,6 +1050,11 @@ describe("core flow read API client", () => {
       "/api/projects/project-1/expense-requests/expense-1/approval-detail"
     );
     expect(fetchMock.mock.calls[0][1]?.method).toBeUndefined();
+    expect(detail.availableActions[0]).toMatchObject({
+      key: "withdraw",
+      kind: "danger",
+      enabled: true
+    });
     expect(fetchMock.mock.calls[1][1]?.body).toBe(
       JSON.stringify({
         decision: "approve",

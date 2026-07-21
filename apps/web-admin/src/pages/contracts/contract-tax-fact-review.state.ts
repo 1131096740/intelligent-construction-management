@@ -20,7 +20,8 @@ import type {
 const ACTIVE_STATUSES: ContractTaxFactRevisionStatus[] = [
   "draft",
   "pending_finance_review",
-  "pending_contract_confirmation"
+  "pending_contract_confirmation",
+  "rejected"
 ];
 
 export interface ContractTaxFactDraft {
@@ -65,6 +66,9 @@ export function buildContractTaxFactReviewState(input: {
   const missingFields = input.missingFields.filter((field) => field.trim());
   const factsConfirmed =
     input.data.current.status === "confirmed" && missingFields.length === 0;
+  const abandonmentAction = activeRevision?.availableActions?.find(
+    (action) => action.key === "delete_pristine_draft" || action.key === "abandon_application"
+  ) ?? null;
 
   return {
     canRead,
@@ -89,6 +93,8 @@ export function buildContractTaxFactReviewState(input: {
       canRead && canFinance && activeRevision?.status === "pending_finance_review",
     canContractConfirm:
       canRead && canConfirm && activeRevision?.status === "pending_contract_confirmation",
+    abandonmentAction,
+    canAbandon: canRead && abandonmentAction?.enabled === true,
     gapText: missingFields.length ? missingFields.join("、") : "无",
     settlementReleaseText: factsConfirmed
       ? "税务事实已经财务复核和合同部确认，且当前缺口为零，已解除税务事实阻断；结算仍需满足合同有效、清单计价和其他业务条件。"
@@ -202,7 +208,8 @@ export function revisionStatusLabel(status: ContractTaxFactRevisionStatus): stri
     pending_finance_review: "待财务复核",
     pending_contract_confirmation: "待合同部确认",
     confirmed: "已确认",
-    rejected: "已退回"
+    rejected: "已退回",
+    abandoned: "已放弃"
   };
   return labels[status];
 }

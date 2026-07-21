@@ -12,6 +12,7 @@ import {
   fetchSpotProcurementPaymentDetail,
   fetchSpotProcurementReceipt,
   recordSpotProcurementRefund,
+  resetSpotProcurementReceiptDraft,
   reviewSpotProcurementReceipt,
   revokeSpotProcurementReceiptReview,
   submitSpotProcurementReceipt,
@@ -25,6 +26,7 @@ import { uploadPrivateFile } from "../../api/core-flow-read.api";
 import BusinessDetailHeader from "../../components/BusinessDetailHeader.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import { CORE_ARCHIVE_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
+import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { centsTextToYuanText } from "../../lib/money";
 import ReceiptLineEditor from "./components/ReceiptLineEditor.vue";
 import ReceiptPhotoUploader from "./components/ReceiptPhotoUploader.vue";
@@ -40,6 +42,8 @@ const error = ref("");
 const message = ref("");
 const paymentNotice = ref("");
 const routeSafetyNotice = ref("");
+const resetVisible = ref(false);
+const resetError = ref("");
 const delegateUserId = ref("");
 const invoiceFiles = ref<UploadFile[]>([]);
 const refundFiles = ref<UploadFile[]>([]);
@@ -62,6 +66,12 @@ const latestApprovedReview = computed(() => [...(receipt.value?.reviews ?? [])].
 const hasActualPayment = computed(() => Boolean(paymentDetail.value?.executions.some((execution) => execution.active)));
 const activeInvoices = computed(() => paymentDetail.value?.invoice?.invoices ?? []);
 const discrepancy = computed(() => receipt.value?.discrepancy ?? { status: "none", nextStep: null });
+const receiptWorkflow = computed(() =>
+  detail.value?.receipt && !("label" in detail.value.receipt)
+    ? detail.value.receipt.workflow
+    : undefined
+);
+const receiptResetAction = computed(() => receiptWorkflow.value?.resetAction);
 const ROUTE_CHANGED_MESSAGE = "页面已切换到另一笔采购；过期操作未绑定任何收货、照片或退款事实，请在当前单据重新办理。";
 let routeGeneration = 0;
 let loadRequestId = 0;
@@ -93,6 +103,8 @@ function clearTransientState() {
   invoiceFiles.value = [];
   refundFiles.value = [];
   delegateUserId.value = "";
+  resetVisible.value = false;
+  resetError.value = "";
   discrepancyForm.resolutionType = "replenishment";
   discrepancyForm.note = "";
   refundForm.amountYuan = "";
@@ -223,6 +235,30 @@ function saveReceiptDraft() {
     },
     "收货草稿已保存"
   );
+}
+
+async function resetReceiptDraft() {
+  const action = receiptResetAction.value;
+  const context = captureContext();
+  if (!action?.enabled || !context.procurementId) return;
+  busy.value = true;
+  resetError.value = "";
+  try {
+    assertCurrentContext(context);
+    await resetSpotProcurementReceiptDraft(context.procurementId, action.expectedRevision);
+    assertCurrentContext(context);
+    resetVisible.value = false;
+    message.value = "未提交的收货填写已重置，收货单及历史证据未被删除。";
+    await load();
+  } catch (actionError) {
+    if (actionError instanceof StaleReceiptContextError) {
+      routeSafetyNotice.value = ROUTE_CHANGED_MESSAGE;
+    } else if (contextIsCurrent(context)) {
+      resetError.value = actionError instanceof Error ? actionError.message : "重置收货草稿失败";
+    }
+  } finally {
+    if (contextIsCurrent(context)) busy.value = false;
+  }
 }
 
 async function uploadReceiptPhoto(payload: { file: File; source: "camera" | "album"; category: "material_scene" | "delivery_note"; note: string; appendReason: string }) {
@@ -402,9 +438,18 @@ watch(procurementId, () => {
           @change="lines = $event"
         />
         <div
-          v-if="actionEnabled('edit_receipt') || actionEnabled('submit_receipt')"
+          v-if="receiptResetAction?.enabled || actionEnabled('edit_receipt') || actionEnabled('submit_receipt')"
           class="actions"
         >
+          <t-button
+            v-if="receiptResetAction?.enabled"
+            theme="danger"
+            variant="outline"
+            :disabled="busy"
+            @click="resetVisible = true"
+          >
+            {{ receiptResetAction.label }}
+          </t-button>
           <t-button
             v-if="actionEnabled('edit_receipt')"
             variant="outline"
@@ -423,6 +468,19 @@ watch(procurementId, () => {
           </t-button>
         </div>
       </t-card>
+
+      <SensitiveActionDialog
+        v-model="resetVisible"
+        title="重置未提交收货"
+        description="仅清空当前尚未提交的收货填写，不删除收货单、旧修订、锁定照片或其他业务证据。"
+        confirm-text="确认重置"
+        confirm-theme="danger"
+        :require-reason="false"
+        :require-password="false"
+        :loading="busy"
+        :error="resetError"
+        @confirm="resetReceiptDraft"
+      />
 
       <t-card title="收货照片与乙方送货单">
         <ReceiptPhotoUploader

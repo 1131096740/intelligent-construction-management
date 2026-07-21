@@ -600,11 +600,11 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
   await expect(unselectedCheckbox).not.toBeChecked();
 
   await normalCheckbox.click({ force: true });
-  await page.getByPlaceholder("本期数量").fill("9");
-  await page.getByPlaceholder("本期数量").press("Tab");
+  await page.getByPlaceholder("本期数量", { exact: true }).fill("9");
+  await page.getByPlaceholder("本期数量", { exact: true }).press("Tab");
   await normalCheckbox.click({ force: true });
   await normalCheckbox.click({ force: true });
-  await expect(page.getByPlaceholder("本期数量")).toHaveValue("");
+  await expect(page.getByPlaceholder("本期数量", { exact: true })).toHaveValue("");
   await normalCheckbox.click({ force: true });
 
   await page.getByRole("button", { name: "粘贴多行" }).click();
@@ -670,7 +670,7 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
   await expect(manualCheckbox).toBeChecked();
   await expect(unselectedCheckbox).not.toBeChecked();
   await expect(page.getByPlaceholder("本期数量").first()).toHaveValue("3");
-  await expect(page.getByPlaceholder("金额（元）")).toHaveValue("400.00");
+  await expect(page.getByPlaceholder("金额（元）", { exact: true })).toHaveValue("400.00");
   await expect(page.getByPlaceholder("调整名称")).toHaveValue("Excel 质量扣款");
   await expect(page.getByPlaceholder("可正可负（元）")).toHaveValue("-50.00");
   await page
@@ -1052,6 +1052,131 @@ test("税务事实缺失时保存草稿，确认后同一草稿可提交", async
     .toBe("/结算管理/settlement-tax");
   expect(draftRecord).toEqual(expect.objectContaining({ id: "draft-tax", revision: 1 }));
   expect(submittedDraftBody).toEqual({ expectedRevision: 1 });
+});
+
+test("结算工作台丢弃未保存修改后直接删除服务端草稿", async ({ page }) => {
+  const settlementTemplateVersionId = "settlement-template-version-delete";
+  await installSettlementWorkbenchBaseMocks(page, settlementTemplateVersionId);
+  let saveCalls = 0;
+  let abandonmentBody: Record<string, unknown> | null = null;
+  const draftRecord = {
+    id: "draft-delete",
+    projectId: "project-1",
+    contractId: "contract-1",
+    contractVersionId: "version-1",
+    paymentTermsVersionId: "payment-terms-version-1",
+    settlementTemplateVersionId,
+    code: "JS-DELETE-001",
+    periodLabel: "2026-07",
+    isFinal: false,
+    finalCumulativeAmountCents: null,
+    governanceVersion: 1,
+    fieldReviewerUserId: null,
+    fieldReviewerRoleKey: null,
+    finalScopeCompleted: null,
+    finalPriorSettlementsIncluded: null,
+    finalNoOutstandingSettlements: null,
+    finalWithinContractCap: null,
+    finalNoFurtherOrdinarySettlements: null,
+    lines: [],
+    revision: 7,
+    status: "draft",
+    ownerUserId: "contract-staff-1",
+    submittedSettlementId: null,
+    submittedAt: null,
+    lifecycleKind: "pristine_draft",
+    lifecycleBlockers: [],
+    availableActions: [{
+      key: "delete_pristine_draft",
+      label: "删除草稿",
+      kind: "danger",
+      enabled: true,
+      disabledReason: null,
+      requiresComment: false
+    }],
+    blockedReasons: [],
+    createdAt: "2026-07-20T08:00:00.000Z",
+    updatedAt: "2026-07-20T08:30:00.000Z",
+    submissionBlockingReason: null,
+    documents: { frozenDocument: null, counterpartySignedOriginal: null }
+  };
+
+  await page.route(
+    "**/api/settlement-workbench/contract-versions/version-1/source-lines",
+    (route) => route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        contractVersionId: "version-1",
+        contractId: "contract-1",
+        projectId: "project-1",
+        contractAmountCents: "100000",
+        summary: {
+          rowCount: 0,
+          exceptionCount: 0,
+          contractAmountCents: "100000",
+          settledAmountCents: "0",
+          remainingAmountCents: "100000"
+        },
+        rows: []
+      })
+    })
+  );
+  await page.route(
+    "**/api/settlement-workbench/contract-versions/version-1/preview",
+    (route) => route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        contractVersionId: "version-1",
+        amountCents: "0",
+        lines: [],
+        submissionBlockers: []
+      })
+    })
+  );
+  await page.route("**/api/projects/project-1/settlement-drafts**", (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    if (pathname.endsWith("/draft-delete/abandonment")) {
+      abandonmentBody = request.postDataJSON() as Record<string, unknown>;
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          draftId: "draft-delete",
+          status: "abandoned",
+          action: "delete_pristine_draft",
+          idempotent: false
+        })
+      });
+    }
+    if (request.method() === "PATCH") {
+      saveCalls += 1;
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify(draftRecord) });
+    }
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(pathname.endsWith("/draft-delete") ? draftRecord : [draftRecord])
+    });
+  });
+  await page.route("**/api/settlements?*", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ rows: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 0 } })
+  }));
+
+  await loginSettlementWorkbenchUser(page);
+  await page.goto("/结算工作台?project=project-1&draftId=draft-delete");
+  await expect(page.getByText("已恢复结算草稿；保存草稿不会发起审批，提交前仍需通过后台核算。")).toBeVisible();
+  await page.getByPlaceholder("JS-2026-019").fill("不会保存的本地修改");
+  await page.getByRole("button", { name: "删除草稿" }).click();
+  await page.getByRole("button", { name: "确认删除草稿" }).click();
+
+  await expect.poll(() => abandonmentBody).toEqual({
+    expectedRevision: 7,
+    action: "delete_pristine_draft"
+  });
+  expect(saveCalls).toBe(0);
+  await expect
+    .poll(() => decodeURIComponent(new URL(page.url()).pathname + new URL(page.url()).search))
+    .toBe("/结算管理?view=ended");
 });
 
 async function installSettlementWorkbenchBaseMocks(

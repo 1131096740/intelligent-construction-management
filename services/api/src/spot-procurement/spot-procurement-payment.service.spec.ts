@@ -10,6 +10,7 @@ import { Prisma } from "@prisma/client";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { RecordSpotProcurementPaymentDto } from "./dto/record-spot-procurement-payment.dto";
+import { AbandonSpotProcurementPaymentDraftDto } from "./dto/abandon-spot-procurement-payment-draft.dto";
 import { ReviewSpotProcurementPaymentDto } from "./dto/review-spot-procurement-payment.dto";
 import { UpdateSpotProcurementPaymentDraftDto } from "./dto/update-spot-procurement-payment-draft.dto";
 import { SpotProcurementPaymentController } from "./spot-procurement-payment.controller";
@@ -65,7 +66,8 @@ const draftPayment = {
   approvedAt: null,
   invalidatedAt: null,
   invalidatedByUserId: null,
-  invalidatedReason: null
+  invalidatedReason: null,
+  updatedAt: new Date("2026-07-20T08:00:00.000Z")
 };
 
 function transactionDelegate() {
@@ -252,6 +254,11 @@ function harness() {
     releaseReservation: jest.fn().mockResolvedValue({
       released: false,
       amountCents: 0n
+    }),
+    releaseForShortage: jest.fn().mockResolvedValue({
+      releasedAmountCents: 0n,
+      remainingAmountCents: 0n,
+      status: "released"
     })
   };
   const auth = {
@@ -570,6 +577,12 @@ describe("SpotProcurementPaymentController", () => {
         "spot_procurement.payment.submit"
       ],
       [
+        "abandonDraft",
+        RequestMethod.POST,
+        ":paymentId/abandonment",
+        "spot_procurement.payment.submit"
+      ],
+      [
         "review",
         RequestMethod.POST,
         ":paymentId/approval",
@@ -605,6 +618,33 @@ describe("SpotProcurementPaymentController", () => {
         action
       );
     }
+  });
+
+  it("validates the payment draft abandonment reason and rejects client provenance", async () => {
+    const pipe = createApiValidationPipe();
+    await expect(
+      pipe.transform(
+        {
+          expectedUpdatedAt: "2026-07-20T08:00:00.000Z",
+          reason: "采购条件变化"
+        },
+        { type: "body", metatype: AbandonSpotProcurementPaymentDraftDto }
+      )
+    ).resolves.toEqual({
+      expectedUpdatedAt: "2026-07-20T08:00:00.000Z",
+      reason: "采购条件变化"
+    });
+    await expect(
+      pipe.transform(
+        {
+          expectedUpdatedAt: "2026-07-20T08:00:00.000Z",
+          reason: "放弃",
+          draftOrigin: "manual_recreate",
+          sourcePaymentId: "forged"
+        },
+        { type: "body", metatype: AbandonSpotProcurementPaymentDraftDto }
+      )
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
 
@@ -855,6 +895,251 @@ describe("Spot procurement payment DTOs", () => {
 });
 
 describe("SpotProcurementPaymentService", () => {
+  it("abandons an unsubmitted handler draft, releases only the residual reservation, and retains files", async () => {
+    const { service, tx, balance, audit } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([draftPayment])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ paymentId: "payment-1", amountCents: 100n, releasedAmountCents: 40n, status: "reserved" }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    role(tx, "material_staff");
+    tx.spotProcurementPayment.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(
+      service.abandonDraft("payment-1", "material-1", {
+        expectedUpdatedAt: draftPayment.updatedAt.toISOString(),
+        reason: "  采购条件变化  "
+      })
+    ).resolves.toMatchObject({
+      id: "payment-1",
+      status: "invalidated",
+      invalidatedAt: expect.any(String),
+      invalidatedByUserId: "material-1",
+      invalidatedReason: "采购条件变化",
+      updatedAt: expect.any(String)
+    });
+
+    expect(balance.releaseForShortage).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        paymentId: "payment-1",
+        expectedReservedAmountCents: 100n,
+        releaseAmountCents: 60n
+      })
+    );
+    expect(tx.spotProcurementPayment.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: "payment-1",
+        status: "draft",
+        submittedAt: null,
+        updatedAt: draftPayment.updatedAt
+      }),
+      data: expect.objectContaining({
+        status: "invalidated",
+        invalidatedByUserId: "material-1",
+        invalidatedReason: "采购条件变化"
+      })
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ action: "spot_procurement.payment.draft.abandon" })
+    );
+    expect((tx as Record<string, unknown>).fileObject).toBeDefined();
+  });
+
+  it("blocks abandonment after any execution history without changing the draft", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([draftPayment])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ paymentId: "payment-1" }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    role(tx, "material_staff");
+
+    await expect(
+      service.abandonDraft("payment-1", "material-1", {
+        expectedUpdatedAt: draftPayment.updatedAt.toISOString(),
+        reason: "不再付款"
+      })
+    ).rejects.toThrow("已形成实际付款历史");
+    expect(tx.spotProcurementPayment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stale browser abandonment before locking downstream facts or releasing balance", async () => {
+    const { service, tx, balance } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([draftPayment]);
+    role(tx, "material_staff");
+
+    await expect(
+      service.abandonDraft("payment-1", "material-1", {
+        expectedUpdatedAt: "2026-07-20T08:00:01.000Z",
+        reason: "旧标签页放弃"
+      })
+    ).rejects.toThrow("付款草稿已被更新，请刷新后重试");
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(balance.releaseForShortage).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPayment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("returns an already invalidated handler draft idempotently before checking the stale CAS timestamp", async () => {
+    const { service, tx, balance } = harness();
+    const invalidatedAt = new Date("2026-07-20T08:05:00.000Z");
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        {
+          ...draftPayment,
+          status: "invalidated",
+          invalidatedAt,
+          invalidatedByUserId: "material-1",
+          invalidatedReason: "采购条件变化",
+          updatedAt: invalidatedAt
+        }
+      ]);
+    role(tx, "material_staff");
+
+    await expect(
+      service.abandonDraft("payment-1", "material-1", {
+        expectedUpdatedAt: draftPayment.updatedAt.toISOString(),
+        reason: "网络重试"
+      })
+    ).resolves.toMatchObject({
+      status: "invalidated",
+      invalidatedAt: invalidatedAt.toISOString(),
+      invalidatedReason: "采购条件变化",
+      updatedAt: invalidatedAt.toISOString()
+    });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(balance.releaseForShortage).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPayment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("recreates an amount-free A5 as a blank zero draft without legacy balance or capacity queries", async () => {
+    const { service, tx, balance, audit } = harness();
+    const amountFreeVersion = { ...version, totalAmountCents: null };
+    const source = { ...draftPayment, status: "invalidated", invalidatedAt: new Date(), settlementAmountCents: 99n };
+    tx.$queryRaw
+      .mockResolvedValueOnce([amountFreeVersion])
+      .mockResolvedValueOnce([source])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    role(tx, "material_staff");
+    tx.spotProcurementPayment.create.mockResolvedValue({
+      ...draftPayment,
+      id: "payment-2",
+      code: "LXCG-001-V1-P002",
+      settlementAmountCents: 0n,
+      companyPaymentAmountCents: 0n,
+      payeePartyId: null,
+      payeeNameSnapshot: null,
+      draftOrigin: "manual_recreate",
+      sourcePaymentId: "payment-1"
+    });
+
+    await expect(service.recreateDraft("procurement-1", "material-1")).resolves.toMatchObject({
+      id: "payment-2",
+      settlementAmountCents: "0",
+      companyPaymentAmountCents: "0",
+      draftOrigin: "manual_recreate",
+      sourcePaymentId: "payment-1"
+    });
+    expect(tx.spotProcurementPayment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        settlementAmountCents: 0n,
+        supplierBalanceAmountCents: 0n,
+        companyPaymentAmountCents: 0n,
+        paymentType: null,
+        paymentMethod: null,
+        payeePartyId: null,
+        payeeNameSnapshot: null,
+        supportingAttachmentFileId: null,
+        merchantPaymentProofFileId: null,
+        draftOrigin: "manual_recreate",
+        sourcePaymentId: "payment-1"
+      })
+    });
+    expect(balance.suggestionWithClient).not.toHaveBeenCalled();
+    expect(tx.spotProcurementDiscrepancy.findFirst).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ action: "spot_procurement.payment.draft.recreate" })
+    );
+  });
+
+  it("refuses a second active draft during recreation", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([{ ...version, totalAmountCents: null }])
+      .mockResolvedValueOnce([{ ...draftPayment, status: "invalidated" }, { ...draftPayment, id: "active-2" }]);
+    role(tx, "material_staff");
+    await expect(service.recreateDraft("procurement-1", "material-1")).rejects.toThrow(
+      "已存在活动付款草稿或申请"
+    );
+    expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
+  });
+
+  it("selects the newest invalidated source and breaks equal timestamps by id without changing id lock order", async () => {
+    const { service, tx } = harness();
+    const invalidatedAt = new Date("2026-07-20T09:00:00.000Z");
+    const lowerId = {
+      ...draftPayment,
+      id: "payment-a",
+      status: "invalidated",
+      invalidatedAt
+    };
+    const higherId = {
+      ...draftPayment,
+      id: "payment-z",
+      code: "LXCG-001-V1-P002",
+      status: "invalidated",
+      invalidatedAt
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([{ ...version, totalAmountCents: null }])
+      .mockResolvedValueOnce([lowerId, higherId])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    role(tx, "material_staff");
+    tx.spotProcurementPayment.create.mockResolvedValue({
+      ...draftPayment,
+      id: "payment-new",
+      draftOrigin: "manual_recreate",
+      sourcePaymentId: "payment-z"
+    });
+
+    await service.recreateDraft("procurement-1", "material-1");
+
+    expect(tx.spotProcurementPayment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ sourcePaymentId: "payment-z" })
+    });
+    const paymentLockSql = tx.$queryRaw.mock.calls[1]?.[0] as {
+      strings?: readonly string[];
+    };
+    expect(paymentLockSql.strings?.join(" ")).toContain('ORDER BY "id"');
+  });
   it("creates a smaller subsequent draft for the frozen handler without occupying capacity", async () => {
     const { service, prisma, tx, balance } = harness();
     tx.$queryRaw
@@ -2389,7 +2674,9 @@ describe("SpotProcurementPaymentService", () => {
             status: "draft",
             procurementId: "procurement-1",
             procurementVersionId: "version-1",
-            handlerUserId: "material-1"
+            handlerUserId: "material-1",
+            draftOrigin: "approval_return_clone",
+            sourcePaymentId: "payment-1"
           })
         });
       } else {
@@ -2574,7 +2861,9 @@ describe("SpotProcurementPaymentService", () => {
         settlementAmountCents: 8_000n,
         supplierBalanceAmountCents: 1_000n,
         companyPaymentAmountCents: 7_000n,
-        balanceOverrideReason: "项目现金安排需要保留供应商余额"
+        balanceOverrideReason: "项目现金安排需要保留供应商余额",
+        draftOrigin: "approval_return_clone",
+        sourcePaymentId: "payment-1"
       })
     });
     expect(tx.spotProcurementPayment.update).not.toHaveBeenCalledWith(
@@ -3209,7 +3498,12 @@ describe("SpotProcurementPaymentService", () => {
         data: expect.objectContaining({ submittedAt: null })
       })
     );
-    expect(tx.spotProcurementPayment.create).toHaveBeenCalled();
+    expect(tx.spotProcurementPayment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        draftOrigin: "approval_withdrawal_clone",
+        sourcePaymentId: "payment-1"
+      })
+    });
     expect(approvalForms.tryRefreshLatestForBusiness).toHaveBeenCalledWith(
       "spot_procurement_payment",
       "payment-1",

@@ -101,10 +101,21 @@ describe("settlement creation workbench structure", () => {
     expect(page).toContain("updateSettlementDraftRecord");
     expect(page).toContain("submitSettlementDraftRecord");
     expect(page).toContain("提交结算审批");
-    expect(page).toContain("onBeforeRouteLeave");
+    expect(page).toContain("useUnsavedChangesGuard");
+    expect(page).not.toContain("onBeforeRouteLeave");
     expect(page).not.toContain("amountCents: preview");
     expect(page).not.toContain("form.amountYuan");
     expect(page).toContain("settlement.id");
+  });
+
+  it("executes only server-advertised draft lifecycle actions with revision CAS", () => {
+    expect(page).toContain("<BusinessDraftAction");
+    expect(page).toContain("activeDraft.value?.availableActions ?? []");
+    expect(page).toContain("activeDraft.lifecycleBlockers");
+    expect(page).toContain("abandonSettlementDraftRecord");
+    expect(page).toContain("expectedRevision: current.revision");
+    expect(page).not.toContain("const saved = await persistDraft(false)");
+    expect(page).not.toContain("enabled: true");
   });
 
   it("fails closed for zero recommendations, auto-selects one and requires a choice for many", () => {

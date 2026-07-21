@@ -182,6 +182,34 @@ describe("ContractTaxFactsService", () => {
     });
   });
 
+  it("returns server-owned lifecycle actions and abandoned facts for tax revisions", async () => {
+    const { prisma, tx } = createPrisma();
+    tx.contractTaxFactRevision.findMany.mockResolvedValue([
+      revision(),
+      revision({
+        id: "revision-2",
+        revisionNo: 2,
+        status: "abandoned",
+        abandonedAt: new Date("2026-07-20T01:00:00.000Z"),
+        abandonedByUserId: "contract-staff-1",
+        abandonReason: "不再修订"
+      })
+    ]);
+    const service = new ContractTaxFactsService(prisma as never);
+
+    const result = await service.list("project-1", "takeover-1", "contract-staff-1");
+    expect(result.revisions[0]).toEqual(expect.objectContaining({
+      lifecycleKind: "pristine_draft",
+      availableActions: [expect.objectContaining({ key: "delete_pristine_draft", enabled: true })]
+    }));
+    expect(result.revisions[1]).toEqual(expect.objectContaining({
+      lifecycleKind: "formal_record",
+      abandonedByUserId: "contract-staff-1",
+      abandonReason: "不再修订",
+      availableActions: []
+    }));
+  });
+
   it("saves a candidate revision without changing current contract or bill facts", async () => {
     const { prisma, tx } = createPrisma();
     tx.contractTaxFactRevision.findFirst
@@ -412,5 +440,78 @@ describe("ContractTaxFactsService", () => {
     await expect(service.list("project-1", "takeover-1")).rejects.toThrow(
       "未找到当前项目的历史合同接管记录"
     );
+  });
+
+  it("deletes a never-submitted tax revision draft without changing current contract facts", async () => {
+    const current = revision();
+    const { prisma, tx } = createPrisma({
+      $queryRaw: jest.fn().mockResolvedValue([current]),
+      contractTaxFactRevision: {
+        findFirst: jest.fn(),
+        findUnique: jest.fn(),
+        findMany: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    });
+    const audit = { record: jest.fn() };
+    const service = new ContractTaxFactsService(prisma as never, audit as never);
+
+    const result = await service.abandon(
+      "project-1",
+      "takeover-1",
+      "revision-1",
+      {
+        expectedUpdatedAt: current.updatedAt.toISOString(),
+        action: "delete_pristine_draft"
+      },
+      "contract-staff-1"
+    );
+
+    expect(result).toMatchObject({ status: "abandoned", action: "delete_pristine_draft" });
+    expect((tx.contractTaxFactRevision as unknown as { updateMany: jest.Mock }).updateMany)
+      .toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "abandoned", abandonReason: null })
+    }));
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+    expect(tx.contractBill.update).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.update).not.toHaveBeenCalled();
+  });
+
+  it("requires an abandonment reason after finance review submission", async () => {
+    const current = revision({
+      status: "pending_finance_review",
+      submittedAt: new Date("2026-07-17T01:00:00.000Z")
+    });
+    const { prisma, tx } = createPrisma({
+      $queryRaw: jest.fn().mockResolvedValue([current]),
+      contractTaxFactRevision: {
+        findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(),
+        create: jest.fn(), update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    });
+    const service = new ContractTaxFactsService(prisma as never);
+
+    await expect(service.abandon(
+      "project-1", "takeover-1", "revision-1",
+      {
+        expectedUpdatedAt: current.updatedAt.toISOString(),
+        action: "delete_pristine_draft"
+      },
+      "contract-staff-1"
+    )).rejects.toThrow("只能放弃修订");
+    await expect(service.abandon(
+      "project-1", "takeover-1", "revision-1",
+      {
+        expectedUpdatedAt: current.updatedAt.toISOString(),
+        action: "abandon_application",
+        reason: " "
+      },
+      "contract-staff-1"
+    )).rejects.toThrow("必须填写原因");
+    expect((tx.contractTaxFactRevision as unknown as { updateMany: jest.Mock }).updateMany)
+      .not.toHaveBeenCalled();
   });
 });

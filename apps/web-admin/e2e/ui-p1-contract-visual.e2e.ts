@@ -76,7 +76,8 @@ const ledgerBody = {
       paymentTermsVersion: "v1"
     }
   ],
-  summary: { total: 3, inApproval: 1, pendingSeal: 0, pendingArchive: 1, effective: 1 }
+  meta: { page: 1, pageSize: 20, total: 3, totalPages: 1 },
+  summary: { formal_ledger: 3, my_drafts: 2, returned_for_revision: 0, ended: 0 }
 };
 
 const drafts = [
@@ -205,7 +206,7 @@ test("captures the contract P1.2 ledger and detail states", async ({ page }) => 
   await page.route("**/api/contracts/HT-UI-LOAD", (route) => {
     pendingLoadingRoute = route;
   });
-  await page.route("**/api/contracts", (route) => {
+  await page.route("**/api/contracts/lifecycle-ledger?*", (route) => {
     if (ledgerMode === "failure") {
       return route.fulfill({
         status: 500,
@@ -218,7 +219,8 @@ test("captures the contract P1.2 ledger and detail states", async ({ page }) => 
         contentType: "application/json",
         body: JSON.stringify({
           rows: [],
-          summary: { total: 0, inApproval: 0, pendingSeal: 0, pendingArchive: 0, effective: 0 }
+          meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
+          summary: { formal_ledger: 0, my_drafts: 2, returned_for_revision: 0, ended: 0 }
         })
       });
     }
@@ -229,11 +231,8 @@ test("captures the contract P1.2 ledger and detail states", async ({ page }) => 
 
   await page.goto("/合同管理");
   await expect(page.getByRole("heading", { name: "合同管理" })).toBeVisible();
-  await expect(page.getByText("科技园防水专业分包合同")).toBeVisible();
-  await captureRequiredViewports(page, "contract-drafts", "contract-drafts-normal");
-
-  await page.getByText("合同台账", { exact: true }).first().click();
-  await expect(page.getByText(/暂不支持翻页/)).toBeVisible();
+  await expect(page.getByText("科技园钢材采购合同")).toBeVisible();
+  await expect(page.getByText(/当前视图由服务端分页/)).toBeVisible();
   await expect(page.locator(".data-section .t-link").filter({ hasText: "查看详情" })).toHaveCount(3);
   await captureRequiredViewports(page, "contract-ledger", "contract-ledger-normal");
 

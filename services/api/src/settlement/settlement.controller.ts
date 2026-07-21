@@ -10,7 +10,11 @@ import {
   Res,
   StreamableFile
 } from "@nestjs/common";
-import { CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS } from "@jiangkong/shared-domain";
+import {
+  CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS,
+  DRAFT_LEDGER_VIEWS,
+  type DraftLedgerView
+} from "@jiangkong/shared-domain";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
@@ -56,6 +60,26 @@ export class SettlementController {
   @RequirePositions(...LEDGER_READ_POSITION_KEYS)
   async list(@CurrentUser() user: AuthenticatedUser, @Query("limit") limit?: string) {
     return this.settlementRead.listRecent(limit, await this.projectVisibility.visibleProjectIds(user.id));
+  }
+
+  @Get("lifecycle-ledger")
+  @RequirePositions(...LEDGER_READ_POSITION_KEYS)
+  async lifecycleLedger(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("view") rawView?: string,
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string
+  ) {
+    const view = DRAFT_LEDGER_VIEWS.includes(rawView as DraftLedgerView)
+      ? rawView as DraftLedgerView
+      : "formal_ledger";
+    return this.settlementRead.lifecycleLedger(
+      view,
+      page,
+      pageSize,
+      await this.projectVisibility.visibleProjectIds(user.id),
+      user.id
+    );
   }
 
   @Get("ledger-export")

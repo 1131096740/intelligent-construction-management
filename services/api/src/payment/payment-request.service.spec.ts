@@ -3745,7 +3745,7 @@ describe("PaymentRequestService", () => {
         update: jest.fn().mockResolvedValue({
           id: "payment-1",
           code: "FK-2026-012",
-          status: "rejected",
+          status: "approval_rejected",
           approvedAmountCents: null
         })
       },
@@ -3782,11 +3782,11 @@ describe("PaymentRequestService", () => {
       comment: "付款条件尚未满足"
     });
 
-    expect(rejected.status).toBe("rejected");
+    expect(rejected.status).toBe("approval_rejected");
     expect(tx.paymentRequest.update).toHaveBeenCalledWith({
       where: { id: "payment-1" },
       data: {
-        status: "rejected",
+        status: "approval_rejected",
         approvedAmountCents: null
       }
     });
@@ -7936,5 +7936,237 @@ describe("PaymentRequestService", () => {
       paymentService.withdrawApproval("FK-2026-012", "applicant-1")
     ).rejects.toThrow("当前付款申请已离开审批中，不能撤回");
     expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
+  });
+
+  function returnedPaymentAbandonmentFixture(overrides: {
+    paymentStatus?: string;
+    actorUserId?: string;
+    latestApprovalStatus?: string;
+    returnAction?: object | null;
+    executionCount?: number;
+    allocationCount?: number;
+    financeRecordCount?: number;
+    pdfArchiveCount?: number;
+    archiveCount?: number;
+    usages?: Array<{ id: string; quotaId: string; projectId: string; amountCents: bigint; status: string }>;
+    updateCount?: number;
+  } = {}) {
+    const updatedAt = new Date("2026-07-19T10:00:00.000Z");
+    const payment = {
+      ...paymentExecutionRow({ status: overrides.paymentStatus ?? "draft" }),
+      updatedAt,
+      abandonedAt: overrides.paymentStatus === "abandoned" ? updatedAt : null,
+      abandonedByUserId: overrides.paymentStatus === "abandoned" ? "applicant-1" : null,
+      abandonReason: overrides.paymentStatus === "abandoned" ? "已放弃" : null
+    };
+    const usages = overrides.usages ?? [];
+    const tx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([payment])
+        .mockResolvedValueOnce([{
+          id: "approval-instance-1",
+          status: overrides.latestApprovalStatus ?? "returned_to_applicant",
+          applicantUserId: overrides.actorUserId ?? "applicant-1"
+        }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]),
+      paymentRequest: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValueOnce(payment)
+          .mockResolvedValueOnce({ ...payment, status: "abandoned", abandonReason: "资料无法补齐" }),
+        updateMany: jest.fn().mockResolvedValue({ count: overrides.updateCount ?? 1 })
+      },
+      approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(
+          overrides.returnAction === undefined ? { id: "return-action-1" } : overrides.returnAction
+        ),
+        create: jest.fn()
+      },
+      paymentExecution: { count: jest.fn().mockResolvedValue(overrides.executionCount ?? 0) },
+      paymentExecutionAllocation: { count: jest.fn().mockResolvedValue(overrides.allocationCount ?? 0) },
+      financeRecord: { count: jest.fn().mockResolvedValue(overrides.financeRecordCount ?? 0) },
+      pdfDocument: { count: jest.fn().mockResolvedValue(overrides.pdfArchiveCount ?? 0) },
+      archiveRecord: { count: jest.fn().mockResolvedValue(overrides.archiveCount ?? 0) },
+      projectFinancingQuotaUsage: {
+        findMany: jest.fn().mockResolvedValue(usages),
+        update: jest.fn().mockResolvedValue({}),
+        create: jest.fn().mockResolvedValue({})
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    return {
+      tx,
+      service: new PaymentRequestService(new PaymentAmountService(), prisma as never),
+      input: { expectedUpdatedAt: updatedAt.toISOString(), reason: "资料无法补齐" }
+    };
+  }
+
+  it("abandons only the latest returned payment approval and keeps the approval instance history", async () => {
+    const { tx, service: paymentService, input } = returnedPaymentAbandonmentFixture();
+
+    const result = await paymentService.abandonReturnedRequest("payment-1", "applicant-1", input);
+
+    expect(result).toMatchObject({ status: "abandoned", abandonReason: "资料无法补齐" });
+    expect(tx.paymentRequest.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "payment-1",
+        status: "draft",
+        updatedAt: new Date(input.expectedUpdatedAt),
+        abandonedAt: null
+      },
+      data: expect.objectContaining({
+        status: "abandoned",
+        abandonedByUserId: "applicant-1",
+        abandonReason: "资料无法补齐"
+      })
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "abandon_application",
+        actorUserId: "applicant-1",
+        comment: "资料无法补齐"
+      }
+    });
+    expect(tx.projectFinancingQuotaUsage.update).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: "payment.request.abandon" })
+    });
+  });
+
+  it("releases an abnormal residual occupied financing usage exactly once", async () => {
+    const usage = {
+      id: "usage-1",
+      quotaId: "quota-1",
+      projectId: "project-1",
+      amountCents: 12_000n,
+      status: "occupied"
+    };
+    const { tx, service: paymentService, input } = returnedPaymentAbandonmentFixture({ usages: [usage] });
+
+    await paymentService.abandonReturnedRequest("payment-1", "applicant-1", input);
+
+    expect(tx.projectFinancingQuotaUsage.update).toHaveBeenCalledTimes(1);
+    expect(tx.projectFinancingQuotaUsage.update).toHaveBeenCalledWith({
+      where: { id: "usage-1" },
+      data: { status: "released" }
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: "payment.financing_quota.release.abandonment" })
+    });
+  });
+
+  it("is idempotent after payment abandonment without releasing quota or writing history again", async () => {
+    const { tx, service: paymentService, input } = returnedPaymentAbandonmentFixture({
+      paymentStatus: "abandoned"
+    });
+
+    const result = await paymentService.abandonReturnedRequest("payment-1", "applicant-1", input);
+
+    expect(result.status).toBe("abandoned");
+    expect(tx.paymentRequest.updateMany).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.projectFinancingQuotaUsage.findMany).not.toHaveBeenCalled();
+  });
+
+  it("does not expose an idempotent abandonment result to another user", async () => {
+    const { tx, service: paymentService, input } = returnedPaymentAbandonmentFixture({
+      paymentStatus: "abandoned"
+    });
+
+    await expect(
+      paymentService.abandonReturnedRequest("payment-1", "other-user", input)
+    ).rejects.toThrow("只有当前付款申请人可以查看放弃结果");
+    expect(tx.paymentRequest.updateMany).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "approved_pending_payment",
+    "partially_paid",
+    "paid",
+    "approval_rejected",
+    "rejected",
+    "withdrawn"
+  ])(
+    "rejects abandonment from terminal or formal payment status %s",
+    async (paymentStatus) => {
+      const { tx, service: paymentService, input } = returnedPaymentAbandonmentFixture({ paymentStatus });
+
+      await expect(
+        paymentService.abandonReturnedRequest("payment-1", "applicant-1", input)
+      ).rejects.toThrow("当前付款申请不是退回待修改状态，不能放弃申请");
+      expect(tx.paymentRequest.updateMany).not.toHaveBeenCalled();
+    }
+  );
+
+  it("rejects payment abandonment by anyone except the latest approval applicant", async () => {
+    const { tx, service: paymentService, input } = returnedPaymentAbandonmentFixture({
+      actorUserId: "applicant-1"
+    });
+
+    await expect(
+      paymentService.abandonReturnedRequest("payment-1", "other-user", input)
+    ).rejects.toThrow("只有当前付款申请人可以放弃申请");
+    expect(tx.paymentRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["实际付款或付款凭证", { executionCount: 1 }],
+    ["实付分摊记录", { allocationCount: 1 }],
+    ["财务入账记录", { financeRecordCount: 1 }],
+    ["PDF 归档", { pdfArchiveCount: 1 }],
+    ["业务归档记录", { archiveCount: 1 }]
+  ] as const)("blocks abandonment when the payment has %s", async (message, blocker) => {
+    const { tx, service: paymentService, input } = returnedPaymentAbandonmentFixture(blocker);
+
+    await expect(
+      paymentService.abandonReturnedRequest("payment-1", "applicant-1", input)
+    ).rejects.toThrow(message);
+    expect(tx.paymentRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("blocks abandonment when financing quota has already become used", async () => {
+    const { tx, service: paymentService, input } = returnedPaymentAbandonmentFixture({
+      usages: [{
+        id: "usage-used",
+        quotaId: "quota-1",
+        projectId: "project-1",
+        amountCents: 1_000n,
+        status: "used"
+      }]
+    });
+
+    await expect(
+      paymentService.abandonReturnedRequest("payment-1", "applicant-1", input)
+    ).rejects.toThrow("付款申请已有融资额度转为实付使用，不能放弃申请");
+    expect(tx.paymentRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("uses expectedUpdatedAt as a CAS guard", async () => {
+    const { tx, service: paymentService, input } = returnedPaymentAbandonmentFixture();
+
+    await expect(
+      paymentService.abandonReturnedRequest("payment-1", "applicant-1", {
+        ...input,
+        expectedUpdatedAt: "2026-07-19T10:00:01.000Z"
+      })
+    ).rejects.toThrow("付款申请已被更新，请刷新后重试");
+    expect(tx.paymentRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("requires the latest returned approval instance and its return action", async () => {
+    const noReturned = returnedPaymentAbandonmentFixture({ latestApprovalStatus: "rejected" });
+    await expect(
+      noReturned.service.abandonReturnedRequest("payment-1", "applicant-1", noReturned.input)
+    ).rejects.toThrow("付款申请没有有效的退回待修改审批记录，不能放弃申请");
+
+    const noAction = returnedPaymentAbandonmentFixture({ returnAction: null });
+    await expect(
+      noAction.service.abandonReturnedRequest("payment-1", "applicant-1", noAction.input)
+    ).rejects.toThrow("付款申请缺少退回审批动作记录，不能放弃申请");
   });
 });

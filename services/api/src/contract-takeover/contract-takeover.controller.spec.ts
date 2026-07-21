@@ -10,12 +10,14 @@ type RuntimeDto = new () => object;
 
 const takeoverBodyRoutes = [
   ["reviewImportBatch", 2],
+  ["applyBatchAbandonment", 2],
   ["create", 1],
   ["precheckImport", 1],
   ["createDraftsFromImport", 1],
   ["previewExcelImport", 1],
   ["applyExcelImport", 1],
   ["updateDraft", 2],
+  ["abandonDraft", 2],
   ["attachEvidence", 2],
   ["recordCorrection", 2],
   ["submitCompanyEntityCorrection", 2],
@@ -24,6 +26,7 @@ const takeoverBodyRoutes = [
   ["updateTaxFactRevision", 3],
   ["reviewTaxFactsByFinance", 3],
   ["confirmTaxFactsByContract", 3],
+  ["abandonTaxFactRevision", 3],
   ["confirm", 3],
   ["confirmChangeBaseline", 3]
 ] as const;
@@ -147,6 +150,18 @@ const validTakeoverRouteBodies = [
   ],
   ["reviewTaxFactsByFinance", 3, { decision: "approve", comment: "税务事实一致" }],
   ["confirmTaxFactsByContract", 3, { decision: "approve", comment: "合同事实确认" }],
+  ["applyBatchAbandonment", 2, {
+    previewHash: "a".repeat(64),
+    reason: "整批录入错误"
+  }],
+  ["abandonDraft", 2, {
+    expectedUpdatedAt: "2026-07-19T00:00:00.000Z",
+    action: "delete_pristine_draft"
+  }],
+  ["abandonTaxFactRevision", 3, {
+    expectedUpdatedAt: "2026-07-19T00:00:00.000Z",
+    action: "delete_pristine_draft"
+  }],
   ["confirm", 3, { confirmationPassword: "current password" }],
   ["confirmChangeBaseline", 3, {
     originalSignedAmountCents: "100000000",

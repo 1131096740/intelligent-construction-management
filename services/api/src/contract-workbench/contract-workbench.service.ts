@@ -250,10 +250,35 @@ export class ContractWorkbenchService {
         })
       : null;
     const isChangeVersion = version.changeType === "change" || version.changeType === "supplement";
+    const approvalLifecycle = isChangeVersion || version.status === "approval_rejected" ||
+      formalFiles.length > 0 || authorizations.length > 0;
+    const lifecycleBlockers = [
+      ...(isChangeVersion ? ["合同变更或派生版本"] : []),
+      ...(version.status === "approval_rejected" ? ["合同曾进入审批"] : []),
+      ...(formalFiles.length ? ["存在正式合同文件"] : []),
+      ...(authorizations.length ? ["存在授权委托书"] : [])
+    ];
+    const isOwner = contract.ownerUserId === actorUserId;
+    const lifecycleDisabledReasons = isOwner ? [] : ["只有当前合同经办人可以结束该草稿"];
     const changePolicy = isChangeVersion
       ? this.parseTemplateSnapshot(version.templateSnapshot).supplementChangePolicy ?? null
       : null;
     return this.toReadModel({
+      lifecycleKind: approvalLifecycle ? "approval_draft" : "pristine_draft",
+      availableLifecycleActions: [
+        approvalLifecycle ? "abandon_application" : "delete_pristine_draft"
+      ],
+      availableActions: [{
+        key: approvalLifecycle ? "abandon_application" : "delete_pristine_draft",
+        label: approvalLifecycle ? "放弃合同申请" : "删除草稿",
+        kind: "danger",
+        enabled: lifecycleDisabledReasons.length === 0,
+        disabledReason: lifecycleDisabledReasons.length ? lifecycleDisabledReasons.join("；") : null,
+        requiresComment: approvalLifecycle
+      }],
+      lifecycleBlockers: [...lifecycleBlockers, ...lifecycleDisabledReasons],
+      lifecycleUpdatedAt: version.updatedAt?.toISOString() ?? contract.updatedAt?.toISOString() ?? "",
+      expectedDraftRevision: version.draftRevision,
       contract,
       version: {
         ...version,

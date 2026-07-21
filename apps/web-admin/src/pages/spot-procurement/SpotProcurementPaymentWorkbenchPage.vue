@@ -50,6 +50,7 @@ const statusOptions = [
   { label: "公司付款已付", value: "paid" },
   { label: "已结清", value: "settled" },
   { label: "已退回", value: "returned" },
+  { label: "草稿已放弃", value: "invalidated" },
   { label: "已作废", value: "voided" }
 ];
 const columns = [

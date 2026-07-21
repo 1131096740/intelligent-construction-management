@@ -3,6 +3,7 @@ import { SettlementDraftService } from "./settlement-draft.service";
 
 describe("SettlementDraftService", () => {
   function context(overrides: Record<string, unknown> = {}) {
+    const audit = { record: jest.fn() };
     const tx = {
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -69,7 +70,7 @@ describe("SettlementDraftService", () => {
       fileObject: tx.fileObject,
       $transaction: jest.fn(async (callback) => callback(tx))
     };
-    return { tx, service: new SettlementDraftService(prisma as never) };
+    return { tx, audit, service: new SettlementDraftService(prisma as never, audit as never) };
   }
 
   const draftInput = {
@@ -90,6 +91,61 @@ describe("SettlementDraftService", () => {
     finalWithinContractCap: true,
     finalNoFurtherOrdinarySettlements: true
   };
+
+  it("copies an abandoned draft into a new identity and records its source", async () => {
+    const sourceUpdatedAt = new Date("2026-07-20T02:00:00.000Z");
+    const { tx, audit, service } = context();
+    tx.$queryRaw
+      .mockResolvedValueOnce([{
+        id: "abandoned-draft",
+        projectId: "project-1",
+        contractId: "contract-1",
+        contractVersionId: "version-1",
+        paymentTermsVersionId: "terms-1",
+        settlementTemplateVersionId: "template-1",
+        code: "JS-OLD",
+        periodLabel: "2026-06",
+        isFinal: false,
+        finalCumulativeAmountCents: null,
+        lines: [{ itemName: "旧明细" }],
+        status: "abandoned",
+        ownerUserId: "owner-1",
+        fieldReviewerUserId: null,
+        fieldReviewerRoleKey: null,
+        finalScopeCompleted: null,
+        finalPriorSettlementsIncluded: null,
+        finalNoOutstandingSettlements: null,
+        finalWithinContractCap: null,
+        finalNoFurtherOrdinarySettlements: null,
+        updatedAt: sourceUpdatedAt
+      }])
+      .mockResolvedValueOnce([{
+        id: "version-1",
+        contractId: "contract-1",
+        status: "effective",
+        contractGovernanceVersion: 1
+      }]);
+
+    const result = await service.copyAbandoned(
+      "project-1",
+      "abandoned-draft",
+      "owner-1",
+      { expectedUpdatedAt: sourceUpdatedAt.toISOString() }
+    );
+
+    expect(tx.settlementDraft.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        copiedFromDraftId: "abandoned-draft",
+        ownerUserId: "owner-1",
+        lines: [{ itemName: "旧明细" }]
+      })
+    });
+    expect(result).toMatchObject({ id: "draft-1", status: "draft" });
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "settlement.draft.copy",
+      metadata: expect.objectContaining({ copiedFromDraftId: "abandoned-draft" })
+    }));
+  });
 
   it("persists selected participants and all five final-settlement confirmations separately", async () => {
     const { tx, service } = context();
@@ -440,5 +496,108 @@ describe("SettlementDraftService", () => {
       select: { contractTypeKey: true }
     });
     expect(tx.settlementDraft.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("abandons a pristine final-settlement draft and releases its active-draft occupancy", async () => {
+    const draft = {
+      id: "draft-final",
+      projectId: "project-1",
+      contractId: "contract-1",
+      contractVersionId: "version-1",
+      ownerUserId: "owner-1",
+      revision: 2,
+      status: "draft",
+      isFinal: true,
+      submittedSettlementId: null,
+      submittedAt: null
+    };
+    const { tx, audit, service } = context({
+      settlementDraft: {
+        findUnique: jest.fn().mockResolvedValue(draft),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    });
+
+    const result = await service.abandon("project-1", "draft-final", "owner-1", {
+      expectedRevision: 2,
+      action: "delete_pristine_draft"
+    });
+
+    expect(result).toMatchObject({
+      status: "abandoned",
+      releasedFinalSettlementOccupancy: true
+    });
+    expect(tx.settlementDraft.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "abandoned", abandonReason: null })
+    }));
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "settlement.draft.delete"
+    }));
+  });
+
+  it("preserves and invalidates signed evidence when abandoning a settlement application", async () => {
+    const draft = {
+      id: "draft-1",
+      projectId: "project-1",
+      contractId: "contract-1",
+      contractVersionId: "version-1",
+      ownerUserId: "owner-1",
+      revision: 4,
+      status: "draft",
+      isFinal: false,
+      submittedSettlementId: null,
+      submittedAt: null
+    };
+    const { tx, service } = context({
+      settlementDraft: {
+        findUnique: jest.fn().mockResolvedValue(draft),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      settlementSignedDocument: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "signed-1", purpose: "counterparty_signed_original" }
+        ]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    });
+
+    await expect(service.abandon("project-1", "draft-1", "owner-1", {
+      expectedRevision: 4,
+      action: "delete_pristine_draft"
+    })).rejects.toThrow("只能放弃申请");
+
+    await service.abandon("project-1", "draft-1", "owner-1", {
+      expectedRevision: 4,
+      action: "abandon_application",
+      reason: "乙方撤回结算资料"
+    });
+    expect(tx.settlementSignedDocument.updateMany).toHaveBeenCalledWith({
+      where: { settlementDraftId: "draft-1", status: "active" },
+      data: {
+        status: "invalidated",
+        invalidatedAt: expect.any(Date),
+        invalidationReason: expect.stringContaining("历史证据保留")
+      }
+    });
+    expect((tx.settlementSignedDocument as Record<string, unknown>).delete).toBeUndefined();
+  });
+  it("projects server-owned abandonment action from frozen or signed evidence", () => {
+    const service = new SettlementDraftService({} as never);
+    const read = (service as unknown as {
+      readModel<T>(draft: T, reason: string | null, evidence: boolean): T & {
+        lifecycleKind: string;
+        availableActions: Array<{ key: string; requiresComment?: boolean }>;
+      };
+    }).readModel({
+      id: "draft-1", status: "draft", revision: 4, submittedSettlementId: null,
+      abandonedAt: null, abandonedByUserId: null, abandonReason: null,
+      updatedAt: new Date("2026-07-20T01:00:00.000Z")
+    }, null, true);
+
+    expect(read.lifecycleKind).toBe("approval_draft");
+    expect(read.availableActions).toContainEqual(expect.objectContaining({
+      key: "abandon_application",
+      requiresComment: true
+    }));
   });
 });

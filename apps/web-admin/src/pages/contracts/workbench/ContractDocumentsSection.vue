@@ -237,6 +237,8 @@ const props = defineProps<{
   workbench: ContractWorkbenchReadModel | null;
   disabled: boolean;
   negotiationRefreshToken: number;
+  prepareMutation?: () => Promise<ContractWorkbenchReadModel | null>;
+  completeMutation?: (reload: boolean) => Promise<void>;
 }>();
 
 const emit = defineEmits<{
@@ -371,15 +373,23 @@ async function run(action: () => Promise<unknown>, success: string) {
 }
 
 async function queueDocument() {
+  let prepared = false;
   await run(
-    () =>
-      queueContractDocument(versionId.value, {
+    async () => {
+      const current = props.prepareMutation
+        ? await props.prepareMutation()
+        : props.workbench;
+      if (!current) throw new Error("合同草稿未保存，本次未生成文档");
+      prepared = true;
+      await queueContractDocument(current.version.id, {
         layoutTemplateVersionId: layoutTemplateVersionId.value,
         purpose: purpose.value,
         attachmentFileIds: attachments.value.map((file) => file.id)
-      }),
+      });
+    },
     "已加入生成队列"
   );
+  if (prepared && props.completeMutation) await props.completeMutation(false);
 }
 
 async function uploadAttachments(event: Event) {

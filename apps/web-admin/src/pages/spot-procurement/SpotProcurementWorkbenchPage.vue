@@ -33,17 +33,13 @@ import ProcurementLineEditor, {
 } from "./components/ProcurementLineEditor.vue";
 import ProcurementStatusSummary from "./components/ProcurementStatusSummary.vue";
 
-interface WorkbenchListMeta {
-  limit: number;
-  truncated: boolean;
-}
-
 const router = useRouter();
 const loading = ref(false);
 const loadError = ref("");
 const referenceError = ref("");
 const rows = ref<SpotProcurementListItemReadModel[]>([]);
-const listMeta = ref<WorkbenchListMeta>({ limit: 200, truncated: false });
+const listMeta = ref({ page: 1, pageSize: 20, total: 0, totalPages: 0 });
+const serverStatistics = ref({ total: 0, byStatus: {} as Record<string, number> });
 const projects = ref<SpotProcurementCreateProjectOptionReadModel[]>([]);
 const applicationTextSuggestions = ref<
   SpotProcurementApplicationTextSuggestionReadModel[]
@@ -60,7 +56,8 @@ let capabilityRequestId = 0;
 const filters = reactive({
   projectId: "",
   status: "" as SpotProcurementStatus | "",
-  keyword: ""
+  keyword: "",
+  view: "active" as "active" | "ended"
 });
 
 const createForm = reactive({
@@ -89,8 +86,15 @@ const statusOptions = [
   { label: "审批中", value: "approval_pending" },
   { label: "办理中", value: "approved_in_progress" },
   { label: "已办结", value: "closed" },
+  { label: "异常终止", value: "abnormally_terminated" },
+  { label: "已放弃", value: "abandoned" },
   { label: "已撤销", value: "voided" }
 ];
+const visibleStatusOptions = computed(() =>
+  filters.view === "ended"
+    ? statusOptions.filter((option) => !option.value || option.value === "abandoned")
+    : statusOptions.filter((option) => option.value !== "abandoned")
+);
 
 const projectOptions = computed(() => [
   { label: "全部项目", value: "" },
@@ -112,7 +116,7 @@ const summary = computed(() => {
     return { total: null, draft: null, pending: null, inProgress: null, closed: null };
   }
   return {
-    total: rows.value.length,
+    total: serverStatistics.value.total,
     draft: countStatus("draft"),
     pending: countStatus("approval_pending"),
     inProgress: countStatus("approved_in_progress"),
@@ -164,12 +168,12 @@ function isQuantity(value: string) {
 }
 
 function countStatus(status: SpotProcurementStatus) {
-  return rows.value.filter((row) => row.status === status).length;
+  return serverStatistics.value.byStatus[status] ?? 0;
 }
 
 function statusTheme(status: SpotProcurementStatus) {
   if (status === "closed") return "success" as const;
-  if (status === "voided") return "danger" as const;
+  if (["voided", "abandoned", "abnormally_terminated"].includes(status)) return "danger" as const;
   if (status === "approval_pending") return "warning" as const;
   if (status === "approved_in_progress") return "primary" as const;
   return "default" as const;
@@ -210,17 +214,21 @@ function openDetail(procurementId: string) {
   void router.push(`/零星采购/${encodeURIComponent(procurementId)}`);
 }
 
-async function loadWorkbench() {
+async function loadWorkbench(page = 1) {
   loading.value = true;
   loadError.value = "";
   try {
     const result = await fetchSpotProcurements({
       projectId: filters.projectId || undefined,
       status: filters.status || undefined,
-      keyword: filters.keyword.trim() || undefined
+      keyword: filters.keyword.trim() || undefined,
+      view: filters.view,
+      page,
+      pageSize: listMeta.value.pageSize
     });
     rows.value = result.items;
-    listMeta.value = { limit: result.limit, truncated: result.truncated };
+    listMeta.value = result.pagination;
+    serverStatistics.value = result.statistics;
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : "零星采购工作台读取失败";
   } finally {
@@ -241,7 +249,17 @@ function resetFilters() {
   filters.projectId = "";
   filters.status = "";
   filters.keyword = "";
-  void loadWorkbench();
+  filters.view = "active";
+  void loadWorkbench(1);
+}
+
+function changePage(page: number) {
+  void loadWorkbench(page);
+}
+
+function changeLifecycleView() {
+  filters.status = "";
+  void loadWorkbench(1);
 }
 
 async function openCreate() {
@@ -405,7 +423,7 @@ onMounted(() => {
         <t-button
           variant="outline"
           :loading="loading"
-          @click="loadWorkbench"
+          @click="loadWorkbench(1)"
         >
           刷新数据
         </t-button>
@@ -452,7 +470,7 @@ onMounted(() => {
           size="small"
           variant="outline"
           :loading="loading"
-          @click="loadWorkbench"
+          @click="loadWorkbench(1)"
         >
           查询
         </t-button>
@@ -466,10 +484,18 @@ onMounted(() => {
         />
       </label>
       <label class="filter-field">
+        <span>生命周期</span>
+        <t-select
+          v-model="filters.view"
+          :options="[{ label: '办理中记录', value: 'active' }, { label: '已放弃草稿', value: 'ended' }]"
+          @change="changeLifecycleView"
+        />
+      </label>
+      <label class="filter-field">
         <span>采购状态</span>
         <t-select
           v-model="filters.status"
-          :options="statusOptions"
+          :options="visibleStatusOptions"
         />
       </label>
       <label class="filter-field filter-field--keyword">
@@ -478,7 +504,7 @@ onMounted(() => {
           v-model="filters.keyword"
           clearable
           placeholder="申请编号、申请人、材料或采购原因"
-          @enter="loadWorkbench"
+          @enter="loadWorkbench(1)"
         />
       </label>
     </BusinessTableToolbar>
@@ -495,7 +521,7 @@ onMounted(() => {
       title="零星采购台账暂不可用"
       :description="loadError"
       action-label="重新加载"
-      @action="loadWorkbench"
+      @action="loadWorkbench(1)"
     />
 
     <section
@@ -589,14 +615,16 @@ onMounted(() => {
         title="当前条件下暂无零星采购"
         description="可以调整筛选条件，或使用页头的“新建采购申请”按钮开始填写。"
       />
+      <t-pagination
+        v-if="listMeta.total > listMeta.pageSize"
+        :current="listMeta.page"
+        :page-size="listMeta.pageSize"
+        :total="listMeta.total"
+        @current-change="changePage"
+      />
       <footer class="data-footer">
         <span>数据范围</span>
-        <p v-if="listMeta.truncated">
-          当前最多展示 {{ listMeta.limit }} 条当前账号可见记录，请收紧筛选条件后继续查询。
-        </p>
-        <p v-else>
-          已展示当前筛选下的全部可见记录。
-        </p>
+        <p>共 {{ listMeta.total }} 条当前账号可见记录，当前第 {{ listMeta.page }} / {{ listMeta.totalPages || 1 }} 页。</p>
       </footer>
     </section>
 

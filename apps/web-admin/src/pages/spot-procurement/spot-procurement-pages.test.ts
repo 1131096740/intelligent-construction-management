@@ -83,6 +83,24 @@ describe("spot procurement web pages", () => {
     );
   });
 
+  it("uses server pagination, lifecycle views and full-set statistics on all three ledgers", () => {
+    const procurement = pageSource("SpotProcurementWorkbenchPage.vue");
+    const payment = pageSource("SpotProcurementPaymentWorkbenchPage.vue");
+    const receipt = pageSource("SpotProcurementReceiptWorkbenchPage.vue");
+
+    for (const source of [procurement, receipt]) {
+      expect(source).toContain("<t-pagination");
+      expect(source).toContain("result.pagination");
+    }
+    expect(procurement).toContain("result.statistics");
+    expect(procurement).toContain("changeLifecycleView");
+    expect(payment).toContain("result.viewCounts");
+    expect(payment).toContain("result.amountSummary");
+    expect(payment).toContain("changeView");
+    expect(receipt).toMatch(/surface:\s*"receipt"/u);
+    expect(`${procurement}\n${payment}\n${receipt}`).not.toContain("limit: 200");
+  });
+
   it("keeps the procurement application free of supplier, price and tax fields", () => {
     const workbench = pageSource("SpotProcurementWorkbenchPage.vue");
     const detail = pageSource("SpotProcurementDetailPage.vue");
@@ -550,6 +568,31 @@ describe("spot procurement web pages", () => {
     expect(payment).not.toContain("router.push('/零星材料付款')");
   });
 
+  it("uses server-owned lifecycle actions for procurement, A5 payment and receipt drafts", () => {
+    const procurement = pageSource("SpotProcurementDetailPage.vue");
+    const payment = pageSource("SpotProcurementPaymentDetailPage.vue");
+    const paymentWorkbench = pageSource("SpotProcurementPaymentWorkbenchPage.vue");
+    const receipt = pageSource("SpotProcurementReceiptPage.vue");
+
+    expect(procurement).toContain("<BusinessDraftAction");
+    expect(procurement).toContain("abandonSpotProcurementDraft");
+    expect(procurement).toContain('"delete_pristine_draft"');
+    expect(procurement).toContain('"abandon_application"');
+    expect(procurement).toContain("recreateSpotProcurementPaymentDraft");
+    expect(procurement).toContain('actionEnabled("create_payment_draft")');
+    expect(payment).toContain("abandonSpotProcurementPaymentDraft");
+    expect(payment).toContain("expectedUpdatedAt: current.payment.updatedAt");
+    expect(payment).toContain("放弃付款草稿");
+    expect(paymentWorkbench).toContain('view: activeView.value');
+    expect(paymentWorkbench).toContain('result.viewCounts');
+    expect(paymentWorkbench).toContain('result.amountSummary');
+    expect(receipt).toContain("resetSpotProcurementReceiptDraft");
+    expect(receipt).toContain("receiptResetAction");
+    expect(receipt).toContain("expectedRevision");
+    expect(receipt).toContain("不删除收货单、旧修订、锁定照片");
+    expect(receipt).not.toContain("删除收货单按钮");
+  });
+
   it("keeps both workbench ledgers inside their own horizontal scroll regions", () => {
     const procurement = pageSource("SpotProcurementWorkbenchPage.vue");
     const payment = pageSource("SpotProcurementPaymentWorkbenchPage.vue");
@@ -581,7 +624,7 @@ describe("spot procurement web pages", () => {
     expect(detail).toContain("查看付款申请");
     expect(`${workbench}\n${detail}`).toContain("?tab=current");
     expect(`${workbench}\n${detail}`).toContain("采购审批完成后将自动生成付款草稿");
-    expect(`${workbench}\n${detail}`).not.toContain("createSpotProcurementPaymentDraft");
+    expect(`${workbench}\n${detail}`).not.toMatch(/\bcreateSpotProcurementPaymentDraft/u);
     expect(`${workbench}\n${detail}`).not.toContain("新建第二张付款申请");
   });
 

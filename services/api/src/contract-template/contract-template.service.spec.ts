@@ -95,13 +95,20 @@ describe("ContractTemplateService", () => {
         updatedAt: new Date("2026-07-10T08:00:00.000Z")
       }
     ];
-    const prisma = {
+    const tx = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) },
       contractBusinessTemplate: { findUnique: jest.fn().mockResolvedValue(template) },
-      contractBusinessTemplateVersion: { findMany: jest.fn().mockResolvedValue(versions) }
+      contractBusinessTemplateVersion: { findMany: jest.fn().mockResolvedValue(versions) },
+      contractScenarioTemplateMapping: { findFirst: jest.fn().mockResolvedValue(null) },
+      contractVersion: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
     } as unknown as PrismaService;
     const service = new ContractTemplateService(prisma, audit as never);
 
-    await expect(service.getTemplate("template-1")).resolves.toEqual({
+    await expect(service.getTemplate("template-1", "staff-1")).resolves.toEqual({
       template,
       versions: [
         expect.objectContaining({ id: "version-2", versionNo: 2, schema: validSchema }),
@@ -112,24 +119,36 @@ describe("ContractTemplateService", () => {
         })
       ]
     });
-    expect(prisma.contractBusinessTemplateVersion.findMany).toHaveBeenCalledWith({
-      where: { templateId: "template-1" },
+    expect(tx.contractBusinessTemplateVersion.findMany).toHaveBeenCalledWith({
+      where: { templateId: "template-1", status: { not: "discarded" } },
       orderBy: { versionNo: "desc" }
     });
     expect(audit.record).not.toHaveBeenCalled();
+    const result = await service.getTemplate("template-1", "staff-1");
+    expect(result.versions[0]?.availableActions).toContainEqual(
+      expect.objectContaining({ key: "discard_version", enabled: true })
+    );
+    expect(result.versions[1]?.availableActions).toContainEqual(
+      expect.objectContaining({ key: "discard_version", enabled: false })
+    );
   });
 
   it("returns a fixed not-found error for missing template detail", async () => {
-    const prisma = {
+    const tx = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) },
       contractBusinessTemplate: { findUnique: jest.fn().mockResolvedValue(null) },
       contractBusinessTemplateVersion: { findMany: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
     } as unknown as PrismaService;
     const service = new ContractTemplateService(prisma, audit as never);
 
-    await expect(service.getTemplate("missing-template")).rejects.toEqual(
+    await expect(service.getTemplate("missing-template", "staff-1")).rejects.toEqual(
       new NotFoundException("业务模板不存在")
     );
-    expect(prisma.contractBusinessTemplateVersion.findMany).not.toHaveBeenCalled();
+    expect(tx.contractBusinessTemplateVersion.findMany).not.toHaveBeenCalled();
   });
 
   it("keeps legacy published precision and zero-percent options readable without rewriting them", async () => {
@@ -163,19 +182,24 @@ describe("ContractTemplateService", () => {
       createdAt: new Date("2026-07-01T00:00:00.000Z"),
       updatedAt: new Date("2026-07-01T00:00:00.000Z")
     };
-    const service = new ContractTemplateService(
-      {
+    const tx = {
         contractBusinessTemplate: {
           findUnique: jest.fn().mockResolvedValue(template)
         },
         contractBusinessTemplateVersion: {
           findMany: jest.fn().mockResolvedValue([version])
-        }
-      } as never,
+        },
+        contractScenarioTemplateMapping: { findFirst: jest.fn().mockResolvedValue(null) },
+        contractVersion: { findFirst: jest.fn().mockResolvedValue(null) },
+        userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) },
+        position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) }
+      };
+    const service = new ContractTemplateService(
+      { $transaction: jest.fn(async (callback) => callback(tx)) } as never,
       audit as never
     );
 
-    await expect(service.getTemplate("template-legacy")).resolves.toMatchObject({
+    await expect(service.getTemplate("template-legacy", "staff-1")).resolves.toMatchObject({
       versions: [
         {
           id: "version-legacy",
@@ -1350,5 +1374,202 @@ describe("ContractTemplateService", () => {
         category: "payment"
       }
     ]);
+  });
+
+  it("discards an unreferenced pristine business template draft exactly once", async () => {
+    const tx = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) },
+      contractBusinessTemplate: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      contractBusinessTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({ templateId: "template-1" }),
+        findMany: jest.fn().mockResolvedValue([{ id: "version-1" }]),
+        count: jest.fn().mockResolvedValue(0),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contractScenarioTemplateMapping: { findFirst: jest.fn().mockResolvedValue(null) },
+      contractVersion: { findFirst: jest.fn().mockResolvedValue(null) },
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: "template-1", status: "draft" }])
+        .mockResolvedValueOnce([{
+          id: "version-1",
+          templateId: "template-1",
+          status: "draft",
+          submittedByUserId: null,
+          publishedAt: null,
+          stoppedAt: null,
+          revokedAt: null,
+          discardedAt: null,
+          updatedAt: new Date("2026-07-20T00:00:00.000Z")
+        }])
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const service = new ContractTemplateService(prisma, audit as never);
+
+    await expect(service.discardVersion(
+      "version-1",
+      "staff-1",
+      "误建草稿",
+      "2026-07-20T00:00:00.000Z"
+    )).resolves.toMatchObject({
+      id: "version-1",
+      status: "discarded"
+    });
+    expect(tx.contractBusinessTemplateVersion.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "version-1",
+        status: "draft",
+        updatedAt: new Date("2026-07-20T00:00:00.000Z"),
+        discardedAt: null
+      },
+      data: expect.objectContaining({ status: "discarded", discardReason: "误建草稿" })
+    });
+    expect(audit.record).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects stale business template discard before reference or state writes", async () => {
+    const tx = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) },
+      contractBusinessTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({ templateId: "template-1" }),
+        updateMany: jest.fn()
+      },
+      contractScenarioTemplateMapping: { findFirst: jest.fn() },
+      contractVersion: { findFirst: jest.fn() },
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: "template-1", status: "draft" }])
+        .mockResolvedValueOnce([{
+          id: "version-1",
+          templateId: "template-1",
+          status: "draft",
+          submittedByUserId: null,
+          publishedAt: null,
+          stoppedAt: null,
+          revokedAt: null,
+          discardedAt: null,
+          updatedAt: new Date("2026-07-20T00:00:01.000Z")
+        }])
+    };
+    const service = new ContractTemplateService(
+      { $transaction: jest.fn(async (callback) => callback(tx)) } as never,
+      audit as never
+    );
+
+    await expect(service.discardVersion(
+      "version-1",
+      "staff-1",
+      "误建草稿",
+      "2026-07-20T00:00:00.000Z"
+    )).rejects.toMatchObject({ status: 409 });
+    expect(tx.contractScenarioTemplateMapping.findFirst).not.toHaveBeenCalled();
+    expect(tx.contractVersion.findFirst).not.toHaveBeenCalled();
+    expect(tx.contractBusinessTemplateVersion.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("returns an already discarded business template version idempotently before CAS", async () => {
+    const discardedAt = new Date("2026-07-20T00:00:02.000Z");
+    const tx = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) },
+      contractBusinessTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({ templateId: "template-1" }),
+        updateMany: jest.fn()
+      },
+      contractScenarioTemplateMapping: { findFirst: jest.fn() },
+      contractVersion: { findFirst: jest.fn() },
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: "template-1", status: "discarded" }])
+        .mockResolvedValueOnce([{
+          id: "version-1",
+          templateId: "template-1",
+          status: "discarded",
+          discardedAt,
+          updatedAt: discardedAt
+        }])
+    };
+    const service = new ContractTemplateService(
+      { $transaction: jest.fn(async (callback) => callback(tx)) } as never,
+      audit as never
+    );
+
+    await expect(service.discardVersion(
+      "version-1",
+      "staff-1",
+      "重复请求",
+      "2026-07-19T00:00:00.000Z"
+    )).resolves.toEqual({ id: "version-1", status: "discarded", discardedAt });
+    expect(tx.contractScenarioTemplateMapping.findFirst).not.toHaveBeenCalled();
+    expect(tx.contractBusinessTemplateVersion.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when a standard clause draft is referenced in governed JSON", async () => {
+    const tx = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }]) },
+      standardClauseVersion: { updateMany: jest.fn() },
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{
+          id: "clause-version-1",
+          clauseId: "clause-1",
+          status: "draft",
+          submittedByUserId: null,
+          publishedAt: null,
+          discardedAt: null,
+          updatedAt: new Date("2026-07-20T00:00:00.000Z")
+        }])
+        .mockResolvedValueOnce([{ referenced: true }])
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const service = new ContractTemplateService(prisma, audit as never);
+
+    await expect(
+      service.discardClauseVersion(
+        "clause-version-1",
+        "director-1",
+        "废弃",
+        "2026-07-20T00:00:00.000Z"
+      )
+    ).rejects.toThrow("该标准条款版本已被模板或合同快照引用，不能废弃");
+    expect(tx.standardClauseVersion.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects stale standard clause discard before its JSON reference query", async () => {
+    const tx = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }]) },
+      standardClauseVersion: { updateMany: jest.fn() },
+      $queryRaw: jest.fn().mockResolvedValueOnce([{
+        id: "clause-version-1",
+        clauseId: "clause-1",
+        status: "draft",
+        submittedByUserId: null,
+        publishedAt: null,
+        discardedAt: null,
+        updatedAt: new Date("2026-07-20T00:00:01.000Z")
+      }])
+    };
+    const service = new ContractTemplateService(
+      { $transaction: jest.fn(async (callback) => callback(tx)) } as never,
+      audit as never
+    );
+
+    await expect(service.discardClauseVersion(
+      "clause-version-1",
+      "director-1",
+      "废弃",
+      "2026-07-20T00:00:00.000Z"
+    )).rejects.toMatchObject({ status: 409 });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.standardClauseVersion.updateMany).not.toHaveBeenCalled();
   });
 });

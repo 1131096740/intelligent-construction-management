@@ -11,7 +11,11 @@ import {
   Optional,
   InternalServerErrorException
 } from "@nestjs/common";
-import { CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS } from "@jiangkong/shared-domain";
+import {
+  CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS,
+  DRAFT_LEDGER_VIEWS,
+  type DraftLedgerView
+} from "@jiangkong/shared-domain";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
@@ -35,6 +39,8 @@ import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
 import { SubmitContractApprovalDto } from "./dto/submit-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 import { CreateContractChangeDraftDto } from "./dto/create-contract-change-draft.dto";
+import { AbandonContractDraftDto } from "./dto/abandon-contract-draft.dto";
+import { CopyContractDraftDto } from "./dto/copy-contract-draft.dto";
 import { UploadContractFormalFileDto } from "./dto/contract-formal-file.dto";
 import { SetContractAuthorizationDto } from "./dto/contract-authorization.dto";
 import { ContractFormalFileService } from "./contract-formal-file.service";
@@ -82,6 +88,26 @@ export class ContractController {
     return this.contracts.createChangeDraft(contractVersionId, body, user.id);
   }
 
+  @Post(":contractVersionId/copies")
+  @RequireProjectRole("contract.create")
+  copyAbandonedDraft(
+    @Param("contractVersionId") contractVersionId: string,
+    @Body() body: CopyContractDraftDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.contracts.copyAbandonedDraft(contractVersionId, user.id, body);
+  }
+
+  @Post(":contractVersionId/abandonment")
+  @RequireProjectRole("contract.create")
+  abandonDraft(
+    @Param("contractVersionId") contractVersionId: string,
+    @Body() body: AbandonContractDraftDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.contracts.abandonDraft(contractVersionId, user.id, body);
+  }
+
   @Get(":contractVersionId/change-eligibility")
   @RequireProjectRole("contract.create")
   changeEligibility(@Param("contractVersionId") contractVersionId: string) {
@@ -92,6 +118,26 @@ export class ContractController {
   @RequirePositions(...LEDGER_READ_POSITION_KEYS)
   async list(@CurrentUser() user: AuthenticatedUser, @Query("limit") limit?: string) {
     return this.contractRead.listRecent(limit, await this.projectVisibility.visibleProjectIds(user.id));
+  }
+
+  @Get("lifecycle-ledger")
+  @RequirePositions(...LEDGER_READ_POSITION_KEYS)
+  async lifecycleLedger(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("view") rawView?: string,
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string
+  ) {
+    const view = DRAFT_LEDGER_VIEWS.includes(rawView as DraftLedgerView)
+      ? rawView as DraftLedgerView
+      : "formal_ledger";
+    return this.contractRead.lifecycleLedger(
+      view,
+      page,
+      pageSize,
+      await this.projectVisibility.visibleProjectIds(user.id),
+      user.id
+    );
   }
 
   @Get("ledger-export")

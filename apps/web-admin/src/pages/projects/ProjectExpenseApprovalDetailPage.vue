@@ -48,6 +48,21 @@
       </t-card>
 
       <t-card
+        v-if="detail.availableActions.length || detail.blockedReasons.length"
+        class="section-card"
+        title="申请处理"
+        :bordered="true"
+      >
+        <BusinessDraftAction
+          :actions="detail.availableActions"
+          :subject="expenseActionSubject"
+          :blocked-reasons="detail.blockedReasons"
+          :execute="executeLifecycleAction"
+          @completed="loadDetail"
+        />
+      </t-card>
+
+      <t-card
         class="section-card"
         title="审批办理"
         :bordered="true"
@@ -115,16 +130,21 @@
 </template>
 
 <script setup lang="ts">
-import type { ProjectExpenseApprovalDetailReadModel } from "@jiangkong/shared-domain";
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute } from "vue-router";
 import ApprovalSelfReviewFields from "../../components/ApprovalSelfReviewFields.vue";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
+import BusinessDraftAction, {
+  type BusinessDraftActionRequest
+} from "../../components/BusinessDraftAction.vue";
 import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
 import {
   fetchProjectExpenseApprovalDetail,
-  reviewProjectExpenseApproval
+  reviewProjectExpenseApproval,
+  voidProjectExpenseRequest,
+  withdrawProjectExpenseApproval,
+  type ProjectExpenseApprovalLifecycleDetailReadModel
 } from "../../api/core-flow-read.api";
 import { centsTextToYuanText } from "../../lib/money";
 import { confirmSensitiveAction } from "../confirm-sensitive-action";
@@ -135,7 +155,7 @@ import {
 } from "./project-expense-approval.config";
 
 const route = useRoute();
-const detail = ref<ProjectExpenseApprovalDetailReadModel | null>(null);
+const detail = ref<ProjectExpenseApprovalLifecycleDetailReadModel | null>(null);
 const loading = ref(false);
 const errorMessage = ref("");
 const busy = ref<"" | "approve" | "reject">("");
@@ -147,6 +167,13 @@ const form = reactive({
   selfReviewReason: "",
   confirmationPassword: ""
 });
+
+const expenseActionSubject = computed(() => ({
+  businessCode: detail.value?.code ?? "—",
+  name: detail.value?.paymentSubject ?? "项目支出申请",
+  lastSavedAt: formatDateTime(detail.value?.lifecycleUpdatedAt),
+  impactScope: "撤回或作废后保留审批、金额与审计历史，不会删除业务记录。"
+}));
 
 function routeIds() {
   return {
@@ -171,6 +198,36 @@ async function loadDetail() {
   } finally {
     loading.value = false;
   }
+}
+
+async function executeLifecycleAction(request: BusinessDraftActionRequest) {
+  const { projectId, expenseRequestId } = routeIds();
+  if (request.action === "withdraw") {
+    await withdrawProjectExpenseApproval(projectId, expenseRequestId);
+    actionTone.value = "success";
+    actionMessage.value = "项目支出申请已撤回，审批历史已保留。";
+    return;
+  }
+  if (request.action === "void") {
+    await voidProjectExpenseRequest(projectId, expenseRequestId, {
+      reason: request.reason
+    });
+    actionTone.value = "success";
+    actionMessage.value = "项目支出申请已作废，审批和金额历史已保留。";
+    return;
+  }
+  throw new Error("当前项目支出不支持该操作，请刷新后重试。");
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
 }
 
 async function submitReview(decision: "approve" | "reject") {

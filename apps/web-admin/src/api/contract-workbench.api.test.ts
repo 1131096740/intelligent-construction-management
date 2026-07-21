@@ -2,6 +2,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addBillRow,
+  abandonContractDraft,
   addContractParty,
   applyBillExcelImport,
   applyContractTypeChange,
@@ -17,6 +18,9 @@ import {
   createStandardClause,
   createWorkbenchDraft,
   deleteBillRow,
+  discardContractTemplateVersion,
+  discardLayoutTemplateVersion,
+  discardStandardClauseVersion,
   downloadBillExcelTemplate,
   fetchContractWorkbench,
   setContractAuthorization,
@@ -34,6 +38,7 @@ import {
   listPublishedContractTemplates,
   listPublishedLayoutTemplates,
   listPublishedStandardClauses,
+  listStandardClauseHistory,
   type PublishedStandardClause,
   previewBillExcelImport,
   previewContractTypeChange,
@@ -129,9 +134,43 @@ describe("contract workbench API client", () => {
   it("fetchContractWorkbench – GET /contract-workbench/:contractId", async () => {
     mockApiFetch.mockReturnValue(makeOkJson({ id: "contract-1" }));
 
-    await fetchContractWorkbench("contract-1");
+    await fetchContractWorkbench("contract/1");
 
-    expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/contract-1");
+    expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/contract%2F1");
+  });
+
+  it("abandons the exact encoded contract version with revision, action and reason", async () => {
+    mockApiFetch.mockReturnValue(makeOkJson({ status: "abandoned" }));
+
+    await abandonContractDraft("version/1", {
+      expectedRevision: 7,
+      action: "abandon_application",
+      reason: "不再继续签订"
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/contracts/version%2F1/abandonment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expectedRevision: 7,
+        action: "abandon_application",
+        reason: "不再继续签订"
+      })
+    });
+  });
+
+  it("preserves the Chinese contract abandonment failure", async () => {
+    mockApiFetch.mockResolvedValue(
+      new Response(JSON.stringify({ message: "合同草稿已被更新，请刷新后再处理" }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+
+    await expect(abandonContractDraft("version-1", {
+      expectedRevision: 6,
+      action: "delete_pristine_draft"
+    })).rejects.toThrow("合同草稿已被更新，请刷新后再处理");
   });
 
   it("connects the governed signing facts and unique workbench submission routes", async () => {
@@ -548,6 +587,32 @@ describe("contract workbench API client", () => {
     expect((mockApiFetch.mock.calls[2][1] as RequestInit).method).toBe("PATCH");
   });
 
+  it("reads contract template history and discards a draft with the saved timestamp", async () => {
+    mockApiFetch.mockImplementation(() => makeOkJson({ id: "template-version-1" }));
+
+    await getContractTemplate("template-1", true);
+    await discardContractTemplateVersion("template-version-1", {
+      reason: "重复草稿",
+      expectedUpdatedAt: "2026-07-20T01:02:03.000Z"
+    });
+
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      1,
+      "/contract-templates/template-1?includeHistory=true"
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      2,
+      "/contract-template-versions/template-version-1/discard",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          reason: "重复草稿",
+          expectedUpdatedAt: "2026-07-20T01:02:03.000Z"
+        })
+      })
+    );
+  });
+
   it("listPublishedLayoutTemplates – GET /contract-layout-templates?contractTypeKey=material_purchase", async () => {
     mockApiFetch.mockReturnValue(makeOkJson([]));
 
@@ -598,6 +663,29 @@ describe("contract workbench API client", () => {
     expect((mockApiFetch.mock.calls[5][1] as RequestInit | undefined)?.method).toBeUndefined();
   });
 
+  it("reads layout history and discards a draft with its revision", async () => {
+    mockApiFetch.mockImplementation(() => makeOkJson({ id: "layout-version-1" }));
+
+    await getLayoutTemplate("layout-template-1", true);
+    await discardLayoutTemplateVersion("layout-version-1", {
+      reason: "重复版式",
+      expectedRevision: 3
+    });
+
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      1,
+      "/contract-layout-templates/layout-template-1?includeHistory=true"
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      2,
+      "/contract-layout-template-versions/layout-version-1/discard",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ reason: "重复版式", expectedRevision: 3 })
+      })
+    );
+  });
+
   it("listPublishedStandardClauses – GET /standard-clauses?category=payment", async () => {
     mockApiFetch.mockReturnValue(
       makeOkJson([
@@ -640,6 +728,32 @@ describe("contract workbench API client", () => {
       "/standard-clause-versions/clause-version-1/submission",
       "/standard-clause-versions/clause-version-1/publication"
     ]);
+  });
+
+  it("reads standard clause history and discards a draft with the saved timestamp", async () => {
+    mockApiFetch.mockImplementation(() => makeOkJson([]));
+
+    await listStandardClauseHistory("付款");
+    await discardStandardClauseVersion("clause-version-1", {
+      reason: "条款重复",
+      expectedUpdatedAt: "2026-07-20T02:03:04.000Z"
+    });
+
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      1,
+      "/standard-clauses/history?category=%E4%BB%98%E6%AC%BE"
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      2,
+      "/standard-clause-versions/clause-version-1/discard",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          reason: "条款重复",
+          expectedUpdatedAt: "2026-07-20T02:03:04.000Z"
+        })
+      })
+    );
   });
 
   it("addBillRow – POST /contract-bills/:billId/rows", async () => {

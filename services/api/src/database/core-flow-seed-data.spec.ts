@@ -53,7 +53,6 @@ describe("coreFlowSeedData", () => {
     expect(seed.fields.map((field) => field.key)).toEqual([
       "projectName",
       "deliveryLocation",
-      "deliveryDeadline",
       "qualityStandard",
       "taxRatePercent",
       "invoiceType",
@@ -201,6 +200,11 @@ describe("coreFlowSeedData", () => {
       "taxRatePercent",
       "invoiceType"
     ]);
+    expect(
+      coreFlowSeedData.laborSubcontractWorkbench.fields
+        .filter((field) => ["plannedStartDate", "plannedEndDate"].includes(field.key))
+        .every((field) => field.required === false)
+    ).toBe(true);
     expect(coreFlowSeedData.laborSubcontractWorkbench.clauses.map((clause) => clause.key)).toEqual([
       "payment",
       "safety",
@@ -237,6 +241,11 @@ describe("coreFlowSeedData", () => {
       "taxRatePercent",
       "invoiceType"
     ]);
+    expect(
+      coreFlowSeedData.equipmentRentalWorkbench.fields
+        .filter((field) => ["rentalStartDate", "rentalEndDate"].includes(field.key))
+        .every((field) => field.required === false)
+    ).toBe(true);
     expect(coreFlowSeedData.genericContractWorkbench.numberingRule).toMatchObject({
       contractTypeKey: "generic_contract",
       isActive: true

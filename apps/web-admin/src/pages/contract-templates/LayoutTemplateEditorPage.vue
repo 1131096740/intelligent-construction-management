@@ -75,12 +75,12 @@
         >
           <t-select
             v-model="selectedVersionId"
-            @change="clearTransientState"
+            @change="selectVersion"
           >
             <t-option
               v-for="version in versions"
               :key="version.id"
-              :label="`V${version.versionNo} · ${templateStatusLabel(version.status)}`"
+              :label="`V${version.versionNo} · ${layoutStatusLabel(version.status)}`"
               :value="version.id"
             />
           </t-select>
@@ -101,7 +101,7 @@
           <span>草稿修订</span>
           <strong>R{{ currentVersion.draftRevision }}</strong>
           <t-tag :theme="currentVersion.status === 'published' ? 'success' : 'default'">
-            {{ templateStatusLabel(currentVersion.status) }}
+            {{ layoutStatusLabel(currentVersion.status) }}
           </t-tag>
         </div>
       </div>
@@ -136,6 +136,15 @@
       <p class="warning">
         已发布版本不可覆盖。固定公司名称、联系人、账号等跨公司内容应改用占位符。
       </p>
+      <BusinessDraftAction
+        v-if="currentVersion"
+        class="version-lifecycle-action"
+        :actions="currentVersion.availableActions ?? []"
+        :blocked-reasons="currentVersion.blockedReasons ?? []"
+        :subject="versionActionSubject"
+        :execute="discardCurrentVersion"
+        @completed="handleDiscardCompleted"
+      />
     </t-card>
 
     <t-card
@@ -205,6 +214,15 @@
         </div>
       </div>
     </t-card>
+    <SensitiveActionDialog
+      v-model="leaveDialogVisible"
+      title="放弃未保存的版式修改？"
+      description="继续后会丢弃尚未上传保存的版式源文件和当前页面填写内容。"
+      confirm-text="放弃并离开"
+      confirm-theme="danger"
+      @confirm="resolveLeaveDecision(true)"
+      @cancel="resolveLeaveDecision(false)"
+    />
   </section>
 </template>
 
@@ -217,6 +235,7 @@ import { useAuthStore } from "../../auth/auth.store";
 import {
   cloneLayoutTemplateVersion,
   createLayoutTemplate,
+  discardLayoutTemplateVersion,
   getLatestLayoutTemplatePreview,
   getLayoutTemplate,
   inspectLayoutTemplateVersion,
@@ -228,6 +247,11 @@ import {
   updateLayoutTemplateVersion
 } from "../../api/contract-workbench.api";
 import { templateStatusLabel } from "../contracts/contract-labels";
+import BusinessDraftAction, {
+  type BusinessDraftActionRequest
+} from "../../components/BusinessDraftAction.vue";
+import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
+import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import { canPublishLayoutVersion, contractTypeOptions } from "./contract-template.config";
 import {
   canMaintainContractTemplates,
@@ -246,6 +270,11 @@ const publicationSummary = ref("");
 const message = ref("");
 const tone = ref<"success" | "danger">("success");
 const timer = ref<number | undefined>();
+const editorBaseline = ref("");
+const lastValidVersionId = ref("");
+const leaveDialogVisible = ref(false);
+const allowNavigation = ref(false);
+let resolvePendingLeave: ((decision: boolean) => void) | null = null;
 const isCreateMode = computed(() => String(route.params.layoutTemplateId ?? "") === "new");
 const versions = computed(() => detail.value?.versions ?? []);
 const currentVersion = computed(() =>
@@ -258,6 +287,12 @@ const governance = computed(() => ({
   canSubmit: currentVersion.value?.status === "draft" && canMaintainTemplates.value,
   canPublish: currentVersion.value?.status === "submitted" && canPublishTemplates.value,
   canClone: currentVersion.value?.status === "published" && canMaintainTemplates.value
+}));
+const versionActionSubject = computed(() => ({
+  businessCode: detail.value?.template.id ?? "—",
+  name: `${detail.value?.template.name ?? "合同版式"} V${currentVersion.value?.versionNo ?? "—"}`,
+  lastSavedAt: formatDateTime(currentVersion.value?.updatedAt),
+  impactScope: "仅废弃当前从未提交的版式草稿；已发布版式和合同生成文件不受影响。"
 }));
 const latestPreview = computed<LayoutTemplatePreviewReadModel | null>(() =>
   currentVersion.value?.latestPreview ?? null
@@ -296,6 +331,45 @@ const placeholders = [
   "{交货地点}",
   "{#材料清单}{名称}{/材料清单}"
 ];
+const isDirty = computed(() => Boolean(editorBaseline.value) && editorSnapshot() !== editorBaseline.value);
+const leaveGuard = useUnsavedChangesGuard({
+  isDirty: () => isDirty.value && !allowNavigation.value,
+  confirmLeave: () => new Promise<boolean>((resolve) => {
+    resolvePendingLeave?.(false);
+    resolvePendingLeave = resolve;
+    leaveDialogVisible.value = true;
+  })
+});
+
+function editorSnapshot() {
+  return JSON.stringify({
+    name: form.name,
+    contractTypeKey: form.contractTypeKey,
+    sourceFiles: sourceFiles.value.map((file) => file.name),
+    publicationSummary: publicationSummary.value
+  });
+}
+
+function syncEditorBaseline() {
+  editorBaseline.value = editorSnapshot();
+  lastValidVersionId.value = selectedVersionId.value;
+}
+
+function resolveLeaveDecision(decision: boolean) {
+  leaveDialogVisible.value = false;
+  const resolve = resolvePendingLeave;
+  resolvePendingLeave = null;
+  resolve?.(decision);
+}
+
+async function selectVersion() {
+  if (!(await leaveGuard.requestClose())) {
+    selectedVersionId.value = lastValidVersionId.value;
+    return;
+  }
+  clearTransientState();
+  syncEditorBaseline();
+}
 
 function selectedFile() {
   const raw = sourceFiles.value[0]?.raw;
@@ -314,14 +388,18 @@ async function createLayout() {
       docxFileId: uploaded.id,
       placeholderSchema: { bills: [] }
     });
+    allowNavigation.value = true;
     await router.replace(`/合同模板库/版式/${created.template.id}`);
+    allowNavigation.value = false;
     detail.value = { template: created.template, versions: [created.version] };
     selectedVersionId.value = created.version.id;
     sourceFiles.value = [];
+    syncEditorBaseline();
     showSuccess("版式草稿已创建");
   } catch (error) {
     showError(error instanceof Error ? error.message : "创建失败");
   } finally {
+    allowNavigation.value = false;
     saving.value = false;
   }
 }
@@ -415,6 +493,22 @@ async function cloneCurrent() {
   }
 }
 
+async function discardCurrentVersion(request: BusinessDraftActionRequest) {
+  const version = currentVersion.value;
+  if (!version || request.action !== "discard_version") {
+    throw new Error("当前版式版本不支持该操作，请刷新后重试");
+  }
+  await discardLayoutTemplateVersion(version.id, {
+    reason: request.reason,
+    expectedRevision: version.draftRevision
+  });
+  await refreshDetail(version.id);
+}
+
+function handleDiscardCompleted() {
+  showSuccess("版式草稿版本已废弃，已发布版式和正式引用均未改变");
+}
+
 async function runVersionAction(action: () => Promise<unknown>, success: string, versionId: string) {
   try {
     await action();
@@ -428,7 +522,7 @@ async function runVersionAction(action: () => Promise<unknown>, success: string,
 async function refreshDetail(preferredVersionId?: string) {
   const templateId = String(route.params.layoutTemplateId ?? "");
   if (!templateId || templateId === "new") return;
-  const result = await getLayoutTemplate(templateId);
+  const result = await getLayoutTemplate(templateId, true);
   detail.value = result;
   form.name = result.template.name;
   form.contractTypeKey = result.template.contractTypeKey;
@@ -438,6 +532,20 @@ async function refreshDetail(preferredVersionId?: string) {
     result.versions.find((version) => version.status === "published")?.id ??
     result.versions[0]?.id ??
     "";
+  clearTransientState();
+  syncEditorBaseline();
+}
+
+function layoutStatusLabel(status: string) {
+  return status === "discarded" ? "已废弃" : templateStatusLabel(status);
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : date.toLocaleString("zh-CN", { hour12: false });
 }
 
 function clearTransientState() {
@@ -468,6 +576,8 @@ onMounted(async () => {
     } catch (error) {
       showError(error instanceof Error ? error.message : "读取版式失败");
     }
+  } else {
+    syncEditorBaseline();
   }
 });
 onBeforeUnmount(() => window.clearInterval(timer.value));
@@ -594,6 +704,10 @@ function translateInspectionList(value: string) {
 
 .warning {
   color: var(--jg-warning);
+}
+
+.version-lifecycle-action {
+  margin-top: var(--jg-space-md);
 }
 
 .reference-list {

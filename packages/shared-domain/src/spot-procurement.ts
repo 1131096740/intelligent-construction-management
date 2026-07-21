@@ -4,7 +4,8 @@ export const SPOT_PROCUREMENT_STATUSES = [
   "approved_in_progress",
   "closed",
   "abnormally_terminated",
-  "voided"
+  "voided",
+  "abandoned"
 ] as const;
 
 export type SpotProcurementStatus = (typeof SPOT_PROCUREMENT_STATUSES)[number];
@@ -127,13 +128,17 @@ export type SpotProcurementArchiveTrigger =
 export function isSpotProcurementBusinessLocked(
   status: SpotProcurementStatus
 ): boolean {
-  return status === "closed" || status === "abnormally_terminated";
+  return (
+    status === "closed" ||
+    status === "abnormally_terminated" ||
+    status === "abandoned"
+  );
 }
 
 export function canAppendSpotProcurementInvoice(
   status: SpotProcurementStatus
 ): boolean {
-  return isSpotProcurementBusinessLocked(status);
+  return status === "closed" || status === "abnormally_terminated";
 }
 
 export const RECEIPT_PHOTO_SOURCES = ["camera", "album"] as const;

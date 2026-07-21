@@ -30,69 +30,31 @@
       </template>
     </BusinessPageHeader>
 
+    <t-tabs v-model="activeView">
+      <t-tab-panel
+        value="formal_ledger"
+        :label="`正式台账 ${lifecycleSummary.formal_ledger}`"
+      />
+      <t-tab-panel
+        v-if="canManageSettlements"
+        value="my_drafts"
+        :label="`我的草稿 ${lifecycleSummary.my_drafts}`"
+      />
+      <t-tab-panel
+        v-if="canManageSettlements"
+        value="returned_for_revision"
+        :label="`退回待修改 ${lifecycleSummary.returned_for_revision}`"
+      />
+      <t-tab-panel
+        value="ended"
+        :label="`已结束 ${lifecycleSummary.ended}`"
+      />
+    </t-tabs>
+
     <BusinessStatusSummary
       :items="summaryValues"
       appearance="metrics"
     />
-
-    <section
-      v-if="canManageSettlements"
-      class="draft-section"
-      aria-labelledby="settlement-draft-title"
-    >
-      <header class="draft-heading">
-        <div>
-          <h2 id="settlement-draft-title">
-            我的草稿
-          </h2>
-          <p>草稿未占用合同额度，也未发起审批；继续填写后仍需通过后台核算。</p>
-        </div>
-        <t-button
-          size="small"
-          variant="text"
-          :loading="draftLoading"
-          @click="loadSettlementDrafts"
-        >
-          刷新草稿
-        </t-button>
-      </header>
-
-      <BusinessFeedback
-        v-if="draftError"
-        state="error"
-        title="结算草稿暂时无法读取"
-        :description="draftError"
-        action-label="重新加载"
-        @action="loadSettlementDrafts"
-      />
-
-      <t-table
-        v-else-if="draftLoading || settlementDraftRows.length"
-        row-key="id"
-        size="small"
-        table-layout="fixed"
-        :columns="settlementDraftColumns"
-        :data="settlementDraftRows"
-        :loading="draftLoading"
-      >
-        <template #taxGapCount="{ row }">
-          <span>{{ row.taxGapCount === null ? "暂不可用" : `${row.taxGapCount} 项` }}</span>
-        </template>
-        <template #operation="{ row }">
-          <t-link
-            theme="primary"
-            @click="continueDraft(row)"
-          >
-            继续填写
-          </t-link>
-        </template>
-      </t-table>
-
-      <t-empty
-        v-else
-        description="当前没有未提交的结算草稿"
-      />
-    </section>
 
     <section
       class="settlement-rules"
@@ -221,15 +183,40 @@
             {{ row.currentNode }}
           </t-tag>
         </template>
+        <template #returnReason="{ row }">
+          {{ activeView === 'ended' ? (row.abandonReason || '—') : row.returnReason }}
+        </template>
         <template #operation="{ row }">
           <t-link
+            v-if="activeView === 'ended' && row.copyAvailable"
             theme="primary"
-            @click="openDetail(row.id)"
+            :disabled="copyingId === row.id"
+            @click="copyEndedSettlement(row)"
           >
-            查看详情
+            {{ copyingId === row.id ? '复制中' : '复制为新草稿' }}
+          </t-link>
+          <span v-else-if="activeView === 'ended'">历史已保留</span>
+          <t-link
+            v-else
+            theme="primary"
+            @click="openLifecycleRow(row)"
+          >
+            {{ activeView === 'my_drafts'
+              ? '继续填写'
+              : activeView === 'returned_for_revision'
+                ? '查看并处理'
+                : '查看详情' }}
           </t-link>
         </template>
       </t-table>
+
+      <t-pagination
+        v-if="!errorMessage && lifecycleMeta.total > lifecycleMeta.pageSize"
+        :current="lifecycleMeta.page"
+        :page-size="lifecycleMeta.pageSize"
+        :total="lifecycleMeta.total"
+        @current-change="changeLifecyclePage"
+      />
 
       <EmptyBusinessState
         v-else-if="!errorMessage"
@@ -256,18 +243,13 @@
 import { MessagePlugin } from "tdesign-vue-next";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import type { PrimaryTableCol } from "tdesign-vue-next";
+import type { DraftLedgerView } from "@jiangkong/shared-domain";
 import {
-  fetchProjects,
-  fetchSettlementContractOptions,
-  fetchSettlementLedger,
+  copyAbandonedSettlementDraft,
+  fetchSettlementLifecycleLedger,
+  type SettlementLifecycleLedgerRow,
   downloadSettlementLedgerExport
 } from "../../api/core-flow-read.api";
-import {
-  listSettlementDraftRecords,
-  type SettlementDraftReadModel
-} from "../../api/settlement-drafts.api";
-import { fetchSettlementSourceLines } from "../../api/settlement-workbench.api";
 import {
   normalizeVisibleColumnKeys,
   readPersonalTablePreferences,
@@ -309,55 +291,54 @@ const canManageSettlements = computed(() =>
 const canExportLedger = computed(() =>
   canExportContractSettlementLedger(roleKeys.value)
 );
+const lifecycleViewValues: DraftLedgerView[] = [
+  "formal_ledger",
+  "my_drafts",
+  "returned_for_revision",
+  "ended"
+];
+function routeLifecycleView(value: unknown): DraftLedgerView {
+  if (
+    typeof value === "string" &&
+    lifecycleViewValues.includes(value as DraftLedgerView) &&
+    (canManageSettlements.value || !["my_drafts", "returned_for_revision"].includes(value))
+  ) {
+    return value as DraftLedgerView;
+  }
+  return "formal_ledger";
+}
+const activeView = ref<DraftLedgerView>(routeLifecycleView(route.query.view));
 const errorMessage = ref("");
-const settlementLedgerRows = ref<SettlementLedgerRow[]>([]);
+const settlementLedgerRows = ref<(SettlementLedgerRow & SettlementLifecycleLedgerRow)[]>([]);
 const settlementFilters = reactive(emptySettlementLedgerFilters());
 const ledgerLoading = ref(false);
 const exportLoading = ref(false);
+const copyingId = ref("");
 const showColumnSettings = ref(false);
 const showSettlementRules = ref(false);
-interface SettlementDraftLedgerRow {
-  id: string;
-  projectId: string;
-  code: string;
-  project: string;
-  contract: string;
-  period: string;
-  taxGapCount: number | null;
-  updatedAt: string;
-  updatedAtRaw: string;
-}
-const settlementDraftRows = ref<SettlementDraftLedgerRow[]>([]);
-const draftLoading = ref(false);
-const draftError = ref("");
-const settlementDraftColumns: PrimaryTableCol<SettlementDraftLedgerRow>[] = [
-  { colKey: "code", title: "结算编号", width: 128 },
-  { colKey: "project", title: "项目", minWidth: 150 },
-  { colKey: "contract", title: "合同", minWidth: 190 },
-  { colKey: "period", title: "结算期间", width: 112 },
-  { colKey: "taxGapCount", title: "税务缺口", width: 104 },
-  { colKey: "updatedAt", title: "最近保存", width: 150 },
-  { colKey: "operation", title: "操作", width: 96, fixed: "right" }
-];
 const configurableSettlementColumnKeys = settlementLedgerColumns
   .map((column) => String(column.colKey))
   .filter((key) => key !== "operation");
 const visibleSettlementColumnKeys = ref<string[]>([...configurableSettlementColumnKeys]);
-const ledgerSummary = ref({
+const lifecycleSummary = ref({
+  formal_ledger: 0,
+  my_drafts: 0,
+  returned_for_revision: 0,
+  ended: 0
+});
+const lifecycleMeta = ref({
+  page: 1,
+  pageSize: 20,
   total: 0,
-  inApproval: 0,
-  pendingArchive: 0,
-  effective: 0,
-  payable: 0
+  totalPages: 0
 });
 
 const summaryValues = computed(() => {
   const values = [
-    ledgerSummary.value.total,
-    ledgerSummary.value.inApproval,
-    ledgerSummary.value.pendingArchive,
-    ledgerSummary.value.effective,
-    ledgerSummary.value.payable
+    lifecycleSummary.value.formal_ledger,
+    lifecycleSummary.value.my_drafts,
+    lifecycleSummary.value.returned_for_revision,
+    lifecycleSummary.value.ended
   ];
 
   return settlementSummaryItems.map((item, index) => ({
@@ -393,15 +374,29 @@ function openCreateWorkbench() {
   void router.push("/结算工作台");
 }
 
-function openDetail(settlementId: string) {
-  void router.push(`/settlements/${settlementId}`);
+function openLifecycleRow(row: SettlementLedgerRow & SettlementLifecycleLedgerRow) {
+  if (row.lifecycleKind !== "formal_record") {
+    void router.push({
+      path: "/结算工作台",
+      query: { draftId: row.id, project: row.projectId }
+    });
+    return;
+  }
+  void router.push(`/settlements/${row.settlementId ?? row.id}`);
 }
 
-function continueDraft(row: SettlementDraftLedgerRow) {
-  void router.push({
-    path: "/结算工作台",
-    query: { draftId: row.id, project: row.projectId }
-  });
+async function copyEndedSettlement(row: SettlementLedgerRow & SettlementLifecycleLedgerRow) {
+  if (!row.copyAvailable || !row.lifecycleUpdatedAt) return;
+  copyingId.value = row.id;
+  try {
+    const created = await copyAbandonedSettlementDraft(row.projectId, row.id, row.lifecycleUpdatedAt);
+    await MessagePlugin.success("已复制为新的结算草稿，旧记录保持只读历史。");
+    await router.push({ path: "/结算工作台", query: { project: row.projectId, draftId: created.id } });
+  } catch (error) {
+    await MessagePlugin.error(error instanceof Error ? error.message : "结算草稿复制失败，请刷新后重试。");
+  } finally {
+    copyingId.value = "";
+  }
 }
 
 function resetSettlementFilters() {
@@ -456,15 +451,25 @@ async function loadSettlementLedger() {
   ledgerLoading.value = true;
   errorMessage.value = "";
   try {
-    const result = await fetchSettlementLedger();
+    const result = await fetchSettlementLifecycleLedger(
+      activeView.value,
+      lifecycleMeta.value.page,
+      lifecycleMeta.value.pageSize
+    );
     settlementLedgerRows.value = result.rows;
-    ledgerSummary.value = result.summary;
+    lifecycleSummary.value = result.summary;
+    lifecycleMeta.value = result.meta;
   } catch (error) {
     const reason = error instanceof Error ? error.message : "未知错误";
     errorMessage.value = `结算记录读取失败：${reason}。这不代表当前没有结算记录；本页统计与台账暂不可用于判断，请检查网络与权限后重试。`;
   } finally {
     ledgerLoading.value = false;
   }
+}
+
+function changeLifecyclePage(page: number) {
+  lifecycleMeta.value.page = page;
+  void loadSettlementLedger();
 }
 
 async function exportSettlementLedger() {
@@ -483,101 +488,32 @@ async function exportSettlementLedger() {
   }
 }
 
-async function loadSettlementDrafts() {
-  if (!canManageSettlements.value) return;
-  draftLoading.value = true;
-  draftError.value = "";
-  try {
-    const projects = await fetchProjects();
-    const projectRows = await Promise.all(
-      projects.map(async (project) => {
-        try {
-          const [drafts, contracts] = await Promise.all([
-            listSettlementDraftRecords(project.id),
-            fetchSettlementContractOptions(project.id)
-          ]);
-          const contractByVersion = new Map(
-            contracts.map((contract) => [
-              contract.contractVersionId,
-              `${contract.contractNo} · ${contract.contractName}`
-            ])
-          );
-          return Promise.all(
-            drafts
-              .filter((draft) => draft.status === "draft")
-              .map(async (draft) => ({
-                id: draft.id,
-                projectId: project.id,
-                code: draft.code,
-                project: `${project.code} · ${project.name}`,
-                contract:
-                  contractByVersion.get(draft.contractVersionId) ??
-                  `合同版本 ${draft.contractVersionId}`,
-                period: draft.periodLabel,
-                taxGapCount: await draftTaxGapCount(draft),
-                updatedAt: formatDraftTime(draft.updatedAt),
-                updatedAtRaw: draft.updatedAt
-              }))
-          );
-        } catch {
-          return [];
-        }
-      })
-    );
-    settlementDraftRows.value = projectRows
-      .flat()
-      .sort((left, right) => right.updatedAtRaw.localeCompare(left.updatedAtRaw));
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : "未知错误";
-    draftError.value =
-      `结算草稿读取失败：${reason}。这不会影响已经发起审批的正式结算；请检查网络与项目权限后重试。`;
-  } finally {
-    draftLoading.value = false;
-  }
-}
-
-async function draftTaxGapCount(draft: SettlementDraftReadModel) {
-  try {
-    const source = await fetchSettlementSourceLines(draft.contractVersionId);
-    const selectedIds = new Set(
-      draft.lines
-        .filter((line) => line.sourceType === "contract_bill_row")
-        .map((line) => line.contractBillRowId)
-        .filter((value): value is string => Boolean(value))
-    );
-    const messages = source.rows
-      .filter((row) => selectedIds.has(row.id) && row.submissionBlocker)
-      .map((row) => row.submissionBlocker!.message);
-    return new Set(messages).size;
-  } catch {
-    return null;
-  }
-}
-
-function formatDraftTime(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : date.toLocaleString("zh-CN", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false
-      });
-}
-
 function statusTagTheme(tone: SettlementTone) {
   return tone;
 }
 
 watch(() => route.query.project, applyRouteProjectFilter, { immediate: true });
 watch(settlementPreferenceStorageKey, loadSettlementColumnPreferences, { immediate: true });
+watch(
+  () => route.query.view,
+  (value) => {
+    const next = routeLifecycleView(value);
+    if (next !== activeView.value) activeView.value = next;
+  }
+);
+watch(activeView, (view) => {
+  lifecycleMeta.value.page = 1;
+  if (route.query.view !== view) {
+    void router.replace({ query: { ...route.query, view } });
+  }
+  void loadSettlementLedger();
+});
 
 onMounted(() => {
+  if (route.query.view !== activeView.value) {
+    void router.replace({ query: { ...route.query, view: activeView.value } });
+  }
   void loadSettlementLedger();
-  if (canManageSettlements.value) void loadSettlementDrafts();
 });
 </script>
 

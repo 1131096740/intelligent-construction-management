@@ -6,6 +6,7 @@ import { RequireProjectRole } from "../auth/decorators/require-project-role.deco
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { LEDGER_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { AssignPaymentApprovalDto } from "./dto/assign-payment-approval.dto";
+import { AbandonPaymentRequestDto } from "./dto/abandon-payment-request.dto";
 import { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
 import { GeneratePaymentPdfArchiveDto } from "./dto/generate-payment-pdf-archive.dto";
 import { RecordFinanceRecordDto } from "./dto/record-finance-record.dto";
@@ -37,8 +38,18 @@ export class PaymentController {
 
   @Get()
   @RequirePositions(...LEDGER_READ_POSITION_KEYS)
-  async list(@CurrentUser() user: AuthenticatedUser, @Query("limit") limit?: string) {
-    return this.paymentRead.listRecent(limit, await this.projectVisibility.visibleProjectIds(user.id));
+  async list(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("limit") limit?: string,
+    @Query("view") view?: "formal_ledger" | "my_drafts" | "returned_for_revision" | "ended",
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string
+  ) {
+    const visibleProjectIds = await this.projectVisibility.visibleProjectIds(user.id);
+    if (view !== undefined || page !== undefined || pageSize !== undefined) {
+      return this.paymentRead.listLedger({ view, page, pageSize }, visibleProjectIds, user.id);
+    }
+    return this.paymentRead.listRecent(limit, visibleProjectIds);
   }
 
   @Post(":paymentId/approval")
@@ -77,6 +88,15 @@ export class PaymentController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.payments.withdrawApproval(paymentId, user.id);
+  }
+
+  @Post(":paymentId/abandonment")
+  abandonRequest(
+    @Param("paymentId") paymentId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: AbandonPaymentRequestDto
+  ) {
+    return this.payments.abandonReturnedRequest(paymentId, user.id, body);
   }
 
   // 超时催办：由申请人发起，督促当前节点审批人；是否超时/重复节流在 service 内判定。

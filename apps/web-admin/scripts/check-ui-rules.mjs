@@ -63,6 +63,11 @@ const visualPatterns = [
   { pattern: /style="[^"]*border-radius\s*:/i, message: "禁止高风险内联圆角样式" }
 ];
 
+const nativeConfirmationPatterns = [
+  { pattern: /\bwindow\s*\.\s*confirm\s*\(/, message: "使用 SensitiveActionDialog，不要使用原生 confirm" },
+  { pattern: /\bwindow\s*\.\s*prompt\s*\(/, message: "使用 TDesign 对话框，不要使用原生 prompt" }
+];
+
 const businessLanguageAllowlistedFiles = new Set(["src/api/error-message.ts"]);
 
 const businessLanguagePatterns = [
@@ -293,6 +298,13 @@ export function findUiRuleViolations(filePath, source) {
   return [...violations, ...responsiveViolations];
 }
 
+export function findNativeConfirmationViolations(filePath, source) {
+  const relative = relativePath(filePath);
+  return nativeConfirmationPatterns.flatMap((rule) =>
+    rule.pattern.test(source) ? [{ file: relative, message: rule.message }] : []
+  );
+}
+
 function visibleTemplateText(source) {
   const match = source.match(/<template[^>]*>([\s\S]*?)<\/template>/i);
   if (!match) return "";
@@ -421,6 +433,10 @@ function runSelfTest() {
     ].join("\n"),
     "ledger"
   );
+  const nativeConfirmationBad = findNativeConfirmationViolations(
+    path.join(ROOT, "src/pages/contracts/NativeConfirmationBad.ts"),
+    "window.confirm('确认删除'); window.prompt('请输入原因');"
+  );
 
   if (
     bad.length < 2 ||
@@ -433,7 +449,9 @@ function runSelfTest() {
     !languageBad.some((violation) => violation.message.includes("snapshot")) ||
     languageInternal.length !== 0 ||
     responsiveGood.length !== 0 ||
-    responsiveBad.length !== 5
+    responsiveBad.length !== 5 ||
+    !nativeConfirmationBad.some((violation) => violation.message.includes("原生 confirm")) ||
+    !nativeConfirmationBad.some((violation) => violation.message.includes("原生 prompt"))
   ) {
     console.error("UI 和业务语言规则自检失败");
     process.exit(1);
@@ -455,10 +473,17 @@ function main() {
   const uiViolations = listSourceFiles(sourceDir).flatMap((filePath) =>
     findUiRuleViolations(filePath, fs.readFileSync(filePath, "utf8"))
   );
+  const nativeConfirmationViolations = listSourceFiles(sourceDir, /\.(vue|ts)$/).flatMap((filePath) =>
+    findNativeConfirmationViolations(filePath, fs.readFileSync(filePath, "utf8"))
+  );
   const businessLanguageViolations = listSourceFiles(sourceDir, /\.(vue|ts)$/).flatMap((filePath) =>
     findBusinessLanguageViolations(filePath, fs.readFileSync(filePath, "utf8"))
   );
-  const violations = [...uiViolations, ...businessLanguageViolations];
+  const violations = [
+    ...uiViolations,
+    ...nativeConfirmationViolations,
+    ...businessLanguageViolations
+  ];
 
   if (violations.length > 0) {
     violations.forEach((violation) => console.error(`${violation.file}: ${violation.message}`));

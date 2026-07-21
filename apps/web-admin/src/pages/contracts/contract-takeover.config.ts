@@ -4,6 +4,7 @@ import type {
   ContractInvoiceType,
   ContractLifecycleStatus,
   ContractTakeoverCentsValue,
+  ContractTakeoverBatchAbandonmentPreviewReadModel,
   ContractTakeoverLevel,
   ContractTakeoverReadModel,
   HistoricalCompanyEntityCandidateReadModel,
@@ -404,6 +405,18 @@ export function buildImportDraftsMessage(result: ImportDraftsMessageInput): stri
   const skippedText =
     result.skippedCount > 0 ? `，已跳过重复行 ${result.skippedCount} 行` : "";
   return `${result.batchNo} 已生成 ${result.createdCount} 份接管草稿${warningText}${skippedText}，请进入草稿核对后再提交复核。`;
+}
+
+export function takeoverBatchAbandonmentDisabledReason(
+  preview: Pick<ContractTakeoverBatchAbandonmentPreviewReadModel, "eligible" | "blocked">
+): string {
+  if (preview.blocked > 0) {
+    return "批次清理采用全有或全无规则。当前仍有被阻断记录，请先逐条处理全部阻断，再重新预览。";
+  }
+  if (preview.eligible === 0) {
+    return "本次预览没有可清理记录，系统不会改变任何接管记录。";
+  }
+  return "";
 }
 
 export function importPrecheckRowStatusLabel(status: string): string {

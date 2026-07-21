@@ -9,6 +9,7 @@ import { PaymentController } from "./payment.controller";
 
 type PaymentBodyMethod =
   | "create"
+  | "abandonRequest"
   | "reviewApproval"
   | "transferApproval"
   | "delegateApproval"
@@ -163,6 +164,10 @@ describe("PaymentController authorization wiring", () => {
   );
 
   it.each([
+    [
+      "abandonRequest",
+      { expectedUpdatedAt: "2026-07-19T10:00:00.000Z", reason: "付款依据无法补齐" }
+    ],
     ["transferApproval", { toUserId: "user-2" }],
     ["delegateApproval", { toUserId: "user-2" }],
     [
@@ -189,6 +194,22 @@ describe("PaymentController authorization wiring", () => {
 
     expect(result).toEqual(value);
     expect(result).toBeInstanceOf(paymentBodyMetatype(method, 2));
+  });
+
+  it("validates payment abandonment CAS and reason without exposing unknown values", async () => {
+    const invalidDate = await getPaymentValidationResponse("abandonRequest", 2, {
+      expectedUpdatedAt: "not-a-date",
+      reason: "无法补齐"
+    });
+    expect(invalidDate.errors).toContain("付款申请更新时间不正确，请刷新后重试");
+
+    const unknown = await getPaymentValidationResponse("abandonRequest", 2, {
+      expectedUpdatedAt: "2026-07-19T10:00:00.000Z",
+      reason: "无法补齐",
+      internalSecret: "TOP-SECRET"
+    });
+    expect(unknown.errors).toEqual(["internalSecret 不是允许提交的字段"]);
+    expect(JSON.stringify(unknown)).not.toContain("TOP-SECRET");
   });
 
   it.each([100, -1, "-1", "1.2", "1e3", " 1", "01", ""])(
@@ -374,6 +395,23 @@ describe("PaymentController authorization wiring", () => {
     expect(payments.create).toHaveBeenCalledWith(body, "user-1");
   });
 
+  it("passes payment abandonment to the domain service as the current user", async () => {
+    const payments = { abandonReturnedRequest: jest.fn().mockResolvedValue({ status: "abandoned" }) };
+    const controller = new PaymentController({} as never, payments as never, {} as never);
+    const body = await validatePaymentBody("abandonRequest", 2, {
+      expectedUpdatedAt: "2026-07-19T10:00:00.000Z",
+      reason: "付款依据无法补齐"
+    });
+
+    await controller.abandonRequest("payment-1", { id: "applicant-1" } as never, body as never);
+
+    expect(payments.abandonReturnedRequest).toHaveBeenCalledWith(
+      "payment-1",
+      "applicant-1",
+      body
+    );
+  });
+
   it("is not publicly accessible (auth guard must run)", () => {
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, PaymentController)).toBeFalsy();
   });
@@ -394,7 +432,7 @@ describe("PaymentController authorization wiring", () => {
     expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler)).toBe(action);
   });
 
-  it.each([["withdrawApproval"], ["remindApproval"]])(
+  it.each([["withdrawApproval"], ["remindApproval"], ["abandonRequest"]])(
     "allows the approval applicant to %s without project approval action metadata",
     (method) => {
       const handler = (PaymentController.prototype as unknown as Record<string, object>)[method];
@@ -439,5 +477,31 @@ describe("PaymentController authorization wiring", () => {
 
     expect(projectVisibility.visibleProjectIds).toHaveBeenCalledWith("user-1");
     expect(paymentRead.getDetail).toHaveBeenCalledWith("FK-2026-011", ["project-1"], "user-1");
+  });
+
+  it("keeps legacy payment list calls and forwards server ledger paging only when requested", async () => {
+    const paymentRead = {
+      listRecent: jest.fn().mockResolvedValue({ rows: [] }),
+      listLedger: jest.fn().mockResolvedValue({ rows: [] })
+    };
+    const projectVisibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
+    const controller = new PaymentController(paymentRead as never, {} as never, projectVisibility as never);
+
+    await controller.list({ id: "user-1" } as never, "50");
+    expect(paymentRead.listRecent).toHaveBeenCalledWith("50", ["project-1"]);
+    expect(paymentRead.listLedger).not.toHaveBeenCalled();
+
+    await controller.list(
+      { id: "user-1" } as never,
+      undefined,
+      "returned_for_revision",
+      "2",
+      "20"
+    );
+    expect(paymentRead.listLedger).toHaveBeenCalledWith(
+      { view: "returned_for_revision", page: "2", pageSize: "20" },
+      ["project-1"],
+      "user-1"
+    );
   });
 });

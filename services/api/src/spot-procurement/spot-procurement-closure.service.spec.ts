@@ -71,6 +71,34 @@ describe("SpotProcurementClosureService", () => {
     });
   });
 
+  it("keeps abandoned procurement terminal instead of recalculating it as closed", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{
+        id: "procurement-1",
+        projectId: "project-1",
+        currentVersionId: "version-1",
+        status: "abandoned",
+        approvedAmountCents: null,
+        actualCostCents: null
+      }])
+    };
+    const service = new SpotProcurementClosureService({ record: jest.fn() } as never);
+
+    await expect(
+      service.recalculateAndClose(
+        tx as never,
+        "procurement-1",
+        "payment.changed",
+        "material-1"
+      )
+    ).resolves.toEqual({
+      closed: false,
+      alreadyClosed: false,
+      blockers: ["procurement_not_open"]
+    });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
   it("closes the procurement and locks its receipt in the same transaction", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([

@@ -114,7 +114,14 @@ const ledgerBody = {
       stalledFor: "5 小时",
       returnReason: "-",
       nextAction: "登记实付",
-      updatedAt: "07-14 09:20"
+      updatedAt: "07-14 09:20",
+      lifecycleKind: "formal_record",
+      ledgerView: "formal_ledger",
+      lifecycleUpdatedAt: "2026-07-14T09:20:00.000Z",
+      requestedAmountCents: "25600000",
+      paidAmountCents: "0",
+      availableActions: [],
+      blockedReasons: []
     },
     {
       id: "FK-UI-002",
@@ -133,7 +140,14 @@ const ledgerBody = {
       stalledFor: "1 天",
       returnReason: "-",
       nextAction: "等待审批",
-      updatedAt: "07-13 16:45"
+      updatedAt: "07-13 16:45",
+      lifecycleKind: "formal_record",
+      ledgerView: "formal_ledger",
+      lifecycleUpdatedAt: "2026-07-13T16:45:00.000Z",
+      requestedAmountCents: "18000000",
+      paidAmountCents: "0",
+      availableActions: [],
+      blockedReasons: []
     },
     {
       id: "FK-UI-003",
@@ -152,10 +166,27 @@ const ledgerBody = {
       stalledFor: "2 小时",
       returnReason: "-",
       nextAction: "确认入账",
-      updatedAt: "07-14 08:10"
+      updatedAt: "07-14 08:10",
+      lifecycleKind: "formal_record",
+      ledgerView: "formal_ledger",
+      lifecycleUpdatedAt: "2026-07-14T08:10:00.000Z",
+      requestedAmountCents: "8600000",
+      paidAmountCents: "8600000",
+      availableActions: [],
+      blockedReasons: []
     }
   ],
-  summary: { total: 3, pendingApproval: 1, orSign: 1, pendingPayment: 1, paid: 1 }
+  view: "formal_ledger",
+  hasPersistentDraft: false,
+  pagination: { page: 1, pageSize: 20, total: 3, totalPages: 1 },
+  viewCounts: { formal_ledger: 3, my_drafts: 0, returned_for_revision: 0, ended: 0 },
+  statistics: {
+    formalRequestedAmountCents: "52200000",
+    formalPaidAmountCents: "8600000",
+    pendingApproval: 1,
+    pendingPayment: 1,
+    paid: 1
+  }
 };
 
 const contractOption = {
@@ -415,7 +446,7 @@ test("captures the UI P0 enterprise sample and reproducible states", async ({ pa
   await page.route("**/api/payments/FK-LOAD-001", (route) => {
     pendingLoadingRoute = route;
   });
-  await page.route("**/api/payments", (route) => {
+  await page.route("**/api/payments?*", (route) => {
     if (ledgerMode === "failure") {
       return route.fulfill({
         status: 500,
@@ -434,7 +465,7 @@ test("captures the UI P0 enterprise sample and reproducible states", async ({ pa
 
   await page.goto("/付款管理");
   await expect(page.getByRole("heading", { name: "付款管理" })).toBeVisible();
-  await expect(page.getByText(/暂不支持翻页/)).toBeVisible();
+  await expect(page.getByText(/当前页由服务端按权限范围分页返回/)).toBeVisible();
   await captureRequiredViewports(page, "payment-ledger", "payment-ledger-normal");
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -443,7 +474,7 @@ test("captures the UI P0 enterprise sample and reproducible states", async ({ pa
   await expect(page.getByText("付款记录暂时无法读取")).toBeVisible();
   await expect(page.locator(".business-status-summary")).toContainText("—");
   await expect(page.getByText("数据成功加载后，将在此说明本次展示范围。")).toBeVisible();
-  await expect(page.getByText(/暂不支持翻页/)).toHaveCount(0);
+  await expect(page.getByText(/当前页由服务端按权限范围分页返回/)).toHaveCount(0);
   await capture(page, "payment-ledger-failure-1440x900.png");
   ledgerMode = "normal";
 

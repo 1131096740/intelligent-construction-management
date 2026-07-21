@@ -61,8 +61,25 @@ describe("payment workbench structure", () => {
     expect(workbench).toContain("<PaymentConfirmationSummary");
     expect(workbench).toContain('v-if="selectedContract"');
     expect(workbench).toContain("yuanTextToCentsText");
-    expect(workbench).toContain("onBeforeRouteLeave");
+    expect(workbench).toContain("useUnsavedChangesGuard");
+    expect(workbench).toContain("放弃填写");
     expect(workbench).toContain("<SensitiveActionDialog");
+  });
+
+  it("uses the server-owned payment lifecycle views and detail CAS action", () => {
+    expect(ledger).toContain("fetchPaymentLifecycleLedger");
+    expect(ledger).toContain('value="formal_ledger"');
+    expect(ledger).toContain('value="my_drafts"');
+    expect(ledger).toContain('value="returned_for_revision"');
+    expect(ledger).toContain('value="ended"');
+    expect(ledger).toContain("不保存服务端草稿");
+    expect(ledger).toContain("<t-pagination");
+    expect(detail).toContain("<BusinessDraftAction");
+    expect(detail).toContain(':actions="paymentOperationalActions"');
+    expect(detail).toContain('action.key !== "abandon_application"');
+    expect(detail).toContain('action?.enabled && action.key !== "abandon_application"');
+    expect(detail).toContain("abandonPaymentRequest");
+    expect(detail).toContain("lifecycleUpdatedAt");
   });
 
   it("uses six detail tabs and one sensitive action dialog without browser confirms", () => {

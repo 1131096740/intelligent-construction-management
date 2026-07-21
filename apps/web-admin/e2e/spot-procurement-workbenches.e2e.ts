@@ -336,7 +336,13 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
               })
             : path.endsWith("/procurement-1")
               ? procurementDetail()
-              : { items: [procurementListRow()], truncated: false, limit: 200 };
+              : {
+                  items: [procurementListRow()],
+                  view: "active",
+                  surface: "procurement",
+                  pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+                  statistics: { total: 1, byStatus: { approved_in_progress: 1 } }
+                };
     return route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
   });
   await page.route("**/api/spot-procurement-payments**", (route) => {
@@ -1978,4 +1984,104 @@ test("does not record a delayed refund upload after switching from receipt A to 
   releaseUpload.resolve();
   await expect(page.getByText("已阻止跨单写入", { exact: true })).toBeVisible();
   await expect.poll(() => refundWrites).toBe(0);
+});
+
+test("executes server-owned procurement, A5 payment and receipt draft lifecycle actions", async ({ page }) => {
+  await mockLogin(page);
+  const requests: Array<{ path: string; body: unknown }> = [];
+  const procurementFixture = procurementDetail();
+  const draftProcurement = {
+    ...procurementFixture,
+    procurement: {
+      ...procurementFixture.procurement,
+      status: "draft",
+      statusLabel: "草稿"
+    },
+    currentVersion: {
+      ...procurementFixture.currentVersion,
+      status: "draft",
+      statusLabel: "草稿"
+    },
+    availableActions: [{
+      key: "delete_pristine_draft", label: "删除采购草稿", kind: "danger", enabled: true,
+      disabledReason: null, requiresComment: false, requiresPassword: false
+    }],
+    primaryAction: null,
+    receipt: {
+      ...receiptSummary,
+    workflow: {
+      stage: "reset_unsubmitted_receipt",
+      stageLabel: "可重置未提交收货",
+      resetAction: {
+        key: "reset_receipt_draft",
+        label: "重置未提交收货",
+        enabled: true,
+        disabledReason: null,
+        expectedRevision: 1
+      }
+    }
+    }
+  };
+  const paymentFixture = paymentDetail();
+  const draftPayment = {
+    ...paymentFixture,
+    payment: {
+      ...paymentFixture.payment,
+      status: "draft",
+      statusLabel: "付款草稿",
+      updatedAt: now
+    },
+    availableActions: [{
+      key: "abandon_payment_draft", label: "放弃付款草稿", kind: "danger", enabled: true,
+      disabledReason: null, requiresComment: true, requiresPassword: false
+    }],
+    primaryAction: null
+  };
+
+  await page.route("**/api/spot-procurements/**", async (route) => {
+    const request = route.request();
+    const pathName = new URL(request.url()).pathname;
+    if (request.method() !== "GET") {
+      requests.push({ path: pathName, body: request.postDataJSON() });
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "ok" }) });
+    }
+    const body = pathName.endsWith("/receipt") ? receiptDetail() : draftProcurement;
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
+  });
+  await page.route("**/api/spot-procurement-payments/**", async (route) => {
+    const request = route.request();
+    if (request.method() !== "GET") {
+      requests.push({ path: new URL(request.url()).pathname, body: request.postDataJSON() });
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "payment-1" }) });
+    }
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(draftPayment) });
+  });
+
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+
+  await page.goto("/零星采购/procurement-1");
+  await page.getByText("审批与动作", { exact: true }).click();
+  await page.getByRole("button", { name: "删除采购草稿" }).click();
+  await page.getByRole("button", { name: "确认删除草稿" }).click();
+  await expect.poll(() => requests.some((request) => request.path.endsWith("/procurement-1/abandonment"))).toBe(true);
+
+  await page.goto("/零星材料付款/payment-1");
+  await page.getByText("审批进度", { exact: true }).click();
+  await page.getByRole("button", { name: "放弃付款草稿" }).click();
+  await page.getByPlaceholder("说明本次操作原因").fill("付款对象需要重新确认");
+  await page.getByRole("button", { name: "确认放弃付款草稿" }).click();
+  await expect.poll(() => requests.some((request) => request.path.endsWith("/payment-1/abandonment"))).toBe(true);
+
+  await page.goto("/零星采购收货/procurement-1");
+  await page.getByRole("button", { name: "重置未提交收货" }).click();
+  await page.getByRole("button", { name: "确认重置" }).click();
+  await expect.poll(() => requests.some((request) => request.path.endsWith("/receipt/draft-reset"))).toBe(true);
+  expect(requests).toEqual(expect.arrayContaining([
+    expect.objectContaining({ body: { action: "delete_pristine_draft" } }),
+    expect.objectContaining({ body: { expectedUpdatedAt: now, reason: "付款对象需要重新确认" } }),
+    expect.objectContaining({ body: { expectedRevision: 1 } })
+  ]));
 });

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
@@ -29,8 +29,16 @@ export class ProjectExpenseController {
 
   @Get()
   @RequirePositions(...FUNDS_OVERVIEW_POSITIONS)
-  list(@Param("projectId") projectId: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.expenses.list(projectId, user.id);
+  list(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("view") view?: "formal_ledger" | "my_drafts" | "returned_for_revision" | "ended",
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string
+  ) {
+    return view !== undefined || page !== undefined || pageSize !== undefined
+      ? this.expenses.list(projectId, user.id, { view, page, pageSize })
+      : this.expenses.list(projectId, user.id);
   }
 
   @Get(":expenseRequestId/approval-detail")

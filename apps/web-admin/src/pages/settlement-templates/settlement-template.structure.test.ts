@@ -29,7 +29,7 @@ describe("settlement template governance structure", () => {
     expect(editorPage).toContain('theme="file-input"');
     expect(editorPage).toContain("inspectionReport.blockingErrors");
     expect(editorPage).not.toContain("<pre");
-    expect(editorPage).not.toContain("JSON.stringify");
+    expect(editorPage).not.toContain("{{ JSON.stringify");
     expect(editorPage).not.toContain("xlsxFileId }}");
     expect(editorPage).not.toContain("previewXlsxFileId");
   });
@@ -60,5 +60,20 @@ describe("settlement template governance structure", () => {
     expect(workbenchApi).not.toContain("settlementTemplateVersionId?: string;");
     expect(businessOptions).not.toContain("buildSettlementCreatePayload");
     expect(businessOptions).not.toContain("amountYuan");
+  });
+
+  it("uses server lifecycle actions and revision CAS for settlement template drafts", () => {
+    expect(editorPage).toContain("<BusinessDraftAction");
+    expect(editorPage).toContain("currentVersion.availableActions ?? []");
+    expect(editorPage).toContain("discardSettlementTemplateVersion");
+    expect(editorPage).toContain("expectedRevision: version.draftRevision");
+    expect(editorPage).toContain("getSettlementTemplate(templateId, true)");
+  });
+
+  it("protects unsaved rules, files and version switching", () => {
+    expect(editorPage).toContain("useUnsavedChangesGuard");
+    expect(editorPage).toContain("leaveGuard.requestClose()");
+    expect(editorPage).toContain("<SensitiveActionDialog");
+    expect(editorPage).toContain('@change="selectVersion"');
   });
 });

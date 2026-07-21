@@ -132,7 +132,7 @@ export class SpotProcurementClosureService {
     if (procurement.status === "closed") {
       return { closed: true, alreadyClosed: true, blockers: [] };
     }
-    if (procurement.status === "voided") {
+    if (["voided", "abandoned", "abnormally_terminated"].includes(procurement.status)) {
       return {
         closed: false,
         alreadyClosed: false,

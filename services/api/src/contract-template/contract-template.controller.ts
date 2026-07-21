@@ -26,6 +26,10 @@ import {
   UpdateBusinessTemplateVersionDto
 } from "./dto/contract-template.dto";
 import {
+  DiscardRevisionedTemplateVersionDto,
+  DiscardTemplateVersionDto
+} from "./dto/discard-template-version.dto";
+import {
   CreateLayoutTemplateDto,
   LayoutTemplatePreviewSampleDataDto,
   PublishTemplateChangeDto,
@@ -132,9 +136,10 @@ export class ContractTemplateController {
   @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
   getLayoutTemplate(
     @Param("templateId") templateId: string,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("includeHistory") includeHistory?: string
   ) {
-    return this.layouts.getLayoutTemplate(templateId, user.id);
+    return this.layouts.getLayoutTemplate(templateId, user.id, includeHistory === "true");
   }
 
   @Patch("contract-layout-template-versions/:versionId")
@@ -203,6 +208,16 @@ export class ContractTemplateController {
     return this.layouts.cloneVersion(versionId, user.id);
   }
 
+  @Post("contract-layout-template-versions/:versionId/discard")
+  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
+  discardLayout(
+    @Param("versionId") versionId: string,
+    @Body() body: DiscardRevisionedTemplateVersionDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.layouts.discardVersion(versionId, user.id, body.reason, body.expectedRevision);
+  }
+
   @Post("contract-layout-template-versions/:versionId/stop")
   @RequirePositions(...TEMPLATE_PUBLICATION_POSITIONS)
   stopLayout(
@@ -232,8 +247,12 @@ export class ContractTemplateController {
 
   @Get("contract-templates/:templateId")
   @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
-  getTemplate(@Param("templateId") templateId: string) {
-    return this.templates.getTemplate(templateId);
+  getTemplate(
+    @Param("templateId") templateId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("includeHistory") includeHistory?: string
+  ) {
+    return this.templates.getTemplate(templateId, user.id, includeHistory === "true");
   }
 
   @Post("contract-templates")
@@ -262,6 +281,16 @@ export class ContractTemplateController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.templates.cloneVersion(versionId, user.id);
+  }
+
+  @Post("contract-template-versions/:versionId/discard")
+  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
+  discardVersion(
+    @Param("versionId") versionId: string,
+    @Body() body: DiscardTemplateVersionDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.templates.discardVersion(versionId, user.id, body.reason, body.expectedUpdatedAt);
   }
 
   @Post("contract-template-versions/:versionId/submission")
@@ -310,6 +339,15 @@ export class ContractTemplateController {
     return this.templates.listPublishedClauses(category);
   }
 
+  @Get("standard-clauses/history")
+  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
+  listClauseHistory(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("category") category?: string
+  ) {
+    return this.templates.listClauseHistory(user.id, category);
+  }
+
   @Post("standard-clauses")
   @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
   createClause(
@@ -326,6 +364,21 @@ export class ContractTemplateController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.templates.submitClauseVersion(versionId, user.id);
+  }
+
+  @Post("standard-clause-versions/:versionId/discard")
+  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
+  discardClauseVersion(
+    @Param("versionId") versionId: string,
+    @Body() body: DiscardTemplateVersionDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.templates.discardClauseVersion(
+      versionId,
+      user.id,
+      body.reason,
+      body.expectedUpdatedAt
+    );
   }
 
   @Post("standard-clause-versions/:versionId/publication")

@@ -12,12 +12,14 @@ describe("business read-only page boundaries", () => {
 
     expect(contracts).toContain('v-if="canManageContracts"');
     expect(contracts).toContain(
-      "if (canManageContracts.value) void loadMyDrafts();"
+      '!["my_drafts", "returned_for_revision"].includes(activeTab.value)'
     );
+    expect(contracts).not.toContain("loadMyDrafts");
     expect(settlements).toContain('v-if="canManageSettlements"');
     expect(settlements).toContain(
-      "if (canManageSettlements.value) void loadSettlementDrafts();"
+      '(canManageSettlements.value || !["my_drafts", "returned_for_revision"].includes(value))'
     );
+    expect(settlements).not.toContain("loadSettlementDrafts");
   });
 
   it("keeps historical takeover writes behind their original business permissions", () => {

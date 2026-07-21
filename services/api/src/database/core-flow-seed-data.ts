@@ -211,7 +211,6 @@ export const coreFlowSeedData = {
     fields: [
       { key: "projectName", label: "项目名称", type: "text", required: true, group: "basic", order: 5 },
       { key: "deliveryLocation", label: "交货地点", type: "text", required: true, group: "delivery", order: 10 },
-      { key: "deliveryDeadline", label: "交货期限", type: "date", required: true, group: "delivery", order: 20 },
       { key: "qualityStandard", label: "质量标准", type: "long_text", required: true, group: "quality", order: 30 },
       taxRateField(40),
       invoiceTypeField(45),
@@ -405,8 +404,8 @@ export const coreFlowSeedData = {
       changeSummary: "初始化工程机械设备租赁合同模板 v1"
     },
     fields: [
-      { key: "rentalStartDate", label: "租赁开始日期", type: "date", required: true, group: "period", order: 10 },
-      { key: "rentalEndDate", label: "租赁结束日期", type: "date", required: true, group: "period", order: 20 },
+      { key: "rentalStartDate", label: "租赁开始日期", type: "date", required: false, group: "period", order: 10 },
+      { key: "rentalEndDate", label: "租赁结束日期", type: "date", required: false, group: "period", order: 20 },
       { key: "useLocation", label: "使用项目及地点", type: "text", required: true, group: "project", order: 30 },
       { key: "settlementCycle", label: "对账结算周期", type: "text", required: true, defaultValue: "上月16日至本月15日", group: "settlement", order: 40 },
       { key: "paymentRatioPercent", label: "当期付款比例(%)", type: "number", required: true, defaultValue: 80, group: "payment", order: 50 },
@@ -553,8 +552,8 @@ export const coreFlowSeedData = {
       { key: "projectName", label: "项目名称", type: "text", required: true, defaultValue: TRIAL_PROJECT_NAME, group: "basic", order: 5 },
       { key: "workScope", label: "劳务分包作业范围及内容", type: "long_text", required: true, group: "scope", order: 10 },
       { key: "workLocation", label: "劳务分包作业地点", type: "text", required: true, group: "scope", order: 20 },
-      { key: "plannedStartDate", label: "计划开工日期", type: "date", required: true, group: "period", order: 30 },
-      { key: "plannedEndDate", label: "计划完工日期", type: "date", required: true, group: "period", order: 40 },
+      { key: "plannedStartDate", label: "计划开工日期", type: "date", required: false, group: "period", order: 30 },
+      { key: "plannedEndDate", label: "计划完工日期", type: "date", required: false, group: "period", order: 40 },
       { key: "settlementCycle", label: "结算周期", type: "text", required: true, defaultValue: "按月结算", group: "settlement", order: 50 },
       { key: "progressPaymentRatioPercent", label: "进度款支付比例(%)", type: "number", required: true, defaultValue: 80, group: "payment", order: 60 },
       taxRateField(70),

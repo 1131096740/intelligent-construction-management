@@ -266,6 +266,8 @@ import {
 const props = defineProps<{
   bill: WorkbenchBill;
   disabled: boolean;
+  prepareMutation?: () => Promise<unknown | null>;
+  completeMutation?: (reload: boolean) => Promise<void>;
 }>();
 
 const emit = defineEmits<{
@@ -480,7 +482,13 @@ async function previewImport(files: UploadFile[]) {
   busy.value = true;
   message.value = "";
   messageDanger.value = false;
+  let prepared = false;
   try {
+    if (props.prepareMutation) {
+      const current = await props.prepareMutation();
+      if (!current) throw new Error("合同草稿未保存，本次未执行清单导入预览");
+      prepared = true;
+    }
     const uploaded = await uploadPrivateFile(file, file.name);
     importPreview.value = await previewBillExcelImport(props.bill.id, {
       fileId: uploaded.id,
@@ -492,6 +500,7 @@ async function previewImport(files: UploadFile[]) {
     message.value = error instanceof Error ? error.message : "导入预览失败";
     messageDanger.value = true;
   } finally {
+    if (prepared && props.completeMutation) await props.completeMutation(false);
     busy.value = false;
     importFiles.value = [];
   }

@@ -1,10 +1,30 @@
 import { describe, expect, it } from "vitest";
 import {
+  contractFieldsForBusinessUse,
   isContractFieldDefinition,
   validateContractTemplateSchema
 } from "./contract-workbench";
 
 describe("contract workbench schema", () => {
+  it("removes material delivery deadline and makes labor and rental periods optional", () => {
+    const fields = [
+      { key: "deliveryDeadline", label: "交货期限", type: "date", required: true },
+      { key: "plannedStartDate", label: "计划开工日期", type: "date", required: true },
+      { key: "rentalStartDate", label: "租赁开始日期", type: "date", required: true }
+    ] as const;
+
+    expect(contractFieldsForBusinessUse("material_purchase", fields)).not.toContainEqual(
+      expect.objectContaining({ key: "deliveryDeadline" })
+    );
+    expect(contractFieldsForBusinessUse("labor_subcontract", fields)).toContainEqual(
+      expect.objectContaining({ key: "plannedStartDate", required: false })
+    );
+    expect(contractFieldsForBusinessUse("equipment_rental", fields)).toContainEqual(
+      expect.objectContaining({ key: "rentalStartDate", required: false })
+    );
+    expect(fields[1].required).toBe(true);
+  });
+
   it("accepts supported fields and rejects scripts", () => {
     expect(
       isContractFieldDefinition({

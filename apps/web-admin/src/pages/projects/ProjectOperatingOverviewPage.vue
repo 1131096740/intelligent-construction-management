@@ -11,7 +11,7 @@
           <span>当前项目</span>
           <t-select
             v-model="selectedProjectId"
-            :disabled="loadingProjects || projects.length === 0"
+            :disabled="loadingProjects || projectSwitching || projects.length === 0"
             :options="projectSelectOptions"
             @change="handleProjectChange"
           />
@@ -97,9 +97,10 @@
     </div>
 
     <t-tabs
-      v-if="overview || canViewExecutiveOverview"
+      v-if="overview || canViewExecutiveOverview || ((canReadProjectExpenseLedger || canCreateProjectExpense) && selectedProjectId)"
       v-model="activeTab"
       class="project-operating-tabs"
+      @change="handleOperatingTabChange"
     >
       <t-tab-panel
         value="overview"
@@ -174,6 +175,7 @@
                       <button
                         type="button"
                         class="table-action"
+                        :disabled="projectSwitching"
                         @click="selectExecutiveProject(row.id)"
                       >
                         查看
@@ -266,12 +268,15 @@
       </t-tab-panel>
 
       <t-tab-panel
-        v-if="canUseFundsOperations && overview"
+        v-if="(canReadProjectExpenseLedger || canCreateProjectExpense) && (overview || selectedProjectId)"
         value="operations"
         label="资金办理"
       >
-        <template v-if="overview">
-          <section class="panel receipt-panel">
+        <template v-if="overview || selectedProjectId">
+          <section
+            v-if="canUseFundsOperations"
+            class="panel receipt-panel"
+          >
             <div class="panel-head">
               <h2>实际收款登记</h2>
               <button
@@ -351,7 +356,10 @@
             </div>
           </section>
 
-          <section class="panel receipt-panel">
+          <section
+            v-if="canUseFundsOperations"
+            class="panel receipt-panel"
+          >
             <div class="panel-head">
               <h2>总包代付登记</h2>
               <button
@@ -478,15 +486,51 @@
           <section class="panel receipt-panel">
             <div class="panel-head">
               <h2>支出明细</h2>
-              <button
-                type="button"
-                :disabled="expenseSubmitting"
-                @click="submitProjectExpense"
+              <div
+                v-if="canCreateProjectExpense"
+                class="panel-actions"
               >
-                {{ expenseSubmitting ? "提交中" : "发起支出" }}
-              </button>
+                <t-button
+                  v-if="expenseFormDirty"
+                  variant="outline"
+                  theme="danger"
+                  :disabled="expenseSubmitting"
+                  @click="discardExpenseFilling"
+                >
+                  放弃填写
+                </t-button>
+                <button
+                  type="button"
+                  :disabled="expenseSubmitting"
+                  @click="submitProjectExpense"
+                >
+                  {{ expenseSubmitting ? "提交中" : "发起支出" }}
+                </button>
+              </div>
             </div>
-            <div class="expense-summary">
+            <div
+              v-if="canReadProjectExpenseLedger"
+              class="expense-ledger-switcher"
+            >
+              <t-radio-group
+                v-model="expenseLedgerView"
+                variant="default-filled"
+                :disabled="expenseLedgerLoading"
+                @change="changeExpenseLedgerView"
+              >
+                <t-radio-button value="formal_ledger">
+                  正式台账（{{ projectExpenseViewCount("formal_ledger") }}）
+                </t-radio-button>
+                <t-radio-button value="ended">
+                  已结束（{{ projectExpenseViewCount("ended") }}）
+                </t-radio-button>
+              </t-radio-group>
+              <span>项目支出提交即进入审批，不会产生可删除的后端草稿。</span>
+            </div>
+            <div
+              v-if="canReadProjectExpenseLedger"
+              class="expense-summary"
+            >
               <span
                 v-for="item in projectExpenseSummaryItems"
                 :key="item.label"
@@ -495,6 +539,7 @@
               </span>
             </div>
             <form
+              v-if="canCreateProjectExpense"
               class="receipt-form"
               @submit.prevent="submitProjectExpense"
             >
@@ -600,7 +645,10 @@
             >
               {{ expenseMessage }}
             </div>
-            <div class="expense-table-wrap jg-workspace-scroll">
+            <div
+              v-if="canReadProjectExpenseLedger"
+              class="expense-table-wrap jg-workspace-scroll"
+            >
               <table>
                 <thead>
                   <tr>
@@ -661,9 +709,16 @@
                 </tbody>
               </table>
             </div>
+            <t-pagination
+              v-if="canReadProjectExpenseLedger && projectExpensePagination.total > projectExpensePagination.pageSize"
+              :current="projectExpensePagination.page"
+              :page-size="projectExpensePagination.pageSize"
+              :total="projectExpensePagination.total"
+              @current-change="changeExpenseLedgerPage"
+            />
 
             <section
-              v-if="selectedExpenseRow"
+              v-if="canReadProjectExpenseLedger && selectedExpenseRow"
               class="expense-action-panel"
             >
               <div class="expense-action-head">
@@ -781,7 +836,7 @@
               </div>
               <div class="expense-action-buttons">
                 <button
-                  v-if="selectedExpenseRow.status === 'approval_pending'"
+                  v-if="['approval_pending', 'approved_pending_payment'].includes(selectedExpenseRow.status)"
                   type="button"
                   class="secondary-button"
                   @click="openExpenseApprovalDetail(selectedExpenseRow)"
@@ -851,6 +906,16 @@
         </template>
       </t-tab-panel>
     </t-tabs>
+
+    <SensitiveActionDialog
+      v-model="expenseLeaveDialogVisible"
+      title="放弃未提交的项目支出填写？"
+      description="当前内容仅保存在本页。继续后会清空未提交的表单，不会创建、删除或修改任何后端业务记录。"
+      confirm-text="确认放弃填写"
+      confirm-theme="danger"
+      @confirm="resolveExpenseLeave(true)"
+      @cancel="resolveExpenseLeave(false)"
+    />
   </section>
 </template>
 
@@ -881,10 +946,16 @@ import {
   type ProjectOperatingOverviewReadModel,
   type ProjectOptionReadModel
 } from "../../api/core-flow-read.api";
-import type { ContractBusinessOptionReadModel, RoleKey } from "@jiangkong/shared-domain";
+import type {
+  ContractBusinessOptionReadModel,
+  DraftLedgerView,
+  RoleKey
+} from "@jiangkong/shared-domain";
 import { fetchSpotProcurementCapabilities } from "../../api/spot-procurement.api";
 import { useAuthStore } from "../../auth/auth.store";
+import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
+import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import {
   toContractSelectOptions,
   toSettlementSelectOptions
@@ -992,6 +1063,8 @@ const overview = ref<ProjectOperatingOverviewReadModel | null>(null);
 const executiveOverview = ref<ExecutiveProjectOverview | null>(null);
 const projectExpenses = ref<ProjectExpenseRequestListReadModel | null>(null);
 const selectedProjectId = ref("");
+const loadedProjectId = ref("");
+const projectSwitching = ref(false);
 const activeTab = ref("overview");
 const loadingProjects = ref(false);
 const loadingOverview = ref(false);
@@ -1025,6 +1098,25 @@ const expenseExecutionVoucherInput = ref<HTMLInputElement | null>(null);
 const expenseActionBusy = ref("");
 const expenseActionMessage = ref("");
 const expenseActionMessageTone = ref<"success" | "danger">("success");
+const expenseLedgerView = ref<DraftLedgerView>("formal_ledger");
+const expenseLedgerLoading = ref(false);
+const expenseLedgerPage = ref(1);
+const expenseLedgerPageSize = 20;
+const expenseFormBaseline = ref(projectExpenseFormSnapshot(expenseForm.value));
+const expenseLeaveDialogVisible = ref(false);
+let resolvePendingExpenseLeave: ((decision: boolean) => void) | null = null;
+
+const expenseFormDirty = computed(
+  () => projectExpenseFormSnapshot(expenseForm.value) !== expenseFormBaseline.value
+);
+const expenseLeaveGuard = useUnsavedChangesGuard({
+  isDirty: expenseFormDirty,
+  confirmLeave: () => new Promise<boolean>((resolve) => {
+    resolvePendingExpenseLeave?.(false);
+    resolvePendingExpenseLeave = resolve;
+    expenseLeaveDialogVisible.value = true;
+  })
+});
 
 const summaryItems = computed(() => {
   const counts = overview.value?.counts ?? { contracts: 0, settlements: 0, payments: 0 };
@@ -1053,13 +1145,26 @@ const projectBusinessEntries = computed(() =>
 
 const projectExpenseRows = computed<ProjectExpenseRow[]>(() => projectExpenses.value?.rows ?? []);
 
+function projectExpenseViewCount(view: "formal_ledger" | "ended") {
+  return projectExpenses.value?.viewCounts?.[view] ?? 0;
+}
+
+const projectExpensePagination = computed(() =>
+  projectExpenses.value?.pagination ?? {
+    page: expenseLedgerPage.value,
+    pageSize: expenseLedgerPageSize,
+    total: 0,
+    totalPages: 0
+  }
+);
+
 const projectExpenseSummaryItems = computed(() => {
-  const summary = projectExpenses.value?.summary;
+  const statistics = projectExpenses.value?.statistics;
   return [
-    { label: "支出单", value: String(summary?.total ?? 0) },
-    { label: "审批中", value: String(summary?.approvalPending ?? 0) },
-    { label: "已批待付", value: String(summary?.approvedPendingPayment ?? 0) },
-    { label: "已实付", value: formatCents(summary?.totalPaidCents ?? "0") }
+    { label: "正式支出单", value: String(statistics?.formalTotal ?? 0) },
+    { label: "审批中", value: String(statistics?.pendingApproval ?? 0) },
+    { label: "已批待付", value: String(statistics?.pendingPayment ?? 0) },
+    { label: "已实付", value: formatCents(statistics?.formalPaidAmountCents ?? "0") }
   ];
 });
 
@@ -1093,6 +1198,47 @@ const canUseFundsOperations = computed(
   () =>
     auth.user?.roleKeys.some((role) =>
       ["chairman", "general_manager", "project_manager", "finance_director", "finance_staff"].includes(role)
+    ) ?? false
+);
+
+const canReadProjectOverview = computed(
+  () =>
+    auth.user?.roleKeys.some((role) =>
+      [
+        "chairman",
+        "general_manager",
+        "engineering_department_director",
+        "finance_staff",
+        "finance_director",
+        "contract_director",
+        "budget_director",
+        "material_director",
+        "comprehensive_director",
+        "super_admin",
+        "project_manager"
+      ].includes(role)
+    ) ?? false
+);
+
+const canReadProjectExpenseLedger = computed(
+  () =>
+    auth.user?.roleKeys.some((role) =>
+      [
+        "chairman",
+        "general_manager",
+        "project_manager",
+        "finance_director",
+        "finance_staff",
+        "material_director",
+        "material_staff"
+      ].includes(role)
+    ) ?? false
+);
+
+const canCreateProjectExpense = computed(
+  () =>
+    auth.user?.roleKeys.some((role) =>
+      ["employee", "project_manager", "material_staff"].includes(role)
     ) ?? false
 );
 
@@ -1145,6 +1291,10 @@ async function loadProjects() {
   try {
     projects.value = await fetchProjects();
     selectedProjectId.value = projects.value[0]?.id ?? "";
+    loadedProjectId.value = selectedProjectId.value;
+    if (!canReadProjectOverview.value && canCreateProjectExpense.value) {
+      activeTab.value = "operations";
+    }
     syncSelectedProjectName();
     await loadExecutiveOverview();
     if (selectedProjectId.value) {
@@ -1164,6 +1314,13 @@ async function submitProject() {
     return;
   }
 
+  if (expenseFormDirty.value) {
+    const confirmed = await expenseLeaveGuard.requestClose();
+    if (!confirmed) return;
+    resetExpenseForm();
+    expenseMessage.value = "";
+  }
+
   projectSubmitting.value = true;
   projectMessage.value = "";
   try {
@@ -1176,6 +1333,7 @@ async function submitProject() {
       ? nextProjects
       : [...nextProjects, created];
     selectedProjectId.value = projects.value.find((project) => project.id === created.id)?.id ?? created.id;
+    loadedProjectId.value = selectedProjectId.value;
     projectForm.value = { code: "", name: "" };
     syncSelectedProjectName();
     projectMessageTone.value = "success";
@@ -1215,15 +1373,59 @@ async function submitProjectName() {
   }
 }
 
-function handleProjectChange() {
-  syncSelectedProjectName();
-  void loadOverview();
+async function handleProjectChange(value: string | number) {
+  await requestProjectChange(String(value));
 }
 
-function selectExecutiveProject(projectId: string) {
-  selectedProjectId.value = projectId;
+async function selectExecutiveProject(projectId: string) {
+  await requestProjectChange(projectId);
+}
+
+async function requestProjectChange(projectId: string) {
+  const previousProjectId = loadedProjectId.value;
+  if (projectSwitching.value) {
+    selectedProjectId.value = previousProjectId;
+    return;
+  }
+  if (!projectId || projectId === previousProjectId) {
+    selectedProjectId.value = previousProjectId || projectId;
+    syncSelectedProjectName();
+    return;
+  }
+
+  // t-select updates v-model before emitting change. Restore the loaded project
+  // while the user decides so no request can run against the new project early.
+  selectedProjectId.value = previousProjectId;
   syncSelectedProjectName();
-  void loadOverview();
+  projectSwitching.value = true;
+  try {
+    const confirmed = await expenseLeaveGuard.requestClose();
+    if (!confirmed) return;
+
+    if (expenseFormDirty.value) {
+      resetExpenseForm();
+      expenseMessage.value = "";
+    }
+    selectedProjectId.value = projectId;
+    loadedProjectId.value = projectId;
+    expenseLedgerPage.value = 1;
+    syncSelectedProjectName();
+    await loadOverview();
+  } finally {
+    projectSwitching.value = false;
+  }
+}
+
+async function handleOperatingTabChange(value: string | number) {
+  const nextTab = String(value);
+  if (nextTab === "operations" || !expenseFormDirty.value) return;
+
+  activeTab.value = "operations";
+  const confirmed = await expenseLeaveGuard.requestClose();
+  if (!confirmed) return;
+  resetExpenseForm();
+  expenseMessage.value = "";
+  activeTab.value = nextTab;
 }
 
 function go(path: string) {
@@ -1277,10 +1479,20 @@ async function loadOverview() {
   message.value = "";
   try {
     const [nextOverview, nextExpenses, nextProxyContracts, spotCapability] = await Promise.all([
-      fetchProjectOperatingOverview(projectId),
-      canUseFundsOperations.value ? fetchProjectExpenseRequests(projectId) : Promise.resolve(null),
+      canReadProjectOverview.value
+        ? fetchProjectOperatingOverview(projectId)
+        : Promise.resolve(null),
+      canReadProjectExpenseLedger.value
+        ? fetchProjectExpenseRequests(projectId, {
+            view: expenseLedgerView.value,
+            page: expenseLedgerPage.value,
+            pageSize: expenseLedgerPageSize
+          })
+        : Promise.resolve(null),
       canUseFundsOperations.value ? fetchPaymentContractOptions(projectId) : Promise.resolve([]),
-      fetchSpotProcurementCapabilities(projectId).catch(() => ({ enabled: false }))
+      canCreateProjectExpense.value
+        ? fetchSpotProcurementCapabilities(projectId).catch(() => ({ enabled: false }))
+        : Promise.resolve({ enabled: false })
     ]);
     if (selectedProjectId.value === projectId) {
       overview.value = nextOverview;
@@ -1289,9 +1501,11 @@ async function loadOverview() {
       spotProcurementEnabled.value = spotCapability.enabled;
       if (
         spotCapability.enabled &&
-        expenseForm.value.expenseType === "spot_purchase"
+        expenseForm.value.expenseType === "spot_purchase" &&
+        !expenseFormDirty.value
       ) {
         expenseForm.value = createProjectExpenseForm("sporadic_payment");
+        syncExpenseFormBaseline();
       }
       selectedExpenseRow.value = selectedExpenseId
         ? nextExpenses?.rows.find((row) => row.id === selectedExpenseId) ?? null
@@ -1351,6 +1565,9 @@ async function submitProjectExpense() {
       attachmentFileId: attachment?.id
     });
     expenseForm.value = createProjectExpenseForm(form.expenseType);
+    syncExpenseFormBaseline();
+    expenseLedgerView.value = "formal_ledger";
+    expenseLedgerPage.value = 1;
     if (expenseAttachmentInput.value) {
       expenseAttachmentInput.value.value = "";
     }
@@ -1362,6 +1579,62 @@ async function submitProjectExpense() {
   } finally {
     expenseSubmitting.value = false;
   }
+}
+
+async function loadProjectExpenses() {
+  const projectId = selectedProjectId.value;
+  if (!projectId || !canReadProjectExpenseLedger.value) return;
+  expenseLedgerLoading.value = true;
+  expenseMessage.value = "";
+  try {
+    projectExpenses.value = await fetchProjectExpenseRequests(projectId, {
+      view: expenseLedgerView.value,
+      page: expenseLedgerPage.value,
+      pageSize: expenseLedgerPageSize
+    });
+    selectedExpenseRow.value = null;
+  } catch (error) {
+    projectExpenses.value = null;
+    setExpenseError(error instanceof Error ? error.message : "读取项目支出台账失败，请重试。");
+  } finally {
+    expenseLedgerLoading.value = false;
+  }
+}
+
+function changeExpenseLedgerView() {
+  expenseLedgerPage.value = 1;
+  void loadProjectExpenses();
+}
+
+function changeExpenseLedgerPage(page: number) {
+  expenseLedgerPage.value = page;
+  void loadProjectExpenses();
+}
+
+async function discardExpenseFilling() {
+  const confirmed = await expenseLeaveGuard.requestClose();
+  if (!confirmed) return;
+  resetExpenseForm();
+  expenseMessage.value = "";
+}
+
+function resolveExpenseLeave(decision: boolean) {
+  expenseLeaveDialogVisible.value = false;
+  const resolve = resolvePendingExpenseLeave;
+  resolvePendingExpenseLeave = null;
+  resolve?.(decision);
+}
+
+function resetExpenseForm() {
+  expenseForm.value = createProjectExpenseForm();
+  syncExpenseFormBaseline();
+  if (expenseAttachmentInput.value) {
+    expenseAttachmentInput.value.value = "";
+  }
+}
+
+function syncExpenseFormBaseline() {
+  expenseFormBaseline.value = projectExpenseFormSnapshot(expenseForm.value);
 }
 
 async function submitReceipt() {
@@ -1495,6 +1768,30 @@ function createProjectExpenseForm(
     counterpartyBankAccount: "",
     attachmentFile: null
   };
+}
+
+function projectExpenseFormSnapshot(form: ProjectExpenseFormState) {
+  return JSON.stringify({
+    code: form.code,
+    expenseType: form.expenseType,
+    expenseSubtype: form.expenseSubtype,
+    paymentSubject: form.paymentSubject,
+    reason: form.reason,
+    amountYuan: form.amountYuan,
+    paymentMethod: form.paymentMethod,
+    counterpartyName: form.counterpartyName,
+    counterpartyAccountName: form.counterpartyAccountName,
+    counterpartyBankName: form.counterpartyBankName,
+    counterpartyBankAccount: form.counterpartyBankAccount,
+    attachment: form.attachmentFile
+      ? {
+          name: form.attachmentFile.name,
+          size: form.attachmentFile.size,
+          type: form.attachmentFile.type,
+          lastModified: form.attachmentFile.lastModified
+        }
+      : null
+  });
 }
 
 function createProjectExpenseActionForm(row?: ProjectExpenseRow): ProjectExpenseActionFormState {
@@ -1962,6 +2259,19 @@ button:disabled {
   gap: 12px;
 }
 
+.panel-actions,
+.expense-ledger-switcher {
+  display: flex;
+  align-items: center;
+  gap: var(--jg-space-sm);
+}
+
+.expense-ledger-switcher {
+  justify-content: space-between;
+  color: var(--jg-text-subtle);
+  font-size: var(--jg-font-meta);
+}
+
 .receipt-panel {
   display: grid;
   gap: 12px;
@@ -2259,6 +2569,12 @@ dd {
 }
 
 @container jg-page (max-width: 620px) {
+  .panel-actions,
+  .expense-ledger-switcher {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .project-create-form,
   .project-name-form,
   .summary-strip,

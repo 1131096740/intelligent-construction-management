@@ -140,6 +140,209 @@ describe("PaymentReadService", () => {
     });
   });
 
+  it("projects returned drafts separately from approval work and abandoned requests as ended", async () => {
+    const prisma = {
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "payment-returned",
+            projectId: "project-1",
+            contractId: "contract-1",
+            settlementId: "settlement-1",
+            code: "FK-RETURNED",
+            status: "draft",
+            requestedAmountCents: 10_000n,
+            approvedAmountCents: null,
+            paidAmountCents: 0n,
+            updatedAt: new Date("2026-07-19T10:00:00.000Z")
+          },
+          {
+            id: "payment-abandoned",
+            projectId: "project-1",
+            contractId: "contract-1",
+            settlementId: "settlement-1",
+            code: "FK-ABANDONED",
+            status: "abandoned",
+            requestedAmountCents: 20_000n,
+            approvedAmountCents: null,
+            paidAmountCents: 0n,
+            updatedAt: new Date("2026-07-19T11:00:00.000Z")
+          }
+        ])
+      },
+      settlement: { findMany: jest.fn().mockResolvedValue([{ id: "settlement-1", code: "JS-1" }]) },
+      project: { findMany: jest.fn().mockResolvedValue([{ id: "project-1", name: "项目一" }]) },
+      contract: { findMany: jest.fn().mockResolvedValue([{ id: "contract-1", code: "HT-1", name: "合同一" }]) },
+      paymentExecution: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "approval-returned",
+            businessId: "payment-returned",
+            status: "returned_to_applicant",
+            applicantUserId: "applicant-1",
+            createdAt: new Date("2026-07-19T09:00:00.000Z")
+          }
+        ])
+      },
+      approvalActionLog: {
+        findMany: jest.fn().mockResolvedValue([{ approvalInstanceId: "approval-returned" }])
+      }
+    };
+    const service = new PaymentReadService(prisma as never);
+
+    const ledger = await service.listRecent(20);
+
+    expect(ledger.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        paymentNo: "FK-RETURNED",
+        lifecycleKind: "approval_draft",
+        ledgerView: "returned_for_revision",
+        approvalStatus: "退回待修改",
+        currentNode: "补充付款申请或放弃申请",
+        pendingOwner: "申请人",
+        returnReason: "审批退回待修改，查看审批历史"
+      }),
+      expect.objectContaining({
+        paymentNo: "FK-ABANDONED",
+        ledgerView: "ended"
+      })
+    ]));
+    expect(ledger.summary.pendingApproval).toBe(0);
+
+    const returnedPage = await service.listLedger(
+      { view: "returned_for_revision", page: 1, pageSize: 10 },
+      ["project-1"],
+      "applicant-1"
+    );
+    expect(returnedPage).toMatchObject({
+      hasPersistentDraft: false,
+      view: "returned_for_revision",
+      pagination: { page: 1, pageSize: 10, total: 1, totalPages: 1 },
+      viewCounts: {
+        formal_ledger: 0,
+        my_drafts: 0,
+        returned_for_revision: 1,
+        ended: 1
+      },
+      statistics: {
+        formalRequestedAmountCents: "0",
+        formalPaidAmountCents: "0"
+      }
+    });
+    expect(returnedPage.rows[0]).toMatchObject({
+      paymentNo: "FK-RETURNED",
+      lifecycleUpdatedAt: "2026-07-19T10:00:00.000Z",
+      availableActions: ["abandon_application"]
+    });
+
+    const observerPage = await service.listLedger(
+      { view: "returned_for_revision" },
+      ["project-1"],
+      "observer-1"
+    );
+    expect(observerPage.rows).toEqual([]);
+    expect(observerPage.viewCounts.returned_for_revision).toBe(0);
+  });
+
+  it.each([
+    ["applicant-1", true],
+    ["other-user", false]
+  ] as const)(
+    "exposes payment abandonment on returned detail only to the current applicant %s",
+    async (actorUserId, expected) => {
+      const returnedApproval = {
+        id: "approval-returned",
+        status: "returned_to_applicant",
+        applicantUserId: "applicant-1",
+        frozenNodes: [],
+        currentNodeIndex: 0
+      };
+      const prisma = {
+        paymentRequest: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: "payment-returned",
+            projectId: "project-1",
+            contractId: "contract-1",
+            settlementId: "settlement-1",
+            contractVersionId: "contract-version-1",
+            paymentTermsVersionId: "terms-version-1",
+            paymentTermsStageId: null,
+            sourceType: "settlement",
+            code: "FK-RETURNED",
+            status: "draft",
+            requestedAmountCents: 10_000n,
+            approvedAmountCents: null,
+            paidAmountCents: 0n,
+            updatedAt: new Date("2026-07-19T10:00:00.000Z")
+          })
+        },
+        settlement: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "settlement-1",
+            code: "JS-1",
+            periodLabel: "本期",
+            status: "effective"
+          })
+        },
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({ id: "contract-version-1", versionNo: 1 })
+        },
+        paymentTermsVersion: {
+          findUnique: jest.fn().mockResolvedValue({ id: "terms-version-1", versionNo: 1 })
+        },
+        paymentTermsStage: { findFirst: jest.fn().mockResolvedValue(null) },
+        paymentExecution: { findMany: jest.fn().mockResolvedValue([]) },
+        financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
+        paymentExecutionAllocation: { findMany: jest.fn().mockResolvedValue([]) },
+        approvalInstance: {
+          findFirst: jest.fn().mockImplementation(({ where }: { where: { status?: string } }) =>
+            where.status === "in_progress" ? null : returnedApproval
+          )
+        },
+        approvalActionLog: {
+          findFirst: jest.fn().mockResolvedValue({ id: "return-action-1" }),
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: "return-action-1",
+              action: "return_to_applicant",
+              actorUserId: "reviewer-1",
+              comment: "补充付款依据",
+              metadata: null,
+              approvedRoleKey: "finance_director",
+              representedUserId: "reviewer-1",
+              createdAt: new Date("2026-07-19T09:00:00.000Z")
+            }
+          ])
+        },
+        user: { findMany: jest.fn().mockResolvedValue([]) }
+      };
+      const projectVisibility = {
+        effectiveRoleKeys: jest.fn().mockResolvedValue([])
+      };
+      const service = new PaymentReadService(prisma as never, projectVisibility as never);
+
+      const detail = await service.getDetail("payment-returned", undefined, actorUserId);
+
+      expect(detail.availableActions.some((action) => action.key === "abandon_application"))
+        .toBe(expected);
+      expect(detail).toMatchObject({
+        lifecycleKind: "approval_draft",
+        ledgerView: "returned_for_revision",
+        nextStep: "补充付款申请或放弃申请",
+        currentOwner: "申请人",
+        returnReason: "审批退回待修改，查看审批历史",
+        lifecycleUpdatedAt: "2026-07-19T10:00:00.000Z"
+      });
+      expect(detail.meta).toContainEqual(
+        expect.objectContaining({ label: "审批状态", value: "退回待修改" })
+      );
+      expect(detail.meta).toContainEqual(
+        expect.objectContaining({ label: "下一步动作", value: "补充付款申请或放弃申请" })
+      );
+    }
+  );
+
   it("does not expose internal payment approval status values in read model labels", () => {
     const service = new PaymentReadService({} as never);
     const approvalStatusView = (
@@ -149,6 +352,8 @@ describe("PaymentReadService", () => {
     expect(approvalStatusView.call(service, "internal_status").label).toBe(
       "付款审批状态未读取"
     );
+    expect(approvalStatusView.call(service, "approval_rejected").label).toBe("已退回");
+    expect(approvalStatusView.call(service, "rejected").label).toBe("已退回");
   });
 
   it("builds payment ledger rows for contract advance requests without settlement", async () => {

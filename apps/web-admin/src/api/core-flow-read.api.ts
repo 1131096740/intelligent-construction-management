@@ -2,6 +2,11 @@ import type {
   ContractBusinessOptionReadModel,
   ContractDetailReadModel,
   ContractPaymentApplicationPreviewReadModel,
+  DetailActionReadModel,
+  DraftLedgerView,
+  LifecycleLedgerPage,
+  LifecycleLedgerPageMeta,
+  LifecycleLedgerViewCount,
   PaymentDetailReadModel,
   ProjectExpenseApprovalDetailReadModel,
   SettlementDetailReadModel
@@ -130,8 +135,15 @@ export function fetchSettlementDetail(settlementId: string) {
 }
 
 export function fetchPaymentDetail(paymentId: string) {
-  return readJson<PaymentDetailReadModel>(`/payments/${paymentId}`);
+  return readJson<PaymentLifecycleDetailReadModel>(`/payments/${encodeURIComponent(paymentId)}`);
 }
+
+export type PaymentLifecycleDetailReadModel = PaymentDetailReadModel & {
+  lifecycleKind: "approval_draft" | "formal_record";
+  ledgerView: DraftLedgerView;
+  lifecycleUpdatedAt: string | null;
+  blockedReasons: string[];
+};
 
 export function fetchContractPaymentApplication(contractVersionId: string) {
   const encodedContractVersionId = encodeURIComponent(contractVersionId);
@@ -297,6 +309,9 @@ export interface ContractTakeoverReadModel {
   importRowNo: number | null;
   contractNo: string;
   contractName: string;
+  /** Compatibility aliases used by lifecycle-ledger and batch previews. */
+  code?: string;
+  name?: string;
   counterparty: string;
   companyEntityId: string | null;
   companyEntityName: string | null;
@@ -348,8 +363,57 @@ export interface ContractTakeoverReadModel {
   evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
   corrections: ContractTakeoverCorrectionReadModel[];
   postConfirmationVerification: ContractTakeoverPostConfirmationVerificationReadModel;
+  lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";
+  lifecycleBlockers?: string[];
+  availableActions?: DetailActionReadModel[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AbandonContractTakeoverPayload {
+  expectedUpdatedAt: string;
+  action: "delete_pristine_draft" | "abandon_application";
+  reason?: string;
+}
+
+export interface AbandonContractTakeoverReadModel {
+  takeoverId: string;
+  status: "abandoned";
+  action?: "delete_pristine_draft" | "abandon_application";
+  abandonedAt?: string;
+  idempotent: boolean;
+}
+
+export interface ContractTakeoverBatchAbandonmentRowReadModel {
+  id: string;
+  importRowNo: number | null;
+  updatedAt: string;
+  action: "delete_pristine_draft" | "abandon_application";
+  eligible: boolean;
+  blockers: string[];
+  contractNo: string;
+  contractName: string;
+}
+
+export interface ContractTakeoverBatchAbandonmentPreviewReadModel {
+  batchId: string;
+  batchNo: string;
+  previewHash: string;
+  total: number;
+  eligible: number;
+  blocked: number;
+  rows: ContractTakeoverBatchAbandonmentRowReadModel[];
+}
+
+export interface ApplyContractTakeoverBatchAbandonmentPayload {
+  previewHash: string;
+  reason: string;
+}
+
+export interface ApplyContractTakeoverBatchAbandonmentReadModel {
+  batchId: string;
+  abandonedCount: number;
+  previewHash: string;
 }
 
 export interface HistoricalTakeoverDirectPaymentStageReadModel {
@@ -1111,6 +1175,10 @@ export interface ProjectExpenseRequestListReadModel {
     status: string;
     createdAt: string;
     updatedAt: string;
+    lifecycleUpdatedAt?: string | null;
+    hasPersistentDraft?: false;
+    availableActions?: string[];
+    blockedReasons?: string[];
   }>;
   summary: {
     total: number;
@@ -1120,6 +1188,18 @@ export interface ProjectExpenseRequestListReadModel {
     paymentBlocked: number;
     totalRequestedCents: string;
     totalPaidCents: string;
+  };
+  view?: DraftLedgerView;
+  hasPersistentDraft?: false;
+  pagination?: LifecycleLedgerPageMeta;
+  viewCounts?: LifecycleLedgerViewCount;
+  statistics?: {
+    formalTotal: number;
+    pendingApproval: number;
+    pendingPayment: number;
+    paid: number;
+    formalRequestedAmountCents: string;
+    formalPaidAmountCents: string;
   };
 }
 
@@ -1141,7 +1221,7 @@ export interface WorkbenchSummaryReadModel {
   cards: WorkbenchSummaryCardReadModel[];
 }
 
-export type WorkItemQueueKey = "pending" | "blocked" | "started";
+export type WorkItemQueueKey = "pending" | "blocked" | "started" | "drafts";
 export type ApprovalCenterViewKey =
   | "pendingApproval"
   | "startedByMe"
@@ -1151,7 +1231,7 @@ export type ApprovalCenterViewKey =
 
 export interface WorkItemReadModel {
   id: string;
-  type: "contract_takeover" | "archive" | "approval" | "payment_execution" | "blocker";
+  type: "draft" | "contract_takeover" | "archive" | "approval" | "payment_execution" | "blocker";
   title: string;
   projectName: string;
   projectId?: string;
@@ -1164,12 +1244,19 @@ export interface WorkItemReadModel {
   nextAction: string;
   targetPath: string;
   tone: WorkbenchCardTone;
+  ageDays?: number;
+  agingStatus?: "current" | "long_running" | "stale";
 }
 
 export interface WorkItemsReadModel {
   generatedAt: string;
   visibleProjectCount: number;
   queues: Record<WorkItemQueueKey, WorkItemReadModel[]>;
+  queueMeta?: Record<WorkItemQueueKey, {
+    total: number;
+    returned: number;
+    truncated: boolean;
+  }>;
   approvalCenter: Record<ApprovalCenterViewKey, WorkItemReadModel[]>;
 }
 
@@ -1179,6 +1266,28 @@ export function fetchWorkbenchSummary() {
 
 export function fetchWorkItems() {
   return readJson<WorkItemsReadModel>("/me/work-items");
+}
+
+export interface DraftRetentionPreviewReadModel {
+  generatedAt: string;
+  mode: "preview_only";
+  executionAllowed: false;
+  policyVersion: string;
+  totalCandidateCount: number;
+  categories: Array<{
+    key: string;
+    label: string;
+    retentionDays: number;
+    candidateCount: number;
+    oldestCandidateAt: string | null;
+    rule: string;
+  }>;
+  fileScanTruncated: boolean;
+  notice: string;
+}
+
+export function fetchDraftRetentionPreview() {
+  return readJson<DraftRetentionPreviewReadModel>("/draft-retention/preview");
 }
 
 export function fetchProjects() {
@@ -1205,8 +1314,21 @@ export function fetchProjectOperatingOverview(projectId: string) {
   return readJson<ProjectOperatingOverviewReadModel>(`/projects/${projectId}/operating-funds-overview`);
 }
 
-export function fetchProjectExpenseRequests(projectId: string) {
-  return readJson<ProjectExpenseRequestListReadModel>(`/projects/${projectId}/expense-requests`);
+export function fetchProjectExpenseRequests(
+  projectId: string,
+  query?: { view: DraftLedgerView; page: number; pageSize: number }
+) {
+  const encodedProjectId = encodeURIComponent(projectId);
+  const suffix = query
+    ? `?${new URLSearchParams({
+        view: query.view,
+        page: String(query.page),
+        pageSize: String(query.pageSize)
+      }).toString()}`
+    : "";
+  return readJson<ProjectExpenseRequestListReadModel>(
+    `/projects/${encodedProjectId}/expense-requests${suffix}`
+  );
 }
 
 export function recordProjectReceipt(projectId: string, body: RecordProjectReceiptPayload) {
@@ -1280,10 +1402,18 @@ export function fetchProjectExpenseApprovalDetail(
   projectId: string,
   expenseRequestId: string
 ) {
-  return readJson<ProjectExpenseApprovalDetailReadModel>(
-    `/projects/${projectId}/expense-requests/${expenseRequestId}/approval-detail`
+  return readJson<ProjectExpenseApprovalLifecycleDetailReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/expense-requests/${encodeURIComponent(expenseRequestId)}/approval-detail`
   );
 }
+
+export type ProjectExpenseApprovalLifecycleDetailReadModel =
+  ProjectExpenseApprovalDetailReadModel & {
+    lifecycleUpdatedAt: string | null;
+    hasPersistentDraft: false;
+    availableActions: DetailActionReadModel[];
+    blockedReasons: string[];
+  };
 
 export function reviewProjectExpenseApproval(
   projectId: string,
@@ -1383,6 +1513,38 @@ export function fetchContractLedger() {
   return readJson<ContractLedgerListReadModel>("/contracts");
 }
 
+export type ContractLifecycleLedgerRow = ContractLedgerListReadModel["rows"][number] & {
+  contractVersionId?: string;
+  lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";
+  draftRevision?: number;
+  lifecycleUpdatedAt?: string;
+  abandonedAt?: string | null;
+  abandonReason?: string | null;
+  copyAvailable?: boolean;
+};
+
+export function copyAbandonedContractDraft(contractVersionId: string, expectedUpdatedAt: string) {
+  return postJson<{ contract: { id: string }; version: { id: string } }>(
+    `/contracts/${encodeURIComponent(contractVersionId)}/copies`,
+    { expectedUpdatedAt }
+  );
+}
+
+export function fetchContractLifecycleLedger(
+  view: DraftLedgerView,
+  page: number,
+  pageSize: number
+) {
+  const query = new URLSearchParams({
+    view,
+    page: String(page),
+    pageSize: String(pageSize)
+  });
+  return readJson<LifecycleLedgerPage<ContractLifecycleLedgerRow>>(
+    `/contracts/lifecycle-ledger?${query.toString()}`
+  );
+}
+
 export function downloadContractLedgerExport() {
   return downloadWorkbook("/contracts/ledger-export", "合同台账.xlsx", "导出合同台账失败");
 }
@@ -1403,6 +1565,43 @@ export function fetchSettlementLedger() {
   return readJson<SettlementLedgerListReadModel>("/settlements");
 }
 
+export type SettlementLifecycleLedgerRow = SettlementLedgerListReadModel["rows"][number] & {
+  projectId: string;
+  settlementId?: string;
+  lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";
+  revision?: number;
+  lifecycleUpdatedAt?: string;
+  abandonedAt?: string | null;
+  abandonReason?: string | null;
+  copyAvailable?: boolean;
+};
+
+export function copyAbandonedSettlementDraft(
+  projectId: string,
+  draftId: string,
+  expectedUpdatedAt: string
+) {
+  return postJson<{ id: string }>(
+    `/projects/${encodeURIComponent(projectId)}/settlement-drafts/${encodeURIComponent(draftId)}/copies`,
+    { expectedUpdatedAt }
+  );
+}
+
+export function fetchSettlementLifecycleLedger(
+  view: DraftLedgerView,
+  page: number,
+  pageSize: number
+) {
+  const query = new URLSearchParams({
+    view,
+    page: String(page),
+    pageSize: String(pageSize)
+  });
+  return readJson<LifecycleLedgerPage<SettlementLifecycleLedgerRow>>(
+    `/settlements/lifecycle-ledger?${query.toString()}`
+  );
+}
+
 export function downloadSettlementLedgerExport() {
   return downloadWorkbook(
     "/settlements/ledger-export",
@@ -1413,6 +1612,44 @@ export function downloadSettlementLedgerExport() {
 
 export function fetchPaymentLedger() {
   return readJson<PaymentLedgerListReadModel>("/payments");
+}
+
+export type PaymentLifecycleLedgerRow = PaymentLedgerListReadModel["rows"][number] & {
+  lifecycleKind: "approval_draft" | "formal_record";
+  ledgerView: DraftLedgerView;
+  lifecycleUpdatedAt: string | null;
+  requestedAmountCents: string;
+  paidAmountCents: string;
+  availableActions: string[];
+  blockedReasons: string[];
+};
+
+export interface PaymentLifecycleLedgerPage {
+  rows: PaymentLifecycleLedgerRow[];
+  view: DraftLedgerView;
+  hasPersistentDraft: false;
+  pagination: LifecycleLedgerPageMeta;
+  viewCounts: LifecycleLedgerViewCount;
+  statistics: {
+    formalRequestedAmountCents: string;
+    formalPaidAmountCents: string;
+    pendingApproval: number;
+    pendingPayment: number;
+    paid: number;
+  };
+}
+
+export function fetchPaymentLifecycleLedger(
+  view: DraftLedgerView,
+  page: number,
+  pageSize: number
+) {
+  const query = new URLSearchParams({
+    view,
+    page: String(page),
+    pageSize: String(pageSize)
+  });
+  return readJson<PaymentLifecycleLedgerPage>(`/payments?${query.toString()}`);
 }
 
 export function fetchAuditLogs() {
@@ -1499,6 +1736,26 @@ export function listContractTakeoverImportBatches(projectId: string) {
   );
 }
 
+export function previewContractTakeoverBatchAbandonment(
+  projectId: string,
+  batchId: string
+) {
+  return postJson<ContractTakeoverBatchAbandonmentPreviewReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/contract-takeovers/import-batches/${encodeURIComponent(batchId)}/draft-abandonment-preview`
+  );
+}
+
+export function applyContractTakeoverBatchAbandonment(
+  projectId: string,
+  batchId: string,
+  body: ApplyContractTakeoverBatchAbandonmentPayload
+) {
+  return postJson<ApplyContractTakeoverBatchAbandonmentReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/contract-takeovers/import-batches/${encodeURIComponent(batchId)}/draft-abandonment-apply`,
+    body
+  );
+}
+
 export function reviewContractTakeoverImportBatch(
   projectId: string,
   batchId: string,
@@ -1530,6 +1787,17 @@ export function updateContractTakeover(
 ) {
   return patchJson<ContractTakeoverReadModel>(
     `/projects/${projectId}/contract-takeovers/${takeoverId}`,
+    body
+  );
+}
+
+export function abandonContractTakeover(
+  projectId: string,
+  takeoverId: string,
+  body: AbandonContractTakeoverPayload
+) {
+  return postJson<AbandonContractTakeoverReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/contract-takeovers/${encodeURIComponent(takeoverId)}/abandonment`,
     body
   );
 }
@@ -1870,6 +2138,16 @@ export function reviewPaymentApproval(paymentId: string, body: ReviewPaymentAppr
 
 export function withdrawPaymentApproval(paymentId: string) {
   return postJson<unknown>(`/payments/${paymentId}/approval-withdrawal`);
+}
+
+export function abandonPaymentRequest(
+  paymentId: string,
+  body: { expectedUpdatedAt: string; reason: string }
+) {
+  return postJson<unknown>(
+    `/payments/${encodeURIComponent(paymentId)}/abandonment`,
+    body
+  );
 }
 
 export function remindPaymentApproval(paymentId: string) {

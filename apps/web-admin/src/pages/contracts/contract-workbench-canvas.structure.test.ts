@@ -18,6 +18,10 @@ const billEditorSource = fs.readFileSync(
   path.resolve(__dirname, "workbench/ContractBillEditor.vue"),
   "utf8"
 );
+const documentsSource = fs.readFileSync(
+  path.resolve(__dirname, "workbench/ContractDocumentsSection.vue"),
+  "utf8"
+);
 const authorizationSource = fs.readFileSync(
   path.resolve(__dirname, "workbench/ContractAuthorizationSection.vue"),
   "utf8"
@@ -83,6 +87,13 @@ describe("contract workbench document canvas structure", () => {
     expect(billEditorSource).toContain("createUnsavedBillRow");
     expect(billEditorSource).toContain("isUnsavedBillRow(row)");
     expect(billEditorSource).toContain("已新增空白行，请填写后保存");
+  });
+
+  it("saves current tax facts before bill import and document generation", () => {
+    expect(pageSource).toMatch(/ContractBillsSection[\s\S]*:prepare-mutation="prepareGovernanceMutation"/u);
+    expect(pageSource).toMatch(/ContractDocumentsSection[\s\S]*:prepare-mutation="prepareGovernanceMutation"/u);
+    expect(billEditorSource).toContain("await props.prepareMutation()");
+    expect(documentsSource).toContain("await props.prepareMutation()");
   });
 
   it("keeps signing facts in the document flow and uses only TDesign upload", () => {

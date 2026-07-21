@@ -1173,4 +1173,44 @@ describe("SettlementReadService", () => {
     expect(access.canAct).toBe(expected);
     expect(access.canReview).toBe(expected);
   });
+  it("aggregates formal settlements and owned drafts without project-by-project reads", async () => {
+    const now = new Date("2026-07-20T01:00:00.000Z");
+    const settlement = (id: string, status: string, preparedByUserId = "u1") => ({
+      id, code: `JS-${id}`, contractId: "c1", projectId: "p1", periodLabel: "2026-07",
+      status, amountCents: 100n, paymentTermsVersionId: "terms-1", preparedByUserId, updatedAt: now
+    });
+    const drafts = [
+      { id: "d1", code: "JSC-1", contractId: "c1", projectId: "p1", periodLabel: "2026-07", status: "draft", ownerUserId: "u1", revision: 2, updatedAt: now, abandonedAt: null, abandonReason: null },
+      { id: "d2", code: "JSC-2", contractId: "c1", projectId: "p1", periodLabel: "2026-06", status: "abandoned", ownerUserId: "u1", revision: 3, updatedAt: now, abandonedAt: now, abandonReason: "不再继续" }
+    ];
+    const prisma = {
+      settlement: { findMany: jest.fn().mockResolvedValue([settlement("1", "effective"), settlement("2", "approval_rejected"), settlement("3", "voided", "u2")]) },
+      settlementDraft: { findMany: jest.fn().mockResolvedValue(drafts) },
+      contract: { findMany: jest.fn().mockResolvedValue([{ id: "c1", code: "HT-1", temporaryCode: null }]) },
+      paymentTermsVersion: { findMany: jest.fn().mockResolvedValue([{ id: "terms-1", versionNo: 1 }]) },
+      project: { findMany: jest.fn().mockResolvedValue([{ id: "p1", name: "项目一" }]) },
+      settlementSignedDocument: { findMany: jest.fn().mockResolvedValue([
+        { settlementDraftId: "d1", purpose: "counterparty_signed_original", status: "active" },
+        { settlementDraftId: "d2", purpose: "counterparty_signed_original", status: "invalidated" }
+      ]) }
+    };
+    const service = new SettlementReadService(prisma as never);
+    const result = await service.lifecycleLedger("my_drafts", 1, 20, ["p1"], "u1");
+
+    expect(result.summary).toEqual({ formal_ledger: 1, my_drafts: 1, returned_for_revision: 1, ended: 2 });
+    expect(result.rows[0]).toEqual(expect.objectContaining({ id: "d1", lifecycleKind: "approval_draft", revision: 2 }));
+    expect(prisma.settlementDraft.findMany).toHaveBeenCalledTimes(1);
+    const ended = await service.lifecycleLedger("ended", 1, 20, ["p1"], "u1");
+    expect(ended.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "d2",
+        projectId: "p1",
+        lifecycleKind: "approval_draft",
+        abandonReason: "不再继续",
+        copyAvailable: true
+      })
+    ]));
+    const formal = await service.lifecycleLedger("formal_ledger", 1, 20, ["p1"], "u1");
+    expect(formal.rows[0]).toEqual(expect.objectContaining({ projectId: "p1" }));
+  });
 });

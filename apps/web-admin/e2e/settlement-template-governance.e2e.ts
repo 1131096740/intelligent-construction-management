@@ -118,7 +118,7 @@ async function mockGovernanceSession(page: Page) {
   await page.route("**/api/approval-delegations/user-options", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" })
   );
-  await page.route(`**/api/settlement-templates/${templateId}`, (route) =>
+  await page.route(`**/api/settlement-templates/${templateId}?*`, (route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ template, versions })

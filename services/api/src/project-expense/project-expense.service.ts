@@ -8,6 +8,7 @@ import {
 import { Prisma } from "@prisma/client";
 import {
   canPerform,
+  type DetailActionReadModel,
   type ProjectExpenseApprovalDetailReadModel,
   type RoleKey
 } from "@jiangkong/shared-domain";
@@ -43,6 +44,23 @@ interface ProjectExpenseApprovalNode {
   mode: "any";
   roleKeys: RoleKey[];
   approvedRoleKeys?: RoleKey[];
+}
+
+type ProjectExpenseLedgerView = "formal_ledger" | "my_drafts" | "returned_for_revision" | "ended";
+
+type ProjectExpenseApprovalLifecycleReadModel = ProjectExpenseApprovalDetailReadModel & {
+  lifecycleKind: "formal_record";
+  ledgerView: "formal_ledger" | "ended";
+  lifecycleUpdatedAt: string | null;
+  hasPersistentDraft: false;
+  availableActions: DetailActionReadModel[];
+  blockedReasons: string[];
+};
+
+interface ProjectExpenseLedgerQuery {
+  view?: ProjectExpenseLedgerView;
+  page?: string | number;
+  pageSize?: string | number;
 }
 
 const PROJECT_EXPENSE_POST_MONEY_FIELDS = [
@@ -186,7 +204,7 @@ export class ProjectExpenseService {
     private readonly files?: FileService
   ) {}
 
-  async list(projectId: string, actorUserId: string) {
+  async list(projectId: string, actorUserId: string, query?: ProjectExpenseLedgerQuery) {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, isActive: true },
       select: { id: true }
@@ -205,7 +223,7 @@ export class ProjectExpenseService {
     const rows = await this.prisma.projectExpenseRequest.findMany({
       where: canReadAll ? { projectId } : { projectId, OR: scopedOr },
       orderBy: [{ createdAt: "desc" }, { code: "asc" }],
-      take: 100,
+      ...(query ? {} : { take: 100 }),
       select: {
         id: true,
         code: true,
@@ -222,6 +240,7 @@ export class ProjectExpenseService {
         purchaseExecutedAt: true,
         receiptConfirmedAt: true,
         status: true,
+        applicantUserId: true,
         createdAt: true,
         updatedAt: true
       }
@@ -242,8 +261,21 @@ export class ProjectExpenseService {
         )
       : new Set<string>();
 
-    return {
-      rows: rows.map(({ attachmentFileId, ...row }) => ({
+    const mappedRows = rows.map(({ attachmentFileId, applicantUserId, ...row }) => {
+      const ended = ["withdrawn", "rejected", "voided"].includes(row.status);
+      const paid = row.paidAmountCents > 0n || row.status === "paid";
+      const availableActions: string[] = [];
+      if (row.status === "approval_pending" && applicantUserId === actorUserId) {
+        availableActions.push("withdraw");
+      }
+      if (
+        ["approval_pending", "approved_pending_payment"].includes(row.status) &&
+        !paid &&
+        canPerform("project_expense.void", roleKeys)
+      ) {
+        availableActions.push("void");
+      }
+      return {
         ...row,
         requestedAmountCents: moneyCentsToApi(row.requestedAmountCents),
         approvedAmountCents:
@@ -255,22 +287,88 @@ export class ProjectExpenseService {
         isReceiptConfirmed: Boolean(row.receiptConfirmedAt),
         purchaseExecutedAt: row.purchaseExecutedAt?.toISOString() ?? null,
         receiptConfirmedAt: row.receiptConfirmedAt?.toISOString() ?? null,
+        lifecycleKind: "formal_record" as const,
+        ledgerView: ended ? ("ended" as const) : ("formal_ledger" as const),
+        hasPersistentDraft: false,
+        availableActions,
+        blockedReasons: paid
+          ? ["已有实付记录，不能删除或普通作废"]
+          : [],
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString()
-      })),
-      summary: {
-        total: rows.length,
-        approvalPending: rows.filter((row) => row.status === "approval_pending").length,
-        approvedPendingPayment: rows.filter((row) =>
+      };
+    });
+    const summary = {
+      total: rows.length,
+      approvalPending: rows.filter((row) => row.status === "approval_pending").length,
+      approvedPendingPayment: rows.filter((row) =>
+        ["approved_pending_payment", "partially_paid"].includes(row.status)
+      ).length,
+      paid: rows.filter((row) => row.status === "paid").length,
+      paymentBlocked: rows.filter((row) => row.status === "payment_blocked").length,
+      totalRequestedCents: moneyCentsToApi(
+        sumDbMoneyToBigInt(rows.map((row) => row.requestedAmountCents), "项目支出申请合计")
+      ),
+      totalPaidCents: moneyCentsToApi(
+        sumDbMoneyToBigInt(rows.map((row) => row.paidAmountCents), "项目支出实付合计")
+      )
+    };
+
+    if (!query) {
+      return { rows: mappedRows, summary };
+    }
+
+    const view = this.projectExpenseLedgerView(query.view);
+    const page = this.positiveInteger(query.page, 1);
+    const pageSize = Math.min(this.positiveInteger(query.pageSize, 20), 100);
+    const byView = {
+      formal_ledger: mappedRows.filter((row) => row.ledgerView === "formal_ledger"),
+      my_drafts: [],
+      returned_for_revision: [],
+      ended: mappedRows.filter((row) => row.ledgerView === "ended")
+    } satisfies Record<ProjectExpenseLedgerView, typeof mappedRows>;
+    const selectedRows = byView[view];
+    const offset = (page - 1) * pageSize;
+    const formalRows = rows.filter(
+      (row) => !["withdrawn", "rejected", "voided"].includes(row.status)
+    );
+
+    return {
+      rows: selectedRows.slice(offset, offset + pageSize),
+      summary,
+      view,
+      hasPersistentDraft: false,
+      localUnsavedAction: "discard_local",
+      pagination: {
+        page,
+        pageSize,
+        total: selectedRows.length,
+        totalPages: selectedRows.length === 0 ? 0 : Math.ceil(selectedRows.length / pageSize)
+      },
+      viewCounts: {
+        formal_ledger: byView.formal_ledger.length,
+        my_drafts: 0,
+        returned_for_revision: 0,
+        ended: byView.ended.length
+      },
+      statistics: {
+        formalTotal: formalRows.length,
+        pendingApproval: formalRows.filter((row) => row.status === "approval_pending").length,
+        pendingPayment: formalRows.filter((row) =>
           ["approved_pending_payment", "partially_paid"].includes(row.status)
         ).length,
-        paid: rows.filter((row) => row.status === "paid").length,
-        paymentBlocked: rows.filter((row) => row.status === "payment_blocked").length,
-        totalRequestedCents: moneyCentsToApi(
-          sumDbMoneyToBigInt(rows.map((row) => row.requestedAmountCents), "项目支出申请合计")
+        paid: formalRows.filter((row) => row.status === "paid").length,
+        formalRequestedAmountCents: moneyCentsToApi(
+          sumDbMoneyToBigInt(
+            formalRows.map((row) => row.requestedAmountCents),
+            "项目支出正式台账申请合计"
+          )
         ),
-        totalPaidCents: moneyCentsToApi(
-          sumDbMoneyToBigInt(rows.map((row) => row.paidAmountCents), "项目支出实付合计")
+        formalPaidAmountCents: moneyCentsToApi(
+          sumDbMoneyToBigInt(
+            formalRows.map((row) => row.paidAmountCents),
+            "项目支出正式台账实付合计"
+          )
         )
       }
     };
@@ -280,9 +378,9 @@ export class ProjectExpenseService {
     projectId: string,
     expenseRequestId: string,
     actorUserId: string
-  ): Promise<ProjectExpenseApprovalDetailReadModel> {
+  ): Promise<ProjectExpenseApprovalLifecycleReadModel> {
     const expense = await this.prisma.projectExpenseRequest.findFirst({
-      where: { id: expenseRequestId, projectId, voidedAt: null },
+      where: { id: expenseRequestId, projectId },
       select: {
         id: true,
         projectId: true,
@@ -293,8 +391,10 @@ export class ProjectExpenseService {
         reason: true,
         requestedAmountCents: true,
         approvedAmountCents: true,
+        paidAmountCents: true,
         applicantUserId: true,
-        status: true
+        status: true,
+        updatedAt: true
       }
     });
     if (!expense) {
@@ -342,6 +442,54 @@ export class ProjectExpenseService {
             ? "申请人不能审批自己发起的业务"
             : undefined;
     const reviewEnabled = canReview && (!isApprovalApplicant || isLeaderSelfReview);
+    const paidAmountCents = expense.paidAmountCents ?? 0n;
+    const ended = ["withdrawn", "rejected", "voided"].includes(expense.status);
+    const availableActions: DetailActionReadModel[] = [];
+    const blockedReasons: string[] = [];
+    if (ended) {
+      blockedReasons.push("项目支出申请已结束，只能查看历史记录");
+    } else if (paidAmountCents > 0n || ["partially_paid", "paid"].includes(expense.status)) {
+      blockedReasons.push("已有实付记录，不能删除或普通作废");
+    } else if (expense.status === "approval_pending") {
+      if (isExpenseApplicant) {
+        availableActions.push(detailAction({
+          key: "withdraw",
+          label: "撤回项目支出申请",
+          kind: "danger",
+          roleKeys: actorRoleKeys,
+          skipRoleCheck: true,
+          enabled: true
+        }));
+      }
+      if (canPerform("project_expense.void", actorRoleKeys)) {
+        availableActions.push(detailAction({
+          key: "void",
+          label: "作废项目支出申请",
+          kind: "danger",
+          roleKeys: actorRoleKeys,
+          requiredAction: "project_expense.void",
+          enabled: true,
+          requiresComment: true
+        }));
+      }
+      if (availableActions.length === 0) {
+        blockedReasons.push("只有申请人可以撤回，或由具备作废权限的岗位结束审批中的项目支出申请");
+      }
+    } else if (expense.status === "approved_pending_payment") {
+      if (canPerform("project_expense.void", actorRoleKeys)) {
+        availableActions.push(detailAction({
+          key: "void",
+          label: "作废项目支出申请",
+          kind: "danger",
+          roleKeys: actorRoleKeys,
+          requiredAction: "project_expense.void",
+          enabled: true,
+          requiresComment: true
+        }));
+      } else {
+        blockedReasons.push("当前岗位无权作废已批待付的项目支出申请");
+      }
+    }
 
     return {
       id: expense.id,
@@ -375,7 +523,13 @@ export class ProjectExpenseService {
         this.prisma,
         "project_expense_request",
         expense.id
-      )
+      ),
+      lifecycleKind: "formal_record",
+      ledgerView: ended ? "ended" : "formal_ledger",
+      lifecycleUpdatedAt: expense.updatedAt instanceof Date ? expense.updatedAt.toISOString() : null,
+      hasPersistentDraft: false,
+      availableActions,
+      blockedReasons
     };
   }
 
@@ -1715,6 +1869,19 @@ export class ProjectExpenseService {
       ...positions.map((position) => position.key as RoleKey),
       ...memberPositions.map((position) => position.positionKey as RoleKey)
     ];
+  }
+
+  private positiveInteger(rawValue: string | number | undefined, fallback: number) {
+    const parsed = typeof rawValue === "number" ? rawValue : Number(rawValue ?? fallback);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : fallback;
+  }
+
+  private projectExpenseLedgerView(
+    value: ProjectExpenseLedgerView | undefined
+  ): ProjectExpenseLedgerView {
+    return value && ["formal_ledger", "my_drafts", "returned_for_revision", "ended"].includes(value)
+      ? value
+      : "formal_ledger";
   }
 }
 

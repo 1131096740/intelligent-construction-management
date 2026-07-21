@@ -58,7 +58,8 @@ export const businessTemplateVersionActionsByStatus = {
   submitted: ["publish", "revoke"],
   published: ["clone", "stop", "revoke"],
   stopped: ["clone"],
-  revoked: []
+  revoked: [],
+  discarded: []
 } as const;
 
 export interface NormalizedContractTemplateDetail extends ContractTemplateDetailReadModel {
@@ -78,7 +79,8 @@ const contractTemplateVersionStatuses = new Set<ContractTemplateVersionStatus>([
   "submitted",
   "published",
   "stopped",
-  "revoked"
+  "revoked",
+  "discarded"
 ]);
 
 const contractTemplateVersionStatusLabels: Record<ContractTemplateVersionStatus, string> = {
@@ -86,7 +88,8 @@ const contractTemplateVersionStatusLabels: Record<ContractTemplateVersionStatus,
   submitted: "待发布",
   published: "已发布",
   stopped: "已停用",
-  revoked: "已撤销"
+  revoked: "已撤销",
+  discarded: "已废弃"
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {

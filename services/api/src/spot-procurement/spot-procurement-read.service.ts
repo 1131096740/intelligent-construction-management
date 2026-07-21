@@ -53,6 +53,8 @@ import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
 const LIST_LIMIT = 200;
 const LIST_SCAN_BATCH_SIZE = 200;
 const LIST_SCAN_MAX_ROWS = 2_000;
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 100;
 const PAYMENT_TASK_SORT_AT = Symbol("paymentTaskSortAt");
 const PAYMENT_AMOUNT_FACTS = Symbol("paymentAmountFacts");
 const RESOURCE_FORBIDDEN_MESSAGE = "零星采购资源不存在或当前账号无权访问";
@@ -112,7 +114,8 @@ const PROCUREMENT_STATUS_LABELS: Record<string, string> = {
   approved_in_progress: "采购已批，办理中",
   closed: "已办结",
   abnormally_terminated: "异常终止",
-  voided: "已撤销"
+  voided: "已撤销",
+  abandoned: "已放弃"
 };
 const PAYMENT_STATUS_LABELS: Record<string, string> = {
   draft: "付款草稿",
@@ -133,6 +136,10 @@ export interface SpotProcurementListQuery {
   projectId?: string;
   status?: string;
   keyword?: string;
+  page?: string | number;
+  pageSize?: string | number;
+  view?: string;
+  surface?: string;
 }
 
 export interface SpotProcurementPaymentListQuery {
@@ -445,9 +452,10 @@ export class SpotProcurementReadService {
       actorUserId,
       query.projectId
     );
-    if (!projectIds.length) {
-      return { items: [], truncated: false, limit: LIST_LIMIT };
-    }
+    const pagination = listPagination(query.page, query.pageSize);
+    const view = lifecycleView(query.view);
+    const surface = query.surface === "receipt" ? "receipt" : "procurement";
+    if (!projectIds.length) return emptyPagedList(pagination, view);
     const status = optionalQueryText(query.status);
     if (
       status &&
@@ -460,10 +468,9 @@ export class SpotProcurementReadService {
     const keyword = optionalQueryText(query.keyword);
     const keywordMatch = keyword
       ? await this.procurementIdsMatchingVersionKeyword(projectIds, keyword)
-      : { ids: [] as string[], sourceTruncated: false };
+      : [];
     const where: Prisma.SpotProcurementWhereInput = {
       projectId: { in: projectIds },
-      ...(status ? { status } : {}),
       ...(keyword
         ? {
             OR: [
@@ -474,25 +481,34 @@ export class SpotProcurementReadService {
                   mode: "insensitive"
                 }
               },
-              { id: { in: keywordMatch.ids } }
+              { id: { in: keywordMatch } }
             ]
           }
         : {})
     };
-    const scan = await this.scanAccessibleProcurements(
-      where,
-      actorUserId
+    const accessible = await this.scanAccessibleProcurements(where, actorUserId);
+    const lifecycleRows = accessible.rows.filter((row) =>
+      view === "ended" ? row.status === "abandoned" : row.status !== "abandoned"
     );
-    const truncated =
-      keywordMatch.sourceTruncated ||
-      scan.sourceTruncated ||
-      scan.rows.length > LIST_LIMIT;
+    const surfaceRows = surface === "receipt"
+      ? lifecycleRows.filter((row) => ["approved_in_progress", "closed"].includes(row.status))
+      : lifecycleRows;
+    const filteredRows = status
+      ? surfaceRows.filter((row) => row.status === status)
+      : surfaceRows;
+    const pageRows = filteredRows.slice(pagination.skip, pagination.skip + pagination.pageSize);
     const items = await this.procurementListItems(
-      scan.rows.slice(0, LIST_LIMIT),
+      pageRows,
       actorUserId
     );
 
-    return { items, truncated, limit: LIST_LIMIT };
+    return {
+      items,
+      view,
+      surface,
+      pagination: paginationResult(pagination, filteredRows.length),
+      statistics: statusCounts(surfaceRows)
+    };
   }
 
   async getProcurement(procurementId: string, actorUserId: string) {
@@ -562,9 +578,11 @@ export class SpotProcurementReadService {
           id: true,
           status: true,
           currentRevisionNo: true,
+          handlerUserId: true,
           firstSubmittedAt: true,
           submittedAt: true,
-          lockedAt: true
+          lockedAt: true,
+          invalidatedAt: true
         }
       }),
       this.prisma.spotProcurementDiscrepancy.findFirst({
@@ -590,6 +608,13 @@ export class SpotProcurementReadService {
       throw new ConflictException("零星采购当前版本不存在，请联系管理员核对");
     }
 
+    const receiptWorkflowFacts = receipt
+      ? await this.receiptWorkflowFacts(
+          receipt.id,
+          receipt.currentRevisionNo
+        )
+      : null;
+
     const [approvalInstances, accessiblePaymentIds] = await Promise.all([
       this.prisma.approvalInstance.findMany({
         where: {
@@ -614,15 +639,25 @@ export class SpotProcurementReadService {
         refund.paymentId !== null && accessiblePaymentIdSet.has(refund.paymentId)
     );
     const executionPaymentIds = accessiblePayments.map((payment) => payment.id);
-    const executions = executionPaymentIds.length
-      ? await this.prisma.spotProcurementPaymentExecution.findMany({
-          where: {
-            paymentId: { in: executionPaymentIds },
-            voidedAt: null
-          },
-          orderBy: [{ paidAt: "asc" }, { id: "asc" }]
-        })
-      : [];
+    const [executionHistory, reservations, paymentArchives] = executionPaymentIds.length
+      ? await Promise.all([
+          this.prisma.spotProcurementPaymentExecution.findMany({
+            where: { paymentId: { in: executionPaymentIds } },
+            orderBy: [{ paidAt: "asc" }, { id: "asc" }]
+          }),
+          this.prisma.supplierBalanceReservation.findMany({
+            where: { paymentId: { in: executionPaymentIds } },
+            orderBy: { paymentId: "asc" }
+          }),
+          this.prisma.spotProcurementPaymentArchive.findMany({
+            where: { paymentId: { in: executionPaymentIds } },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+          })
+        ])
+      : [[], [], []];
+    const executions = executionHistory.filter(
+      (execution) => execution.voidedAt === null
+    );
     const fileIds = attachments.map((attachment) => attachment.fileId);
     const files = fileIds.length
       ? await this.prisma.fileObject.findMany({
@@ -686,9 +721,18 @@ export class SpotProcurementReadService {
       activePayments: allPayments.filter((payment) =>
         ACTIVE_PAYMENT_STATUSES.has(payment.status)
       ),
+      allPayments,
       executions,
+      executionHistory,
       paymentSummary,
-      currentPdfExists: Boolean(currentPdf)
+      currentPdfExists: Boolean(currentPdf),
+      versions,
+      approvalInstances,
+      receipt,
+      discrepancy,
+      refunds,
+      reservations,
+      paymentArchives
     });
     const invoiceCoverageByProcurementId =
       !usesRealProcurementForm && this.invoiceLedger
@@ -710,7 +754,14 @@ export class SpotProcurementReadService {
       ? receiptReadSummary(
           receipt,
           discrepancy,
-          executions.some((execution) => execution.voidedAt === null)
+          executions.some((execution) => execution.voidedAt === null),
+          receiptWorkflowFacts
+            ? {
+                ...receiptWorkflowFacts,
+                actorUserId,
+                refundCount: refunds.length
+              }
+            : undefined
         )
       : futureUnavailable();
 
@@ -734,6 +785,8 @@ export class SpotProcurementReadService {
         closedAt: isoOrNull(procurement.closedAt),
         voidedAt: isoOrNull(procurement.voidedAt),
         voidReason: procurement.voidReason,
+        abandonedAt: isoOrNull(procurement.abandonedAt),
+        abandonReason: procurement.abandonReason,
         createdAt: procurement.createdAt.toISOString(),
         updatedAt: procurement.updatedAt.toISOString(),
         ...(usesRealProcurementForm
@@ -816,6 +869,101 @@ export class SpotProcurementReadService {
           ? []
           : ["收货确认、收货差异和发票覆盖将在代码阶段 B 开放"])
       ]
+    };
+  }
+
+  private async receiptWorkflowFacts(
+    receiptId: string,
+    currentRevisionNo: number
+  ) {
+    const [
+      revision,
+      activeDelegation,
+      review,
+      pdfDocument,
+      line,
+      photo,
+      invoiceAllocation,
+      noInvoiceConfirmation,
+      invoiceException
+    ] = await Promise.all([
+      this.prisma.spotProcurementReceiptRevision.findUnique({
+        where: {
+          receiptId_revisionNo: {
+            receiptId,
+            revisionNo: currentRevisionNo
+          }
+        },
+        select: {
+          submittedAt: true,
+          note: true,
+          actualCostCents: true
+        }
+      }),
+      this.prisma.spotProcurementReceiptDelegation.findFirst({
+        where: { receiptId, revokedAt: null },
+        orderBy: [{ delegatedAt: "desc" }, { id: "desc" }],
+        select: {
+          delegatorUserId: true,
+          delegateUserId: true,
+          scope: true
+        }
+      }),
+      this.prisma.spotProcurementReceiptReview.findFirst({
+        where: { receiptId },
+        orderBy: [{ sequenceNo: "desc" }, { id: "desc" }],
+        select: { id: true }
+      }),
+      this.prisma.pdfDocument.findFirst({
+        where: {
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.receipt,
+          businessId: receiptId
+        },
+        select: { id: true }
+      }),
+      this.prisma.spotProcurementReceiptLine.findFirst({
+        where: {
+          receiptId,
+          receiptRevisionNo: currentRevisionNo
+        },
+        select: { id: true }
+      }),
+      this.prisma.spotProcurementReceiptPhoto.findFirst({
+        where: {
+          receiptId,
+          receiptRevisionNo: currentRevisionNo
+        },
+        select: { id: true }
+      }),
+      this.prisma.invoiceAllocation.findFirst({
+        where: { receiptId },
+        select: { id: true }
+      }),
+      this.prisma.noInvoiceConfirmation.findFirst({
+        where: { receiptId },
+        select: { id: true }
+      }),
+      this.prisma.invoiceExceptionConfirmation.findFirst({
+        where: { receiptId },
+        select: { id: true }
+      })
+    ]);
+    return {
+      currentRevisionSubmittedAt: revision?.submittedAt ?? null,
+      activeDelegation,
+      hasReview: Boolean(review),
+      hasPdf: Boolean(pdfDocument),
+      hasInvoiceFact: Boolean(
+        invoiceAllocation ||
+          noInvoiceConfirmation ||
+          invoiceException
+      ),
+      hasDraftContent: Boolean(
+        line ||
+          photo ||
+          revision?.note ||
+          (revision?.actualCostCents ?? 0n) !== 0n
+      )
     };
   }
 
@@ -1288,6 +1436,8 @@ export class SpotProcurementReadService {
         approvedAt: isoOrNull(payment.approvedAt),
         invalidatedAt: isoOrNull(payment.invalidatedAt),
         invalidatedReason: payment.invalidatedReason,
+        draftOrigin: payment.draftOrigin ?? "legacy_unknown",
+        sourcePaymentId: payment.sourcePaymentId,
         createdAt: payment.createdAt.toISOString(),
         updatedAt: payment.updatedAt.toISOString(),
         ...(usesRealPaymentForm
@@ -1544,19 +1694,16 @@ export class SpotProcurementReadService {
         ]
       },
       select: { procurementId: true },
-      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-      take: LIST_SCAN_MAX_ROWS + 1
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
     });
-    const sourceTruncated = versions.length > LIST_SCAN_MAX_ROWS;
     const candidateIds = [
       ...new Set(
         versions
-          .slice(0, LIST_SCAN_MAX_ROWS)
           .map((version) => version.procurementId)
       )
     ];
     if (!candidateIds.length) {
-      return { ids: [], sourceTruncated };
+      return [];
     }
     const procurements = await this.prisma.spotProcurement.findMany({
       where: {
@@ -1565,10 +1712,7 @@ export class SpotProcurementReadService {
       },
       select: { id: true }
     });
-    return {
-      ids: procurements.map((procurement) => procurement.id),
-      sourceTruncated
-    };
+    return procurements.map((procurement) => procurement.id);
   }
 
   private async visibleProjectIdsForQuery(
@@ -2256,6 +2400,8 @@ export class SpotProcurementReadService {
           project: projectSummary(project),
           status: row.status,
           statusLabel: paymentStatusLabel(row.status),
+          draftOrigin: row.draftOrigin ?? "legacy_unknown",
+          sourcePaymentId: row.sourcePaymentId,
           companyPaymentStatusLabel: companyPaymentStatusLabel(
             row,
             actualPaidAmountCents
@@ -2340,9 +2486,21 @@ export class SpotProcurementReadService {
     roleKeys: RoleKey[];
     actorUserId: string;
     activePayments: SpotProcurementPayment[];
+    allPayments: SpotProcurementPayment[];
     executions: SpotProcurementPaymentExecution[];
+    executionHistory: SpotProcurementPaymentExecution[];
     paymentSummary: ReturnType<typeof summarizePayments>;
     currentPdfExists: boolean;
+    versions: SpotProcurementVersion[];
+    approvalInstances: ApprovalInstance[];
+    receipt: Pick<
+      SpotProcurementReceipt,
+      "status" | "firstSubmittedAt" | "submittedAt" | "invalidatedAt"
+    > | null;
+    discrepancy: SpotProcurementDiscrepancy | null;
+    refunds: SpotProcurementRefund[];
+    reservations: Array<{ status: string }>;
+    paymentArchives: SpotProcurementPaymentArchive[];
   }): DetailActionReadModel[] {
     const isOwner =
       input.actorUserId === input.procurement.applicantUserId ||
@@ -2373,7 +2531,23 @@ export class SpotProcurementReadService {
       input.roleKeys.some((role) => PROCUREMENT_VOID_ROLES.has(role)) &&
       !hasActualPayment &&
       input.activePayments.length === 0;
-    const canCreatePayment = false;
+    const hasActivePayment = input.allPayments.some(
+      (payment) =>
+        payment.status === "draft" || ACTIVE_PAYMENT_STATUSES.has(payment.status)
+    );
+    const hasRecreatableSource = input.allPayments.some(
+      (payment) =>
+        payment.procurementVersionId === input.currentVersion.id &&
+        payment.status === "invalidated" &&
+        payment.submittedAt === null
+    );
+    const canCreatePayment =
+      input.procurement.status === "approved_in_progress" &&
+      input.currentVersion.status === "approved" &&
+      input.actorUserId === input.procurement.handlerUserId &&
+      canCreate &&
+      !hasActivePayment &&
+      hasRecreatableSource;
     const canCreateVersion =
       !["closed", "voided"].includes(input.procurement.status) &&
       ["approved", "rejected"].includes(input.currentVersion.status) &&
@@ -2381,8 +2555,35 @@ export class SpotProcurementReadService {
       canCreate &&
       !hasActualPayment &&
       input.activePayments.length === 0;
+    const hasApprovalHistory =
+      input.versions.some((version) => version.submittedAt !== null) ||
+      input.approvalInstances.some(
+        (approval) =>
+          approval.businessType === SPOT_PROCUREMENT_BUSINESS_TYPES.application
+      );
+    const formalBlocker = procurementAbandonmentBlocker(input);
+    const canAbandon =
+      input.procurement.status === "draft" &&
+      input.currentVersion.status === "draft" &&
+      input.actorUserId === input.procurement.handlerUserId &&
+      canCreate &&
+      formalBlocker === null;
 
     return [
+      detailAction({
+        key: hasApprovalHistory
+          ? "abandon_application"
+          : "delete_pristine_draft",
+        label: hasApprovalHistory ? "放弃采购申请" : "删除采购草稿",
+        kind: "danger",
+        roleKeys: input.roleKeys,
+        requiredAction: "spot_procurement.create",
+        enabled: canAbandon,
+        disabledReason:
+          formalBlocker ??
+          "只有保留物资岗位的当前采购经办人可放弃采购草稿",
+        requiresComment: hasApprovalHistory
+      }),
       detailAction({
         key: "edit_draft",
         label: "编辑采购草稿",
@@ -2432,14 +2633,14 @@ export class SpotProcurementReadService {
         disabledReason: "只有采购申请人可在审批中撤回"
       }),
       detailAction({
-        key: "create_payment",
-        label: "新建后续付款申请",
+        key: "create_payment_draft",
+        label: "重新创建付款草稿",
         kind: "primary",
         roleKeys: input.roleKeys,
         requiredAction: "spot_procurement.payment.submit",
         enabled: canCreatePayment,
         disabledReason:
-          "采购批准后，仅采购经办人可在剩余金额内创建付款"
+          "只有采购批准、原草稿已放弃且不存在活动付款时，当前采购经办人才可重新创建"
       }),
       detailAction({
         key: "create_version",
@@ -2511,6 +2712,16 @@ export class SpotProcurementReadService {
       input.voucherFactConsistent;
 
     return [
+      detailAction({
+        key: "abandon_payment_draft",
+        label: "放弃付款草稿",
+        kind: "danger",
+        roleKeys: input.roleKeys,
+        requiredAction: "spot_procurement.payment.submit",
+        enabled: input.payment.status === "draft" && isHandler,
+        disabledReason: "只有当前采购经办人可放弃尚未提交的付款草稿",
+        requiresComment: true
+      }),
       detailAction({
         key: "edit_draft",
         label: "编辑付款草稿",
@@ -3333,17 +3544,39 @@ function maskedPaymentChannelReadModel(
 }
 
 function receiptReadSummary(
-  receipt: Pick<
-    SpotProcurementReceipt,
-    | "id"
-    | "status"
-    | "currentRevisionNo"
-    | "firstSubmittedAt"
-    | "submittedAt"
-    | "lockedAt"
-  > | null,
+  receipt:
+    | (Pick<
+        SpotProcurementReceipt,
+        | "id"
+        | "status"
+        | "currentRevisionNo"
+        | "firstSubmittedAt"
+        | "submittedAt"
+        | "lockedAt"
+      > &
+        Partial<
+          Pick<
+            SpotProcurementReceipt,
+            "handlerUserId" | "invalidatedAt"
+          >
+        >)
+    | null,
   discrepancy: Pick<SpotProcurementDiscrepancy, "status"> | null,
-  openedByActualPayment = false
+  openedByActualPayment = false,
+  workflowFacts?: {
+    actorUserId: string;
+    currentRevisionSubmittedAt: Date | null;
+    activeDelegation: {
+      delegatorUserId: string;
+      delegateUserId: string;
+      scope: string;
+    } | null;
+    hasReview: boolean;
+    hasPdf: boolean;
+    hasInvoiceFact: boolean;
+    hasDraftContent: boolean;
+    refundCount: number;
+  }
 ) {
   if (!receipt) {
     return {
@@ -3373,7 +3606,111 @@ function receiptReadSummary(
     firstSubmittedAt: isoOrNull(receipt.firstSubmittedAt),
     submittedAt: isoOrNull(receipt.submittedAt),
     lockedAt: isoOrNull(receipt.lockedAt),
-    discrepancyStatus: discrepancy?.status ?? null
+    discrepancyStatus: discrepancy?.status ?? null,
+    ...(workflowFacts
+      ? {
+          workflow: receiptWorkflowReadModel({
+            receipt,
+            discrepancy,
+            openedByActualPayment,
+            ...workflowFacts
+          })
+        }
+      : {})
+  };
+}
+
+function receiptWorkflowReadModel(input: {
+  receipt: Pick<
+    SpotProcurementReceipt,
+    | "status"
+    | "currentRevisionNo"
+    | "firstSubmittedAt"
+    | "submittedAt"
+  > &
+    Partial<
+      Pick<
+        SpotProcurementReceipt,
+        "handlerUserId" | "invalidatedAt"
+      >
+    >;
+  discrepancy: Pick<SpotProcurementDiscrepancy, "status"> | null;
+  openedByActualPayment: boolean;
+  actorUserId: string;
+  currentRevisionSubmittedAt: Date | null;
+  activeDelegation: {
+    delegatorUserId: string;
+    delegateUserId: string;
+    scope: string;
+  } | null;
+  hasReview: boolean;
+  hasPdf: boolean;
+  hasInvoiceFact: boolean;
+  hasDraftContent: boolean;
+  refundCount: number;
+}) {
+  const isHandler =
+    input.actorUserId === input.receipt.handlerUserId;
+  const isActiveDelegate = Boolean(
+    input.activeDelegation &&
+      input.activeDelegation.delegatorUserId ===
+        input.receipt.handlerUserId &&
+      input.activeDelegation.delegateUserId ===
+        input.actorUserId &&
+      input.activeDelegation.scope === "receipt_confirmation"
+  );
+  const blocker = !input.openedByActualPayment
+    ? "待财务登记实际付款后开放收货确认"
+    : input.receipt.invalidatedAt
+      ? "收货单已失效，只能查看历史"
+      : input.receipt.status !== "draft" ||
+          input.receipt.firstSubmittedAt !== null ||
+          input.receipt.submittedAt !== null ||
+          input.currentRevisionSubmittedAt !== null
+        ? "只能重置从未提交的当前收货草稿"
+        : input.hasReview
+          ? "收货单已形成主管复核记录"
+          : input.hasPdf
+            ? "收货单已形成正式 PDF 或归档证据"
+            : input.hasInvoiceFact
+              ? "收货单已形成发票或无票业务事实"
+              : input.discrepancy
+                ? "收货单已形成差异或补货事实"
+                : input.refundCount > 0
+                  ? "收货单已关联退款事实"
+                  : !isHandler && !isActiveDelegate
+                    ? "只有采购经办人或当前有效受托人可以重置收货草稿"
+                    : !input.hasDraftContent
+                      ? "当前收货草稿尚未填写，无需重置"
+                      : null;
+  const stage = !input.openedByActualPayment
+    ? "waiting_payment"
+    : input.receipt.status === "submitted"
+      ? "awaiting_supervisor_review"
+      : input.receipt.status === "draft" &&
+          input.receipt.firstSubmittedAt === null &&
+          input.currentRevisionSubmittedAt === null
+        ? input.hasDraftContent
+          ? "reset_unsubmitted_receipt"
+          : "fill_receipt"
+        : "readonly_history";
+  const stageLabels: Record<string, string> = {
+    waiting_payment: "等待实际付款",
+    fill_receipt: "填写收货",
+    reset_unsubmitted_receipt: "可重置未提交收货",
+    awaiting_supervisor_review: "待物资主管复核",
+    readonly_history: "只读历史"
+  };
+  return {
+    stage,
+    stageLabel: stageLabels[stage],
+    resetAction: {
+      key: "reset_receipt_draft",
+      label: "重置未提交收货",
+      enabled: blocker === null,
+      disabledReason: blocker,
+      expectedRevision: input.receipt.currentRevisionNo
+    }
   };
 }
 
@@ -3612,6 +3949,8 @@ function versionReadModel(
     changeSummary: version.changeSummary,
     submittedAt: isoOrNull(version.submittedAt),
     approvedAt: isoOrNull(version.approvedAt),
+    abandonedAt: isoOrNull(version.abandonedAt),
+    abandonReason: version.abandonReason,
     createdByUserId: version.createdByUserId,
     createdAt: version.createdAt.toISOString(),
     updatedAt: version.updatedAt.toISOString()
@@ -3730,6 +4069,61 @@ function procurementStatusLabel(status: string) {
   return PROCUREMENT_STATUS_LABELS[status] ?? "采购状态未读取";
 }
 
+function procurementAbandonmentBlocker(input: {
+  procurement: SpotProcurement;
+  currentVersion: SpotProcurementVersion;
+  allPayments: SpotProcurementPayment[];
+  executionHistory: SpotProcurementPaymentExecution[];
+  approvalInstances: ApprovalInstance[];
+  receipt: Pick<
+    SpotProcurementReceipt,
+    "status" | "firstSubmittedAt" | "submittedAt" | "invalidatedAt"
+  > | null;
+  discrepancy: SpotProcurementDiscrepancy | null;
+  refunds: SpotProcurementRefund[];
+  reservations: Array<{ status: string }>;
+  paymentArchives: SpotProcurementPaymentArchive[];
+}) {
+  if (
+    input.procurement.status !== "draft" ||
+    input.currentVersion.status !== "draft"
+  ) {
+    return "当前采购应使用撤销或异常终止";
+  }
+  if (
+    input.allPayments.some(
+      (payment) =>
+        payment.submittedAt !== null ||
+        !["draft", "invalidated"].includes(payment.status)
+    ) ||
+    input.approvalInstances.some(
+      (approval) =>
+        approval.businessType === SPOT_PROCUREMENT_BUSINESS_TYPES.payment
+    )
+  ) {
+    return "已形成正式付款申请，不能放弃";
+  }
+  if (input.executionHistory.length > 0) {
+    return "已发生实际付款历史，不能放弃";
+  }
+  if (input.reservations.some((reservation) => reservation.status === "executed")) {
+    return "已执行供应商余额抵扣，不能放弃";
+  }
+  if (
+    input.receipt &&
+    input.receipt.invalidatedAt === null &&
+    (input.receipt.firstSubmittedAt !== null ||
+      input.receipt.submittedAt !== null ||
+      input.receipt.status !== "draft")
+  ) {
+    return "收货单已提交或生效，不能放弃";
+  }
+  if (input.discrepancy) return "已形成收货差异事实，不能放弃";
+  if (input.refunds.length > 0) return "已形成退款事实，不能放弃";
+  if (input.paymentArchives.length > 0) return "已形成归档证据，不能放弃";
+  return null;
+}
+
 function paymentStatusLabel(status: string) {
   return PAYMENT_STATUS_LABELS[status] ?? "付款状态未读取";
 }
@@ -3741,7 +4135,8 @@ function versionStatusLabel(status: string) {
     approved: "审批通过",
     returned: "已退回",
     withdrawn: "已撤回",
-    invalidated: "已失效"
+    invalidated: "已失效",
+    abandoned: "已放弃"
   };
   return labels[status] ?? "版本状态未读取";
 }
@@ -3886,6 +4281,62 @@ function optionalQueryText(value: unknown) {
   return typeof value === "string" && value.trim()
     ? value.trim()
     : undefined;
+}
+
+interface ListPagination {
+  page: number;
+  pageSize: number;
+  skip: number;
+}
+
+function listPagination(pageValue: unknown, pageSizeValue: unknown): ListPagination {
+  const page = positiveInteger(pageValue, 1, "页码");
+  const pageSize = positiveInteger(pageSizeValue, DEFAULT_PAGE_SIZE, "每页条数");
+  if (pageSize > MAX_PAGE_SIZE) {
+    throw new BadRequestException(`每页最多查询 ${MAX_PAGE_SIZE} 条记录`);
+  }
+  return { page, pageSize, skip: (page - 1) * pageSize };
+}
+
+function positiveInteger(value: unknown, fallback: number, label: string) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new BadRequestException(`${label}必须为正整数`);
+  }
+  return parsed;
+}
+
+function lifecycleView(value: unknown): "active" | "ended" {
+  const normalized = optionalQueryText(value) ?? "active";
+  if (normalized !== "active" && normalized !== "ended") {
+    throw new BadRequestException("生命周期视图筛选值不正确");
+  }
+  return normalized;
+}
+
+function paginationResult(pagination: ListPagination, total: number) {
+  return {
+    page: pagination.page,
+    pageSize: pagination.pageSize,
+    total,
+    totalPages: total === 0 ? 0 : Math.ceil(total / pagination.pageSize)
+  };
+}
+
+function emptyPagedList(pagination: ListPagination, view: "active" | "ended") {
+  return {
+    items: [],
+    view,
+    pagination: paginationResult(pagination, 0),
+    statistics: { total: 0, byStatus: {} as Record<string, number> }
+  };
+}
+
+function statusCounts(rows: Array<{ status: string }>) {
+  const byStatus: Record<string, number> = {};
+  for (const row of rows) byStatus[row.status] = (byStatus[row.status] ?? 0) + 1;
+  return { total: rows.length, byStatus };
 }
 
 function groupBy<T>(

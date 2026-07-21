@@ -1,5 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
-import { validateContractTemplateSchema, type ContractTemplateSchema } from "@jiangkong/shared-domain";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  validateContractTemplateSchema,
+  type ContractTemplateSchema,
+  type DetailActionReadModel
+} from "@jiangkong/shared-domain";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
@@ -109,6 +113,59 @@ export class ContractTemplateService {
     return roleKey === "contract_staff"
       ? "只有合同经办人可以执行该模板操作"
       : "只有合同主管可以执行该模板操作";
+  }
+
+  private discardReadModel(
+    version: {
+      status: string;
+      submittedByUserId?: string | null;
+      publishedAt?: Date | null;
+      stoppedAt?: Date | null;
+      revokedAt?: Date | null;
+    },
+    referenceReason: string | null,
+    canMaintain: boolean
+  ): { availableActions: DetailActionReadModel[]; blockedReasons: string[] } {
+    const blockedReasons: string[] = [];
+    if (!canMaintain) blockedReasons.push("当前账号没有模板维护权限");
+    if (version.status === "discarded") blockedReasons.push("该草稿版本已废弃");
+    else if (version.status !== "draft") blockedReasons.push("只有从未提交的草稿版本可以废弃");
+    if (version.submittedByUserId || version.publishedAt || version.stoppedAt || version.revokedAt) {
+      blockedReasons.push("该版本已形成提交、发布、停用或撤销历史");
+    }
+    if (referenceReason) blockedReasons.push(referenceReason);
+    return {
+      availableActions: [{
+        key: "discard_version",
+        label: "废弃草稿版本",
+        kind: "danger",
+        enabled: blockedReasons.length === 0,
+        disabledReason: blockedReasons.length ? blockedReasons.join("；") : null,
+        requiresComment: true
+      }],
+      blockedReasons
+    };
+  }
+
+  private async standardClauseReference(
+    tx: { $queryRaw<T>(query: Prisma.Sql): Promise<T> },
+    versionId: string
+  ) {
+    const [reference] = await tx.$queryRaw<Array<{ referenced: boolean }>>(Prisma.sql`
+      SELECT (
+        EXISTS (
+          SELECT 1 FROM "ContractBusinessTemplateVersion"
+          WHERE "clauseSchema" @> jsonb_build_array(jsonb_build_object('standardClauseVersionId', ${versionId}))
+        ) OR EXISTS (
+          SELECT 1 FROM "ContractVersion"
+          WHERE "templateSnapshot" @> jsonb_build_object('clauseSchema', jsonb_build_array(jsonb_build_object('standardClauseVersionId', ${versionId})))
+        ) OR EXISTS (
+          SELECT 1 FROM "ContractVersion"
+          WHERE "clauseSnapshot" @> jsonb_build_array(jsonb_build_object('standardClauseVersionId', ${versionId}))
+        )
+      ) AS referenced
+    `);
+    return Boolean(reference?.referenced);
   }
 
   // ---------------------------------------------------------------------------
@@ -409,22 +466,37 @@ export class ContractTemplateService {
     );
   }
 
-  async getTemplate(templateId: string) {
-    const template = await this.prisma.contractBusinessTemplate.findUnique({
-      where: { id: templateId }
-    });
-    if (!template) {
-      throw new NotFoundException("业务模板不存在");
-    }
-
-    const versions = await this.prisma.contractBusinessTemplateVersion.findMany({
-      where: { templateId },
-      orderBy: { versionNo: "desc" }
-    });
-
-    return {
-      template,
-      versions: versions.map((version) => ({
+  async getTemplate(templateId: string, actorUserId: string, includeHistory = false) {
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertTemplateMaintenanceRole(tx, actorUserId);
+      const template = await tx.contractBusinessTemplate.findUnique({ where: { id: templateId } });
+      if (!template || (!includeHistory && template.status === "discarded")) {
+        throw new NotFoundException("业务模板不存在");
+      }
+      const versions = await tx.contractBusinessTemplateVersion.findMany({
+        where: { templateId, ...(includeHistory ? {} : { status: { not: "discarded" } }) },
+        orderBy: { versionNo: "desc" }
+      });
+      const actions = await Promise.all(versions.map(async (version) => {
+        const [mapping, contract] = await Promise.all([
+          tx.contractScenarioTemplateMapping.findFirst({
+            where: { businessTemplateVersionId: version.id },
+            select: { id: true }
+          }),
+          tx.contractVersion.findFirst({
+            where: { businessTemplateVersionId: version.id },
+            select: { id: true }
+          })
+        ]);
+        return this.discardReadModel(
+          version,
+          mapping || contract ? "该版本已被场景映射或合同引用" : null,
+          true
+        );
+      }));
+      return {
+        template,
+        versions: versions.map((version, index) => ({
         id: version.id,
         templateId: version.templateId,
         versionNo: version.versionNo,
@@ -435,11 +507,16 @@ export class ContractTemplateService {
         publishedAt: version.publishedAt,
         stoppedAt: version.stoppedAt,
         revokedAt: version.revokedAt,
+        discardedAt: version.discardedAt,
+        discardedByUserId: version.discardedByUserId,
+        discardReason: version.discardReason,
         changeSummary: version.changeSummary,
         createdAt: version.createdAt,
-        updatedAt: version.updatedAt
-      }))
-    };
+        updatedAt: version.updatedAt,
+        ...actions[index]
+        }))
+      };
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -565,6 +642,95 @@ export class ContractTemplateService {
       });
 
       return newVersion;
+    });
+  }
+
+  async discardVersion(
+    versionId: string,
+    actorUserId: string,
+    reason: string,
+    expectedUpdatedAt: string
+  ) {
+    const discardReason = reason.trim();
+    if (!discardReason) throw new BadRequestException("请填写模板草稿废弃原因");
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertTemplateMaintenanceRole(tx, actorUserId);
+      const locked = await lockBusinessTemplateVersion(tx, versionId);
+      if (!locked?.version || !locked.template) {
+        throw new NotFoundException("未找到业务模板版本，请刷新后重试");
+      }
+      if (locked.version.status === "discarded") {
+        return { id: versionId, status: "discarded", discardedAt: locked.version.discardedAt };
+      }
+      const expectedUpdatedAtDate = new Date(expectedUpdatedAt);
+      if (locked.version.updatedAt.getTime() !== expectedUpdatedAtDate.getTime()) {
+        throw new ConflictException("业务模板草稿已被更新，请刷新页面后重试");
+      }
+      if (
+        locked.version.status !== "draft" ||
+        locked.version.submittedByUserId ||
+        locked.version.publishedAt ||
+        locked.version.stoppedAt ||
+        locked.version.revokedAt
+      ) {
+        throw new BadRequestException("该业务模板版本已提交、发布、停用或撤销，不能废弃");
+      }
+      const [mapping, contract] = await Promise.all([
+        tx.contractScenarioTemplateMapping.findFirst({
+          where: { businessTemplateVersionId: versionId },
+          select: { id: true }
+        }),
+        tx.contractVersion.findFirst({
+          where: { businessTemplateVersionId: versionId },
+          select: { id: true }
+        })
+      ]);
+      if (mapping || contract) {
+        throw new BadRequestException("该业务模板版本已被场景映射或合同引用，不能废弃");
+      }
+      const discardedAt = new Date();
+      const changed = await tx.contractBusinessTemplateVersion.updateMany({
+        where: {
+          id: versionId,
+          status: "draft",
+          updatedAt: expectedUpdatedAtDate,
+          discardedAt: null
+        },
+        data: { status: "discarded", discardedAt, discardedByUserId: actorUserId, discardReason }
+      });
+      if (changed.count !== 1) {
+        throw new ConflictException("业务模板草稿已被更新，请刷新页面后重试");
+      }
+      const familyVersions = await tx.contractBusinessTemplateVersion.findMany({
+        where: { templateId: locked.template.id },
+        select: { id: true }
+      });
+      const [remaining, protectedHistory, anyMapping] = await Promise.all([
+        tx.contractBusinessTemplateVersion.count({
+          where: { templateId: locked.template.id, status: { not: "discarded" } }
+        }),
+        tx.contractBusinessTemplateVersion.count({
+          where: { templateId: locked.template.id, status: { in: ["submitted", "published", "stopped", "revoked"] } }
+        }),
+        tx.contractScenarioTemplateMapping.findFirst({
+          where: { businessTemplateVersionId: { in: familyVersions.map((item) => item.id) } },
+          select: { id: true }
+        })
+      ]);
+      if (remaining === 0 && protectedHistory === 0 && !anyMapping) {
+        await tx.contractBusinessTemplate.updateMany({
+          where: { id: locked.template.id, status: "draft" },
+          data: { status: "discarded" }
+        });
+      }
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract_template.discard_version",
+        businessType: "contract_business_template_version",
+        businessId: versionId,
+        metadata: { reason: discardReason }
+      });
+      return { id: versionId, status: "discarded", discardedAt };
     });
   }
 
@@ -753,6 +919,40 @@ export class ContractTemplateService {
     );
   }
 
+  async listClauseHistory(actorUserId: string, category?: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertTemplateMaintenanceRole(tx, actorUserId);
+      const clauses = await tx.standardClause.findMany({
+        where: category ? { category } : undefined,
+        orderBy: { createdAt: "asc" }
+      });
+      const versions = clauses.length
+        ? await tx.standardClauseVersion.findMany({
+            where: { clauseId: { in: clauses.map((clause) => clause.id) } },
+            orderBy: [{ clauseId: "asc" }, { versionNo: "desc" }]
+          })
+        : [];
+      const actionByVersion = new Map<string, ReturnType<ContractTemplateService["discardReadModel"]>>();
+      for (const version of versions) {
+        const reference = await this.standardClauseReference(tx, version.id);
+        actionByVersion.set(
+          version.id,
+          this.discardReadModel(
+            version,
+            reference ? "该版本已被模板或合同快照引用" : null,
+            true
+          )
+        );
+      }
+      return clauses.map((clause) => ({
+        ...clause,
+        versions: versions
+          .filter((version) => version.clauseId === clause.id)
+          .map((version) => ({ ...version, ...actionByVersion.get(version.id) }))
+      }));
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Standard clause mutations
   // ---------------------------------------------------------------------------
@@ -820,6 +1020,68 @@ export class ContractTemplateService {
       });
 
       return updated;
+    });
+  }
+
+  async discardClauseVersion(
+    versionId: string,
+    actorUserId: string,
+    reason: string,
+    expectedUpdatedAt: string
+  ) {
+    const discardReason = reason.trim();
+    if (!discardReason) throw new BadRequestException("请填写模板草稿废弃原因");
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertTemplateMaintenanceRole(tx, actorUserId);
+      const [locked] = await tx.$queryRaw<Array<{
+        id: string;
+        clauseId: string;
+        status: string;
+        submittedByUserId: string | null;
+        publishedAt: Date | null;
+        discardedAt: Date | null;
+        updatedAt: Date;
+      }>>(Prisma.sql`
+        SELECT v.* FROM "StandardClauseVersion" v
+        JOIN "StandardClause" c ON c."id" = v."clauseId"
+        WHERE v."id" = ${versionId}
+        FOR UPDATE OF c, v
+      `);
+      if (!locked) throw new NotFoundException("未找到标准条款版本，请刷新后重试");
+      if (locked.status === "discarded") {
+        return { id: versionId, status: "discarded", discardedAt: locked.discardedAt };
+      }
+      const expectedUpdatedAtDate = new Date(expectedUpdatedAt);
+      if (locked.updatedAt.getTime() !== expectedUpdatedAtDate.getTime()) {
+        throw new ConflictException("标准条款草稿已被更新，请刷新页面后重试");
+      }
+      if (locked.status !== "draft" || locked.submittedByUserId || locked.publishedAt) {
+        throw new BadRequestException("该标准条款版本已提交或发布，不能废弃");
+      }
+      if (await this.standardClauseReference(tx, versionId)) {
+        throw new BadRequestException("该标准条款版本已被模板或合同快照引用，不能废弃");
+      }
+      const discardedAt = new Date();
+      const changed = await tx.standardClauseVersion.updateMany({
+        where: {
+          id: versionId,
+          status: "draft",
+          updatedAt: expectedUpdatedAtDate,
+          discardedAt: null
+        },
+        data: { status: "discarded", discardedAt, discardedByUserId: actorUserId, discardReason }
+      });
+      if (changed.count !== 1) {
+        throw new ConflictException("标准条款草稿已被更新，请刷新页面后重试");
+      }
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "standard_clause.discard_version",
+        businessType: "standard_clause_version",
+        businessId: versionId,
+        metadata: { reason: discardReason }
+      });
+      return { id: versionId, status: "discarded", discardedAt };
     });
   }
 

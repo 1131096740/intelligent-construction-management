@@ -61,6 +61,62 @@
     </t-card>
 
     <t-card
+      v-if="canMaintainTemplates"
+      title="草稿与版本历史"
+      :bordered="true"
+      class="panel jg-table-region jg-table-region--standard"
+    >
+      <t-table
+        row-key="id"
+        size="small"
+        :columns="historyColumns"
+        :data="historyVersions"
+        :loading="loading"
+        horizontal-scroll-affixed-bottom
+        empty="暂无标准条款版本"
+      >
+        <template #version="{ row }">
+          V{{ row.versionNo }}
+        </template>
+        <template #status="{ row }">
+          <t-tag
+            size="small"
+            variant="light"
+          >
+            {{ clauseStatusLabel(row.status) }}
+          </t-tag>
+        </template>
+        <template #updatedAt="{ row }">
+          {{ formatDateTime(row.updatedAt) }}
+        </template>
+        <template #operation="{ row }">
+          <t-link
+            theme="primary"
+            @click="selectHistoryVersion(row)"
+          >
+            治理版本
+          </t-link>
+        </template>
+      </t-table>
+      <div
+        v-if="selectedHistoryVersion"
+        class="selected-version-governance"
+      >
+        <strong>
+          {{ selectedHistoryVersion.name }} · V{{ selectedHistoryVersion.versionNo }} ·
+          {{ clauseStatusLabel(selectedHistoryVersion.status) }}
+        </strong>
+        <BusinessDraftAction
+          :actions="selectedHistoryVersion.availableActions"
+          :blocked-reasons="selectedHistoryVersion.blockedReasons"
+          :subject="selectedActionSubject"
+          :execute="discardSelectedClauseVersion"
+          @completed="handleDiscardCompleted"
+        />
+      </div>
+    </t-card>
+
+    <t-card
       v-if="canPublishTemplates"
       title="发布版本"
       :bordered="true"
@@ -111,6 +167,15 @@
     >
       {{ message }}
     </p>
+    <SensitiveActionDialog
+      v-model="leaveDialogVisible"
+      title="放弃未保存的条款草稿？"
+      description="继续后会丢弃尚未创建的条款编码、分类、名称、标题和正文。"
+      confirm-text="放弃并离开"
+      confirm-theme="danger"
+      @confirm="resolveLeaveDecision(true)"
+      @cancel="resolveLeaveDecision(false)"
+    />
   </section>
 </template>
 
@@ -118,12 +183,20 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import {
   createStandardClause,
+  discardStandardClauseVersion,
+  listStandardClauseHistory,
   listPublishedStandardClauses,
   publishStandardClauseVersion,
   submitStandardClauseVersion,
-  type PublishedStandardClause
+  type PublishedStandardClause,
+  type StandardClauseVersionReadModel
 } from "../../api/contract-workbench.api";
 import { useAuthStore } from "../../auth/auth.store";
+import BusinessDraftAction, {
+  type BusinessDraftActionRequest
+} from "../../components/BusinessDraftAction.vue";
+import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
+import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import {
   canMaintainContractTemplates,
   canPublishContractTemplates
@@ -137,12 +210,29 @@ const columns = [
   { colKey: "versionNo", title: "版本", width: 80 },
   { colKey: "content", title: "只读正文", minWidth: 280 }
 ];
+type StandardClauseHistoryRow = StandardClauseVersionReadModel & {
+  code: string;
+  category: string;
+  name: string;
+};
+const historyColumns = [
+  { colKey: "category", title: "分类", width: 120 },
+  { colKey: "code", title: "编码", width: 140 },
+  { colKey: "name", title: "名称", minWidth: 160 },
+  { colKey: "title", title: "标题", minWidth: 180 },
+  { colKey: "version", title: "版本", width: 80 },
+  { colKey: "status", title: "状态", width: 100 },
+  { colKey: "updatedAt", title: "更新时间", width: 180 },
+  { colKey: "operation", title: "操作", width: 100, fixed: "right" as const }
+];
 
 const category = ref("");
 const auth = useAuthStore();
 const canMaintainTemplates = computed(() => canMaintainContractTemplates(auth.user?.roleKeys));
 const canPublishTemplates = computed(() => canPublishContractTemplates(auth.user?.roleKeys));
 const clauses = ref<PublishedStandardClause[]>([]);
+const historyVersions = ref<StandardClauseHistoryRow[]>([]);
+const selectedHistoryVersion = ref<StandardClauseHistoryRow | null>(null);
 const loading = ref(false);
 const creating = ref(false);
 const message = ref("");
@@ -150,11 +240,61 @@ const tone = ref<"success" | "danger">("success");
 const form = reactive({ code: "", category: "", name: "", title: "", text: "" });
 const submitForm = reactive({ versionId: "" });
 const publishForm = reactive({ versionId: "", changeSummary: "" });
+const createBaseline = ref("");
+const leaveDialogVisible = ref(false);
+let resolvePendingLeave: ((decision: boolean) => void) | null = null;
+const isDirty = computed(() => Boolean(createBaseline.value) && createSnapshot() !== createBaseline.value);
+useUnsavedChangesGuard({
+  isDirty,
+  confirmLeave: () => new Promise<boolean>((resolve) => {
+    resolvePendingLeave?.(false);
+    resolvePendingLeave = resolve;
+    leaveDialogVisible.value = true;
+  })
+});
+
+function createSnapshot() {
+  return JSON.stringify(form);
+}
+
+function syncCreateBaseline() {
+  createBaseline.value = createSnapshot();
+}
+
+function resolveLeaveDecision(decision: boolean) {
+  leaveDialogVisible.value = false;
+  const resolve = resolvePendingLeave;
+  resolvePendingLeave = null;
+  resolve?.(decision);
+}
+const selectedActionSubject = computed(() => ({
+  businessCode: selectedHistoryVersion.value?.code ?? "—",
+  name: `${selectedHistoryVersion.value?.name ?? "标准条款"} V${selectedHistoryVersion.value?.versionNo ?? "—"}`,
+  lastSavedAt: formatDateTime(selectedHistoryVersion.value?.updatedAt),
+  impactScope: "仅废弃当前从未提交的条款草稿；已发布条款和合同引用不受影响。"
+}));
 
 async function loadClauses() {
   loading.value = true;
   try {
     clauses.value = await listPublishedStandardClauses(category.value.trim() || undefined);
+    if (canMaintainTemplates.value) {
+      const histories = await listStandardClauseHistory(category.value.trim() || undefined);
+      historyVersions.value = histories.flatMap((clause) =>
+        clause.versions.map((version) => ({
+          ...version,
+          code: clause.code,
+          category: clause.category,
+          name: clause.name
+        }))
+      );
+      const selectedId = selectedHistoryVersion.value?.id;
+      selectedHistoryVersion.value =
+        historyVersions.value.find((version) => version.id === selectedId) ?? null;
+    } else {
+      historyVersions.value = [];
+      selectedHistoryVersion.value = null;
+    }
   } catch (error) {
     message.value = error instanceof Error ? error.message : "加载条款失败";
     tone.value = "danger";
@@ -174,6 +314,11 @@ async function createClause() {
       content: { text: form.text }
     });
     submitForm.versionId = String((created as { version?: { id?: string } }).version?.id ?? "");
+    await loadClauses();
+    selectedHistoryVersion.value =
+      historyVersions.value.find((version) => version.id === submitForm.versionId) ?? null;
+    Object.assign(form, { code: "", category: "", name: "", title: "", text: "" });
+    syncCreateBaseline();
     message.value = "条款草稿已创建";
     tone.value = "success";
   } catch (error) {
@@ -182,6 +327,48 @@ async function createClause() {
   } finally {
     creating.value = false;
   }
+}
+
+function selectHistoryVersion(version: StandardClauseHistoryRow) {
+  selectedHistoryVersion.value = version;
+  submitForm.versionId = version.status === "draft" ? version.id : "";
+  publishForm.versionId = version.status === "submitted" ? version.id : "";
+}
+
+async function discardSelectedClauseVersion(request: BusinessDraftActionRequest) {
+  const version = selectedHistoryVersion.value;
+  if (!version || request.action !== "discard_version") {
+    throw new Error("当前标准条款版本不支持该操作，请刷新后重试");
+  }
+  await discardStandardClauseVersion(version.id, {
+    reason: request.reason,
+    expectedUpdatedAt: version.updatedAt
+  });
+  await loadClauses();
+}
+
+function handleDiscardCompleted() {
+  message.value = "条款草稿版本已废弃，已发布条款和正式引用均未改变";
+  tone.value = "success";
+}
+
+function clauseStatusLabel(status: string) {
+  return ({
+    draft: "草稿",
+    submitted: "待发布",
+    published: "已发布",
+    stopped: "已停用",
+    revoked: "已撤销",
+    discarded: "已废弃"
+  } as Record<string, string>)[status] ?? "未知状态";
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : date.toLocaleString("zh-CN", { hour12: false });
 }
 
 async function submitClause() {
@@ -222,7 +409,10 @@ async function publishClause() {
   }
 }
 
-onMounted(loadClauses);
+onMounted(() => {
+  syncCreateBaseline();
+  void loadClauses();
+});
 
 function clauseText(content: unknown) {
   if (!content || typeof content !== "object" || Array.isArray(content)) {
@@ -245,6 +435,7 @@ function clauseText(content: unknown) {
 label { display: grid; gap: 4px; }
 .textarea { margin-bottom: 12px; }
 .preview { max-height: 120px; overflow: auto; margin: 0; white-space: pre-wrap; }
+.selected-version-governance { display: grid; gap: var(--jg-space-md); margin-top: var(--jg-space-md); }
 .message { font-size: 12px; }
 .success { color: #1b6b3a; }
 .danger { color: #b51d2a; }

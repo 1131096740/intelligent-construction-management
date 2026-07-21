@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { apiFetch } from "./api-fetch";
 import {
   appendSpotProcurementPaymentInvoice,
+  abandonSpotProcurementDraft,
+  abandonSpotProcurementPaymentDraft,
   createSpotProcurementDiscrepancy,
   createSpotProcurementDraft,
   fetchSpotProcurementCreateProjectOptions,
@@ -17,6 +19,8 @@ import {
   fetchVatRateOptions,
   recordSpotProcurementPaymentExecution,
   recordSpotProcurementRefund,
+  recreateSpotProcurementPaymentDraft,
+  resetSpotProcurementReceiptDraft,
   submitSpotProcurementReceipt,
   reviewSpotProcurement,
   reviewSpotProcurementA5Payment,
@@ -82,12 +86,16 @@ describe("spot procurement API client", () => {
     await fetchSpotProcurements({
       projectId: "project/1",
       status: "approval_pending",
-      keyword: " 水泥/砖 "
+      keyword: " 水泥/砖 ",
+      view: "active",
+      surface: "receipt",
+      page: 2,
+      pageSize: 20
     });
     await fetchSpotProcurementDetail("procurement/1");
 
     expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
-      "/spot-procurements?projectId=project%2F1&status=approval_pending&keyword=%E6%B0%B4%E6%B3%A5%2F%E7%A0%96",
+      "/spot-procurements?projectId=project%2F1&status=approval_pending&keyword=%E6%B0%B4%E6%B3%A5%2F%E7%A0%96&view=active&surface=receipt&page=2&pageSize=20",
       "/spot-procurements/procurement%2F1"
     ]);
   });
@@ -96,12 +104,13 @@ describe("spot procurement API client", () => {
     await fetchSpotProcurementPayments({
       projectId: "project/1",
       status: "approved_pending_payment",
-      keyword: "  "
+      keyword: "  ",
+      view: "closed"
     });
     await fetchSpotProcurementPaymentDetail("payment/1");
 
     expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
-      "/spot-procurement-payments?projectId=project%2F1&status=approved_pending_payment",
+      "/spot-procurement-payments?projectId=project%2F1&status=approved_pending_payment&view=closed",
       "/spot-procurement-payments/payment%2F1"
     ]);
   });
@@ -122,6 +131,35 @@ describe("spot procurement API client", () => {
     expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
       "/spot-procurements/procurement%2F1/receipt",
       "/spot-procurements/procurement%2F1/receipt/submission"
+    ]);
+  });
+
+  it("connects semantic procurement, payment draft and receipt lifecycle routes with CAS", async () => {
+    await abandonSpotProcurementDraft("procurement/1", {
+      action: "abandon_application",
+      reason: "现场需求取消"
+    });
+    await abandonSpotProcurementPaymentDraft("payment/1", {
+      expectedUpdatedAt: "2026-07-19T10:00:00.000Z",
+      reason: "付款对象需要重新确认"
+    });
+    await recreateSpotProcurementPaymentDraft("procurement/1");
+    await resetSpotProcurementReceiptDraft("procurement/1", 3);
+
+    expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
+      "/spot-procurements/procurement%2F1/abandonment",
+      "/spot-procurement-payments/payment%2F1/abandonment",
+      "/spot-procurements/procurement%2F1/payment-drafts",
+      "/spot-procurements/procurement%2F1/receipt/draft-reset"
+    ]);
+    expect(mockApiFetch.mock.calls.map(([, init]) => init?.body)).toEqual([
+      JSON.stringify({ action: "abandon_application", reason: "现场需求取消" }),
+      JSON.stringify({
+        expectedUpdatedAt: "2026-07-19T10:00:00.000Z",
+        reason: "付款对象需要重新确认"
+      }),
+      JSON.stringify({}),
+      JSON.stringify({ expectedRevision: 3 })
     ]);
   });
 

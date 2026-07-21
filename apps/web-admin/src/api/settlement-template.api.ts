@@ -1,7 +1,8 @@
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
+import type { DetailActionReadModel } from "@jiangkong/shared-domain";
 
-export type SettlementTemplateVersionStatus = "draft" | "submitted" | "published" | "stopped";
+export type SettlementTemplateVersionStatus = "draft" | "submitted" | "published" | "stopped" | "discarded";
 export type SettlementTemplatePreviewStatus =
   | "queued"
   | "processing"
@@ -52,6 +53,13 @@ export interface SettlementTemplateVersionReadModel {
   changeSummary: string | null;
   publishedAt: string | null;
   stoppedAt: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  discardedAt?: string | null;
+  discardedByUserId?: string | null;
+  discardReason?: string | null;
+  availableActions?: DetailActionReadModel[];
+  blockedReasons?: string[];
   latestPreview?: SettlementTemplatePreviewReadModel | null;
 }
 
@@ -115,8 +123,10 @@ export type SettlementTemplateRecommendationReadModel =
       choices: SettlementTemplateRecommendationChoice[];
     };
 
-export function listSettlementTemplates() {
-  return readJson<SettlementTemplateReadModel[]>("/settlement-templates");
+export function listSettlementTemplates(includeHistory = false) {
+  return readJson<SettlementTemplateReadModel[]>(
+    `/settlement-templates${includeHistory ? "?includeHistory=true" : ""}`
+  );
 }
 
 export function createSettlementTemplate(body: CreateSettlementTemplatePayload) {
@@ -129,9 +139,9 @@ export function createSettlementTemplate(body: CreateSettlementTemplatePayload) 
   );
 }
 
-export function getSettlementTemplate(templateId: string) {
+export function getSettlementTemplate(templateId: string, includeHistory = false) {
   return readJson<SettlementTemplateDetailReadModel>(
-    `/settlement-templates/${encodeURIComponent(templateId)}`
+    `/settlement-templates/${encodeURIComponent(templateId)}${includeHistory ? "?includeHistory=true" : ""}`
   );
 }
 
@@ -173,6 +183,16 @@ export function publishSettlementTemplateVersion(versionId: string, changeSummar
 export function cloneSettlementTemplateVersion(versionId: string) {
   return postJson<SettlementTemplateVersionReadModel>(
     `/settlement-template-versions/${encodeURIComponent(versionId)}/clone`
+  );
+}
+
+export function discardSettlementTemplateVersion(
+  versionId: string,
+  body: { reason: string; expectedRevision: number }
+) {
+  return postJson<unknown>(
+    `/settlement-template-versions/${encodeURIComponent(versionId)}/discard`,
+    body
   );
 }
 

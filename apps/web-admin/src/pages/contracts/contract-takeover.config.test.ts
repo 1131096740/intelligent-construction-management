@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { ContractTakeoverReadModel } from "../../api/core-flow-read.api";
 import { describe, expect, it } from "vitest";
 import {
@@ -23,6 +25,7 @@ import {
   parseContractTakeoverImportPrecheckRows,
   suggestTakeoverLevel,
   takeoverActionDisabledReason,
+  takeoverBatchAbandonmentDisabledReason,
   takeoverConfirmDisabledReason,
   takeoverCorrectionDisabledReason,
   takeoverCorrectionRows,
@@ -47,6 +50,29 @@ import {
 } from "./contract-takeover.config";
 
 describe("contract takeover page configuration", () => {
+  it("requires a server preview before atomically cleaning an import batch", () => {
+    const source = readFileSync(resolve(__dirname, "ContractTakeoverPage.vue"), "utf8");
+
+    expect(source).toContain("previewContractTakeoverBatchAbandonment");
+    expect(source).toContain("applyContractTakeoverBatchAbandonment");
+    expect(source).toContain("previewHash: preview.previewHash");
+    expect(source).toContain('colKey: "contractNo"');
+    expect(source).toContain('colKey: "contractName"');
+    expect(source).toContain('colKey: "blockers"');
+    expect(source).toContain("request.action !== \"delete_pristine_draft\"");
+    expect(source).toContain("<BusinessDraftAction");
+  });
+
+  it("blocks a mixed batch because batch abandonment is all-or-nothing", () => {
+    expect(takeoverBatchAbandonmentDisabledReason({ eligible: 2, blocked: 1 })).toBe(
+      "批次清理采用全有或全无规则。当前仍有被阻断记录，请先逐条处理全部阻断，再重新预览。"
+    );
+    expect(takeoverBatchAbandonmentDisabledReason({ eligible: 0, blocked: 0 })).toBe(
+      "本次预览没有可清理记录，系统不会改变任何接管记录。"
+    );
+    expect(takeoverBatchAbandonmentDisabledReason({ eligible: 3, blocked: 0 })).toBe("");
+  });
+
   it("keeps the historical contract entity name separate from its system match", () => {
     const inactive = {
       id: "entity-1",

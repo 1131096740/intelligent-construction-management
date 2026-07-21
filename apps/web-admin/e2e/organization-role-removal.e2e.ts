@@ -155,12 +155,12 @@ test("岗位撤销先展示阻断，放行后原样提交影响版本校验码�
   const globalRow = page.getByRole("row").filter({ hasText: "合同部主管" });
   await globalRow.getByRole("button", { name: "预览撤销影响" }).click();
   await expect(page.getByText("服务端判定不可撤销")).toBeVisible();
-  await expect(page.getByPlaceholder("请输入当前登录密码")).toHaveCount(0);
+  await expect(page.locator('input[placeholder="请输入当前登录密码"]:visible')).toHaveCount(0);
 
   const projectRow = page.getByRole("row").filter({ hasText: "项目经理" });
   await projectRow.getByRole("button", { name: "预览撤销影响" }).click();
   await expect(page.getByText("服务端判定可撤销")).toBeVisible();
-  const passwordInput = page.getByPlaceholder("请输入当前登录密码");
+  const passwordInput = page.locator('input[placeholder="请输入当前登录密码"]:visible');
   await passwordInput.scrollIntoViewIfNeeded();
   await passwordInput.fill("  current password  ");
   await page.getByRole("button", { name: "确认撤销该岗位" }).click();

@@ -142,6 +142,14 @@
       class="page-message"
     />
 
+    <BusinessDraftAction
+      v-if="activeDraft"
+      :actions="settlementDraftActions"
+      :blocked-reasons="activeDraft.lifecycleBlockers ?? activeDraft.blockedReasons ?? []"
+      :subject="settlementDraftActionSubject"
+      :execute="executeSettlementDraftAction"
+    />
+
     <section
       v-if="draftSubmissionBlockingReason"
       class="blocked-draft-panel"
@@ -665,7 +673,7 @@
       confirm-text="放弃并离开"
       confirm-theme="danger"
       @confirm="confirmLeave"
-      @cancel="pendingNavigationPath = ''"
+      @cancel="cancelLeave"
     />
     <SensitiveActionDialog
       v-model="frozenDownloadDialogVisible"
@@ -685,12 +693,13 @@
 <script setup lang="ts">
 import type {
   ContractBusinessOptionReadModel,
+  DetailActionReadModel,
   SettlementSourceLineException,
   SettlementSourceLineReadModel
 } from "@jiangkong/shared-domain";
 import type { PrimaryTableCol, UploadChangeContext, UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
-import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import {
   createPrivateFileDownloadTicket,
   fetchProjects,
@@ -700,6 +709,7 @@ import {
 } from "../../api/core-flow-read.api";
 import {
   createSettlementDraftRecord,
+  abandonSettlementDraftRecord,
   fetchSettlementDraftRecord,
   generateSettlementFrozenDocument,
   linkSettlementCounterpartySignedDocument,
@@ -757,6 +767,10 @@ import {
 } from "./settlement-workbench.state";
 import { canApplySettlementSourceResponse } from "./settlement-source-lines.state";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
+import BusinessDraftAction, {
+  type BusinessDraftActionRequest
+} from "../../components/BusinessDraftAction.vue";
+import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import SettlementApprovalParticipantSelect, {
   type SettlementApprovalParticipantOption
 } from "./components/SettlementApprovalParticipantSelect.vue";
@@ -869,8 +883,8 @@ const anomalyDrawerVisible = ref(false);
 const activeDraft = ref<SettlementDraftReadModel | null>(null);
 const baselineDraftSnapshot = ref("");
 const leaveDialogVisible = ref(false);
-const pendingNavigationPath = ref("");
 const allowNavigation = ref(false);
+let resolveLeaveConfirmation: ((confirmed: boolean) => void) | null = null;
 let sourceRequestId = 0;
 let previewRequestId = 0;
 let importRequestId = 0;
@@ -920,6 +934,17 @@ const projectOptions = computed(() =>
 const draftSubmissionBlockingReason = computed(
   () => activeDraft.value?.submissionBlockingReason?.trim() ?? ""
 );
+const settlementDraftActions = computed<DetailActionReadModel[]>(
+  () => activeDraft.value?.availableActions ?? []
+);
+const settlementDraftActionSubject = computed(() => ({
+  businessCode: activeDraft.value?.code || "未生成编号",
+  name: activeDraft.value?.periodLabel
+    ? `${activeDraft.value.periodLabel} 结算草稿`
+    : "结算草稿",
+  lastSavedAt: activeDraft.value?.updatedAt || "—",
+  impactScope: "仅终止当前结算草稿或申请，不改变合同额度、正式结算及付款事实。"
+}));
 const contractOptions = computed(() => {
   const options = toContractSelectOptions(contracts.value, "settlement").map((option) => ({
     label: option.label,
@@ -1118,6 +1143,13 @@ const isDirty = computed(() =>
   Boolean(baselineDraftSnapshot.value) &&
   workbenchSnapshot() !== baselineDraftSnapshot.value
 );
+useUnsavedChangesGuard({
+  isDirty: computed(() => isDirty.value && !allowNavigation.value),
+  confirmLeave: () => new Promise<boolean>((resolve) => {
+    resolveLeaveConfirmation = resolve;
+    leaveDialogVisible.value = true;
+  })
+});
 const workflowNextAction = computed(() => {
   if (isDirty.value) {
     return {
@@ -1853,6 +1885,34 @@ async function saveDraft() {
   await persistDraft(true);
 }
 
+async function executeSettlementDraftAction(request: BusinessDraftActionRequest) {
+  if (
+    request.action !== "delete_pristine_draft" &&
+    request.action !== "abandon_application"
+  ) {
+    throw new Error("当前结算草稿不支持该操作，请刷新后重试。");
+  }
+  const current = activeDraft.value;
+  const advertised = current?.availableActions?.find(
+    (action) => action.key === request.action && action.enabled
+  );
+  if (!current || !advertised) {
+    throw new Error("该操作已不可用，请刷新草稿后重新确认。");
+  }
+
+  await abandonSettlementDraftRecord(current.projectId, current.id, {
+    expectedRevision: current.revision,
+    action: request.action,
+    ...(request.reason.trim() ? { reason: request.reason.trim() } : {})
+  });
+  allowNavigation.value = true;
+  pageMessage.value = request.action === "delete_pristine_draft"
+    ? "草稿已删除，历史审计记录仍保留。"
+    : "申请已放弃，已转入已结束记录。";
+  pageMessageTone.value = "success";
+  await router.push({ path: "/结算管理", query: { view: "ended" } });
+}
+
 function onParticipantChange(option: SettlementApprovalParticipantOption | null) {
   form.fieldReviewerRoleKey = option?.roleKey ?? "";
   if (option) participantLoadError.value = "";
@@ -2089,17 +2149,15 @@ function requestBackToLedger() {
 }
 
 function confirmLeave() {
-  const path = pendingNavigationPath.value || "/结算管理";
-  allowNavigation.value = true;
   leaveDialogVisible.value = false;
-  pendingNavigationPath.value = "";
-  void router.push(path);
+  resolveLeaveConfirmation?.(true);
+  resolveLeaveConfirmation = null;
 }
 
-function handleBeforeUnload(event: BeforeUnloadEvent) {
-  if (!isDirty.value || allowNavigation.value) return;
-  event.preventDefault();
-  event.returnValue = "";
+function cancelLeave() {
+  leaveDialogVisible.value = false;
+  resolveLeaveConfirmation?.(false);
+  resolveLeaveConfirmation = null;
 }
 
 async function findRequestedDraft(draftId: string) {
@@ -2220,19 +2278,10 @@ async function initializeWorkbench() {
   }
 }
 
-onBeforeRouteLeave((to) => {
-  if (!isDirty.value || allowNavigation.value) return true;
-  pendingNavigationPath.value = to.fullPath;
-  leaveDialogVisible.value = true;
-  return false;
-});
-
 onMounted(() => {
-  window.addEventListener("beforeunload", handleBeforeUnload);
   void initializeWorkbench();
 });
 onBeforeUnmount(() => {
-  window.removeEventListener("beforeunload", handleBeforeUnload);
   if (previewTimer) clearTimeout(previewTimer);
   sourceRequestId += 1;
   previewRequestId += 1;

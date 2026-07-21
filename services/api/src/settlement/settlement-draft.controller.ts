@@ -12,6 +12,8 @@ import { LinkSettlementCounterpartySignedDocumentDto } from "./dto/settlement-si
 import { SettlementCounterpartyDocumentService } from "./settlement-counterparty-document.service";
 import { GenerateSettlementFrozenDocumentDto } from "./dto/settlement-signed-document-action.dto";
 import { SettlementFrozenDocumentService } from "./settlement-frozen-document.service";
+import { AbandonSettlementDraftDto } from "./dto/abandon-settlement-draft.dto";
+import { CopySettlementDraftDto } from "./dto/copy-settlement-draft.dto";
 
 @Controller("projects/:projectId/settlement-drafts")
 export class SettlementDraftController {
@@ -30,6 +32,17 @@ export class SettlementDraftController {
     @Body() body: SaveSettlementDraftDto
   ) {
     return this.drafts.create(projectId, user.id, body);
+  }
+
+  @Post(":draftId/copies")
+  @RequireProjectRole("settlement.create")
+  copyAbandoned(
+    @Param("projectId") projectId: string,
+    @Param("draftId") draftId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: CopySettlementDraftDto
+  ) {
+    return this.drafts.copyAbandoned(projectId, draftId, user.id, body);
   }
 
   @Get()
@@ -60,6 +73,17 @@ export class SettlementDraftController {
     @Body() body: SaveSettlementDraftDto
   ) {
     return this.drafts.update(projectId, draftId, user.id, body);
+  }
+
+  @Post(":draftId/abandonment")
+  @RequireProjectRole("settlement.create")
+  abandon(
+    @Param("projectId") projectId: string,
+    @Param("draftId") draftId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: AbandonSettlementDraftDto
+  ) {
+    return this.drafts.abandon(projectId, draftId, user.id, body);
   }
 
   @Post(":draftId/approval-submission")

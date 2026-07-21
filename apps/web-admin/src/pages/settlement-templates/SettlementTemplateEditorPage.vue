@@ -47,7 +47,7 @@
           <t-select
             v-model="selectedVersionId"
             :options="versionOptions"
-            @change="syncVersionForm"
+            @change="selectVersion"
           />
         </t-form-item>
         <div
@@ -241,6 +241,14 @@
       :bordered="true"
       class="panel"
     >
+      <BusinessDraftAction
+        class="version-lifecycle-action"
+        :actions="currentVersion.availableActions ?? []"
+        :blocked-reasons="currentVersion.blockedReasons ?? []"
+        :subject="versionActionSubject"
+        :execute="discardCurrentVersion"
+        @completed="handleDiscardCompleted"
+      />
       <div class="publication-row">
         <t-input
           v-model="publicationSummary"
@@ -252,6 +260,7 @@
           <t-button
             v-if="governance.canSubmit"
             :loading="busyAction === 'submit'"
+            :disabled="isDirty"
             @click="runAction('submit')"
           >
             提交发布
@@ -294,6 +303,15 @@
         ? "发布后该版本将进入结算工作台推荐范围，请确认检查、样张和发布说明均已复核。"
         : "停用后新建结算将不再推荐该版本，已有结算仍保留版本追溯。" }}
     </t-dialog>
+    <SensitiveActionDialog
+      v-model="leaveDialogVisible"
+      title="放弃未保存的结算模板修改？"
+      description="继续后会丢弃尚未保存的兼容规则、源文件和当前页面填写内容。"
+      confirm-text="放弃并离开"
+      confirm-theme="danger"
+      @confirm="resolveLeaveDecision(true)"
+      @cancel="resolveLeaveDecision(false)"
+    />
   </section>
 </template>
 
@@ -305,6 +323,7 @@ import { uploadPrivateFile } from "../../api/core-flow-read.api";
 import {
   cloneSettlementTemplateVersion,
   createSettlementTemplate,
+  discardSettlementTemplateVersion,
   downloadSettlementTemplatePreview,
   generateSettlementTemplatePreview,
   getSettlementTemplate,
@@ -315,6 +334,11 @@ import {
   updateSettlementTemplateVersion,
   type SettlementTemplateDetailReadModel
 } from "../../api/settlement-template.api";
+import BusinessDraftAction, {
+  type BusinessDraftActionRequest
+} from "../../components/BusinessDraftAction.vue";
+import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
+import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import {
   settlementTemplateAmountRoleOptions,
   settlementTemplateContractTypeOptions,
@@ -336,6 +360,11 @@ const publicationSummary = ref("");
 const downloadReason = ref("");
 const confirmVisible = ref(false);
 const confirmAction = ref<"publish" | "stop">("publish");
+const editorBaseline = ref("");
+const lastValidVersionId = ref("");
+const leaveDialogVisible = ref(false);
+const allowNavigation = ref(false);
+let resolvePendingLeave: ((decision: boolean) => void) | null = null;
 const form = reactive({
   name: "",
   code: "",
@@ -372,6 +401,52 @@ const previewStatus = computed(() => {
 const canDownloadPreview = computed(
   () => governance.value.previewCurrent && Boolean(downloadReason.value.trim())
 );
+const versionActionSubject = computed(() => ({
+  businessCode: detail.value?.template.code ?? "—",
+  name: `${detail.value?.template.name ?? "结算模板"} V${currentVersion.value?.versionNo ?? "—"}`,
+  lastSavedAt: formatDateTime(currentVersion.value?.updatedAt),
+  impactScope: "仅废弃当前从未提交的草稿版本；已发布版本和正式结算引用不受影响。"
+}));
+const isDirty = computed(() => Boolean(editorBaseline.value) && editorSnapshot() !== editorBaseline.value);
+const leaveGuard = useUnsavedChangesGuard({
+  isDirty: () => isDirty.value && !allowNavigation.value,
+  confirmLeave: () => new Promise<boolean>((resolve) => {
+    resolvePendingLeave?.(false);
+    resolvePendingLeave = resolve;
+    leaveDialogVisible.value = true;
+  })
+});
+
+function editorSnapshot() {
+  return JSON.stringify({
+    name: form.name,
+    code: form.code,
+    compatibility: payloadCompatibility(),
+    sourceFiles: sourceFiles.value.map((file) => file.name),
+    publicationSummary: governance.value.canPublish ? publicationSummary.value : ""
+  });
+}
+
+function syncEditorBaseline() {
+  editorBaseline.value = editorSnapshot();
+  lastValidVersionId.value = selectedVersionId.value;
+}
+
+function resolveLeaveDecision(decision: boolean) {
+  leaveDialogVisible.value = false;
+  const resolve = resolvePendingLeave;
+  resolvePendingLeave = null;
+  resolve?.(decision);
+}
+
+async function selectVersion() {
+  if (!(await leaveGuard.requestClose())) {
+    selectedVersionId.value = lastValidVersionId.value;
+    return;
+  }
+  syncVersionForm();
+  syncEditorBaseline();
+}
 
 function selectedFile() {
   const raw = sourceFiles.value[0]?.raw;
@@ -411,12 +486,15 @@ async function createTemplate() {
       ...payloadCompatibility(),
       ...settlementTemplateFixedRules
     });
+    allowNavigation.value = true;
     await router.replace(`/结算模板库/${encodeURIComponent(created.template.id)}`);
+    allowNavigation.value = false;
     await loadDetail(created.version.id);
     showSuccess("结算模板草稿已创建。");
   } catch (error) {
     showError(error instanceof Error ? error.message : "创建结算模板失败。");
   } finally {
+    allowNavigation.value = false;
     busyAction.value = "";
   }
 }
@@ -512,6 +590,22 @@ async function runAction(action: "submit" | "publish" | "stop" | "clone") {
   }
 }
 
+async function discardCurrentVersion(request: BusinessDraftActionRequest) {
+  const version = currentVersion.value;
+  if (!version || request.action !== "discard_version") {
+    throw new Error("当前结算模板版本不支持该操作，请刷新后重试");
+  }
+  await discardSettlementTemplateVersion(version.id, {
+    reason: request.reason,
+    expectedRevision: version.draftRevision
+  });
+  await loadDetail(version.id);
+}
+
+function handleDiscardCompleted() {
+  showSuccess("草稿版本已废弃，已提交、发布和引用记录均未改变。");
+}
+
 function openConfirmation(action: "publish" | "stop") {
   confirmAction.value = action;
   confirmVisible.value = true;
@@ -524,7 +618,7 @@ function confirmGovernanceAction() {
 async function loadDetail(preferredVersionId = "") {
   const templateId = String(route.params.templateId ?? "");
   if (!templateId || templateId === "new") return;
-  detail.value = await getSettlementTemplate(templateId);
+  detail.value = await getSettlementTemplate(templateId, true);
   form.name = detail.value.template.name;
   form.code = detail.value.template.code;
   selectedVersionId.value =
@@ -532,6 +626,15 @@ async function loadDetail(preferredVersionId = "") {
     detail.value.versions[0]?.id ??
     "";
   syncVersionForm();
+  syncEditorBaseline();
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : date.toLocaleString("zh-CN", { hour12: false });
 }
 
 function showSuccess(value: string) {
@@ -545,7 +648,10 @@ function showError(value: string) {
 }
 
 onMounted(async () => {
-  if (isCreateMode.value) return;
+  if (isCreateMode.value) {
+    syncEditorBaseline();
+    return;
+  }
   try {
     await loadDetail();
   } catch (error) {
@@ -591,6 +697,10 @@ onMounted(async () => {
 
 .panel {
   margin-bottom: var(--jg-space-lg);
+}
+
+.version-lifecycle-action {
+  margin-bottom: var(--jg-space-md);
 }
 
 .form-grid,

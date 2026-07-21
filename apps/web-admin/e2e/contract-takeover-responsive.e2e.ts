@@ -294,6 +294,21 @@ function collectRuntimeErrors(page: Page) {
   return errors;
 }
 
+test("历史接管未保存表单在站内离开时要求明确确认", async ({ page }) => {
+  await loginWithMocks(page);
+  await page.goto("/历史合同接管");
+  await page.getByRole("button", { name: "新增接管合同" }).click();
+  const nameInput = page.getByText("合同名称").locator("..").getByRole("textbox");
+  await nameInput.fill("尚未保存的接管合同");
+  await expect(nameInput).toHaveValue("尚未保存的接管合同");
+  await nameInput.press("Tab");
+  await page.getByText("首页", { exact: true }).click();
+  await expect(page.getByText("放弃未保存的接管修改？", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "取消" }).last().click();
+  await expect.poll(() => decodeURIComponent(new URL(page.url()).pathname)).toBe("/历史合同接管");
+  await expect(page.locator('input[value="尚未保存的接管合同"]')).toBeVisible();
+});
+
 const confirmedTakeoverWithoutChangeBaseline = {
   ...takeover,
   takeoverStatus: "confirmed",

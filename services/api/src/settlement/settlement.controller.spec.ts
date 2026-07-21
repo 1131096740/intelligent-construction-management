@@ -525,7 +525,7 @@ describe("SettlementController authorization wiring", () => {
     expect(legacy.create).not.toHaveBeenCalled();
   });
 
-  it.each(["create", "list", "detail", "update", "submit", "linkCounterpartySignedDocument"] as const)(
+  it.each(["create", "list", "detail", "update", "abandon", "submit", "linkCounterpartySignedDocument"] as const)(
     "protects settlement draft %s with settlement.create",
     (method) => {
       expect(
@@ -536,6 +536,19 @@ describe("SettlementController authorization wiring", () => {
       ).toBe("settlement.create");
     }
   );
+
+  it("uses a validated DTO for settlement draft abandonment", async () => {
+    const paramTypes = Reflect.getMetadata(
+      "design:paramtypes",
+      SettlementDraftController.prototype,
+      "abandon"
+    ) as RuntimeDto[];
+    const metatype = paramTypes[3];
+    await expect(createApiValidationPipe().transform({
+      expectedRevision: 2,
+      action: "delete_pristine_draft"
+    }, { type: "body", metatype, data: undefined })).resolves.toBeInstanceOf(metatype);
+  });
 
   it("uses a validated dedicated DTO for the counterparty signed-document association", async () => {
     const paramTypes = Reflect.getMetadata(

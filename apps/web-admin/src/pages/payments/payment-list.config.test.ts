@@ -32,9 +32,9 @@ describe("payment ledger page configuration", () => {
 
   it("separates approval progress from actual payment execution summaries", () => {
     expect(paymentSummaryItems.map((item) => item.label)).toEqual([
-      "全部付款",
+      "正式申请金额",
+      "已实付金额",
       "待审批",
-      "或签审批",
       "已批待付",
       "已实付"
     ]);
@@ -102,9 +102,9 @@ describe("payment ledger page configuration", () => {
     expect(options.approvalStatus.map((option) => option.value)).toEqual(["", "审批中", "已通过"]);
   });
 
-  it("records the real server-pagination blocker instead of defining fake pagination", () => {
-    expect(paymentPaginationBlockReason).toContain("暂不支持翻页");
-    expect(paymentPaginationBlockReason).toContain("不要把当前列表误认为全部记录".replace("不要", "避免"));
+  it("records the server-owned pagination boundary", () => {
+    expect(paymentPaginationBlockReason).toContain("服务端");
+    expect(paymentPaginationBlockReason).toContain("全部记录");
     expect(paymentPaginationBlockReason).not.toContain("offset");
   });
 

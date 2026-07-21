@@ -125,7 +125,8 @@ describe("home workbench card helpers", () => {
           }
         ],
         blocked: [],
-        started: []
+        started: [],
+        drafts: []
       },
       approvalCenter: {
         pendingApproval: [],
@@ -154,8 +155,52 @@ describe("home workbench card helpers", () => {
       { label: "待我处理", value: "2", tone: "primary" },
       { label: "阻塞事项", value: "1", tone: "danger" },
       { label: "我发起的进行中", value: "1", tone: "default" },
+      { label: "我的草稿", value: "1", tone: "default" },
       { label: "可见项目", value: "2", tone: "default" }
     ]);
+  });
+
+  it("keeps saved drafts in an independent queue without counting them as pending", () => {
+    const queues = toWorkItemQueues(workItemsFixture());
+    const rows = toHomeWorkItemRows(queues);
+
+    expect(queues.map((queue) => queue.title)).toEqual([
+      "待我处理",
+      "阻塞事项",
+      "我发起的进行中",
+      "我的草稿"
+    ]);
+    expect(queues[0].items.map((item) => item.id)).not.toContain("takeover:draft-1");
+    expect(queues[3].items.map((item) => item.id)).toEqual(["takeover:draft-1"]);
+    expect(rows.find((row) => row.id === "takeover:draft-1")).toMatchObject({
+      queueId: "drafts",
+      statusLabel: "草稿",
+      statusTone: "default"
+    });
+    expect(homeWorkItemSummaryItems(queues, 2)[0]).toEqual({
+      label: "待我处理",
+      value: "2",
+      tone: "primary"
+    });
+  });
+
+  it("uses the server draft total when the returned draft queue is truncated", () => {
+    const workItems = workItemsFixture();
+    workItems.queueMeta = {
+      pending: { total: 2, returned: 2, truncated: false },
+      blocked: { total: 1, returned: 1, truncated: false },
+      started: { total: 1, returned: 1, truncated: false },
+      drafts: { total: 42, returned: 1, truncated: true }
+    };
+
+    const queues = toWorkItemQueues(workItems);
+
+    expect(queues[3]).toMatchObject({ total: 42, truncated: true });
+    expect(homeWorkItemSummaryItems(queues, 2)).toContainEqual({
+      label: "我的草稿",
+      value: "42",
+      tone: "default"
+    });
   });
 
   it("filters work items by project, business type, status and keyword", () => {
@@ -238,6 +283,18 @@ function workItemsFixture(): WorkItemsReadModel {
           stayedText: "已停留 1 小时",
           tone: "default"
         }
+      ],
+      drafts: [
+        {
+          ...base,
+          id: "takeover:draft-1",
+          type: "contract_takeover",
+          title: "历史合同草稿",
+          businessCode: "LS-001",
+          currentNode: "草稿填写",
+          nextAction: "继续补录后提交复核",
+          tone: "default"
+        }
       ]
     },
     approvalCenter: {
@@ -249,3 +306,23 @@ function workItemsFixture(): WorkItemsReadModel {
     }
   };
 }
+
+describe("draft aging labels", () => {
+  it("marks 31-day and 91-day drafts without changing their lifecycle identity", () => {
+    const model = workItemsFixture();
+    model.queues.drafts = [
+      { ...model.queues.drafts[0]!, id: "draft-long", agingStatus: "long_running", ageDays: 31 },
+      { ...model.queues.drafts[0]!, id: "draft-stale", agingStatus: "stale", ageDays: 91 }
+    ];
+
+    const rows = toHomeWorkItemRows(toWorkItemQueues(model));
+    expect(rows.filter((row) => row.queueId === "drafts").map((row) => ({
+      id: row.id,
+      statusLabel: row.statusLabel,
+      statusTone: row.statusTone
+    }))).toEqual([
+      { id: "draft-long", statusLabel: "长期未处理", statusTone: "warning" },
+      { id: "draft-stale", statusLabel: "90天以上草稿", statusTone: "warning" }
+    ]);
+  });
+});

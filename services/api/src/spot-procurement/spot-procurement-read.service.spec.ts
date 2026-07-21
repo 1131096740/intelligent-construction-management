@@ -265,6 +265,34 @@ function buildFixture() {
       findUnique: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([])
     },
+    spotProcurementReceiptRevision: {
+      findUnique: jest.fn().mockResolvedValue({
+        submittedAt: null,
+        note: null,
+        actualCostCents: 0n
+      })
+    },
+    spotProcurementReceiptDelegation: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
+    spotProcurementReceiptReview: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
+    spotProcurementReceiptLine: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
+    spotProcurementReceiptPhoto: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
+    invoiceAllocation: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
+    noInvoiceConfirmation: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
+    invoiceExceptionConfirmation: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
     spotProcurementDiscrepancy: {
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([])
@@ -417,6 +445,127 @@ describe("SpotProcurementReadService", () => {
     writeValidator.mockRestore();
   });
 
+  it("keeps abandoned payment drafts in the explicit closed task view", async () => {
+    const fixture = buildFixture();
+    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([
+      paymentRow(),
+      paymentRow({ id: "payment-invalidated", code: "LXFK-END-001", status: "invalidated" })
+    ]);
+    fixture.access.accessiblePaymentIds.mockImplementation((ids: string[]) => Promise.resolve(new Set(ids)));
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    await expect(service.listPayments("finance-1", { view: "closed" })).resolves.toMatchObject({
+      view: "closed",
+      items: [expect.objectContaining({ id: "payment-invalidated" })]
+    });
+  });
+
+  it("offers payment draft recreation only after the prior draft is invalidated and no active payment remains", async () => {
+    const fixture = buildFixture();
+    const invalidated = paymentRow({
+      status: "invalidated",
+      submittedAt: null,
+      approvedAt: null,
+      invalidatedAt: now,
+      draftOrigin: "auto_after_procurement_approval",
+      sourcePaymentId: null
+    });
+    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([invalidated]);
+    fixture.prisma.spotProcurementPaymentExecution.findMany.mockResolvedValue([]);
+    fixture.prisma.approvalInstance.findMany.mockResolvedValue([
+      {
+        id: "approval-1",
+        businessType: "spot_procurement_version",
+        businessId: "version-1",
+        status: "approved",
+        currentNodeIndex: 1,
+        frozenNodes: [],
+        applicantUserId: "applicant-1",
+        createdAt: now,
+        updatedAt: now
+      }
+    ]);
+    fixture.visibility.effectiveRoleKeys.mockResolvedValue(["material_staff"]);
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const detail = await service.getProcurement("procurement-1", "handler-1");
+
+    expect(
+      detail.availableActions.find((action) => action.key === "create_payment_draft")
+    ).toMatchObject({ enabled: true });
+    expect(detail.paymentSummary).toMatchObject({
+      paymentCount: 0,
+      activeSettlementAmountCents: "0"
+    });
+  });
+
+  it("returns a server-derived receipt reset action for a note-only draft", async () => {
+    const fixture = buildFixture();
+    fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([
+      versionRow({
+        totalAmountCents: null,
+        applicationDepartmentSnapshot: "物资部",
+        applicationNameSnapshot: "采购经办人",
+        purchaserNameSnapshot: "采购经办人",
+        purchaserDepartmentNameSnapshot: "物资部",
+        requestedArrivalAt: now
+      })
+    ]);
+    fixture.prisma.spotProcurementReceipt.findUnique.mockResolvedValue({
+      id: "receipt-1",
+      procurementId: "procurement-1",
+      status: "draft",
+      currentRevisionNo: 3,
+      handlerUserId: "handler-1",
+      firstSubmittedAt: null,
+      submittedAt: null,
+      lockedAt: null,
+      invalidatedAt: null
+    });
+    fixture.prisma.spotProcurementReceiptRevision.findUnique.mockResolvedValue({
+      submittedAt: null,
+      note: "货物已到场，明细待补",
+      actualCostCents: 0n
+    });
+    fixture.visibility.effectiveRoleKeys.mockResolvedValue([
+      "material_staff"
+    ]);
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const detail = await service.getProcurement(
+      "procurement-1",
+      "handler-1"
+    );
+
+    expect(detail.receipt).toMatchObject({
+      workflow: {
+        stage: "reset_unsubmitted_receipt",
+        stageLabel: "可重置未提交收货",
+        resetAction: {
+          key: "reset_receipt_draft",
+          enabled: true,
+          disabledReason: null,
+          expectedRevision: 3
+        }
+      }
+    });
+  });
+
   it("returns only pilot projects where the current user can create a procurement", async () => {
     const fixture = buildFixture();
     fixture.prisma.project.findMany.mockResolvedValue([
@@ -479,6 +628,66 @@ describe("SpotProcurementReadService", () => {
       ["procurement-1", "procurement-denied"],
       "finance-1"
     );
+    expect(result).toMatchObject({
+      view: "active",
+      pagination: { page: 1, pageSize: 20, total: 1 },
+      statistics: { total: 1, byStatus: { approved_in_progress: 1 } }
+    });
+  });
+
+  it("returns the server-derived parent abandonment action and exact downstream blocker", async () => {
+    const fixture = buildFixture();
+    const draftProcurement = procurementRow({
+      status: "draft",
+      applicantUserId: "handler-1",
+      handlerUserId: "handler-1"
+    });
+    const draftVersion = versionRow({
+      status: "draft",
+      submittedAt: null,
+      approvedAt: null
+    });
+    fixture.prisma.spotProcurement.findUnique.mockResolvedValue(draftProcurement);
+    fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([draftVersion]);
+    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([]);
+    fixture.prisma.spotProcurementPaymentExecution.findMany.mockResolvedValue([]);
+    fixture.prisma.approvalInstance.findMany.mockResolvedValue([]);
+    fixture.prisma.spotProcurementReceipt.findUnique.mockResolvedValue(null);
+    fixture.prisma.spotProcurementDiscrepancy.findFirst.mockResolvedValue(null);
+    fixture.prisma.spotProcurementRefund.findMany.mockResolvedValue([]);
+    fixture.visibility.effectiveRoleKeys.mockResolvedValue(["material_staff"]);
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const pristine = await service.getProcurement("procurement-1", "handler-1");
+    expect(
+      pristine.availableActions.find(
+        (action) => action.key === "delete_pristine_draft"
+      )
+    ).toMatchObject({ enabled: true, label: "删除采购草稿" });
+
+    fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([{
+      ...draftVersion,
+      submittedAt: now
+    }]);
+    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([{
+      ...paymentRow(),
+      status: "approval_pending",
+      submittedAt: now
+    }]);
+    const blocked = await service.getProcurement("procurement-1", "handler-1");
+    expect(
+      blocked.availableActions.find(
+        (action) => action.key === "abandon_application"
+      )
+    ).toMatchObject({
+      enabled: false,
+      disabledReason: "已形成正式付款申请，不能放弃"
+    });
   });
 
   it("projects the shared ticket coverage into procurement and payment reads without double-counting payment attribution", async () => {
@@ -757,9 +966,11 @@ describe("SpotProcurementReadService", () => {
       procurementId: "procurement-1",
       status: "draft",
       currentRevisionNo: 1,
+      handlerUserId: "handler-1",
       firstSubmittedAt: null,
       submittedAt: null,
-      lockedAt: null
+      lockedAt: null,
+      invalidatedAt: null
     };
     fixture.prisma.spotProcurementReceipt.findUnique.mockResolvedValue(receipt);
     fixture.prisma.spotProcurementReceipt.findMany.mockResolvedValue([receipt]);
@@ -1294,38 +1505,35 @@ describe("SpotProcurementReadService", () => {
     const result = await service.listProcurements("finance-1", {});
 
     expect(result.items.map((item) => item.id)).toEqual(["procurement-1"]);
-    expect(result.truncated).toBe(false);
+    expect(result.pagination).toMatchObject({ total: 1, page: 1, pageSize: 20 });
     expect(fixture.prisma.spotProcurement.findMany).toHaveBeenCalledTimes(2);
   });
 
-  it("stops procurement and payment ACL scans at the fixed source-row ceiling", async () => {
+  it("paginates every ACL-authorized row without the former 200-row truncation", async () => {
     const fixture = buildFixture();
-    const deniedProcurements = Array.from(
-      { length: 201 },
+    const firstProcurements = Array.from(
+      { length: 200 },
       (_value, index) =>
         procurementRow({
-          id: `denied-${index}`,
-          code: `LXCG-DENIED-${index}`
+          id: `procurement-${index}`,
+          code: `LXCG-${index}`
         })
     );
-    const deniedPayments = Array.from(
-      { length: 201 },
+    const remainingProcurements = Array.from(
+      { length: 50 },
       (_value, index) =>
-        paymentRow({
-          id: `payment-denied-${index}`,
-          code: `LXFK-DENIED-${index}`
+        procurementRow({
+          id: `procurement-${index + 200}`,
+          code: `LXCG-${index + 200}`
         })
     );
     fixture.prisma.spotProcurement.findMany = jest.fn(
-      ({ take }: { take: number }) =>
-        Promise.resolve(deniedProcurements.slice(0, take))
+      ({ cursor }: { cursor?: { id: string } }) =>
+        Promise.resolve(cursor ? remainingProcurements : firstProcurements)
     );
-    fixture.prisma.spotProcurementPayment.findMany = jest.fn(
-      ({ take }: { take: number }) =>
-        Promise.resolve(deniedPayments.slice(0, take))
+    fixture.access.accessibleProcurementIds.mockImplementation(
+      (ids: string[]) => Promise.resolve(new Set(ids) as never)
     );
-    fixture.access.accessibleProcurementIds.mockResolvedValue(new Set());
-    fixture.access.accessiblePaymentIds.mockResolvedValue(new Set());
     const service = new SpotProcurementReadService(
       fixture.prisma as never,
       fixture.visibility as never,
@@ -1333,21 +1541,12 @@ describe("SpotProcurementReadService", () => {
       fixture.pilot as never
     );
 
-    await expect(
-      service.listProcurements("unrelated-user", {})
-    ).resolves.toMatchObject({ items: [], truncated: true });
-    expect(fixture.prisma.spotProcurement.findMany).toHaveBeenCalledTimes(10);
+    const scan = await (service as unknown as {
+      scanAccessibleProcurements(where: object, actorUserId: string): Promise<{ rows: Array<{ id: string }> }>;
+    }).scanAccessibleProcurements({}, "finance-1");
 
-    await expect(
-      service.listPayments("finance-1", { view: "all" })
-    ).resolves.toMatchObject({
-      items: [],
-      truncated: true,
-      amountSummary: { complete: false }
-    });
-    expect(
-      fixture.prisma.spotProcurementPayment.findMany
-    ).toHaveBeenCalledTimes(10);
+    expect(scan.rows).toHaveLength(250);
+    expect(fixture.prisma.spotProcurement.findMany).toHaveBeenCalledTimes(2);
   });
 
   it("fails closed when a payment points at a version owned by another procurement", async () => {

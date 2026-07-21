@@ -256,14 +256,62 @@
         </section>
       </div>
     </t-card>
+
+    <t-card
+      v-if="isSuperAdmin"
+      title="技术临时数据保留预览"
+      :bordered="true"
+      class="settings-card governance-settings-card"
+    >
+      <p class="hint">
+        仅盘点超过保留期的候选记录，不自动删除。物理清理入口默认拒绝，必须另行授权并在执行时重新扫描全部文件引用。
+      </p>
+      <t-alert
+        v-if="retentionError"
+        theme="error"
+        :message="retentionError"
+      />
+      <BusinessStatusSummary
+        v-if="retentionPreview"
+        :items="[
+          { label: '候选总数', value: String(retentionPreview.totalCandidateCount), tone: 'warning' },
+          { label: '策略版本', value: retentionPreview.policyVersion, tone: 'default' },
+          { label: '执行权限', value: retentionPreview.executionAllowed ? '允许' : '默认拒绝', tone: 'danger' }
+        ]"
+        appearance="metrics"
+      />
+      <t-table
+        v-if="retentionPreview"
+        row-key="key"
+        size="small"
+        :columns="retentionColumns"
+        :data="retentionPreview.categories"
+      />
+      <div class="actions">
+        <t-button
+          variant="outline"
+          :loading="retentionLoading"
+          @click="loadRetentionPreview"
+        >
+          刷新只读预览
+        </t-button>
+        <span class="muted">{{ retentionPreview?.notice }}</span>
+      </div>
+    </t-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../../auth/auth.store";
-import { getSignatureTicket, uploadSignature } from "../../api/core-flow-read.api";
+import {
+  fetchDraftRetentionPreview,
+  getSignatureTicket,
+  uploadSignature,
+  type DraftRetentionPreviewReadModel
+} from "../../api/core-flow-read.api";
+import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
 import {
   approvalFlowRules,
   modeLabel,
@@ -276,8 +324,34 @@ import {
 
 const router = useRouter();
 const auth = useAuthStore();
+const isSuperAdmin = computed(() => auth.user?.roleKeys.includes("super_admin") === true);
+const retentionPreview = ref<DraftRetentionPreviewReadModel | null>(null);
+const retentionLoading = ref(false);
+const retentionError = ref("");
+const retentionColumns = [
+  { colKey: "label", title: "候选类别", minWidth: 160 },
+  { colKey: "retentionDays", title: "保留天数", width: 100 },
+  { colKey: "candidateCount", title: "候选数量", width: 100 },
+  { colKey: "oldestCandidateAt", title: "最早候选时间", width: 180 },
+  { colKey: "rule", title: "只读候选规则", minWidth: 260 }
+];
 const signatureInput = ref<HTMLInputElement | null>(null);
 const selectedSignature = ref<File | null>(null);
+
+async function loadRetentionPreview() {
+  if (!isSuperAdmin.value) return;
+  retentionLoading.value = true;
+  retentionError.value = "";
+  try {
+    retentionPreview.value = await fetchDraftRetentionPreview();
+  } catch (error) {
+    retentionError.value = error instanceof Error
+      ? `技术临时数据预览失败：${error.message}`
+      : "技术临时数据预览失败，请稍后重试。";
+  } finally {
+    retentionLoading.value = false;
+  }
+}
 const signaturePreviewUrl = ref("");
 const signatureBusy = ref(false);
 const signatureMessage = ref("");
@@ -311,7 +385,7 @@ async function loadSignature() {
 }
 
 onMounted(async () => {
-  await loadSignature();
+  await Promise.all([loadSignature(), loadRetentionPreview()]);
 });
 
 function clearProfilePassword() {

@@ -42,6 +42,9 @@ import {
   SubmitContractTakeoverCompanyEntityCorrectionDto
 } from "./dto/contract-takeover-company-entity-correction.dto";
 import { ReviewContractTakeoverImportBatchDto } from "./dto/review-contract-takeover-import-batch.dto";
+import { AbandonContractTakeoverDto } from "./dto/abandon-contract-takeover.dto";
+import { AbandonContractTakeoverBatchDto } from "./dto/abandon-contract-takeover-batch.dto";
+import { AbandonContractTaxFactRevisionDto } from "../contract-tax-facts/dto/abandon-contract-tax-fact-revision.dto";
 
 @Controller("projects/:projectId/contract-takeovers")
 export class ContractTakeoverController {
@@ -54,8 +57,8 @@ export class ContractTakeoverController {
 
   @Get()
   @RequirePositions(...HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS)
-  list(@Param("projectId") projectId: string) {
-    return this.takeovers.list(projectId);
+  list(@Param("projectId") projectId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.takeovers.list(projectId, user.id);
   }
 
   @Get("import-batches")
@@ -79,6 +82,27 @@ export class ContractTakeoverController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.takeovers.reviewImportBatch(projectId, batchId, body, user.id);
+  }
+
+  @Post("import-batches/:batchId/draft-abandonment-preview")
+  @RequireProjectRole("contract.create")
+  previewBatchAbandonment(
+    @Param("projectId") projectId: string,
+    @Param("batchId") batchId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.takeovers.previewBatchAbandonment(projectId, batchId, user.id);
+  }
+
+  @Post("import-batches/:batchId/draft-abandonment-apply")
+  @RequireProjectRole("contract.create")
+  applyBatchAbandonment(
+    @Param("projectId") projectId: string,
+    @Param("batchId") batchId: string,
+    @Body() body: AbandonContractTakeoverBatchDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.takeovers.applyBatchAbandonment(projectId, batchId, body, user.id);
   }
 
   @Get("import-template")
@@ -151,18 +175,20 @@ export class ContractTakeoverController {
   @RequirePositions(...HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS)
   detail(
     @Param("projectId") projectId: string,
-    @Param("takeoverId") takeoverId: string
+    @Param("takeoverId") takeoverId: string,
+    @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.takeovers.detail(projectId, takeoverId);
+    return this.takeovers.detail(projectId, takeoverId, user.id);
   }
 
   @Get(":takeoverId/tax-fact-revisions")
   @RequirePositions(...HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS)
   listTaxFactRevisions(
     @Param("projectId") projectId: string,
-    @Param("takeoverId") takeoverId: string
+    @Param("takeoverId") takeoverId: string,
+    @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.requireTaxFacts().list(projectId, takeoverId);
+    return this.requireTaxFacts().list(projectId, takeoverId, user.id);
   }
 
   @Post(":takeoverId/tax-fact-revisions")
@@ -246,6 +272,18 @@ export class ContractTakeoverController {
     );
   }
 
+  @Post(":takeoverId/tax-fact-revisions/:revisionId/abandonment")
+  @RequireProjectRole("contract.tax_fact.supplement")
+  abandonTaxFactRevision(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Param("revisionId") revisionId: string,
+    @Body() body: AbandonContractTaxFactRevisionDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.requireTaxFacts().abandon(projectId, takeoverId, revisionId, body, user.id);
+  }
+
   @Post()
   @RequireProjectRole("contract.create")
   create(
@@ -284,6 +322,17 @@ export class ContractTakeoverController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.takeovers.updateDraft(projectId, takeoverId, body, user.id);
+  }
+
+  @Post(":takeoverId/abandonment")
+  @RequireProjectRole("contract.create")
+  abandonDraft(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Body() body: AbandonContractTakeoverDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.takeovers.abandonDraft(projectId, takeoverId, body, user.id);
   }
 
   @Post(":takeoverId/evidence-files")

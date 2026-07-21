@@ -4,9 +4,11 @@ import type { UploadFile } from "tdesign-vue-next";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
+  abandonSpotProcurementDraft,
   createSpotProcurementVersion,
   fetchSpotProcurementDetail,
   reviewSpotProcurement,
+  recreateSpotProcurementPaymentDraft,
   submitSpotProcurement,
   updateSpotProcurementDraft,
   voidSpotProcurement,
@@ -16,6 +18,9 @@ import {
 import { downloadApprovalForm, uploadPrivateFile } from "../../api/core-flow-read.api";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
+import BusinessDraftAction, {
+  type BusinessDraftActionRequest
+} from "../../components/BusinessDraftAction.vue";
 import BusinessDetailHeader from "../../components/BusinessDetailHeader.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
@@ -102,6 +107,17 @@ const linkedPaymentActionLabel = computed(() => {
   if (!payment) return "";
   return paymentActionLabel(payment);
 });
+const operationalActions = computed(() =>
+  detail.value?.availableActions.filter(
+    (action) => !["delete_pristine_draft", "abandon_application"].includes(action.key)
+  ) ?? []
+);
+const draftActionSubject = computed(() => ({
+  businessCode: detail.value?.procurement.code ?? "—",
+  name: detail.value?.currentVersion.reason ?? "零星采购申请",
+  lastSavedAt: dateTime(detail.value?.procurement.updatedAt),
+  impactScope: "结束当前采购草稿；已形成的审批、附件及父子流程事实继续保留"
+}));
 const materialColumns = [
   { colKey: "sortOrder", title: "序号", width: 70 },
   { colKey: "materialName", title: "名称", width: 180 },
@@ -113,7 +129,7 @@ const materialColumns = [
 
 function statusTone(status: string): BusinessSummaryTone {
   if (status === "closed") return "success";
-  if (status === "voided") return "danger";
+  if (["voided", "abandoned", "abnormally_terminated"].includes(status)) return "danger";
   if (status === "approval_pending") return "warning";
   if (status === "approved_in_progress") return "primary";
   return "default";
@@ -292,6 +308,32 @@ async function runSubmit() {
   }
 }
 
+async function executeDraftAction(request: BusinessDraftActionRequest) {
+  const current = detail.value;
+  if (!current || !["delete_pristine_draft", "abandon_application"].includes(request.action)) return;
+  await abandonSpotProcurementDraft(current.procurement.id, {
+    action: request.action as "delete_pristine_draft" | "abandon_application",
+    ...(request.reason.trim() ? { reason: request.reason.trim() } : {})
+  });
+  showSuccess(request.action === "delete_pristine_draft" ? "采购草稿已删除，历史审计仍保留。" : "采购申请已放弃，历史事实仍可追溯。");
+  await loadDetail();
+}
+
+async function recreatePaymentDraft() {
+  const current = detail.value;
+  if (!current || !actionEnabled("create_payment_draft")) return;
+  actionBusy.value = true;
+  try {
+    const result = await recreateSpotProcurementPaymentDraft(current.procurement.id);
+    showSuccess("新的付款草稿已创建，原付款草稿继续保留为历史记录。");
+    await router.push(`/零星材料付款/${encodeURIComponent(result.id)}`);
+  } catch (error) {
+    showError(error, "重新创建付款申请失败");
+  } finally {
+    actionBusy.value = false;
+  }
+}
+
 function openConfirmation(kind: ActionKind) {
   const configurations: Record<ActionKind, Omit<typeof confirmation, "visible" | "kind">> = {
     review_approve: {
@@ -393,6 +435,7 @@ function runPrimaryAction() {
   if (key === "submit_approval") void runSubmit();
   else if (key === "review_approval") openConfirmation("review_approve");
   else if (key === "create_version") openEdit("version");
+  else if (key === "create_payment_draft") void recreatePaymentDraft();
 }
 
 function showSuccess(message: string) {
@@ -586,7 +629,12 @@ onMounted(() => void loadDetail());
         class="detail-panel"
       >
         <header><h2>审批与动作</h2><p>所有可办理性均按冻结审批流程和真实参与关系确定。</p></header>
-        <BusinessActionPanel :actions="detail.availableActions" />
+        <BusinessActionPanel :actions="operationalActions" />
+        <BusinessDraftAction
+          :actions="detail.availableActions"
+          :subject="draftActionSubject"
+          :execute="executeDraftAction"
+        />
         <div class="action-buttons">
           <t-button
             v-if="actionEnabled('edit_draft')"
@@ -701,6 +749,10 @@ onMounted(() => void loadDetail());
             </t-link>
           </template>
         </t-table>
+        <t-empty
+          v-else
+          description="当前没有活动付款申请；若原付款草稿已放弃，可使用页头唯一主操作重新创建"
+        />
       </section>
 
       <section

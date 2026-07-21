@@ -4,16 +4,16 @@ import type {
   ContractInvoiceType,
   ContractReadinessResult,
   ContractTemplateSchema,
-  ContractTaxMode,
-  ContractWorkbenchReadModel
+  ContractTaxMode
 } from "@jiangkong/shared-domain";
-import { computed, reactive, ref, type ComputedRef, type Ref } from "vue";
+import { computed, reactive, readonly, ref, type ComputedRef, type Ref } from "vue";
 import {
   createDraftCheckpoint,
   createWorkbenchDraft,
   fetchContractWorkbench,
   restoreDraftCheckpoint,
   saveContractDraft,
+  type ContractWorkbenchReadModel,
   type SaveContractDraftPayload
 } from "../../../api/contract-workbench.api";
 
@@ -135,10 +135,22 @@ export interface UseContractDraft {
   model: ContractDraftModel;
   workbench: Ref<ContractWorkbenchReadModel | null>;
   saveState: Ref<ContractDraftSaveState>;
+  saveError: Readonly<Ref<string>>;
   conflict: Ref<ContractDraftConflict | null>;
+  /** Read-only dirty facts for route and component-close guards. */
+  dirty: Readonly<Ref<boolean>>;
+  isDirty: Readonly<Ref<boolean>>;
+  /** Latest server revision known after autosave, even before a workbench reload. */
+  savedRevision: Readonly<Ref<number>>;
   initializeDraft: InitializeDraftController;
   load: (contractId: string) => Promise<void>;
   markDirty: () => void;
+  /** Clears only client-side editing state after a successful server termination. */
+  discardLocalState: () => void;
+  /** Stops a scheduled autosave while a server-side lifecycle action runs. */
+  suspendAutosaveForLifecycleAction: () => boolean;
+  /** Restarts autosave after a failed lifecycle action without losing local edits. */
+  resumeAutosaveAfterLifecycleAction: () => void;
   /** Flushes dirty draft data. Clean state is a successful no-op. */
   saveNow: () => Promise<boolean>;
   createCheckpoint: (options?: {
@@ -350,14 +362,14 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   const model = reactive<ContractDraftModel>(emptyModel()) as ContractDraftModel;
   const workbench = ref<ContractWorkbenchReadModel | null>(null);
   const saveState = ref<ContractDraftSaveState>("idle");
+  const saveError = ref("");
   const conflict = ref<ContractDraftConflict | null>(null);
 
   // Loaded contract-version identity + revision drive every save's optimistic lock.
   const contractVersionId = ref<string | null>(null);
   const currentRevision = ref<number>(0);
 
-  // Internal-only. Autosave is paused while a conflict awaits a user decision;
-  // these are not part of the public composable surface (brief: exactly 12 members).
+  // Internal-only. Autosave is paused while a conflict awaits a user decision.
   const pausedRef = ref(false);
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -413,6 +425,32 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     }
   }
 
+  function discardLocalState(): void {
+    cancelScheduledSave();
+    clearBackup();
+    // Invalidate pending loads and make any in-flight save response stale.
+    loadRequestId += 1;
+    contractVersionId.value = null;
+    editGeneration += 1;
+    dirtyRef.value = false;
+    pausedRef.value = false;
+    conflict.value = null;
+    saveState.value = "idle";
+    saveError.value = "";
+  }
+
+  function suspendAutosaveForLifecycleAction(): boolean {
+    if (activeSave || saveState.value === "saving") return false;
+    cancelScheduledSave();
+    pausedRef.value = true;
+    return true;
+  }
+
+  function resumeAutosaveAfterLifecycleAction(): void {
+    pausedRef.value = false;
+    if (dirtyRef.value) markDirty();
+  }
+
   // -- Loading ----------------------------------------------------------------
 
   async function load(contractId: string): Promise<void> {
@@ -427,6 +465,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     pausedRef.value = false;
     dirtyRef.value = false;
     saveState.value = "idle";
+    saveError.value = "";
 
     assignModel(model, modelFromWorkbench(result));
 
@@ -475,6 +514,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
 
     cancelScheduledSave();
     saveState.value = "saving";
+    saveError.value = "";
     const savingGeneration = editGeneration;
 
     const changeType = (workbench.value?.version as unknown as { changeType?: unknown })?.changeType;
@@ -492,8 +532,8 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
         defaultTaxRatePercent: model.defaultTaxRatePercent,
         source: "contract_document" as const
       },
-      ...(model.amountSource === "manual" && model.manualAmountCents !== null
-        ? { manualAmountCents: model.manualAmountCents }
+      ...(model.amountSource === "manual"
+        ? { manualAmountCents: model.manualAmountCents ?? "0" }
         : {}),
       ...(!isChangeDraft
         ? {
@@ -532,9 +572,11 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     } catch (error) {
       if (contractVersionId.value !== savingVersionId) return true;
       if (isConflictError(error)) {
+        saveError.value = "合同草稿已在其他页面更新，请处理版本冲突后重试";
         await enterConflict();
       } else {
         // Non-conflict failure: keep local edits + backup, do NOT pause.
+        saveError.value = error instanceof Error ? error.message : "合同草稿保存失败";
         saveState.value = "failed";
       }
       return false;
@@ -621,6 +663,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     clearBackup();
     resumeAfterConflict();
     saveState.value = "idle";
+    saveError.value = "";
   }
 
   // -- Checkpoints ------------------------------------------------------------
@@ -735,10 +778,17 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     model,
     workbench,
     saveState,
+    saveError: readonly(saveError),
     conflict,
+    dirty: readonly(dirtyRef),
+    isDirty: readonly(dirtyRef),
+    savedRevision: readonly(currentRevision),
     initializeDraft,
     load,
     markDirty,
+    discardLocalState,
+    suspendAutosaveForLifecycleAction,
+    resumeAutosaveAfterLifecycleAction,
     saveNow,
     createCheckpoint,
     restoreCheckpoint,

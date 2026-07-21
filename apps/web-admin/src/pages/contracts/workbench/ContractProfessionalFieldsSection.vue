@@ -72,7 +72,10 @@ const emit = defineEmits<{
 }>();
 
 const fields = computed(() =>
-  contractProfessionalFields(props.workbench?.version.templateSnapshot.fieldSchema ?? [])
+  contractProfessionalFields(
+    props.workbench?.version.templateSnapshot.fieldSchema ?? [],
+    props.workbench?.contract.contractTypeKey
+  )
 );
 
 function stringValue(key: string): string {

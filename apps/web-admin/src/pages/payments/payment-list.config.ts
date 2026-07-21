@@ -125,9 +125,9 @@ export const paymentFilterFields: PaymentFilterField[] = [
 ];
 
 export const paymentSummaryItems: PaymentSummaryItem[] = [
-  { label: "全部付款", value: "0", tone: "default" },
+  { label: "正式申请金额", value: "0", tone: "default" },
+  { label: "已实付金额", value: "0", tone: "success" },
   { label: "待审批", value: "0", tone: "warning" },
-  { label: "或签审批", value: "0", tone: "primary" },
   { label: "已批待付", value: "0", tone: "warning" },
   { label: "已实付", value: "0", tone: "success" }
 ];
@@ -178,7 +178,7 @@ export const paymentRules = [
 ];
 
 export const paymentPaginationBlockReason =
-  "当前仅显示系统本次返回的记录，暂不支持翻页；请使用筛选缩小范围，避免把当前列表误认为全部记录。";
+  "当前页由服务端按权限范围分页返回；上方视图数量与统计覆盖当前账号可见的全部记录。";
 
 export function paymentLedgerFilterOptions(rows: readonly PaymentLedgerRow[]) {
   return {

@@ -1,4 +1,10 @@
-import { BadRequestException, ForbiddenException, Injectable, Optional } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Optional
+} from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { normalizeTaxRatePercent } from "@jiangkong/shared-domain";
 import { createHash, randomUUID } from "node:crypto";
@@ -31,6 +37,8 @@ import type {
   ContractTakeoverImportBatchReviewStatus,
   ReviewContractTakeoverImportBatchDto
 } from "./dto/review-contract-takeover-import-batch.dto";
+import type { AbandonContractTakeoverDto } from "./dto/abandon-contract-takeover.dto";
+import type { AbandonContractTakeoverBatchDto } from "./dto/abandon-contract-takeover-batch.dto";
 import type {
   ContractTakeoverCorrectionType,
   RecordContractTakeoverCorrectionDto
@@ -256,6 +264,7 @@ type ContractTakeoverRecord = {
   responsibleUserId: string | null;
   reviewComment: string | null;
   acceptanceConclusion: string | null;
+  createdByUserId: string;
   submittedAt: Date | null;
   confirmedAt: Date | null;
   historicalBalanceConfirmedAt: Date | null;
@@ -320,6 +329,12 @@ export interface ContractTakeoverBusinessReadModel {
   evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
   corrections: ContractTakeoverCorrectionReadModel[];
   postConfirmationVerification: ContractTakeoverPostConfirmationVerificationReadModel;
+  lifecycleKind: "pristine_draft" | "approval_draft" | "formal_record";
+  lifecycleBlockers: string[];
+  availableActions: Array<{
+    key: string; label: string; kind: "danger"; enabled: boolean;
+    disabledReason: string | null; requiresComment?: boolean;
+  }>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -1198,13 +1213,13 @@ export class ContractTakeoverService {
     }
   }
 
-  async list(projectId: string) {
+  async list(projectId: string, actorUserId?: string) {
     const takeovers = await this.prisma.contractTakeover.findMany({
-      where: { projectId },
+      where: { projectId, takeoverStatus: { not: "abandoned" } },
       orderBy: { createdAt: "desc" }
     });
 
-    return this.toReadModels(this.prisma, takeovers);
+    return this.toReadModels(this.prisma, takeovers, actorUserId);
   }
 
   async listImportBatches(projectId: string) {
@@ -1227,6 +1242,93 @@ export class ContractTakeoverService {
         responsibleUserName: userNameById.get(batch.responsibleUserId) ?? null
       })
     );
+  }
+
+  async abandonDraft(
+    projectId: string,
+    takeoverId: string,
+    input: AbandonContractTakeoverDto,
+    actorUserId: string
+  ) {
+    const reason = input.reason?.trim() ?? "";
+    if (input.action === "abandon_application" && !reason) {
+      throw new BadRequestException("放弃历史接管申请必须填写原因");
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const [takeover] = await tx.$queryRaw<Array<NonNullable<Awaited<ReturnType<typeof tx.contractTakeover.findUnique>>>>>(Prisma.sql`
+        SELECT * FROM "ContractTakeover"
+        WHERE "id" = ${takeoverId} AND "projectId" = ${projectId}
+        FOR UPDATE
+      `);
+      if (!takeover) throw new BadRequestException("未找到历史合同接管草稿，请刷新后重试");
+      return this.closeTakeoverDraft(tx, takeover, input, actorUserId, reason);
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+
+  async previewBatchAbandonment(projectId: string, batchId: string, actorUserId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const batch = await tx.contractTakeoverBatch.findFirst({ where: { id: batchId, projectId } });
+      if (!batch) throw new BadRequestException("未找到历史接管导入批次，请刷新后重试");
+      const rows = await this.batchAbandonmentRows(tx, projectId, batch.id, actorUserId);
+      const previewHash = this.batchAbandonmentHash(batch.id, rows);
+      return {
+        batchId: batch.id,
+        batchNo: batch.batchNo,
+        previewHash,
+        total: rows.length,
+        eligible: rows.filter((row) => row.eligible).length,
+        blocked: rows.filter((row) => !row.eligible).length,
+        rows
+      };
+    });
+  }
+
+  async applyBatchAbandonment(
+    projectId: string,
+    batchId: string,
+    input: AbandonContractTakeoverBatchDto,
+    actorUserId: string
+  ) {
+    const reason = input.reason.trim();
+    if (!reason) throw new BadRequestException("请填写批量放弃原因");
+    return this.prisma.$transaction(async (tx) => {
+      const [batch] = await tx.$queryRaw<Array<NonNullable<Awaited<ReturnType<typeof tx.contractTakeoverBatch.findUnique>>>>>(Prisma.sql`
+        SELECT * FROM "ContractTakeoverBatch"
+        WHERE "id" = ${batchId} AND "projectId" = ${projectId}
+        FOR UPDATE
+      `);
+      if (!batch) throw new BadRequestException("未找到历史接管导入批次，请刷新后重试");
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id" FROM "ContractTakeover"
+        WHERE "takeoverBatchId" = ${batch.id}
+        ORDER BY "importRowNo" ASC NULLS LAST, "id" ASC
+        FOR UPDATE
+      `);
+      const rows = await this.batchAbandonmentRows(tx, projectId, batch.id, actorUserId);
+      if (this.batchAbandonmentHash(batch.id, rows) !== input.previewHash) {
+        throw new ConflictException("批次草稿在预览后已发生变化，请重新预览");
+      }
+      const blocked = rows.filter((row) => !row.eligible);
+      if (blocked.length) {
+        throw new ConflictException("批次中仍有不能放弃的记录，请处理阻断项后重新预览");
+      }
+      for (const row of rows) {
+        const takeover = await tx.contractTakeover.findUnique({ where: { id: row.id } });
+        if (!takeover) throw new ConflictException("批次草稿已发生变化，请重新预览");
+        await this.closeTakeoverDraft(tx, takeover, {
+          expectedUpdatedAt: row.updatedAt,
+          action: row.action
+        }, actorUserId, reason);
+      }
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract_takeover_batch.drafts.abandon",
+        businessType: "contract_takeover_batch",
+        businessId: batch.id,
+        metadata: { projectId, count: rows.length, previewHash: input.previewHash, reason }
+      });
+      return { batchId: batch.id, abandonedCount: rows.length, previewHash: input.previewHash };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   async reviewImportBatch(
@@ -1278,9 +1380,9 @@ export class ContractTakeoverService {
     });
   }
 
-  async detail(projectId: string, takeoverId: string) {
+  async detail(projectId: string, takeoverId: string, actorUserId?: string) {
     const takeover = await this.getProjectTakeover(this.prisma, projectId, takeoverId);
-    return this.toReadModelFromDatabase(this.prisma, takeover);
+    return this.toReadModelFromDatabase(this.prisma, takeover, actorUserId);
   }
 
   async precheckImport(
@@ -1793,7 +1895,8 @@ export class ContractTakeoverService {
 
   private async toReadModels(
     client: TakeoverReadClient,
-    takeovers: ContractTakeoverRecord[]
+    takeovers: ContractTakeoverRecord[],
+    actorUserId?: string
   ): Promise<ContractTakeoverBusinessReadModel[]> {
     if (!takeovers.length) {
       return [];
@@ -2168,15 +2271,16 @@ export class ContractTakeoverService {
           postConfirmationVerificationByVersionId.get(takeover.contractVersionId) ??
             emptyPostConfirmationVerificationStats()
         )
-      })
+      }, actorUserId)
     );
   }
 
   private async toReadModelFromDatabase(
     client: TakeoverReadClient,
-    takeover: ContractTakeoverRecord
+    takeover: ContractTakeoverRecord,
+    actorUserId?: string
   ) {
-    const [readModel] = await this.toReadModels(client, [takeover]);
+    const [readModel] = await this.toReadModels(client, [takeover], actorUserId);
     return readModel;
   }
 
@@ -2199,7 +2303,8 @@ export class ContractTakeoverService {
       evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
       corrections: ContractTakeoverCorrectionReadModel[];
       postConfirmationVerification: ContractTakeoverPostConfirmationVerificationReadModel;
-    }
+    },
+    actorUserId?: string
   ): ContractTakeoverBusinessReadModel {
     const evidenceChecklist = takeoverEvidenceChecklist(takeover, contract.evidenceFiles);
     const invoiceType = contract.contractVersion?.invoiceType ?? null;
@@ -2207,6 +2312,34 @@ export class ContractTakeoverService {
       contract.contractVersion?.defaultTaxRatePercent?.toString() ?? null;
     const pricingItems = contract.pricingItems ?? [];
     const changeBaselineConfirmed = contract.contractVersion?.originalBaseAmountCents != null;
+
+    const terminal = takeover.takeoverStatus === "confirmed" || Boolean(takeover.confirmedAt);
+    const allowed = ["draft", "needs_supplement", "pending_review"].includes(takeover.takeoverStatus);
+    const owns = Boolean(actorUserId) && (
+      takeover.createdByUserId === actorUserId || takeover.responsibleUserId === actorUserId
+    );
+    const downstream = contract.postConfirmationVerification;
+    const lifecycleBlockers = [
+      ...(takeover.takeoverStatus === "abandoned" ? ["接管记录已放弃"] : []),
+      ...(terminal ? ["接管已确认"] : []),
+      ...(!terminal && !allowed && takeover.takeoverStatus !== "abandoned" ? ["接管状态不能放弃"] : []),
+      ...(downstream.newSettlementCount ? ["存在关联结算"] : []),
+      ...(downstream.paymentRequestCount ? ["存在关联付款"] : []),
+      ...(!owns && actorUserId ? ["当前账号不是该接管记录责任人"] : []),
+      ...(!actorUserId ? ["未提供当前操作人"] : [])
+    ];
+    const pristine = takeover.takeoverStatus === "draft" && !takeover.submittedAt &&
+      contract.evidenceFiles.length === 0 && contract.corrections.length === 0;
+    const lifecycleKind = takeover.takeoverStatus === "abandoned" || terminal
+      ? "formal_record" : pristine ? "pristine_draft" : "approval_draft";
+    const availableActions = lifecycleKind === "formal_record" ? [] : [{
+      key: pristine ? "delete_pristine_draft" : "abandon_application",
+      label: pristine ? "删除草稿" : "放弃历史接管申请",
+      kind: "danger" as const,
+      enabled: lifecycleBlockers.length === 0,
+      disabledReason: lifecycleBlockers.length ? lifecycleBlockers.join("；") : null,
+      ...(pristine ? {} : { requiresComment: true })
+    }];
 
     return {
       id: takeover.id,
@@ -2279,6 +2412,9 @@ export class ContractTakeoverService {
       evidenceFiles: contract.evidenceFiles,
       corrections: contract.corrections,
       postConfirmationVerification: contract.postConfirmationVerification,
+      lifecycleKind,
+      lifecycleBlockers,
+      availableActions,
       createdAt: takeover.createdAt,
       updatedAt: takeover.updatedAt
     };
@@ -2394,6 +2530,206 @@ export class ContractTakeoverService {
     return createHash("sha256")
       .update(JSON.stringify(stableObject({ batchFacts, rows })))
       .digest("hex");
+  }
+
+  private async batchAbandonmentRows(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    batchId: string,
+    actorUserId: string
+  ): Promise<Array<{
+    id: string;
+    contractNo: string;
+    contractName: string;
+    importRowNo: number | null;
+    updatedAt: string;
+    action: "delete_pristine_draft" | "abandon_application";
+    eligible: boolean;
+    blockers: string[];
+  }>> {
+    const takeovers = await tx.contractTakeover.findMany({
+      where: { projectId, takeoverBatchId: batchId },
+      orderBy: [{ importRowNo: "asc" }, { id: "asc" }]
+    });
+    const contractReader = (tx as unknown as {
+      contract?: { findMany(args: unknown): Promise<Array<{
+        id: string; code: string | null; temporaryCode: string | null; name: string;
+      }>> }
+    }).contract;
+    const contracts = takeovers.length && contractReader ? await contractReader.findMany({
+      where: { id: { in: unique(takeovers.map((takeover) => takeover.contractId)) } },
+      select: { id: true, code: true, temporaryCode: true, name: true }
+    }) : [];
+    const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
+    const rows = [];
+    for (const takeover of takeovers) {
+      const facts = await this.takeoverAbandonmentFacts(tx, takeover);
+      const owns = takeover.createdByUserId === actorUserId ||
+        takeover.responsibleUserId === actorUserId;
+      const blockers = [
+        ...facts.blockers,
+        ...(!owns ? ["当前账号不是该接管记录责任人"] : [])
+      ];
+      rows.push({
+        id: takeover.id,
+        contractNo: contractById.get(takeover.contractId)?.code ??
+          contractById.get(takeover.contractId)?.temporaryCode ?? takeover.contractId,
+        contractName: contractById.get(takeover.contractId)?.name ?? "合同名称未读取",
+        importRowNo: takeover.importRowNo,
+        updatedAt: takeover.updatedAt.toISOString(),
+        action: facts.action,
+        eligible: blockers.length === 0,
+        blockers
+      });
+    }
+    return rows;
+  }
+
+  private batchAbandonmentHash(batchId: string, rows: Array<{
+    id: string;
+    updatedAt: string;
+    action: string;
+    eligible: boolean;
+    blockers: string[];
+  }>) {
+    const atomicRows = rows.map(({ id, updatedAt, action, eligible, blockers }) => ({
+      id, updatedAt, action, eligible, blockers
+    }));
+    return createHash("sha256")
+      .update(JSON.stringify(stableObject({ batchId, rows: atomicRows })))
+      .digest("hex");
+  }
+
+  private async takeoverAbandonmentFacts(
+    tx: Prisma.TransactionClient,
+    takeover: {
+      id: string;
+      contractId: string;
+      contractVersionId: string;
+      takeoverStatus: string;
+      submittedAt: Date | null;
+      confirmedAt: Date | null;
+    }
+  ) {
+    const [evidenceCount, correctionCount, settlementCount, paymentCount] = await Promise.all([
+      tx.archiveRecord.count({
+        where: { businessType: "contract_takeover", businessId: takeover.id }
+      }),
+      tx.contractTakeoverCorrection.count({ where: { takeoverId: takeover.id } }),
+      tx.settlement.count({ where: { contractVersionId: takeover.contractVersionId } }),
+      tx.paymentRequest.count({ where: { contractVersionId: takeover.contractVersionId } })
+    ]);
+    const terminal = takeover.takeoverStatus === "confirmed" || Boolean(takeover.confirmedAt);
+    const allowed = ["draft", "needs_supplement", "pending_review"].includes(
+      takeover.takeoverStatus
+    );
+    const blockers = [
+      ...(takeover.takeoverStatus === "abandoned" ? ["接管记录已放弃"] : []),
+      ...(terminal ? ["接管已确认"] : []),
+      ...(!terminal && !allowed && takeover.takeoverStatus !== "abandoned"
+        ? ["接管状态不能放弃"]
+        : []),
+      ...(settlementCount ? ["存在关联结算"] : []),
+      ...(paymentCount ? ["存在关联付款"] : [])
+    ];
+    const pristine = takeover.takeoverStatus === "draft" && !takeover.submittedAt &&
+      evidenceCount === 0 && correctionCount === 0;
+    return {
+      action: pristine ? "delete_pristine_draft" as const : "abandon_application" as const,
+      blockers,
+      evidenceCount
+    };
+  }
+
+  private async closeTakeoverDraft(
+    tx: Prisma.TransactionClient,
+    takeover: NonNullable<Awaited<ReturnType<Prisma.TransactionClient["contractTakeover"]["findUnique"]>>>,
+    input: { expectedUpdatedAt: string; action: "delete_pristine_draft" | "abandon_application" },
+    actorUserId: string,
+    reason: string
+  ) {
+    if (takeover.createdByUserId !== actorUserId && takeover.responsibleUserId !== actorUserId) {
+      throw new ForbiddenException("只有接管记录创建人或当前责任人可以删除草稿或放弃申请");
+    }
+    if (takeover.takeoverStatus === "abandoned") {
+      return { takeoverId: takeover.id, status: "abandoned", idempotent: true };
+    }
+    const expectedUpdatedAt = new Date(input.expectedUpdatedAt);
+    if (takeover.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+      throw new ConflictException("历史接管草稿已被更新，请刷新后重试");
+    }
+    const facts = await this.takeoverAbandonmentFacts(tx, takeover);
+    if (facts.blockers.length) {
+      throw new ConflictException(`当前接管记录不能放弃：${facts.blockers.join("、")}`);
+    }
+    if (input.action !== facts.action) {
+      throw new ConflictException(
+        facts.action === "delete_pristine_draft"
+          ? "当前接管记录仍是纯净草稿，请刷新后使用“删除草稿”"
+          : "当前接管记录已留下业务证据，只能放弃申请"
+      );
+    }
+    if (facts.action === "abandon_application" && !reason) {
+      throw new BadRequestException("放弃历史接管申请必须填写原因");
+    }
+    const now = new Date();
+    const updated = await tx.contractTakeover.updateMany({
+      where: { id: takeover.id, takeoverStatus: takeover.takeoverStatus, updatedAt: expectedUpdatedAt },
+      data: {
+        takeoverStatus: "abandoned",
+        abandonedAt: now,
+        abandonedByUserId: actorUserId,
+        abandonReason: facts.action === "abandon_application" ? reason : null
+      }
+    });
+    if (updated.count !== 1) {
+      throw new ConflictException("历史接管草稿已被其他操作处理，请刷新后重试");
+    }
+    const closedVersion = await tx.contractVersion.updateMany({
+      where: {
+        id: takeover.contractVersionId,
+        status: { in: ["draft", "approval_rejected"] },
+        abandonedAt: null
+      },
+      data: {
+        status: "abandoned",
+        abandonedAt: now,
+        abandonedByUserId: actorUserId,
+        abandonReason: facts.action === "abandon_application" ? reason : null
+      }
+    });
+    const closedTerms = await tx.paymentTermsVersion.updateMany({
+      where: { id: takeover.paymentTermsVersionId, status: "draft" },
+      data: { status: "voided" }
+    });
+    if (closedVersion.count !== 1 || closedTerms.count !== 1) {
+      throw new ConflictException(
+        "接管生成的合同草稿或付款条款已形成其他状态，不能放弃，请刷新后核对"
+      );
+    }
+    await this.audit.record(tx, {
+      actorUserId,
+      action: facts.action === "delete_pristine_draft"
+        ? "contract_takeover.draft.delete"
+        : "contract_takeover.application.abandon",
+      businessType: "contract_takeover",
+      businessId: takeover.id,
+      metadata: {
+        projectId: takeover.projectId,
+        contractId: takeover.contractId,
+        contractVersionId: takeover.contractVersionId,
+        previousStatus: takeover.takeoverStatus,
+        evidenceCount: facts.evidenceCount,
+        reason: facts.action === "abandon_application" ? reason : null
+      }
+    });
+    return {
+      takeoverId: takeover.id,
+      status: "abandoned",
+      action: facts.action,
+      abandonedAt: now,
+      idempotent: false
+    };
   }
 
   private parsePrecheckRows(input: PrecheckContractTakeoverImportDto) {

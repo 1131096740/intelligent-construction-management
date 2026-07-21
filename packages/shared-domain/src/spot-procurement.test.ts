@@ -47,11 +47,14 @@ describe("real-form spot procurement domain contracts", () => {
 
   it("allows invoice appendix after normal closure or abnormal termination only", () => {
     expect(SPOT_PROCUREMENT_STATUSES).toContain("abnormally_terminated");
+    expect(SPOT_PROCUREMENT_STATUSES).toContain("abandoned");
     expect(canAppendSpotProcurementInvoice("closed")).toBe(true);
     expect(canAppendSpotProcurementInvoice("abnormally_terminated")).toBe(true);
     expect(canAppendSpotProcurementInvoice("approved_in_progress")).toBe(false);
+    expect(canAppendSpotProcurementInvoice("abandoned")).toBe(false);
     expect(isSpotProcurementBusinessLocked("closed")).toBe(true);
     expect(isSpotProcurementBusinessLocked("abnormally_terminated")).toBe(true);
+    expect(isSpotProcurementBusinessLocked("abandoned")).toBe(true);
     expect(isSpotProcurementBusinessLocked("approval_pending")).toBe(false);
   });
 

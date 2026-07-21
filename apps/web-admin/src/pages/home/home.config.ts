@@ -18,10 +18,12 @@ export interface WorkbenchQueueViewModel {
 }
 
 export interface WorkItemQueueViewModel {
-  id: "pending" | "blocked" | "started";
+  id: "pending" | "blocked" | "started" | "drafts";
   title: string;
   description: string;
   items: WorkItemViewModel[];
+  total: number;
+  truncated: boolean;
 }
 
 export interface WorkItemViewModel extends WorkItemReadModel {
@@ -109,13 +111,19 @@ export function hasOpenWorkbenchItems(cards: readonly WorkbenchCardViewModel[]):
 export function toWorkItemQueues(
   workItems: WorkItemsReadModel | null | undefined
 ): WorkItemQueueViewModel[] {
-  return queueDefs.map((queue) => ({
-    ...queue,
-    items: (workItems?.queues[queue.id] ?? []).map((item) => ({
+  return queueDefs.map((queue) => {
+    const items = (workItems?.queues[queue.id] ?? []).map((item) => ({
       ...item,
       toneClass: `tone-${item.tone}`
-    }))
-  }));
+    }));
+    const meta = workItems?.queueMeta?.[queue.id];
+    return {
+      ...queue,
+      items,
+      total: meta?.total ?? items.length,
+      truncated: meta?.truncated ?? false
+    };
+  });
 }
 
 export function hasWorkItemPermissionData(
@@ -125,7 +133,7 @@ export function hasWorkItemPermissionData(
 }
 
 export function hasOpenWorkItems(queues: readonly WorkItemQueueViewModel[]): boolean {
-  return queues.some((queue) => queue.items.length > 0);
+  return queues.some((queue) => queue.total > 0);
 }
 
 export function emptyHomeWorkItemFilters(): HomeWorkItemFilters {
@@ -142,11 +150,12 @@ export function homeWorkItemSummaryItems(
   queues: readonly WorkItemQueueViewModel[],
   visibleProjectCount: number
 ): HomeSummaryItem[] {
-  const counts = new Map(queues.map((queue) => [queue.id, queue.items.length]));
+  const counts = new Map(queues.map((queue) => [queue.id, queue.total]));
   return [
     { label: "待我处理", value: String(counts.get("pending") ?? 0), tone: "primary" },
     { label: "阻塞事项", value: String(counts.get("blocked") ?? 0), tone: "danger" },
     { label: "我发起的进行中", value: String(counts.get("started") ?? 0), tone: "default" },
+    { label: "我的草稿", value: String(counts.get("drafts") ?? 0), tone: "default" },
     { label: "可见项目", value: String(visibleProjectCount), tone: "default" }
   ];
 }
@@ -226,7 +235,7 @@ function queueIndexForCard(card: WorkbenchCardViewModel): number {
   return 0;
 }
 
-const queueDefs: Array<Omit<WorkItemQueueViewModel, "items">> = [
+const queueDefs: Array<Omit<WorkItemQueueViewModel, "items" | "total" | "truncated">> = [
   {
     id: "pending",
     title: "待我处理",
@@ -241,6 +250,11 @@ const queueDefs: Array<Omit<WorkItemQueueViewModel, "items">> = [
     id: "started",
     title: "我发起的进行中",
     description: "由你发起、还在审批或办理中的单据。"
+  },
+  {
+    id: "drafts",
+    title: "我的草稿",
+    description: "已保存但尚未提交的草稿，不计入待审批。"
   }
 ];
 
@@ -253,7 +267,10 @@ function workItemBusinessTypeLabel(item: WorkItemReadModel) {
     payment_execution: "付款实付",
     blocker: "阻塞事项",
     contract: "合同",
-    settlement: "结算"
+    settlement: "结算",
+    spot_procurement: "零星采购",
+    spot_payment: "零星付款",
+    template: "模板"
   };
   return labels[item.businessType ?? ""] ?? labels[item.type] ?? "其他业务";
 }
@@ -262,6 +279,9 @@ function workItemStatusLabel(queueId: WorkItemQueueViewModel["id"], item: WorkIt
   const text = `${item.title} ${item.currentNode} ${item.nextAction}`;
   if (/超时|逾期/.test(text)) return "超时";
   if (queueId === "blocked" || item.type === "blocker") return "阻塞";
+  if (queueId === "drafts" && item.agingStatus === "stale") return "90天以上草稿";
+  if (queueId === "drafts" && item.agingStatus === "long_running") return "长期未处理";
+  if (queueId === "drafts") return "草稿";
   if (queueId === "started") return "进行中";
   return "待处理";
 }
@@ -272,6 +292,8 @@ function workItemStatusTone(
 ): HomeWorkItemRow["statusTone"] {
   const status = workItemStatusLabel(queueId, item);
   if (status === "超时" || status === "阻塞") return "danger";
+  if (status === "90天以上草稿" || status === "长期未处理") return "warning";
+  if (status === "草稿") return "default";
   if (status === "进行中") return "default";
   return item.tone;
 }

@@ -306,6 +306,38 @@ describe("ContractReadService", () => {
     });
   });
 
+  it("excludes abandoned-only contracts and falls back to the latest non-abandoned version", async () => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-1", projectId: "project-1", updatedAt: new Date(), name: "保留", counterparty: "乙方", code: "HT-1", temporaryCode: null },
+          { id: "contract-2", projectId: "project-1", updatedAt: new Date(), name: "删除", counterparty: "乙方", code: null, temporaryCode: "草稿-2" }
+        ])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "version-effective", contractId: "contract-1", versionNo: 1, status: "effective", amountCents: 100n }
+        ])
+      },
+      paymentTermsVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "terms-1", contractId: "contract-1", contractVersionId: "version-effective", versionNo: 1 }
+        ])
+      },
+      project: { findMany: jest.fn().mockResolvedValue([{ id: "project-1", name: "项目一" }]) }
+    };
+    const service = new ContractReadService(prisma as never);
+
+    const result = await service.listRecent(50);
+
+    expect(prisma.contractVersion.findMany).toHaveBeenCalledWith({
+      where: { contractId: { in: ["contract-1", "contract-2"] }, status: { not: "abandoned" } },
+      orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
+    });
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({ contractNo: "HT-1", version: "v1" });
+  });
+
   it("lists business contract options for settlement and payment creation", async () => {
     const prisma = {
       contract: {
@@ -1647,5 +1679,51 @@ describe("ContractReadService", () => {
 
     expect(access.canAct).toBe(expected);
     expect(access.canReview).toBe(expected);
+  });
+  it("paginates mutually exclusive lifecycle views with full visible counts", async () => {
+    const now = new Date("2026-07-20T01:00:00.000Z");
+    const contracts = [
+      { id: "c1", projectId: "p1", code: "HT-1", temporaryCode: null, name: "变更后合同", counterparty: "乙方", ownerUserId: "u1", voidedAt: null, updatedAt: now },
+      { id: "c2", projectId: "p1", code: null, temporaryCode: "CG-2", name: "纯草稿", counterparty: "乙方", ownerUserId: "u1", voidedAt: null, updatedAt: now },
+      { id: "c3", projectId: "p1", code: "HT-3", temporaryCode: null, name: "退回合同", counterparty: "乙方", ownerUserId: "u1", voidedAt: null, updatedAt: now },
+      { id: "c4", projectId: "p1", code: "HT-4", temporaryCode: null, name: "作废合同", counterparty: "乙方", ownerUserId: "u2", voidedAt: now, updatedAt: now },
+      { id: "c5", projectId: "p1", code: null, temporaryCode: "CG-5", name: "删除的纯草稿", counterparty: "乙方", ownerUserId: "u1", voidedAt: null, updatedAt: now },
+      { id: "c6", projectId: "p1", code: "HT-6", temporaryCode: null, name: "作废版本之上的放弃变更", counterparty: "乙方", ownerUserId: "u1", voidedAt: null, updatedAt: now }
+    ];
+    const version = (contractId: string, id: string, versionNo: number, status: string) => ({
+      id, contractId, versionNo, status, amountCents: 100n, amountLimitType: "capped",
+      pricingNature: "fixed_total", changeType: versionNo > 1 ? "change" : "original",
+      draftRevision: 3, updatedAt: now,
+      abandonedAt: status === "abandoned" ? now : null,
+      abandonReason: status === "abandoned" ? "不再继续" : null
+    });
+    const versions = [
+      version("c1", "c1-v2", 2, "abandoned"), version("c1", "c1-v1", 1, "effective"),
+      version("c2", "c2-v1", 1, "draft"), version("c3", "c3-v1", 1, "approval_rejected"),
+      version("c4", "c4-v1", 1, "effective"), version("c5", "c5-v1", 1, "abandoned"),
+      version("c6", "c6-v2", 2, "abandoned"), version("c6", "c6-v1", 1, "voided")
+    ];
+    const prisma = {
+      contract: { findMany: jest.fn().mockResolvedValue(contracts) },
+      contractVersion: { findMany: jest.fn().mockResolvedValue(versions) },
+      paymentTermsVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      project: { findMany: jest.fn().mockResolvedValue([{ id: "p1", name: "项目一" }]) },
+      approvalInstance: { findMany: jest.fn().mockResolvedValue([]) },
+      contractFormalFile: { findMany: jest.fn().mockResolvedValue([]) },
+      contractVersionAuthorizationLink: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const service = new ContractReadService(prisma as never);
+
+    const ended = await service.lifecycleLedger("ended", 1, 10, ["p1"], "u1");
+    expect(ended.summary).toEqual({ formal_ledger: 1, my_drafts: 1, returned_for_revision: 1, ended: 4 });
+    expect(ended.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ contractVersionId: "c1-v2", lifecycleKind: "approval_draft", abandonReason: "不再继续" }),
+      expect.objectContaining({ contractVersionId: "c4-v1", lifecycleKind: "formal_record" }),
+      expect.objectContaining({ contractVersionId: "c5-v1", lifecycleKind: "pristine_draft", copyAvailable: true }),
+      expect.objectContaining({ contractVersionId: "c6-v2", lifecycleKind: "approval_draft" })
+    ]));
+    const formal = await service.lifecycleLedger("formal_ledger", 1, 1, ["p1"], "u1");
+    expect(formal.meta).toEqual({ page: 1, pageSize: 1, total: 1, totalPages: 1 });
+    expect(formal.rows[0]).toEqual(expect.objectContaining({ contractVersionId: "c1-v1" }));
   });
 });
