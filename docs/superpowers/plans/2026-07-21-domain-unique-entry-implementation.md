@@ -238,9 +238,9 @@ Expected: the root-only backup retains before and after checksums; no temporary 
 ~~~bash
 set -euo pipefail
 
-curl --noproxy '*' -sSI http://jgzg.site/alpha?x=1 | tr -d '\r' | grep -Fxi 'location: https://jgzg.site/alpha?x=1'
-curl --noproxy '*' -sSI http://162.14.116.192/alpha?x=1 | tr -d '\r' | grep -Fxi 'location: https://jgzg.site/alpha?x=1'
-curl --noproxy '*' -sSI https://www.jgzg.site/alpha?x=1 | tr -d '\r' | grep -Fxi 'location: https://jgzg.site/alpha?x=1'
+curl --noproxy '*' -sSI 'http://jgzg.site/alpha?x=1' | tr -d '\r' | grep -Fxi 'location: https://jgzg.site/alpha?x=1'
+curl --noproxy '*' -sSI 'http://162.14.116.192/alpha?x=1' | tr -d '\r' | grep -Fxi 'location: https://jgzg.site/alpha?x=1'
+curl --noproxy '*' -sSI 'https://www.jgzg.site/alpha?x=1' | tr -d '\r' | grep -Fxi 'location: https://jgzg.site/alpha?x=1'
 curl --noproxy '*' -fsS -o /dev/null -w 'canonical_https=%{http_code}\n' https://jgzg.site/
 curl --noproxy '*' -fsS -o /dev/null -w 'health=%{http_code}\n' https://jgzg.site/api/health
 unauthorized_code=$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' https://jgzg.site/api/projects)
