@@ -369,8 +369,13 @@ export class ContractWorkbenchService {
       const clientDraftData = { ...input.draftData };
       delete clientDraftData.companyEntitySelection;
       delete clientDraftData.myCompanyEntity;
+      const normalizedClientDraftData = this.normalizeLegacyTemplateFieldLocations(
+        clientDraftData,
+        template,
+        version.draftData
+      );
       const storedDraftData = this.withTaxFactMirror({
-        ...clientDraftData,
+        ...normalizedClientDraftData,
         ...(companySelection
           ? {
               companyEntitySelection: companySelection,
@@ -2107,6 +2112,35 @@ export class ContractWorkbenchService {
         taxRatePercent: taxFacts.defaultTaxRatePercent
       }
     };
+  }
+
+  private normalizeLegacyTemplateFieldLocations(
+    draftData: Record<string, unknown>,
+    template: TemplateSnapshot,
+    persistedDraftData: Prisma.JsonValue
+  ) {
+    if (
+      draftData.fieldValues !== undefined &&
+      !this.isPlainObject(draftData.fieldValues)
+    ) {
+      return draftData;
+    }
+    const persisted = this.objectValue(persistedDraftData);
+    const normalized = { ...draftData };
+    const fieldValues = { ...this.objectValue(draftData.fieldValues) };
+    let changed = false;
+    for (const field of template.fieldSchema) {
+      const key = field.key;
+      if (!Object.hasOwn(persisted, key) || !Object.hasOwn(normalized, key)) {
+        continue;
+      }
+      if (!Object.hasOwn(fieldValues, key)) {
+        fieldValues[key] = normalized[key];
+      }
+      delete normalized[key];
+      changed = true;
+    }
+    return changed ? { ...normalized, fieldValues } : draftData;
   }
 
   private companySelectionFromDraft(value: unknown) {

@@ -267,6 +267,7 @@ const props = defineProps<{
   bill: WorkbenchBill;
   disabled: boolean;
   prepareMutation?: () => Promise<unknown | null>;
+  preparationError?: string;
   completeMutation?: (reload: boolean) => Promise<void>;
 }>();
 
@@ -486,7 +487,12 @@ async function previewImport(files: UploadFile[]) {
   try {
     if (props.prepareMutation) {
       const current = await props.prepareMutation();
-      if (!current) throw new Error("合同草稿未保存，本次未执行清单导入预览");
+      if (!current) {
+        const detail = props.preparationError?.trim();
+        throw new Error(detail
+          ? `${detail}；本次未执行清单导入预览`
+          : "合同草稿未保存，本次未执行清单导入预览");
+      }
       prepared = true;
     }
     const uploaded = await uploadPrivateFile(file, file.name);

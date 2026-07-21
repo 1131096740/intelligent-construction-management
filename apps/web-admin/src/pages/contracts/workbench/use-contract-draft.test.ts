@@ -550,6 +550,42 @@ describe("useContractDraft", () => {
     });
   });
 
+  it("normalizes legacy top-level template fields before saving a current edit", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(
+      makeWorkbench({
+        version: {
+          ...makeWorkbench().version,
+          draftData: {
+            contractName: "测试合同",
+            projectName: "旧项目名称",
+            fieldValues: {}
+          },
+          templateSnapshot: {
+            ...makeWorkbench().version.templateSnapshot,
+            fieldSchema: [{ key: "projectName", label: "项目名称", type: "text" }]
+          }
+        }
+      })
+    );
+    mockSaveDraft.mockResolvedValue({ version: { draftRevision: 4 } });
+
+    await draft.load("ct-1");
+
+    expect(draft.model.fieldValues).toMatchObject({ projectName: "旧项目名称" });
+    expect(draft.model.extraDraftData).not.toHaveProperty("projectName");
+
+    draft.model.fieldValues.projectName = "当前项目名称";
+    draft.markDirty();
+    await draft.saveNow();
+
+    const payload = mockSaveDraft.mock.calls[0]?.[1];
+    expect(payload?.draftData).toMatchObject({
+      fieldValues: { projectName: "当前项目名称" }
+    });
+    expect(payload?.draftData).not.toHaveProperty("projectName");
+  });
+
   it("shows saving, saved, failed, and conflict states", async () => {
     const draft = makeDraft();
     mockFetchWorkbench.mockResolvedValue(makeWorkbench());

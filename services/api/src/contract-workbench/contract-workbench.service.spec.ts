@@ -164,6 +164,30 @@ describe("ContractWorkbenchService", () => {
     expect(audit.record).toHaveBeenCalledTimes(1);
   });
 
+  it("normalizes a legacy top-level field when the current editor writes fieldValues", async () => {
+    const tx = ownedVersionTx();
+    const service = makeService(tx);
+
+    await service.saveDraft("version-1", "owner-1", {
+      expectedRevision: 4,
+      draftData: {
+        project_name: "旧名称",
+        fieldValues: { project_name: "当前名称" }
+      },
+      clauses: [],
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      manualAmountCents: "1000000",
+      taxFacts: VALID_TAX_FACTS
+    });
+
+    const savedDraftData = tx.contractVersion.updateMany.mock.calls[0]?.[0].data.draftData;
+    expect(savedDraftData).toMatchObject({
+      fieldValues: { project_name: "当前名称" }
+    });
+    expect(savedDraftData).not.toHaveProperty("project_name");
+  });
+
   it("derives the company entity snapshot and synchronizes the parent contract", async () => {
     const tx = ownedVersionTx({
       $queryRaw: jest.fn().mockResolvedValue([{ id: "entity-1" }]),
@@ -261,8 +285,8 @@ describe("ContractWorkbenchService", () => {
           taxFactRevision: { increment: 1 },
           taxFactsFrozenAt: null,
           draftData: {
-            project_name: "新名称",
             fieldValues: {
+              project_name: "新名称",
               invoiceType: "增值税专用发票",
               taxRatePercent: "13"
             }

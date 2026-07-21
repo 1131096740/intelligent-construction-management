@@ -489,6 +489,7 @@
                 :workbench="billWorkbench"
                 :disabled="editorDisabled"
                 :prepare-mutation="prepareGovernanceMutation"
+                :preparation-error="saveError"
                 :complete-mutation="completeGovernanceMutation"
                 @reload="reloadCurrent"
               />
