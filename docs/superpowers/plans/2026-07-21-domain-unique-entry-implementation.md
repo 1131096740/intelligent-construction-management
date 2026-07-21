@@ -43,7 +43,7 @@ backup_dir=/root/jiangkong-domain-boundary/$stamp
 sudo -n install -d -m 0700 "$backup_dir"
 sudo -n cp -a /etc/nginx/sites-available/jiangkong "$backup_dir/jiangkong.before"
 sudo -n sha256sum "$backup_dir/jiangkong.before" | sudo -n tee "$backup_dir/jiangkong.before.sha256" >/dev/null
-sudo -n nginx -T > "$backup_dir/nginx.before.txt"
+sudo -n sh -c 'nginx -T > "$1"' sh "$backup_dir/nginx.before.txt"
 sudo -n systemctl is-active nginx.service
 sudo -n systemctl is-active jiangkong-api.service
 sudo -n systemctl is-active postgresql.service
