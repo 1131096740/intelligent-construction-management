@@ -407,7 +407,7 @@ test("opens the workbench shell and historical takeover entry", async ({ page })
   await expect(page.getByRole("button", { name: "新增接管合同" })).toBeVisible();
   await expect(page.getByText("接管进度概览（只读）")).toBeVisible();
   await expect(page.getByText("复核确认", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("多部门复核后由主管用当前密码确认")).toBeVisible();
+  await expect(page.getByText("主管先核对必需资料；缺资料点“退回补充”，齐全后输入当前密码确认")).toBeVisible();
 
   await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
   await expect(page.locator(".detail-panel").getByRole("heading", { name: "复核确认" })).toBeVisible();
