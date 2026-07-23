@@ -307,7 +307,7 @@ describe("ContractWorkbenchService", () => {
       manualAmountCents: "1000000",
       taxFacts: {
         ...VALID_TAX_FACTS,
-        defaultTaxRatePercent: "13.000"
+        defaultTaxRatePercent: "13.00"
       }
     });
 
@@ -1510,7 +1510,7 @@ describe("ContractWorkbenchService", () => {
             id: "row-1",
             contractBillId: "bill-1",
             quantity: new Prisma.Decimal("2.500000"),
-            unitPrice: new Prisma.Decimal("4938.000000"),
+            unitPrice: new Prisma.Decimal("4938.123456"),
             taxRate: new Prisma.Decimal("13"),
             taxInclusiveAmountCents: 1_234_500n,
             taxExclusiveAmountCents: 1_092_478n,
@@ -1573,7 +1573,7 @@ describe("ContractWorkbenchService", () => {
       ]
     });
     const row = result.bills[0]?.rows[0] as Record<string, unknown> | undefined;
-    expect(row?.unitPrice).toBe("4938.00");
+    expect(row?.unitPrice).toBe("4938.123456");
     expect(row?.taxRatePercent).toBe("13");
     expect(result.readiness).toEqual({
       ready: false,

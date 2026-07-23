@@ -2290,10 +2290,8 @@ export class ContractWorkbenchService {
     value: { toFixed?: (scale: number) => string; toString: () => string } | null
   ) {
     if (value === null) return null;
-    if (typeof value.toFixed === "function") {
-      return value.toFixed(2);
-    }
-    return new Prisma.Decimal(value.toString()).toFixed(2);
+    const decimal = new Prisma.Decimal(value.toString());
+    return decimal.decimalPlaces() > 2 ? decimal.toString() : decimal.toFixed(2);
   }
 
   private parseNullableMoney(value: string | null, field: string) {
