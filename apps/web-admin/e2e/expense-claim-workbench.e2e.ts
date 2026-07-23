@@ -20,18 +20,48 @@ test("费用与报销工作台在桌面和手机尺寸读取新域个人事实�
   await expectNoDocumentHorizontalOverflow(page);
   await expectNoNestedHorizontalScrollers(page);
 
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalScrollers(page);
+  await page.setViewportSize({ width: 1280, height: 720 });
+
   await page.locator(".expense-claim-workbench__filter-field .t-select").click();
   await page.getByText("审批中", { exact: true }).last().click();
   await expect(page.getByText("BX-20260723-002", { exact: true })).toBeVisible();
   await expect.poll(() => requestedViews).toContain("in_progress");
-  await page.keyboard.press("Escape");
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expectNoDocumentHorizontalOverflow(page);
-  await expectNoNestedHorizontalScrollers(page);
 });
 
-async function mockExpenseClaimSession(page: Page, requestedViews: string[]) {
+test("费用工作台用创建选项和正式写入接口保存借款草稿后进入新域详情", async ({ page }) => {
+  const requestedViews: string[] = [];
+  const posted: unknown[] = [];
+  await mockExpenseClaimSession(page, requestedViews, posted);
+  await login(page);
+
+  await page.goto("/费用与报销工作台");
+  await page.getByRole("button", { name: "新建费用报销 / 借款" }).click();
+  await expect(page.locator(".expense-claim-create__title")).toBeVisible();
+  await page.getByText("借款申请", { exact: true }).last().click();
+  await page.getByRole("button", { name: "下一步" }).click();
+  await page.getByPlaceholder("说明费用事由和使用场景").fill("现场周转借款");
+  await page.getByPlaceholder("最多 2 位小数").fill("1234.56");
+  await page.getByRole("button", { name: "下一步" }).click();
+  await page.getByPlaceholder("请选择日期").click();
+  await page.locator(".t-date-picker__panel .t-date-picker__cell--now").click();
+  await page.getByRole("button", { name: "下一步" }).click();
+  await page.getByRole("button", { name: "保存草稿" }).click();
+
+  await expect(page.getByRole("heading", { name: "借款申请" })).toBeVisible();
+  await expect.poll(() => posted).toHaveLength(1);
+  expect(posted[0]).toMatchObject({
+    claimType: "loan",
+    companyEntityId: "company-1",
+    projectId: "project-1",
+    requestedAmountCents: "123456",
+    loanExpectedClearanceOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/)
+  });
+});
+
+async function mockExpenseClaimSession(page: Page, requestedViews: string[], posted: unknown[] = []) {
   await page.route("**/api/auth/login", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
@@ -58,7 +88,17 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[]) {
     })
   }));
   await page.route("**/api/expense-claims*", (route) => {
-    const view = new URL(route.request().url()).searchParams.get("view") ?? "all";
+    const request = route.request();
+    const url = new URL(request.url());
+    if (request.method() === "POST") {
+      posted.push(request.postDataJSON());
+      return route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ id: "expense-claim-created", code: "JK-20260723-001", status: "draft", requestedAmountCents: "123456" })
+      });
+    }
+    const view = url.searchParams.get("view") ?? "all";
     requestedViews.push(view);
     const body = view === "in_progress"
       ? [expenseClaim({ code: "BX-20260723-002", status: "approval_pending" })]
@@ -72,6 +112,25 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[]) {
       paymentMethod: null, payeeNameSnapshot: null, payeeAccountNameSnapshot: null, payeeBankNameSnapshot: null,
       payeeBankAccountSnapshot: null, loanExpectedClearanceAt: null, submittedAt: null, approvedAt: null,
       lines: [{ id: "line-1", sortOrder: 1, expenseCategory: "交通", occurredOn: "2026-07-22T00:00:00.000Z", purpose: "项目现场交通费", receiptCount: 1, amountCents: "123456", evidenceType: "receipt_or_other", noEvidenceReason: null, remark: null }]
+    })
+  }));
+  await page.route("**/api/expense-claims/create-options", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      companyEntities: [{ id: "company-1", name: "建工智管有限公司" }],
+      projects: [{ id: "project-1", code: "JGXM-001", name: "科技园项目" }],
+      canProxy: false,
+      applicantUsers: [{ id: "expense-claim-canary", name: "费用金丝雀" }],
+      factWitnessUsers: [{ id: "witness-1", name: "事实证明人" }]
+    })
+  }));
+  await page.route("**/api/expense-claims/expense-claim-created", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      ...expenseClaim({ id: "expense-claim-created", code: "JK-20260723-001", claimType: "loan", status: "draft", reason: "现场周转借款", requestedAmountCents: "123456" }),
+      applicantPhoneSnapshot: null, proxyReason: null, factWitnessNameSnapshot: null,
+      paymentMethod: "bank_transfer", payeeNameSnapshot: null, payeeAccountNameSnapshot: null, payeeBankNameSnapshot: null,
+      payeeBankAccountSnapshot: null, loanExpectedClearanceAt: "2026-07-23T00:00:00.000Z", submittedAt: null, approvedAt: null, lines: []
     })
   }));
 }

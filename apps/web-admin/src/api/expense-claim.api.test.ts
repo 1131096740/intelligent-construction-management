@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchExpenseClaimDetail, fetchExpenseClaims } from "./expense-claim.api";
+import { createExpenseClaim, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaims, type CreateExpenseClaimPayload } from "./expense-claim.api";
 
 vi.mock("./api-fetch", () => ({ apiFetch: vi.fn() }));
 
@@ -38,5 +38,29 @@ describe("expense claim API", () => {
     await expect(fetchExpenseClaimDetail("claim/1")).resolves.toMatchObject({ id: "claim-1", lines: [] });
 
     expect(mockApiFetch).toHaveBeenCalledWith("/expense-claims/claim%2F1");
+  });
+
+  it("loads authorized creation options and posts canonical cents payloads", async () => {
+    mockApiFetch
+      .mockResolvedValueOnce(new Response(JSON.stringify({ companyEntities: [], projects: [], canProxy: false, applicantUsers: [], factWitnessUsers: [] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "claim-1", code: "BX-1", status: "draft", requestedAmountCents: "100" }), { status: 201 }));
+
+    await expect(fetchExpenseClaimCreateOptions()).resolves.toMatchObject({ canProxy: false });
+    const draft: CreateExpenseClaimPayload = {
+      claimType: "reimbursement",
+      companyEntityId: "company-1",
+      applicantUserId: "user-1",
+      factWitnessUserId: "witness-1",
+      reason: "现场交通",
+      requestedAmountCents: "100",
+      lines: [{ expenseCategory: "交通", occurredOn: "2026-07-23", purpose: "现场交通", receiptCount: 1, amountCents: "100", evidenceType: "invoice" as const }]
+    };
+    await expect(createExpenseClaim(draft)).resolves.toMatchObject({ id: "claim-1", code: "BX-1" });
+
+    expect(mockApiFetch).toHaveBeenNthCalledWith(1, "/expense-claims/create-options");
+    expect(mockApiFetch).toHaveBeenNthCalledWith(2, "/expense-claims", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify(draft)
+    }));
   });
 });

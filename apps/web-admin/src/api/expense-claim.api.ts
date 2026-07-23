@@ -37,6 +37,49 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
   lines: Array<{ id: string; sortOrder: number; expenseCategory: string; occurredOn: string; purpose: string; receiptCount: number; amountCents: string; evidenceType: string; noEvidenceReason: string | null; remark: string | null }>;
 }
 
+export interface ExpenseClaimCreateOptions {
+  companyEntities: Array<{ id: string; name: string }>;
+  projects: Array<{ id: string; code: string; name: string }>;
+  canProxy: boolean;
+  applicantUsers: Array<{ id: string; name: string }>;
+  factWitnessUsers: Array<{ id: string; name: string }>;
+}
+
+export interface CreateExpenseClaimPayload {
+  claimType: "reimbursement" | "loan";
+  companyEntityId: string;
+  projectId?: string;
+  factWitnessUserId?: string;
+  applicantUserId?: string;
+  applicantName?: string;
+  applicantPhone?: string;
+  reason: string;
+  requestedAmountCents: string;
+  paymentMethod?: string;
+  payeeName?: string;
+  payeeAccountName?: string;
+  payeeBankName?: string;
+  payeeBankAccount?: string;
+  loanExpectedClearanceOn?: string;
+  lines?: Array<{
+    expenseCategory: string;
+    occurredOn: string;
+    purpose: string;
+    receiptCount: number;
+    amountCents: string;
+    evidenceType: "invoice" | "receipt_or_other" | "none";
+    noEvidenceReason?: string;
+    remark?: string;
+  }>;
+}
+
+export interface CreatedExpenseClaim {
+  id: string;
+  code: string;
+  status: string;
+  requestedAmountCents: string;
+}
+
 async function ensureOk(response: Response): Promise<void> {
   if (response.ok) return;
   let message = `读取费用与报销工作台失败：${response.status}`;
@@ -59,6 +102,22 @@ export async function fetchExpenseClaims(view: ExpenseClaimWorkbenchView = "all"
   const response = await apiFetch(`/expense-claims${query}`);
   await ensureOk(response);
   return response.json() as Promise<ExpenseClaimListItemReadModel[]>;
+}
+
+export async function fetchExpenseClaimCreateOptions() {
+  const response = await apiFetch("/expense-claims/create-options");
+  await ensureOk(response);
+  return response.json() as Promise<ExpenseClaimCreateOptions>;
+}
+
+export async function createExpenseClaim(payload: CreateExpenseClaimPayload) {
+  const response = await apiFetch("/expense-claims", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  await ensureOk(response);
+  return response.json() as Promise<CreatedExpenseClaim>;
 }
 
 export async function fetchExpenseClaimDetail(claimId: string) {

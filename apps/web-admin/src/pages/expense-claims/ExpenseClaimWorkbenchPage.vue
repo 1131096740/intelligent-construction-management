@@ -11,12 +11,14 @@ import JgResultState from "../../components/JgResultState.vue";
 import JgStatusTag from "../../components/JgStatusTag.vue";
 import JgWorkbenchShell from "../../components/JgWorkbenchShell.vue";
 import { centsTextToYuanText } from "../../lib/money";
+import ExpenseClaimCreateDrawer from "./components/ExpenseClaimCreateDrawer.vue";
 
 const view = ref<ExpenseClaimWorkbenchView>("all");
 const router = useRouter();
 const loading = ref(false);
 const loadError = ref("");
 const rows = ref<ExpenseClaimListItemReadModel[]>([]);
+const createVisible = ref(false);
 
 const viewOptions = [
   { label: "全部", value: "all" },
@@ -90,6 +92,11 @@ function dateTime(value: string) {
 
 function openDetail(claimId: string) { void router.push(`/费用与报销/${encodeURIComponent(claimId)}`); }
 
+function created(claim: { id: string }) {
+  void loadWorkbench();
+  void router.push(`/费用与报销/${encodeURIComponent(claim.id)}`);
+}
+
 async function loadWorkbench() {
   loading.value = true;
   loadError.value = "";
@@ -113,6 +120,12 @@ onMounted(() => void loadWorkbench());
     description="只展示当前账号作为报销人、借款人或经办人的新版费用事实；旧项目支出继续作为历史兼容域单独保留。"
   >
     <template #actions>
+      <t-button
+        theme="primary"
+        @click="createVisible = true"
+      >
+        新建费用报销 / 借款
+      </t-button>
       <t-button
         variant="outline"
         :loading="loading"
@@ -207,6 +220,10 @@ onMounted(() => void loadWorkbench());
         </t-table>
       </t-card>
     </JgResultState>
+    <ExpenseClaimCreateDrawer
+      v-model="createVisible"
+      @saved="created"
+    />
   </JgWorkbenchShell>
 </template>
 
