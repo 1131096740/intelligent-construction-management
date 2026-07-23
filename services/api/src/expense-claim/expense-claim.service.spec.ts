@@ -5,7 +5,7 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
   const approvalAssignments = options?.approvalAssignments ?? [];
   const tx = {
     companyEntity: { findFirst: jest.fn() },
-    project: { findFirst: jest.fn(), findMany: jest.fn() },
+    project: { findFirst: jest.fn(), findMany: jest.fn(), findUnique: jest.fn() },
     userPosition: { findMany: jest.fn().mockResolvedValue(approvalAssignments.length ? approvalAssignments.map(({ userId, positionId }) => ({ userId, positionId })) : (options?.roles ?? []).map((_, index) => ({ positionId: `position-${index}` }))) },
     projectMember: { findMany: jest.fn().mockResolvedValue([]) },
     position: { findMany: jest.fn().mockResolvedValue(approvalAssignments.length ? approvalAssignments.map(({ positionId, role }) => ({ id: positionId, key: role })) : (options?.roles ?? []).map((key, index) => ({ id: `position-${index}`, key })) ) },
@@ -13,19 +13,19 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
       findUnique: jest.fn(),
       findMany: jest.fn().mockResolvedValue(approvalAssignments.map(({ userId }) => ({ id: userId })))
     },
-    expenseClaim: { create: jest.fn(), findMany: jest.fn(), update: jest.fn() },
+    expenseClaim: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn() },
+    expenseClaimLine: { createMany: jest.fn(), findMany: jest.fn() },
     fileObject: { findUnique: jest.fn() },
     employeeProjectLoanAccount: { upsert: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
     employeeProjectLoanEntry: { create: jest.fn(), findMany: jest.fn() },
     employeeLoanRepayment: { create: jest.fn(), update: jest.fn() },
     expenseLoanOffsetReservation: { findMany: jest.fn().mockResolvedValue([]), createMany: jest.fn(), updateMany: jest.fn() },
-    expenseClaimLine: { createMany: jest.fn() },
     approvalInstance: { create: jest.fn(), update: jest.fn() },
     approvalActionLog: { create: jest.fn() },
     auditLog: { create: jest.fn().mockResolvedValue({}) },
     $queryRaw: jest.fn().mockResolvedValue(options?.claim ? [options.claim] : [])
   };
-  const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)), expenseClaim: tx.expenseClaim, project: tx.project };
+  const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)), expenseClaim: tx.expenseClaim, expenseClaimLine: tx.expenseClaimLine, project: tx.project };
   const numbering = { allocateDaily: jest.fn().mockResolvedValue("BX-20260723-001") };
   const audit = { record: jest.fn().mockResolvedValue({}) };
   const service = new ExpenseClaimService(prisma as never, numbering as never, audit as never, options?.auth as never);
@@ -35,6 +35,15 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
 const actor = { id: "user-a", name: "经办人", phone: "13800000000", isActive: true };
 
 describe("ExpenseClaimService", () => {
+  it("reads a new-domain claim detail only for its applicant or handler", async () => {
+    const { service, tx } = createHarness();
+    tx.expenseClaim.findFirst.mockResolvedValue({ id: "claim-1", code: "BX-1", claimType: "reimbursement", status: "draft", projectId: "project-1", companyEntityNameSnapshot: "建工", applicantNameSnapshot: "申请人", applicantPhoneSnapshot: null, handledByNameSnapshot: "经办人", proxyReason: null, factWitnessNameSnapshot: null, reason: "交通", requestedAmountCents: 1200n, loanOffsetAmountCents: 0n, companyPayableAmountCents: 1200n, fundedAmountCents: 0n, paymentMethod: null, payeeNameSnapshot: null, payeeAccountNameSnapshot: null, payeeBankNameSnapshot: null, payeeBankAccountSnapshot: null, loanExpectedClearanceAt: null, submittedAt: null, approvedAt: null, updatedAt: new Date("2026-07-23") });
+    tx.project.findUnique.mockResolvedValue({ id: "project-1", code: "JGXM-001", name: "科技园项目" });
+    tx.expenseClaimLine.findMany.mockResolvedValue([{ id: "line-1", sortOrder: 1, expenseCategory: "交通", occurredOn: new Date("2026-07-22"), purpose: "现场", receiptCount: 1, amountCents: 1200n, evidenceType: "receipt_or_other", noEvidenceReason: null, remark: null }]);
+    await expect(service.getMine("claim-1", "user-a")).resolves.toEqual(expect.objectContaining({ project: { id: "project-1", code: "JGXM-001", name: "科技园项目" }, requestedAmountCents: "1200", lines: [expect.objectContaining({ amountCents: "1200" })] }));
+    expect(tx.expenseClaim.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "claim-1", OR: [{ applicantUserId: "user-a" }, { handledByUserId: "user-a" }] } }));
+  });
+
   it("lists only the current applicant or handler and serializes all money fields", async () => {
     const { service, tx } = createHarness();
     tx.expenseClaim.findMany.mockResolvedValue([{ id: "claim-1", code: "BX-1", claimType: "reimbursement", status: "draft", projectId: "project-1", companyEntityNameSnapshot: "建工", applicantNameSnapshot: "申请人", handledByNameSnapshot: "经办人", reason: "交通", requestedAmountCents: 1200n, loanOffsetAmountCents: 0n, companyPayableAmountCents: 1200n, fundedAmountCents: 0n, updatedAt: new Date("2026-07-23") }]);

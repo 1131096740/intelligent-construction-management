@@ -23,6 +23,11 @@ export class ExpenseClaimController {
     return this.claims.listMine(user.id, view);
   }
 
+  @Get(":claimId")
+  detail(@Param("claimId") claimId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.claims.getMine(claimId, user.id);
+  }
+
   @Post(":claimId/submission")
   @RequireProjectRole("expense_claim.submit")
   submit(@Param("claimId") claimId: string, @CurrentUser() user: AuthenticatedUser) {

@@ -148,6 +148,40 @@ export class ExpenseClaimService {
     });
   }
 
+  async getMine(claimId: string, actorUserId: string) {
+    const claim = await this.prisma.expenseClaim.findFirst({
+      where: { id: claimId, OR: [{ applicantUserId: actorUserId }, { handledByUserId: actorUserId }] },
+      select: {
+        id: true, code: true, claimType: true, status: true, projectId: true, companyEntityNameSnapshot: true,
+        applicantNameSnapshot: true, applicantPhoneSnapshot: true, handledByNameSnapshot: true, proxyReason: true,
+        factWitnessNameSnapshot: true, reason: true, requestedAmountCents: true, loanOffsetAmountCents: true,
+        companyPayableAmountCents: true, fundedAmountCents: true, paymentMethod: true, payeeNameSnapshot: true,
+        payeeAccountNameSnapshot: true, payeeBankNameSnapshot: true, payeeBankAccountSnapshot: true,
+        loanExpectedClearanceAt: true, submittedAt: true, approvedAt: true, updatedAt: true
+      }
+    });
+    if (!claim) throw new NotFoundException("费用申请不存在或当前账号无权读取");
+    const [project, lines] = await Promise.all([
+      claim.projectId
+        ? this.prisma.project.findUnique({ where: { id: claim.projectId }, select: { id: true, code: true, name: true } })
+        : Promise.resolve(null),
+      this.prisma.expenseClaimLine.findMany({
+        where: { expenseClaimId: claim.id },
+        orderBy: { sortOrder: "asc" },
+        select: { id: true, sortOrder: true, expenseCategory: true, occurredOn: true, purpose: true, receiptCount: true, amountCents: true, evidenceType: true, noEvidenceReason: true, remark: true }
+      })
+    ]);
+    return {
+      ...claim,
+      project,
+      requestedAmountCents: moneyCentsToApi(claim.requestedAmountCents),
+      loanOffsetAmountCents: moneyCentsToApi(claim.loanOffsetAmountCents),
+      companyPayableAmountCents: moneyCentsToApi(claim.companyPayableAmountCents),
+      fundedAmountCents: moneyCentsToApi(claim.fundedAmountCents),
+      lines: lines.map((line) => ({ ...line, amountCents: moneyCentsToApi(line.amountCents) }))
+    };
+  }
+
   async submit(claimId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<Array<{
