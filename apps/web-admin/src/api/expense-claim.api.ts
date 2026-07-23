@@ -35,6 +35,7 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
   submittedAt: string | null;
   approvedAt: string | null;
   lines: Array<{ id: string; sortOrder: number; expenseCategory: string; occurredOn: string; purpose: string; receiptCount: number; amountCents: string; evidenceType: string; noEvidenceReason: string | null; remark: string | null }>;
+  approval: { currentNodeName: string; canReview: boolean; requiresSelfReviewConfirmation: boolean } | null;
 }
 
 export interface ExpenseClaimCreateOptions {
@@ -124,6 +125,16 @@ export async function submitExpenseClaim(claimId: string) {
   const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/submission`, { method: "POST" });
   await ensureOk(response);
   return response.json() as Promise<{ id: string; status: string; submittedAt: string }>;
+}
+
+export async function reviewExpenseClaim(claimId: string, body: { decision: "approve" | "reject"; comment?: string; selfReviewReason?: string; confirmationPassword?: string }) {
+  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/approval`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  await ensureOk(response);
+  return response.json() as Promise<{ id: string; status: string; completed?: boolean }>;
 }
 
 export async function fetchExpenseClaimDetail(claimId: string) {

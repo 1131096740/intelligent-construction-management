@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createExpenseClaim, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaims, submitExpenseClaim, type CreateExpenseClaimPayload } from "./expense-claim.api";
+import { createExpenseClaim, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaims, reviewExpenseClaim, submitExpenseClaim, type CreateExpenseClaimPayload } from "./expense-claim.api";
 
 vi.mock("./api-fetch", () => ({ apiFetch: vi.fn() }));
 
@@ -68,5 +68,11 @@ describe("expense claim API", () => {
     mockApiFetch.mockResolvedValue(new Response(JSON.stringify({ id: "claim-1", status: "approval_pending", submittedAt: "2026-07-23T10:00:00.000Z" }), { status: 201 }));
     await expect(submitExpenseClaim("claim/1")).resolves.toMatchObject({ status: "approval_pending" });
     expect(mockApiFetch).toHaveBeenCalledWith("/expense-claims/claim%2F1/submission", { method: "POST" });
+  });
+
+  it("reviews only through the encoded expense approval action path", async () => {
+    mockApiFetch.mockResolvedValue(new Response(JSON.stringify({ id: "claim-1", status: "approval_pending", completed: false }), { status: 201 }));
+    await expect(reviewExpenseClaim("claim/1", { decision: "reject", comment: "请补充依据" })).resolves.toMatchObject({ completed: false });
+    expect(mockApiFetch).toHaveBeenCalledWith("/expense-claims/claim%2F1/approval", expect.objectContaining({ method: "POST", body: JSON.stringify({ decision: "reject", comment: "请补充依据" }) }));
   });
 });

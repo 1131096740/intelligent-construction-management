@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
-import { fetchExpenseClaimDetail, submitExpenseClaim, type ExpenseClaimDetailReadModel } from "../../api/expense-claim.api";
+import { fetchExpenseClaimDetail, reviewExpenseClaim, submitExpenseClaim, type ExpenseClaimDetailReadModel } from "../../api/expense-claim.api";
+import ApprovalSelfReviewFields from "../../components/ApprovalSelfReviewFields.vue";
+import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
 import JgDetailTabs from "../../components/JgDetailTabs.vue";
 import JgPageHeader from "../../components/JgPageHeader.vue";
 import JgResultState from "../../components/JgResultState.vue";
@@ -12,6 +14,9 @@ const loading = ref(false);
 const loadError = ref("");
 const actionError = ref("");
 const submitting = ref(false);
+const reviewVisible = ref(false);
+const reviewing = ref(false);
+const reviewForm = ref({ decision: "approve" as "approve" | "reject", comment: "", selfReviewReason: "", confirmationPassword: "" });
 const detail = ref<ExpenseClaimDetailReadModel | null>(null);
 const tab = ref("business");
 const tabs = [{ value: "business", label: "业务信息" }, { value: "lines", label: "费用明细" }, { value: "funds", label: "资金结果" }];
@@ -44,6 +49,23 @@ async function submit() {
   try { await submitExpenseClaim(detail.value.id); await loadDetail(); }
   catch (error) { actionError.value = error instanceof Error ? error.message : "提交费用申请失败"; }
   finally { submitting.value = false; }
+}
+function openReview() {
+  reviewForm.value = { decision: "approve", comment: "", selfReviewReason: "", confirmationPassword: "" };
+  actionError.value = "";
+  reviewVisible.value = true;
+}
+async function review() {
+  if (!detail.value || reviewing.value) return;
+  try {
+    const selfReview = buildApprovalSelfReviewPayload(detail.value.approval?.requiresSelfReviewConfirmation === true, reviewForm.value);
+    if (reviewForm.value.decision === "reject" && !reviewForm.value.comment.trim()) throw new Error("驳回必须填写审批意见");
+    reviewing.value = true;
+    await reviewExpenseClaim(detail.value.id, { decision: reviewForm.value.decision, comment: reviewForm.value.comment.trim() || undefined, ...selfReview });
+    reviewVisible.value = false;
+    await loadDetail();
+  } catch (error) { actionError.value = error instanceof Error ? error.message : "费用审批办理失败"; }
+  finally { reviewing.value = false; }
 }
 onMounted(() => void loadDetail());
 </script>
@@ -84,6 +106,13 @@ onMounted(() => void loadDetail());
                 提交审批
               </t-button>
             </t-popconfirm>
+            <t-button
+              v-if="detail.approval?.canReview"
+              theme="primary"
+              @click="openReview"
+            >
+              办理审批
+            </t-button>
           </template>
         </JgPageHeader>
         <t-alert
@@ -93,6 +122,56 @@ onMounted(() => void loadDetail());
           close
           @close="actionError = ''"
         />
+        <t-drawer
+          v-model:visible="reviewVisible"
+          header="办理费用审批"
+          size="min(560px, 100vw)"
+          :close-on-overlay-click="false"
+          :close-btn="!reviewing"
+        >
+          <div class="expense-claim-detail__review-form">
+            <t-alert
+              theme="info"
+              :message="`当前冻结节点：${detail.approval?.currentNodeName ?? '未知'}`"
+            />
+            <t-radio-group v-model="reviewForm.decision">
+              <t-radio value="approve">
+                批准
+              </t-radio><t-radio value="reject">
+                驳回
+              </t-radio>
+            </t-radio-group>
+            <t-textarea
+              v-model="reviewForm.comment"
+              :placeholder="reviewForm.decision === 'reject' ? '驳回意见必填' : '审批意见（选填）'"
+            />
+            <ApprovalSelfReviewFields
+              v-model:self-review-reason="reviewForm.selfReviewReason"
+              v-model:confirmation-password="reviewForm.confirmationPassword"
+              :required="detail.approval?.requiresSelfReviewConfirmation === true"
+            />
+          </div>
+          <template #footer>
+            <t-button
+              variant="outline"
+              :disabled="reviewing"
+              @click="reviewVisible = false"
+            >
+              取消
+            </t-button><t-popconfirm
+              content="确认按当前冻结节点办理？"
+              confirm-btn="确认办理"
+              @confirm="review"
+            >
+              <t-button
+                theme="primary"
+                :loading="reviewing"
+              >
+                提交办理
+              </t-button>
+            </t-popconfirm>
+          </template>
+        </t-drawer>
         <JgDetailTabs
           v-model="tab"
           :tabs="tabs"

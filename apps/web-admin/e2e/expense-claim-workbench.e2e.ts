@@ -35,7 +35,8 @@ test("费用工作台用创建选项和正式写入接口保存借款草稿后�
   const requestedViews: string[] = [];
   const posted: unknown[] = [];
   const submitted: string[] = [];
-  await mockExpenseClaimSession(page, requestedViews, posted, submitted);
+  const reviewed: string[] = [];
+  await mockExpenseClaimSession(page, requestedViews, posted, submitted, reviewed);
   await login(page);
 
   await page.goto("/费用与报销工作台");
@@ -64,9 +65,14 @@ test("费用工作台用创建选项和正式写入接口保存借款草稿后�
   await page.getByRole("button", { name: "确认提交" }).click();
   await expect.poll(() => submitted).toEqual(["expense-claim-created"]);
   await expect(page.getByText("审批中", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "办理审批" }).click();
+  await page.getByRole("button", { name: "提交办理" }).click();
+  await page.getByRole("button", { name: "确认办理" }).click();
+  await expect.poll(() => reviewed).toEqual(["expense-claim-created"]);
+  await expect(page.getByText("待放款", { exact: true })).toBeVisible();
 });
 
-async function mockExpenseClaimSession(page: Page, requestedViews: string[], posted: unknown[] = [], submitted: string[] = []) {
+async function mockExpenseClaimSession(page: Page, requestedViews: string[], posted: unknown[] = [], submitted: string[] = [], reviewed: string[] = []) {
   await page.route("**/api/auth/login", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
@@ -132,10 +138,11 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[], pos
   await page.route("**/api/expense-claims/expense-claim-created", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
-      ...expenseClaim({ id: "expense-claim-created", code: "JK-20260723-001", claimType: "loan", status: submitted.length ? "approval_pending" : "draft", reason: "现场周转借款", requestedAmountCents: "123456" }),
+      ...expenseClaim({ id: "expense-claim-created", code: "JK-20260723-001", claimType: "loan", status: reviewed.length ? "approved_pending_disbursement" : submitted.length ? "approval_pending" : "draft", reason: "现场周转借款", requestedAmountCents: "123456" }),
       applicantPhoneSnapshot: null, proxyReason: null, factWitnessNameSnapshot: null,
       paymentMethod: "bank_transfer", payeeNameSnapshot: null, payeeAccountNameSnapshot: null, payeeBankNameSnapshot: null,
-      payeeBankAccountSnapshot: null, loanExpectedClearanceAt: "2026-07-23T00:00:00.000Z", submittedAt: null, approvedAt: null, lines: []
+      payeeBankAccountSnapshot: null, loanExpectedClearanceAt: "2026-07-23T00:00:00.000Z", submittedAt: null, approvedAt: null,
+      approval: submitted.length && !reviewed.length ? { currentNodeName: "综合部主管", canReview: true, requiresSelfReviewConfirmation: false } : null, lines: []
     })
   }));
   await page.route("**/api/expense-claims/expense-claim-created/submission", (route) => {
@@ -144,6 +151,10 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[], pos
       contentType: "application/json",
       body: JSON.stringify({ id: "expense-claim-created", status: "approval_pending", submittedAt: "2026-07-23T10:00:00.000Z" })
     });
+  });
+  await page.route("**/api/expense-claims/expense-claim-created/approval", (route) => {
+    reviewed.push("expense-claim-created");
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "expense-claim-created", status: "approved_pending_disbursement", completed: true }) });
   });
 }
 
