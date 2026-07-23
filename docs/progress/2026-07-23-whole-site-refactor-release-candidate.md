@@ -1,7 +1,7 @@
 # 建工智管整站受控改造：统一发布候选
 
 日期：2026-07-23
-状态：**本地技术候选已形成，No-Go（尚未获生产授权）**
+状态：**本地技术候选已形成，No-Go（候选尚未部署，真实岗位 UAT 仍不可开始）**
 
 本文件是阶段 1 至阶段 5 的本地候选材料；它不授权推送、部署、生产迁移、生产数据清理、旧能力删除或生产测试项目写入。
 
@@ -119,3 +119,24 @@
 4. 用户对精确 SHA 的推送、部署、生产迁移，以及任何独立数据操作的明确授权。
 
 在这些项完成并由用户确认前，不得宣布整站改造发布完成。
+
+## 8. 2026-07-23 生产只读基线与隔离恢复收据
+
+本节按用户对“只读基线 + 备份隔离恢复”的授权执行，不包含推送、部署、生产迁移、生产数据清理或旧能力删除。
+
+| 项目 | 结果 |
+| --- | --- |
+| 生产运行 SHA | `ab3c31854c53d73bed417725d29da5a435c48606`；与候选 `44b09874…` 不同 |
+| 服务与健康 | API、Nginx、PostgreSQL、Cron 均为 `active`；API 仅监听 `127.0.0.1:3000`，PostgreSQL 仅监听 `127.0.0.1:5432`；公网 `https://jgzg.site/api/health` 为 200 |
+| 生产只读配置检查 | 使用 Node 20 兼容的 pnpm 9.15.9 执行 `verify:production-readiness`；环境、seed 停用、COS、文件、转换器和字体项全部通过 |
+| 生产迁移 | `74|0|0`，`prisma migrate status` 为最新 |
+| 生产测试项目 | `seed-project-jgxm-001` 为 active，7 名项目成员；零星采购试点配置也仅为该项目 |
+| 备份输入 | 自然备份 `jiangkong-20260723-030001.dump`，本地 `600 root:root`；checksum 与 `pg_restore --list` 通过，并由独立 COS 收据指定对象重新下载 |
+| 隔离恢复 | 仅恢复至新建的 `jiangkong_restore_20260723_44b09874`；候选 checkout 精确为 `44b09874bc05dc7271746386914828b9483de0a7` 且 clean |
+| 候选迁移 | 恢复库从 74 条迁移升至 85 条，`prisma migrate status` 最新；恢复前后核心计数为 User 11、Project 2、Contract 6、ContractTakeover 1、Settlement 0、PaymentRequest 0、ProjectExpenseRequest 0、FileObject 30、AuditLog 285 |
+| 恢复库只读核验 | `verify-draft-lifecycle.cjs --allow-isolated-restore` 通过：85 条迁移、约束/索引和正式事实一致；验证显式只读事务执行，机器证据摘要 SHA-256 为 `4ddcf0290bf72703d1fbabc9ca89cdd985ee825e717fa32222b5ff7a8726958f` |
+| 清理 | 已删除隔离数据库、从 COS 下载的备份副本、临时候选 checkout、兼容 pnpm 包装目录及本地/服务器临时 bundle；正式库、COS 源对象和运行服务未改变 |
+
+演练中发现 root 默认 Corepack 会选 pnpm 11，而生产 Node 20 无 `node:sqlite`；此次仅对隔离命令显式使用服务器缓存 pnpm 9.15.9，未修改服务器全局配置。首次误用旧 `127.0.0.1:5173` 健康端口也已纠正为实际 API `127.0.0.1:3000`，不构成服务故障。
+
+该收据消除了“生产备份可恢复至候选 Schema”的技术门禁，但不能替代候选真实岗位 UAT：生产运行的仍是 `ab3c318…`。若要在 `seed-project-jgxm-001` 对候选功能写入真实 UAT 事实，仍须用户另行授权候选推送、部署和生产 74→85 迁移；该授权不得被解释为数据清理、历史改写或旧能力删除授权。
