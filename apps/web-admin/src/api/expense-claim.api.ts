@@ -44,13 +44,14 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
     fileStatus: string;
     category: "invoice" | "receipt_or_other" | "other";
     expenseCategory: string | null;
-    stage: "draft" | "approval_frozen" | "appended";
+    stage: "draft" | "approval_frozen" | "post_submit_append";
     attachedByUserId: string;
     attachedByName: string;
     frozenAt: string | null;
     removedAt: string | null;
     createdAt: string;
   }>;
+  attachmentPermissions: { canAppendEvidence: boolean };
   approval: { currentNodeName: string; canReview: boolean; requiresSelfReviewConfirmation: boolean } | null;
 }
 
@@ -158,6 +159,19 @@ export async function attachExpenseClaimAttachment(
   body: { fileId: string; category: "invoice" | "receipt_or_other" | "other"; expenseCategory?: string }
 ) {
   const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/attachments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  await ensureOk(response);
+  return response.json() as Promise<{ id: string }>;
+}
+
+export async function appendExpenseClaimAttachment(
+  claimId: string,
+  body: { fileId: string; category: "invoice" | "receipt_or_other" | "other"; expenseCategory?: string }
+) {
+  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/attachments/append`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)

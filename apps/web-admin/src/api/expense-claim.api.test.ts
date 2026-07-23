@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { attachExpenseClaimAttachment, createExpenseClaim, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaims, removeExpenseClaimAttachment, reviewExpenseClaim, submitExpenseClaim, type CreateExpenseClaimPayload } from "./expense-claim.api";
+import { appendExpenseClaimAttachment, attachExpenseClaimAttachment, createExpenseClaim, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaims, removeExpenseClaimAttachment, reviewExpenseClaim, submitExpenseClaim, type CreateExpenseClaimPayload } from "./expense-claim.api";
 
 vi.mock("./api-fetch", () => ({ apiFetch: vi.fn() }));
 
@@ -93,6 +93,19 @@ describe("expense claim API", () => {
     expect(mockApiFetch).toHaveBeenNthCalledWith(2, "/expense-claims/claim%2F1/attachments/attachment%2F1/removal", expect.objectContaining({
       method: "POST",
       body: JSON.stringify({})
+    }));
+  });
+
+  it("appends post-submission evidence through the dedicated auditable action", async () => {
+    mockApiFetch.mockResolvedValue(new Response(JSON.stringify({ id: "attachment-2" }), { status: 201 }));
+
+    await expect(appendExpenseClaimAttachment("claim/1", {
+      fileId: "file-2", category: "other", expenseCategory: "差旅"
+    })).resolves.toMatchObject({ id: "attachment-2" });
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/expense-claims/claim%2F1/attachments/append", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ fileId: "file-2", category: "other", expenseCategory: "差旅" })
     }));
   });
 });

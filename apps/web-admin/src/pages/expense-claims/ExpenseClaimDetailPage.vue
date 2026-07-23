@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import type { UploadFile } from "tdesign-vue-next";
-import { attachExpenseClaimAttachment, fetchExpenseClaimDetail, removeExpenseClaimAttachment, reviewExpenseClaim, submitExpenseClaim, type ExpenseClaimDetailReadModel } from "../../api/expense-claim.api";
+import { appendExpenseClaimAttachment, attachExpenseClaimAttachment, fetchExpenseClaimDetail, removeExpenseClaimAttachment, reviewExpenseClaim, submitExpenseClaim, type ExpenseClaimDetailReadModel } from "../../api/expense-claim.api";
 import { uploadPrivateFile } from "../../api/core-flow-read.api";
 import ApprovalSelfReviewFields from "../../components/ApprovalSelfReviewFields.vue";
 import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
@@ -79,6 +79,10 @@ function selectedAttachmentFiles() {
 }
 async function uploadAttachments() {
   if (!detail.value || attachmentUploading.value) return;
+  if (detail.value.status !== "draft" && !detail.value.attachmentPermissions?.canAppendEvidence) {
+    actionError.value = "当前岗位不能在此阶段追加费用资料";
+    return;
+  }
   const files = selectedAttachmentFiles();
   if (!files.length) { actionError.value = "请先选择需要上传的费用附件"; return; }
   attachmentUploading.value = true;
@@ -86,7 +90,8 @@ async function uploadAttachments() {
   try {
     for (const file of files) {
       const uploaded = await uploadPrivateFile(file, file.name);
-      await attachExpenseClaimAttachment(detail.value.id, {
+      const attach = detail.value.status === "draft" ? attachExpenseClaimAttachment : appendExpenseClaimAttachment;
+      await attach(detail.value.id, {
         fileId: uploaded.id,
         category: attachmentCategory.value,
         ...(attachmentExpenseCategory.value.trim() ? { expenseCategory: attachmentExpenseCategory.value.trim() } : {})
@@ -279,7 +284,7 @@ onMounted(() => void loadDetail());
               theme="info"
               message="附件属于整张费用申请。草稿阶段可移除；提交后审批快照冻结，后续追加将以新版本留痕。"
             />
-            <template v-if="detail.status === 'draft'">
+            <template v-if="detail.status === 'draft' || detail.attachmentPermissions?.canAppendEvidence">
               <t-select
                 v-model="attachmentCategory"
                 label="资料类别"
@@ -307,7 +312,7 @@ onMounted(() => void loadDetail());
                 :loading="attachmentUploading"
                 @click="uploadAttachments"
               >
-                上传并绑定附件
+                {{ detail.status === 'draft' ? '上传并绑定附件' : '追加并绑定资料' }}
               </t-button>
             </template>
             <t-table
@@ -329,7 +334,7 @@ onMounted(() => void loadDetail());
                 {{ row.category === 'invoice' ? '发票' : row.category === 'receipt_or_other' ? '收据或其他凭证' : '其他说明' }}
               </template>
               <template #stage="{ row }">
-                {{ row.removedAt ? '已从草稿移除' : row.stage === 'approval_frozen' ? '审批快照已冻结' : row.stage === 'appended' ? '后续追加' : '草稿附件' }}
+                {{ row.removedAt ? '已从草稿移除' : row.stage === 'approval_frozen' ? '审批快照已冻结' : row.stage === 'post_submit_append' ? '后续追加资料' : '草稿附件' }}
               </template>
               <template #createdAt="{ row }">
                 {{ date(row.createdAt) }}
