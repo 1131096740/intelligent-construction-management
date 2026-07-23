@@ -23,6 +23,12 @@ export class ExpenseClaimController {
     return this.claims.listMine(user.id, view);
   }
 
+  @Get("create-options")
+  @RequireProjectRole("expense_claim.create")
+  createOptions(@CurrentUser() user: AuthenticatedUser) {
+    return this.claims.createOptions(user.id);
+  }
+
   @Get(":claimId")
   detail(@Param("claimId") claimId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.claims.getMine(claimId, user.id);

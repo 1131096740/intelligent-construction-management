@@ -5,6 +5,7 @@ import { resolveApprovalReviewIdentity, type FrozenApprovalNode } from "../appro
 import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { BusinessNumberingService } from "../business-number/business-numbering.service";
 import { PrismaService } from "../database/prisma.service";
 import { moneyCentsToApi, parseMoneyCentsInput } from "../money/decimal-money";
@@ -32,8 +33,30 @@ export class ExpenseClaimService {
     private readonly numbering: BusinessNumberingService,
     private readonly audit: AuditService,
     @Optional()
-    private readonly auth?: AuthService
+    private readonly auth?: AuthService,
+    private readonly visibility?: ProjectVisibilityService
   ) {}
+
+  async createOptions(actorUserId: string) {
+    const visibleProjectIds = this.visibility
+      ? await this.visibility.visibleProjectIds(actorUserId)
+      : [];
+    const [companyEntities, projects] = await Promise.all([
+      this.prisma.companyEntity.findMany({
+        where: { isActive: true, dataStatus: "complete" },
+        select: { id: true, name: true },
+        orderBy: { createdAt: "asc" }
+      }),
+      visibleProjectIds.length
+        ? this.prisma.project.findMany({
+          where: { id: { in: visibleProjectIds }, isActive: true },
+          select: { id: true, code: true, name: true },
+          orderBy: { code: "asc" }
+        })
+        : []
+    ]);
+    return { companyEntities, projects };
+  }
 
   async listMine(actorUserId: string, view?: string) {
     const normalizedView = view === "drafts" || view === "in_progress" || view === "pending_funds" ? view : "all";
@@ -90,6 +113,10 @@ export class ExpenseClaimService {
       if (!actor?.isActive) throw new ForbiddenException("当前办理人不存在或已停用");
       if (!company) throw new NotFoundException("使用单位不存在或已停用");
       if (input.projectId?.trim() && !project) throw new NotFoundException("项目不存在或已停用");
+      if (project && this.visibility) {
+        const visibleProjectIds = await this.visibility.visibleProjectIds(actorUserId);
+        if (!visibleProjectIds.includes(project.id)) throw new ForbiddenException("当前账号无权选择该项目");
+      }
 
       const actorRoles = await this.loadRoleKeys(tx, actorUserId, project?.id);
       const applicant = await this.applicantSnapshot(tx, actor, input, actorRoles);
