@@ -13,7 +13,9 @@ import {
 } from "@nestjs/common";
 import {
   CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS,
+  CONTRACT_WORKBENCH_VIEWS,
   DRAFT_LEDGER_VIEWS,
+  type ContractWorkbenchView,
   type DraftLedgerView
 } from "@jiangkong/shared-domain";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
@@ -132,6 +134,26 @@ export class ContractController {
       ? rawView as DraftLedgerView
       : "formal_ledger";
     return this.contractRead.lifecycleLedger(
+      view,
+      page,
+      pageSize,
+      await this.projectVisibility.visibleProjectIds(user.id),
+      user.id
+    );
+  }
+
+  @Get("workbench")
+  @RequirePositions(...LEDGER_READ_POSITION_KEYS)
+  async workbenchLedger(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("view") rawView?: string,
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string
+  ) {
+    const view = CONTRACT_WORKBENCH_VIEWS.includes(rawView as ContractWorkbenchView)
+      ? rawView as ContractWorkbenchView
+      : "all";
+    return this.contractRead.workbenchLedger(
       view,
       page,
       pageSize,

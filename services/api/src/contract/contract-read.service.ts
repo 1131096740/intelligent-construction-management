@@ -3,6 +3,8 @@ import {
   CONTRACT_INVOICE_TYPES,
   canCreatePaymentFromSettlementStatus,
   contractInvoiceTypeLabel,
+  type ContractWorkbenchLedgerPage,
+  type ContractWorkbenchView,
   type SettlementStatus,
   ContractBusinessOptionReadModel,
   ContractDetailReadModel,
@@ -398,6 +400,74 @@ export class ContractReadService {
       my_drafts: this.lifecycleCount(contracts, versionsByContract, actorUserId, "my_drafts"),
       returned_for_revision: this.lifecycleCount(contracts, versionsByContract, actorUserId, "returned_for_revision"),
       ended: this.lifecycleCount(contracts, versionsByContract, actorUserId, "ended")
+    };
+    const start = (page - 1) * pageSize;
+    return {
+      rows: classified.slice(start, start + pageSize),
+      meta: { page, pageSize, total: classified.length, totalPages: Math.ceil(classified.length / pageSize) },
+      summary
+    };
+  }
+
+  async workbenchLedger(
+    view: ContractWorkbenchView,
+    rawPage: string | number | undefined,
+    rawPageSize: string | number | undefined,
+    visibleProjectIds: string[],
+    actorUserId: string
+  ): Promise<ContractWorkbenchLedgerPage<Record<string, unknown>>> {
+    const page = this.page(rawPage);
+    const pageSize = this.pageSize(rawPageSize);
+    const contracts = await this.prisma.contract.findMany({
+      where: { projectId: { in: visibleProjectIds } },
+      orderBy: { updatedAt: "desc" }
+    });
+    const contractIds = contracts.map((contract) => contract.id);
+    const [versions, terms, projects] = await Promise.all([
+      contractIds.length
+        ? this.prisma.contractVersion.findMany({
+            where: { contractId: { in: contractIds } },
+            orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
+          })
+        : Promise.resolve([]),
+      contractIds.length
+        ? this.prisma.paymentTermsVersion.findMany({
+            where: { contractId: { in: contractIds } },
+            orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
+          })
+        : Promise.resolve([]),
+      visibleProjectIds.length
+        ? this.prisma.project.findMany({ where: { id: { in: visibleProjectIds } } })
+        : Promise.resolve([])
+    ]);
+    const versionsByContract = new Map<string, typeof versions>();
+    for (const version of versions) {
+      versionsByContract.set(version.contractId, [...(versionsByContract.get(version.contractId) ?? []), version]);
+    }
+    const termsByVersion = new Map(terms.map((term) => [term.contractVersionId, term]));
+    const projectById = new Map(projects.map((project) => [project.id, project]));
+    const classified = contracts.flatMap((contract) => {
+      const version = this.currentWorkbenchVersion(versionsByContract.get(contract.id) ?? []);
+      if (!version || !this.matchesWorkbenchView(view, version.status, contract.ownerUserId, actorUserId)) return [];
+      return [this.contractLedgerRow(
+        contract,
+        version,
+        termsByVersion.get(version.id),
+        projectById.get(contract.projectId),
+        { contractVersionId: version.id }
+      )];
+    });
+    const count = (targetView: ContractWorkbenchView) => contracts.filter((contract) => {
+      const version = this.currentWorkbenchVersion(versionsByContract.get(contract.id) ?? []);
+      return Boolean(version && this.matchesWorkbenchView(targetView, version.status, contract.ownerUserId, actorUserId));
+    }).length;
+    const summary = {
+      my_drafts: count("my_drafts"),
+      in_approval: count("in_approval"),
+      pending_seal: count("pending_seal"),
+      pending_archive: count("pending_archive"),
+      effective: count("effective"),
+      all: count("all")
     };
     const start = (page - 1) * pageSize;
     return {
@@ -2033,6 +2103,26 @@ export class ContractReadService {
           : latestNotAbandoned ?? latest
       } satisfies Record<DraftLedgerView, V | undefined>
     };
+  }
+
+  private currentWorkbenchVersion<V extends { status: string }>(versions: V[]): V | undefined {
+    return versions.find((version) => !["abandoned", "voided"].includes(version.status)) ?? versions[0];
+  }
+
+  private matchesWorkbenchView(
+    view: ContractWorkbenchView,
+    status: string,
+    ownerUserId: string | null,
+    actorUserId: string
+  ) {
+    if (view === "all") return true;
+    if (view === "my_drafts") return status === "draft" && ownerUserId === actorUserId;
+    if (view === "in_approval") return ["in_approval", "approval_pending"].includes(status);
+    if (view === "pending_seal") return ["approved", "approved_pending_seal", "in_seal"].includes(status);
+    if (view === "pending_archive") {
+      return ["seal_approved_pending_archive", "pending_archive_confirm", "sealed_pending_archive"].includes(status);
+    }
+    return status === "effective";
   }
 
   private contractLedgerLifecycleKind(

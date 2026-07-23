@@ -1726,4 +1726,40 @@ describe("ContractReadService", () => {
     expect(formal.meta).toEqual({ page: 1, pageSize: 1, total: 1, totalPages: 1 });
     expect(formal.rows[0]).toEqual(expect.objectContaining({ contractVersionId: "c1-v1" }));
   });
+
+  it("projects contract-root workbench status views without changing legacy lifecycle views", async () => {
+    const now = new Date("2026-07-23T12:00:00.000Z");
+    const contracts = [
+      { id: "c1", projectId: "p1", code: "HT-1", temporaryCode: null, name: "草稿合同", counterparty: "乙方", ownerUserId: "u1", voidedAt: null, updatedAt: now },
+      { id: "c2", projectId: "p1", code: "HT-2", temporaryCode: null, name: "审批合同", counterparty: "乙方", ownerUserId: "u2", voidedAt: null, updatedAt: now },
+      { id: "c3", projectId: "p1", code: "HT-3", temporaryCode: null, name: "用章合同", counterparty: "乙方", ownerUserId: "u2", voidedAt: null, updatedAt: now },
+      { id: "c4", projectId: "p1", code: "HT-4", temporaryCode: null, name: "归档合同", counterparty: "乙方", ownerUserId: "u2", voidedAt: null, updatedAt: now },
+      { id: "c5", projectId: "p1", code: "HT-5", temporaryCode: null, name: "生效合同", counterparty: "乙方", ownerUserId: "u2", voidedAt: null, updatedAt: now }
+    ];
+    const version = (contractId: string, id: string, status: string) => ({
+      id, contractId, versionNo: 1, status, amountCents: 100n, amountLimitType: "capped",
+      pricingNature: "fixed_total", changeType: "original", draftRevision: 1, updatedAt: now,
+      abandonedAt: null, abandonReason: null
+    });
+    const prisma = {
+      contract: { findMany: jest.fn().mockResolvedValue(contracts) },
+      contractVersion: { findMany: jest.fn().mockResolvedValue([
+        version("c1", "c1-v1", "draft"), version("c2", "c2-v1", "in_approval"),
+        version("c3", "c3-v1", "approved_pending_seal"),
+        version("c4", "c4-v1", "pending_archive_confirm"), version("c5", "c5-v1", "effective")
+      ]) },
+      paymentTermsVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      project: { findMany: jest.fn().mockResolvedValue([{ id: "p1", name: "项目一" }]) }
+    };
+    const service = new ContractReadService(prisma as never);
+
+    const pendingArchive = await service.workbenchLedger("pending_archive", 1, 20, ["p1"], "u1");
+
+    expect(pendingArchive.summary).toEqual({
+      my_drafts: 1, in_approval: 1, pending_seal: 1, pending_archive: 1, effective: 1, all: 5
+    });
+    expect(pendingArchive.rows).toEqual([
+      expect.objectContaining({ contractVersionId: "c4-v1", contractNo: "HT-4", currentNode: "合同部主管确认双方最终版" })
+    ]);
+  });
 });

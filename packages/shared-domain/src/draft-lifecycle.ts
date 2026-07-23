@@ -82,6 +82,33 @@ export interface LifecycleLedgerPage<T> {
   summary: LifecycleLedgerViewCount;
 }
 
+export const CONTRACT_WORKBENCH_VIEWS = [
+  "my_drafts",
+  "in_approval",
+  "pending_seal",
+  "pending_archive",
+  "effective",
+  "all"
+] as const;
+
+export type ContractWorkbenchView = (typeof CONTRACT_WORKBENCH_VIEWS)[number];
+
+export interface ContractWorkbenchLedgerViewCount {
+  my_drafts: number;
+  in_approval: number;
+  pending_seal: number;
+  pending_archive: number;
+  effective: number;
+  all: number;
+}
+
+/** Server-owned contract-root workbench projection; legacy lifecycle views remain separate. */
+export interface ContractWorkbenchLedgerPage<T> {
+  rows: T[];
+  meta: LifecycleLedgerPageMeta;
+  summary: ContractWorkbenchLedgerViewCount;
+}
+
 export function draftLifecycleKindLabel(value: DraftLifecycleKind) {
   return DRAFT_LIFECYCLE_KIND_LABELS[value];
 }
