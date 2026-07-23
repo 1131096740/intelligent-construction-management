@@ -1213,4 +1213,54 @@ describe("SettlementReadService", () => {
     const formal = await service.lifecycleLedger("formal_ledger", 1, 20, ["p1"], "u1");
     expect(formal.rows[0]).toEqual(expect.objectContaining({ projectId: "p1" }));
   });
+
+  it("projects settlement root workbench views from authoritative pending work and preserves owned drafts", async () => {
+    const now = new Date("2026-07-23T01:00:00.000Z");
+    const settlement = (
+      id: string,
+      status: string,
+      preparedByUserId: string | null = "u1"
+    ) => ({
+      id, code: `JS-${id}`, contractId: "c1", projectId: "p1", periodLabel: "2026-07",
+      status, amountCents: 100n, paymentTermsVersionId: "terms-1", preparedByUserId, updatedAt: now
+    });
+    const prisma = {
+      settlement: { findMany: jest.fn().mockResolvedValue([
+        settlement("effective", "effective"),
+        settlement("approval", "approval_pending"),
+        settlement("archive", "pending_archive_confirm"),
+        settlement("returned", "approval_rejected"),
+        settlement("voided", "voided", "other-user")
+      ]) },
+      settlementDraft: { findMany: jest.fn().mockResolvedValue([
+        { id: "draft-1", code: "JSC-1", contractId: "c1", projectId: "p1", periodLabel: "2026-07", status: "draft", ownerUserId: "u1", revision: 1, updatedAt: now, abandonedAt: null, abandonReason: null },
+        { id: "draft-2", code: "JSC-2", contractId: "c1", projectId: "p1", periodLabel: "2026-06", status: "abandoned", ownerUserId: "u1", revision: 2, updatedAt: now, abandonedAt: now, abandonReason: "不再继续" }
+      ]) },
+      project: { findMany: jest.fn().mockResolvedValue([{ id: "p1", name: "项目一" }]) },
+      contract: { findMany: jest.fn().mockResolvedValue([{ id: "c1", code: "HT-1", temporaryCode: null }]) },
+      paymentTermsVersion: { findMany: jest.fn().mockResolvedValue([{ id: "terms-1", versionNo: 1 }]) }
+    };
+    const me = {
+      getSettlementPendingWorkItems: jest.fn().mockResolvedValue([
+        { businessType: "settlement", businessId: "archive" }
+      ])
+    };
+    const service = new SettlementReadService(prisma as never, undefined, undefined, me as never);
+
+    const pending = await service.workbenchLedger("pending_action", 1, 20, ["p1"], "u1");
+    expect(pending.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ settlementId: "archive", status: "pending_archive_confirm" }),
+      expect.objectContaining({ settlementId: "returned", status: "approval_rejected" })
+    ]));
+    expect(pending.summary).toEqual({
+      pending_action: 2, my_drafts: 1, in_approval: 1, pending_archive: 1, effective: 1, all: 7
+    });
+
+    const all = await service.workbenchLedger("all", 1, 20, ["p1"], "u1");
+    expect(all.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "draft-2", abandonReason: "不再继续", copyAvailable: true }),
+      expect.objectContaining({ settlementId: "voided", status: "voided" })
+    ]));
+    expect(me.getSettlementPendingWorkItems).toHaveBeenCalledWith("u1");
+  });
 });

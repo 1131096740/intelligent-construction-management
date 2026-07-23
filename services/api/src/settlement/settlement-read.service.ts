@@ -10,6 +10,8 @@ import {
   type DraftLedgerView,
   type LifecycleLedgerPage,
   type RoleKey,
+  type SettlementWorkbenchLedgerPage,
+  type SettlementWorkbenchView,
   type SettlementDetailReadModel
 } from "@jiangkong/shared-domain";
 import {
@@ -30,6 +32,7 @@ import {
   shanghaiDateStamp
 } from "../core-flow/ledger-excel";
 import { PrismaService } from "../database/prisma.service";
+import { MeService } from "../me/me.service";
 import {
   dbMoneyToBigInt,
   deriveTaxExclusiveUnitPrice,
@@ -76,7 +79,9 @@ export class SettlementReadService {
     @Optional()
     private readonly projectVisibility?: ProjectVisibilityService,
     @Optional()
-    private readonly audit?: AuditService
+    private readonly audit?: AuditService,
+    @Optional()
+    private readonly me?: MeService
   ) {}
 
   private async settlementLinesForSettlement(
@@ -670,6 +675,114 @@ export class SettlementReadService {
         my_drafts: activeDrafts.length,
         returned_for_revision: returned.length,
         ended: endedFormal.length + endedDrafts.length
+      }
+    };
+  }
+
+  async workbenchLedger(
+    view: SettlementWorkbenchView,
+    rawPage: string | number | undefined,
+    rawPageSize: string | number | undefined,
+    visibleProjectIds: string[],
+    actorUserId: string
+  ): Promise<SettlementWorkbenchLedgerPage<Record<string, unknown>>> {
+    const page = this.page(rawPage);
+    const pageSize = this.pageSize(rawPageSize);
+    const [settlements, drafts, projects, pendingWorkItems] = await Promise.all([
+      this.prisma.settlement.findMany({
+        where: { projectId: { in: visibleProjectIds } },
+        orderBy: { updatedAt: "desc" }
+      }),
+      this.prisma.settlementDraft.findMany({
+        where: { projectId: { in: visibleProjectIds }, ownerUserId: actorUserId },
+        orderBy: { updatedAt: "desc" }
+      }),
+      visibleProjectIds.length
+        ? this.prisma.project.findMany({ where: { id: { in: visibleProjectIds } } })
+        : Promise.resolve([]),
+      this.me?.getSettlementPendingWorkItems(actorUserId) ?? Promise.resolve([])
+    ]);
+    const contractIds = [...new Set([
+      ...settlements.map((item) => item.contractId),
+      ...drafts.map((item) => item.contractId)
+    ])];
+    const termsIds = [...new Set(settlements.map((item) => item.paymentTermsVersionId))];
+    const [contracts, terms] = await Promise.all([
+      contractIds.length ? this.prisma.contract.findMany({ where: { id: { in: contractIds } } }) : [],
+      termsIds.length ? this.prisma.paymentTermsVersion.findMany({ where: { id: { in: termsIds } } }) : []
+    ]);
+    const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
+    const termsById = new Map(terms.map((term) => [term.id, term]));
+    const projectById = new Map(projects.map((project) => [project.id, project]));
+    const pendingSettlementIds = new Set(
+      pendingWorkItems
+        .map((item) => item.businessId)
+        .filter((businessId): businessId is string => Boolean(businessId))
+    );
+    const selectedSettlements = settlements.filter((settlement) =>
+      this.matchesWorkbenchView(view, settlement, actorUserId, pendingSettlementIds)
+    );
+    const selectedDrafts = drafts.filter((draft) =>
+      (view === "my_drafts" && draft.status === "draft") || view === "all"
+    );
+    const formalRows = selectedSettlements.map((settlement) => this.settlementLedgerRow(
+      settlement,
+      contractById.get(settlement.contractId),
+      termsById.get(settlement.paymentTermsVersionId),
+      projectById.get(settlement.projectId),
+      {
+        settlementId: settlement.id,
+        projectId: settlement.projectId,
+        status: settlement.status,
+        lifecycleKind: "formal_record",
+        lifecycleUpdatedAt: settlement.updatedAt.toISOString()
+      }
+    ));
+    const draftRows = selectedDrafts.map((draft) => ({
+      id: draft.id,
+      projectId: draft.projectId,
+      settlementNo: draft.code,
+      contractNo: contractById.get(draft.contractId)?.code ??
+        contractById.get(draft.contractId)?.temporaryCode ?? draft.contractId,
+      project: projectById.get(draft.projectId)?.name ?? draft.projectId,
+      period: draft.periodLabel,
+      amount: "-",
+      paymentTermsVersion: "-",
+      currentNode: draft.status === "abandoned" ? "已放弃" : "填写结算草稿",
+      nodeTone: draft.status === "abandoned" ? "default" : "warning",
+      ownerDepartment: "合同部",
+      pendingOwner: "本人",
+      stalledFor: this.stalledFor(draft.updatedAt),
+      returnReason: draft.abandonReason ?? "-",
+      nextAction: draft.status === "abandoned" ? "查看历史" : "继续填写",
+      updatedAt: this.date(draft.updatedAt),
+      lifecycleKind: "pristine_draft",
+      revision: draft.revision,
+      lifecycleUpdatedAt: draft.updatedAt.toISOString(),
+      abandonedAt: draft.abandonedAt?.toISOString() ?? null,
+      abandonReason: draft.abandonReason ?? null,
+      copyAvailable: draft.status === "abandoned"
+    }));
+    const rows = [...formalRows, ...draftRows].sort((a, b) =>
+      String("lifecycleUpdatedAt" in b ? b.lifecycleUpdatedAt : "")
+        .localeCompare(String("lifecycleUpdatedAt" in a ? a.lifecycleUpdatedAt : ""))
+    );
+    const count = (targetView: SettlementWorkbenchView) =>
+      settlements.filter((settlement) =>
+        this.matchesWorkbenchView(targetView, settlement, actorUserId, pendingSettlementIds)
+      ).length + drafts.filter((draft) =>
+        (targetView === "my_drafts" && draft.status === "draft") || targetView === "all"
+      ).length;
+    return {
+      rows: rows.slice((page - 1) * pageSize, page * pageSize),
+      meta: { page, pageSize, total: rows.length, totalPages: Math.ceil(rows.length / pageSize) },
+      summary: {
+        pending_action: count("pending_action"),
+        my_drafts: count("my_drafts"),
+        in_approval: count("in_approval"),
+        pending_archive: count("pending_archive"),
+        effective: count("effective"),
+        all: count("all")
       }
     };
   }
@@ -1558,6 +1671,26 @@ export class SettlementReadService {
       updatedAt: this.date(settlement.updatedAt),
       ...lifecycle
     };
+  }
+
+  private matchesWorkbenchView(
+    view: SettlementWorkbenchView,
+    settlement: { id: string; status: string; preparedByUserId: string | null },
+    actorUserId: string,
+    pendingSettlementIds: ReadonlySet<string>
+  ) {
+    if (view === "all") return true;
+    if (view === "pending_action") {
+      return pendingSettlementIds.has(settlement.id) ||
+        (settlement.status === "approval_rejected" && settlement.preparedByUserId === actorUserId);
+    }
+    if (view === "my_drafts") return false;
+    if (view === "in_approval") return ["in_approval", "approval_pending"].includes(settlement.status);
+    if (view === "pending_archive") {
+      return ["pending_generation", "approved_pending_archive", "archive_pending", "pending_archive_confirm"]
+        .includes(settlement.status);
+    }
+    return settlement.status === "effective";
   }
 
   private page(raw?: string | number) {

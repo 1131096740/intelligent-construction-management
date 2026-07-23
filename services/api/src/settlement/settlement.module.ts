@@ -3,6 +3,7 @@ import { ApprovalModule } from "../approval/approval.module";
 import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
 import { FileModule } from "../file/file.module";
+import { MeModule } from "../me/me.module";
 import { SettlementController } from "./settlement.controller";
 import { SettlementDraftController } from "./settlement-draft.controller";
 import { SettlementDraftService } from "./settlement-draft.service";
@@ -24,7 +25,7 @@ import { SettlementSignedDocumentService } from "./settlement-signed-document.se
 import { SettlementFrozenDocumentService } from "./settlement-frozen-document.service";
 
 @Module({
-  imports: [ApprovalModule, AuditModule, AuthModule, FileModule],
+  imports: [ApprovalModule, AuditModule, AuthModule, FileModule, MeModule],
   controllers: [
     SettlementController,
     SettlementDraftController,

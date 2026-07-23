@@ -6,6 +6,8 @@ import type {
   ContractPaymentApplicationPreviewReadModel,
   DetailActionReadModel,
   DraftLedgerView,
+  SettlementWorkbenchLedgerPage,
+  SettlementWorkbenchView,
   LifecycleLedgerPage,
   LifecycleLedgerPageMeta,
   LifecycleLedgerViewCount,
@@ -1604,6 +1606,10 @@ export type SettlementLifecycleLedgerRow = SettlementLedgerListReadModel["rows"]
   copyAvailable?: boolean;
 };
 
+export type SettlementWorkbenchLedgerRow = SettlementLifecycleLedgerRow & {
+  status?: string;
+};
+
 export function copyAbandonedSettlementDraft(
   projectId: string,
   draftId: string,
@@ -1627,6 +1633,21 @@ export function fetchSettlementLifecycleLedger(
   });
   return readJson<LifecycleLedgerPage<SettlementLifecycleLedgerRow>>(
     `/settlements/lifecycle-ledger?${query.toString()}`
+  );
+}
+
+export function fetchSettlementWorkbenchLedger(
+  view: SettlementWorkbenchView,
+  page: number,
+  pageSize: number
+) {
+  const query = new URLSearchParams({
+    view,
+    page: String(page),
+    pageSize: String(pageSize)
+  });
+  return readJson<SettlementWorkbenchLedgerPage<SettlementWorkbenchLedgerRow>>(
+    `/settlements/workbench?${query.toString()}`
   );
 }
 

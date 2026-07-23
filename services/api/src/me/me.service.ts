@@ -711,6 +711,32 @@ export class MeService {
     return pending.filter((item) => item.businessType === "contract_version");
   }
 
+  async getSettlementPendingWorkItems(userId: string): Promise<WorkItem[]> {
+    const evaluatedAt = new Date();
+    const scopes = await this.loadProjectRoleScopes(userId);
+    const projectIds = scopes.map((scope) => scope.projectId);
+    const projectNameById = await this.projectNames(projectIds);
+    const pending = [
+      ...(await this.settlementArchiveWorkItems(
+        this.projectIdsFor(scopes, ["settlement.archive.upload"]), ["approved_pending_archive"],
+        projectNameById, "上传结算签认件", "上传后等待合同部主管确认归档", "primary", "legacy", true
+      )),
+      ...(await this.settlementArchiveWorkItems(
+        this.projectIdsFor(scopes, ["settlement.archive.confirm"]), ["archive_pending", "pending_archive_confirm"],
+        projectNameById, "确认结算归档", "确认后结算生效，可申请付款", "warning", "legacy", true
+      )),
+      ...(await this.settlementArchiveWorkItems(
+        this.projectIdsFor(scopes, ["settlement.archive.confirm"]), ["pending_archive_confirm"],
+        projectNameById, "确认最终结算文件", "确认后结算生效，可申请付款", "warning", "governed", true
+      )),
+      ...(await this.failedSettlementGenerationWorkItems(
+        this.projectIdsFor(scopes, ["settlement.archive.confirm"]), projectNameById, true
+      )),
+      ...(await this.approvalWorkItems(scopes, userId, "pending", evaluatedAt))
+    ];
+    return pending.filter((item) => item.businessType === "settlement");
+  }
+
   private async myDraftWorkItems(
     userId: string,
     contractProjectIds: string[],
@@ -1641,7 +1667,8 @@ export class MeService {
     currentNode: string,
     nextAction: string,
     tone: WorkbenchCardTone,
-    governanceMode?: "governed" | "legacy"
+    governanceMode?: "governed" | "legacy",
+    unbounded = false
   ): Promise<WorkItem[]> {
     if (!projectIds.length) {
       return [];
@@ -1658,7 +1685,7 @@ export class MeService {
             : {})
       },
       orderBy: { updatedAt: "desc" },
-      take: 30,
+      ...(unbounded ? {} : { take: 30 }),
       select: {
         id: true,
         projectId: true,
@@ -1684,6 +1711,8 @@ export class MeService {
       title: contractById.get(settlement.contractId)?.name ?? `结算 ${settlement.periodLabel}`,
       projectName: projectNameById.get(settlement.projectId) ?? settlement.projectId,
       businessCode: settlement.code,
+      businessType: "settlement",
+      businessId: settlement.id,
       amountText: this.amountText(settlement.amountCents),
       currentNode,
       stayedText: this.stayedText(settlement.updatedAt),
@@ -1695,7 +1724,8 @@ export class MeService {
 
   private async failedSettlementGenerationWorkItems(
     projectIds: string[],
-    projectNameById: ReadonlyMap<string, string>
+    projectNameById: ReadonlyMap<string, string>,
+    unbounded = false
   ): Promise<WorkItem[]> {
     if (!projectIds.length || !this.prisma.settlementSignedDocumentGenerationClaim) {
       return [];
@@ -1708,7 +1738,7 @@ export class MeService {
         status: "pending_generation"
       },
       orderBy: { updatedAt: "desc" },
-      take: 30,
+      ...(unbounded ? {} : { take: 30 }),
       select: {
         id: true,
         projectId: true,
@@ -1771,6 +1801,8 @@ export class MeService {
         title: contractById.get(settlement.contractId)?.name ?? `结算 ${settlement.periodLabel}`,
         projectName: projectNameById.get(settlement.projectId) ?? settlement.projectId,
         businessCode: settlement.code,
+        businessType: "settlement",
+        businessId: settlement.id,
         amountText: this.amountText(settlement.amountCents),
         currentNode: "最终结算文件生成失败",
         stayedText: this.stayedText(settlement.updatedAt),

@@ -111,6 +111,33 @@ export interface ContractWorkbenchLedgerPage<T> {
   summary: ContractWorkbenchLedgerViewCount;
 }
 
+export const SETTLEMENT_WORKBENCH_VIEWS = [
+  "pending_action",
+  "my_drafts",
+  "in_approval",
+  "pending_archive",
+  "effective",
+  "all"
+] as const;
+
+export type SettlementWorkbenchView = (typeof SETTLEMENT_WORKBENCH_VIEWS)[number];
+
+export interface SettlementWorkbenchLedgerViewCount {
+  pending_action: number;
+  my_drafts: number;
+  in_approval: number;
+  pending_archive: number;
+  effective: number;
+  all: number;
+}
+
+/** Server-owned settlement-root workbench projection; legacy lifecycle views remain separate. */
+export interface SettlementWorkbenchLedgerPage<T> {
+  rows: T[];
+  meta: LifecycleLedgerPageMeta;
+  summary: SettlementWorkbenchLedgerViewCount;
+}
+
 export function draftLifecycleKindLabel(value: DraftLifecycleKind) {
   return DRAFT_LIFECYCLE_KIND_LABELS[value];
 }

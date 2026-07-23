@@ -13,7 +13,9 @@ import {
 import {
   CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS,
   DRAFT_LEDGER_VIEWS,
-  type DraftLedgerView
+  SETTLEMENT_WORKBENCH_VIEWS,
+  type DraftLedgerView,
+  type SettlementWorkbenchView
 } from "@jiangkong/shared-domain";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
@@ -74,6 +76,26 @@ export class SettlementController {
       ? rawView as DraftLedgerView
       : "formal_ledger";
     return this.settlementRead.lifecycleLedger(
+      view,
+      page,
+      pageSize,
+      await this.projectVisibility.visibleProjectIds(user.id),
+      user.id
+    );
+  }
+
+  @Get("workbench")
+  @RequirePositions(...LEDGER_READ_POSITION_KEYS)
+  async workbenchLedger(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("view") rawView?: string,
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string
+  ) {
+    const view = SETTLEMENT_WORKBENCH_VIEWS.includes(rawView as SettlementWorkbenchView)
+      ? rawView as SettlementWorkbenchView
+      : "all";
+    return this.settlementRead.workbenchLedger(
       view,
       page,
       pageSize,

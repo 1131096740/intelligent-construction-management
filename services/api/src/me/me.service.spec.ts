@@ -1745,4 +1745,39 @@ describe("MeService", () => {
     expect(archive.mock.calls.every((args) => args[8] === undefined)).toBe(true);
     expect(handler).toHaveBeenCalledWith("contract-1", expect.any(Map), undefined);
   });
+
+  it("derives the untruncated settlement queue only from canonical settlement pending sources", async () => {
+    const service = new MeService({} as never, {} as never) as unknown as {
+      getSettlementPendingWorkItems(userId: string): Promise<WorkItem[]>;
+      loadProjectRoleScopes(): Promise<Array<{ projectId: string; roleKeys: string[] }>>;
+      projectNames(projectIds: string[]): Promise<Map<string, string>>;
+      projectIdsFor(scopes: unknown[], actions: string[]): string[];
+      settlementArchiveWorkItems(...args: unknown[]): Promise<WorkItem[]>;
+      failedSettlementGenerationWorkItems(...args: unknown[]): Promise<WorkItem[]>;
+      approvalWorkItems(scopes: unknown[], userId: string, mode: string, evaluatedAt: Date): Promise<WorkItem[]>;
+    };
+    const scopes = [{ projectId: "project-1", roleKeys: ["contract_staff"] }];
+    jest.spyOn(service, "loadProjectRoleScopes").mockResolvedValue(scopes);
+    jest.spyOn(service, "projectNames").mockResolvedValue(new Map([["project-1", "科技园"]]));
+    jest.spyOn(service, "projectIdsFor").mockReturnValue(["project-1"]);
+    const archive = jest.spyOn(service, "settlementArchiveWorkItems").mockResolvedValue([
+      { businessType: "settlement", businessId: "archive-1" }
+    ] as WorkItem[]);
+    const failed = jest.spyOn(service, "failedSettlementGenerationWorkItems").mockResolvedValue([
+      { businessType: "settlement", businessId: "failed-1" }
+    ] as WorkItem[]);
+    jest.spyOn(service, "approvalWorkItems").mockResolvedValue([
+      { businessType: "settlement", businessId: "approval-1" },
+      { businessType: "contract_version", businessId: "contract-1" }
+    ] as WorkItem[]);
+
+    await expect(service.getSettlementPendingWorkItems("settlement-1")).resolves.toEqual(expect.arrayContaining([
+      { businessType: "settlement", businessId: "archive-1" },
+      { businessType: "settlement", businessId: "failed-1" },
+      { businessType: "settlement", businessId: "approval-1" }
+    ]));
+    expect(archive).toHaveBeenCalledTimes(3);
+    expect(archive.mock.calls.every((args) => args[7] === true)).toBe(true);
+    expect(failed).toHaveBeenCalledWith(["project-1"], expect.any(Map), true);
+  });
 });
