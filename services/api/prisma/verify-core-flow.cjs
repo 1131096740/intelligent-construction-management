@@ -581,20 +581,26 @@ async function verifyPhase1WriteLoop(tokens) {
       token
     );
   }
-  assertEqual(settlement.status, "approved_pending_archive", "settlement approval");
-
-  const settlementArchiveFile = await uploadPrivateFile(
-    `JS-P1-${codeSuffix}-signed.pdf`,
-    tokens.contractStaff
+  assertEqual(settlement.status, "pending_generation", "settlement approval");
+  const finalSignedDocument = await postJson(
+    `/settlements/${settlement.id}/signed-document-generation-retry`,
+    {},
+    tokens.contractDirector
   );
-  const settlementArchive = await postJson(
-    `/settlements/${settlement.id}/archive-files`,
-    { fileId: settlementArchiveFile.id },
-    tokens.contractStaff
+  if (!finalSignedDocument?.id) {
+    throw new Error("settlement final signed document generation returned no document id");
+  }
+  const pendingArchiveConfirmation = await prisma.settlement.findUnique({
+    where: { id: settlement.id }
+  });
+  assertEqual(
+    pendingArchiveConfirmation?.status,
+    "pending_archive_confirm",
+    "settlement final signed document generation"
   );
   settlement = await postJson(
     `/settlements/${settlement.id}/archive-confirmation`,
-    { archiveFileId: settlementArchive.id, confirmationPassword: PASSWORD },
+    { confirmationPassword: PASSWORD },
     tokens.contractDirector
   );
   assertEqual(settlement.status, "effective", "settlement archive confirmation");
