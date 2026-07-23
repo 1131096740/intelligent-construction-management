@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createExpenseClaim, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaims, type CreateExpenseClaimPayload } from "./expense-claim.api";
+import { createExpenseClaim, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaims, submitExpenseClaim, type CreateExpenseClaimPayload } from "./expense-claim.api";
 
 vi.mock("./api-fetch", () => ({ apiFetch: vi.fn() }));
 
@@ -62,5 +62,11 @@ describe("expense claim API", () => {
       method: "POST",
       body: JSON.stringify(draft)
     }));
+  });
+
+  it("submits a draft through its encoded new-domain action path", async () => {
+    mockApiFetch.mockResolvedValue(new Response(JSON.stringify({ id: "claim-1", status: "approval_pending", submittedAt: "2026-07-23T10:00:00.000Z" }), { status: 201 }));
+    await expect(submitExpenseClaim("claim/1")).resolves.toMatchObject({ status: "approval_pending" });
+    expect(mockApiFetch).toHaveBeenCalledWith("/expense-claims/claim%2F1/submission", { method: "POST" });
   });
 });

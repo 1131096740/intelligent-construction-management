@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
-import { fetchExpenseClaimDetail, type ExpenseClaimDetailReadModel } from "../../api/expense-claim.api";
+import { fetchExpenseClaimDetail, submitExpenseClaim, type ExpenseClaimDetailReadModel } from "../../api/expense-claim.api";
 import JgDetailTabs from "../../components/JgDetailTabs.vue";
 import JgPageHeader from "../../components/JgPageHeader.vue";
 import JgResultState from "../../components/JgResultState.vue";
@@ -10,6 +10,8 @@ import { centsTextToYuanText } from "../../lib/money";
 const route = useRoute();
 const loading = ref(false);
 const loadError = ref("");
+const actionError = ref("");
+const submitting = ref(false);
 const detail = ref<ExpenseClaimDetailReadModel | null>(null);
 const tab = ref("business");
 const tabs = [{ value: "business", label: "业务信息" }, { value: "lines", label: "费用明细" }, { value: "funds", label: "资金结果" }];
@@ -35,6 +37,14 @@ async function loadDetail() {
   catch (error) { loadError.value = error instanceof Error ? error.message : "费用详情读取失败"; }
   finally { loading.value = false; }
 }
+async function submit() {
+  if (!detail.value || submitting.value) return;
+  submitting.value = true;
+  actionError.value = "";
+  try { await submitExpenseClaim(detail.value.id); await loadDetail(); }
+  catch (error) { actionError.value = error instanceof Error ? error.message : "提交费用申请失败"; }
+  finally { submitting.value = false; }
+}
 onMounted(() => void loadDetail());
 </script>
 
@@ -58,6 +68,30 @@ onMounted(() => void loadDetail());
           current-node="按冻结审批节点办理"
           :next-step="detail.status === 'draft' ? '经办人提交' : '查看资金或审批进度'"
           :requested-amount="amount(detail.requestedAmountCents)"
+        >
+          <template #actions>
+            <t-popconfirm
+              v-if="detail.status === 'draft'"
+              content="提交后将按当前有效岗位冻结审批候选，草稿不能再按原方式修改。"
+              confirm-btn="确认提交"
+              cancel-btn="继续核对"
+              @confirm="submit"
+            >
+              <t-button
+                theme="primary"
+                :loading="submitting"
+              >
+                提交审批
+              </t-button>
+            </t-popconfirm>
+          </template>
+        </JgPageHeader>
+        <t-alert
+          v-if="actionError"
+          theme="error"
+          :message="actionError"
+          close
+          @close="actionError = ''"
         />
         <JgDetailTabs
           v-model="tab"

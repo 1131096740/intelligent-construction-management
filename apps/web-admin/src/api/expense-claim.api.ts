@@ -120,6 +120,12 @@ export async function createExpenseClaim(payload: CreateExpenseClaimPayload) {
   return response.json() as Promise<CreatedExpenseClaim>;
 }
 
+export async function submitExpenseClaim(claimId: string) {
+  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/submission`, { method: "POST" });
+  await ensureOk(response);
+  return response.json() as Promise<{ id: string; status: string; submittedAt: string }>;
+}
+
 export async function fetchExpenseClaimDetail(claimId: string) {
   const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}`);
   await ensureOk(response);
