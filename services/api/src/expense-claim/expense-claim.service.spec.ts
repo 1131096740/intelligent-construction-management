@@ -17,7 +17,7 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
     fileObject: { findUnique: jest.fn() },
     employeeProjectLoanAccount: { upsert: jest.fn(), update: jest.fn() },
     employeeProjectLoanEntry: { create: jest.fn(), findMany: jest.fn() },
-    expenseLoanOffsetReservation: { findMany: jest.fn(), createMany: jest.fn() },
+    expenseLoanOffsetReservation: { findMany: jest.fn().mockResolvedValue([]), createMany: jest.fn(), updateMany: jest.fn() },
     expenseClaimLine: { createMany: jest.fn() },
     approvalInstance: { create: jest.fn(), update: jest.fn() },
     approvalActionLog: { create: jest.fn() },
@@ -202,7 +202,7 @@ describe("ExpenseClaimService", () => {
   });
 
   it("requires password and Canvas signature snapshot before a frozen applicant self-review", async () => {
-    const claim = { id: "claim-1", claimType: "reimbursement", status: "approval_pending", projectId: "project-1", handledByUserId: "leader-1", factWitnessUserId: null, requestedAmountCents: 1200n };
+    const claim = { id: "claim-1", claimType: "reimbursement", status: "approval_pending", projectId: "project-1", applicantUserId: "leader-1", handledByUserId: "leader-1", factWitnessUserId: null, requestedAmountCents: 1200n, loanOffsetAmountCents: 0n, companyPayableAmountCents: 1200n };
     const instance = { id: "approval-1", currentNodeIndex: 0, applicantUserId: "leader-1", frozenNodes: [{ name: "董事长/总经理", mode: "any", roleKeys: ["general_manager"], candidateUserIds: ["leader-1"], candidateUserIdsByRole: { general_manager: ["leader-1"] } }] };
     const auth = { confirmPassword: jest.fn().mockResolvedValue({}) };
     const { service, tx } = createHarness({ roles: ["general_manager"], auth });
@@ -276,5 +276,19 @@ describe("ExpenseClaimService", () => {
       expect.objectContaining({ loanEntryId: "entry-new", amountCents: 3000n, sequenceNo: 2 })
     ] });
     expect(tx.employeeProjectLoanAccount.update).toHaveBeenCalledWith({ where: { id: "account-1" }, data: { reservedOffsetAmountCents: 8000n } });
+  });
+
+  it("posts frozen reservations as immutable offsets at final reimbursement approval without creating company payment", async () => {
+    const claim = { id: "claim-r", claimType: "reimbursement", status: "approval_pending", projectId: "project-1", applicantUserId: "user-a", handledByUserId: "user-a", factWitnessUserId: null, requestedAmountCents: 3000n, loanOffsetAmountCents: 3000n, companyPayableAmountCents: 0n };
+    const instance = { id: "approval-r", currentNodeIndex: 0, applicantUserId: "user-a", frozenNodes: [{ name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"], candidateUserIds: ["comp-1"], candidateUserIdsByRole: { comprehensive_director: ["comp-1"] } }] };
+    const { service, tx } = createHarness({ roles: ["comprehensive_director"] });
+    tx.$queryRaw.mockResolvedValueOnce([claim]).mockResolvedValueOnce([instance]).mockResolvedValueOnce([{ id: "account-1", offsetAmountCents: 0n, reservedOffsetAmountCents: 3000n, balanceAmountCents: 3000n }]).mockResolvedValueOnce([{ nextSequenceNo: 5n }]);
+    tx.expenseLoanOffsetReservation.findMany.mockResolvedValue([{ id: "reserve-1", loanAccountId: "account-1", amountCents: 3000n }]);
+    tx.expenseClaim.update.mockResolvedValue({ id: "claim-r", status: "offset_completed" });
+
+    await expect(service.review("claim-r", "comp-1", { decision: "approve" })).resolves.toEqual({ id: "claim-r", status: "offset_completed", completed: true });
+    expect(tx.employeeProjectLoanEntry.create).toHaveBeenCalledWith({ data: expect.objectContaining({ entryType: "offset", sourceExpenseClaimId: "claim-r", sourceReservationId: "reserve-1", amountCents: 3000n, balanceDeltaCents: -3000n }) });
+    expect(tx.employeeProjectLoanAccount.update).toHaveBeenCalledWith({ where: { id: "account-1" }, data: { offsetAmountCents: 3000n, reservedOffsetAmountCents: 0n, balanceAmountCents: 0n } });
+    expect(tx.expenseLoanOffsetReservation.updateMany).toHaveBeenCalledWith({ where: { id: { in: ["reserve-1"] }, status: "reserved" }, data: expect.objectContaining({ status: "posted" }) });
   });
 });
