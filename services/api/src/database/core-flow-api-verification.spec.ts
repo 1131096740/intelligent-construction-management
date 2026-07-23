@@ -41,7 +41,7 @@ describe("coreFlowApiVerificationTargets", () => {
     expect(verifier).toContain('payment request settlement source');
     expect(verifier).toContain('payment request settlement link');
     expect(verifier).not.toContain('/payments/contract-application');
-    expect(verifier).toContain('付款申请金额格式不正确');
+    expect(verifier).toContain('responseBody.includes("付款申请金额")');
   });
 });
 
