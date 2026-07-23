@@ -171,6 +171,24 @@ async function copyFrozenDocumentAsCounterpartySignedScan(frozenFileId, fileName
   return upload.json();
 }
 
+async function configureLocalCanvasSignature(token) {
+  const form = new FormData();
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64"
+  );
+  form.append("file", new Blob([png], { type: "image/png" }), "一期闭环验证手写签名.png");
+  const response = await fetch(`${baseUrl}/me/signature/canvas`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: form
+  });
+  if (!response.ok) {
+    throw new Error(`local canvas signature upload returned HTTP ${response.status}: ${await response.text()}`);
+  }
+  return response.json();
+}
+
 function assertEqual(actual, expected, label) {
   if (actual !== expected) {
     throw new Error(`${label}: expected ${expected}, received ${actual}`);
@@ -392,6 +410,8 @@ async function verifyPhase1WriteLoop(tokens) {
   const payableAmountCents = TARGET_CONTRACT_CENTS;
   const firstExecutionCents = "1000000001";
   const secondExecutionCents = "1100000000";
+
+  await configureLocalCanvasSignature(tokens.contractStaff);
 
   const beforeReceiptOverview = await readJson(
     `/projects/${coreFlowSeedData.project.id}/operating-funds-overview`,

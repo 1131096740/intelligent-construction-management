@@ -33,6 +33,8 @@ describe("coreFlowApiVerificationTargets", () => {
     expect(verifier).toContain('frozen-document');
     expect(verifier).toContain('counterparty-signed-documents');
     expect(verifier).toContain('approval-submission');
+    expect(verifier).toContain('/me/signature/canvas');
+    expect(verifier).toContain('一期闭环验证手写签名.png');
   });
 });
 
