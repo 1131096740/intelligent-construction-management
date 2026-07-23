@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException,
 import { Prisma } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { resolveApprovalReviewIdentity, type FrozenApprovalNode } from "../approval/approval-review-identity";
+import { ApprovalFormService } from "../approval/approval-form.service";
 import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
@@ -38,7 +39,9 @@ export class ExpenseClaimService {
     private readonly auth?: AuthService,
     private readonly visibility?: ProjectVisibilityService,
     @Optional()
-    private readonly files?: FileService
+    private readonly files?: FileService,
+    @Optional()
+    private readonly approvalForms?: ApprovalFormService
   ) {}
 
   async createOptions(actorUserId: string) {
@@ -421,7 +424,7 @@ export class ExpenseClaimService {
   }
 
   async review(claimId: string, actorUserId: string, input: ReviewExpenseClaimDto) {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const claims = await tx.$queryRaw<Array<{
         id: string; claimType: string; status: string; projectId: string | null; applicantUserId: string | null; handledByUserId: string; factWitnessUserId: string | null; requestedAmountCents: bigint; loanOffsetAmountCents: bigint; companyPayableAmountCents: bigint;
       }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "applicantUserId", "handledByUserId", "factWitnessUserId", "requestedAmountCents", "loanOffsetAmountCents", "companyPayableAmountCents" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
@@ -440,7 +443,6 @@ export class ExpenseClaimService {
       const identity = resolveApprovalReviewIdentity({ node, actorUserId, actorRoleKeys: roles });
       if (!identity) throw new ForbiddenException("当前用户不是费用申请的冻结审批人");
       const selfReview = await this.confirmSelfReview(instance.applicantUserId, actorUserId, identity, input);
-      const signature = await snapshotApprovalSignature(tx, actorUserId, { required: selfReview.isSelfReview });
 
       if (input.decision === "reject") {
         const releasedAmountCents = await this.releaseLoanOffsetReservations(tx, claim.id, actorUserId, "审批驳回");
@@ -454,12 +456,7 @@ export class ExpenseClaimService {
             comment: optionalText(input.comment),
             approvedRoleKey: identity.approvedRoleKey,
             representedUserId: identity.representedUserId,
-            ...(selfReview.isSelfReview ? {
-              metadata: selfReview.metadata,
-              signatureFileIdSnapshot: signature.fileId,
-              signatureSha256Snapshot: signature.sha256,
-              signatureVersionIdSnapshot: signature.versionId
-            } : {})
+            ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
           }
         });
         await this.audit.record(tx, {
@@ -472,6 +469,7 @@ export class ExpenseClaimService {
         return { id: rejected.id, status: rejected.status };
       }
 
+      const signature = await snapshotApprovalSignature(tx, actorUserId, { required: true });
       const nextNodes = [...nodes];
       nextNodes[instance.currentNodeIndex] = { ...node, approvedRoleKeys: [identity.approvedRoleKey] };
       const nextNodeIndex = instance.currentNodeIndex + 1;
@@ -497,12 +495,10 @@ export class ExpenseClaimService {
           comment: optionalText(input.comment),
           approvedRoleKey: identity.approvedRoleKey,
           representedUserId: identity.representedUserId,
-          ...(selfReview.isSelfReview ? {
-            metadata: selfReview.metadata,
-            signatureFileIdSnapshot: signature.fileId,
-            signatureSha256Snapshot: signature.sha256,
-            signatureVersionIdSnapshot: signature.versionId
-          } : {})
+          ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {}),
+          signatureFileIdSnapshot: signature.fileId,
+          signatureSha256Snapshot: signature.sha256,
+          signatureVersionIdSnapshot: signature.versionId
         }
       });
       await this.audit.record(tx, {
@@ -512,8 +508,22 @@ export class ExpenseClaimService {
         businessId: claim.id,
         metadata: { nodeName: node.name, approvedRoleKey: identity.approvedRoleKey, completed, postedAmountCents: postedAmountCents.toString(), ...selfReview.metadata }
       });
-      return { id: updated.id, status: updated.status, completed };
+      return { id: updated.id, status: updated.status, completed, approvalInstanceId: completed ? instance.id : null };
     });
+    if (result.completed && result.approvalInstanceId) {
+      await this.approvalForms
+        ?.generateForInstance(result.approvalInstanceId, actorUserId)
+        .catch(async () => {
+          await this.audit.record(this.prisma, {
+            actorUserId,
+            action: "expense_claim.approval_form.generation_failed",
+            businessType: "expense_claim",
+            businessId: claimId,
+            metadata: { approvalInstanceId: result.approvalInstanceId }
+          });
+        });
+    }
+    return { id: result.id, status: result.status, completed: result.completed };
   }
 
   async recordLoanDisbursement(claimId: string, actorUserId: string, input: RecordLoanDisbursementDto) {

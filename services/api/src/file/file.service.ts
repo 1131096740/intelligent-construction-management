@@ -1349,7 +1349,11 @@ export class FileService {
     if (businessType === "contract_version") {
       return this.assertCanDownloadContractApprovalForm(businessId, actorUserId);
     }
-    if (businessType !== "settlement" && businessType !== "payment_request") {
+    if (
+      businessType !== "settlement" &&
+      businessType !== "payment_request" &&
+      businessType !== "expense_claim"
+    ) {
       throw new BadRequestException("当前业务类型不支持下载审批单");
     }
 
@@ -2298,6 +2302,13 @@ export class FileService {
     }
     if (businessType === "project_expense_request") {
       const expense = await tx.projectExpenseRequest.findUnique({ where: { id: businessId } });
+      return expense?.projectId ?? null;
+    }
+    if (businessType === "expense_claim") {
+      const expense = await tx.expenseClaim.findUnique({
+        where: { id: businessId },
+        select: { projectId: true }
+      });
       return expense?.projectId ?? null;
     }
     if (businessType === "contract_takeover") {

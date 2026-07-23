@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
+import { ApprovalModule } from "../approval/approval.module";
 import { AuthModule } from "../auth/auth.module";
 import { BusinessNumberModule } from "../business-number/business-number.module";
 import { FileModule } from "../file/file.module";
@@ -7,7 +8,7 @@ import { ExpenseClaimController } from "./expense-claim.controller";
 import { ExpenseClaimService } from "./expense-claim.service";
 
 @Module({
-  imports: [AuditModule, AuthModule, BusinessNumberModule, FileModule],
+  imports: [ApprovalModule, AuditModule, AuthModule, BusinessNumberModule, FileModule],
   controllers: [ExpenseClaimController],
   providers: [ExpenseClaimService]
 })

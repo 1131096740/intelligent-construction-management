@@ -17,6 +17,10 @@ import { dbMoneyToBigInt, formatMoneyCentsAsYuan } from "../money/decimal-money"
 import { verifyApprovalSignatureSnapshot } from "./approval-signature-snapshot";
 import { SpotProcurementAccessService } from "../spot-procurement/spot-procurement-access.service";
 import {
+  renderExpenseClaimApprovalForm,
+  type ExpenseClaimApprovalFormInput
+} from "../expense-claim/expense-claim-approval-form-renderer";
+import {
   renderSpotProcurementApprovalForm,
   SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY,
   type ApprovalSignature,
@@ -61,6 +65,8 @@ type ApprovalFormClient = Pick<
   | "supplierBalanceEntry"
   | "fileObject"
   | "auditLog"
+  | "expenseClaim"
+  | "expenseClaimLine"
 >;
 
 interface ApprovalFormFreezeToken {
@@ -162,7 +168,8 @@ const BUSINESS_TYPE_LABELS: Record<string, string> = {
   settlement: "结算审批单",
   payment_request: "项目付款审批表",
   spot_procurement_version: "项目零星材料采购申请单",
-  spot_procurement_payment: "项目零星材料付款审批单"
+  spot_procurement_payment: "项目零星材料付款审批单",
+  expense_claim: "费用申请审批单"
 };
 
 const roleLabel = (key: string) => ROLE_LABELS[key] ?? key;
@@ -219,6 +226,7 @@ interface TableColumn {
 }
 
 interface RenderInput {
+  businessType: string;
   title: string;
   companyName: string;
   businessCode: string;
@@ -234,8 +242,10 @@ interface RenderInput {
     comment: string;
     relationship: string;
     signature: Buffer | null;
+    createdAt: Date;
   }>;
   watermark?: string[];
+  expenseClaim?: Omit<ExpenseClaimApprovalFormInput, "code" | "companyName" | "applicantName" | "watermark">;
 }
 
 interface ProjectPaymentApprovalRowsInput {
@@ -1073,9 +1083,10 @@ export class ApprovalFormService {
       orderBy: { createdAt: "asc" }
     });
 
-    const [businessCode, companyName] = await Promise.all([
+    const [businessCode, companyName, expenseClaim] = await Promise.all([
       this.resolveBusinessCode(prisma, instance.businessType, instance.businessId),
-      this.resolveCompanyName(prisma, instance.businessType, instance.businessId)
+      this.resolveCompanyName(prisma, instance.businessType, instance.businessId),
+      this.loadExpenseClaimApprovalFacts(prisma, instance.businessType, instance.businessId)
     ]);
 
     const relationships = logs.map((log) => frozenApprovalRelationship(log.action, log.metadata));
@@ -1119,39 +1130,59 @@ export class ApprovalFormService {
       }
     );
 
+    const renderedLogs = logs.map((log, index) => {
+      const relationship = relationships[index];
+      let relationshipText = "";
+      if (log.action === "transfer" || log.action === "delegate") {
+        relationshipText = relationship
+          ? `${relationship.kind === "transfer" ? "转交" : "委托"}关系：${nameById.get(relationship.fromUserId) ?? "原审批人未读取"} → ${nameById.get(relationship.toUserId) ?? "接收人未读取"}（${ROLE_LABELS[relationship.fromRoleKey] ?? "审批岗位未读取"}）`
+          : "历史记录未冻结委托/转交双方关系";
+      } else if (
+        log.representedUserId &&
+        log.representedUserId !== log.actorUserId
+      ) {
+        relationshipText = `代批关系：${nameById.get(log.representedUserId) ?? "原审批人未读取"} → ${nameById.get(log.actorUserId) ?? "实际审批人未读取"}（${log.approvedRoleKey ? (ROLE_LABELS[log.approvedRoleKey] ?? "审批岗位未读取") : "审批岗位未冻结"}）`;
+      }
+      return {
+        actionKey: log.action,
+        name: nameById.get(log.actorUserId) ?? "处理人未读取",
+        position: log.approvedRoleKey
+          ? roleLabel(log.approvedRoleKey as RoleKey)
+          : "历史签名未冻结",
+        action: actionLabel(log.action),
+        signedAt: formatDateTime(log.createdAt),
+        comment: log.comment ?? "",
+        relationship: relationshipText,
+        signature: signatureBufferByLogId.get(log.id) ?? null,
+        createdAt: log.createdAt
+      };
+    });
+
     return {
-      title: BUSINESS_TYPE_LABELS[instance.businessType] ?? "审批单",
+      businessType: instance.businessType,
+      title: expenseClaim
+        ? expenseClaim.claimType === "reimbursement" ? "费用报销单" : "借款申请单"
+        : BUSINESS_TYPE_LABELS[instance.businessType] ?? "审批单",
       companyName,
       businessCode,
       applicantName,
       summary,
       nodes: instance.frozenNodes as unknown as FrozenNode[],
-      logs: logs.map((log, index) => {
-        const relationship = relationships[index];
-        let relationshipText = "";
-        if (log.action === "transfer" || log.action === "delegate") {
-          relationshipText = relationship
-            ? `${relationship.kind === "transfer" ? "转交" : "委托"}关系：${nameById.get(relationship.fromUserId) ?? "原审批人未读取"} → ${nameById.get(relationship.toUserId) ?? "接收人未读取"}（${ROLE_LABELS[relationship.fromRoleKey] ?? "审批岗位未读取"}）`
-            : "历史记录未冻结委托/转交双方关系";
-        } else if (
-          log.representedUserId &&
-          log.representedUserId !== log.actorUserId
-        ) {
-          relationshipText = `代批关系：${nameById.get(log.representedUserId) ?? "原审批人未读取"} → ${nameById.get(log.actorUserId) ?? "实际审批人未读取"}（${log.approvedRoleKey ? (ROLE_LABELS[log.approvedRoleKey] ?? "审批岗位未读取") : "审批岗位未冻结"}）`;
+      logs: renderedLogs,
+      ...(expenseClaim ? {
+        expenseClaim: {
+          ...expenseClaim,
+          approvals: renderedLogs
+            .filter((log) => log.actionKey === "approve")
+            .map((log) => ({
+              name: log.name,
+              position: log.position,
+              comment: [log.relationship, log.comment].filter(Boolean).join("；"),
+              signedAt: log.createdAt,
+              signature: log.signature
+            }))
         }
-        return {
-          actionKey: log.action,
-          name: nameById.get(log.actorUserId) ?? "处理人未读取",
-          position: log.approvedRoleKey
-            ? roleLabel(log.approvedRoleKey as RoleKey)
-            : "历史签名未冻结",
-          action: actionLabel(log.action),
-          signedAt: formatDateTime(log.createdAt),
-          comment: log.comment ?? "",
-          relationship: relationshipText,
-          signature: signatureBufferByLogId.get(log.id) ?? null
-        };
-      })
+      } : {})
     };
   }
 
@@ -1513,6 +1544,15 @@ export class ApprovalFormService {
   }
 
   private async renderPdf(input: RenderInput): Promise<Buffer> {
+    if (input.expenseClaim) {
+      return renderExpenseClaimApprovalForm({
+        ...input.expenseClaim,
+        code: input.businessCode,
+        companyName: input.companyName,
+        applicantName: input.applicantName,
+        watermark: input.watermark
+      });
+    }
     const margin = 48;
     const doc = new PDFDocument({ size: "A4", margin, bufferPages: true });
     const chunks: Buffer[] = [];
@@ -1646,6 +1686,13 @@ export class ApprovalFormService {
     businessType: string,
     businessId: string
   ): Promise<string> {
+    if (businessType === "expense_claim") {
+      const claim = await prisma.expenseClaim.findUnique({
+        where: { id: businessId },
+        select: { code: true }
+      });
+      return claim?.code ?? businessId;
+    }
     if (businessType === "spot_procurement_version") {
       const version = await prisma.spotProcurementVersion.findUnique({
         where: { id: businessId },
@@ -1690,6 +1737,13 @@ export class ApprovalFormService {
     businessType: string,
     businessId: string
   ): Promise<string> {
+    if (businessType === "expense_claim") {
+      const claim = await prisma.expenseClaim.findUnique({
+        where: { id: businessId },
+        select: { companyEntityNameSnapshot: true }
+      });
+      return claim?.companyEntityNameSnapshot ?? "";
+    }
     let contractId: string | null = null;
     if (businessType === "settlement") {
       const settlement = await prisma.settlement.findUnique({ where: { id: businessId } });
@@ -1706,6 +1760,69 @@ export class ApprovalFormService {
     }
     const contract = await prisma.contract.findUnique({ where: { id: contractId } });
     return contract?.companyEntityName ?? "";
+  }
+
+  private async loadExpenseClaimApprovalFacts(
+    prisma: ApprovalFormClient,
+    businessType: string,
+    businessId: string
+  ): Promise<Omit<ExpenseClaimApprovalFormInput, "code" | "companyName" | "applicantName" | "approvals" | "watermark"> | null> {
+    if (businessType !== "expense_claim") return null;
+    const claim = await prisma.expenseClaim.findUnique({
+      where: { id: businessId },
+      select: {
+        claimType: true,
+        projectId: true,
+        handledByNameSnapshot: true,
+        submittedAt: true,
+        reason: true,
+        requestedAmountCents: true,
+        loanOffsetAmountCents: true,
+        companyPayableAmountCents: true,
+        paymentMethod: true,
+        payeeNameSnapshot: true,
+        loanExpectedClearanceAt: true
+      }
+    });
+    if (!claim || (claim.claimType !== "reimbursement" && claim.claimType !== "loan")) {
+      return null;
+    }
+    const [project, lines] = await Promise.all([
+      claim.projectId
+        ? prisma.project.findUnique({ where: { id: claim.projectId }, select: { name: true } })
+        : Promise.resolve(null),
+      claim.claimType === "reimbursement"
+        ? prisma.expenseClaimLine.findMany({
+          where: { expenseClaimId: businessId },
+          orderBy: { sortOrder: "asc" },
+          select: {
+            sortOrder: true,
+            expenseCategory: true,
+            occurredOn: true,
+            purpose: true,
+            receiptCount: true,
+            amountCents: true
+          }
+        })
+        : Promise.resolve([])
+    ]);
+    return {
+      claimType: claim.claimType,
+      projectName: project?.name ?? "",
+      handlerName: claim.handledByNameSnapshot,
+      submittedAt: claim.submittedAt,
+      reason: claim.reason,
+      requestedAmountCents: dbMoneyToBigInt(claim.requestedAmountCents, "费用申请金额"),
+      loanOffsetAmountCents: dbMoneyToBigInt(claim.loanOffsetAmountCents, "费用借款冲销金额"),
+      companyPayableAmountCents: dbMoneyToBigInt(claim.companyPayableAmountCents, "费用公司支付金额"),
+      paymentMethod: claim.paymentMethod,
+      payeeName: claim.payeeNameSnapshot,
+      loanExpectedClearanceAt: claim.loanExpectedClearanceAt,
+      lines: lines.map((line) => ({
+        ...line,
+        amountCents: dbMoneyToBigInt(line.amountCents, "费用明细金额")
+      }))
+    };
   }
 
   // 业务信息栏：按业务类型取关键字段（金额/对方/事由等）。查不到的字段直接略过。

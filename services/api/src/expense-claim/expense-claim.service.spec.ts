@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { ExpenseClaimService } from "./expense-claim.service";
 
-function createHarness(options?: { roles?: string[]; claim?: Record<string, unknown>; approvalAssignments?: Array<{ userId: string; positionId: string; role: string }>; auth?: { confirmPassword: jest.Mock }; files?: { assertFileHasNoBusinessBinding: jest.Mock } }) {
+function createHarness(options?: { roles?: string[]; claim?: Record<string, unknown>; approvalAssignments?: Array<{ userId: string; positionId: string; role: string }>; auth?: { confirmPassword: jest.Mock }; files?: { assertFileHasNoBusinessBinding: jest.Mock }; approvalForms?: { generateForInstance: jest.Mock } }) {
   const approvalAssignments = options?.approvalAssignments ?? [];
   const tx = {
     companyEntity: { findFirst: jest.fn(), findMany: jest.fn() },
@@ -30,7 +30,7 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
   const numbering = { allocateDaily: jest.fn().mockResolvedValue("BX-20260723-001") };
   const audit = { record: jest.fn().mockResolvedValue({}) };
   const visibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
-  const service = new ExpenseClaimService(prisma as never, numbering as never, audit as never, options?.auth as never, visibility as never, options?.files as never);
+  const service = new ExpenseClaimService(prisma as never, numbering as never, audit as never, options?.auth as never, visibility as never, options?.files as never, options?.approvalForms as never);
   return { service, tx, numbering, audit, visibility };
 }
 
@@ -244,7 +244,12 @@ describe("ExpenseClaimService", () => {
       ]
     };
     const { service, tx, audit } = createHarness({ roles: ["comprehensive_director"] });
-    tx.$queryRaw.mockResolvedValueOnce([claim]).mockResolvedValueOnce([instance]);
+    tx.$queryRaw
+      .mockResolvedValueOnce([claim])
+      .mockResolvedValueOnce([instance])
+      .mockResolvedValueOnce([{ id: "comp-1", isActive: true }])
+      .mockResolvedValueOnce([{ id: "signature-1", fileId: "file-1", contentSha256: "a".repeat(64) }])
+      .mockResolvedValueOnce([{ id: "file-1", contentSha256: "a".repeat(64), storageStatus: "active" }]);
     tx.expenseClaim.update.mockResolvedValue({ id: "claim-1", status: "approval_pending" });
 
     await expect(service.review("claim-1", "comp-1", { decision: "approve", comment: "同意" })).resolves.toEqual({ id: "claim-1", status: "approval_pending", completed: false });
@@ -349,12 +354,21 @@ describe("ExpenseClaimService", () => {
   it("posts frozen reservations as immutable offsets at final reimbursement approval without creating company payment", async () => {
     const claim = { id: "claim-r", claimType: "reimbursement", status: "approval_pending", projectId: "project-1", applicantUserId: "user-a", handledByUserId: "user-a", factWitnessUserId: null, requestedAmountCents: 3000n, loanOffsetAmountCents: 3000n, companyPayableAmountCents: 0n };
     const instance = { id: "approval-r", currentNodeIndex: 0, applicantUserId: "user-a", frozenNodes: [{ name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"], candidateUserIds: ["comp-1"], candidateUserIdsByRole: { comprehensive_director: ["comp-1"] } }] };
-    const { service, tx } = createHarness({ roles: ["comprehensive_director"] });
-    tx.$queryRaw.mockResolvedValueOnce([claim]).mockResolvedValueOnce([instance]).mockResolvedValueOnce([{ id: "account-1", offsetAmountCents: 0n, reservedOffsetAmountCents: 3000n, balanceAmountCents: 3000n }]).mockResolvedValueOnce([{ nextSequenceNo: 5n }]);
+    const approvalForms = { generateForInstance: jest.fn().mockResolvedValue({ id: "pdf-1" }) };
+    const { service, tx } = createHarness({ roles: ["comprehensive_director"], approvalForms });
+    tx.$queryRaw
+      .mockResolvedValueOnce([claim])
+      .mockResolvedValueOnce([instance])
+      .mockResolvedValueOnce([{ id: "comp-1", isActive: true }])
+      .mockResolvedValueOnce([{ id: "signature-1", fileId: "file-1", contentSha256: "a".repeat(64) }])
+      .mockResolvedValueOnce([{ id: "file-1", contentSha256: "a".repeat(64), storageStatus: "active" }])
+      .mockResolvedValueOnce([{ id: "account-1", offsetAmountCents: 0n, reservedOffsetAmountCents: 3000n, balanceAmountCents: 3000n }])
+      .mockResolvedValueOnce([{ nextSequenceNo: 5n }]);
     tx.expenseLoanOffsetReservation.findMany.mockResolvedValue([{ id: "reserve-1", loanAccountId: "account-1", amountCents: 3000n }]);
     tx.expenseClaim.update.mockResolvedValue({ id: "claim-r", status: "offset_completed" });
 
     await expect(service.review("claim-r", "comp-1", { decision: "approve" })).resolves.toEqual({ id: "claim-r", status: "offset_completed", completed: true });
+    expect(approvalForms.generateForInstance).toHaveBeenCalledWith("approval-r", "comp-1");
     expect(tx.employeeProjectLoanEntry.create).toHaveBeenCalledWith({ data: expect.objectContaining({ entryType: "offset", sourceExpenseClaimId: "claim-r", sourceReservationId: "reserve-1", amountCents: 3000n, balanceDeltaCents: -3000n }) });
     expect(tx.employeeProjectLoanAccount.update).toHaveBeenCalledWith({ where: { id: "account-1" }, data: { offsetAmountCents: 3000n, reservedOffsetAmountCents: 0n, balanceAmountCents: 0n } });
     expect(tx.expenseLoanOffsetReservation.updateMany).toHaveBeenCalledWith({ where: { id: { in: ["reserve-1"] }, status: "reserved" }, data: expect.objectContaining({ status: "posted" }) });
