@@ -8,6 +8,13 @@ const migration = readFileSync(
   ),
   "utf8"
 );
+const handwrittenSignatureBindingMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260723200000_handwritten_signature_file_binding_guard/migration.sql"
+  ),
+  "utf8"
+);
 const schema = readFileSync(
   join(process.cwd(), "prisma/schema.prisma"),
   "utf8"
@@ -32,7 +39,7 @@ function migrationBindings(): Array<{
   exclusive: boolean;
 }> {
   return Array.from(
-    migration.matchAll(/\('([^']+)', '([^']+)', (TRUE|FALSE)\)/gu),
+    handwrittenSignatureBindingMigration.matchAll(/\('([^']+)', '([^']+)', (TRUE|FALSE)\)/gu),
     (match) => ({
       binding: `${match[1]}.${match[2]}`,
       exclusive: match[3] === "TRUE"
@@ -43,7 +50,7 @@ function migrationBindings(): Array<{
 describe("unified file business binding migration", () => {
   it("registers every current Prisma FileObject reference exactly once", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(54);
+    expect(registered).toHaveLength(55);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
   });
@@ -91,6 +98,20 @@ describe("unified file business binding migration", () => {
     );
     expect(migration).toContain(
       "JOIN pg_proc procedure ON procedure.oid = trigger.tgfoid"
+    );
+  });
+
+  it("registers Canvas signature files with the existing guard before any new signatures are written", () => {
+    expect(handwrittenSignatureBindingMigration).toContain("BEGIN;");
+    expect(handwrittenSignatureBindingMigration.trim()).toMatch(/COMMIT;$/u);
+    expect(handwrittenSignatureBindingMigration).toContain(
+      "('HandwrittenSignatureVersion', 'fileId', FALSE)"
+    );
+    expect(handwrittenSignatureBindingMigration).toContain(
+      'LOCK TABLE "HandwrittenSignatureVersion" IN SHARE ROW EXCLUSIVE MODE'
+    );
+    expect(handwrittenSignatureBindingMigration).toContain(
+      'BEFORE INSERT OR UPDATE OF "fileId" ON "HandwrittenSignatureVersion"'
     );
   });
 

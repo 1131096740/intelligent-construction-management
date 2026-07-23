@@ -391,6 +391,7 @@ const REAL_FORM_FILE_BINDING_TABLES = new Set([
 // governance migrations after the immutable 20260717140000/150000 guards.
 // The final combined manifest is verified by unified-file-business-binding-guard.spec.ts.
 const GOVERNANCE_FILE_BINDING_TABLES = new Set([
+  "HandwrittenSignatureVersion",
   "ContractVersion",
   "ContractTaxFactRevision",
   "ContractFormalFile",
