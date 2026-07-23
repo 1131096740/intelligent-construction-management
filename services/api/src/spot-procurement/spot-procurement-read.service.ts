@@ -43,6 +43,7 @@ import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { PrismaService } from "../database/prisma.service";
 import { InvoiceLedgerService } from "../invoice-ledger/invoice-ledger.service";
 import { SpotProcurementAccessService } from "./spot-procurement-access.service";
+import { executionHasActiveVoucher } from "./spot-payment-voucher";
 import { SpotProcurementInvoiceService } from "./spot-procurement-invoice.service";
 import { SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY } from "./spot-procurement-form-renderer";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
@@ -4213,29 +4214,6 @@ function voucherFact(
   } as const;
 }
 
-function executionHasActiveVoucher(
-  execution: Pick<
-    SpotProcurementPaymentExecution,
-    "id" | "voucherFileId"
-  >,
-  activeVoucherFileIds: ReadonlySet<string>,
-  voucherFilesByExecutionId: ReadonlyMap<
-    string,
-    Array<{ fileId: string }>
-  >
-) {
-  const associatedVouchers =
-    voucherFilesByExecutionId.get(execution.id) ?? [];
-  if (associatedVouchers.length) {
-    return associatedVouchers.some((voucher) =>
-      activeVoucherFileIds.has(voucher.fileId)
-    );
-  }
-  return Boolean(
-    execution.voucherFileId &&
-      activeVoucherFileIds.has(execution.voucherFileId)
-  );
-}
 
 function paymentPathLabel(value: string | null) {
   if (value === "supplier_direct") return "公司直付供应商";

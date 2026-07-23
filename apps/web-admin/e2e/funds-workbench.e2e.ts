@@ -33,6 +33,9 @@ test("统一资金办理工作台只读取服务端聚合并按视图和来源�
   await page.getByRole("textbox", { name: "视图" }).click();
   await page.getByRole("listitem", { name: "待退款处理", exact: true }).click();
   await expect.poll(() => requests).toContain("/api/funds-workbench?view=pending_refund&source=expense_reimbursement");
+  await page.getByRole("textbox", { name: "视图" }).click();
+  await page.getByRole("listitem", { name: "待补票据", exact: true }).click();
+  await expect.poll(() => requests).toContain("/api/funds-workbench?view=pending_evidence&source=expense_reimbursement");
 });
 
 async function mockFundsSession(page: Page, requests: string[]) {
@@ -65,20 +68,20 @@ async function mockFundsSession(page: Page, requests: string[]) {
     return route.fulfill({ contentType: "application/json", body: JSON.stringify({
       view: url.searchParams.get("view") ?? "all",
       source: url.searchParams.get("source") ?? "all",
-      viewCounts: { all: 2, in_progress: 0, pending_funds: 2, partial_payment: 0, pending_refund: 0, completed: 0 },
+      viewCounts: { all: 2, in_progress: 0, pending_funds: 2, partial_payment: 0, pending_refund: 0, pending_evidence: 0, completed: 0 },
       sourceCounts: { contract_payment: 1, spot_procurement_payment: 0, expense_reimbursement: 1, loan_disbursement: 0 },
       items: [
         {
           id: "expense-1", code: "BX-20260723-001", source: "expense_reimbursement",
           project: null, sourceDocument: "费用报销补付", reason: "现场交通", payeeName: "张三", payerName: "建工智管有限公司",
           requestedAmountCents: "100000", paidAmountCents: "0", remainingAmountCents: "100000",
-          status: "approved_pending_payment", statusLabel: "已批待付", pendingRefund: false, updatedAt: "2026-07-23T10:00:00.000Z"
+          status: "approved_pending_payment", statusLabel: "已批待付", pendingRefund: false, pendingEvidence: false, updatedAt: "2026-07-23T10:00:00.000Z"
         },
         {
           id: "payment-1", code: "FK-20260723-001", source: "contract_payment",
           project: { id: "project-1", code: "JG-001", name: "科技园" }, sourceDocument: "合同结算付款", reason: "合同付款申请", payeeName: null, payerName: null,
           requestedAmountCents: "200000", paidAmountCents: "0", remainingAmountCents: "200000",
-          status: "approved_pending_payment", statusLabel: "已批待付", pendingRefund: false, updatedAt: "2026-07-23T09:00:00.000Z"
+          status: "approved_pending_payment", statusLabel: "已批待付", pendingRefund: false, pendingEvidence: false, updatedAt: "2026-07-23T09:00:00.000Z"
         }
       ]
     }) });
