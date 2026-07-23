@@ -29,6 +29,10 @@ describe("coreFlowApiVerificationTargets", () => {
     expect(verifier).toContain('settlementTemplateVersionId,');
     expect(verifier).toContain('sourceType: "manual_adjustment"');
     expect(verifier).toContain('reason: "本期现场签认"');
+    expect(verifier).toContain('fieldReviewerUserId: "seed-user-material-staff"');
+    expect(verifier).toContain('frozen-document');
+    expect(verifier).toContain('counterparty-signed-documents');
+    expect(verifier).toContain('approval-submission');
   });
 });
 

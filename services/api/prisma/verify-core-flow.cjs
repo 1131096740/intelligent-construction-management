@@ -140,6 +140,37 @@ async function uploadPrivateFile(fileName, token) {
   return response.json();
 }
 
+async function copyFrozenDocumentAsCounterpartySignedScan(frozenFileId, fileName, token) {
+  const ticket = await postJson(
+    `/files/${frozenFileId}/download-ticket`,
+    {
+      confirmationPassword: PASSWORD,
+      downloadReason: "一期闭环验证乙方签章扫描件归档",
+      accessMode: "download"
+    },
+    token
+  );
+  const download = await fetch(`${baseUrl}${ticket.downloadUrl}`);
+  if (!download.ok) {
+    throw new Error(`frozen settlement document download returned HTTP ${download.status}`);
+  }
+  const form = new FormData();
+  form.append(
+    "file",
+    new Blob([await download.arrayBuffer()], { type: "application/pdf" }),
+    fileName
+  );
+  const upload = await fetch(`${baseUrl}/files`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: form
+  });
+  if (!upload.ok) {
+    throw new Error(`counterparty signed scan upload returned HTTP ${upload.status}: ${await upload.text()}`);
+  }
+  return upload.json();
+}
+
 function assertEqual(actual, expected, label) {
   if (actual !== expected) {
     throw new Error(`${label}: expected ${expected}, received ${actual}`);
@@ -451,16 +482,17 @@ async function verifyPhase1WriteLoop(tokens) {
   );
   assertEqual(contractVersion.status, "effective", "contract archive confirmation");
 
-  // 结算：创建 → 材料类审批流(物资员 → 物资主管 → 合同部主管 → 项目经理 → 财务总监)
+  // 结算：工作台草稿 → 现场复核人 → 冻结结算单 → 乙方签章件 → 材料类审批流(物资员 → 物资主管 → 合同部主管 → 项目经理 → 财务总监)
   // → 归档上传(合同部) → 归档确认(合同部主管) → 生效
-  let settlement = await postJson(
-    "/settlements",
+  const settlementDraft = await postJson(
+    `/projects/${coreFlowSeedData.project.id}/settlement-drafts`,
     {
       contractVersionId,
       settlementTemplateVersionId,
       code: `JS-P1-${codeSuffix}`,
       periodLabel: "2026-06",
-      amountCents: settlementAmountCents,
+      fieldReviewerUserId: "seed-user-material-staff",
+      fieldReviewerRoleKey: "material_staff",
       settlementLines: [
         {
           sourceType: "manual_adjustment",
@@ -470,6 +502,36 @@ async function verifyPhase1WriteLoop(tokens) {
         }
       ]
     },
+    tokens.contractStaff
+  );
+  const frozenSettlementDocument = await postJson(
+    `/projects/${coreFlowSeedData.project.id}/settlement-drafts/${settlementDraft.id}/frozen-document`,
+    { expectedRevision: settlementDraft.revision },
+    tokens.contractStaff
+  );
+  const counterpartySignedScan = await copyFrozenDocumentAsCounterpartySignedScan(
+    frozenSettlementDocument.fileId,
+    `JS-P1-${codeSuffix}-counterparty-signed.pdf`,
+    tokens.contractStaff
+  );
+  await postJson(
+    `/projects/${coreFlowSeedData.project.id}/settlement-drafts/${settlementDraft.id}/counterparty-signed-documents`,
+    {
+      expectedRevision: settlementDraft.revision,
+      frozenDocumentId: frozenSettlementDocument.id,
+      uploadedFileId: counterpartySignedScan.id,
+      declaration: {
+        pageOrderMatchesFrozenDocument: true,
+        counterpartySignedAndDated: true,
+        everyPageStamped: true,
+        crossPageSealCompleted: true
+      }
+    },
+    tokens.contractStaff
+  );
+  let settlement = await postJson(
+    `/projects/${coreFlowSeedData.project.id}/settlement-drafts/${settlementDraft.id}/approval-submission`,
+    { expectedRevision: settlementDraft.revision },
     tokens.contractStaff
   );
   assertEqual(settlement.status, "approval_pending", "settlement creation");
