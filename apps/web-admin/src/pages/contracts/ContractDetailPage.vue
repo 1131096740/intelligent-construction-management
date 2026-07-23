@@ -1,6 +1,6 @@
 <template>
   <section class="contract-detail-page">
-    <BusinessDetailHeader
+    <JgPageHeader
       :business-code="contractDetailHeaderView.businessCode"
       :title="contractDetailHeaderView.title"
       :status="contractDetailHeaderView.status"
@@ -40,7 +40,7 @@
           审计记录
         </t-button>
       </template>
-    </BusinessDetailHeader>
+    </JgPageHeader>
 
     <t-alert
       v-if="changeEligibility && !changeEligibility.eligible"
@@ -92,19 +92,10 @@
     />
 
     <template v-if="contractDetail">
-      <nav
-        class="detail-navigation"
-        aria-label="合同详情分区"
-      >
-        <t-tabs v-model="activeTab">
-          <t-tab-panel
-            v-for="tab in contractDetailTabs"
-            :key="tab.value"
-            :value="tab.value"
-            :label="tab.label"
-          />
-        </t-tabs>
-      </nav>
+      <JgDetailTabs
+        v-model="activeTab"
+        :tabs="contractDetailTabs"
+      />
 
       <section
         v-if="activeTab === 'overview'"
@@ -208,7 +199,7 @@
             </div>
           </header>
 
-          <BusinessActionPanel :actions="contractDetail.availableActions" />
+          <JgTaskCard :actions="contractDetail.availableActions" />
 
           <t-alert
             v-if="contractDetail.disabledReasons.length"
@@ -751,7 +742,7 @@
               <p>文件下载继续经过权限校验、当前密码、短时效链接和审计记录。</p>
             </div>
           </header>
-          <EvidenceFileCards :files="contractEvidenceFilesView" />
+          <JgAttachmentPanel :files="contractEvidenceFilesView" />
           <EmptyBusinessState
             v-if="!contractEvidenceFilesView.length"
             title="暂无归档资料"
@@ -917,7 +908,7 @@
               <p>按发生顺序保留审批节点、处理人和意见。</p>
             </div>
           </header>
-          <ApprovalTimeline :items="contractApprovalTimelineView" />
+          <JgApprovalTimeline :items="contractApprovalTimelineView" />
           <EmptyBusinessState
             v-if="!contractApprovalTimelineView.length"
             title="暂无审批记录"
@@ -1031,12 +1022,13 @@ import {
   withdrawContractApproval
 } from "../../api/core-flow-read.api";
 import { useAuthStore } from "../../auth/auth.store";
-import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
-import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
-import BusinessDetailHeader from "../../components/BusinessDetailHeader.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
-import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
+import JgApprovalTimeline from "../../components/JgApprovalTimeline.vue";
+import JgAttachmentPanel from "../../components/JgAttachmentPanel.vue";
+import JgDetailTabs from "../../components/JgDetailTabs.vue";
+import JgPageHeader from "../../components/JgPageHeader.vue";
+import JgTaskCard from "../../components/JgTaskCard.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
 import {

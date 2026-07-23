@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { BusinessSummaryTone } from "./business-status-summary.config";
+import JgStatusTag from "./JgStatusTag.vue";
 
 const props = withDefaults(defineProps<{
   businessCode: string;
@@ -48,12 +49,11 @@ const visibleFacts = computed(() => [
           <div>
             <h1>{{ title }}</h1>
           </div>
-          <t-tag
-            :theme="statusTone ?? 'default'"
-            variant="light"
-          >
-            {{ status }}
-          </t-tag>
+          <JgStatusTag
+            :label="status"
+            :tone="statusTone"
+            size="medium"
+          />
         </div>
         <dl class="business-detail-header__facts">
           <div

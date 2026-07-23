@@ -45,7 +45,11 @@ describe("contract detail page configuration", () => {
 
   it("uses the standard detail structure without native sensitive controls", () => {
     const source = readFileSync(new URL("./ContractDetailPage.vue", import.meta.url), "utf8");
-    expect(source).toContain("<BusinessDetailHeader");
+    expect(source).toContain("<JgPageHeader");
+    expect(source).toContain("<JgTaskCard");
+    expect(source).toContain("<JgDetailTabs");
+    expect(source).toContain("<JgApprovalTimeline");
+    expect(source).toContain("<JgAttachmentPanel");
     expect(source).toContain("<BusinessFeedback");
     expect(source).toContain("<SensitiveActionDialog");
     expect(source).toContain("<t-upload");
