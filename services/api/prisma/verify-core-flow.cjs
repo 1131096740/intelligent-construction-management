@@ -776,7 +776,7 @@ async function verifyPhase1WriteLoop(tokens) {
     "contract.archive.upload",
     "contract.archive.confirm",
     "settlement.approval.approve",
-    "settlement.archive.upload",
+    "settlement.signed_document.generated",
     "settlement.archive.confirm",
     "payment.approval.approve",
     "payment.execution.record",

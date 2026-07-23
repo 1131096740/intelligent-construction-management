@@ -44,6 +44,7 @@ describe("coreFlowApiVerificationTargets", () => {
     expect(verifier).toContain('responseBody.includes("付款申请金额")');
     expect(verifier).toContain('["comprehensiveDirector", tokens.comprehensiveDirector]');
     expect(verifier).not.toContain('["contractDirector", tokens.contractDirector]');
+    expect(verifier).toContain('"settlement.signed_document.generated"');
   });
 });
 
