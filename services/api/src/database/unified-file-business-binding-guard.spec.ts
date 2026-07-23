@@ -15,6 +15,13 @@ const handwrittenSignatureBindingMigration = readFileSync(
   ),
   "utf8"
 );
+const employeeLoanRepaymentBindingMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260723211000_employee_loan_repayment_file_binding_guard/migration.sql"
+  ),
+  "utf8"
+);
 const schema = readFileSync(
   join(process.cwd(), "prisma/schema.prisma"),
   "utf8"
@@ -39,7 +46,7 @@ function migrationBindings(): Array<{
   exclusive: boolean;
 }> {
   return Array.from(
-    handwrittenSignatureBindingMigration.matchAll(/\('([^']+)', '([^']+)', (TRUE|FALSE)\)/gu),
+    employeeLoanRepaymentBindingMigration.matchAll(/\('([^']+)', '([^']+)', (TRUE|FALSE)\)/gu),
     (match) => ({
       binding: `${match[1]}.${match[2]}`,
       exclusive: match[3] === "TRUE"
@@ -50,7 +57,7 @@ function migrationBindings(): Array<{
 describe("unified file business binding migration", () => {
   it("registers every current Prisma FileObject reference exactly once", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(55);
+    expect(registered).toHaveLength(56);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
   });
@@ -112,6 +119,20 @@ describe("unified file business binding migration", () => {
     );
     expect(handwrittenSignatureBindingMigration).toContain(
       'BEFORE INSERT OR UPDATE OF "fileId" ON "HandwrittenSignatureVersion"'
+    );
+  });
+
+  it("registers employee repayment vouchers before the repayment workflow can write them", () => {
+    expect(employeeLoanRepaymentBindingMigration).toContain("BEGIN;");
+    expect(employeeLoanRepaymentBindingMigration.trim()).toMatch(/COMMIT;$/u);
+    expect(employeeLoanRepaymentBindingMigration).toContain(
+      "('EmployeeLoanRepayment', 'voucherFileId', FALSE)"
+    );
+    expect(employeeLoanRepaymentBindingMigration).toContain(
+      'LOCK TABLE "EmployeeLoanRepayment" IN SHARE ROW EXCLUSIVE MODE'
+    );
+    expect(employeeLoanRepaymentBindingMigration).toContain(
+      'BEFORE INSERT OR UPDATE OF "voucherFileId" ON "EmployeeLoanRepayment"'
     );
   });
 

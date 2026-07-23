@@ -1657,6 +1657,155 @@ model ProjectExpenseFinancingQuotaUsage {
   @@index([projectId])
 }
 
+// 新费用与报销域与旧 ProjectExpenseRequest 严格隔离。旧表继续只读承载历史
+// 项目支出事实；新报销、借款、冲销和还款只写入以下账本模型。
+model ExpenseClaim {
+  id                        String    @id @default(uuid())
+  code                      String    @unique
+  claimType                 String
+  status                    String
+  companyEntityId           String
+  companyEntityNameSnapshot String
+  projectId                 String?
+  applicantUserId           String?
+  applicantNameSnapshot     String
+  applicantPhoneSnapshot    String?
+  handledByUserId           String
+  handledByNameSnapshot     String
+  proxyReason               String?
+  reason                    String
+  requestedAmountCents      BigInt
+  loanOffsetAmountCents     BigInt    @default(0)
+  companyPayableAmountCents BigInt    @default(0)
+  paymentSubject            String?
+  paymentMethod             String?
+  payeeNameSnapshot         String?
+  payeeAccountNameSnapshot  String?
+  payeeBankNameSnapshot     String?
+  payeeBankAccountSnapshot  String?
+  loanExpectedClearanceAt   DateTime?
+  approvalInstanceId        String?   @unique
+  submittedAt               DateTime?
+  approvedAt                DateTime?
+  voidedAt                  DateTime?
+  voidedByUserId            String?
+  voidReason                String?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  @@index([claimType, status, updatedAt])
+  @@index([projectId, status])
+  @@index([applicantUserId, status])
+  @@index([companyEntityId, status])
+}
+
+model ExpenseClaimLine {
+  id               String   @id @default(uuid())
+  expenseClaimId   String
+  sortOrder        Int
+  expenseCategory  String
+  occurredOn       DateTime
+  purpose          String
+  receiptCount     Int
+  amountCents      BigInt
+  evidenceType     String
+  noEvidenceReason String?
+  remark           String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([expenseClaimId, sortOrder])
+  @@index([expenseClaimId])
+}
+
+// 余额是不可变 EmployeeProjectLoanEntry 的受锁投影，只允许服务端在追加分录时更新。
+model EmployeeProjectLoanAccount {
+  id                        String   @id @default(uuid())
+  userId                    String
+  projectId                 String?
+  companyEntityId           String
+  scopeKey                  String
+  fundedAmountCents         BigInt   @default(0)
+  offsetAmountCents         BigInt   @default(0)
+  repaidAmountCents         BigInt   @default(0)
+  reservedOffsetAmountCents BigInt   @default(0)
+  balanceAmountCents        BigInt   @default(0)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@unique([userId, scopeKey])
+  @@index([projectId, userId])
+  @@index([companyEntityId, userId])
+}
+
+model EmployeeProjectLoanEntry {
+  id                   String   @id @default(uuid())
+  loanAccountId        String
+  sequenceNo           BigInt
+  entryType            String
+  amountCents          BigInt
+  balanceDeltaCents    BigInt
+  sourceExpenseClaimId String?
+  sourceRepaymentId    String?
+  sourceReservationId  String?
+  reversalOfEntryId    String?
+  occurredAt           DateTime
+  createdByUserId      String
+  note                 String?
+  createdAt            DateTime @default(now())
+
+  @@unique([loanAccountId, sequenceNo])
+  @@index([loanAccountId, occurredAt])
+  @@index([sourceExpenseClaimId])
+  @@index([sourceRepaymentId])
+  @@index([sourceReservationId])
+  @@index([reversalOfEntryId])
+}
+
+model ExpenseLoanOffsetReservation {
+  id               String    @id @default(uuid())
+  expenseClaimId   String
+  loanAccountId    String
+  loanEntryId      String?
+  amountCents      BigInt
+  status           String
+  sequenceNo       Int
+  reservedAt       DateTime  @default(now())
+  releasedAt       DateTime?
+  postedAt         DateTime?
+  adjustedByUserId String?
+  adjustmentReason String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([expenseClaimId, sequenceNo])
+  @@index([loanAccountId, status])
+  @@index([expenseClaimId, status])
+  @@index([loanEntryId])
+}
+
+model EmployeeLoanRepayment {
+  id                String    @id @default(uuid())
+  loanAccountId     String
+  amountCents       BigInt
+  repaidAt          DateTime
+  paymentMethod     String
+  voucherFileId     String?
+  status            String
+  recordedByUserId  String
+  confirmedByUserId String?
+  confirmedAt       DateTime?
+  confirmationNote  String?
+  reversedAt        DateTime?
+  reversedByUserId  String?
+  reversalReason    String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([loanAccountId, status])
+  @@index([voucherFileId])
+}
+
 model ProjectReceipt {
   id               String    @id @default(uuid())
   projectId        String
