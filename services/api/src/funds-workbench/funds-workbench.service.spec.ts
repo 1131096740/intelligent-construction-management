@@ -8,6 +8,7 @@ describe("FundsWorkbenchService", () => {
     project: { findMany },
     paymentRequest: { findMany },
     spotProcurementPayment: { findMany },
+    spotProcurementDiscrepancy: { findMany },
     expenseClaim: { findMany }
   };
   const service = new FundsWorkbenchService(prisma as never, projectVisibility as never);
@@ -24,13 +25,14 @@ describe("FundsWorkbenchService", () => {
         { id: "payment-1", code: "FK-001", projectId: "project-1", settlementId: "settlement-1", sourceType: "settlement", status: "approved_pending_payment", requestedAmountCents: 10000n, paidAmountCents: 0n, updatedAt: new Date("2026-07-23T10:00:00.000Z") }
       ])
       .mockResolvedValueOnce([
-        { id: "spot-1", code: "LS-001", projectId: "project-1", procurementId: "procurement-1", status: "partially_paid", companyPaymentAmountCents: 5000n, paidAmountCents: 1000n, paymentNote: "水泥", payeeNameSnapshot: "供应商", payerCompanyNameSnapshot: "建工", updatedAt: new Date("2026-07-23T11:00:00.000Z") }
+        { id: "spot-1", code: "LS-001", projectId: "project-1", procurementId: "procurement-1", procurementVersionId: "version-1", status: "partially_paid", createdAt: new Date("2026-07-23T09:00:00.000Z"), companyPaymentAmountCents: 5000n, paidAmountCents: 1000n, paymentNote: "水泥", payeeNameSnapshot: "供应商", payerCompanyNameSnapshot: "建工", updatedAt: new Date("2026-07-23T11:00:00.000Z") }
       ])
       .mockResolvedValueOnce([
         { id: "expense-1", code: "BX-001", claimType: "reimbursement", status: "approved_pending_payment", projectId: null, reason: "差旅", companyEntityNameSnapshot: "建工", paymentSubjectNameSnapshot: "集团资金公司", payeeNameSnapshot: "张三", requestedAmountCents: 12000n, companyPayableAmountCents: 8000n, fundedAmountCents: 0n, updatedAt: new Date("2026-07-23T12:00:00.000Z") },
         { id: "loan-1", code: "JK-001", claimType: "loan", status: "disbursed", projectId: "project-1", reason: "现场周转", companyEntityNameSnapshot: "建工", paymentSubjectNameSnapshot: null, payeeNameSnapshot: "李四", requestedAmountCents: 3000n, companyPayableAmountCents: 0n, fundedAmountCents: 3000n, updatedAt: new Date("2026-07-23T13:00:00.000Z") },
         { id: "draft-1", code: "BX-DRAFT", claimType: "reimbursement", status: "draft", projectId: "project-1", reason: "草稿", companyEntityNameSnapshot: "建工", paymentSubjectNameSnapshot: null, payeeNameSnapshot: null, requestedAmountCents: 100n, companyPayableAmountCents: 100n, fundedAmountCents: 0n, updatedAt: new Date("2026-07-23T14:00:00.000Z") }
-      ]);
+      ])
+      .mockResolvedValueOnce([]);
 
     const result = await service.list("finance-1", { view: "all" });
 
@@ -59,7 +61,8 @@ describe("FundsWorkbenchService", () => {
       .mockResolvedValueOnce([
         { id: "expense-1", code: "BX-001", claimType: "reimbursement", status: "approved_pending_payment", projectId: null, reason: "差旅", companyEntityNameSnapshot: "建工", paymentSubjectNameSnapshot: null, payeeNameSnapshot: "张三", requestedAmountCents: 12000n, companyPayableAmountCents: 8000n, fundedAmountCents: 0n, updatedAt: new Date("2026-07-23T12:00:00.000Z") },
         { id: "loan-1", code: "JK-001", claimType: "loan", status: "disbursed", projectId: null, reason: "现场周转", companyEntityNameSnapshot: "建工", paymentSubjectNameSnapshot: null, payeeNameSnapshot: "李四", requestedAmountCents: 3000n, companyPayableAmountCents: 0n, fundedAmountCents: 3000n, updatedAt: new Date("2026-07-23T13:00:00.000Z") }
-      ]);
+      ])
+      .mockResolvedValueOnce([]);
 
     await expect(service.list("finance-1", { view: "pending_funds", source: "expense_reimbursement" })).resolves.toMatchObject({
       items: [expect.objectContaining({ code: "BX-001" })]
@@ -73,13 +76,31 @@ describe("FundsWorkbenchService", () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
-        { id: "spot-1", code: "LS-001", projectId: "project-1", procurementId: "procurement-1", status: "partially_paid", companyPaymentAmountCents: 5000n, paidAmountCents: 1000n, paymentNote: "水泥", payeeNameSnapshot: "供应商", payerCompanyNameSnapshot: "建工", updatedAt: new Date("2026-07-23T11:00:00.000Z") }
+        { id: "spot-1", code: "LS-001", projectId: "project-1", procurementId: "procurement-1", procurementVersionId: "version-1", status: "partially_paid", createdAt: new Date("2026-07-23T09:00:00.000Z"), companyPaymentAmountCents: 5000n, paidAmountCents: 1000n, paymentNote: "水泥", payeeNameSnapshot: "供应商", payerCompanyNameSnapshot: "建工", updatedAt: new Date("2026-07-23T11:00:00.000Z") }
       ])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
 
     await expect(service.list("finance-1", { view: "partial_payment" })).resolves.toMatchObject({
       items: [expect.objectContaining({ code: "LS-001", statusLabel: "部分支付", remainingAmountCents: "4000" })],
       viewCounts: expect.objectContaining({ partial_payment: 1, completed: 0 })
+    });
+  });
+
+  it("projects only the refund owner into pending refund and excludes it from completed", async () => {
+    findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { id: "spot-paid", code: "LS-PAID", projectId: "project-1", procurementId: "procurement-1", procurementVersionId: "version-1", status: "paid", createdAt: new Date("2026-07-23T09:00:00.000Z"), companyPaymentAmountCents: 5000n, paidAmountCents: 5000n, paymentNote: "水泥", payeeNameSnapshot: "供应商", payerCompanyNameSnapshot: "建工", updatedAt: new Date("2026-07-23T11:00:00.000Z") },
+        { id: "spot-voided", code: "LS-VOID", projectId: "project-1", procurementId: "procurement-1", procurementVersionId: "version-1", status: "voided", createdAt: new Date("2026-07-23T10:00:00.000Z"), companyPaymentAmountCents: 5000n, paidAmountCents: 0n, paymentNote: "水泥", payeeNameSnapshot: "供应商", payerCompanyNameSnapshot: "建工", updatedAt: new Date("2026-07-23T12:00:00.000Z") }
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ procurementId: "procurement-1", procurementVersionId: "version-1" }]);
+
+    await expect(service.list("finance-1", { view: "pending_refund" })).resolves.toMatchObject({
+      items: [expect.objectContaining({ id: "spot-paid", statusLabel: "待退款处理" })],
+      viewCounts: expect.objectContaining({ pending_refund: 1, completed: 0 })
     });
   });
 });

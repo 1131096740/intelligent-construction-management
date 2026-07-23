@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { PrismaService } from "../database/prisma.service";
 import { moneyCentsToApi } from "../money/decimal-money";
+import { spotPaymentRefundOwnerId } from "../spot-procurement/spot-payment-refund-owner";
 
 const FUND_SOURCES = [
   "contract_payment",
@@ -10,7 +11,7 @@ const FUND_SOURCES = [
   "loan_disbursement"
 ] as const;
 
-const FUND_VIEWS = ["all", "in_progress", "pending_funds", "partial_payment", "completed"] as const;
+const FUND_VIEWS = ["all", "in_progress", "pending_funds", "partial_payment", "pending_refund", "completed"] as const;
 
 type FundSource = (typeof FUND_SOURCES)[number];
 type FundView = (typeof FUND_VIEWS)[number];
@@ -29,6 +30,7 @@ type FundRow = {
   remainingAmountCents: string;
   status: string;
   statusLabel: string;
+  pendingRefund: boolean;
   updatedAt: string;
 };
 
@@ -59,7 +61,7 @@ export class FundsWorkbenchService {
       this.prisma.spotProcurementPayment.findMany({
         where: projectWhere,
         select: {
-          id: true, code: true, projectId: true, procurementId: true, status: true,
+          id: true, code: true, projectId: true, procurementId: true, procurementVersionId: true, status: true, createdAt: true,
           companyPaymentAmountCents: true, paidAmountCents: true, paymentNote: true,
           payeeNameSnapshot: true, payerCompanyNameSnapshot: true, updatedAt: true
         }
@@ -76,10 +78,27 @@ export class FundsWorkbenchService {
         }
       })
     ]);
+    const awaitingRefundDiscrepancies = spotPayments.length
+      ? await this.prisma.spotProcurementDiscrepancy.findMany({
+          where: {
+            projectId: { in: visibleProjectIds },
+            status: "awaiting_refund",
+            resolutionType: "full_refund",
+            invalidatedAt: null,
+            procurementVersionId: { in: [...new Set(spotPayments.map((payment) => payment.procurementVersionId))] }
+          },
+          select: { procurementId: true, procurementVersionId: true }
+        })
+      : [];
+    const pendingRefundSpotPaymentIds = new Set(
+      awaitingRefundDiscrepancies
+        .map((discrepancy) => spotPaymentRefundOwnerId(discrepancy, spotPayments))
+        .filter((paymentId): paymentId is string => Boolean(paymentId))
+    );
     const projectById = new Map(projects.map((project) => [project.id, project]));
     const rows: FundRow[] = [
       ...payments.map((payment) => this.contractPaymentRow(payment, projectById)),
-      ...spotPayments.map((payment) => this.spotPaymentRow(payment, projectById)),
+      ...spotPayments.map((payment) => this.spotPaymentRow(payment, projectById, pendingRefundSpotPaymentIds.has(payment.id))),
       ...expenses.flatMap((expense) => this.expenseRows(expense, projectById))
     ];
     const formalRows = rows.filter((row) => this.isFormal(row));
@@ -122,10 +141,10 @@ export class FundsWorkbenchService {
   }
 
   private spotPaymentRow(payment: {
-    id: string; code: string; projectId: string; procurementId: string; status: string;
+    id: string; code: string; projectId: string; procurementId: string; procurementVersionId: string; status: string; createdAt: Date;
     companyPaymentAmountCents: bigint; paidAmountCents: bigint; paymentNote: string | null;
     payeeNameSnapshot: string | null; payerCompanyNameSnapshot: string | null; updatedAt: Date;
-  }, projectById: Map<string, { id: string; code: string; name: string }>): FundRow {
+  }, projectById: Map<string, { id: string; code: string; name: string }>, pendingRefund: boolean): FundRow {
     return this.row({
       id: payment.id,
       code: payment.code,
@@ -138,6 +157,7 @@ export class FundsWorkbenchService {
       requested: payment.companyPaymentAmountCents,
       paid: payment.paidAmountCents,
       status: payment.status,
+      pendingRefund,
       updatedAt: payment.updatedAt
     });
   }
@@ -186,7 +206,7 @@ export class FundsWorkbenchService {
   private row(input: {
     id: string; code: string; source: FundSource; project: { id: string; code: string; name: string } | null;
     sourceDocument: string; reason: string; payeeName: string | null; payerName: string | null;
-    requested: bigint; paid: bigint; status: string; updatedAt: Date;
+    requested: bigint; paid: bigint; status: string; pendingRefund?: boolean; updatedAt: Date;
   }): FundRow {
     const remaining = input.requested > input.paid ? input.requested - input.paid : 0n;
     return {
@@ -202,7 +222,8 @@ export class FundsWorkbenchService {
       paidAmountCents: moneyCentsToApi(input.paid),
       remainingAmountCents: moneyCentsToApi(remaining),
       status: input.status,
-      statusLabel: this.statusLabel(input.status, remaining),
+      statusLabel: this.statusLabel(input.status, remaining, input.pendingRefund ?? false),
+      pendingRefund: input.pendingRefund ?? false,
       updatedAt: input.updatedAt.toISOString()
     };
   }
@@ -214,12 +235,14 @@ export class FundsWorkbenchService {
   private inView(row: FundRow, view: FundView) {
     if (view === "all") return true;
     if (view === "in_progress") return row.status === "approval_pending";
-    if (view === "pending_funds") return row.remainingAmountCents !== "0" && ["approved_pending_payment", "approved_pending_disbursement", "partially_disbursed", "partially_paid"].includes(row.status);
-    if (view === "partial_payment") return ["partially_paid", "partially_disbursed"].includes(row.status);
-    return row.remainingAmountCents === "0" && ["paid", "settled", "disbursed", "offset_completed"].includes(row.status);
+    if (view === "pending_funds") return !row.pendingRefund && row.remainingAmountCents !== "0" && ["approved_pending_payment", "approved_pending_disbursement", "partially_disbursed", "partially_paid"].includes(row.status);
+    if (view === "partial_payment") return !row.pendingRefund && ["partially_paid", "partially_disbursed"].includes(row.status);
+    if (view === "pending_refund") return row.pendingRefund;
+    return !row.pendingRefund && row.remainingAmountCents === "0" && ["paid", "settled", "disbursed", "offset_completed"].includes(row.status);
   }
 
-  private statusLabel(status: string, remaining: bigint) {
+  private statusLabel(status: string, remaining: bigint, pendingRefund: boolean) {
+    if (pendingRefund) return "待退款处理";
     if (status === "approval_pending") return "审批中";
     if (remaining === 0n && ["paid", "settled", "disbursed", "offset_completed"].includes(status)) return "已完成";
     if (["partially_paid", "partially_disbursed"].includes(status)) return "部分支付";

@@ -1,7 +1,7 @@
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 
-export type FundsWorkbenchView = "all" | "in_progress" | "pending_funds" | "partial_payment" | "completed";
+export type FundsWorkbenchView = "all" | "in_progress" | "pending_funds" | "partial_payment" | "pending_refund" | "completed";
 export type FundsWorkbenchSource = "all" | "contract_payment" | "spot_procurement_payment" | "expense_reimbursement" | "loan_disbursement";
 
 export interface FundsWorkbenchItem {
@@ -18,6 +18,7 @@ export interface FundsWorkbenchItem {
   remainingAmountCents: string;
   status: string;
   statusLabel: string;
+  pendingRefund: boolean;
   updatedAt: string;
 }
 
