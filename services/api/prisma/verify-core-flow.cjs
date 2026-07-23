@@ -411,7 +411,9 @@ async function verifyPhase1WriteLoop(tokens) {
   const firstExecutionCents = "1000000001";
   const secondExecutionCents = "1100000000";
 
-  await configureLocalCanvasSignature(tokens.contractStaff);
+  for (const token of Object.values(tokens)) {
+    await configureLocalCanvasSignature(token);
+  }
 
   const beforeReceiptOverview = await readJson(
     `/projects/${coreFlowSeedData.project.id}/operating-funds-overview`,
