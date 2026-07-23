@@ -43,6 +43,7 @@ describe("coreFlowApiVerificationTargets", () => {
     expect(verifier).not.toContain('/payments/contract-application');
     expect(verifier).toContain('responseBody.includes("付款申请金额")');
     expect(verifier).toContain('["comprehensiveDirector", tokens.comprehensiveDirector]');
+    expect(verifier).not.toContain('["contractDirector", tokens.contractDirector]');
   });
 });
 
