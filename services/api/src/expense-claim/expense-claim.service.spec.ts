@@ -25,7 +25,7 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
     auditLog: { create: jest.fn().mockResolvedValue({}) },
     $queryRaw: jest.fn().mockResolvedValue(options?.claim ? [options.claim] : [])
   };
-  const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)), companyEntity: tx.companyEntity, expenseClaim: tx.expenseClaim, expenseClaimLine: tx.expenseClaimLine, project: tx.project };
+  const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)), companyEntity: tx.companyEntity, expenseClaim: tx.expenseClaim, expenseClaimLine: tx.expenseClaimLine, project: tx.project, user: tx.user, userPosition: tx.userPosition, projectMember: tx.projectMember, position: tx.position };
   const numbering = { allocateDaily: jest.fn().mockResolvedValue("BX-20260723-001") };
   const audit = { record: jest.fn().mockResolvedValue({}) };
   const visibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
@@ -40,7 +40,8 @@ describe("ExpenseClaimService", () => {
     const { service, tx, visibility } = createHarness();
     tx.companyEntity.findMany.mockResolvedValue([{ id: "company-1", name: "建工智管" }]);
     tx.project.findMany.mockResolvedValue([{ id: "project-1", code: "JGXM-001", name: "科技园项目" }]);
-    await expect(service.createOptions("user-a")).resolves.toEqual({ companyEntities: [{ id: "company-1", name: "建工智管" }], projects: [{ id: "project-1", code: "JGXM-001", name: "科技园项目" }] });
+    tx.user.findMany.mockResolvedValue([{ id: "user-a", name: "经办人" }, { id: "user-b", name: "申请人" }]);
+    await expect(service.createOptions("user-a")).resolves.toEqual(expect.objectContaining({ companyEntities: [{ id: "company-1", name: "建工智管" }], projects: [{ id: "project-1", code: "JGXM-001", name: "科技园项目" }], canProxy: false, applicantUsers: [{ id: "user-a", name: "经办人" }], factWitnessUsers: [{ id: "user-a", name: "经办人" }, { id: "user-b", name: "申请人" }] }));
     expect(visibility.visibleProjectIds).toHaveBeenCalledWith("user-a");
     expect(tx.project.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ["project-1"] }, isActive: true } }));
   });

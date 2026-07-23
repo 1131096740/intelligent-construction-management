@@ -41,7 +41,9 @@ export class ExpenseClaimService {
     const visibleProjectIds = this.visibility
       ? await this.visibility.visibleProjectIds(actorUserId)
       : [];
-    const [companyEntities, projects] = await Promise.all([
+    const actorRoles = await this.loadRoleKeys(this.prisma, actorUserId);
+    const canProxy = actorRoles.includes(COMPREHENSIVE_ROLE);
+    const [companyEntities, projects, activeUsers] = await Promise.all([
       this.prisma.companyEntity.findMany({
         where: { isActive: true, dataStatus: "complete" },
         select: { id: true, name: true },
@@ -53,9 +55,21 @@ export class ExpenseClaimService {
           select: { id: true, code: true, name: true },
           orderBy: { code: "asc" }
         })
-        : []
+        : [],
+      this.prisma.user.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" }
+      })
     ]);
-    return { companyEntities, projects };
+    const actor = activeUsers.find((user) => user.id === actorUserId);
+    return {
+      companyEntities,
+      projects,
+      canProxy,
+      applicantUsers: canProxy ? activeUsers : actor ? [actor] : [],
+      factWitnessUsers: activeUsers
+    };
   }
 
   async listMine(actorUserId: string, view?: string) {
