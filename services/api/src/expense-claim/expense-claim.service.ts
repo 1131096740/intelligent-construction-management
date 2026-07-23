@@ -306,6 +306,26 @@ export class ExpenseClaimService {
     ]);
     const fileById = new Map(files.map((file) => [file.id, file]));
     const uploaderNameById = new Map(attachmentUploaders.map((user) => [user.id, user.name]));
+    const loanAccount = claim.claimType === "loan" && claim.applicantUserId && claim.projectId
+      ? await this.prisma.employeeProjectLoanAccount.findUnique({
+        where: { userId_scopeKey: { userId: claim.applicantUserId, scopeKey: `project:${claim.projectId}` } },
+        select: { id: true, fundedAmountCents: true, offsetAmountCents: true, repaidAmountCents: true, reservedOffsetAmountCents: true, balanceAmountCents: true }
+      })
+      : null;
+    const [loanDisbursements, loanRepayments] = loanAccount
+      ? await Promise.all([
+        this.prisma.employeeProjectLoanEntry.findMany({
+          where: { loanAccountId: loanAccount.id, sourceExpenseClaimId: claim.id, entryType: "disbursement" },
+          select: { id: true, amountCents: true, occurredAt: true, paymentMethod: true, voucherFileId: true, note: true },
+          orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }]
+        }),
+        this.prisma.employeeLoanRepayment.findMany({
+          where: { loanAccountId: loanAccount.id },
+          select: { id: true, amountCents: true, repaidAt: true, paymentMethod: true, voucherFileId: true, status: true, confirmationNote: true, reversalReason: true, createdAt: true },
+          orderBy: [{ repaidAt: "desc" }, { createdAt: "desc" }]
+        })
+      ])
+      : [[], []];
     return {
       ...claim,
       project,
@@ -331,6 +351,16 @@ export class ExpenseClaimService {
         canReverseLoanRepayment: claim.claimType === "loan" && roles.includes("finance_director")
       },
       paymentExecutions: paymentExecutions.map((execution) => ({ ...execution, amountCents: moneyCentsToApi(execution.amountCents) })),
+      loanAccount: loanAccount && {
+        ...loanAccount,
+        fundedAmountCents: moneyCentsToApi(loanAccount.fundedAmountCents),
+        offsetAmountCents: moneyCentsToApi(loanAccount.offsetAmountCents),
+        repaidAmountCents: moneyCentsToApi(loanAccount.repaidAmountCents),
+        reservedOffsetAmountCents: moneyCentsToApi(loanAccount.reservedOffsetAmountCents),
+        balanceAmountCents: moneyCentsToApi(loanAccount.balanceAmountCents)
+      },
+      loanDisbursements: loanDisbursements.map((entry) => ({ ...entry, amountCents: moneyCentsToApi(entry.amountCents) })),
+      loanRepayments: loanRepayments.map((repayment) => ({ ...repayment, amountCents: moneyCentsToApi(repayment.amountCents) })),
       finalPaymentPdf,
       lines: lines.map((line) => ({ ...line, amountCents: moneyCentsToApi(line.amountCents) })),
       attachments: attachments.map((attachment) => {

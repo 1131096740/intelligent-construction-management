@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { adjustExpenseClaimPaymentSubject, appendExpenseClaimAttachment, attachExpenseClaimAttachment, createExpenseClaim, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaims, generateExpenseClaimFinalDisbursementPdf, generateExpenseClaimFinalPaymentPdf, recordExpenseClaimPayment, removeExpenseClaimAttachment, reviewExpenseClaim, submitExpenseClaim, type CreateExpenseClaimPayload } from "./expense-claim.api";
+import { adjustExpenseClaimPaymentSubject, appendExpenseClaimAttachment, attachExpenseClaimAttachment, confirmExpenseClaimLoanRepayment, createExpenseClaim, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaims, generateExpenseClaimFinalDisbursementPdf, generateExpenseClaimFinalPaymentPdf, recordExpenseClaimLoanDisbursement, recordExpenseClaimLoanRepayment, recordExpenseClaimPayment, removeExpenseClaimAttachment, reverseExpenseClaimLoanRepayment, reviewExpenseClaim, submitExpenseClaim, type CreateExpenseClaimPayload } from "./expense-claim.api";
 
 vi.mock("./api-fetch", () => ({ apiFetch: vi.fn() }));
 
@@ -135,5 +135,17 @@ describe("expense claim API", () => {
     expect(mockApiFetch).toHaveBeenNthCalledWith(1, "/expense-claims/claim%2F1/payments", expect.objectContaining({ method: "POST" }));
     expect(mockApiFetch).toHaveBeenNthCalledWith(2, "/expense-claims/claim%2F1/final-payment-pdf", { method: "POST" });
     expect(mockApiFetch).toHaveBeenNthCalledWith(3, "/expense-claims/claim%2F1/final-disbursement-pdf", { method: "POST" });
+  });
+
+  it("uses encoded source-only routes for loan disbursement, repayment confirmation and reversal", async () => {
+    mockApiFetch.mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ id: "entry-1", status: "recorded", amountCents: "1200" }), { status: 201 })));
+    await recordExpenseClaimLoanDisbursement("claim/1", { amountCents: "1200", paidAt: "2026-07-24", paymentMethod: "银行转账", voucherFileId: "file-1", confirmationPassword: "current-password" });
+    await recordExpenseClaimLoanRepayment("claim/1", { amountCents: "1200", repaidAt: "2026-07-24", paymentMethod: "现金", confirmationPassword: "current-password" });
+    await confirmExpenseClaimLoanRepayment("claim/1", "repayment/1", { confirmationPassword: "current-password" });
+    await reverseExpenseClaimLoanRepayment("claim/1", "repayment/1", { reason: "凭证金额录错", confirmationPassword: "current-password" });
+    expect(mockApiFetch).toHaveBeenNthCalledWith(1, "/expense-claims/claim%2F1/disbursements", expect.objectContaining({ method: "POST" }));
+    expect(mockApiFetch).toHaveBeenNthCalledWith(2, "/expense-claims/claim%2F1/repayments", expect.objectContaining({ method: "POST" }));
+    expect(mockApiFetch).toHaveBeenNthCalledWith(3, "/expense-claims/claim%2F1/repayments/repayment%2F1/confirmation", expect.objectContaining({ method: "POST" }));
+    expect(mockApiFetch).toHaveBeenNthCalledWith(4, "/expense-claims/claim%2F1/repayments/repayment%2F1/reversal", expect.objectContaining({ method: "POST" }));
   });
 });

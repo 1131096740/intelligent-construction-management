@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import type { UploadFile } from "tdesign-vue-next";
-import { adjustExpenseClaimPaymentSubject, appendExpenseClaimAttachment, attachExpenseClaimAttachment, fetchExpenseClaimDetail, generateExpenseClaimFinalDisbursementPdf, generateExpenseClaimFinalPaymentPdf, recordExpenseClaimPayment, removeExpenseClaimAttachment, reviewExpenseClaim, submitExpenseClaim, type ExpenseClaimDetailReadModel } from "../../api/expense-claim.api";
+import { adjustExpenseClaimPaymentSubject, appendExpenseClaimAttachment, attachExpenseClaimAttachment, fetchExpenseClaimDetail, generateExpenseClaimFinalDisbursementPdf, generateExpenseClaimFinalPaymentPdf, recordExpenseClaimLoanDisbursement, recordExpenseClaimLoanRepayment, recordExpenseClaimPayment, removeExpenseClaimAttachment, reviewExpenseClaim, submitExpenseClaim, type ExpenseClaimDetailReadModel } from "../../api/expense-claim.api";
 import { uploadPrivateFile } from "../../api/core-flow-read.api";
 import ApprovalSelfReviewFields from "../../components/ApprovalSelfReviewFields.vue";
 import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
@@ -25,6 +25,12 @@ const paymentSubjectConfirmVisible = ref(false);
 const paymentVisible = ref(false);
 const paymentSubmitting = ref(false);
 const paymentConfirmVisible = ref(false);
+const loanActionVisible = ref(false);
+const loanActionConfirmVisible = ref(false);
+const loanActionSubmitting = ref(false);
+const loanAction = ref<"disbursement" | "repayment">("disbursement");
+const loanActionFiles = ref<UploadFile[]>([]);
+const loanActionForm = ref({ amountCents: "", occurredAt: new Date().toISOString().slice(0, 10), paymentMethod: "银行转账", confirmationPassword: "" });
 const finalPdfGenerating = ref(false);
 const paymentVoucherFiles = ref<UploadFile[]>([]);
 const paymentForm = ref({ amountCents: "", paidAt: new Date().toISOString().slice(0, 10), paymentMethod: "银行转账", confirmationPassword: "", note: "" });
@@ -116,6 +122,35 @@ function requestPaymentRecord() {
   if (!voucher) { actionError.value = "请上传本次付款凭证"; return; }
   if (!paymentForm.value.confirmationPassword) { actionError.value = "请填写当前登录密码"; return; }
   paymentConfirmVisible.value = true;
+}
+function openLoanAction(action: "disbursement" | "repayment") {
+  if (!detail.value) return;
+  loanAction.value = action;
+  loanActionForm.value = { amountCents: action === "disbursement" ? String(BigInt(detail.value.requestedAmountCents) - BigInt(detail.value.fundedAmountCents)) : "", occurredAt: new Date().toISOString().slice(0, 10), paymentMethod: action === "repayment" ? "现金" : "银行转账", confirmationPassword: "" };
+  loanActionFiles.value = [];
+  actionError.value = "";
+  loanActionVisible.value = true;
+}
+function requestLoanAction() {
+  if (!loanActionForm.value.amountCents.trim() || !loanActionForm.value.occurredAt || !loanActionForm.value.paymentMethod.trim() || !loanActionForm.value.confirmationPassword) { actionError.value = "请完整填写金额、日期、方式和当前密码"; return; }
+  const voucher = loanActionFiles.value.map((file) => file.raw).find((file): file is File => file instanceof File);
+  if (!voucher) { actionError.value = "请上传本次资金事实凭证"; return; }
+  loanActionConfirmVisible.value = true;
+}
+async function recordLoanAction() {
+  if (!detail.value || loanActionSubmitting.value) return;
+  const voucher = loanActionFiles.value.map((file) => file.raw).find((file): file is File => file instanceof File);
+  if (!voucher) return;
+  loanActionSubmitting.value = true;
+  try {
+    const uploaded = await uploadPrivateFile(voucher, voucher.name);
+    if (loanAction.value === "disbursement") await recordExpenseClaimLoanDisbursement(detail.value.id, { amountCents: loanActionForm.value.amountCents, paidAt: loanActionForm.value.occurredAt, paymentMethod: loanActionForm.value.paymentMethod, voucherFileId: uploaded.id, confirmationPassword: loanActionForm.value.confirmationPassword });
+    else await recordExpenseClaimLoanRepayment(detail.value.id, { amountCents: loanActionForm.value.amountCents, repaidAt: loanActionForm.value.occurredAt, paymentMethod: loanActionForm.value.paymentMethod, voucherFileId: uploaded.id, confirmationPassword: loanActionForm.value.confirmationPassword });
+    loanActionConfirmVisible.value = false;
+    loanActionVisible.value = false;
+    await loadDetail();
+  } catch (error) { actionError.value = error instanceof Error ? error.message : "登记借款资金事实失败"; }
+  finally { loanActionSubmitting.value = false; }
 }
 async function generateFinalPdf() {
   if (!detail.value || finalPdfGenerating.value) return;
@@ -253,6 +288,22 @@ onMounted(() => void loadDetail());
               @click="openPayment"
             >
               登记公司补付
+            </t-button>
+            <t-button
+              v-if="detail.fundsPermissions?.canRecordLoanDisbursement"
+              theme="primary"
+              variant="outline"
+              @click="openLoanAction('disbursement')"
+            >
+              登记实际放款
+            </t-button>
+            <t-button
+              v-if="detail.fundsPermissions?.canRecordLoanRepayment"
+              theme="primary"
+              variant="outline"
+              @click="openLoanAction('repayment')"
+            >
+              登记员工还款
             </t-button>
             <t-button
               v-if="(detail.fundsPermissions?.canGenerateFinalPaymentPdf || detail.fundsPermissions?.canGenerateLoanFinalDisbursementPdf) && !detail.finalPaymentPdf"
@@ -443,6 +494,67 @@ onMounted(() => void loadDetail());
         >
           登记将写入实际付款金额、日期、方式和凭证审计事实；请确认已核对付款主体与凭证。
         </t-dialog>
+        <t-drawer
+          v-model:visible="loanActionVisible"
+          :header="loanAction === 'disbursement' ? '登记借款实际放款' : '登记员工还款'"
+          size="min(560px, 100vw)"
+          :close-on-overlay-click="false"
+        >
+          <div class="expense-claim-detail__review-form">
+            <t-input
+              v-model="loanActionForm.amountCents"
+              label="本次金额（分）"
+              placeholder="例如 1250"
+            />
+            <t-input
+              v-model="loanActionForm.occurredAt"
+              :label="loanAction === 'disbursement' ? '放款日期' : '还款日期'"
+              placeholder="YYYY-MM-DD"
+            />
+            <t-input
+              v-model="loanActionForm.paymentMethod"
+              label="方式"
+              placeholder="例如：银行转账"
+            />
+            <t-upload
+              v-model="loanActionFiles"
+              theme="file"
+              :auto-upload="false"
+              :max="1"
+              :accept="SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.acceptAttribute"
+              :tips="`凭证：${SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.acceptText}`"
+            />
+            <t-input
+              v-model="loanActionForm.confirmationPassword"
+              type="password"
+              label="当前登录密码"
+              placeholder="用于确认本次资金事实"
+            />
+          </div>
+          <template #footer>
+            <t-button
+              variant="outline"
+              @click="loanActionVisible = false"
+            >
+              取消
+            </t-button><t-button
+              theme="primary"
+              :loading="loanActionSubmitting"
+              @click="requestLoanAction"
+            >
+              确认登记
+            </t-button>
+          </template>
+        </t-drawer>
+        <t-dialog
+          v-model:visible="loanActionConfirmVisible"
+          header="确认登记借款资金事实"
+          :close-on-overlay-click="false"
+          :confirm-btn="{ content: '确认写入', loading: loanActionSubmitting }"
+          @confirm="recordLoanAction"
+        >
+          登记将写入不可变借款账本和凭证审计事实；请确认已核对金额与凭证。
+        </t-dialog>
         <JgDetailTabs
           v-model="tab"
           :tabs="tabs"
@@ -617,6 +729,35 @@ onMounted(() => void loadDetail());
             <t-descriptions-item label="实际放款">
               {{ amount(detail.fundedAmountCents) }}
             </t-descriptions-item>
+            <template v-if="detail.claimType === 'loan' && detail.loanAccount">
+              <t-descriptions-item label="当前借款余额">
+                {{ amount(detail.loanAccount.balanceAmountCents) }}（累计放款 {{ amount(detail.loanAccount.fundedAmountCents) }}、冲销 {{ amount(detail.loanAccount.offsetAmountCents) }}、还款 {{ amount(detail.loanAccount.repaidAmountCents) }}、预留 {{ amount(detail.loanAccount.reservedOffsetAmountCents) }}）
+              </t-descriptions-item>
+              <t-descriptions-item label="本单放款明细">
+                <div
+                  v-if="detail.loanDisbursements.length"
+                  class="expense-claim-detail__payment-list"
+                >
+                  <span
+                    v-for="payment in detail.loanDisbursements"
+                    :key="payment.id"
+                  >{{ date(payment.occurredAt) }} · {{ payment.paymentMethod ?? '未记录方式' }} · {{ amount(payment.amountCents) }}</span>
+                </div>
+                <span v-else>尚未登记实际放款</span>
+              </t-descriptions-item>
+              <t-descriptions-item label="员工还款记录">
+                <div
+                  v-if="detail.loanRepayments.length"
+                  class="expense-claim-detail__payment-list"
+                >
+                  <span
+                    v-for="repayment in detail.loanRepayments"
+                    :key="repayment.id"
+                  >{{ date(repayment.repaidAt) }} · {{ repayment.paymentMethod }} · {{ amount(repayment.amountCents) }} · {{ repayment.status === 'confirmed' ? '已确认' : repayment.status === 'reversed' ? '已更正' : '待确认' }}</span>
+                </div>
+                <span v-else>尚无员工还款</span>
+              </t-descriptions-item>
+            </template>
             <t-descriptions-item
               v-if="detail.claimType === 'reimbursement'"
               label="公司补付明细"

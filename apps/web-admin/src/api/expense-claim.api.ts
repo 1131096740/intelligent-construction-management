@@ -79,6 +79,9 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
     note: string | null;
     createdAt: string;
   }>;
+  loanAccount: { id: string; fundedAmountCents: string; offsetAmountCents: string; repaidAmountCents: string; reservedOffsetAmountCents: string; balanceAmountCents: string } | null;
+  loanDisbursements: Array<{ id: string; amountCents: string; occurredAt: string; paymentMethod: string | null; voucherFileId: string | null; note: string | null }>;
+  loanRepayments: Array<{ id: string; amountCents: string; repaidAt: string; paymentMethod: string; voucherFileId: string | null; status: string; confirmationNote: string | null; reversalReason: string | null; createdAt: string }>;
   finalPaymentPdf: { id: string; fileId: string; createdAt: string } | null;
   approval: { currentNodeName: string; canReview: boolean; requiresSelfReviewConfirmation: boolean } | null;
 }
@@ -262,4 +265,28 @@ export async function generateExpenseClaimFinalDisbursementPdf(claimId: string) 
   const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/final-disbursement-pdf`, { method: "POST" });
   await ensureOk(response);
   return response.json() as Promise<{ pdfDocumentId: string; fileId: string; existed: boolean }>;
+}
+
+export async function recordExpenseClaimLoanDisbursement(claimId: string, body: { amountCents: string; paidAt: string; paymentMethod: string; voucherFileId: string; confirmationPassword: string; note?: string }) {
+  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/disbursements`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  await ensureOk(response);
+  return response.json() as Promise<{ id: string; status: string; fundedAmountCents: string }>;
+}
+
+export async function recordExpenseClaimLoanRepayment(claimId: string, body: { amountCents: string; repaidAt: string; paymentMethod: string; voucherFileId?: string; confirmationPassword: string }) {
+  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/repayments`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  await ensureOk(response);
+  return response.json() as Promise<{ id: string; status: string; amountCents: string }>;
+}
+
+export async function confirmExpenseClaimLoanRepayment(claimId: string, repaymentId: string, body: { confirmationPassword: string; confirmationNote?: string }) {
+  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/repayments/${encodeURIComponent(repaymentId)}/confirmation`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  await ensureOk(response);
+  return response.json() as Promise<{ id: string; status: string; amountCents: string }>;
+}
+
+export async function reverseExpenseClaimLoanRepayment(claimId: string, repaymentId: string, body: { reason: string; confirmationPassword: string }) {
+  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/repayments/${encodeURIComponent(repaymentId)}/reversal`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  await ensureOk(response);
+  return response.json() as Promise<{ id: string; status: string; amountCents: string }>;
 }
