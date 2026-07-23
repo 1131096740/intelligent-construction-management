@@ -191,9 +191,9 @@ export class ExpenseClaimService {
 
   async getMine(claimId: string, actorUserId: string) {
     const claim = await this.prisma.expenseClaim.findFirst({
-      where: { id: claimId, OR: [{ applicantUserId: actorUserId }, { handledByUserId: actorUserId }] },
+      where: { id: claimId },
       select: {
-        id: true, code: true, claimType: true, status: true, projectId: true, companyEntityNameSnapshot: true,
+        id: true, code: true, claimType: true, status: true, projectId: true, applicantUserId: true, handledByUserId: true, companyEntityNameSnapshot: true,
         applicantNameSnapshot: true, applicantPhoneSnapshot: true, handledByNameSnapshot: true, proxyReason: true,
         factWitnessNameSnapshot: true, reason: true, requestedAmountCents: true, loanOffsetAmountCents: true,
         companyPayableAmountCents: true, fundedAmountCents: true, paymentMethod: true, payeeNameSnapshot: true,
@@ -202,6 +202,22 @@ export class ExpenseClaimService {
       }
     });
     if (!claim) throw new NotFoundException("费用申请不存在或当前账号无权读取");
+    const instance = claim.status === "approval_pending"
+      ? await this.prisma.approvalInstance.findFirst({
+        where: { businessType: "expense_claim", businessId: claim.id, status: "in_progress" },
+        orderBy: { createdAt: "desc" },
+        select: { currentNodeIndex: true, frozenNodes: true, applicantUserId: true }
+      })
+      : null;
+    const node = instance
+      ? (instance.frozenNodes as unknown as ExpenseClaimApprovalNode[])[instance.currentNodeIndex] ?? null
+      : null;
+    const roles = node ? await this.loadRoleKeys(this.prisma, actorUserId, claim.projectId ?? undefined) : [];
+    const identity = node
+      ? resolveApprovalReviewIdentity({ node, actorUserId, actorRoleKeys: roles })
+      : null;
+    const isOwner = claim.applicantUserId === actorUserId || claim.handledByUserId === actorUserId;
+    if (!isOwner && !identity) throw new NotFoundException("费用申请不存在或当前账号无权读取");
     const [project, lines] = await Promise.all([
       claim.projectId
         ? this.prisma.project.findUnique({ where: { id: claim.projectId }, select: { id: true, code: true, name: true } })
@@ -219,6 +235,11 @@ export class ExpenseClaimService {
       loanOffsetAmountCents: moneyCentsToApi(claim.loanOffsetAmountCents),
       companyPayableAmountCents: moneyCentsToApi(claim.companyPayableAmountCents),
       fundedAmountCents: moneyCentsToApi(claim.fundedAmountCents),
+      approval: node ? {
+        currentNodeName: node.name,
+        canReview: Boolean(identity),
+        requiresSelfReviewConfirmation: Boolean(identity && instance?.applicantUserId === actorUserId)
+      } : null,
       lines: lines.map((line) => ({ ...line, amountCents: moneyCentsToApi(line.amountCents) }))
     };
   }

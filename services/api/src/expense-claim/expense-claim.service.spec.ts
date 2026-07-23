@@ -20,12 +20,12 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
     employeeProjectLoanEntry: { create: jest.fn(), findMany: jest.fn() },
     employeeLoanRepayment: { create: jest.fn(), update: jest.fn() },
     expenseLoanOffsetReservation: { findMany: jest.fn().mockResolvedValue([]), createMany: jest.fn(), updateMany: jest.fn() },
-    approvalInstance: { create: jest.fn(), update: jest.fn() },
+    approvalInstance: { create: jest.fn(), update: jest.fn(), findFirst: jest.fn().mockResolvedValue(null) },
     approvalActionLog: { create: jest.fn() },
     auditLog: { create: jest.fn().mockResolvedValue({}) },
     $queryRaw: jest.fn().mockResolvedValue(options?.claim ? [options.claim] : [])
   };
-  const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)), companyEntity: tx.companyEntity, expenseClaim: tx.expenseClaim, expenseClaimLine: tx.expenseClaimLine, project: tx.project, user: tx.user, userPosition: tx.userPosition, projectMember: tx.projectMember, position: tx.position };
+  const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)), companyEntity: tx.companyEntity, expenseClaim: tx.expenseClaim, expenseClaimLine: tx.expenseClaimLine, project: tx.project, user: tx.user, userPosition: tx.userPosition, projectMember: tx.projectMember, position: tx.position, approvalInstance: tx.approvalInstance };
   const numbering = { allocateDaily: jest.fn().mockResolvedValue("BX-20260723-001") };
   const audit = { record: jest.fn().mockResolvedValue({}) };
   const visibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
@@ -47,11 +47,19 @@ describe("ExpenseClaimService", () => {
   });
   it("reads a new-domain claim detail only for its applicant or handler", async () => {
     const { service, tx } = createHarness();
-    tx.expenseClaim.findFirst.mockResolvedValue({ id: "claim-1", code: "BX-1", claimType: "reimbursement", status: "draft", projectId: "project-1", companyEntityNameSnapshot: "建工", applicantNameSnapshot: "申请人", applicantPhoneSnapshot: null, handledByNameSnapshot: "经办人", proxyReason: null, factWitnessNameSnapshot: null, reason: "交通", requestedAmountCents: 1200n, loanOffsetAmountCents: 0n, companyPayableAmountCents: 1200n, fundedAmountCents: 0n, paymentMethod: null, payeeNameSnapshot: null, payeeAccountNameSnapshot: null, payeeBankNameSnapshot: null, payeeBankAccountSnapshot: null, loanExpectedClearanceAt: null, submittedAt: null, approvedAt: null, updatedAt: new Date("2026-07-23") });
+    tx.expenseClaim.findFirst.mockResolvedValue({ id: "claim-1", code: "BX-1", claimType: "reimbursement", status: "draft", projectId: "project-1", applicantUserId: "user-a", handledByUserId: "user-a", companyEntityNameSnapshot: "建工", applicantNameSnapshot: "申请人", applicantPhoneSnapshot: null, handledByNameSnapshot: "经办人", proxyReason: null, factWitnessNameSnapshot: null, reason: "交通", requestedAmountCents: 1200n, loanOffsetAmountCents: 0n, companyPayableAmountCents: 1200n, fundedAmountCents: 0n, paymentMethod: null, payeeNameSnapshot: null, payeeAccountNameSnapshot: null, payeeBankNameSnapshot: null, payeeBankAccountSnapshot: null, loanExpectedClearanceAt: null, submittedAt: null, approvedAt: null, updatedAt: new Date("2026-07-23") });
     tx.project.findUnique.mockResolvedValue({ id: "project-1", code: "JGXM-001", name: "科技园项目" });
     tx.expenseClaimLine.findMany.mockResolvedValue([{ id: "line-1", sortOrder: 1, expenseCategory: "交通", occurredOn: new Date("2026-07-22"), purpose: "现场", receiptCount: 1, amountCents: 1200n, evidenceType: "receipt_or_other", noEvidenceReason: null, remark: null }]);
-    await expect(service.getMine("claim-1", "user-a")).resolves.toEqual(expect.objectContaining({ project: { id: "project-1", code: "JGXM-001", name: "科技园项目" }, requestedAmountCents: "1200", lines: [expect.objectContaining({ amountCents: "1200" })] }));
-    expect(tx.expenseClaim.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "claim-1", OR: [{ applicantUserId: "user-a" }, { handledByUserId: "user-a" }] } }));
+    await expect(service.getMine("claim-1", "user-a")).resolves.toEqual(expect.objectContaining({ project: { id: "project-1", code: "JGXM-001", name: "科技园项目" }, requestedAmountCents: "1200", approval: null, lines: [expect.objectContaining({ amountCents: "1200" })] }));
+    expect(tx.expenseClaim.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "claim-1" } }));
+  });
+
+  it("permits only the frozen current approver to read a pending claim and returns a minimal review projection", async () => {
+    const { service, tx } = createHarness({ roles: ["comprehensive_director"] });
+    tx.expenseClaim.findFirst.mockResolvedValue({ id: "claim-1", code: "BX-1", claimType: "reimbursement", status: "approval_pending", projectId: null, applicantUserId: "applicant-1", handledByUserId: "applicant-1", companyEntityNameSnapshot: "建工", applicantNameSnapshot: "申请人", applicantPhoneSnapshot: null, handledByNameSnapshot: "申请人", proxyReason: null, factWitnessNameSnapshot: null, reason: "交通", requestedAmountCents: 1200n, loanOffsetAmountCents: 0n, companyPayableAmountCents: 1200n, fundedAmountCents: 0n, paymentMethod: null, payeeNameSnapshot: null, payeeAccountNameSnapshot: null, payeeBankNameSnapshot: null, payeeBankAccountSnapshot: null, loanExpectedClearanceAt: null, submittedAt: new Date(), approvedAt: null, updatedAt: new Date() });
+    tx.approvalInstance.findFirst.mockResolvedValue({ currentNodeIndex: 0, applicantUserId: "applicant-1", frozenNodes: [{ name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"], candidateUserIds: ["reviewer-1"], candidateUserIdsByRole: { comprehensive_director: ["reviewer-1"] } }] });
+    tx.expenseClaimLine.findMany.mockResolvedValue([]);
+    await expect(service.getMine("claim-1", "reviewer-1")).resolves.toEqual(expect.objectContaining({ approval: { currentNodeName: "综合部主管", canReview: true, requiresSelfReviewConfirmation: false } }));
   });
 
   it("lists only the current applicant or handler and serializes all money fields", async () => {
