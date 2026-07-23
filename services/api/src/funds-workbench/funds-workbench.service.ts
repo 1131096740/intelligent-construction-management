@@ -71,7 +71,7 @@ export class FundsWorkbenchService {
         },
         select: {
           id: true, code: true, claimType: true, status: true, projectId: true, reason: true,
-          companyEntityNameSnapshot: true, payeeNameSnapshot: true, requestedAmountCents: true,
+          companyEntityNameSnapshot: true, paymentSubjectNameSnapshot: true, payeeNameSnapshot: true, requestedAmountCents: true,
           companyPayableAmountCents: true, fundedAmountCents: true, updatedAt: true
         }
       })
@@ -144,7 +144,7 @@ export class FundsWorkbenchService {
 
   private expenseRows(expense: {
     id: string; code: string; claimType: string; status: string; projectId: string | null; reason: string;
-    companyEntityNameSnapshot: string; payeeNameSnapshot: string | null; requestedAmountCents: bigint;
+    companyEntityNameSnapshot: string; paymentSubjectNameSnapshot: string | null; payeeNameSnapshot: string | null; requestedAmountCents: bigint;
     companyPayableAmountCents: bigint; fundedAmountCents: bigint; updatedAt: Date;
   }, projectById: Map<string, { id: string; code: string; name: string }>): FundRow[] {
     const project = expense.projectId ? projectById.get(expense.projectId) ?? null : null;
@@ -157,7 +157,7 @@ export class FundsWorkbenchService {
         sourceDocument: "费用报销补付",
         reason: expense.reason,
         payeeName: expense.payeeNameSnapshot,
-        payerName: expense.companyEntityNameSnapshot,
+        payerName: expense.paymentSubjectNameSnapshot ?? expense.companyEntityNameSnapshot,
         requested: expense.companyPayableAmountCents,
         paid: expense.fundedAmountCents,
         status: expense.status,
