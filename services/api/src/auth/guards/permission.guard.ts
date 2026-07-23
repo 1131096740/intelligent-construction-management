@@ -61,7 +61,8 @@ export class PermissionGuard implements CanActivate {
       !projectId &&
       (Boolean(requiredPositions?.length) && !requiredAction ||
         requiredAction === "expense_claim.create" ||
-        requiredAction === "expense_claim.submit");
+        requiredAction === "expense_claim.submit" ||
+        requiredAction === "expense_claim.attachment.append");
     const roleScopes = await this.loadRoleScopes(
       request.user.id,
       projectId,

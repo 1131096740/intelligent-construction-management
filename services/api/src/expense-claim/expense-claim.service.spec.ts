@@ -152,6 +152,28 @@ describe("ExpenseClaimService", () => {
     expect(tx.expenseClaimAttachment.create).not.toHaveBeenCalled();
   });
 
+  it("lets finance append a new immutable evidence file after submission without replacing frozen attachments", async () => {
+    const files = { assertFileHasNoBusinessBinding: jest.fn().mockResolvedValue({ id: "file-new", uploadedByUserId: "finance-1", storageStatus: "active" }) };
+    const { service, tx, audit } = createHarness({ roles: ["finance_staff"], files });
+    tx.$queryRaw.mockResolvedValueOnce([{ id: "claim-1", status: "approved_pending_payment", projectId: "project-1", handledByUserId: "user-a" }]);
+    tx.expenseClaimAttachment.create.mockResolvedValue({ id: "attachment-new", fileId: "file-new", category: "receipt_or_other", expenseCategory: null, stage: "post_submit_append", createdAt: new Date() });
+
+    await expect(service.appendAttachment("claim-1", "finance-1", { fileId: "file-new", category: "receipt_or_other" })).resolves.toMatchObject({ id: "attachment-new", stage: "post_submit_append" });
+
+    expect(tx.expenseClaimAttachment.create).toHaveBeenCalledWith({ data: expect.objectContaining({ stage: "post_submit_append", attachedByUserId: "finance-1" }) });
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: "expense_claim.attachment.append" }));
+  });
+
+  it("does not let submitted-claim evidence appenders replace a frozen attachment", async () => {
+    const files = { assertFileHasNoBusinessBinding: jest.fn() };
+    const { service, tx } = createHarness({ roles: ["finance_staff"], files });
+    tx.$queryRaw.mockResolvedValueOnce([{ id: "claim-1", status: "rejected", projectId: "project-1", handledByUserId: "user-a" }]);
+
+    await expect(service.appendAttachment("claim-1", "finance-1", { fileId: "file-new", category: "other" })).rejects.toThrow(BadRequestException);
+    expect(files.assertFileHasNoBusinessBinding).not.toHaveBeenCalled();
+    expect(tx.expenseClaimAttachment.create).not.toHaveBeenCalled();
+  });
+
   it("allows a comprehensive director to record a no-account non-project reimbursement with a frozen witness", async () => {
     const { service, tx, numbering } = createHarness({ roles: ["comprehensive_director"] });
     numbering.allocateDaily.mockResolvedValue("BX-20260723-002");

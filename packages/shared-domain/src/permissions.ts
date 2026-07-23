@@ -45,6 +45,7 @@ export const BUSINESS_ACTIONS = [
   "expense_claim.create",
   "expense_claim.submit",
   "expense_claim.approve",
+  "expense_claim.attachment.append",
   "expense_claim.disburse",
   "expense_claim.repayment.record",
   "expense_claim.repayment.confirm",
@@ -187,6 +188,12 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
     "finance_director",
     "chairman",
     "general_manager"
+  ],
+  "expense_claim.attachment.append": [
+    "employee",
+    "comprehensive_director",
+    "finance_staff",
+    "finance_director"
   ],
   "expense_claim.disburse": ["finance_staff"],
   "expense_claim.repayment.record": ["finance_staff"],

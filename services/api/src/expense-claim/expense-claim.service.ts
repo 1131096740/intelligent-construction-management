@@ -219,12 +219,16 @@ export class ExpenseClaimService {
     const node = instance
       ? (instance.frozenNodes as unknown as ExpenseClaimApprovalNode[])[instance.currentNodeIndex] ?? null
       : null;
-    const roles = node ? await this.loadRoleKeys(this.prisma, actorUserId, claim.projectId ?? undefined) : [];
+    const roles = await this.loadRoleKeys(this.prisma, actorUserId, claim.projectId ?? undefined);
     const identity = node
       ? resolveApprovalReviewIdentity({ node, actorUserId, actorRoleKeys: roles })
       : null;
     const isOwner = claim.applicantUserId === actorUserId || claim.handledByUserId === actorUserId;
-    if (!isOwner && !identity) throw new NotFoundException("费用申请不存在或当前账号无权读取");
+    const canAppendEvidence =
+      !["draft", "rejected", "offset_completed"].includes(claim.status) &&
+      (claim.handledByUserId === actorUserId ||
+        roles.some((role) => ["comprehensive_director", "finance_staff", "finance_director"].includes(role)));
+    if (!isOwner && !identity && !canAppendEvidence) throw new NotFoundException("费用申请不存在或当前账号无权读取");
     const [project, lines, attachments] = await Promise.all([
       claim.projectId
         ? this.prisma.project.findUnique({ where: { id: claim.projectId }, select: { id: true, code: true, name: true } })
@@ -281,6 +285,7 @@ export class ExpenseClaimService {
         canReview: Boolean(identity),
         requiresSelfReviewConfirmation: Boolean(identity && instance?.applicantUserId === actorUserId)
       } : null,
+      attachmentPermissions: { canAppendEvidence },
       lines: lines.map((line) => ({ ...line, amountCents: moneyCentsToApi(line.amountCents) })),
       attachments: attachments.map((attachment) => {
         const file = fileById.get(attachment.fileId);
@@ -329,6 +334,50 @@ export class ExpenseClaimService {
         businessType: "expense_claim",
         businessId: claim.id,
         metadata: { attachmentId: attachment.id, fileId, category: input.category, expenseCategory: optionalText(input.expenseCategory) }
+      });
+      return attachment;
+    });
+  }
+
+  async appendAttachment(claimId: string, actorUserId: string, input: AttachExpenseClaimAttachmentDto) {
+    if (!this.files) throw new ServiceUnavailableException("费用附件服务暂不可用，请稍后重试");
+    const fileId = requiredText(input.fileId, "请选择费用附件");
+    return this.prisma.$transaction(async (tx) => {
+      const claims = await tx.$queryRaw<Array<{ id: string; status: string; projectId: string | null; handledByUserId: string }>>(
+        Prisma.sql`SELECT "id", "status", "projectId", "handledByUserId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`
+      );
+      const claim = claims[0];
+      if (!claim) throw new NotFoundException("费用申请不存在");
+      if (claim.status === "draft" || claim.status === "rejected" || claim.status === "offset_completed") {
+        throw new BadRequestException("当前费用申请不允许追加资料");
+      }
+      const roleKeys = await this.loadRoleKeys(tx, actorUserId, claim.projectId ?? undefined);
+      const canAppend =
+        claim.handledByUserId === actorUserId ||
+        roleKeys.some((role) => ["comprehensive_director", "finance_staff", "finance_director"].includes(role));
+      if (!canAppend) throw new ForbiddenException("当前账号无权追加费用资料");
+      const file = await this.files!.assertFileHasNoBusinessBinding(tx, fileId);
+      if (file.uploadedByUserId !== actorUserId) throw new ForbiddenException("费用附件必须由追加人本人上传");
+      const attachment = await (tx as unknown as {
+        expenseClaimAttachment: {
+          create(args: { data: Record<string, unknown> }): Promise<{ id: string; fileId: string; category: string; expenseCategory: string | null; stage: string; createdAt: Date }>;
+        };
+      }).expenseClaimAttachment.create({
+        data: {
+          expenseClaimId: claim.id,
+          fileId,
+          category: input.category,
+          expenseCategory: optionalText(input.expenseCategory),
+          stage: "post_submit_append",
+          attachedByUserId: actorUserId
+        }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "expense_claim.attachment.append",
+        businessType: "expense_claim",
+        businessId: claim.id,
+        metadata: { attachmentId: attachment.id, fileId, category: input.category, expenseCategory: optionalText(input.expenseCategory), status: claim.status }
       });
       return attachment;
     });

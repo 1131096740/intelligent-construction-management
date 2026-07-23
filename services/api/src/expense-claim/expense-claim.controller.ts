@@ -61,6 +61,16 @@ export class ExpenseClaimController {
     return this.claims.attachAttachment(claimId, user.id, body);
   }
 
+  @Post(":claimId/attachments/append")
+  @RequireProjectRole("expense_claim.attachment.append")
+  appendAttachment(
+    @Param("claimId") claimId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: AttachExpenseClaimAttachmentDto
+  ) {
+    return this.claims.appendAttachment(claimId, user.id, body);
+  }
+
   @Post(":claimId/attachments/:attachmentId/removal")
   @RequireProjectRole("expense_claim.create")
   removeAttachment(
