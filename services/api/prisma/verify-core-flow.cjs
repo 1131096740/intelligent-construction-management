@@ -249,6 +249,7 @@ async function seedDisposableContract(codeSuffix, amountCents = TARGET_CONTRACT_
   const termsId = randomUUID();
   const settlementTemplateId = randomUUID();
   const settlementTemplateVersionId = randomUUID();
+  const settlementTemplateFileId = randomUUID();
 
   await prisma.contract.create({
     data: {
@@ -319,13 +320,26 @@ async function seedDisposableContract(codeSuffix, amountCents = TARGET_CONTRACT_
     }
   });
 
+  await prisma.fileObject.create({
+    data: {
+      id: settlementTemplateFileId,
+      bucket: "private-local",
+      objectKey: `core-flow/${codeSuffix}-settlement-template.xlsx`,
+      originalName: `一期闭环验证结算模板-${codeSuffix}.xlsx`,
+      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      sizeBytes: 1,
+      uploadedByUserId: coreFlowSeedData.users.contractStaff.id,
+      storageStatus: "active"
+    }
+  });
+
   await prisma.settlementTemplateVersion.create({
     data: {
       id: settlementTemplateVersionId,
       settlementTemplateId,
       versionNo: 1,
       status: "published",
-      xlsxFileId: `core-flow-${codeSuffix}.xlsx`,
+      xlsxFileId: settlementTemplateFileId,
       compatibleContractTypeKeys: ["material_purchase"],
       compatibleAmountRoles: [],
       compatiblePricingModes: [],

@@ -24,6 +24,8 @@ describe("coreFlowApiVerificationTargets", () => {
     expect(verifier).toContain('invoiceType: "vat_general"');
     expect(verifier).toContain('defaultTaxRatePercent: new Prisma.Decimal("13")');
     expect(verifier).toContain('status: "published"');
+    expect(verifier).toContain('originalName: `一期闭环验证结算模板-${codeSuffix}.xlsx`');
+    expect(verifier).toContain('xlsxFileId: settlementTemplateFileId');
     expect(verifier).toContain('settlementTemplateVersionId,');
     expect(verifier).toContain('sourceType: "manual_adjustment"');
     expect(verifier).toContain('reason: "本期现场签认"');
