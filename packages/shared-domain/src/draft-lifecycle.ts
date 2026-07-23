@@ -83,6 +83,7 @@ export interface LifecycleLedgerPage<T> {
 }
 
 export const CONTRACT_WORKBENCH_VIEWS = [
+  "pending_action",
   "my_drafts",
   "in_approval",
   "pending_seal",
@@ -94,6 +95,7 @@ export const CONTRACT_WORKBENCH_VIEWS = [
 export type ContractWorkbenchView = (typeof CONTRACT_WORKBENCH_VIEWS)[number];
 
 export interface ContractWorkbenchLedgerViewCount {
+  pending_action: number;
   my_drafts: number;
   in_approval: number;
   pending_seal: number;

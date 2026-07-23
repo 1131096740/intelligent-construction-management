@@ -248,7 +248,11 @@ describe("ContractReadService", () => {
         ])
       }
     };
-    const service = new ContractReadService(prisma as never);
+    const service = new ContractReadService(prisma as never, undefined, undefined, {
+      getContractPendingWorkItems: jest.fn().mockResolvedValue([
+        { businessType: "contract_version", businessId: "c4-v1" }
+      ])
+    } as never);
 
     const ledger = await service.listRecent(50);
 
@@ -1751,12 +1755,16 @@ describe("ContractReadService", () => {
       paymentTermsVersion: { findMany: jest.fn().mockResolvedValue([]) },
       project: { findMany: jest.fn().mockResolvedValue([{ id: "p1", name: "项目一" }]) }
     };
-    const service = new ContractReadService(prisma as never);
+    const service = new ContractReadService(prisma as never, undefined, undefined, {
+      getContractPendingWorkItems: jest.fn().mockResolvedValue([
+        { businessType: "contract_version", businessId: "c4-v1" }
+      ])
+    } as never);
 
     const pendingArchive = await service.workbenchLedger("pending_archive", 1, 20, ["p1"], "u1");
 
     expect(pendingArchive.summary).toEqual({
-      my_drafts: 1, in_approval: 1, pending_seal: 1, pending_archive: 1, effective: 1, all: 5
+      pending_action: 1, my_drafts: 1, in_approval: 1, pending_seal: 1, pending_archive: 1, effective: 1, all: 5
     });
     expect(pendingArchive.rows).toEqual([
       expect.objectContaining({ contractVersionId: "c4-v1", contractNo: "HT-4", currentNode: "合同部主管确认双方最终版" })

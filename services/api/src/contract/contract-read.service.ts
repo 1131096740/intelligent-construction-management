@@ -33,6 +33,7 @@ import {
   shanghaiDateStamp
 } from "../core-flow/ledger-excel";
 import { PrismaService } from "../database/prisma.service";
+import { MeService } from "../me/me.service";
 import {
   dbMoneyToBigInt,
   formatMoneyCentsAsYuan,
@@ -58,7 +59,9 @@ export class ContractReadService {
     @Optional()
     private readonly projectVisibility?: ProjectVisibilityService,
     @Optional()
-    private readonly audit?: AuditService
+    private readonly audit?: AuditService,
+    @Optional()
+    private readonly me?: MeService
   ) {}
 
   private async confirmedHistoricalBalanceForContract(contractId: string) {
@@ -423,7 +426,7 @@ export class ContractReadService {
       orderBy: { updatedAt: "desc" }
     });
     const contractIds = contracts.map((contract) => contract.id);
-    const [versions, terms, projects] = await Promise.all([
+    const [versions, terms, projects, pendingWorkItems] = await Promise.all([
       contractIds.length
         ? this.prisma.contractVersion.findMany({
             where: { contractId: { in: contractIds } },
@@ -438,8 +441,14 @@ export class ContractReadService {
         : Promise.resolve([]),
       visibleProjectIds.length
         ? this.prisma.project.findMany({ where: { id: { in: visibleProjectIds } } })
-        : Promise.resolve([])
+        : Promise.resolve([]),
+      this.me?.getContractPendingWorkItems(actorUserId) ?? Promise.resolve([])
     ]);
+    const pendingVersionIds = new Set(
+      pendingWorkItems
+        .map((item) => item.businessId)
+        .filter((businessId): businessId is string => Boolean(businessId))
+    );
     const versionsByContract = new Map<string, typeof versions>();
     for (const version of versions) {
       versionsByContract.set(version.contractId, [...(versionsByContract.get(version.contractId) ?? []), version]);
@@ -448,7 +457,7 @@ export class ContractReadService {
     const projectById = new Map(projects.map((project) => [project.id, project]));
     const classified = contracts.flatMap((contract) => {
       const version = this.currentWorkbenchVersion(versionsByContract.get(contract.id) ?? []);
-      if (!version || !this.matchesWorkbenchView(view, version.status, contract.ownerUserId, actorUserId)) return [];
+      if (!version || !this.matchesWorkbenchView(view, version, contract.ownerUserId, actorUserId, pendingVersionIds)) return [];
       return [this.contractLedgerRow(
         contract,
         version,
@@ -459,9 +468,10 @@ export class ContractReadService {
     });
     const count = (targetView: ContractWorkbenchView) => contracts.filter((contract) => {
       const version = this.currentWorkbenchVersion(versionsByContract.get(contract.id) ?? []);
-      return Boolean(version && this.matchesWorkbenchView(targetView, version.status, contract.ownerUserId, actorUserId));
+      return Boolean(version && this.matchesWorkbenchView(targetView, version, contract.ownerUserId, actorUserId, pendingVersionIds));
     }).length;
     const summary = {
+      pending_action: count("pending_action"),
       my_drafts: count("my_drafts"),
       in_approval: count("in_approval"),
       pending_seal: count("pending_seal"),
@@ -2111,11 +2121,14 @@ export class ContractReadService {
 
   private matchesWorkbenchView(
     view: ContractWorkbenchView,
-    status: string,
+    version: { id: string; status: string },
     ownerUserId: string | null,
-    actorUserId: string
+    actorUserId: string,
+    pendingVersionIds: ReadonlySet<string>
   ) {
+    const { status } = version;
     if (view === "all") return true;
+    if (view === "pending_action") return pendingVersionIds.has(version.id);
     if (view === "my_drafts") return status === "draft" && ownerUserId === actorUserId;
     if (view === "in_approval") return ["in_approval", "approval_pending"].includes(status);
     if (view === "pending_seal") return ["approved", "approved_pending_seal", "in_seal"].includes(status);

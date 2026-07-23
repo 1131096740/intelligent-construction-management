@@ -4,6 +4,7 @@ import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
 import { ContractWorkbenchModule } from "../contract-workbench/contract-workbench.module";
 import { FileModule } from "../file/file.module";
+import { MeModule } from "../me/me.module";
 import {
   ContractController,
   ContractNumberRuleController
@@ -22,7 +23,8 @@ import { ContractSealService } from "./contract-seal.service";
     AuditModule,
     AuthModule,
     ContractWorkbenchModule,
-    FileModule
+    FileModule,
+    MeModule
   ],
   controllers: [ContractController, ContractNumberRuleController],
   providers: [

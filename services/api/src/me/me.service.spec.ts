@@ -1705,4 +1705,44 @@ describe("MeService", () => {
       undefined
     );
   });
+
+  it("derives the untruncated contract queue only from canonical contract pending sources", async () => {
+    const service = new MeService({} as never, {} as never) as unknown as {
+      getContractPendingWorkItems(userId: string): Promise<WorkItem[]>;
+      loadProjectRoleScopes(): Promise<Array<{ projectId: string; roleKeys: string[] }>>;
+      projectNames(projectIds: string[]): Promise<Map<string, string>>;
+      projectIdsFor(scopes: unknown[], actions: string[]): string[];
+      contractArchiveWorkItems(...args: unknown[]): Promise<WorkItem[]>;
+      contractSealHandlerWorkItems(...args: unknown[]): Promise<WorkItem[]>;
+      contractFinalUploadSubstituteWorkItems(...args: unknown[]): Promise<WorkItem[]>;
+      approvalWorkItems(scopes: unknown[], userId: string, mode: string, evaluatedAt: Date): Promise<WorkItem[]>;
+    };
+    const scopes = [{ projectId: "project-1", roleKeys: ["contract_staff"] }];
+    jest.spyOn(service, "loadProjectRoleScopes").mockResolvedValue(scopes);
+    jest.spyOn(service, "projectNames").mockResolvedValue(new Map([["project-1", "科技园"]]));
+    jest.spyOn(service, "projectIdsFor").mockReturnValue(["project-1"]);
+    const archive = jest.spyOn(service, "contractArchiveWorkItems").mockResolvedValue([
+      { businessType: "contract_version", businessId: "archive-1" }
+    ] as WorkItem[]);
+    const handler = jest.spyOn(service, "contractSealHandlerWorkItems").mockResolvedValue([
+      { businessType: "contract_version", businessId: "seal-1" }
+    ] as WorkItem[]);
+    jest.spyOn(service, "contractFinalUploadSubstituteWorkItems").mockResolvedValue([
+      { businessType: "contract_version", businessId: "substitute-1" }
+    ] as WorkItem[]);
+    jest.spyOn(service, "approvalWorkItems").mockResolvedValue([
+      { businessType: "contract_version", businessId: "approval-1" },
+      { businessType: "settlement", businessId: "settlement-1" }
+    ] as WorkItem[]);
+
+    await expect(service.getContractPendingWorkItems("contract-1")).resolves.toEqual(expect.arrayContaining([
+      { businessType: "contract_version", businessId: "archive-1" },
+      { businessType: "contract_version", businessId: "seal-1" },
+      { businessType: "contract_version", businessId: "substitute-1" },
+      { businessType: "contract_version", businessId: "approval-1" }
+    ]));
+    expect(archive).toHaveBeenCalledTimes(4);
+    expect(archive.mock.calls.every((args) => args[8] === undefined)).toBe(true);
+    expect(handler).toHaveBeenCalledWith("contract-1", expect.any(Map), undefined);
+  });
 });

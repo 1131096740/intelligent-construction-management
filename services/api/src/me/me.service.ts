@@ -682,6 +682,35 @@ export class MeService {
     );
   }
 
+  async getContractPendingWorkItems(userId: string): Promise<WorkItem[]> {
+    const evaluatedAt = new Date();
+    const scopes = await this.loadProjectRoleScopes(userId);
+    const projectIds = scopes.map((scope) => scope.projectId);
+    const projectNameById = await this.projectNames(projectIds);
+    const pending = [
+      ...(await this.contractArchiveWorkItems(
+        this.projectIdsFor(scopes, ["contract.seal"]), ["approved_pending_seal"], projectNameById,
+        "待同意用章", "核对审批结果后同意经办人线下取章", "warning", undefined, "governed", undefined
+      )),
+      ...(await this.contractArchiveWorkItems(
+        this.projectIdsFor(scopes, ["contract.seal"]), ["approved_pending_seal"], projectNameById,
+        "待确认用章", "确认后上传盖章合同", "warning", undefined, "legacy", undefined
+      )),
+      ...(await this.contractSealHandlerWorkItems(userId, projectNameById, undefined)),
+      ...(await this.contractFinalUploadSubstituteWorkItems(userId, projectIds, projectNameById)),
+      ...(await this.contractArchiveWorkItems(
+        this.projectIdsFor(scopes, ["contract.archive.upload"]), ["seal_approved_pending_archive"], projectNameById,
+        "上传盖章合同", "上传后等待合同部主管确认归档", "primary", undefined, undefined, undefined
+      )),
+      ...(await this.contractArchiveWorkItems(
+        this.projectIdsFor(scopes, ["contract.archive.confirm"]), ["pending_archive_confirm"], projectNameById,
+        "确认合同归档", "确认后合同版本生效", "warning", userId, undefined, undefined
+      )),
+      ...(await this.approvalWorkItems(scopes, userId, "pending", evaluatedAt))
+    ];
+    return pending.filter((item) => item.businessType === "contract_version");
+  }
+
   private async myDraftWorkItems(
     userId: string,
     contractProjectIds: string[],
@@ -1400,7 +1429,8 @@ export class MeService {
     nextAction: string,
     tone: WorkbenchCardTone,
     actorUserId?: string,
-    governanceMode?: "governed" | "legacy"
+    governanceMode?: "governed" | "legacy",
+    limit: number | undefined = 30
   ): Promise<WorkItem[]> {
     if (!projectIds.length) {
       return [];
@@ -1423,7 +1453,7 @@ export class MeService {
                 : {})
           },
           orderBy: { updatedAt: "desc" },
-          take: 30,
+          ...(limit === undefined ? {} : { take: limit }),
           select: {
             id: true,
             contractId: true,
@@ -1467,6 +1497,8 @@ export class MeService {
         {
           id: `contract-archive:${version.id}`,
           type: "archive",
+          businessType: "contract_version",
+          businessId: version.id,
           title: contract.name,
           projectName: projectNameById.get(contract.projectId) ?? contract.projectId,
           businessCode: code,
@@ -1483,12 +1515,13 @@ export class MeService {
 
   private async contractSealHandlerWorkItems(
     userId: string,
-    projectNameById: ReadonlyMap<string, string>
+    projectNameById: ReadonlyMap<string, string>,
+    limit: number | undefined = 30
   ): Promise<WorkItem[]> {
     const tasks = await this.prisma.contractSealTask?.findMany({
       where: { handlerUserId: userId, status: { in: ["in_seal", "completed"] } },
       orderBy: { updatedAt: "desc" },
-      take: 30
+      ...(limit === undefined ? {} : { take: limit })
     }) ?? [];
     if (!tasks.length) return [];
     const versions = await this.prisma.contractVersion.findMany({
@@ -1513,6 +1546,8 @@ export class MeService {
       return [{
         id: `contract-seal-handler:${version.id}`,
         type: "archive" as const,
+        businessType: "contract_version",
+        businessId: version.id,
         title: contract.name,
         projectName: projectNameById.get(contract.projectId) ?? contract.projectId,
         businessCode: code,
@@ -1584,6 +1619,8 @@ export class MeService {
       return [{
         id: `contract-final-substitute:${version.id}`,
         type: "archive" as const,
+        businessType: "contract_version",
+        businessId: version.id,
         title: contract.name,
         projectName: projectNameById.get(contract.projectId) ?? contract.projectId,
         businessCode: code,
