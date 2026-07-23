@@ -4,6 +4,7 @@ import { RequireProjectRole } from "../auth/decorators/require-project-role.deco
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CreateExpenseClaimDto } from "./dto/create-expense-claim.dto";
 import { ReviewExpenseClaimDto } from "./dto/review-expense-claim.dto";
+import { RecordLoanDisbursementDto } from "./dto/record-loan-disbursement.dto";
 import { ExpenseClaimService } from "./expense-claim.service";
 
 @Controller("expense-claims")
@@ -30,5 +31,15 @@ export class ExpenseClaimController {
     @Body() body: ReviewExpenseClaimDto
   ) {
     return this.claims.review(claimId, user.id, body);
+  }
+
+  @Post(":claimId/disbursements")
+  @RequireProjectRole("expense_claim.disburse")
+  recordLoanDisbursement(
+    @Param("claimId") claimId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RecordLoanDisbursementDto
+  ) {
+    return this.claims.recordLoanDisbursement(claimId, user.id, body);
   }
 }

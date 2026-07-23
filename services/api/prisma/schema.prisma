@@ -1679,6 +1679,7 @@ model ExpenseClaim {
   requestedAmountCents      BigInt
   loanOffsetAmountCents     BigInt    @default(0)
   companyPayableAmountCents BigInt    @default(0)
+  fundedAmountCents         BigInt    @default(0)
   paymentSubject            String?
   paymentMethod             String?
   payeeNameSnapshot         String?
@@ -1751,6 +1752,8 @@ model EmployeeProjectLoanEntry {
   sourceRepaymentId    String?
   sourceReservationId  String?
   reversalOfEntryId    String?
+  voucherFileId        String?
+  paymentMethod        String?
   occurredAt           DateTime
   createdByUserId      String
   note                 String?
@@ -1762,6 +1765,7 @@ model EmployeeProjectLoanEntry {
   @@index([sourceRepaymentId])
   @@index([sourceReservationId])
   @@index([reversalOfEntryId])
+  @@index([voucherFileId])
 }
 
 model ExpenseLoanOffsetReservation {

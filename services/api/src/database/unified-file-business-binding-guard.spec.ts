@@ -15,10 +15,10 @@ const handwrittenSignatureBindingMigration = readFileSync(
   ),
   "utf8"
 );
-const employeeLoanRepaymentBindingMigration = readFileSync(
+const employeeLoanDisbursementBindingMigration = readFileSync(
   join(
     process.cwd(),
-    "prisma/migrations/20260723211000_employee_loan_repayment_file_binding_guard/migration.sql"
+    "prisma/migrations/20260723213100_employee_loan_disbursement_file_binding_guard/migration.sql"
   ),
   "utf8"
 );
@@ -46,7 +46,7 @@ function migrationBindings(): Array<{
   exclusive: boolean;
 }> {
   return Array.from(
-    employeeLoanRepaymentBindingMigration.matchAll(/\('([^']+)', '([^']+)', (TRUE|FALSE)\)/gu),
+    employeeLoanDisbursementBindingMigration.matchAll(/\('([^']+)'\s*,\s*'([^']+)'\s*,\s*(TRUE|FALSE)\)/gu),
     (match) => ({
       binding: `${match[1]}.${match[2]}`,
       exclusive: match[3] === "TRUE"
@@ -57,7 +57,7 @@ function migrationBindings(): Array<{
 describe("unified file business binding migration", () => {
   it("registers every current Prisma FileObject reference exactly once", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(56);
+    expect(registered).toHaveLength(57);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
   });
@@ -122,17 +122,13 @@ describe("unified file business binding migration", () => {
     );
   });
 
-  it("registers employee repayment vouchers before the repayment workflow can write them", () => {
-    expect(employeeLoanRepaymentBindingMigration).toContain("BEGIN;");
-    expect(employeeLoanRepaymentBindingMigration.trim()).toMatch(/COMMIT;$/u);
-    expect(employeeLoanRepaymentBindingMigration).toContain(
-      "('EmployeeLoanRepayment', 'voucherFileId', FALSE)"
-    );
-    expect(employeeLoanRepaymentBindingMigration).toContain(
-      'LOCK TABLE "EmployeeLoanRepayment" IN SHARE ROW EXCLUSIVE MODE'
-    );
-    expect(employeeLoanRepaymentBindingMigration).toContain(
-      'BEFORE INSERT OR UPDATE OF "voucherFileId" ON "EmployeeLoanRepayment"'
+  it("registers employee repayment and actual loan-disbursement vouchers before either workflow can write them", () => {
+    expect(employeeLoanDisbursementBindingMigration).toContain("BEGIN;");
+    expect(employeeLoanDisbursementBindingMigration.trim()).toMatch(/COMMIT;$/u);
+    expect(employeeLoanDisbursementBindingMigration).toMatch(/\('EmployeeLoanRepayment'\s*,\s*'voucherFileId'\s*,\s*FALSE\)/u);
+    expect(employeeLoanDisbursementBindingMigration).toMatch(/\('EmployeeProjectLoanEntry'\s*,\s*'voucherFileId'\s*,\s*FALSE\)/u);
+    expect(employeeLoanDisbursementBindingMigration).toContain(
+      'BEFORE INSERT OR UPDATE OF "voucherFileId" ON "EmployeeProjectLoanEntry"'
     );
   });
 

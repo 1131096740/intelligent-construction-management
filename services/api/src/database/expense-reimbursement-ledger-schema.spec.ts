@@ -16,6 +16,13 @@ const factWitnessMigration = readFileSync(
   ),
   "utf8"
 );
+const loanDisbursementMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260723213000_employee_loan_disbursement_fact/migration.sql"
+  ),
+  "utf8"
+);
 
 const model = (name: string) =>
   schema.match(new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`, "u"))?.[1] ?? "";
@@ -59,5 +66,19 @@ describe("expense reimbursement ledger foundation schema", () => {
     expect(migration).toContain("EmployeeLoanRepayment_confirmation_tuple_check");
     expect(migration).toContain("EmployeeLoanRepayment_reversal_tuple_check");
     expect(migration).toContain("pg_advisory_xact_lock(190731, 22)");
+  });
+
+  it("requires a voucher-backed actual disbursement before a loan ledger balance can increase", () => {
+    expect(model("ExpenseClaim")).toContain("fundedAmountCents         BigInt");
+    expect(model("EmployeeProjectLoanEntry")).toContain("voucherFileId        String?");
+    expect(model("EmployeeProjectLoanEntry")).toContain("paymentMethod        String?");
+    expect(loanDisbursementMigration).toContain('ADD COLUMN "fundedAmountCents" BIGINT NOT NULL DEFAULT 0');
+    expect(loanDisbursementMigration).toContain("approved_pending_disbursement");
+    expect(loanDisbursementMigration).toContain("partially_disbursed");
+    expect(loanDisbursementMigration).toContain("EmployeeProjectLoanEntry_voucherFileId_fkey");
+    expect(loanDisbursementMigration).toContain('"entryType" = \'disbursement\'');
+    expect(loanDisbursementMigration).toContain('"voucherFileId" IS NOT NULL');
+    expect(loanDisbursementMigration).toContain('"paymentMethod" IS NOT NULL');
+    expect(loanDisbursementMigration).toContain("pg_advisory_xact_lock(190731, 24)");
   });
 });

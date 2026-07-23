@@ -10,6 +10,7 @@ import { PrismaService } from "../database/prisma.service";
 import { moneyCentsToApi, parseMoneyCentsInput } from "../money/decimal-money";
 import type { CreateExpenseClaimDto, ExpenseClaimLineDto } from "./dto/create-expense-claim.dto";
 import type { ReviewExpenseClaimDto } from "./dto/review-expense-claim.dto";
+import type { RecordLoanDisbursementDto } from "./dto/record-loan-disbursement.dto";
 
 type ExpenseClaimApprovalNode = FrozenApprovalNode & {
   name: string;
@@ -208,7 +209,7 @@ export class ExpenseClaimService {
       const claimUpdate = completed
         ? claim.claimType === "reimbursement"
           ? { status: "approved_pending_payment", approvedAt: new Date(), companyPayableAmountCents: claim.requestedAmountCents }
-          : { status: "approved_pending_payment", approvedAt: new Date() }
+          : { status: "approved_pending_disbursement", approvedAt: new Date() }
         : { status: "approval_pending" };
       const updated = await tx.expenseClaim.update({ where: { id: claim.id }, data: claimUpdate });
       await tx.approvalInstance.update({
@@ -239,6 +240,50 @@ export class ExpenseClaimService {
         metadata: { nodeName: node.name, approvedRoleKey: identity.approvedRoleKey, completed, ...selfReview.metadata }
       });
       return { id: updated.id, status: updated.status, completed };
+    });
+  }
+
+  async recordLoanDisbursement(claimId: string, actorUserId: string, input: RecordLoanDisbursementDto) {
+    const amountCents = positiveCents(input.amountCents, "放款金额必须大于零");
+    const voucherFileId = requiredText(input.voucherFileId, "放款凭证必填");
+    const paymentMethod = requiredText(input.paymentMethod, "放款方式必填");
+    const paidAt = dateOnly(input.paidAt, "放款日期");
+    if (paidAt.getTime() > Date.now()) throw new BadRequestException("放款日期不能晚于当前时间");
+    if (!input.confirmationPassword?.trim()) throw new BadRequestException("放款登记需要当前登录密码确认");
+    if (!this.auth) throw new ServiceUnavailableException("放款身份确认服务暂不可用，请稍后重试");
+    await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
+
+    return this.prisma.$transaction(async (tx) => {
+      const claims = await tx.$queryRaw<Array<{
+        id: string; claimType: string; status: string; projectId: string | null; companyEntityId: string; applicantUserId: string | null; requestedAmountCents: bigint; fundedAmountCents: bigint;
+      }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "companyEntityId", "applicantUserId", "requestedAmountCents", "fundedAmountCents" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
+      const claim = claims[0];
+      if (!claim) throw new NotFoundException("借款申请不存在");
+      if (claim.claimType !== "loan" || !claim.projectId || !claim.applicantUserId) throw new BadRequestException("当前申请不支持登记借款放款");
+      if (!["approved_pending_disbursement", "partially_disbursed"].includes(claim.status)) throw new BadRequestException("当前借款申请不可登记放款");
+      if (amountCents > claim.requestedAmountCents - claim.fundedAmountCents) throw new BadRequestException("放款金额超过借款申请剩余批准金额");
+      const voucher = await tx.fileObject.findUnique({ where: { id: voucherFileId }, select: { id: true, uploadedByUserId: true } });
+      if (!voucher) throw new NotFoundException("放款凭证不存在");
+      if (voucher.uploadedByUserId !== actorUserId) throw new BadRequestException("放款凭证必须由登记人本人上传");
+      const scopeKey = `project:${claim.projectId}`;
+      await tx.employeeProjectLoanAccount.upsert({
+        where: { userId_scopeKey: { userId: claim.applicantUserId, scopeKey } },
+        create: { userId: claim.applicantUserId, projectId: claim.projectId, companyEntityId: claim.companyEntityId, scopeKey },
+        update: {}
+      });
+      const accounts = await tx.$queryRaw<Array<{ id: string; fundedAmountCents: bigint; offsetAmountCents: bigint; repaidAmountCents: bigint; reservedOffsetAmountCents: bigint; balanceAmountCents: bigint }>>(Prisma.sql`SELECT "id", "fundedAmountCents", "offsetAmountCents", "repaidAmountCents", "reservedOffsetAmountCents", "balanceAmountCents" FROM "EmployeeProjectLoanAccount" WHERE "userId" = ${claim.applicantUserId} AND "scopeKey" = ${scopeKey} FOR UPDATE`);
+      const account = accounts[0];
+      if (!account) throw new BadRequestException("借款账户创建失败");
+      const sequences = await tx.$queryRaw<Array<{ nextSequenceNo: bigint }>>(Prisma.sql`SELECT COALESCE(MAX("sequenceNo"), 0) + 1 AS "nextSequenceNo" FROM "EmployeeProjectLoanEntry" WHERE "loanAccountId" = ${account.id}`);
+      const entry = await tx.employeeProjectLoanEntry.create({ data: { loanAccountId: account.id, sequenceNo: sequences[0]!.nextSequenceNo, entryType: "disbursement", amountCents, balanceDeltaCents: amountCents, sourceExpenseClaimId: claim.id, occurredAt: paidAt, createdByUserId: actorUserId, voucherFileId, paymentMethod, note: optionalText(input.note) } });
+      const fundedAmountCents = account.fundedAmountCents + amountCents;
+      const balanceAmountCents = account.balanceAmountCents + amountCents;
+      await tx.employeeProjectLoanAccount.update({ where: { id: account.id }, data: { fundedAmountCents, balanceAmountCents } });
+      const claimFundedAmountCents = claim.fundedAmountCents + amountCents;
+      const claimStatus = claimFundedAmountCents === claim.requestedAmountCents ? "disbursed" : "partially_disbursed";
+      await tx.expenseClaim.update({ where: { id: claim.id }, data: { fundedAmountCents: claimFundedAmountCents, status: claimStatus } });
+      await this.audit.record(tx, { actorUserId, action: "expense_claim.loan.disbursement.record", businessType: "expense_claim", businessId: claim.id, metadata: { loanAccountId: account.id, loanEntryId: entry.id, amountCents: amountCents.toString(), voucherFileId, paymentMethod } });
+      return { id: entry.id, expenseClaimId: claim.id, loanAccountId: account.id, amountCents: moneyCentsToApi(amountCents), fundedAmountCents: moneyCentsToApi(claimFundedAmountCents), status: claimStatus };
     });
   }
 
