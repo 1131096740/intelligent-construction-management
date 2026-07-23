@@ -49,31 +49,31 @@ describe("normalizeTaxRatePercent", () => {
   it.each([
     ["13", "13"],
     ["6.5", "6.5"],
-    ["6.500", "6.5"],
-    ["0.001", "0.001"],
-    ["100.000", "100"],
+    ["6.50", "6.5"],
+    ["0.01", "0.01"],
+    ["100.00", "100"],
     [" 9.00 ", "9"]
   ])("normalizes valid tax rate %p to %p", (input, expected) => {
     expect(normalizeTaxRatePercent(input)).toBe(expected);
   });
 
-  it.each(["0", "0.0", "0.000", "-1"])("rejects non-positive tax rate %p", (input) => {
+  it.each(["0", "0.0", "0.00", "-1"])("rejects non-positive tax rate %p", (input) => {
     expect(() => normalizeTaxRatePercent(input)).toThrow("税率必须大于 0");
   });
 
-  it.each(["100.001", "101", "999"])("rejects tax rate above 100: %p", (input) => {
+  it.each(["100.01", "101", "999"])("rejects tax rate above 100: %p", (input) => {
     expect(() => normalizeTaxRatePercent(input)).toThrow("税率不能超过 100");
   });
 
-  it.each(["13.0001", "0.0001"])("rejects tax rate over three decimal places: %p", (input) => {
-    expect(() => normalizeTaxRatePercent(input)).toThrow("税率最多保留 3 位小数");
+  it.each(["13.001", "0.001"])("rejects tax rate over two decimal places: %p", (input) => {
+    expect(() => normalizeTaxRatePercent(input)).toThrow("税率最多保留 2 位小数");
   });
 
   it.each(["", "abc", "01", ".5", "1.", "1e1", "+13"])(
     "rejects non-canonical tax rate text %p",
     (input) => {
       expect(() => normalizeTaxRatePercent(input)).toThrow(
-        "税率必须是 0 到 100 之间且最多 3 位小数的数字"
+        "税率必须是 0 到 100 之间且最多 2 位小数的数字"
       );
     }
   );

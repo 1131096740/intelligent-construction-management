@@ -5,15 +5,15 @@ import {
 } from "./spot-procurement-write-validation";
 
 describe("spot procurement payment tax-rate validation", () => {
-  it.each(["0", "13", "13.125", "100"])(
+  it.each(["0", "13", "13.12", "100"])(
     "accepts a directly entered tax rate of %s percent",
     (rate) => expect(requiredSpotProcurementVatRatePercent(rate)).toBe(rate)
   );
 
-  it.each(["", "-1", "100.001", "13.1234", "13%"])(
+  it.each(["", "-1", "100.01", "13.123", "13%"])(
     "rejects invalid directly entered tax rate %s",
     (rate) => expect(() => requiredSpotProcurementVatRatePercent(rate)).toThrow(
-      "税率必须是 0 到 100、最多 3 位小数的数字"
+      "税率必须是 0 到 100、最多 2 位小数的数字"
     )
   );
 

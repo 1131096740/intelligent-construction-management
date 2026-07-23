@@ -764,11 +764,11 @@ describe("ContractTakeoverService", () => {
           signedAt: "2026-01-10",
           takeoverLevel: "B",
           lifecycleStatus: "in_progress",
-          defaultTaxRatePercent: "13.1234"
+          defaultTaxRatePercent: "13.123"
         },
         "contract-user"
       )
-    ).rejects.toThrow("默认税率必须是大于 0 且不超过 100 的数字，最多保留 3 位小数");
+    ).rejects.toThrow("默认税率必须是大于 0 且不超过 100 的数字，最多保留 2 位小数");
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 

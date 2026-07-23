@@ -274,7 +274,7 @@ describe("ContractTaxFactsService", () => {
         },
         "contract-staff-1"
       )
-    ).rejects.toThrow("默认税率必须是大于 0 且不超过 100 的数字，最多保留 3 位小数");
+    ).rejects.toThrow("默认税率必须是大于 0 且不超过 100 的数字，最多保留 2 位小数");
     expect(tx.contractTaxFactRevision.create).not.toHaveBeenCalled();
   });
 

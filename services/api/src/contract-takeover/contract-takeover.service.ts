@@ -3635,7 +3635,7 @@ function normalizeTakeoverTaxRate(value: string, label: string): string {
     return normalizeTaxRatePercent(value);
   } catch {
     throw new BadRequestException(
-      `${label}必须是大于 0 且不超过 100 的数字，最多保留 3 位小数`
+      `${label}必须是大于 0 且不超过 100 的数字，最多保留 2 位小数`
     );
   }
 }

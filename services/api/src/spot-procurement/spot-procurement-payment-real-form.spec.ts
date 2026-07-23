@@ -194,7 +194,7 @@ describe("SpotProcurementPaymentService real-form draft", () => {
 
   it.each([
     ["0", "0%"],
-    ["13.125", "13.125%"]
+    ["13.12", "13.12%"]
   ])("freezes %s%% as a payment-line tax snapshot", async (vatRatePercent, label) => {
     const { service, tx } = createHarness();
 
@@ -212,7 +212,7 @@ describe("SpotProcurementPaymentService real-form draft", () => {
     });
   });
 
-  it.each(["100.001", "13.1234", "-1", "税率13"])(
+  it.each(["100.01", "13.123", "-1", "税率13"])(
     "rejects invalid free tax rate %s",
     async (vatRatePercent) => {
       const { service, tx } = createHarness();
@@ -220,7 +220,7 @@ describe("SpotProcurementPaymentService real-form draft", () => {
       await expect(service.updateDraft("payment-1", "material-1", {
         ...realFormInput,
         paymentLines: [{ ...realFormInput.paymentLines[0], vatRatePercent }]
-      })).rejects.toThrow("税率必须是 0 到 100、最多 3 位小数的数字");
+      })).rejects.toThrow("税率必须是 0 到 100、最多 2 位小数的数字");
       expect(tx.spotProcurementPaymentLine.createMany).not.toHaveBeenCalled();
     }
   );

@@ -62,13 +62,13 @@ export function contractTaxFactSourceLabel(value: ContractTaxFactSource): string
   return CONTRACT_TAX_FACT_SOURCE_LABELS[value];
 }
 
-const TAX_RATE_TEXT = /^(?:0|[1-9]\d{0,2})(?:\.(\d{1,3}))?$/u;
+const TAX_RATE_TEXT = /^(?:0|[1-9]\d{0,2})(?:\.(\d{1,2}))?$/u;
 
 export function normalizeTaxRatePercent(value: string): string {
   const text = value.trim();
   const decimalPart = text.includes(".") ? text.split(".")[1] ?? "" : "";
-  if (decimalPart.length > 3) {
-    throw new Error("税率最多保留 3 位小数");
+  if (decimalPart.length > 2) {
+    throw new Error("税率最多保留 2 位小数");
   }
   if (text.startsWith("-")) {
     throw new Error("税率必须大于 0");
@@ -76,7 +76,7 @@ export function normalizeTaxRatePercent(value: string): string {
 
   const match = TAX_RATE_TEXT.exec(text);
   if (!match) {
-    throw new Error("税率必须是 0 到 100 之间且最多 3 位小数的数字");
+    throw new Error("税率必须是 0 到 100 之间且最多 2 位小数的数字");
   }
 
   const [whole] = text.split(".");

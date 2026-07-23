@@ -133,8 +133,8 @@ export function requiredSpotProcurementDecimal(
 
 export function requiredSpotProcurementVatRatePercent(value: string) {
   const normalized = value.trim();
-  if (!/^(?:(?:0|[1-9]\d?)(?:\.\d{1,3})?|100(?:\.0{1,3})?)$/u.test(normalized)) {
-    throw new Error("税率必须是 0 到 100、最多 3 位小数的数字");
+  if (!/^(?:(?:0|[1-9]\d?)(?:\.\d{1,2})?|100(?:\.0{1,2})?)$/u.test(normalized)) {
+    throw new Error("税率必须是 0 到 100、最多 2 位小数的数字");
   }
   return normalized;
 }

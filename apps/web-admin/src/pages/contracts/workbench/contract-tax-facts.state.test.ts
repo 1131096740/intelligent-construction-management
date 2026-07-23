@@ -45,8 +45,8 @@ describe("contract tax facts state", () => {
 
   it("switches between shortcuts and normalized other tax rates", () => {
     expect(resolveTaxRatePercent("13", "")).toBe("13");
-    expect(resolveTaxRatePercent("other", " 6.500 ")).toBe("6.5");
-    expect(taxRateQuickValueFor("13.000")).toBe("13");
+    expect(resolveTaxRatePercent("other", " 6.50 ")).toBe("6.5");
+    expect(taxRateQuickValueFor("13.00")).toBe("13");
     expect(taxRateQuickValueFor("6.5")).toBe("other");
     expect(taxRateQuickValueFor("")).toBe("other");
   });
@@ -70,9 +70,9 @@ describe("contract tax facts state", () => {
       taxFactsDisabledReason({
         invoiceType: "vat_special",
         taxMode: "single_rate",
-        rate: "13.0001"
+        rate: "13.001"
       })
-    ).toBe("税率最多保留 3 位小数");
+    ).toBe("税率最多保留 2 位小数");
   });
 
   it.each<ContractTaxFactsDraft>([

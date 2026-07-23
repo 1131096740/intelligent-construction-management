@@ -90,7 +90,7 @@ const VOIDABLE_PAYMENT_STATUSES = new Set([
 const PAYMENT_METHODS = new Set<string>(
   SPOT_PROCUREMENT_PAYMENT_METHODS
 );
-const VAT_RATE_PERCENT = /^(?:(?:0|[1-9]\d?)(?:\.\d{1,3})?|100(?:\.0{1,3})?)$/u;
+const VAT_RATE_PERCENT = /^(?:(?:0|[1-9]\d?)(?:\.\d{1,2})?|100(?:\.0{1,2})?)$/u;
 const PROJECT_CASH_REQUEST_STATUSES = [
   "approval_pending",
   "in_approval",
@@ -4136,7 +4136,7 @@ function optionalText(value: string | null | undefined) {
 function normalizeVatRatePercent(value: string | null | undefined) {
   const normalized = requiredText(value, "有票明细必须填写税率");
   if (!VAT_RATE_PERCENT.test(normalized)) {
-    throw new BadRequestException("税率必须是 0 到 100、最多 3 位小数的数字");
+    throw new BadRequestException("税率必须是 0 到 100、最多 2 位小数的数字");
   }
   const decimal = new Prisma.Decimal(normalized);
   return { value: decimal, label: `${decimal.toString()}%` };

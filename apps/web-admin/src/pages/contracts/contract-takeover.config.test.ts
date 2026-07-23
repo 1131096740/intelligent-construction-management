@@ -215,12 +215,12 @@ describe("contract takeover page configuration", () => {
     expect(taxFactSourceLabel(null)).toBe("—");
     expect(normalizeOptionalTaxRate("", "默认税率")).toBeUndefined();
     expect(normalizeOptionalTaxRate("13.00", "默认税率")).toBe("13");
-    expect(normalizeOptionalTaxRate("13.001", "默认税率")).toBe("13.001");
+    expect(normalizeOptionalTaxRate("13.01", "默认税率")).toBe("13.01");
     expect(() => normalizeOptionalTaxRate("0", "默认税率")).toThrow("税率必须大于 0");
-    expect(() => normalizeOptionalTaxRate("13.0001", "默认税率")).toThrow(
-      "税率最多保留 3 位小数"
+    expect(() => normalizeOptionalTaxRate("13.001", "默认税率")).toThrow(
+      "税率最多保留 2 位小数"
     );
-    expect(() => normalizeOptionalTaxRate("100.001", "默认税率")).toThrow(
+    expect(() => normalizeOptionalTaxRate("100.01", "默认税率")).toThrow(
       "税率不能超过 100"
     );
 
@@ -288,12 +288,12 @@ describe("contract takeover page configuration", () => {
           unit: "立方米",
           estimatedQuantity: "10.50",
           taxInclusiveUnitPrice: "360.00",
-          taxRatePercentOverride: "9.001",
+          taxRatePercentOverride: "9.01",
           isProvisional: false,
           settlementBasis: ""
         }
       ])[0]?.taxRatePercentOverride
-    ).toBe("9.001");
+    ).toBe("9.01");
     expect(() =>
       normalizeHistoricalPricingItems([
         {
@@ -306,7 +306,7 @@ describe("contract takeover page configuration", () => {
           unit: "立方米",
           estimatedQuantity: "10.50",
           taxInclusiveUnitPrice: "360.001",
-          taxRatePercentOverride: "9.001",
+          taxRatePercentOverride: "9.01",
           isProvisional: false,
           settlementBasis: ""
         }
