@@ -2286,8 +2286,14 @@ export function uploadSignature(file: Blob, fileName: string) {
   return postForm<{ signatureFileId: string }>("/me/signature", form);
 }
 
+export function uploadCanvasSignature(file: Blob) {
+  const form = new FormData();
+  form.append("file", file, "手写签名.png");
+  return postForm<{ signatureFileId: string; signatureVersionId: string }>("/me/signature/canvas", form);
+}
+
 export function getSignatureTicket() {
-  return readJson<PrivateFileDownloadTicketReadModel | null>("/me/signature/ticket");
+  return readJson<(PrivateFileDownloadTicketReadModel & { signatureSource: "canvas" | "legacy" }) | null>("/me/signature/ticket");
 }
 
 export function recordPaymentExecution(paymentId: string, body: RecordPaymentExecutionPayload) {

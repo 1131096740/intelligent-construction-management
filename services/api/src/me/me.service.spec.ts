@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { MeService, type WorkItem } from "./me.service";
 
 const PNG = Buffer.from(
@@ -260,6 +261,38 @@ describe("MeService", () => {
     });
   });
 
+  it("creates an immutable canvas signature version and keeps the preview fallback current", async () => {
+    const tx = {
+      fileObject: { findUnique: jest.fn().mockResolvedValue({ contentSha256: "", storageStatus: "active" }) },
+      handwrittenSignatureVersion: { create: jest.fn().mockResolvedValue({ id: "canvas-version-1" }) },
+      user: { update: jest.fn().mockResolvedValue({}) }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const files = { uploadPrivateFile: jest.fn().mockResolvedValue({ id: "canvas-file-1" }) };
+    const service = new MeService(prisma as never, files as never);
+    const input = { originalName: "ignored.png", mimeType: "image/png", sizeBytes: PNG.length, buffer: PNG };
+    const sha256 = createHash("sha256").update(PNG).digest("hex");
+    tx.fileObject.findUnique.mockResolvedValue({ contentSha256: sha256, storageStatus: "active" });
+
+    await expect(service.setCanvasSignature("user-1", input)).resolves.toEqual({
+      signatureFileId: "canvas-file-1", signatureVersionId: "canvas-version-1"
+    });
+    expect(tx.handwrittenSignatureVersion.create).toHaveBeenCalledWith({
+      data: { userId: "user-1", fileId: "canvas-file-1", contentSha256: sha256, source: "canvas" }
+    });
+    expect(tx.user.update).toHaveBeenCalledWith({ where: { id: "user-1" }, data: { signatureFileId: "canvas-file-1" } });
+  });
+
+  it("does not treat a legacy upload as a canvas signature version", async () => {
+    const prisma = { user: { update: jest.fn().mockResolvedValue({}) } };
+    const files = { uploadPrivateFile: jest.fn().mockResolvedValue({ id: "legacy-file-1" }) };
+    const service = new MeService(prisma as never, files as never);
+
+    await service.setSignature("user-1", { originalName: "legacy.png", mimeType: "image/png", sizeBytes: PNG.length, buffer: PNG });
+    expect(files.uploadPrivateFile).toHaveBeenCalled();
+    expect((prisma as Record<string, unknown>).handwrittenSignatureVersion).toBeUndefined();
+  });
+
   it("rejects a non-image disguised as an image mime type in business Chinese", async () => {
     const prisma = { user: { update: jest.fn() } };
     const files = { uploadPrivateFile: jest.fn() };
@@ -278,7 +311,8 @@ describe("MeService", () => {
 
   it("uses a business download reason for signature preview tickets", async () => {
     const prisma = {
-      user: { findUnique: jest.fn().mockResolvedValue({ id: "user-1", signatureFileId: "sig-1" }) }
+      user: { findUnique: jest.fn().mockResolvedValue({ id: "user-1", signatureFileId: "sig-1" }) },
+      handwrittenSignatureVersion: { findFirst: jest.fn().mockResolvedValue(null) }
     };
     const files = { createDownloadTicket: jest.fn().mockResolvedValue({ downloadUrl: "/ticket" }) };
     const service = new MeService(prisma as never, files as never);

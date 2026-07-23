@@ -10,14 +10,13 @@ export async function snapshotApprovalSignature(
   tx: SignatureSnapshotClient,
   actorUserId: string,
   options: { required: boolean }
-): Promise<{ fileId: string | null; sha256: string | null }> {
-  if (!options.required) return { fileId: null, sha256: null };
+): Promise<{ fileId: string | null; sha256: string | null; versionId: string | null }> {
+  if (!options.required) return { fileId: null, sha256: null, versionId: null };
   const [user] = await tx.$queryRaw<Array<{
     id: string;
     isActive: boolean;
-    signatureFileId: string | null;
   }>>(Prisma.sql`
-    SELECT "id", "isActive", "signatureFileId"
+    SELECT "id", "isActive"
     FROM "User"
     WHERE "id" = ${actorUserId}
     FOR UPDATE
@@ -25,8 +24,20 @@ export async function snapshotApprovalSignature(
   if (!user?.isActive) {
     throw new ForbiddenException("当前审批账号已停用，请先转交或委托给启用账号");
   }
-  if (!user.signatureFileId) {
-    throw new BadRequestException("审批签名未配置，请先在个人设置中上传签名后重试");
+  const [signatureVersion] = await tx.$queryRaw<Array<{
+    id: string;
+    fileId: string;
+    contentSha256: string;
+  }>>(Prisma.sql`
+    SELECT "id", "fileId", "contentSha256"
+    FROM "HandwrittenSignatureVersion"
+    WHERE "userId" = ${actorUserId} AND "source" = 'canvas'
+    ORDER BY "createdAt" DESC, "id" DESC
+    LIMIT 1
+    FOR UPDATE
+  `);
+  if (!signatureVersion) {
+    throw new BadRequestException("审批手写签名未配置，请先在个人设置中完成手写签名后重试");
   }
 
   const [file] = await tx.$queryRaw<Array<{
@@ -36,13 +47,17 @@ export async function snapshotApprovalSignature(
   }>>(Prisma.sql`
     SELECT "id", "contentSha256", "storageStatus"
     FROM "FileObject"
-    WHERE "id" = ${user.signatureFileId}
+    WHERE "id" = ${signatureVersion.fileId}
     FOR UPDATE
   `);
   if (!file || file.storageStatus !== "active" || !/^[a-f0-9]{64}$/iu.test(file.contentSha256 ?? "")) {
     throw new BadRequestException("审批签名文件校验失败，请重新上传签名后重试");
   }
-  return { fileId: file.id, sha256: file.contentSha256 };
+  const verifiedSha256 = file.contentSha256!;
+  if (verifiedSha256.toLowerCase() !== signatureVersion.contentSha256.toLowerCase()) {
+    throw new BadRequestException("审批手写签名版本校验失败，请重新签名后重试");
+  }
+  return { fileId: file.id, sha256: verifiedSha256, versionId: signatureVersion.id };
 }
 
 export function verifyApprovalSignatureSnapshot(

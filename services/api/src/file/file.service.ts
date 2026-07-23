@@ -1065,6 +1065,7 @@ export class FileService {
     const rows = await tx.$queryRaw<Array<{ referenced: boolean }>>(Prisma.sql`
       SELECT EXISTS (
         SELECT 1 FROM "User" WHERE "signatureFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "HandwrittenSignatureVersion" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ContractVersion" WHERE "taxFactEvidenceFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ContractTaxFactRevision" WHERE "evidenceFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ContractTakeoverCorrection" WHERE "attachmentFileId" = ${fileId}

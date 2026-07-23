@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { createHash } from "node:crypto";
 import {
   canPerform,
   resolveEffectiveRoleKeys,
@@ -179,7 +180,7 @@ export class MeService {
     private readonly files: FileService
   ) {}
 
-  // 个人签名图预上传：存私有文件并记录到 User.signatureFileId，审批单渲染时复用。
+  // 历史上传图入口：仅保留给已存在的签名资料预览，不会创建未来审批可用的手写签名版本。
   async setSignature(userId: string, input: UploadSignatureInput) {
     if (!input.mimeType.startsWith("image/")) {
       throw new Error("个人签名图片只能上传 PNG 或 JPEG 格式");
@@ -208,16 +209,63 @@ export class MeService {
     return { signatureFileId: file.id };
   }
 
+  // Canvas 输出必须是透明 PNG；每次签名都保存不可变版本，旧版本仍由文件绑定保护。
+  async setCanvasSignature(userId: string, input: UploadSignatureInput) {
+    const isPng = input.mimeType === "image/png"
+      && input.buffer.length > 3
+      && input.buffer[0] === 0x89
+      && input.buffer[1] === 0x50
+      && input.buffer[2] === 0x4e
+      && input.buffer[3] === 0x47;
+    if (!isPng) {
+      throw new Error("手写签名只能提交签字板生成的 PNG 图片");
+    }
+
+    const file = await this.files.uploadPrivateFile({
+      originalName: "手写签名.png",
+      mimeType: "image/png",
+      sizeBytes: input.sizeBytes,
+      uploadedByUserId: userId,
+      buffer: input.buffer
+    });
+    const contentSha256 = createHash("sha256").update(input.buffer).digest("hex");
+    const signatureVersion = await this.prisma.$transaction(async (tx) => {
+      const storedFile = await tx.fileObject.findUnique({
+        where: { id: file.id },
+        select: { contentSha256: true, storageStatus: true }
+      });
+      if (storedFile?.storageStatus !== "active" || storedFile.contentSha256 !== contentSha256) {
+        throw new Error("手写签名文件校验失败，请重新签名后重试");
+      }
+      const version = await tx.handwrittenSignatureVersion.create({
+        data: { userId, fileId: file.id, contentSha256, source: "canvas" }
+      });
+      // 继续维护旧字段，保证既有个人设置预览和历史回退入口可读；审批快照不再读取它。
+      await tx.user.update({ where: { id: userId }, data: { signatureFileId: file.id } });
+      return version;
+    });
+    return { signatureFileId: file.id, signatureVersionId: signatureVersion.id };
+  }
+
   async getSignatureTicket(userId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user?.signatureFileId) {
+    const [activeVersion, user] = await Promise.all([
+      this.prisma.handwrittenSignatureVersion.findFirst({
+        where: { userId, source: "canvas" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: { fileId: true }
+      }),
+      this.prisma.user.findUnique({ where: { id: userId }, select: { signatureFileId: true } })
+    ]);
+    const fileId = activeVersion?.fileId ?? user?.signatureFileId;
+    if (!fileId) {
       return null;
     }
 
-    return this.files.createDownloadTicket(user.signatureFileId, {
+    const ticket = await this.files.createDownloadTicket(fileId, {
       actorUserId: userId,
       downloadReason: "个人签名预览"
     });
+    return { ...ticket, signatureSource: activeVersion ? "canvas" as const : "legacy" as const };
   }
 
   async getWorkbenchSummary(userId: string): Promise<WorkbenchSummary> {

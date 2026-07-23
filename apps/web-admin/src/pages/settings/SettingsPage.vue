@@ -105,37 +105,12 @@
       :bordered="true"
       class="settings-card"
     >
-      <p class="hint">
-        上传一张签名图片（PNG/JPEG）。审批通过后生成的审批单会在你的签批行内嵌入此签名。
-      </p>
-      <div class="signature-row">
-        <img
-          v-if="signaturePreviewUrl"
-          :src="signaturePreviewUrl"
-          alt="当前签名"
-          class="signature-preview"
-        >
-        <span
-          v-else
-          class="muted"
-        >尚未上传签名</span>
-      </div>
-      <div class="actions">
-        <input
-          ref="signatureInput"
-          type="file"
-          accept="image/png,image/jpeg"
-          @change="onSignatureSelected"
-        >
-        <t-button
-          theme="primary"
-          :loading="signatureBusy"
-          :disabled="!selectedSignature"
-          @click="submitSignature"
-        >
-          上传签名
-        </t-button>
-      </div>
+      <JgSignaturePanel
+        :preview-url="signaturePreviewUrl"
+        :preview-source="signatureSource"
+        :busy="signatureBusy"
+        @save="submitCanvasSignature"
+      />
       <div
         v-if="signatureMessage"
         :class="['msg', signatureTone]"
@@ -308,10 +283,11 @@ import { useAuthStore } from "../../auth/auth.store";
 import {
   fetchDraftRetentionPreview,
   getSignatureTicket,
-  uploadSignature,
+  uploadCanvasSignature,
   type DraftRetentionPreviewReadModel
 } from "../../api/core-flow-read.api";
 import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
+import JgSignaturePanel from "../../components/JgSignaturePanel.vue";
 import {
   approvalFlowRules,
   modeLabel,
@@ -335,8 +311,6 @@ const retentionColumns = [
   { colKey: "oldestCandidateAt", title: "最早候选时间", width: 180 },
   { colKey: "rule", title: "只读候选规则", minWidth: 260 }
 ];
-const signatureInput = ref<HTMLInputElement | null>(null);
-const selectedSignature = ref<File | null>(null);
 
 async function loadRetentionPreview() {
   if (!isSuperAdmin.value) return;
@@ -353,6 +327,7 @@ async function loadRetentionPreview() {
   }
 }
 const signaturePreviewUrl = ref("");
+const signatureSource = ref<"canvas" | "legacy" | undefined>();
 const signatureBusy = ref(false);
 const signatureMessage = ref("");
 const signatureTone = ref<"success" | "danger">("success");
@@ -379,8 +354,10 @@ async function loadSignature() {
   try {
     const ticket = await getSignatureTicket();
     signaturePreviewUrl.value = ticket ? apiDownloadUrl(ticket.downloadUrl) : "";
+    signatureSource.value = ticket?.signatureSource;
   } catch {
     signaturePreviewUrl.value = "";
+    signatureSource.value = undefined;
   }
 }
 
@@ -477,30 +454,17 @@ async function submitLogout() {
   await router.replace("/login");
 }
 
-function onSignatureSelected(event: Event) {
-  const input = event.target as HTMLInputElement;
-  selectedSignature.value = input.files?.[0] ?? null;
-}
-
-async function submitSignature() {
-  if (!selectedSignature.value) {
-    return;
-  }
-
+async function submitCanvasSignature(signature: File) {
   signatureBusy.value = true;
   signatureMessage.value = "";
   try {
-    await uploadSignature(selectedSignature.value, selectedSignature.value.name);
+    await uploadCanvasSignature(signature);
     signatureTone.value = "success";
-    signatureMessage.value = "签名已更新。";
-    selectedSignature.value = null;
-    if (signatureInput.value) {
-      signatureInput.value.value = "";
-    }
+    signatureMessage.value = "手写签名已保存，将用于之后的审批。";
     await loadSignature();
   } catch (error) {
     signatureTone.value = "danger";
-    signatureMessage.value = error instanceof Error ? error.message : "上传签名失败";
+    signatureMessage.value = error instanceof Error ? error.message : "保存手写签名失败";
   } finally {
     signatureBusy.value = false;
   }

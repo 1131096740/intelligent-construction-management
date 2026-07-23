@@ -89,7 +89,8 @@ describe("SettlementService", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce(projectMembers)
         .mockResolvedValueOnce(globalRows)
-        .mockResolvedValueOnce([{ id: "owner-1", isActive: true, signatureFileId: "signature-1" }])
+        .mockResolvedValueOnce([{ id: "owner-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "signature-version-1", fileId: "signature-1", contentSha256: "a".repeat(64) }])
         .mockResolvedValueOnce([{ id: "signature-1", storageStatus: "active", contentSha256: "a".repeat(64) }]),
       settlementDraft: { count: jest.fn().mockResolvedValue(0) },
       settlement: { count: jest.fn().mockResolvedValue(0) }
@@ -2891,7 +2892,8 @@ describe("SettlementService", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ id: "budget-director-1", isActive: true, signatureFileId: "sig-budget" }])
+        .mockResolvedValueOnce([{ id: "budget-director-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "sig-version-budget", fileId: "sig-budget", contentSha256: "b".repeat(64) }])
         .mockResolvedValueOnce([{ id: "sig-budget", contentSha256: "b".repeat(64), storageStatus: "active" }]),
       ...approvalRoleTables("finance_staff")
     };
@@ -2948,6 +2950,7 @@ describe("SettlementService", () => {
         representedUserId: "budget-director-1",
         signatureFileIdSnapshot: "sig-budget",
         signatureSha256Snapshot: "b".repeat(64),
+        signatureVersionIdSnapshot: "sig-version-budget",
         metadata: {
           nodeName: "预算部主管",
           roleKey: "budget_director",
@@ -4423,7 +4426,8 @@ describe("SettlementService", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ id: "delegate-user-1", isActive: true, signatureFileId: "sig-delegate" }])
+        .mockResolvedValueOnce([{ id: "delegate-user-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "sig-version-delegate", fileId: "sig-delegate", contentSha256: "e".repeat(64) }])
         .mockResolvedValueOnce([{ id: "sig-delegate", contentSha256: "e".repeat(64), storageStatus: "active" }]),
       ...approvalRoleTables("employee")
     };

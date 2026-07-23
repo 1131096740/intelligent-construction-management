@@ -205,7 +205,7 @@ describe("settlement contract cap database concurrency", () => {
             finalNoFurtherOrdinarySettlements: true
           },
           frozenNodes: [],
-          preparerSignature: { fileId: "signature-1", sha256: "a".repeat(64) }
+          preparerSignature: { fileId: "signature-1", sha256: "a".repeat(64), versionId: "signature-version-1" }
         });
       await expect(auditedSettlementService.create({
         contractVersionId: "version-1",

@@ -17,6 +17,7 @@
     "test:e2e:p0": "playwright test --config playwright.config.ts",
     "test:e2e:workbench-canary": "playwright test --config playwright.workbench-canary.config.ts",
     "test:e2e:contract-detail-canary": "playwright test --config playwright.contract-detail-canary.config.ts",
+    "test:e2e:handwritten-signature": "playwright test --config playwright.handwritten-signature.config.ts",
     "test:e2e:business-grid-canary": "playwright test --config playwright.business-grid-canary.config.ts",
     "prelint": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "lint": "eslint src --ext .ts,.vue",

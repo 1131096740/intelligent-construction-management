@@ -38,6 +38,23 @@ export class MeController {
     return this.me.getSignatureTicket(user.id);
   }
 
+  @Post("signature/canvas")
+  @UseInterceptors(FileInterceptor("file"))
+  uploadCanvasSignature(
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    if (!file) {
+      throw new Error("请先完成手写签名");
+    }
+    return this.me.setCanvasSignature(user.id, {
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      buffer: file.buffer
+    });
+  }
+
   @Get("workbench-summary")
   workbenchSummary(@CurrentUser() user: AuthenticatedUser) {
     return this.me.getWorkbenchSummary(user.id);

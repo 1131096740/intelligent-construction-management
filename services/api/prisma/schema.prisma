@@ -17,11 +17,27 @@ model User {
   mustChangePassword Boolean   @default(true)
   lastLoginAt        DateTime?
   isActive           Boolean   @default(true)
+  // 旧上传签名只用于历史单据预览与回退；新审批从不可变 Canvas 版本取快照。
   signatureFileId    String?
+  handwrittenSignatureVersions HandwrittenSignatureVersion[]
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
   @@index([departmentId])
+}
+
+// Canvas 手写签名的不可变版本。新审批动作只允许绑定此表中的版本，旧上传图不回填。
+model HandwrittenSignatureVersion {
+  id            String   @id @default(uuid())
+  userId        String
+  fileId        String   @unique
+  contentSha256 String
+  source        String   @default("canvas")
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
 }
 
 // 我方公司主体字典：合同签订时选择其一，名称快照进合同。
@@ -550,6 +566,7 @@ model Settlement {
   preparedByUserId                  String?
   preparerSignatureFileId           String?
   preparerSignatureSha256           String?
+  preparerSignatureVersionId        String?
   finalScopeCompleted               Boolean?
   finalPriorSettlementsIncluded     Boolean?
   finalNoOutstandingSettlements     Boolean?
@@ -1828,6 +1845,7 @@ model ApprovalActionLog {
   approvedRoleKey         String?
   signatureFileIdSnapshot String?
   signatureSha256Snapshot String?
+  signatureVersionIdSnapshot String?
   representedUserId       String?
   createdAt               DateTime @default(now())
 }

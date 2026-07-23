@@ -2996,7 +2996,8 @@ describe("ContractService", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ id: "chairman-1", isActive: true, signatureFileId: "sig-chair" }])
+        .mockResolvedValueOnce([{ id: "chairman-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "sig-version-chair", fileId: "sig-chair", contentSha256: "a".repeat(64) }])
         .mockResolvedValueOnce([{ id: "sig-chair", contentSha256: "a".repeat(64), storageStatus: "active" }]),
       ...approvalRoleTables("contract_staff")
     };
@@ -3046,7 +3047,8 @@ describe("ContractService", () => {
         approvedRoleKey: "chairman",
         representedUserId: "chairman-1",
         signatureFileIdSnapshot: "sig-chair",
-        signatureSha256Snapshot: "a".repeat(64)
+        signatureSha256Snapshot: "a".repeat(64),
+        signatureVersionIdSnapshot: "sig-version-chair"
       }
     });
     expect(seals.ensurePendingTask).toHaveBeenCalledWith(
@@ -3105,7 +3107,8 @@ describe("ContractService", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ id: "chairman-1", isActive: true, signatureFileId: "sig-chair" }])
+        .mockResolvedValueOnce([{ id: "chairman-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "sig-version-chair", fileId: "sig-chair", contentSha256: "a".repeat(64) }])
         .mockResolvedValueOnce([{ id: "sig-chair", contentSha256: "a".repeat(64), storageStatus: "active" }]),
       ...approvalRoleTables("contract_staff")
     };
@@ -4147,7 +4150,8 @@ describe("ContractService", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ id: "transfer-user-1", isActive: true, signatureFileId: "sig-transfer" }])
+        .mockResolvedValueOnce([{ id: "transfer-user-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "sig-version-transfer", fileId: "sig-transfer", contentSha256: "d".repeat(64) }])
         .mockResolvedValueOnce([{ id: "sig-transfer", contentSha256: "d".repeat(64), storageStatus: "active" }]),
       ...approvalRoleTables("employee")
     };

@@ -2225,7 +2225,8 @@ export class ContractService {
           ...(input.decision === "approve" && isGovernedFrozenApprovalNode(currentNode)
             ? {
                 signatureFileIdSnapshot: signature.fileId,
-                signatureSha256Snapshot: signature.sha256
+                signatureSha256Snapshot: signature.sha256,
+                signatureVersionIdSnapshot: signature.versionId
               }
             : {}),
           ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})

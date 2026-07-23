@@ -2537,7 +2537,8 @@ export class PaymentRequestService {
           ...(isGovernedFrozenApprovalNode(currentNode)
             ? {
                 signatureFileIdSnapshot: signature.fileId,
-                signatureSha256Snapshot: signature.sha256
+                signatureSha256Snapshot: signature.sha256,
+                signatureVersionIdSnapshot: signature.versionId
               }
             : {}),
           ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})

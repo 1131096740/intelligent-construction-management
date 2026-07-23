@@ -1446,6 +1446,7 @@ export class SettlementService {
           preparedByUserId: applicantUserId,
           preparerSignatureFileId: governedFacts.preparerSignature.fileId,
           preparerSignatureSha256: governedFacts.preparerSignature.sha256,
+          preparerSignatureVersionId: governedFacts.preparerSignature.versionId,
           ...governedFacts.finalConfirmations
         } : {}),
         ...(input.isFinal === true
@@ -2276,7 +2277,8 @@ export class SettlementService {
           ...(isGovernedFrozenApprovalNode(currentNode)
             ? {
                 signatureFileIdSnapshot: signature.fileId,
-                signatureSha256Snapshot: signature.sha256
+                signatureSha256Snapshot: signature.sha256,
+                signatureVersionIdSnapshot: signature.versionId
               }
             : {}),
           metadata: {
