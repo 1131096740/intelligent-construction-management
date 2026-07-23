@@ -271,6 +271,15 @@ export interface SpotProcurementReceiptSummaryReadModel {
   };
 }
 
+export interface SpotProcurementReceiptWorkbenchReadModel {
+  materialSummary: string;
+  approvedQuantitySummary: string;
+  actualPaidAmountCents: string | null;
+  receiptResponsible: SpotProcurementUserSummary;
+  receiptDelegate: SpotProcurementUserSummary | null;
+  updatedAt: string;
+}
+
 export interface SpotProcurementListItemReadModel {
   id: string;
   code: string;
@@ -291,6 +300,7 @@ export interface SpotProcurementListItemReadModel {
   status: SpotProcurementStatus;
   statusLabel: string;
   approval: SpotProcurementApprovalSummary;
+  receiptWorkbench: SpotProcurementReceiptWorkbenchReadModel;
   createdAt: string;
   updatedAt: string;
   form?: "real_application" | "legacy";

@@ -101,6 +101,14 @@ function procurementListRow() {
       visibilityRestricted: false
     },
     receipt: receiptSummary,
+    receiptWorkbench: {
+      materialSummary: "免烧砖（240×115×53）",
+      approvedQuantitySummary: "1000 块",
+      actualPaidAmountCents: "220000",
+      receiptResponsible: handler,
+      receiptDelegate: { id: "delegate-1", name: "受托人乙" },
+      updatedAt: now
+    },
     invoiceCoverage: { available: false, status: "not_available", label: "新表单不使用结构化票据覆盖" },
     status: "approved_in_progress",
     statusLabel: "采购已批，办理中",
@@ -515,7 +523,12 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
 
   await page.goto("/收货确认工作台");
   await expect(page.getByRole("heading", { name: "收货确认工作台" })).toBeVisible();
-  await expect(page.getByText("付款状态", { exact: true })).toBeVisible();
+  await expect(page.getByText("采购/付款编号", { exact: true })).toBeVisible();
+  await expect(page.getByText("材料摘要", { exact: true })).toBeVisible();
+  await expect(page.getByText("已付金额", { exact: true })).toBeVisible();
+  await expect(page.getByText("收货责任人/受托人", { exact: true })).toBeVisible();
+  await expect(page.getByText("免烧砖（240×115×53）", { exact: true })).toBeVisible();
+  await expect(page.getByText("物资员甲（委托：受托人乙）", { exact: true })).toBeVisible();
   await expect(page.getByText("待确认收货", { exact: true })).toBeVisible();
 
   await page.goto("/零星采购收货/procurement-1");

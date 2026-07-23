@@ -5,6 +5,7 @@ import { fetchSpotProcurements, type SpotProcurementListItemReadModel, type Spot
 import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import BusinessTableToolbar from "../../components/BusinessTableToolbar.vue";
+import { centsTextToYuanText } from "../../lib/money";
 
 const router=useRouter(); const rows=ref<SpotProcurementListItemReadModel[]>([]); const loading=ref(false); const error=ref("");
 const listMeta=ref({page:1,pageSize:20,total:0,totalPages:0});
@@ -17,10 +18,22 @@ const receiptStatus=(row:SpotProcurementListItemReadModel)=>{
   return receipt.statusLabel ?? "待确认收货";
 };
 const paymentStatus=(row:SpotProcurementListItemReadModel)=>row.payment.statusLabel ?? "付款事实待读取";
+const money=(value:string|null)=>value===null?"待读取":`¥${centsTextToYuanText(value)}`;
+const receiptResponsible=(row:SpotProcurementListItemReadModel)=>{
+  const { receiptResponsible, receiptDelegate }=row.receiptWorkbench;
+  return receiptDelegate
+    ? `${receiptResponsible.name}（委托：${receiptDelegate.name}）`
+    : receiptResponsible.name;
+};
+const updatedAt=(value:string)=>value.replace("T"," ").slice(0,16);
 const tableRows=computed(()=>rows.value.map(row=>({
   ...row,
   projectName:row.project.name,
-  handlerName:row.handler.name,
+  materialSummary:row.receiptWorkbench.materialSummary,
+  actualPaidText:money(row.receiptWorkbench.actualPaidAmountCents),
+  approvedQuantitySummary:row.receiptWorkbench.approvedQuantitySummary,
+  receiptResponsible:receiptResponsible(row),
+  updatedAtText:updatedAt(row.receiptWorkbench.updatedAt),
   paymentStatus:paymentStatus(row),
   receiptStatus:receiptStatus(row)
 })));
@@ -60,7 +73,7 @@ onMounted(load);
       v-else
       row-key="id"
       :loading="loading"
-      :columns="[{colKey:'code',title:'采购编号'},{colKey:'projectName',title:'项目'},{colKey:'handlerName',title:'采购经办人'},{colKey:'paymentStatus',title:'付款状态'},{colKey:'receiptStatus',title:'收货状态'},{colKey:'operation',title:'操作',width:90}]"
+      :columns="[{colKey:'code',title:'采购/付款编号',width:150},{colKey:'projectName',title:'项目',width:140},{colKey:'materialSummary',title:'材料摘要',minWidth:220},{colKey:'actualPaidText',title:'已付金额',width:120},{colKey:'approvedQuantitySummary',title:'批准数量',minWidth:150},{colKey:'receiptResponsible',title:'收货责任人/受托人',minWidth:180},{colKey:'receiptStatus',title:'状态',width:120},{colKey:'updatedAtText',title:'更新时间',width:150},{colKey:'operation',title:'操作',width:90}]"
       :data="tableRows"
     >
       <template #operation="{row}">

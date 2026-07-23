@@ -1873,9 +1873,11 @@ export class SpotProcurementReadService {
             procurementId: true,
             status: true,
             currentRevisionNo: true,
+            handlerUserId: true,
             firstSubmittedAt: true,
             submittedAt: true,
-            lockedAt: true
+            lockedAt: true,
+            updatedAt: true
           }
         }),
         this.prisma.spotProcurementDiscrepancy.findMany({
@@ -1890,6 +1892,15 @@ export class SpotProcurementReadService {
           orderBy: [{ receivedAt: "asc" }, { id: "asc" }]
         })
       ]);
+    const delegations = receipts.length
+      ? await this.prisma.spotProcurementReceiptDelegation.findMany({
+          where: {
+            receiptId: { in: receipts.map((receipt) => receipt.id) },
+            revokedAt: null
+          },
+          orderBy: [{ delegatedAt: "desc" }, { id: "desc" }]
+        })
+      : [];
     const [accessiblePaymentIds, activeExecutions] = await Promise.all([
       this.access.accessiblePaymentIds(
         payments.map((payment) => payment.id),
@@ -1907,9 +1918,14 @@ export class SpotProcurementReadService {
     const actualPaidByPaymentId =
       sumActiveExecutionsByPaymentId(activeExecutions);
     const userIds = [
-      ...new Set(
-        rows.flatMap((row) => [row.applicantUserId, row.handlerUserId])
-      )
+      ...new Set([
+        ...rows.flatMap((row) => [row.applicantUserId, row.handlerUserId]),
+        ...receipts.map((receipt) => receipt.handlerUserId),
+        ...delegations.flatMap((delegation) => [
+          delegation.delegatorUserId,
+          delegation.delegateUserId
+        ])
+      ])
     ];
     const users = await this.loadUsers(userIds);
     const projectById = new Map(projects.map((project) => [project.id, project]));
@@ -1931,6 +1947,12 @@ export class SpotProcurementReadService {
     const receiptByProcurementId = new Map(
       receipts.map((receipt) => [receipt.procurementId, receipt])
     );
+    const activeDelegationByReceiptId = new Map<string, (typeof delegations)[number]>();
+    for (const delegation of delegations) {
+      if (!activeDelegationByReceiptId.has(delegation.receiptId)) {
+        activeDelegationByReceiptId.set(delegation.receiptId, delegation);
+      }
+    }
     const discrepancyByProcurementId = new Map<string, (typeof discrepancies)[number]>();
     for (const discrepancy of discrepancies) {
       if (!discrepancyByProcurementId.has(discrepancy.procurementId)) {
@@ -1967,6 +1989,33 @@ export class SpotProcurementReadService {
         allRowPayments,
         accessiblePaymentIds
       );
+      const receipt = receiptByProcurementId.get(row.id) ?? null;
+      const activeDelegation = receipt
+        ? activeDelegationByReceiptId.get(receipt.id) ?? null
+        : null;
+      const receiptResponsibleUserId =
+        receipt?.handlerUserId ?? row.handlerUserId;
+      const receiptWorkbench = {
+        materialSummary: procurementMaterialSummary(rowLines),
+        approvedQuantitySummary: procurementQuantitySummary(rowLines),
+        actualPaidAmountCents: isRealApplication
+          ? realPayment.actualPaidAmountCents
+          : summarizePayments(visiblePayments, actualPaidByPaymentId)
+              .paidAmountCents,
+        receiptResponsible: userSummary(
+          receiptResponsibleUserId,
+          userById,
+          "收货责任人未读取"
+        ),
+        receiptDelegate: activeDelegation
+          ? userSummary(
+              activeDelegation.delegateUserId,
+              userById,
+              "受托人未读取"
+            )
+          : null,
+        updatedAt: (receipt?.updatedAt ?? row.updatedAt).toISOString()
+      };
       return [
         {
           id: row.id,
@@ -1988,6 +2037,7 @@ export class SpotProcurementReadService {
           approval: approvalSummary(
             approvalByBusinessId.get(version.id) ?? null
           ),
+          receiptWorkbench,
           createdAt: row.createdAt.toISOString(),
           updatedAt: row.updatedAt.toISOString(),
           ...(isRealApplication
@@ -2005,7 +2055,7 @@ export class SpotProcurementReadService {
                     visiblePayments.length !== allRowPayments.length
                 },
                 receipt: receiptReadSummary(
-                  receiptByProcurementId.get(row.id) ?? null,
+                  receipt,
                   discrepancyByProcurementId.get(row.id) ?? null,
                   visiblePayments.some(
                     (payment) =>
@@ -3997,6 +4047,25 @@ function lineReadModel(line: SpotProcurementLine, realApplication = false) {
     amountCents: moneyText(line.amountCents),
     usageLocation: line.usageLocation,
       };
+}
+
+function procurementMaterialSummary(lines: readonly SpotProcurementLine[]) {
+  const visible = lines.slice(0, 2).map((line) =>
+    line.specification
+      ? `${line.materialName}（${line.specification}）`
+      : line.materialName
+  );
+  if (!visible.length) return "材料明细未读取";
+  return lines.length > visible.length
+    ? `${visible.join("；")} 等 ${lines.length} 项`
+    : visible.join("；");
+}
+
+function procurementQuantitySummary(lines: readonly SpotProcurementLine[]) {
+  if (!lines.length) return "批准数量未读取";
+  return lines
+    .map((line) => `${line.quantity.toString()} ${line.unit}`)
+    .join("；");
 }
 
 function evidenceFileReadModel(

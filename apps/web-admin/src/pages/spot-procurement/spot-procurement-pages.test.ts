@@ -675,6 +675,12 @@ describe("spot procurement web pages", () => {
 
     expect(workbench).toContain("fetchSpotProcurements");
     expect(workbench).toContain("待实际付款");
+    expect(workbench).toContain("materialSummary");
+    expect(workbench).toContain("approvedQuantitySummary");
+    expect(workbench).toContain("actualPaidAmountCents");
+    expect(workbench).toContain("receiptDelegate");
+    expect(workbench).toContain("采购/付款编号");
+    expect(workbench).toContain("收货责任人/受托人");
     expect(receipt).toContain("fetchSpotProcurementReceipt");
     expect(receipt).toContain("fetchSpotProcurementPaymentDetail");
     expect(receipt).toContain("reviewSpotProcurementReceipt");

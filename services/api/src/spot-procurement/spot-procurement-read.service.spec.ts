@@ -273,7 +273,8 @@ function buildFixture() {
       })
     },
     spotProcurementReceiptDelegation: {
-      findFirst: jest.fn().mockResolvedValue(null)
+      findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([])
     },
     spotProcurementReceiptReview: {
       findFirst: jest.fn().mockResolvedValue(null)
@@ -970,10 +971,26 @@ describe("SpotProcurementReadService", () => {
       firstSubmittedAt: null,
       submittedAt: null,
       lockedAt: null,
+      updatedAt: now,
       invalidatedAt: null
     };
     fixture.prisma.spotProcurementReceipt.findUnique.mockResolvedValue(receipt);
     fixture.prisma.spotProcurementReceipt.findMany.mockResolvedValue([receipt]);
+    fixture.prisma.spotProcurementReceiptDelegation.findMany.mockResolvedValue([
+      {
+        id: "delegation-1",
+        receiptId: "receipt-1",
+        delegatorUserId: "handler-1",
+        delegateUserId: "delegate-1",
+        delegatedAt: now
+      }
+    ]);
+    fixture.prisma.user.findMany.mockResolvedValue([
+      { id: "applicant-1", name: "申请人" },
+      { id: "handler-1", name: "采购经办人" },
+      { id: "delegate-1", name: "收货受托人" },
+      { id: "finance-1", name: "财务人员" }
+    ]);
     const paymentInvoices = {
       summary: jest.fn().mockResolvedValue({
         status: "pending",
@@ -1019,6 +1036,16 @@ describe("SpotProcurementReadService", () => {
         remainingAmountCents: "7000"
       },
       receipt: { openAfterActualPayment: true }
+    });
+    expect(procurementList.items[0]).toMatchObject({
+      receiptWorkbench: {
+        materialSummary: "免烧砖（240×115×53）；零配件",
+        approvedQuantitySummary: "100 块；1 套",
+        actualPaidAmountCents: "5000",
+        receiptResponsible: { id: "handler-1", name: "采购经办人" },
+        receiptDelegate: { id: "delegate-1", name: "收货受托人" },
+        updatedAt: now.toISOString()
+      }
     });
     expect(procurementList.items[0]).not.toHaveProperty("approvedAmountCents");
     expect(procurementList.items[0]).not.toHaveProperty("supplierName");
