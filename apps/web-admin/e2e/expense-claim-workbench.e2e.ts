@@ -34,7 +34,8 @@ test("费用与报销工作台在桌面和手机尺寸读取新域个人事实�
 test("费用工作台用创建选项和正式写入接口保存借款草稿后进入新域详情", async ({ page }) => {
   const requestedViews: string[] = [];
   const posted: unknown[] = [];
-  await mockExpenseClaimSession(page, requestedViews, posted);
+  const submitted: string[] = [];
+  await mockExpenseClaimSession(page, requestedViews, posted, submitted);
   await login(page);
 
   await page.goto("/费用与报销工作台");
@@ -59,9 +60,13 @@ test("费用工作台用创建选项和正式写入接口保存借款草稿后�
     requestedAmountCents: "123456",
     loanExpectedClearanceOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/)
   });
+  await page.getByRole("button", { name: "提交审批" }).click();
+  await page.getByRole("button", { name: "确认提交" }).click();
+  await expect.poll(() => submitted).toEqual(["expense-claim-created"]);
+  await expect(page.getByText("审批中", { exact: true })).toBeVisible();
 });
 
-async function mockExpenseClaimSession(page: Page, requestedViews: string[], posted: unknown[] = []) {
+async function mockExpenseClaimSession(page: Page, requestedViews: string[], posted: unknown[] = [], submitted: string[] = []) {
   await page.route("**/api/auth/login", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
@@ -127,12 +132,19 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[], pos
   await page.route("**/api/expense-claims/expense-claim-created", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
-      ...expenseClaim({ id: "expense-claim-created", code: "JK-20260723-001", claimType: "loan", status: "draft", reason: "现场周转借款", requestedAmountCents: "123456" }),
+      ...expenseClaim({ id: "expense-claim-created", code: "JK-20260723-001", claimType: "loan", status: submitted.length ? "approval_pending" : "draft", reason: "现场周转借款", requestedAmountCents: "123456" }),
       applicantPhoneSnapshot: null, proxyReason: null, factWitnessNameSnapshot: null,
       paymentMethod: "bank_transfer", payeeNameSnapshot: null, payeeAccountNameSnapshot: null, payeeBankNameSnapshot: null,
       payeeBankAccountSnapshot: null, loanExpectedClearanceAt: "2026-07-23T00:00:00.000Z", submittedAt: null, approvedAt: null, lines: []
     })
   }));
+  await page.route("**/api/expense-claims/expense-claim-created/submission", (route) => {
+    submitted.push("expense-claim-created");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ id: "expense-claim-created", status: "approval_pending", submittedAt: "2026-07-23T10:00:00.000Z" })
+    });
+  });
 }
 
 function expenseClaim(overrides: Partial<Record<string, unknown>>) {
