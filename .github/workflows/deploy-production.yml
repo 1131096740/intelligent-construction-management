@@ -112,7 +112,7 @@ jobs:
         run: pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium
 
       - name: Run Web P0 E2E against production build
-        run: pnpm --filter @jiangkong/web-admin test:e2e:p0
+        run: pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.config.ts e2e/p0-browser-smoke.e2e.ts
 
       - name: Upload Playwright failure artifacts
         if: failure()

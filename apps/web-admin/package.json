@@ -14,7 +14,7 @@
     "typecheck:e2e": "tsc --project tsconfig.e2e.json",
     "pretest": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "test": "vitest run",
-    "test:e2e:p0": "playwright test --config playwright.config.ts",
+    "test:e2e:p0": "playwright test --config playwright.config.ts e2e/p0-browser-smoke.e2e.ts",
     "test:e2e:workbench-canary": "playwright test --config playwright.workbench-canary.config.ts",
     "test:e2e:contract-detail-canary": "playwright test --config playwright.contract-detail-canary.config.ts",
     "test:e2e:handwritten-signature": "playwright test --config playwright.handwritten-signature.config.ts",
