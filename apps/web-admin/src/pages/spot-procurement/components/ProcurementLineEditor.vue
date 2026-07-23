@@ -1,5 +1,8 @@
 <script setup lang="ts">
-export interface ProcurementLineDraft {
+import JgBusinessGrid from "../../../components/JgBusinessGrid.vue";
+import type { ColumnRegular } from "@revolist/vue3-datagrid";
+
+export interface ProcurementLineDraft extends Record<string, string> {
   materialName: string;
   specification: string;
   unit: string;
@@ -18,24 +21,13 @@ const emit = defineEmits<{
   "update:modelValue": [value: ProcurementLineDraft[]];
 }>();
 
-const columns = [
-  { colKey: "materialName", title: "材料名称", width: 150 },
-  { colKey: "specification", title: "规格型号", width: 130 },
-  { colKey: "unit", title: "单位", width: 80 },
-  { colKey: "quantity", title: "数量", width: 110 },
-  { colKey: "note", title: "备注", width: 130 },
-  { colKey: "operation", title: "操作", width: 70, fixed: "right" as const }
+const columns: ColumnRegular[] = [
+  { prop: "materialName", name: "材料名称", size: 180 },
+  { prop: "specification", name: "规格型号", size: 150 },
+  { prop: "unit", name: "单位", size: 96 },
+  { prop: "quantity", name: "数量（最多 2 位小数）", size: 160 },
+  { prop: "note", name: "备注", size: 180 }
 ];
-
-function updateLine(
-  index: number,
-  patch: Partial<ProcurementLineDraft>
-) {
-  const next = props.modelValue.map((line, lineIndex) =>
-    lineIndex === index ? { ...line, ...patch } : line
-  );
-  emit("update:modelValue", next);
-}
 
 function addLine() {
   emit("update:modelValue", [
@@ -58,6 +50,16 @@ function removeLine(index: number) {
   );
 }
 
+function replaceLines(value: Record<string, string>[]) {
+  emit("update:modelValue", value.map((line) => ({
+    materialName: line.materialName ?? "",
+    specification: line.specification ?? "",
+    unit: line.unit ?? "",
+    quantity: line.quantity ?? "",
+    note: line.note ?? ""
+  })));
+}
+
 </script>
 
 <template>
@@ -77,65 +79,29 @@ function removeLine(index: number) {
       </t-button>
     </header>
 
-    <t-table
-      row-key="index"
-      size="small"
-      table-layout="fixed"
+    <JgBusinessGrid
+      :source="modelValue"
       :columns="columns"
-      :data="modelValue.map((line, index) => ({ ...line, index }))"
-      :scroll="{ x: 800 }"
+      :readonly="readonly"
+      :min-height="260"
+      @update:source="replaceLines"
+    />
+    <div
+      v-if="!readonly && modelValue.length > 1"
+      class="procurement-line-editor__row-actions"
+      aria-label="材料行操作"
     >
-      <template #materialName="{ row }">
-        <t-input
-          :value="row.materialName"
-          :disabled="readonly"
-          placeholder="如：免烧砖"
-          @change="(value: unknown) => updateLine(row.index, { materialName: String(value ?? '') })"
-        />
-      </template>
-      <template #specification="{ row }">
-        <t-input
-          :value="row.specification"
-          :disabled="readonly"
-          placeholder="规格型号"
-          @change="(value: unknown) => updateLine(row.index, { specification: String(value ?? '') })"
-        />
-      </template>
-      <template #unit="{ row }">
-        <t-input
-          :value="row.unit"
-          :disabled="readonly"
-          placeholder="块/吨/套"
-          @change="(value: unknown) => updateLine(row.index, { unit: String(value ?? '') })"
-        />
-      </template>
-      <template #quantity="{ row }">
-        <t-input
-          :value="row.quantity"
-          :disabled="readonly"
-          placeholder="最多 2 位小数"
-          @change="(value: unknown) => updateLine(row.index, { quantity: String(value ?? '') })"
-        />
-      </template>
-      <template #note="{ row }">
-        <t-input
-          :value="row.note"
-          :disabled="readonly"
-          placeholder="如：免烧砖"
-          @change="(value: unknown) => updateLine(row.index, { note: String(value ?? '') })"
-        />
-      </template>
-      <template #operation="{ row }">
-        <t-link
-          v-if="!readonly"
-          theme="danger"
-          :disabled="modelValue.length <= 1"
-          @click="removeLine(row.index)"
-        >
-          删除
-        </t-link>
-      </template>
-    </t-table>
+      <t-button
+        v-for="(_line, index) in modelValue"
+        :key="index"
+        size="small"
+        theme="danger"
+        variant="text"
+        @click="removeLine(index)"
+      >
+        删除第 {{ index + 1 }} 行
+      </t-button>
+    </div>
   </section>
 </template>
 
@@ -172,5 +138,11 @@ function removeLine(index: number) {
 .procurement-line-editor strong {
   color: var(--jg-color-text-primary);
   white-space: nowrap;
+}
+
+.procurement-line-editor__row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--jg-space-sm);
 }
 </style>
