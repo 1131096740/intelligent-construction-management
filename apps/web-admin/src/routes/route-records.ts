@@ -84,7 +84,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
   {
     label: "项目",
     items: [
-      { label: "项目经营", path: "/项目经营", requiredRoleKeys: projectOperationsRoleKeys },
+      { label: "项目工作台", path: "/项目经营", requiredRoleKeys: projectOperationsRoleKeys },
       { label: "项目花名册", path: "/项目花名册" }
     ]
   },

@@ -207,7 +207,7 @@ describe("web admin routes", () => {
       { label: "首页", path: "/首页" },
       { label: "全局搜索", path: "/全局搜索" },
       { label: "审批中心", path: "/审批中心" },
-      { label: "项目经营", path: "/项目经营" },
+      { label: "项目工作台", path: "/项目经营" },
       { label: "项目花名册", path: "/项目花名册" },
       { label: "合同工作台", path: "/合同工作台" },
       { label: "合同管理", path: "/合同管理" },

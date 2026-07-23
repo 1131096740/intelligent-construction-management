@@ -72,6 +72,7 @@ test("keeps the active navigation inside the sidebar and strengthens group headi
     "费用与报销",
     "资料与治理"
   ]);
+  await expect(page.getByText("项目工作台", { exact: true })).toBeVisible();
   await expect(page.getByText("结算工作台", { exact: true })).toBeVisible();
   await expect(page.getByText("统一资金办理工作台", { exact: true })).toBeVisible();
   await expect(page.getByText("付款工作台", { exact: true })).toHaveCount(0);
