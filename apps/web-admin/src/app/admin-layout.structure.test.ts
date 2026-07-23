@@ -26,6 +26,13 @@ describe("admin navigation visual hierarchy", () => {
     expect(layoutSource).toContain("background: var(--jg-border)");
   });
 
+  it("uses the authoritative work-item projection for capped navigation badges", () => {
+    expect(layoutSource).toContain("fetchWorkItems");
+    expect(layoutSource).toContain("navigationWorkItemBadgeCounts");
+    expect(layoutSource).toContain(':max-count="99"');
+    expect(layoutSource).toContain("workItemBadgeRequestId");
+  });
+
   it("honors an explicit workbench menu target for non-prefix detail routes", () => {
     expect(layoutSource).toContain("route.meta.activeNavigationPath");
     expect(layoutSource).toContain(

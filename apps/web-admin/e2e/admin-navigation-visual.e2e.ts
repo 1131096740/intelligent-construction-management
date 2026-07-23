@@ -29,9 +29,46 @@ test("keeps the active navigation inside the sidebar and strengthens group headi
       body: JSON.stringify({
         generatedAt: new Date().toISOString(),
         visibleProjectCount: 1,
-        queues: { pending: [], blocked: [], started: [] },
+        queues: {
+          pending: [{
+            id: "navigation-pending-1",
+            type: "approval",
+            title: "合同审批待办",
+            projectName: "一号项目",
+            projectId: "project-1",
+            businessCode: "HT-E2E-001",
+            amountText: "¥1.00",
+            currentNode: "合同审批",
+            stayedText: "1 小时",
+            nextAction: "办理审批",
+            targetPath: "/合同管理/contract-1",
+            tone: "warning"
+          }],
+          blocked: [],
+          started: [],
+          drafts: []
+        },
+        queueMeta: {
+          pending: { total: 101, returned: 1, truncated: true },
+          blocked: { total: 0, returned: 0, truncated: false },
+          started: { total: 0, returned: 0, truncated: false },
+          drafts: { total: 0, returned: 0, truncated: false }
+        },
         approvalCenter: {
-          pendingApproval: [],
+          pendingApproval: [{
+            id: "navigation-pending-1",
+            type: "approval",
+            title: "合同审批待办",
+            projectName: "一号项目",
+            projectId: "project-1",
+            businessCode: "HT-E2E-001",
+            amountText: "¥1.00",
+            currentNode: "合同审批",
+            stayedText: "1 小时",
+            nextAction: "办理审批",
+            targetPath: "/合同管理/contract-1",
+            tone: "warning"
+          }],
           startedByMe: [],
           handledByMe: [],
           delegatedToMe: [],
@@ -81,6 +118,8 @@ test("keeps the active navigation inside the sidebar and strengthens group headi
   await expect(page.getByText("合同管理", { exact: true })).toHaveCount(0);
   await expect(page.getByText("结算管理", { exact: true })).toHaveCount(0);
   await expect(page.getByText("委托台账", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".navigation-badge")).toHaveCount(2);
+  await expect(page.locator(".navigation-badge").first()).toContainText("99+");
 
   const separator = await groupLabel.evaluate((element) => {
     const style = getComputedStyle(element, "::after");

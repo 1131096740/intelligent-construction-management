@@ -31,7 +31,15 @@
             :value="item.path"
             @click="go(item.path)"
           >
-            {{ item.label }}
+            <t-badge
+              v-if="itemBadgeCount(item.path)"
+              class="navigation-badge"
+              :count="itemBadgeCount(item.path)"
+              :max-count="99"
+            >
+              <span>{{ item.label }}</span>
+            </t-badge>
+            <span v-else>{{ item.label }}</span>
           </t-menu-item>
         </template>
       </t-menu>
@@ -74,6 +82,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { fetchWorkItems } from "../api/core-flow-read.api";
 import { useAuthStore } from "../auth/auth.store";
 import SiteFilingFooter from "../components/SiteFilingFooter.vue";
 import { roleLabels } from "../pages/settings/approval-flow-readonly.config";
@@ -85,11 +94,14 @@ import {
   upsertRecentBusinessRoute,
   type RecentBusinessRoute
 } from "./recent-business-routes";
+import { navigationWorkItemBadgeCounts } from "./navigation-work-item-badges";
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const recentBusinessRoutes = ref<RecentBusinessRoute[]>([]);
+const navigationBadgeCounts = ref<Record<string, number>>({});
+let workItemBadgeRequestId = 0;
 
 const adminNavigationGroups = computed(() =>
   visibleAdminNavigationGroups(auth.user?.roleKeys, auth.user?.globalRoleKeys)
@@ -140,8 +152,35 @@ watch(
   { immediate: true }
 );
 
+watch(
+  () => auth.user?.id,
+  (userId) => {
+    const requestId = ++workItemBadgeRequestId;
+    if (!userId) {
+      navigationBadgeCounts.value = {};
+      return;
+    }
+    void loadNavigationBadges(requestId);
+  },
+  { immediate: true }
+);
+
 function go(path: string) {
   void router.push(path);
+}
+
+function itemBadgeCount(path: string) {
+  return navigationBadgeCounts.value[path] ?? 0;
+}
+
+async function loadNavigationBadges(requestId: number) {
+  try {
+    const workItems = await fetchWorkItems();
+    if (requestId !== workItemBadgeRequestId) return;
+    navigationBadgeCounts.value = navigationWorkItemBadgeCounts(workItems);
+  } catch {
+    if (requestId === workItemBadgeRequestId) navigationBadgeCounts.value = {};
+  }
 }
 
 function getRecentStorage(): Storage | null {
