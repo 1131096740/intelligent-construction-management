@@ -36,31 +36,27 @@ describe("contract ledger page configuration", () => {
 
   it("keeps the compact summary strip focused on contract states", () => {
     expect(contractSummaryItems.map((item) => item.label)).toEqual([
-      "正式台账",
+      "待我办理",
       "我的草稿",
-      "退回待修改",
-      "已结束"
+      "审批中",
+      "已生效"
     ]);
   });
 
-  it("keeps ended draft history visible without linking to an unrelated contract detail", () => {
+  it("keeps ended draft copy support in the all-contract root view", () => {
     const source = readFileSync(new URL("./ContractListPage.vue", import.meta.url), "utf8");
-    expect(source).toContain("row.abandonReason || '—'");
-    expect(source).toContain("历史已保留");
-    expect(source).not.toContain("查看历史");
-    expect(source).not.toMatch(/activeTab\.value === "ended"[\s\S]{0,160}router\.push/);
-    expect(source).toContain("activeTab === 'ended' && row.copyAvailable");
+    expect(source).toContain("row.copyAvailable ? copyEndedContract(row)");
+    expect(source).toContain("ended: \"all\"");
     expect(source).toContain("copyAbandonedContractDraft");
   });
 
-  it("defaults an unqualified ledger visit to the formal ledger", () => {
+  it("defaults an unqualified workbench visit to all visible contract roots", () => {
     const source = readFileSync(new URL("./ContractListPage.vue", import.meta.url), "utf8");
     expect(source).toMatch(
-      /const requested =[^;]+\? value as DraftLedgerView\s*: "formal_ledger";/s
+      /const requested = typeof value === "string"[\s\S]+?\s: "all";/s
     );
-    expect(source).not.toMatch(
-      /: canManageContracts\.value \? "my_drafts" : "formal_ledger"/
-    );
+    expect(source).toContain('formal_ledger: "all"');
+    expect(source).toContain('returned_for_revision: "pending_action"');
   });
 
   it("executes only server-advertised workbench actions without forcing an invalid save", () => {

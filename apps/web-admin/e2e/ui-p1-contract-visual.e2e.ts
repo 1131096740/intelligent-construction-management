@@ -77,7 +77,7 @@ const ledgerBody = {
     }
   ],
   meta: { page: 1, pageSize: 20, total: 3, totalPages: 1 },
-  summary: { formal_ledger: 3, my_drafts: 2, returned_for_revision: 0, ended: 0 }
+  summary: { pending_action: 0, my_drafts: 2, in_approval: 3, pending_seal: 0, pending_archive: 0, effective: 0, all: 3 }
 };
 
 const drafts = [
@@ -226,7 +226,7 @@ test("captures the contract P1.2 ledger and detail states", async ({ page }) => 
     headers: { "Content-Disposition": "inline; filename=contract.pdf" },
     body: "%PDF-1.4\n% preview fixture\n"
   }));
-  await page.route("**/api/contracts/lifecycle-ledger?*", (route) => {
+  await page.route("**/api/contracts/workbench?*", (route) => {
     if (ledgerMode === "failure") {
       return route.fulfill({
         status: 500,
@@ -240,7 +240,7 @@ test("captures the contract P1.2 ledger and detail states", async ({ page }) => 
         body: JSON.stringify({
           rows: [],
           meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
-          summary: { formal_ledger: 0, my_drafts: 2, returned_for_revision: 0, ended: 0 }
+          summary: { pending_action: 0, my_drafts: 2, in_approval: 0, pending_seal: 0, pending_archive: 0, effective: 0, all: 0 }
         })
       });
     }

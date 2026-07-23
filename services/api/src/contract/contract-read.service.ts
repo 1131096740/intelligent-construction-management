@@ -463,7 +463,16 @@ export class ContractReadService {
         version,
         termsByVersion.get(version.id),
         projectById.get(contract.projectId),
-        { contractVersionId: version.id }
+        {
+          contractVersionId: version.id,
+          status: version.status,
+          workbenchEditable: ["draft", "approval_rejected"].includes(version.status),
+          copyAvailable: view === "all" && version.status === "abandoned" &&
+            version.changeType === "original" && version.versionNo === 1 &&
+            contract.ownerUserId === actorUserId,
+          lifecycleUpdatedAt: version.updatedAt.toISOString(),
+          abandonReason: version.abandonReason ?? null
+        }
       )];
     });
     const count = (targetView: ContractWorkbenchView) => contracts.filter((contract) => {
@@ -1719,6 +1728,8 @@ export class ContractReadService {
       pending_archive_confirm: { label: "待归档确认", tone: "primary" },
       sealed_pending_archive: { label: "待归档确认", tone: "primary" },
       effective: { label: "已生效", tone: "success" },
+      abandoned: { label: "已放弃", tone: "default" },
+      superseded: { label: "已被新版本替代", tone: "default" },
       voided: { label: "已作废", tone: "danger" }
     };
 
@@ -2128,7 +2139,10 @@ export class ContractReadService {
   ) {
     const { status } = version;
     if (view === "all") return true;
-    if (view === "pending_action") return pendingVersionIds.has(version.id);
+    if (view === "pending_action") {
+      return pendingVersionIds.has(version.id) ||
+        (status === "approval_rejected" && ownerUserId === actorUserId);
+    }
     if (view === "my_drafts") return status === "draft" && ownerUserId === actorUserId;
     if (view === "in_approval") return ["in_approval", "approval_pending"].includes(status);
     if (view === "pending_seal") return ["approved", "approved_pending_seal", "in_seal"].includes(status);

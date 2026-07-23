@@ -523,12 +523,11 @@ test("合同工作台丢弃未保存修改后直接删除服务端草稿", async
       readiness: { ready: false, blockingMessages: [], warningMessages: [] }
     })
   }));
-  await page.route("**/api/contracts/lifecycle-ledger?*", (route) => route.fulfill({
+  await page.route("**/api/contracts/workbench?*", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
       rows: [],
-      view: "ended",
-      summary: { formal_ledger: 0, my_drafts: 0, returned_for_revision: 0, ended: 1 },
+      summary: { pending_action: 0, my_drafts: 0, in_approval: 0, pending_seal: 0, pending_archive: 0, effective: 0, all: 1 },
       meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 }
     })
   }));
@@ -548,7 +547,7 @@ test("合同工作台丢弃未保存修改后直接删除服务端草稿", async
   expect(saveCalls).toBe(0);
   await expect
     .poll(() => decodeURIComponent(new URL(page.url()).pathname + new URL(page.url()).search))
-    .toBe("/合同工作台?view=ended");
+    .toBe("/合同工作台?view=all");
 });
 
 test("合同已放弃记录可携带保存时间复制为全新草稿", async ({ page }, testInfo) => {
@@ -561,9 +560,9 @@ test("合同已放弃记录可携带保存时间复制为全新草稿", async ({
       body: JSON.stringify({ contract: { id: "contract-copy-1" }, version: { id: "contract-version-copy-1" } })
     });
   });
-  await page.route("**/api/contracts/lifecycle-ledger?*", (route) => {
-    const view = new URL(route.request().url()).searchParams.get("view") ?? "formal_ledger";
-    const endedRows = view === "ended" ? [{
+  await page.route("**/api/contracts/workbench?*", (route) => {
+    const view = new URL(route.request().url()).searchParams.get("view") ?? "all";
+    const endedRows = view === "all" ? [{
       id: "contract-abandoned-1",
       contractVersionId: "contract-version-abandoned-1",
       contractNo: "HT-END-001",
@@ -591,14 +590,13 @@ test("合同已放弃记录可携带保存时间复制为全新草稿", async ({
       contentType: "application/json",
       body: JSON.stringify({
         rows: endedRows,
-        view,
-        summary: { formal_ledger: 0, my_drafts: 0, returned_for_revision: 0, ended: 1 },
+        summary: { pending_action: 0, my_drafts: 0, in_approval: 0, pending_seal: 0, pending_archive: 0, effective: 0, all: 1 },
         meta: { page: 1, pageSize: 20, total: endedRows.length, totalPages: endedRows.length ? 1 : 0 }
       })
     });
   });
   await login(page);
-  await page.goto("/合同工作台?view=ended");
+  await page.goto("/合同工作台?view=all");
   await expect(page.getByText("HT-END-001", { exact: true })).toBeVisible();
   await expect(page.getByText("供应计划取消", { exact: true })).toBeVisible();
   await expect(page.getByText("复制为新草稿", { exact: true })).toBeVisible();
