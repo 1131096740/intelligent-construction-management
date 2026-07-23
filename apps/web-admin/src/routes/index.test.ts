@@ -111,6 +111,7 @@ describe("web admin routes", () => {
       "合同管理/:contractId",
       "结算工作台",
       "结算管理",
+      "统一资金办理工作台",
       "付款工作台",
       "付款管理",
       "零星采购工作台",
@@ -217,6 +218,7 @@ describe("web admin routes", () => {
       { label: "结算工作台", path: "/结算工作台" },
       { label: "结算管理", path: "/结算管理" },
       { label: "结算模板库", path: "/结算模板库" },
+      { label: "统一资金办理工作台", path: "/统一资金办理工作台" },
       { label: "付款工作台", path: "/付款工作台" },
       { label: "付款管理", path: "/付款管理" },
       { label: "零星采购工作台", path: "/零星采购工作台" },
@@ -297,6 +299,7 @@ describe("web admin routes", () => {
     expect(String(childRoute("结算管理")?.component)).toContain("SettlementListPage.vue");
     expect(String(childRoute("结算管理/:settlementId")?.component)).toContain("SettlementDetailPage.vue");
     expect(String(childRoute("付款工作台")?.component)).toContain("PaymentWorkbenchPage.vue");
+    expect(String(childRoute("统一资金办理工作台")?.component)).toContain("FundsWorkbenchPage.vue");
     expect(String(childRoute("付款管理")?.component)).toContain("PaymentListPage.vue");
     expect(String(childRoute("付款管理/:paymentId")?.component)).toContain("PaymentDetailPage.vue");
   });

@@ -20,6 +20,12 @@ export const fundsOverviewRoleKeys = [
   "project_manager"
 ] as const satisfies readonly RoleKey[];
 
+export const fundsWorkbenchRoleKeys = [
+  "finance_staff",
+  "finance_director",
+  "comprehensive_director"
+] as const satisfies readonly RoleKey[];
+
 export const projectOperationsRoleKeys = [
   ...fundsOverviewRoleKeys,
   "employee",
@@ -120,6 +126,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
   {
     label: "付款",
     items: [
+      { label: "统一资金办理工作台", path: "/统一资金办理工作台", requiredRoleKeys: fundsWorkbenchRoleKeys },
       { label: "付款工作台", path: "/付款工作台" },
       { label: "付款管理", path: "/付款管理" }
     ]
@@ -352,6 +359,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       {
         path: "结算管理/:settlementId",
         component: () => import("../pages/settlements/SettlementDetailPage.vue")
+      },
+      {
+        path: "统一资金办理工作台",
+        component: () => import("../pages/funds/FundsWorkbenchPage.vue"),
+        meta: { requiredRoleKeys: fundsWorkbenchRoleKeys, title: "统一资金办理工作台" }
       },
       {
         path: "付款工作台",

@@ -35,9 +35,9 @@
 | 结算工作台/草稿 | SettlementDraft/Settlement | 迁移 | 四步页面、共享网格、期间和签章事实 | 期间、合同版本和归档生效规则不变 |
 | 结算 Excel 预检/模板治理 | SettlementImport/Template | 保留 | 作为网格录入辅助和治理页 | 不允许批量绕过正式创建；已冻结版本继续可读 |
 | 结算内部签名合成件 | SettlementSignedDocument | 迁移 | 接入新签名版本和正式文件预览 | 原乙方文件与历史合成件不覆盖 |
-| 合同付款申请 | PaymentRequest | 迁移 | 进入统一资金办理工作台 | 结算/预付款容量、审批和版本引用保持 |
-| 实际付款、退款、凭证 | PaymentExecution/Allocation | 保留 | 统一资金工作台办理，多次实付继续独立 | 幂等、余额、凭证、退款上限和审计不变 |
-| 项目资金、财务入账 | FinanceRecord/Project finance | 保留 | 由统一资金读取模型投影 | 不重算历史金额或财务分录 |
+| 合同付款申请 | PaymentRequest | 迁移 | 已进入统一资金办理工作台的只读跨来源投影；原来源详情和流程保持 | 结算/预付款容量、审批和版本引用保持 |
+| 实际付款、退款、凭证 | PaymentExecution/Allocation | 保留 | 统一资金工作台已只读投影，后续在原来源受控入口接入办理；多次实付继续独立 | 幂等、余额、凭证、退款上限和审计不变 |
+| 项目资金、财务入账 | FinanceRecord/Project finance | 保留 | 后续补齐统一资金详情投影 | 不重算历史金额或财务分录 |
 | 零星采购申请 | SpotProcurement | 迁移 | 使用共享工作台组件，不改状态机 | 采购编号、审批、材料范围保持 |
 | 零星材料付款 | SpotProcurementPayment | 迁移 | 保持来源单自动草稿和四步办理 | 不新增误导性“新建”；冻结税率/渠道不改写 |
 | 收货确认、委托、复核 | SpotProcurementReceipt | 迁移 | 保持任务页，接入统一工作项 | 收货、差异、退款和照片水印规则不变 |
