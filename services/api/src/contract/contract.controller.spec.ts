@@ -73,7 +73,7 @@ const validContractRouteBodies = [
     expectedRevision: 1,
     action: "delete_pristine_draft"
   }],
-  ["contract.submitApproval", ContractController, "submitApproval", 2, { numberRuleId: "rule-1" }],
+  ["contract.submitApproval", ContractController, "submitApproval", 2, {}],
   ["contract.uploadFormalApprovalFile", ContractController, "uploadFormalApprovalFile", 2, {
     fileId: "file-1",
     sourceRevision: 1,
@@ -475,20 +475,10 @@ describe("ContractController authorization wiring", () => {
     expect(response.errors).toEqual(["金额超出系统可保存范围"]);
   });
 
-  it("preserves contract number override text for the existing service parser", async () => {
-    const value = {
-      numberRuleId: " rule-1 ",
-      formalCodeOverride: " HT-001 ",
-      overrideReason: " 历史编号衔接 "
-    };
-    const result = await validateContractBody(
-      ContractController,
-      "submitApproval",
-      2,
-      value
-    );
-
-    expect(result).toEqual(value);
+  it("accepts an empty approval body after formal numbering moves to first draft save", async () => {
+    await expect(
+      validateContractBody(ContractController, "submitApproval", 2, {})
+    ).resolves.toEqual({});
   });
 
   it("allows null numbering scopes and an empty update for service-level handling", async () => {
@@ -698,7 +688,7 @@ describe("ContractController authorization wiring", () => {
     );
   });
 
-  it("forwards the required numbering body on approval submission", async () => {
+  it("forwards an empty body on approval submission after first-save numbering", async () => {
     const contracts = { submitApproval: jest.fn() };
     const controller = new ContractController(
       contracts as never,
@@ -710,13 +700,13 @@ describe("ContractController authorization wiring", () => {
     controller.submitApproval(
       "version-1",
       { id: "owner-1" } as never,
-      { numberRuleId: "rule-1" }
+      {}
     );
 
     expect(contracts.submitApproval).toHaveBeenCalledWith(
       "version-1",
       "owner-1",
-      { numberRuleId: "rule-1" }
+      {}
     );
   });
 

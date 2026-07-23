@@ -195,7 +195,7 @@ describe("ContractService", () => {
       routes as never
     );
 
-    await expect(service.submitApproval("version-1", "staff-1", { numberRuleId: "rule-1" }))
+    await expect(service.submitApproval("version-1", "staff-1", {}))
       .rejects.toThrow("合同所属项目不存在或已停用，不能提交审批");
     expect(numbering.allocate).not.toHaveBeenCalled();
     expect(routes.freezeNewContractRoute).not.toHaveBeenCalled();
@@ -1161,7 +1161,7 @@ describe("ContractService", () => {
     const result = await service.submitApproval(
       "contract-version-1",
       "user-contract-staff",
-      { numberRuleId: "rule-1" }
+      {}
     );
 
     expect(result.status).toBe("in_approval");
@@ -1217,8 +1217,7 @@ describe("ContractService", () => {
         voidedAt: null
       },
       data: {
-        ownerUserId: "user-contract-staff",
-        code: "HT-JGXM-2026-材料-001"
+        ownerUserId: "user-contract-staff"
       }
     });
     expect(tx.approvalInstance.create).toHaveBeenCalledWith({
@@ -1260,8 +1259,7 @@ describe("ContractService", () => {
       metadata: {
         fromStatus: "draft",
         toStatus: "in_approval",
-        formalCode: "HT-JGXM-2026-材料-001",
-        numberRuleId: "rule-1",
+        formalCode: null,
         draftRevision: 4,
         governanceSubmissionSnapshot: expect.objectContaining({ version: 1 }),
         submissionSnapshot: expect.objectContaining({ draftRevision: 4 })
@@ -1838,7 +1836,7 @@ describe("ContractService", () => {
     );
 
     await expect(
-      service.submitApproval("contract-version-1", "user-contract-staff", { numberRuleId: "rule-1" })
+      service.submitApproval("contract-version-1", "user-contract-staff", {})
     ).rejects.toThrow("业主主合同额度不足");
     expect(numbering.allocate).not.toHaveBeenCalled();
     expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
@@ -2220,7 +2218,7 @@ describe("ContractService", () => {
     await expect(service.submitApproval(
       "contract-version-framework",
       "staff-1",
-      { numberRuleId: "rule-1" }
+      {}
     )).resolves.toMatchObject({ status: "in_approval", amountCents: "0" });
     expect(tx.projectOwnerContract.findMany).not.toHaveBeenCalled();
     expect(tx.contract.findMany).not.toHaveBeenCalled();
@@ -2307,7 +2305,7 @@ describe("ContractService", () => {
     await expect(service.submitApproval(
       "version-route-failure",
       "staff-1",
-      { numberRuleId: "rule-1" }
+      {}
     )).rejects.toThrow("物资主管没有可审批本合同的人员");
     expect(numbering.allocate).not.toHaveBeenCalled();
     expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
@@ -2423,9 +2421,9 @@ describe("ContractService", () => {
     );
 
     await expect(
-      service.submitApproval("contract-version-1", "user-contract-staff", { numberRuleId: "rule-1" })
+      service.submitApproval("contract-version-1", "user-contract-staff", {})
     ).resolves.toMatchObject({ status: "in_approval" });
-    expect(numbering.allocate).toHaveBeenCalled();
+    expect(numbering.allocate).not.toHaveBeenCalled();
     expect(tx.approvalInstance.create).toHaveBeenCalled();
   });
 
@@ -2508,7 +2506,7 @@ describe("ContractService", () => {
     );
 
     await expect(
-      service.submitApproval("contract-version-1", "user-contract-staff", { numberRuleId: "rule-1" })
+      service.submitApproval("contract-version-1", "user-contract-staff", {})
     ).rejects.toThrow("业主主合同额度不足");
     expect(tx.contractVersion.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2617,7 +2615,7 @@ describe("ContractService", () => {
     );
 
     await expect(
-      service.submitApproval("contract-version-2", "user-contract-staff", { numberRuleId: "rule-1" })
+      service.submitApproval("contract-version-2", "user-contract-staff", {})
     ).rejects.toThrow("业主主合同额度不足");
     expect(numbering.allocate).not.toHaveBeenCalled();
     expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
@@ -2713,7 +2711,7 @@ describe("ContractService", () => {
     );
 
     await expect(
-      service.submitApproval("contract-version-b-1", "user-contract-staff", { numberRuleId: "rule-1" })
+      service.submitApproval("contract-version-b-1", "user-contract-staff", {})
     ).rejects.toThrow("业主主合同额度不足");
     expect(numbering.allocate).not.toHaveBeenCalled();
     expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
@@ -2783,7 +2781,7 @@ describe("ContractService", () => {
     );
 
     await expect(
-      service.submitApproval("contract-version-1", "user-contract-staff", { numberRuleId: "rule-1" })
+      service.submitApproval("contract-version-1", "user-contract-staff", {})
     ).rejects.toMatchObject({
       message: "合同资料尚未满足提交审批条件，请按阻断项补齐后再提交"
     });
@@ -2791,7 +2789,7 @@ describe("ContractService", () => {
     expect(numbering.allocate).not.toHaveBeenCalled();
   });
 
-  it("requires a numbering rule for an owned workbench contract", async () => {
+  it("requires the readiness service for an owned workbench contract", async () => {
     const version = {
       id: "contract-version-1",
       contractId: "contract-1",
@@ -2818,7 +2816,7 @@ describe("ContractService", () => {
 
     await expect(
       service.submitApproval("contract-version-1", "user-contract-staff")
-    ).rejects.toThrow("提交合同审批前请先选择编号规则");
+    ).rejects.toThrow("合同提交审批服务暂不可用");
   });
 
   it.each([

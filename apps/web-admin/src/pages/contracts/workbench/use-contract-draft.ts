@@ -21,9 +21,6 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Trailing-edge debounce window for autosave (Task 17 brief: 1,000ms). */
-const AUTOSAVE_DEBOUNCE_MS = 1000;
-
 /** Backend phrase emitted on optimistic-lock failure (Task 9). */
 const REVISION_CONFLICT_PHRASE = "Contract draft revision conflict";
 
@@ -140,16 +137,16 @@ export interface UseContractDraft {
   /** Read-only dirty facts for route and component-close guards. */
   dirty: Readonly<Ref<boolean>>;
   isDirty: Readonly<Ref<boolean>>;
-  /** Latest server revision known after autosave, even before a workbench reload. */
+  /** Latest server revision known after a successful manual save. */
   savedRevision: Readonly<Ref<number>>;
   initializeDraft: InitializeDraftController;
   load: (contractId: string) => Promise<void>;
   markDirty: () => void;
   /** Clears only client-side editing state after a successful server termination. */
   discardLocalState: () => void;
-  /** Stops a scheduled autosave while a server-side lifecycle action runs. */
+  /** Pauses editing while a server-side lifecycle action runs. */
   suspendAutosaveForLifecycleAction: () => boolean;
-  /** Restarts autosave after a failed lifecycle action without losing local edits. */
+  /** Resumes editing after a failed lifecycle action without losing local edits. */
   resumeAutosaveAfterLifecycleAction: () => void;
   /** Flushes dirty draft data. Clean state is a successful no-op. */
   saveNow: () => Promise<boolean>;
@@ -399,7 +396,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   const contractVersionId = ref<string | null>(null);
   const currentRevision = ref<number>(0);
 
-  // Internal-only. Autosave is paused while a conflict awaits a user decision.
+  // Internal-only. Editing is paused while a conflict awaits a user decision.
   const pausedRef = ref(false);
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -507,27 +504,14 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     }
   }
 
-  // -- Dirty tracking + debounced autosave ------------------------------------
+  // -- Dirty tracking ----------------------------------------------------------
 
   function markDirty(): void {
     editGeneration += 1;
     dirtyRef.value = true;
     writeBackup();
 
-    // Conflict pauses autosave entirely until the user resolves it.
-    if (pausedRef.value) {
-      return;
-    }
-
     cancelScheduledSave();
-    debounceTimer = setTimeout(() => {
-      debounceTimer = null;
-      // Skip the debounced save if a successful save already cleared the flag
-      // or a conflict paused autosave in the interim.
-      if (dirtyRef.value && !pausedRef.value) {
-        void saveNow();
-      }
-    }, AUTOSAVE_DEBOUNCE_MS);
   }
 
   // -- Save -------------------------------------------------------------------

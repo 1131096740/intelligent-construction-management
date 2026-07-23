@@ -41,7 +41,6 @@ import {
 } from "./dto/create-contract.dto";
 import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
 import { GenerateContractPdfArchiveDto } from "./dto/generate-contract-pdf-archive.dto";
-import { SubmitContractApprovalDto } from "./dto/submit-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 import { CreateContractChangeDraftDto } from "./dto/create-contract-change-draft.dto";
 import { AbandonContractDraftDto } from "./dto/abandon-contract-draft.dto";
@@ -141,6 +140,8 @@ export class ContractService {
     private readonly approvalForms?: ApprovalFormService,
     @Optional()
     private readonly readiness?: ContractReadinessService,
+    // Retained for constructor compatibility while legacy numbering administration
+    // is still available for historic records; new contracts use daily numbering on save.
     @Optional()
     private readonly numbering?: ContractNumberingService,
     @Optional()
@@ -1487,6 +1488,10 @@ export class ContractService {
     actorUserId: string,
     rawInput?: unknown
   ) {
+    // The controller keeps accepting the legacy body during the staged client rollout.
+    // New contracts no longer read a number-rule selection at submission time.
+    void rawInput;
+    void this.numbering;
     try {
       return await this.prisma.$transaction(async (tx) => {
         const contractLocks = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
@@ -1560,12 +1565,12 @@ export class ContractService {
             formalFile: formalFileSnapshot
           } as unknown as Prisma.JsonValue;
         }
-        const input = contract.ownerUserId ? this.parseSubmissionInput(rawInput) : null;
-        let formalCode = contract.code;
+        const requiresReadiness = Boolean(contract.ownerUserId);
+        const formalCode = contract.code;
         let readinessSnapshot = version.readinessSnapshot;
         let templateSnapshot = version.templateSnapshot;
-        if (input) {
-          if (!this.readiness || !this.numbering) {
+        if (requiresReadiness) {
+          if (!this.readiness) {
             throw new Error("合同提交审批服务暂不可用，请稍后重试或联系管理员");
           }
           const readiness = await this.readiness.check(tx, version, contract, true);
@@ -1580,7 +1585,7 @@ export class ContractService {
 
         await this.assertOwnerContractQuota(tx, contract.projectId, contract.id, version);
 
-        if (input) {
+        if (requiresReadiness) {
           const submissionSnapshot = await this.readiness!.freeze(tx, version);
           templateSnapshot = {
             ...(version.templateSnapshot as Prisma.JsonObject),
@@ -1596,7 +1601,7 @@ export class ContractService {
             ? null
             : await this.lockCompanyEntityForSubmission(tx, version, contract);
 
-        if (governanceSubmissionSnapshot && input) {
+        if (governanceSubmissionSnapshot && requiresReadiness) {
           const existingTemplate = templateSnapshot as Prisma.JsonObject;
           templateSnapshot = {
             ...existingTemplate,
@@ -1614,14 +1619,8 @@ export class ContractService {
           actorUserId
         );
 
-        if (input) {
-          formalCode = await this.numbering!.allocate(
-            tx,
-            input.numberRuleId,
-            contract,
-            actorUserId,
-            input
-          );
+        if (requiresReadiness && contract.source === "system" && !formalCode) {
+          throw new BadRequestException("合同尚未生成正式编号，请先成功保存草稿后再提交审批");
         }
 
         const submitted = await tx.contractVersion.updateMany({
@@ -1635,7 +1634,7 @@ export class ContractService {
             taxFactStatus: "frozen",
             taxFactsFrozenAt: new Date(),
             ...(companySnapshot ?? {}),
-            ...(input
+            ...(requiresReadiness
               ? {
                   readinessSnapshot: readinessSnapshot as Prisma.InputJsonValue,
                   templateSnapshot: templateSnapshot as Prisma.InputJsonValue,
@@ -1687,12 +1686,8 @@ export class ContractService {
             ...(governanceSubmissionSnapshot
               ? { governanceSubmissionSnapshot }
               : {}),
-            ...(input
+            ...(requiresReadiness
               ? {
-                  numberRuleId: input.numberRuleId,
-                  ...(input.overrideReason
-                    ? { overrideReason: input.overrideReason }
-                    : {}),
                   submissionSnapshot: (templateSnapshot as Prisma.JsonObject)
                     .submissionSnapshot
                 }
@@ -1987,38 +1982,6 @@ export class ContractService {
       candidateClauses: version.clauseSnapshot,
       template
     });
-  }
-
-  private parseSubmissionInput(rawInput: unknown): SubmitContractApprovalDto {
-    if (!rawInput || typeof rawInput !== "object" || Array.isArray(rawInput)) {
-      throw new BadRequestException("提交合同审批前请先选择编号规则");
-    }
-    const input = rawInput as Record<string, unknown>;
-    if (typeof input.numberRuleId !== "string" || !input.numberRuleId.trim()) {
-      throw new BadRequestException("提交合同审批前请先选择编号规则");
-    }
-    if (
-      input.formalCodeOverride !== undefined &&
-      (typeof input.formalCodeOverride !== "string" ||
-        !input.formalCodeOverride.trim())
-    ) {
-      throw new BadRequestException("正式合同编号不能为空");
-    }
-    if (
-      input.overrideReason !== undefined &&
-      (typeof input.overrideReason !== "string" || !input.overrideReason.trim())
-    ) {
-      throw new BadRequestException("调整正式合同编号时请填写原因");
-    }
-    return {
-      numberRuleId: input.numberRuleId.trim(),
-      ...(input.formalCodeOverride === undefined
-        ? {}
-        : { formalCodeOverride: input.formalCodeOverride.trim() }),
-      ...(input.overrideReason === undefined
-        ? {}
-        : { overrideReason: input.overrideReason.trim() })
-    };
   }
 
   async reviewApproval(

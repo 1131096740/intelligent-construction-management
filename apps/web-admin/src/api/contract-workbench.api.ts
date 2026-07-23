@@ -171,11 +171,6 @@ export interface UploadContractFormalApprovalFilePayload {
   authorizationsBeforeSignaturePageConfirmed: boolean;
 }
 
-export interface SubmitContractFromWorkbenchPayload {
-  numberRuleId: string;
-  formalCodeOverride?: string;
-}
-
 export function setContractAuthorization(
   contractVersionId: string,
   body: SetContractAuthorizationPayload
@@ -196,7 +191,7 @@ export function checkContractSubmissionReadiness(contractVersionId: string) {
 
 export function submitContractFromWorkbench(
   contractVersionId: string,
-  body: SubmitContractFromWorkbenchPayload
+  body: Record<string, unknown> = {}
 ) {
   return postJson<unknown>(`/contracts/${contractVersionId}/approval-submission`, body);
 }

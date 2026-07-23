@@ -25,6 +25,7 @@ import { AuditService } from "../audit/audit.service";
 import { assertContractChangeContentAllowed } from "../contract/contract-change-policy";
 import { PrismaService } from "../database/prisma.service";
 import { ContractReadinessService } from "./contract-readiness.service";
+import { BusinessNumberingService } from "../business-number/business-numbering.service";
 import {
   moneyCentsToApi,
   parseMoneyCents,
@@ -125,7 +126,8 @@ export class ContractWorkbenchService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly readiness?: ContractReadinessService
+    private readonly readiness?: ContractReadinessService,
+    private readonly businessNumbers?: BusinessNumberingService
   ) {}
 
   checkReadiness(contractVersionId: string, actorUserId: string) {
@@ -478,6 +480,12 @@ export class ContractWorkbenchService {
         }
       });
       this.assertCas(updated.count);
+      const formalCode =
+        contract.source === "system" &&
+        contract.code === null &&
+        !isChangeVersion
+          ? await this.allocateInitialContractCode(tx)
+          : undefined;
       if (
         !isChangeVersion &&
         (input.paymentTermsOriginalText !== undefined || input.paymentStages !== undefined)
@@ -493,7 +501,8 @@ export class ContractWorkbenchService {
         tx,
         version.contractId,
         actorUserId,
-        companySelection ?? undefined
+        companySelection ?? undefined,
+        formalCode
       );
 
       await this.audit.record(tx, {
@@ -516,7 +525,8 @@ export class ContractWorkbenchService {
             source: input.taxFacts.source
           },
           revisionBefore: input.expectedRevision,
-          revisionAfter: input.expectedRevision + 1
+          revisionAfter: input.expectedRevision + 1,
+          ...(formalCode ? { formalCode } : {})
         }
       });
       return this.toReadModel(
@@ -1161,16 +1171,19 @@ export class ContractWorkbenchService {
     companySelection?: {
       id: string;
       name: string;
-    } | null
+    } | null,
+    formalCode?: string
   ) {
     const parent = await tx.contract.updateMany({
       where: {
         id: contractId,
         ownerUserId: actorUserId,
-        voidedAt: null
+        voidedAt: null,
+        ...(formalCode ? { code: null } : {})
       },
       data: {
         ownerUserId: actorUserId,
+        ...(formalCode ? { code: formalCode } : {}),
         ...(companySelection === undefined
           ? {}
           : companySelection
@@ -1187,6 +1200,13 @@ export class ContractWorkbenchService {
     if (parent.count !== 1) {
       throw new BadRequestException("合同草稿已变化，请刷新后重试");
     }
+  }
+
+  private allocateInitialContractCode(tx: Prisma.TransactionClient) {
+    if (!this.businessNumbers) {
+      throw new Error("正式编号服务暂不可用，请稍后重试");
+    }
+    return this.businessNumbers.allocateDaily(tx, "HT");
   }
 
   private markOlderSuccessfulDocumentsStale(

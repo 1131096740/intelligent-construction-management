@@ -64,6 +64,17 @@ model RefreshToken {
   createdAt DateTime  @default(now())
 }
 
+// 所有新业务正式编号按前缀和北京时间自然日独立递增；编号允许断号且不回收。
+model BusinessDailySequence {
+  prefix       String
+  businessDate String
+  nextSequence Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@id([prefix, businessDate])
+}
+
 model Department {
   id        String   @id @default(uuid())
   name      String   @unique

@@ -544,12 +544,7 @@
                     <strong>提交就绪</strong>
                     <span>提交前会先保存未保存修改，再重新检查当前修订。</span>
                   </div>
-                  <t-select
-                    v-model="submissionNumberRuleId"
-                    :options="contractNumberRuleOptions"
-                    :disabled="editorDisabled"
-                    placeholder="选择合同编号规则"
-                  />
+                  <span>正式编号在首次手动保存时由系统按日流水生成，提交时不再选择编号规则。</span>
                   <t-alert
                     v-if="submissionMessage"
                     :theme="submissionMessageTone"
@@ -687,7 +682,6 @@ import {
 } from "../../api/contract-workbench.api";
 import {
   fetchApprovalDelegationUserOptions,
-  fetchActiveContractNumberRules,
   fetchContractCreateProjects
 } from "../../api/core-flow-read.api";
 import {
@@ -753,8 +747,6 @@ const submissionConfirmVisible = ref(false);
 const submissionError = ref("");
 const submissionMessage = ref("");
 const submissionMessageTone = ref<"success" | "error">("success");
-const submissionNumberRuleId = ref("");
-const contractNumberRules = ref<Array<{ id: string; name: string; pattern: string }>>([]);
 const governanceMutationLocked = ref(false);
 
 const draft = useContractDraft({
@@ -1034,13 +1026,6 @@ const canTransfer = computed(() => Boolean(workbench.value));
 const transferUserOptions = computed(() =>
   transferUsers.value.map((user) => ({ label: user.name, value: user.id }))
 );
-const contractNumberRuleOptions = computed(() =>
-  contractNumberRules.value.map((rule) => ({
-    label: `${rule.name}（${rule.pattern}）`,
-    value: rule.id
-  }))
-);
-
 const autosaveLabel = computed(() => {
   switch (saveState.value) {
     case "saving":
@@ -1048,11 +1033,11 @@ const autosaveLabel = computed(() => {
     case "saved":
       return "已保存";
     case "failed":
-      return "保存失败，将重试";
+      return "保存失败，修改已保留";
     case "conflict":
       return "版本冲突，待处理";
     default:
-      return "未改动";
+      return dirty.value ? "有未保存修改" : "未改动";
   }
 });
 
@@ -1499,7 +1484,9 @@ async function onSave() {
   const saved = await saveNow();
   if (!saved) {
     errorMessage.value = saveError.value || "合同草稿未保存成功，已保留当前内容，请重试。";
+    return;
   }
+  if (contractId.value) await loadExpectedWorkbench(contractId.value);
 }
 
 async function prepareGovernanceMutation() {
@@ -1533,17 +1520,11 @@ async function completeGovernanceMutation(reload: boolean) {
 function requestSubmission() {
   submissionError.value = "";
   submissionMessage.value = "";
-  if (!submissionNumberRuleId.value) {
-    submissionMessageTone.value = "error";
-    submissionMessage.value = "请先在“文档”页签的提交就绪区选择合同编号规则。";
-    activeSection.value = "documents";
-    return;
-  }
   submissionConfirmVisible.value = true;
 }
 
 async function confirmSubmission() {
-  if (submissionBusy.value || governanceMutationLocked.value || !submissionNumberRuleId.value) return;
+  if (submissionBusy.value || governanceMutationLocked.value) return;
   submissionBusy.value = true;
   submissionError.value = "";
   submissionMessage.value = "";
@@ -1563,9 +1544,7 @@ async function confirmSubmission() {
     }
     const latest = workbench.value;
     if (!latest) throw new Error("当前合同版本读取失败，本次未提交。");
-    await submitContractFromWorkbench(latest.version.id, {
-      numberRuleId: submissionNumberRuleId.value
-    });
+    await submitContractFromWorkbench(latest.version.id);
     submissionConfirmVisible.value = false;
     submissionMessageTone.value = "success";
     submissionMessage.value = "合同已提交审批。";
@@ -1678,14 +1657,6 @@ onMounted(() => {
     })
     .catch(() => {
       transferUsers.value = [];
-    });
-  void fetchActiveContractNumberRules()
-    .then((rules) => {
-      contractNumberRules.value = rules;
-      submissionNumberRuleId.value ||= rules[0]?.id ?? "";
-    })
-    .catch(() => {
-      contractNumberRules.value = [];
     });
 });
 

@@ -28,8 +28,6 @@ const mockCreateDraft = vi.mocked(createWorkbenchDraft);
 const mockFetchWorkbench = vi.mocked(fetchContractWorkbench);
 const mockSaveDraft = vi.mocked(saveContractDraft);
 
-const DEBOUNCE_MS = 1000;
-
 function memoryStorage(): Storage {
   const map = new Map<string, string>();
   return {
@@ -115,7 +113,7 @@ afterEach(() => {
 });
 
 describe("useContractDraft", () => {
-  it("persists an incomplete manual amount as zero so autosave remains available", async () => {
+  it("persists an incomplete manual amount as zero on explicit save", async () => {
     const draft = makeDraft();
     mockFetchWorkbench.mockResolvedValue(makeWorkbench());
     mockSaveDraft.mockResolvedValue({ version: { draftRevision: 4 } });
@@ -266,7 +264,7 @@ describe("useContractDraft", () => {
     });
   });
 
-  it("debounces autosave", async () => {
+  it("keeps edits local until an explicit manual save", async () => {
     const draft = makeDraft();
     mockFetchWorkbench.mockResolvedValue(makeWorkbench());
     mockSaveDraft.mockResolvedValue({ version: { draftRevision: 4 } });
@@ -278,14 +276,13 @@ describe("useContractDraft", () => {
     draft.model.contractName = "改名 2";
     draft.markDirty();
 
-    // Before the debounce elapses no save has gone out.
+    // Editing only writes the recovery backup; it never allocates a formal number
+    // or sends a draft save until the user explicitly saves.
     expect(mockSaveDraft).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(DEBOUNCE_MS - 1);
+    await vi.runOnlyPendingTimersAsync();
     expect(mockSaveDraft).not.toHaveBeenCalled();
 
-    // One trailing call fires for the two rapid edits, with the loaded revision.
-    vi.advanceTimersByTime(1);
-    await vi.runOnlyPendingTimersAsync();
+    await draft.saveNow();
     expect(mockSaveDraft).toHaveBeenCalledTimes(1);
     expect(mockSaveDraft.mock.calls[0]?.[0]).toBe("cv-1");
     expect(mockSaveDraft.mock.calls[0]?.[1]).toMatchObject({ expectedRevision: 3 });
@@ -342,7 +339,7 @@ describe("useContractDraft", () => {
     expect(draft.isDirty.value).toBe(false);
   });
 
-  it("coalesces an in-flight autosave and preserves edits made during the request", async () => {
+  it("coalesces an in-flight save and preserves edits made during the request", async () => {
     const draft = makeDraft();
     mockFetchWorkbench.mockResolvedValue(makeWorkbench());
     let resolveFirst!: (value: unknown) => void;
@@ -353,7 +350,7 @@ describe("useContractDraft", () => {
 
     draft.model.contractName = "第一次修改";
     draft.markDirty();
-    const autosave = draft.saveNow();
+    const firstSave = draft.saveNow();
     expect(mockSaveDraft).toHaveBeenCalledTimes(1);
     expect(mockSaveDraft.mock.calls[0]?.[1]).toMatchObject({ expectedRevision: 3 });
 
@@ -363,7 +360,7 @@ describe("useContractDraft", () => {
     expect(mockSaveDraft).toHaveBeenCalledTimes(1);
 
     resolveFirst({ version: { draftRevision: 4 } });
-    await Promise.all([autosave, governanceFlush]);
+    await Promise.all([firstSave, governanceFlush]);
 
     expect(mockSaveDraft).toHaveBeenCalledTimes(2);
     expect(mockSaveDraft.mock.calls[1]?.[1]).toMatchObject({
@@ -625,7 +622,7 @@ describe("useContractDraft", () => {
     expect(draft.saveState.value).toBe("conflict");
   });
 
-  it("keeps local edits when autosave fails", async () => {
+  it("keeps local edits when an explicit save fails", async () => {
     const draft = makeDraft();
     mockFetchWorkbench.mockResolvedValue(makeWorkbench());
     await draft.load("ct-1");
@@ -633,7 +630,7 @@ describe("useContractDraft", () => {
     mockSaveDraft.mockRejectedValueOnce(new Error("网络异常"));
     draft.model.contractName = "未保存的改动";
     draft.markDirty();
-    await vi.runOnlyPendingTimersAsync();
+    await draft.saveNow();
 
     expect(draft.saveState.value).toBe("failed");
     // Local edits survive a failure.
@@ -643,11 +640,11 @@ describe("useContractDraft", () => {
     expect(backup).not.toBeNull();
     expect(backup).toContain("未保存的改动");
 
-    // A non-conflict failure does NOT pause: the next change schedules another save.
+    // A non-conflict failure does NOT pause: the next explicit save may retry.
     mockSaveDraft.mockResolvedValueOnce({ version: { draftRevision: 4 } });
     draft.model.contractName = "重试的改动";
     draft.markDirty();
-    await vi.runOnlyPendingTimersAsync();
+    await draft.saveNow();
     expect(mockSaveDraft).toHaveBeenCalledTimes(2);
     expect(draft.saveState.value).toBe("saved");
     // The successful retry clears the localStorage backup.
@@ -659,7 +656,7 @@ describe("useContractDraft", () => {
     mockFetchWorkbench.mockResolvedValue(makeWorkbench());
     await draft.load("ct-1");
 
-    // First autosave hits a revision conflict; re-fetch returns the newer server state.
+    // First explicit save hits a revision conflict; re-fetch returns the newer server state.
     mockSaveDraft.mockRejectedValueOnce(new Error("Contract draft revision conflict"));
     mockFetchWorkbench.mockResolvedValueOnce(
       makeWorkbench({
@@ -672,14 +669,14 @@ describe("useContractDraft", () => {
     );
     draft.model.contractName = "本地的名字";
     draft.markDirty();
-    await vi.runOnlyPendingTimersAsync();
+    await draft.saveNow();
 
     expect(draft.saveState.value).toBe("conflict");
     expect(draft.conflict.value).not.toBeNull();
     expect(draft.conflict.value?.local.contractName).toBe("本地的名字");
     expect(draft.conflict.value?.server.contractName).toBe("服务器上的名字");
 
-    // While conflicted, further edits do NOT trigger autosave (paused).
+    // While conflicted, further edits do NOT submit saves (paused).
     const callsAfterConflict = mockSaveDraft.mock.calls.length;
     draft.model.contractName = "又改了";
     draft.markDirty();

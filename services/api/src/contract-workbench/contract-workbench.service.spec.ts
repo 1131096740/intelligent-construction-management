@@ -38,11 +38,11 @@ describe("ContractWorkbenchService", () => {
     validationSchema: []
   };
 
-  function makeService(tx: Record<string, unknown>) {
+  function makeService(tx: Record<string, unknown>, businessNumbers?: { allocateDaily: jest.Mock }) {
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
     } as unknown as PrismaService;
-    return new ContractWorkbenchService(prisma, audit as never);
+    return new ContractWorkbenchService(prisma, audit as never, undefined, businessNumbers as never);
   }
 
   function ownedVersionTx(overrides: Record<string, unknown> = {}) {
@@ -162,6 +162,43 @@ describe("ContractWorkbenchService", () => {
       data: { status: "stale" }
     });
     expect(audit.record).toHaveBeenCalledTimes(1);
+  });
+
+  it("allocates the formal daily number only for the first successful system-contract save", async () => {
+    const tx = ownedVersionTx({
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          source: "system",
+          code: null,
+          ownerUserId: "owner-1",
+          voidedAt: null,
+          contractTypeKey: "material_purchase"
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    });
+    const businessNumbers = { allocateDaily: jest.fn().mockResolvedValue("HT-20260723-001") };
+    const service = makeService(tx, businessNumbers);
+
+    await service.saveDraft("version-1", "owner-1", {
+      expectedRevision: 4,
+      draftData: { project_name: "新名称" },
+      clauses: [],
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      manualAmountCents: "1000000",
+      taxFacts: VALID_TAX_FACTS
+    });
+
+    expect(businessNumbers.allocateDaily).toHaveBeenCalledWith(tx, "HT");
+    expect(tx.contract.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ code: null }),
+      data: expect.objectContaining({ code: "HT-20260723-001" })
+    }));
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      metadata: expect.objectContaining({ formalCode: "HT-20260723-001" })
+    }));
   });
 
   it("normalizes a legacy top-level field when the current editor writes fieldValues", async () => {
