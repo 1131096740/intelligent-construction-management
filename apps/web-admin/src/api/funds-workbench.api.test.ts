@@ -13,12 +13,12 @@ describe("funds workbench API", () => {
   it("keeps the default read free of empty filters and encodes selected server views", async () => {
     mockApiFetch
       .mockResolvedValueOnce(new Response(JSON.stringify({ view: "all", source: "all", items: [], viewCounts: {}, sourceCounts: {} }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ view: "pending_evidence", source: "spot_procurement_payment", items: [], viewCounts: {}, sourceCounts: {} }), { status: 200 }));
+      .mockResolvedValueOnce(new Response(JSON.stringify({ view: "pending_action", source: "spot_procurement_payment", items: [], viewCounts: {}, sourceCounts: {} }), { status: 200 }));
 
     await fetchFundsWorkbench();
-    await fetchFundsWorkbench({ view: "pending_evidence", source: "spot_procurement_payment" });
+    await fetchFundsWorkbench({ view: "pending_action", source: "spot_procurement_payment" });
 
     expect(mockApiFetch).toHaveBeenNthCalledWith(1, "/funds-workbench");
-    expect(mockApiFetch).toHaveBeenNthCalledWith(2, "/funds-workbench?view=pending_evidence&source=spot_procurement_payment");
+    expect(mockApiFetch).toHaveBeenNthCalledWith(2, "/funds-workbench?view=pending_action&source=spot_procurement_payment");
   });
 });

@@ -4,6 +4,7 @@ import { FundsWorkbenchService } from "./funds-workbench.service";
 describe("FundsWorkbenchService", () => {
   const findMany = jest.fn();
   const projectVisibility = { visibleProjectIds: jest.fn() };
+  const me = { getFundsPendingWorkItems: jest.fn() };
   const prisma = {
     project: { findMany },
     paymentRequest: { findMany },
@@ -14,11 +15,12 @@ describe("FundsWorkbenchService", () => {
     fileObject: { findMany },
     expenseClaim: { findMany }
   };
-  const service = new FundsWorkbenchService(prisma as never, projectVisibility as never);
+  const service = new FundsWorkbenchService(prisma as never, projectVisibility as never, me as never);
 
   beforeEach(() => {
     jest.resetAllMocks();
     projectVisibility.visibleProjectIds.mockResolvedValue(["project-1"]);
+    me.getFundsPendingWorkItems.mockResolvedValue([]);
   });
 
   it("projects only visible contract and spot payments while retaining non-project expense funds", async () => {
@@ -127,5 +129,32 @@ describe("FundsWorkbenchService", () => {
       items: [expect.objectContaining({ id: "spot-paid", statusLabel: "待补票据" })],
       viewCounts: expect.objectContaining({ pending_evidence: 1, completed: 0 })
     });
+  });
+
+  it("uses the canonical work-item projection for my pending contract and spot actions", async () => {
+    me.getFundsPendingWorkItems.mockResolvedValue([
+      { businessType: "payment_request", businessId: "payment-1" },
+      { businessType: "spot_payment", businessId: "spot-1" }
+    ]);
+    findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { id: "payment-1", code: "FK-001", projectId: "project-1", settlementId: null, sourceType: "settlement", status: "approval_pending", requestedAmountCents: 5000n, paidAmountCents: 0n, updatedAt: new Date("2026-07-23T10:00:00.000Z") }
+      ])
+      .mockResolvedValueOnce([
+        { id: "spot-1", code: "LS-001", projectId: "project-1", procurementId: "procurement-1", procurementVersionId: "version-1", status: "approved_pending_payment", createdAt: new Date("2026-07-23T09:00:00.000Z"), companyPaymentAmountCents: 5000n, paidAmountCents: 0n, paymentNote: "水泥", payeeNameSnapshot: "供应商", payerCompanyNameSnapshot: "建工", updatedAt: new Date("2026-07-23T11:00:00.000Z") }
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await expect(service.list("finance-1", { view: "pending_action" })).resolves.toMatchObject({
+      items: [
+        expect.objectContaining({ id: "spot-1", pendingMyAction: true }),
+        expect.objectContaining({ id: "payment-1", pendingMyAction: true })
+      ],
+      viewCounts: expect.objectContaining({ pending_action: 2 })
+    });
+    expect(me.getFundsPendingWorkItems).toHaveBeenCalledWith("finance-1");
   });
 });

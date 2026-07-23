@@ -657,6 +657,31 @@ export class MeService {
     };
   }
 
+  async getFundsPendingWorkItems(userId: string): Promise<WorkItem[]> {
+    const evaluatedAt = new Date();
+    const scopes = await this.loadProjectRoleScopes(userId);
+    const projectIds = scopes.map((scope) => scope.projectId);
+    const projectNameById = await this.projectNames(projectIds);
+    const pending = [
+      ...(await this.paymentExecutionWorkItems(
+        this.projectIdsFor(scopes, ["payment.execution"]),
+        projectNameById,
+        undefined
+      )),
+      ...(await this.spotPaymentExecutionWorkItems(
+        this.projectIdsFor(scopes, ["spot_procurement.payment.execute"]),
+        projectNameById,
+        undefined
+      )),
+      ...(await this.approvalWorkItems(scopes, userId, "pending", evaluatedAt))
+    ];
+    return pending.filter((item) =>
+      item.businessType === "payment_request" ||
+      item.businessType === "spot_procurement_payment" ||
+      item.businessType === "spot_payment"
+    );
+  }
+
   private async myDraftWorkItems(
     userId: string,
     contractProjectIds: string[],
@@ -1265,7 +1290,8 @@ export class MeService {
 
   private async paymentExecutionWorkItems(
     projectIds: string[],
-    projectNameById: ReadonlyMap<string, string>
+    projectNameById: ReadonlyMap<string, string>,
+    limit: number | undefined = 30
   ): Promise<WorkItem[]> {
     if (!projectIds.length) {
       return [];
@@ -1277,7 +1303,7 @@ export class MeService {
         status: { in: ["approved_pending_payment", "partially_paid"] }
       },
       orderBy: { updatedAt: "desc" },
-      take: 30,
+      ...(limit === undefined ? {} : { take: limit }),
       select: {
         id: true,
         projectId: true,
@@ -1297,6 +1323,9 @@ export class MeService {
       return {
         id: `payment-execution:${payment.id}`,
         type: "payment_execution",
+        projectId: payment.projectId,
+        businessType: "payment_request",
+        businessId: payment.id,
         title: "登记实付与凭证",
         projectName: projectNameById.get(payment.projectId) ?? payment.projectId,
         businessCode: payment.code,
@@ -1314,7 +1343,8 @@ export class MeService {
 
   private async spotPaymentExecutionWorkItems(
     projectIds: string[],
-    projectNameById: ReadonlyMap<string, string>
+    projectNameById: ReadonlyMap<string, string>,
+    limit: number | undefined = 30
   ): Promise<WorkItem[]> {
     if (!projectIds.length || !supportsSpotPaymentExecutionAggregation(this.prisma)) {
       return [];
@@ -1326,7 +1356,7 @@ export class MeService {
         status: { in: ["approved_pending_payment", "partially_paid"] }
       },
       orderBy: { updatedAt: "desc" },
-      take: 30,
+      ...(limit === undefined ? {} : { take: limit }),
       select: {
         id: true,
         projectId: true,

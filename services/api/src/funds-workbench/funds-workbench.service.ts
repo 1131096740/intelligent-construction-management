@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { PrismaService } from "../database/prisma.service";
+import { MeService } from "../me/me.service";
 import { moneyCentsToApi } from "../money/decimal-money";
 import { executionHasActiveVoucher } from "../spot-procurement/spot-payment-voucher";
 import { spotPaymentRefundOwnerId } from "../spot-procurement/spot-payment-refund-owner";
@@ -12,7 +13,7 @@ const FUND_SOURCES = [
   "loan_disbursement"
 ] as const;
 
-const FUND_VIEWS = ["all", "in_progress", "pending_funds", "partial_payment", "pending_refund", "pending_evidence", "completed"] as const;
+const FUND_VIEWS = ["all", "pending_action", "in_progress", "pending_funds", "partial_payment", "pending_refund", "pending_evidence", "completed"] as const;
 
 type FundSource = (typeof FUND_SOURCES)[number];
 type FundView = (typeof FUND_VIEWS)[number];
@@ -33,6 +34,7 @@ type FundRow = {
   statusLabel: string;
   pendingRefund: boolean;
   pendingEvidence: boolean;
+  pendingMyAction: boolean;
   updatedAt: string;
 };
 
@@ -40,7 +42,8 @@ type FundRow = {
 export class FundsWorkbenchService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly projectVisibility: ProjectVisibilityService
+    private readonly projectVisibility: ProjectVisibilityService,
+    private readonly me: MeService
   ) {}
 
   async list(actorUserId: string, input: { view?: string; source?: string }) {
@@ -48,7 +51,7 @@ export class FundsWorkbenchService {
     const source = this.source(input.source);
     const visibleProjectIds = await this.projectVisibility.visibleProjectIds(actorUserId);
     const projectWhere = { projectId: { in: visibleProjectIds } };
-    const [projects, payments, spotPayments, expenses] = await Promise.all([
+    const [projects, payments, spotPayments, expenses, pendingWorkItems] = await Promise.all([
       this.prisma.project.findMany({
         where: { id: { in: visibleProjectIds } },
         select: { id: true, code: true, name: true }
@@ -78,7 +81,8 @@ export class FundsWorkbenchService {
           companyEntityNameSnapshot: true, paymentSubjectNameSnapshot: true, payeeNameSnapshot: true, requestedAmountCents: true,
           companyPayableAmountCents: true, fundedAmountCents: true, updatedAt: true
         }
-      })
+      }),
+      this.me.getFundsPendingWorkItems(actorUserId)
     ]);
     const awaitingRefundDiscrepancies = spotPayments.length
       ? await this.prisma.spotProcurementDiscrepancy.findMany({
@@ -132,14 +136,27 @@ export class FundsWorkbenchService {
         .filter((execution) => !executionHasActiveVoucher(execution, activeVoucherFileIds, vouchersByExecutionId))
         .map((execution) => execution.paymentId)
     );
+    const pendingContractPaymentIds = new Set(
+      pendingWorkItems
+        .filter((item) => item.businessType === "payment_request")
+        .map((item) => item.businessId)
+        .filter((businessId): businessId is string => Boolean(businessId))
+    );
+    const pendingSpotPaymentIds = new Set(
+      pendingWorkItems
+        .filter((item) => item.businessType === "spot_procurement_payment" || item.businessType === "spot_payment")
+        .map((item) => item.businessId)
+        .filter((businessId): businessId is string => Boolean(businessId))
+    );
     const projectById = new Map(projects.map((project) => [project.id, project]));
     const rows: FundRow[] = [
-      ...payments.map((payment) => this.contractPaymentRow(payment, projectById)),
+      ...payments.map((payment) => this.contractPaymentRow(payment, projectById, pendingContractPaymentIds.has(payment.id))),
       ...spotPayments.map((payment) => this.spotPaymentRow(
         payment,
         projectById,
         pendingRefundSpotPaymentIds.has(payment.id),
-        pendingEvidenceSpotPaymentIds.has(payment.id)
+        pendingEvidenceSpotPaymentIds.has(payment.id),
+        pendingSpotPaymentIds.has(payment.id)
       )),
       ...expenses.flatMap((expense) => this.expenseRows(expense, projectById))
     ];
@@ -165,7 +182,7 @@ export class FundsWorkbenchService {
   private contractPaymentRow(payment: {
     id: string; code: string; projectId: string; settlementId: string | null; sourceType: string; status: string;
     requestedAmountCents: bigint; paidAmountCents: bigint; updatedAt: Date;
-  }, projectById: Map<string, { id: string; code: string; name: string }>): FundRow {
+  }, projectById: Map<string, { id: string; code: string; name: string }>, pendingMyAction: boolean): FundRow {
     return this.row({
       id: payment.id,
       code: payment.code,
@@ -178,6 +195,7 @@ export class FundsWorkbenchService {
       requested: payment.requestedAmountCents,
       paid: payment.paidAmountCents,
       status: payment.status,
+      pendingMyAction,
       updatedAt: payment.updatedAt
     });
   }
@@ -186,7 +204,7 @@ export class FundsWorkbenchService {
     id: string; code: string; projectId: string; procurementId: string; procurementVersionId: string; status: string; createdAt: Date;
     companyPaymentAmountCents: bigint; paidAmountCents: bigint; paymentNote: string | null;
     payeeNameSnapshot: string | null; payerCompanyNameSnapshot: string | null; updatedAt: Date;
-  }, projectById: Map<string, { id: string; code: string; name: string }>, pendingRefund: boolean, pendingEvidence: boolean): FundRow {
+  }, projectById: Map<string, { id: string; code: string; name: string }>, pendingRefund: boolean, pendingEvidence: boolean, pendingMyAction: boolean): FundRow {
     return this.row({
       id: payment.id,
       code: payment.code,
@@ -201,6 +219,7 @@ export class FundsWorkbenchService {
       status: payment.status,
       pendingRefund,
       pendingEvidence,
+      pendingMyAction,
       updatedAt: payment.updatedAt
     });
   }
@@ -249,7 +268,7 @@ export class FundsWorkbenchService {
   private row(input: {
     id: string; code: string; source: FundSource; project: { id: string; code: string; name: string } | null;
     sourceDocument: string; reason: string; payeeName: string | null; payerName: string | null;
-    requested: bigint; paid: bigint; status: string; pendingRefund?: boolean; pendingEvidence?: boolean; updatedAt: Date;
+    requested: bigint; paid: bigint; status: string; pendingRefund?: boolean; pendingEvidence?: boolean; pendingMyAction?: boolean; updatedAt: Date;
   }): FundRow {
     const remaining = input.requested > input.paid ? input.requested - input.paid : 0n;
     return {
@@ -268,6 +287,7 @@ export class FundsWorkbenchService {
       statusLabel: this.statusLabel(input.status, remaining, input.pendingRefund ?? false, input.pendingEvidence ?? false),
       pendingRefund: input.pendingRefund ?? false,
       pendingEvidence: input.pendingEvidence ?? false,
+      pendingMyAction: input.pendingMyAction ?? false,
       updatedAt: input.updatedAt.toISOString()
     };
   }
@@ -278,6 +298,7 @@ export class FundsWorkbenchService {
 
   private inView(row: FundRow, view: FundView) {
     if (view === "all") return true;
+    if (view === "pending_action") return row.pendingMyAction && !row.pendingRefund && !row.pendingEvidence;
     if (view === "in_progress") return row.status === "approval_pending";
     if (view === "pending_funds") return !row.pendingRefund && !row.pendingEvidence && row.remainingAmountCents !== "0" && ["approved_pending_payment", "approved_pending_disbursement", "partially_disbursed", "partially_paid"].includes(row.status);
     if (view === "partial_payment") return !row.pendingRefund && !row.pendingEvidence && ["partially_paid", "partially_disbursed"].includes(row.status);

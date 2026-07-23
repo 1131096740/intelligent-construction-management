@@ -19,10 +19,11 @@ const source = ref<FundsWorkbenchSource>("all");
 const loading = ref(false);
 const loadError = ref("");
 const rows = ref<FundsWorkbenchItem[]>([]);
-const counts = ref<Record<FundsWorkbenchView, number>>({ all: 0, in_progress: 0, pending_funds: 0, partial_payment: 0, pending_refund: 0, pending_evidence: 0, completed: 0 });
+const counts = ref<Record<FundsWorkbenchView, number>>({ all: 0, pending_action: 0, in_progress: 0, pending_funds: 0, partial_payment: 0, pending_refund: 0, pending_evidence: 0, completed: 0 });
 
 const viewOptions = [
   { label: "全部", value: "all" },
+  { label: "待我办理", value: "pending_action" },
   { label: "审批中", value: "in_progress" },
   { label: "已批待付", value: "pending_funds" },
   { label: "部分支付", value: "partial_payment" },
@@ -48,7 +49,7 @@ const columns = [
   { colKey: "status", title: "状态", width: 130 },
   { colKey: "updatedAt", title: "更新时间", width: 165 }
 ];
-const summary = computed(() => `审批中 ${counts.value.in_progress} 条 · 已批待付 ${counts.value.pending_funds} 条 · 部分支付 ${counts.value.partial_payment} 条 · 待退款 ${counts.value.pending_refund} 条 · 待补票据 ${counts.value.pending_evidence} 条 · 已完成 ${counts.value.completed} 条`);
+const summary = computed(() => `待我办理 ${counts.value.pending_action} 条 · 审批中 ${counts.value.in_progress} 条 · 已批待付 ${counts.value.pending_funds} 条 · 部分支付 ${counts.value.partial_payment} 条 · 待退款 ${counts.value.pending_refund} 条 · 待补票据 ${counts.value.pending_evidence} 条 · 已完成 ${counts.value.completed} 条`);
 
 function sourceLabel(value: FundsWorkbenchItem["source"]) {
   return ({ contract_payment: "合同付款", spot_procurement_payment: "零星材料付款", expense_reimbursement: "费用报销补付", loan_disbursement: "借款放款" } as Record<string, string>)[value];

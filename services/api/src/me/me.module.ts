@@ -6,6 +6,7 @@ import { MeService } from "./me.service";
 @Module({
   imports: [FileModule],
   controllers: [MeController],
-  providers: [MeService]
+  providers: [MeService],
+  exports: [MeService]
 })
 export class MeModule {}

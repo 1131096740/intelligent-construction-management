@@ -1660,4 +1660,49 @@ describe("MeService", () => {
     ]);
     expect(prisma.approvalDelegation.findMany).not.toHaveBeenCalled();
   });
+
+  it("reuses canonical pending work-item sources for the untruncated funds queue", async () => {
+    const service = new MeService({} as never, {} as never) as unknown as {
+      getFundsPendingWorkItems(userId: string): Promise<WorkItem[]>;
+      loadProjectRoleScopes(): Promise<Array<{ projectId: string; roleKeys: string[] }>>;
+      projectNames(projectIds: string[]): Promise<Map<string, string>>;
+      projectIdsFor(scopes: unknown[], actions: string[]): string[];
+      paymentExecutionWorkItems(projectIds: string[], names: Map<string, string>, limit?: number): Promise<WorkItem[]>;
+      spotPaymentExecutionWorkItems(projectIds: string[], names: Map<string, string>, limit?: number): Promise<WorkItem[]>;
+      approvalWorkItems(scopes: unknown[], userId: string, mode: string, evaluatedAt: Date): Promise<WorkItem[]>;
+    };
+    const scopes = [{ projectId: "project-1", roleKeys: ["finance_staff"] }];
+    const loadProjectRoleScopes = jest.spyOn(service, "loadProjectRoleScopes").mockResolvedValue(scopes);
+    const projectNames = jest.spyOn(service, "projectNames").mockResolvedValue(new Map([["project-1", "科技园"]]));
+    const projectIdsFor = jest.spyOn(service, "projectIdsFor").mockReturnValue(["project-1"]);
+    const paymentExecutionWorkItems = jest.spyOn(service, "paymentExecutionWorkItems").mockResolvedValue([
+      { businessType: "payment_request", businessId: "payment-1" }
+    ] as WorkItem[]);
+    const spotPaymentExecutionWorkItems = jest.spyOn(service, "spotPaymentExecutionWorkItems").mockResolvedValue([
+      { businessType: "spot_payment", businessId: "spot-1" }
+    ] as WorkItem[]);
+    jest.spyOn(service, "approvalWorkItems").mockResolvedValue([
+      { businessType: "spot_procurement_payment", businessId: "spot-approval-1" },
+      { businessType: "contract", businessId: "contract-1" }
+    ] as WorkItem[]);
+
+    await expect(service.getFundsPendingWorkItems("finance-1")).resolves.toEqual([
+      { businessType: "payment_request", businessId: "payment-1" },
+      { businessType: "spot_payment", businessId: "spot-1" },
+      { businessType: "spot_procurement_payment", businessId: "spot-approval-1" }
+    ]);
+    expect(loadProjectRoleScopes).toHaveBeenCalledWith("finance-1");
+    expect(projectNames).toHaveBeenCalledWith(["project-1"]);
+    expect(projectIdsFor).toHaveBeenCalled();
+    expect(paymentExecutionWorkItems).toHaveBeenCalledWith(
+      ["project-1"],
+      expect.any(Map),
+      undefined
+    );
+    expect(spotPaymentExecutionWorkItems).toHaveBeenCalledWith(
+      ["project-1"],
+      expect.any(Map),
+      undefined
+    );
+  });
 });
