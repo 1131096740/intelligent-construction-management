@@ -71,13 +71,14 @@ const createForm = reactive({
 });
 
 const columns = [
-  { colKey: "code", title: "申请单编号", width: 130, fixed: "left" as const },
+  { colKey: "code", title: "采购编号", width: 130, fixed: "left" as const },
   { colKey: "project", title: "项目", width: 180 },
-  { colKey: "arrival", title: "要求到位", width: 120 },
-  { colKey: "participants", title: "申请 / 采购", width: 135 },
-  { colKey: "reason", title: "采购原因", width: 160 },
-  { colKey: "fulfillment", title: "付款与收货", width: 210 },
-  { colKey: "status", title: "当前状态", width: 140 },
+  { colKey: "participants", title: "申请人 / 采购人", width: 150 },
+  { colKey: "arrival", title: "到位日期", width: 120 },
+  { colKey: "materialReason", title: "材料与原因摘要", width: 250 },
+  { colKey: "fulfillment", title: "关联付款 / 收货", width: 210 },
+  { colKey: "status", title: "状态 / 当前办理", width: 160 },
+  { colKey: "updatedAt", title: "更新时间", width: 150 },
   { colKey: "operation", title: "操作", width: 80, fixed: "right" as const }
 ];
 
@@ -198,6 +199,10 @@ function receiptLabel(row: SpotProcurementListItemReadModel) {
   return "label" in row.receipt
     ? row.receipt.label
     : row.receipt.statusLabel;
+}
+
+function updatedAt(value: string) {
+  return value.replace("T", " ").slice(0, 16);
 }
 
 function isRealPaymentSummary(
@@ -558,7 +563,7 @@ onMounted(() => {
           :columns="columns"
           :data="rows"
           :loading="loading"
-          :scroll="{ x: 1120 }"
+          :scroll="{ x: 1_430 }"
           horizontal-scroll-affixed-bottom
         >
           <template #code="{ row }">
@@ -579,6 +584,12 @@ onMounted(() => {
             <div class="two-line-cell">
               <strong>申请：{{ row.applicationName ?? row.applicant.name }}</strong>
               <span>采购：{{ row.purchaserName ?? row.handler.name }}</span>
+            </div>
+          </template>
+          <template #materialReason="{ row }">
+            <div class="two-line-cell">
+              <strong>{{ row.receiptWorkbench.materialSummary }}</strong>
+              <span>{{ row.reason }}</span>
             </div>
           </template>
           <template #fulfillment="{ row }">
@@ -611,6 +622,9 @@ onMounted(() => {
               </t-tag>
               <span>{{ row.approval.currentNodeName || "—" }}</span>
             </div>
+          </template>
+          <template #updatedAt="{ row }">
+            {{ updatedAt(row.updatedAt) }}
           </template>
           <template #operation="{ row }">
             <t-link

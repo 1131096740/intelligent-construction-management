@@ -104,7 +104,7 @@ describe("spot procurement web pages", () => {
   it("shows the required arrival date in the procurement ledger without inventing it for legacy records", () => {
     const procurement = pageSource("SpotProcurementWorkbenchPage.vue");
 
-    expect(procurement).toContain('colKey: "arrival", title: "要求到位"');
+    expect(procurement).toContain('colKey: "arrival", title: "到位日期"');
     expect(procurement).toContain("function arrivalDateText");
     expect(procurement).toContain("历史单据，未按新流程采集");
   });
@@ -616,8 +616,13 @@ describe("spot procurement web pages", () => {
       expect(source).toContain("jg-table-region jg-table-region--wide");
       expect(source).toContain("horizontal-scroll-affixed-bottom");
     }
-    expect(procurement).toContain('title: "申请 / 采购"');
-    expect(procurement).toContain('title: "付款与收货"');
+    expect(procurement).toContain('title: "采购编号"');
+    expect(procurement).toContain('title: "申请人 / 采购人"');
+    expect(procurement).toContain('title: "材料与原因摘要"');
+    expect(procurement).toContain('title: "关联付款 / 收货"');
+    expect(procurement).toContain('title: "状态 / 当前办理"');
+    expect(procurement).toContain('title: "更新时间"');
+    expect(procurement).toContain("row.receiptWorkbench.materialSummary");
     expect(payment).toContain('title: "付款编号"');
     expect(payment).toContain('title: "采购编号"');
     expect(payment).toContain('title: "商户 / 收款对象"');
