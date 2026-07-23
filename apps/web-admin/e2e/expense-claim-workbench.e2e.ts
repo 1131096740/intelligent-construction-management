@@ -13,6 +13,10 @@ test("费用与报销工作台在桌面和手机尺寸读取新域个人事实�
   await expect(page.getByRole("heading", { name: "费用与报销工作台" })).toBeVisible();
   await expect(page.getByText("BX-20260723-001", { exact: true })).toBeVisible();
   await expect(page.getByText("由综合部某某代办", { exact: true })).toHaveCount(0);
+  await page.getByText("BX-20260723-001", { exact: true }).click();
+  await expect(page.getByRole("heading", { name: "费用报销" })).toBeVisible();
+  await expect(page.getByText("项目现场交通费", { exact: true })).toBeVisible();
+  await page.goto("/费用与报销工作台");
   await expectNoDocumentHorizontalOverflow(page);
   await expectNoNestedHorizontalScrollers(page);
 
@@ -20,6 +24,7 @@ test("费用与报销工作台在桌面和手机尺寸读取新域个人事实�
   await page.getByText("审批中", { exact: true }).last().click();
   await expect(page.getByText("BX-20260723-002", { exact: true })).toBeVisible();
   await expect.poll(() => requestedViews).toContain("in_progress");
+  await page.keyboard.press("Escape");
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expectNoDocumentHorizontalOverflow(page);
@@ -60,6 +65,15 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[]) {
       : [expenseClaim({ code: "BX-20260723-001", status: "approved_pending_payment" })];
     return route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
   });
+  await page.route("**/api/expense-claims/expense-claim-1", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      ...expenseClaim({}), applicantPhoneSnapshot: null, proxyReason: null, factWitnessNameSnapshot: null,
+      paymentMethod: null, payeeNameSnapshot: null, payeeAccountNameSnapshot: null, payeeBankNameSnapshot: null,
+      payeeBankAccountSnapshot: null, loanExpectedClearanceAt: null, submittedAt: null, approvedAt: null,
+      lines: [{ id: "line-1", sortOrder: 1, expenseCategory: "交通", occurredOn: "2026-07-22T00:00:00.000Z", purpose: "项目现场交通费", receiptCount: 1, amountCents: "123456", evidenceType: "receipt_or_other", noEvidenceReason: null, remark: null }]
+    })
+  }));
 }
 
 function expenseClaim(overrides: Partial<Record<string, unknown>>) {

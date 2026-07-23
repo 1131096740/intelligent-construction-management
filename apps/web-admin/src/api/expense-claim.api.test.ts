@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchExpenseClaims } from "./expense-claim.api";
+import { fetchExpenseClaimDetail, fetchExpenseClaims } from "./expense-claim.api";
 
 vi.mock("./api-fetch", () => ({ apiFetch: vi.fn() }));
 
@@ -30,5 +30,13 @@ describe("expense claim API", () => {
     await fetchExpenseClaims();
 
     expect(mockApiFetch).toHaveBeenCalledWith("/expense-claims");
+  });
+
+  it("loads a claim detail through the encoded new-domain resource path", async () => {
+    mockApiFetch.mockResolvedValue(new Response(JSON.stringify({ id: "claim-1", code: "BX-1", lines: [] }), { status: 200 }));
+
+    await expect(fetchExpenseClaimDetail("claim/1")).resolves.toMatchObject({ id: "claim-1", lines: [] });
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/expense-claims/claim%2F1");
   });
 });

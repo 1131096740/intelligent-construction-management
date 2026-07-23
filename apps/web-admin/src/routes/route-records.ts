@@ -420,6 +420,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         meta: { title: "费用与报销工作台" }
       },
       {
+        path: "费用与报销/:claimId",
+        component: () => import("../pages/expense-claims/ExpenseClaimDetailPage.vue"),
+        meta: { title: "费用与报销详情", activeNavigationPath: "/费用与报销工作台" }
+      },
+      {
         path: "零星采购收货/:procurementId",
         component: () =>
           import("../pages/spot-procurement/SpotProcurementReceiptPage.vue"),

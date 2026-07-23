@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import {
   fetchExpenseClaims,
   type ExpenseClaimListItemReadModel,
@@ -12,6 +13,7 @@ import JgWorkbenchShell from "../../components/JgWorkbenchShell.vue";
 import { centsTextToYuanText } from "../../lib/money";
 
 const view = ref<ExpenseClaimWorkbenchView>("all");
+const router = useRouter();
 const loading = ref(false);
 const loadError = ref("");
 const rows = ref<ExpenseClaimListItemReadModel[]>([]);
@@ -85,6 +87,8 @@ function scope(row: ExpenseClaimListItemReadModel) {
 function dateTime(value: string) {
   return value.replace("T", " ").slice(0, 16);
 }
+
+function openDetail(claimId: string) { void router.push(`/费用与报销/${encodeURIComponent(claimId)}`); }
 
 async function loadWorkbench() {
   loading.value = true;
@@ -170,6 +174,14 @@ onMounted(() => void loadWorkbench());
         >
           <template #claimType="{ row }">
             {{ claimTypeLabel(row.claimType) }}
+          </template>
+          <template #code="{ row }">
+            <t-link
+              theme="primary"
+              @click="openDetail(row.id)"
+            >
+              {{ row.code }}
+            </t-link>
           </template>
           <template #applicant="{ row }">
             <strong>{{ row.applicantNameSnapshot }}</strong>

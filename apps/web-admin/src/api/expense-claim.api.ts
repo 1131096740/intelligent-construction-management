@@ -21,6 +21,22 @@ export interface ExpenseClaimListItemReadModel {
   updatedAt: string;
 }
 
+export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemReadModel, "handledByNameSnapshot"> {
+  applicantPhoneSnapshot: string | null;
+  handledByNameSnapshot: string;
+  proxyReason: string | null;
+  factWitnessNameSnapshot: string | null;
+  paymentMethod: string | null;
+  payeeNameSnapshot: string | null;
+  payeeAccountNameSnapshot: string | null;
+  payeeBankNameSnapshot: string | null;
+  payeeBankAccountSnapshot: string | null;
+  loanExpectedClearanceAt: string | null;
+  submittedAt: string | null;
+  approvedAt: string | null;
+  lines: Array<{ id: string; sortOrder: number; expenseCategory: string; occurredOn: string; purpose: string; receiptCount: number; amountCents: string; evidenceType: string; noEvidenceReason: string | null; remark: string | null }>;
+}
+
 async function ensureOk(response: Response): Promise<void> {
   if (response.ok) return;
   let message = `读取费用与报销工作台失败：${response.status}`;
@@ -43,4 +59,10 @@ export async function fetchExpenseClaims(view: ExpenseClaimWorkbenchView = "all"
   const response = await apiFetch(`/expense-claims${query}`);
   await ensureOk(response);
   return response.json() as Promise<ExpenseClaimListItemReadModel[]>;
+}
+
+export async function fetchExpenseClaimDetail(claimId: string) {
+  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}`);
+  await ensureOk(response);
+  return response.json() as Promise<ExpenseClaimDetailReadModel>;
 }
