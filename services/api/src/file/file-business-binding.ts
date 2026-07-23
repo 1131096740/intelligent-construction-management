@@ -73,6 +73,7 @@ export const NON_RECEIPT_FILE_BINDINGS = [
     table: "ProjectExpenseRequest",
     columns: ["attachmentFileId"]
   },
+  { table: "ExpenseClaimAttachment", columns: ["fileId"] },
   {
     table: "ProjectExpenseExecution",
     columns: ["voucherFileId"]
@@ -92,6 +93,8 @@ export const NON_RECEIPT_FILE_BINDINGS = [
     table: "ProjectFinancingQuota",
     columns: ["attachmentFileId"]
   },
+  { table: "EmployeeLoanRepayment", columns: ["voucherFileId"] },
+  { table: "EmployeeProjectLoanEntry", columns: ["voucherFileId"] },
   { table: "ApprovalActionLog", columns: ["signatureFileIdSnapshot"] },
   { table: "ArchiveRecord", columns: ["fileId"] },
   { table: "PdfDocument", columns: ["fileId"] },

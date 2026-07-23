@@ -661,6 +661,83 @@ describe("FileService", () => {
     expect(globalLookup).not.toHaveBeenCalled();
   });
 
+  it("allows only an expense claim participant to download a new-domain expense attachment", async () => {
+    const service = new FileService(
+      {} as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    const tx = {
+      expenseClaimAttachment: {
+        findFirst: jest.fn().mockResolvedValue({
+          expenseClaimId: "claim-1",
+          attachedByUserId: "handler-1",
+          removedAt: null
+        })
+      },
+      expenseClaim: {
+        findUnique: jest.fn().mockResolvedValue({
+          projectId: "project-1",
+          applicantUserId: "applicant-1",
+          handledByUserId: "handler-1",
+          approvalInstanceId: null
+        })
+      }
+    };
+
+    await expect(
+      (
+        service as unknown as {
+          assertCanDownloadFileObject(
+            client: unknown,
+            file: { id: string; uploadedByUserId: string },
+            actorUserId: string
+          ): Promise<void>;
+        }
+      ).assertCanDownloadFileObject(tx, { id: "expense-file-1", uploadedByUserId: "uploader-1" }, "handler-1")
+    ).resolves.toBeUndefined();
+  });
+
+  it("fails closed for a nonparticipant requesting a new-domain expense attachment", async () => {
+    const service = new FileService(
+      {} as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    const tx = {
+      expenseClaimAttachment: {
+        findFirst: jest.fn().mockResolvedValue({
+          expenseClaimId: "claim-1",
+          attachedByUserId: "handler-1",
+          removedAt: null
+        })
+      },
+      expenseClaim: {
+        findUnique: jest.fn().mockResolvedValue({
+          projectId: "project-1",
+          applicantUserId: "applicant-1",
+          handledByUserId: "handler-1",
+          approvalInstanceId: null
+        })
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+
+    await expect(
+      (
+        service as unknown as {
+          assertCanDownloadFileObject(
+            client: unknown,
+            file: { id: string; uploadedByUserId: string },
+            actorUserId: string
+          ): Promise<void>;
+        }
+      ).assertCanDownloadFileObject(tx, { id: "expense-file-1", uploadedByUserId: "uploader-1" }, "stranger-1")
+    ).rejects.toThrow("当前账号无权下载该费用附件");
+  });
+
   it("allows a receipt-only file after checking that no other business binding exists", async () => {
     const access = {
       resolveFileDownloadAccess: jest

@@ -1721,6 +1721,26 @@ model ExpenseClaimLine {
   @@index([expenseClaimId])
 }
 
+// 费用附件是独立的、不复用旧 ProjectExpenseRequest 单附件字段的业务事实。
+// 草稿附件在提交时冻结；后续追加和移除都保留原文件绑定与审计轨迹。
+model ExpenseClaimAttachment {
+  id               String    @id @default(uuid())
+  expenseClaimId   String
+  fileId           String    @unique
+  category         String
+  expenseCategory  String?
+  stage            String    @default("draft")
+  attachedByUserId String
+  frozenAt         DateTime?
+  removedAt        DateTime?
+  removedByUserId  String?
+  removalReason    String?
+  createdAt        DateTime  @default(now())
+
+  @@index([expenseClaimId, removedAt, createdAt])
+  @@index([fileId])
+}
+
 // 余额是不可变 EmployeeProjectLoanEntry 的受锁投影，只允许服务端在追加分录时更新。
 model EmployeeProjectLoanAccount {
   id                        String   @id @default(uuid())

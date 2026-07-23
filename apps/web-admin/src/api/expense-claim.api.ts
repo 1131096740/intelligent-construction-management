@@ -35,6 +35,22 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
   submittedAt: string | null;
   approvedAt: string | null;
   lines: Array<{ id: string; sortOrder: number; expenseCategory: string; occurredOn: string; purpose: string; receiptCount: number; amountCents: string; evidenceType: string; noEvidenceReason: string | null; remark: string | null }>;
+  attachments: Array<{
+    id: string;
+    fileId: string;
+    fileName: string;
+    mimeType: string;
+    sizeBytes: number;
+    fileStatus: string;
+    category: "invoice" | "receipt_or_other" | "other";
+    expenseCategory: string | null;
+    stage: "draft" | "approval_frozen" | "appended";
+    attachedByUserId: string;
+    attachedByName: string;
+    frozenAt: string | null;
+    removedAt: string | null;
+    createdAt: string;
+  }>;
   approval: { currentNodeName: string; canReview: boolean; requiresSelfReviewConfirmation: boolean } | null;
 }
 
@@ -135,6 +151,29 @@ export async function reviewExpenseClaim(claimId: string, body: { decision: "app
   });
   await ensureOk(response);
   return response.json() as Promise<{ id: string; status: string; completed?: boolean }>;
+}
+
+export async function attachExpenseClaimAttachment(
+  claimId: string,
+  body: { fileId: string; category: "invoice" | "receipt_or_other" | "other"; expenseCategory?: string }
+) {
+  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/attachments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  await ensureOk(response);
+  return response.json() as Promise<{ id: string }>;
+}
+
+export async function removeExpenseClaimAttachment(claimId: string, attachmentId: string, reason?: string) {
+  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/attachments/${encodeURIComponent(attachmentId)}/removal`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(reason ? { reason } : {})
+  });
+  await ensureOk(response);
+  return response.json() as Promise<{ id: string }>;
 }
 
 export async function fetchExpenseClaimDetail(claimId: string) {

@@ -8,11 +8,13 @@ import { AuthService } from "../auth/auth.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { BusinessNumberingService } from "../business-number/business-numbering.service";
 import { PrismaService } from "../database/prisma.service";
+import { FileService } from "../file/file.service";
 import { moneyCentsToApi, parseMoneyCentsInput } from "../money/decimal-money";
 import type { CreateExpenseClaimDto, ExpenseClaimLineDto } from "./dto/create-expense-claim.dto";
 import type { ReviewExpenseClaimDto } from "./dto/review-expense-claim.dto";
 import type { RecordLoanDisbursementDto } from "./dto/record-loan-disbursement.dto";
 import type { ConfirmEmployeeLoanRepaymentDto, RecordEmployeeLoanRepaymentDto } from "./dto/record-employee-loan-repayment.dto";
+import type { AttachExpenseClaimAttachmentDto, RemoveExpenseClaimAttachmentDto } from "./dto/manage-expense-claim-attachment.dto";
 
 type ExpenseClaimApprovalNode = FrozenApprovalNode & {
   name: string;
@@ -34,7 +36,9 @@ export class ExpenseClaimService {
     private readonly audit: AuditService,
     @Optional()
     private readonly auth?: AuthService,
-    private readonly visibility?: ProjectVisibilityService
+    private readonly visibility?: ProjectVisibilityService,
+    @Optional()
+    private readonly files?: FileService
   ) {}
 
   async createOptions(actorUserId: string) {
@@ -218,7 +222,7 @@ export class ExpenseClaimService {
       : null;
     const isOwner = claim.applicantUserId === actorUserId || claim.handledByUserId === actorUserId;
     if (!isOwner && !identity) throw new NotFoundException("费用申请不存在或当前账号无权读取");
-    const [project, lines] = await Promise.all([
+    const [project, lines, attachments] = await Promise.all([
       claim.projectId
         ? this.prisma.project.findUnique({ where: { id: claim.projectId }, select: { id: true, code: true, name: true } })
         : Promise.resolve(null),
@@ -226,8 +230,42 @@ export class ExpenseClaimService {
         where: { expenseClaimId: claim.id },
         orderBy: { sortOrder: "asc" },
         select: { id: true, sortOrder: true, expenseCategory: true, occurredOn: true, purpose: true, receiptCount: true, amountCents: true, evidenceType: true, noEvidenceReason: true, remark: true }
-      })
+      }),
+      (this.prisma as unknown as {
+        expenseClaimAttachment?: {
+          findMany(args: {
+            where: { expenseClaimId: string };
+            orderBy: Array<{ createdAt: "asc" } | { id: "asc" }>;
+            select: Record<string, true>;
+          }): Promise<Array<{
+            id: string; fileId: string; category: string; expenseCategory: string | null; stage: string;
+            attachedByUserId: string; frozenAt: Date | null; removedAt: Date | null; createdAt: Date;
+          }>>;
+        };
+      }).expenseClaimAttachment?.findMany({
+        where: { expenseClaimId: claim.id },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: {
+          id: true, fileId: true, category: true, expenseCategory: true, stage: true,
+          attachedByUserId: true, frozenAt: true, removedAt: true, createdAt: true
+        }
+      }) ?? Promise.resolve([])
     ]);
+    const attachmentFileIds = attachments.map((attachment) => attachment.fileId);
+    const attachmentUploaderIds = [...new Set(attachments.map((attachment) => attachment.attachedByUserId))];
+    const [files, attachmentUploaders] = await Promise.all([
+      attachmentFileIds.length
+        ? this.prisma.fileObject.findMany({
+            where: { id: { in: attachmentFileIds } },
+            select: { id: true, originalName: true, mimeType: true, sizeBytes: true, storageStatus: true }
+          })
+        : Promise.resolve([]),
+      attachmentUploaderIds.length
+        ? this.prisma.user.findMany({ where: { id: { in: attachmentUploaderIds } }, select: { id: true, name: true } })
+        : Promise.resolve([])
+    ]);
+    const fileById = new Map(files.map((file) => [file.id, file]));
+    const uploaderNameById = new Map(attachmentUploaders.map((user) => [user.id, user.name]));
     return {
       ...claim,
       project,
@@ -240,8 +278,92 @@ export class ExpenseClaimService {
         canReview: Boolean(identity),
         requiresSelfReviewConfirmation: Boolean(identity && instance?.applicantUserId === actorUserId)
       } : null,
-      lines: lines.map((line) => ({ ...line, amountCents: moneyCentsToApi(line.amountCents) }))
+      lines: lines.map((line) => ({ ...line, amountCents: moneyCentsToApi(line.amountCents) })),
+      attachments: attachments.map((attachment) => {
+        const file = fileById.get(attachment.fileId);
+        return {
+          ...attachment,
+          fileName: file?.originalName ?? "文件信息不可用",
+          mimeType: file?.mimeType ?? "application/octet-stream",
+          sizeBytes: file?.sizeBytes ?? 0,
+          fileStatus: file?.storageStatus ?? "missing",
+          attachedByName: uploaderNameById.get(attachment.attachedByUserId) ?? "未知用户"
+        };
+      })
     };
+  }
+
+  async attachAttachment(claimId: string, actorUserId: string, input: AttachExpenseClaimAttachmentDto) {
+    if (!this.files) throw new ServiceUnavailableException("费用附件服务暂不可用，请稍后重试");
+    const fileId = requiredText(input.fileId, "请选择费用附件");
+    return this.prisma.$transaction(async (tx) => {
+      const claims = await tx.$queryRaw<Array<{ id: string; status: string; handledByUserId: string }>>(
+        Prisma.sql`SELECT "id", "status", "handledByUserId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`
+      );
+      const claim = claims[0];
+      if (!claim) throw new NotFoundException("费用申请不存在");
+      if (claim.status !== "draft") throw new BadRequestException("费用申请提交后不能替换已冻结附件");
+      if (claim.handledByUserId !== actorUserId) throw new ForbiddenException("只有经办人可以维护草稿费用附件");
+      const file = await this.files!.assertFileHasNoBusinessBinding(tx, fileId);
+      if (file.uploadedByUserId !== actorUserId) throw new ForbiddenException("费用附件必须由当前经办人本人上传");
+      const attachment = await (tx as unknown as {
+        expenseClaimAttachment: {
+          create(args: { data: Record<string, unknown> }): Promise<{ id: string; fileId: string; category: string; expenseCategory: string | null; stage: string; createdAt: Date }>;
+        };
+      }).expenseClaimAttachment.create({
+        data: {
+          expenseClaimId: claim.id,
+          fileId,
+          category: input.category,
+          expenseCategory: optionalText(input.expenseCategory),
+          stage: "draft",
+          attachedByUserId: actorUserId
+        }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "expense_claim.attachment.attach",
+        businessType: "expense_claim",
+        businessId: claim.id,
+        metadata: { attachmentId: attachment.id, fileId, category: input.category, expenseCategory: optionalText(input.expenseCategory) }
+      });
+      return attachment;
+    });
+  }
+
+  async removeAttachment(claimId: string, attachmentId: string, actorUserId: string, input: RemoveExpenseClaimAttachmentDto) {
+    return this.prisma.$transaction(async (tx) => {
+      const claims = await tx.$queryRaw<Array<{ id: string; status: string; handledByUserId: string }>>(
+        Prisma.sql`SELECT "id", "status", "handledByUserId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`
+      );
+      const claim = claims[0];
+      if (!claim) throw new NotFoundException("费用申请不存在");
+      if (claim.status !== "draft") throw new BadRequestException("费用申请提交后不能移除已冻结附件");
+      if (claim.handledByUserId !== actorUserId) throw new ForbiddenException("只有经办人可以维护草稿费用附件");
+      const attachments = await (tx as unknown as {
+        expenseClaimAttachment: {
+          findFirst(args: { where: { id: string; expenseClaimId: string; removedAt: null }; select: { id: true; fileId: true } }): Promise<{ id: string; fileId: string } | null>;
+          update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<{ id: string; removedAt: Date | null }>;
+        };
+      }).expenseClaimAttachment;
+      const attachment = await attachments.findFirst({
+        where: { id: attachmentId, expenseClaimId: claim.id, removedAt: null },
+        select: { id: true, fileId: true }
+      });
+      if (!attachment) throw new NotFoundException("费用附件不存在或已经移除");
+      const removed = await attachments.update({
+        where: { id: attachment.id },
+        data: { removedAt: new Date(), removedByUserId: actorUserId, removalReason: optionalText(input.reason) }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "expense_claim.attachment.remove",
+        businessType: "expense_claim",
+        businessId: claim.id,
+        metadata: { attachmentId: attachment.id, fileId: attachment.fileId, reason: optionalText(input.reason) }
+      });
+      return removed;
+    });
   }
 
   async submit(claimId: string, actorUserId: string) {
@@ -266,6 +388,17 @@ export class ExpenseClaimService {
           applicantUserId: actorUserId
         }
       });
+      const attachments = (tx as unknown as {
+        expenseClaimAttachment?: {
+          updateMany(args: { where: Record<string, unknown>; data: Record<string, unknown> }): Promise<{ count: number }>;
+        };
+      }).expenseClaimAttachment;
+      if (attachments) {
+        await attachments.updateMany({
+          where: { expenseClaimId: claim.id, stage: "draft", removedAt: null },
+          data: { stage: "approval_frozen", frozenAt: new Date() }
+        });
+      }
       const updated = await tx.expenseClaim.update({
         where: { id: claim.id },
         data: {

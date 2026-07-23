@@ -22,6 +22,13 @@ const employeeLoanDisbursementBindingMigration = readFileSync(
   ),
   "utf8"
 );
+const expenseClaimAttachmentBindingMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260723214000_expense_claim_attachment_file_binding_guard/migration.sql"
+  ),
+  "utf8"
+);
 const schema = readFileSync(
   join(process.cwd(), "prisma/schema.prisma"),
   "utf8"
@@ -46,7 +53,7 @@ function migrationBindings(): Array<{
   exclusive: boolean;
 }> {
   return Array.from(
-    employeeLoanDisbursementBindingMigration.matchAll(/\('([^']+)'\s*,\s*'([^']+)'\s*,\s*(TRUE|FALSE)\)/gu),
+    expenseClaimAttachmentBindingMigration.matchAll(/\('([^']+)'\s*,\s*'([^']+)'\s*,\s*(TRUE|FALSE)\)/gu),
     (match) => ({
       binding: `${match[1]}.${match[2]}`,
       exclusive: match[3] === "TRUE"
@@ -57,7 +64,7 @@ function migrationBindings(): Array<{
 describe("unified file business binding migration", () => {
   it("registers every current Prisma FileObject reference exactly once", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(57);
+    expect(registered).toHaveLength(58);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
   });
@@ -68,6 +75,7 @@ describe("unified file business binding migration", () => {
       .map(({ binding }) => binding)
       .sort();
     expect(exclusive).toEqual([
+      "ExpenseClaimAttachment.fileId",
       "InvoiceExceptionConfirmation.proofFileId",
       "InvoiceRecord.fileId",
       "NoInvoiceConfirmation.proofFileId",
@@ -129,6 +137,15 @@ describe("unified file business binding migration", () => {
     expect(employeeLoanDisbursementBindingMigration).toMatch(/\('EmployeeProjectLoanEntry'\s*,\s*'voucherFileId'\s*,\s*FALSE\)/u);
     expect(employeeLoanDisbursementBindingMigration).toContain(
       'BEFORE INSERT OR UPDATE OF "voucherFileId" ON "EmployeeProjectLoanEntry"'
+    );
+  });
+
+  it("registers expense-claim attachments before the new reimbursement domain can bind them", () => {
+    expect(expenseClaimAttachmentBindingMigration).toContain("BEGIN;");
+    expect(expenseClaimAttachmentBindingMigration.trim()).toMatch(/COMMIT;$/u);
+    expect(expenseClaimAttachmentBindingMigration).toMatch(/\('ExpenseClaimAttachment'\s*,\s*'fileId'\s*,\s*TRUE\)/u);
+    expect(expenseClaimAttachmentBindingMigration).toContain(
+      'BEFORE INSERT OR UPDATE OF "fileId" ON "ExpenseClaimAttachment"'
     );
   });
 

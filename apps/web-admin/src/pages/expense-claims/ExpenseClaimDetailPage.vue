@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
-import { fetchExpenseClaimDetail, reviewExpenseClaim, submitExpenseClaim, type ExpenseClaimDetailReadModel } from "../../api/expense-claim.api";
+import type { UploadFile } from "tdesign-vue-next";
+import { attachExpenseClaimAttachment, fetchExpenseClaimDetail, removeExpenseClaimAttachment, reviewExpenseClaim, submitExpenseClaim, type ExpenseClaimDetailReadModel } from "../../api/expense-claim.api";
+import { uploadPrivateFile } from "../../api/core-flow-read.api";
 import ApprovalSelfReviewFields from "../../components/ApprovalSelfReviewFields.vue";
 import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
 import JgDetailTabs from "../../components/JgDetailTabs.vue";
 import JgPageHeader from "../../components/JgPageHeader.vue";
 import JgResultState from "../../components/JgResultState.vue";
 import { centsTextToYuanText } from "../../lib/money";
+import { SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
 
 const route = useRoute();
 const loading = ref(false);
@@ -16,10 +19,14 @@ const actionError = ref("");
 const submitting = ref(false);
 const reviewVisible = ref(false);
 const reviewing = ref(false);
+const attachmentFiles = ref<UploadFile[]>([]);
+const attachmentUploading = ref(false);
+const attachmentCategory = ref<"invoice" | "receipt_or_other" | "other">("receipt_or_other");
+const attachmentExpenseCategory = ref("");
 const reviewForm = ref({ decision: "approve" as "approve" | "reject", comment: "", selfReviewReason: "", confirmationPassword: "" });
 const detail = ref<ExpenseClaimDetailReadModel | null>(null);
 const tab = ref("business");
-const tabs = [{ value: "business", label: "业务信息" }, { value: "lines", label: "费用明细" }, { value: "funds", label: "资金结果" }];
+const tabs = [{ value: "business", label: "业务信息" }, { value: "lines", label: "费用明细" }, { value: "attachments", label: "附件与证据" }, { value: "funds", label: "资金结果" }];
 const columns = [
   { colKey: "sortOrder", title: "序号", width: 70 },
   { colKey: "expenseCategory", title: "费用类别", width: 120 },
@@ -66,6 +73,38 @@ async function review() {
     await loadDetail();
   } catch (error) { actionError.value = error instanceof Error ? error.message : "费用审批办理失败"; }
   finally { reviewing.value = false; }
+}
+function selectedAttachmentFiles() {
+  return attachmentFiles.value.map((file) => file.raw).filter((file): file is File => file instanceof File);
+}
+async function uploadAttachments() {
+  if (!detail.value || attachmentUploading.value) return;
+  const files = selectedAttachmentFiles();
+  if (!files.length) { actionError.value = "请先选择需要上传的费用附件"; return; }
+  attachmentUploading.value = true;
+  actionError.value = "";
+  try {
+    for (const file of files) {
+      const uploaded = await uploadPrivateFile(file, file.name);
+      await attachExpenseClaimAttachment(detail.value.id, {
+        fileId: uploaded.id,
+        category: attachmentCategory.value,
+        ...(attachmentExpenseCategory.value.trim() ? { expenseCategory: attachmentExpenseCategory.value.trim() } : {})
+      });
+    }
+    attachmentFiles.value = [];
+    attachmentExpenseCategory.value = "";
+    await loadDetail();
+  } catch (error) { actionError.value = error instanceof Error ? error.message : "费用附件上传失败"; }
+  finally { attachmentUploading.value = false; }
+}
+async function removeAttachment(attachmentId: string) {
+  if (!detail.value || attachmentUploading.value) return;
+  attachmentUploading.value = true;
+  actionError.value = "";
+  try { await removeExpenseClaimAttachment(detail.value.id, attachmentId); await loadDetail(); }
+  catch (error) { actionError.value = error instanceof Error ? error.message : "移除费用附件失败"; }
+  finally { attachmentUploading.value = false; }
 }
 onMounted(() => void loadDetail());
 </script>
@@ -232,6 +271,90 @@ onMounted(() => void loadDetail());
           </t-table>
         </t-card>
         <t-card
+          v-else-if="tab === 'attachments'"
+          :bordered="true"
+        >
+          <div class="expense-claim-detail__attachments">
+            <t-alert
+              theme="info"
+              message="附件属于整张费用申请。草稿阶段可移除；提交后审批快照冻结，后续追加将以新版本留痕。"
+            />
+            <template v-if="detail.status === 'draft'">
+              <t-select
+                v-model="attachmentCategory"
+                label="资料类别"
+                :options="[
+                  { label: '发票', value: 'invoice' },
+                  { label: '收据或其他凭证', value: 'receipt_or_other' },
+                  { label: '其他说明', value: 'other' }
+                ]"
+              />
+              <t-input
+                v-model="attachmentExpenseCategory"
+                label="关联费用类别（可选）"
+                placeholder="例如：交通费"
+              />
+              <t-upload
+                v-model="attachmentFiles"
+                theme="file"
+                :auto-upload="false"
+                multiple
+                :accept="SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.acceptAttribute"
+                :tips="`支持 ${SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.acceptText}，${SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.limitText}`"
+              />
+              <t-button
+                theme="primary"
+                :loading="attachmentUploading"
+                @click="uploadAttachments"
+              >
+                上传并绑定附件
+              </t-button>
+            </template>
+            <t-table
+              row-key="id"
+              size="small"
+              :columns="[
+                { colKey: 'fileName', title: '文件' },
+                { colKey: 'category', title: '类别', width: 150 },
+                { colKey: 'expenseCategory', title: '关联费用类别', width: 150 },
+                { colKey: 'stage', title: '状态', width: 130 },
+                { colKey: 'attachedByName', title: '上传人', width: 130 },
+                { colKey: 'createdAt', title: '上传时间', width: 180 },
+                { colKey: 'operation', title: '操作', width: 110 }
+              ]"
+              :data="detail.attachments"
+              :scroll="{ x: 900 }"
+            >
+              <template #category="{ row }">
+                {{ row.category === 'invoice' ? '发票' : row.category === 'receipt_or_other' ? '收据或其他凭证' : '其他说明' }}
+              </template>
+              <template #stage="{ row }">
+                {{ row.removedAt ? '已从草稿移除' : row.stage === 'approval_frozen' ? '审批快照已冻结' : row.stage === 'appended' ? '后续追加' : '草稿附件' }}
+              </template>
+              <template #createdAt="{ row }">
+                {{ date(row.createdAt) }}
+              </template>
+              <template #operation="{ row }">
+                <t-popconfirm
+                  v-if="detail.status === 'draft' && !row.removedAt"
+                  content="仅移除本次草稿中的附件绑定，原文件和审计记录仍会保留。"
+                  confirm-btn="确认移除"
+                  @confirm="removeAttachment(row.id)"
+                >
+                  <t-button
+                    theme="danger"
+                    variant="text"
+                    :loading="attachmentUploading"
+                  >
+                    移除
+                  </t-button>
+                </t-popconfirm>
+                <span v-else>已留痕</span>
+              </template>
+            </t-table>
+          </div>
+        </t-card>
+        <t-card
           v-else
           :bordered="true"
         >
@@ -260,4 +383,5 @@ onMounted(() => void loadDetail());
 
 <style scoped>
 .expense-claim-detail { display: grid; gap: var(--jg-space-lg); min-width: 0; }
+.expense-claim-detail__attachments { display: grid; gap: var(--jg-space-md); }
 </style>

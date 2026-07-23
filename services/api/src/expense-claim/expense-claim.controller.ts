@@ -6,6 +6,7 @@ import { CreateExpenseClaimDto } from "./dto/create-expense-claim.dto";
 import { ReviewExpenseClaimDto } from "./dto/review-expense-claim.dto";
 import { RecordLoanDisbursementDto } from "./dto/record-loan-disbursement.dto";
 import { ConfirmEmployeeLoanRepaymentDto, RecordEmployeeLoanRepaymentDto } from "./dto/record-employee-loan-repayment.dto";
+import { AttachExpenseClaimAttachmentDto, RemoveExpenseClaimAttachmentDto } from "./dto/manage-expense-claim-attachment.dto";
 import { ExpenseClaimService } from "./expense-claim.service";
 
 @Controller("expense-claims")
@@ -48,6 +49,27 @@ export class ExpenseClaimController {
     @Body() body: ReviewExpenseClaimDto
   ) {
     return this.claims.review(claimId, user.id, body);
+  }
+
+  @Post(":claimId/attachments")
+  @RequireProjectRole("expense_claim.create")
+  attach(
+    @Param("claimId") claimId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: AttachExpenseClaimAttachmentDto
+  ) {
+    return this.claims.attachAttachment(claimId, user.id, body);
+  }
+
+  @Post(":claimId/attachments/:attachmentId/removal")
+  @RequireProjectRole("expense_claim.create")
+  removeAttachment(
+    @Param("claimId") claimId: string,
+    @Param("attachmentId") attachmentId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RemoveExpenseClaimAttachmentDto
+  ) {
+    return this.claims.removeAttachment(claimId, attachmentId, user.id, body);
   }
 
   @Post(":claimId/disbursements")

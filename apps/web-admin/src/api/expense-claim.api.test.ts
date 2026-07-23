@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createExpenseClaim, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaims, reviewExpenseClaim, submitExpenseClaim, type CreateExpenseClaimPayload } from "./expense-claim.api";
+import { attachExpenseClaimAttachment, createExpenseClaim, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaims, removeExpenseClaimAttachment, reviewExpenseClaim, submitExpenseClaim, type CreateExpenseClaimPayload } from "./expense-claim.api";
 
 vi.mock("./api-fetch", () => ({ apiFetch: vi.fn() }));
 
@@ -74,5 +74,25 @@ describe("expense claim API", () => {
     mockApiFetch.mockResolvedValue(new Response(JSON.stringify({ id: "claim-1", status: "approval_pending", completed: false }), { status: 201 }));
     await expect(reviewExpenseClaim("claim/1", { decision: "reject", comment: "请补充依据" })).resolves.toMatchObject({ completed: false });
     expect(mockApiFetch).toHaveBeenCalledWith("/expense-claims/claim%2F1/approval", expect.objectContaining({ method: "POST", body: JSON.stringify({ decision: "reject", comment: "请补充依据" }) }));
+  });
+
+  it("binds and removes draft attachments through encoded, server-owned expense actions", async () => {
+    mockApiFetch
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "attachment-1" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "attachment-1" }), { status: 201 }));
+
+    await expect(attachExpenseClaimAttachment("claim/1", {
+      fileId: "file-1", category: "receipt_or_other", expenseCategory: "交通"
+    })).resolves.toMatchObject({ id: "attachment-1" });
+    await expect(removeExpenseClaimAttachment("claim/1", "attachment/1")).resolves.toMatchObject({ id: "attachment-1" });
+
+    expect(mockApiFetch).toHaveBeenNthCalledWith(1, "/expense-claims/claim%2F1/attachments", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ fileId: "file-1", category: "receipt_or_other", expenseCategory: "交通" })
+    }));
+    expect(mockApiFetch).toHaveBeenNthCalledWith(2, "/expense-claims/claim%2F1/attachments/attachment%2F1/removal", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({})
+    }));
   });
 });

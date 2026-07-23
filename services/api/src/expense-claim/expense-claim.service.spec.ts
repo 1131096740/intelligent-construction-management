@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { ExpenseClaimService } from "./expense-claim.service";
 
-function createHarness(options?: { roles?: string[]; claim?: Record<string, unknown>; approvalAssignments?: Array<{ userId: string; positionId: string; role: string }>; auth?: { confirmPassword: jest.Mock } }) {
+function createHarness(options?: { roles?: string[]; claim?: Record<string, unknown>; approvalAssignments?: Array<{ userId: string; positionId: string; role: string }>; auth?: { confirmPassword: jest.Mock }; files?: { assertFileHasNoBusinessBinding: jest.Mock } }) {
   const approvalAssignments = options?.approvalAssignments ?? [];
   const tx = {
     companyEntity: { findFirst: jest.fn(), findMany: jest.fn() },
@@ -15,6 +15,7 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
     },
     expenseClaim: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn() },
     expenseClaimLine: { createMany: jest.fn(), findMany: jest.fn() },
+    expenseClaimAttachment: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn().mockResolvedValue([]), update: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     fileObject: { findUnique: jest.fn() },
     employeeProjectLoanAccount: { upsert: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
     employeeProjectLoanEntry: { create: jest.fn(), findMany: jest.fn() },
@@ -25,11 +26,11 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
     auditLog: { create: jest.fn().mockResolvedValue({}) },
     $queryRaw: jest.fn().mockResolvedValue(options?.claim ? [options.claim] : [])
   };
-  const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)), companyEntity: tx.companyEntity, expenseClaim: tx.expenseClaim, expenseClaimLine: tx.expenseClaimLine, project: tx.project, user: tx.user, userPosition: tx.userPosition, projectMember: tx.projectMember, position: tx.position, approvalInstance: tx.approvalInstance };
+  const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)), companyEntity: tx.companyEntity, expenseClaim: tx.expenseClaim, expenseClaimLine: tx.expenseClaimLine, expenseClaimAttachment: tx.expenseClaimAttachment, fileObject: { findMany: jest.fn() }, project: tx.project, user: tx.user, userPosition: tx.userPosition, projectMember: tx.projectMember, position: tx.position, approvalInstance: tx.approvalInstance };
   const numbering = { allocateDaily: jest.fn().mockResolvedValue("BX-20260723-001") };
   const audit = { record: jest.fn().mockResolvedValue({}) };
   const visibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
-  const service = new ExpenseClaimService(prisma as never, numbering as never, audit as never, options?.auth as never, visibility as never);
+  const service = new ExpenseClaimService(prisma as never, numbering as never, audit as never, options?.auth as never, visibility as never, options?.files as never);
   return { service, tx, numbering, audit, visibility };
 }
 
@@ -124,6 +125,33 @@ describe("ExpenseClaimService", () => {
     expect((tx as Record<string, unknown>).projectExpenseRequest).toBeUndefined();
   });
 
+  it("binds only the current handler's unbound private file to a draft expense claim", async () => {
+    const files = { assertFileHasNoBusinessBinding: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "user-a", storageStatus: "active" }) };
+    const { service, tx, audit } = createHarness({
+      claim: { id: "claim-1", status: "draft", handledByUserId: "user-a" },
+      files
+    });
+    tx.expenseClaimAttachment.create.mockResolvedValue({ id: "attachment-1", fileId: "file-1", category: "invoice", expenseCategory: "交通", stage: "draft", createdAt: new Date() });
+
+    await expect(service.attachAttachment("claim-1", "user-a", {
+      fileId: "file-1", category: "invoice", expenseCategory: "交通"
+    })).resolves.toMatchObject({ id: "attachment-1", stage: "draft" });
+
+    expect(files.assertFileHasNoBusinessBinding).toHaveBeenCalledWith(tx, "file-1");
+    expect(tx.expenseClaimAttachment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ expenseClaimId: "claim-1", fileId: "file-1", category: "invoice", stage: "draft", attachedByUserId: "user-a" })
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: "expense_claim.attachment.attach" }));
+  });
+
+  it("rejects an expense attachment uploaded by another user before writing a binding", async () => {
+    const files = { assertFileHasNoBusinessBinding: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "other-user", storageStatus: "active" }) };
+    const { service, tx } = createHarness({ claim: { id: "claim-1", status: "draft", handledByUserId: "user-a" }, files });
+
+    await expect(service.attachAttachment("claim-1", "user-a", { fileId: "file-1", category: "other" })).rejects.toThrow(ForbiddenException);
+    expect(tx.expenseClaimAttachment.create).not.toHaveBeenCalled();
+  });
+
   it("allows a comprehensive director to record a no-account non-project reimbursement with a frozen witness", async () => {
     const { service, tx, numbering } = createHarness({ roles: ["comprehensive_director"] });
     numbering.allocateDaily.mockResolvedValue("BX-20260723-002");
@@ -196,6 +224,10 @@ describe("ExpenseClaimService", () => {
     expect(tx.expenseClaim.update).toHaveBeenCalledWith({
       where: { id: "claim-1" },
       data: expect.objectContaining({ status: "approval_pending", approvalInstanceId: "approval-1" })
+    });
+    expect(tx.expenseClaimAttachment.updateMany).toHaveBeenCalledWith({
+      where: { expenseClaimId: "claim-1", stage: "draft", removedAt: null },
+      data: expect.objectContaining({ stage: "approval_frozen" })
     });
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: "expense_claim.submit" }));
   });

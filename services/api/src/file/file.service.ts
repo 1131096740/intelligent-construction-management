@@ -1126,6 +1126,7 @@ export class FileService {
         UNION ALL SELECT 1 FROM "NoInvoiceConfirmation" WHERE "proofFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "InvoiceExceptionConfirmation" WHERE "proofFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectExpenseRequest" WHERE "attachmentFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ExpenseClaimAttachment" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectExpenseExecution" WHERE "voucherFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectReceipt" WHERE "voucherFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectProxyPayment" WHERE "voucherFileId" = ${fileId}
@@ -1731,6 +1732,16 @@ export class FileService {
       throw new ForbiddenException("当前账号无权下载该线下修订稿文件");
     }
 
+    const expenseAttachmentAccess = await this.resolveExpenseClaimAttachmentAccess(
+      tx,
+      file.id,
+      actorUserId
+    );
+    if (expenseAttachmentAccess === true) return;
+    if (expenseAttachmentAccess === false) {
+      throw new ForbiddenException("当前账号无权下载该费用附件");
+    }
+
     if (file.uploadedByUserId === actorUserId && !projectOwnerContract) {
       return;
     }
@@ -2072,6 +2083,86 @@ export class FileService {
     }
 
     throw new ForbiddenException("当前账号无权下载该资料");
+  }
+
+  private async resolveExpenseClaimAttachmentAccess(
+    tx: Prisma.TransactionClient,
+    fileId: string,
+    actorUserId: string
+  ): Promise<boolean | null> {
+    const attachmentClient = (tx as unknown as {
+      expenseClaimAttachment?: {
+        findFirst: (args: {
+          where: { fileId: string };
+          select: { expenseClaimId: true; attachedByUserId: true; removedAt: true };
+        }) => Promise<{ expenseClaimId: string; attachedByUserId: string; removedAt: Date | null } | null>;
+      };
+    }).expenseClaimAttachment;
+    if (!attachmentClient) return null;
+    const attachment = await attachmentClient.findFirst({
+      where: { fileId },
+      select: { expenseClaimId: true, attachedByUserId: true, removedAt: true }
+    });
+    if (!attachment || attachment.removedAt) return attachment ? false : null;
+    const claimClient = (tx as unknown as {
+      expenseClaim?: {
+        findUnique: (args: {
+          where: { id: string };
+          select: {
+            projectId: true;
+            applicantUserId: true;
+            handledByUserId: true;
+            approvalInstanceId: true;
+          };
+        }) => Promise<{
+          projectId: string | null;
+          applicantUserId: string | null;
+          handledByUserId: string;
+          approvalInstanceId: string | null;
+        } | null>;
+      };
+    }).expenseClaim;
+    const claim = claimClient
+      ? await claimClient.findUnique({
+          where: { id: attachment.expenseClaimId },
+          select: {
+            projectId: true,
+            applicantUserId: true,
+            handledByUserId: true,
+            approvalInstanceId: true
+          }
+        })
+      : null;
+    if (!claim) return false;
+    if (
+      claim.applicantUserId === actorUserId ||
+      claim.handledByUserId === actorUserId ||
+      attachment.attachedByUserId === actorUserId
+    ) {
+      return true;
+    }
+    const participated = claim.approvalInstanceId
+      ? await tx.approvalActionLog.findFirst({
+          where: {
+            approvalInstanceId: claim.approvalInstanceId,
+            actorUserId,
+            action: { in: ["approve", "reject_previous", "return_to_applicant"] }
+          },
+          select: { id: true }
+        })
+      : null;
+    if (participated) return true;
+    const readerRoles: readonly RoleKey[] = [
+      "comprehensive_director",
+      "finance_staff",
+      "finance_director",
+      "chairman",
+      "general_manager"
+    ];
+    const roles = claim.projectId
+      ? await this.loadActorRoleKeys(tx, actorUserId, claim.projectId)
+      : await this.loadActorRoleKeys(tx, actorUserId, "__company_scope__");
+    return roles.some((role) => readerRoles.includes(role));
   }
 
   private async governedSettlementSignedDocumentAccess(
