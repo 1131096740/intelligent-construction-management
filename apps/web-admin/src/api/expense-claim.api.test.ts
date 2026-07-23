@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { appendExpenseClaimAttachment, attachExpenseClaimAttachment, createExpenseClaim, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaims, removeExpenseClaimAttachment, reviewExpenseClaim, submitExpenseClaim, type CreateExpenseClaimPayload } from "./expense-claim.api";
+import { adjustExpenseClaimPaymentSubject, appendExpenseClaimAttachment, attachExpenseClaimAttachment, createExpenseClaim, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaims, removeExpenseClaimAttachment, reviewExpenseClaim, submitExpenseClaim, type CreateExpenseClaimPayload } from "./expense-claim.api";
 
 vi.mock("./api-fetch", () => ({ apiFetch: vi.fn() }));
 
@@ -106,6 +106,19 @@ describe("expense claim API", () => {
     expect(mockApiFetch).toHaveBeenCalledWith("/expense-claims/claim%2F1/attachments/append", expect.objectContaining({
       method: "POST",
       body: JSON.stringify({ fileId: "file-2", category: "other", expenseCategory: "差旅" })
+    }));
+  });
+
+  it("adjusts the actual reimbursement payer through the encoded auditable action", async () => {
+    mockApiFetch.mockResolvedValue(new Response(JSON.stringify({ id: "claim-1", paymentSubjectCompanyEntityId: "company-pay" }), { status: 201 }));
+
+    await expect(adjustExpenseClaimPaymentSubject("claim/1", {
+      companyEntityId: "company-pay", reason: "集团统一付款"
+    })).resolves.toMatchObject({ paymentSubjectCompanyEntityId: "company-pay" });
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/expense-claims/claim%2F1/payment-subject", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ companyEntityId: "company-pay", reason: "集团统一付款" })
     }));
   });
 });

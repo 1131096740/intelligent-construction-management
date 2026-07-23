@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import type { UploadFile } from "tdesign-vue-next";
-import { appendExpenseClaimAttachment, attachExpenseClaimAttachment, fetchExpenseClaimDetail, removeExpenseClaimAttachment, reviewExpenseClaim, submitExpenseClaim, type ExpenseClaimDetailReadModel } from "../../api/expense-claim.api";
+import { adjustExpenseClaimPaymentSubject, appendExpenseClaimAttachment, attachExpenseClaimAttachment, fetchExpenseClaimDetail, removeExpenseClaimAttachment, reviewExpenseClaim, submitExpenseClaim, type ExpenseClaimDetailReadModel } from "../../api/expense-claim.api";
 import { uploadPrivateFile } from "../../api/core-flow-read.api";
 import ApprovalSelfReviewFields from "../../components/ApprovalSelfReviewFields.vue";
 import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
@@ -19,6 +19,10 @@ const actionError = ref("");
 const submitting = ref(false);
 const reviewVisible = ref(false);
 const reviewing = ref(false);
+const paymentSubjectVisible = ref(false);
+const paymentSubjectAdjusting = ref(false);
+const paymentSubjectConfirmVisible = ref(false);
+const paymentSubjectForm = ref({ companyEntityId: "", reason: "" });
 const attachmentFiles = ref<UploadFile[]>([]);
 const attachmentUploading = ref(false);
 const attachmentCategory = ref<"invoice" | "receipt_or_other" | "other">("receipt_or_other");
@@ -61,6 +65,37 @@ function openReview() {
   reviewForm.value = { decision: "approve", comment: "", selfReviewReason: "", confirmationPassword: "" };
   actionError.value = "";
   reviewVisible.value = true;
+}
+function openPaymentSubjectAdjustment() {
+  if (!detail.value) return;
+  paymentSubjectForm.value = {
+    companyEntityId: detail.value.paymentSubjectCompanyEntityId ?? "",
+    reason: ""
+  };
+  actionError.value = "";
+  paymentSubjectVisible.value = true;
+}
+async function adjustPaymentSubject() {
+  if (!detail.value || paymentSubjectAdjusting.value) return;
+  if (!paymentSubjectForm.value.companyEntityId) { actionError.value = "请选择实际付款主体"; return; }
+  if (!paymentSubjectForm.value.reason.trim()) { actionError.value = "请填写调整原因"; return; }
+  paymentSubjectAdjusting.value = true;
+  actionError.value = "";
+  try {
+    await adjustExpenseClaimPaymentSubject(detail.value.id, {
+      companyEntityId: paymentSubjectForm.value.companyEntityId,
+      reason: paymentSubjectForm.value.reason.trim()
+    });
+    paymentSubjectConfirmVisible.value = false;
+    paymentSubjectVisible.value = false;
+    await loadDetail();
+  } catch (error) { actionError.value = error instanceof Error ? error.message : "调整实际付款主体失败"; }
+  finally { paymentSubjectAdjusting.value = false; }
+}
+function requestPaymentSubjectAdjustment() {
+  if (!paymentSubjectForm.value.companyEntityId) { actionError.value = "请选择实际付款主体"; return; }
+  if (!paymentSubjectForm.value.reason.trim()) { actionError.value = "请填写调整原因"; return; }
+  paymentSubjectConfirmVisible.value = true;
 }
 async function review() {
   if (!detail.value || reviewing.value) return;
@@ -216,6 +251,55 @@ onMounted(() => void loadDetail());
             </t-popconfirm>
           </template>
         </t-drawer>
+        <t-drawer
+          v-model:visible="paymentSubjectVisible"
+          header="调整实际付款主体"
+          size="min(560px, 100vw)"
+          :close-on-overlay-click="false"
+          :close-btn="!paymentSubjectAdjusting"
+        >
+          <div class="expense-claim-detail__review-form">
+            <t-alert
+              theme="warning"
+              message="仅在已批待公司付款阶段调整；系统会冻结调整前后主体、原因、岗位与时间，不会执行实际付款。"
+            />
+            <t-select
+              v-model="paymentSubjectForm.companyEntityId"
+              label="实际付款主体"
+              placeholder="请选择已启用且资料完整的公司主体"
+              :options="detail.paymentSubjectCompanyEntities.map((company) => ({ label: company.name, value: company.id }))"
+            />
+            <t-textarea
+              v-model="paymentSubjectForm.reason"
+              label="调整原因"
+              placeholder="请说明实际付款主体与使用单位不一致的原因"
+            />
+          </div>
+          <template #footer>
+            <t-button
+              variant="outline"
+              :disabled="paymentSubjectAdjusting"
+              @click="paymentSubjectVisible = false"
+            >
+              取消
+            </t-button><t-button
+              theme="primary"
+              :loading="paymentSubjectAdjusting"
+              @click="requestPaymentSubjectAdjustment"
+            >
+              确认调整
+            </t-button>
+          </template>
+        </t-drawer>
+        <t-dialog
+          v-model:visible="paymentSubjectConfirmVisible"
+          header="确认写入实际付款主体调整"
+          :close-on-overlay-click="false"
+          :confirm-btn="{ content: '确认写入', loading: paymentSubjectAdjusting }"
+          @confirm="adjustPaymentSubject"
+        >
+          调整将写入调整前后主体、原因、岗位与时间审计记录，但不会执行实际付款。确认继续？
+        </t-dialog>
         <JgDetailTabs
           v-model="tab"
           :tabs="tabs"
@@ -230,6 +314,20 @@ onMounted(() => void loadDetail());
           >
             <t-descriptions-item label="使用单位">
               {{ detail.companyEntityNameSnapshot }}
+            </t-descriptions-item>
+            <t-descriptions-item label="实际付款主体">
+              <div class="expense-claim-detail__payment-subject">
+                <span>{{ detail.paymentSubjectNameSnapshot ?? detail.companyEntityNameSnapshot }}</span>
+                <t-button
+                  v-if="detail.paymentSubjectPermissions.canAdjust"
+                  variant="text"
+                  theme="primary"
+                  @click="openPaymentSubjectAdjustment"
+                >
+                  调整
+                </t-button>
+              </div>
+              <small v-if="detail.paymentSubjectAdjustmentReason">已调整：{{ detail.paymentSubjectAdjustmentReason }}（{{ date(detail.paymentSubjectAdjustedAt) }}）</small>
             </t-descriptions-item>
             <t-descriptions-item label="项目">
               {{ detail.project ? `${detail.project.code} · ${detail.project.name}` : '非项目费用' }}
@@ -389,4 +487,6 @@ onMounted(() => void loadDetail());
 <style scoped>
 .expense-claim-detail { display: grid; gap: var(--jg-space-lg); min-width: 0; }
 .expense-claim-detail__attachments { display: grid; gap: var(--jg-space-md); }
+.expense-claim-detail__review-form { display: grid; gap: var(--jg-space-md); }
+.expense-claim-detail__payment-subject { display: flex; align-items: center; gap: var(--jg-space-xs); }
 </style>

@@ -31,6 +31,12 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
   payeeAccountNameSnapshot: string | null;
   payeeBankNameSnapshot: string | null;
   payeeBankAccountSnapshot: string | null;
+  paymentSubjectCompanyEntityId: string | null;
+  paymentSubjectNameSnapshot: string | null;
+  paymentSubjectAdjustmentReason: string | null;
+  paymentSubjectAdjustedAt: string | null;
+  paymentSubjectAdjustedByUserId: string | null;
+  paymentSubjectAdjustedByRoleKey: string | null;
   loanExpectedClearanceAt: string | null;
   submittedAt: string | null;
   approvedAt: string | null;
@@ -52,6 +58,8 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
     createdAt: string;
   }>;
   attachmentPermissions: { canAppendEvidence: boolean };
+  paymentSubjectPermissions: { canAdjust: boolean };
+  paymentSubjectCompanyEntities: Array<{ id: string; name: string }>;
   approval: { currentNodeName: string; canReview: boolean; requiresSelfReviewConfirmation: boolean } | null;
 }
 
@@ -194,4 +202,22 @@ export async function fetchExpenseClaimDetail(claimId: string) {
   const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}`);
   await ensureOk(response);
   return response.json() as Promise<ExpenseClaimDetailReadModel>;
+}
+
+export async function adjustExpenseClaimPaymentSubject(claimId: string, body: { companyEntityId: string; reason: string }) {
+  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/payment-subject`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  await ensureOk(response);
+  return response.json() as Promise<{
+    id: string;
+    paymentSubjectCompanyEntityId: string;
+    paymentSubjectNameSnapshot: string;
+    paymentSubjectAdjustmentReason: string;
+    paymentSubjectAdjustedAt: string;
+    paymentSubjectAdjustedByUserId: string;
+    paymentSubjectAdjustedByRoleKey: string;
+  }>;
 }

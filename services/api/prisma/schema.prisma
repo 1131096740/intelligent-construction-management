@@ -1681,6 +1681,12 @@ model ExpenseClaim {
   companyPayableAmountCents BigInt    @default(0)
   fundedAmountCents         BigInt    @default(0)
   paymentSubject            String?
+  paymentSubjectCompanyEntityId String?
+  paymentSubjectNameSnapshot    String?
+  paymentSubjectAdjustmentReason String?
+  paymentSubjectAdjustedAt       DateTime?
+  paymentSubjectAdjustedByUserId String?
+  paymentSubjectAdjustedByRoleKey String?
   paymentMethod             String?
   payeeNameSnapshot         String?
   payeeAccountNameSnapshot  String?
@@ -1700,6 +1706,7 @@ model ExpenseClaim {
   @@index([projectId, status])
   @@index([applicantUserId, status])
   @@index([companyEntityId, status])
+  @@index([paymentSubjectCompanyEntityId, status])
 }
 
 model ExpenseClaimLine {

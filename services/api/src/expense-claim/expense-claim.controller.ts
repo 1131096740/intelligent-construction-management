@@ -1,12 +1,14 @@
 import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
+import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CreateExpenseClaimDto } from "./dto/create-expense-claim.dto";
 import { ReviewExpenseClaimDto } from "./dto/review-expense-claim.dto";
 import { RecordLoanDisbursementDto } from "./dto/record-loan-disbursement.dto";
 import { ConfirmEmployeeLoanRepaymentDto, RecordEmployeeLoanRepaymentDto } from "./dto/record-employee-loan-repayment.dto";
 import { AttachExpenseClaimAttachmentDto, RemoveExpenseClaimAttachmentDto } from "./dto/manage-expense-claim-attachment.dto";
+import { AdjustExpenseClaimPaymentSubjectDto } from "./dto/adjust-expense-claim-payment-subject.dto";
 import { ExpenseClaimService } from "./expense-claim.service";
 
 @Controller("expense-claims")
@@ -33,6 +35,16 @@ export class ExpenseClaimController {
   @Get(":claimId")
   detail(@Param("claimId") claimId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.claims.getMine(claimId, user.id);
+  }
+
+  @Post(":claimId/payment-subject")
+  @RequirePositions("finance_staff", "finance_director", "comprehensive_director")
+  adjustPaymentSubject(
+    @Param("claimId") claimId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: AdjustExpenseClaimPaymentSubjectDto
+  ) {
+    return this.claims.adjustPaymentSubject(claimId, user.id, body);
   }
 
   @Post(":claimId/submission")

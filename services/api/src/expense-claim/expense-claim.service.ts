@@ -16,6 +16,7 @@ import type { ReviewExpenseClaimDto } from "./dto/review-expense-claim.dto";
 import type { RecordLoanDisbursementDto } from "./dto/record-loan-disbursement.dto";
 import type { ConfirmEmployeeLoanRepaymentDto, RecordEmployeeLoanRepaymentDto } from "./dto/record-employee-loan-repayment.dto";
 import type { AttachExpenseClaimAttachmentDto, RemoveExpenseClaimAttachmentDto } from "./dto/manage-expense-claim-attachment.dto";
+import type { AdjustExpenseClaimPaymentSubjectDto } from "./dto/adjust-expense-claim-payment-subject.dto";
 
 type ExpenseClaimApprovalNode = FrozenApprovalNode & {
   name: string;
@@ -28,6 +29,7 @@ type ExpenseClaimApprovalNode = FrozenApprovalNode & {
 
 const COMPREHENSIVE_ROLE: RoleKey = "comprehensive_director";
 const FINAL_ROLES: RoleKey[] = ["chairman", "general_manager"];
+const PAYMENT_SUBJECT_ADJUSTMENT_ROLES: RoleKey[] = ["finance_staff", "finance_director", "comprehensive_director"];
 
 @Injectable()
 export class ExpenseClaimService {
@@ -150,6 +152,8 @@ export class ExpenseClaimService {
           status: "draft",
           companyEntityId: company.id,
           companyEntityNameSnapshot: company.name,
+          paymentSubjectCompanyEntityId: company.id,
+          paymentSubjectNameSnapshot: company.name,
           projectId: project?.id,
           factWitnessUserId: factWitness?.id ?? null,
           factWitnessNameSnapshot: factWitness?.name ?? null,
@@ -201,6 +205,7 @@ export class ExpenseClaimService {
       where: { id: claimId },
       select: {
         id: true, code: true, claimType: true, status: true, projectId: true, applicantUserId: true, handledByUserId: true, companyEntityNameSnapshot: true,
+        paymentSubjectCompanyEntityId: true, paymentSubjectNameSnapshot: true, paymentSubjectAdjustmentReason: true, paymentSubjectAdjustedAt: true, paymentSubjectAdjustedByUserId: true, paymentSubjectAdjustedByRoleKey: true,
         applicantNameSnapshot: true, applicantPhoneSnapshot: true, handledByNameSnapshot: true, proxyReason: true,
         factWitnessNameSnapshot: true, reason: true, requestedAmountCents: true, loanOffsetAmountCents: true,
         companyPayableAmountCents: true, fundedAmountCents: true, paymentMethod: true, payeeNameSnapshot: true,
@@ -228,8 +233,12 @@ export class ExpenseClaimService {
       !["draft", "rejected", "offset_completed"].includes(claim.status) &&
       (claim.handledByUserId === actorUserId ||
         roles.some((role) => ["comprehensive_director", "finance_staff", "finance_director"].includes(role)));
+    const canAdjustPaymentSubject =
+      claim.claimType === "reimbursement" &&
+      claim.status === "approved_pending_payment" &&
+      roles.some((role) => PAYMENT_SUBJECT_ADJUSTMENT_ROLES.includes(role));
     if (!isOwner && !identity && !canAppendEvidence) throw new NotFoundException("费用申请不存在或当前账号无权读取");
-    const [project, lines, attachments] = await Promise.all([
+    const [project, lines, attachments, paymentSubjectCompanyEntities] = await Promise.all([
       claim.projectId
         ? this.prisma.project.findUnique({ where: { id: claim.projectId }, select: { id: true, code: true, name: true } })
         : Promise.resolve(null),
@@ -256,7 +265,14 @@ export class ExpenseClaimService {
           id: true, fileId: true, category: true, expenseCategory: true, stage: true,
           attachedByUserId: true, frozenAt: true, removedAt: true, createdAt: true
         }
-      }) ?? Promise.resolve([])
+      }) ?? Promise.resolve([]),
+      canAdjustPaymentSubject
+        ? this.prisma.companyEntity.findMany({
+          where: { isActive: true, dataStatus: "complete" },
+          select: { id: true, name: true },
+          orderBy: { createdAt: "asc" }
+        })
+        : Promise.resolve([])
     ]);
     const attachmentFileIds = attachments.map((attachment) => attachment.fileId);
     const attachmentUploaderIds = [...new Set(attachments.map((attachment) => attachment.attachedByUserId))];
@@ -286,6 +302,8 @@ export class ExpenseClaimService {
         requiresSelfReviewConfirmation: Boolean(identity && instance?.applicantUserId === actorUserId)
       } : null,
       attachmentPermissions: { canAppendEvidence },
+      paymentSubjectPermissions: { canAdjust: canAdjustPaymentSubject },
+      paymentSubjectCompanyEntities,
       lines: lines.map((line) => ({ ...line, amountCents: moneyCentsToApi(line.amountCents) })),
       attachments: attachments.map((attachment) => {
         const file = fileById.get(attachment.fileId);
@@ -299,6 +317,65 @@ export class ExpenseClaimService {
         };
       })
     };
+  }
+
+  async adjustPaymentSubject(claimId: string, actorUserId: string, input: AdjustExpenseClaimPaymentSubjectDto) {
+    const companyEntityId = requiredText(input.companyEntityId, "实际付款主体不能为空");
+    const reason = requiredText(input.reason, "调整原因不能为空");
+    return this.prisma.$transaction(async (tx) => {
+      const claims = await tx.$queryRaw<Array<{
+        id: string; claimType: string; status: string; projectId: string | null;
+        paymentSubjectCompanyEntityId: string | null; paymentSubjectNameSnapshot: string | null;
+      }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "paymentSubjectCompanyEntityId", "paymentSubjectNameSnapshot" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
+      const claim = claims[0];
+      if (!claim) throw new NotFoundException("费用申请不存在");
+      if (claim.claimType !== "reimbursement" || claim.status !== "approved_pending_payment") {
+        throw new BadRequestException("仅已批待公司付款的费用报销可以调整实际付款主体");
+      }
+      const roles = await this.loadRoleKeys(tx, actorUserId, claim.projectId ?? undefined);
+      const adjustedByRoleKey = PAYMENT_SUBJECT_ADJUSTMENT_ROLES.find((role) => roles.includes(role));
+      if (!adjustedByRoleKey) throw new ForbiddenException("当前岗位无权调整实际付款主体");
+      const company = await tx.companyEntity.findFirst({
+        where: { id: companyEntityId, isActive: true, dataStatus: "complete" },
+        select: { id: true, name: true }
+      });
+      if (!company) throw new NotFoundException("实际付款主体不存在、未完成资料或已停用");
+      if (company.id === claim.paymentSubjectCompanyEntityId) {
+        throw new BadRequestException("实际付款主体未发生变化，无需调整");
+      }
+      const adjustedAt = new Date();
+      const updated = await tx.expenseClaim.update({
+        where: { id: claim.id },
+        data: {
+          paymentSubjectCompanyEntityId: company.id,
+          paymentSubjectNameSnapshot: company.name,
+          paymentSubjectAdjustmentReason: reason,
+          paymentSubjectAdjustedAt: adjustedAt,
+          paymentSubjectAdjustedByUserId: actorUserId,
+          paymentSubjectAdjustedByRoleKey: adjustedByRoleKey
+        },
+        select: {
+          id: true, paymentSubjectCompanyEntityId: true, paymentSubjectNameSnapshot: true,
+          paymentSubjectAdjustmentReason: true, paymentSubjectAdjustedAt: true,
+          paymentSubjectAdjustedByUserId: true, paymentSubjectAdjustedByRoleKey: true
+        }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "expense_claim.payment_subject.adjust",
+        businessType: "expense_claim",
+        businessId: claim.id,
+        metadata: {
+          previousCompanyEntityId: claim.paymentSubjectCompanyEntityId,
+          previousCompanyEntityName: claim.paymentSubjectNameSnapshot,
+          companyEntityId: company.id,
+          companyEntityName: company.name,
+          reason,
+          adjustedByRoleKey
+        }
+      });
+      return updated;
+    });
   }
 
   async attachAttachment(claimId: string, actorUserId: string, input: AttachExpenseClaimAttachmentDto) {

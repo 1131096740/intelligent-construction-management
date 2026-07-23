@@ -70,6 +70,7 @@ describe("expense reimbursement ledger foundation schema", () => {
 
   it("requires a voucher-backed actual disbursement before a loan ledger balance can increase", () => {
     expect(model("ExpenseClaim")).toContain("fundedAmountCents         BigInt");
+    expect(model("ExpenseClaim")).toContain("paymentSubjectCompanyEntityId String?");
     expect(model("EmployeeProjectLoanEntry")).toContain("voucherFileId        String?");
     expect(model("EmployeeProjectLoanEntry")).toContain("paymentMethod        String?");
     expect(loanDisbursementMigration).toContain('ADD COLUMN "fundedAmountCents" BIGINT NOT NULL DEFAULT 0');

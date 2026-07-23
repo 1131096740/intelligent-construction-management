@@ -99,7 +99,9 @@ describe("ExpenseClaimService", () => {
         handledByUserId: "user-a",
         projectId: "project-1",
         factWitnessUserId: null,
-        requestedAmountCents: 1200n
+        requestedAmountCents: 1200n,
+        paymentSubjectCompanyEntityId: "company-1",
+        paymentSubjectNameSnapshot: "建工公司"
       })
     });
     expect(tx.expenseClaimLine.createMany).toHaveBeenCalledWith({
@@ -123,6 +125,45 @@ describe("ExpenseClaimService", () => {
     ).rejects.toThrow(BadRequestException);
     expect(tx.expenseClaim.create).not.toHaveBeenCalled();
     expect((tx as Record<string, unknown>).projectExpenseRequest).toBeUndefined();
+  });
+
+  it("allows an authorized finance role to change the pending reimbursement payer only with a reason and audit fact", async () => {
+    const claim = {
+      id: "claim-1", claimType: "reimbursement", status: "approved_pending_payment", projectId: "project-1",
+      paymentSubjectCompanyEntityId: "company-use", paymentSubjectNameSnapshot: "使用单位"
+    };
+    const { service, tx, audit } = createHarness({ roles: ["finance_staff"], claim });
+    tx.companyEntity.findFirst.mockResolvedValue({ id: "company-pay", name: "付款单位" });
+    tx.expenseClaim.update.mockResolvedValue({
+      id: "claim-1", paymentSubjectCompanyEntityId: "company-pay", paymentSubjectNameSnapshot: "付款单位",
+      paymentSubjectAdjustmentReason: "资金由集团统一支付", paymentSubjectAdjustedAt: new Date(),
+      paymentSubjectAdjustedByUserId: "finance-1", paymentSubjectAdjustedByRoleKey: "finance_staff"
+    });
+
+    await expect(service.adjustPaymentSubject("claim-1", "finance-1", {
+      companyEntityId: "company-pay", reason: "资金由集团统一支付"
+    })).resolves.toMatchObject({ paymentSubjectNameSnapshot: "付款单位", paymentSubjectAdjustedByRoleKey: "finance_staff" });
+
+    expect(tx.companyEntity.findFirst).toHaveBeenCalledWith({
+      where: { id: "company-pay", isActive: true, dataStatus: "complete" },
+      select: { id: true, name: true }
+    });
+    expect(tx.expenseClaim.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ paymentSubjectCompanyEntityId: "company-pay", paymentSubjectAdjustmentReason: "资金由集团统一支付" })
+    }));
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "expense_claim.payment_subject.adjust",
+      metadata: expect.objectContaining({ previousCompanyEntityId: "company-use", companyEntityId: "company-pay" })
+    }));
+  });
+
+  it("does not adjust a reimbursement payer before approval or from an unauthorized role", async () => {
+    const { service, tx } = createHarness({
+      roles: ["employee"],
+      claim: { id: "claim-1", claimType: "reimbursement", status: "approved_pending_payment", projectId: null, paymentSubjectCompanyEntityId: "company-use", paymentSubjectNameSnapshot: "使用单位" }
+    });
+    await expect(service.adjustPaymentSubject("claim-1", "employee-1", { companyEntityId: "company-pay", reason: "调整" })).rejects.toThrow(ForbiddenException);
+    expect(tx.expenseClaim.update).not.toHaveBeenCalled();
   });
 
   it("binds only the current handler's unbound private file to a draft expense claim", async () => {
