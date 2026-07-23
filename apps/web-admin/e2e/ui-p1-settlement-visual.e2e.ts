@@ -75,7 +75,7 @@ const ledgerBody = {
     }
   ],
   meta: { page: 1, pageSize: 20, total: 3, totalPages: 1 },
-  summary: { formal_ledger: 3, my_drafts: 1, returned_for_revision: 0, ended: 0 }
+  summary: { pending_action: 0, my_drafts: 1, in_approval: 1, pending_archive: 1, effective: 1, all: 3 }
 };
 
 const approvalDetailBody = settlementDetail({
@@ -255,7 +255,7 @@ test("captures the settlement P1.1 ledger and detail states", async ({ page }) =
   await page.route("**/api/settlements/JS-UI-LOAD", (route) => {
     pendingLoadingRoute = route;
   });
-  await page.route("**/api/settlements/lifecycle-ledger?*", (route) => {
+  await page.route("**/api/settlements/workbench?*", (route) => {
     if (ledgerMode === "failure") {
       return route.fulfill({
         status: 500,
@@ -269,7 +269,7 @@ test("captures the settlement P1.1 ledger and detail states", async ({ page }) =
         body: JSON.stringify({
           rows: [],
           meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
-          summary: { formal_ledger: 0, my_drafts: 1, returned_for_revision: 0, ended: 0 }
+          summary: { pending_action: 0, my_drafts: 1, in_approval: 0, pending_archive: 0, effective: 0, all: 0 }
         })
       });
     }
@@ -278,15 +278,15 @@ test("captures the settlement P1.1 ledger and detail states", async ({ page }) =
 
   await login(page);
 
-  await page.goto("/结算管理");
-  await expect(page.getByRole("heading", { name: "结算管理" })).toBeVisible();
+  await page.goto("/结算工作台");
+  await expect(page.getByRole("heading", { name: "结算工作台" })).toBeVisible();
   await expect(page.getByText(/台账按服务端分页展示/)).toBeVisible();
   await expect(page.locator(".ledger-section .t-link").filter({ hasText: "查看详情" })).toHaveCount(3);
   await captureRequiredViewports(page, "settlement-ledger", "settlement-ledger-normal");
 
   await page.setViewportSize({ width: 1440, height: 900 });
   ledgerMode = "failure";
-  await page.goto("/结算管理");
+  await page.goto("/结算工作台");
   await expect(page.getByText("结算记录暂时无法读取")).toBeVisible();
   await expect(page.locator(".business-status-summary")).toContainText("—");
   await expect(page.getByText(/这不代表当前没有结算记录/)).toBeVisible();
@@ -294,7 +294,7 @@ test("captures the settlement P1.1 ledger and detail states", async ({ page }) =
   await capture(page, "settlement-ledger-failure-1440x900.png");
 
   ledgerMode = "empty";
-  await page.goto("/结算管理");
+  await page.goto("/结算工作台");
   await expect(page.getByText("当前条件下暂无结算记录")).toBeVisible();
   await expect(page.getByRole("button", { name: "新建结算" })).toHaveCount(1);
   await capture(page, "settlement-ledger-empty-1440x900.png");

@@ -105,8 +105,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
     items: [
       {
         label: "结算工作台",
-        path: "/结算工作台",
-        requiredRoleKeys: settlementMaintenanceRoleKeys
+        path: "/结算工作台"
       }
     ]
   },
@@ -340,16 +339,20 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       },
       {
         path: "结算工作台",
-        component: () => import("../pages/settlements/SettlementWorkbenchPage.vue"),
-        meta: { requiredRoleKeys: settlementMaintenanceRoleKeys, title: "结算工作台" }
-      },
-      {
-        path: "结算管理",
         component: () => import("../pages/settlements/SettlementListPage.vue")
       },
       {
-        path: "结算管理/新建",
+        path: "结算工作台/新建",
+        component: () => import("../pages/settlements/SettlementWorkbenchPage.vue"),
+        meta: { requiredRoleKeys: settlementMaintenanceRoleKeys, title: "新建结算" }
+      },
+      {
+        path: "结算管理",
         redirect: "/结算工作台"
+      },
+      {
+        path: "结算管理/新建",
+        redirect: "/结算工作台/新建"
       },
       {
         path: "结算管理/:settlementId",
@@ -489,8 +492,8 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       { path: "settlement-templates", redirect: "/结算模板库" },
       { path: "settlement-templates/new", redirect: "/结算模板库/新建" },
       { path: "settlement-templates/:templateId", redirect: settlementTemplateRedirect },
-      { path: "settlements", redirect: "/结算管理" },
-      { path: "settlements/new", redirect: "/结算工作台" },
+      { path: "settlements", redirect: "/结算工作台" },
+      { path: "settlements/new", redirect: "/结算工作台/新建" },
       { path: "settlements/:settlementId", redirect: settlementRedirect },
       { path: "payments", redirect: "/付款管理" },
       { path: "payments/new", redirect: "/付款工作台" },

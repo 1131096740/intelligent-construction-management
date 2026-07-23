@@ -147,8 +147,8 @@ describe("web admin routes", () => {
     expect(redirectOf("contracts/new")).toBe("/合同工作台/新建");
     expect(redirectOf("contract-takeovers")).toBe("/历史合同接管");
     expect(redirectOf("contracts/:contractId/workbench", { contractId: "HT-1" })).toBe("/合同工作台/HT-1");
-    expect(redirectOf("settlements")).toBe("/结算管理");
-    expect(redirectOf("settlements/new")).toBe("/结算工作台");
+    expect(redirectOf("settlements")).toBe("/结算工作台");
+    expect(redirectOf("settlements/new")).toBe("/结算工作台/新建");
     expect(redirectOf("settlement-templates")).toBe("/结算模板库");
     expect(redirectOf("settlement-templates/:templateId", { templateId: "TPL-1" })).toBe("/结算模板库/TPL-1");
     expect(redirectOf("payments")).toBe("/付款管理");
@@ -280,8 +280,8 @@ describe("web admin routes", () => {
   });
 
   it("keeps old create routes as redirects to the dedicated workbenches", () => {
-    expect(redirectOf("结算管理/新建")).toBe("/结算工作台");
-    expect(redirectOf("settlements/new")).toBe("/结算工作台");
+    expect(redirectOf("结算管理/新建")).toBe("/结算工作台/新建");
+    expect(redirectOf("settlements/new")).toBe("/结算工作台/新建");
     expect(redirectOf("付款管理/新建")).toBe("/付款工作台");
     expect(redirectOf("payments/new")).toBe("/付款工作台");
   });
@@ -296,8 +296,8 @@ describe("web admin routes", () => {
   });
 
   it("separates create workbenches from settlement and payment ledgers", () => {
-    expect(String(childRoute("结算工作台")?.component)).toContain("SettlementWorkbenchPage.vue");
-    expect(String(childRoute("结算管理")?.component)).toContain("SettlementListPage.vue");
+    expect(String(childRoute("结算工作台")?.component)).toContain("SettlementListPage.vue");
+    expect(String(childRoute("结算工作台/新建")?.component)).toContain("SettlementWorkbenchPage.vue");
     expect(String(childRoute("结算管理/:settlementId")?.component)).toContain("SettlementDetailPage.vue");
     expect(String(childRoute("付款工作台")?.component)).toContain("PaymentWorkbenchPage.vue");
     expect(String(childRoute("统一资金办理工作台")?.component)).toContain("FundsWorkbenchPage.vue");
@@ -335,7 +335,7 @@ describe("web admin routes", () => {
     for (const role of readOnlyRoles) {
       const visiblePaths = visibleAdminNavigationItems([role]).map((item) => item.path);
       expect(visiblePaths).toContain("/合同工作台");
-      expect(visiblePaths).not.toContain("/结算工作台");
+      expect(visiblePaths).toContain("/结算工作台");
       expect(
         resolveRouteAccess(
           {
@@ -362,13 +362,13 @@ describe("web admin routes", () => {
           },
           { isAuthenticated: true, roleKeys: [role] }
         )
-      ).toEqual({ path: "/首页" });
+      ).toBe(true);
     }
 
     expect(childRoute("合同工作台/新建")?.meta?.requiredRoleKeys).toEqual(
       contractMaintenanceRoleKeys
     );
-    expect(childRoute("结算工作台")?.meta?.requiredRoleKeys).toEqual(
+    expect(childRoute("结算工作台/新建")?.meta?.requiredRoleKeys).toEqual(
       settlementMaintenanceRoleKeys
     );
     expect(

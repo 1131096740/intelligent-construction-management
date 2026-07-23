@@ -1,8 +1,8 @@
 <template>
   <section class="settlement-page">
     <BusinessPageHeader
-      title="结算管理"
-      description="按项目、关联合同、审批归档状态和结算期间管理已创建结算。"
+      title="结算工作台"
+      description="统一查看结算台账、当前草稿和办理事项；结算生效仍以审批和归档确认事实为准。"
     >
       <template #actions>
         <t-button
@@ -32,8 +32,8 @@
 
     <t-tabs v-model="activeView">
       <t-tab-panel
-        value="formal_ledger"
-        :label="`正式台账 ${lifecycleSummary.formal_ledger}`"
+        value="pending_action"
+        :label="`待我办理 ${lifecycleSummary.pending_action}`"
       />
       <t-tab-panel
         v-if="canManageSettlements"
@@ -42,12 +42,20 @@
       />
       <t-tab-panel
         v-if="canManageSettlements"
-        value="returned_for_revision"
-        :label="`退回待修改 ${lifecycleSummary.returned_for_revision}`"
+        value="in_approval"
+        :label="`审批中 ${lifecycleSummary.in_approval}`"
       />
       <t-tab-panel
-        value="ended"
-        :label="`已结束 ${lifecycleSummary.ended}`"
+        value="pending_archive"
+        :label="`待归档 ${lifecycleSummary.pending_archive}`"
+      />
+      <t-tab-panel
+        value="effective"
+        :label="`已生效 ${lifecycleSummary.effective}`"
+      />
+      <t-tab-panel
+        value="all"
+        :label="`全部结算 ${lifecycleSummary.all}`"
       />
     </t-tabs>
 
@@ -184,18 +192,18 @@
           </t-tag>
         </template>
         <template #returnReason="{ row }">
-          {{ activeView === 'ended' ? (row.abandonReason || '—') : row.returnReason }}
+          {{ activeView === 'all' ? (row.abandonReason || row.returnReason || '—') : row.returnReason }}
         </template>
         <template #operation="{ row }">
           <t-link
-            v-if="activeView === 'ended' && row.copyAvailable"
+            v-if="activeView === 'all' && row.copyAvailable"
             theme="primary"
             :disabled="copyingId === row.id"
             @click="copyEndedSettlement(row)"
           >
             {{ copyingId === row.id ? '复制中' : '复制为新草稿' }}
           </t-link>
-          <span v-else-if="activeView === 'ended'">历史已保留</span>
+          <span v-else-if="activeView === 'all' && row.abandonReason">历史已保留</span>
           <t-link
             v-else
             theme="primary"
@@ -203,7 +211,7 @@
           >
             {{ activeView === 'my_drafts'
               ? '继续填写'
-              : activeView === 'returned_for_revision'
+              : activeView === 'pending_action'
                 ? '查看并处理'
                 : '查看详情' }}
           </t-link>
@@ -222,9 +230,9 @@
         v-else-if="!errorMessage"
         title="当前条件下暂无结算记录"
         :description="canManageSettlements
-          ? '可以调整筛选条件；如需发起新结算，请从结算工作台选择已生效合同。'
+          ? '可以调整筛选条件；如需发起新结算，请选择“新建结算”。'
           : '可以调整筛选条件，或刷新后再次查看当前权限范围内的结算记录。'"
-        :actions="canManageSettlements ? [{ label: '新建结算', to: '/结算工作台' }] : []"
+        :actions="canManageSettlements ? [{ label: '新建结算', to: '/结算工作台/新建' }] : []"
       />
 
       <footer class="ledger-footer">
@@ -243,10 +251,10 @@
 import { MessagePlugin } from "tdesign-vue-next";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import type { DraftLedgerView } from "@jiangkong/shared-domain";
+import type { SettlementWorkbenchView } from "@jiangkong/shared-domain";
 import {
   copyAbandonedSettlementDraft,
-  fetchSettlementLifecycleLedger,
+  fetchSettlementWorkbenchLedger,
   type SettlementLifecycleLedgerRow,
   downloadSettlementLedgerExport
 } from "../../api/core-flow-read.api";
@@ -291,23 +299,22 @@ const canManageSettlements = computed(() =>
 const canExportLedger = computed(() =>
   canExportContractSettlementLedger(roleKeys.value)
 );
-const lifecycleViewValues: DraftLedgerView[] = [
-  "formal_ledger",
-  "my_drafts",
-  "returned_for_revision",
-  "ended"
-];
-function routeLifecycleView(value: unknown): DraftLedgerView {
-  if (
-    typeof value === "string" &&
-    lifecycleViewValues.includes(value as DraftLedgerView) &&
-    (canManageSettlements.value || !["my_drafts", "returned_for_revision"].includes(value))
-  ) {
-    return value as DraftLedgerView;
-  }
-  return "formal_ledger";
+const lifecycleViewValues = new Set<SettlementWorkbenchView>([
+  "pending_action", "my_drafts", "in_approval", "pending_archive", "effective", "all"
+]);
+function routeLifecycleView(value: unknown): SettlementWorkbenchView {
+  const legacyViews: Record<string, SettlementWorkbenchView> = {
+    formal_ledger: "all",
+    returned_for_revision: "pending_action",
+    ended: "all"
+  };
+  const requested = typeof value === "string"
+    ? legacyViews[value] ?? (lifecycleViewValues.has(value as SettlementWorkbenchView)
+      ? value as SettlementWorkbenchView : "all")
+    : "all";
+  return !canManageSettlements.value && requested === "my_drafts" ? "all" : requested;
 }
-const activeView = ref<DraftLedgerView>(routeLifecycleView(route.query.view));
+const activeView = ref<SettlementWorkbenchView>(routeLifecycleView(route.query.view));
 const errorMessage = ref("");
 const settlementLedgerRows = ref<(SettlementLedgerRow & SettlementLifecycleLedgerRow)[]>([]);
 const settlementFilters = reactive(emptySettlementLedgerFilters());
@@ -321,10 +328,12 @@ const configurableSettlementColumnKeys = settlementLedgerColumns
   .filter((key) => key !== "operation");
 const visibleSettlementColumnKeys = ref<string[]>([...configurableSettlementColumnKeys]);
 const lifecycleSummary = ref({
-  formal_ledger: 0,
+  pending_action: 0,
   my_drafts: 0,
-  returned_for_revision: 0,
-  ended: 0
+  in_approval: 0,
+  pending_archive: 0,
+  effective: 0,
+  all: 0
 });
 const lifecycleMeta = ref({
   page: 1,
@@ -335,10 +344,10 @@ const lifecycleMeta = ref({
 
 const summaryValues = computed(() => {
   const values = [
-    lifecycleSummary.value.formal_ledger,
+    lifecycleSummary.value.pending_action,
     lifecycleSummary.value.my_drafts,
-    lifecycleSummary.value.returned_for_revision,
-    lifecycleSummary.value.ended
+    lifecycleSummary.value.in_approval,
+    lifecycleSummary.value.effective
   ];
 
   return settlementSummaryItems.map((item, index) => ({
@@ -371,13 +380,13 @@ function optionsForFilter(key: SettlementFilterKey) {
 }
 
 function openCreateWorkbench() {
-  void router.push("/结算工作台");
+  void router.push("/结算工作台/新建");
 }
 
 function openLifecycleRow(row: SettlementLedgerRow & SettlementLifecycleLedgerRow) {
   if (row.lifecycleKind !== "formal_record") {
     void router.push({
-      path: "/结算工作台",
+      path: "/结算工作台/新建",
       query: { draftId: row.id, project: row.projectId }
     });
     return;
@@ -391,7 +400,7 @@ async function copyEndedSettlement(row: SettlementLedgerRow & SettlementLifecycl
   try {
     const created = await copyAbandonedSettlementDraft(row.projectId, row.id, row.lifecycleUpdatedAt);
     await MessagePlugin.success("已复制为新的结算草稿，旧记录保持只读历史。");
-    await router.push({ path: "/结算工作台", query: { project: row.projectId, draftId: created.id } });
+    await router.push({ path: "/结算工作台/新建", query: { project: row.projectId, draftId: created.id } });
   } catch (error) {
     await MessagePlugin.error(error instanceof Error ? error.message : "结算草稿复制失败，请刷新后重试。");
   } finally {
@@ -451,7 +460,7 @@ async function loadSettlementLedger() {
   ledgerLoading.value = true;
   errorMessage.value = "";
   try {
-    const result = await fetchSettlementLifecycleLedger(
+    const result = await fetchSettlementWorkbenchLedger(
       activeView.value,
       lifecycleMeta.value.page,
       lifecycleMeta.value.pageSize

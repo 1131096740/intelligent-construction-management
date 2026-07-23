@@ -26,10 +26,10 @@ describe("settlement ledger page configuration", () => {
     expect(source).not.toContain("<input");
   });
 
-  it("uses the unified lifecycle ledger without per-project draft fan-out", () => {
+  it("uses the settlement root workbench without per-project draft fan-out", () => {
     const source = readFileSync(new URL("./SettlementListPage.vue", import.meta.url), "utf8");
     expect(source).toContain("我的草稿");
-    expect(source).toContain("fetchSettlementLifecycleLedger");
+    expect(source).toContain("fetchSettlementWorkbenchLedger");
     expect(source).toContain("<t-pagination");
     expect(source).toContain("继续填写");
     expect(source).toContain("draftId: row.id");
@@ -39,9 +39,9 @@ describe("settlement ledger page configuration", () => {
 
   it("keeps ended history read-only while offering server-advertised copy as a new draft", () => {
     const source = readFileSync(new URL("./SettlementListPage.vue", import.meta.url), "utf8");
-    expect(source).toContain("row.abandonReason || '—'");
+    expect(source).toContain("row.abandonReason || row.returnReason || '—'");
     expect(source).toContain("历史已保留");
-    expect(source).toContain("activeView === 'ended' && row.copyAvailable");
+    expect(source).toContain("activeView === 'all' && row.copyAvailable");
     expect(source).toContain("复制为新草稿");
     expect(source).toContain("copyAbandonedSettlementDraft");
   });
@@ -50,7 +50,7 @@ describe("settlement ledger page configuration", () => {
     const source = readFileSync(new URL("./SettlementListPage.vue", import.meta.url), "utf8");
     expect(source).toContain("'查看并处理'");
     expect(source).toMatch(
-      /activeView === 'my_drafts'[\s\S]{0,80}\? '继续填写'[\s\S]{0,120}activeView === 'returned_for_revision'[\s\S]{0,80}\? '查看并处理'/
+      /activeView === 'my_drafts'[\s\S]{0,80}\? '继续填写'[\s\S]{0,120}activeView === 'pending_action'[\s\S]{0,80}\? '查看并处理'/
     );
   });
 
@@ -64,12 +64,12 @@ describe("settlement ledger page configuration", () => {
     ]);
   });
 
-  it("keeps settlement summaries aligned with the four lifecycle views", () => {
+  it("keeps settlement summaries aligned with the root workbench views", () => {
     expect(settlementSummaryItems.map((item) => item.label)).toEqual([
-      "正式台账",
+      "待我办理",
       "我的草稿",
-      "退回待修改",
-      "已结束"
+      "审批中",
+      "已生效"
     ]);
   });
 
