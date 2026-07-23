@@ -618,13 +618,17 @@ describe("spot procurement web pages", () => {
     }
     expect(procurement).toContain('title: "申请 / 采购"');
     expect(procurement).toContain('title: "付款与收货"');
-    expect(payment).toContain('title: "付款申请"');
-    expect(payment).toContain('title: "项目 / 商户"');
-    expect(payment).toContain('title: "金额"');
-    expect(payment).toContain('title: "当前状态"');
-    expect(payment).toContain('title: "当前任务"');
+    expect(payment).toContain('title: "付款编号"');
+    expect(payment).toContain('title: "采购编号"');
+    expect(payment).toContain('title: "商户 / 收款对象"');
+    expect(payment).toContain('title: "审批金额"');
+    expect(payment).toContain('title: "实付 / 退款 / 剩余"');
+    expect(payment).toContain('title: "收货 / 发票"');
+    expect(payment).toContain('title: "状态 / 当前办理人"');
+    expect(payment).toContain('title: "更新时间"');
     expect(payment).toContain('title: "操作"');
-    expect(payment).not.toMatch(/title: "(?:付款主体|收款渠道|累计实付|收货|发票)/u);
+    expect(payment).toContain("paymentProgress(row)");
+    expect(payment).toContain("receiptInvoice(row)");
   });
 
   it("links an approved procurement only to the server-selected payment task", () => {

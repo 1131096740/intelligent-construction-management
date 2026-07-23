@@ -15,10 +15,7 @@ import BusinessTableToolbar from "../../components/BusinessTableToolbar.vue";
 import { centsTextToYuanText } from "../../lib/money";
 import type { SpotProcurementPaymentStatus } from "@jiangkong/shared-domain";
 import PaymentTaskQueue from "./components/PaymentTaskQueue.vue";
-import {
-  spotPaymentStatusSemantic,
-  spotPaymentTaskPresentation
-} from "./spot-payment-workbench.config";
+import { spotPaymentTaskPresentation } from "./spot-payment-workbench.config";
 
 const router = useRouter();
 const loading = ref(false);
@@ -54,11 +51,15 @@ const statusOptions = [
   { label: "已作废", value: "voided" }
 ];
 const columns = [
-  { colKey: "application", title: "付款申请", width: 150, fixed: "left" as const },
-  { colKey: "projectMerchant", title: "项目 / 商户", width: 190 },
-  { colKey: "amount", title: "金额", width: 120, align: "right" as const },
-  { colKey: "status", title: "当前状态", width: 125 },
-  { colKey: "task", title: "当前任务", width: 180 },
+  { colKey: "code", title: "付款编号", width: 150, fixed: "left" as const },
+  { colKey: "procurementCode", title: "采购编号", width: 150 },
+  { colKey: "project", title: "项目", width: 180 },
+  { colKey: "merchantPayee", title: "商户 / 收款对象", width: 190 },
+  { colKey: "approvalAmount", title: "审批金额", width: 120, align: "right" as const },
+  { colKey: "paymentProgress", title: "实付 / 退款 / 剩余", width: 190, align: "right" as const },
+  { colKey: "receiptInvoice", title: "收货 / 发票", width: 180 },
+  { colKey: "statusTask", title: "状态 / 当前办理人", width: 190 },
+  { colKey: "updatedAt", title: "更新时间", width: 150 },
   { colKey: "operation", title: "操作", width: 90, fixed: "right" as const }
 ];
 
@@ -81,6 +82,30 @@ function money(cents: string | null | undefined) {
 
 function taskPresentation(row: SpotProcurementPaymentListItemReadModel) {
   return spotPaymentTaskPresentation(row.currentTask);
+}
+
+function paymentProgress(row: SpotProcurementPaymentListItemReadModel) {
+  const actualPaidAmountCents = row.actualPaidAmountCents ?? row.paidAmountCents;
+  const remainingAmountCents =
+    row.remainingAmountCents ?? row.remainingCompanyPaymentAmountCents;
+  if (actualPaidAmountCents === undefined || remainingAmountCents === undefined) {
+    return "历史付款事实待迁移";
+  }
+  return `实付 ${money(actualPaidAmountCents)} / 退款 ${money(row.refundAmountCents ?? "0")} / 剩余 ${money(remainingAmountCents)}`;
+}
+
+function receiptInvoice(row: SpotProcurementPaymentListItemReadModel) {
+  const receipt = row.receipt;
+  const receiptText = receipt
+    ? "statusLabel" in receipt
+      ? receipt.statusLabel
+      : receipt.label
+    : "收货事实待读取";
+  return `${receiptText} / ${row.invoice?.statusLabel ?? "发票事实待读取"}`;
+}
+
+function updatedAt(value: string) {
+  return value.replace("T", " ").slice(0, 16);
 }
 
 function openDetail(paymentId: string) {
@@ -276,40 +301,43 @@ onMounted(() => void Promise.all([loadProjects(), loadPayments()]));
           :columns="columns"
           :data="rows"
           :loading="loading"
-          :scroll="{ x: 855 }"
+          :scroll="{ x: 1_570 }"
           horizontal-scroll-affixed-bottom
         >
-          <template #application="{ row }">
-            <div class="two-line-cell">
-              <t-link
-                theme="primary"
-                @click="openDetail(row.id)"
-              >
-                {{ row.code }}
-              </t-link>
-              <span>采购 {{ row.procurement.code }}</span>
-            </div>
+          <template #code="{ row }">
+            <t-link
+              theme="primary"
+              @click="openDetail(row.id)"
+            >
+              {{ row.code }}
+            </t-link>
           </template>
-          <template #projectMerchant="{ row }">
-            <div class="two-line-cell">
-              <strong>{{ row.project.code }} · {{ row.project.name }}</strong>
-              <span>{{ row.merchantName ?? row.procurement.supplierName ?? "待填写" }}</span>
-            </div>
+          <template #procurementCode="{ row }">
+            {{ row.procurement.code }}
           </template>
-          <template #amount="{ row }">
+          <template #project="{ row }">
+            {{ row.project.code }} · {{ row.project.name }}
+          </template>
+          <template #merchantPayee="{ row }">
+            {{ row.merchantName ?? row.payee?.name ?? row.payeeName ?? row.procurement.supplierName ?? "待填写" }}
+          </template>
+          <template #approvalAmount="{ row }">
             <strong class="amount-cell">{{ money(row.approvalAmountCents) }}</strong>
           </template>
-          <template #status="{ row }">
-            <BusinessStatusText
-              :text="row.statusLabel"
-              :semantic="spotPaymentStatusSemantic(row.status)"
-            />
+          <template #paymentProgress="{ row }">
+            <span class="progress-cell">{{ paymentProgress(row) }}</span>
           </template>
-          <template #task="{ row }">
+          <template #receiptInvoice="{ row }">
+            {{ receiptInvoice(row) }}
+          </template>
+          <template #statusTask="{ row }">
             <BusinessStatusText
-              :text="row.currentTask.label"
+              :text="`${row.statusLabel} / ${row.currentTask.label}`"
               :semantic="taskPresentation(row).semantic"
             />
+          </template>
+          <template #updatedAt="{ row }">
+            {{ updatedAt(row.updatedAt) }}
           </template>
           <template #operation="{ row }">
             <t-button

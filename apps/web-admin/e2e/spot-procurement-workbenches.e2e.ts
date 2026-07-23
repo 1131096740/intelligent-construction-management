@@ -464,13 +464,26 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   await expect(page.getByText("补全付款信息并提交", { exact: true }).first()).toBeVisible();
   await expect(page.getByLabel("当前真实付款金额摘要")).toHaveCount(0);
   await expect(page.getByText("利民建材店", { exact: true }).first()).toBeVisible();
-  for (const heading of ["付款申请", "项目 / 商户", "金额", "当前状态", "当前任务", "操作"]) {
+  for (const heading of [
+    "付款编号",
+    "采购编号",
+    "项目",
+    "商户 / 收款对象",
+    "审批金额",
+    "实付 / 退款 / 剩余",
+    "收货 / 发票",
+    "状态 / 当前办理人",
+    "更新时间",
+    "操作"
+  ]) {
     await expect(page.getByRole("columnheader", { name: heading, exact: true })).toBeVisible();
   }
+  await expect(page.getByText("实付 ¥2,200.00 / 退款 ¥0.00 / 剩余 ¥2,200.00", { exact: true })).toBeVisible();
+  await expect(page.getByText("待确认收货 / 待补发票", { exact: true })).toBeVisible();
   await expect(page.getByText("收货与发票", { exact: true })).toHaveCount(0);
   await expect(page.getByText("转商户余额", { exact: true })).toHaveCount(0);
   const paymentLedgerRow = page.getByRole("row").filter({ hasText: "LXFK-E2E-001" });
-  await expect(paymentLedgerRow.locator(".business-status-text--neutral")).toHaveCount(1);
+  await expect(paymentLedgerRow.locator(".business-status-text--neutral")).toHaveCount(0);
   await expect(paymentLedgerRow.locator(".business-status-text--required")).toHaveCount(1);
   await expect(page.locator(".payment-task-queue").getByRole("button", { name: "填写", exact: true })).toBeVisible();
   await page.screenshot({
