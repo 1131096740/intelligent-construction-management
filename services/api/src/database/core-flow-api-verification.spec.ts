@@ -14,7 +14,7 @@ describe("coreFlowApiVerificationTargets", () => {
     expect(coreFlowApiVerificationTargets[2].requiredText).toContain("approved_pending_payment");
   });
 
-  it("seeds an archiveable settlement contract for the writable core-flow rehearsal", () => {
+  it("seeds an archiveable contract and a compatible settlement submission for the writable rehearsal", () => {
     const verifier = readFileSync(
       join(process.cwd(), "prisma/verify-core-flow.cjs"),
       "utf8"
@@ -23,6 +23,10 @@ describe("coreFlowApiVerificationTargets", () => {
     expect(verifier).toContain('contractTypeKey: "material_purchase"');
     expect(verifier).toContain('invoiceType: "vat_general"');
     expect(verifier).toContain('defaultTaxRatePercent: new Prisma.Decimal("13")');
+    expect(verifier).toContain('status: "published"');
+    expect(verifier).toContain('settlementTemplateVersionId,');
+    expect(verifier).toContain('sourceType: "manual_adjustment"');
+    expect(verifier).toContain('reason: "本期现场签认"');
   });
 });
 

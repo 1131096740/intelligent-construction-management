@@ -247,6 +247,8 @@ async function seedDisposableContract(codeSuffix, amountCents = TARGET_CONTRACT_
   const contractId = randomUUID();
   const versionId = randomUUID();
   const termsId = randomUUID();
+  const settlementTemplateId = randomUUID();
+  const settlementTemplateVersionId = randomUUID();
 
   await prisma.contract.create({
     data: {
@@ -308,7 +310,35 @@ async function seedDisposableContract(codeSuffix, amountCents = TARGET_CONTRACT_
     }
   });
 
-  return { contractId, versionId, termsId };
+  await prisma.settlementTemplate.create({
+    data: {
+      id: settlementTemplateId,
+      name: "一期闭环验证结算模板",
+      code: `core-flow-${codeSuffix}`,
+      createdByUserId: coreFlowSeedData.users.contractStaff.id
+    }
+  });
+
+  await prisma.settlementTemplateVersion.create({
+    data: {
+      id: settlementTemplateVersionId,
+      settlementTemplateId,
+      versionNo: 1,
+      status: "published",
+      xlsxFileId: `core-flow-${codeSuffix}.xlsx`,
+      compatibleContractTypeKeys: ["material_purchase"],
+      compatibleAmountRoles: [],
+      compatiblePricingModes: [],
+      columnSchema: {},
+      printRules: {},
+      evidenceRules: {},
+      anomalyRules: {},
+      publishedByUserId: coreFlowSeedData.users.contractStaff.id,
+      publishedAt: new Date()
+    }
+  });
+
+  return { contractId, versionId, termsId, settlementTemplateVersionId };
 }
 
 async function verifyPhase1WriteLoop(tokens) {
@@ -364,7 +394,7 @@ async function verifyPhase1WriteLoop(tokens) {
 
   // 合同：草稿 → 提交(合同部) → 审批(董事长) → 用章(综合部主管) → 归档上传(合同部) → 归档确认(合同部主管) → 生效
   // 直接通过 Prisma 创建可处置合同行（POST /contracts 已替换为需要已发布模板的工作台接口）。
-  const { versionId: contractVersionId } = await seedDisposableContract(codeSuffix);
+  const { versionId: contractVersionId, settlementTemplateVersionId } = await seedDisposableContract(codeSuffix);
 
   let contractVersion = await postJson(
     `/contracts/${contractVersionId}/approval-submission`,
@@ -413,9 +443,18 @@ async function verifyPhase1WriteLoop(tokens) {
     "/settlements",
     {
       contractVersionId,
+      settlementTemplateVersionId,
       code: `JS-P1-${codeSuffix}`,
       periodLabel: "2026-06",
-      amountCents: settlementAmountCents
+      amountCents: settlementAmountCents,
+      settlementLines: [
+        {
+          sourceType: "manual_adjustment",
+          name: "一期闭环现场签认金额",
+          amountCents: settlementAmountCents,
+          reason: "本期现场签认"
+        }
+      ]
     },
     tokens.contractStaff
   );
