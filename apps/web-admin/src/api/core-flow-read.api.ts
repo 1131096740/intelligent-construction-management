@@ -1,5 +1,7 @@
 import type {
   ContractBusinessOptionReadModel,
+  type ContractWorkbenchLedgerPage,
+  type ContractWorkbenchView,
   ContractDetailReadModel,
   ContractPaymentApplicationPreviewReadModel,
   DetailActionReadModel,
@@ -1550,6 +1552,21 @@ export function fetchContractLifecycleLedger(
   });
   return readJson<LifecycleLedgerPage<ContractLifecycleLedgerRow>>(
     `/contracts/lifecycle-ledger?${query.toString()}`
+  );
+}
+
+export function fetchContractWorkbenchLedger(
+  view: ContractWorkbenchView,
+  page: number,
+  pageSize: number
+) {
+  const query = new URLSearchParams({
+    view,
+    page: String(page),
+    pageSize: String(pageSize)
+  });
+  return readJson<ContractWorkbenchLedgerPage<ContractLifecycleLedgerRow>>(
+    `/contracts/workbench?${query.toString()}`
   );
 }
 

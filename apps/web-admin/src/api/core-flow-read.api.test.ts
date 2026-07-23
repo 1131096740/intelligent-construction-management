@@ -5,6 +5,7 @@ import {
   fetchContractChangeEligibility,
   fetchContractLedger,
   fetchContractLifecycleLedger,
+  fetchContractWorkbenchLedger,
   copyAbandonedContractDraft,
   copyAbandonedSettlementDraft,
   fetchDraftRetentionPreview,
@@ -193,11 +194,13 @@ describe("core flow read API client", () => {
     } as Response);
 
     await fetchContractLifecycleLedger("returned_for_revision", 2, 20);
+    await fetchContractWorkbenchLedger("pending_action", 1, 20);
     await fetchSettlementLifecycleLedger("ended", 3, 50);
     await fetchPaymentLifecycleLedger("my_drafts", 1, 20);
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/contracts/lifecycle-ledger?view=returned_for_revision&page=2&pageSize=20",
+      "/api/contracts/workbench?view=pending_action&page=1&pageSize=20",
       "/api/settlements/lifecycle-ledger?view=ended&page=3&pageSize=50",
       "/api/payments?view=my_drafts&page=1&pageSize=20"
     ]);
