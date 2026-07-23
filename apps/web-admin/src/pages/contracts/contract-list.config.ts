@@ -31,6 +31,7 @@ export interface ContractLedgerRow {
   name: string;
   project: string;
   counterparty: string;
+  typePricing?: string;
   amount: string;
   version: string;
   currentNode: string;
@@ -89,7 +90,8 @@ export const contractLedgerColumns: PrimaryTableCol<ContractLedgerRow>[] = [
   { colKey: "name", title: "合同名称", minWidth: 150 },
   { colKey: "project", title: "项目", width: 116 },
   { colKey: "counterparty", title: "相对方", width: 116 },
-  { colKey: "amount", title: "金额", width: 88, align: "right" },
+  { colKey: "typePricing", title: "类型/计价方式", minWidth: 152 },
+  { colKey: "amount", title: "金额/控制金额", width: 128, align: "right" },
   { colKey: "version", title: "版本", width: 64 },
   { colKey: "currentNode", title: "当前节点", width: 96 },
   { colKey: "pendingOwner", title: "当前处理人", width: 104 },

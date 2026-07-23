@@ -2023,10 +2023,32 @@ export class ContractReadService {
     amountLimitType?: string | null;
     pricingNature?: string | null;
   }): string {
-    return version.amountLimitType === "unlimited" &&
+    if (version.amountLimitType === "unlimited" &&
       version.pricingNature === "framework"
-      ? "不设合同总价"
-      : this.formatMoney(version.amountCents);
+    ) {
+      return "不设合同总价";
+    }
+    const amount = this.formatMoney(version.amountCents);
+    return ["provisional_total", "unit_price"].includes(version.pricingNature ?? "")
+      ? `控制金额 ${amount}`
+      : amount;
+  }
+
+  private contractTypePricingLabel(contractTypeKey: string | null | undefined, pricingNature?: string | null) {
+    const type = {
+      material_purchase: "材料采购合同",
+      equipment_rental: "工程机械设备租赁合同",
+      labor_subcontract: "劳务分包合同",
+      professional_subcontract: "专业分包合同",
+      generic_contract: "通用合同"
+    }[contractTypeKey ?? ""] ?? "未明确类型";
+    const pricing = {
+      fixed_total: "固定总价",
+      provisional_total: "暂定金额",
+      unit_price: "单价合同",
+      framework: "框架合同"
+    }[pricingNature ?? ""] ?? "未明确计价";
+    return `${type} · ${pricing}`;
   }
 
   private formatContractInvoiceType(value?: string | null): string {
@@ -2042,7 +2064,7 @@ export class ContractReadService {
   private contractLedgerRow(
     contract: {
       id: string; code: string | null; temporaryCode: string | null; name: string;
-      projectId: string; counterparty: string; updatedAt: Date;
+      projectId: string; counterparty: string; contractTypeKey?: string | null; updatedAt: Date;
     },
     version: {
       id: string; status: string; versionNo: number; amountCents: bigint;
@@ -2061,6 +2083,7 @@ export class ContractReadService {
       name: contract.name,
       project: project?.name ?? contract.projectId,
       counterparty: contract.counterparty,
+      typePricing: this.contractTypePricingLabel(contract.contractTypeKey, version.pricingNature),
       amount: this.formatContractAmount(version),
       version: `v${version.versionNo}`,
       currentNode: nextAction,

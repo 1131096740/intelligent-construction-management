@@ -122,6 +122,7 @@ describe("ContractReadService", () => {
           name: "幕墙分包合同",
           project: "总部综合楼",
           counterparty: "幕墙分包单位",
+          typePricing: "未明确类型 · 固定总价",
           amount: "¥986,500.00",
           version: "v2",
           currentNode: "可发起结算",

@@ -1525,6 +1525,7 @@ export function fetchContractLedger() {
 
 export type ContractLifecycleLedgerRow = ContractLedgerListReadModel["rows"][number] & {
   contractVersionId?: string;
+  typePricing?: string;
   status?: string;
   workbenchEditable?: boolean;
   lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";

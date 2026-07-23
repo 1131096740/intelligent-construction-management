@@ -27,6 +27,7 @@ const ledgerBody = {
       name: "科技园钢材采购合同",
       project: "科技园项目",
       counterparty: "昆明建材供应有限公司",
+      typePricing: "材料采购合同 · 固定总价",
       amount: "¥1,200,000.00",
       version: "v1",
       currentNode: "合同负责人审批",
@@ -45,7 +46,8 @@ const ledgerBody = {
       name: "产业园劳务分包合同",
       project: "产业园二期",
       counterparty: "云南智建劳务有限公司",
-      amount: "¥860,000.00",
+      typePricing: "劳务分包合同 · 暂定金额",
+      amount: "控制金额 ¥860,000.00",
       version: "v2",
       currentNode: "待归档确认",
       nodeTone: "warning",
@@ -63,7 +65,8 @@ const ledgerBody = {
       name: "临建设施采购合同",
       project: "科技园项目",
       counterparty: "云南临建设施有限公司",
-      amount: "¥320,000.00",
+      typePricing: "材料采购合同 · 单价合同",
+      amount: "控制金额 ¥320,000.00",
       version: "v1",
       currentNode: "已生效",
       nodeTone: "success",
@@ -252,6 +255,8 @@ test("captures the contract P1.2 ledger and detail states", async ({ page }) => 
   await page.goto("/合同工作台");
   await expect(page.getByRole("heading", { name: "合同工作台" })).toBeVisible();
   await expect(page.getByText("科技园钢材采购合同")).toBeVisible();
+  await expect(page.getByText("材料采购合同 · 固定总价", { exact: true })).toBeVisible();
+  await expect(page.getByText("控制金额 ¥860,000.00", { exact: true })).toBeVisible();
   await expect(page.getByText(/当前视图由服务端分页/)).toBeVisible();
   await expect(page.locator(".data-section .t-link").filter({ hasText: "查看详情" })).toHaveCount(3);
   await captureRequiredViewports(page, "contract-ledger", "contract-ledger-normal");
