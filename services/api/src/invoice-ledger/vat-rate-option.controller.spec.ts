@@ -137,12 +137,12 @@ describe("VatRateOptionController", () => {
 
     await expect(
       validateBody("create", 0, {
-        rateValue: "13.000000",
+        rateValue: "13.00",
         label: "13% 增值税",
         sortOrder: 10
       })
     ).resolves.toEqual({
-      rateValue: "13.000000",
+      rateValue: "13.00",
       label: "13% 增值税",
       sortOrder: 10
     });
@@ -165,9 +165,9 @@ describe("VatRateOptionController", () => {
     [{ rateValue: 13, label: "13%", sortOrder: 1 }, "税率必须是普通十进制字符串"],
     [{ rateValue: "1e1", label: "13%", sortOrder: 1 }, "税率必须是普通十进制字符串"],
     [{ rateValue: "13 percent", label: "13%", sortOrder: 1 }, "税率必须是普通十进制字符串"],
-    [{ rateValue: "13.0000001", label: "13%", sortOrder: 1 }, "税率最多保留 6 位小数"],
+    [{ rateValue: "13.001", label: "13%", sortOrder: 1 }, "税率最多保留 2 位小数"],
     [{ rateValue: "101", label: "超范围", sortOrder: 1 }, "税率必须在 0 到 100 之间"],
-    [{ rateValue: "100.000001", label: "超范围", sortOrder: 1 }, "税率必须在 0 到 100 之间"],
+    [{ rateValue: "100.01", label: "超范围", sortOrder: 1 }, "税率必须在 0 到 100 之间"],
     [{ rateValue: "13", label: "  ", sortOrder: 1 }, "税率标签不能为空白"],
     [{ rateValue: "13", label: "\u0085\uFEFF", sortOrder: 1 }, "税率标签不能为空白"],
     [{ rateValue: "13", label: "13%", sortOrder: 0 }, "税率排序必须是正整数"]

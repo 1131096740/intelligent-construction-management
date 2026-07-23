@@ -16,13 +16,14 @@ import {
 describe("SpotProcurementReceiptService domain rules", () => {
   it("accepts canonical nonnegative receipt quantities including zero", () => {
     expect(parseReceiptQuantity("0").toString()).toBe("0");
-    expect(parseReceiptQuantity("12.345600").toString()).toBe(
-      "12.3456"
-    );
+    expect(parseReceiptQuantity("12.34").toString()).toBe("12.34");
     expect(() => parseReceiptQuantity("-1")).toThrow(
       "收货数量格式不正确"
     );
     expect(() => parseReceiptQuantity("01")).toThrow(
+      "收货数量格式不正确"
+    );
+    expect(() => parseReceiptQuantity("12.345")).toThrow(
       "收货数量格式不正确"
     );
   });

@@ -13,7 +13,7 @@ import {
 } from "../../validation/static-field-validation";
 
 const RECEIPT_QUANTITY_PATTERN =
-  /^(?:0|[1-9]\d{0,17})(?:\.\d{1,6})?$/u;
+  /^(?:0|[1-9]\d{0,17})(?:\.\d{1,2})?$/u;
 
 export function isSpotProcurementReceiptQuantity(
   value: unknown
@@ -32,7 +32,7 @@ function IsReceiptQuantity(): PropertyDecorator {
       propertyName: String(propertyKey),
       options: {
         message:
-          "收货数量必须是大于等于 0、最多 6 位小数且可保存的普通十进制字符串"
+          "收货数量必须是大于等于 0、最多 2 位小数且可保存的普通十进制字符串"
       },
       validator: {
         validate: isSpotProcurementReceiptQuantity

@@ -14,7 +14,7 @@ import {
 import type { CreateVatRateOptionDto } from "./dto/create-vat-rate-option.dto";
 import type { UpdateVatRateOptionDto } from "./dto/update-vat-rate-option.dto";
 
-const ORDINARY_DECIMAL = /^(0|[1-9]\d*)(?:\.(\d{1,6}))?$/u;
+const ORDINARY_DECIMAL = /^(0|[1-9]\d*)(?:\.(\d{1,2}))?$/u;
 
 type VatRateOptionRow = {
   id: string;
@@ -162,7 +162,7 @@ export class VatRateOptionService {
     const match = ORDINARY_DECIMAL.exec(value);
     if (!match) {
       throw new BadRequestException(
-        "税率必须是 0 到 100 之间、最多 6 位小数的普通十进制字符串"
+        "税率必须是 0 到 100 之间、最多 2 位小数的普通十进制字符串"
       );
     }
     const integerDigits = value.split(".", 1)[0].length;

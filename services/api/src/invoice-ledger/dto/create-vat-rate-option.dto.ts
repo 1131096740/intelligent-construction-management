@@ -18,7 +18,7 @@ export function isVatRateValue(value: unknown): value is string {
   const decimalPlaces = value.includes(".")
     ? value.length - value.indexOf(".") - 1
     : 0;
-  if (decimalPlaces > 6) return false;
+  if (decimalPlaces > 2) return false;
   const [integerPart] = value.split(".");
   if (integerPart.length > 3) return false;
   return new Prisma.Decimal(value).lessThanOrEqualTo(100);
@@ -48,13 +48,13 @@ export function IsVatRateValue(): PropertyDecorator {
       name: "vatRateValueScale",
       target: target.constructor,
       propertyName,
-      options: { message: "税率最多保留 6 位小数" },
+      options: { message: "税率最多保留 2 位小数" },
       validator: {
         validate: (value) =>
           typeof value !== "string" ||
           !ORDINARY_DECIMAL.test(value) ||
           !value.includes(".") ||
-          value.length - value.indexOf(".") - 1 <= 6
+          value.length - value.indexOf(".") - 1 <= 2
       }
     });
     registerDecorator({

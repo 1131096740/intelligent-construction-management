@@ -104,7 +104,7 @@ describe("VatRateOptionService", () => {
     const { service, prisma, tx, audit } = createHarness();
 
     await service.create("finance-director-1", {
-      rateValue: "13.000000",
+      rateValue: "13.00",
       label: "\u0085\uFEFF13%\u0085\u0085增值税\uFEFF",
       sortOrder: 10
     });
@@ -138,7 +138,7 @@ describe("VatRateOptionService", () => {
   it.each([
     [{ rateValue: 13, label: "13%", sortOrder: 1 }, "税率"],
     [{ rateValue: "1e1", label: "13%", sortOrder: 1 }, "税率"],
-    [{ rateValue: "100.000001", label: "超范围", sortOrder: 1 }, "税率"],
+    [{ rateValue: "100.01", label: "超范围", sortOrder: 1 }, "税率"],
     [{ rateValue: "-1", label: "负数", sortOrder: 1 }, "税率"],
     [{ rateValue: "13", label: "   ", sortOrder: 1 }, "标签"],
     [{ rateValue: "13", label: "\u0085\uFEFF", sortOrder: 1 }, "标签"],
@@ -277,7 +277,7 @@ describe("VatRateOptionService", () => {
     });
 
     await service.update("vat-rate-13", "finance-director-1", {
-      rateValue: "9.500000",
+      rateValue: "9.50",
       label: " 9.5% 增值税 ",
       enabled: true,
       sortOrder: 5
