@@ -108,7 +108,10 @@ async function postJsonExpectFailure(path, body, token, label) {
       `${label} returned unexpected HTTP ${response.status}: ${responseBody}`
     );
   }
-  if (!responseBody.includes("付款申请金额必须为大于 0 的整数分")) {
+  if (
+    !responseBody.includes("付款申请金额必须为大于 0 的整数分") &&
+    !responseBody.includes("付款申请金额格式不正确")
+  ) {
     throw new Error(`${label} did not return the expected Chinese validation error: ${responseBody}`);
   }
 
