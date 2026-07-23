@@ -401,6 +401,8 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
 
   await page.goto("/零星采购工作台");
   await expect(page.getByRole("heading", { name: "零星采购工作台" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "要求到位", exact: true })).toBeVisible();
+  await expect(page.getByText("2026/7/18", { exact: true })).toBeVisible();
   await expect(page.getByText("LXCG-E2E-001", { exact: true })).toBeVisible();
   await expect(page.getByText("付款：付款金额待确定", { exact: true })).toBeVisible();
   await expect(page.getByText("收货：待确认收货", { exact: true })).toBeVisible();

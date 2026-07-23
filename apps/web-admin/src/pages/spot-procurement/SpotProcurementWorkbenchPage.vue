@@ -73,6 +73,7 @@ const createForm = reactive({
 const columns = [
   { colKey: "code", title: "申请单编号", width: 130, fixed: "left" as const },
   { colKey: "project", title: "项目", width: 180 },
+  { colKey: "arrival", title: "要求到位", width: 120 },
   { colKey: "participants", title: "申请 / 采购", width: 135 },
   { colKey: "reason", title: "采购原因", width: 160 },
   { colKey: "fulfillment", title: "付款与收货", width: 210 },
@@ -177,6 +178,14 @@ function statusTheme(status: SpotProcurementStatus) {
   if (status === "approval_pending") return "warning" as const;
   if (status === "approved_in_progress") return "primary" as const;
   return "default" as const;
+}
+
+function arrivalDateText(row: SpotProcurementListItemReadModel) {
+  if (row.form !== "real_application" || !row.requestedArrivalAt) {
+    return "历史单据，未按新流程采集";
+  }
+  const date = new Date(row.requestedArrivalAt);
+  return Number.isNaN(date.getTime()) ? row.requestedArrivalAt : date.toLocaleDateString("zh-CN");
 }
 
 function paymentLabel(row: SpotProcurementListItemReadModel) {
@@ -549,7 +558,7 @@ onMounted(() => {
           :columns="columns"
           :data="rows"
           :loading="loading"
-          :scroll="{ x: 1000 }"
+          :scroll="{ x: 1120 }"
           horizontal-scroll-affixed-bottom
         >
           <template #code="{ row }">
@@ -562,6 +571,9 @@ onMounted(() => {
           </template>
           <template #project="{ row }">
             {{ row.project.code }} · {{ row.project.name }}
+          </template>
+          <template #arrival="{ row }">
+            {{ arrivalDateText(row) }}
           </template>
           <template #participants="{ row }">
             <div class="two-line-cell">

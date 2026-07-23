@@ -101,6 +101,14 @@ describe("spot procurement web pages", () => {
     expect(`${procurement}\n${payment}\n${receipt}`).not.toContain("limit: 200");
   });
 
+  it("shows the required arrival date in the procurement ledger without inventing it for legacy records", () => {
+    const procurement = pageSource("SpotProcurementWorkbenchPage.vue");
+
+    expect(procurement).toContain('colKey: "arrival", title: "要求到位"');
+    expect(procurement).toContain("function arrivalDateText");
+    expect(procurement).toContain("历史单据，未按新流程采集");
+  });
+
   it("keeps the procurement application free of supplier, price and tax fields", () => {
     const workbench = pageSource("SpotProcurementWorkbenchPage.vue");
     const detail = pageSource("SpotProcurementDetailPage.vue");
