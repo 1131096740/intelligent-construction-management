@@ -219,8 +219,6 @@ describe("web admin routes", () => {
       { label: "结算管理", path: "/结算管理" },
       { label: "结算模板库", path: "/结算模板库" },
       { label: "统一资金办理工作台", path: "/统一资金办理工作台" },
-      { label: "付款工作台", path: "/付款工作台" },
-      { label: "付款管理", path: "/付款管理" },
       { label: "零星采购工作台", path: "/零星采购工作台" },
       {
         label: "零星材料付款工作台",

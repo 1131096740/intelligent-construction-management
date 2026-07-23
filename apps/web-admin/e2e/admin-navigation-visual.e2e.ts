@@ -67,12 +67,12 @@ test("keeps the active navigation inside the sidebar and strengthens group headi
     "项目",
     "合同",
     "结算",
-    "付款",
     "零星采购",
+    "费用与报销",
     "资料与治理"
   ]);
   await expect(page.getByText("结算工作台", { exact: true })).toBeVisible();
-  await expect(page.getByText("付款工作台", { exact: true })).toBeVisible();
+  await expect(page.getByText("付款工作台", { exact: true })).toHaveCount(0);
 
   const separator = await groupLabel.evaluate((element) => {
     const style = getComputedStyle(element, "::after");

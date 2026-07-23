@@ -126,9 +126,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
   {
     label: "付款",
     items: [
-      { label: "统一资金办理工作台", path: "/统一资金办理工作台", requiredRoleKeys: fundsWorkbenchRoleKeys },
-      { label: "付款工作台", path: "/付款工作台" },
-      { label: "付款管理", path: "/付款管理" }
+      { label: "统一资金办理工作台", path: "/统一资金办理工作台", requiredRoleKeys: fundsWorkbenchRoleKeys }
     ]
   },
   {
