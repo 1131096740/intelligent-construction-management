@@ -645,6 +645,7 @@ async function verifyPhase1WriteLoop(tokens) {
   );
 
   for (const [role, token] of [
+    ["comprehensiveDirector", tokens.comprehensiveDirector],
     ["projectManager", tokens.projectManager],
     ["contractDirector", tokens.contractDirector],
     ["financeDirector", tokens.financeDirector],
