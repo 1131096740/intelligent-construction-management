@@ -210,15 +210,11 @@ describe("web admin routes", () => {
       { label: "项目工作台", path: "/项目经营" },
       { label: "项目花名册", path: "/项目花名册" },
       { label: "合同工作台", path: "/合同工作台" },
-      { label: "合同管理", path: "/合同管理" },
       { label: "历史合同接管", path: "/历史合同接管" },
       { label: "合同模板库", path: "/合同模板库" },
-      { label: "合同业务场景", path: "/合同业务场景" },
       { label: "合作单位档案", path: "/合作单位档案" },
       { label: "结算工作台", path: "/结算工作台" },
-      { label: "结算管理", path: "/结算管理" },
-      { label: "结算模板库", path: "/结算模板库" },
-      { label: "统一资金办理工作台", path: "/统一资金办理工作台" },
+      { label: "资金办理工作台", path: "/统一资金办理工作台" },
       { label: "零星采购工作台", path: "/零星采购工作台" },
       {
         label: "零星材料付款工作台",
@@ -227,7 +223,6 @@ describe("web admin routes", () => {
       { label: "收货确认工作台", path: "/收货确认工作台" },
       { label: "费用与报销工作台", path: "/费用与报销工作台" },
       { label: "资料库", path: "/资料库" },
-      { label: "委托台账", path: "/委托台账" },
       { label: "审计日志", path: "/审计日志" },
       { label: "我方公司主体", path: "/我方公司主体" },
       { label: "组织权限", path: "/组织权限" },
@@ -261,7 +256,8 @@ describe("web admin routes", () => {
       "付款",
       "零星采购",
       "费用与报销",
-      "资料与治理"
+      "资料与治理",
+      "系统配置"
     ]);
     expect(adminNavigationGroups.flatMap((group) => group.items.map((item) => item.label))).toEqual(
       adminNavigationItems.map((item) => item.label)
@@ -279,7 +275,7 @@ describe("web admin routes", () => {
       visibleAdminNavigationGroups(["finance_staff"])
         .find((group) => group.label === "付款")
         ?.items.map((item) => item.label)
-    ).toEqual(["统一资金办理工作台"]);
+    ).toEqual(["资金办理工作台"]);
   });
 
   it("keeps old create routes as redirects to the dedicated workbenches", () => {
@@ -530,7 +526,7 @@ describe("web admin routes", () => {
     })).toEqual({ path: "/首页" });
   });
 
-  it("exposes settlement-template governance only to global contract directors or super admins", () => {
+  it("keeps settlement-template governance directly reachable but outside the primary navigation", () => {
     const governanceRoute = childRoute("结算模板库");
     const routeAccessInput = {
       meta: governanceRoute?.meta ?? {},
@@ -545,7 +541,7 @@ describe("web admin routes", () => {
     );
     expect(
       visibleAdminNavigationItems(["contract_director"], ["contract_director"])
-    ).toEqual(expect.arrayContaining([expect.objectContaining({ path: "/结算模板库" })]));
+    ).not.toEqual(expect.arrayContaining([expect.objectContaining({ path: "/结算模板库" })]));
     expect(
       resolveRouteAccess(routeAccessInput, {
         isAuthenticated: true,
@@ -562,7 +558,7 @@ describe("web admin routes", () => {
     ).toBe(true);
   });
 
-  it("exposes contract-scenario governance only to global contract directors or super admins", () => {
+  it("keeps contract-scenario governance directly reachable but outside the primary navigation", () => {
     const governanceRoute = childRoute("合同业务场景");
     const routeAccessInput = {
       meta: governanceRoute?.meta ?? {},
@@ -577,7 +573,7 @@ describe("web admin routes", () => {
     );
     expect(
       visibleAdminNavigationItems(["contract_director"], ["contract_director"])
-    ).toEqual(expect.arrayContaining([expect.objectContaining({ path: "/合同业务场景" })]));
+    ).not.toEqual(expect.arrayContaining([expect.objectContaining({ path: "/合同业务场景" })]));
     expect(resolveRouteAccess(routeAccessInput, {
       isAuthenticated: true,
       roleKeys: ["contract_director"],

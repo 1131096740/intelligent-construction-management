@@ -96,14 +96,8 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
         path: "/合同工作台",
         requiredRoleKeys: contractMaintenanceRoleKeys
       },
-      { label: "合同管理", path: "/合同管理" },
       { label: "历史合同接管", path: "/历史合同接管", requiredRoleKeys: historicalTakeoverRoleKeys },
       { label: "合同模板库", path: "/合同模板库" },
-      {
-        label: "合同业务场景",
-        path: "/合同业务场景",
-        requiredGlobalRoleKeys: contractScenarioAdminRoleKeys
-      },
       { label: "合作单位档案", path: "/合作单位档案" }
     ]
   },
@@ -114,19 +108,13 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
         label: "结算工作台",
         path: "/结算工作台",
         requiredRoleKeys: settlementMaintenanceRoleKeys
-      },
-      { label: "结算管理", path: "/结算管理" },
-      {
-        label: "结算模板库",
-        path: "/结算模板库",
-        requiredGlobalRoleKeys: settlementTemplateAdminRoleKeys
       }
     ]
   },
   {
     label: "付款",
     items: [
-      { label: "统一资金办理工作台", path: "/统一资金办理工作台", requiredRoleKeys: fundsWorkbenchRoleKeys }
+      { label: "资金办理工作台", path: "/统一资金办理工作台", requiredRoleKeys: fundsWorkbenchRoleKeys }
     ]
   },
   {
@@ -150,8 +138,12 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
     label: "资料与治理",
     items: [
       { label: "资料库", path: "/资料库" },
-      { label: "委托台账", path: "/委托台账" },
-      { label: "审计日志", path: "/审计日志" },
+      { label: "审计日志", path: "/审计日志" }
+    ]
+  },
+  {
+    label: "系统配置",
+    items: [
       {
         label: "我方公司主体",
         path: "/我方公司主体",

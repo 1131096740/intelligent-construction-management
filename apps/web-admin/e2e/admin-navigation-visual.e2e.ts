@@ -70,13 +70,17 @@ test("keeps the active navigation inside the sidebar and strengthens group headi
     "付款",
     "零星采购",
     "费用与报销",
-    "资料与治理"
+    "资料与治理",
+    "系统配置"
   ]);
   await expect(page.getByText("项目工作台", { exact: true })).toBeVisible();
   await expect(page.getByText("结算工作台", { exact: true })).toBeVisible();
-  await expect(page.getByText("统一资金办理工作台", { exact: true })).toBeVisible();
+  await expect(page.getByText("资金办理工作台", { exact: true })).toBeVisible();
   await expect(page.getByText("付款工作台", { exact: true })).toHaveCount(0);
   await expect(page.getByText("付款管理", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("合同管理", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("结算管理", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("委托台账", { exact: true })).toHaveCount(0);
 
   const separator = await groupLabel.evaluate((element) => {
     const style = getComputedStyle(element, "::after");
