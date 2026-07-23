@@ -252,6 +252,7 @@ async function seedDisposableContract(codeSuffix, amountCents = TARGET_CONTRACT_
     data: {
       id: contractId,
       projectId: coreFlowSeedData.project.id,
+      contractTypeKey: "material_purchase",
       code: `HT-P1-${codeSuffix}`,
       name: "一期闭环验证合同",
       counterparty: "一期验证供应商"

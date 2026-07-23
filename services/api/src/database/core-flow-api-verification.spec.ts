@@ -13,6 +13,15 @@ describe("coreFlowApiVerificationTargets", () => {
     expect(coreFlowApiVerificationTargets[1].requiredText).toContain("JS-2026-018");
     expect(coreFlowApiVerificationTargets[2].requiredText).toContain("approved_pending_payment");
   });
+
+  it("seeds an archiveable settlement contract for the writable core-flow rehearsal", () => {
+    const verifier = readFileSync(
+      join(process.cwd(), "prisma/verify-core-flow.cjs"),
+      "utf8"
+    );
+
+    expect(verifier).toContain('contractTypeKey: "material_purchase"');
+  });
 });
 
 describe("money column schema", () => {
