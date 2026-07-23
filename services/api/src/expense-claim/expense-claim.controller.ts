@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
@@ -16,6 +16,11 @@ export class ExpenseClaimController {
   @RequireProjectRole("expense_claim.create")
   create(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateExpenseClaimDto) {
     return this.claims.create(user.id, body);
+  }
+
+  @Get()
+  list(@CurrentUser() user: AuthenticatedUser, @Query("view") view?: string) {
+    return this.claims.listMine(user.id, view);
   }
 
   @Post(":claimId/submission")

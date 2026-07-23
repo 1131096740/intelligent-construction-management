@@ -35,6 +35,26 @@ export class ExpenseClaimService {
     private readonly auth?: AuthService
   ) {}
 
+  async listMine(actorUserId: string, view?: string) {
+    const normalizedView = view === "drafts" || view === "in_progress" || view === "pending_funds" ? view : "all";
+    const status = normalizedView === "drafts"
+      ? ["draft"]
+      : normalizedView === "in_progress"
+        ? ["approval_pending"]
+        : normalizedView === "pending_funds"
+          ? ["approved_pending_payment", "approved_pending_disbursement", "partially_disbursed"]
+          : undefined;
+    const rows = await this.prisma.expenseClaim.findMany({
+      where: {
+        OR: [{ applicantUserId: actorUserId }, { handledByUserId: actorUserId }],
+        ...(status ? { status: { in: status } } : {})
+      },
+      orderBy: [{ updatedAt: "desc" }, { code: "asc" }],
+      select: { id: true, code: true, claimType: true, status: true, projectId: true, companyEntityNameSnapshot: true, applicantNameSnapshot: true, handledByNameSnapshot: true, reason: true, requestedAmountCents: true, loanOffsetAmountCents: true, companyPayableAmountCents: true, fundedAmountCents: true, updatedAt: true }
+    });
+    return rows.map((row) => ({ ...row, requestedAmountCents: moneyCentsToApi(row.requestedAmountCents), loanOffsetAmountCents: moneyCentsToApi(row.loanOffsetAmountCents), companyPayableAmountCents: moneyCentsToApi(row.companyPayableAmountCents), fundedAmountCents: moneyCentsToApi(row.fundedAmountCents) }));
+  }
+
   async create(actorUserId: string, input: CreateExpenseClaimDto) {
     const claimType = input.claimType;
     const requestedAmountCents = positiveCents(input.requestedAmountCents, "申请金额必须大于零");

@@ -13,7 +13,7 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
       findUnique: jest.fn(),
       findMany: jest.fn().mockResolvedValue(approvalAssignments.map(({ userId }) => ({ id: userId })))
     },
-    expenseClaim: { create: jest.fn(), update: jest.fn() },
+    expenseClaim: { create: jest.fn(), findMany: jest.fn(), update: jest.fn() },
     fileObject: { findUnique: jest.fn() },
     employeeProjectLoanAccount: { upsert: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
     employeeProjectLoanEntry: { create: jest.fn(), findMany: jest.fn() },
@@ -25,7 +25,7 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
     auditLog: { create: jest.fn().mockResolvedValue({}) },
     $queryRaw: jest.fn().mockResolvedValue(options?.claim ? [options.claim] : [])
   };
-  const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)) };
+  const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)), expenseClaim: tx.expenseClaim };
   const numbering = { allocateDaily: jest.fn().mockResolvedValue("BX-20260723-001") };
   const audit = { record: jest.fn().mockResolvedValue({}) };
   const service = new ExpenseClaimService(prisma as never, numbering as never, audit as never, options?.auth as never);
@@ -35,6 +35,12 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
 const actor = { id: "user-a", name: "经办人", phone: "13800000000", isActive: true };
 
 describe("ExpenseClaimService", () => {
+  it("lists only the current applicant or handler and serializes all money fields", async () => {
+    const { service, tx } = createHarness();
+    tx.expenseClaim.findMany.mockResolvedValue([{ id: "claim-1", code: "BX-1", claimType: "reimbursement", status: "draft", projectId: "project-1", companyEntityNameSnapshot: "建工", applicantNameSnapshot: "申请人", handledByNameSnapshot: "经办人", reason: "交通", requestedAmountCents: 1200n, loanOffsetAmountCents: 0n, companyPayableAmountCents: 1200n, fundedAmountCents: 0n, updatedAt: new Date("2026-07-23") }]);
+    await expect(service.listMine("user-a", "drafts")).resolves.toEqual([expect.objectContaining({ requestedAmountCents: "1200", companyPayableAmountCents: "1200" })]);
+    expect(tx.expenseClaim.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ OR: [{ applicantUserId: "user-a" }, { handledByUserId: "user-a" }], status: { in: ["draft"] } }) }));
+  });
   it("creates a new-domain reimbursement draft with a Beijing daily number and frozen source snapshots", async () => {
     const { service, tx, numbering, audit } = createHarness();
     tx.user.findUnique.mockResolvedValue(actor);
