@@ -5,7 +5,7 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
   const approvalAssignments = options?.approvalAssignments ?? [];
   const tx = {
     companyEntity: { findFirst: jest.fn() },
-    project: { findFirst: jest.fn() },
+    project: { findFirst: jest.fn(), findMany: jest.fn() },
     userPosition: { findMany: jest.fn().mockResolvedValue(approvalAssignments.length ? approvalAssignments.map(({ userId, positionId }) => ({ userId, positionId })) : (options?.roles ?? []).map((_, index) => ({ positionId: `position-${index}` }))) },
     projectMember: { findMany: jest.fn().mockResolvedValue([]) },
     position: { findMany: jest.fn().mockResolvedValue(approvalAssignments.length ? approvalAssignments.map(({ positionId, role }) => ({ id: positionId, key: role })) : (options?.roles ?? []).map((key, index) => ({ id: `position-${index}`, key })) ) },
@@ -25,7 +25,7 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
     auditLog: { create: jest.fn().mockResolvedValue({}) },
     $queryRaw: jest.fn().mockResolvedValue(options?.claim ? [options.claim] : [])
   };
-  const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)), expenseClaim: tx.expenseClaim };
+  const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)), expenseClaim: tx.expenseClaim, project: tx.project };
   const numbering = { allocateDaily: jest.fn().mockResolvedValue("BX-20260723-001") };
   const audit = { record: jest.fn().mockResolvedValue({}) };
   const service = new ExpenseClaimService(prisma as never, numbering as never, audit as never, options?.auth as never);
@@ -38,8 +38,10 @@ describe("ExpenseClaimService", () => {
   it("lists only the current applicant or handler and serializes all money fields", async () => {
     const { service, tx } = createHarness();
     tx.expenseClaim.findMany.mockResolvedValue([{ id: "claim-1", code: "BX-1", claimType: "reimbursement", status: "draft", projectId: "project-1", companyEntityNameSnapshot: "建工", applicantNameSnapshot: "申请人", handledByNameSnapshot: "经办人", reason: "交通", requestedAmountCents: 1200n, loanOffsetAmountCents: 0n, companyPayableAmountCents: 1200n, fundedAmountCents: 0n, updatedAt: new Date("2026-07-23") }]);
-    await expect(service.listMine("user-a", "drafts")).resolves.toEqual([expect.objectContaining({ requestedAmountCents: "1200", companyPayableAmountCents: "1200" })]);
+    tx.project.findMany.mockResolvedValue([{ id: "project-1", code: "JGXM-001", name: "科技园项目" }]);
+    await expect(service.listMine("user-a", "drafts")).resolves.toEqual([expect.objectContaining({ project: { id: "project-1", code: "JGXM-001", name: "科技园项目" }, requestedAmountCents: "1200", companyPayableAmountCents: "1200" })]);
     expect(tx.expenseClaim.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ OR: [{ applicantUserId: "user-a" }, { handledByUserId: "user-a" }], status: { in: ["draft"] } }) }));
+    expect(tx.project.findMany).toHaveBeenCalledWith({ where: { id: { in: ["project-1"] } }, select: { id: true, code: true, name: true } });
   });
   it("creates a new-domain reimbursement draft with a Beijing daily number and frozen source snapshots", async () => {
     const { service, tx, numbering, audit } = createHarness();

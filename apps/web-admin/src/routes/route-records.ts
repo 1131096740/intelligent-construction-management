@@ -136,6 +136,12 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
     ]
   },
   {
+    label: "费用与报销",
+    items: [
+      { label: "费用与报销工作台", path: "/费用与报销工作台" }
+    ]
+  },
+  {
     label: "资料与治理",
     items: [
       { label: "资料库", path: "/资料库" },
@@ -407,6 +413,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
             "../pages/spot-procurement/SpotProcurementReceiptWorkbenchPage.vue"
           ),
         meta: { title: "收货确认工作台" }
+      },
+      {
+        path: "费用与报销工作台",
+        component: () => import("../pages/expense-claims/ExpenseClaimWorkbenchPage.vue"),
+        meta: { title: "费用与报销工作台" }
       },
       {
         path: "零星采购收货/:procurementId",

@@ -52,7 +52,19 @@ export class ExpenseClaimService {
       orderBy: [{ updatedAt: "desc" }, { code: "asc" }],
       select: { id: true, code: true, claimType: true, status: true, projectId: true, companyEntityNameSnapshot: true, applicantNameSnapshot: true, handledByNameSnapshot: true, reason: true, requestedAmountCents: true, loanOffsetAmountCents: true, companyPayableAmountCents: true, fundedAmountCents: true, updatedAt: true }
     });
-    return rows.map((row) => ({ ...row, requestedAmountCents: moneyCentsToApi(row.requestedAmountCents), loanOffsetAmountCents: moneyCentsToApi(row.loanOffsetAmountCents), companyPayableAmountCents: moneyCentsToApi(row.companyPayableAmountCents), fundedAmountCents: moneyCentsToApi(row.fundedAmountCents) }));
+    const projectIds = [...new Set(rows.flatMap((row) => row.projectId ? [row.projectId] : []))];
+    const projects = projectIds.length
+      ? await this.prisma.project.findMany({ where: { id: { in: projectIds } }, select: { id: true, code: true, name: true } })
+      : [];
+    const projectsById = new Map(projects.map((project) => [project.id, project]));
+    return rows.map((row) => ({
+      ...row,
+      project: row.projectId ? projectsById.get(row.projectId) ?? null : null,
+      requestedAmountCents: moneyCentsToApi(row.requestedAmountCents),
+      loanOffsetAmountCents: moneyCentsToApi(row.loanOffsetAmountCents),
+      companyPayableAmountCents: moneyCentsToApi(row.companyPayableAmountCents),
+      fundedAmountCents: moneyCentsToApi(row.fundedAmountCents)
+    }));
   }
 
   async create(actorUserId: string, input: CreateExpenseClaimDto) {

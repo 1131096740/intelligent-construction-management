@@ -118,6 +118,7 @@ describe("web admin routes", () => {
       "零星材料付款工作台",
       "零星材料付款/:paymentId",
       "收货确认工作台",
+      "费用与报销工作台",
       "资料库",
       "审批中心",
       "审计日志",
@@ -223,6 +224,7 @@ describe("web admin routes", () => {
         path: "/零星材料付款工作台"
       },
       { label: "收货确认工作台", path: "/收货确认工作台" },
+      { label: "费用与报销工作台", path: "/费用与报销工作台" },
       { label: "资料库", path: "/资料库" },
       { label: "委托台账", path: "/委托台账" },
       { label: "审计日志", path: "/审计日志" },
@@ -257,6 +259,7 @@ describe("web admin routes", () => {
       "结算",
       "付款",
       "零星采购",
+      "费用与报销",
       "资料与治理"
     ]);
     expect(adminNavigationGroups.flatMap((group) => group.items.map((item) => item.label))).toEqual(
