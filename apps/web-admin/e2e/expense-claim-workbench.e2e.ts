@@ -64,7 +64,7 @@ test("费用工作台用创建选项和正式写入接口保存借款草稿后�
     loanExpectedClearanceOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/)
   });
   await page.getByText("附件与证据", { exact: true }).click();
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator(".expense-claim-detail__attachments input[type=file]").setInputFiles({
     name: "借款说明.pdf",
     mimeType: "application/pdf",
     buffer: Buffer.from("expense-attachment")
@@ -82,7 +82,7 @@ test("费用工作台用创建选项和正式写入接口保存借款草稿后�
   await expect.poll(() => reviewed).toEqual(["expense-claim-created"]);
   await expect(page.getByText("待放款", { exact: true })).toBeVisible();
   await page.getByText("附件与证据", { exact: true }).click();
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator(".expense-claim-detail__attachments input[type=file]").setInputFiles({
     name: "审批后补充资料.pdf",
     mimeType: "application/pdf",
     buffer: Buffer.from("expense-post-submit-evidence")
@@ -115,7 +115,38 @@ test("已批待付款报销只通过受权接口调整实际付款主体并显�
   await expect(page.getByText(/已调整：集团统一付款/)).toBeVisible();
 });
 
-async function mockExpenseClaimSession(page: Page, requestedViews: string[], posted: unknown[] = [], submitted: string[] = [], reviewed: string[] = [], attached: string[] = [], appended: string[] = [], canAdjustPaymentSubject = false, payerAdjustments: unknown[] = []) {
+test("财务登记带凭证的公司补付，只调用新的受控付款事实接口", async ({ page }) => {
+  const requestedViews: string[] = [];
+  const companyPayments: unknown[] = [];
+  await mockExpenseClaimSession(page, requestedViews, [], [], [], [], [], false, [], companyPayments);
+  await login(page);
+
+  await page.goto("/费用与报销工作台");
+  await page.getByText("BX-20260723-001", { exact: true }).click();
+  await page.getByRole("button", { name: "登记公司补付" }).click();
+  await page.getByPlaceholder("例如 1250").fill("100000");
+  await page.getByPlaceholder("YYYY-MM-DD").fill("2026-07-24");
+  await page.getByPlaceholder("例如：银行转账").fill("银行转账");
+  await page.locator("input[type=file]").setInputFiles({
+    name: "公司补付凭证.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("reimbursement-payment-voucher")
+  });
+  await page.getByPlaceholder("用于确认本次实际付款").fill("E2e@2026");
+  await page.getByRole("button", { name: "确认登记", exact: true }).click();
+  await expect(page.getByText("确认登记公司补付", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "确认写入", exact: true }).click();
+
+  await expect.poll(() => companyPayments).toEqual([{
+    amountCents: "100000",
+    paidAt: "2026-07-24",
+    paymentMethod: "银行转账",
+    voucherFileId: "expense-file-1",
+    confirmationPassword: "E2e@2026"
+  }]);
+});
+
+async function mockExpenseClaimSession(page: Page, requestedViews: string[], posted: unknown[] = [], submitted: string[] = [], reviewed: string[] = [], attached: string[] = [], appended: string[] = [], canAdjustPaymentSubject = false, payerAdjustments: unknown[] = [], companyPayments: unknown[] = []) {
   let appendEvidenceAllowed = false;
   let paymentSubjectName = "建工智管有限公司";
   let paymentSubjectReason: string | null = null;
@@ -176,7 +207,10 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[], pos
       paymentSubjectAdjustedByUserId: paymentSubjectReason ? "finance-1" : null,
       paymentSubjectAdjustedByRoleKey: paymentSubjectReason ? "finance_staff" : null,
       paymentSubjectPermissions: { canAdjust: canAdjustPaymentSubject },
+      fundsPermissions: { canRecordReimbursementPayment: true, canGenerateFinalPaymentPdf: false, canGenerateLoanFinalDisbursementPdf: false },
       paymentSubjectCompanyEntities: [{ id: "company-1", name: "建工智管有限公司" }, { id: "company-pay", name: "集团资金公司" }],
+      paymentExecutions: [],
+      finalPaymentPdf: null,
       attachments: [],
       lines: [{ id: "line-1", sortOrder: 1, expenseCategory: "交通", occurredOn: "2026-07-22T00:00:00.000Z", purpose: "项目现场交通费", receiptCount: 1, amountCents: "123456", evidenceType: "receipt_or_other", noEvidenceReason: null, remark: null }]
     })
@@ -251,6 +285,14 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[], pos
       status: 201,
       contentType: "application/json",
       body: JSON.stringify({ id: "expense-claim-1", paymentSubjectCompanyEntityId: "company-pay", paymentSubjectNameSnapshot: paymentSubjectName, paymentSubjectAdjustmentReason: paymentSubjectReason })
+    });
+  });
+  await page.route("**/api/expense-claims/expense-claim-1/payments", (route) => {
+    companyPayments.push(route.request().postDataJSON());
+    return route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ id: "payment-1", expenseClaimId: "expense-claim-1", paidAmountCents: "100000", status: "paid" })
     });
   });
 }

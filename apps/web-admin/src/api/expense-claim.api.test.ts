@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { adjustExpenseClaimPaymentSubject, appendExpenseClaimAttachment, attachExpenseClaimAttachment, createExpenseClaim, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaims, removeExpenseClaimAttachment, reviewExpenseClaim, submitExpenseClaim, type CreateExpenseClaimPayload } from "./expense-claim.api";
+import { adjustExpenseClaimPaymentSubject, appendExpenseClaimAttachment, attachExpenseClaimAttachment, createExpenseClaim, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaims, generateExpenseClaimFinalDisbursementPdf, generateExpenseClaimFinalPaymentPdf, recordExpenseClaimPayment, removeExpenseClaimAttachment, reviewExpenseClaim, submitExpenseClaim, type CreateExpenseClaimPayload } from "./expense-claim.api";
 
 vi.mock("./api-fetch", () => ({ apiFetch: vi.fn() }));
 
@@ -120,5 +120,20 @@ describe("expense claim API", () => {
       method: "POST",
       body: JSON.stringify({ companyEntityId: "company-pay", reason: "集团统一付款" })
     }));
+  });
+
+  it("records a voucher-backed company payment and regenerates only its final source PDF", async () => {
+    mockApiFetch
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "execution-1", status: "paid", paidAmountCents: "1200" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ pdfDocumentId: "pdf-1", fileId: "file-1", existed: false }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ pdfDocumentId: "pdf-2", fileId: "file-2", existed: true }), { status: 201 }));
+
+    await expect(recordExpenseClaimPayment("claim/1", { amountCents: "1200", paidAt: "2026-07-24", paymentMethod: "银行转账", voucherFileId: "voucher-1", confirmationPassword: "current-password" })).resolves.toMatchObject({ status: "paid" });
+    await expect(generateExpenseClaimFinalPaymentPdf("claim/1")).resolves.toMatchObject({ pdfDocumentId: "pdf-1" });
+    await expect(generateExpenseClaimFinalDisbursementPdf("claim/1")).resolves.toMatchObject({ pdfDocumentId: "pdf-2" });
+
+    expect(mockApiFetch).toHaveBeenNthCalledWith(1, "/expense-claims/claim%2F1/payments", expect.objectContaining({ method: "POST" }));
+    expect(mockApiFetch).toHaveBeenNthCalledWith(2, "/expense-claims/claim%2F1/final-payment-pdf", { method: "POST" });
+    expect(mockApiFetch).toHaveBeenNthCalledWith(3, "/expense-claims/claim%2F1/final-disbursement-pdf", { method: "POST" });
   });
 });

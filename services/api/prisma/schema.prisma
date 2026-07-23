@@ -1748,6 +1748,22 @@ model ExpenseClaimAttachment {
   @@index([fileId])
 }
 
+// 公司补付是独立、只追加的实际付款事实；不复用旧项目支出实付记录。
+model ExpenseClaimPaymentExecution {
+  id               String   @id @default(uuid())
+  expenseClaimId   String
+  amountCents      BigInt
+  paidAt           DateTime
+  paymentMethod    String
+  voucherFileId    String   @unique
+  recordedByUserId String
+  note             String?
+  createdAt        DateTime @default(now())
+
+  @@index([expenseClaimId, paidAt])
+  @@index([voucherFileId])
+}
+
 // 余额是不可变 EmployeeProjectLoanEntry 的受锁投影，只允许服务端在追加分录时更新。
 model EmployeeProjectLoanAccount {
   id                        String   @id @default(uuid())

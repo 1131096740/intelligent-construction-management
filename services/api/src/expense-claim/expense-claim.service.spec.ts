@@ -20,13 +20,14 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
     employeeProjectLoanAccount: { upsert: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
     employeeProjectLoanEntry: { create: jest.fn(), findMany: jest.fn() },
     employeeLoanRepayment: { create: jest.fn(), update: jest.fn() },
+    expenseClaimPaymentExecution: { create: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     expenseLoanOffsetReservation: { findMany: jest.fn().mockResolvedValue([]), createMany: jest.fn(), updateMany: jest.fn() },
     approvalInstance: { create: jest.fn(), update: jest.fn(), findFirst: jest.fn().mockResolvedValue(null) },
     approvalActionLog: { create: jest.fn() },
     auditLog: { create: jest.fn().mockResolvedValue({}) },
     $queryRaw: jest.fn().mockResolvedValue(options?.claim ? [options.claim] : [])
   };
-  const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)), companyEntity: tx.companyEntity, expenseClaim: tx.expenseClaim, expenseClaimLine: tx.expenseClaimLine, expenseClaimAttachment: tx.expenseClaimAttachment, fileObject: { findMany: jest.fn() }, project: tx.project, user: tx.user, userPosition: tx.userPosition, projectMember: tx.projectMember, position: tx.position, approvalInstance: tx.approvalInstance };
+  const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)), companyEntity: tx.companyEntity, expenseClaim: tx.expenseClaim, expenseClaimLine: tx.expenseClaimLine, expenseClaimAttachment: tx.expenseClaimAttachment, expenseClaimPaymentExecution: tx.expenseClaimPaymentExecution, employeeLoanRepayment: { findMany: jest.fn() }, pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) }, fileObject: { findMany: jest.fn() }, project: tx.project, user: tx.user, userPosition: tx.userPosition, projectMember: tx.projectMember, position: tx.position, approvalInstance: tx.approvalInstance };
   const numbering = { allocateDaily: jest.fn().mockResolvedValue("BX-20260723-001") };
   const audit = { record: jest.fn().mockResolvedValue({}) };
   const visibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
@@ -164,6 +165,50 @@ describe("ExpenseClaimService", () => {
     });
     await expect(service.adjustPaymentSubject("claim-1", "employee-1", { companyEntityId: "company-pay", reason: "调整" })).rejects.toThrow(ForbiddenException);
     expect(tx.expenseClaim.update).not.toHaveBeenCalled();
+  });
+
+  it("records a reimbursement company payment only within the frozen payable amount and advances the source status", async () => {
+    const claim = {
+      id: "claim-1", claimType: "reimbursement", status: "approved_pending_payment", projectId: "project-1",
+      companyPayableAmountCents: 1200n, fundedAmountCents: 0n
+    };
+    const { service, tx, audit } = createHarness({ claim, auth: { confirmPassword: jest.fn().mockResolvedValue(undefined) } });
+    tx.fileObject.findUnique.mockResolvedValue({ id: "voucher-1", uploadedByUserId: "finance-1" });
+    tx.expenseClaimPaymentExecution.create.mockResolvedValue({ id: "payment-1" });
+
+    await expect(service.recordReimbursementPayment("claim-1", "finance-1", {
+      amountCents: "1200", paidAt: "2020-07-24", paymentMethod: "银行转账", voucherFileId: "voucher-1", confirmationPassword: "current-password"
+    })).resolves.toMatchObject({ id: "payment-1", status: "paid", paidAmountCents: "1200" });
+
+    expect(tx.expenseClaimPaymentExecution.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ expenseClaimId: "claim-1", amountCents: 1200n, voucherFileId: "voucher-1", recordedByUserId: "finance-1" })
+    }));
+    expect(tx.expenseClaim.update).toHaveBeenCalledWith(expect.objectContaining({ data: { fundedAmountCents: 1200n, status: "paid" } }));
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: "expense_claim.reimbursement.payment.record" }));
+  });
+
+  it("corrects a confirmed repayment by appending one reversal entry without mutating the original entry", async () => {
+    const claim = { id: "claim-1", claimType: "loan", projectId: "project-1", applicantUserId: "employee-1" };
+    const { service, tx, audit } = createHarness({ claim, auth: { confirmPassword: jest.fn().mockResolvedValue(undefined) } });
+    tx.$queryRaw
+      .mockResolvedValueOnce([claim])
+      .mockResolvedValueOnce([{ id: "repayment-1", loanAccountId: "account-1", amountCents: 300n, status: "confirmed", confirmedByUserId: "finance-director-1" }])
+      .mockResolvedValueOnce([{ id: "account-1", userId: "employee-1", scopeKey: "project:project-1", balanceAmountCents: 700n, repaidAmountCents: 300n }])
+      .mockResolvedValueOnce([{ id: "entry-1", entryType: "repayment", amountCents: 300n, balanceDeltaCents: -300n, sourceRepaymentId: "repayment-1" }])
+      .mockResolvedValueOnce([{ nextSequenceNo: 5n }]);
+    tx.employeeProjectLoanEntry.create.mockResolvedValue({ id: "reversal-entry-1" });
+    tx.employeeLoanRepayment.update.mockResolvedValue({ id: "repayment-1", status: "reversed" });
+
+    await expect(service.reverseEmployeeLoanRepayment("claim-1", "repayment-1", "finance-director-1", {
+      reason: "银行回单金额录入错误", confirmationPassword: "current-password"
+    })).resolves.toMatchObject({ id: "repayment-1", status: "reversed", amountCents: "300" });
+
+    expect(tx.employeeProjectLoanEntry.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      entryType: "reversal", amountCents: 300n, balanceDeltaCents: 300n, reversalOfEntryId: "entry-1"
+    }) }));
+    expect(tx.employeeProjectLoanAccount.update).toHaveBeenCalledWith(expect.objectContaining({ data: { repaidAmountCents: 0n, balanceAmountCents: 1000n } }));
+    expect(tx.employeeLoanRepayment.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "reversed", reversedByUserId: "finance-director-1" }) }));
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: "expense_claim.loan_repayment.reverse" }));
   });
 
   it("binds only the current handler's unbound private file to a draft expense claim", async () => {

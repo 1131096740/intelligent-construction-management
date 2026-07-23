@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import type { UploadFile } from "tdesign-vue-next";
-import { adjustExpenseClaimPaymentSubject, appendExpenseClaimAttachment, attachExpenseClaimAttachment, fetchExpenseClaimDetail, removeExpenseClaimAttachment, reviewExpenseClaim, submitExpenseClaim, type ExpenseClaimDetailReadModel } from "../../api/expense-claim.api";
+import { adjustExpenseClaimPaymentSubject, appendExpenseClaimAttachment, attachExpenseClaimAttachment, fetchExpenseClaimDetail, generateExpenseClaimFinalDisbursementPdf, generateExpenseClaimFinalPaymentPdf, recordExpenseClaimPayment, removeExpenseClaimAttachment, reviewExpenseClaim, submitExpenseClaim, type ExpenseClaimDetailReadModel } from "../../api/expense-claim.api";
 import { uploadPrivateFile } from "../../api/core-flow-read.api";
 import ApprovalSelfReviewFields from "../../components/ApprovalSelfReviewFields.vue";
 import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
@@ -22,6 +22,12 @@ const reviewing = ref(false);
 const paymentSubjectVisible = ref(false);
 const paymentSubjectAdjusting = ref(false);
 const paymentSubjectConfirmVisible = ref(false);
+const paymentVisible = ref(false);
+const paymentSubmitting = ref(false);
+const paymentConfirmVisible = ref(false);
+const finalPdfGenerating = ref(false);
+const paymentVoucherFiles = ref<UploadFile[]>([]);
+const paymentForm = ref({ amountCents: "", paidAt: new Date().toISOString().slice(0, 10), paymentMethod: "银行转账", confirmationPassword: "", note: "" });
 const paymentSubjectForm = ref({ companyEntityId: "", reason: "" });
 const attachmentFiles = ref<UploadFile[]>([]);
 const attachmentUploading = ref(false);
@@ -43,8 +49,8 @@ const columns = [
 ];
 const title = computed(() => detail.value?.claimType === "loan" ? "借款申请" : "费用报销");
 function amount(value: string) { return `¥${centsTextToYuanText(value)}`; }
-function statusLabel(value: string) { return ({ draft: "草稿", approval_pending: "审批中", approved_pending_payment: "待公司付款", approved_pending_disbursement: "待放款", partially_disbursed: "部分放款", disbursed: "已放款", offset_completed: "借款冲销完成", rejected: "已驳回" } as Record<string, string>)[value] ?? value; }
-function tone(value: string) { return ["offset_completed", "disbursed"].includes(value) ? "success" as const : value === "rejected" ? "danger" as const : value === "draft" ? "default" as const : "warning" as const; }
+function statusLabel(value: string) { return ({ draft: "草稿", approval_pending: "审批中", approved_pending_payment: "待公司付款", partially_paid: "部分公司付款", paid: "公司补付完成", approved_pending_disbursement: "待放款", partially_disbursed: "部分放款", disbursed: "已放款", offset_completed: "借款冲销完成", rejected: "已驳回" } as Record<string, string>)[value] ?? value; }
+function tone(value: string) { return ["offset_completed", "disbursed", "paid"].includes(value) ? "success" as const : value === "rejected" ? "danger" as const : value === "draft" ? "default" as const : "warning" as const; }
 function evidenceType(value: string) { return ({ invoice: "发票", receipt_or_other: "收据或其他凭证", none: "无凭证" } as Record<string, string>)[value] ?? value; }
 function date(value: string | null) { return value ? value.replace("T", " ").slice(0, 16) : "未记录"; }
 async function loadDetail() {
@@ -74,6 +80,54 @@ function openPaymentSubjectAdjustment() {
   };
   actionError.value = "";
   paymentSubjectVisible.value = true;
+}
+function openPayment() {
+  if (!detail.value) return;
+  paymentForm.value = { amountCents: detail.value.companyPayableAmountCents === detail.value.fundedAmountCents ? "" : String(BigInt(detail.value.companyPayableAmountCents) - BigInt(detail.value.fundedAmountCents)), paidAt: new Date().toISOString().slice(0, 10), paymentMethod: "银行转账", confirmationPassword: "", note: "" };
+  paymentVoucherFiles.value = [];
+  actionError.value = "";
+  paymentVisible.value = true;
+}
+async function recordPayment() {
+  if (!detail.value || paymentSubmitting.value) return;
+  const voucher = paymentVoucherFiles.value.map((file) => file.raw).find((file): file is File => file instanceof File);
+  if (!paymentForm.value.amountCents.trim()) { actionError.value = "请填写本次补付金额（分）"; return; }
+  if (!paymentForm.value.paidAt) { actionError.value = "请填写付款日期"; return; }
+  if (!paymentForm.value.paymentMethod.trim()) { actionError.value = "请填写付款方式"; return; }
+  if (!voucher) { actionError.value = "请上传本次付款凭证"; return; }
+  if (!paymentForm.value.confirmationPassword) { actionError.value = "请填写当前登录密码"; return; }
+  paymentSubmitting.value = true;
+  actionError.value = "";
+  try {
+    const uploaded = await uploadPrivateFile(voucher, voucher.name);
+    const { note, ...payment } = paymentForm.value;
+    await recordExpenseClaimPayment(detail.value.id, { ...payment, voucherFileId: uploaded.id, ...(note.trim() ? { note: note.trim() } : {}) });
+    paymentConfirmVisible.value = false;
+    paymentVisible.value = false;
+    await loadDetail();
+  } catch (error) { actionError.value = error instanceof Error ? error.message : "登记公司补付失败"; }
+  finally { paymentSubmitting.value = false; }
+}
+function requestPaymentRecord() {
+  if (!paymentForm.value.amountCents.trim()) { actionError.value = "请填写本次补付金额（分）"; return; }
+  if (!paymentForm.value.paidAt) { actionError.value = "请填写付款日期"; return; }
+  if (!paymentForm.value.paymentMethod.trim()) { actionError.value = "请填写付款方式"; return; }
+  const voucher = paymentVoucherFiles.value.map((file) => file.raw).find((file): file is File => file instanceof File);
+  if (!voucher) { actionError.value = "请上传本次付款凭证"; return; }
+  if (!paymentForm.value.confirmationPassword) { actionError.value = "请填写当前登录密码"; return; }
+  paymentConfirmVisible.value = true;
+}
+async function generateFinalPdf() {
+  if (!detail.value || finalPdfGenerating.value) return;
+  finalPdfGenerating.value = true;
+  actionError.value = "";
+  try {
+    if (detail.value.claimType === "loan") await generateExpenseClaimFinalDisbursementPdf(detail.value.id);
+    else await generateExpenseClaimFinalPaymentPdf(detail.value.id);
+    await loadDetail();
+  }
+  catch (error) { actionError.value = error instanceof Error ? error.message : "生成付讫归档 PDF 失败"; }
+  finally { finalPdfGenerating.value = false; }
 }
 async function adjustPaymentSubject() {
   if (!detail.value || paymentSubjectAdjusting.value) return;
@@ -192,6 +246,23 @@ onMounted(() => void loadDetail());
             >
               办理审批
             </t-button>
+            <t-button
+              v-if="detail.fundsPermissions?.canRecordReimbursementPayment"
+              theme="primary"
+              variant="outline"
+              @click="openPayment"
+            >
+              登记公司补付
+            </t-button>
+            <t-button
+              v-if="(detail.fundsPermissions?.canGenerateFinalPaymentPdf || detail.fundsPermissions?.canGenerateLoanFinalDisbursementPdf) && !detail.finalPaymentPdf"
+              theme="primary"
+              variant="outline"
+              :loading="finalPdfGenerating"
+              @click="generateFinalPdf"
+            >
+              生成{{ detail.claimType === 'loan' ? '放款' : '付讫' }}归档 PDF
+            </t-button>
           </template>
         </JgPageHeader>
         <t-alert
@@ -299,6 +370,78 @@ onMounted(() => void loadDetail());
           @confirm="adjustPaymentSubject"
         >
           调整将写入调整前后主体、原因、岗位与时间审计记录，但不会执行实际付款。确认继续？
+        </t-dialog>
+        <t-drawer
+          v-model:visible="paymentVisible"
+          header="登记费用报销公司补付"
+          size="min(560px, 100vw)"
+          :close-on-overlay-click="false"
+          :close-btn="!paymentSubmitting"
+        >
+          <div class="expense-claim-detail__review-form">
+            <t-alert
+              theme="warning"
+              :message="`仅登记本次真实公司补付；当前剩余待付 ${amount(String(BigInt(detail.companyPayableAmountCents) - BigInt(detail.fundedAmountCents)))}`"
+            />
+            <t-input
+              v-model="paymentForm.amountCents"
+              label="本次补付金额（分）"
+              placeholder="例如 1250"
+            />
+            <t-input
+              v-model="paymentForm.paidAt"
+              label="付款日期"
+              placeholder="YYYY-MM-DD"
+            />
+            <t-input
+              v-model="paymentForm.paymentMethod"
+              label="付款方式"
+              placeholder="例如：银行转账"
+            />
+            <t-upload
+              v-model="paymentVoucherFiles"
+              theme="file"
+              :auto-upload="false"
+              :max="1"
+              :accept="SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.acceptAttribute"
+              :tips="`付款凭证：${SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.acceptText}`"
+            />
+            <t-textarea
+              v-model="paymentForm.note"
+              label="备注（可选）"
+            />
+            <t-input
+              v-model="paymentForm.confirmationPassword"
+              type="password"
+              label="当前登录密码"
+              placeholder="用于确认本次实际付款"
+            />
+          </div>
+          <template #footer>
+            <t-button
+              variant="outline"
+              :disabled="paymentSubmitting"
+              @click="paymentVisible = false"
+            >
+              取消
+            </t-button>
+            <t-button
+              theme="primary"
+              :loading="paymentSubmitting"
+              @click="requestPaymentRecord"
+            >
+              确认登记
+            </t-button>
+          </template>
+        </t-drawer>
+        <t-dialog
+          v-model:visible="paymentConfirmVisible"
+          header="确认登记公司补付"
+          :close-on-overlay-click="false"
+          :confirm-btn="{ content: '确认写入', loading: paymentSubmitting }"
+          @confirm="recordPayment"
+        >
+          登记将写入实际付款金额、日期、方式和凭证审计事实；请确认已核对付款主体与凭证。
         </t-dialog>
         <JgDetailTabs
           v-model="tab"
@@ -474,6 +617,35 @@ onMounted(() => void loadDetail());
             <t-descriptions-item label="实际放款">
               {{ amount(detail.fundedAmountCents) }}
             </t-descriptions-item>
+            <t-descriptions-item
+              v-if="detail.claimType === 'reimbursement'"
+              label="公司补付明细"
+            >
+              <div
+                v-if="detail.paymentExecutions.length"
+                class="expense-claim-detail__payment-list"
+              >
+                <span
+                  v-for="payment in detail.paymentExecutions"
+                  :key="payment.id"
+                >
+                  {{ date(payment.paidAt) }} · {{ payment.paymentMethod }} · {{ amount(payment.amountCents) }}
+                </span>
+              </div>
+              <span v-else>尚未登记实际补付</span>
+            </t-descriptions-item>
+            <t-descriptions-item
+              :label="detail.claimType === 'loan' ? '放款归档 PDF' : '付讫归档 PDF'"
+            >
+              <span
+                v-if="detail.finalPaymentPdf"
+              >
+                已归档（{{ date(detail.finalPaymentPdf.createdAt) }}）
+              </span>
+              <span v-else>
+                {{ detail.claimType === 'loan' ? '待全部实际放款完成后生成' : '待公司补付全部完成后生成' }}
+              </span>
+            </t-descriptions-item>
             <t-descriptions-item label="付款方式">
               {{ detail.paymentMethod ?? '待办理' }}
             </t-descriptions-item>
@@ -489,4 +661,5 @@ onMounted(() => void loadDetail());
 .expense-claim-detail__attachments { display: grid; gap: var(--jg-space-md); }
 .expense-claim-detail__review-form { display: grid; gap: var(--jg-space-md); }
 .expense-claim-detail__payment-subject { display: flex; align-items: center; gap: var(--jg-space-xs); }
+.expense-claim-detail__payment-list { display: grid; gap: var(--jg-space-xs); }
 </style>

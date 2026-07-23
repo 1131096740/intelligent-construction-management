@@ -9,6 +9,7 @@ import { RecordLoanDisbursementDto } from "./dto/record-loan-disbursement.dto";
 import { ConfirmEmployeeLoanRepaymentDto, RecordEmployeeLoanRepaymentDto } from "./dto/record-employee-loan-repayment.dto";
 import { AttachExpenseClaimAttachmentDto, RemoveExpenseClaimAttachmentDto } from "./dto/manage-expense-claim-attachment.dto";
 import { AdjustExpenseClaimPaymentSubjectDto } from "./dto/adjust-expense-claim-payment-subject.dto";
+import { RecordExpenseClaimPaymentDto, ReverseEmployeeLoanRepaymentDto } from "./dto/record-expense-claim-payment.dto";
 import { ExpenseClaimService } from "./expense-claim.service";
 
 @Controller("expense-claims")
@@ -104,6 +105,28 @@ export class ExpenseClaimController {
     return this.claims.recordLoanDisbursement(claimId, user.id, body);
   }
 
+  @Post(":claimId/payments")
+  @RequireProjectRole("expense_claim.payment.execute")
+  recordReimbursementPayment(
+    @Param("claimId") claimId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RecordExpenseClaimPaymentDto
+  ) {
+    return this.claims.recordReimbursementPayment(claimId, user.id, body);
+  }
+
+  @Post(":claimId/final-payment-pdf")
+  @RequireProjectRole("expense_claim.payment.execute")
+  generateFinalPaymentPdf(@Param("claimId") claimId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.claims.generateReimbursementFinalPaymentPdf(claimId, user.id);
+  }
+
+  @Post(":claimId/final-disbursement-pdf")
+  @RequireProjectRole("expense_claim.disburse")
+  generateLoanFinalDisbursementPdf(@Param("claimId") claimId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.claims.generateLoanFinalDisbursementPdf(claimId, user.id);
+  }
+
   @Post(":claimId/repayments")
   @RequireProjectRole("expense_claim.repayment.record")
   recordRepayment(@Param("claimId") claimId: string, @CurrentUser() user: AuthenticatedUser, @Body() body: RecordEmployeeLoanRepaymentDto) {
@@ -114,5 +137,11 @@ export class ExpenseClaimController {
   @RequireProjectRole("expense_claim.repayment.confirm")
   confirmRepayment(@Param("claimId") claimId: string, @Param("repaymentId") repaymentId: string, @CurrentUser() user: AuthenticatedUser, @Body() body: ConfirmEmployeeLoanRepaymentDto) {
     return this.claims.confirmEmployeeLoanRepayment(claimId, repaymentId, user.id, body);
+  }
+
+  @Post(":claimId/repayments/:repaymentId/reversal")
+  @RequireProjectRole("expense_claim.repayment.reverse")
+  reverseRepayment(@Param("claimId") claimId: string, @Param("repaymentId") repaymentId: string, @CurrentUser() user: AuthenticatedUser, @Body() body: ReverseEmployeeLoanRepaymentDto) {
+    return this.claims.reverseEmployeeLoanRepayment(claimId, repaymentId, user.id, body);
   }
 }

@@ -60,6 +60,26 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
   attachmentPermissions: { canAppendEvidence: boolean };
   paymentSubjectPermissions: { canAdjust: boolean };
   paymentSubjectCompanyEntities: Array<{ id: string; name: string }>;
+  fundsPermissions: {
+    canRecordReimbursementPayment: boolean;
+    canGenerateFinalPaymentPdf: boolean;
+    canGenerateLoanFinalDisbursementPdf: boolean;
+    canRecordLoanDisbursement: boolean;
+    canRecordLoanRepayment: boolean;
+    canConfirmLoanRepayment: boolean;
+    canReverseLoanRepayment: boolean;
+  };
+  paymentExecutions: Array<{
+    id: string;
+    amountCents: string;
+    paidAt: string;
+    paymentMethod: string;
+    voucherFileId: string;
+    recordedByUserId: string;
+    note: string | null;
+    createdAt: string;
+  }>;
+  finalPaymentPdf: { id: string; fileId: string; createdAt: string } | null;
   approval: { currentNodeName: string; canReview: boolean; requiresSelfReviewConfirmation: boolean } | null;
 }
 
@@ -220,4 +240,26 @@ export async function adjustExpenseClaimPaymentSubject(claimId: string, body: { 
     paymentSubjectAdjustedByUserId: string;
     paymentSubjectAdjustedByRoleKey: string;
   }>;
+}
+
+export async function recordExpenseClaimPayment(claimId: string, body: { amountCents: string; paidAt: string; paymentMethod: string; voucherFileId: string; confirmationPassword: string; note?: string }) {
+  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/payments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  await ensureOk(response);
+  return response.json() as Promise<{ id: string; expenseClaimId: string; paidAmountCents: string; status: string }>;
+}
+
+export async function generateExpenseClaimFinalPaymentPdf(claimId: string) {
+  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/final-payment-pdf`, { method: "POST" });
+  await ensureOk(response);
+  return response.json() as Promise<{ pdfDocumentId: string; fileId: string; existed: boolean }>;
+}
+
+export async function generateExpenseClaimFinalDisbursementPdf(claimId: string) {
+  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/final-disbursement-pdf`, { method: "POST" });
+  await ensureOk(response);
+  return response.json() as Promise<{ pdfDocumentId: string; fileId: string; existed: boolean }>;
 }

@@ -56,6 +56,7 @@ function statusLabel(value: string) {
     draft: "草稿",
     approval_pending: "审批中",
     approved_pending_payment: "待公司付款",
+    partially_paid: "部分公司付款",
     approved_pending_disbursement: "待放款",
     partially_disbursed: "部分放款",
     disbursed: "已放款",
@@ -67,7 +68,7 @@ function statusLabel(value: string) {
 function statusTone(value: string) {
   if (["offset_completed", "disbursed"].includes(value)) return "success" as const;
   if (value === "rejected") return "danger" as const;
-  if (["approval_pending", "approved_pending_payment", "approved_pending_disbursement", "partially_disbursed"].includes(value)) return "warning" as const;
+  if (["approval_pending", "approved_pending_payment", "partially_paid", "approved_pending_disbursement", "partially_disbursed"].includes(value)) return "warning" as const;
   return "default" as const;
 }
 
