@@ -7,7 +7,7 @@ const {
   assertExactMoneyText,
   assertLocalMoneyVerificationRuntime
 } = require("../dist/database/money-bigint-live-verification");
-const { PrismaClient } = require("@prisma/client");
+const { Prisma, PrismaClient } = require("@prisma/client");
 
 const baseUrl = process.env.API_BASE_URL || "http://127.0.0.1:3000";
 const prisma = new PrismaClient();
@@ -269,7 +269,14 @@ async function seedDisposableContract(codeSuffix, amountCents = TARGET_CONTRACT_
       amountCents: BigInt(amountCents),
       draftData: {},
       templateSnapshot: {},
-      clauseSnapshot: {}
+      clauseSnapshot: {},
+      invoiceType: "vat_general",
+      taxMode: "single_rate",
+      defaultTaxRatePercent: new Prisma.Decimal("13"),
+      taxFactStatus: "frozen",
+      taxFactSource: "contract_document",
+      taxFactRevision: 1,
+      taxFactsFrozenAt: new Date()
     }
   });
 

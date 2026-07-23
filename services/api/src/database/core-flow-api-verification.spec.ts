@@ -21,6 +21,8 @@ describe("coreFlowApiVerificationTargets", () => {
     );
 
     expect(verifier).toContain('contractTypeKey: "material_purchase"');
+    expect(verifier).toContain('invoiceType: "vat_general"');
+    expect(verifier).toContain('defaultTaxRatePercent: new Prisma.Decimal("13")');
   });
 });
 
