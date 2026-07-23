@@ -16,7 +16,8 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
     expenseClaim: { create: jest.fn(), update: jest.fn() },
     fileObject: { findUnique: jest.fn() },
     employeeProjectLoanAccount: { upsert: jest.fn(), update: jest.fn() },
-    employeeProjectLoanEntry: { create: jest.fn() },
+    employeeProjectLoanEntry: { create: jest.fn(), findMany: jest.fn() },
+    expenseLoanOffsetReservation: { findMany: jest.fn(), createMany: jest.fn() },
     expenseClaimLine: { createMany: jest.fn() },
     approvalInstance: { create: jest.fn(), update: jest.fn() },
     approvalActionLog: { create: jest.fn() },
@@ -131,7 +132,7 @@ describe("ExpenseClaimService", () => {
   });
 
   it("submits exactly one frozen approval instance from a locked draft", async () => {
-    const claim = { id: "claim-1", claimType: "reimbursement", status: "draft", projectId: "project-1", handledByUserId: "user-a", factWitnessUserId: null };
+    const claim = { id: "claim-1", claimType: "reimbursement", status: "draft", projectId: "project-1", applicantUserId: null, companyEntityId: "company-1", requestedAmountCents: 1000n, handledByUserId: "user-a", factWitnessUserId: null };
     const { service, tx, audit } = createHarness({
       claim,
       approvalAssignments: [
@@ -144,7 +145,7 @@ describe("ExpenseClaimService", () => {
     tx.approvalInstance.create.mockResolvedValue({ id: "approval-1" });
     tx.expenseClaim.update.mockResolvedValue({ id: "claim-1", status: "approval_pending" });
 
-    await expect(service.submit("claim-1", "user-a")).resolves.toEqual({ id: "claim-1", status: "approval_pending", approvalInstanceId: "approval-1" });
+    await expect(service.submit("claim-1", "user-a")).resolves.toEqual({ id: "claim-1", status: "approval_pending", approvalInstanceId: "approval-1", loanOffsetAmountCents: "0", companyPayableAmountCents: "1000" });
 
     expect(tx.$queryRaw).toHaveBeenCalled();
     expect(tx.approvalInstance.create).toHaveBeenCalledWith({
@@ -250,5 +251,30 @@ describe("ExpenseClaimService", () => {
       amountCents: "1001", paidAt: "2026-07-23", paymentMethod: "银行转账", voucherFileId: "voucher-1", confirmationPassword: "current-password"
     })).rejects.toThrow(BadRequestException);
     expect(tx.employeeProjectLoanEntry.create).not.toHaveBeenCalled();
+  });
+
+  it("reserves only same-project actual disbursements in FIFO order when a reimbursement is submitted", async () => {
+    const claim = { id: "claim-r", claimType: "reimbursement", status: "draft", projectId: "project-1", applicantUserId: "user-a", companyEntityId: "company-1", requestedAmountCents: 7000n, handledByUserId: "user-a", factWitnessUserId: null };
+    const { service, tx } = createHarness({
+      claim,
+      approvalAssignments: [
+        { userId: "comp-1", positionId: "position-comp", role: "comprehensive_director" },
+        { userId: "pm-1", positionId: "position-pm", role: "project_manager" },
+        { userId: "finance-1", positionId: "position-finance", role: "finance_director" },
+        { userId: "leader-1", positionId: "position-leader", role: "general_manager" }
+      ]
+    });
+    tx.$queryRaw.mockResolvedValueOnce([claim]).mockResolvedValueOnce([{ id: "account-1", balanceAmountCents: 10000n, reservedOffsetAmountCents: 1000n }]);
+    tx.employeeProjectLoanEntry.findMany.mockResolvedValue([{ id: "entry-old", amountCents: 5000n }, { id: "entry-new", amountCents: 6000n }]);
+    tx.expenseLoanOffsetReservation.findMany.mockResolvedValue([{ loanEntryId: "entry-old", amountCents: 1000n }]);
+    tx.approvalInstance.create.mockResolvedValue({ id: "approval-r" });
+    tx.expenseClaim.update.mockResolvedValue({ id: "claim-r", status: "approval_pending" });
+
+    await expect(service.submit("claim-r", "user-a")).resolves.toEqual(expect.objectContaining({ loanOffsetAmountCents: "7000", companyPayableAmountCents: "0" }));
+    expect(tx.expenseLoanOffsetReservation.createMany).toHaveBeenCalledWith({ data: [
+      expect.objectContaining({ loanEntryId: "entry-old", amountCents: 4000n, sequenceNo: 1 }),
+      expect.objectContaining({ loanEntryId: "entry-new", amountCents: 3000n, sequenceNo: 2 })
+    ] });
+    expect(tx.employeeProjectLoanAccount.update).toHaveBeenCalledWith({ where: { id: "account-1" }, data: { reservedOffsetAmountCents: 8000n } });
   });
 });

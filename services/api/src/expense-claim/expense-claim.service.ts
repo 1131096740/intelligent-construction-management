@@ -118,12 +118,13 @@ export class ExpenseClaimService {
   async submit(claimId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<Array<{
-        id: string; claimType: string; status: string; projectId: string | null; handledByUserId: string; factWitnessUserId: string | null;
-      }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "handledByUserId", "factWitnessUserId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
+        id: string; claimType: string; status: string; projectId: string | null; applicantUserId: string | null; companyEntityId: string; requestedAmountCents: bigint; handledByUserId: string; factWitnessUserId: string | null;
+      }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "applicantUserId", "companyEntityId", "requestedAmountCents", "handledByUserId", "factWitnessUserId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
       const claim = rows[0];
       if (!claim) throw new NotFoundException("费用申请不存在");
       if (claim.handledByUserId !== actorUserId) throw new ForbiddenException("只有经办人可以提交费用申请");
       if (claim.status !== "draft") throw new BadRequestException("当前费用申请不可提交");
+      const offset = await this.reserveLoanOffsets(tx, claim, actorUserId);
       const nodes = await this.freezeApprovalNodes(tx, claim);
       const instance = await tx.approvalInstance.create({
         data: {
@@ -138,7 +139,13 @@ export class ExpenseClaimService {
       });
       const updated = await tx.expenseClaim.update({
         where: { id: claim.id },
-        data: { status: "approval_pending", approvalInstanceId: instance.id, submittedAt: new Date() }
+        data: {
+          status: "approval_pending",
+          approvalInstanceId: instance.id,
+          submittedAt: new Date(),
+          loanOffsetAmountCents: offset.amountCents,
+          companyPayableAmountCents: claim.claimType === "reimbursement" ? claim.requestedAmountCents - offset.amountCents : 0n
+        }
       });
       await this.audit.record(tx, {
         actorUserId,
@@ -147,7 +154,7 @@ export class ExpenseClaimService {
         businessId: claim.id,
         metadata: { claimType: claim.claimType, approvalInstanceId: instance.id }
       });
-      return { id: updated.id, status: updated.status, approvalInstanceId: instance.id };
+      return { id: updated.id, status: updated.status, approvalInstanceId: instance.id, loanOffsetAmountCents: moneyCentsToApi(offset.amountCents), companyPayableAmountCents: moneyCentsToApi(claim.claimType === "reimbursement" ? claim.requestedAmountCents - offset.amountCents : 0n) };
     });
   }
 
@@ -354,6 +361,39 @@ export class ExpenseClaimService {
         : null;
     if (!witnessNode) throw new BadRequestException("事实证明人不存在或已停用，请重新选择后再提交");
     return [node("综合部主管", [COMPREHENSIVE_ROLE]), witnessNode, node("财务主管", ["finance_director"]), node("董事长/总经理", FINAL_ROLES)];
+  }
+
+  private async reserveLoanOffsets(
+    tx: Prisma.TransactionClient,
+    claim: { id: string; claimType: string; projectId: string | null; applicantUserId: string | null; companyEntityId: string; requestedAmountCents: bigint },
+    actorUserId: string
+  ) {
+    if (claim.claimType !== "reimbursement" || !claim.projectId || !claim.applicantUserId) return { amountCents: 0n };
+    const scopeKey = `project:${claim.projectId}`;
+    const accounts = await tx.$queryRaw<Array<{ id: string; balanceAmountCents: bigint; reservedOffsetAmountCents: bigint }>>(Prisma.sql`SELECT "id", "balanceAmountCents", "reservedOffsetAmountCents" FROM "EmployeeProjectLoanAccount" WHERE "userId" = ${claim.applicantUserId} AND "scopeKey" = ${scopeKey} FOR UPDATE`);
+    const account = accounts[0];
+    if (!account) return { amountCents: 0n };
+    const entries = await tx.employeeProjectLoanEntry.findMany({ where: { loanAccountId: account.id, entryType: "disbursement" }, orderBy: [{ occurredAt: "asc" }, { id: "asc" }], select: { id: true, amountCents: true } });
+    const existing = await tx.expenseLoanOffsetReservation.findMany({ where: { loanAccountId: account.id, status: { in: ["reserved", "posted"] } }, select: { loanEntryId: true, amountCents: true } });
+    const used = new Map<string, bigint>();
+    for (const reservation of existing) {
+      if (reservation.loanEntryId) used.set(reservation.loanEntryId, (used.get(reservation.loanEntryId) ?? 0n) + reservation.amountCents);
+    }
+    let remaining = claim.requestedAmountCents;
+    const reservations: Array<{ expenseClaimId: string; loanAccountId: string; loanEntryId: string; amountCents: bigint; status: string; sequenceNo: number }> = [];
+    for (const entry of entries) {
+      const available = entry.amountCents - (used.get(entry.id) ?? 0n);
+      if (available <= 0n || remaining <= 0n) continue;
+      const amountCents = available < remaining ? available : remaining;
+      reservations.push({ expenseClaimId: claim.id, loanAccountId: account.id, loanEntryId: entry.id, amountCents, status: "reserved", sequenceNo: reservations.length + 1 });
+      remaining -= amountCents;
+    }
+    const amountCents = claim.requestedAmountCents - remaining;
+    if (!reservations.length) return { amountCents: 0n };
+    await tx.expenseLoanOffsetReservation.createMany({ data: reservations });
+    await tx.employeeProjectLoanAccount.update({ where: { id: account.id }, data: { reservedOffsetAmountCents: account.reservedOffsetAmountCents + amountCents } });
+    await this.audit.record(tx, { actorUserId, action: "expense_claim.loan_offset.reserve", businessType: "expense_claim", businessId: claim.id, metadata: { loanAccountId: account.id, amountCents: amountCents.toString(), allocationCount: reservations.length } });
+    return { amountCents };
   }
 
   private async confirmSelfReview(
