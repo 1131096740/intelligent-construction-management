@@ -1667,6 +1667,8 @@ model ExpenseClaim {
   companyEntityId           String
   companyEntityNameSnapshot String
   projectId                 String?
+  factWitnessUserId         String?
+  factWitnessNameSnapshot   String?
   applicantUserId           String?
   applicantNameSnapshot     String
   applicantPhoneSnapshot    String?

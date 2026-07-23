@@ -362,6 +362,18 @@ describe("role-specific gates", () => {
     expect(canPerform("project_expense.void", ["project_manager"])).toBe(true);
     expect(canPerform("project_expense.void", ["employee"])).toBe(false);
   });
+
+  it("routes new expense claims through the real applicant, comprehensive office and frozen approval roles", () => {
+    expect(canPerform("expense_claim.create", ["employee"])).toBe(true);
+    expect(canPerform("expense_claim.create", ["comprehensive_director"])).toBe(true);
+    expect(canPerform("expense_claim.create", ["finance_staff"])).toBe(false);
+    expect(canPerform("expense_claim.submit", ["employee"])).toBe(true);
+    expect(canPerform("expense_claim.approve", ["comprehensive_director"])).toBe(true);
+    expect(canPerform("expense_claim.approve", ["project_manager"])).toBe(true);
+    expect(canPerform("expense_claim.approve", ["finance_director"])).toBe(true);
+    expect(canPerform("expense_claim.approve", ["chairman"])).toBe(true);
+    expect(canPerform("expense_claim.approve", ["finance_staff"])).toBe(false);
+  });
 });
 
 describe("effective role resolution", () => {

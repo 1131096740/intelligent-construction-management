@@ -14,6 +14,7 @@ import { ContractWorkbenchModule } from "./contract-workbench/contract-workbench
 import { DatabaseModule } from "./database/database.module";
 import { FileModule } from "./file/file.module";
 import { DraftRetentionModule } from "./draft-retention/draft-retention.module";
+import { ExpenseClaimModule } from "./expense-claim/expense-claim.module";
 import { HealthController } from "./health.controller";
 import { InvoiceLedgerModule } from "./invoice-ledger/invoice-ledger.module";
 import { MeModule } from "./me/me.module";
@@ -41,6 +42,7 @@ import { SpotProcurementModule } from "./spot-procurement/spot-procurement.modul
     SettlementModule,
     PaymentModule,
     ProjectExpenseModule,
+    ExpenseClaimModule,
     SpotProcurementModule,
     InvoiceLedgerModule,
     ApprovalModule,

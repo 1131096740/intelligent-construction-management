@@ -57,7 +57,11 @@ export class PermissionGuard implements CanActivate {
     }
 
     const projectId = await this.extractProjectId(request);
-    const includeAnyProjectRole = !projectId && Boolean(requiredPositions?.length) && !requiredAction;
+    const includeAnyProjectRole =
+      !projectId &&
+      (Boolean(requiredPositions?.length) && !requiredAction ||
+        requiredAction === "expense_claim.create" ||
+        requiredAction === "expense_claim.submit");
     const roleScopes = await this.loadRoleScopes(
       request.user.id,
       projectId,
@@ -269,6 +273,18 @@ export class PermissionGuard implements CanActivate {
   }
 
   private async extractProjectId(request: AuthenticatedRequest) {
+    const expenseClaimId = request.params?.claimId;
+    if (expenseClaimId) {
+      const claim = await this.prisma.expenseClaim.findUnique({
+        where: { id: expenseClaimId },
+        select: { projectId: true }
+      });
+      if (!claim) {
+        throw new ForbiddenException("费用申请资源不存在或当前账号无权访问");
+      }
+      return claim.projectId ?? undefined;
+    }
+
     const procurementId = request.params?.procurementId;
     if (procurementId) {
       return this.spotAccess.requireProcurementProjectId(procurementId);

@@ -9,6 +9,13 @@ const migration = readFileSync(
   ),
   "utf8"
 );
+const factWitnessMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260723212000_expense_claim_fact_witness/migration.sql"
+  ),
+  "utf8"
+);
 
 const model = (name: string) =>
   schema.match(new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`, "u"))?.[1] ?? "";
@@ -17,6 +24,7 @@ describe("expense reimbursement ledger foundation schema", () => {
   it("keeps the new domain separate from the legacy project expense request", () => {
     expect(model("ExpenseClaim")).toContain("claimType                 String");
     expect(model("ExpenseClaim")).toContain("applicantUserId           String?");
+    expect(model("ExpenseClaim")).toContain("factWitnessUserId         String?");
     expect(model("ExpenseClaimLine")).toContain("expenseCategory  String");
     expect(model("EmployeeProjectLoanAccount")).toContain("scopeKey                  String");
     expect(model("EmployeeProjectLoanEntry")).toContain("balanceDeltaCents    BigInt");
@@ -41,6 +49,8 @@ describe("expense reimbursement ledger foundation schema", () => {
     expect(migration).toContain("\"applicantUserId\" IS NULL");
     expect(migration).toContain("\"applicantPhoneSnapshot\" IS NOT NULL");
     expect(migration).toContain("ExpenseClaim_proxy_tuple_check");
+    expect(factWitnessMigration).toContain("ExpenseClaim_fact_witness_tuple_check");
+    expect(factWitnessMigration).toContain('FOREIGN KEY ("factWitnessUserId") REFERENCES "User"("id")');
   });
 
   it("guards evidence, offset reservation, repayment confirmation and lifecycle tuples at the database boundary", () => {
