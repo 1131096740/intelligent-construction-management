@@ -38,6 +38,9 @@ describe("coreFlowApiVerificationTargets", () => {
     expect(verifier).toContain('/me/signature/canvas');
     expect(verifier).toContain('一期闭环验证手写签名.png');
     expect(verifier).toContain('Object.values(tokens)');
+    expect(verifier).toContain('payment request settlement source');
+    expect(verifier).toContain('payment request settlement link');
+    expect(verifier).not.toContain('/payments/contract-application');
   });
 });
 

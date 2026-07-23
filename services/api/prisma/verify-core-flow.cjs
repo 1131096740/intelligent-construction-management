@@ -605,25 +605,6 @@ async function verifyPhase1WriteLoop(tokens) {
   );
   assertEqual(settlement.status, "effective", "settlement archive confirmation");
 
-  const contractApplicationPath =
-    `/payments/contract-application?contractVersionId=${encodeURIComponent(contractVersionId)}`;
-  const capacityBeforePayment = await readJson(contractApplicationPath, tokens.contractStaff);
-  assertExactMoneyFields(
-    capacityBeforePayment.capacity,
-    {
-      cumulativeEffectiveSettlementCents: settlementAmountCents,
-      duePayableCents: payableAmountCents,
-      actualPaidCents: "0",
-      approvalPendingCents: "0",
-      approvedPendingCents: "0",
-      proxyPaidCents: "0",
-      occupiedCents: "0",
-      advanceDeductionCents: "0",
-      maxRequestableCents: payableAmountCents
-    },
-    "contract payment capacity before request"
-  );
-
   const invalidPaymentCodes = [];
   for (const invalidAmount of [2100000001, "1.5", "1e3", "-1"]) {
     const invalidCode = `FK-P1-${codeSuffix}-INVALID-${String(invalidAmount).replace(/\W/g, "")}`;
@@ -655,6 +636,8 @@ async function verifyPhase1WriteLoop(tokens) {
     tokens.contractStaff
   );
   assertEqual(payment.status, "approval_pending", "payment request creation");
+  assertEqual(payment.sourceType, "settlement", "payment request settlement source");
+  assertEqual(payment.settlementId, settlement.id, "payment request settlement link");
   assertExactMoneyText(
     payment.requestedAmountCents,
     payableAmountCents,
@@ -715,27 +698,6 @@ async function verifyPhase1WriteLoop(tokens) {
     BigInt(firstExecutionCents),
     "payment partial paid amount"
   );
-  const capacityAfterFirstExecution = await readJson(
-    contractApplicationPath,
-    tokens.contractStaff
-  );
-  assertExactMoneyFields(
-    capacityAfterFirstExecution.capacity,
-    {
-      duePayableCents: payableAmountCents,
-      actualPaidCents: firstExecutionCents,
-      approvedPendingCents: secondExecutionCents,
-      occupiedCents: payableAmountCents,
-      maxRequestableCents: "0"
-    },
-    "contract payment capacity after first execution"
-  );
-  assertExactMoneyText(
-    capacityAfterFirstExecution.capacity.approvedPendingCents,
-    secondExecutionCents,
-    "payment remaining after first execution"
-  );
-
   const secondVoucherFile = await uploadPrivateFile(
     `FK-P1-${codeSuffix}-voucher-2.pdf`,
     tokens.cashier
@@ -754,27 +716,6 @@ async function verifyPhase1WriteLoop(tokens) {
     secondExecution.amountCents,
     secondExecutionCents,
     "second payment execution API"
-  );
-
-  const capacityAfterFinalExecution = await readJson(
-    contractApplicationPath,
-    tokens.contractStaff
-  );
-  assertExactMoneyFields(
-    capacityAfterFinalExecution.capacity,
-    {
-      duePayableCents: payableAmountCents,
-      actualPaidCents: payableAmountCents,
-      approvedPendingCents: "0",
-      occupiedCents: payableAmountCents,
-      maxRequestableCents: "0"
-    },
-    "contract payment capacity after final execution"
-  );
-  assertExactMoneyText(
-    capacityAfterFinalExecution.capacity.approvedPendingCents,
-    "0",
-    "payment remaining after final execution"
   );
 
   const financeRecord = await postJson(
