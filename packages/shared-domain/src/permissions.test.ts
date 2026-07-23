@@ -201,6 +201,11 @@ describe("final approval OR-sign", () => {
 });
 
 describe("role-specific gates", () => {
+  it("admits the frozen non-project fact witness through the expense approval coarse gate", () => {
+    expect(canPerform("expense_claim.approve", ["employee"])).toBe(true);
+    expect(canPerform("expense_claim.approve", ["contract_staff"])).toBe(false);
+  });
+
   it("separates contract tax fact supplement, finance review, and contract confirmation", () => {
     expect(canPerform("contract.tax_fact.supplement", ["contract_staff"])).toBe(true);
     expect(canPerform("contract.tax_fact.finance_review", ["finance_director"])).toBe(true);

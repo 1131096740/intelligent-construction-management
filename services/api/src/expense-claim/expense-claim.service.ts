@@ -1,17 +1,23 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
+import { resolveApprovalReviewIdentity, type FrozenApprovalNode } from "../approval/approval-review-identity";
+import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
 import { AuditService } from "../audit/audit.service";
+import { AuthService } from "../auth/auth.service";
 import { BusinessNumberingService } from "../business-number/business-numbering.service";
 import { PrismaService } from "../database/prisma.service";
 import { moneyCentsToApi, parseMoneyCentsInput } from "../money/decimal-money";
 import type { CreateExpenseClaimDto, ExpenseClaimLineDto } from "./dto/create-expense-claim.dto";
+import type { ReviewExpenseClaimDto } from "./dto/review-expense-claim.dto";
 
-type ExpenseClaimApprovalNode = {
+type ExpenseClaimApprovalNode = FrozenApprovalNode & {
   name: string;
   mode: "any";
   roleKeys: RoleKey[];
-  candidateUserIds?: string[];
+  candidateUserIds: string[];
+  candidateUserIdsByRole: Partial<Record<RoleKey, string[]>>;
+  approvedRoleKeys?: RoleKey[];
 };
 
 const COMPREHENSIVE_ROLE: RoleKey = "comprehensive_director";
@@ -22,7 +28,9 @@ export class ExpenseClaimService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly numbering: BusinessNumberingService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    @Optional()
+    private readonly auth?: AuthService
   ) {}
 
   async create(actorUserId: string, input: CreateExpenseClaimDto) {
@@ -115,7 +123,7 @@ export class ExpenseClaimService {
       if (!claim) throw new NotFoundException("费用申请不存在");
       if (claim.handledByUserId !== actorUserId) throw new ForbiddenException("只有经办人可以提交费用申请");
       if (claim.status !== "draft") throw new BadRequestException("当前费用申请不可提交");
-      const nodes = this.approvalNodes(claim.claimType, claim.projectId, claim.factWitnessUserId);
+      const nodes = await this.freezeApprovalNodes(tx, claim);
       const instance = await tx.approvalInstance.create({
         data: {
           flowType: "expense_claim.approve",
@@ -139,6 +147,98 @@ export class ExpenseClaimService {
         metadata: { claimType: claim.claimType, approvalInstanceId: instance.id }
       });
       return { id: updated.id, status: updated.status, approvalInstanceId: instance.id };
+    });
+  }
+
+  async review(claimId: string, actorUserId: string, input: ReviewExpenseClaimDto) {
+    return this.prisma.$transaction(async (tx) => {
+      const claims = await tx.$queryRaw<Array<{
+        id: string; claimType: string; status: string; projectId: string | null; handledByUserId: string; factWitnessUserId: string | null; requestedAmountCents: bigint;
+      }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "handledByUserId", "factWitnessUserId", "requestedAmountCents" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
+      const claim = claims[0];
+      if (!claim) throw new NotFoundException("费用申请不存在");
+      if (claim.status !== "approval_pending") throw new BadRequestException("当前费用申请不可审批");
+      const instances = await tx.$queryRaw<Array<{
+        id: string; currentNodeIndex: number; frozenNodes: unknown; applicantUserId: string;
+      }>>(Prisma.sql`SELECT "id", "currentNodeIndex", "frozenNodes", "applicantUserId" FROM "ApprovalInstance" WHERE "businessType" = 'expense_claim' AND "businessId" = ${claim.id} AND "status" = 'in_progress' ORDER BY "createdAt" DESC LIMIT 1 FOR UPDATE`);
+      const instance = instances[0];
+      if (!instance) throw new BadRequestException("费用申请审批实例不存在");
+      const nodes = instance.frozenNodes as ExpenseClaimApprovalNode[];
+      const node = nodes[instance.currentNodeIndex];
+      if (!node) throw new BadRequestException("费用申请当前审批节点不存在");
+      const roles = await this.loadRoleKeys(tx, actorUserId, claim.projectId ?? undefined);
+      const identity = resolveApprovalReviewIdentity({ node, actorUserId, actorRoleKeys: roles });
+      if (!identity) throw new ForbiddenException("当前用户不是费用申请的冻结审批人");
+      const selfReview = await this.confirmSelfReview(instance.applicantUserId, actorUserId, identity, input);
+      const signature = await snapshotApprovalSignature(tx, actorUserId, { required: selfReview.isSelfReview });
+
+      if (input.decision === "reject") {
+        const rejected = await tx.expenseClaim.update({ where: { id: claim.id }, data: { status: "rejected" } });
+        await tx.approvalInstance.update({ where: { id: instance.id }, data: { status: "rejected" } });
+        await tx.approvalActionLog.create({
+          data: {
+            approvalInstanceId: instance.id,
+            action: "reject",
+            actorUserId,
+            comment: optionalText(input.comment),
+            approvedRoleKey: identity.approvedRoleKey,
+            representedUserId: identity.representedUserId,
+            ...(selfReview.isSelfReview ? {
+              metadata: selfReview.metadata,
+              signatureFileIdSnapshot: signature.fileId,
+              signatureSha256Snapshot: signature.sha256,
+              signatureVersionIdSnapshot: signature.versionId
+            } : {})
+          }
+        });
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "expense_claim.approval.reject",
+          businessType: "expense_claim",
+          businessId: claim.id,
+          metadata: { nodeName: node.name, approvedRoleKey: identity.approvedRoleKey, ...selfReview.metadata }
+        });
+        return { id: rejected.id, status: rejected.status };
+      }
+
+      const nextNodes = [...nodes];
+      nextNodes[instance.currentNodeIndex] = { ...node, approvedRoleKeys: [identity.approvedRoleKey] };
+      const nextNodeIndex = instance.currentNodeIndex + 1;
+      const completed = nextNodeIndex >= nextNodes.length;
+      const claimUpdate = completed
+        ? claim.claimType === "reimbursement"
+          ? { status: "approved_pending_payment", approvedAt: new Date(), companyPayableAmountCents: claim.requestedAmountCents }
+          : { status: "approved_pending_payment", approvedAt: new Date() }
+        : { status: "approval_pending" };
+      const updated = await tx.expenseClaim.update({ where: { id: claim.id }, data: claimUpdate });
+      await tx.approvalInstance.update({
+        where: { id: instance.id },
+        data: { currentNodeIndex: nextNodeIndex, frozenNodes: nextNodes as unknown as Prisma.InputJsonValue, status: completed ? "approved" : "in_progress" }
+      });
+      await tx.approvalActionLog.create({
+        data: {
+          approvalInstanceId: instance.id,
+          action: "approve",
+          actorUserId,
+          comment: optionalText(input.comment),
+          approvedRoleKey: identity.approvedRoleKey,
+          representedUserId: identity.representedUserId,
+          ...(selfReview.isSelfReview ? {
+            metadata: selfReview.metadata,
+            signatureFileIdSnapshot: signature.fileId,
+            signatureSha256Snapshot: signature.sha256,
+            signatureVersionIdSnapshot: signature.versionId
+          } : {})
+        }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "expense_claim.approval.approve",
+        businessType: "expense_claim",
+        businessId: claim.id,
+        metadata: { nodeName: node.name, approvedRoleKey: identity.approvedRoleKey, completed, ...selfReview.metadata }
+      });
+      return { id: updated.id, status: updated.status, completed };
     });
   }
 
@@ -167,17 +267,66 @@ export class ExpenseClaimService {
     return witness;
   }
 
-  private approvalNodes(claimType: string, projectId: string | null, factWitnessUserId: string | null): ExpenseClaimApprovalNode[] {
-    if (claimType !== "reimbursement" && claimType !== "loan") throw new BadRequestException("费用业务类型不正确");
-    const witnessNode = projectId
-      ? { name: "项目经理", mode: "any" as const, roleKeys: ["project_manager" as RoleKey] }
-      : { name: "事实证明人", mode: "any" as const, roleKeys: [] as RoleKey[], candidateUserIds: factWitnessUserId ? [factWitnessUserId] : [] };
-    return [
-      { name: "综合部主管", mode: "any", roleKeys: [COMPREHENSIVE_ROLE] },
-      witnessNode,
-      { name: "财务主管", mode: "any", roleKeys: ["finance_director"] },
-      { name: "董事长/总经理", mode: "any", roleKeys: FINAL_ROLES }
-    ];
+  private async freezeApprovalNodes(
+    tx: Prisma.TransactionClient,
+    claim: { claimType: string; projectId: string | null; factWitnessUserId: string | null; handledByUserId: string }
+  ): Promise<ExpenseClaimApprovalNode[]> {
+    if (claim.claimType !== "reimbursement" && claim.claimType !== "loan") throw new BadRequestException("费用业务类型不正确");
+    const [assignments, memberships] = await Promise.all([
+      tx.userPosition.findMany({
+        where: claim.projectId ? { OR: [{ projectId: null }, { projectId: claim.projectId }] } : { projectId: null },
+        select: { userId: true, positionId: true }
+      }),
+      claim.projectId
+        ? tx.projectMember.findMany({ where: { projectId: claim.projectId }, select: { userId: true, positionKey: true } })
+        : Promise.resolve([])
+    ]);
+    const positions = assignments.length
+      ? await tx.position.findMany({ where: { id: { in: [...new Set(assignments.map((item) => item.positionId))] } }, select: { id: true, key: true } })
+      : [];
+    const roleByPosition = new Map(positions.map((position) => [position.id, position.key as RoleKey]));
+    const candidatesByRole = new Map<RoleKey, Set<string>>();
+    for (const assignment of assignments) {
+      const role = roleByPosition.get(assignment.positionId);
+      if (role) addCandidate(candidatesByRole, role, assignment.userId);
+    }
+    for (const membership of memberships) addCandidate(candidatesByRole, membership.positionKey as RoleKey, membership.userId);
+    const candidateIds = [...new Set([...candidatesByRole.values()].flatMap((ids) => [...ids]))];
+    const activeUsers = candidateIds.length
+      ? await tx.user.findMany({ where: { id: { in: candidateIds }, isActive: true }, select: { id: true } })
+      : [];
+    const activeIds = new Set(activeUsers.map((user) => user.id));
+    const node = (name: string, roleKeys: RoleKey[], selectedUserId?: string): ExpenseClaimApprovalNode => {
+      const candidateUserIdsByRole = Object.fromEntries(roleKeys.map((role) => [role, [...(candidatesByRole.get(role) ?? [])].filter((id) => activeIds.has(id)).sort()])) as Partial<Record<RoleKey, string[]>>;
+      const candidateUserIds = [...new Set(Object.values(candidateUserIdsByRole).flat())].sort();
+      if (!candidateUserIds.length) throw new BadRequestException(`${name}缺少当前有效审批人，请先完成组织配置`);
+      return { name, mode: "any", roleKeys, candidateUserIds, candidateUserIdsByRole, ...(selectedUserId ? { selectedUserId } : {}) };
+    };
+    const witnessNode = claim.projectId
+      ? node("项目经理", ["project_manager"])
+      : claim.factWitnessUserId && activeIds.has(claim.factWitnessUserId)
+        ? { name: "事实证明人", mode: "any" as const, roleKeys: ["employee" as RoleKey], candidateUserIds: [claim.factWitnessUserId], candidateUserIdsByRole: { employee: [claim.factWitnessUserId] }, selectedUserId: claim.factWitnessUserId }
+        : null;
+    if (!witnessNode) throw new BadRequestException("事实证明人不存在或已停用，请重新选择后再提交");
+    return [node("综合部主管", [COMPREHENSIVE_ROLE]), witnessNode, node("财务主管", ["finance_director"]), node("董事长/总经理", FINAL_ROLES)];
+  }
+
+  private async confirmSelfReview(
+    applicantUserId: string,
+    actorUserId: string,
+    identity: { representedUserId: string; viaAssignment: boolean },
+    input: ReviewExpenseClaimDto
+  ) {
+    if (applicantUserId !== actorUserId) return { isSelfReview: false as const, metadata: {} };
+    if (identity.representedUserId !== actorUserId || identity.viaAssignment) {
+      throw new ForbiddenException("申请人不能通过转交或委托审批自己发起的费用申请");
+    }
+    const reason = input.selfReviewReason?.trim();
+    if (!reason) throw new BadRequestException("审批自己发起的费用申请时，请填写自审原因");
+    if (!input.confirmationPassword?.trim()) throw new BadRequestException("自审前，请输入当前密码完成二次确认");
+    if (!this.auth) throw new ServiceUnavailableException("审批身份确认服务暂不可用，请稍后重试");
+    await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
+    return { isSelfReview: true as const, metadata: { selfReview: true, selfReviewReason: reason } };
   }
 
   private async loadRoleKeys(tx: Prisma.TransactionClient, userId: string, projectId?: string): Promise<RoleKey[]> {
@@ -198,6 +347,12 @@ function requiredText(value: unknown, message: string) {
 function optionalText(value: unknown) {
   if (value === undefined || value === null || value === "") return null;
   return requiredText(value, "文字不能为空白");
+}
+
+function addCandidate(candidatesByRole: Map<RoleKey, Set<string>>, role: RoleKey, userId: string) {
+  const candidates = candidatesByRole.get(role) ?? new Set<string>();
+  candidates.add(userId);
+  candidatesByRole.set(role, candidates);
 }
 
 function positiveCents(value: unknown, message: string) {

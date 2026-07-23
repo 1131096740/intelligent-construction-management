@@ -178,6 +178,7 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   "expense_claim.create": ["employee", "comprehensive_director"],
   "expense_claim.submit": ["employee", "comprehensive_director"],
   "expense_claim.approve": [
+    "employee",
     "comprehensive_director",
     "project_manager",
     "finance_director",

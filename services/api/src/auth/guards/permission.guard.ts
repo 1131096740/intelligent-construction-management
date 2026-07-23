@@ -185,7 +185,7 @@ export class PermissionGuard implements CanActivate {
   }
 
   private isDelegatedApprovalAction(action: BusinessAction) {
-    return action === "contract.approve" || action === "settlement.approve" || action === "payment.approve";
+    return action === "contract.approve" || action === "settlement.approve" || action === "payment.approve" || action === "expense_claim.approve";
   }
 
   private async governedApprovalAccess(
@@ -198,8 +198,10 @@ export class PermissionGuard implements CanActivate {
       ? { businessType: "contract_version", businessId: request.params.contractVersionId }
       : request.params?.settlementId
         ? { businessType: "settlement", businessId: request.params.settlementId }
-        : request.params?.paymentId
-          ? await this.resolvePaymentApprovalTarget(request.params.paymentId)
+      : request.params?.paymentId
+        ? await this.resolvePaymentApprovalTarget(request.params.paymentId)
+        : request.params?.claimId
+          ? { businessType: "expense_claim", businessId: request.params.claimId }
           : null;
     if (!target) return null;
     const approvalClient = this.prisma as unknown as {

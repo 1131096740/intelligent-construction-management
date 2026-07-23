@@ -1,24 +1,29 @@
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { ExpenseClaimService } from "./expense-claim.service";
 
-function createHarness(options?: { roles?: string[]; claim?: Record<string, unknown> }) {
+function createHarness(options?: { roles?: string[]; claim?: Record<string, unknown>; approvalAssignments?: Array<{ userId: string; positionId: string; role: string }>; auth?: { confirmPassword: jest.Mock } }) {
+  const approvalAssignments = options?.approvalAssignments ?? [];
   const tx = {
-    user: { findUnique: jest.fn() },
     companyEntity: { findFirst: jest.fn() },
     project: { findFirst: jest.fn() },
-    userPosition: { findMany: jest.fn().mockResolvedValue((options?.roles ?? []).map((_, index) => ({ positionId: `position-${index}` }))) },
+    userPosition: { findMany: jest.fn().mockResolvedValue(approvalAssignments.length ? approvalAssignments.map(({ userId, positionId }) => ({ userId, positionId })) : (options?.roles ?? []).map((_, index) => ({ positionId: `position-${index}` }))) },
     projectMember: { findMany: jest.fn().mockResolvedValue([]) },
-    position: { findMany: jest.fn().mockResolvedValue((options?.roles ?? []).map((key) => ({ key })) ) },
+    position: { findMany: jest.fn().mockResolvedValue(approvalAssignments.length ? approvalAssignments.map(({ positionId, role }) => ({ id: positionId, key: role })) : (options?.roles ?? []).map((key, index) => ({ id: `position-${index}`, key })) ) },
+    user: {
+      findUnique: jest.fn(),
+      findMany: jest.fn().mockResolvedValue(approvalAssignments.map(({ userId }) => ({ id: userId })))
+    },
     expenseClaim: { create: jest.fn(), update: jest.fn() },
     expenseClaimLine: { createMany: jest.fn() },
-    approvalInstance: { create: jest.fn() },
+    approvalInstance: { create: jest.fn(), update: jest.fn() },
+    approvalActionLog: { create: jest.fn() },
     auditLog: { create: jest.fn().mockResolvedValue({}) },
     $queryRaw: jest.fn().mockResolvedValue(options?.claim ? [options.claim] : [])
   };
   const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)) };
   const numbering = { allocateDaily: jest.fn().mockResolvedValue("BX-20260723-001") };
   const audit = { record: jest.fn().mockResolvedValue({}) };
-  const service = new ExpenseClaimService(prisma as never, numbering as never, audit as never);
+  const service = new ExpenseClaimService(prisma as never, numbering as never, audit as never, options?.auth as never);
   return { service, tx, numbering, audit };
 }
 
@@ -124,7 +129,15 @@ describe("ExpenseClaimService", () => {
 
   it("submits exactly one frozen approval instance from a locked draft", async () => {
     const claim = { id: "claim-1", claimType: "reimbursement", status: "draft", projectId: "project-1", handledByUserId: "user-a", factWitnessUserId: null };
-    const { service, tx, audit } = createHarness({ claim });
+    const { service, tx, audit } = createHarness({
+      claim,
+      approvalAssignments: [
+        { userId: "comp-1", positionId: "position-comp", role: "comprehensive_director" },
+        { userId: "pm-1", positionId: "position-pm", role: "project_manager" },
+        { userId: "finance-1", positionId: "position-finance", role: "finance_director" },
+        { userId: "leader-1", positionId: "position-leader", role: "general_manager" }
+      ]
+    });
     tx.approvalInstance.create.mockResolvedValue({ id: "approval-1" });
     tx.expenseClaim.update.mockResolvedValue({ id: "claim-1", status: "approval_pending" });
 
@@ -132,12 +145,76 @@ describe("ExpenseClaimService", () => {
 
     expect(tx.$queryRaw).toHaveBeenCalled();
     expect(tx.approvalInstance.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ flowType: "expense_claim.approve", businessId: "claim-1", currentNodeIndex: 0, status: "in_progress" })
+      data: expect.objectContaining({
+        flowType: "expense_claim.approve",
+        businessId: "claim-1",
+        currentNodeIndex: 0,
+        status: "in_progress",
+        frozenNodes: expect.arrayContaining([expect.objectContaining({ candidateUserIds: ["comp-1"], candidateUserIdsByRole: { comprehensive_director: ["comp-1"] } })])
+      })
     });
     expect(tx.expenseClaim.update).toHaveBeenCalledWith({
       where: { id: "claim-1" },
       data: expect.objectContaining({ status: "approval_pending", approvalInstanceId: "approval-1" })
     });
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: "expense_claim.submit" }));
+  });
+
+  it("advances only the frozen current approver and records the frozen role", async () => {
+    const claim = { id: "claim-1", claimType: "reimbursement", status: "approval_pending", projectId: "project-1", handledByUserId: "user-a", factWitnessUserId: null, requestedAmountCents: 1200n };
+    const instance = {
+      id: "approval-1",
+      currentNodeIndex: 0,
+      applicantUserId: "user-a",
+      frozenNodes: [
+        { name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"], candidateUserIds: ["comp-1"], candidateUserIdsByRole: { comprehensive_director: ["comp-1"] } },
+        { name: "项目经理", mode: "any", roleKeys: ["project_manager"], candidateUserIds: ["pm-1"], candidateUserIdsByRole: { project_manager: ["pm-1"] } }
+      ]
+    };
+    const { service, tx, audit } = createHarness({ roles: ["comprehensive_director"] });
+    tx.$queryRaw.mockResolvedValueOnce([claim]).mockResolvedValueOnce([instance]);
+    tx.expenseClaim.update.mockResolvedValue({ id: "claim-1", status: "approval_pending" });
+
+    await expect(service.review("claim-1", "comp-1", { decision: "approve", comment: "同意" })).resolves.toEqual({ id: "claim-1", status: "approval_pending", completed: false });
+
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-1" },
+      data: expect.objectContaining({ currentNodeIndex: 1, status: "in_progress" })
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: "approve", approvedRoleKey: "comprehensive_director", representedUserId: "comp-1" })
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: "expense_claim.approval.approve" }));
+  });
+
+  it("rejects a same-role user who was not frozen into the current node", async () => {
+    const claim = { id: "claim-1", claimType: "loan", status: "approval_pending", projectId: "project-1", handledByUserId: "user-a", factWitnessUserId: null, requestedAmountCents: 1200n };
+    const instance = { id: "approval-1", currentNodeIndex: 0, applicantUserId: "user-a", frozenNodes: [{ name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"], candidateUserIds: ["comp-1"], candidateUserIdsByRole: { comprehensive_director: ["comp-1"] } }] };
+    const { service, tx } = createHarness({ roles: ["comprehensive_director"] });
+    tx.$queryRaw.mockResolvedValueOnce([claim]).mockResolvedValueOnce([instance]);
+
+    await expect(service.review("claim-1", "comp-2", { decision: "approve" })).rejects.toThrow(ForbiddenException);
+    expect(tx.expenseClaim.update).not.toHaveBeenCalled();
+  });
+
+  it("requires password and Canvas signature snapshot before a frozen applicant self-review", async () => {
+    const claim = { id: "claim-1", claimType: "reimbursement", status: "approval_pending", projectId: "project-1", handledByUserId: "leader-1", factWitnessUserId: null, requestedAmountCents: 1200n };
+    const instance = { id: "approval-1", currentNodeIndex: 0, applicantUserId: "leader-1", frozenNodes: [{ name: "董事长/总经理", mode: "any", roleKeys: ["general_manager"], candidateUserIds: ["leader-1"], candidateUserIdsByRole: { general_manager: ["leader-1"] } }] };
+    const auth = { confirmPassword: jest.fn().mockResolvedValue({}) };
+    const { service, tx } = createHarness({ roles: ["general_manager"], auth });
+    tx.$queryRaw
+      .mockResolvedValueOnce([claim])
+      .mockResolvedValueOnce([instance])
+      .mockResolvedValueOnce([{ id: "leader-1", isActive: true }])
+      .mockResolvedValueOnce([{ id: "signature-1", fileId: "file-1", contentSha256: "a".repeat(64) }])
+      .mockResolvedValueOnce([{ id: "file-1", contentSha256: "a".repeat(64), storageStatus: "active" }]);
+    tx.expenseClaim.update.mockResolvedValue({ id: "claim-1", status: "approved_pending_payment" });
+
+    await expect(service.review("claim-1", "leader-1", { decision: "approve", selfReviewReason: "职责兼任", confirmationPassword: "current-password" })).resolves.toEqual({ id: "claim-1", status: "approved_pending_payment", completed: true });
+
+    expect(auth.confirmPassword).toHaveBeenCalledWith("leader-1", "current-password");
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ metadata: { selfReview: true, selfReviewReason: "职责兼任" }, signatureFileIdSnapshot: "file-1", signatureVersionIdSnapshot: "signature-1" })
+    });
   });
 });

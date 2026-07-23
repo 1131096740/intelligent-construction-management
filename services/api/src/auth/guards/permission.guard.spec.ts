@@ -242,6 +242,38 @@ describe("PermissionGuard", () => {
     }))).rejects.toThrow("当前账号不是该审批节点冻结的处理人");
   });
 
+  it("allows only the frozen non-project fact witness to handle an expense claim", async () => {
+    const prisma = {
+      ...buildPrisma("employee"),
+      expenseClaim: { findUnique: jest.fn().mockResolvedValue({ projectId: null }) },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          currentNodeIndex: 0,
+          frozenNodes: [{
+            roleKeys: ["employee"],
+            candidateUserIdsByRole: { employee: ["witness-1"] },
+            selectedUserId: "witness-1"
+          }]
+        })
+      },
+      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findMany: jest.fn().mockResolvedValue([{ id: "witness-1", isActive: true }]) }
+    };
+    const context = (userId: string) => contextWithRequest({
+      user: { id: userId },
+      params: { claimId: "claim-1" }
+    });
+    const guard = () => new PermissionGuard({
+      getAllAndOverride: jest.fn().mockReturnValueOnce(undefined).mockReturnValueOnce("expense_claim.approve")
+    } as never, {
+      ...prisma,
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) }
+    } as never);
+
+    await expect(guard().canActivate(context("witness-1"))).resolves.toBe(true);
+    await expect(guard().canActivate(context("other-employee"))).rejects.toThrow("当前账号不是该审批节点冻结的处理人");
+  });
+
   it("allows a governed assignment recipient without requiring the current role", async () => {
     const prisma = {
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
