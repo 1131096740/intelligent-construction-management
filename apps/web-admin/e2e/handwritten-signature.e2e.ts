@@ -38,17 +38,18 @@ test("本人可在设置页直接手写并提交透明 PNG 签名", async ({ pag
   await page.getByPlaceholder("请输入手机号").fill("13800000001");
   await page.getByPlaceholder("请输入密码").fill("Jgzg@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/系统配置");
   await expect(page.getByText("个人签名", { exact: true })).toBeVisible();
 
   const pad = page.getByLabel("横向手写签字板");
+  await expect(pad).toBeVisible();
   const box = await pad.boundingBox();
   expect(box).not.toBeNull();
-  await page.mouse.move(box!.x + 60, box!.y + 80);
-  await page.mouse.down();
-  await page.mouse.move(box!.x + 130, box!.y + 125, { steps: 8 });
-  await page.mouse.move(box!.x + 220, box!.y + 70, { steps: 8 });
-  await page.mouse.up();
+  await pad.dispatchEvent("pointerdown", { pointerId: 1, clientX: box!.x + 60, clientY: box!.y + 80 });
+  await pad.dispatchEvent("pointermove", { pointerId: 1, clientX: box!.x + 130, clientY: box!.y + 125 });
+  await pad.dispatchEvent("pointermove", { pointerId: 1, clientX: box!.x + 220, clientY: box!.y + 70 });
+  await pad.dispatchEvent("pointerup", { pointerId: 1, clientX: box!.x + 220, clientY: box!.y + 70 });
   await expect(page.getByRole("button", { name: "保存手写签名" })).toBeEnabled();
   await page.getByRole("button", { name: "保存手写签名" }).click();
   await expect.poll(() => saved).toBe(1);

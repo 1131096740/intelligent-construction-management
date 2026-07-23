@@ -106,10 +106,15 @@
       class="settings-card"
     >
       <JgSignaturePanel
+        v-if="!desktopSignatureMode"
         :preview-url="signaturePreviewUrl"
         :preview-source="signatureSource"
         :busy="signatureBusy"
         @save="submitCanvasSignature"
+      />
+      <JgSignatureHandoff
+        v-else
+        @completed="loadSignature"
       />
       <div
         v-if="signatureMessage"
@@ -277,7 +282,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../../auth/auth.store";
 import {
@@ -288,6 +293,7 @@ import {
 } from "../../api/core-flow-read.api";
 import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
 import JgSignaturePanel from "../../components/JgSignaturePanel.vue";
+import JgSignatureHandoff from "../../components/JgSignatureHandoff.vue";
 import {
   approvalFlowRules,
   modeLabel,
@@ -328,6 +334,7 @@ async function loadRetentionPreview() {
 }
 const signaturePreviewUrl = ref("");
 const signatureSource = ref<"canvas" | "legacy" | undefined>();
+const desktopSignatureMode = ref(false);
 const signatureBusy = ref(false);
 const signatureMessage = ref("");
 const signatureTone = ref<"success" | "danger">("success");
@@ -362,8 +369,15 @@ async function loadSignature() {
 }
 
 onMounted(async () => {
+  updateSignatureMode();
+  window.addEventListener("resize", updateSignatureMode);
   await Promise.all([loadSignature(), loadRetentionPreview()]);
 });
+onBeforeUnmount(() => window.removeEventListener("resize", updateSignatureMode));
+
+function updateSignatureMode() {
+  desktopSignatureMode.value = window.matchMedia("(min-width: 768px)").matches;
+}
 
 function clearProfilePassword() {
   profileForm.currentPassword = "";

@@ -20,4 +20,12 @@ describe("MeController", () => {
       } as never)
     ).toThrow("请先完成手写签名");
   });
+
+  it("passes the authenticated user and opaque token to the canvas handoff service", () => {
+    const service = { getCanvasSignatureHandoff: jest.fn() };
+    const controller = new MeController(service as never);
+
+    controller.canvasSignatureHandoff("opaque-token", { id: "user-1" } as never);
+    expect(service.getCanvasSignatureHandoff).toHaveBeenCalledWith("user-1", "opaque-token");
+  });
 });

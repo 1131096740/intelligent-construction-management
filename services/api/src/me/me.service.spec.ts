@@ -293,6 +293,50 @@ describe("MeService", () => {
     expect((prisma as Record<string, unknown>).handwrittenSignatureVersion).toBeUndefined();
   });
 
+  it("creates a five-minute opaque desktop handoff and invalidates the previous open handoff", async () => {
+    const tx = {
+      handwrittenSignatureHandoff: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        create: jest.fn().mockResolvedValue({})
+      }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const service = new MeService(prisma as never, {} as never);
+    const before = Date.now();
+
+    const result = await service.createCanvasSignatureHandoff("user-1");
+
+    expect(result.token).toMatch(/^[A-Za-z0-9_-]{40,}$/u);
+    expect(Date.parse(result.expiresAt)).toBeGreaterThanOrEqual(before + 5 * 60 * 1000 - 1_000);
+    expect(tx.handwrittenSignatureHandoff.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ ownerUserId: "user-1", completedAt: null, invalidatedAt: null })
+    }));
+    expect(tx.handwrittenSignatureHandoff.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ ownerUserId: "user-1", tokenHash: expect.stringMatching(/^[a-f0-9]{64}$/u) })
+    }));
+  });
+
+  it("only exposes a completed handoff status to the same account", async () => {
+    const token = "opaque-token";
+    const prisma = {
+      handwrittenSignatureHandoff: {
+        findUnique: jest.fn().mockResolvedValue({
+          ownerUserId: "user-1",
+          expiresAt: new Date(Date.now() + 60_000),
+          invalidatedAt: null,
+          completedAt: new Date("2026-07-23T08:00:00.000Z"),
+          signatureVersionId: "version-1"
+        })
+      }
+    };
+    const service = new MeService(prisma as never, {} as never);
+
+    await expect(service.getCanvasSignatureHandoff("user-1", token)).resolves.toMatchObject({
+      completedAt: "2026-07-23T08:00:00.000Z", signatureVersionId: "version-1"
+    });
+    await expect(service.getCanvasSignatureHandoff("other-user", token)).rejects.toThrow("同一账号");
+  });
+
   it("rejects a non-image disguised as an image mime type in business Chinese", async () => {
     const prisma = { user: { update: jest.fn() } };
     const files = { uploadPrivateFile: jest.fn() };

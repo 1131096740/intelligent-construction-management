@@ -111,7 +111,11 @@ function point(event: PointerEvent) {
 function startStroke(event: PointerEvent) {
   if (props.busy) return;
   localError.value = "";
-  canvas.value?.setPointerCapture(event.pointerId);
+  try {
+    canvas.value?.setPointerCapture(event.pointerId);
+  } catch {
+    // 部分移动 WebKit 对鼠标/触摸指针的 capture 时机更严格；签字仍可在当前画布继续。
+  }
   drawing = true;
   lastPoint = point(event);
   const ctx = context();

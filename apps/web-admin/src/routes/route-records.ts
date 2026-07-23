@@ -221,6 +221,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
     meta: { passwordChange: true }
   },
   {
+    path: "/手写签名",
+    component: () => import("../pages/settings/HandwrittenSignaturePage.vue"),
+    meta: { requiresAuth: true, title: "手机手写签名" }
+  },
+  {
     path: "/",
     component: () => import("../app/AdminLayout.vue"),
     redirect: "/首页",

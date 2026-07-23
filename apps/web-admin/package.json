@@ -26,7 +26,9 @@
   "dependencies": {
     "@jiangkong/shared-domain": "workspace:*",
     "@revolist/vue3-datagrid": "^4.23.22",
+    "@types/qrcode": "^1.5.6",
     "pinia": "^2.1.0",
+    "qrcode": "^1.5.4",
     "tdesign-vue-next": "^1.10.0",
     "vue": "^3.4.0",
     "vue-router": "^4.4.0"

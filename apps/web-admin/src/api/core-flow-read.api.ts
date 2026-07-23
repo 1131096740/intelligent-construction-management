@@ -2292,6 +2292,28 @@ export function uploadCanvasSignature(file: Blob) {
   return postForm<{ signatureFileId: string; signatureVersionId: string }>("/me/signature/canvas", form);
 }
 
+export interface CanvasSignatureHandoffReadModel {
+  expiresAt: string;
+  completedAt: string | null;
+  signatureVersionId: string | null;
+}
+
+export function createCanvasSignatureHandoff() {
+  return postJson<{ token: string; expiresAt: string }>("/me/signature/canvas-handoffs");
+}
+
+export function getCanvasSignatureHandoff(token: string) {
+  return readJson<CanvasSignatureHandoffReadModel>(`/me/signature/canvas-handoffs/${encodeURIComponent(token)}`);
+}
+
+export function completeCanvasSignatureHandoff(token: string, file: Blob) {
+  const form = new FormData();
+  form.append("file", file, "手写签名.png");
+  return postForm<{ signatureFileId: string; signatureVersionId: string }>(
+    `/me/signature/canvas-handoffs/${encodeURIComponent(token)}/complete`, form
+  );
+}
+
 export function getSignatureTicket() {
   return readJson<(PrivateFileDownloadTicketReadModel & { signatureSource: "canvas" | "legacy" }) | null>("/me/signature/ticket");
 }

@@ -20,6 +20,7 @@ model User {
   // 旧上传签名只用于历史单据预览与回退；新审批从不可变 Canvas 版本取快照。
   signatureFileId    String?
   handwrittenSignatureVersions HandwrittenSignatureVersion[]
+  handwrittenSignatureHandoffs HandwrittenSignatureHandoff[]
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -38,6 +39,22 @@ model HandwrittenSignatureVersion {
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([userId, createdAt])
+}
+
+// 电脑端仅持有一次性链接；手机必须以同一账号完成签名，令牌本身不包含签名内容。
+model HandwrittenSignatureHandoff {
+  id                 String   @id @default(uuid())
+  ownerUserId        String
+  tokenHash          String   @unique
+  expiresAt          DateTime
+  invalidatedAt      DateTime?
+  completedAt        DateTime?
+  signatureVersionId String?
+  createdAt          DateTime @default(now())
+
+  ownerUser User @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+
+  @@index([ownerUserId, expiresAt])
 }
 
 // 我方公司主体字典：合同签订时选择其一，名称快照进合同。

@@ -1,6 +1,6 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   canPerform,
   resolveEffectiveRoleKeys,
@@ -22,6 +22,10 @@ export interface UploadSignatureInput {
   mimeType: string;
   sizeBytes: number;
   buffer: Buffer;
+}
+
+interface CanvasSignatureHandoffOptions {
+  handoffToken?: string;
 }
 
 export type WorkbenchCardTone = "default" | "primary" | "warning" | "danger" | "success";
@@ -210,7 +214,11 @@ export class MeService {
   }
 
   // Canvas 输出必须是透明 PNG；每次签名都保存不可变版本，旧版本仍由文件绑定保护。
-  async setCanvasSignature(userId: string, input: UploadSignatureInput) {
+  async setCanvasSignature(
+    userId: string,
+    input: UploadSignatureInput,
+    options: CanvasSignatureHandoffOptions = {}
+  ) {
     const isPng = input.mimeType === "image/png"
       && input.buffer.length > 3
       && input.buffer[0] === 0x89
@@ -230,6 +238,9 @@ export class MeService {
     });
     const contentSha256 = createHash("sha256").update(input.buffer).digest("hex");
     const signatureVersion = await this.prisma.$transaction(async (tx) => {
+      const handoff = options.handoffToken
+        ? await this.lockCanvasSignatureHandoff(tx, userId, options.handoffToken)
+        : null;
       const storedFile = await tx.fileObject.findUnique({
         where: { id: file.id },
         select: { contentSha256: true, storageStatus: true }
@@ -242,9 +253,44 @@ export class MeService {
       });
       // 继续维护旧字段，保证既有个人设置预览和历史回退入口可读；审批快照不再读取它。
       await tx.user.update({ where: { id: userId }, data: { signatureFileId: file.id } });
+      if (handoff) {
+        await tx.handwrittenSignatureHandoff.update({
+          where: { id: handoff.id },
+          data: { completedAt: new Date(), signatureVersionId: version.id }
+        });
+      }
       return version;
     });
     return { signatureFileId: file.id, signatureVersionId: signatureVersion.id };
+  }
+
+  async createCanvasSignatureHandoff(userId: string) {
+    const token = randomBytes(32).toString("base64url");
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 5 * 60 * 1000);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.handwrittenSignatureHandoff.updateMany({
+        where: { ownerUserId: userId, completedAt: null, invalidatedAt: null, expiresAt: { gt: now } },
+        data: { invalidatedAt: now }
+      });
+      await tx.handwrittenSignatureHandoff.create({
+        data: { ownerUserId: userId, tokenHash: this.hashCanvasSignatureHandoff(token), expiresAt }
+      });
+    });
+    return { token, expiresAt: expiresAt.toISOString() };
+  }
+
+  async getCanvasSignatureHandoff(userId: string, token: string) {
+    const handoff = await this.prisma.handwrittenSignatureHandoff.findUnique({
+      where: { tokenHash: this.hashCanvasSignatureHandoff(token) },
+      select: { ownerUserId: true, expiresAt: true, invalidatedAt: true, completedAt: true, signatureVersionId: true }
+    });
+    this.assertCanvasSignatureHandoff(handoff, userId, { allowCompleted: true });
+    return {
+      expiresAt: handoff!.expiresAt.toISOString(),
+      completedAt: handoff!.completedAt?.toISOString() ?? null,
+      signatureVersionId: handoff!.signatureVersionId
+    };
   }
 
   async getSignatureTicket(userId: string) {
@@ -266,6 +312,43 @@ export class MeService {
       downloadReason: "个人签名预览"
     });
     return { ...ticket, signatureSource: activeVersion ? "canvas" as const : "legacy" as const };
+  }
+
+  private hashCanvasSignatureHandoff(token: string) {
+    return createHash("sha256").update(token).digest("hex");
+  }
+
+  private async lockCanvasSignatureHandoff(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    token: string
+  ) {
+    const [handoff] = await tx.$queryRaw<Array<{
+      id: string;
+      ownerUserId: string;
+      expiresAt: Date;
+      invalidatedAt: Date | null;
+      completedAt: Date | null;
+    }>>(Prisma.sql`
+      SELECT "id", "ownerUserId", "expiresAt", "invalidatedAt", "completedAt"
+      FROM "HandwrittenSignatureHandoff"
+      WHERE "tokenHash" = ${this.hashCanvasSignatureHandoff(token)}
+      FOR UPDATE
+    `);
+    this.assertCanvasSignatureHandoff(handoff, userId);
+    return handoff!;
+  }
+
+  private assertCanvasSignatureHandoff(
+    handoff: { ownerUserId: string; expiresAt: Date; invalidatedAt: Date | null; completedAt: Date | null } | null | undefined,
+    userId: string,
+    options: { allowCompleted?: boolean } = {}
+  ) {
+    if (!handoff) throw new BadRequestException("签名二维码无效或已失效，请在电脑端重新生成");
+    if (handoff.ownerUserId !== userId) throw new ForbiddenException("请使用电脑端同一账号完成手写签名");
+    if (handoff.invalidatedAt || handoff.expiresAt.getTime() <= Date.now() || (handoff.completedAt && !options.allowCompleted)) {
+      throw new BadRequestException("签名二维码已过期或已使用，请在电脑端重新生成");
+    }
   }
 
   async getWorkbenchSummary(userId: string): Promise<WorkbenchSummary> {
