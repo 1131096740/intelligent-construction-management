@@ -11,6 +11,7 @@ import { moneyCentsToApi, parseMoneyCentsInput } from "../money/decimal-money";
 import type { CreateExpenseClaimDto, ExpenseClaimLineDto } from "./dto/create-expense-claim.dto";
 import type { ReviewExpenseClaimDto } from "./dto/review-expense-claim.dto";
 import type { RecordLoanDisbursementDto } from "./dto/record-loan-disbursement.dto";
+import type { ConfirmEmployeeLoanRepaymentDto, RecordEmployeeLoanRepaymentDto } from "./dto/record-employee-loan-repayment.dto";
 
 type ExpenseClaimApprovalNode = FrozenApprovalNode & {
   name: string;
@@ -295,6 +296,49 @@ export class ExpenseClaimService {
       await tx.expenseClaim.update({ where: { id: claim.id }, data: { fundedAmountCents: claimFundedAmountCents, status: claimStatus } });
       await this.audit.record(tx, { actorUserId, action: "expense_claim.loan.disbursement.record", businessType: "expense_claim", businessId: claim.id, metadata: { loanAccountId: account.id, loanEntryId: entry.id, amountCents: amountCents.toString(), voucherFileId, paymentMethod } });
       return { id: entry.id, expenseClaimId: claim.id, loanAccountId: account.id, amountCents: moneyCentsToApi(amountCents), fundedAmountCents: moneyCentsToApi(claimFundedAmountCents), status: claimStatus };
+    });
+  }
+
+  async recordEmployeeLoanRepayment(claimId: string, actorUserId: string, input: RecordEmployeeLoanRepaymentDto) {
+    const amountCents = positiveCents(input.amountCents, "还款金额必须大于零");
+    const repaidAt = dateOnly(input.repaidAt, "还款日期");
+    const paymentMethod = requiredText(input.paymentMethod, "还款方式必填");
+    if (repaidAt.getTime() > Date.now()) throw new BadRequestException("还款日期不能晚于当前时间");
+    if (!this.auth || !input.confirmationPassword?.trim()) throw new BadRequestException("还款登记需要当前登录密码确认");
+    await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
+    return this.prisma.$transaction(async (tx) => {
+      const claims = await tx.$queryRaw<Array<{ id: string; claimType: string; projectId: string | null; applicantUserId: string | null }>>(Prisma.sql`SELECT "id", "claimType", "projectId", "applicantUserId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
+      const claim = claims[0];
+      if (!claim || claim.claimType !== "loan" || !claim.projectId || !claim.applicantUserId) throw new BadRequestException("当前借款不支持登记员工还款");
+      const account = await tx.employeeProjectLoanAccount.findUnique({ where: { userId_scopeKey: { userId: claim.applicantUserId, scopeKey: `project:${claim.projectId}` } }, select: { id: true } });
+      if (!account) throw new BadRequestException("借款账户不存在，不能登记还款");
+      const voucherFileId = input.voucherFileId ? requiredText(input.voucherFileId, "还款凭证不正确") : null;
+      if (voucherFileId) {
+        const voucher = await tx.fileObject.findUnique({ where: { id: voucherFileId }, select: { id: true, uploadedByUserId: true } });
+        if (!voucher || voucher.uploadedByUserId !== actorUserId) throw new BadRequestException("还款凭证必须由登记人本人上传");
+      }
+      const repayment = await tx.employeeLoanRepayment.create({ data: { loanAccountId: account.id, amountCents, repaidAt, paymentMethod, voucherFileId, status: "recorded", recordedByUserId: actorUserId } });
+      await this.audit.record(tx, { actorUserId, action: "expense_claim.loan_repayment.record", businessType: "expense_claim", businessId: claim.id, metadata: { repaymentId: repayment.id, amountCents: amountCents.toString() } });
+      return { id: repayment.id, status: repayment.status, amountCents: moneyCentsToApi(amountCents) };
+    });
+  }
+
+  async confirmEmployeeLoanRepayment(claimId: string, repaymentId: string, actorUserId: string, input: ConfirmEmployeeLoanRepaymentDto) {
+    if (!this.auth || !input.confirmationPassword?.trim()) throw new BadRequestException("还款确认需要当前登录密码确认");
+    await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
+    return this.prisma.$transaction(async (tx) => {
+      const repayments = await tx.$queryRaw<Array<{ id: string; loanAccountId: string; amountCents: bigint; status: string }>>(Prisma.sql`SELECT "id", "loanAccountId", "amountCents", "status" FROM "EmployeeLoanRepayment" WHERE "id" = ${repaymentId} FOR UPDATE`);
+      const repayment = repayments[0];
+      if (!repayment || repayment.status !== "recorded") throw new BadRequestException("当前还款不可确认");
+      const accounts = await tx.$queryRaw<Array<{ id: string; balanceAmountCents: bigint; repaidAmountCents: bigint }>>(Prisma.sql`SELECT "id", "balanceAmountCents", "repaidAmountCents" FROM "EmployeeProjectLoanAccount" WHERE "id" = ${repayment.loanAccountId} FOR UPDATE`);
+      const account = accounts[0];
+      if (!account || repayment.amountCents > account.balanceAmountCents) throw new BadRequestException("还款金额超过当前借款余额");
+      const sequences = await tx.$queryRaw<Array<{ nextSequenceNo: bigint }>>(Prisma.sql`SELECT COALESCE(MAX("sequenceNo"), 0) + 1 AS "nextSequenceNo" FROM "EmployeeProjectLoanEntry" WHERE "loanAccountId" = ${account.id}`);
+      const entry = await tx.employeeProjectLoanEntry.create({ data: { loanAccountId: account.id, sequenceNo: sequences[0]!.nextSequenceNo, entryType: "repayment", amountCents: repayment.amountCents, balanceDeltaCents: -repayment.amountCents, sourceRepaymentId: repayment.id, occurredAt: new Date(), createdByUserId: actorUserId } });
+      await tx.employeeProjectLoanAccount.update({ where: { id: account.id }, data: { repaidAmountCents: account.repaidAmountCents + repayment.amountCents, balanceAmountCents: account.balanceAmountCents - repayment.amountCents } });
+      const confirmed = await tx.employeeLoanRepayment.update({ where: { id: repayment.id }, data: { status: "confirmed", confirmedByUserId: actorUserId, confirmedAt: new Date(), confirmationNote: optionalText(input.confirmationNote) } });
+      await this.audit.record(tx, { actorUserId, action: "expense_claim.loan_repayment.confirm", businessType: "expense_claim", businessId: claimId, metadata: { repaymentId: repayment.id, loanEntryId: entry.id, amountCents: repayment.amountCents.toString() } });
+      return { id: confirmed.id, status: confirmed.status, amountCents: moneyCentsToApi(repayment.amountCents) };
     });
   }
 

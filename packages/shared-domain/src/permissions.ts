@@ -46,6 +46,8 @@ export const BUSINESS_ACTIONS = [
   "expense_claim.submit",
   "expense_claim.approve",
   "expense_claim.disburse",
+  "expense_claim.repayment.record",
+  "expense_claim.repayment.confirm",
   "spot_procurement.create",
   "spot_procurement.approve",
   "spot_procurement.payment.submit",
@@ -187,6 +189,8 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
     "general_manager"
   ],
   "expense_claim.disburse": ["finance_staff"],
+  "expense_claim.repayment.record": ["finance_staff"],
+  "expense_claim.repayment.confirm": ["finance_director"],
   "spot_procurement.create": ["material_staff", "material_director"],
   "spot_procurement.approve": ["material_director", "project_manager"],
   "spot_procurement.payment.submit": ["material_staff", "material_director"],

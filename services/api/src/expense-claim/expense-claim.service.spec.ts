@@ -15,8 +15,9 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
     },
     expenseClaim: { create: jest.fn(), update: jest.fn() },
     fileObject: { findUnique: jest.fn() },
-    employeeProjectLoanAccount: { upsert: jest.fn(), update: jest.fn() },
+    employeeProjectLoanAccount: { upsert: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
     employeeProjectLoanEntry: { create: jest.fn(), findMany: jest.fn() },
+    employeeLoanRepayment: { create: jest.fn(), update: jest.fn() },
     expenseLoanOffsetReservation: { findMany: jest.fn().mockResolvedValue([]), createMany: jest.fn(), updateMany: jest.fn() },
     expenseClaimLine: { createMany: jest.fn() },
     approvalInstance: { create: jest.fn(), update: jest.fn() },
@@ -290,5 +291,31 @@ describe("ExpenseClaimService", () => {
     expect(tx.employeeProjectLoanEntry.create).toHaveBeenCalledWith({ data: expect.objectContaining({ entryType: "offset", sourceExpenseClaimId: "claim-r", sourceReservationId: "reserve-1", amountCents: 3000n, balanceDeltaCents: -3000n }) });
     expect(tx.employeeProjectLoanAccount.update).toHaveBeenCalledWith({ where: { id: "account-1" }, data: { offsetAmountCents: 3000n, reservedOffsetAmountCents: 0n, balanceAmountCents: 0n } });
     expect(tx.expenseLoanOffsetReservation.updateMany).toHaveBeenCalledWith({ where: { id: { in: ["reserve-1"] }, status: "reserved" }, data: expect.objectContaining({ status: "posted" }) });
+  });
+
+  it("records repayment without reducing the balance, then confirms it as an immutable ledger entry", async () => {
+    const auth = { confirmPassword: jest.fn().mockResolvedValue({}) };
+    const { service, tx } = createHarness({ auth });
+    const claim = { id: "loan-1", claimType: "loan", projectId: "project-1", applicantUserId: "user-a" };
+    tx.$queryRaw.mockResolvedValueOnce([claim]);
+    tx.employeeProjectLoanAccount.findUnique.mockResolvedValue({ id: "account-1" });
+    tx.employeeLoanRepayment.create.mockResolvedValue({ id: "repayment-1", status: "recorded" });
+    await expect(service.recordEmployeeLoanRepayment("loan-1", "finance-1", { amountCents: "2000", repaidAt: "2026-07-23", paymentMethod: "现金", confirmationPassword: "current-password" })).resolves.toEqual({ id: "repayment-1", status: "recorded", amountCents: "2000" });
+    expect(tx.employeeProjectLoanAccount.update).not.toHaveBeenCalled();
+
+    tx.$queryRaw.mockResolvedValueOnce([{ id: "repayment-1", loanAccountId: "account-1", amountCents: 2000n, status: "recorded" }]).mockResolvedValueOnce([{ id: "account-1", balanceAmountCents: 5000n, repaidAmountCents: 1000n }]).mockResolvedValueOnce([{ nextSequenceNo: 4n }]);
+    tx.employeeProjectLoanEntry.create.mockResolvedValue({ id: "entry-4" });
+    tx.employeeLoanRepayment.update.mockResolvedValue({ id: "repayment-1", status: "confirmed" });
+    await expect(service.confirmEmployeeLoanRepayment("loan-1", "repayment-1", "finance-director-1", { confirmationPassword: "current-password" })).resolves.toEqual({ id: "repayment-1", status: "confirmed", amountCents: "2000" });
+    expect(tx.employeeProjectLoanEntry.create).toHaveBeenCalledWith({ data: expect.objectContaining({ entryType: "repayment", sourceRepaymentId: "repayment-1", balanceDeltaCents: -2000n }) });
+    expect(tx.employeeProjectLoanAccount.update).toHaveBeenCalledWith({ where: { id: "account-1" }, data: { repaidAmountCents: 3000n, balanceAmountCents: 3000n } });
+  });
+
+  it("blocks over-balance repayment confirmation before writing a ledger entry", async () => {
+    const auth = { confirmPassword: jest.fn().mockResolvedValue({}) };
+    const { service, tx } = createHarness({ auth });
+    tx.$queryRaw.mockResolvedValueOnce([{ id: "repayment-1", loanAccountId: "account-1", amountCents: 5001n, status: "recorded" }]).mockResolvedValueOnce([{ id: "account-1", balanceAmountCents: 5000n, repaidAmountCents: 0n }]);
+    await expect(service.confirmEmployeeLoanRepayment("loan-1", "repayment-1", "finance-director-1", { confirmationPassword: "current-password" })).rejects.toThrow(BadRequestException);
+    expect(tx.employeeProjectLoanEntry.create).not.toHaveBeenCalled();
   });
 });
