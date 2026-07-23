@@ -107,6 +107,7 @@ describe("web admin routes", () => {
       "合同管理",
       "历史合同接管",
       "合同工作台",
+      "合同工作台/新建",
       "合同工作台/:contractId",
       "合同管理/:contractId",
       "结算工作台",
@@ -142,8 +143,8 @@ describe("web admin routes", () => {
   });
 
   it("keeps legacy English routes as redirects to Chinese routes", () => {
-    expect(redirectOf("contracts")).toBe("/合同管理");
-    expect(redirectOf("contracts/new")).toBe("/合同工作台");
+    expect(redirectOf("contracts")).toBe("/合同工作台");
+    expect(redirectOf("contracts/new")).toBe("/合同工作台/新建");
     expect(redirectOf("contract-takeovers")).toBe("/历史合同接管");
     expect(redirectOf("contracts/:contractId/workbench", { contractId: "HT-1" })).toBe("/合同工作台/HT-1");
     expect(redirectOf("settlements")).toBe("/结算管理");
@@ -324,7 +325,7 @@ describe("web admin routes", () => {
     expect(visibleAdminNavigationItems(["budget_staff"]).map((item) => item.path)).not.toContain("/历史合同接管");
   });
 
-  it("keeps read-only ledger users out of contract and settlement write workbenches", () => {
+  it("keeps read-only ledger users on the contract root while blocking new contract writes", () => {
     const readOnlyRoles = [
       "finance_staff",
       "finance_director",
@@ -333,13 +334,22 @@ describe("web admin routes", () => {
 
     for (const role of readOnlyRoles) {
       const visiblePaths = visibleAdminNavigationItems([role]).map((item) => item.path);
-      expect(visiblePaths).not.toContain("/合同工作台");
+      expect(visiblePaths).toContain("/合同工作台");
       expect(visiblePaths).not.toContain("/结算工作台");
       expect(
         resolveRouteAccess(
           {
             meta: childRoute("合同工作台")?.meta ?? {},
             fullPath: "/合同工作台"
+          },
+          { isAuthenticated: true, roleKeys: [role] }
+        )
+      ).toBe(true);
+      expect(
+        resolveRouteAccess(
+          {
+            meta: childRoute("合同工作台/新建")?.meta ?? {},
+            fullPath: "/合同工作台/新建"
           },
           { isAuthenticated: true, roleKeys: [role] }
         )
@@ -355,7 +365,7 @@ describe("web admin routes", () => {
       ).toEqual({ path: "/首页" });
     }
 
-    expect(childRoute("合同工作台")?.meta?.requiredRoleKeys).toEqual(
+    expect(childRoute("合同工作台/新建")?.meta?.requiredRoleKeys).toEqual(
       contractMaintenanceRoleKeys
     );
     expect(childRoute("结算工作台")?.meta?.requiredRoleKeys).toEqual(
@@ -364,8 +374,8 @@ describe("web admin routes", () => {
     expect(
       resolveRouteAccess(
         {
-          meta: childRoute("合同工作台")?.meta ?? {},
-          fullPath: "/合同工作台"
+          meta: childRoute("合同工作台/新建")?.meta ?? {},
+          fullPath: "/合同工作台/新建"
         },
         { isAuthenticated: true, roleKeys: ["contract_staff"] }
       )

@@ -548,7 +548,7 @@ test("合同工作台丢弃未保存修改后直接删除服务端草稿", async
   expect(saveCalls).toBe(0);
   await expect
     .poll(() => decodeURIComponent(new URL(page.url()).pathname + new URL(page.url()).search))
-    .toBe("/合同管理?view=ended");
+    .toBe("/合同工作台?view=ended");
 });
 
 test("合同已放弃记录可携带保存时间复制为全新草稿", async ({ page }, testInfo) => {
@@ -598,7 +598,7 @@ test("合同已放弃记录可携带保存时间复制为全新草稿", async ({
     });
   });
   await login(page);
-  await page.goto("/合同管理?view=ended");
+  await page.goto("/合同工作台?view=ended");
   await expect(page.getByText("HT-END-001", { exact: true })).toBeVisible();
   await expect(page.getByText("供应计划取消", { exact: true })).toBeVisible();
   await expect(page.getByText("复制为新草稿", { exact: true })).toBeVisible();

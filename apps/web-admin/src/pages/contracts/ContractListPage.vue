@@ -1,7 +1,7 @@
 <template>
   <section class="contract-list-page">
     <BusinessPageHeader
-      title="合同管理"
+      title="合同工作台"
       description="统一查看合同台账、当前草稿和已作废草稿；合同生效仍以审批、用印和归档确认事实为准。"
     >
       <template #actions>
@@ -478,15 +478,15 @@ function applyRouteProjectFilter(value: unknown) {
 }
 
 function goContractTakeover() {
-  void router.push("/contract-takeovers");
+  void router.push("/历史合同接管");
 }
 
 function goNewContract() {
-  void router.push("/contracts/new");
+  void router.push("/合同工作台/新建");
 }
 
 function openDetail(contractId: string) {
-  void router.push(`/contracts/${contractId}`);
+  void router.push(`/合同管理/${contractId}`);
 }
 
 function openLifecycleRow(row: ContractLedgerRow & ContractLifecycleLedgerRow) {

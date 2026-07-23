@@ -93,8 +93,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
     items: [
       {
         label: "合同工作台",
-        path: "/合同工作台",
-        requiredRoleKeys: contractMaintenanceRoleKeys
+        path: "/合同工作台"
       },
       { label: "历史合同接管", path: "/历史合同接管", requiredRoleKeys: historicalTakeoverRoleKeys },
       { label: "合同模板库", path: "/合同模板库" },
@@ -246,10 +245,15 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       },
       {
         path: "合同管理",
-        component: () => import("../pages/contracts/ContractListPage.vue")
+        redirect: "/合同工作台"
       },
       {
         path: "合同工作台",
+        component: () => import("../pages/contracts/ContractListPage.vue"),
+        meta: { title: "合同工作台" }
+      },
+      {
+        path: "合同工作台/新建",
         component: () => import("../pages/contracts/ContractWorkbenchPage.vue"),
         meta: { requiredRoleKeys: contractMaintenanceRoleKeys, title: "合同工作台" }
       },
@@ -260,7 +264,8 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       },
       {
         path: "合同管理/:contractId",
-        component: () => import("../pages/contracts/ContractDetailPage.vue")
+        component: () => import("../pages/contracts/ContractDetailPage.vue"),
+        meta: { title: "合同详情", activeNavigationPath: "/合同工作台" }
       },
       {
         path: "历史合同接管",
@@ -468,8 +473,8 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         path: "系统配置",
         component: () => import("../pages/settings/SettingsPage.vue")
       },
-      { path: "contracts", redirect: "/合同管理" },
-      { path: "contracts/new", redirect: "/合同工作台" },
+      { path: "contracts", redirect: "/合同工作台" },
+      { path: "contracts/new", redirect: "/合同工作台/新建" },
       { path: "contract-takeovers", redirect: "/历史合同接管" },
       { path: "contracts/:contractId/workbench", redirect: contractWorkbenchRedirect },
       { path: "contracts/:contractId", redirect: contractDetailRedirect },

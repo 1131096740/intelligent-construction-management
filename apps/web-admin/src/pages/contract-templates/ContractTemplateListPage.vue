@@ -283,7 +283,7 @@ function closePreview() {
 function useTemplate(template: PublishedContractTemplateReadModel) {
   closePreview();
   void router.push({
-    path: "/合同工作台",
+    path: "/合同工作台/新建",
     query: {
       contractType: template.contractTypeKey,
       templateVersionId: template.versionId

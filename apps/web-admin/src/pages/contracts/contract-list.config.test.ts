@@ -20,6 +20,8 @@ describe("contract ledger page configuration", () => {
     expect(source).toContain("<BusinessFeedback");
     expect(source).toContain("<EmptyBusinessState");
     expect(source).not.toContain("<input");
+    expect(source).toContain('title="合同工作台"');
+    expect(source).toContain('router.push("/合同工作台/新建")');
   });
 
   it("uses the approved compact enterprise filter fields", () => {

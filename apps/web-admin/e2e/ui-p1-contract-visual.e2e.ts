@@ -249,8 +249,8 @@ test("captures the contract P1.2 ledger and detail states", async ({ page }) => 
 
   await login(page);
 
-  await page.goto("/合同管理");
-  await expect(page.getByRole("heading", { name: "合同管理" })).toBeVisible();
+  await page.goto("/合同工作台");
+  await expect(page.getByRole("heading", { name: "合同工作台" })).toBeVisible();
   await expect(page.getByText("科技园钢材采购合同")).toBeVisible();
   await expect(page.getByText(/当前视图由服务端分页/)).toBeVisible();
   await expect(page.locator(".data-section .t-link").filter({ hasText: "查看详情" })).toHaveCount(3);
@@ -258,7 +258,7 @@ test("captures the contract P1.2 ledger and detail states", async ({ page }) => 
 
   await page.setViewportSize({ width: 1440, height: 900 });
   ledgerMode = "failure";
-  await page.goto("/合同管理?project=科技园项目");
+  await page.goto("/合同工作台?project=科技园项目");
   await expect(page.getByText("合同记录暂时无法读取")).toBeVisible();
   await expect(page.locator(".business-status-summary")).toContainText("—");
   await expect(page.getByText(/这不代表当前没有合同记录/)).toBeVisible();
@@ -266,7 +266,7 @@ test("captures the contract P1.2 ledger and detail states", async ({ page }) => 
   await capture(page, "contract-ledger-failure-1440x900.png");
 
   ledgerMode = "empty";
-  await page.goto("/合同管理?project=科技园项目");
+  await page.goto("/合同工作台?project=科技园项目");
   await expect(page.getByText("当前条件下暂无合同记录")).toBeVisible();
   await expect(page.getByRole("button", { name: "新建合同" })).toHaveCount(1);
   await capture(page, "contract-ledger-empty-1440x900.png");
