@@ -327,12 +327,16 @@ export class ExpenseClaimService {
     if (!this.auth || !input.confirmationPassword?.trim()) throw new BadRequestException("还款确认需要当前登录密码确认");
     await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
     return this.prisma.$transaction(async (tx) => {
+      const claims = await tx.$queryRaw<Array<{ id: string; claimType: string; projectId: string | null; applicantUserId: string | null }>>(Prisma.sql`SELECT "id", "claimType", "projectId", "applicantUserId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
+      const claim = claims[0];
+      if (!claim || claim.claimType !== "loan" || !claim.projectId || !claim.applicantUserId) throw new BadRequestException("当前借款不支持确认员工还款");
       const repayments = await tx.$queryRaw<Array<{ id: string; loanAccountId: string; amountCents: bigint; status: string }>>(Prisma.sql`SELECT "id", "loanAccountId", "amountCents", "status" FROM "EmployeeLoanRepayment" WHERE "id" = ${repaymentId} FOR UPDATE`);
       const repayment = repayments[0];
       if (!repayment || repayment.status !== "recorded") throw new BadRequestException("当前还款不可确认");
-      const accounts = await tx.$queryRaw<Array<{ id: string; balanceAmountCents: bigint; repaidAmountCents: bigint }>>(Prisma.sql`SELECT "id", "balanceAmountCents", "repaidAmountCents" FROM "EmployeeProjectLoanAccount" WHERE "id" = ${repayment.loanAccountId} FOR UPDATE`);
+      const accounts = await tx.$queryRaw<Array<{ id: string; userId: string; scopeKey: string; balanceAmountCents: bigint; repaidAmountCents: bigint }>>(Prisma.sql`SELECT "id", "userId", "scopeKey", "balanceAmountCents", "repaidAmountCents" FROM "EmployeeProjectLoanAccount" WHERE "id" = ${repayment.loanAccountId} FOR UPDATE`);
       const account = accounts[0];
-      if (!account || repayment.amountCents > account.balanceAmountCents) throw new BadRequestException("还款金额超过当前借款余额");
+      if (!account || account.userId !== claim.applicantUserId || account.scopeKey !== `project:${claim.projectId}`) throw new BadRequestException("还款记录不属于当前借款账户");
+      if (repayment.amountCents > account.balanceAmountCents) throw new BadRequestException("还款金额超过当前借款余额");
       const sequences = await tx.$queryRaw<Array<{ nextSequenceNo: bigint }>>(Prisma.sql`SELECT COALESCE(MAX("sequenceNo"), 0) + 1 AS "nextSequenceNo" FROM "EmployeeProjectLoanEntry" WHERE "loanAccountId" = ${account.id}`);
       const entry = await tx.employeeProjectLoanEntry.create({ data: { loanAccountId: account.id, sequenceNo: sequences[0]!.nextSequenceNo, entryType: "repayment", amountCents: repayment.amountCents, balanceDeltaCents: -repayment.amountCents, sourceRepaymentId: repayment.id, occurredAt: new Date(), createdByUserId: actorUserId } });
       await tx.employeeProjectLoanAccount.update({ where: { id: account.id }, data: { repaidAmountCents: account.repaidAmountCents + repayment.amountCents, balanceAmountCents: account.balanceAmountCents - repayment.amountCents } });
