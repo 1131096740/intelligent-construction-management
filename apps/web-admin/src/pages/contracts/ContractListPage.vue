@@ -52,10 +52,9 @@
         appearance="metrics"
       />
 
-      <BusinessTableToolbar
+      <JgFilterBar
         title="合同台账筛选"
         description="筛选作用于当前已加载记录；列设置按当前用户保存在本机。"
-        appearance="plain"
       >
         <template #actions>
           <t-button
@@ -111,7 +110,7 @@
             size="small"
           />
         </label>
-      </BusinessTableToolbar>
+      </JgFilterBar>
 
       <section
         v-if="showColumnSettings"
@@ -311,7 +310,7 @@ import { useAuthStore } from "../../auth/auth.store";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
 import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
-import BusinessTableToolbar from "../../components/BusinessTableToolbar.vue";
+import JgFilterBar from "../../components/JgFilterBar.vue";
 import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
 import {
   canExportContractSettlementLedger,

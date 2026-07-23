@@ -16,7 +16,7 @@ describe("contract ledger page configuration", () => {
     const source = readFileSync(new URL("./ContractListPage.vue", import.meta.url), "utf8");
     expect(source).toContain("<BusinessPageHeader");
     expect(source).toContain("<BusinessStatusSummary");
-    expect(source).toContain("<BusinessTableToolbar");
+    expect(source).toContain("<JgFilterBar");
     expect(source).toContain("<BusinessFeedback");
     expect(source).toContain("<EmptyBusinessState");
     expect(source).not.toContain("<input");

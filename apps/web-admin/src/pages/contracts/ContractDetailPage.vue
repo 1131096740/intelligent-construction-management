@@ -244,7 +244,7 @@
                   />
                 </label>
               </div>
-              <div class="action-buttons action-buttons--end">
+              <JgActionBar label="合同审批操作">
                 <t-button
                   v-if="isContractActionEnabled('submit_approval')"
                   theme="primary"
@@ -278,7 +278,7 @@
                 >
                   下载审批单
                 </t-button>
-              </div>
+              </JgActionBar>
             </div>
 
             <div
@@ -1026,6 +1026,7 @@ import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
 import JgApprovalTimeline from "../../components/JgApprovalTimeline.vue";
 import JgAttachmentPanel from "../../components/JgAttachmentPanel.vue";
+import JgActionBar from "../../components/JgActionBar.vue";
 import JgDetailTabs from "../../components/JgDetailTabs.vue";
 import JgPageHeader from "../../components/JgPageHeader.vue";
 import JgTaskCard from "../../components/JgTaskCard.vue";
