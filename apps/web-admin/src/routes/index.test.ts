@@ -274,6 +274,12 @@ describe("web admin routes", () => {
     expect(groupLabels).toContain("项目");
     expect(groupLabels).toContain("合同");
     expect(visibleAdminNavigationGroups(["finance_staff"]).map((group) => group.label)).toContain("项目");
+    expect(visibleAdminNavigationGroups(["contract_staff"]).map((group) => group.label)).not.toContain("付款");
+    expect(
+      visibleAdminNavigationGroups(["finance_staff"])
+        .find((group) => group.label === "付款")
+        ?.items.map((item) => item.label)
+    ).toEqual(["统一资金办理工作台"]);
   });
 
   it("keeps old create routes as redirects to the dedicated workbenches", () => {
