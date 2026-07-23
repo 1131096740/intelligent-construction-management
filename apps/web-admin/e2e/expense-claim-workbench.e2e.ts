@@ -124,16 +124,17 @@ test("财务登记带凭证的公司补付，只调用新的受控付款事实�
   await page.goto("/费用与报销工作台");
   await page.getByText("BX-20260723-001", { exact: true }).click();
   await page.getByRole("button", { name: "登记公司补付" }).click();
-  await page.getByPlaceholder("例如 1250").fill("100000");
-  await page.getByPlaceholder("YYYY-MM-DD").fill("2026-07-24");
-  await page.getByPlaceholder("例如：银行转账").fill("银行转账");
-  await page.locator("input[type=file]").setInputFiles({
+  const paymentDrawer = page.locator(".t-drawer").filter({ hasText: "登记费用报销公司补付" });
+  await paymentDrawer.getByPlaceholder("例如 1250").fill("100000");
+  await paymentDrawer.getByPlaceholder("YYYY-MM-DD").fill("2026-07-24");
+  await paymentDrawer.getByPlaceholder("例如：银行转账").fill("银行转账");
+  await paymentDrawer.locator("input[type=file]").setInputFiles({
     name: "公司补付凭证.pdf",
     mimeType: "application/pdf",
     buffer: Buffer.from("reimbursement-payment-voucher")
   });
-  await page.getByPlaceholder("用于确认本次实际付款").fill("E2e@2026");
-  await page.getByRole("button", { name: "确认登记", exact: true }).click();
+  await paymentDrawer.getByPlaceholder("用于确认本次实际付款").fill("E2e@2026");
+  await paymentDrawer.getByRole("button", { name: "确认登记", exact: true }).click();
   await expect(page.getByText("确认登记公司补付", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "确认写入", exact: true }).click();
 
