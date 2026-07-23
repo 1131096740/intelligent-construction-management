@@ -27,6 +27,9 @@ test("统一资金办理工作台只读取服务端聚合并按视图和来源�
   await page.getByRole("textbox", { name: "来源" }).click();
   await page.getByRole("listitem", { name: "费用报销补付", exact: true }).click();
   await expect.poll(() => requests).toContain("/api/funds-workbench?view=pending_funds&source=expense_reimbursement");
+  await page.getByRole("textbox", { name: "视图" }).click();
+  await page.getByRole("listitem", { name: "部分支付", exact: true }).click();
+  await expect.poll(() => requests).toContain("/api/funds-workbench?view=partial_payment&source=expense_reimbursement");
 });
 
 async function mockFundsSession(page: Page, requests: string[]) {
@@ -59,7 +62,7 @@ async function mockFundsSession(page: Page, requests: string[]) {
     return route.fulfill({ contentType: "application/json", body: JSON.stringify({
       view: url.searchParams.get("view") ?? "all",
       source: url.searchParams.get("source") ?? "all",
-      viewCounts: { all: 2, in_progress: 0, pending_funds: 2, completed: 0 },
+      viewCounts: { all: 2, in_progress: 0, pending_funds: 2, partial_payment: 0, completed: 0 },
       sourceCounts: { contract_payment: 1, spot_procurement_payment: 0, expense_reimbursement: 1, loan_disbursement: 0 },
       items: [
         {

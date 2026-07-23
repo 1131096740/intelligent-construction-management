@@ -67,4 +67,19 @@ describe("FundsWorkbenchService", () => {
     await expect(service.list("finance-1", { view: "unknown" })).rejects.toBeInstanceOf(BadRequestException);
     await expect(service.list("finance-1", { source: "unknown" })).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it("projects partial payment from source facts without treating it as completed", async () => {
+    findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { id: "spot-1", code: "LS-001", projectId: "project-1", procurementId: "procurement-1", status: "partially_paid", companyPaymentAmountCents: 5000n, paidAmountCents: 1000n, paymentNote: "水泥", payeeNameSnapshot: "供应商", payerCompanyNameSnapshot: "建工", updatedAt: new Date("2026-07-23T11:00:00.000Z") }
+      ])
+      .mockResolvedValueOnce([]);
+
+    await expect(service.list("finance-1", { view: "partial_payment" })).resolves.toMatchObject({
+      items: [expect.objectContaining({ code: "LS-001", statusLabel: "部分支付", remainingAmountCents: "4000" })],
+      viewCounts: expect.objectContaining({ partial_payment: 1, completed: 0 })
+    });
+  });
 });

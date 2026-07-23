@@ -10,7 +10,7 @@ const FUND_SOURCES = [
   "loan_disbursement"
 ] as const;
 
-const FUND_VIEWS = ["all", "in_progress", "pending_funds", "completed"] as const;
+const FUND_VIEWS = ["all", "in_progress", "pending_funds", "partial_payment", "completed"] as const;
 
 type FundSource = (typeof FUND_SOURCES)[number];
 type FundView = (typeof FUND_VIEWS)[number];
@@ -215,6 +215,7 @@ export class FundsWorkbenchService {
     if (view === "all") return true;
     if (view === "in_progress") return row.status === "approval_pending";
     if (view === "pending_funds") return row.remainingAmountCents !== "0" && ["approved_pending_payment", "approved_pending_disbursement", "partially_disbursed", "partially_paid"].includes(row.status);
+    if (view === "partial_payment") return ["partially_paid", "partially_disbursed"].includes(row.status);
     return row.remainingAmountCents === "0" && ["paid", "settled", "disbursed", "offset_completed"].includes(row.status);
   }
 
