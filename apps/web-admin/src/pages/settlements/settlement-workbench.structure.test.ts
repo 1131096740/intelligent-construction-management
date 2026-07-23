@@ -61,7 +61,7 @@ describe("settlement creation workbench structure", () => {
     expect(routes).toContain('SettlementWorkbenchPage.vue');
     expect(page).toContain("<h1>结算工作台</h1>");
     expect(ledger).toMatch(/id="settlement-ledger-title">\s*结算台账\s*<\/h2>/);
-    expect(ledger).toContain('router.push("/结算工作台")');
+    expect(ledger).toContain('router.push("/结算工作台/新建")');
     expect(ledger).not.toContain("amountYuan");
   });
 

@@ -403,9 +403,20 @@ const GOVERNANCE_FILE_BINDING_TABLES = new Set([
   "ApprovalFormGenerationClaim"
 ]);
 
+// These file facts were added by later phase-one migrations. The two
+// 2026071714/150000 migrations are immutable historical snapshots; their
+// expected registries must not be retroactively compared with later tables.
+// The final registry remains covered by unified-file-business-binding-guard.
+const POST_INVOICE_EVIDENCE_FILE_BINDING_TABLES = new Set([
+  "EmployeeLoanRepayment",
+  "EmployeeProjectLoanEntry",
+  "ExpenseClaimAttachment"
+]);
+
 const existedAtInvoiceEvidenceGuard = (table: string) =>
   !REAL_FORM_FILE_BINDING_TABLES.has(table) &&
-  !GOVERNANCE_FILE_BINDING_TABLES.has(table);
+  !GOVERNANCE_FILE_BINDING_TABLES.has(table) &&
+  !POST_INVOICE_EVIDENCE_FILE_BINDING_TABLES.has(table);
 
 const fieldsAtCoreMigration = (table: string, fields: string[]) =>
   fields

@@ -12,12 +12,12 @@ describe("business read-only page boundaries", () => {
 
     expect(contracts).toContain('v-if="canManageContracts"');
     expect(contracts).toContain(
-      '!["my_drafts", "returned_for_revision"].includes(activeTab.value)'
+      "activeTab !== 'my_drafts'"
     );
     expect(contracts).not.toContain("loadMyDrafts");
     expect(settlements).toContain('v-if="canManageSettlements"');
     expect(settlements).toContain(
-      '(canManageSettlements.value || !["my_drafts", "returned_for_revision"].includes(value))'
+      '!canManageSettlements.value && requested === "my_drafts"'
     );
     expect(settlements).not.toContain("loadSettlementDrafts");
   });

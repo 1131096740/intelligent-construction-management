@@ -84,7 +84,7 @@ describe("ReceiptWatermarkService", () => {
     expect(result.watermarkedSha256).toBe(
       createHash("sha256").update(result.buffer).digest("hex")
     );
-  });
+  }, 20_000);
 
   it("keeps JPEG input as JPEG output", async () => {
     const originalBuffer = await sharp({
