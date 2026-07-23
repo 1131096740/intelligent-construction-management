@@ -1,4 +1,6 @@
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const localRequire = createRequire(__filename);
 const {
@@ -24,6 +26,20 @@ const {
 };
 
 describe("spot procurement PostgreSQL concurrency runner cleanup", () => {
+  it("checks unified file-binding triggers by governed table instead of retired trigger names", () => {
+    const verifier = readFileSync(
+      join(process.cwd(), "prisma/verify-spot-procurement-concurrency.cjs"),
+      "utf8"
+    );
+
+    expect(verifier).toContain("jg_enforce_exclusive_file_business_binding");
+    expect(verifier).toContain("SpotProcurementPaymentExecution");
+    expect(verifier).toContain("SpotProcurementPaymentAttachment");
+    expect(verifier).toContain("SpotProcurementPaymentExecutionVoucher");
+    expect(verifier).toContain("SpotProcurementPaymentInvoice");
+    expect(verifier).not.toContain("jg_efb_spot_payment_attachment");
+  });
+
   it("removes the unique container name even when docker run has not settled", async () => {
     const containerName = "jiangkong-spot-concurrency-pending-run";
     const pendingDockerRun = new Promise<never>(() => undefined);

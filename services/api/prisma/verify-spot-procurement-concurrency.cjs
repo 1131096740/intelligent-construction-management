@@ -218,13 +218,17 @@ async function assertRealFormSchemaPrerequisites(prisma) {
     ),
     prisma.$queryRaw(
       Prisma.sql`
-        SELECT tgname
-        FROM pg_trigger
-        WHERE NOT tgisinternal
-          AND tgname IN (
-            'jg_efb_spot_payment_attachment',
-            'jg_efb_spot_payment_execution_voucher',
-            'jg_efb_spot_payment_invoice'
+        SELECT relation.relname AS table_name, pg_get_triggerdef(trigger.oid) AS definition
+        FROM pg_trigger trigger
+        JOIN pg_class relation ON relation.oid = trigger.tgrelid
+        JOIN pg_proc procedure ON procedure.oid = trigger.tgfoid
+        WHERE NOT trigger.tgisinternal
+          AND procedure.proname = 'jg_enforce_exclusive_file_business_binding'
+          AND relation.relname IN (
+            'SpotProcurementPaymentExecution',
+            'SpotProcurementPaymentAttachment',
+            'SpotProcurementPaymentExecutionVoucher',
+            'SpotProcurementPaymentInvoice'
           )
       `
     ),
@@ -278,8 +282,19 @@ async function assertRealFormSchemaPrerequisites(prisma) {
     "零星采购并发验收要求旧供应商、价格、金额和单凭证列均已改为兼容可空"
   );
   assert(
-    triggers.length === 3,
-    "零星采购并发验收缺少付款依据、实付凭证或付款发票独占文件触发器"
+    [
+      "SpotProcurementPaymentExecution",
+      "SpotProcurementPaymentAttachment",
+      "SpotProcurementPaymentExecutionVoucher",
+      "SpotProcurementPaymentInvoice"
+    ].every((tableName) =>
+      triggers.some(
+        (trigger) =>
+          String(trigger.table_name) === tableName &&
+          String(trigger.definition).includes("jg_enforce_exclusive_file_business_binding")
+      )
+    ),
+    "零星采购并发验收缺少统一注册表生成的付款实付、付款依据、执行凭证或付款发票文件绑定触发器"
   );
   const constraints = discrepancyConstraints
     .map((constraint) => String(constraint.definition))
