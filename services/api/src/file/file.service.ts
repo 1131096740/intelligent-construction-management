@@ -46,11 +46,15 @@ export interface ReadPrivateFileInput {
   expiresAt: string;
   token: string;
   downloadReason?: string;
+  accessMode?: FileTicketAccessMode;
 }
+
+export type FileTicketAccessMode = "download" | "preview";
 
 export interface CreateFileDownloadTicketInput {
   actorUserId: string;
   downloadReason?: string;
+  accessMode?: FileTicketAccessMode;
 }
 
 export interface LinkFileReplacementInput {
@@ -918,6 +922,7 @@ export class FileService {
       throw new Error("下载人信息缺失，请重新登录后再下载资料");
     }
     const downloadReason = normalizeDownloadReason(input.downloadReason);
+    const accessMode = input.accessMode ?? "download";
 
     return this.prisma.$transaction(async (tx) => {
       const file = await tx.fileObject.findUnique({
@@ -928,19 +933,30 @@ export class FileService {
         throw new Error("资料文件不存在或已被移除");
       }
 
+      if (accessMode === "preview" && file.mimeType !== "application/pdf") {
+        throw new BadRequestException("仅 PDF 文件支持在线预览，请下载原文件查看");
+      }
+
       await this.assertCanDownloadFileObject(tx, file, input.actorUserId);
 
       const expiresAtMs = Date.now() + 5 * 60 * 1000;
       const expiresAt = new Date(expiresAtMs).toISOString();
-      const token = this.signDownloadToken(file.id, input.actorUserId, expiresAt, downloadReason);
+      const token = this.signDownloadToken(
+        file.id,
+        input.actorUserId,
+        expiresAt,
+        downloadReason,
+        accessMode
+      );
       await this.audit.record(tx, {
         actorUserId: input.actorUserId,
-        action: "file.download.ticket",
+        action: accessMode === "preview" ? "file.preview.ticket" : "file.download.ticket",
         businessType: "file_object",
         businessId: file.id,
         metadata: {
           expiresAt,
-          downloadReason
+          downloadReason,
+          ...(accessMode === "preview" ? { accessMode } : {})
         }
       });
 
@@ -956,7 +972,7 @@ export class FileService {
           expiresAt
         )}&downloadReason=${encodeURIComponent(
           downloadReason
-        )}&token=${encodeURIComponent(token)}`
+        )}&accessMode=${accessMode}&token=${encodeURIComponent(token)}`
       };
     });
   }
@@ -970,16 +986,23 @@ export class FileService {
       throw new BadRequestException("下载链接已过期，请重新申请下载");
     }
     const downloadReason = normalizeDownloadReason(input.downloadReason);
+    const accessMode = input.accessMode ?? "download";
+    const validTicket = this.verifyDownloadToken(
+      fileId,
+      input.actorUserId,
+      input.expiresAt,
+      downloadReason,
+      accessMode,
+      input.token
+    );
 
-    if (
-      !this.verifyDownloadToken(
-        fileId,
-        input.actorUserId,
-        input.expiresAt,
-        downloadReason,
-        input.token
-      )
-    ) {
+    if (!validTicket && !(input.accessMode === undefined && this.verifyLegacyDownloadToken(
+      fileId,
+      input.actorUserId,
+      input.expiresAt,
+      downloadReason,
+      input.token
+    ))) {
       throw new BadRequestException("下载链接校验失败，请重新申请下载");
     }
 
@@ -993,6 +1016,9 @@ export class FileService {
       }
 
       await this.assertCanDownloadFileObject(tx, found, input.actorUserId);
+      if (accessMode === "preview" && found.mimeType !== "application/pdf") {
+        throw new BadRequestException("仅 PDF 文件支持在线预览，请下载原文件查看");
+      }
       return found;
     });
 
@@ -1000,20 +1026,22 @@ export class FileService {
     await this.prisma.$transaction((tx) =>
       this.audit.record(tx, {
         actorUserId: input.actorUserId,
-        action: "file.download",
+        action: accessMode === "preview" ? "file.preview" : "file.download",
         businessType: "file_object",
         businessId: file.id,
         metadata: {
           originalName: file.originalName,
           sizeBytes: file.sizeBytes,
-          downloadReason
+          downloadReason,
+          ...(accessMode === "preview" ? { accessMode } : {})
         }
       })
     );
 
     return {
       file,
-      buffer
+      buffer,
+      accessMode
     };
   }
 
@@ -2255,10 +2283,11 @@ export class FileService {
     fileId: string,
     actorUserId: string,
     expiresAt: string,
-    downloadReason: string
+    downloadReason: string,
+    accessMode: FileTicketAccessMode
   ) {
     return createHmac("sha256", this.downloadSecret())
-      .update(`${fileId}.${actorUserId}.${expiresAt}.${downloadReason}`)
+      .update(`${fileId}.${actorUserId}.${expiresAt}.${downloadReason}.${accessMode}`)
       .digest("base64url");
   }
 
@@ -2267,10 +2296,30 @@ export class FileService {
     actorUserId: string,
     expiresAt: string,
     downloadReason: string,
+    accessMode: FileTicketAccessMode,
     token: string
   ) {
     const expected = Buffer.from(
-      this.signDownloadToken(fileId, actorUserId, expiresAt, downloadReason)
+      this.signDownloadToken(fileId, actorUserId, expiresAt, downloadReason, accessMode)
+    );
+    const actual = Buffer.from(token);
+
+    return expected.length === actual.length && timingSafeEqual(expected, actual);
+  }
+
+  // 仅兼容改造发布前五分钟内已签发且 URL 未携带 accessMode 的下载票据；
+  // 新票据和所有预览票据都必须验证包含访问方式的新签名。
+  private verifyLegacyDownloadToken(
+    fileId: string,
+    actorUserId: string,
+    expiresAt: string,
+    downloadReason: string,
+    token: string
+  ) {
+    const expected = Buffer.from(
+      createHmac("sha256", this.downloadSecret())
+        .update(`${fileId}.${actorUserId}.${expiresAt}.${downloadReason}`)
+        .digest("base64url")
     );
     const actual = Buffer.from(token);
 

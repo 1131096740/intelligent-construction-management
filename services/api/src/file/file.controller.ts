@@ -83,7 +83,8 @@ export class FileController {
     await this.auth.confirmPassword(user.id, input.confirmationPassword);
     return this.files.createDownloadTicket(fileId, {
       actorUserId: user.id,
-      downloadReason: input.downloadReason
+      downloadReason: input.downloadReason,
+      ...(input.accessMode ? { accessMode: input.accessMode } : {})
     });
   }
 
@@ -95,6 +96,7 @@ export class FileController {
     @Query("actorUserId") actorUserId: string,
     @Query("expiresAt") expiresAt: string,
     @Query("downloadReason") downloadReason: string,
+    @Query("accessMode") accessMode: "download" | "preview" | undefined,
     @Query("token") token: string,
     @Res({ passthrough: true }) response: { set: (headers: Record<string, string>) => void }
   ) {
@@ -102,13 +104,14 @@ export class FileController {
       actorUserId,
       expiresAt,
       downloadReason,
+      accessMode,
       token
     });
 
     response.set({
       "Content-Type": result.file.mimeType,
       "Content-Length": String(result.buffer.length),
-      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(
+      "Content-Disposition": `${result.accessMode === "preview" ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(
         result.file.originalName
       )}`
     });

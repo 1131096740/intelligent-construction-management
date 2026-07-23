@@ -153,6 +153,18 @@ describe("FileController authorization wiring", () => {
     expect(result).toEqual(value);
   });
 
+  it("accepts the explicit PDF preview ticket mode and rejects unknown modes", async () => {
+    const preview = {
+      confirmationPassword: "current-password",
+      downloadReason: "合同正式文件复核",
+      accessMode: "preview"
+    };
+    await expect(createApiValidationPipe().transform(preview, downloadTicketBodyMetadata)).resolves.toEqual(preview);
+
+    const response = await getDownloadTicketValidationResponse({ ...preview, accessMode: "inline" });
+    expect(response.errors).toEqual(["文件访问方式不正确"]);
+  });
+
   it.each([
     { label: "ASCII", downloadReason: "a".repeat(200) },
     { label: "Chinese", downloadReason: "中".repeat(200) },
@@ -282,6 +294,71 @@ describe("FileController authorization wiring", () => {
       actorUserId: "user-1",
       downloadReason: "合同归档复核"
     });
+  });
+
+  it("forwards the explicit preview mode only after password confirmation", async () => {
+    const files = {
+      createDownloadTicket: jest.fn().mockResolvedValue({ downloadUrl: "/files/file-1/download" })
+    };
+    const auth = {
+      confirmPassword: jest.fn().mockResolvedValue({ ok: true })
+    };
+    const controller = new FileController(files as never, auth as never);
+
+    await controller.createDownloadTicket(
+      "file-1",
+      { id: "user-1", name: "张三", phone: "13800000000" },
+      {
+        confirmationPassword: "current-password",
+        downloadReason: "合同正式文件复核",
+        accessMode: "preview"
+      }
+    );
+
+    expect(auth.confirmPassword).toHaveBeenCalledWith("user-1", "current-password");
+    expect(files.createDownloadTicket).toHaveBeenCalledWith("file-1", {
+      actorUserId: "user-1",
+      downloadReason: "合同正式文件复核",
+      accessMode: "preview"
+    });
+  });
+
+  it("streams a verified PDF preview inline while leaving the ticket endpoint public", async () => {
+    const files = {
+      readPrivateFile: jest.fn().mockResolvedValue({
+        file: {
+          id: "file-1",
+          originalName: "双方签署合同.pdf",
+          mimeType: "application/pdf"
+        },
+        buffer: Buffer.from("%PDF-1.4"),
+        accessMode: "preview"
+      })
+    };
+    const response = { set: jest.fn() };
+    const controller = new FileController(files as never, { confirmPassword: jest.fn() } as never);
+
+    await controller.download(
+      "file-1",
+      "user-1",
+      "2026-07-23T08:05:00.000Z",
+      "合同正式文件复核",
+      "preview",
+      "signed-token",
+      response
+    );
+
+    expect(files.readPrivateFile).toHaveBeenCalledWith("file-1", {
+      actorUserId: "user-1",
+      expiresAt: "2026-07-23T08:05:00.000Z",
+      downloadReason: "合同正式文件复核",
+      accessMode: "preview",
+      token: "signed-token"
+    });
+    expect(response.set).toHaveBeenCalledWith(expect.objectContaining({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": expect.stringContaining("inline; filename*=UTF-8''")
+    }));
   });
 
   it("does not issue a private file download ticket without confirmation password", async () => {

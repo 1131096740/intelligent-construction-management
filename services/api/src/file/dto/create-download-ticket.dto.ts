@@ -1,3 +1,4 @@
+import { IsIn, IsOptional } from "class-validator";
 import {
   IsMaxUnicodeTextLength,
   IsRequiredText
@@ -18,4 +19,8 @@ export class CreateDownloadTicketDto {
   })
   @IsMaxUnicodeTextLength({ max: 200, message: "下载原因不能超过 200 个字" })
   downloadReason!: string;
+
+  @IsOptional()
+  @IsIn(["download", "preview"], { message: "文件访问方式不正确" })
+  accessMode?: "download" | "preview";
 }

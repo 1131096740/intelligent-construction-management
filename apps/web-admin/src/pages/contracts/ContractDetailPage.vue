@@ -530,6 +530,24 @@
               </t-button>
             </article>
           </div>
+          <JgDocumentPreview
+            v-model="selectedFormalFileId"
+            :documents="contractFormalPreviewDocuments"
+            :preview-url="formalPreviewUrlForSelectedDocument"
+            :previewing="archiveActionBusy === 'formalFilePreview'"
+            @preview="requestFormalFilePreview"
+          >
+            <template #actions="{ document }">
+              <t-button
+                v-if="document?.available"
+                variant="outline"
+                :loading="archiveActionBusy === 'formalFileDownload'"
+                @click="requestFormalFileDownload(document.id)"
+              >
+                下载当前版本
+              </t-button>
+            </template>
+          </JgDocumentPreview>
         </section>
 
         <section
@@ -1028,6 +1046,7 @@ import JgApprovalTimeline from "../../components/JgApprovalTimeline.vue";
 import JgAttachmentPanel from "../../components/JgAttachmentPanel.vue";
 import JgActionBar from "../../components/JgActionBar.vue";
 import JgDetailTabs from "../../components/JgDetailTabs.vue";
+import JgDocumentPreview from "../../components/JgDocumentPreview.vue";
 import JgPageHeader from "../../components/JgPageHeader.vue";
 import JgTaskCard from "../../components/JgTaskCard.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
@@ -1080,6 +1099,7 @@ type SensitiveActionKind =
   | "delegate"
   | "fileDownload"
   | "formalFileDownload"
+  | "formalFilePreview"
   | "governedSealApprove"
   | "governedSealComplete"
   | "finalUpload"
@@ -1106,6 +1126,9 @@ const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const contractDetail = ref<ContractDetailReadModel | null>(null);
+const selectedFormalFileId = ref("");
+const formalPreviewFileId = ref("");
+const formalPreviewUrl = ref("");
 const detailLoading = ref(false);
 const contractDetailError = ref("");
 const activeTab = ref("overview");
@@ -1394,6 +1417,43 @@ const contractFormalEvidenceView = computed(() => {
       meta: approvalFormAction?.disabledReason ?? "下载时校验权限并记录审计"
     }
   ] as const;
+});
+const contractFormalPreviewDocuments = computed(() => {
+  const approvalOriginal = activeApprovalOriginal.value;
+  const finalFile = activeMutuallySignedFinal.value;
+  return [
+    {
+      id: approvalOriginal?.fileId ?? "approval-original",
+      label: "审批前乙方签章版",
+      description: "内部审批使用的完整合同 PDF 原件",
+      fileName: approvalOriginal?.fileName ?? "",
+      statusLabel: approvalOriginal ? "已留存" : "尚未留存",
+      pageCount: approvalOriginal?.pageCount ?? null,
+      available: Boolean(approvalOriginal)
+    },
+    {
+      id: finalFile?.fileId ?? "mutually-signed-final",
+      label: "双方最终签署版",
+      description: "我方签署盖章完成后的最终合同 PDF",
+      fileName: finalFile?.fileName ?? "",
+      statusLabel: finalFile?.confirmedAt ? "已确认归档" : finalFile ? "待确认" : "尚未上传",
+      pageCount: finalFile?.pageCount ?? null,
+      available: Boolean(finalFile)
+    }
+  ] as const;
+});
+const formalPreviewUrlForSelectedDocument = computed(() =>
+  formalPreviewFileId.value === selectedFormalFileId.value ? formalPreviewUrl.value : ""
+);
+watch(contractFormalPreviewDocuments, (documents) => {
+  const selected = documents.find((document) => document.id === selectedFormalFileId.value);
+  if (!selected?.available) {
+    selectedFormalFileId.value = documents.find((document) => document.available)?.id ?? "";
+  }
+}, { immediate: true });
+watch(selectedFormalFileId, () => {
+  formalPreviewFileId.value = "";
+  formalPreviewUrl.value = "";
 });
 const loadErrorState = computed<"error" | "permission">(() =>
   /无权|无权限|403|不可见/.test(contractDetailError.value) ? "permission" : "error"
@@ -2017,6 +2077,28 @@ function requestFormalFileDownload(fileId: string) {
   });
 }
 
+function requestFormalFilePreview(document: { id: string; available: boolean }) {
+  if (!document.available) {
+    setActionError(new Error("当前正式文件尚未留存，不能预览"), "无法预览合同正式文件，请刷新后重试。");
+    return;
+  }
+  try {
+    requiredText(document.id, "合同正式文件");
+  } catch (error) {
+    setActionError(error, "无法预览合同正式文件，请刷新后重试。");
+    return;
+  }
+  openSensitiveAction("formalFilePreview", {
+    title: "确认预览合同正式文件？",
+    description: "系统将校验当前密码，签发五分钟在线预览链接，并记录文件、合同和预览原因。",
+    confirmText: "确认预览",
+    requireReason: true,
+    requirePassword: true,
+    reasonLabel: "预览原因",
+    targetFileId: document.id
+  });
+}
+
 async function executeSensitiveAction(values: { reason: string; password: string }) {
   sensitiveAction.error = "";
   let succeeded = false;
@@ -2147,6 +2229,18 @@ async function executeSensitiveAction(values: { reason: string; password: string
             downloadReason: values.reason
           });
           window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
+        });
+        break;
+      case "formalFilePreview":
+        succeeded = await runArchiveAction("formalFilePreview", async () => {
+          const fileId = requiredText(sensitiveAction.targetFileId, "合同正式文件");
+          const ticket = await createPrivateFileDownloadTicket(fileId, {
+            confirmationPassword: values.password,
+            downloadReason: values.reason,
+            accessMode: "preview"
+          });
+          formalPreviewFileId.value = fileId;
+          formalPreviewUrl.value = apiDownloadUrl(ticket.downloadUrl);
         });
         break;
       default:

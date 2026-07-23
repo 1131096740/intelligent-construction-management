@@ -140,6 +140,7 @@ test("captures the contract P1.2 ledger and detail states", async ({ page }) => 
 
   let ledgerMode: "normal" | "failure" | "empty" = "normal";
   let pendingLoadingRoute: Route | null = null;
+  const previewTicketBodies: unknown[] = [];
 
   await page.route("**/api/auth/login", (route) => route.fulfill({
     contentType: "application/json",
@@ -206,6 +207,25 @@ test("captures the contract P1.2 ledger and detail states", async ({ page }) => 
   await page.route("**/api/contracts/HT-UI-LOAD", (route) => {
     pendingLoadingRoute = route;
   });
+  await page.route("**/api/files/file-ui-final/download-ticket", async (route) => {
+    previewTicketBodies.push(route.request().postDataJSON());
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        fileId: "file-ui-final",
+        fileName: "科技园钢材采购合同-双方签署版.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 307200,
+        expiresAt: "2026-07-23T08:05:00.000Z",
+        downloadUrl: "/files/file-ui-final/download?accessMode=preview&token=preview-token"
+      })
+    });
+  });
+  await page.route("**/api/files/file-ui-final/download?*", (route) => route.fulfill({
+    contentType: "application/pdf",
+    headers: { "Content-Disposition": "inline; filename=contract.pdf" },
+    body: "%PDF-1.4\n% preview fixture\n"
+  }));
   await page.route("**/api/contracts/lifecycle-ledger?*", (route) => {
     if (ledgerMode === "failure") {
       return route.fulfill({
@@ -259,6 +279,24 @@ test("captures the contract P1.2 ledger and detail states", async ({ page }) => 
   await expect(page.locator(".overview-section").first()).not.toContainText("合同金额");
   await captureRequiredViewports(page, "contract-detail", "contract-detail-overview");
 
+  await page.locator(".detail-navigation").getByText("凭证资料", { exact: true }).click();
+  await expect(page.getByRole("heading", { name: "正式 PDF 预览" })).toBeVisible();
+  await page.getByText("双方最终签署版", { exact: true }).last().click();
+  await page.getByRole("button", { name: "预览当前版本" }).click();
+  await expect(page.getByText("确认预览合同正式文件？", { exact: true })).toBeVisible();
+  await page.getByPlaceholder("说明本次操作原因").fill("合同归档复核");
+  await page.getByPlaceholder("用于确认当前操作者身份").fill("UiP1@2026");
+  await page.getByRole("button", { name: "确认预览" }).click();
+  await expect(page.locator("iframe[title='双方最终签署版预览']")).toHaveAttribute(
+    "src",
+    /\/api\/files\/file-ui-final\/download\?accessMode=preview&token=preview-token/
+  );
+  expect(previewTicketBodies).toEqual([{
+    confirmationPassword: "UiP1@2026",
+    downloadReason: "合同归档复核",
+    accessMode: "preview"
+  }]);
+
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole("button", { name: "处理合同审批" }).click();
   await expect(page.getByText("当前办理动作")).toBeVisible();
@@ -273,8 +311,8 @@ test("captures the contract P1.2 ledger and detail states", async ({ page }) => 
   await page.goto("/contracts/HT-UI-ARCHIVE");
   await page.getByRole("button", { name: "上传合同归档件" }).click();
   await expect(page.getByRole("heading", { name: "签署与归档证据" })).toBeVisible();
-  await expect(page.getByText("审批前乙方签章版", { exact: true })).toBeVisible();
-  await expect(page.getByText("双方最终签署版", { exact: true })).toBeVisible();
+  await expect(page.locator(".formal-evidence-item strong").filter({ hasText: "审批前乙方签章版" })).toBeVisible();
+  await expect(page.locator(".formal-evidence-item strong").filter({ hasText: "双方最终签署版" })).toBeVisible();
   await expect(page.getByText("合同审批单", { exact: true })).toBeVisible();
   await expect(page.getByText("归档办理")).toBeVisible();
   await expect(page.locator(".action-group").filter({ hasText: "上传盖章合同" }).locator(".t-upload")).toBeVisible();
@@ -413,6 +451,32 @@ function contractDetail(input: {
         disabledReason: null
       }
     ],
+    formalFiles: input.id === "HT-UI-001" ? [
+      {
+        formalFileId: "formal-ui-approval",
+        purpose: "approval_original",
+        fileId: "file-ui-approval",
+        fileName: "科技园钢材采购合同-乙方签章版.pdf",
+        pageCount: 12,
+        sourceRevision: 1,
+        status: "active",
+        uploadedByUserId: "contract-staff-1",
+        confirmedByUserId: null,
+        confirmedAt: null
+      },
+      {
+        formalFileId: "formal-ui-final",
+        purpose: "mutually_signed_final",
+        fileId: "file-ui-final",
+        fileName: "科技园钢材采购合同-双方签署版.pdf",
+        pageCount: 12,
+        sourceRevision: 1,
+        status: "active",
+        uploadedByUserId: "contract-staff-1",
+        confirmedByUserId: "contract-director-1",
+        confirmedAt: "2026-07-14T08:00:00.000Z"
+      }
+    ] : [],
     approvalTimeline: [
       {
         id: "timeline-1",

@@ -4,7 +4,7 @@ import {
   InternalServerErrorException,
   Logger
 } from "@nestjs/common";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -5408,6 +5408,55 @@ describe("FileService", () => {
         originalName: "盖章合同.pdf",
         sizeBytes: 12,
         downloadReason: "资料下载复核"
+      }
+    });
+
+    const legacyExpiresAt = new Date(Date.now() + 60_000).toISOString();
+    const legacyToken = createHmac("sha256", "test-file-download-secret")
+      .update(`file-1.finance-1.${legacyExpiresAt}.资料下载复核`)
+      .digest("base64url");
+    audit.record.mockClear();
+
+    const legacyResult = await service.readPrivateFile("file-1", {
+      actorUserId: "finance-1",
+      expiresAt: legacyExpiresAt,
+      downloadReason: "资料下载复核",
+      token: legacyToken
+    });
+
+    expect(legacyResult.accessMode).toBe("download");
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "file.download"
+    }));
+
+    const previewTicket = await service.createDownloadTicket("file-1", {
+      actorUserId: "finance-1",
+      downloadReason: "合同正式文件复核",
+      accessMode: "preview"
+    });
+    const previewUrl = new URL(`http://local${previewTicket.downloadUrl}`);
+    expect(previewUrl.searchParams.get("accessMode")).toBe("preview");
+    audit.record.mockClear();
+
+    const previewResult = await service.readPrivateFile("file-1", {
+      actorUserId: previewUrl.searchParams.get("actorUserId") ?? "",
+      expiresAt: previewUrl.searchParams.get("expiresAt") ?? "",
+      downloadReason: previewUrl.searchParams.get("downloadReason") ?? "",
+      accessMode: "preview",
+      token: previewUrl.searchParams.get("token") ?? ""
+    });
+
+    expect(previewResult.accessMode).toBe("preview");
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "finance-1",
+      action: "file.preview",
+      businessType: "file_object",
+      businessId: "file-1",
+      metadata: {
+        originalName: "盖章合同.pdf",
+        sizeBytes: 12,
+        downloadReason: "合同正式文件复核",
+        accessMode: "preview"
       }
     });
   });

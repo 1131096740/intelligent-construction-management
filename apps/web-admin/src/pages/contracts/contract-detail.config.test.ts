@@ -50,6 +50,7 @@ describe("contract detail page configuration", () => {
     expect(source).toContain("<JgDetailTabs");
     expect(source).toContain("<JgApprovalTimeline");
     expect(source).toContain("<JgAttachmentPanel");
+    expect(source).toContain("<JgDocumentPreview");
     expect(source).toContain("<BusinessFeedback");
     expect(source).toContain("<SensitiveActionDialog");
     expect(source).toContain("<t-upload");
@@ -60,6 +61,8 @@ describe("contract detail page configuration", () => {
     expect(source).toContain("complete_seal");
     expect(source).toContain("return_final_contract");
     expect(source).toContain("confirm_final_contract");
+    expect(source).toContain("formalFilePreview");
+    expect(source).toContain('accessMode: "preview"');
   });
 
   it("organizes contract facts by task instead of an infinite card stack", () => {
