@@ -1,7 +1,11 @@
+const { readdirSync } = require("node:fs");
+const { join } = require("node:path");
 const { PrismaClient } = require("@prisma/client");
 
 const DATABASE_NAME = "jiangkong_draft_lifecycle_verify";
-const EXPECTED_MIGRATION_COUNT = 74;
+const EXPECTED_MIGRATION_COUNT = readdirSync(join(__dirname, "migrations"), {
+  withFileTypes: true
+}).filter((entry) => entry.isDirectory()).length;
 const LIFECYCLE_MIGRATIONS = [
   "20260719210000_contract_settlement_draft_lifecycle",
   "20260719211000_payment_spot_draft_lifecycle",

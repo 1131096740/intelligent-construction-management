@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 
@@ -57,8 +57,12 @@ describe("draft lifecycle live verification", () => {
     ).toThrow();
   });
 
-  it("固定全部 74 个迁移、M70-M73 与零星付款退回草稿约束，不把旧版本冒充已验证", () => {
-    expect(verification.EXPECTED_MIGRATION_COUNT).toBe(74);
+  it("按仓库迁移目录验证完整迁移集、M70-M73 与零星付款退回草稿约束", () => {
+    expect(verification.EXPECTED_MIGRATION_COUNT).toBe(
+      readdirSync(resolve(prismaRoot, "migrations"), { withFileTypes: true }).filter((entry) =>
+        entry.isDirectory()
+      ).length
+    );
     expect(verification.LIFECYCLE_MIGRATIONS).toEqual([
       "20260719210000_contract_settlement_draft_lifecycle",
       "20260719211000_payment_spot_draft_lifecycle",
