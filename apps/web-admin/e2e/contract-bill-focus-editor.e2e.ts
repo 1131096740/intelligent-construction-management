@@ -175,7 +175,9 @@ test.describe("合同清单全宽专注编辑", () => {
     await expect(page.locator(".focus-summary")).toContainText("候选行数 1");
     const statusMetrics = await mobileStatusMetrics(page);
     expect(statusMetrics.height).toBeLessThanOrEqual(96);
-    expect(statusMetrics.contentGap).toBeGreaterThanOrEqual(-0.5);
+    expect(Number.isFinite(statusMetrics.designGap)).toBe(true);
+    expect(statusMetrics.designGap).toBeGreaterThan(0);
+    expect(statusMetrics.contentGap).toBeGreaterThanOrEqual(statusMetrics.designGap - 0.5);
     expect(statusMetrics.contentGap).toBeLessThanOrEqual(statusMetrics.designGap + 0.5);
 
     const itemNameInput = page.locator(
