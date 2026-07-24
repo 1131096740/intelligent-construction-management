@@ -1,4 +1,5 @@
 import type { ContractClauseDefinition } from "@jiangkong/shared-domain";
+import { reactive, ref } from "vue";
 import { describe, expect, it } from "vitest";
 
 import type { PublishedStandardClause } from "../../../api/contract-workbench.api";
@@ -145,5 +146,173 @@ describe("contract clause standard source editing", () => {
       standardClauseVersionNo: source.versionNo,
       deviatedFromStandard: true
     });
+  });
+
+  it("copies Vue reactive standard sources and clauses without DataCloneError", () => {
+    const source = reactive(
+      published({
+        text: "响应式标准正文",
+        blocks: [{ type: "paragraph", text: "响应式标准正文" }],
+        documentMeta: { owner: "合同部" }
+      })
+    );
+    const clauseRef = ref(clause({ text: "", blocks: [] }));
+
+    const applied = applyPublishedStandardClause(clauseRef.value, source);
+    const reactiveClause = reactive(applied);
+    const edited = withClauseDeviation(reactiveClause, {
+      content: {
+        ...(reactiveClause.content as Record<string, unknown>),
+        text: "响应式修改正文",
+        blocks: [{ type: "paragraph", text: "响应式修改正文" }]
+      }
+    });
+
+    expect(edited.content).toMatchObject({
+      text: "响应式修改正文",
+      standardContent: {
+        text: "响应式标准正文",
+        documentMeta: { owner: "合同部" }
+      },
+      deviatedFromStandard: true
+    });
+  });
+
+  it.each([
+    {
+      name: "string",
+      content: "字符串正文",
+      expectedText: "字符串正文",
+      expectedBlocks: [{ type: "paragraph", text: "字符串正文" }]
+    },
+    {
+      name: "null",
+      content: null,
+      expectedText: "",
+      expectedBlocks: [{ type: "paragraph", text: "" }]
+    },
+    {
+      name: "undefined",
+      content: undefined,
+      expectedText: "",
+      expectedBlocks: [{ type: "paragraph", text: "" }]
+    },
+    {
+      name: "text-only document",
+      content: { text: "仅文本正文", documentMeta: { legacy: true } },
+      expectedText: "仅文本正文",
+      expectedBlocks: [{ type: "paragraph", text: "仅文本正文" }]
+    },
+    {
+      name: "text with empty blocks",
+      content: { text: "空块时保留正文", blocks: [] },
+      expectedText: "空块时保留正文",
+      expectedBlocks: [{ type: "paragraph", text: "空块时保留正文" }]
+    },
+    {
+      name: "blocks-only document",
+      content: {
+        blocks: [
+          { type: "paragraph", text: "第一段", italic: true },
+          { type: "list", items: ["第二项", "第三项"] },
+          { type: "table", rows: [["甲", "乙"], ["丙", "丁"]] }
+        ]
+      },
+      expectedText: "第一段\n第二项\n第三项\n甲 | 乙\n丙 | 丁",
+      expectedBlocks: [
+        { type: "paragraph", text: "第一段", italic: true },
+        { type: "list", items: ["第二项", "第三项"] },
+        { type: "table", rows: [["甲", "乙"], ["丙", "丁"]] }
+      ]
+    },
+    {
+      name: "empty and malformed blocks",
+      content: {
+        text: "畸形块回退正文",
+        blocks: [
+          null,
+          {},
+          { type: "paragraph" },
+          { type: "list", items: ["有效项", 1] },
+          { type: "table", rows: [["有效格", null]] }
+        ]
+      },
+      expectedText: "畸形块回退正文",
+      expectedBlocks: [{ type: "paragraph", text: "畸形块回退正文" }]
+    },
+    {
+      name: "valid empty block",
+      content: { blocks: [{ type: "paragraph", text: "" }] },
+      expectedText: "",
+      expectedBlocks: [{ type: "paragraph", text: "" }]
+    }
+  ])("normalizes $name without losing supported document structure", ({
+    content,
+    expectedText,
+    expectedBlocks
+  }) => {
+    const result = applyPublishedStandardClause(clause(), published(content));
+    const record = result.content as Record<string, unknown>;
+
+    expect(record["text"]).toBe(expectedText);
+    expect(record["blocks"]).toEqual(expectedBlocks);
+    expect(clauseDocumentText(normalizeClauseDocument(result.content))).toBe(expectedText);
+    expect(expectedText).not.toContain("paragraph");
+    expect(expectedText).not.toContain("list");
+    expect(expectedText).not.toContain("table");
+  });
+
+  it("removes old standard metadata before snapshotting and remains flat on repeat apply", () => {
+    const oldEnvelope = {
+      text: "标准正文",
+      blocks: [{ type: "paragraph", text: "标准正文" }],
+      documentMeta: { owner: "合同部" },
+      standardTitle: "旧标题",
+      standardContent: {
+        text: "旧正文",
+        blocks: [{ type: "paragraph", text: "旧正文" }],
+        standardContent: { text: "更旧正文" }
+      },
+      standardClauseSourceName: "旧来源",
+      standardClauseVersionNo: 1,
+      deviatedFromStandard: true
+    };
+
+    const first = applyPublishedStandardClause(clause(), published(oldEnvelope));
+    const repeated = applyPublishedStandardClause(
+      clause(),
+      published(first.content)
+    );
+    const meta = standardClauseMeta(repeated.content);
+
+    expect(meta.standardContent).toEqual({
+      text: "标准正文",
+      blocks: [{ type: "paragraph", text: "标准正文" }],
+      documentMeta: { owner: "合同部" }
+    });
+    expect(meta.standardContent).not.toHaveProperty("standardTitle");
+    expect(meta.standardContent).not.toHaveProperty("standardContent");
+    expect(repeated.content).toMatchObject({
+      standardTitle: "标准付款条款",
+      standardClauseSourceName: "公司付款条款",
+      standardClauseVersionNo: 2,
+      deviatedFromStandard: false
+    });
+  });
+
+  it.each([
+    {
+      name: "cyclic content",
+      content: (() => {
+        const value: Record<string, unknown> = { text: "循环" };
+        value["self"] = value;
+        return value;
+      })()
+    },
+    { name: "BigInt content", content: { text: "正文", unsupported: 1n } }
+  ])("rejects $name with a stable JSON contract error", ({ content }) => {
+    expect(() => applyPublishedStandardClause(clause(), published(content))).toThrowError(
+      new TypeError("条款内容必须是可序列化的 JSON 数据")
+    );
   });
 });
