@@ -6,7 +6,16 @@ import type {
   ContractTemplateSchema,
   ContractTaxMode
 } from "@jiangkong/shared-domain";
-import { computed, reactive, readonly, ref, type ComputedRef, type Ref } from "vue";
+import {
+  computed,
+  getCurrentScope,
+  onScopeDispose,
+  reactive,
+  readonly,
+  ref,
+  type ComputedRef,
+  type Ref
+} from "vue";
 import {
   createDraftCheckpoint,
   createWorkbenchDraft,
@@ -28,6 +37,7 @@ const REVISION_CONFLICT_PHRASE = "Contract draft revision conflict";
 const MAX_RETAINED_CHECKPOINTS = 5;
 
 const BACKUP_KEY_PREFIX = "contract-draft:";
+const AUTOSAVE_DELAY_MS = 1_000;
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -139,6 +149,10 @@ export interface UseContractDraft {
   isDirty: Readonly<Ref<boolean>>;
   /** Latest server revision known after a successful manual save. */
   savedRevision: Readonly<Ref<number>>;
+  /** Whether this draft has completed a formal server save and may autosave. */
+  formalSaveCompleted: Readonly<Ref<boolean>>;
+  /** Client time of the latest successful server save in this editing session. */
+  lastSavedAt: Readonly<Ref<Date | null>>;
   initializeDraft: InitializeDraftController;
   load: (contractId: string) => Promise<void>;
   /** Re-fetches the currently loaded workbench through the same guarded load path. */
@@ -393,6 +407,8 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   const saveState = ref<ContractDraftSaveState>("idle");
   const saveError = ref("");
   const conflict = ref<ContractDraftConflict | null>(null);
+  const formalSaveCompleted = ref(false);
+  const lastSavedAt = ref<Date | null>(null);
 
   // Loaded contract-version identity + revision drive every save's optimistic lock.
   const contractVersionId = ref<string | null>(null);
@@ -405,6 +421,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   let loadRequestId = 0;
   let editGeneration = 0;
   let activeSave: Promise<boolean> | null = null;
+  let disposed = false;
   // `dirty` stays true from the first edit until a save RESOLVES successfully.
   const dirtyRef = ref(false);
 
@@ -454,6 +471,23 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     }
   }
 
+  function scheduleSave(): void {
+    cancelScheduledSave();
+    if (
+      disposed ||
+      !formalSaveCompleted.value ||
+      pausedRef.value ||
+      !dirtyRef.value ||
+      conflict.value !== null
+    ) {
+      return;
+    }
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      void saveNow();
+    }, AUTOSAVE_DELAY_MS);
+  }
+
   function discardLocalState(): void {
     cancelScheduledSave();
     clearBackup();
@@ -464,6 +498,8 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     dirtyRef.value = false;
     pausedRef.value = false;
     conflict.value = null;
+    formalSaveCompleted.value = false;
+    lastSavedAt.value = null;
     saveState.value = "idle";
     saveError.value = "";
   }
@@ -477,15 +513,16 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
 
   function resumeAutosaveAfterLifecycleAction(): void {
     pausedRef.value = false;
-    if (dirtyRef.value) markDirty();
+    scheduleSave();
   }
 
   // -- Loading ----------------------------------------------------------------
 
   async function load(contractId: string): Promise<void> {
+    cancelScheduledSave();
     const requestId = ++loadRequestId;
     const result = (await fetchContractWorkbench(contractId)) as ContractWorkbenchReadModel;
-    if (requestId !== loadRequestId) return;
+    if (disposed || requestId !== loadRequestId) return;
     workbench.value = result;
     contractVersionId.value = result.version.id;
     currentRevision.value = result.version.draftRevision;
@@ -493,6 +530,8 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     conflict.value = null;
     pausedRef.value = false;
     dirtyRef.value = false;
+    formalSaveCompleted.value = Boolean(result.contract.code);
+    lastSavedAt.value = null;
     saveState.value = "idle";
     saveError.value = "";
 
@@ -511,16 +550,18 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   function markDirty(): void {
     editGeneration += 1;
     dirtyRef.value = true;
+    if (!activeSave && conflict.value === null) {
+      saveState.value = "idle";
+    }
     writeBackup();
-
-    cancelScheduledSave();
+    scheduleSave();
   }
 
   // -- Save -------------------------------------------------------------------
 
   async function performSave(): Promise<boolean> {
     const savingVersionId = contractVersionId.value;
-    if (!savingVersionId) {
+    if (disposed || !savingVersionId) {
       return false;
     }
     if (!dirtyRef.value) {
@@ -572,6 +613,8 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       if (nextRevision !== null) {
         currentRevision.value = nextRevision;
       }
+      formalSaveCompleted.value = true;
+      lastSavedAt.value = new Date();
       if (editGeneration === savingGeneration) {
         dirtyRef.value = false;
         clearBackup();
@@ -583,6 +626,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
         dirtyRef.value = true;
         writeBackup();
         saveState.value = "saving";
+        scheduleSave();
       }
       return true;
     } catch (error) {
@@ -602,7 +646,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   async function saveNow(): Promise<boolean> {
     cancelScheduledSave();
     while (dirtyRef.value || activeSave) {
-      if (pausedRef.value) return false;
+      if (disposed || pausedRef.value) return false;
       if (activeSave) {
         const saved = await activeSave;
         if (!saved) return false;
@@ -790,6 +834,16 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     commit: commitDraftCreation
   };
 
+  if (getCurrentScope()) {
+    onScopeDispose(() => {
+      disposed = true;
+      cancelScheduledSave();
+      loadRequestId += 1;
+      contractVersionId.value = null;
+      editGeneration += 1;
+    });
+  }
+
   return {
     model,
     workbench,
@@ -799,6 +853,8 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     dirty: readonly(dirtyRef),
     isDirty: readonly(dirtyRef),
     savedRevision: readonly(currentRevision),
+    formalSaveCompleted: readonly(formalSaveCompleted),
+    lastSavedAt: readonly(lastSavedAt),
     initializeDraft,
     load,
     reload: reloadWorkbench,
