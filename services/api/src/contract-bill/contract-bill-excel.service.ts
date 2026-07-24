@@ -5,7 +5,10 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { isContractBillCustomColumn } from "@jiangkong/shared-domain";
+import {
+  isContractBillCustomColumn,
+  normalizeContractBillBoolean
+} from "@jiangkong/shared-domain";
 import * as ExcelJS from "exceljs";
 import type { Cell, Row, Worksheet } from "exceljs";
 import { AuditService } from "../audit/audit.service";
@@ -529,7 +532,12 @@ export class ContractBillExcelService {
   private resolveRow(
     bill: BillContext,
     raw: Record<string, unknown>,
-    customColumns: Array<{ key: string; required: boolean }>,
+    customColumns: Array<{
+      key: string;
+      label: string;
+      type: string;
+      required: boolean;
+    }>,
     rowNumber: number,
     errors: PreviewError[],
     existing?: ExistingRow
@@ -552,13 +560,32 @@ export class ContractBillExcelService {
 
     const customData: Record<string, unknown> = {};
     for (const column of customColumns) {
-      const value = this.asString(raw[column.key]);
-      if (value) customData[column.key] = value;
-      if (column.required && !value) {
-        errors.push(
-          this.fieldError(rowNumber, column.key, `必填自定义字段未填写：${column.key}`)
-        );
+      const rawValue = raw[column.key];
+      const value = this.asString(rawValue);
+      if (!value) {
+        if (column.required) {
+          errors.push(
+            this.fieldError(rowNumber, column.key, `必填自定义字段未填写：${column.key}`)
+          );
+        }
+        continue;
       }
+      if (column.type === "boolean") {
+        const normalized = normalizeContractBillBoolean(rawValue);
+        if (normalized === null) {
+          errors.push(
+            this.fieldError(
+              rowNumber,
+              column.key,
+              `自定义字段“${column.label}”必须选择“是”或“否”`
+            )
+          );
+          continue;
+        }
+        customData[column.key] = normalized;
+        continue;
+      }
+      customData[column.key] = value;
     }
 
     let facts: ReturnType<typeof resolveContractBillRowFacts> | null = null;
@@ -982,13 +1009,19 @@ export class ContractBillExcelService {
         typeof column.key !== "string" ||
         !column.key.trim() ||
         (column.label !== undefined && typeof column.label !== "string") ||
+        (column.type !== undefined && typeof column.type !== "string") ||
         (column.required !== undefined && typeof column.required !== "boolean")
       ) {
         throw new BadRequestException(`合同清单第 ${index + 1} 个字段定义无效`);
       }
       const label =
         typeof column.label === "string" && column.label.trim() ? column.label.trim() : column.key;
-      return { key: column.key, label, required: column.required === true };
+      return {
+        key: column.key,
+        label,
+        type: typeof column.type === "string" ? column.type : "text",
+        required: column.required === true
+      };
     }).filter((column) => isContractBillCustomColumn(column.key));
   }
 

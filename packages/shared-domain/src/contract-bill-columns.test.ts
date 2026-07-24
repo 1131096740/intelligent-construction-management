@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   CONTRACT_BILL_NON_CUSTOM_COLUMN_KEYS,
-  isContractBillCustomColumn
+  isContractBillCustomColumn,
+  normalizeContractBillBoolean
 } from "./contract-bill-columns";
 
 describe("contract bill column classification", () => {
@@ -22,4 +23,28 @@ describe("contract bill column classification", () => {
     expect(isContractBillCustomColumn("fuelIncluded")).toBe(true);
     expect(isContractBillCustomColumn("remark")).toBe(true);
   });
+
+  it.each([
+    [true, "true"],
+    [false, "false"],
+    [" TRUE ", "true"],
+    [" false ", "false"],
+    ["是", "true"],
+    ["否", "false"],
+    ["1", "true"],
+    ["0", "false"],
+    [1, "true"],
+    [0, "false"],
+    ["YeS", "true"],
+    ["nO", "false"]
+  ])("normalizes the supported contract bill boolean value %p", (input, expected) => {
+    expect(normalizeContractBillBoolean(input)).toBe(expected);
+  });
+
+  it.each([undefined, null, "", " ", "y", "n", "有", 2, {}, []])(
+    "rejects unsupported contract bill boolean value %p",
+    (input) => {
+      expect(normalizeContractBillBoolean(input)).toBeNull();
+    }
+  );
 });

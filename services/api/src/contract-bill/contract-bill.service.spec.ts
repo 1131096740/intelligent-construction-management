@@ -542,7 +542,7 @@ describe("ContractBillService", () => {
     })).rejects.toThrow("必填自定义字段未填写：brand");
   });
 
-  it("normalizes schema boolean custom values and rejects invalid boolean values by column key", async () => {
+  it("normalizes every supported schema boolean value and rejects invalid values by column key", async () => {
     const schemaSnapshot = { columns: [
       { key: "fuelIncluded", label: "是否含燃油", type: "boolean", required: true },
       { key: "operatorIncluded", label: "是否带操作人员", type: "boolean", required: true }
@@ -551,9 +551,26 @@ describe("ContractBillService", () => {
 
     await valid.service.addRow("bill-1", "owner-1", {
       ...rowInput,
-      customData: { fuelIncluded: true, operatorIncluded: "false" }
+      customData: { fuelIncluded: " YES ", operatorIncluded: 0 }
     });
     expect(valid.tx.contractBillRow.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        customData: { fuelIncluded: "true", operatorIncluded: "false" }
+      })
+    });
+
+    const legacyCandidate = fixture({ schemaSnapshot });
+    await expect(legacyCandidate.service.replaceRows("bill-1", "owner-1", {
+      expectedBillRevision: 2,
+      idempotencyKey: "legacy-boolean-candidate",
+      rows: [batchRow("legacy-boolean", undefined, {
+        customData: { fuelIncluded: "1", operatorIncluded: "0" }
+      })]
+    })).resolves.toEqual(expect.objectContaining({
+      bill: expect.any(Object),
+      rows: expect.any(Array)
+    }));
+    expect(legacyCandidate.tx.contractBillRow.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         customData: { fuelIncluded: "true", operatorIncluded: "false" }
       })
@@ -564,7 +581,7 @@ describe("ContractBillService", () => {
       expectedBillRevision: 2,
       idempotencyKey: "invalid-boolean-custom-data",
       rows: [batchRow("invalid-fuel", undefined, {
-        customData: { fuelIncluded: "yes", operatorIncluded: "false" }
+        customData: { fuelIncluded: "enabled", operatorIncluded: "false" }
       })]
     })).rejects.toMatchObject({
       response: {

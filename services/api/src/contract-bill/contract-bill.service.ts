@@ -5,7 +5,10 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { isContractBillCustomColumn } from "@jiangkong/shared-domain";
+import {
+  isContractBillCustomColumn,
+  normalizeContractBillBoolean
+} from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { bumpContractRenderInputRevision } from "../contract-workbench/contract-render-input-revision";
 import { PrismaService } from "../database/prisma.service";
@@ -841,18 +844,14 @@ export class ContractBillService {
           delete customData[column.key];
           continue;
         }
-        if (
-          value !== true &&
-          value !== false &&
-          value !== "true" &&
-          value !== "false"
-        ) {
+        const normalized = normalizeContractBillBoolean(value);
+        if (normalized === null) {
           throw new ContractBillRowInputValidationException(
             column.key,
             `自定义字段“${column.label}”必须选择“是”或“否”`
           );
         }
-        customData[column.key] = value === true || value === "true" ? "true" : "false";
+        customData[column.key] = normalized;
       }
     }
     return {

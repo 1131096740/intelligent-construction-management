@@ -670,6 +670,98 @@ describe("ContractBillExcelService", () => {
     expect(rows).toEqual([]);
   });
 
+  it("normalizes supported Excel custom boolean values in replace candidates", async () => {
+    const { service, tx, bill, rows, fileService } = billFixture();
+    bill.schemaSnapshot = {
+      columns: [
+        {
+          key: "fuelIncluded",
+          label: "是否含燃油",
+          type: "boolean",
+          required: true
+        }
+      ]
+    };
+    const inputs = ["是", "否", " yes ", "NO"];
+    const buffer = await buildWorkbookBuffer({
+      fieldCodes: [...FIELD_CODES, "fuelIncluded"],
+      rows: inputs.map((fuelIncluded, index) => ({
+        values: {
+          itemName: `运输项目 ${index + 1}`,
+          unit: "项",
+          quantity: "1",
+          unitPrice: "100",
+          taxRatePercent: "",
+          fuelIncluded
+        }
+      }))
+    });
+    (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-boolean-candidates", originalName: "bill.xlsx" },
+      buffer
+    });
+
+    const preview = await service.previewImport("bill-1", "owner-1", {
+      fileId: "file-boolean-candidates",
+      mode: "replace"
+    });
+
+    expect(preview.errors).toEqual([]);
+    expect(preview.candidateRows.map((row) => row.customData)).toEqual([
+      { fuelIncluded: "true" },
+      { fuelIncluded: "false" },
+      { fuelIncluded: "true" },
+      { fuelIncluded: "false" }
+    ]);
+    expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.deleteMany).not.toHaveBeenCalled();
+    expect(rows).toEqual([]);
+  });
+
+  it("rejects an invalid Excel custom boolean value by its schema column key", async () => {
+    const { service, bill, fileService } = billFixture();
+    bill.schemaSnapshot = {
+      columns: [
+        {
+          key: "fuelIncluded",
+          label: "是否含燃油",
+          type: "boolean",
+          required: true
+        }
+      ]
+    };
+    const buffer = await buildWorkbookBuffer({
+      fieldCodes: [...FIELD_CODES, "fuelIncluded"],
+      rows: [{
+        values: {
+          itemName: "运输项目",
+          unit: "项",
+          quantity: "1",
+          unitPrice: "100",
+          taxRatePercent: "",
+          fuelIncluded: "有"
+        }
+      }]
+    });
+    (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-invalid-boolean", originalName: "bill.xlsx" },
+      buffer
+    });
+
+    const preview = await service.previewImport("bill-1", "owner-1", {
+      fileId: "file-invalid-boolean",
+      mode: "replace"
+    });
+
+    expect(preview.errors).toContainEqual(expect.objectContaining({
+      row: 3,
+      column: "fuelIncluded",
+      message: "自定义字段“是否含燃油”必须选择“是”或“否”"
+    }));
+    expect(preview.candidateRows).toEqual([]);
+  });
+
   it("returns multiple replace candidates in Excel order with unique client keys", async () => {
     const existing = {
       id: "row-existing",
