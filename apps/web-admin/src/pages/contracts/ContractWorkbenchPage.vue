@@ -2019,6 +2019,7 @@ function initializeDraftFromQuery() {
 .workbench-shell {
   display: grid;
   gap: 0;
+  min-width: 0;
 }
 
 .status-bar {
@@ -2027,6 +2028,7 @@ function initializeDraftFromQuery() {
   z-index: 5;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: var(--jg-space-lg);
   min-height: 56px;
@@ -2039,6 +2041,8 @@ function initializeDraftFromQuery() {
 .status-left {
   display: flex;
   align-items: baseline;
+  flex: 1 1 260px;
+  flex-wrap: wrap;
   gap: 12px;
   min-width: 0;
 }
@@ -2060,7 +2064,10 @@ function initializeDraftFromQuery() {
 .status-right {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 12px;
+  min-width: 0;
 }
 
 .autosave-status {
@@ -2150,6 +2157,9 @@ function initializeDraftFromQuery() {
 }
 
 .bill-focus-slot {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
   margin-top: var(--jg-space-lg);
   padding: var(--jg-space-lg);
   background: var(--jg-bg-panel);
@@ -2329,6 +2339,21 @@ function initializeDraftFromQuery() {
 }
 
 @container jg-page (max-width: 620px) {
+  .status-bar {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: var(--jg-space-md);
+  }
+
+  .status-left,
+  .status-right {
+    width: 100%;
+  }
+
+  .status-right {
+    justify-content: flex-start;
+  }
+
   .workbench-summary {
     grid-template-columns: 1fr;
   }

@@ -11,6 +11,13 @@ describe("contract workspace responsive governance", () => {
     expect(workbench).toContain("jg-responsive-workspace");
     expect(workbench).toContain('data-jg-scroll-owner="child"');
     expect(workbench).toContain("@container jg-page (max-width: 1080px)");
+    expect(workbench).toMatch(/\.workbench-shell\s*\{[^}]*min-width:\s*0;/su);
+    expect(workbench).toMatch(
+      /@container jg-page \(max-width: 620px\)[\s\S]*\.status-bar\s*\{[^}]*flex-direction:\s*column;/su
+    );
+    expect(workbench).toMatch(
+      /@container jg-page \(max-width: 620px\)[\s\S]*\.status-left,[\s\S]*\.status-right\s*\{[^}]*width:\s*100%;/su
+    );
     expect(workbench).not.toContain("@media (max-width: 1100px)");
   });
 
