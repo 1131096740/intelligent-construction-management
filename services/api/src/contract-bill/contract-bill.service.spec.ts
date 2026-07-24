@@ -665,6 +665,37 @@ describe("ContractBillService", () => {
     expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
   });
 
+  it("reports explicit batch fields without guessing from validation messages", async () => {
+    const { service, tx } = fixture();
+
+    await expect(service.replaceRows("bill-1", "owner-1", {
+      expectedBillRevision: 2,
+      idempotencyKey: "explicit-field-errors",
+      rows: [
+        batchRow("invalid-source", undefined, { taxRateSource: "unsupported" }),
+        batchRow("invalid-item-code", undefined, { itemCode: 100 }),
+        batchRow("invalid-provisional", undefined, { isProvisional: "yes" }),
+        { ...batchRow("invalid-row-key"), rowKey: "" },
+        batchRow("invalid-sort", undefined, { sortOrder: 1.5 })
+      ]
+    })).rejects.toMatchObject({
+      response: {
+        code: "CONTRACT_BILL_VALIDATION_FAILED",
+        rowErrors: expect.arrayContaining([
+          expect.objectContaining({ clientRowKey: "invalid-source", field: "taxRateSource" }),
+          expect.objectContaining({ clientRowKey: "invalid-item-code", field: "itemCode" }),
+          expect.objectContaining({ clientRowKey: "invalid-provisional", field: "isProvisional" }),
+          expect.objectContaining({ clientRowKey: "invalid-row-key", field: "rowKey" }),
+          expect.objectContaining({ clientRowKey: "invalid-sort", field: "sortOrder" })
+        ])
+      }
+    });
+    expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.update).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.deleteMany).not.toHaveBeenCalled();
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+  });
+
   it("rejects a revision mismatch before writing any row", async () => {
     const { service, tx } = fixture();
     tx.contractBill.updateMany.mockResolvedValueOnce({ count: 0 });

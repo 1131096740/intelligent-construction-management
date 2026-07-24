@@ -5,6 +5,15 @@ import { calculateBillRow } from "../money/decimal-money";
 const CANONICAL_DECIMAL = /^(0|[1-9]\d*)(\.\d+)?$/;
 const COMPANY_SCALE = 2;
 
+export class ContractBillRowFactsValidationException extends BadRequestException {
+  constructor(
+    readonly field: "quantity" | "unitPrice" | "taxRatePercent" | "row",
+    message: string
+  ) {
+    super(message);
+  }
+}
+
 export interface ContractBillRowPricingContext {
   pricingMode: string;
   pricingNature: string;
@@ -50,7 +59,10 @@ export function resolveContractBillRowFacts(
   existing?: ExistingContractBillRowFacts
 ): ResolvedContractBillRowFacts {
   if (context.pricingMode !== "tax_inclusive") {
-    throw new BadRequestException("历史不含税清单仅支持查看，不能新增或编辑行");
+    throw new ContractBillRowFactsValidationException(
+      "row",
+      "历史不含税清单仅支持查看，不能新增或编辑行"
+    );
   }
 
   const quantity = normalizeOptional(input.quantity);
@@ -85,13 +97,15 @@ export function resolveContractBillRowFacts(
   const unlimitedFramework =
     context.pricingNature === "framework" && context.amountLimitType === "unlimited";
   if (quantity === null && !unlimitedFramework) {
-    throw new BadRequestException("数量不能为空");
+    throw new ContractBillRowFactsValidationException("quantity", "数量不能为空");
   }
-  if (unitPrice === null) throw new BadRequestException("含税单价不能为空");
-  if (quantity !== null) assertDecimal(quantity, "数量", COMPANY_SCALE, 18);
-  assertDecimal(unitPrice, "含税单价", COMPANY_SCALE, 18);
+  if (unitPrice === null) {
+    throw new ContractBillRowFactsValidationException("unitPrice", "含税单价不能为空");
+  }
+  if (quantity !== null) assertDecimal(quantity, "数量", "quantity", COMPANY_SCALE, 18);
+  assertDecimal(unitPrice, "含税单价", "unitPrice", COMPANY_SCALE, 18);
   if (quantity !== null && new Prisma.Decimal(quantity).lte(0)) {
-    throw new BadRequestException("数量必须大于 0");
+    throw new ContractBillRowFactsValidationException("quantity", "数量必须大于 0");
   }
 
   const taxFacts = resolveTaxRate(input, context);
@@ -131,11 +145,16 @@ function resolveTaxRate(
   const submittedRate = normalizeOptional(input.taxRatePercent);
 
   if (context.taxMode === "single_rate") {
-    if (!versionRate) throw new BadRequestException("合同默认税率未明确");
+    if (!versionRate) {
+      throw new ContractBillRowFactsValidationException("row", "合同默认税率未明确");
+    }
     if (submittedRate !== null) {
       assertTaxRate(submittedRate);
       if (!new Prisma.Decimal(submittedRate).eq(versionRate)) {
-        throw new BadRequestException("单一税率合同的清单税率必须与合同默认税率一致");
+        throw new ContractBillRowFactsValidationException(
+          "taxRatePercent",
+          "单一税率合同的清单税率必须与合同默认税率一致"
+        );
       }
     }
     return {
@@ -145,22 +164,29 @@ function resolveTaxRate(
   }
 
   if (context.taxMode !== "multiple_rate") {
-    throw new BadRequestException("合同税率模式无效");
+    throw new ContractBillRowFactsValidationException("row", "合同税率模式无效");
   }
   const source = input.taxRateSource ?? "version_default";
   if (source === "row_override") {
-    if (submittedRate === null) throw new BadRequestException("例外税率不能为空");
+    if (submittedRate === null) {
+      throw new ContractBillRowFactsValidationException("taxRatePercent", "例外税率不能为空");
+    }
     assertTaxRate(submittedRate);
     return {
       taxRatePercent: submittedRate,
       taxRateSource: "row_override" as const
     };
   }
-  if (!versionRate) throw new BadRequestException("合同默认税率未明确");
+  if (!versionRate) {
+    throw new ContractBillRowFactsValidationException("row", "合同默认税率未明确");
+  }
   if (submittedRate !== null) {
     assertTaxRate(submittedRate);
     if (!new Prisma.Decimal(submittedRate).eq(versionRate)) {
-      throw new BadRequestException("使用合同默认税率时，清单税率必须与合同默认税率一致");
+      throw new ContractBillRowFactsValidationException(
+        "taxRatePercent",
+        "使用合同默认税率时，清单税率必须与合同默认税率一致"
+      );
     }
   }
   return {
@@ -176,27 +202,38 @@ function validTaxRate(value: string | null) {
 }
 
 function assertTaxRate(value: string) {
-  assertDecimal(value, "税率", 6, 3);
+  assertDecimal(value, "税率", "taxRatePercent", 6, 3);
   const decimal = new Prisma.Decimal(value);
-  if (decimal.lte(0)) throw new BadRequestException("税率必须大于 0");
-  if (decimal.gt(100)) throw new BadRequestException("税率不能超过 100");
+  if (decimal.lte(0)) {
+    throw new ContractBillRowFactsValidationException("taxRatePercent", "税率必须大于 0");
+  }
+  if (decimal.gt(100)) {
+    throw new ContractBillRowFactsValidationException("taxRatePercent", "税率不能超过 100");
+  }
 }
 
 function assertDecimal(
   value: string,
   field: string,
+  fieldKey: "quantity" | "unitPrice" | "taxRatePercent",
   scale: number,
   integerDigits: number
 ) {
   if (!CANONICAL_DECIMAL.test(value)) {
-    throw new BadRequestException(`${field}必须是规范的非负数字`);
+    throw new ContractBillRowFactsValidationException(fieldKey, `${field}必须是规范的非负数字`);
   }
   const [integer, fraction = ""] = value.split(".");
   if (integer.length > integerDigits) {
-    throw new BadRequestException(`${field}整数位数不能超过 ${integerDigits} 位`);
+    throw new ContractBillRowFactsValidationException(
+      fieldKey,
+      `${field}整数位数不能超过 ${integerDigits} 位`
+    );
   }
   if (fraction.length > scale) {
-    throw new BadRequestException(`${field}最多保留 ${scale} 位小数`);
+    throw new ContractBillRowFactsValidationException(
+      fieldKey,
+      `${field}最多保留 ${scale} 位小数`
+    );
   }
 }
 

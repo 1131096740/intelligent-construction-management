@@ -9,7 +9,10 @@ import { AuditService } from "../audit/audit.service";
 import { bumpContractRenderInputRevision } from "../contract-workbench/contract-render-input-revision";
 import { PrismaService } from "../database/prisma.service";
 import { moneyCentsToApi } from "../money/decimal-money";
-import { resolveContractBillRowFacts } from "./contract-bill-row-rules";
+import {
+  ContractBillRowFactsValidationException,
+  resolveContractBillRowFacts
+} from "./contract-bill-row-rules";
 import { recalculateBillAndContractAmount } from "./contract-bill-totals";
 import { loadOwnedEditableBill } from "./contract-bill-guards";
 import type {
@@ -23,6 +26,29 @@ type BatchRowError = {
   field: string;
   message: string;
 };
+
+type BatchRowField =
+  | "clientRowKey"
+  | "rowKey"
+  | "sortOrder"
+  | "itemCode"
+  | "itemName"
+  | "specification"
+  | "unit"
+  | "quantity"
+  | "unitPrice"
+  | "taxRatePercent"
+  | "taxRateSource"
+  | "isProvisional"
+  | "settlementBasis"
+  | "customData"
+  | "row";
+
+class ContractBillRowInputValidationException extends BadRequestException {
+  constructor(readonly field: BatchRowField, message: string) {
+    super(message);
+  }
+}
 
 type ParsedBatchRow = ReplaceBillRowDto & {
   facts: ReturnType<typeof resolveContractBillRowFacts>;
@@ -440,26 +466,27 @@ export class ContractBillService {
         if (!clientRowKey || clientKeys.has(clientRowKey)) {
           rowErrors.push({
             clientRowKey: clientRowKey || fallbackClientRowKey,
-            field: "row",
+            field: "clientRowKey",
             message: clientRowKey ? "客户端行标识重复" : "客户端行标识不能为空"
           });
           return;
         }
         clientKeys.add(clientRowKey);
         if (typeof row.sortOrder !== "number" || !Number.isInteger(row.sortOrder)) {
-          rowErrors.push({ clientRowKey, field: "row", message: "排序值必须是整数" });
+          rowErrors.push({ clientRowKey, field: "sortOrder", message: "排序值必须是整数" });
           return;
         }
         if (row.rowKey !== undefined && (typeof row.rowKey !== "string" || !row.rowKey.trim())) {
-          rowErrors.push({ clientRowKey, field: "row", message: "服务端行标识必须是非空文本" });
+          rowErrors.push({ clientRowKey, field: "rowKey", message: "服务端行标识必须是非空文本" });
           return;
         }
         const rowKey = typeof row.rowKey === "string" ? row.rowKey.trim() : undefined;
         if (rowKey && serverKeys.has(rowKey)) {
-          rowErrors.push({ clientRowKey, field: "row", message: "服务端行标识重复" });
+          rowErrors.push({ clientRowKey, field: "rowKey", message: "服务端行标识重复" });
           return;
         }
         if (rowKey) serverKeys.add(rowKey);
+        this.validateReplaceRowFields(row);
         rows.push({
           ...this.parseRowInput(
             { ...row, expectedBillRevision: input.expectedBillRevision },
@@ -490,25 +517,69 @@ export class ContractBillService {
   }
 
   private batchRowError(clientRowKey: string, error: unknown): BatchRowError {
+    if (error instanceof ContractBillRowInputValidationException) {
+      return { clientRowKey, field: error.field, message: error.message };
+    }
+    if (error instanceof ContractBillRowFactsValidationException) {
+      return { clientRowKey, field: error.field, message: error.message };
+    }
     const response = error instanceof BadRequestException ? error.getResponse() : undefined;
     const fallbackMessage = error instanceof Error ? error.message : "该行内容无法保存";
     const message = this.isPlainObject(response)
       ? String(response.message ?? fallbackMessage)
       : String(response ?? fallbackMessage);
-    const field = message.includes("数量")
-      ? "quantity"
-      : message.includes("单价")
-        ? "unitPrice"
-        : message.includes("税率")
-          ? "taxRatePercent"
-          : message.includes("项目名称")
-            ? "itemName"
-            : message.includes("单位")
-              ? "unit"
-              : message.includes("自定义字段")
-                ? "customData"
-                : "row";
-    return { clientRowKey, field, message };
+    return { clientRowKey, field: "row", message };
+  }
+
+  private validateReplaceRowFields(row: Record<string, unknown>) {
+    this.assertBatchRequiredText(row.itemName, "itemName", "项目名称");
+    this.assertBatchRequiredText(row.unit, "unit", "单位");
+    this.assertBatchOptionalText(row.itemCode, "itemCode", "项目编号");
+    this.assertBatchOptionalText(row.specification, "specification", "规格型号");
+    this.assertBatchOptionalText(row.settlementBasis, "settlementBasis", "结算依据");
+    if (row.quantity !== undefined && typeof row.quantity !== "string") {
+      throw new ContractBillRowInputValidationException("quantity", "数量必须是文本数字");
+    }
+    if (typeof row.unitPrice !== "string") {
+      throw new ContractBillRowInputValidationException("unitPrice", "含税单价不能为空");
+    }
+    if (row.taxRatePercent !== undefined && typeof row.taxRatePercent !== "string") {
+      throw new ContractBillRowInputValidationException("taxRatePercent", "税率必须是文本数字");
+    }
+    if (
+      row.taxRateSource !== undefined &&
+      row.taxRateSource !== "version_default" &&
+      row.taxRateSource !== "row_override"
+    ) {
+      throw new ContractBillRowInputValidationException("taxRateSource", "税率来源无效");
+    }
+    if (row.isProvisional !== undefined && typeof row.isProvisional !== "boolean") {
+      throw new ContractBillRowInputValidationException("isProvisional", "是否暂定必须为布尔值");
+    }
+    if (!this.isPlainObject(row.customData)) {
+      throw new ContractBillRowInputValidationException("customData", "自定义字段数据必须是普通对象");
+    }
+    try {
+      const serialized = JSON.stringify(row.customData);
+      if (serialized === undefined) throw new Error("not JSON");
+    } catch {
+      throw new ContractBillRowInputValidationException(
+        "customData",
+        "自定义字段数据包含无法保存的内容"
+      );
+    }
+  }
+
+  private assertBatchRequiredText(value: unknown, field: BatchRowField, label: string) {
+    if (typeof value !== "string" || !value.trim()) {
+      throw new ContractBillRowInputValidationException(field, `${label}不能为空`);
+    }
+  }
+
+  private assertBatchOptionalText(value: unknown, field: BatchRowField, label: string) {
+    if (value !== undefined && typeof value !== "string") {
+      throw new ContractBillRowInputValidationException(field, `${label}必须是文本`);
+    }
   }
 
   private batchRowData(row: ParsedBatchRow) {
