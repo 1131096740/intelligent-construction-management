@@ -301,26 +301,36 @@ function updateClauseBlocks(key: string, blocks: ClauseBlock[]) {
   replaceClause(withClauseDeviation(clause, { content }));
 }
 
-function updateBlock(key: string, index: number, block: ClauseBlock) {
+function updateBlock(
+  key: string,
+  index: number,
+  transform: (block: ClauseBlock) => ClauseBlock | null
+) {
   const clause = props.model.clauses.find((item) => item.key === key);
   if (!clause) return;
   const blocks = clauseDocument(clause.content).blocks;
-  blocks[index] = block;
-  updateClauseBlocks(key, blocks);
+  const currentBlock = blocks[index];
+  if (!currentBlock) return;
+  const nextBlock = transform(currentBlock);
+  if (!nextBlock) return;
+  updateClauseBlocks(
+    key,
+    blocks.map((block, blockIndex) => blockIndex === index ? nextBlock : block)
+  );
 }
 
 function updateParagraphText(key: string, index: number, value: string) {
-  const clause = props.model.clauses.find((item) => item.key === key);
-  const block = clause ? clauseDocument(clause.content).blocks[index] : null;
-  if (!block || block.type !== "paragraph") return;
-  updateBlock(key, index, { ...block, text: value });
+  updateBlock(key, index, (block) =>
+    block.type === "paragraph" ? { ...block, text: value } : null
+  );
 }
 
 function updateListItems(key: string, index: number, value: string) {
-  const clause = props.model.clauses.find((item) => item.key === key);
-  const block = clause ? clauseDocument(clause.content).blocks[index] : null;
-  if (!block || block.type !== "list") return;
-  updateBlock(key, index, { type: "list", items: value.split("\n") });
+  updateBlock(key, index, (block) =>
+    block.type === "list"
+      ? { type: "list", items: value.split("\n") }
+      : null
+  );
 }
 
 function addBlock(key: string, type: ClauseBlock["type"]) {
@@ -350,13 +360,12 @@ function updateParagraphMark(
   mark: "bold" | "italic",
   event: Event
 ) {
-  const clause = props.model.clauses.find((item) => item.key === key);
-  const block = clause ? clauseDocument(clause.content).blocks[index] : null;
-  if (!block || block.type !== "paragraph") return;
-  updateBlock(key, index, {
-    ...block,
-    [mark]: (event.target as HTMLInputElement).checked
-  });
+  const checked = (event.target as HTMLInputElement).checked;
+  updateBlock(key, index, (block) =>
+    block.type === "paragraph"
+      ? { ...block, [mark]: checked }
+      : null
+  );
 }
 
 function updateTableCell(
@@ -366,12 +375,20 @@ function updateTableCell(
   cellIndex: number,
   value: string
 ) {
-  const clause = props.model.clauses.find((item) => item.key === key);
-  const block = clause ? clauseDocument(clause.content).blocks[index] : null;
-  if (!block || block.type !== "table") return;
-  const rows = block.rows.map((row) => [...row]);
-  rows[rowIndex][cellIndex] = value;
-  updateBlock(key, index, { type: "table", rows });
+  updateBlock(key, index, (block) =>
+    block.type === "table"
+      ? {
+          type: "table",
+          rows: block.rows.map((row, currentRowIndex) =>
+            currentRowIndex === rowIndex
+              ? row.map((cell, currentCellIndex) =>
+                  currentCellIndex === cellIndex ? value : cell
+                )
+              : row
+          )
+        }
+      : null
+  );
 }
 
 async function loadStandardClauses() {

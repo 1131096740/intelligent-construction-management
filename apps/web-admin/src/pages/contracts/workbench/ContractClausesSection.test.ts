@@ -11,6 +11,7 @@ import {
 import { renderToString } from "vue/server-renderer";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import * as contractBillEditor from "./contract-bill-editor";
 import ContractClausesSection from "./ContractClausesSection.vue";
 import type { ContractDraftModel } from "./use-contract-draft";
 
@@ -97,6 +98,20 @@ describe("ContractClausesSection controlled inputs", () => {
       deviatedFromStandard: true
     });
     expect(harness.dirtyCount.value).toBe(3);
+  });
+
+  it("normalizes the current clause document only once for each block text input", async () => {
+    const normalizeDocument = vi.spyOn(
+      contractBillEditor,
+      "normalizeClauseDocument"
+    );
+    const harness = clauseHarness();
+    await harness.render();
+    normalizeDocument.mockClear();
+
+    control(harness, "textarea", 0).update("单次规范化");
+
+    expect(normalizeDocument).toHaveBeenCalledTimes(1);
   });
 
   it("updates numbering from the select change event and keeps controlled fields disabled", async () => {
