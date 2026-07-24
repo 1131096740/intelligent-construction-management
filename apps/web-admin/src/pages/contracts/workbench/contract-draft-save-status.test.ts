@@ -3,6 +3,7 @@ import {
   contractDraftManualSaveMessage,
   contractDraftSaveReceiptText,
   contractDraftSaveStatusText,
+  createContractDraftManualSaveFeedback,
   shouldReloadContractAfterManualSave
 } from "./contract-draft-save-status";
 
@@ -147,5 +148,49 @@ describe("contract draft save status", () => {
         lastSavedAt: savedAt
       })
     ).toBe("");
+  });
+
+  it("clears a successful message when the same page instance switches contracts", () => {
+    let message = "";
+    const feedback = createContractDraftManualSaveFeedback({
+      setMessage: (next) => {
+        message = next;
+      }
+    });
+
+    feedback.show("合同 A 已保存");
+    expect(message).toBe("合同 A 已保存");
+
+    // The component remains mounted; the contractId watcher resets feedback.
+    feedback.clear();
+    expect(message).toBe("");
+  });
+
+  it("clears on a version switch and ignores an old timer after a new message", () => {
+    let message = "";
+    const scheduled: Array<() => void> = [];
+    const feedback = createContractDraftManualSaveFeedback({
+      setMessage: (next) => {
+        message = next;
+      },
+      schedule: (callback) => {
+        scheduled.push(callback);
+        return scheduled.length as unknown as ReturnType<typeof setTimeout>;
+      },
+      // Deliberately leave the callback runnable to exercise the generation
+      // guard in addition to the browser's normal clearTimeout behavior.
+      cancel: () => {}
+    });
+
+    feedback.show("旧版本已保存");
+    feedback.clear();
+    expect(message).toBe("");
+
+    feedback.show("新版本已保存");
+    scheduled[0]?.();
+    expect(message).toBe("新版本已保存");
+
+    scheduled[1]?.();
+    expect(message).toBe("");
   });
 });

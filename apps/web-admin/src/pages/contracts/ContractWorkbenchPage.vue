@@ -845,6 +845,7 @@ import {
   contractDraftManualSaveMessage,
   contractDraftSaveReceiptText,
   contractDraftSaveStatusText,
+  createContractDraftManualSaveFeedback,
   shouldReloadContractAfterManualSave
 } from "./workbench/contract-draft-save-status";
 import type { ContractDocumentCanvasRecord } from "./workbench/contract-document-canvas";
@@ -1251,23 +1252,18 @@ const saveReceiptText = computed(() => {
   });
 });
 
-let manualSaveMessageTimer: ReturnType<typeof setTimeout> | null = null;
+const manualSaveFeedback = createContractDraftManualSaveFeedback({
+  setMessage: (message) => {
+    manualSaveMessage.value = message;
+  }
+});
 
 function clearManualSaveMessage() {
-  if (manualSaveMessageTimer !== null) {
-    clearTimeout(manualSaveMessageTimer);
-    manualSaveMessageTimer = null;
-  }
-  manualSaveMessage.value = "";
+  manualSaveFeedback.clear();
 }
 
 function showManualSaveMessage(message: string) {
-  clearManualSaveMessage();
-  manualSaveMessage.value = message;
-  manualSaveMessageTimer = setTimeout(() => {
-    manualSaveMessageTimer = null;
-    manualSaveMessage.value = "";
-  }, 4_000);
+  manualSaveFeedback.show(message);
 }
 
 function clearSessionSaveReceipt() {
@@ -1948,6 +1944,7 @@ onMounted(() => {
 // Loading a different contract (or arriving from the create flow) reloads.
 watch(contractId, (next, previous) => {
   if (next && next !== previous) {
+    clearManualSaveMessage();
     clearSessionSaveReceipt();
     focusedBillKey.value = "";
     billEditorDirty.value = false;
@@ -1960,6 +1957,7 @@ watch(contractId, (next, previous) => {
 
 watch(() => route.query.versionId, (next, previous) => {
   if (contractId.value && next !== previous) {
+    clearManualSaveMessage();
     clearSessionSaveReceipt();
     workbenchLoadRequestId += 1;
     workbench.value = null;

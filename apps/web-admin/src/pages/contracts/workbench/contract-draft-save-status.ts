@@ -39,6 +39,47 @@ export function contractDraftSaveReceiptText(input: {
   })}`;
 }
 
+type ManualSaveFeedbackTimer = ReturnType<typeof setTimeout>;
+
+export function createContractDraftManualSaveFeedback(input: {
+  setMessage: (message: string) => void;
+  schedule?: (callback: () => void, delayMs: number) => ManualSaveFeedbackTimer;
+  cancel?: (timer: ManualSaveFeedbackTimer) => void;
+  clearAfterMs?: number;
+}) {
+  const schedule =
+    input.schedule ??
+    ((callback: () => void, delayMs: number) => setTimeout(callback, delayMs));
+  const cancel =
+    input.cancel ??
+    ((timer: ManualSaveFeedbackTimer) => clearTimeout(timer));
+  const clearAfterMs = input.clearAfterMs ?? 4_000;
+  let timer: ManualSaveFeedbackTimer | null = null;
+  let generation = 0;
+
+  function clear() {
+    generation += 1;
+    if (timer !== null) {
+      cancel(timer);
+      timer = null;
+    }
+    input.setMessage("");
+  }
+
+  function show(message: string) {
+    clear();
+    input.setMessage(message);
+    const messageGeneration = generation;
+    timer = schedule(() => {
+      if (messageGeneration !== generation) return;
+      timer = null;
+      input.setMessage("");
+    }, clearAfterMs);
+  }
+
+  return { clear, show };
+}
+
 export function shouldReloadContractAfterManualSave(input: {
   wasFormalSaveCompleted: boolean;
   formalSaveCompleted: boolean;
