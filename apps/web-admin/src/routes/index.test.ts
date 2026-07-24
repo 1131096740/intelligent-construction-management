@@ -88,7 +88,8 @@ describe("web admin routes", () => {
           fullPath: "/%E7%BB%84%E7%BB%87%E6%9D%83%E9%99%90?tab=roles#members",
           query: { tab: "roles" },
           hash: "#members",
-          meta: {}
+          meta: {},
+          matched: []
         },
         START_LOCATION,
         { isAuthenticated: false, roleKeys: [] }
@@ -101,7 +102,7 @@ describe("web admin routes", () => {
     });
   });
 
-  it("does not treat an unmatched SPA route as the initial navigation", () => {
+  it("normalizes an encoded unmatched target during in-app history navigation", () => {
     expect(
       resolveRouteNavigation(
         {
@@ -109,20 +110,21 @@ describe("web admin routes", () => {
           fullPath: "/%E7%BB%84%E7%BB%87%E6%9D%83%E9%99%90?tab=roles#members",
           query: { tab: "roles" },
           hash: "#members",
-          meta: {}
+          meta: {},
+          matched: []
         },
-        { matched: [] },
+        { matched: [{}] },
         { isAuthenticated: false, roleKeys: [] }
       )
     ).toEqual({
-      path: "/login",
-      query: {
-        redirect: "/%E7%BB%84%E7%BB%87%E6%9D%83%E9%99%90?tab=roles#members"
-      }
+      path: "/组织权限",
+      query: { tab: "roles" },
+      hash: "#members",
+      replace: true
     });
   });
 
-  it("keeps encoded in-app history navigation and still applies access checks", () => {
+  it("keeps an already matched target and still applies access checks", () => {
     expect(
       resolveRouteNavigation(
         {
@@ -130,7 +132,8 @@ describe("web admin routes", () => {
           fullPath: "/%E7%BB%84%E7%BB%87%E6%9D%83%E9%99%90?tab=roles#members",
           query: { tab: "roles" },
           hash: "#members",
-          meta: {}
+          meta: {},
+          matched: [{}]
         },
         { matched: [{}] },
         { isAuthenticated: false, roleKeys: [] }
@@ -141,6 +144,42 @@ describe("web admin routes", () => {
         redirect: "/%E7%BB%84%E7%BB%87%E6%9D%83%E9%99%90?tab=roles#members"
       }
     });
+  });
+
+  it("leaves canonical and malformed unmatched targets to access checks", () => {
+    const auth = {
+      isAuthenticated: true,
+      roleKeys: [] as const
+    };
+
+    expect(
+      resolveRouteNavigation(
+        {
+          path: "/组织权限",
+          fullPath: "/组织权限",
+          query: {},
+          hash: "",
+          meta: {},
+          matched: []
+        },
+        { matched: [{}] },
+        auth
+      )
+    ).toBe(true);
+    expect(
+      resolveRouteNavigation(
+        {
+          path: "/组织权限%ZZ",
+          fullPath: "/组织权限%ZZ",
+          query: {},
+          hash: "",
+          meta: {},
+          matched: []
+        },
+        { matched: [{}] },
+        auth
+      )
+    ).toBe(true);
   });
 
   it("restores browser history position before considering hash", () => {

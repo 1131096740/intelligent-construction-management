@@ -1,5 +1,4 @@
 import {
-  START_LOCATION,
   createMemoryHistory,
   createRouter,
   createWebHistory
@@ -220,7 +219,9 @@ interface EncodedRouteTarget {
   hash: string;
 }
 
-interface RouteNavigationTarget extends RouteAccessTarget, EncodedRouteTarget {}
+interface RouteNavigationTarget extends RouteAccessTarget, EncodedRouteTarget {
+  matched: readonly unknown[];
+}
 
 interface RouteNavigationSource {
   matched: readonly unknown[];
@@ -274,10 +275,10 @@ export function resolveRouteAccess(to: RouteAccessTarget, auth: RouteAccessAuth)
 
 export function resolveRouteNavigation(
   to: RouteNavigationTarget,
-  from: RouteNavigationSource,
+  _from: RouteNavigationSource,
   auth: RouteAccessAuth
 ) {
-  if (from === START_LOCATION) {
+  if (to.matched.length === 0) {
     const encodedRouteRedirect = buildEncodedRouteRedirect(to);
     if (encodedRouteRedirect) {
       return encodedRouteRedirect;
