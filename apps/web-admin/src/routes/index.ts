@@ -1,11 +1,30 @@
 import { createMemoryHistory, createRouter, createWebHistory } from "vue-router";
+import type { RouterScrollBehavior } from "vue-router";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { useAuthStore } from "../auth/auth.store";
 import { hasAnyRole, webAdminRoutes } from "./route-records";
 
+type SavedScrollPosition = Parameters<RouterScrollBehavior>[2];
+
+export function resolveRouteScrollPosition(
+  to: { hash?: string },
+  savedPosition: SavedScrollPosition
+) {
+  if (savedPosition) {
+    return savedPosition;
+  }
+  if (to.hash) {
+    return { el: to.hash };
+  }
+  return { left: 0, top: 0 };
+}
+
 export const router = createRouter({
   history: typeof window === "undefined" ? createMemoryHistory() : createWebHistory(),
-  routes: webAdminRoutes
+  routes: webAdminRoutes,
+  scrollBehavior(to, _from, savedPosition) {
+    return resolveRouteScrollPosition(to, savedPosition);
+  }
 });
 
 interface RouteAccessTarget {
@@ -85,8 +104,8 @@ export function buildRouteDocumentTitle(to: { path?: string; meta: { title?: unk
   return `${title} - 建工智管`;
 }
 
-export function focusMainContent(documentRef: Pick<Document, "getElementById">) {
-  documentRef.getElementById("main-content")?.focus();
+export function focusMainContent(documentRef: Pick<Document, "querySelector">) {
+  documentRef.querySelector<HTMLElement>("#main-content")?.focus({ preventScroll: true });
 }
 
 router.beforeEach((to) => {

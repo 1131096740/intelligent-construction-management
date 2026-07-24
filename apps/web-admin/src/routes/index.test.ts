@@ -3,7 +3,8 @@ import {
   buildEncodedRouteRedirect,
   buildRouteDocumentTitle,
   focusMainContent,
-  resolveRouteAccess
+  resolveRouteAccess,
+  resolveRouteScrollPosition
 } from "./index";
 import {
   adminNavigationItems,
@@ -76,16 +77,48 @@ describe("web admin routes", () => {
     expect(buildEncodedRouteRedirect({ path: "/组织权限%ZZ", query: {}, hash: "" })).toBeNull();
   });
 
+  it("restores browser history position before considering hash", () => {
+    expect(
+      resolveRouteScrollPosition(
+        { hash: "#files%20archive" },
+        { left: 0, top: 640 }
+      )
+    ).toEqual({ left: 0, top: 640 });
+  });
+
+  it("uses the route hash unchanged when no saved position exists", () => {
+    expect(
+      resolveRouteScrollPosition(
+        { hash: "#files%20archive" },
+        null
+      )
+    ).toEqual({ el: "#files%20archive" });
+  });
+
+  it("returns to the top for a route without a hash", () => {
+    expect(resolveRouteScrollPosition({ hash: "" }, null)).toEqual({ left: 0, top: 0 });
+    expect(resolveRouteScrollPosition({}, null)).toEqual({ left: 0, top: 0 });
+  });
+
   it("focuses the main content landmark after route changes", () => {
     const focus = vi.fn();
     const documentRef = {
-      getElementById: vi.fn(() => ({ focus }))
+      querySelector: vi.fn(() => ({ focus }))
     };
 
     focusMainContent(documentRef as never);
 
-    expect(documentRef.getElementById).toHaveBeenCalledWith("main-content");
-    expect(focus).toHaveBeenCalled();
+    expect(documentRef.querySelector).toHaveBeenCalledWith("#main-content");
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+  });
+
+  it("does not throw when the main content landmark is missing", () => {
+    const documentRef = {
+      querySelector: vi.fn(() => null)
+    };
+
+    expect(() => focusMainContent(documentRef as never)).not.toThrow();
+    expect(documentRef.querySelector).toHaveBeenCalledWith("#main-content");
   });
 
   it("redirects the root path to the contract ledger", () => {
