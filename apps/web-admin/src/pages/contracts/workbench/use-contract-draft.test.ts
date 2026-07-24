@@ -574,6 +574,149 @@ describe("useContractDraft", () => {
     )).toBe(true);
   });
 
+  it("saves edits made during a cross-version read before applying the new version", async () => {
+    const draft = makeDraft();
+    const firstSave = deferred<{ id: string; draftRevision: number }>();
+    const firstVersionRead = deferred<ContractWorkbenchReadModel>();
+    const editDuringReadSave = deferred<{ id: string; draftRevision: number }>();
+    const stableVersionRead = deferred<ContractWorkbenchReadModel>();
+    mockFetchWorkbench
+      .mockResolvedValueOnce(makeFormallySavedWorkbench())
+      .mockReturnValueOnce(firstVersionRead.promise)
+      .mockReturnValueOnce(stableVersionRead.promise);
+    mockSaveDraft
+      .mockReturnValueOnce(firstSave.promise)
+      .mockReturnValueOnce(editDuringReadSave.promise);
+    await draft.load("ct-1");
+
+    draft.model.contractName = "首次保存输入";
+    draft.markDirty();
+    const save = draft.saveNow();
+    const loadNextVersion = draft.load("ct-1");
+    expect(mockFetchWorkbench).toHaveBeenCalledTimes(1);
+
+    firstSave.resolve({ id: "cv-1", draftRevision: 4 });
+    await expect(save).resolves.toBe(true);
+    await vi.waitFor(() => {
+      expect(mockFetchWorkbench).toHaveBeenCalledTimes(2);
+    });
+
+    draft.model.contractName = "权威读取期间的新输入";
+    draft.markDirty();
+    expect(globalThis.localStorage.getItem("contract-draft:cv-1"))
+      .toContain("权威读取期间的新输入");
+    firstVersionRead.resolve(makeFormallySavedWorkbench({
+      version: {
+        ...makeWorkbench().version,
+        id: "cv-2",
+        versionNo: 2,
+        draftRevision: 1,
+        draftData: { contractName: "第一次读取的第二版" }
+      }
+    }));
+
+    await vi.waitFor(() => {
+      expect(mockSaveDraft).toHaveBeenCalledTimes(2);
+    });
+    expect(mockSaveDraft).toHaveBeenLastCalledWith(
+      "cv-1",
+      expect.objectContaining({
+        expectedRevision: 4,
+        draftData: expect.objectContaining({
+          contractName: "权威读取期间的新输入"
+        })
+      })
+    );
+
+    editDuringReadSave.resolve({ id: "cv-1", draftRevision: 5 });
+    await vi.waitFor(() => {
+      expect(mockFetchWorkbench).toHaveBeenCalledTimes(3);
+    });
+    stableVersionRead.resolve(makeFormallySavedWorkbench({
+      version: {
+        ...makeWorkbench().version,
+        id: "cv-2",
+        versionNo: 2,
+        draftRevision: 2,
+        draftData: { contractName: "稳定读取的第二版" }
+      }
+    }));
+    await expect(loadNextVersion).resolves.toBeUndefined();
+
+    expect(draft.workbench.value?.version.id).toBe("cv-2");
+    expect(draft.model.contractName).toBe("稳定读取的第二版");
+    expect(draft.isDirty.value).toBe(false);
+    expect(globalThis.localStorage.getItem("contract-draft:cv-1")).toBeNull();
+    expect(globalThis.localStorage.getItem("contract-draft:cv-2")).toBeNull();
+  });
+
+  it("bounds cross-version stabilization when editing overlaps the retry read", async () => {
+    const draft = makeDraft();
+    const firstVersionRead = deferred<ContractWorkbenchReadModel>();
+    const firstEditSave = deferred<{ id: string; draftRevision: number }>();
+    const retryVersionRead = deferred<ContractWorkbenchReadModel>();
+    const secondEditSave = deferred<{ id: string; draftRevision: number }>();
+    mockFetchWorkbench
+      .mockResolvedValueOnce(makeFormallySavedWorkbench())
+      .mockReturnValueOnce(firstVersionRead.promise)
+      .mockReturnValueOnce(retryVersionRead.promise);
+    mockSaveDraft
+      .mockReturnValueOnce(firstEditSave.promise)
+      .mockReturnValueOnce(secondEditSave.promise);
+    await draft.load("ct-1");
+
+    const loadNextVersion = draft.load("ct-1");
+    draft.model.contractName = "第一次读取期间输入";
+    draft.markDirty();
+    firstVersionRead.resolve(makeFormallySavedWorkbench({
+      version: {
+        ...makeWorkbench().version,
+        id: "cv-2",
+        versionNo: 2,
+        draftRevision: 1
+      }
+    }));
+    await vi.waitFor(() => {
+      expect(mockSaveDraft).toHaveBeenCalledTimes(1);
+    });
+    firstEditSave.resolve({ id: "cv-1", draftRevision: 4 });
+    await vi.waitFor(() => {
+      expect(mockFetchWorkbench).toHaveBeenCalledTimes(3);
+    });
+
+    draft.model.contractName = "重试读取期间再次输入";
+    draft.markDirty();
+    retryVersionRead.resolve(makeFormallySavedWorkbench({
+      version: {
+        ...makeWorkbench().version,
+        id: "cv-2",
+        versionNo: 2,
+        draftRevision: 2
+      }
+    }));
+    await vi.waitFor(() => {
+      expect(mockSaveDraft).toHaveBeenCalledTimes(2);
+    });
+    secondEditSave.resolve({ id: "cv-1", draftRevision: 5 });
+    await expect(loadNextVersion).resolves.toBeUndefined();
+
+    expect(mockFetchWorkbench).toHaveBeenCalledTimes(3);
+    expect(mockSaveDraft).toHaveBeenLastCalledWith(
+      "cv-1",
+      expect.objectContaining({
+        expectedRevision: 4,
+        draftData: expect.objectContaining({
+          contractName: "重试读取期间再次输入"
+        })
+      })
+    );
+    expect(draft.workbench.value?.version.id).toBe("cv-1");
+    expect(draft.model.contractName).toBe("重试读取期间再次输入");
+    expect(draft.savedRevision.value).toBe(5);
+    expect(draft.isDirty.value).toBe(false);
+    expect(globalThis.localStorage.getItem("contract-draft:cv-1")).toBeNull();
+  });
+
   it("does not resume an old-contract autosave when loading a new contract fails", async () => {
     const draft = makeDraft();
     mockFetchWorkbench

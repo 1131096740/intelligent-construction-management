@@ -546,49 +546,73 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       }
     }
 
-    let result: ContractWorkbenchReadModel;
-    try {
-      result = await fetchContractWorkbench(contractId);
-    } catch (error) {
+    let stabilizationRetries = 0;
+    let shouldReadWorkbench = true;
+    while (shouldReadWorkbench) {
+      const generationBeforeRead = editGeneration;
+      let result: ContractWorkbenchReadModel;
+      try {
+        result = await fetchContractWorkbench(contractId);
+      } catch (error) {
+        if (
+          sameContractReload &&
+          !disposed &&
+          requestId === loadRequestId
+        ) {
+          scheduleSave();
+        }
+        throw error;
+      }
+      if (disposed || requestId !== loadRequestId) return;
+
+      const isCrossVersionRead =
+        result.version.id !== contractVersionId.value;
       if (
         sameContractReload &&
-        !disposed &&
-        requestId === loadRequestId
+        isCrossVersionRead &&
+        editGeneration !== generationBeforeRead
+      ) {
+        const saved = await saveNow();
+        if (disposed || requestId !== loadRequestId || !saved) return;
+        // One stable re-read is enough for the normal race. If editing also
+        // overlaps that retry, persist it but keep the current version visible
+        // instead of creating an unbounded save/read loop.
+        if (stabilizationRetries >= 1) return;
+        stabilizationRetries += 1;
+        continue;
+      }
+
+      if (
+        result.version.id === contractVersionId.value &&
+        result.version.draftRevision < currentRevision.value
       ) {
         scheduleSave();
+        return;
       }
-      throw error;
-    }
-    if (disposed || requestId !== loadRequestId) return;
-    if (
-      result.version.id === contractVersionId.value &&
-      result.version.draftRevision < currentRevision.value
-    ) {
+      shouldReadWorkbench = false;
+      workbench.value = result;
+      loadedContractId = result.contract.id;
+      contractVersionId.value = result.version.id;
+      currentRevision.value = result.version.draftRevision;
+      editGeneration += 1;
+      conflict.value = null;
+      pausedRef.value = false;
+      dirtyRef.value = false;
+      formalSaveCompleted.value = Boolean(result.contract.code);
+      lastSavedAt.value = null;
+      saveState.value = "idle";
+      saveError.value = "";
+
+      assignModel(model, modelFromWorkbench(result));
+
+      // Surface any unsaved local edits left over from a prior session.
+      const backup = readBackup();
+      if (backup) {
+        assignModel(model, normalizeBackupTemplateFields(backup, templateFieldKeySet(result)));
+        dirtyRef.value = true;
+      }
       scheduleSave();
-      return;
     }
-    workbench.value = result;
-    loadedContractId = result.contract.id;
-    contractVersionId.value = result.version.id;
-    currentRevision.value = result.version.draftRevision;
-    editGeneration += 1;
-    conflict.value = null;
-    pausedRef.value = false;
-    dirtyRef.value = false;
-    formalSaveCompleted.value = Boolean(result.contract.code);
-    lastSavedAt.value = null;
-    saveState.value = "idle";
-    saveError.value = "";
-
-    assignModel(model, modelFromWorkbench(result));
-
-    // Surface any unsaved local edits left over from a prior session.
-    const backup = readBackup();
-    if (backup) {
-      assignModel(model, normalizeBackupTemplateFields(backup, templateFieldKeySet(result)));
-      dirtyRef.value = true;
-    }
-    scheduleSave();
   }
 
   // -- Dirty tracking ----------------------------------------------------------
