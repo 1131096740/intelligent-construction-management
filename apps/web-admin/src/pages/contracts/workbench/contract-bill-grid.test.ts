@@ -83,7 +83,7 @@ describe("contract bill grid candidate model", () => {
       rows: [{ ...bill.rows[0]!, quantity: "1.123", unitPrice: "2.345", precisionPolicy: "legacy" }]
     })[0];
     expect(legacyWorkbench).toMatchObject({
-      precisionPolicy: "legacy", initialQuantity: "1.123", initialUnitPrice: "2.345"
+      precisionPolicy: "legacy", initialQuantity: "1.123", initialUnitPrice: "2.345", initialTaxRatePercent: "13"
     });
     const response: ReplaceContractBillRowsReadModel = {
       bill: null,
@@ -97,7 +97,7 @@ describe("contract bill grid candidate model", () => {
       }]
     };
     expect(fromBatchSaveReadModel(response)[0]).toMatchObject({
-      precisionPolicy: "legacy", initialQuantity: "1.123", initialUnitPrice: "2.345"
+      precisionPolicy: "legacy", initialQuantity: "1.123", initialUnitPrice: "2.345", initialTaxRatePercent: "13"
     });
   });
 
@@ -130,7 +130,8 @@ describe("contract bill grid candidate model", () => {
       unitPrice: "2.345",
       precisionPolicy: "legacy",
       initialQuantity: "1.123",
-      initialUnitPrice: "2.345"
+      initialUnitPrice: "2.345",
+      initialTaxRatePercent: "13"
     });
     const copied = copyBillCandidateRow([source], source.clientRowKey);
     const copiedRow = copied[1]!;
@@ -142,6 +143,7 @@ describe("contract bill grid candidate model", () => {
     expect(copiedRow.precisionPolicy).toBeUndefined();
     expect(copiedRow.initialQuantity).toBeUndefined();
     expect(copiedRow.initialUnitPrice).toBeUndefined();
+    expect(copiedRow.initialTaxRatePercent).toBeUndefined();
     expect(validateBillCandidateRows([source], bill)).toEqual([]);
     expect(candidateTotals([source])).toMatchObject({ kind: "calculated" });
     expect(validateBillCandidateRows([copiedRow], bill)).toEqual(expect.arrayContaining([
@@ -218,6 +220,7 @@ describe("contract bill grid candidate model", () => {
       precisionPolicy: "legacy",
       initialQuantity: "1.123",
       initialUnitPrice: "2.345",
+      initialTaxRatePercent: "13",
       customData: { brand: "进口" }
     })];
 
@@ -254,7 +257,8 @@ describe("contract bill grid candidate model", () => {
       unitPrice: "2.345",
       precisionPolicy: "legacy",
       initialQuantity: "1.1230",
-      initialUnitPrice: "2.345"
+      initialUnitPrice: "2.345",
+      initialTaxRatePercent: "13"
     });
     expect(validateBillCandidateRows([legacy], bill)).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ field: "quantity" }),
@@ -272,6 +276,42 @@ describe("contract bill grid candidate model", () => {
     expect(validateBillCandidateRows([{ ...legacy, quantity: "1.124" }], bill)).toEqual(expect.arrayContaining([
       expect.objectContaining({ field: "quantity" })
     ]));
+  });
+
+  it("requires every legacy pricing fact to remain unchanged before retaining precision", () => {
+    const legacy = validRow({
+      rowKey: "legacy-partial",
+      quantity: "1.123",
+      unitPrice: "2.345",
+      precisionPolicy: "legacy",
+      initialQuantity: "1.123",
+      initialUnitPrice: "2.345",
+      initialTaxRatePercent: "13.00",
+      taxRatePercent: "9",
+      taxRateSource: "version_default"
+    });
+    const totalsOptions = { taxMode: "multiple_rate" as const, defaultTaxRatePercent: "13" };
+    expect(validateBillCandidateRows([legacy], bill)).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: "quantity" }),
+      expect.objectContaining({ field: "unitPrice" })
+    ]));
+    expect(candidateTotals([legacy], totalsOptions)).toMatchObject({ kind: "calculated" });
+
+    const convertedUnitPrice = { ...legacy, unitPrice: "2.35" };
+    expect(validateBillCandidateRows([convertedUnitPrice], bill)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: "quantity" })
+    ]));
+    expect(candidateTotals([convertedUnitPrice], totalsOptions)).toEqual({
+      kind: "not_calculable", clientRowKey: "local-test", field: "quantity"
+    });
+
+    const convertedQuantity = { ...legacy, quantity: "1.12" };
+    expect(validateBillCandidateRows([convertedQuantity], bill)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: "unitPrice" })
+    ]));
+    expect(candidateTotals([convertedQuantity], totalsOptions)).toEqual({
+      kind: "not_calculable", clientRowKey: "local-test", field: "unitPrice"
+    });
   });
 
   it("returns stable cell errors for core, tax and required custom columns without rounding input", () => {

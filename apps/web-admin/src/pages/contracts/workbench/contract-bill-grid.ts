@@ -21,6 +21,7 @@ export interface ContractBillCandidateRow {
   precisionPolicy?: "legacy" | "two_decimal";
   initialQuantity?: string;
   initialUnitPrice?: string;
+  initialTaxRatePercent?: string;
   isProvisional: boolean;
   settlementBasis: string;
   customData: Record<string, string>;
@@ -106,6 +107,7 @@ export function copyBillCandidateRow(
   delete copied.precisionPolicy;
   delete copied.initialQuantity;
   delete copied.initialUnitPrice;
+  delete copied.initialTaxRatePercent;
   return [
     ...rows,
     copied
@@ -207,6 +209,7 @@ export function validateBillCandidateRows(
   );
 
   for (const row of rows) {
+    const retainsLegacyPrecision = hasUnchangedLegacyPricingFacts(row, bill);
     if (!row.itemName.trim()) addCellError(errors, row, "itemName", "请填写项目名称");
     if (!row.unit.trim()) addCellError(errors, row, "unit", "请填写单位");
 
@@ -215,7 +218,7 @@ export function validateBillCandidateRows(
       addCellError(errors, row, "quantity", "请填写数量");
     } else if (quantity) {
       const message = positiveTwoDecimalMessage(quantity, "数量");
-      if (message && !isUnchangedLegacyDecimal(row, "quantity", quantity)) {
+      if (message && !retainsLegacyPrecision) {
         addCellError(errors, row, "quantity", message);
       }
     }
@@ -225,7 +228,7 @@ export function validateBillCandidateRows(
       addCellError(errors, row, "unitPrice", "请填写含税单价");
     } else {
       const message = positiveTwoDecimalMessage(unitPrice, "含税单价");
-      if (message && !isUnchangedLegacyDecimal(row, "unitPrice", unitPrice)) {
+      if (message && !retainsLegacyPrecision) {
         addCellError(errors, row, "unitPrice", message);
       }
     }
@@ -268,14 +271,15 @@ export function candidateTotals(
   let taxExclusiveAmountCents = 0n;
 
   for (const row of rows) {
+    const retainsLegacyPrecision = hasUnchangedLegacyPricingFacts(row, options);
     const quantity = parsePositiveDecimal(
       row.quantity,
-      isUnchangedLegacyDecimal(row, "quantity", row.quantity)
+      retainsLegacyPrecision
     );
     if (!quantity) return notCalculable(row, "quantity");
     const unitPrice = parsePositiveDecimal(
       row.unitPrice,
-      isUnchangedLegacyDecimal(row, "unitPrice", row.unitPrice)
+      retainsLegacyPrecision
     );
     if (!unitPrice) return notCalculable(row, "unitPrice");
     const taxRateText = effectiveTaxRate(row, options);
@@ -333,6 +337,7 @@ function candidateFromWorkbenchRow(row: WorkbenchBillRow, clientRowKey: string):
     ...(row.initialUnitPrice !== null && row.initialUnitPrice !== undefined
       ? { initialUnitPrice: textValue(row.initialUnitPrice) }
       : { initialUnitPrice: textValue(row.unitPrice) }),
+    initialTaxRatePercent: textValue(row.taxRatePercent ?? row.taxRate),
     isProvisional: Boolean(row.isProvisional),
     settlementBasis: textValue(row.settlementBasis),
     customData: stringRecord(row.customData)
@@ -359,6 +364,7 @@ function candidateFromBatchSaveRow(
       : {}),
     initialQuantity: textValue(row.quantity),
     initialUnitPrice: textValue(row.unitPrice),
+    initialTaxRatePercent: textValue(row.taxRate),
     isProvisional: row.isProvisional,
     settlementBasis: textValue(row.settlementBasis),
     customData: stringRecord(row.customData)
@@ -389,6 +395,7 @@ function cloneCandidateRow(row: ContractBillCandidateRow): ContractBillCandidate
   delete candidate.precisionPolicy;
   delete candidate.initialQuantity;
   delete candidate.initialUnitPrice;
+  delete candidate.initialTaxRatePercent;
   return { ...candidate, customData: { ...candidate.customData } };
 }
 
@@ -479,14 +486,31 @@ function parseTaxRate(value: string): Decimal {
   return parsed;
 }
 
-function isUnchangedLegacyDecimal(
+function hasUnchangedLegacyPricingFacts(
   row: ContractBillCandidateRow,
-  field: "quantity" | "unitPrice",
-  value: string
+  options: Pick<WorkbenchBill, "taxMode" | "defaultTaxRatePercent"> | BillCandidateTotalsOptions
 ): boolean {
   if (row.precisionPolicy !== "legacy") return false;
-  const initial = field === "quantity" ? row.initialQuantity : row.initialUnitPrice;
-  return initial !== undefined && decimalEquivalent(value, initial);
+  if (
+    row.initialQuantity === undefined ||
+    row.initialUnitPrice === undefined ||
+    row.initialTaxRatePercent === undefined
+  ) {
+    return false;
+  }
+  return (
+    decimalEquivalent(row.quantity, row.initialQuantity) &&
+    decimalEquivalent(row.unitPrice, row.initialUnitPrice) &&
+    taxRateEquivalent(effectiveTaxRate(row, options), row.initialTaxRatePercent)
+  );
+}
+
+function taxRateEquivalent(left: string, right: string): boolean {
+  try {
+    return normalizeTaxRatePercent(left) === normalizeTaxRatePercent(right);
+  } catch {
+    return false;
+  }
 }
 
 function decimalEquivalent(left: string, right: string): boolean {
