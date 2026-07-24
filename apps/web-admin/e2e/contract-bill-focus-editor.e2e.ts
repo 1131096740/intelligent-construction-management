@@ -126,6 +126,22 @@ test.describe("合同清单全宽专注编辑", () => {
     await expect(page.getByTestId("contract-bill-grid")).not.toContainText("粘贴材料甲");
     expect(mock.putBodies).toHaveLength(0);
 
+    // 不能只凭候选计数证明虚拟滚动：真实滚到第 101 行并完成一次单元格编辑。
+    await page.locator("revo-grid").evaluate(async (grid: HTMLElement & {
+      scrollToRow: (rowIndex: number) => Promise<void>;
+      setCellEdit: (rowIndex: number, prop: string) => Promise<void>;
+    }) => {
+      await grid.scrollToRow(100);
+      await grid.setCellEdit(100, "itemName");
+    });
+    const lastNameCell = itemNameCell(page, 100);
+    await expect(lastNameCell).toBeVisible();
+    const lastNameInput = page.locator("revo-grid revogr-edit input");
+    await expect(lastNameInput).toBeFocused();
+    await lastNameInput.fill("Excel 材料 101 已编辑");
+    await lastNameInput.press("Enter");
+    await expect(lastNameCell).toContainText("Excel 材料 101 已编辑");
+
     const workbenchReadsBeforeSave = mock.workbenchReadCalls();
     await page.getByTestId("bill-save-all").click();
     await expect.poll(() => mock.putBodies.length).toBe(1);
@@ -136,8 +152,14 @@ test.describe("合同清单全宽专注编辑", () => {
     expect(body.rows).toHaveLength(101);
     expect(new Set(body.rows.map((row) => row.clientRowKey)).size).toBe(101);
     expect(body.rows.every((row, index) => row.sortOrder === index)).toBe(true);
+    expect(body.rows[100]?.itemName).toBe("Excel 材料 101 已编辑");
     expect(mock.putResponseItemNames()).not.toContain(serverReloadSentinel);
-    await expect(page.getByTestId("contract-bill-grid")).toContainText(serverReloadSentinel);
+    await page.locator("revo-grid").evaluate(async (grid: HTMLElement & {
+      scrollToRow: (rowIndex: number) => Promise<void>;
+    }) => {
+      await grid.scrollToRow(0);
+    });
+    await expect(itemNameCell(page, 0)).toContainText(serverReloadSentinel);
     expect(mock.workbenchReadCalls()).toBe(workbenchReadsBeforeSave + 1);
     await saveSuccessScreenshot(page, testInfo.project.name, "desktop");
 
@@ -150,6 +172,55 @@ test.describe("合同清单全宽专注编辑", () => {
     expect(consoleErrors).toEqual([]);
     expect(pageErrors).toEqual([]);
   });
+
+  for (const viewport of [
+    { label: "960", width: 960, height: 900, mode: "grid" as const },
+    { label: "640", width: 640, height: 900, mode: "cards" as const }
+  ]) {
+    test(`${viewport.width}px 专注布局无横向溢出且编辑操作可达`, async ({ page }, testInfo) => {
+      const consoleErrors: string[] = [];
+      const pageErrors: string[] = [];
+      page.on("console", (message) => {
+        if (message.type() === "error") consoleErrors.push(message.text());
+      });
+      page.on("pageerror", (error) => pageErrors.push(error.message));
+
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await installContractBillRoutes(page);
+      await loginAndOpenWorkbench(page);
+      await expectWorkbenchRoute(page);
+      await page.locator(".business-tabs").getByText("清单", { exact: true }).click();
+      await page.getByRole("button", { name: "放大编辑", exact: true }).click();
+
+      await expectWorkbenchRoute(page);
+      await expect(page.locator("vite-error-overlay, #webpack-dev-server-client-overlay")).toHaveCount(0);
+      await expect(page.locator(".focus-toolbar")).toBeVisible();
+      await expect(page.getByTestId("bill-save-all")).toBeVisible();
+      await expect(page.getByTestId("bill-add-row")).toBeVisible();
+      await expect.poll(() => page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth + 0.5
+      )).toBe(true);
+      await expectElementReachable(page, ".focus-toolbar");
+      await expectElementReachable(page, '[data-testid="bill-save-all"]');
+
+      if (viewport.mode === "grid") {
+        await expect(page.getByTestId("contract-bill-grid").locator("revo-grid")).toBeVisible();
+        await expect(page.locator(".contract-bill-grid__cards")).toHaveCount(0);
+        await expect(itemNameCell(page, 0)).toContainText("钢筋");
+      } else {
+        await expect(page.locator("revo-grid")).toHaveCount(0);
+        await expect(page.locator(".contract-bill-grid__cards")).toBeVisible();
+        await expect(page.locator(".contract-bill-grid__card")).toHaveCount(1);
+        await expect(page.locator(
+          '.contract-bill-grid__card [data-field="itemName"][data-client-row-key="server-initial-row"] input'
+        )).toHaveValue("钢筋");
+      }
+
+      await saveLayoutScreenshot(page, testInfo.project.name, viewport.label);
+      expect(consoleErrors).toEqual([]);
+      expect(pageErrors).toEqual([]);
+    });
+  }
 
   test("375px 使用卡片编辑并保持候选与错误计数一致", async ({ page }, testInfo) => {
     const consoleErrors: string[] = [];
@@ -373,6 +444,28 @@ async function mobileStatusMetrics(page: Page) {
       contentGap: rightBox.top - leftBox.bottom,
       designGap: Number.parseFloat(getComputedStyle(statusBar).rowGap)
     };
+  });
+}
+
+async function expectElementReachable(page: Page, selector: string) {
+  const target = page.locator(selector);
+  await target.scrollIntoViewIfNeeded();
+  const box = await target.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(-0.5);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(
+    (page.viewportSize()?.width ?? 0) + 0.5
+  );
+  expect(box!.y).toBeGreaterThanOrEqual(-0.5);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(
+    (page.viewportSize()?.height ?? 0) + 0.5
+  );
+}
+
+async function saveLayoutScreenshot(page: Page, projectName: string, viewportLabel: string) {
+  await mkdir(screenshotDir, { recursive: true });
+  await page.screenshot({
+    path: `${screenshotDir}/${projectName}-${viewportLabel}-layout.png`
   });
 }
 
