@@ -16,10 +16,15 @@ interface ScrollCoordinates {
   top: number;
 }
 
+interface PendingPopTarget {
+  position: number;
+  routeIdentity: string;
+}
+
 export class BrowserHistoryScrollPositionRegistry {
   private readonly positions = new Map<number, ScrollCoordinates>();
   private currentPosition: number | null;
-  private pendingTargetPosition: number | null = null;
+  private pendingTarget: PendingPopTarget | null = null;
 
   constructor(initialHistoryState: unknown) {
     this.currentPosition = readHistoryPosition(initialHistoryState);
@@ -27,7 +32,8 @@ export class BrowserHistoryScrollPositionRegistry {
 
   capturePopState(
     targetHistoryState: unknown,
-    outgoingScrollPosition: ScrollCoordinates
+    outgoingScrollPosition: ScrollCoordinates,
+    targetRouteIdentity: string
   ) {
     if (this.currentPosition !== null) {
       this.positions.set(
@@ -35,21 +41,43 @@ export class BrowserHistoryScrollPositionRegistry {
         normalizeScrollCoordinates(outgoingScrollPosition)
       );
     }
-    this.pendingTargetPosition = readHistoryPosition(targetHistoryState);
+    const targetPosition = readHistoryPosition(targetHistoryState);
+    const canonicalRouteIdentity =
+      canonicalizeRouteIdentity(targetRouteIdentity);
+    this.pendingTarget =
+      targetPosition !== null && canonicalRouteIdentity
+        ? {
+            position: targetPosition,
+            routeIdentity: canonicalRouteIdentity
+          }
+        : null;
   }
 
   syncCurrentPosition(historyState: unknown) {
     this.currentPosition = readHistoryPosition(historyState);
   }
 
-  consumePendingScrollPosition(): ScrollCoordinates | null {
-    const targetPosition = this.pendingTargetPosition;
-    this.pendingTargetPosition = null;
-    if (targetPosition === null) {
+  consumePendingScrollPosition(
+    currentHistoryState: unknown,
+    finalRouteIdentity: string
+  ): ScrollCoordinates | null {
+    const pendingTarget = this.pendingTarget;
+    this.pendingTarget = null;
+    if (!pendingTarget) {
       return null;
     }
 
-    const position = this.positions.get(targetPosition);
+    const currentPosition = readHistoryPosition(currentHistoryState);
+    const canonicalRouteIdentity =
+      canonicalizeRouteIdentity(finalRouteIdentity);
+    if (
+      currentPosition !== pendingTarget.position ||
+      canonicalRouteIdentity !== pendingTarget.routeIdentity
+    ) {
+      return null;
+    }
+
+    const position = this.positions.get(pendingTarget.position);
     return position ? { ...position } : null;
   }
 }
@@ -91,10 +119,14 @@ function installBrowserHistoryScrollPositionRegistry(
     windowRef.history.state
   );
   windowRef.addEventListener("popstate", (event) => {
-    registry.capturePopState(event.state, {
-      left: windowRef.scrollX,
-      top: windowRef.scrollY
-    });
+    registry.capturePopState(
+      event.state,
+      {
+        left: windowRef.scrollX,
+        top: windowRef.scrollY
+      },
+      currentWindowRouteIdentity(windowRef.location)
+    );
   });
   Object.defineProperty(registryWindow, browserScrollRegistryKey, {
     configurable: true,
@@ -124,6 +156,24 @@ function normalizeScrollCoordinates(
   };
 }
 
+function currentWindowRouteIdentity(
+  locationRef: Pick<Location, "pathname" | "search" | "hash">
+): string {
+  return `${locationRef.pathname}${locationRef.search}${locationRef.hash}`;
+}
+
+function canonicalizeRouteIdentity(routeIdentity: string): string | null {
+  try {
+    const url = new URL(routeIdentity, "https://jiangkong.local");
+    if (url.origin !== "https://jiangkong.local") {
+      return null;
+    }
+    return decodeURI(`${url.pathname}${url.search}${url.hash}`);
+  } catch {
+    return null;
+  }
+}
+
 const browserHistoryScrollRegistry =
   typeof window === "undefined"
     ? null
@@ -138,7 +188,10 @@ export const router = createRouter({
     return resolveRouteScrollPosition(
       to,
       savedPosition,
-      browserHistoryScrollRegistry?.consumePendingScrollPosition() ?? null
+      browserHistoryScrollRegistry?.consumePendingScrollPosition(
+        window.history.state,
+        to.fullPath
+      ) ?? null
     );
   }
 });

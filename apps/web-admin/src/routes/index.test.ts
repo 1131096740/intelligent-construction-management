@@ -158,43 +158,121 @@ describe("web admin routes", () => {
 
     registry.capturePopState(
       { position: 0 },
-      { left: 0, top: 350 }
+      { left: 0, top: 350 },
+      "/合同工作台/合同-A"
     );
-    expect(registry.consumePendingScrollPosition()).toBeNull();
+    expect(
+      registry.consumePendingScrollPosition(
+        { position: 0 },
+        "/合同工作台/合同-A"
+      )
+    ).toBeNull();
     registry.syncCurrentPosition({ position: 0 });
 
     registry.capturePopState(
       { position: 1 },
-      { left: 0, top: 700 }
+      { left: 0, top: 700 },
+      "/合同工作台/合同-B"
     );
 
     expect(
       resolveRouteScrollPosition(
         { hash: "" },
         null,
-        registry.consumePendingScrollPosition()
+        registry.consumePendingScrollPosition(
+          { position: 1 },
+          "/合同工作台/合同-B"
+        )
       )
     ).toEqual({ left: 0, top: 350 });
   });
 
-  it("does not restore an old registry entry during an ordinary push", () => {
+  it("clears rollback pop state before the next ordinary push", () => {
     const registry = new BrowserHistoryScrollPositionRegistry({ position: 1 });
 
     registry.capturePopState(
       { position: 0 },
-      { left: 0, top: 350 }
+      { left: 0, top: 350 },
+      "/合同工作台/合同-A"
     );
-    expect(registry.consumePendingScrollPosition()).toBeNull();
-    registry.syncCurrentPosition({ position: 0 });
-    registry.syncCurrentPosition({ position: 1 });
+    registry.capturePopState(
+      { position: 1 },
+      { left: 0, top: 350 },
+      "/合同工作台/合同-B"
+    );
 
     expect(
       resolveRouteScrollPosition(
         { hash: "" },
         null,
-        registry.consumePendingScrollPosition()
+        registry.consumePendingScrollPosition(
+          { position: 2 },
+          "/合同工作台/合同-C"
+        )
       )
     ).toEqual({ left: 0, top: 0 });
+  });
+
+  it("does not restore a pop target after an access redirect reuses its position", () => {
+    const registry = new BrowserHistoryScrollPositionRegistry({ position: 0 });
+
+    registry.capturePopState(
+      { position: 1 },
+      { left: 0, top: 700 },
+      "/合同工作台/合同-B"
+    );
+    expect(
+      registry.consumePendingScrollPosition(
+        { position: 1 },
+        "/合同工作台/合同-B"
+      )
+    ).toBeNull();
+    registry.syncCurrentPosition({ position: 1 });
+    registry.capturePopState(
+      { position: 0 },
+      { left: 0, top: 350 },
+      "/合同工作台/合同-A"
+    );
+
+    expect(
+      resolveRouteScrollPosition(
+        { hash: "" },
+        null,
+        registry.consumePendingScrollPosition(
+          { position: 0 },
+          "/login?redirect=/合同工作台/合同-A"
+        )
+      )
+    ).toEqual({ left: 0, top: 0 });
+  });
+
+  it("matches encoded and decoded forms of the same pop target", () => {
+    const registry = new BrowserHistoryScrollPositionRegistry({ position: 0 });
+
+    registry.capturePopState(
+      { position: 1 },
+      { left: 0, top: 700 },
+      "/合同工作台/合同-B"
+    );
+    expect(
+      registry.consumePendingScrollPosition(
+        { position: 1 },
+        "/合同工作台/合同-B"
+      )
+    ).toBeNull();
+    registry.syncCurrentPosition({ position: 1 });
+    registry.capturePopState(
+      { position: 0 },
+      { left: 0, top: 350 },
+      "/%E5%90%88%E5%90%8C%E5%B7%A5%E4%BD%9C%E5%8F%B0/%E5%90%88%E5%90%8C-A?tab=bill#rows"
+    );
+
+    expect(
+      registry.consumePendingScrollPosition(
+        { position: 0 },
+        "/合同工作台/合同-A?tab=bill#rows"
+      )
+    ).toEqual({ left: 0, top: 700 });
   });
 
   it("uses the route hash unchanged when no saved position exists", () => {
