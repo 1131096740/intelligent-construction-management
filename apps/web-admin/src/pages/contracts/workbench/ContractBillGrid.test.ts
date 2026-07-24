@@ -20,7 +20,9 @@ interface ControlHarness {
   disabled: boolean;
   field: string;
   kind: string;
+  options: unknown[];
   update: (value: unknown) => void;
+  value: unknown;
 }
 
 const componentHarness = vi.hoisted(() => ({
@@ -141,7 +143,8 @@ function registerTDesignStubs(app: App) {
       inheritAttrs: false,
       props: {
         disabled: { type: Boolean, default: false },
-        modelValue: { type: [String, Boolean], default: "" }
+        modelValue: { type: [String, Boolean], default: "" },
+        options: { type: Array, default: () => [] }
       },
       emits: ["update:modelValue"],
       setup(props, { attrs, emit }) {
@@ -152,7 +155,9 @@ function registerTDesignStubs(app: App) {
           disabled: props.disabled,
           field,
           kind: name,
-          update: (value) => emit("update:modelValue", value)
+          options: props.options,
+          update: (value) => emit("update:modelValue", value),
+          value: props.modelValue
         });
         return () => h("span", {
           ...attrs,
@@ -283,7 +288,7 @@ describe("ContractBillGrid", () => {
     ]));
     expect(componentHarness.controls.filter(
       (control) => control.field === "fuelIncluded" || control.field === "operatorIncluded"
-    ).every((control) => control.kind === "TCheckbox")).toBe(true);
+    ).every((control) => control.kind === "TSelect")).toBe(true);
 
     const itemName = componentHarness.controls.find(
       (control) => control.field === "itemName" && control.clientRowKey === "client-1"
@@ -434,6 +439,84 @@ describe("ContractBillGrid", () => {
       model: componentHarness.gridSource[0],
       prop: "optionalFlag"
     } as never)).toBeUndefined();
+  });
+
+  it("uses explicit mobile boolean tri-state controls without coercing unset to false", async () => {
+    const triStateBill: WorkbenchBill = {
+      ...bill,
+      schemaSnapshot: {
+        columns: [
+          {
+            key: "fuelIncluded",
+            label: "是否含燃油",
+            type: "boolean",
+            required: true
+          },
+          {
+            key: "optionalFlag",
+            label: "可选标记",
+            type: "boolean",
+            required: false
+          }
+        ]
+      }
+    };
+    const rows = candidateRows(1);
+    const customData = { ...rows[0]!.customData };
+    delete customData.fuelIncluded;
+    rows[0] = {
+      ...rows[0]!,
+      customData: {
+        ...customData,
+        optionalFlag: "true"
+      }
+    };
+    const rendered = await renderGrid({
+      mobile: true,
+      rows,
+      bill: triStateBill
+    });
+
+    const requiredControl = componentHarness.controls.find(
+      (control) => control.field === "fuelIncluded"
+    );
+    const optionalControl = componentHarness.controls.find(
+      (control) => control.field === "optionalFlag"
+    );
+    expect(requiredControl).toMatchObject({
+      kind: "TSelect",
+      value: "",
+      disabled: false
+    });
+    expect(requiredControl?.options).toEqual([
+      { label: "未设置", value: "" },
+      { label: "是", value: "true" },
+      { label: "否", value: "false" }
+    ]);
+    expect(optionalControl).toMatchObject({
+      kind: "TSelect",
+      value: "true",
+      disabled: false
+    });
+    expect(rendered.html).not.toContain("清单校验未通过");
+
+    requiredControl?.update("false");
+    expect(rendered.updates.at(-1)?.[0]?.customData).toMatchObject({
+      fuelIncluded: "false"
+    });
+
+    optionalControl?.update("");
+    expect(rendered.updates.at(-1)?.[0]?.customData).not.toHaveProperty("optionalFlag");
+
+    await renderGrid({
+      mobile: true,
+      rows,
+      bill: triStateBill,
+      readonly: true
+    });
+    expect(componentHarness.controls.filter(
+      (control) => control.field === "fuelIncluded" || control.field === "optionalFlag"
+    ).every((control) => control.kind === "TSelect" && control.disabled)).toBe(true);
   });
 
   it("uses the existing unlimited-framework quantity label and optional rule", async () => {

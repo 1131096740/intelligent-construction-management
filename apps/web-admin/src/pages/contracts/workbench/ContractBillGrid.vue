@@ -26,7 +26,10 @@ export function advanceContractBillErrorCursor<T extends {
 
 <script setup lang="ts">
 import type { ColumnRegular } from "@revolist/vue3-datagrid";
-import { isContractBillCustomColumn } from "@jiangkong/shared-domain";
+import {
+  isContractBillCustomColumn,
+  normalizeContractBillBoolean
+} from "@jiangkong/shared-domain";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import JgBusinessGrid from "../../../components/JgBusinessGrid.vue";
 import type { JgBusinessGridRow } from "../../../components/jg-business-grid.config";
@@ -73,6 +76,11 @@ const coreColumns: EditableColumn[] = [
 const taxRateSourceOptions = [
   { label: "使用合同税率", value: "version_default" },
   { label: "使用例外税率", value: "row_override" }
+];
+const customBooleanOptions = [
+  { label: "未设置", value: "" },
+  { label: "是", value: "true" },
+  { label: "否", value: "false" }
 ];
 
 const isMobile = ref(
@@ -218,7 +226,7 @@ function candidateFromGridRow(
       nextCustomData[column.key] = text(gridRow[column.key]);
       continue;
     }
-    const normalized = parseBooleanText(gridRow[column.key]);
+    const normalized = normalizeContractBillBoolean(gridRow[column.key]);
     if (normalized === null) {
       if (!column.required && !text(gridRow[column.key]).trim()) {
         delete nextCustomData[column.key];
@@ -232,7 +240,7 @@ function candidateFromGridRow(
       );
       continue;
     }
-    nextCustomData[column.key] = normalized ? "true" : "false";
+    nextCustomData[column.key] = normalized;
   }
   return {
     ...current,
@@ -262,7 +270,17 @@ function updateMobileCell(
     if (isContractBillCustomColumn(field)) {
       const column = customColumns.value.find((candidate) => candidate.key === field);
       if (column?.type === "boolean") {
-        const normalized = parseBooleanText(value);
+        if (!text(value).trim()) {
+          const customData = { ...row.customData };
+          delete customData[field];
+          if (column.required) {
+            setMobileEditorError(clientRowKey, field, `${column.label}必须选择“是”或“否”`);
+          } else {
+            clearMobileEditorError(clientRowKey, field);
+          }
+          return { ...row, customData };
+        }
+        const normalized = normalizeContractBillBoolean(value);
         if (normalized === null) {
           setMobileEditorError(clientRowKey, field, `${column.label}只能选择“是”或“否”`);
           return row;
@@ -272,7 +290,7 @@ function updateMobileCell(
           ...row,
           customData: {
             ...row.customData,
-            [field]: normalized ? "true" : "false"
+            [field]: normalized
           }
         };
       }
@@ -365,14 +383,16 @@ function text(value: unknown) {
 }
 
 function parseBooleanText(value: unknown): boolean | null {
-  if (value === true || value === "true" || value === "1" || value === "是") return true;
-  if (value === false || value === "false" || value === "0" || value === "否") return false;
-  return null;
+  const normalized = normalizeContractBillBoolean(value);
+  return normalized === null ? null : normalized === "true";
 }
 
 function booleanText(value: unknown) {
-  const normalized = parseBooleanText(value);
-  return normalized === null ? text(value) : normalized ? "true" : "false";
+  return normalizeContractBillBoolean(value) ?? text(value);
+}
+
+function booleanSelectValue(value: unknown) {
+  return normalizeContractBillBoolean(value) ?? "";
 }
 
 function invalidGridValue<T>(
@@ -595,18 +615,20 @@ function cellKey(clientRowKey: string, field: string) {
             class="contract-bill-grid__field"
           >
             <span>{{ column.label }}{{ column.required ? " *" : "" }}</span>
-            <t-checkbox
+            <t-select
               v-if="column.type === 'boolean'"
-              :model-value="parseBooleanText(row.customData[column.key]) === true"
+              :model-value="booleanSelectValue(row.customData[column.key])"
+              :options="customBooleanOptions"
               :disabled="readonly"
+              placeholder="未设置"
               :data-field="column.key"
               :data-client-row-key="row.clientRowKey"
               :data-cell-error="cellErrorKey(row.clientRowKey, column.key)"
               :aria-invalid="Boolean(errorFor(row.clientRowKey, column.key))"
-              @update:model-value="updateMobileCell(row.clientRowKey, column.key, Boolean($event))"
-            >
-              是
-            </t-checkbox>
+              @update:model-value="
+                updateMobileCell(row.clientRowKey, column.key, String($event ?? ''))
+              "
+            />
             <t-input
               v-else
               :model-value="row.customData[column.key] ?? ''"
