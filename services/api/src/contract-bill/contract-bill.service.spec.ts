@@ -646,6 +646,31 @@ describe("ContractBillService", () => {
     ).rejects.toThrow("自定义字段数据包含无法保存的内容");
   });
 
+  it("批量保存将非 JSON 自定义数据定位到具体行且不写入", async () => {
+    const { service, tx } = fixture();
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+
+    await expect(service.replaceRows("bill-1", "owner-1", {
+      expectedBillRevision: 2,
+      idempotencyKey: "invalid-json-custom-data",
+      rows: [batchRow("cyclic-custom-data", undefined, { customData: cyclic })]
+    })).rejects.toMatchObject({
+      response: {
+        code: "CONTRACT_BILL_VALIDATION_FAILED",
+        rowErrors: [{
+          clientRowKey: "cyclic-custom-data",
+          field: "customData",
+          message: "自定义字段数据包含无法保存的内容"
+        }]
+      }
+    });
+    expect(tx.auditLog.findFirst).not.toHaveBeenCalled();
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("sums only included and provisional bills into contract amount", async () => {
     const { service, version } = fixture({
       amountRole: "included",

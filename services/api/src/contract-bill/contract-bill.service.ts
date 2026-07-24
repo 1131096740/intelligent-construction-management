@@ -548,23 +548,28 @@ export class ContractBillService {
     const rowErrors: BatchRowError[] = [];
     const rows = input.rows.flatMap((rawRow, index) => {
       const fallbackClientRowKey = `row-${index + 1}`;
-      let row: Record<string, unknown>;
+      let clientRowKey = fallbackClientRowKey;
       try {
-        row = this.requireObject(rawRow, `合同清单第 ${index + 1} 行`);
+        const row = this.requireObject(rawRow, `合同清单第 ${index + 1} 行`);
+        if (typeof row.clientRowKey === "string" && row.clientRowKey.trim()) {
+          clientRowKey = row.clientRowKey.trim();
+        }
+        const normalized: Record<string, unknown> = {
+          clientRowKey: row.clientRowKey,
+          sortOrder: row.sortOrder
+        };
+        if (row.rowKey !== undefined) normalized.rowKey = row.rowKey;
+        for (const field of REPLACE_ROW_INPUT_FIELDS) {
+          if (row[field] !== undefined) normalized[field] = row[field];
+        }
+        for (const [field, value] of Object.entries(normalized)) {
+          this.assertReplaceEnvelopeField(field, value);
+        }
+        return [normalized];
       } catch (error) {
-        rowErrors.push(this.batchRowError(fallbackClientRowKey, error));
+        rowErrors.push(this.batchRowError(clientRowKey, error));
         return [];
       }
-      const normalized: Record<string, unknown> = {
-        clientRowKey: row.clientRowKey,
-        sortOrder: row.sortOrder
-      };
-      if (row.rowKey !== undefined) normalized.rowKey = row.rowKey;
-      for (const field of REPLACE_ROW_INPUT_FIELDS) {
-        if (row[field] !== undefined) normalized[field] = row[field];
-      }
-      this.assertJsonEnvelopeValue(normalized, new WeakSet<object>());
-      return [normalized];
     });
     if (rowErrors.length) {
       throw new BadRequestException({
@@ -578,6 +583,19 @@ export class ContractBillService {
       idempotencyKey: input.idempotencyKey,
       rows
     };
+  }
+
+  private assertReplaceEnvelopeField(field: string, value: unknown): void {
+    try {
+      this.assertJsonEnvelopeValue(value, new WeakSet<object>());
+    } catch {
+      throw new ContractBillRowInputValidationException(
+        field,
+        field === "customData"
+          ? "自定义字段数据包含无法保存的内容"
+          : "清单保存内容必须是 JSON 数据"
+      );
+    }
   }
 
   private assertJsonEnvelopeValue(value: unknown, seen: WeakSet<object>): void {
@@ -643,15 +661,6 @@ export class ContractBillService {
     }
     if (!this.isPlainObject(row.customData)) {
       throw new ContractBillRowInputValidationException("customData", "自定义字段数据必须是普通对象");
-    }
-    try {
-      const serialized = JSON.stringify(row.customData);
-      if (serialized === undefined) throw new Error("not JSON");
-    } catch {
-      throw new ContractBillRowInputValidationException(
-        "customData",
-        "自定义字段数据包含无法保存的内容"
-      );
     }
   }
 
