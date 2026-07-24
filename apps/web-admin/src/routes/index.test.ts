@@ -97,6 +97,7 @@ describe("web admin routes", () => {
 
   it("returns to the top for a route without a hash", () => {
     expect(resolveRouteScrollPosition({ hash: "" }, null)).toEqual({ left: 0, top: 0 });
+    expect(resolveRouteScrollPosition({ hash: "#" }, null)).toEqual({ left: 0, top: 0 });
     expect(resolveRouteScrollPosition({}, null)).toEqual({ left: 0, top: 0 });
   });
 

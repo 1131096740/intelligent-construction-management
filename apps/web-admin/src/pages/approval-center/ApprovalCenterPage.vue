@@ -125,7 +125,7 @@ async function loadWorkItems() {
 }
 
 function goDetail(item: WorkItemReadModel) {
-  void router.push({ path: item.targetPath, hash: "#approval" });
+  void router.push({ path: item.targetPath });
 }
 
 onMounted(() => {

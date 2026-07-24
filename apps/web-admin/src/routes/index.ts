@@ -13,7 +13,7 @@ export function resolveRouteScrollPosition(
   if (savedPosition) {
     return savedPosition;
   }
-  if (to.hash) {
+  if (to.hash && to.hash !== "#") {
     return { el: to.hash };
   }
   return { left: 0, top: 0 };
