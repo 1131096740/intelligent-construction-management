@@ -58,6 +58,24 @@ async function patchJson<TResponse>(path: string, body?: unknown): Promise<TResp
   return response.json() as Promise<TResponse>;
 }
 
+async function putJson<TResponse>(
+  path: string,
+  body?: unknown,
+  parseError?: (response: Response) => Promise<Error | null>
+): Promise<TResponse> {
+  const response = await apiFetch(path, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {})
+  });
+  if (!response.ok) {
+    const parsedError = parseError ? await parseError(response) : null;
+    if (parsedError) throw parsedError;
+    await ensureOk(response, "保存失败");
+  }
+  return response.json() as Promise<TResponse>;
+}
+
 async function deleteJson<TResponse>(path: string, body?: unknown): Promise<TResponse> {
   const response = await apiFetch(path, {
     method: "DELETE",
@@ -776,6 +794,155 @@ export interface ReorderBillRowsPayload {
 
 export function reorderBillRows(billId: string, body: ReorderBillRowsPayload) {
   return postJson<unknown>(`/contract-bills/${billId}/rows/reorder`, body);
+}
+
+export interface ContractBillRowValidationError {
+  clientRowKey: string;
+  field: string;
+  message: string;
+}
+
+export type ContractBillValidationError = Error & {
+  code: "CONTRACT_BILL_VALIDATION_FAILED";
+  rowErrors: ContractBillRowValidationError[];
+};
+
+export interface ContractBillCandidateRowInput {
+  clientRowKey: string;
+  rowKey?: string;
+  sortOrder: number;
+  itemCode?: string;
+  itemName: string;
+  specification?: string;
+  unit: string;
+  quantity?: string;
+  unitPrice: string;
+  taxRatePercent?: string;
+  taxRateSource?: "version_default" | "row_override";
+  isProvisional?: boolean;
+  settlementBasis?: string;
+  customData: Record<string, unknown>;
+}
+
+export interface ReplaceContractBillRowsInput {
+  expectedBillRevision: number;
+  idempotencyKey: string;
+  rows: ContractBillCandidateRowInput[];
+}
+
+/** The post-save bill projection returned by the batch endpoint. */
+export interface ContractBillBatchSaveBillReadModel {
+  id: string;
+  contractVersionId: string;
+  billKey: string;
+  name: string;
+  amountRole: string;
+  pricingMode: string;
+  quantityScale: number;
+  unitPriceScale: number;
+  schemaSnapshot: Record<string, unknown>;
+  sourceExcelFileId: string | null;
+  revision: number;
+  taxInclusiveAmountCents: string;
+  taxExclusiveAmountCents: string;
+  taxAmountCents: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A fully authoritative bill-row projection used to rebuild local candidates. */
+export interface ContractBillBatchSaveRowReadModel {
+  id: string;
+  contractBillId: string;
+  rowKey: string;
+  sortOrder: number;
+  itemCode: string | null;
+  itemName: string;
+  specification: string | null;
+  unit: string;
+  quantity: string | null;
+  unitPrice: string | null;
+  taxRate: string | null;
+  taxRateSource: string;
+  pricingFactStatus: string;
+  precisionPolicy: string;
+  taxInclusiveAmountCents: string | null;
+  taxExclusiveAmountCents: string | null;
+  taxAmountCents: string | null;
+  isProvisional: boolean;
+  settlementBasis: string | null;
+  customData: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReplaceContractBillRowsReadModel {
+  bill: ContractBillBatchSaveBillReadModel | null;
+  rows: ContractBillBatchSaveRowReadModel[];
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+export function parseContractBillValidationError(
+  data: unknown
+): ContractBillValidationError | null {
+  if (
+    !isPlainRecord(data) ||
+    data.code !== "CONTRACT_BILL_VALIDATION_FAILED" ||
+    !isNonEmptyString(data.message) ||
+    !Array.isArray(data.rowErrors)
+  ) {
+    return null;
+  }
+
+  const rowErrors: ContractBillRowValidationError[] = [];
+  for (const rowError of data.rowErrors) {
+    if (
+      !isPlainRecord(rowError) ||
+      !isNonEmptyString(rowError.clientRowKey) ||
+      !isNonEmptyString(rowError.field) ||
+      !isNonEmptyString(rowError.message)
+    ) {
+      return null;
+    }
+    rowErrors.push({
+      clientRowKey: rowError.clientRowKey,
+      field: rowError.field,
+      message: rowError.message
+    });
+  }
+
+  const error = new Error(data.message) as ContractBillValidationError;
+  error.code = "CONTRACT_BILL_VALIDATION_FAILED";
+  error.rowErrors = rowErrors;
+  return error;
+}
+
+async function parseContractBillValidationResponse(response: Response): Promise<Error | null> {
+  try {
+    return parseContractBillValidationError(await response.clone().json());
+  } catch {
+    return null;
+  }
+}
+
+export function replaceContractBillRows(
+  billId: string,
+  input: ReplaceContractBillRowsInput
+) {
+  return putJson<ReplaceContractBillRowsReadModel>(
+    `/contract-bills/${encodeURIComponent(billId)}/rows`,
+    input,
+    parseContractBillValidationResponse
+  );
 }
 
 // ---------------------------------------------------------------------------
