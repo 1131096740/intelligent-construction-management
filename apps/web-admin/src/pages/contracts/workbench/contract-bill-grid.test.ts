@@ -1,0 +1,223 @@
+import { describe, expect, it } from "vitest";
+import type { ReplaceContractBillRowsReadModel } from "../../../api/contract-workbench.api";
+import type { WorkbenchBill } from "./contract-bill-editor";
+import {
+  addBillCandidateRow,
+  applyExcelCandidateRows,
+  candidateTotals,
+  copyBillCandidateRow,
+  emptyBillCandidateRow,
+  fromBatchSaveReadModel,
+  fromWorkbenchBill,
+  mapServerBillCellErrors,
+  moveBillCandidateRow,
+  removeBillCandidateRow,
+  toReplaceBillRowsInput,
+  validateBillCandidateRows,
+  type ContractBillCandidateRow
+} from "./contract-bill-grid";
+
+const bill: WorkbenchBill = {
+  id: "bill-1",
+  billKey: "materials",
+  name: "材料清单",
+  revision: 7,
+  taxMode: "multiple_rate",
+  defaultTaxRatePercent: "13",
+  schemaSnapshot: {
+    columns: [
+      { key: "itemName", label: "名称", required: true },
+      { key: "unit", label: "单位", required: true },
+      { key: "brand", label: "品牌", required: true }
+    ]
+  },
+  rows: [{
+    rowKey: "server-row-1",
+    itemCode: "A-01",
+    itemName: "钢筋",
+    specification: "HRB400",
+    unit: "吨",
+    quantity: "3.00",
+    unitPrice: "10.01",
+    taxRate: "13",
+    taxRateSource: "row_override",
+    isProvisional: true,
+    settlementBasis: "实测实量",
+    customData: { brand: "建龙" }
+  }]
+};
+
+function validRow(patch: Partial<ContractBillCandidateRow> = {}): ContractBillCandidateRow {
+  return {
+    ...emptyBillCandidateRow("local-test"),
+    itemName: "钢筋",
+    unit: "吨",
+    quantity: "3",
+    unitPrice: "10.01",
+    taxRatePercent: "13",
+    taxRateSource: "row_override",
+    customData: { brand: "建龙" },
+    ...patch
+  };
+}
+
+describe("contract bill grid candidate model", () => {
+  it("maps the workbench read model while keeping server keys, order, and string decimals", () => {
+    const rows = fromWorkbenchBill(bill);
+
+    expect(rows).toEqual([expect.objectContaining({
+      clientRowKey: "server-server-row-1",
+      rowKey: "server-row-1",
+      quantity: "3.00",
+      unitPrice: "10.01",
+      taxRatePercent: "13",
+      taxRateSource: "row_override",
+      isProvisional: true,
+      customData: { brand: "建龙" }
+    })]);
+  });
+
+  it("keeps derived client keys unique even for a malformed duplicate server row key", () => {
+    const rows = fromWorkbenchBill({
+      ...bill,
+      rows: [
+        { ...bill.rows[0]!, rowKey: "same" },
+        { ...bill.rows[0]!, rowKey: "same" },
+        { ...bill.rows[0]!, rowKey: "same-2" }
+      ]
+    });
+
+    expect(new Set(rows.map((row) => row.clientRowKey)).size).toBe(3);
+  });
+
+  it("adds twenty consecutive unique local rows without blocking on unsaved rows", () => {
+    let rows: ContractBillCandidateRow[] = [];
+    for (let index = 0; index < 20; index += 1) rows = addBillCandidateRow(rows);
+
+    expect(rows).toHaveLength(20);
+    expect(new Set(rows.map((row) => row.clientRowKey)).size).toBe(20);
+  });
+
+  it("copies only business fields, clears server rowKey and deep copies custom data", () => {
+    const source = validRow({ clientRowKey: "server-row", rowKey: "server-row" });
+    const copied = copyBillCandidateRow([source], source.clientRowKey);
+
+    expect(copied).toHaveLength(2);
+    expect(copied[1]).toMatchObject({ itemName: "钢筋", rowKey: undefined });
+    expect(copied[1]?.clientRowKey).not.toBe(source.clientRowKey);
+    expect(copied[1]?.customData).not.toBe(source.customData);
+    const unchanged = [source];
+    expect(copyBillCandidateRow(unchanged, "missing")).toBe(unchanged);
+  });
+
+  it("removes and moves immutably, leaving missing keys and boundaries untouched", () => {
+    const first = validRow({ clientRowKey: "one" });
+    const second = validRow({ clientRowKey: "two" });
+    const rows = [first, second];
+
+    expect(removeBillCandidateRow(rows, "one").map((row) => row.clientRowKey)).toEqual(["two"]);
+    expect(removeBillCandidateRow(rows, "missing")).toBe(rows);
+    expect(moveBillCandidateRow(rows, "two", -1).map((row) => row.clientRowKey)).toEqual(["two", "one"]);
+    expect(moveBillCandidateRow(rows, "one", -1)).toBe(rows);
+    expect(moveBillCandidateRow(rows, "two", 1)).toBe(rows);
+  });
+
+  it("maps the full candidate set to replace DTO semantics", () => {
+    expect(toReplaceBillRowsInput([validRow({ itemCode: " ", specification: "", quantity: "" })], {
+      expectedBillRevision: 7,
+      idempotencyKey: "save-1"
+    })).toEqual({
+      expectedBillRevision: 7,
+      idempotencyKey: "save-1",
+      rows: [{
+        clientRowKey: "local-test",
+        sortOrder: 0,
+        itemName: "钢筋",
+        unit: "吨",
+        unitPrice: "10.01",
+        taxRatePercent: "13",
+        taxRateSource: "row_override",
+        isProvisional: false,
+        customData: { brand: "建龙" }
+      }]
+    });
+  });
+
+  it("keeps every structured server cell error, including unknown fields", () => {
+    expect(mapServerBillCellErrors([
+      { clientRowKey: "local-test", field: "quantity", message: "数量错误" },
+      { clientRowKey: "local-test", field: "unexpected_field", message: "未知列" }
+    ])).toEqual([
+      { clientRowKey: "local-test", field: "quantity", message: "数量错误" },
+      { clientRowKey: "local-test", field: "unexpected_field", message: "未知列" }
+    ]);
+  });
+
+  it("replaces every candidate from Excel only after confirmation and deep copies it", () => {
+    const original = [validRow({ clientRowKey: "original" })];
+    const imported = [validRow({ clientRowKey: "import-1", customData: { brand: "进口" } })];
+
+    expect(applyExcelCandidateRows(original, imported, false)).toBe(original);
+    const confirmed = applyExcelCandidateRows(original, imported, true);
+    expect(confirmed).not.toBe(imported);
+    expect(confirmed[0]?.clientRowKey).toBe("import-1");
+    expect(confirmed[0]?.customData).not.toBe(imported[0]?.customData);
+  });
+
+  it("rebuilds authoritative candidates after batch save and discards temporary keys", () => {
+    const response: ReplaceContractBillRowsReadModel = {
+      bill: null,
+      rows: [{
+        id: "id-1", contractBillId: "bill-1", rowKey: "server-row-2", sortOrder: 4,
+        itemCode: "B", itemName: "水泥", specification: null, unit: "吨", quantity: "2.00",
+        unitPrice: "400.00", taxRate: "13", taxRateSource: "row_override", pricingFactStatus: "confirmed",
+        precisionPolicy: "two_decimal", taxInclusiveAmountCents: "80000", taxExclusiveAmountCents: "70796",
+        taxAmountCents: "9204", isProvisional: false, settlementBasis: null, customData: { brand: "海螺" },
+        createdAt: "2026-07-24T00:00:00.000Z", updatedAt: "2026-07-24T00:00:00.000Z"
+      }]
+    };
+
+    expect(fromBatchSaveReadModel(response)).toEqual([expect.objectContaining({
+      clientRowKey: "server-server-row-2", rowKey: "server-row-2", itemName: "水泥", customData: { brand: "海螺" }
+    })]);
+  });
+
+  it("returns stable cell errors for core, tax and required custom columns without rounding input", () => {
+    const errors = validateBillCandidateRows([
+      validRow({ itemName: "", unit: "", quantity: "1.234", unitPrice: "0", taxRatePercent: "13.001", customData: { brand: "" } })
+    ], bill);
+
+    expect(errors).toEqual(expect.arrayContaining([
+      { clientRowKey: "local-test", field: "itemName", message: "请填写项目名称" },
+      { clientRowKey: "local-test", field: "unit", message: "请填写单位" },
+      { clientRowKey: "local-test", field: "quantity", message: "数量必须是最多保留 2 位小数的正数" },
+      { clientRowKey: "local-test", field: "unitPrice", message: "含税单价必须大于 0" },
+      { clientRowKey: "local-test", field: "taxRatePercent", message: "税率最多保留 2 位小数" },
+      { clientRowKey: "local-test", field: "brand", message: "请填写品牌" }
+    ]));
+  });
+
+  it("calculates exact half-up cent totals with BigInt, trailing zeroes and multiple rows", () => {
+    expect(candidateTotals([validRow()])).toEqual({
+      kind: "calculated", taxInclusiveAmountCents: "3003", taxExclusiveAmountCents: "2658", taxAmountCents: "345"
+    });
+    expect(candidateTotals([
+      validRow({ quantity: "1.00", unitPrice: "10.010" }),
+      validRow({ clientRowKey: "second", quantity: "2", unitPrice: "10.01" })
+    ])).toEqual({
+      kind: "calculated", taxInclusiveAmountCents: "3003", taxExclusiveAmountCents: "2658", taxAmountCents: "345"
+    });
+  });
+
+  it("marks incomplete or invalid amount rows as not calculable instead of treating them as zero", () => {
+    expect(candidateTotals([validRow({ quantity: "", unitPrice: "10.01" })])).toEqual({
+      kind: "not_calculable", clientRowKey: "local-test", field: "quantity"
+    });
+    expect(candidateTotals([validRow({ quantity: "three" })])).toEqual({
+      kind: "not_calculable", clientRowKey: "local-test", field: "quantity"
+    });
+    expect(candidateTotals([validRow({ unitPrice: "0" })])).toEqual({
+      kind: "not_calculable", clientRowKey: "local-test", field: "unitPrice"
+    });
+  });
+});
