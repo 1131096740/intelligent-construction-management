@@ -122,23 +122,21 @@ async function mockLoginAndShell(page: Page, userId: string) {
   }));
 }
 
-async function loginWithRecentRoute(page: Page, userId: string, path: string, label: string) {
+async function login(page: Page) {
   await page.goto("/login");
-  await page.evaluate(({ key, recentPath, recentLabel }) => {
-    window.localStorage.setItem(key, JSON.stringify([{
-      path: recentPath,
-      label: recentLabel,
-      openedAt: "2026-07-15T08:00:00.000Z"
-    }]));
-  }, {
-    key: `jiangkong:recent-business-routes:${encodeURIComponent(userId)}`,
-    recentPath: path,
-    recentLabel: label
-  });
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("E2e@2026");
   await page.getByRole("button", { name: "登录" }).click();
   await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible();
+}
+
+async function navigateWithinApp(page: Page, path: string) {
+  await page.evaluate((nextPath) => {
+    window.history.pushState({}, "", nextPath);
+    window.dispatchEvent(new PopStateEvent("popstate", {
+      state: window.history.state
+    }));
+  }, path);
 }
 
 async function submitDownloadConfirmation(page: Page, expectedUrl: string) {
@@ -177,7 +175,7 @@ test("付款详情 A 的慢响应不会覆盖同路由切换后的 B", async ({ 
     body: "payment-B-pdf"
   }));
 
-  await loginWithRecentRoute(page, userId, "/付款管理/payment-B", "付款 payment-B");
+  await login(page);
   await page.goto("/付款管理/payment-A");
   await expect(page.getByRole("heading", { name: "A付款申请" })).toBeVisible();
 
@@ -187,9 +185,7 @@ test("付款详情 A 的慢响应不会覆盖同路由切换后的 B", async ({ 
   await page.locator(".action-grid").getByRole("button", { name: "下载审批单" }).click();
   await expect(page.getByText("确认下载付款审批单？")).toBeVisible();
 
-  await page.locator(".recent-strip").getByRole("button", { name: "付款 payment-B" }).evaluate((button) => {
-    (button as HTMLButtonElement).click();
-  });
+  await navigateWithinApp(page, "/付款管理/payment-B");
   await expect(page.getByRole("heading", { name: "B付款申请" })).toBeVisible();
   await expect(page.getByText("确认下载付款审批单？")).toBeHidden();
 
@@ -231,7 +227,7 @@ test("结算详情 A 的慢响应不会覆盖同路由切换后的 B", async ({ 
     body: "settlement-B-pdf"
   }));
 
-  await loginWithRecentRoute(page, userId, "/结算管理/settlement-B", "结算 settlement-B");
+  await login(page);
   await page.goto("/结算管理/settlement-A");
   await expect(page.getByRole("heading", { name: "A结算单" })).toBeVisible();
 
@@ -241,9 +237,7 @@ test("结算详情 A 的慢响应不会覆盖同路由切换后的 B", async ({ 
   await page.locator(".action-grid").getByRole("button", { name: "下载审批单" }).click();
   await expect(page.getByText("确认下载结算审批单？")).toBeVisible();
 
-  await page.locator(".recent-strip").getByRole("button", { name: "结算 settlement-B" }).evaluate((button) => {
-    (button as HTMLButtonElement).click();
-  });
+  await navigateWithinApp(page, "/结算管理/settlement-B");
   await expect(page.getByRole("heading", { name: "B结算单" })).toBeVisible();
   await expect(page.getByText("确认下载结算审批单？")).toBeHidden();
 
