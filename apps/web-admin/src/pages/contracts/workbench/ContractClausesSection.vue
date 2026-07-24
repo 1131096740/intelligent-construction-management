@@ -27,9 +27,10 @@
             >*</em>
           </span>
           <t-input
-            :value="clause.title"
+            :model-value="clause.title"
             :disabled="clauseDisabled(clause.key)"
-            @change="(value: string) => updateClause(clause.key, { title: value })"
+            :data-testid="`clause-title-${clause.key}`"
+            @update:model-value="updateClauseTitle(clause.key, String($event))"
           />
         </label>
 
@@ -39,7 +40,8 @@
             :value="clause.numberingMode"
             :options="numberingOptions"
             :disabled="clauseDisabled(clause.key)"
-            @change="(value: 'automatic' | 'fixed') => updateClause(clause.key, { numberingMode: value })"
+            :data-testid="`clause-numbering-${clause.key}`"
+            @change="updateClauseNumberingMode(clause.key, $event)"
           />
         </label>
       </div>
@@ -121,19 +123,21 @@
               > 斜体</label>
             </div>
             <t-textarea
-              :value="block.text"
+              :model-value="block.text"
               :disabled="clauseDisabled(clause.key)"
               :autosize="{ minRows: 2, maxRows: 5 }"
-              @change="(value: string) => updateBlock(clause.key, index, { ...block, text: value })"
+              :data-testid="`clause-paragraph-${clause.key}-${index}`"
+              @update:model-value="updateParagraphText(clause.key, index, String($event))"
             />
           </template>
 
           <template v-else-if="block.type === 'list'">
             <t-textarea
-              :value="block.items.join('\n')"
+              :model-value="block.items.join('\n')"
               :disabled="clauseDisabled(clause.key)"
               :autosize="{ minRows: 2, maxRows: 5 }"
-              @change="(value: string) => updateBlock(clause.key, index, { type: 'list', items: value.split('\n') })"
+              :data-testid="`clause-list-${clause.key}-${index}`"
+              @update:model-value="updateListItems(clause.key, index, String($event))"
             />
           </template>
 
@@ -150,11 +154,12 @@
                   v-for="(cell, cellIndex) in row"
                   :key="cellIndex"
                 >
-                  <input
-                    :value="cell"
+                  <t-input
+                    :model-value="cell"
                     :disabled="clauseDisabled(clause.key)"
-                    @input="updateTableCell(clause.key, index, rowIndex, cellIndex, $event)"
-                  >
+                    :data-testid="`clause-table-${clause.key}-${index}-${rowIndex}-${cellIndex}`"
+                    @update:model-value="updateTableCell(clause.key, index, rowIndex, cellIndex, String($event))"
+                  />
                 </td>
               </tr>
             </tbody>
@@ -218,6 +223,7 @@ import {
   type ClauseBlock,
   type ClauseDocument
 } from "./contract-bill-editor";
+import { withClauseDeviation } from "./contract-clause-editing";
 import type { ContractDraftModel } from "./use-contract-draft";
 
 const props = defineProps<{
@@ -254,11 +260,29 @@ const standardClauseOptions = computed(() =>
 onMounted(loadStandardClauses);
 
 function updateClause(key: string, patch: Partial<ContractClauseDefinition>) {
+  const clause = props.model.clauses.find((item) => item.key === key);
+  if (!clause) return;
+  replaceClause({ ...clause, ...patch });
+}
+
+function replaceClause(nextClause: ContractClauseDefinition) {
   emit("update", {
     clauses: props.model.clauses.map((clause) =>
-      clause.key === key ? { ...clause, ...patch } : clause
+      clause.key === nextClause.key ? nextClause : clause
     )
   });
+}
+
+function updateClauseTitle(key: string, title: string) {
+  const clause = props.model.clauses.find((item) => item.key === key);
+  if (!clause) return;
+  replaceClause(withClauseDeviation(clause, { title }));
+}
+
+function updateClauseNumberingMode(key: string, value: unknown) {
+  const numberingMode = String(value);
+  if (numberingMode !== "automatic" && numberingMode !== "fixed") return;
+  updateClause(key, { numberingMode });
 }
 
 function clauseDocument(content: unknown): ClauseDocument {
@@ -267,9 +291,14 @@ function clauseDocument(content: unknown): ClauseDocument {
 
 function updateClauseBlocks(key: string, blocks: ClauseBlock[]) {
   const clause = props.model.clauses.find((item) => item.key === key);
-  const meta = standardContentMeta(clause?.content);
+  if (!clause) return;
   const text = clauseDocumentText({ text: "", blocks });
-  updateClause(key, { content: { text, blocks, ...meta } });
+  const content = {
+    ...clauseContentRecord(clause.content),
+    text,
+    blocks
+  };
+  replaceClause(withClauseDeviation(clause, { content }));
 }
 
 function updateBlock(key: string, index: number, block: ClauseBlock) {
@@ -278,6 +307,20 @@ function updateBlock(key: string, index: number, block: ClauseBlock) {
   const blocks = clauseDocument(clause.content).blocks;
   blocks[index] = block;
   updateClauseBlocks(key, blocks);
+}
+
+function updateParagraphText(key: string, index: number, value: string) {
+  const clause = props.model.clauses.find((item) => item.key === key);
+  const block = clause ? clauseDocument(clause.content).blocks[index] : null;
+  if (!block || block.type !== "paragraph") return;
+  updateBlock(key, index, { ...block, text: value });
+}
+
+function updateListItems(key: string, index: number, value: string) {
+  const clause = props.model.clauses.find((item) => item.key === key);
+  const block = clause ? clauseDocument(clause.content).blocks[index] : null;
+  if (!block || block.type !== "list") return;
+  updateBlock(key, index, { type: "list", items: value.split("\n") });
 }
 
 function addBlock(key: string, type: ClauseBlock["type"]) {
@@ -321,13 +364,13 @@ function updateTableCell(
   index: number,
   rowIndex: number,
   cellIndex: number,
-  event: Event
+  value: string
 ) {
   const clause = props.model.clauses.find((item) => item.key === key);
   const block = clause ? clauseDocument(clause.content).blocks[index] : null;
   if (!block || block.type !== "table") return;
   const rows = block.rows.map((row) => [...row]);
-  rows[rowIndex][cellIndex] = (event.target as HTMLInputElement).value;
+  rows[rowIndex][cellIndex] = value;
   updateBlock(key, index, { type: "table", rows });
 }
 
@@ -407,21 +450,6 @@ function standardClauseLabel(clause: ContractClauseDefinition): string {
       : "标准条款";
   const versionNo = content["standardClauseVersionNo"];
   return typeof versionNo === "number" ? `${name} v${versionNo}` : name;
-}
-
-function standardContentMeta(content: unknown) {
-  const record = clauseContentRecord(content);
-  return {
-    ...(record["standardContent"] === undefined
-      ? {}
-      : { standardContent: record["standardContent"] }),
-    ...(typeof record["standardClauseSourceName"] === "string"
-      ? { standardClauseSourceName: record["standardClauseSourceName"] }
-      : {}),
-    ...(typeof record["standardClauseVersionNo"] === "number"
-      ? { standardClauseVersionNo: record["standardClauseVersionNo"] }
-      : {})
-  };
 }
 
 function clauseContentRecord(content: unknown): Record<string, unknown> {
