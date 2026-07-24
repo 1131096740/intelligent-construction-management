@@ -51,6 +51,12 @@ interface EncodedRouteTarget {
   hash: string;
 }
 
+interface RouteNavigationTarget extends RouteAccessTarget, EncodedRouteTarget {}
+
+interface RouteNavigationSource {
+  matched: readonly unknown[];
+}
+
 export function buildEncodedRouteRedirect(to: EncodedRouteTarget) {
   try {
     const decodedPath = decodeURI(to.path);
@@ -97,6 +103,21 @@ export function resolveRouteAccess(to: RouteAccessTarget, auth: RouteAccessAuth)
   return true;
 }
 
+export function resolveRouteNavigation(
+  to: RouteNavigationTarget,
+  from: RouteNavigationSource,
+  auth: RouteAccessAuth
+) {
+  if (from.matched.length === 0) {
+    const encodedRouteRedirect = buildEncodedRouteRedirect(to);
+    if (encodedRouteRedirect) {
+      return encodedRouteRedirect;
+    }
+  }
+
+  return resolveRouteAccess(to, auth);
+}
+
 export function buildRouteDocumentTitle(to: { path?: string; meta: { title?: unknown } }) {
   const titleFromMeta = typeof to.meta.title === "string" ? to.meta.title.trim() : "";
   const titleFromPath = decodeURIComponent(to.path?.split("/").filter(Boolean).at(-1) ?? "首页");
@@ -108,14 +129,9 @@ export function focusMainContent(documentRef: Pick<Document, "querySelector">) {
   documentRef.querySelector<HTMLElement>("#main-content")?.focus({ preventScroll: true });
 }
 
-router.beforeEach((to) => {
-  const encodedRouteRedirect = buildEncodedRouteRedirect(to);
-  if (encodedRouteRedirect) {
-    return encodedRouteRedirect;
-  }
-
+router.beforeEach((to, from) => {
   const auth = useAuthStore();
-  return resolveRouteAccess(to, {
+  return resolveRouteNavigation(to, from, {
     isAuthenticated: auth.isAuthenticated,
     mustChangePassword: Boolean(auth.user?.mustChangePassword),
     roleKeys: auth.user?.roleKeys,

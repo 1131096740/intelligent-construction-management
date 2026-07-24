@@ -4,6 +4,7 @@ import {
   buildRouteDocumentTitle,
   focusMainContent,
   resolveRouteAccess,
+  resolveRouteNavigation,
   resolveRouteScrollPosition
 } from "./index";
 import {
@@ -75,6 +76,48 @@ describe("web admin routes", () => {
   it("leaves canonical and malformed route paths unchanged", () => {
     expect(buildEncodedRouteRedirect({ path: "/组织权限", query: {}, hash: "" })).toBeNull();
     expect(buildEncodedRouteRedirect({ path: "/组织权限%ZZ", query: {}, hash: "" })).toBeNull();
+  });
+
+  it("normalizes an encoded Chinese route during initial navigation", () => {
+    expect(
+      resolveRouteNavigation(
+        {
+          path: "/%E7%BB%84%E7%BB%87%E6%9D%83%E9%99%90",
+          fullPath: "/%E7%BB%84%E7%BB%87%E6%9D%83%E9%99%90?tab=roles#members",
+          query: { tab: "roles" },
+          hash: "#members",
+          meta: {}
+        },
+        { matched: [] },
+        { isAuthenticated: false, roleKeys: [] }
+      )
+    ).toEqual({
+      path: "/组织权限",
+      query: { tab: "roles" },
+      hash: "#members",
+      replace: true
+    });
+  });
+
+  it("keeps encoded in-app history navigation and still applies access checks", () => {
+    expect(
+      resolveRouteNavigation(
+        {
+          path: "/%E7%BB%84%E7%BB%87%E6%9D%83%E9%99%90",
+          fullPath: "/%E7%BB%84%E7%BB%87%E6%9D%83%E9%99%90?tab=roles#members",
+          query: { tab: "roles" },
+          hash: "#members",
+          meta: {}
+        },
+        { matched: [{}] },
+        { isAuthenticated: false, roleKeys: [] }
+      )
+    ).toEqual({
+      path: "/login",
+      query: {
+        redirect: "/%E7%BB%84%E7%BB%87%E6%9D%83%E9%99%90?tab=roles#members"
+      }
+    });
   });
 
   it("restores browser history position before considering hash", () => {
