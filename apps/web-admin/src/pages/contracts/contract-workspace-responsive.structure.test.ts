@@ -18,6 +18,12 @@ describe("contract workspace responsive governance", () => {
     expect(workbench).toMatch(
       /@container jg-page \(max-width: 620px\)[\s\S]*\.status-left,[\s\S]*\.status-right\s*\{[^}]*width:\s*100%;/su
     );
+    expect(workbench).toMatch(
+      /@container jg-page \(max-width: 620px\)[\s\S]*\.status-bar\s*\{[^}]*justify-content:\s*flex-start;[^}]*gap:\s*var\(--jg-space-md\);/su
+    );
+    expect(workbench).toMatch(
+      /@container jg-page \(max-width: 620px\)[\s\S]*\.status-left\s*\{[^}]*flex:\s*0 1 auto;/su
+    );
     expect(workbench).not.toContain("@media (max-width: 1100px)");
   });
 

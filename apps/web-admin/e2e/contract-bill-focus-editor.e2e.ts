@@ -173,6 +173,10 @@ test.describe("合同清单全宽专注编辑", () => {
     await expect(page.locator("revo-grid")).toHaveCount(0);
     await expect(page.locator(".contract-bill-grid__card")).toHaveCount(1);
     await expect(page.locator(".focus-summary")).toContainText("候选行数 1");
+    const statusMetrics = await mobileStatusMetrics(page);
+    expect(statusMetrics.height).toBeLessThanOrEqual(96);
+    expect(statusMetrics.contentGap).toBeGreaterThanOrEqual(-0.5);
+    expect(statusMetrics.contentGap).toBeLessThanOrEqual(statusMetrics.designGap + 0.5);
 
     const itemNameInput = page.locator(
       '.contract-bill-grid__card [data-field="itemName"][data-client-row-key="server-initial-row"] input'
@@ -349,6 +353,25 @@ function itemNameCell(page: Page, rowIndex: number) {
   return page.locator(
     `revo-grid revogr-data[type="rgRow"] [data-rgrow="${rowIndex}"][data-rgcol="1"]`
   );
+}
+
+async function mobileStatusMetrics(page: Page) {
+  return page.evaluate(() => {
+    const statusBar = document.querySelector<HTMLElement>(".status-bar");
+    const statusLeft = document.querySelector<HTMLElement>(".status-left");
+    const statusRight = document.querySelector<HTMLElement>(".status-right");
+    if (!statusBar || !statusLeft || !statusRight) {
+      throw new Error("合同工作台状态栏结构缺失");
+    }
+    const barBox = statusBar.getBoundingClientRect();
+    const leftBox = statusLeft.getBoundingClientRect();
+    const rightBox = statusRight.getBoundingClientRect();
+    return {
+      height: barBox.height,
+      contentGap: rightBox.top - leftBox.bottom,
+      designGap: Number.parseFloat(getComputedStyle(statusBar).rowGap)
+    };
+  });
 }
 
 async function saveSuccessScreenshot(

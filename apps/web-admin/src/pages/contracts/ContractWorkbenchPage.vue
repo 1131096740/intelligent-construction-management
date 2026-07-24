@@ -2342,12 +2342,18 @@ function initializeDraftFromQuery() {
   .status-bar {
     align-items: flex-start;
     flex-direction: column;
+    justify-content: flex-start;
+    gap: var(--jg-space-md);
     padding: var(--jg-space-md);
   }
 
   .status-left,
   .status-right {
     width: 100%;
+  }
+
+  .status-left {
+    flex: 0 1 auto;
   }
 
   .status-right {
