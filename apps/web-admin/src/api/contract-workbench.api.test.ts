@@ -842,8 +842,8 @@ describe("contract workbench API client", () => {
         message: "清单有 1 处需要修改",
         rowErrors: [{
           clientRowKey: "local-2",
-          field: "quantity",
-          message: "数量最多保留 6 位小数"
+          field: "brand",
+          message: "必填自定义字段未填写：brand"
         }]
       }), {
         status: 400,
@@ -872,8 +872,8 @@ describe("contract workbench API client", () => {
       code: "CONTRACT_BILL_VALIDATION_FAILED",
       rowErrors: [{
         clientRowKey: "local-2",
-        field: "quantity",
-        message: "数量最多保留 6 位小数"
+        field: "brand",
+        message: "必填自定义字段未填写：brand"
       }]
     });
     expect(mockApiFetch).toHaveBeenCalledTimes(1);

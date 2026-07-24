@@ -542,6 +542,44 @@ describe("ContractBillService", () => {
     })).rejects.toThrow("必填自定义字段未填写：brand");
   });
 
+  it("normalizes schema boolean custom values and rejects invalid boolean values by column key", async () => {
+    const schemaSnapshot = { columns: [
+      { key: "fuelIncluded", label: "是否含燃油", type: "boolean", required: true },
+      { key: "operatorIncluded", label: "是否带操作人员", type: "boolean", required: true }
+    ] };
+    const valid = fixture({ schemaSnapshot });
+
+    await valid.service.addRow("bill-1", "owner-1", {
+      ...rowInput,
+      customData: { fuelIncluded: true, operatorIncluded: "false" }
+    });
+    expect(valid.tx.contractBillRow.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        customData: { fuelIncluded: "true", operatorIncluded: "false" }
+      })
+    });
+
+    const invalid = fixture({ schemaSnapshot });
+    await expect(invalid.service.replaceRows("bill-1", "owner-1", {
+      expectedBillRevision: 2,
+      idempotencyKey: "invalid-boolean-custom-data",
+      rows: [batchRow("invalid-fuel", undefined, {
+        customData: { fuelIncluded: "yes", operatorIncluded: "false" }
+      })]
+    })).rejects.toMatchObject({
+      response: {
+        code: "CONTRACT_BILL_VALIDATION_FAILED",
+        rowErrors: [expect.objectContaining({
+          clientRowKey: "invalid-fuel",
+          field: "fuelIncluded",
+          message: "自定义字段“是否含燃油”必须选择“是”或“否”"
+        })]
+      }
+    });
+    expect(invalid.tx.contractBillRow.create).not.toHaveBeenCalled();
+    expect(invalid.tx.contractBill.updateMany).not.toHaveBeenCalled();
+  });
+
   it("sums complete rows but does not publish a contract amount while priced rows are incomplete", async () => {
     const { service, tx, bill } = fixture({
       rows: [
@@ -705,6 +743,7 @@ describe("ContractBillService", () => {
         batchRow("invalid-source", undefined, { taxRateSource: "unsupported" }),
         batchRow("invalid-item-code", undefined, { itemCode: 100 }),
         batchRow("invalid-provisional", undefined, { isProvisional: "yes" }),
+        batchRow("invalid-custom-envelope", undefined, { customData: [] }),
         { ...batchRow("invalid-row-key"), rowKey: "" },
         batchRow("invalid-sort", undefined, { sortOrder: 1.5 })
       ]
@@ -715,6 +754,7 @@ describe("ContractBillService", () => {
           expect.objectContaining({ clientRowKey: "invalid-source", field: "taxRateSource" }),
           expect.objectContaining({ clientRowKey: "invalid-item-code", field: "itemCode" }),
           expect.objectContaining({ clientRowKey: "invalid-provisional", field: "isProvisional" }),
+          expect.objectContaining({ clientRowKey: "invalid-custom-envelope", field: "customData" }),
           expect.objectContaining({ clientRowKey: "invalid-row-key", field: "rowKey" }),
           expect.objectContaining({ clientRowKey: "invalid-sort", field: "sortOrder" })
         ])
@@ -726,7 +766,7 @@ describe("ContractBillService", () => {
     expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
   });
 
-  it("maps missing required dynamic custom data to customData without writes", async () => {
+  it("maps missing required dynamic custom data to its schema column key without writes", async () => {
     const { service, tx } = fixture({
       schemaSnapshot: {
         columns: [{ key: "brand", label: "品牌", type: "text", required: true }]
@@ -742,7 +782,7 @@ describe("ContractBillService", () => {
         code: "CONTRACT_BILL_VALIDATION_FAILED",
         rowErrors: [expect.objectContaining({
           clientRowKey: "missing-brand",
-          field: "customData",
+          field: "brand",
           message: "必填自定义字段未填写：brand"
         })]
       }

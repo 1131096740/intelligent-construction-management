@@ -28,22 +28,7 @@ type BatchRowError = {
   message: string;
 };
 
-type BatchRowField =
-  | "clientRowKey"
-  | "rowKey"
-  | "sortOrder"
-  | "itemCode"
-  | "itemName"
-  | "specification"
-  | "unit"
-  | "quantity"
-  | "unitPrice"
-  | "taxRatePercent"
-  | "taxRateSource"
-  | "isProvisional"
-  | "settlementBasis"
-  | "customData"
-  | "row";
+type BatchRowField = string;
 
 class ContractBillRowInputValidationException extends BadRequestException {
   constructor(readonly field: BatchRowField, message: string) {
@@ -840,17 +825,34 @@ export class ContractBillService {
     const columns = this.schemaColumns(bill.schemaSnapshot);
     for (const column of columns) {
       const value = customData[column.key];
-      if (
-        column.required &&
-        (value === undefined ||
-          value === null ||
-          value === "" ||
-          (typeof value === "string" && !value.trim()))
-      ) {
+      const blank =
+        value === undefined ||
+        value === null ||
+        value === "" ||
+        (typeof value === "string" && !value.trim());
+      if (column.required && blank) {
         throw new ContractBillRowInputValidationException(
-          "customData",
+          column.key,
           `必填自定义字段未填写：${column.key}`
         );
+      }
+      if (column.type === "boolean") {
+        if (blank) {
+          delete customData[column.key];
+          continue;
+        }
+        if (
+          value !== true &&
+          value !== false &&
+          value !== "true" &&
+          value !== "false"
+        ) {
+          throw new ContractBillRowInputValidationException(
+            column.key,
+            `自定义字段“${column.label}”必须选择“是”或“否”`
+          );
+        }
+        customData[column.key] = value === true || value === "true" ? "true" : "false";
       }
     }
     return {
@@ -908,11 +910,20 @@ export class ContractBillService {
         !this.isPlainObject(value) ||
         typeof value.key !== "string" ||
         !value.key.trim() ||
+        (value.label !== undefined && typeof value.label !== "string") ||
+        (value.type !== undefined && typeof value.type !== "string") ||
         (value.required !== undefined && typeof value.required !== "boolean")
       ) {
         throw new BadRequestException(`合同清单第 ${index + 1} 个字段定义无效`);
       }
-      return { key: value.key, required: value.required === true };
+      return {
+        key: value.key,
+        label: typeof value.label === "string" && value.label.trim()
+          ? value.label.trim()
+          : value.key,
+        type: typeof value.type === "string" ? value.type : "text",
+        required: value.required === true
+      };
     }).filter((column) => isContractBillCustomColumn(column.key));
   }
 

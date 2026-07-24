@@ -796,9 +796,12 @@ export function reorderBillRows(billId: string, body: ReorderBillRowsPayload) {
   return postJson<unknown>(`/contract-bills/${billId}/rows/reorder`, body);
 }
 
+/** Core row field name or the exact key of a template-defined custom column. */
+export type ContractBillRowValidationField = string;
+
 export interface ContractBillRowValidationError {
   clientRowKey: string;
-  field: string;
+  field: ContractBillRowValidationField;
   message: string;
 }
 
