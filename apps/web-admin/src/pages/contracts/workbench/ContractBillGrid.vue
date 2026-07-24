@@ -220,6 +220,10 @@ function candidateFromGridRow(
     }
     const normalized = parseBooleanText(gridRow[column.key]);
     if (normalized === null) {
+      if (!column.required && !text(gridRow[column.key]).trim()) {
+        delete nextCustomData[column.key];
+        continue;
+      }
       addEditorError(
         errors,
         current.clientRowKey,

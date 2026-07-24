@@ -367,6 +367,75 @@ describe("ContractBillGrid", () => {
     });
   });
 
+  it("allows an optional boolean custom column to stay blank while required boolean stays enforced", async () => {
+    const optionalBooleanBill: WorkbenchBill = {
+      ...bill,
+      schemaSnapshot: {
+        columns: [
+          {
+            key: "fuelIncluded",
+            label: "是否含燃油",
+            type: "boolean",
+            required: true
+          },
+          {
+            key: "optionalFlag",
+            label: "可选标记",
+            type: "boolean",
+            required: false
+          }
+        ]
+      }
+    };
+    const rows = candidateRows(1);
+    rows[0] = {
+      ...rows[0]!,
+      customData: {
+        ...rows[0]!.customData,
+        optionalFlag: ""
+      }
+    };
+    const rendered = await renderGrid({ rows, bill: optionalBooleanBill });
+
+    componentHarness.emitGridSource?.([{
+      ...componentHarness.gridSource[0]!,
+      itemName: "只修改名称"
+    }]);
+
+    expect(rendered.updates.at(-1)?.[0]?.itemName).toBe("只修改名称");
+    expect(rendered.updates.at(-1)?.[0]?.customData).not.toHaveProperty("optionalFlag");
+    const optionalColumn = componentHarness.gridColumns.find(
+      (column) => column.prop === "optionalFlag"
+    );
+    expect(optionalColumn?.cellProperties?.({
+      model: componentHarness.gridSource[0],
+      prop: "optionalFlag"
+    } as never)).toBeUndefined();
+
+    componentHarness.emitGridSource?.([{
+      ...componentHarness.gridSource[0]!,
+      fuelIncluded: ""
+    }]);
+
+    expect(rendered.updates.at(-1)?.[0]?.customData).toMatchObject({
+      fuelIncluded: "true"
+    });
+    const requiredColumn = componentHarness.gridColumns.find(
+      (column) => column.prop === "fuelIncluded"
+    );
+    expect(requiredColumn?.cellProperties?.({
+      model: componentHarness.gridSource[0],
+      prop: "fuelIncluded"
+    } as never)).toMatchObject({
+      "aria-invalid": "true",
+      "data-cell-error": "client-1:fuelIncluded"
+    });
+    expect(optionalColumn?.cellProperties?.({
+      model: componentHarness.gridSource[0],
+      prop: "optionalFlag"
+    } as never)).toBeUndefined();
+  });
+
   it("uses the existing unlimited-framework quantity label and optional rule", async () => {
     const unlimitedBill: WorkbenchBill = {
       ...bill,
