@@ -29,6 +29,13 @@ const expenseClaimAttachmentBindingMigration = readFileSync(
   ),
   "utf8"
 );
+const expenseClaimPaymentExecutionBindingMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260724100000_expense_claim_payment_execution_and_repayment_reversal/migration.sql"
+  ),
+  "utf8"
+);
 const schema = readFileSync(
   join(process.cwd(), "prisma/schema.prisma"),
   "utf8"
@@ -53,7 +60,7 @@ function migrationBindings(): Array<{
   exclusive: boolean;
 }> {
   return Array.from(
-    expenseClaimAttachmentBindingMigration.matchAll(/\('([^']+)'\s*,\s*'([^']+)'\s*,\s*(TRUE|FALSE)\)/gu),
+    expenseClaimPaymentExecutionBindingMigration.matchAll(/\('([^']+)'\s*,\s*'([^']+)'\s*,\s*(TRUE|FALSE)\)/gu),
     (match) => ({
       binding: `${match[1]}.${match[2]}`,
       exclusive: match[3] === "TRUE"
@@ -64,7 +71,7 @@ function migrationBindings(): Array<{
 describe("unified file business binding migration", () => {
   it("registers every current Prisma FileObject reference exactly once", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(58);
+    expect(registered).toHaveLength(59);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
   });
@@ -76,6 +83,7 @@ describe("unified file business binding migration", () => {
       .sort();
     expect(exclusive).toEqual([
       "ExpenseClaimAttachment.fileId",
+      "ExpenseClaimPaymentExecution.voucherFileId",
       "InvoiceExceptionConfirmation.proofFileId",
       "InvoiceRecord.fileId",
       "NoInvoiceConfirmation.proofFileId",
@@ -146,6 +154,17 @@ describe("unified file business binding migration", () => {
     expect(expenseClaimAttachmentBindingMigration).toMatch(/\('ExpenseClaimAttachment'\s*,\s*'fileId'\s*,\s*TRUE\)/u);
     expect(expenseClaimAttachmentBindingMigration).toContain(
       'BEFORE INSERT OR UPDATE OF "fileId" ON "ExpenseClaimAttachment"'
+    );
+  });
+
+  it("registers actual reimbursement-payment vouchers as exclusive facts before they can be written", () => {
+    expect(expenseClaimPaymentExecutionBindingMigration).toContain("BEGIN;");
+    expect(expenseClaimPaymentExecutionBindingMigration.trim()).toMatch(/COMMIT;$/u);
+    expect(expenseClaimPaymentExecutionBindingMigration).toContain(
+      "('ExpenseClaimPaymentExecution','voucherFileId',TRUE)"
+    );
+    expect(expenseClaimPaymentExecutionBindingMigration).toContain(
+      'BEFORE INSERT OR UPDATE OF "voucherFileId" ON "ExpenseClaimPaymentExecution"'
     );
   });
 

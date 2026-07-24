@@ -74,6 +74,7 @@ export const NON_RECEIPT_FILE_BINDINGS = [
     columns: ["attachmentFileId"]
   },
   { table: "ExpenseClaimAttachment", columns: ["fileId"] },
+  { table: "ExpenseClaimPaymentExecution", columns: ["voucherFileId"] },
   {
     table: "ProjectExpenseExecution",
     columns: ["voucherFileId"]
