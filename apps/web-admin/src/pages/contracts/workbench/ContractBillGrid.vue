@@ -1,7 +1,33 @@
+<script lang="ts">
+export function advanceContractBillErrorCursor<T extends {
+  clientRowKey: string;
+  field: string;
+}>(
+  currentIndex: number,
+  previousSignature: string,
+  errors: readonly T[]
+) {
+  const signature = JSON.stringify(
+    errors.map((error) => [error.clientRowKey, error.field])
+  );
+  if (!errors.length) {
+    return { error: null, nextIndex: 0, signature };
+  }
+  const index = signature === previousSignature
+    ? currentIndex % errors.length
+    : 0;
+  return {
+    error: errors[index]!,
+    nextIndex: (index + 1) % errors.length,
+    signature
+  };
+}
+</script>
+
 <script setup lang="ts">
 import type { ColumnRegular } from "@revolist/vue3-datagrid";
 import { isContractBillCustomColumn } from "@jiangkong/shared-domain";
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import JgBusinessGrid from "../../../components/JgBusinessGrid.vue";
 import type { JgBusinessGridRow } from "../../../components/jg-business-grid.config";
 import {
@@ -53,17 +79,39 @@ const isMobile = ref(
   typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches
 );
 const nextErrorIndex = ref(0);
+const errorListSignature = ref("");
+const editorErrors = ref<ContractBillCellError[]>([]);
 let mobileQuery: MediaQueryList | null = null;
 
+const configuredColumns = computed(() => billColumns(props.bill));
 const customColumns = computed<EditableColumn[]>(() =>
-  billColumns(props.bill)
+  configuredColumns.value
     .filter((column) => isContractBillCustomColumn(column.key))
     .map((column) => ({ ...column, size: 160 }))
 );
 
-const editableColumns = computed(() => [...coreColumns, ...customColumns.value]);
+const resolvedCoreColumns = computed(() => coreColumns.map((column) => {
+  const configured = configuredColumns.value.find((candidate) => candidate.key === column.key);
+  return configured
+    ? { ...column, label: configured.label, required: configured.required }
+    : column;
+}));
+const quantityColumn = computed(() =>
+  resolvedCoreColumns.value.find((column) => column.key === "quantity") ?? coreColumns[4]!
+);
+const editableColumns = computed(() => [...resolvedCoreColumns.value, ...customColumns.value]);
+const displayErrors = computed(() =>
+  Array.from(
+    new Map(
+      [...props.errors, ...editorErrors.value].map((error) => [
+        cellKey(error.clientRowKey, error.field),
+        error
+      ])
+    ).values()
+  )
+);
 const errorLookup = computed(() =>
-  new Map(props.errors.map((error) => [cellKey(error.clientRowKey, error.field), error]))
+  new Map(displayErrors.value.map((error) => [cellKey(error.clientRowKey, error.field), error]))
 );
 const gridRows = computed<JgBusinessGridRow[]>(() => props.rows.map(toGridRow));
 const columns = computed<ColumnRegular[]>(() =>
@@ -97,12 +145,28 @@ onBeforeUnmount(() => {
   mobileQuery = null;
 });
 
+watch(
+  () => props.errors,
+  () => {
+    nextErrorIndex.value = 0;
+    errorListSignature.value = "";
+  },
+  { flush: "sync" }
+);
+
 function updateMobileMode() {
   isMobile.value = mobileQuery?.matches ?? false;
 }
 
 function toGridRow(row: ContractBillCandidateRow): JgBusinessGridRow {
+  const customData = Object.fromEntries(customColumns.value.map((column) => [
+    column.key,
+    column.type === "boolean"
+      ? booleanText(row.customData[column.key])
+      : text(row.customData[column.key])
+  ]));
   return {
+    ...customData,
     clientRowKey: row.clientRowKey,
     itemCode: row.itemCode,
     itemName: row.itemName,
@@ -113,28 +177,59 @@ function toGridRow(row: ContractBillCandidateRow): JgBusinessGridRow {
     taxRateSource: row.taxRateSource,
     taxRatePercent: row.taxRatePercent,
     isProvisional: row.isProvisional ? "true" : "false",
-    settlementBasis: row.settlementBasis,
-    ...row.customData
+    settlementBasis: row.settlementBasis
   };
 }
 
 function onGridRowsChanged(value: JgBusinessGridRow[]) {
   const byClientKey = new Map(props.rows.map((row) => [row.clientRowKey, row]));
-  emit("update:rows", value.flatMap((gridRow, index) => {
+  const nextErrors: ContractBillCellError[] = [];
+  const rows = value.flatMap((gridRow, index) => {
     const clientRowKey = gridRow.clientRowKey ?? "";
     const current = byClientKey.get(clientRowKey) ?? props.rows[index];
-    return current ? [candidateFromGridRow(current, gridRow)] : [];
-  }));
+    return current ? [candidateFromGridRow(current, gridRow, nextErrors)] : [];
+  });
+  editorErrors.value = nextErrors;
+  emit("update:rows", rows);
 }
 
 function candidateFromGridRow(
   current: ContractBillCandidateRow,
-  gridRow: JgBusinessGridRow
+  gridRow: JgBusinessGridRow,
+  errors: ContractBillCellError[]
 ): ContractBillCandidateRow {
-  const taxRateSource =
-    props.bill.taxMode === "multiple_rate" && gridRow.taxRateSource === "row_override"
-      ? "row_override"
-      : "version_default";
+  const taxRateSource = gridRow.taxRateSource === "version_default" ||
+    (props.bill.taxMode === "multiple_rate" && gridRow.taxRateSource === "row_override")
+    ? gridRow.taxRateSource
+    : invalidGridValue(
+      errors,
+      current,
+      "taxRateSource",
+      "税率来源只能选择使用合同税率或使用例外税率",
+      current.taxRateSource
+    );
+  const provisional = parseBooleanText(gridRow.isProvisional);
+  if (provisional === null) {
+    addEditorError(errors, current.clientRowKey, "isProvisional", "暂定项只能填写“是”或“否”");
+  }
+  const nextCustomData = { ...current.customData };
+  for (const column of customColumns.value) {
+    if (column.type !== "boolean") {
+      nextCustomData[column.key] = text(gridRow[column.key]);
+      continue;
+    }
+    const normalized = parseBooleanText(gridRow[column.key]);
+    if (normalized === null) {
+      addEditorError(
+        errors,
+        current.clientRowKey,
+        column.key,
+        `${column.label}只能填写“是”或“否”`
+      );
+      continue;
+    }
+    nextCustomData[column.key] = normalized ? "true" : "false";
+  }
   return {
     ...current,
     itemCode: text(gridRow.itemCode),
@@ -147,14 +242,9 @@ function candidateFromGridRow(
     taxRatePercent: taxRateSource === "row_override"
       ? text(gridRow.taxRatePercent)
       : props.bill.defaultTaxRatePercent ?? "",
-    isProvisional: booleanValue(gridRow.isProvisional),
+    isProvisional: provisional ?? current.isProvisional,
     settlementBasis: text(gridRow.settlementBasis),
-    customData: {
-      ...current.customData,
-      ...Object.fromEntries(
-        customColumns.value.map((column) => [column.key, text(gridRow[column.key])])
-      )
-    }
+    customData: nextCustomData
   };
 }
 
@@ -166,16 +256,41 @@ function updateMobileCell(
   emit("update:rows", props.rows.map((row) => {
     if (row.clientRowKey !== clientRowKey) return row;
     if (isContractBillCustomColumn(field)) {
+      const column = customColumns.value.find((candidate) => candidate.key === field);
+      if (column?.type === "boolean") {
+        const normalized = parseBooleanText(value);
+        if (normalized === null) {
+          setMobileEditorError(clientRowKey, field, `${column.label}只能选择“是”或“否”`);
+          return row;
+        }
+        clearMobileEditorError(clientRowKey, field);
+        return {
+          ...row,
+          customData: {
+            ...row.customData,
+            [field]: normalized ? "true" : "false"
+          }
+        };
+      }
       return {
         ...row,
         customData: { ...row.customData, [field]: String(value ?? "") }
       };
     }
     if (field === "taxRateSource") {
-      const taxRateSource =
-        props.bill.taxMode === "multiple_rate" && value === "row_override"
-          ? "row_override"
-          : "version_default";
+      if (
+        value !== "version_default" &&
+        (props.bill.taxMode !== "multiple_rate" || value !== "row_override")
+      ) {
+        setMobileEditorError(
+          clientRowKey,
+          field,
+          "税率来源只能选择使用合同税率或使用例外税率"
+        );
+        return row;
+      }
+      clearMobileEditorError(clientRowKey, field);
+      const taxRateSource = value;
       return {
         ...row,
         taxRateSource,
@@ -185,7 +300,13 @@ function updateMobileCell(
       };
     }
     if (field === "isProvisional") {
-      return { ...row, isProvisional: booleanValue(value) };
+      const normalized = parseBooleanText(value);
+      if (normalized === null) {
+        setMobileEditorError(clientRowKey, field, "暂定项只能选择“是”或“否”");
+        return row;
+      }
+      clearMobileEditorError(clientRowKey, field);
+      return { ...row, isProvisional: normalized };
     }
     return { ...row, [field]: String(value ?? "") };
   }));
@@ -196,10 +317,15 @@ function selectError(error: ContractBillCellError) {
 }
 
 function selectNextError() {
-  if (!props.errors.length) return;
-  const index = nextErrorIndex.value % props.errors.length;
-  selectError(props.errors[index]!);
-  nextErrorIndex.value = (index + 1) % props.errors.length;
+  const cursor = advanceContractBillErrorCursor(
+    nextErrorIndex.value,
+    errorListSignature.value,
+    displayErrors.value
+  );
+  if (!cursor.error) return;
+  selectError(cursor.error);
+  nextErrorIndex.value = cursor.nextIndex;
+  errorListSignature.value = cursor.signature;
 }
 
 function errorFor(clientRowKey: string, field: string) {
@@ -234,8 +360,46 @@ function text(value: unknown) {
   return value === null || value === undefined ? "" : String(value);
 }
 
-function booleanValue(value: unknown) {
-  return value === true || value === "true" || value === "1" || value === "是";
+function parseBooleanText(value: unknown): boolean | null {
+  if (value === true || value === "true" || value === "1" || value === "是") return true;
+  if (value === false || value === "false" || value === "0" || value === "否") return false;
+  return null;
+}
+
+function booleanText(value: unknown) {
+  const normalized = parseBooleanText(value);
+  return normalized === null ? text(value) : normalized ? "true" : "false";
+}
+
+function invalidGridValue<T>(
+  errors: ContractBillCellError[],
+  row: ContractBillCandidateRow,
+  field: string,
+  message: string,
+  current: T
+) {
+  addEditorError(errors, row.clientRowKey, field, message);
+  return current;
+}
+
+function addEditorError(
+  errors: ContractBillCellError[],
+  clientRowKey: string,
+  field: string,
+  message: string
+) {
+  errors.push({ clientRowKey, field, message });
+}
+
+function setMobileEditorError(clientRowKey: string, field: string, message: string) {
+  clearMobileEditorError(clientRowKey, field);
+  editorErrors.value = [...editorErrors.value, { clientRowKey, field, message }];
+}
+
+function clearMobileEditorError(clientRowKey: string, field: string) {
+  editorErrors.value = editorErrors.value.filter(
+    (error) => error.clientRowKey !== clientRowKey || error.field !== field
+  );
 }
 
 function cellKey(clientRowKey: string, field: string) {
@@ -246,12 +410,12 @@ function cellKey(clientRowKey: string, field: string) {
 <template>
   <section class="contract-bill-grid">
     <t-alert
-      v-if="errors.length"
+      v-if="displayErrors.length"
       theme="error"
       title="清单校验未通过"
     >
       <div class="contract-bill-grid__error-summary">
-        <span>共 {{ errors.length }} 处需修正</span>
+        <span>共 {{ displayErrors.length }} 处需修正</span>
         <t-button
           size="small"
           variant="outline"
@@ -263,7 +427,7 @@ function cellKey(clientRowKey: string, field: string) {
       </div>
       <ul class="contract-bill-grid__error-list">
         <li
-          v-for="error in errors"
+          v-for="error in displayErrors"
           :key="cellKey(error.clientRowKey, error.field)"
         >
           <t-button
@@ -351,7 +515,7 @@ function cellKey(clientRowKey: string, field: string) {
             />
           </label>
           <label class="contract-bill-grid__field">
-            <span>数量 *</span>
+            <span>{{ quantityColumn.label }}{{ quantityColumn.required ? " *" : "" }}</span>
             <t-input
               :model-value="row.quantity"
               :disabled="readonly"
@@ -427,7 +591,20 @@ function cellKey(clientRowKey: string, field: string) {
             class="contract-bill-grid__field"
           >
             <span>{{ column.label }}{{ column.required ? " *" : "" }}</span>
+            <t-checkbox
+              v-if="column.type === 'boolean'"
+              :model-value="parseBooleanText(row.customData[column.key]) === true"
+              :disabled="readonly"
+              :data-field="column.key"
+              :data-client-row-key="row.clientRowKey"
+              :data-cell-error="cellErrorKey(row.clientRowKey, column.key)"
+              :aria-invalid="Boolean(errorFor(row.clientRowKey, column.key))"
+              @update:model-value="updateMobileCell(row.clientRowKey, column.key, Boolean($event))"
+            >
+              是
+            </t-checkbox>
             <t-input
+              v-else
               :model-value="row.customData[column.key] ?? ''"
               :disabled="readonly"
               :data-field="column.key"

@@ -19,6 +19,7 @@ interface ControlHarness {
   clientRowKey: string;
   disabled: boolean;
   field: string;
+  kind: string;
   update: (value: unknown) => void;
 }
 
@@ -53,7 +54,9 @@ vi.mock("../../../components/JgBusinessGrid.vue", async () => {
   };
 });
 
-import ContractBillGrid from "./ContractBillGrid.vue";
+import ContractBillGrid, {
+  advanceContractBillErrorCursor
+} from "./ContractBillGrid.vue";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -87,6 +90,7 @@ async function renderGrid(options: {
   rows?: ContractBillCandidateRow[];
   errors?: ContractBillCellError[];
   readonly?: boolean;
+  bill?: WorkbenchBill;
 } = {}) {
   resetHarness();
   vi.stubGlobal("window", {
@@ -95,7 +99,7 @@ async function renderGrid(options: {
   const updates: ContractBillCandidateRow[][] = [];
   const selections: string[] = [];
   const app = createSSRApp(ContractBillGrid, {
-    bill,
+    bill: options.bill ?? bill,
     rows: options.rows ?? candidateRows(20),
     errors: options.errors ?? [],
     readonly: options.readonly ?? false,
@@ -147,6 +151,7 @@ function registerTDesignStubs(app: App) {
           clientRowKey,
           disabled: props.disabled,
           field,
+          kind: name,
           update: (value) => emit("update:modelValue", value)
         });
         return () => h("span", {
@@ -171,7 +176,9 @@ const bill: WorkbenchBill = {
       { key: "itemName", label: "名称", required: true },
       { key: "taxInclusiveAmount", label: "含税金额" },
       { key: "brand", label: "品牌", required: true },
-      { key: "route", label: "运输路线" }
+      { key: "route", label: "运输路线" },
+      { key: "fuelIncluded", label: "是否含燃油", type: "boolean", required: true },
+      { key: "operatorIncluded", label: "是否带操作人员", type: "boolean", required: true }
     ]
   },
   rows: []
@@ -198,6 +205,8 @@ function candidateRows(count: number): ContractBillCandidateRow[] {
     customData: {
       brand: `品牌 ${index + 1}`,
       route: "一号线",
+      fuelIncluded: index === 0 ? "true" : "false",
+      operatorIncluded: "false",
       legacyNote: "保留的历史字段"
     }
   }));
@@ -206,6 +215,14 @@ function candidateRows(count: number): ContractBillCandidateRow[] {
 describe("ContractBillGrid", () => {
   it("renders one desktop grid and round-trips the complete candidate set", async () => {
     const rows = candidateRows(20);
+    rows[0] = {
+      ...rows[0]!,
+      customData: {
+        ...rows[0]!.customData,
+        clientRowKey: "polluted-client-key",
+        itemName: "被污染的名称"
+      }
+    };
     const rendered = await renderGrid({ rows, readonly: true });
 
     expect(rendered.html.match(/data-testid="jg-business-grid"/gu)).toHaveLength(1);
@@ -214,8 +231,11 @@ describe("ContractBillGrid", () => {
     expect(componentHarness.gridSource[0]).toMatchObject({
       clientRowKey: "client-1",
       itemCode: "A-1",
-      brand: "品牌 1"
+      itemName: "材料 1",
+      brand: "品牌 1",
+      fuelIncluded: "true"
     });
+    expect(componentHarness.gridSource[0]).not.toHaveProperty("legacyNote");
 
     const editedGridRows = componentHarness.gridSource.map((row, index) => (
       index === 0 ? { ...row, itemName: "修改后的钢筋", brand: "新品牌" } : { ...row }
@@ -229,6 +249,10 @@ describe("ContractBillGrid", () => {
       customData: {
         brand: "新品牌",
         route: "一号线",
+        fuelIncluded: "true",
+        operatorIncluded: "false",
+        clientRowKey: "polluted-client-key",
+        itemName: "被污染的名称",
         legacyNote: "保留的历史字段"
       }
     });
@@ -253,8 +277,13 @@ describe("ContractBillGrid", () => {
       "isProvisional",
       "settlementBasis",
       "brand",
-      "route"
+      "route",
+      "fuelIncluded",
+      "operatorIncluded"
     ]));
+    expect(componentHarness.controls.filter(
+      (control) => control.field === "fuelIncluded" || control.field === "operatorIncluded"
+    ).every((control) => control.kind === "TCheckbox")).toBe(true);
 
     const itemName = componentHarness.controls.find(
       (control) => control.field === "itemName" && control.clientRowKey === "client-1"
@@ -292,6 +321,69 @@ describe("ContractBillGrid", () => {
     componentHarness.selectNextError?.();
     componentHarness.selectNextError?.();
     expect(rendered.selections).toEqual(["client-1", "client-2"]);
+
+    const first = advanceContractBillErrorCursor(0, "", errors);
+    const changed = advanceContractBillErrorCursor(first.nextIndex, first.signature, [
+      { clientRowKey: "client-2", field: "brand", message: "新的首项" },
+      { clientRowKey: "client-1", field: "quantity", message: "新的第二项" }
+    ]);
+    expect(changed.error).toMatchObject({ clientRowKey: "client-2", field: "brand" });
+    expect(changed.nextIndex).toBe(1);
+  });
+
+  it("preserves facts and marks cells when desktop constrained values are invalid", async () => {
+    const rows = candidateRows(1);
+    const rendered = await renderGrid({ rows });
+    componentHarness.emitGridSource?.([{
+      ...componentHarness.gridSource[0]!,
+      taxRateSource: "任意税率",
+      isProvisional: "maybe",
+      fuelIncluded: "有"
+    }]);
+
+    expect(rendered.updates.at(-1)?.[0]).toEqual(rows[0]);
+    for (const field of ["taxRateSource", "isProvisional", "fuelIncluded"]) {
+      const column = componentHarness.gridColumns.find((candidate) => candidate.prop === field);
+      expect(column?.cellProperties?.({
+        model: componentHarness.gridSource[0],
+        prop: field
+      } as never)).toMatchObject({
+        "aria-invalid": "true",
+        "data-cell-error": `client-1:${field}`
+      });
+    }
+
+    componentHarness.emitGridSource?.([{
+      ...componentHarness.gridSource[0]!,
+      taxRateSource: "version_default",
+      isProvisional: "false",
+      fuelIncluded: "否"
+    }]);
+    expect(rendered.updates.at(-1)?.[0]).toMatchObject({
+      taxRateSource: "version_default",
+      taxRatePercent: "13",
+      isProvisional: false,
+      customData: expect.objectContaining({ fuelIncluded: "false" })
+    });
+  });
+
+  it("uses the existing unlimited-framework quantity label and optional rule", async () => {
+    const unlimitedBill: WorkbenchBill = {
+      ...bill,
+      pricingNature: "framework",
+      amountLimitType: "unlimited"
+    };
+    const rendered = await renderGrid({
+      mobile: true,
+      rows: candidateRows(1),
+      bill: unlimitedBill
+    });
+
+    expect(rendered.html).toContain("预计数量");
+    expect(rendered.html).not.toContain("预计数量 *");
+    await renderGrid({ rows: candidateRows(1), bill: unlimitedBill });
+    const quantity = componentHarness.gridColumns.find((column) => column.prop === "quantity");
+    expect(quantity?.name).toBe("预计数量");
   });
 
   it("disables every mobile editor in readonly mode", async () => {
