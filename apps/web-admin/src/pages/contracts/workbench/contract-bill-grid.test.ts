@@ -122,14 +122,35 @@ describe("contract bill grid candidate model", () => {
     expect(new Set(rows.map((row) => row.clientRowKey)).size).toBe(20);
   });
 
-  it("copies only business fields, clears server rowKey and deep copies custom data", () => {
-    const source = validRow({ clientRowKey: "server-row", rowKey: "server-row" });
+  it("copies only business fields, clearing server and legacy precision metadata", () => {
+    const source = validRow({
+      clientRowKey: "server-row",
+      rowKey: "server-row",
+      quantity: "1.123",
+      unitPrice: "2.345",
+      precisionPolicy: "legacy",
+      initialQuantity: "1.123",
+      initialUnitPrice: "2.345"
+    });
     const copied = copyBillCandidateRow([source], source.clientRowKey);
+    const copiedRow = copied[1]!;
 
     expect(copied).toHaveLength(2);
-    expect(copied[1]).toMatchObject({ itemName: "钢筋", rowKey: undefined });
-    expect(copied[1]?.clientRowKey).not.toBe(source.clientRowKey);
-    expect(copied[1]?.customData).not.toBe(source.customData);
+    expect(copiedRow).toMatchObject({ itemName: "钢筋", rowKey: undefined });
+    expect(copiedRow.clientRowKey).not.toBe(source.clientRowKey);
+    expect(copiedRow.customData).not.toBe(source.customData);
+    expect(copiedRow.precisionPolicy).toBeUndefined();
+    expect(copiedRow.initialQuantity).toBeUndefined();
+    expect(copiedRow.initialUnitPrice).toBeUndefined();
+    expect(validateBillCandidateRows([source], bill)).toEqual([]);
+    expect(candidateTotals([source])).toMatchObject({ kind: "calculated" });
+    expect(validateBillCandidateRows([copiedRow], bill)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: "quantity" }),
+      expect.objectContaining({ field: "unitPrice" })
+    ]));
+    expect(candidateTotals([copiedRow])).toEqual({
+      kind: "not_calculable", clientRowKey: copiedRow.clientRowKey, field: "quantity"
+    });
     const unchanged = [source];
     expect(copyBillCandidateRow(unchanged, "missing")).toBe(unchanged);
   });

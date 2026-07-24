@@ -97,14 +97,18 @@ export function copyBillCandidateRow(
 ): ContractBillCandidateRow[] {
   const source = rows.find((row) => row.clientRowKey === clientRowKey);
   if (!source) return rows;
+  const copied = {
+    ...source,
+    clientRowKey: nextLocalClientRowKey(rows),
+    rowKey: undefined,
+    customData: { ...source.customData }
+  };
+  delete copied.precisionPolicy;
+  delete copied.initialQuantity;
+  delete copied.initialUnitPrice;
   return [
     ...rows,
-    {
-      ...source,
-      clientRowKey: nextLocalClientRowKey(rows),
-      rowKey: undefined,
-      customData: { ...source.customData }
-    }
+    copied
   ];
 }
 
