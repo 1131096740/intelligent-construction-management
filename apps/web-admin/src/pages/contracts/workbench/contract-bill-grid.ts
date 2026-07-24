@@ -1,4 +1,4 @@
-import { normalizeTaxRatePercent } from "@jiangkong/shared-domain";
+import { isContractBillCustomColumn, normalizeTaxRatePercent } from "@jiangkong/shared-domain";
 import type {
   ContractBillBatchSaveRowReadModel,
   ContractBillRowValidationError,
@@ -18,6 +18,9 @@ export interface ContractBillCandidateRow {
   unitPrice: string;
   taxRatePercent: string;
   taxRateSource: "version_default" | "row_override";
+  precisionPolicy?: "legacy" | "two_decimal";
+  initialQuantity?: string;
+  initialUnitPrice?: string;
   isProvisional: boolean;
   settlementBasis: string;
   customData: Record<string, string>;
@@ -47,20 +50,12 @@ export interface BillCandidateTotalsOptions {
   taxMode?: WorkbenchBill["taxMode"];
 }
 
-export interface ReplaceBillRowsOptions {
+export interface ReplaceBillRowsOptions extends BillCandidateTotalsOptions {
   expectedBillRevision: number;
   idempotencyKey: string;
 }
 
-const CORE_ROW_KEYS = new Set([
-  "itemCode",
-  "itemName",
-  "specification",
-  "unit",
-  "quantity",
-  "unitPrice",
-  "taxRatePercent"
-]);
+const SIGNED_BIGINT_MAX = 9223372036854775807n;
 
 /**
  * The optional key makes this factory deterministic. `addBillCandidateRow` supplies
@@ -141,7 +136,9 @@ export function toReplaceBillRowsInput(
   return {
     expectedBillRevision: options.expectedBillRevision,
     idempotencyKey: options.idempotencyKey,
-    rows: rows.map((row, sortOrder) => ({
+    rows: rows.map((row, sortOrder) => {
+      const tax = replaceTaxFact(row, options);
+      return {
       clientRowKey: row.clientRowKey,
       ...(optionalText(row.rowKey) ? { rowKey: optionalText(row.rowKey) } : {}),
       sortOrder,
@@ -151,16 +148,17 @@ export function toReplaceBillRowsInput(
       unit: row.unit.trim(),
       ...(optionalText(row.quantity) ? { quantity: optionalText(row.quantity) } : {}),
       unitPrice: row.unitPrice.trim(),
-      ...(optionalText(row.taxRatePercent)
-        ? { taxRatePercent: optionalText(row.taxRatePercent) }
+      ...(tax.taxRatePercent
+        ? { taxRatePercent: tax.taxRatePercent }
         : {}),
-      taxRateSource: row.taxRateSource,
+      taxRateSource: tax.taxRateSource,
       isProvisional: row.isProvisional,
       ...(optionalText(row.settlementBasis)
         ? { settlementBasis: optionalText(row.settlementBasis) }
         : {}),
       customData: { ...row.customData }
-    }))
+      };
+    })
   };
 }
 
@@ -201,7 +199,7 @@ export function validateBillCandidateRows(
 ): ContractBillCellError[] {
   const errors: ContractBillCellError[] = [];
   const requiredCustomColumns = billColumns(bill).filter(
-    (column) => column.required && !CORE_ROW_KEYS.has(column.key)
+    (column) => column.required && isContractBillCustomColumn(column.key)
   );
 
   for (const row of rows) {
@@ -213,7 +211,9 @@ export function validateBillCandidateRows(
       addCellError(errors, row, "quantity", "请填写数量");
     } else if (quantity) {
       const message = positiveTwoDecimalMessage(quantity, "数量");
-      if (message) addCellError(errors, row, "quantity", message);
+      if (message && !isUnchangedLegacyDecimal(row, "quantity", quantity)) {
+        addCellError(errors, row, "quantity", message);
+      }
     }
 
     const unitPrice = row.unitPrice.trim();
@@ -221,7 +221,9 @@ export function validateBillCandidateRows(
       addCellError(errors, row, "unitPrice", "请填写含税单价");
     } else {
       const message = positiveTwoDecimalMessage(unitPrice, "含税单价");
-      if (message) addCellError(errors, row, "unitPrice", message);
+      if (message && !isUnchangedLegacyDecimal(row, "unitPrice", unitPrice)) {
+        addCellError(errors, row, "unitPrice", message);
+      }
     }
 
     const taxRate = effectiveTaxRate(row, bill);
@@ -262,9 +264,15 @@ export function candidateTotals(
   let taxExclusiveAmountCents = 0n;
 
   for (const row of rows) {
-    const quantity = parsePositiveDecimal(row.quantity);
+    const quantity = parsePositiveDecimal(
+      row.quantity,
+      isUnchangedLegacyDecimal(row, "quantity", row.quantity)
+    );
     if (!quantity) return notCalculable(row, "quantity");
-    const unitPrice = parsePositiveDecimal(row.unitPrice);
+    const unitPrice = parsePositiveDecimal(
+      row.unitPrice,
+      isUnchangedLegacyDecimal(row, "unitPrice", row.unitPrice)
+    );
     if (!unitPrice) return notCalculable(row, "unitPrice");
     const taxRateText = effectiveTaxRate(row, options);
     let taxRate: Decimal;
@@ -275,12 +283,21 @@ export function candidateTotals(
     }
 
     const rowInclusiveCents = decimalToCents(multiplyDecimals(quantity, unitPrice));
+    if (rowInclusiveCents > SIGNED_BIGINT_MAX) return notCalculable(row, "unitPrice");
     const rowExclusiveCents = divideAndRoundHalfUp(
       rowInclusiveCents * 100n * pow10(taxRate.scale),
       100n * pow10(taxRate.scale) + taxRate.coefficient
     );
+    if (rowExclusiveCents > SIGNED_BIGINT_MAX) return notCalculable(row, "unitPrice");
     taxInclusiveAmountCents += rowInclusiveCents;
     taxExclusiveAmountCents += rowExclusiveCents;
+    if (
+      taxInclusiveAmountCents > SIGNED_BIGINT_MAX ||
+      taxExclusiveAmountCents > SIGNED_BIGINT_MAX ||
+      taxInclusiveAmountCents - taxExclusiveAmountCents > SIGNED_BIGINT_MAX
+    ) {
+      return notCalculable(row, "unitPrice");
+    }
   }
 
   return {
@@ -303,6 +320,15 @@ function candidateFromWorkbenchRow(row: WorkbenchBillRow, clientRowKey: string):
     unitPrice: textValue(row.unitPrice),
     taxRatePercent: textValue(row.taxRatePercent ?? row.taxRate),
     taxRateSource: row.taxRateSource === "row_override" ? "row_override" : "version_default",
+    ...(row.precisionPolicy === "legacy" || row.precisionPolicy === "two_decimal"
+      ? { precisionPolicy: row.precisionPolicy }
+      : {}),
+    ...(row.initialQuantity !== null && row.initialQuantity !== undefined
+      ? { initialQuantity: textValue(row.initialQuantity) }
+      : { initialQuantity: textValue(row.quantity) }),
+    ...(row.initialUnitPrice !== null && row.initialUnitPrice !== undefined
+      ? { initialUnitPrice: textValue(row.initialUnitPrice) }
+      : { initialUnitPrice: textValue(row.unitPrice) }),
     isProvisional: Boolean(row.isProvisional),
     settlementBasis: textValue(row.settlementBasis),
     customData: stringRecord(row.customData)
@@ -324,6 +350,11 @@ function candidateFromBatchSaveRow(
     unitPrice: textValue(row.unitPrice),
     taxRatePercent: textValue(row.taxRate),
     taxRateSource: row.taxRateSource === "row_override" ? "row_override" : "version_default",
+    ...(row.precisionPolicy === "legacy" || row.precisionPolicy === "two_decimal"
+      ? { precisionPolicy: row.precisionPolicy }
+      : {}),
+    initialQuantity: textValue(row.quantity),
+    initialUnitPrice: textValue(row.unitPrice),
     isProvisional: row.isProvisional,
     settlementBasis: textValue(row.settlementBasis),
     customData: stringRecord(row.customData)
@@ -350,7 +381,11 @@ function nextLocalClientRowKey(rows: ContractBillCandidateRow[]): string {
 }
 
 function cloneCandidateRow(row: ContractBillCandidateRow): ContractBillCandidateRow {
-  return { ...row, customData: { ...row.customData } };
+  const candidate = { ...row };
+  delete candidate.precisionPolicy;
+  delete candidate.initialQuantity;
+  delete candidate.initialUnitPrice;
+  return { ...candidate, customData: { ...candidate.customData } };
 }
 
 function textValue(value: unknown): string {
@@ -362,7 +397,7 @@ function stringRecord(value: unknown): Record<string, string> {
   return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, textValue(entry)]));
 }
 
-function optionalText(value: string | undefined): string | undefined {
+function optionalText(value: string | null | undefined): string | undefined {
   const normalized = value?.trim();
   return normalized ? normalized : undefined;
 }
@@ -370,7 +405,10 @@ function optionalText(value: string | undefined): string | undefined {
 function billColumns(bill: WorkbenchBill): WorkbenchBillColumn[] {
   const snapshot = bill.schemaSnapshot;
   if (!snapshot || typeof snapshot !== "object" || !Array.isArray(snapshot.columns)) return [];
-  return snapshot.columns.filter(isWorkbenchBillColumn);
+  return snapshot.columns.filter(
+    (column): column is WorkbenchBillColumn =>
+      isWorkbenchBillColumn(column) && isContractBillCustomColumn(column.key)
+  );
 }
 
 function isWorkbenchBillColumn(value: unknown): value is WorkbenchBillColumn {
@@ -390,6 +428,7 @@ function positiveTwoDecimalMessage(value: string, label: string): string {
   if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/u.test(value)) {
     return `${label}必须是最多保留 2 位小数的正数`;
   }
+  if ((value.split(".")[0] ?? "").length > 18) return `${label}整数位数不能超过 18 位`;
   if (/^0(?:\.0+)?$/u.test(value)) return `${label}必须大于 0`;
   return "";
 }
@@ -417,11 +456,13 @@ interface Decimal {
   scale: number;
 }
 
-function parsePositiveDecimal(value: string): Decimal | null {
+function parsePositiveDecimal(value: string, allowLegacyPrecision = false): Decimal | null {
   const text = value.trim();
   const match = /^(0|[1-9]\d*)(?:\.(\d+))?$/u.exec(text);
   if (!match) return null;
-  if ((match[2] ?? "").length > 2) return null;
+  if (match[1].length > 18 || (!allowLegacyPrecision && (match[2] ?? "").length > 2)) {
+    return null;
+  }
   const coefficient = BigInt(`${match[1]}${match[2] ?? ""}`);
   if (coefficient === 0n) return null;
   return { coefficient, scale: (match[2] ?? "").length };
@@ -432,6 +473,52 @@ function parseTaxRate(value: string): Decimal {
   const parsed = parsePositiveDecimal(normalized);
   if (!parsed) throw new Error("invalid tax rate");
   return parsed;
+}
+
+function isUnchangedLegacyDecimal(
+  row: ContractBillCandidateRow,
+  field: "quantity" | "unitPrice",
+  value: string
+): boolean {
+  if (row.precisionPolicy !== "legacy") return false;
+  const initial = field === "quantity" ? row.initialQuantity : row.initialUnitPrice;
+  return initial !== undefined && decimalEquivalent(value, initial);
+}
+
+function decimalEquivalent(left: string, right: string): boolean {
+  const normalize = (value: string) => {
+    const match = /^(0|[1-9]\d*)(?:\.(\d+))?$/u.exec(value.trim());
+    if (!match) return null;
+    const fraction = (match[2] ?? "").replace(/0+$/u, "");
+    return fraction ? `${match[1]}.${fraction}` : match[1];
+  };
+  const normalizedLeft = normalize(left);
+  return normalizedLeft !== null && normalizedLeft === normalize(right);
+}
+
+function replaceTaxFact(
+  row: ContractBillCandidateRow,
+  options: ReplaceBillRowsOptions
+): Pick<ContractBillCandidateRow, "taxRatePercent" | "taxRateSource"> {
+  if (options.taxMode === "single_rate") {
+    return {
+      taxRateSource: "version_default",
+      taxRatePercent: optionalText(options.defaultTaxRatePercent) ?? ""
+    };
+  }
+  if (options.taxMode === "multiple_rate") {
+    if (row.taxRateSource === "row_override") {
+      return { taxRateSource: "row_override", taxRatePercent: optionalText(row.taxRatePercent) ?? "" };
+    }
+    return {
+      taxRateSource: "version_default",
+      taxRatePercent: optionalText(options.defaultTaxRatePercent) ?? ""
+    };
+  }
+  return {
+    taxRateSource: row.taxRateSource,
+    taxRatePercent: optionalText(row.taxRatePercent) ?? ""
+  };
 }
 
 function multiplyDecimals(left: Decimal, right: Decimal): Decimal {

@@ -77,6 +77,30 @@ describe("contract bill grid candidate model", () => {
     })]);
   });
 
+  it("initializes legacy precision metadata from authoritative workbench and batch rows", () => {
+    const legacyWorkbench = fromWorkbenchBill({
+      ...bill,
+      rows: [{ ...bill.rows[0]!, quantity: "1.123", unitPrice: "2.345", precisionPolicy: "legacy" }]
+    })[0];
+    expect(legacyWorkbench).toMatchObject({
+      precisionPolicy: "legacy", initialQuantity: "1.123", initialUnitPrice: "2.345"
+    });
+    const response: ReplaceContractBillRowsReadModel = {
+      bill: null,
+      rows: [{
+        id: "legacy", contractBillId: "bill-1", rowKey: "legacy", sortOrder: 0,
+        itemCode: null, itemName: "钢筋", specification: null, unit: "吨", quantity: "1.123",
+        unitPrice: "2.345", taxRate: "13", taxRateSource: "row_override", pricingFactStatus: "confirmed",
+        precisionPolicy: "legacy", taxInclusiveAmountCents: "263", taxExclusiveAmountCents: "233",
+        taxAmountCents: "30", isProvisional: false, settlementBasis: null, customData: {},
+        createdAt: "2026-07-24T00:00:00.000Z", updatedAt: "2026-07-24T00:00:00.000Z"
+      }]
+    };
+    expect(fromBatchSaveReadModel(response)[0]).toMatchObject({
+      precisionPolicy: "legacy", initialQuantity: "1.123", initialUnitPrice: "2.345"
+    });
+  });
+
   it("keeps derived client keys unique even for a malformed duplicate server row key", () => {
     const rows = fromWorkbenchBill({
       ...bill,
@@ -143,6 +167,19 @@ describe("contract bill grid candidate model", () => {
     });
   });
 
+  it("submits tax source and rate as one normalized contract fact", () => {
+    const common = { expectedBillRevision: 7, idempotencyKey: "tax-source" };
+    expect(toReplaceBillRowsInput([validRow({ taxRatePercent: "9", taxRateSource: "version_default" })], {
+      ...common, taxMode: "multiple_rate", defaultTaxRatePercent: "13"
+    }).rows[0]).toMatchObject({ taxRateSource: "version_default", taxRatePercent: "13" });
+    expect(toReplaceBillRowsInput([validRow({ taxRatePercent: "9", taxRateSource: "row_override" })], {
+      ...common, taxMode: "single_rate", defaultTaxRatePercent: "13"
+    }).rows[0]).toMatchObject({ taxRateSource: "version_default", taxRatePercent: "13" });
+    expect(toReplaceBillRowsInput([validRow({ taxRatePercent: "9", taxRateSource: "row_override" })], {
+      ...common, taxMode: "multiple_rate", defaultTaxRatePercent: "13"
+    }).rows[0]).toMatchObject({ taxRateSource: "row_override", taxRatePercent: "9" });
+  });
+
   it("keeps every structured server cell error, including unknown fields", () => {
     expect(mapServerBillCellErrors([
       { clientRowKey: "local-test", field: "quantity", message: "数量错误" },
@@ -155,13 +192,20 @@ describe("contract bill grid candidate model", () => {
 
   it("replaces every candidate from Excel only after confirmation and deep copies it", () => {
     const original = [validRow({ clientRowKey: "original" })];
-    const imported = [validRow({ clientRowKey: "import-1", customData: { brand: "进口" } })];
+    const imported = [validRow({
+      clientRowKey: "import-1",
+      precisionPolicy: "legacy",
+      initialQuantity: "1.123",
+      initialUnitPrice: "2.345",
+      customData: { brand: "进口" }
+    })];
 
     expect(applyExcelCandidateRows(original, imported, false)).toBe(original);
     const confirmed = applyExcelCandidateRows(original, imported, true);
     expect(confirmed).not.toBe(imported);
     expect(confirmed[0]?.clientRowKey).toBe("import-1");
     expect(confirmed[0]?.customData).not.toBe(imported[0]?.customData);
+    expect(confirmed[0]?.precisionPolicy).toBeUndefined();
   });
 
   it("rebuilds authoritative candidates after batch save and discards temporary keys", () => {
@@ -180,6 +224,33 @@ describe("contract bill grid candidate model", () => {
     expect(fromBatchSaveReadModel(response)).toEqual([expect.objectContaining({
       clientRowKey: "server-server-row-2", rowKey: "server-row-2", itemName: "水泥", customData: { brand: "海螺" }
     })]);
+  });
+
+  it("preserves unchanged legacy decimals but rejects a changed overprecision value", () => {
+    const legacy = validRow({
+      rowKey: "legacy-1",
+      quantity: "1.123",
+      unitPrice: "2.345",
+      precisionPolicy: "legacy",
+      initialQuantity: "1.1230",
+      initialUnitPrice: "2.345"
+    });
+    expect(validateBillCandidateRows([legacy], bill)).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: "quantity" }),
+      expect.objectContaining({ field: "unitPrice" })
+    ]));
+    expect(toReplaceBillRowsInput([legacy], {
+      expectedBillRevision: 7, idempotencyKey: "legacy", taxMode: "multiple_rate", defaultTaxRatePercent: "13"
+    }).rows[0]).toMatchObject({ quantity: "1.123", unitPrice: "2.345" });
+    expect(candidateTotals([legacy])).toMatchObject({ kind: "calculated" });
+    expect(validateBillCandidateRows([{
+      ...legacy, quantity: "3.300", initialQuantity: "3.30"
+    }], bill)).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: "quantity" })
+    ]));
+    expect(validateBillCandidateRows([{ ...legacy, quantity: "1.124" }], bill)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: "quantity" })
+    ]));
   });
 
   it("returns stable cell errors for core, tax and required custom columns without rounding input", () => {
@@ -225,5 +296,15 @@ describe("contract bill grid candidate model", () => {
     expect(candidateTotals([validRow({ unitPrice: "10.010" })])).toEqual({
       kind: "not_calculable", clientRowKey: "local-test", field: "unitPrice"
     });
+    expect(candidateTotals([validRow({ quantity: "1000000000000000000" })])).toEqual({
+      kind: "not_calculable", clientRowKey: "local-test", field: "quantity"
+    });
+    expect(candidateTotals([validRow({ quantity: "92233720368547758", unitPrice: "100" })])).toEqual({
+      kind: "not_calculable", clientRowKey: "local-test", field: "unitPrice"
+    });
+    expect(candidateTotals([
+      validRow({ clientRowKey: "first", quantity: "50000000000000000", unitPrice: "1" }),
+      validRow({ clientRowKey: "second", quantity: "50000000000000000", unitPrice: "1" })
+    ])).toEqual({ kind: "not_calculable", clientRowKey: "second", field: "unitPrice" });
   });
 });

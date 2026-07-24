@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  billColumns,
   billRowValidationMessage,
   billTabs,
   canApplyImport,
@@ -185,6 +186,20 @@ describe("contract bill editor helpers", () => {
     expect(billTabs(bills)).toEqual([
       { label: "材料清单", value: "materials" },
       { label: "运输费清单", value: "transport" }
+    ]);
+  });
+
+  it("does not render snapshot core or calculated fields as custom columns", () => {
+    expect(billColumns({
+      ...bills[0],
+      schemaSnapshot: { columns: [
+        { key: "itemName", label: "名称", required: true },
+        { key: "quantity", label: "数量", required: true },
+        { key: "taxInclusiveAmount", label: "含税金额", required: true },
+        { key: "brand", label: "品牌", required: true }
+      ] }
+    }).map((column) => column.key)).toEqual([
+      "itemName", "specification", "unit", "quantity", "unitPrice", "taxRatePercent", "brand"
     ]);
   });
 

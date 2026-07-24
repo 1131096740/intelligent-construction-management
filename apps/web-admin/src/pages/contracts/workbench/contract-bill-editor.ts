@@ -1,4 +1,4 @@
-import { normalizeTaxRatePercent } from "@jiangkong/shared-domain";
+import { isContractBillCustomColumn, normalizeTaxRatePercent } from "@jiangkong/shared-domain";
 
 export interface WorkbenchBillColumn {
   key: string;
@@ -147,14 +147,13 @@ export function billColumns(bill: WorkbenchBill): WorkbenchBillColumn[] {
   const customColumns = Array.isArray(bill.schemaSnapshot?.columns)
     ? bill.schemaSnapshot.columns
     : [];
-  const coreKeys = new Set(coreBillColumns.map((column) => column.key));
   return [
     ...coreBillColumns.map((column) =>
       column.key === "quantity" && isUnlimitedFrameworkBill(bill)
         ? { ...column, label: "预计数量", required: false }
         : column
     ),
-    ...customColumns.filter((column) => !coreKeys.has(column.key))
+    ...customColumns.filter((column) => isContractBillCustomColumn(column.key))
   ];
 }
 
