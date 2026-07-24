@@ -413,6 +413,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   let loadRequestId = 0;
   let editGeneration = 0;
   let activeSave: Promise<boolean> | null = null;
+  let loadedContractId: string | null = null;
   let disposed = false;
   // `dirty` stays true from the first edit until a save RESOLVES successfully.
   const dirtyRef = ref(false);
@@ -488,6 +489,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     clearBackup();
     // Invalidate pending loads and make any in-flight save response stale.
     loadRequestId += 1;
+    loadedContractId = null;
     contractVersionId.value = null;
     editGeneration += 1;
     dirtyRef.value = false;
@@ -515,12 +517,35 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   // -- Loading ----------------------------------------------------------------
 
   async function load(contractId: string): Promise<void> {
+    const currentVersionId = contractVersionId.value;
+    if (
+      conflict.value &&
+      contractId === loadedContractId &&
+      currentVersionId
+    ) {
+      await readConflictServerVersion(currentVersionId);
+      return;
+    }
+
     cancelScheduledSave();
     const sameContractReload =
-      contractId === workbench.value?.contract.id &&
+      contractId === loadedContractId &&
       contractVersionId.value !== null;
-    const overlappingSave = sameContractReload ? activeSave : null;
     const requestId = ++loadRequestId;
+
+    if (sameContractReload) {
+      let overlappingSave = activeSave;
+      while (overlappingSave) {
+        const saved = await overlappingSave;
+        if (disposed || requestId !== loadRequestId) return;
+        if (!saved) return;
+        overlappingSave =
+          activeSave && activeSave !== overlappingSave
+            ? activeSave
+            : null;
+      }
+    }
+
     let result: ContractWorkbenchReadModel;
     try {
       result = await fetchContractWorkbench(contractId);
@@ -534,23 +559,16 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       }
       throw error;
     }
-    if (overlappingSave) {
-      await overlappingSave;
-    }
     if (disposed || requestId !== loadRequestId) return;
     if (
-      overlappingSave ||
-      (
-        result.version.id === contractVersionId.value &&
-        result.version.draftRevision < currentRevision.value
-      )
+      result.version.id === contractVersionId.value &&
+      result.version.draftRevision < currentRevision.value
     ) {
-      if (!overlappingSave) {
-        scheduleSave();
-      }
+      scheduleSave();
       return;
     }
     workbench.value = result;
+    loadedContractId = result.contract.id;
     contractVersionId.value = result.version.id;
     currentRevision.value = result.version.draftRevision;
     editGeneration += 1;
@@ -704,7 +722,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   ): Promise<boolean> {
     const conflictLoadRequestId = ++loadRequestId;
     const conflictingContractId =
-      workbench.value?.contract.id ?? conflictingVersionId;
+      loadedContractId ?? workbench.value?.contract.id ?? conflictingVersionId;
     const isCurrentConflictRequest = () =>
       !disposed &&
       loadRequestId === conflictLoadRequestId &&
@@ -731,6 +749,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
         return false;
       }
       workbench.value = fresh;
+      loadedContractId = fresh.contract.id;
       currentRevision.value = fresh.version.draftRevision;
       conflict.value = {
         local: cloneModel(model),
@@ -846,7 +865,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       await retryConflictServerLoad();
       return;
     }
-    const contractId = workbench.value?.contract.id;
+    const contractId = loadedContractId;
     if (!contractId) {
       return;
     }
@@ -926,6 +945,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       disposed = true;
       cancelScheduledSave();
       loadRequestId += 1;
+      loadedContractId = null;
       contractVersionId.value = null;
       editGeneration += 1;
       pausedRef.value = false;
