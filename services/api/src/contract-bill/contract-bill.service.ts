@@ -749,7 +749,10 @@ export class ContractBillService {
           value === "" ||
           (typeof value === "string" && !value.trim()))
       ) {
-        throw new BadRequestException(`必填自定义字段未填写：${column.key}`);
+        throw new ContractBillRowInputValidationException(
+          "customData",
+          `必填自定义字段未填写：${column.key}`
+        );
       }
     }
     return {

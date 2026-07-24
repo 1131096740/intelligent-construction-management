@@ -696,6 +696,33 @@ describe("ContractBillService", () => {
     expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
   });
 
+  it("maps missing required dynamic custom data to customData without writes", async () => {
+    const { service, tx } = fixture({
+      schemaSnapshot: {
+        columns: [{ key: "brand", label: "品牌", type: "text", required: true }]
+      }
+    });
+
+    await expect(service.replaceRows("bill-1", "owner-1", {
+      expectedBillRevision: 2,
+      idempotencyKey: "missing-required-custom-data",
+      rows: [batchRow("missing-brand")]
+    })).rejects.toMatchObject({
+      response: {
+        code: "CONTRACT_BILL_VALIDATION_FAILED",
+        rowErrors: [expect.objectContaining({
+          clientRowKey: "missing-brand",
+          field: "customData",
+          message: "必填自定义字段未填写：brand"
+        })]
+      }
+    });
+    expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.update).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.deleteMany).not.toHaveBeenCalled();
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+  });
+
   it("rejects a revision mismatch before writing any row", async () => {
     const { service, tx } = fixture();
     tx.contractBill.updateMany.mockResolvedValueOnce({ count: 0 });
