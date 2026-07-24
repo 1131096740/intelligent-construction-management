@@ -11,107 +11,211 @@
       当前合同模板未定义清单。
     </p>
 
-    <template v-else>
-      <div class="bill-tabs">
-        <button
-          v-for="bill in bills"
-          :key="bill.billKey"
-          type="button"
-          :class="['bill-tab', { active: activeBillKey === bill.billKey }]"
-          @click="activeBillKey = bill.billKey"
-        >
-          {{ bill.name }}
-        </button>
-      </div>
+    <div
+      v-else
+      class="bill-summary-list"
+    >
+      <t-card
+        v-for="bill in bills"
+        :key="bill.billKey"
+        class="bill-summary-card"
+      >
+        <template #title>
+          <div class="summary-title">
+            <strong>{{ bill.name }}</strong>
+            <t-tag
+              theme="primary"
+              variant="light"
+            >
+              v{{ bill.revision }}
+            </t-tag>
+          </div>
+        </template>
 
-      <ContractBillEditor
-        v-if="activeBill"
-        :bill="activeBill"
-        :disabled="disabled"
-        :prepare-mutation="prepareMutation"
-        :preparation-error="preparationError"
-        :complete-mutation="completeMutation"
-        @reload="emit('reload')"
-      />
-    </template>
+        <div class="summary-metrics">
+          <div>
+            <span>已保存行数</span>
+            <strong>{{ bill.rows.length }}</strong>
+          </div>
+          <div>
+            <span>不含税合计</span>
+            <strong>{{ moneyText(bill.taxExclusiveAmountCents) }}</strong>
+          </div>
+          <div>
+            <span>税额</span>
+            <strong>{{ moneyText(bill.taxAmountCents) }}</strong>
+          </div>
+          <div>
+            <span>含税合计</span>
+            <strong>{{ moneyText(bill.taxInclusiveAmountCents) }}</strong>
+          </div>
+        </div>
+
+        <div class="summary-status">
+          <t-tag
+            :theme="disabled ? 'default' : 'success'"
+            variant="light"
+          >
+            {{ disabled ? "只读" : "已保存" }}
+          </t-tag>
+          <span
+            v-if="messageBillKey === bill.billKey && message"
+            :class="{ danger: messageDanger }"
+          >
+            {{ message }}
+          </span>
+        </div>
+
+        <div class="summary-actions">
+          <t-button
+            size="small"
+            variant="outline"
+            :loading="busyBillKey === bill.billKey"
+            @click="downloadTemplate(bill)"
+          >
+            下载标准模板
+          </t-button>
+          <t-button
+            size="small"
+            variant="outline"
+            :disabled="disabled"
+            @click="emit('import', bill.billKey)"
+          >
+            导入 Excel
+          </t-button>
+          <t-button
+            size="small"
+            theme="primary"
+            @click="emit('edit', bill.billKey)"
+          >
+            放大编辑
+          </t-button>
+        </div>
+      </t-card>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import type { ContractWorkbenchReadModel } from "@jiangkong/shared-domain";
-import { computed, ref, watch } from "vue";
-import ContractBillEditor from "./ContractBillEditor.vue";
+import { computed, ref } from "vue";
+import { downloadBillExcelTemplate } from "../../../api/contract-workbench.api";
+import { centsTextToYuanText } from "../../../lib/money";
 import type { WorkbenchBill } from "./contract-bill-editor";
 
 const props = defineProps<{
   workbench: ContractWorkbenchReadModel | null;
   disabled: boolean;
-  prepareMutation?: () => Promise<ContractWorkbenchReadModel | null>;
-  preparationError?: string;
-  completeMutation?: (reload: boolean) => Promise<void>;
 }>();
 
 const emit = defineEmits<{
-  (event: "reload"): void;
+  edit: [billKey: string];
+  import: [billKey: string];
 }>();
 
-const activeBillKey = ref("");
-
+const busyBillKey = ref("");
+const messageBillKey = ref("");
+const message = ref("");
+const messageDanger = ref(false);
 const bills = computed(() => (props.workbench?.bills ?? []) as unknown as WorkbenchBill[]);
-const activeBill = computed(
-  () => bills.value.find((bill) => bill.billKey === activeBillKey.value) ?? bills.value[0] ?? null
-);
 
-watch(
-  bills,
-  (next) => {
-    if (!next.some((bill) => bill.billKey === activeBillKey.value)) {
-      activeBillKey.value = next[0]?.billKey ?? "";
-    }
-  },
-  { immediate: true }
-);
+async function downloadTemplate(bill: WorkbenchBill) {
+  busyBillKey.value = bill.billKey;
+  messageBillKey.value = bill.billKey;
+  message.value = "";
+  messageDanger.value = false;
+  try {
+    await downloadBillExcelTemplate(bill.id);
+    message.value = "标准模板已下载";
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : "下载标准模板失败";
+    messageDanger.value = true;
+  } finally {
+    busyBillKey.value = "";
+  }
+}
+
+function moneyText(value: string | null | undefined) {
+  return value === null || value === undefined
+    ? "—"
+    : `${centsTextToYuanText(value)} 元`;
+}
 </script>
 
 <style scoped>
-.workbench-section {
+.workbench-section,
+.bill-summary-list {
   display: grid;
-  gap: 16px;
+  gap: var(--jg-space-md);
 }
 
 .section-title {
   margin: 0;
-  font-size: 16px;
-  font-weight: 700;
-  color: #151922;
+  color: var(--jg-color-text-primary);
+  font-size: var(--jg-font-size-title);
+  font-weight: var(--jg-font-weight-semibold);
 }
 
 .empty {
   margin: 0;
-  color: #767f8d;
-  font-size: 12px;
+  color: var(--jg-color-text-tertiary);
+  font-size: var(--jg-font-size-meta);
 }
 
-.bill-tabs {
+.summary-title,
+.summary-status,
+.summary-actions {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--jg-space-sm);
 }
 
-.bill-tab {
-  min-height: 30px;
-  padding: 0 12px;
-  color: #424955;
-  background: #fff;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
-  cursor: pointer;
+.summary-title {
+  justify-content: space-between;
 }
 
-.bill-tab.active {
-  color: #0052d9;
-  background: #eaf2ff;
-  border-color: #9dbcf2;
-  font-weight: 600;
+.summary-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--jg-space-sm);
+}
+
+.summary-metrics > div {
+  display: grid;
+  gap: var(--jg-space-xs);
+  padding: var(--jg-space-sm);
+  background: var(--jg-color-bg-subtle);
+  border-radius: var(--jg-radius-control);
+}
+
+.summary-metrics span,
+.summary-status {
+  color: var(--jg-color-text-secondary);
+  font-size: var(--jg-font-size-meta);
+}
+
+.summary-metrics strong {
+  color: var(--jg-color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-actions {
+  justify-content: flex-end;
+  margin-top: var(--jg-space-md);
+}
+
+.danger {
+  color: var(--jg-color-danger);
+}
+
+@media (max-width: 767px) {
+  .summary-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-actions {
+    justify-content: stretch;
+  }
 }
 </style>

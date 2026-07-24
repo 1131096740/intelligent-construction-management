@@ -28,6 +28,7 @@ interface ControlHarness {
 const componentHarness = vi.hoisted(() => ({
   controls: [] as ControlHarness[],
   emitGridSource: undefined as ((rows: JgBusinessGridRow[]) => void) | undefined,
+  focusGridRow: undefined as ((rowIndex: number) => void) | undefined,
   gridColumns: [] as ColumnRegular[],
   gridReadonly: false,
   gridSource: [] as JgBusinessGridRow[],
@@ -44,12 +45,13 @@ vi.mock("../../../components/JgBusinessGrid.vue", async () => {
         columns: { type: Array, required: true },
         readonly: { type: Boolean, default: false }
       },
-      emits: ["update:source"],
+      emits: ["update:source", "focus-row"],
       setup(props, { emit }) {
         componentHarness.gridSource = props.source as JgBusinessGridRow[];
         componentHarness.gridColumns = props.columns as ColumnRegular[];
         componentHarness.gridReadonly = props.readonly;
         componentHarness.emitGridSource = (rows) => emit("update:source", rows);
+        componentHarness.focusGridRow = (rowIndex) => emit("focus-row", rowIndex);
         return () => render("div", { "data-testid": "jg-business-grid" });
       }
     })
@@ -68,6 +70,7 @@ afterEach(() => {
 function resetHarness() {
   componentHarness.controls = [];
   componentHarness.emitGridSource = undefined;
+  componentHarness.focusGridRow = undefined;
   componentHarness.gridColumns = [];
   componentHarness.gridReadonly = false;
   componentHarness.gridSource = [];
@@ -262,6 +265,9 @@ describe("ContractBillGrid", () => {
       }
     });
     expect(rendered.updates.at(-1)?.[19]).toEqual(rows[19]);
+
+    componentHarness.focusGridRow?.(7);
+    expect(rendered.selections).toEqual(["client-8"]);
   });
 
   it("renders mobile cards for every editable core and custom field using the same row type", async () => {

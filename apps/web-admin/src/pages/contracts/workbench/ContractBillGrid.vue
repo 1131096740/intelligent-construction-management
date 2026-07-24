@@ -338,6 +338,11 @@ function selectError(error: ContractBillCellError) {
   emit("select-row", error.clientRowKey);
 }
 
+function selectGridRow(rowIndex: number) {
+  const row = props.rows[rowIndex];
+  if (row) emit("select-row", row.clientRowKey);
+}
+
 function selectNextError() {
   const cursor = advanceContractBillErrorCursor(
     nextErrorIndex.value,
@@ -474,6 +479,7 @@ function cellKey(clientRowKey: string, field: string) {
       :readonly="readonly"
       :min-height="520"
       @update:source="onGridRowsChanged"
+      @focus-row="selectGridRow"
     />
 
     <div
@@ -484,6 +490,7 @@ function cellKey(clientRowKey: string, field: string) {
         v-for="(row, index) in rows"
         :key="row.clientRowKey"
         class="contract-bill-grid__card"
+        @click="emit('select-row', row.clientRowKey)"
       >
         <template #title>
           第 {{ index + 1 }} 行

@@ -39,9 +39,8 @@ describe("contract workspace responsive governance", () => {
   });
 
   it("keeps the bill and document canvas as explicit child scroll owners", () => {
-    expect(read("./workbench/ContractBillEditor.vue")).toContain(
-      'class="table-wrap jg-workspace-scroll"'
-    );
+    expect(read("./workbench/ContractBillFocusEditor.vue")).toContain("<ContractBillGrid");
+    expect(read("./workbench/ContractBillGrid.vue")).toContain("<JgBusinessGrid");
     expect(read("./workbench/ContractDocumentCanvas.vue")).toContain(
       'class="canvas-stage jg-workspace-scroll"'
     );

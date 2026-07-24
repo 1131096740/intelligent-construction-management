@@ -15,7 +15,7 @@ const pricingSource = fs.readFileSync(
   "utf8"
 );
 const billEditorSource = fs.readFileSync(
-  path.resolve(__dirname, "workbench/ContractBillEditor.vue"),
+  path.resolve(__dirname, "workbench/ContractBillFocusEditor.vue"),
   "utf8"
 );
 const documentsSource = fs.readFileSync(
@@ -83,19 +83,27 @@ describe("contract workbench document canvas structure", () => {
     expect(pricingSource).not.toContain('value: "cost_plus"');
   });
 
-  it("adds a local editable bill row before calling the existing create API", () => {
-    expect(billEditorSource).toContain("createUnsavedBillRow");
-    expect(billEditorSource).toContain("isUnsavedBillRow(row)");
-    expect(billEditorSource).toContain("已新增空白行，请填写后保存");
+  it("adds repeated bill rows to one local candidate before the batch save", () => {
+    expect(billEditorSource).toContain("addBillCandidateRow");
+    expect(billEditorSource).toContain("replaceContractBillRows");
+    expect(billEditorSource).toContain("保存全部");
+    expect(billEditorSource).not.toContain("addBillRow");
   });
 
-  it("saves current tax facts before bill import and document generation", () => {
-    expect(pageSource).toMatch(/ContractBillsSection[\s\S]*:prepare-mutation="prepareGovernanceMutation"/u);
-    expect(pageSource).toMatch(/ContractBillsSection[\s\S]*:preparation-error="saveError"/u);
+  it("replaces the two-column shell with focus editing and guards its local candidate", () => {
+    expect(pageSource).toMatch(
+      /ContractBillFocusEditor[\s\S]*v-else-if="!exactVersionError"[\s\S]*class="shell-body"/u
+    );
+    expect(pageSource).toContain("isDirty.value || billEditorDirty.value");
+    expect(pageSource).toContain("billFocusEditorRef.value?.discardChanges()");
+    expect(pageSource).toContain(':disabled="writeLocked || billEditorDirty"');
+  });
+
+  it("blocks bill preview and batch save until current tax facts are explicitly saved", () => {
+    expect(pageSource).toContain(':ordinary-draft-dirty="isDirty"');
+    expect(billEditorSource).toContain("请先使用右上角保存当前合同基础信息");
+    expect(billEditorSource).toMatch(/ordinaryDraftDirty\(\)[\s\S]*previewExcel/u);
     expect(pageSource).toMatch(/ContractDocumentsSection[\s\S]*:prepare-mutation="prepareGovernanceMutation"/u);
-    expect(billEditorSource).toContain("await props.prepareMutation()");
-    expect(billEditorSource).toContain("preparationError?: string");
-    expect(billEditorSource).toContain("props.preparationError");
     expect(documentsSource).toContain("await props.prepareMutation()");
   });
 

@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import Grid, { type AfterEditEvent, type ColumnRegular } from "@revolist/vue3-datagrid";
+import Grid, {
+  type AfterEditEvent,
+  type ColumnRegular,
+  type FocusAfterRenderEvent
+} from "@revolist/vue3-datagrid";
 import { applyJgBusinessGridEdit, type JgBusinessGridRow } from "./jg-business-grid.config";
 
 const props = withDefaults(defineProps<{
@@ -14,6 +18,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   "update:source": [value: JgBusinessGridRow[]];
+  "focus-row": [rowIndex: number];
 }>();
 
 function onAfterEdit(event: CustomEvent<AfterEditEvent>) {
@@ -33,6 +38,12 @@ function onAfterEdit(event: CustomEvent<AfterEditEvent>) {
     }));
   }
 }
+
+function onAfterFocus(event: CustomEvent<FocusAfterRenderEvent>) {
+  if (event.detail.rowType === "rgRow" && Number.isInteger(event.detail.rowIndex)) {
+    emit("focus-row", event.detail.rowIndex);
+  }
+}
 </script>
 
 <template>
@@ -49,6 +60,7 @@ function onAfterEdit(event: CustomEvent<AfterEditEvent>) {
       :use-clipboard="!readonly"
       :apply-on-close="true"
       @afteredit="onAfterEdit"
+      @afterfocus="onAfterFocus"
     />
   </section>
 </template>

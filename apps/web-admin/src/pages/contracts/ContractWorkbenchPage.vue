@@ -299,7 +299,7 @@
             size="small"
             theme="primary"
             :loading="submissionBusy"
-            :disabled="writeLocked"
+            :disabled="writeLocked || billEditorDirty"
             @click="requestSubmission"
           >
             提交审批
@@ -366,8 +366,21 @@
         </template>
       </t-alert>
 
+      <ContractBillFocusEditor
+        v-if="!exactVersionError && focusedBill"
+        :key="focusedBill.id"
+        ref="billFocusEditorRef"
+        class="bill-focus-slot"
+        :bill="focusedBill"
+        :disabled="editorDisabled"
+        :ordinary-draft-dirty="isDirty"
+        @close="requestBillFocusClose"
+        @dirty-change="billEditorDirty = $event"
+        @saved="onBillSaved"
+      />
+
       <div
-        v-if="!exactVersionError"
+        v-else-if="!exactVersionError"
         class="shell-body"
       >
         <main class="document-canvas-slot">
@@ -488,10 +501,8 @@
                 v-else-if="activeSection === 'bills'"
                 :workbench="billWorkbench"
                 :disabled="editorDisabled"
-                :prepare-mutation="prepareGovernanceMutation"
-                :preparation-error="saveError"
-                :complete-mutation="completeGovernanceMutation"
-                @reload="reloadCurrent"
+                @edit="openBillFocus($event)"
+                @import="openBillFocus($event, true)"
               />
               <ContractPaymentTermsSection
                 v-else-if="activeSection === 'payment'"
@@ -635,14 +646,39 @@
       @confirm="confirmSubmission"
     />
 
-    <SensitiveActionDialog
-      v-model="leaveConfirmVisible"
-      title="离开合同工作台？"
-      description="当前填写尚未保存。继续离开将保留服务端已有内容，但本次未保存修改不会生效。"
-      confirm-text="确认离开"
-      @confirm="resolveLeaveDecision(true)"
-      @cancel="resolveLeaveDecision(false)"
-    />
+    <t-dialog
+      v-model:visible="leaveConfirmVisible"
+      :header="billEditorDirty ? '放弃未保存清单？' : '离开合同工作台？'"
+      :close-on-overlay-click="false"
+      :close-on-esc-keydown="false"
+      width="520px"
+      :footer="false"
+      @close="resolveLeaveDecision(false)"
+    >
+      <div class="leave-confirm">
+        <t-alert
+          theme="warning"
+          title="请确认未保存内容"
+          :message="billEditorDirty
+            ? '放弃后将恢复到最近一次整表保存的清单；服务端已有内容不受影响。'
+            : '当前填写尚未保存。离开后本次未保存修改不会生效。'"
+        />
+        <div class="leave-confirm-actions">
+          <t-button
+            variant="outline"
+            @click="resolveLeaveDecision(false)"
+          >
+            继续编辑
+          </t-button>
+          <t-button
+            theme="danger"
+            @click="resolveLeaveDecision(true)"
+          >
+            放弃未保存修改
+          </t-button>
+        </div>
+      </div>
+    </t-dialog>
 
     <!-- Ownership transfer --------------------------------------------------->
     <t-dialog
@@ -668,7 +704,7 @@ import type {
   ContractReadinessResult,
   ContractWorkbenchReadModel
 } from "@jiangkong/shared-domain";
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   abandonContractDraft,
@@ -678,6 +714,7 @@ import {
   previewContractTypeChange,
   submitContractFromWorkbench,
   transferContractDraft,
+  type ReplaceContractBillRowsReadModel,
   type PublishedContractTemplateReadModel
 } from "../../api/contract-workbench.api";
 import {
@@ -715,6 +752,7 @@ import {
 } from "./contract-scenario.state";
 import ContractBasicSection from "./workbench/ContractBasicSection.vue";
 import ContractAuthorizationSection from "./workbench/ContractAuthorizationSection.vue";
+import ContractBillFocusEditor from "./workbench/ContractBillFocusEditor.vue";
 import ContractBillsSection from "./workbench/ContractBillsSection.vue";
 import ContractClausesSection from "./workbench/ContractClausesSection.vue";
 import ContractDocumentCanvas from "./workbench/ContractDocumentCanvas.vue";
@@ -733,6 +771,7 @@ import type {
   ContractNegotiationRoundReadModel,
   ContractOfflineRevisionReadModel
 } from "../../api/contract-negotiation.api";
+import type { WorkbenchBill, WorkbenchBillRow } from "./workbench/contract-bill-editor";
 import {
   useContractDraft,
   type ContractDraftModel
@@ -748,6 +787,10 @@ const submissionError = ref("");
 const submissionMessage = ref("");
 const submissionMessageTone = ref<"success" | "error">("success");
 const governanceMutationLocked = ref(false);
+const focusedBillKey = ref("");
+const billEditorDirty = ref(false);
+const focusCloseCheck = ref(false);
+const billFocusEditorRef = ref<InstanceType<typeof ContractBillFocusEditor> | null>(null);
 
 const draft = useContractDraft({
   replace: (to) => {
@@ -780,8 +823,13 @@ const leaveConfirmVisible = ref(false);
 const navigationBypass = ref(false);
 let resolvePendingLeave: ((decision: boolean) => void) | null = null;
 
-useUnsavedChangesGuard({
-  isDirty: () => isDirty.value && !navigationBypass.value,
+const { requestClose: requestUnsavedClose } = useUnsavedChangesGuard({
+  isDirty: () => {
+    if (navigationBypass.value) return false;
+    return focusCloseCheck.value
+      ? billEditorDirty.value
+      : isDirty.value || billEditorDirty.value;
+  },
   confirmLeave: () => new Promise<boolean>((resolve) => {
     resolvePendingLeave?.(false);
     resolvePendingLeave = resolve;
@@ -791,6 +839,9 @@ useUnsavedChangesGuard({
 
 function resolveLeaveDecision(decision: boolean) {
   leaveConfirmVisible.value = false;
+  if (decision && billEditorDirty.value) {
+    billFocusEditorRef.value?.discardChanges();
+  }
   const resolve = resolvePendingLeave;
   resolvePendingLeave = null;
   resolve?.(decision);
@@ -981,6 +1032,84 @@ const billWorkbench = computed(() => {
     }))
   } as ContractWorkbenchReadModel;
 });
+const focusedBill = computed(() =>
+  ((billWorkbench.value?.bills ?? []) as unknown as WorkbenchBill[]).find(
+    (bill) => bill.billKey === focusedBillKey.value
+  ) ?? null
+);
+
+function openBillFocus(billKey: string, openImport = false) {
+  const exists = ((billWorkbench.value?.bills ?? []) as unknown as WorkbenchBill[]).some(
+    (bill) => bill.billKey === billKey
+  );
+  if (!exists) return;
+  focusedBillKey.value = billKey;
+  billEditorDirty.value = false;
+  if (openImport) {
+    void nextTick(() => billFocusEditorRef.value?.openImportPicker());
+  }
+}
+
+async function requestBillFocusClose() {
+  if (!focusedBill.value) return;
+  if (billEditorDirty.value) {
+    focusCloseCheck.value = true;
+    try {
+      const mayClose = await requestUnsavedClose();
+      if (!mayClose) return;
+    } finally {
+      focusCloseCheck.value = false;
+    }
+  }
+  billFocusEditorRef.value?.discardChanges();
+  focusedBillKey.value = "";
+  billEditorDirty.value = false;
+}
+
+function onBillSaved(saved: ReplaceContractBillRowsReadModel) {
+  const current = workbench.value;
+  const savedBill = saved.bill;
+  if (!current || !savedBill) return;
+  workbench.value = {
+    ...current,
+    bills: current.bills.map((bill) => bill.id === savedBill.id
+      ? {
+          ...bill,
+          ...savedBill,
+          rows: saved.rows.map(toWorkbenchBillRow)
+        }
+      : bill)
+  };
+}
+
+function toWorkbenchBillRow(
+  row: ReplaceContractBillRowsReadModel["rows"][number]
+): WorkbenchBillRow {
+  return {
+    rowKey: row.rowKey,
+    itemCode: row.itemCode,
+    itemName: row.itemName,
+    specification: row.specification,
+    unit: row.unit,
+    quantity: row.quantity,
+    unitPrice: row.unitPrice,
+    taxRate: row.taxRate,
+    taxRatePercent: row.taxRate,
+    taxRateSource: row.taxRateSource === "row_override"
+      ? "row_override"
+      : "version_default",
+    pricingFactStatus: row.pricingFactStatus,
+    precisionPolicy: row.precisionPolicy,
+    initialQuantity: row.quantity,
+    initialUnitPrice: row.unitPrice,
+    taxInclusiveAmountCents: row.taxInclusiveAmountCents,
+    taxExclusiveAmountCents: row.taxExclusiveAmountCents,
+    taxAmountCents: row.taxAmountCents,
+    settlementBasis: row.settlementBasis,
+    isProvisional: row.isProvisional,
+    customData: { ...row.customData }
+  };
+}
 
 const blockingMessages = computed(() => {
   const readiness = workbench.value?.readiness as StructuredReadiness | undefined;
@@ -1663,6 +1792,8 @@ onMounted(() => {
 // Loading a different contract (or arriving from the create flow) reloads.
 watch(contractId, (next, previous) => {
   if (next && next !== previous) {
+    focusedBillKey.value = "";
+    billEditorDirty.value = false;
     workbenchLoadRequestId += 1;
     workbench.value = null;
     exactVersionError.value = "";
@@ -1998,6 +2129,25 @@ function initializeDraftFromQuery() {
   grid-template-columns: minmax(0, 1fr) minmax(380px, 440px);
   gap: var(--jg-space-lg);
   margin-top: var(--jg-space-lg);
+}
+
+.bill-focus-slot {
+  margin-top: var(--jg-space-lg);
+  padding: var(--jg-space-lg);
+  background: var(--jg-bg-panel);
+  border: 1px solid var(--jg-border);
+  border-radius: var(--jg-radius-sm);
+}
+
+.leave-confirm {
+  display: grid;
+  gap: var(--jg-space-lg);
+}
+
+.leave-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--jg-space-sm);
 }
 
 .document-canvas-slot,
