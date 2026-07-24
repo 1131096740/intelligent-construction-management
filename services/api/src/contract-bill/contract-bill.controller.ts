@@ -1,9 +1,10 @@
-import { Body, Controller, Delete, Param, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Param, Patch, Post, Put } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { ContractBillService } from "./contract-bill.service";
 import type {
   ReorderBillRowsDto,
+  ReplaceBillRowsDto,
   SaveBillRowDto
 } from "./dto/contract-bill.dto";
 
@@ -52,5 +53,14 @@ export class ContractBillController {
     @Body() body: ReorderBillRowsDto
   ) {
     return this.bills.reorderRows(billId, user.id, body);
+  }
+
+  @Put(":billId/rows")
+  replaceRows(
+    @Param("billId") billId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ReplaceBillRowsDto
+  ) {
+    return this.bills.replaceRows(billId, user.id, body);
   }
 }

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   BadRequestException,
   Injectable,
@@ -14,8 +14,37 @@ import { recalculateBillAndContractAmount } from "./contract-bill-totals";
 import { loadOwnedEditableBill } from "./contract-bill-guards";
 import type {
   ReorderBillRowsDto,
+  ReplaceBillRowDto,
   SaveBillRowDto
 } from "./dto/contract-bill.dto";
+
+type BatchRowError = {
+  clientRowKey: string;
+  field: string;
+  message: string;
+};
+
+type ParsedBatchRow = ReplaceBillRowDto & {
+  facts: ReturnType<typeof resolveContractBillRowFacts>;
+  rowKey?: string;
+  sortOrder: number;
+};
+
+function sha256(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`);
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
 
 @Injectable()
 export class ContractBillService {
@@ -23,6 +52,111 @@ export class ContractBillService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService
   ) {}
+
+  replaceRows(billId: string, actorUserId: string, rawInput: unknown) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id" FROM "ContractBill"
+        WHERE "id" = ${billId}
+        FOR UPDATE
+      `);
+      const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
+      const existingRows = await tx.contractBillRow.findMany({
+        where: { contractBillId: bill.id },
+        orderBy: { sortOrder: "asc" }
+      });
+      const existingByKey = new Map(existingRows.map((row) => [row.rowKey, row]));
+      const input = this.parseReplaceInput(rawInput, bill, version, existingByKey);
+      const idempotencyKeyDigest = sha256(input.idempotencyKey);
+      const requestDigest = sha256(stableJson({
+        expectedBillRevision: input.expectedBillRevision,
+        rows: input.rows.map((row) => {
+          const requestRow: Record<string, unknown> = { ...row };
+          delete requestRow.facts;
+          return requestRow;
+        })
+      }));
+      const receipt = await tx.auditLog.findFirst({
+        where: {
+          actorUserId,
+          action: "contract.bill.rows.replace",
+          businessType: "contract_bill",
+          businessId: bill.id,
+          metadata: {
+            path: ["idempotencyKeyDigest"],
+            equals: idempotencyKeyDigest
+          }
+        },
+        orderBy: { createdAt: "desc" }
+      });
+      if (receipt) {
+        const metadata = this.isPlainObject(receipt.metadata) ? receipt.metadata : {};
+        if (metadata.requestDigest !== requestDigest) {
+          throw new BadRequestException("幂等键已被另一份清单使用，请重新保存");
+        }
+        return this.readBill(tx, bill.id);
+      }
+
+      const requestedKeys = new Set(
+        input.rows.flatMap((row) => (row.rowKey ? [row.rowKey] : []))
+      );
+      if ([...requestedKeys].some((rowKey) => !existingByKey.has(rowKey))) {
+        throw new BadRequestException("清单已有行已变化，请刷新后重试");
+      }
+      const renderRevision = await this.lockMutation(
+        tx,
+        bill,
+        version,
+        actorUserId,
+        input.expectedBillRevision
+      );
+      const deletedKeys = existingRows
+        .map((row) => row.rowKey)
+        .filter((rowKey) => !requestedKeys.has(rowKey));
+      if (deletedKeys.length) {
+        await tx.contractBillRow.deleteMany({
+          where: { contractBillId: bill.id, rowKey: { in: deletedKeys } }
+        });
+      }
+
+      let createdCount = 0;
+      let updatedCount = 0;
+      for (const row of input.rows) {
+        const data = this.batchRowData(row);
+        if (row.rowKey) {
+          const existing = existingByKey.get(row.rowKey)!;
+          if (this.batchRowChanged(existing, data)) {
+            await tx.contractBillRow.update({ where: { id: existing.id }, data });
+            updatedCount += 1;
+          }
+        } else {
+          await tx.contractBillRow.create({
+            data: { contractBillId: bill.id, rowKey: randomUUID(), ...data }
+          });
+          createdCount += 1;
+        }
+      }
+      const rows = await recalculateBillAndContractAmount(tx, bill, version);
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract.bill.rows.replace",
+        businessType: "contract_bill",
+        businessId: bill.id,
+        metadata: {
+          idempotencyKeyDigest,
+          requestDigest,
+          createdCount,
+          updatedCount,
+          deletedCount: deletedKeys.length,
+          previousBillRevision: input.expectedBillRevision,
+          nextBillRevision: input.expectedBillRevision + 1,
+          renderRevision
+        }
+      });
+      const updatedBill = await tx.contractBill.findUnique({ where: { id: bill.id } });
+      return this.toReadModel({ bill: updatedBill, rows });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
 
   addRow(billId: string, actorUserId: string, rawInput: unknown) {
     return this.prisma.$transaction(async (tx) => {
@@ -273,6 +407,185 @@ export class ContractBillService {
     });
     if (!row) throw new NotFoundException("合同清单行不存在");
     return row;
+  }
+
+  private parseReplaceInput(
+    rawInput: unknown,
+    bill: Parameters<ContractBillService["parseRowInput"]>[1],
+    version: Parameters<ContractBillService["parseRowInput"]>[2],
+    existingByKey: Map<string, Parameters<ContractBillService["parseRowInput"]>[3]>
+  ) {
+    const input = this.requireObject(rawInput, "合同清单整表提交内容");
+    this.assertExpectedRevision(input.expectedBillRevision);
+    if (
+      typeof input.idempotencyKey !== "string" ||
+      !/^[A-Za-z0-9:_-]{8,128}$/.test(input.idempotencyKey)
+    ) {
+      throw new BadRequestException("清单保存标识格式无效");
+    }
+    if (!Array.isArray(input.rows) || input.rows.length > 5000) {
+      throw new BadRequestException("合同清单行数必须在 0 到 5000 行之间");
+    }
+
+    const clientKeys = new Set<string>();
+    const serverKeys = new Set<string>();
+    const rowErrors: BatchRowError[] = [];
+    const rows: ParsedBatchRow[] = [];
+    input.rows.forEach((rawRow, index) => {
+      const fallbackClientRowKey = `row-${index + 1}`;
+      let clientRowKey = fallbackClientRowKey;
+      try {
+        const row = this.requireObject(rawRow, `合同清单第 ${index + 1} 行`);
+        clientRowKey = typeof row.clientRowKey === "string" ? row.clientRowKey.trim() : "";
+        if (!clientRowKey || clientKeys.has(clientRowKey)) {
+          rowErrors.push({
+            clientRowKey: clientRowKey || fallbackClientRowKey,
+            field: "row",
+            message: clientRowKey ? "客户端行标识重复" : "客户端行标识不能为空"
+          });
+          return;
+        }
+        clientKeys.add(clientRowKey);
+        if (typeof row.sortOrder !== "number" || !Number.isInteger(row.sortOrder)) {
+          rowErrors.push({ clientRowKey, field: "row", message: "排序值必须是整数" });
+          return;
+        }
+        if (row.rowKey !== undefined && (typeof row.rowKey !== "string" || !row.rowKey.trim())) {
+          rowErrors.push({ clientRowKey, field: "row", message: "服务端行标识必须是非空文本" });
+          return;
+        }
+        const rowKey = typeof row.rowKey === "string" ? row.rowKey.trim() : undefined;
+        if (rowKey && serverKeys.has(rowKey)) {
+          rowErrors.push({ clientRowKey, field: "row", message: "服务端行标识重复" });
+          return;
+        }
+        if (rowKey) serverKeys.add(rowKey);
+        rows.push({
+          ...this.parseRowInput(
+            { ...row, expectedBillRevision: input.expectedBillRevision },
+            bill,
+            version,
+            rowKey ? existingByKey.get(rowKey) : undefined
+          ),
+          clientRowKey,
+          ...(rowKey ? { rowKey } : {}),
+          sortOrder: index
+        });
+      } catch (error) {
+        rowErrors.push(this.batchRowError(clientRowKey || fallbackClientRowKey, error));
+      }
+    });
+    if (rowErrors.length) {
+      throw new BadRequestException({
+        code: "CONTRACT_BILL_VALIDATION_FAILED",
+        message: `清单有 ${rowErrors.length} 处需要修改`,
+        rowErrors
+      });
+    }
+    return {
+      expectedBillRevision: input.expectedBillRevision as number,
+      idempotencyKey: input.idempotencyKey,
+      rows
+    };
+  }
+
+  private batchRowError(clientRowKey: string, error: unknown): BatchRowError {
+    const response = error instanceof BadRequestException ? error.getResponse() : undefined;
+    const fallbackMessage = error instanceof Error ? error.message : "该行内容无法保存";
+    const message = this.isPlainObject(response)
+      ? String(response.message ?? fallbackMessage)
+      : String(response ?? fallbackMessage);
+    const field = message.includes("数量")
+      ? "quantity"
+      : message.includes("单价")
+        ? "unitPrice"
+        : message.includes("税率")
+          ? "taxRatePercent"
+          : message.includes("项目名称")
+            ? "itemName"
+            : message.includes("单位")
+              ? "unit"
+              : message.includes("自定义字段")
+                ? "customData"
+                : "row";
+    return { clientRowKey, field, message };
+  }
+
+  private batchRowData(row: ParsedBatchRow) {
+    return {
+      sortOrder: row.sortOrder,
+      itemCode: row.itemCode?.trim() || null,
+      itemName: row.itemName.trim(),
+      specification: row.specification?.trim() || null,
+      unit: row.unit.trim(),
+      quantity: row.facts.quantity,
+      unitPrice: row.facts.unitPrice,
+      taxRate: row.facts.taxRatePercent,
+      taxRateSource: row.facts.taxRateSource,
+      pricingFactStatus: row.facts.pricingFactStatus,
+      precisionPolicy: row.facts.precisionPolicy,
+      taxInclusiveAmountCents: row.facts.taxInclusiveAmountCents,
+      taxExclusiveAmountCents: row.facts.taxExclusiveAmountCents,
+      taxAmountCents: row.facts.taxAmountCents,
+      isProvisional: row.isProvisional ?? false,
+      settlementBasis: row.settlementBasis?.trim() || null,
+      customData: this.toJson(row.customData)
+    };
+  }
+
+  private async readBill(tx: Prisma.TransactionClient, billId: string) {
+    const [bill, rows] = await Promise.all([
+      tx.contractBill.findUnique({ where: { id: billId } }),
+      tx.contractBillRow.findMany({
+        where: { contractBillId: billId },
+        orderBy: { sortOrder: "asc" }
+      })
+    ]);
+    return this.toReadModel({ bill, rows });
+  }
+
+  private batchRowChanged(
+    existing: {
+      sortOrder: number;
+      itemCode: string | null;
+      itemName: string;
+      specification: string | null;
+      unit: string;
+      quantity: Prisma.Decimal | null;
+      unitPrice: Prisma.Decimal | null;
+      taxRate: Prisma.Decimal | null;
+      taxRateSource: string;
+      pricingFactStatus: string;
+      precisionPolicy: string;
+      taxInclusiveAmountCents: bigint | null;
+      taxExclusiveAmountCents: bigint | null;
+      taxAmountCents: bigint | null;
+      isProvisional: boolean;
+      settlementBasis: string | null;
+      customData: Prisma.JsonValue;
+    },
+    data: ReturnType<ContractBillService["batchRowData"]>
+  ) {
+    const decimal = (value: Prisma.Decimal | string | null) => value?.toString() ?? null;
+    return (
+      existing.sortOrder !== data.sortOrder ||
+      existing.itemCode !== data.itemCode ||
+      existing.itemName !== data.itemName ||
+      existing.specification !== data.specification ||
+      existing.unit !== data.unit ||
+      decimal(existing.quantity) !== decimal(data.quantity) ||
+      decimal(existing.unitPrice) !== decimal(data.unitPrice) ||
+      decimal(existing.taxRate) !== decimal(data.taxRate) ||
+      existing.taxRateSource !== data.taxRateSource ||
+      existing.pricingFactStatus !== data.pricingFactStatus ||
+      existing.precisionPolicy !== data.precisionPolicy ||
+      existing.taxInclusiveAmountCents !== data.taxInclusiveAmountCents ||
+      existing.taxExclusiveAmountCents !== data.taxExclusiveAmountCents ||
+      existing.taxAmountCents !== data.taxAmountCents ||
+      existing.isProvisional !== data.isProvisional ||
+      existing.settlementBasis !== data.settlementBasis ||
+      stableJson(existing.customData) !== stableJson(data.customData)
+    );
   }
 
   private parseRowInput(

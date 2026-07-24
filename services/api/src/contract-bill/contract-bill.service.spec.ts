@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { ContractBillService } from "./contract-bill.service";
@@ -123,17 +124,20 @@ describe("ContractBillService", () => {
           if (row) Object.assign(row, data);
           return Promise.resolve({});
         }),
-        deleteMany: jest.fn().mockImplementation(({ where }: { where: { rowKey: string } }) => {
-          const index = rows.findIndex((row) => row.rowKey === where.rowKey);
-          if (index < 0) return Promise.resolve({ count: 0 });
-          rows.splice(index, 1);
-          return Promise.resolve({ count: 1 });
+        deleteMany: jest.fn().mockImplementation(({ where }: { where: { rowKey: string | { in: string[] } } }) => {
+          const keys = typeof where.rowKey === "string" ? [where.rowKey] : where.rowKey.in;
+          const before = rows.length;
+          for (let index = rows.length - 1; index >= 0; index -= 1) {
+            if (keys.includes(String(rows[index].rowKey))) rows.splice(index, 1);
+          }
+          return Promise.resolve({ count: before - rows.length });
         })
       },
       contractGeneratedDocument: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
-      auditLog: { create: jest.fn() }
+      auditLog: { create: jest.fn(), findFirst: jest.fn().mockResolvedValue(null) },
+      $queryRaw: jest.fn()
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
@@ -150,6 +154,58 @@ describe("ContractBillService", () => {
     taxRatePercent: "13",
     customData: {}
   };
+
+  function batchRow(clientRowKey: string, rowKey?: string, overrides: Record<string, unknown> = {}) {
+    return {
+      clientRowKey,
+      ...(rowKey ? { rowKey } : {}),
+      sortOrder: 999,
+      itemName: "钢筋",
+      unit: "t",
+      quantity: "3.33",
+      unitPrice: "100.12",
+      taxRatePercent: "13",
+      customData: {},
+      ...overrides
+    };
+  }
+
+  function existingRow(index: number) {
+    return {
+      id: `row-${index}`,
+      contractBillId: "bill-1",
+      rowKey: `key-${index}`,
+      sortOrder: index,
+      itemCode: null,
+      itemName: "钢筋",
+      specification: null,
+      unit: "t",
+      quantity: new Prisma.Decimal("3.33"),
+      unitPrice: new Prisma.Decimal("100.12"),
+      taxRate: new Prisma.Decimal("13"),
+      taxRateSource: "version_default",
+      pricingFactStatus: "confirmed",
+      precisionPolicy: "two_decimal",
+      taxInclusiveAmountCents: 33340n,
+      taxExclusiveAmountCents: 29504n,
+      taxAmountCents: 3836n,
+      isProvisional: false,
+      settlementBasis: null,
+      customData: {}
+    };
+  }
+
+  function canonicalJson(value: unknown): string {
+    if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+    if (value !== null && typeof value === "object") {
+      return `{${Object.entries(value as Record<string, unknown>)
+        .filter(([, item]) => item !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
+        .join(",")}}`;
+    }
+    return JSON.stringify(value);
+  }
 
   it("adds a row and calculates exact amounts", async () => {
     const { service, tx } = fixture();
@@ -536,5 +592,148 @@ describe("ContractBillService", () => {
     });
 
     expect(version.amountCents).toBe(300n);
+  });
+
+  it("replaces 101 rows with one revision, a mixed diff, and one audit receipt", async () => {
+    const retained = Array.from({ length: 40 }, (_, index) => existingRow(index));
+    const updated = Array.from({ length: 30 }, (_, index) => existingRow(index + 40));
+    const deleted = Array.from({ length: 6 }, (_, index) => existingRow(index + 70));
+    const { service, tx } = fixture({ rows: [...retained, ...updated, ...deleted] });
+    const input = {
+      expectedBillRevision: 2,
+      idempotencyKey: "batch-save-101-rows",
+      rows: [
+        ...retained.map((row, index) => batchRow(`retained-${index}`, String(row.rowKey))),
+        ...updated.map((row, index) => batchRow(`updated-${index}`, String(row.rowKey), {
+          itemName: `更新后的钢筋-${index}`
+        })),
+        ...Array.from({ length: 31 }, (_, index) => batchRow(`new-${index}`))
+      ]
+    };
+
+    const result = await service.replaceRows("bill-1", "owner-1", input);
+
+    expect(result.bill!.revision).toBe(3);
+    expect(tx.contractBill.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.contractBill.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ revision: 2 }),
+      data: { revision: { increment: 1 } }
+    }));
+    expect(tx.contractBillRow.create).toHaveBeenCalledTimes(31);
+    expect(tx.contractBillRow.update).toHaveBeenCalledTimes(30);
+    expect(tx.contractBillRow.deleteMany).toHaveBeenCalledWith({
+      where: { contractBillId: "bill-1", rowKey: { in: deleted.map((row) => row.rowKey) } }
+    });
+    expect(audit.record).toHaveBeenCalledTimes(1);
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "contract.bill.rows.replace",
+      businessId: "bill-1",
+      metadata: expect.objectContaining({
+        idempotencyKeyDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+        createdCount: 31,
+        updatedCount: 30,
+        deletedCount: 6,
+        previousBillRevision: 2,
+        nextBillRevision: 3
+      })
+    }));
+  });
+
+  it("reports every invalid row before writing any row", async () => {
+    const { service, tx } = fixture();
+
+    await expect(service.replaceRows("bill-1", "owner-1", {
+      expectedBillRevision: 2,
+      idempotencyKey: "invalid-batch-save",
+      rows: [
+        batchRow("local-1"),
+        batchRow("local-2", undefined, { quantity: "12.345" })
+      ]
+    })).rejects.toMatchObject({
+      response: {
+        code: "CONTRACT_BILL_VALIDATION_FAILED",
+        rowErrors: [{
+          clientRowKey: "local-2",
+          field: "quantity",
+          message: expect.any(String)
+        }]
+      }
+    });
+    expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.update).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.deleteMany).not.toHaveBeenCalled();
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects a revision mismatch before writing any row", async () => {
+    const { service, tx } = fixture();
+    tx.contractBill.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(service.replaceRows("bill-1", "owner-1", {
+      expectedBillRevision: 2,
+      idempotencyKey: "revision-mismatch-save",
+      rows: [batchRow("local-1")]
+    })).rejects.toThrow("合同清单已变化或当前状态不可编辑，请刷新后重试");
+    expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.update).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("returns the authoritative result for an identical idempotent receipt without writes", async () => {
+    const { service, tx } = fixture({ rows: [existingRow(1)] });
+    const input = {
+      expectedBillRevision: 2,
+      idempotencyKey: "idempotent-batch-save",
+      rows: [batchRow("local-1", "key-1")]
+    };
+    const requestDigest = createHash("sha256")
+      .update(canonicalJson({
+      expectedBillRevision: 2,
+        rows: [{ ...input.rows[0], expectedBillRevision: 2, sortOrder: 0 }]
+      }))
+      .digest("hex");
+    tx.auditLog.findFirst.mockResolvedValueOnce({
+      metadata: { requestDigest }
+    });
+
+    await expect(service.replaceRows("bill-1", "owner-1", input)).resolves.toMatchObject({
+      bill: { id: "bill-1" },
+      rows: [{ rowKey: "key-1" }]
+    });
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects a reused idempotency key for a different request without row writes", async () => {
+    const { service, tx } = fixture();
+    tx.auditLog.findFirst.mockResolvedValueOnce({ metadata: { requestDigest: "another-request" } });
+
+    await expect(service.replaceRows("bill-1", "owner-1", {
+      expectedBillRevision: 2,
+      idempotencyKey: "reused-batch-save",
+      rows: [batchRow("local-1")]
+    })).rejects.toThrow("幂等键已被另一份清单使用，请重新保存");
+    expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.update).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it.each(["recalculation", "audit"])("rejects the transaction when %s fails", async (failure) => {
+    const { service, tx } = fixture();
+    if (failure === "audit") audit.record.mockRejectedValueOnce(new Error("audit failed"));
+    if (failure === "recalculation") {
+      const findMany = tx.contractBillRow.findMany.getMockImplementation();
+      tx.contractBillRow.findMany
+        .mockImplementationOnce(findMany!)
+        .mockRejectedValueOnce(new Error("sum failed"));
+    }
+
+    await expect(service.replaceRows("bill-1", "owner-1", {
+      expectedBillRevision: 2,
+      idempotencyKey: `failure-batch-${failure}`,
+      rows: [batchRow("local-1")]
+    })).rejects.toThrow(failure === "audit" ? "audit failed" : "sum failed");
   });
 });
