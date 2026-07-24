@@ -585,15 +585,36 @@
     >
       <div class="conflict-body">
         <p>该草稿已被其他会话更新。请选择保留哪一份数据：</p>
+        <t-alert
+          v-if="conflict?.serverLoading"
+          theme="info"
+          message="正在读取服务器版本，请稍候。"
+        />
+        <t-alert
+          v-else-if="conflict?.serverLoadError"
+          theme="error"
+          title="服务器版本读取失败"
+          :message="conflict.serverLoadError"
+        />
         <div class="conflict-actions">
           <t-button
+            v-if="conflict?.serverLoadError"
+            variant="outline"
+            :loading="conflict.serverLoading"
+            @click="onRetryConflictServer"
+          >
+            重新读取服务器版本
+          </t-button>
+          <t-button
             theme="primary"
+            :disabled="conflict?.server === null"
             @click="onKeepLocal"
           >
             保留本地修改并覆盖
           </t-button>
           <t-button
             variant="outline"
+            :disabled="conflict?.server === null"
             @click="onLoadServer"
           >
             放弃本地，载入服务器版本
@@ -845,6 +866,7 @@ const {
   saveNow,
   createCheckpoint,
   restoreCheckpoint,
+  retryConflictServerLoad,
   keepLocalAfterConflict,
   loadServerAfterConflict
 } = draft;
@@ -1748,6 +1770,10 @@ async function onRestoreCheckpoint(checkpointId: string) {
 
 async function onKeepLocal() {
   await keepLocalAfterConflict();
+}
+
+async function onRetryConflictServer() {
+  await retryConflictServerLoad();
 }
 
 async function onLoadServer() {

@@ -501,6 +501,54 @@ describe("useContractDraft", () => {
     expect(mockSaveDraft).toHaveBeenCalledTimes(1);
   });
 
+  it("does not let an overlapping stale same-version reload overwrite a completed save", async () => {
+    const draft = makeDraft();
+    const pendingSave = deferred<{ id: string; draftRevision: number }>();
+    const pendingReload = deferred<ContractWorkbenchReadModel>();
+    mockFetchWorkbench
+      .mockResolvedValueOnce(makeFormallySavedWorkbench())
+      .mockReturnValueOnce(pendingReload.promise);
+    mockSaveDraft.mockReturnValueOnce(pendingSave.promise);
+    await draft.load("ct-1");
+
+    draft.model.contractName = "PATCH 已保存输入";
+    draft.markDirty();
+    const save = draft.saveNow();
+    const reload = draft.reload();
+    pendingSave.resolve({ id: "cv-1", draftRevision: 4 });
+    await expect(save).resolves.toBe(true);
+    pendingReload.resolve(makeFormallySavedWorkbench({
+      version: {
+        ...makeWorkbench().version,
+        draftRevision: 3,
+        draftData: { contractName: "迟到的旧 GET 输入" }
+      }
+    }));
+    await reload;
+
+    expect(draft.model.contractName).toBe("PATCH 已保存输入");
+    expect(draft.savedRevision.value).toBe(4);
+    expect(draft.isDirty.value).toBe(false);
+    expect(globalThis.localStorage.getItem("contract-draft:cv-1")).toBeNull();
+  });
+
+  it("does not resume an old-contract autosave when loading a new contract fails", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench
+      .mockResolvedValueOnce(makeFormallySavedWorkbench())
+      .mockRejectedValueOnce(new Error("第二份合同加载失败"));
+    await draft.load("ct-1");
+
+    draft.model.contractName = "第一份合同未保存输入";
+    draft.markDirty();
+    await expect(draft.load("ct-2")).rejects.toThrow("第二份合同加载失败");
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(mockSaveDraft).not.toHaveBeenCalled();
+    expect(draft.model.contractName).toBe("第一份合同未保存输入");
+    expect(draft.isDirty.value).toBe(true);
+  });
+
   it("coalesces a manual flush with an in-flight automatic save", async () => {
     const draft = makeDraft();
     let resolveSave!: (value: SaveContractDraftResult) => void;
@@ -659,7 +707,7 @@ describe("useContractDraft", () => {
     await expect(save).resolves.toBe(false);
 
     expect(draft.conflict.value?.local.contractName).toBe("冲突回读期间的新输入");
-    expect(draft.conflict.value?.server.contractName).toBe("服务器新值");
+    expect(draft.conflict.value?.server?.contractName).toBe("服务器新值");
     expect(draft.model.contractName).toBe("冲突回读期间的新输入");
   });
 
@@ -742,6 +790,120 @@ describe("useContractDraft", () => {
     expect(draft!.model.contractName).toBe("销毁前本地值");
     expect(draft!.savedRevision.value).toBe(3);
     expect(draft!.conflict.value).toBeNull();
+  });
+
+  it("keeps an explicit recoverable conflict when the server version cannot be read", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench
+      .mockResolvedValueOnce(makeFormallySavedWorkbench())
+      .mockRejectedValueOnce(new Error("服务器读取失败"));
+    mockSaveDraft.mockRejectedValueOnce(new Error("Contract draft revision conflict"));
+    await draft.load("ct-1");
+
+    draft.model.contractName = "读取失败时的本地输入";
+    draft.markDirty();
+    await expect(draft.saveNow()).resolves.toBe(false);
+
+    expect(draft.saveState.value).toBe("conflict");
+    expect(draft.conflict.value?.server).toBeNull();
+    expect(draft.conflict.value?.serverLoadError).toContain("服务器版本读取失败");
+    expect(draft.isDirty.value).toBe(true);
+    const backup = globalThis.localStorage.getItem("contract-draft:cv-1");
+    await expect(draft.loadServerAfterConflict()).resolves.toBe(false);
+    expect(draft.model.contractName).toBe("读取失败时的本地输入");
+    expect(draft.isDirty.value).toBe(true);
+    expect(globalThis.localStorage.getItem("contract-draft:cv-1")).toBe(backup);
+    expect(draft.conflict.value).not.toBeNull();
+  });
+
+  it("recovers from a mismatched conflict version without staying in saving state", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench
+      .mockResolvedValueOnce(makeFormallySavedWorkbench())
+      .mockResolvedValueOnce(makeFormallySavedWorkbench({
+        version: {
+          ...makeWorkbench().version,
+          id: "cv-other",
+          draftRevision: 7
+        }
+      }))
+      .mockResolvedValueOnce(makeFormallySavedWorkbench({
+        version: {
+          ...makeWorkbench().version,
+          draftRevision: 7,
+          draftData: { contractName: "可重试读取的服务器版本" }
+        }
+      }));
+    mockSaveDraft.mockRejectedValueOnce(new Error("Contract draft revision conflict"));
+    await draft.load("ct-1");
+
+    draft.model.contractName = "版本不匹配时的本地输入";
+    draft.markDirty();
+    await expect(draft.saveNow()).resolves.toBe(false);
+
+    expect(draft.saveState.value).toBe("conflict");
+    expect(draft.saveState.value).not.toBe("saving");
+    expect(draft.conflict.value?.server).toBeNull();
+    expect(draft.conflict.value?.serverLoadError).toContain("服务器版本读取失败");
+
+    await draft.reload();
+    expect(draft.conflict.value?.server?.contractName).toBe("可重试读取的服务器版本");
+    expect(draft.conflict.value?.serverLoadError).toBe("");
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(mockSaveDraft).toHaveBeenCalledTimes(1);
+
+    await expect(draft.loadServerAfterConflict()).resolves.toBe(true);
+    expect(draft.model.contractName).toBe("可重试读取的服务器版本");
+    expect(draft.isDirty.value).toBe(false);
+  });
+
+  it("gives a later conflict refresh sole ownership over an earlier same-contract reload", async () => {
+    const draft = makeDraft();
+    const pendingSave = deferred<{ id: string; draftRevision: number }>();
+    const pendingReload = deferred<ContractWorkbenchReadModel>();
+    const pendingConflict = deferred<ContractWorkbenchReadModel>();
+    mockFetchWorkbench
+      .mockResolvedValueOnce(makeFormallySavedWorkbench())
+      .mockReturnValueOnce(pendingReload.promise)
+      .mockReturnValueOnce(pendingConflict.promise);
+    mockSaveDraft.mockReturnValueOnce(pendingSave.promise);
+    await draft.load("ct-1");
+
+    draft.model.contractName = "发生所有权竞态的本地输入";
+    draft.markDirty();
+    const save = draft.saveNow();
+    const reload = draft.reload();
+    pendingSave.reject(new Error("Contract draft revision conflict"));
+    await vi.waitFor(() => {
+      expect(mockFetchWorkbench).toHaveBeenCalledTimes(3);
+    });
+
+    pendingReload.resolve(makeFormallySavedWorkbench({
+      version: {
+        ...makeWorkbench().version,
+        draftRevision: 4,
+        draftData: { contractName: "先完成的 reload 结果" }
+      }
+    }));
+    await Promise.resolve();
+    expect(draft.model.contractName).toBe("发生所有权竞态的本地输入");
+
+    pendingConflict.resolve(makeFormallySavedWorkbench({
+      version: {
+        ...makeWorkbench().version,
+        draftRevision: 5,
+        draftData: { contractName: "后完成的 conflict 结果" }
+      }
+    }));
+    await Promise.all([save, reload]);
+
+    expect(draft.workbench.value?.version.draftRevision).toBe(5);
+    expect(draft.conflict.value?.server?.contractName).toBe("后完成的 conflict 结果");
+    expect(draft.model.contractName).toBe("发生所有权竞态的本地输入");
+    expect(draft.isDirty.value).toBe(true);
+    expect(draft.saveState.value).toBe("conflict");
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(mockSaveDraft).toHaveBeenCalledTimes(1);
   });
 
   it("cancels a scheduled save when the composable scope is disposed", async () => {
@@ -1170,7 +1332,7 @@ describe("useContractDraft", () => {
     expect(draft.saveState.value).toBe("conflict");
     expect(draft.conflict.value).not.toBeNull();
     expect(draft.conflict.value?.local.contractName).toBe("本地的名字");
-    expect(draft.conflict.value?.server.contractName).toBe("服务器上的名字");
+    expect(draft.conflict.value?.server?.contractName).toBe("服务器上的名字");
 
     // While conflicted, further edits do NOT submit saves (paused).
     const callsAfterConflict = mockSaveDraft.mock.calls.length;
@@ -1179,11 +1341,16 @@ describe("useContractDraft", () => {
     await vi.runOnlyPendingTimersAsync();
     expect(mockSaveDraft.mock.calls.length).toBe(callsAfterConflict);
 
-    // Keeping local re-applies local edits against the latest server revision and resumes.
+    // Keeping local uses the model as it exists when the user clicks, rather
+    // than restoring the frozen snapshot captured when the conflict opened.
     mockSaveDraft.mockResolvedValueOnce({ id: "cv-1", draftRevision: 10 });
-    await draft.keepLocalAfterConflict();
+    await expect(draft.keepLocalAfterConflict()).resolves.toBe(true);
     expect(draft.saveState.value).not.toBe("conflict");
     expect(draft.conflict.value).toBeNull();
-    expect(mockSaveDraft).toHaveBeenLastCalledWith("cv-1", expect.objectContaining({ expectedRevision: 9 }));
+    expect(draft.model.contractName).toBe("又改了");
+    expect(mockSaveDraft).toHaveBeenLastCalledWith("cv-1", expect.objectContaining({
+      expectedRevision: 9,
+      draftData: expect.objectContaining({ contractName: "又改了" })
+    }));
   });
 });

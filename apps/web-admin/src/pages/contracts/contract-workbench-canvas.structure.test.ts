@@ -122,6 +122,14 @@ describe("contract workbench document canvas structure", () => {
     );
   });
 
+  it("shows a recoverable conflict-read failure without enabling server discard", () => {
+    expect(pageSource).toContain("conflict?.serverLoadError");
+    expect(pageSource).toContain("服务器版本读取失败");
+    expect(pageSource).toContain("重新读取服务器版本");
+    expect(pageSource).toContain("retryConflictServerLoad");
+    expect(pageSource).toContain(':disabled="conflict?.server === null"');
+  });
+
   it("fully reloads the workbench after a bill batch instead of keeping a partial projection", () => {
     expect(pageSource).toMatch(
       /async function onBillSaved\([^)]*\)[\s\S]*await reloadCurrent\(\)/u

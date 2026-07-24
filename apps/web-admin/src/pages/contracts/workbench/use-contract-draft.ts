@@ -81,7 +81,9 @@ export interface ContractDraftModel {
 
 export interface ContractDraftConflict {
   local: ContractDraftModel;
-  server: ContractDraftModel;
+  server: ContractDraftModel | null;
+  serverLoading: boolean;
+  serverLoadError: string;
 }
 
 export function hasCompanyEntityVersionDrift(
@@ -171,8 +173,9 @@ export interface UseContractDraft {
     confirmEviction?: () => boolean | Promise<boolean>;
   }) => Promise<void>;
   restoreCheckpoint: (checkpointId: string) => Promise<void>;
-  keepLocalAfterConflict: () => Promise<void>;
-  loadServerAfterConflict: () => Promise<void>;
+  retryConflictServerLoad: () => Promise<boolean>;
+  keepLocalAfterConflict: () => Promise<boolean>;
+  loadServerAfterConflict: () => Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -513,17 +516,40 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
 
   async function load(contractId: string): Promise<void> {
     cancelScheduledSave();
+    const sameContractReload =
+      contractId === workbench.value?.contract.id &&
+      contractVersionId.value !== null;
+    const overlappingSave = sameContractReload ? activeSave : null;
     const requestId = ++loadRequestId;
     let result: ContractWorkbenchReadModel;
     try {
       result = await fetchContractWorkbench(contractId);
     } catch (error) {
-      if (!disposed && requestId === loadRequestId) {
+      if (
+        sameContractReload &&
+        !disposed &&
+        requestId === loadRequestId
+      ) {
         scheduleSave();
       }
       throw error;
     }
+    if (overlappingSave) {
+      await overlappingSave;
+    }
     if (disposed || requestId !== loadRequestId) return;
+    if (
+      overlappingSave ||
+      (
+        result.version.id === contractVersionId.value &&
+        result.version.draftRevision < currentRevision.value
+      )
+    ) {
+      if (!overlappingSave) {
+        scheduleSave();
+      }
+      return;
+    }
     workbench.value = result;
     contractVersionId.value = result.version.id;
     currentRevision.value = result.version.draftRevision;
@@ -670,7 +696,13 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   // -- Conflict handling ------------------------------------------------------
 
   async function enterConflict(conflictingVersionId: string): Promise<void> {
-    const conflictLoadRequestId = loadRequestId;
+    await readConflictServerVersion(conflictingVersionId);
+  }
+
+  async function readConflictServerVersion(
+    conflictingVersionId: string
+  ): Promise<boolean> {
+    const conflictLoadRequestId = ++loadRequestId;
     const conflictingContractId =
       workbench.value?.contract.id ?? conflictingVersionId;
     const isCurrentConflictRequest = () =>
@@ -680,28 +712,64 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
 
     pausedRef.value = true;
     cancelScheduledSave();
-
-    let server: ContractDraftModel | null = null;
+    conflict.value = {
+      local: cloneModel(model),
+      server: null,
+      serverLoading: true,
+      serverLoadError: ""
+    };
+    saveState.value = "conflict";
 
     // Re-fetch to learn the latest server state + revision for the merge UI.
     try {
       const fresh = await fetchContractWorkbench(conflictingContractId);
-      if (
-        !isCurrentConflictRequest() ||
-        fresh.version.id !== conflictingVersionId
-      ) return;
+      if (!isCurrentConflictRequest()) return false;
+      if (fresh.version.id !== conflictingVersionId) {
+        setConflictServerReadFailure(
+          "服务器版本读取失败：返回的合同版本与当前草稿不一致，请重试"
+        );
+        return false;
+      }
       workbench.value = fresh;
       currentRevision.value = fresh.version.draftRevision;
-      server = modelFromWorkbench(fresh);
+      conflict.value = {
+        local: cloneModel(model),
+        server: modelFromWorkbench(fresh),
+        serverLoading: false,
+        serverLoadError: ""
+      };
+      saveState.value = "conflict";
+      return true;
     } catch {
-      // If the re-fetch fails we still surface the conflict with local data
-      // mirrored as the server side; the user can retry.
+      if (!isCurrentConflictRequest()) return false;
+      setConflictServerReadFailure(
+        "服务器版本读取失败，请检查网络后重试"
+      );
+      return false;
     }
+  }
 
-    if (!isCurrentConflictRequest()) return;
-    const local = cloneModel(model);
-    conflict.value = { local, server: server ?? cloneModel(model) };
+  function setConflictServerReadFailure(message: string): void {
+    conflict.value = {
+      local: cloneModel(model),
+      server: null,
+      serverLoading: false,
+      serverLoadError: message
+    };
+    saveError.value = message;
     saveState.value = "conflict";
+  }
+
+  async function retryConflictServerLoad(): Promise<boolean> {
+    const versionId = contractVersionId.value;
+    if (
+      !versionId ||
+      !conflict.value ||
+      conflict.value.serverLoading
+    ) {
+      return false;
+    }
+    return readConflictServerVersion(versionId);
   }
 
   function resumeAfterConflict(): void {
@@ -709,21 +777,27 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     conflict.value = null;
   }
 
-  async function keepLocalAfterConflict(): Promise<void> {
-    if (!conflict.value) {
-      return;
+  async function keepLocalAfterConflict(): Promise<boolean> {
+    if (
+      !conflict.value?.server ||
+      conflict.value.serverLoading
+    ) {
+      return false;
     }
-    // Re-apply the local edits on top of the latest server revision, then save.
-    assignModel(model, conflict.value.local);
+    // The editor remains live while the dialog is open. Preserve the model as
+    // it exists when the user confirms instead of restoring an older snapshot.
     dirtyRef.value = true;
     writeBackup();
     resumeAfterConflict();
-    await saveNow();
+    return saveNow();
   }
 
-  async function loadServerAfterConflict(): Promise<void> {
-    if (!conflict.value) {
-      return;
+  async function loadServerAfterConflict(): Promise<boolean> {
+    if (
+      !conflict.value?.server ||
+      conflict.value.serverLoading
+    ) {
+      return false;
     }
     // Discard local edits in favour of the latest server snapshot.
     assignModel(model, conflict.value.server);
@@ -732,6 +806,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     resumeAfterConflict();
     saveState.value = "idle";
     saveError.value = "";
+    return true;
   }
 
   // -- Checkpoints ------------------------------------------------------------
@@ -767,6 +842,10 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   }
 
   async function reloadWorkbench(): Promise<void> {
+    if (conflict.value) {
+      await retryConflictServerLoad();
+      return;
+    }
     const contractId = workbench.value?.contract.id;
     if (!contractId) {
       return;
@@ -849,6 +928,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       loadRequestId += 1;
       contractVersionId.value = null;
       editGeneration += 1;
+      pausedRef.value = false;
+      conflict.value = null;
+      saveState.value = "idle";
     });
   }
 
@@ -873,6 +955,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     saveNow,
     createCheckpoint,
     restoreCheckpoint,
+    retryConflictServerLoad,
     keepLocalAfterConflict,
     loadServerAfterConflict
   };
