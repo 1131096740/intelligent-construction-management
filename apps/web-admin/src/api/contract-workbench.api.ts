@@ -927,6 +927,7 @@ export function parseContractBillValidationError(
 }
 
 async function parseContractBillValidationResponse(response: Response): Promise<Error | null> {
+  if (response.status !== 400) return null;
   try {
     return parseContractBillValidationError(await response.clone().json());
   } catch {

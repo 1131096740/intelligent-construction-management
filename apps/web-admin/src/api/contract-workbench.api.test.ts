@@ -957,6 +957,37 @@ describe("contract workbench API client", () => {
   });
 
   it.each([
+    [404, "Contract bill not found", "未找到对应业务单据，请确认单据是否存在或你是否有权查看。"],
+    [500, "Internal server error", "系统暂时无法完成操作，请稍后重试或联系管理员。"]
+  ])("replaceContractBillRows – only permits 400 to expose a valid cell-error payload (%i)", async (status, message, expected) => {
+    mockApiFetch.mockResolvedValue(
+      new Response(JSON.stringify({
+        code: "CONTRACT_BILL_VALIDATION_FAILED",
+        message,
+        rowErrors: [{
+          clientRowKey: "local-1",
+          field: "quantity",
+          message: "数量最多保留 6 位小数"
+        }]
+      }), {
+        status,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+
+    const error = await replaceContractBillRows("bill-1", {
+      expectedBillRevision: 7,
+      idempotencyKey: "batch-save-20260724-status-boundary",
+      rows: []
+    }).catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).toHaveProperty("message", expected);
+    expect(error).not.toHaveProperty("code");
+    expect(error).not.toHaveProperty("rowErrors");
+  });
+
+  it.each([
     { code: "CONTRACT_BILL_VALIDATION_FAILED", message: "清单有问题", rowErrors: {} },
     { code: "CONTRACT_BILL_VALIDATION_FAILED", message: "清单有问题", rowErrors: [{ field: "quantity", message: "数量错误" }] },
     { code: "CONTRACT_BILL_VALIDATION_FAILED", message: "清单有问题", rowErrors: [{ clientRowKey: "local-1", field: "quantity", message: 123 }] },
