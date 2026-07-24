@@ -9,7 +9,7 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   workers: 1,
   reporter: "line",
-  outputDir: "test-results/contract-bill-focus",
+  outputDir: "/tmp/jgzg-contract-bill-focus-e2e",
   use: {
     baseURL,
     trace: "retain-on-failure"

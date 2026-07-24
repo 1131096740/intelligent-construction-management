@@ -1,8 +1,11 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { mkdir } from "node:fs/promises";
 
 const contractId = "contract-bill-focus";
 const versionId = "version-bill-focus";
 const billId = "bill-focus";
+const serverReloadSentinel = "仅工作台重载返回的服务端哨兵材料";
+const screenshotDir = "/tmp/jgzg-contract-bill-focus-e2e";
 const initialRow = {
   rowKey: "initial-row",
   itemCode: "CL-001",
@@ -24,7 +27,7 @@ const initialRow = {
 };
 
 test.describe("合同清单全宽专注编辑", () => {
-  test("桌面完成多行、Excel 候选与唯一整表保存", async ({ page }) => {
+  test("桌面完成多行、Excel 候选与唯一整表保存", async ({ page }, testInfo) => {
     const consoleErrors: string[] = [];
     const pageErrors: string[] = [];
     page.on("console", (message) => {
@@ -34,6 +37,7 @@ test.describe("合同清单全宽专注编辑", () => {
 
     const mock = await installContractBillRoutes(page);
     await loginAndOpenWorkbench(page);
+    await expectWorkbenchRoute(page);
 
     await expect(page).toHaveTitle(/建工智管/u);
     await expect(page.locator("#main-content")).not.toBeEmpty();
@@ -48,6 +52,7 @@ test.describe("合同清单全宽专注编辑", () => {
     await page.getByRole("button", { name: "放大编辑", exact: true }).click();
     await expect(page.getByRole("heading", { name: "合同价格清单" })).toBeVisible();
     await expect(page.getByTestId("contract-bill-grid").locator("revo-grid")).toBeVisible();
+    await expectWorkbenchRoute(page);
 
     // 连续新增至少 20 行，全部只存在于本地候选。
     for (let index = 0; index < 20; index += 1) {
@@ -85,14 +90,20 @@ test.describe("合同清单全宽专注编辑", () => {
     await expect(page.getByTestId("contract-bill-grid")).toContainText("粘贴材料甲");
     await expect(page.getByTestId("contract-bill-grid")).toContainText("粘贴材料乙");
 
-    // 焦点行操作均修改同一候选集，不触发 PUT。
+    // 下移/上移必须经浏览器中的真实行顺序证明事件链已经生效。
     await firstNameCell.click();
+    await page.getByTestId("bill-move-down").click();
+    await expect(itemNameCell(page, 0)).toContainText("粘贴材料乙");
+    await expect(itemNameCell(page, 1)).toContainText("粘贴材料甲");
+    await page.getByTestId("bill-move-up").click();
+    await expect(itemNameCell(page, 0)).toContainText("粘贴材料甲");
+    await expect(itemNameCell(page, 1)).toContainText("粘贴材料乙");
+
+    // 焦点行操作均修改同一候选集，不触发 PUT。
     await page.getByTestId("bill-copy-row").click();
     await expect(page.locator(".focus-summary")).toContainText("候选行数 22");
     await page.getByTestId("bill-delete-row").click();
     await expect(page.locator(".focus-summary")).toContainText("候选行数 21");
-    await page.getByTestId("bill-move-down").click();
-    await page.getByTestId("bill-move-up").click();
     expect(mock.putBodies).toHaveLength(0);
 
     const downloadPromise = page.waitForEvent("download");
@@ -115,15 +126,20 @@ test.describe("合同清单全宽专注编辑", () => {
     await expect(page.getByTestId("contract-bill-grid")).not.toContainText("粘贴材料甲");
     expect(mock.putBodies).toHaveLength(0);
 
+    const workbenchReadsBeforeSave = mock.workbenchReadCalls();
     await page.getByTestId("bill-save-all").click();
     await expect.poll(() => mock.putBodies.length).toBe(1);
-    await expect.poll(() => mock.workbenchReadCalls()).toBeGreaterThanOrEqual(2);
+    await expect.poll(() => mock.workbenchReadCalls()).toBe(workbenchReadsBeforeSave + 1);
     await expect(page.getByText("清单已全部保存", { exact: true })).toBeVisible();
 
     const body = mock.putBodies[0]!;
     expect(body.rows).toHaveLength(101);
     expect(new Set(body.rows.map((row) => row.clientRowKey)).size).toBe(101);
     expect(body.rows.every((row, index) => row.sortOrder === index)).toBe(true);
+    expect(mock.putResponseItemNames()).not.toContain(serverReloadSentinel);
+    await expect(page.getByTestId("contract-bill-grid")).toContainText(serverReloadSentinel);
+    expect(mock.workbenchReadCalls()).toBe(workbenchReadsBeforeSave + 1);
+    await saveSuccessScreenshot(page, testInfo.project.name, "desktop");
 
     // 权威行键整体回读：切到卡片断言 clientRowKey 已由服务端 rowKey 重建。
     await page.setViewportSize({ width: 375, height: 812 });
@@ -135,7 +151,7 @@ test.describe("合同清单全宽专注编辑", () => {
     expect(pageErrors).toEqual([]);
   });
 
-  test("375px 使用卡片编辑并保持候选与错误计数一致", async ({ page }) => {
+  test("375px 使用卡片编辑并保持候选与错误计数一致", async ({ page }, testInfo) => {
     const consoleErrors: string[] = [];
     const pageErrors: string[] = [];
     page.on("console", (message) => {
@@ -146,12 +162,14 @@ test.describe("合同清单全宽专注编辑", () => {
     await page.setViewportSize({ width: 375, height: 812 });
     const mock = await installContractBillRoutes(page);
     await loginAndOpenWorkbench(page);
+    await expectWorkbenchRoute(page);
     await page.locator(".business-tabs").getByText("清单", { exact: true }).click();
 
     await expect(page.locator(".bill-summary-card")).toBeVisible();
     await expect(page.locator("revo-grid")).toHaveCount(0);
     await page.getByRole("button", { name: "放大编辑", exact: true }).click();
     await expect(page.locator(".contract-bill-grid__cards")).toBeVisible();
+    await expectWorkbenchRoute(page);
     await expect(page.locator("revo-grid")).toHaveCount(0);
     await expect(page.locator(".contract-bill-grid__card")).toHaveCount(1);
     await expect(page.locator(".focus-summary")).toContainText("候选行数 1");
@@ -163,7 +181,17 @@ test.describe("合同清单全宽专注编辑", () => {
     await page.evaluate(() => {
       window.scrollTo({ top: 0, behavior: "auto" });
     });
-    await page.getByTestId("bill-save-all").click();
+    const saveButton = page.getByTestId("bill-save-all");
+    await expect.poll(() => page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth + 0.5
+    )).toBe(true);
+    const saveButtonBox = await saveButton.boundingBox();
+    expect(saveButtonBox).not.toBeNull();
+    expect(saveButtonBox!.x).toBeGreaterThanOrEqual(-0.5);
+    expect(saveButtonBox!.x + saveButtonBox!.width).toBeLessThanOrEqual(
+      (page.viewportSize()?.width ?? 375) + 0.5
+    );
+    await saveButton.click();
     await expect(page.locator(".error-summary")).toContainText("1 处需要修正");
     await expect(page.locator(".contract-bill-grid__error-list li")).toHaveCount(1);
     await expect(page.locator(".contract-bill-grid__card")).toHaveCount(1);
@@ -172,6 +200,7 @@ test.describe("合同清单全宽专注编辑", () => {
 
     await itemNameInput.fill("移动端钢筋");
     await expect(itemNameInput).toHaveValue("移动端钢筋");
+    await saveSuccessScreenshot(page, testInfo.project.name, "375");
     expect(consoleErrors).toEqual([]);
     expect(pageErrors).toEqual([]);
   });
@@ -179,6 +208,7 @@ test.describe("合同清单全宽专注编辑", () => {
 
 async function installContractBillRoutes(page: Page) {
   const putBodies: ReplaceRowsBody[] = [];
+  let putResponseItemNames: string[] = [];
   let templateDownloads = 0;
   let workbenchReads = 0;
   let revision = 1;
@@ -276,17 +306,25 @@ async function installContractBillRoutes(page: Page) {
       settlementBasis: row.settlementBasis ?? null,
       customData: row.customData
     }));
-    await fulfillJson(route, batchSaveReadModel(rows, revision));
+    const response = batchSaveReadModel(rows, revision);
+    putResponseItemNames = response.rows.map((row) => String(row.itemName));
+    await fulfillJson(route, response);
   });
   await page.route(`**/api/contract-workbench/${contractId}`, (route) => {
     workbenchReads += 1;
-    return fulfillJson(route, workbenchReadModel(rows, revision));
+    const workbenchRows = putBodies.length === 0
+      ? rows
+      : rows.map((row, index) => index === 0
+        ? { ...row, itemName: serverReloadSentinel }
+        : row);
+    return fulfillJson(route, workbenchReadModel(workbenchRows, revision));
   });
 
   return {
     putBodies,
     templateDownloadCalls: () => templateDownloads,
-    workbenchReadCalls: () => workbenchReads
+    workbenchReadCalls: () => workbenchReads,
+    putResponseItemNames: () => putResponseItemNames
   };
 }
 
@@ -299,6 +337,33 @@ async function loginAndOpenWorkbench(page: Page) {
   await page.waitForLoadState("networkidle");
   await page.goto(`/contracts/${contractId}/workbench`);
   await expect(page.getByRole("heading", { name: "合同清单专注编辑回归合同" })).toBeVisible();
+}
+
+async function expectWorkbenchRoute(page: Page) {
+  await expect.poll(() => decodeURIComponent(new URL(page.url()).pathname)).toBe(
+    `/合同工作台/${contractId}`
+  );
+}
+
+function itemNameCell(page: Page, rowIndex: number) {
+  return page.locator(
+    `revo-grid revogr-data[type="rgRow"] [data-rgrow="${rowIndex}"][data-rgcol="1"]`
+  );
+}
+
+async function saveSuccessScreenshot(
+  page: Page,
+  projectName: string,
+  viewportLabel: "desktop" | "375"
+) {
+  await mkdir(screenshotDir, { recursive: true });
+  const evidenceTarget = viewportLabel === "desktop"
+    ? page.getByTestId("contract-bill-grid")
+    : page.getByTestId("bill-save-all");
+  await evidenceTarget.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: `${screenshotDir}/${projectName}-${viewportLabel}-success.png`
+  });
 }
 
 async function uploadPreviewFile(page: Page) {
