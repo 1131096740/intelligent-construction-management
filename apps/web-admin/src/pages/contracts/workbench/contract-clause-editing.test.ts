@@ -192,12 +192,6 @@ describe("contract clause standard source editing", () => {
       expectedBlocks: [{ type: "paragraph", text: "" }]
     },
     {
-      name: "undefined",
-      content: undefined,
-      expectedText: "",
-      expectedBlocks: [{ type: "paragraph", text: "" }]
-    },
-    {
       name: "text-only document",
       content: { text: "仅文本正文", documentMeta: { legacy: true } },
       expectedText: "仅文本正文",
@@ -262,6 +256,70 @@ describe("contract clause standard source editing", () => {
     expect(expectedText).not.toContain("table");
   });
 
+  it.each([
+    {
+      name: "legacy string array",
+      content: ["第一段", "第二段"],
+      expectedText: "第一段\n第二段"
+    },
+    {
+      name: "legacy object without text",
+      content: {
+        paragraphs: [
+          "对象第一段",
+          { value: 2, enabled: true, type: "paragraph" }
+        ]
+      },
+      expectedText: "对象第一段\n2\ntrue"
+    },
+    {
+      name: "nested finite numbers and booleans",
+      content: [1, true, { nested: [2.5, false, "末段"] }],
+      expectedText: "1\ntrue\n2.5\nfalse\n末段"
+    }
+  ])("preserves deterministic recursive text for $name", ({ content, expectedText }) => {
+    const result = applyPublishedStandardClause(clause(), published(content));
+    const document = normalizeClauseDocument(result.content);
+
+    expect(document).toEqual({
+      text: expectedText,
+      blocks: [{ type: "paragraph", text: expectedText }]
+    });
+    expect(clauseDocumentText(document)).toBe(expectedText);
+    expect(expectedText).not.toContain("paragraph");
+  });
+
+  it.each([
+    {
+      name: "valid paragraph followed by malformed list",
+      content: {
+        blocks: [
+          { type: "paragraph", text: "保留段" },
+          { type: "list", items: ["畸形清单仍保留文本", 2] }
+        ]
+      },
+      expectedText: "保留段\n畸形清单仍保留文本\n2"
+    },
+    {
+      name: "valid list followed by malformed table",
+      content: {
+        blocks: [
+          { type: "list", items: ["清单一", "清单二"] },
+          { type: "table", rows: [["表格后续", null]] }
+        ]
+      },
+      expectedText: "清单一\n清单二\n表格后续"
+    }
+  ])("falls back as a whole for $name", ({ content, expectedText }) => {
+    const result = applyPublishedStandardClause(clause(), published(content));
+    const document = normalizeClauseDocument(result.content);
+
+    expect(document).toEqual({
+      text: expectedText,
+      blocks: [{ type: "paragraph", text: expectedText }]
+    });
+  });
+
   it("removes old standard metadata before snapshotting and remains flat on repeat apply", () => {
     const oldEnvelope = {
       text: "标准正文",
@@ -309,10 +367,40 @@ describe("contract clause standard source editing", () => {
         return value;
       })()
     },
-    { name: "BigInt content", content: { text: "正文", unsupported: 1n } }
+    { name: "BigInt content", content: { text: "正文", unsupported: 1n } },
+    { name: "root undefined", content: undefined },
+    { name: "nested undefined", content: { text: "正文", unsupported: undefined } },
+    { name: "function", content: { text: "正文", unsupported: () => "值" } },
+    { name: "symbol", content: { text: "正文", unsupported: Symbol("值") } },
+    { name: "NaN", content: { text: "正文", unsupported: Number.NaN } },
+    { name: "Infinity", content: { text: "正文", unsupported: Number.POSITIVE_INFINITY } },
+    {
+      name: "sparse array",
+      content: (() => {
+        const value = ["第一段"];
+        value.length = 2;
+        return value;
+      })()
+    },
+    { name: "non-plain serializable object", content: new Date("2026-07-25T00:00:00Z") }
   ])("rejects $name with a stable JSON contract error", ({ content }) => {
     expect(() => applyPublishedStandardClause(clause(), published(content))).toThrowError(
       new TypeError("条款内容必须是可序列化的 JSON 数据")
     );
+  });
+
+  it.each([
+    { name: "null", content: null },
+    { name: "string", content: "正文" },
+    { name: "boolean", content: true },
+    { name: "finite number", content: 2.5 },
+    { name: "dense array", content: ["第一段", null, 2, false] },
+    { name: "plain object", content: { text: "正文", nested: { enabled: true } } },
+    {
+      name: "reactive plain array",
+      content: reactive([{ text: "第一段" }, { enabled: true }])
+    }
+  ])("accepts valid JSON content: $name", ({ content }) => {
+    expect(() => applyPublishedStandardClause(clause(), published(content))).not.toThrow();
   });
 });
