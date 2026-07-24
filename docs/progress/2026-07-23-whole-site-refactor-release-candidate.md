@@ -58,7 +58,7 @@
 | 范围 | 结果与边界 |
 | --- | --- |
 | 阶段 1 WebKit 工作台金丝雀 | 用户已执行 `CI=true /Users/leoyang/.local/bin/pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.workbench-canary.config.ts --project=webkit`，2/2，14.3 秒；已解除跨浏览器运行时阻塞 |
-| 费用补付 WebKit 闭环（本地候选） | `CI=true /Users/leoyang/.local/bin/pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.expense-claim-workbench.config.ts --project=webkit`：4/4，通过上传凭证、二次确认和受控补付 POST；隔离 mock，不连接生产 |
+| 费用与借款资金 WebKit 闭环（本地候选） | `CI=true /Users/leoyang/.local/bin/pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.expense-claim-workbench.config.ts --project=webkit`：5/5；覆盖公司补付及借款放款、还款、财务主管确认与反向更正，均通过上传测试凭证、二次确认、受控 POST 和账本投影状态断言；隔离 mock，不连接生产 |
 | 本轮 WebKit 工作台重跑 | 同一命令 2/2，3.8 秒 |
 | 阶段 5 浏览器矩阵 | 隔离 mock 下：搜索 4/4、合同 2/2、结算 2/2、费用 6/6、统一资金 2/2、Canvas/二维码签名 4/4、零采 A4→A5→收货 Chromium 18/18、WebKit 18/18 |
 | 最小发布浏览器门禁 | `CI=true pnpm --filter @jiangkong/web-admin test:e2e:p0`：隔离 mock 下 2 passed、2 条仅在提供真实试运行账号时启用的条件跳过（2.6 秒）；不连接本地 API |
@@ -74,7 +74,7 @@
 
 | 命令/候选 | 结果 |
 | --- | --- |
-| `pnpm verify:money-bigint:local` / `0ffcc991…` | 85 条迁移、`migrate status`、seed/API、401/403 负向、合同归档→治理结算生效→结算付款→审批→两次实付→财务入账→PDF→审计通过；21/21 BigInt 列、`9007199254740993` 精度及回滚零残留通过 |
+| `pnpm verify:money-bigint:local` / 本地费用与借款收尾切片 | 86 条迁移（含 `20260724100000_expense_claim_payment_execution_and_repayment_reversal`）、`migrate status`、seed/API、401/403 负向、合同归档→治理结算生效→结算付款→审批→两次实付→入账通过；21/21 BigInt 列、`9007199254740993` 精度及临时 API/数据库清理通过 |
 | `pnpm verify:spot-procurement-concurrency:local` / `5c9d14d2…` | 85 条迁移后验证付款单胜、供应商余额/错配、实际付款上限与幂等、凭证唯一、文件绑定竞争、项目资金串行、余额不足零写、收货/PDF/发票账本和原始 P2034 并发保护通过 |
 | `pnpm --filter @jiangkong/api verify:draft-lifecycle:local` / `1753e061…` | 85 条迁移与 seed；迁移、约束、索引和正式事实只读核验通过；合成合同、付款、模板生命周期探针完整回滚，前后计数、金额、状态和结束事实一致 |
 

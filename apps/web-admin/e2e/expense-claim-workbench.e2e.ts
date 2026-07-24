@@ -147,6 +147,121 @@ test("财务登记带凭证的公司补付，只调用新的受控付款事实�
   }]);
 });
 
+test("借款资金办理按放款、还款、主管确认和更正依次写入受控接口", async ({ page }) => {
+  const requestedViews: string[] = [];
+  const fundWrites: Array<{ kind: string; payload: unknown }> = [];
+  await mockLoanFundSession(page, requestedViews, fundWrites);
+  await login(page);
+
+  await page.goto("/费用与报销/loan-funds-1");
+  await expect(page.getByRole("heading", { name: "借款申请" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "登记实际放款" })).toBeVisible();
+  await page.getByRole("button", { name: "登记实际放款" }).click();
+  const disbursementDrawer = page.locator(".t-drawer").filter({ hasText: "登记借款实际放款" });
+  await disbursementDrawer.getByPlaceholder("例如 1250").fill("100000");
+  await disbursementDrawer.getByPlaceholder("YYYY-MM-DD").fill("2026-07-24");
+  await disbursementDrawer.getByPlaceholder("例如：银行转账").fill("银行转账");
+  await disbursementDrawer.locator("input[type=file]").setInputFiles({ name: "借款放款凭证.pdf", mimeType: "application/pdf", buffer: Buffer.from("loan-disbursement-voucher") });
+  await disbursementDrawer.getByPlaceholder("用于确认本次资金事实").fill("E2e@2026");
+  await disbursementDrawer.getByRole("button", { name: "确认登记", exact: true }).click();
+  await expect(page.getByText("确认登记借款资金事实", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "确认写入", exact: true }).click();
+  await expect.poll(() => fundWrites).toContainEqual({ kind: "disbursement", payload: {
+    amountCents: "100000", paidAt: "2026-07-24", paymentMethod: "银行转账", voucherFileId: "expense-file-1", confirmationPassword: "E2e@2026"
+  } });
+
+  await page.getByRole("button", { name: "登记员工还款" }).click();
+  const repaymentDrawer = page.locator(".t-drawer").filter({ hasText: "登记员工还款" });
+  await repaymentDrawer.getByPlaceholder("例如 1250").fill("30000");
+  await repaymentDrawer.getByPlaceholder("YYYY-MM-DD").fill("2026-07-24");
+  await repaymentDrawer.getByPlaceholder("例如：银行转账").fill("现金");
+  await repaymentDrawer.locator("input[type=file]").setInputFiles({ name: "员工还款凭证.pdf", mimeType: "application/pdf", buffer: Buffer.from("loan-repayment-voucher") });
+  await repaymentDrawer.getByPlaceholder("用于确认本次资金事实").fill("E2e@2026");
+  await repaymentDrawer.getByRole("button", { name: "确认登记", exact: true }).click();
+  await expect(page.getByText("确认登记借款资金事实", { exact: true })).toBeVisible();
+  const repaymentDetailReload = page.waitForResponse((response) => response.request().method() === "GET" && response.url().includes("/api/expense-claims/loan-funds-1"));
+  await page.getByRole("button", { name: "确认写入", exact: true }).click();
+  await repaymentDetailReload;
+  await expect.poll(() => fundWrites).toContainEqual({ kind: "repayment", payload: {
+    amountCents: "30000", repaidAt: "2026-07-24", paymentMethod: "现金", voucherFileId: "expense-file-1", confirmationPassword: "E2e@2026"
+  } });
+
+  await page.getByText("资金结果", { exact: true }).click();
+  const repaymentRow = page.locator(".expense-claim-detail__repayment-row");
+  await expect(repaymentRow).toHaveCount(1);
+  await expect(repaymentRow).toContainText("待确认");
+  await page.getByRole("button", { name: "确认入账" }).click();
+  const confirmDialog = page.locator(".t-dialog").filter({ hasText: "确认员工还款" });
+  await expect(confirmDialog).toHaveCount(1);
+  await confirmDialog.getByPlaceholder("用于确认本次受控动作").fill("E2e@2026");
+  const confirmationDetailReload = page.waitForResponse((response) => response.request().method() === "GET" && response.url().includes("/api/expense-claims/loan-funds-1"));
+  await confirmDialog.getByRole("button", { name: "确认入账", exact: true }).click();
+  await confirmationDetailReload;
+  await expect.poll(() => fundWrites).toContainEqual({ kind: "confirmation", payload: { confirmationPassword: "E2e@2026" } });
+  await expect(repaymentRow).toContainText("已确认");
+
+  await page.getByRole("button", { name: "更正" }).click();
+  const reversalDialog = page.locator(".t-dialog").filter({ hasText: "更正员工还款" });
+  await expect(reversalDialog).toHaveCount(1);
+  await reversalDialog.getByLabel("更正原因").fill("凭证金额录入错误");
+  await reversalDialog.getByPlaceholder("用于确认本次受控动作").fill("E2e@2026");
+  const reversalDetailReload = page.waitForResponse((response) => response.request().method() === "GET" && response.url().includes("/api/expense-claims/loan-funds-1"));
+  await reversalDialog.getByRole("button", { name: "确认更正", exact: true }).click();
+  await reversalDetailReload;
+  await expect.poll(() => fundWrites).toContainEqual({ kind: "reversal", payload: { reason: "凭证金额录入错误", confirmationPassword: "E2e@2026" } });
+  await expect(repaymentRow).toContainText("已更正");
+});
+
+async function mockLoanFundSession(page: Page, requestedViews: string[], fundWrites: Array<{ kind: string; payload: unknown }>) {
+  await mockExpenseClaimSession(page, requestedViews);
+  let phase: "pending" | "disbursed" | "recorded" | "confirmed" | "reversed" = "pending";
+  const detail = () => {
+    const repaymentStatus = phase === "recorded" ? "recorded" : phase === "confirmed" ? "confirmed" : phase === "reversed" ? "reversed" : null;
+    const repaidAmountCents = phase === "confirmed" ? "30000" : "0";
+    const balanceAmountCents = phase === "confirmed" ? "70000" : "100000";
+    return {
+      ...expenseClaim({
+        id: "loan-funds-1", code: "JK-20260724-001", claimType: "loan", status: phase === "pending" ? "approved_pending_disbursement" : "disbursed",
+        reason: "现场周转借款", requestedAmountCents: "100000", loanOffsetAmountCents: "0", companyPayableAmountCents: "0", fundedAmountCents: phase === "pending" ? "0" : "100000"
+      }),
+      applicantPhoneSnapshot: null, proxyReason: null, factWitnessNameSnapshot: null,
+      paymentMethod: "bank_transfer", payeeNameSnapshot: null, payeeAccountNameSnapshot: null, payeeBankNameSnapshot: null, payeeBankAccountSnapshot: null,
+      paymentSubjectCompanyEntityId: "company-1", paymentSubjectNameSnapshot: "建工智管有限公司", paymentSubjectAdjustmentReason: null, paymentSubjectAdjustedAt: null, paymentSubjectAdjustedByUserId: null, paymentSubjectAdjustedByRoleKey: null,
+      loanExpectedClearanceAt: "2026-08-24T00:00:00.000Z", submittedAt: "2026-07-24T00:00:00.000Z", approvedAt: "2026-07-24T00:00:00.000Z",
+      approval: null, attachmentPermissions: { canAppendEvidence: true }, paymentSubjectPermissions: { canAdjust: false }, paymentSubjectCompanyEntities: [],
+      fundsPermissions: {
+        canRecordReimbursementPayment: false, canGenerateFinalPaymentPdf: false, canGenerateLoanFinalDisbursementPdf: false,
+        canRecordLoanDisbursement: phase === "pending", canRecordLoanRepayment: phase !== "pending", canConfirmLoanRepayment: true, canReverseLoanRepayment: true
+      },
+      paymentExecutions: [], finalPaymentPdf: null, attachments: [], lines: [],
+      loanAccount: phase === "pending" ? null : { id: "loan-account-1", fundedAmountCents: "100000", offsetAmountCents: "0", repaidAmountCents, reservedOffsetAmountCents: "0", balanceAmountCents },
+      loanDisbursements: phase === "pending" ? [] : [{ id: "disbursement-1", amountCents: "100000", occurredAt: "2026-07-24T00:00:00.000Z", paymentMethod: "银行转账", voucherFileId: "expense-file-1", note: null }],
+      loanRepayments: repaymentStatus ? [{ id: "repayment-1", amountCents: "30000", repaidAt: "2026-07-24T00:00:00.000Z", paymentMethod: "现金", voucherFileId: "expense-file-1", status: repaymentStatus, confirmationNote: phase === "confirmed" ? "已核对" : null, reversalReason: phase === "reversed" ? "凭证金额录入错误" : null, createdAt: "2026-07-24T00:00:00.000Z" }] : []
+    };
+  };
+  await page.route("**/api/expense-claims/loan-funds-1", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(detail()) }));
+  await page.route("**/api/expense-claims/loan-funds-1/disbursements", (route) => {
+    fundWrites.push({ kind: "disbursement", payload: route.request().postDataJSON() });
+    phase = "disbursed";
+    return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ id: "disbursement-1", status: "disbursed" }) });
+  });
+  await page.route("**/api/expense-claims/loan-funds-1/repayments", (route) => {
+    fundWrites.push({ kind: "repayment", payload: route.request().postDataJSON() });
+    phase = "recorded";
+    return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ id: "repayment-1", status: "recorded" }) });
+  });
+  await page.route("**/api/expense-claims/loan-funds-1/repayments/repayment-1/confirmation", (route) => {
+    fundWrites.push({ kind: "confirmation", payload: route.request().postDataJSON() });
+    phase = "confirmed";
+    return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ id: "repayment-1", status: "confirmed" }) });
+  });
+  await page.route("**/api/expense-claims/loan-funds-1/repayments/repayment-1/reversal", (route) => {
+    fundWrites.push({ kind: "reversal", payload: route.request().postDataJSON() });
+    phase = "reversed";
+    return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ id: "repayment-1", status: "reversed" }) });
+  });
+}
+
 async function mockExpenseClaimSession(page: Page, requestedViews: string[], posted: unknown[] = [], submitted: string[] = [], reviewed: string[] = [], attached: string[] = [], appended: string[] = [], canAdjustPaymentSubject = false, payerAdjustments: unknown[] = [], companyPayments: unknown[] = []) {
   let appendEvidenceAllowed = false;
   let paymentSubjectName = "建工智管有限公司";
