@@ -110,6 +110,15 @@ describe("contract workbench document canvas structure", () => {
     expect(pageSource).not.toContain("requestUnsavedClose");
   });
 
+  it("fully reloads the workbench after a bill batch instead of keeping a partial projection", () => {
+    expect(pageSource).toMatch(
+      /async function onBillSaved\([^)]*\)[\s\S]*await reloadCurrent\(\)/u
+    );
+    expect(pageSource).not.toMatch(
+      /function onBillSaved\([^)]*\)[\s\S]*workbench\.value = \{[\s\S]*bills:/u
+    );
+  });
+
   it("blocks bill preview and batch save until current tax facts are explicitly saved", () => {
     expect(pageSource).toContain(':ordinary-draft-dirty="isDirty"');
     expect(billEditorSource).toContain("请先使用右上角保存当前合同基础信息");

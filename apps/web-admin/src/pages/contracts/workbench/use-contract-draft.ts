@@ -141,6 +141,8 @@ export interface UseContractDraft {
   savedRevision: Readonly<Ref<number>>;
   initializeDraft: InitializeDraftController;
   load: (contractId: string) => Promise<void>;
+  /** Re-fetches the currently loaded workbench through the same guarded load path. */
+  reload: () => Promise<void>;
   markDirty: () => void;
   /** Clears only client-side editing state after a successful server termination. */
   discardLocalState: () => void;
@@ -799,6 +801,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     savedRevision: readonly(currentRevision),
     initializeDraft,
     load,
+    reload: reloadWorkbench,
     markDirty,
     discardLocalState,
     suspendAutosaveForLifecycleAction,

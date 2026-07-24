@@ -744,7 +744,6 @@ import {
   previewContractTypeChange,
   submitContractFromWorkbench,
   transferContractDraft,
-  type ReplaceContractBillRowsReadModel,
   type PublishedContractTemplateReadModel
 } from "../../api/contract-workbench.api";
 import {
@@ -801,7 +800,7 @@ import type {
   ContractNegotiationRoundReadModel,
   ContractOfflineRevisionReadModel
 } from "../../api/contract-negotiation.api";
-import type { WorkbenchBill, WorkbenchBillRow } from "./workbench/contract-bill-editor";
+import type { WorkbenchBill } from "./workbench/contract-bill-editor";
 import {
   useContractDraft,
   type ContractDraftModel
@@ -1120,49 +1119,14 @@ function closeBillFocus() {
   billEditorDirty.value = false;
 }
 
-function onBillSaved(saved: ReplaceContractBillRowsReadModel) {
-  const current = workbench.value;
-  const savedBill = saved.bill;
-  if (!current || !savedBill) return;
-  workbench.value = {
-    ...current,
-    bills: current.bills.map((bill) => bill.id === savedBill.id
-      ? {
-          ...bill,
-          ...savedBill,
-          rows: saved.rows.map(toWorkbenchBillRow)
-        }
-      : bill)
-  };
-}
-
-function toWorkbenchBillRow(
-  row: ReplaceContractBillRowsReadModel["rows"][number]
-): WorkbenchBillRow {
-  return {
-    rowKey: row.rowKey,
-    itemCode: row.itemCode,
-    itemName: row.itemName,
-    specification: row.specification,
-    unit: row.unit,
-    quantity: row.quantity,
-    unitPrice: row.unitPrice,
-    taxRate: row.taxRate,
-    taxRatePercent: row.taxRate,
-    taxRateSource: row.taxRateSource === "row_override"
-      ? "row_override"
-      : "version_default",
-    pricingFactStatus: row.pricingFactStatus,
-    precisionPolicy: row.precisionPolicy,
-    initialQuantity: row.quantity,
-    initialUnitPrice: row.unitPrice,
-    taxInclusiveAmountCents: row.taxInclusiveAmountCents,
-    taxExclusiveAmountCents: row.taxExclusiveAmountCents,
-    taxAmountCents: row.taxAmountCents,
-    settlementBasis: row.settlementBasis,
-    isProvisional: row.isProvisional,
-    customData: { ...row.customData }
-  };
+async function onBillSaved() {
+  try {
+    await reloadCurrent();
+  } catch (error) {
+    errorMessage.value = error instanceof Error
+      ? error.message
+      : "清单已保存，但合同工作台刷新失败，请手动刷新后继续编辑。";
+  }
 }
 
 const blockingMessages = computed(() => {

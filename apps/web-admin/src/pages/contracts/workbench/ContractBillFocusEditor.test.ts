@@ -1,5 +1,11 @@
 /* eslint-disable vue/one-component-per-file */
-import { createSSRApp, defineComponent, h, nextTick, type App } from "vue";
+import {
+  createSSRApp,
+  defineComponent,
+  h,
+  nextTick,
+  type App
+} from "vue";
 import { renderToString } from "vue/server-renderer";
 import { describe, expect, it, vi } from "vitest";
 import type {
@@ -117,6 +123,7 @@ function authoritativeRows(): ReplaceContractBillRowsReadModel {
 }
 
 function controllerOptions(overrides: {
+  bill?: () => WorkbenchBill;
   ordinaryDraftDirty?: () => boolean;
   replaceRows?: (billId: string, input: ReplaceContractBillRowsInput) =>
     Promise<ReplaceContractBillRowsReadModel>;
@@ -124,7 +131,7 @@ function controllerOptions(overrides: {
 } = {}) {
   let key = 0;
   return {
-    bill: () => bill,
+    bill: overrides.bill ?? (() => bill),
     disabled: () => false,
     ordinaryDraftDirty: overrides.ordinaryDraftDirty ?? (() => false),
     emit: vi.fn(),
@@ -275,11 +282,49 @@ describe("ContractBillFocusEditor state", () => {
     expect(replaceRows.mock.calls[1]?.[1].idempotencyKey).toBe("save-key-1");
   });
 
+  it("rotates the idempotency key only when the failed candidate actually changes", async () => {
+    const replaceRows = vi.fn()
+      .mockRejectedValueOnce(new Error("网络暂不可用"))
+      .mockResolvedValueOnce(authoritativeRows());
+    const controller = createContractBillFocusController(
+      controllerOptions({ replaceRows })
+    );
+
+    await controller.saveAll();
+    const changedRows = plainRows(controller.rows.value);
+    changedRows[0]!.itemName = "失败后重新编辑的钢筋";
+    controller.setRows(changedRows);
+    await controller.saveAll();
+
+    expect(replaceRows.mock.calls[0]?.[1].idempotencyKey).toBe("save-key-1");
+    expect(replaceRows.mock.calls[1]?.[1].idempotencyKey).toBe("save-key-2");
+    expect(replaceRows.mock.calls[1]?.[1].rows[0]?.itemName).toBe(
+      "失败后重新编辑的钢筋"
+    );
+  });
+
+  it("keeps the failed-attempt key when only selection or validation feedback changes", async () => {
+    const replaceRows = vi.fn()
+      .mockRejectedValueOnce(new Error("网络暂不可用"))
+      .mockResolvedValueOnce(authoritativeRows());
+    const controller = createContractBillFocusController(
+      controllerOptions({ replaceRows })
+    );
+
+    await controller.saveAll();
+    controller.selectedClientRowKey.value = controller.rows.value[1]!.clientRowKey;
+    await controller.previewExcel(new File(["not-xlsx"], "错误格式.xls"));
+    await controller.saveAll();
+
+    expect(replaceRows.mock.calls[0]?.[1].idempotencyKey).toBe("save-key-1");
+    expect(replaceRows.mock.calls[1]?.[1].idempotencyKey).toBe("save-key-1");
+  });
+
   it("rebuilds from the authoritative response and rotates the key only after success", async () => {
     const replaceRows = vi.fn().mockResolvedValue(authoritativeRows());
     const options = controllerOptions({ replaceRows });
     const controller = createContractBillFocusController(options);
-    controller.syncBillRevision(11);
+    controller.syncBill({ ...bill, revision: 11, rows: plainRows(bill.rows) });
 
     await controller.saveAll();
     expect(controller.rows.value).toEqual([
@@ -290,10 +335,130 @@ describe("ContractBillFocusEditor state", () => {
       })
     ]);
     expect(controller.dirty.value).toBe(false);
-    expect(controller.saveKey.value).toBe("save-key-2");
+    expect(controller.saveKey.value).toBe("save-key-3");
     expect(controller.saveMessage.value).toBe("清单已全部保存");
-    expect(replaceRows.mock.calls[0]?.[1].expectedBillRevision).toBe(11);
+    expect(replaceRows.mock.calls[0]?.[1]).toMatchObject({
+      expectedBillRevision: 11,
+      idempotencyKey: "save-key-2"
+    });
     expect(options.emit).toHaveBeenCalledWith("saved", authoritativeRows());
+  });
+
+  it("does not let an older external response overwrite its authoritative save response", async () => {
+    const controller = createContractBillFocusController(controllerOptions());
+    await controller.saveAll();
+    expect(controller.rows.value[0]?.itemName).toBe("权威钢筋");
+
+    controller.syncBill({
+      ...plainRows(bill),
+      revision: 7,
+      rows: [{
+        ...plainRows(bill.rows[0]!),
+        itemName: "迟到的旧钢筋"
+      }]
+    });
+
+    expect(controller.rows.value).toEqual([
+      expect.objectContaining({ itemName: "权威钢筋", rowKey: "server-3" })
+    ]);
+    expect(controller.billSnapshot.value.revision).toBe(8);
+    expect(controller.dirty.value).toBe(false);
+  });
+
+  it("freezes candidate rows and their revision together while local rows are dirty", async () => {
+    let currentBill = plainRows(bill);
+    const replaceRows = vi.fn().mockRejectedValue(new Error("并发冲突"));
+    const controller = createContractBillFocusController(controllerOptions({
+      bill: () => currentBill,
+      replaceRows
+    }));
+    const localRows = plainRows(controller.rows.value);
+    localRows[0]!.itemName = "本地钢筋";
+    controller.setRows(localRows);
+
+    currentBill = {
+      ...plainRows(bill),
+      revision: 12,
+      rows: [{
+        ...plainRows(bill.rows[0]!),
+        rowKey: "server-concurrent",
+        itemName: "并发钢筋"
+      }]
+    };
+    controller.syncBill(currentBill);
+    await controller.saveAll();
+
+    expect(controller.rows.value[0]?.itemName).toBe("本地钢筋");
+    expect(replaceRows.mock.calls[0]?.[1]).toMatchObject({
+      expectedBillRevision: 7,
+      rows: [expect.objectContaining({ itemName: "本地钢筋" }), expect.anything()]
+    });
+  });
+
+  it("rebuilds rows, baseline, and revision together from a clean external bill", async () => {
+    const replaceRows = vi.fn().mockResolvedValue(authoritativeRows());
+    const controller = createContractBillFocusController(
+      controllerOptions({ replaceRows })
+    );
+    const refreshedBill: WorkbenchBill = {
+      ...plainRows(bill),
+      revision: 12,
+      rows: [{
+        ...plainRows(bill.rows[0]!),
+        rowKey: "server-refreshed",
+        itemName: "完整刷新钢筋"
+      }]
+    };
+
+    controller.syncBill(refreshedBill);
+    expect(controller.rows.value).toEqual([
+      expect.objectContaining({
+        rowKey: "server-refreshed",
+        itemName: "完整刷新钢筋"
+      })
+    ]);
+    expect(controller.dirty.value).toBe(false);
+
+    await controller.saveAll();
+    expect(replaceRows.mock.calls[0]?.[1]).toMatchObject({
+      expectedBillRevision: 12,
+      rows: [expect.objectContaining({ itemName: "完整刷新钢筋" })]
+    });
+  });
+
+  it.each([
+    {
+      name: "100 行中有 1 行畸形",
+      candidateRows: [
+        ...Array.from({ length: 99 }, (_, index) => importRow(index)),
+        { clientRowKey: "broken-100", itemName: "缺少单位和单价" }
+      ]
+    },
+    {
+      name: "唯一候选行畸形",
+      candidateRows: [{ clientRowKey: "broken-1", itemName: "缺少单位和单价" }]
+    },
+    {
+      name: "candidateRows 不是数组",
+      candidateRows: { clientRowKey: "not-an-array" }
+    }
+  ])("rejects malformed Excel preview atomically: $name", async ({ candidateRows }) => {
+    const controller = createContractBillFocusController(controllerOptions({
+      previewImport: vi.fn().mockResolvedValue({
+        added: 1,
+        removed: 0,
+        errors: [],
+        candidateRows
+      })
+    }));
+    const before = plainRows(controller.rows.value);
+
+    await controller.previewExcel(new File(["xlsx"], "异常清单.xlsx"));
+
+    expect(controller.replaceConfirmVisible.value).toBe(false);
+    expect(controller.pendingImportRows.value).toBeNull();
+    expect(controller.rows.value).toEqual(before);
+    expect(controller.messageDanger.value).toBe(true);
   });
 
   it("restores the baseline when the parent confirms abandoning focus changes", () => {
@@ -345,6 +510,7 @@ describe("Contract bill workbench surfaces", () => {
     expect(html).toContain("accept=\".xlsx");
     expect(html.match(/data-testid="contract-bill-grid"/gu)).toHaveLength(1);
   });
+
 });
 
 function registerTDesignStubs(app: App) {
@@ -396,4 +562,19 @@ function registerTDesignStubs(app: App) {
 
 function plainRows<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function importRow(index: number) {
+  return {
+    clientRowKey: `import-${index}`,
+    sortOrder: index,
+    itemName: `导入材料 ${index}`,
+    unit: "吨",
+    quantity: "1",
+    unitPrice: "10",
+    taxRatePercent: "13",
+    taxRateSource: "version_default",
+    isProvisional: false,
+    customData: {}
+  };
 }

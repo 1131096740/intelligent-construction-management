@@ -58,6 +58,7 @@ export interface ContractBillFocusControllerOptions {
 }
 
 export interface ContractBillFocusController {
+  billSnapshot: Ref<WorkbenchBill>;
   rows: Ref<ContractBillCandidateRow[]>;
   errors: Ref<ContractBillCellError[]>;
   saving: Ref<boolean>;
@@ -68,6 +69,7 @@ export interface ContractBillFocusController {
   pendingImportRows: Ref<ContractBillCandidateRow[] | null>;
   selectedClientRowKey: Ref<string>;
   saveKey: Ref<string>;
+  lastAttemptDigest: Ref<string | null>;
   dirty: ComputedRef<boolean>;
   totals: ComputedRef<ReturnType<typeof candidateTotals>>;
   replacePrompt: ComputedRef<string>;
@@ -82,7 +84,7 @@ export interface ContractBillFocusController {
   downloadTemplate: () => Promise<void>;
   saveAll: () => Promise<void>;
   discardChanges: () => void;
-  syncBillRevision: (revision: number) => void;
+  syncBill: (bill: WorkbenchBill) => void;
 }
 
 interface BillImportPreview {
@@ -108,10 +110,10 @@ export function createContractBillFocusController(
     replaceRows: replaceContractBillRows,
     ...options.deps
   };
-  const rows = ref(fromWorkbenchBill(options.bill()));
+  const billSnapshot = ref(cloneBill(options.bill()));
+  const rows = ref(fromWorkbenchBill(billSnapshot.value));
   const baselineRows = ref(cloneRows(rows.value));
   const baselineDigest = ref(candidateDigest(rows.value));
-  const billRevision = ref(options.bill().revision);
   const errors = ref<ContractBillCellError[]>([]);
   const saving = ref(false);
   const saveMessage = ref("");
@@ -121,10 +123,11 @@ export function createContractBillFocusController(
   const pendingImportRows = ref<ContractBillCandidateRow[] | null>(null);
   const selectedClientRowKey = ref(rows.value[0]?.clientRowKey ?? "");
   const saveKey = ref(dependencies.createKey());
+  const lastAttemptDigest = ref<string | null>(null);
   const dirty = computed(() => candidateDigest(rows.value) !== baselineDigest.value);
   const totals = computed(() => candidateTotals(rows.value, {
-    taxMode: options.bill().taxMode,
-    defaultTaxRatePercent: options.bill().defaultTaxRatePercent
+    taxMode: billSnapshot.value.taxMode,
+    defaultTaxRatePercent: billSnapshot.value.defaultTaxRatePercent
   }));
   const replacePrompt = computed(
     () => `将替换当前 ${rows.value.length} 行未保存清单，确认后仍需点击“保存全部”才会写入系统。`
@@ -138,7 +141,7 @@ export function createContractBillFocusController(
 
   function addRow() {
     if (options.disabled()) return;
-    rows.value = addBillCandidateRow(rows.value);
+    replaceCandidateRows(addBillCandidateRow(rows.value));
     selectedClientRowKey.value = rows.value.at(-1)?.clientRowKey ?? "";
     clearTransientErrors();
   }
@@ -146,7 +149,7 @@ export function createContractBillFocusController(
   function copySelectedRow() {
     if (options.disabled()) return;
     const beforeLength = rows.value.length;
-    rows.value = copyBillCandidateRow(rows.value, selectedClientRowKey.value);
+    replaceCandidateRows(copyBillCandidateRow(rows.value, selectedClientRowKey.value));
     if (rows.value.length > beforeLength) {
       selectedClientRowKey.value = rows.value.at(-1)?.clientRowKey ?? "";
     }
@@ -155,20 +158,22 @@ export function createContractBillFocusController(
 
   function deleteSelectedRow() {
     if (options.disabled()) return;
-    rows.value = removeBillCandidateRow(rows.value, selectedClientRowKey.value);
+    replaceCandidateRows(removeBillCandidateRow(rows.value, selectedClientRowKey.value));
     selectedClientRowKey.value = rows.value[0]?.clientRowKey ?? "";
     clearTransientErrors();
   }
 
   function moveSelectedRow(offset: -1 | 1) {
     if (options.disabled()) return;
-    rows.value = moveBillCandidateRow(rows.value, selectedClientRowKey.value, offset);
+    replaceCandidateRows(
+      moveBillCandidateRow(rows.value, selectedClientRowKey.value, offset)
+    );
     clearTransientErrors();
   }
 
   function setRows(nextRows: ContractBillCandidateRow[]) {
     if (options.disabled()) return;
-    rows.value = cloneRows(nextRows);
+    replaceCandidateRows(nextRows);
     clearTransientErrors();
   }
 
@@ -186,7 +191,7 @@ export function createContractBillFocusController(
     try {
       const uploaded = await dependencies.uploadFile(file, file.name);
       const result = normalizeImportPreview(
-        await dependencies.previewImport(options.bill().id, {
+        await dependencies.previewImport(billSnapshot.value.id, {
           fileId: uploaded.id,
           mode: "replace"
         })
@@ -220,7 +225,7 @@ export function createContractBillFocusController(
 
   function confirmImportReplace() {
     if (!pendingImportRows.value) return;
-    rows.value = cloneRows(pendingImportRows.value);
+    replaceCandidateRows(pendingImportRows.value);
     selectedClientRowKey.value = rows.value[0]?.clientRowKey ?? "";
     errors.value = [];
     pendingImportRows.value = null;
@@ -233,7 +238,7 @@ export function createContractBillFocusController(
     clearMessage();
     saving.value = true;
     try {
-      await dependencies.downloadTemplate(options.bill().id);
+      await dependencies.downloadTemplate(billSnapshot.value.id);
       saveMessage.value = "标准模板已下载";
     } catch (error) {
       setError(errorMessage(error, "下载标准模板失败"));
@@ -249,28 +254,37 @@ export function createContractBillFocusController(
       setError(ORDINARY_DRAFT_MESSAGE);
       return;
     }
-    const localErrors = validateBillCandidateRows(rows.value, options.bill());
+    const localErrors = validateBillCandidateRows(rows.value, billSnapshot.value);
     if (localErrors.length) {
       errors.value = localErrors;
       setError(`清单有 ${localErrors.length} 处需要修正`);
       return;
     }
     saving.value = true;
+    const attemptDigest = candidateDigest(rows.value);
+    if (
+      lastAttemptDigest.value !== null &&
+      lastAttemptDigest.value !== attemptDigest
+    ) {
+      rotateSaveAttempt();
+    }
+    lastAttemptDigest.value = attemptDigest;
+    const attemptKey = saveKey.value;
     try {
       const saved = await dependencies.replaceRows(
-        options.bill().id,
+        billSnapshot.value.id,
         toReplaceBillRowsInput(rows.value, {
-          expectedBillRevision: billRevision.value,
-          idempotencyKey: saveKey.value,
-          taxMode: options.bill().taxMode,
-          defaultTaxRatePercent: options.bill().defaultTaxRatePercent
+          expectedBillRevision: billSnapshot.value.revision,
+          idempotencyKey: attemptKey,
+          taxMode: billSnapshot.value.taxMode,
+          defaultTaxRatePercent: billSnapshot.value.defaultTaxRatePercent
         })
       );
       rows.value = fromBatchSaveReadModel(saved);
       baselineRows.value = cloneRows(rows.value);
       baselineDigest.value = candidateDigest(rows.value);
-      billRevision.value = saved.bill?.revision ?? billRevision.value;
-      saveKey.value = dependencies.createKey();
+      billSnapshot.value = billSnapshotFromBatchSave(billSnapshot.value, saved);
+      rotateSaveAttempt();
       errors.value = [];
       saveMessage.value = "清单已全部保存";
       messageDanger.value = false;
@@ -287,7 +301,7 @@ export function createContractBillFocusController(
   }
 
   function discardChanges() {
-    rows.value = cloneRows(baselineRows.value);
+    replaceCandidateRows(baselineRows.value);
     errors.value = [];
     pendingImportRows.value = null;
     replaceConfirmVisible.value = false;
@@ -296,10 +310,50 @@ export function createContractBillFocusController(
     messageDanger.value = false;
   }
 
-  function syncBillRevision(revision: number) {
-    if (Number.isInteger(revision) && revision >= 0) {
-      billRevision.value = revision;
+  function syncBill(nextBill: WorkbenchBill) {
+    if (dirty.value) return;
+    if (
+      nextBill.id === billSnapshot.value.id &&
+      nextBill.revision < billSnapshot.value.revision
+    ) {
+      return;
     }
+    const nextSnapshot = cloneBill(nextBill);
+    const nextRows = fromWorkbenchBill(nextSnapshot);
+    const changed =
+      nextSnapshot.id !== billSnapshot.value.id ||
+      nextSnapshot.revision !== billSnapshot.value.revision ||
+      candidateDigest(nextRows) !== baselineDigest.value;
+    billSnapshot.value = nextSnapshot;
+    rows.value = cloneRows(nextRows);
+    baselineRows.value = cloneRows(nextRows);
+    baselineDigest.value = candidateDigest(nextRows);
+    selectedClientRowKey.value = rows.value[0]?.clientRowKey ?? "";
+    errors.value = [];
+    pendingImportRows.value = null;
+    replaceConfirmVisible.value = false;
+    if (changed || lastAttemptDigest.value !== null) {
+      rotateSaveAttempt();
+    }
+  }
+
+  function replaceCandidateRows(nextRows: readonly ContractBillCandidateRow[]) {
+    const previousDigest = candidateDigest(rows.value);
+    const cloned = cloneRows(nextRows);
+    const nextDigest = candidateDigest(cloned);
+    rows.value = cloned;
+    if (
+      previousDigest !== nextDigest &&
+      lastAttemptDigest.value !== null &&
+      nextDigest !== lastAttemptDigest.value
+    ) {
+      rotateSaveAttempt();
+    }
+  }
+
+  function rotateSaveAttempt() {
+    saveKey.value = dependencies.createKey();
+    lastAttemptDigest.value = null;
   }
 
   function clearTransientErrors() {
@@ -318,6 +372,7 @@ export function createContractBillFocusController(
   }
 
   return {
+    billSnapshot,
     rows,
     errors,
     saving,
@@ -328,6 +383,7 @@ export function createContractBillFocusController(
     pendingImportRows,
     selectedClientRowKey,
     saveKey,
+    lastAttemptDigest,
     dirty,
     totals,
     replacePrompt,
@@ -342,7 +398,7 @@ export function createContractBillFocusController(
     downloadTemplate,
     saveAll,
     discardChanges,
-    syncBillRevision
+    syncBill
   };
 }
 
@@ -358,6 +414,55 @@ function cloneRows(rows: readonly ContractBillCandidateRow[]) {
     ...row,
     customData: { ...row.customData }
   }));
+}
+
+function cloneBill(bill: WorkbenchBill): WorkbenchBill {
+  return {
+    ...bill,
+    schemaSnapshot: bill.schemaSnapshot
+      ? { ...bill.schemaSnapshot }
+      : bill.schemaSnapshot,
+    rows: bill.rows.map((row) => ({
+      ...row,
+      customData: { ...(row.customData ?? {}) }
+    }))
+  };
+}
+
+function billSnapshotFromBatchSave(
+  current: WorkbenchBill,
+  saved: ReplaceContractBillRowsReadModel
+): WorkbenchBill {
+  const savedBill = saved.bill;
+  return {
+    ...current,
+    ...(savedBill ?? {}),
+    revision: savedBill?.revision ?? current.revision,
+    rows: saved.rows.map((row) => ({
+      rowKey: row.rowKey,
+      itemCode: row.itemCode,
+      itemName: row.itemName,
+      specification: row.specification,
+      unit: row.unit,
+      quantity: row.quantity,
+      unitPrice: row.unitPrice,
+      taxRate: row.taxRate,
+      taxRatePercent: row.taxRate,
+      taxRateSource: row.taxRateSource === "row_override"
+        ? "row_override"
+        : "version_default",
+      pricingFactStatus: row.pricingFactStatus,
+      precisionPolicy: row.precisionPolicy,
+      initialQuantity: row.quantity,
+      initialUnitPrice: row.unitPrice,
+      taxInclusiveAmountCents: row.taxInclusiveAmountCents,
+      taxExclusiveAmountCents: row.taxExclusiveAmountCents,
+      taxAmountCents: row.taxAmountCents,
+      settlementBasis: row.settlementBasis,
+      isProvisional: row.isProvisional,
+      customData: { ...row.customData }
+    }))
+  };
 }
 
 function candidateDigest(rows: readonly ContractBillCandidateRow[]) {
@@ -383,35 +488,74 @@ function errorMessage(error: unknown, fallback: string) {
 
 function normalizeImportPreview(value: unknown): BillImportPreview {
   const source = record(value);
+  const rawCandidateRows = source["candidateRows"];
+  const candidateRowsPresent = Array.isArray(rawCandidateRows);
+  const parsedCandidateRows: ContractBillCandidateRow[] = [];
+  const candidateErrors: Array<{ message: string }> = [];
+  if (candidateRowsPresent) {
+    rawCandidateRows.forEach((candidate, index) => {
+      const parsed = importCandidateRow(candidate);
+      if (parsed) {
+        parsedCandidateRows.push(parsed);
+      } else {
+        candidateErrors.push({
+          message: `Excel 预检返回的第 ${index + 1} 行数据不完整，请重新导入`
+        });
+      }
+    });
+  }
   return {
     added: count(source["added"]),
     updated: count(source["updated"]),
     removed: count(source["removed"]),
     skipped: count(source["skipped"]),
-    errors: Array.isArray(source["errors"])
+    errors: (Array.isArray(source["errors"])
       ? source["errors"].map(importError).filter((error): error is { message: string } => Boolean(error))
-      : [],
-    candidateRowsPresent: Array.isArray(source["candidateRows"]),
-    candidateRows: Array.isArray(source["candidateRows"])
-      ? source["candidateRows"].flatMap(importCandidateRow)
-      : []
+      : []).concat(candidateErrors),
+    candidateRowsPresent,
+    candidateRows: candidateErrors.length ? [] : parsedCandidateRows
   };
 }
 
-function importCandidateRow(value: unknown): ContractBillCandidateRow[] {
-  const source = record(value);
-  const clientRowKey = text(source["clientRowKey"]);
-  const itemName = text(source["itemName"]);
-  const unit = text(source["unit"]);
-  const unitPrice = text(source["unitPrice"]);
-  if (!clientRowKey || !itemName || !unit || !unitPrice) return [];
-  const taxRateSource = source["taxRateSource"] === "row_override"
-    ? "row_override"
-    : "version_default";
+function importCandidateRow(value: unknown): ContractBillCandidateRow | null {
+  if (!isRecord(value)) return null;
+  const source = value;
+  const clientRowKey = requiredText(source["clientRowKey"]);
+  const itemName = requiredText(source["itemName"]);
+  const unit = requiredText(source["unit"]);
+  const unitPrice = requiredText(source["unitPrice"]);
+  if (!clientRowKey || !itemName || !unit || !unitPrice) return null;
+  if (
+    !Number.isInteger(source["sortOrder"]) ||
+    (source["sortOrder"] as number) < 0 ||
+    (source["taxRateSource"] !== "row_override" &&
+      source["taxRateSource"] !== "version_default") ||
+    typeof source["isProvisional"] !== "boolean"
+  ) {
+    return null;
+  }
+  const optionalTextFields = [
+    "rowKey",
+    "itemCode",
+    "specification",
+    "quantity",
+    "taxRatePercent",
+    "settlementBasis"
+  ];
+  if (optionalTextFields.some((key) => !isOptionalText(source[key]))) {
+    return null;
+  }
+  if (
+    !isRecord(source["customData"]) ||
+    Object.values(source["customData"]).some((item) => typeof item !== "string")
+  ) {
+    return null;
+  }
+  const taxRateSource = source["taxRateSource"];
   const customData = Object.fromEntries(
-    Object.entries(record(source["customData"])).map(([key, item]) => [key, text(item)])
+    Object.entries(source["customData"]).map(([key, item]) => [key, item as string])
   );
-  return [{
+  return {
     clientRowKey,
     ...(text(source["rowKey"]) ? { rowKey: text(source["rowKey"]) } : {}),
     itemCode: text(source["itemCode"]),
@@ -422,10 +566,18 @@ function importCandidateRow(value: unknown): ContractBillCandidateRow[] {
     unitPrice,
     taxRatePercent: text(source["taxRatePercent"]),
     taxRateSource,
-    isProvisional: source["isProvisional"] === true,
+    isProvisional: source["isProvisional"],
     settlementBasis: text(source["settlementBasis"]),
     customData
-  }];
+  };
+}
+
+function requiredText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : "";
+}
+
+function isOptionalText(value: unknown) {
+  return value === null || value === undefined || typeof value === "string";
 }
 
 function importError(value: unknown) {
@@ -435,9 +587,13 @@ function importError(value: unknown) {
 }
 
 function record(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
+  return isRecord(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function text(value: unknown) {
@@ -480,6 +636,7 @@ const controller = createContractBillFocusController({
 });
 
 const {
+  billSnapshot,
   rows,
   errors,
   saving,
@@ -504,8 +661,9 @@ const totalsText = computed(() => totals.value.kind === "calculated"
 );
 
 watch(
-  () => props.bill.revision,
-  (revision) => controller.syncBillRevision(revision)
+  () => props.bill,
+  (bill) => controller.syncBill(bill),
+  { deep: true }
 );
 
 function openImportPicker() {
@@ -542,7 +700,7 @@ defineExpose({
         >
           返回合同
         </t-button>
-        <h2>{{ bill.name }}</h2>
+        <h2>{{ billSnapshot.name }}</h2>
         <span :class="['save-status', { dirty }]">{{ statusText }}</span>
       </div>
       <t-button
@@ -630,7 +788,7 @@ defineExpose({
 
     <ContractBillGrid
       data-testid="contract-bill-grid"
-      :bill="bill"
+      :bill="billSnapshot"
       :rows="rows"
       :errors="errors"
       :readonly="disabled || saving"

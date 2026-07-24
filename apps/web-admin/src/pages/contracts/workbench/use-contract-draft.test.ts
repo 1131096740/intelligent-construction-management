@@ -104,7 +104,7 @@ function makeDraft() {
 beforeEach(() => {
   vi.useFakeTimers();
   globalThis.localStorage = memoryStorage();
-  vi.clearAllMocks();
+  vi.resetAllMocks();
 });
 
 afterEach(() => {
@@ -206,6 +206,71 @@ describe("useContractDraft", () => {
 
     expect(draft.workbench.value?.contract.id).toBe("ct-2");
     expect(draft.workbench.value?.version.id).toBe("cv-2");
+  });
+
+  it("reloads every workbench projection and advances the next ordinary save revision after a bill batch", async () => {
+    const draft = makeDraft();
+    const initial = makeWorkbench();
+    const refreshed = makeWorkbench({
+      version: {
+        ...makeWorkbench().version,
+        draftRevision: 4,
+        amountCents: "1130",
+        clauseSnapshot: [{
+          key: "quality",
+          title: "质量条款",
+          numberingMode: "automatic",
+          content: "服务端重载后的条款"
+        }]
+      },
+      bills: [{
+        id: "bill-1",
+        billKey: "materials",
+        name: "材料清单",
+        revision: 8,
+        taxInclusiveAmountCents: "1130",
+        taxExclusiveAmountCents: "1000",
+        taxAmountCents: "130",
+        rows: []
+      }],
+      readiness: {
+        ready: false,
+        blockingMessages: ["清单刷新后的阻断项"],
+        warningMessages: []
+      },
+      documents: [{
+        id: "doc-1",
+        status: "stale",
+        sourceRevision: 3
+      }]
+    } as unknown as Partial<ContractWorkbenchReadModel>);
+    mockFetchWorkbench
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(refreshed);
+    mockSaveDraft.mockResolvedValue({ version: { draftRevision: 5 } });
+
+    await draft.load("ct-1");
+    await draft.reload();
+
+    expect(draft.workbench.value).toMatchObject({
+      version: { draftRevision: 4, amountCents: "1130" },
+      bills: [{ revision: 8, taxInclusiveAmountCents: "1130" }],
+      readiness: { blockingMessages: ["清单刷新后的阻断项"] },
+      documents: [{ status: "stale", sourceRevision: 3 }]
+    });
+
+    draft.model.clauses = [{
+      key: "quality",
+      title: "质量条款",
+      numberingMode: "automatic",
+      content: "重载后继续修改条款"
+    }];
+    draft.markDirty();
+    await draft.saveNow();
+    expect(mockSaveDraft.mock.calls[0]?.[1]).toMatchObject({
+      expectedRevision: 4,
+      clauses: [expect.objectContaining({ content: "重载后继续修改条款" })]
+    });
   });
 
   it("does not create a draft before project and type are selected", async () => {
