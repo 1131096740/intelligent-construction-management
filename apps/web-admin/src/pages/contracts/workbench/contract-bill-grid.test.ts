@@ -197,12 +197,12 @@ describe("contract bill grid candidate model", () => {
     ]));
   });
 
-  it("calculates exact half-up cent totals with BigInt, trailing zeroes and multiple rows", () => {
+  it("calculates exact half-up cent totals with BigInt, two-decimal trailing zeroes and multiple rows", () => {
     expect(candidateTotals([validRow()])).toEqual({
       kind: "calculated", taxInclusiveAmountCents: "3003", taxExclusiveAmountCents: "2658", taxAmountCents: "345"
     });
     expect(candidateTotals([
-      validRow({ quantity: "1.00", unitPrice: "10.010" }),
+      validRow({ quantity: "1.00", unitPrice: "10.01" }),
       validRow({ clientRowKey: "second", quantity: "2", unitPrice: "10.01" })
     ])).toEqual({
       kind: "calculated", taxInclusiveAmountCents: "3003", taxExclusiveAmountCents: "2658", taxAmountCents: "345"
@@ -217,6 +217,12 @@ describe("contract bill grid candidate model", () => {
       kind: "not_calculable", clientRowKey: "local-test", field: "quantity"
     });
     expect(candidateTotals([validRow({ unitPrice: "0" })])).toEqual({
+      kind: "not_calculable", clientRowKey: "local-test", field: "unitPrice"
+    });
+    expect(candidateTotals([validRow({ quantity: "1.000" })])).toEqual({
+      kind: "not_calculable", clientRowKey: "local-test", field: "quantity"
+    });
+    expect(candidateTotals([validRow({ unitPrice: "10.010" })])).toEqual({
       kind: "not_calculable", clientRowKey: "local-test", field: "unitPrice"
     });
   });

@@ -421,6 +421,7 @@ function parsePositiveDecimal(value: string): Decimal | null {
   const text = value.trim();
   const match = /^(0|[1-9]\d*)(?:\.(\d+))?$/u.exec(text);
   if (!match) return null;
+  if ((match[2] ?? "").length > 2) return null;
   const coefficient = BigInt(`${match[1]}${match[2] ?? ""}`);
   if (coefficient === 0n) return null;
   return { coefficient, scale: (match[2] ?? "").length };
