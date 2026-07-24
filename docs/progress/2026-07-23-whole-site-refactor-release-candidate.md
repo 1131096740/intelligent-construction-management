@@ -1,16 +1,16 @@
 # 建工智管整站受控改造：统一发布候选
 
 日期：2026-07-24
-状态：**生产 `8172b7b7…` 保持已发布且本轮未触碰；本地统一候选代码 SHA `be71795d01a3c4974d23c7bb3b9317e401214188` 已完成自动化、隔离迁移和候选审查，等待新的精确 SHA 推送/部署授权**
+状态：**生产 `8172b7b7…` 保持已发布且本轮未触碰；`be71795d…` 已推送但在 CI 测试门禁前停止，未部署。修复后的本地统一候选代码 SHA `e5ae4beebb492a8ff54020d1f3c402fc3276b8c6` 已完成自动化、隔离迁移和候选审查，等待新的精确 SHA 推送/部署授权**
 
-本文件是阶段 1 至阶段 5 的候选与发布收据；生产推送、部署和前向迁移已在用户 2026-07-24 的精确授权范围内完成。它不授权生产数据清理、旧能力删除、历史改写或超出测试项目范围的业务写入。
+本文件是阶段 1 至阶段 5 的候选与发布收据；每次生产推送、部署和前向迁移均须绑定用户对精确 SHA 的授权。它不授权生产数据清理、旧能力删除、历史改写或超出测试项目范围的业务写入。
 
 ## 1. 候选身份与范围
 
 | 项目 | 事实 |
 | --- | --- |
 | 唯一实施分支 | `codex/whole-site-phase0` |
-| 运行候选 SHA | `be71795d01a3c4974d23c7bb3b9317e401214188` |
+| 运行候选 SHA | `e5ae4beebb492a8ff54020d1f3c402fc3276b8c6` |
 | 证据 HEAD | 本文件所在提交仅补充候选收据与 `PROGRESS.md`；发布前必须重新核验其与运行候选在 `apps/`、`services/`、`packages/`、`scripts/` 和 `.github/` 中零差异 |
 | 需求基线 | `docs/superpowers/specs/2026-07-23-whole-site-business-ui-and-expense-design.md` |
 | 能力矩阵 | `docs/superpowers/plans/2026-07-23-whole-site-capability-matrix.md` |
@@ -37,7 +37,7 @@
 
 ## 3. 可复现验收证据
 
-### 3.1 全仓候选门禁（运行候选 `be71795d…`）
+### 3.1 全仓候选门禁（运行候选 `e5ae4bee…`）
 
 | 门禁 | 结果 |
 | --- | --- |
@@ -48,7 +48,7 @@
 | `pnpm --filter @jiangkong/web-admin check:ui` | 通过 |
 | `pnpm --filter @jiangkong/api build` | 通过 |
 | `pnpm --filter @jiangkong/web-admin build` | 通过 |
-| `CI=true /Users/leoyang/.local/bin/pnpm --filter @jiangkong/web-admin test:e2e:p0` | Chromium 2 passed、2 条仅在提供真实试运行账号时启用的条件跳过（3.1 秒）；隔离 mock，不连接生产 |
+| `CI=true /Users/leoyang/.local/bin/pnpm --filter @jiangkong/web-admin test:e2e:p0` | 运行候选 `e5ae4bee…`：Chromium 2 passed、2 条仅在提供真实试运行账号时启用的条件跳过（3.3 秒）；隔离 mock，不连接生产 |
 | `CI=true bash scripts/ops/go-live-safety-self-test.sh` | 通过；仅自测脚本的预期失败/重试，不连接 COS 或生产 |
 | `git diff --check` | 通过 |
 
@@ -76,6 +76,7 @@
 | 命令/候选 | 结果 |
 | --- | --- |
 | `pnpm verify:money-bigint:local` / 本地费用与借款收尾切片 | 86 条迁移（含 `20260724100000_expense_claim_payment_execution_and_repayment_reversal`）、`migrate status`、seed/API、401/403 负向、合同归档→治理结算生效→结算付款→审批→两次实付→入账通过；21/21 BigInt 列、`9007199254740993` 精度及临时 API/数据库清理通过 |
+| 今日生产自然备份恢复 / `e5ae4bee…` | `jiangkong-20260724-030001.dump` 的 SHA-256、`pg_restore --list` 与异机收据通过；精确 clean 候选在本地 PostgreSQL 16 临时隔离库从 `85|0|0` 升至 `86|0|0`，`migrate status` 最新，临时容器、候选工作树与备份副本已删除 |
 | `pnpm verify:spot-procurement-concurrency:local` / `5c9d14d2…` | 85 条迁移后验证付款单胜、供应商余额/错配、实际付款上限与幂等、凭证唯一、文件绑定竞争、项目资金串行、余额不足零写、收货/PDF/发票账本和原始 P2034 并发保护通过 |
 | `pnpm --filter @jiangkong/api verify:draft-lifecycle:local` / `1753e061…` | 85 条迁移与 seed；迁移、约束、索引和正式事实只读核验通过；合成合同、付款、模板生命周期探针完整回滚，前后计数、金额、状态和结束事实一致 |
 
@@ -83,8 +84,8 @@
 
 ### 3.4 候选差异审查与自检
 
-- 独立复核范围：费用/借款收尾 `57451e71` 至运行候选 `be71795d`。复核了新账本的金额上限、凭证唯一性、密码确认、放款/还款/确认/反向更正权限、PDF 归档和前向迁移。
-- 发现并修复：`ExpenseClaimPaymentExecution.voucherFileId` 最初漏入应用侧统一文件绑定注册表；全仓 Schema 守卫测试捕获该问题，`be71795d` 已将其补入非收货绑定查询和迁移独占触发器守卫测试。不存在未处理的候选审查发现。
+- 独立复核范围：费用/借款收尾 `57451e71` 至运行候选 `e5ae4bee`。复核了新账本的金额上限、凭证唯一性、密码确认、放款/还款/确认/反向更正权限、PDF 归档和前向迁移。
+- 发现并修复：`ExpenseClaimPaymentExecution.voucherFileId` 最初漏入应用侧统一文件绑定注册表；`be71795d` 已将其补入非收货绑定查询和迁移独占触发器守卫测试。Actions `30070261648` 随后发现另一条历史快照测试误把该 M86 新表用于 7 月 17 日不可变迁移清单，测试 job 在部署前失败；`e5ae4bee` 将该表列入后期绑定表集合，定向 19/19 与全仓门禁均通过。不存在未处理的候选审查发现。
 - 自检：`git diff --check` 通过；未暂存/提交浏览器报告生成物；未执行生产命令；未删除旧能力；发布前重新执行 `git diff --quiet <运行候选> <证据HEAD> -- apps services packages scripts .github`。
 
 ## 4. 迁移影响与演练策略
@@ -116,7 +117,7 @@
 
 ## 7. 当前 No-Go 项与发布授权请求
 
-真实岗位 UAT 已由用户明确改为正式使用后的持续反馈，故不再作为候选硬门禁。`be71795d…` 已固定并完成完整自动化门禁、代码审查与本地 86 条迁移演练；当前仍为 **No-Go** 的唯一原因是尚未获得将该精确 SHA 推送至共享 `main`、执行候选绑定隔离恢复、生产部署与 85→86 前向迁移的明确授权。不得把既有 `8172b7b7…` 的发布授权扩大到后续提交。
+真实岗位 UAT 已由用户明确改为正式使用后的持续反馈，故不再作为候选硬门禁。`e5ae4bee…` 已固定并完成完整自动化门禁、代码审查与本地 86 条迁移演练；当前仍为 **No-Go** 的唯一原因是尚未获得将该精确 SHA 推送至共享 `main`、执行候选绑定隔离恢复、生产部署与 85→86 前向迁移的明确授权。不得把既有 `8172b7b7…` 或已停止的 `be71795d…` 授权扩大到后续提交。
 
 ## 8. 2026-07-23 历史生产只读基线与隔离恢复收据
 
