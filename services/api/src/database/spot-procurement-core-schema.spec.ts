@@ -410,7 +410,8 @@ const GOVERNANCE_FILE_BINDING_TABLES = new Set([
 const POST_INVOICE_EVIDENCE_FILE_BINDING_TABLES = new Set([
   "EmployeeLoanRepayment",
   "EmployeeProjectLoanEntry",
-  "ExpenseClaimAttachment"
+  "ExpenseClaimAttachment",
+  "ExpenseClaimPaymentExecution"
 ]);
 
 const existedAtInvoiceEvidenceGuard = (table: string) =>
