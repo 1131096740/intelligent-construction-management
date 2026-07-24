@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const baseURL = "http://127.0.0.1:4192";
+const baseURL = "http://127.0.0.1:4189";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -19,7 +19,7 @@ export default defineConfig({
     { name: "webkit", use: { ...devices["Desktop Safari"] } }
   ],
   webServer: {
-    command: "pnpm build && pnpm preview --host 127.0.0.1 --port 4192 --strictPort",
+    command: "pnpm build && pnpm preview --host 127.0.0.1 --port 4189 --strictPort",
     url: baseURL,
     reuseExistingServer: false,
     timeout: 120_000
