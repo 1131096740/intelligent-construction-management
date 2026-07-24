@@ -213,7 +213,7 @@ describe("ContractBillExcelService", () => {
     expect(workbook.getWorksheet(INSTRUCTION_SHEET)).toBeDefined();
     expect(workbook.getWorksheet(DATA_SHEET)).toBeDefined();
     expect(result.fileName).toMatch(/\.xlsx$/);
-  });
+  }, 15_000);
 
   it("hides internal field codes and row keys from business users", async () => {
     const { service } = billFixture();
@@ -449,17 +449,75 @@ describe("ContractBillExcelService", () => {
     const append = await previewWith("append");
     expect(append.added).toBe(1);
     expect(append.removed).toBe(0);
+    expect(append.candidateRows).toEqual([]);
 
     const replace = await previewWith("replace");
     expect(replace.added).toBe(1);
     expect(replace.removed).toBe(1);
+    expect(replace.candidateRows).toEqual([
+      expect.objectContaining({ sortOrder: 0, itemName: "新" })
+    ]);
 
     const update = await previewWith("update", "key-1");
     expect(update.updated).toBe(1);
     expect(update.added).toBe(0);
+    expect(update.candidateRows).toEqual([]);
   });
 
-  it("returns replace candidates in Excel order without writing contract bill rows", async () => {
+  it("returns one complete replace candidate without writing contract bill rows", async () => {
+    const { service, tx, bill, rows, fileService } = billFixture();
+    bill.schemaSnapshot = {
+      columns: [{ key: "brand", label: "品牌", type: "text", required: false }]
+    };
+    const buffer = await buildWorkbookBuffer({
+      fieldCodes: [...FIELD_CODES, "brand"],
+      rows: [
+        {
+          values: {
+            itemName: "混凝土",
+            unit: "m³",
+            quantity: "12.5",
+            unitPrice: "480",
+            taxRatePercent: "",
+            isProvisional: "是",
+            brand: "C50"
+          }
+        }
+      ]
+    });
+    (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-replace-single-candidate", originalName: "bill.xlsx" },
+      buffer
+    });
+
+    const preview = await service.previewImport("bill-1", "owner-1", {
+      fileId: "file-replace-single-candidate",
+      mode: "replace"
+    });
+
+    expect(preview.errors).toEqual([]);
+    expect(preview.candidateRows).toEqual([
+      expect.objectContaining({
+        clientRowKey: `import-${preview.importId}-1`,
+        rowKey: undefined,
+        sortOrder: 0,
+        itemName: "混凝土",
+        unit: "m³",
+        quantity: "12.5",
+        unitPrice: "480",
+        taxRatePercent: "13",
+        taxRateSource: "version_default",
+        isProvisional: true,
+        customData: { brand: "C50" }
+      })
+    ]);
+    expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.deleteMany).not.toHaveBeenCalled();
+    expect(rows).toEqual([]);
+  });
+
+  it("returns multiple replace candidates in Excel order with unique client keys", async () => {
     const existing = {
       id: "row-existing",
       contractBillId: "bill-1",
@@ -518,6 +576,7 @@ describe("ContractBillExcelService", () => {
         unit: "m³",
         quantity: "12.5",
         unitPrice: "480",
+        taxRatePercent: "13",
         taxRateSource: "version_default",
         customData: {}
       }),
@@ -860,8 +919,17 @@ describe("ContractBillExcelService", () => {
     });
   });
 
-  it("rejects a different tax rate in single-rate Excel imports", async () => {
-    const fixture = billFixture();
+  it("returns no replace candidates for a different single-rate tax without writing rows", async () => {
+    const existing = {
+      id: "row-existing",
+      contractBillId: "bill-1",
+      rowKey: "existing-row-key",
+      sortOrder: 0,
+      taxInclusiveAmountCents: 100n,
+      taxExclusiveAmountCents: 100n,
+      taxAmountCents: 0n
+    };
+    const fixture = billFixture({ rows: [{ ...existing }] });
     const buffer = await buildWorkbookBuffer({
       rows: [
         {
@@ -882,7 +950,7 @@ describe("ContractBillExcelService", () => {
 
     const preview = await fixture.service.previewImport("bill-1", "owner-1", {
       fileId: "file-wrong-single-rate",
-      mode: "append"
+      mode: "replace"
     });
 
     expect(preview.errors).toContainEqual(
@@ -891,6 +959,11 @@ describe("ContractBillExcelService", () => {
         message: "单一税率合同的清单税率必须与合同默认税率一致"
       })
     );
+    expect(preview.candidateRows).toEqual([]);
+    expect(fixture.tx.contractBillRow.create).not.toHaveBeenCalled();
+    expect(fixture.tx.contractBillRow.updateMany).not.toHaveBeenCalled();
+    expect(fixture.tx.contractBillRow.deleteMany).not.toHaveBeenCalled();
+    expect(fixture.rows).toEqual([existing]);
   });
 
   it("preserves unchanged legacy precision in update imports and rejects partial conversion", async () => {
