@@ -37,6 +37,7 @@ export type {
   ContractTaxMode
 } from "./contract-tax-facts";
 export * from "./contract-tax-facts";
+export * from "./contract-bill-columns";
 export * from "./settlement-workbench";
 export * from "./spot-procurement";
 export * from "./draft-lifecycle";

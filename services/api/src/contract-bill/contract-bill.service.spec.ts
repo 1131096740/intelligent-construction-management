@@ -525,6 +525,23 @@ describe("ContractBillService", () => {
     ).rejects.toThrow("自定义字段数据必须是普通对象");
   });
 
+  it("requires only dynamic schema columns in customData when the snapshot repeats core fields", async () => {
+    const schemaSnapshot = { columns: [
+      { key: "itemName", label: "名称", required: true },
+      { key: "quantity", label: "数量", required: true },
+      { key: "taxInclusiveAmount", label: "含税金额", required: true },
+      { key: "brand", label: "品牌", required: true }
+    ] };
+    const { service } = fixture({ schemaSnapshot });
+
+    await expect(service.addRow("bill-1", "owner-1", {
+      ...rowInput, customData: { brand: "建龙" }
+    })).resolves.toEqual(expect.objectContaining({ rows: expect.any(Array) }));
+    await expect(service.addRow("bill-1", "owner-1", {
+      ...rowInput, expectedBillRevision: 3, customData: {}
+    })).rejects.toThrow("必填自定义字段未填写：brand");
+  });
+
   it("sums complete rows but does not publish a contract amount while priced rows are incomplete", async () => {
     const { service, tx, bill } = fixture({
       rows: [

@@ -5,6 +5,7 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { isContractBillCustomColumn } from "@jiangkong/shared-domain";
 import * as ExcelJS from "exceljs";
 import type { Cell, Row, Worksheet } from "exceljs";
 import { AuditService } from "../audit/audit.service";
@@ -988,7 +989,7 @@ export class ContractBillExcelService {
       const label =
         typeof column.label === "string" && column.label.trim() ? column.label.trim() : column.key;
       return { key: column.key, label, required: column.required === true };
-    });
+    }).filter((column) => isContractBillCustomColumn(column.key));
   }
 
   private numberFormat(scale: number): string {

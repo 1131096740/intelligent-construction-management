@@ -5,6 +5,7 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { isContractBillCustomColumn } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { bumpContractRenderInputRevision } from "../contract-workbench/contract-render-input-revision";
 import { PrismaService } from "../database/prisma.service";
@@ -912,7 +913,7 @@ export class ContractBillService {
         throw new BadRequestException(`合同清单第 ${index + 1} 个字段定义无效`);
       }
       return { key: value.key, required: value.required === true };
-    });
+    }).filter((column) => isContractBillCustomColumn(column.key));
   }
 
   private assertExpectedRevision(value: unknown) {

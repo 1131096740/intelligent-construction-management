@@ -253,6 +253,26 @@ describe("ContractBillExcelService", () => {
     expect(labels).not.toContain("brand");
   });
 
+  it("keeps seed-like core and calculated schema fields out of custom Excel columns", async () => {
+    const { service, bill } = billFixture();
+    bill.schemaSnapshot = { columns: [
+      { key: "itemName", label: "名称", required: true },
+      { key: "quantity", label: "数量", required: true },
+      { key: "taxInclusiveAmount", label: "含税金额", required: true },
+      { key: "brand", label: "品牌", required: true }
+    ] };
+
+    const result = await service.exportTemplate("bill-1", "owner-1");
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
+    const codes: string[] = [];
+    workbook.getWorksheet(DATA_SHEET)!.getRow(2).eachCell((cell: Cell) => codes.push(String(cell.value)));
+    expect(codes.filter((code) => code === "itemName")).toHaveLength(1);
+    expect(codes.filter((code) => code === "quantity")).toHaveLength(1);
+    expect(codes).not.toContain("taxInclusiveAmount");
+    expect(codes).toContain("brand");
+  });
+
   it("uses explicit inclusive and read-only exclusive unit price labels", async () => {
     const { service } = billFixture();
 
