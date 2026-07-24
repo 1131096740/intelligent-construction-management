@@ -132,11 +132,52 @@ async function login(page: Page) {
 
 async function navigateWithinApp(page: Page, path: string) {
   await page.evaluate((nextPath) => {
-    window.history.pushState({}, "", nextPath);
+    const existingState =
+      window.history.state && typeof window.history.state === "object"
+        ? window.history.state
+        : {};
+    const currentPath =
+      `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const currentPosition =
+      typeof existingState.position === "number" ? existingState.position : 0;
+    const currentState = {
+      ...existingState,
+      current: currentPath,
+      forward: nextPath,
+      scroll: existingState.scroll ?? {
+        left: window.scrollX,
+        top: window.scrollY
+      }
+    };
+    const nextState = {
+      back: currentPath,
+      current: nextPath,
+      forward: null,
+      replaced: false,
+      position: currentPosition + 1,
+      scroll: null
+    };
+
+    window.history.replaceState(currentState, "", currentPath);
+    window.history.pushState(nextState, "", nextPath);
     window.dispatchEvent(new PopStateEvent("popstate", {
-      state: window.history.state
+      state: nextState
     }));
   }, path);
+}
+
+async function waitForBrowserTasks(page: Page) {
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  }));
+}
+
+async function readHistoryPosition(page: Page): Promise<number> {
+  const position = await page.evaluate(() => window.history.state?.position);
+  expect(position).toEqual(expect.any(Number));
+  return position as number;
 }
 
 async function submitDownloadConfirmation(page: Page, expectedUrl: string) {
@@ -153,7 +194,16 @@ test("付款详情 A 的慢响应不会覆盖同路由切换后的 B", async ({ 
   const releaseSlowA = deferred();
   const slowAStarted = deferred();
   let paymentARequests = 0;
-  let slowAFulfilled = false;
+  const paymentDownloadPaths: string[] = [];
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (
+      pathname.includes("/api/approval-forms/payment_request/") &&
+      pathname.endsWith("/download")
+    ) {
+      paymentDownloadPaths.push(pathname);
+    }
+  });
 
   await mockLoginAndShell(page, userId);
   await page.route("**/api/payments/payment-A", async (route) => {
@@ -163,7 +213,6 @@ test("付款详情 A 的慢响应不会覆盖同路由切换后的 B", async ({ 
       await releaseSlowA.promise;
     }
     await route.fulfill({ contentType: "application/json", body: JSON.stringify(paymentDetail("payment-A", "A")) });
-    if (paymentARequests > 1) slowAFulfilled = true;
   });
   await page.route("**/api/payments/payment-B", (route) => route.fulfill({
     contentType: "application/json",
@@ -185,19 +234,48 @@ test("付款详情 A 的慢响应不会覆盖同路由切换后的 B", async ({ 
   await page.locator(".action-grid").getByRole("button", { name: "下载审批单" }).click();
   await expect(page.getByText("确认下载付款审批单？")).toBeVisible();
 
+  const paymentAHistoryPosition = await readHistoryPosition(page);
+  const paymentBResponsePromise = page.waitForResponse("**/api/payments/payment-B");
   await navigateWithinApp(page, "/付款管理/payment-B");
+  const paymentBResponse = await paymentBResponsePromise;
+  await paymentBResponse.finished();
+  await expect.poll(() => page.evaluate(() => ({
+    pathname: decodeURI(window.location.pathname),
+    search: window.location.search,
+    hash: window.location.hash,
+    current: window.history.state?.current,
+    position: window.history.state?.position
+  }))).toEqual({
+    pathname: "/付款管理/payment-B",
+    search: "",
+    hash: "",
+    current: "/付款管理/payment-B",
+    position: paymentAHistoryPosition + 1
+  });
   await expect(page.getByRole("heading", { name: "B付款申请" })).toBeVisible();
   await expect(page.getByText("确认下载付款审批单？")).toBeHidden();
 
+  const slowPaymentAResponsePromise = page.waitForResponse("**/api/payments/payment-A");
   releaseSlowA.resolve();
-  await expect.poll(() => slowAFulfilled).toBe(true);
+  const slowPaymentAResponse = await slowPaymentAResponsePromise;
+  await slowPaymentAResponse.finished();
+  await waitForBrowserTasks(page);
+  await expect.poll(() => page.evaluate(
+    () => decodeURI(`${window.location.pathname}${window.location.search}${window.location.hash}`)
+  )).toBe("/付款管理/payment-B");
   await expect(page.getByRole("heading", { name: "B付款申请" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "A付款申请" })).toHaveCount(0);
-  await expect(page.getByText("B付款追溯规则")).toBeVisible();
+  await expect(page.getByText("¥111.00", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("A付款追溯规则", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("¥222.00", { exact: true })).toBeVisible();
+  await expect(page.getByText("B付款追溯规则", { exact: true })).toBeVisible();
 
   await page.locator(".detail-navigation").getByText("流程", { exact: true }).click();
   await page.locator(".action-grid").getByRole("button", { name: "下载审批单" }).click();
   await submitDownloadConfirmation(page, "**/api/approval-forms/payment_request/payment-B/download");
+  expect(paymentDownloadPaths).toEqual([
+    "/api/approval-forms/payment_request/payment-B/download"
+  ]);
 });
 
 test("结算详情 A 的慢响应不会覆盖同路由切换后的 B", async ({ page }) => {
@@ -205,7 +283,16 @@ test("结算详情 A 的慢响应不会覆盖同路由切换后的 B", async ({ 
   const releaseSlowA = deferred();
   const slowAStarted = deferred();
   let settlementARequests = 0;
-  let slowAFulfilled = false;
+  const settlementDownloadPaths: string[] = [];
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (
+      pathname.includes("/api/settlements/") &&
+      pathname.endsWith("/approval-pdf/latest")
+    ) {
+      settlementDownloadPaths.push(pathname);
+    }
+  });
 
   await mockLoginAndShell(page, userId);
   await page.route("**/api/settlements/settlement-A", async (route) => {
@@ -215,7 +302,6 @@ test("结算详情 A 的慢响应不会覆盖同路由切换后的 B", async ({ 
       await releaseSlowA.promise;
     }
     await route.fulfill({ contentType: "application/json", body: JSON.stringify(settlementDetail("settlement-A", "A")) });
-    if (settlementARequests > 1) slowAFulfilled = true;
   });
   await page.route("**/api/settlements/settlement-B", (route) => route.fulfill({
     contentType: "application/json",
@@ -237,17 +323,46 @@ test("结算详情 A 的慢响应不会覆盖同路由切换后的 B", async ({ 
   await page.locator(".action-grid").getByRole("button", { name: "下载审批单" }).click();
   await expect(page.getByText("确认下载结算审批单？")).toBeVisible();
 
+  const settlementAHistoryPosition = await readHistoryPosition(page);
+  const settlementBResponsePromise = page.waitForResponse("**/api/settlements/settlement-B");
   await navigateWithinApp(page, "/结算管理/settlement-B");
+  const settlementBResponse = await settlementBResponsePromise;
+  await settlementBResponse.finished();
+  await expect.poll(() => page.evaluate(() => ({
+    pathname: decodeURI(window.location.pathname),
+    search: window.location.search,
+    hash: window.location.hash,
+    current: window.history.state?.current,
+    position: window.history.state?.position
+  }))).toEqual({
+    pathname: "/结算管理/settlement-B",
+    search: "",
+    hash: "",
+    current: "/结算管理/settlement-B",
+    position: settlementAHistoryPosition + 1
+  });
   await expect(page.getByRole("heading", { name: "B结算单" })).toBeVisible();
   await expect(page.getByText("确认下载结算审批单？")).toBeHidden();
 
+  const slowSettlementAResponsePromise = page.waitForResponse("**/api/settlements/settlement-A");
   releaseSlowA.resolve();
-  await expect.poll(() => slowAFulfilled).toBe(true);
+  const slowSettlementAResponse = await slowSettlementAResponsePromise;
+  await slowSettlementAResponse.finished();
+  await waitForBrowserTasks(page);
+  await expect.poll(() => page.evaluate(
+    () => decodeURI(`${window.location.pathname}${window.location.search}${window.location.hash}`)
+  )).toBe("/结算管理/settlement-B");
   await expect(page.getByRole("heading", { name: "B结算单" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "A结算单" })).toHaveCount(0);
-  await expect(page.getByText("B结算付款边界")).toBeVisible();
+  await expect(page.getByText("¥111.00", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("A结算付款边界", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("¥222.00", { exact: true })).toBeVisible();
+  await expect(page.getByText("B结算付款边界", { exact: true })).toBeVisible();
 
   await page.locator(".detail-navigation").getByText("流程办理", { exact: true }).click();
   await page.locator(".action-grid").getByRole("button", { name: "下载审批单" }).click();
   await submitDownloadConfirmation(page, "**/api/settlements/settlement-B/approval-pdf/latest");
+  expect(settlementDownloadPaths).toEqual([
+    "/api/settlements/settlement-B/approval-pdf/latest"
+  ]);
 });
