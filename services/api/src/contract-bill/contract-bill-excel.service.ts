@@ -67,6 +67,23 @@ export interface PreviewRowChange {
   values: unknown;
 }
 
+export interface BillImportCandidateRow {
+  clientRowKey: string;
+  rowKey?: string;
+  sortOrder: number;
+  itemCode?: string;
+  itemName: string;
+  specification?: string;
+  unit: string;
+  quantity?: string;
+  unitPrice: string;
+  taxRatePercent?: string;
+  taxRateSource: "version_default" | "row_override";
+  isProvisional: boolean;
+  settlementBasis?: string;
+  customData: Record<string, unknown>;
+}
+
 export interface BillImportPreview {
   added: number;
   updated: number;
@@ -76,6 +93,7 @@ export interface BillImportPreview {
   afterAmountCents: string;
   rows: PreviewRowChange[];
   errors: PreviewError[];
+  candidateRows: BillImportCandidateRow[];
 }
 
 interface StoredBillImportPreview {
@@ -187,10 +205,12 @@ export class ContractBillExcelService {
         where: { contractBillId: bill.id },
         orderBy: { sortOrder: "asc" }
       });
-      const preview = await this.buildPreview(bill, mode, buffer, existingRows);
+      const importId = randomUUID();
+      const preview = await this.buildPreview(bill, mode, buffer, existingRows, importId);
 
       const record = await tx.contractBillImport.create({
         data: {
+          id: importId,
           contractBillId: bill.id,
           fileId,
           mode,
@@ -333,7 +353,8 @@ export class ContractBillExcelService {
     bill: BillContext,
     mode: ImportMode,
     buffer: Buffer,
-    existingRows: ExistingRow[]
+    existingRows: ExistingRow[],
+    importId: string
   ): Promise<BillImportPreview> {
     const plan = await this.buildResolvedPlan(bill, mode, buffer, existingRows);
     const beforeAmountCents = existingRows.reduce(
@@ -362,7 +383,11 @@ export class ContractBillExcelService {
       beforeAmountCents: moneyCentsToApi(beforeAmountCents),
       afterAmountCents: moneyCentsToApi(afterAmountCents),
       rows: plan.previewRows,
-      errors: plan.errors
+      errors: plan.errors,
+      candidateRows:
+        mode === "replace" && plan.errors.length === 0
+          ? plan.adds.map((row, index) => this.toCandidateRow(row, importId, index))
+          : []
     };
   }
 
@@ -601,6 +626,33 @@ export class ContractBillExcelService {
       isProvisional: row.isProvisional,
       settlementBasis: row.settlementBasis,
       customData: row.customData
+    };
+  }
+
+  private toCandidateRow(
+    row: ResolvedRow,
+    importId: string,
+    index: number
+  ): BillImportCandidateRow {
+    return {
+      clientRowKey: `import-${importId}-${index + 1}`,
+      rowKey: undefined,
+      sortOrder: index,
+      ...(row.itemCode ? { itemCode: row.itemCode } : {}),
+      itemName: row.itemName,
+      ...(row.specification ? { specification: row.specification } : {}),
+      unit: row.unit,
+      ...(row.quantity === null
+        ? {}
+        : { quantity: new Prisma.Decimal(row.quantity).toString() }),
+      unitPrice: row.unitPrice === null ? "" : new Prisma.Decimal(row.unitPrice).toString(),
+      ...(row.taxRatePercent === null
+        ? {}
+        : { taxRatePercent: new Prisma.Decimal(row.taxRatePercent).toString() }),
+      taxRateSource: row.taxRateSource,
+      isProvisional: row.isProvisional,
+      ...(row.settlementBasis ? { settlementBasis: row.settlementBasis } : {}),
+      customData: { ...(row.customData as Record<string, unknown>) }
     };
   }
 

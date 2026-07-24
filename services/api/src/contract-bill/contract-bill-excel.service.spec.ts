@@ -160,7 +160,7 @@ function billFixture(options: { rows?: Array<Record<string, unknown>> } = {}) {
     },
     contractBillImport: {
       create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => {
-        const record = { id: `import-${imports.length + 1}`, ...data };
+        const record = { id: data.id ?? `import-${imports.length + 1}`, ...data };
         imports.push(record);
         return Promise.resolve(record);
       }),
@@ -457,6 +457,136 @@ describe("ContractBillExcelService", () => {
     const update = await previewWith("update", "key-1");
     expect(update.updated).toBe(1);
     expect(update.added).toBe(0);
+  });
+
+  it("returns replace candidates in Excel order without writing contract bill rows", async () => {
+    const existing = {
+      id: "row-existing",
+      contractBillId: "bill-1",
+      rowKey: "existing-row-key",
+      sortOrder: 0,
+      itemName: "旧清单行",
+      unit: "项",
+      taxInclusiveAmountCents: 100n,
+      taxExclusiveAmountCents: 100n,
+      taxAmountCents: 0n
+    };
+    const { service, tx, rows, fileService } = billFixture({ rows: [{ ...existing }] });
+    const buffer = await buildWorkbookBuffer({
+      rows: [
+        {
+          values: {
+            itemName: "混凝土",
+            unit: "m³",
+            quantity: "12.5",
+            unitPrice: "480",
+            taxRatePercent: "",
+            isProvisional: "是"
+          }
+        },
+        {
+          values: {
+            itemCode: "A-02",
+            itemName: "钢筋",
+            specification: "HRB400",
+            unit: "t",
+            quantity: "3",
+            unitPrice: "4100.50",
+            taxRatePercent: "",
+            settlementBasis: "按实结算"
+          }
+        }
+      ]
+    });
+    (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-replace-candidates", originalName: "bill.xlsx" },
+      buffer
+    });
+
+    const preview = await service.previewImport("bill-1", "owner-1", {
+      fileId: "file-replace-candidates",
+      mode: "replace"
+    });
+
+    expect(preview.errors).toEqual([]);
+    expect(preview.candidateRows).toEqual([
+      expect.objectContaining({
+        clientRowKey: expect.stringMatching(/^import-/),
+        rowKey: undefined,
+        sortOrder: 0,
+        itemName: "混凝土",
+        unit: "m³",
+        quantity: "12.5",
+        unitPrice: "480",
+        taxRateSource: "version_default",
+        customData: {}
+      }),
+      expect.objectContaining({
+        sortOrder: 1,
+        itemCode: "A-02",
+        specification: "HRB400",
+        settlementBasis: "按实结算",
+        quantity: "3",
+        unitPrice: "4100.5"
+      })
+    ]);
+    expect(preview.candidateRows.map((row) => row.clientRowKey)).toEqual([
+      `import-${preview.importId}-1`,
+      `import-${preview.importId}-2`
+    ]);
+    expect(new Set(preview.candidateRows.map((row) => row.clientRowKey)).size).toBe(2);
+    expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.deleteMany).not.toHaveBeenCalled();
+    expect(rows).toEqual([existing]);
+  });
+
+  it.each([
+    {
+      fieldCodes: FIELD_CODES.filter((code) => code !== "itemName"),
+      values: { unit: "m³", quantity: "12.5", unitPrice: "480", taxRatePercent: "" }
+    },
+    {
+      fieldCodes: FIELD_CODES,
+      values: {
+        itemName: "混凝土",
+        unit: "m³",
+        quantity: "not-a-number",
+        unitPrice: "480",
+        taxRatePercent: ""
+      }
+    }
+  ])("returns no replace candidates when a template column or row validation fails", async ({
+    fieldCodes,
+    values
+  }) => {
+    const existing = {
+      id: "row-existing",
+      contractBillId: "bill-1",
+      rowKey: "existing-row-key",
+      sortOrder: 0,
+      taxInclusiveAmountCents: 100n,
+      taxExclusiveAmountCents: 100n,
+      taxAmountCents: 0n
+    };
+    const { service, tx, rows, fileService } = billFixture({ rows: [{ ...existing }] });
+    const buffer = await buildWorkbookBuffer({ rows: [{ values }], fieldCodes });
+    (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-replace-invalid", originalName: "bill.xlsx" },
+      buffer
+    });
+
+    const preview = await service.previewImport("bill-1", "owner-1", {
+      fileId: "file-replace-invalid",
+      mode: "replace"
+    });
+
+    expect(preview.errors.length).toBeGreaterThan(0);
+    expect(preview.candidateRows).toEqual([]);
+    expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.deleteMany).not.toHaveBeenCalled();
+    expect(rows).toEqual([existing]);
   });
 
   it("does not write rows until the preview is explicitly applied", async () => {
