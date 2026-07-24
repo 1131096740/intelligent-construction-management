@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { effectScope } from "vue";
-import type { ContractWorkbenchReadModel } from "../../../api/contract-workbench.api";
+import type {
+  ContractWorkbenchReadModel,
+  SaveContractDraftResult
+} from "../../../api/contract-workbench.api";
 
 // The composable talks to the Task 16 client; mock the whole module so no HTTP
 // runs and every call is observable. Factory must not reference outer variables.
@@ -102,6 +105,16 @@ function makeDraft() {
   return useContractDraft({ replace: vi.fn() });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+  return { promise, resolve, reject };
+}
+
 function makeFormallySavedWorkbench(
   overrides: Partial<ContractWorkbenchReadModel> = {}
 ): ContractWorkbenchReadModel {
@@ -130,7 +143,7 @@ describe("useContractDraft", () => {
   it("persists an incomplete manual amount as zero on explicit save", async () => {
     const draft = makeDraft();
     mockFetchWorkbench.mockResolvedValue(makeWorkbench());
-    mockSaveDraft.mockResolvedValue({ version: { draftRevision: 4 } });
+    mockSaveDraft.mockResolvedValue({ id: "cv-1", draftRevision: 4 });
 
     await draft.load("ct-1");
     draft.model.amountSource = "manual";
@@ -261,7 +274,7 @@ describe("useContractDraft", () => {
     mockFetchWorkbench
       .mockResolvedValueOnce(initial)
       .mockResolvedValueOnce(refreshed);
-    mockSaveDraft.mockResolvedValue({ version: { draftRevision: 5 } });
+    mockSaveDraft.mockResolvedValue({ id: "cv-1", draftRevision: 5 });
 
     await draft.load("ct-1");
     await draft.reload();
@@ -346,7 +359,7 @@ describe("useContractDraft", () => {
   it("keeps edits local until an explicit manual save", async () => {
     const draft = makeDraft();
     mockFetchWorkbench.mockResolvedValue(makeWorkbench());
-    mockSaveDraft.mockResolvedValue({ version: { draftRevision: 4 } });
+    mockSaveDraft.mockResolvedValue({ id: "cv-1", draftRevision: 4 });
 
     await draft.load("ct-1");
 
@@ -406,8 +419,8 @@ describe("useContractDraft", () => {
     const draft = makeDraft();
     mockFetchWorkbench.mockResolvedValue(makeWorkbench());
     mockSaveDraft
-      .mockResolvedValueOnce({ version: { draftRevision: 4 } })
-      .mockResolvedValueOnce({ version: { draftRevision: 5 } });
+      .mockResolvedValueOnce({ id: "cv-1", draftRevision: 4 })
+      .mockResolvedValueOnce({ id: "cv-1", draftRevision: 5 });
     vi.setSystemTime(new Date("2026-07-24T10:00:00.000Z"));
 
     await draft.load("ct-1");
@@ -426,9 +439,71 @@ describe("useContractDraft", () => {
     expect(mockSaveDraft).toHaveBeenCalledTimes(2);
   });
 
+  it("advances expectedRevision from the real top-level save response across repeated autosaves", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench());
+    mockSaveDraft
+      .mockResolvedValueOnce({ id: "cv-1", draftRevision: 4 })
+      .mockResolvedValueOnce({ id: "cv-1", draftRevision: 5 })
+      .mockResolvedValueOnce({ id: "cv-1", draftRevision: 6 });
+    await draft.load("ct-1");
+
+    draft.model.contractName = "首次手动保存";
+    draft.markDirty();
+    await expect(draft.saveNow()).resolves.toBe(true);
+
+    draft.model.contractName = "第一次自动保存";
+    draft.markDirty();
+    await vi.advanceTimersByTimeAsync(1_000);
+    draft.model.contractName = "第二次自动保存";
+    draft.markDirty();
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(mockSaveDraft.mock.calls.map((call) => call[1].expectedRevision))
+      .toEqual([3, 4, 5]);
+    expect(draft.savedRevision.value).toBe(6);
+  });
+
+  it("reschedules a recovered formal-draft backup after a successful reload", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench
+      .mockResolvedValueOnce(makeFormallySavedWorkbench())
+      .mockResolvedValueOnce(makeFormallySavedWorkbench());
+    mockSaveDraft.mockResolvedValue({ id: "cv-1", draftRevision: 4 });
+    await draft.load("ct-1");
+
+    draft.model.contractName = "重载前未保存输入";
+    draft.markDirty();
+    await draft.reload();
+    expect(draft.model.contractName).toBe("重载前未保存输入");
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(mockSaveDraft).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mockSaveDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores the interrupted autosave timer when reload fails", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench
+      .mockResolvedValueOnce(makeFormallySavedWorkbench())
+      .mockRejectedValueOnce(new Error("刷新失败"));
+    mockSaveDraft.mockResolvedValue({ id: "cv-1", draftRevision: 4 });
+    await draft.load("ct-1");
+
+    draft.model.contractName = "刷新失败仍需保存";
+    draft.markDirty();
+    await expect(draft.reload()).rejects.toThrow("刷新失败");
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(mockSaveDraft).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mockSaveDraft).toHaveBeenCalledTimes(1);
+  });
+
   it("coalesces a manual flush with an in-flight automatic save", async () => {
     const draft = makeDraft();
-    let resolveSave!: (value: unknown) => void;
+    let resolveSave!: (value: SaveContractDraftResult) => void;
     mockFetchWorkbench.mockResolvedValue(makeFormallySavedWorkbench());
     mockSaveDraft.mockReturnValueOnce(new Promise((resolve) => {
       resolveSave = resolve;
@@ -442,7 +517,7 @@ describe("useContractDraft", () => {
 
     const manualFlush = draft.saveNow();
     expect(mockSaveDraft).toHaveBeenCalledTimes(1);
-    resolveSave({ version: { draftRevision: 4 } });
+    resolveSave({ id: "cv-1", draftRevision: 4 });
 
     await expect(manualFlush).resolves.toBe(true);
     expect(mockSaveDraft).toHaveBeenCalledTimes(1);
@@ -450,8 +525,8 @@ describe("useContractDraft", () => {
 
   it("keeps a newer edit dirty and serializes it after an older save response", async () => {
     const draft = makeDraft();
-    let resolveFirst!: (value: unknown) => void;
-    let resolveSecond!: (value: unknown) => void;
+    let resolveFirst!: (value: SaveContractDraftResult) => void;
+    let resolveSecond!: (value: SaveContractDraftResult) => void;
     mockFetchWorkbench.mockResolvedValue(makeFormallySavedWorkbench());
     mockSaveDraft
       .mockReturnValueOnce(new Promise((resolve) => {
@@ -469,7 +544,7 @@ describe("useContractDraft", () => {
     draft.markDirty();
     const manualFlush = draft.saveNow();
 
-    resolveFirst({ version: { draftRevision: 4 } });
+    resolveFirst({ id: "cv-1", draftRevision: 4 });
     await vi.waitFor(() => {
       expect(mockSaveDraft).toHaveBeenCalledTimes(2);
     });
@@ -483,7 +558,7 @@ describe("useContractDraft", () => {
       draftData: { contractName: "请求期间的新输入" }
     });
 
-    resolveSecond({ version: { draftRevision: 5 } });
+    resolveSecond({ id: "cv-1", draftRevision: 5 });
     await expect(manualFlush).resolves.toBe(true);
   });
 
@@ -507,7 +582,7 @@ describe("useContractDraft", () => {
   it("cancels and resumes autosave without inventing an extra edit", async () => {
     const draft = makeDraft();
     mockFetchWorkbench.mockResolvedValue(makeFormallySavedWorkbench());
-    mockSaveDraft.mockResolvedValue({ version: { draftRevision: 4 } });
+    mockSaveDraft.mockResolvedValue({ id: "cv-1", draftRevision: 4 });
     await draft.load("ct-1");
 
     draft.model.contractName = "生命周期动作前的输入";
@@ -554,6 +629,119 @@ describe("useContractDraft", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(draft.saveState.value).toBe("conflict");
     expect(mockSaveDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("captures edits made while the conflict refresh is in flight", async () => {
+    const draft = makeDraft();
+    const conflictRefresh = deferred<ContractWorkbenchReadModel>();
+    mockFetchWorkbench
+      .mockResolvedValueOnce(makeFormallySavedWorkbench())
+      .mockReturnValueOnce(conflictRefresh.promise);
+    mockSaveDraft.mockRejectedValueOnce(new Error("Contract draft revision conflict"));
+    await draft.load("ct-1");
+
+    draft.model.contractName = "发出请求时的本地值";
+    draft.markDirty();
+    const save = draft.saveNow();
+    await vi.waitFor(() => {
+      expect(mockFetchWorkbench).toHaveBeenCalledTimes(2);
+    });
+
+    draft.model.contractName = "冲突回读期间的新输入";
+    draft.markDirty();
+    conflictRefresh.resolve(makeFormallySavedWorkbench({
+      version: {
+        ...makeWorkbench().version,
+        draftRevision: 7,
+        draftData: { contractName: "服务器新值" }
+      }
+    }));
+    await expect(save).resolves.toBe(false);
+
+    expect(draft.conflict.value?.local.contractName).toBe("冲突回读期间的新输入");
+    expect(draft.conflict.value?.server.contractName).toBe("服务器新值");
+    expect(draft.model.contractName).toBe("冲突回读期间的新输入");
+  });
+
+  it("ignores a stale conflict refresh after loading another contract", async () => {
+    const draft = makeDraft();
+    const conflictRefresh = deferred<ContractWorkbenchReadModel>();
+    mockFetchWorkbench
+      .mockResolvedValueOnce(makeFormallySavedWorkbench())
+      .mockReturnValueOnce(conflictRefresh.promise)
+      .mockResolvedValueOnce(makeFormallySavedWorkbench({
+        contract: {
+          ...makeWorkbench().contract,
+          id: "ct-2",
+          code: "HT-2026-002",
+          name: "第二份合同"
+        },
+        version: {
+          ...makeWorkbench().version,
+          id: "cv-2",
+          draftRevision: 11,
+          draftData: { contractName: "第二份合同" }
+        }
+      }));
+    mockSaveDraft.mockRejectedValueOnce(new Error("Contract draft revision conflict"));
+    await draft.load("ct-1");
+
+    draft.model.contractName = "第一份合同本地值";
+    draft.markDirty();
+    const staleSave = draft.saveNow();
+    await vi.waitFor(() => {
+      expect(mockFetchWorkbench).toHaveBeenCalledTimes(2);
+    });
+    await draft.load("ct-2");
+
+    conflictRefresh.resolve(makeFormallySavedWorkbench({
+      version: {
+        ...makeWorkbench().version,
+        draftRevision: 8,
+        draftData: { contractName: "第一份合同服务器值" }
+      }
+    }));
+    await staleSave;
+
+    expect(draft.workbench.value?.contract.id).toBe("ct-2");
+    expect(draft.workbench.value?.version.id).toBe("cv-2");
+    expect(draft.model.contractName).toBe("第二份合同");
+    expect(draft.savedRevision.value).toBe(11);
+    expect(draft.conflict.value).toBeNull();
+    expect(draft.saveState.value).toBe("idle");
+  });
+
+  it("ignores a stale conflict refresh after its composable scope is disposed", async () => {
+    const scope = effectScope();
+    const draft = scope.run(makeDraft);
+    expect(draft).toBeDefined();
+    const conflictRefresh = deferred<ContractWorkbenchReadModel>();
+    mockFetchWorkbench
+      .mockResolvedValueOnce(makeFormallySavedWorkbench())
+      .mockReturnValueOnce(conflictRefresh.promise);
+    mockSaveDraft.mockRejectedValueOnce(new Error("Contract draft revision conflict"));
+    await draft!.load("ct-1");
+
+    draft!.model.contractName = "销毁前本地值";
+    draft!.markDirty();
+    const staleSave = draft!.saveNow();
+    await vi.waitFor(() => {
+      expect(mockFetchWorkbench).toHaveBeenCalledTimes(2);
+    });
+    scope.stop();
+
+    conflictRefresh.resolve(makeFormallySavedWorkbench({
+      version: {
+        ...makeWorkbench().version,
+        draftRevision: 9,
+        draftData: { contractName: "销毁后迟到服务器值" }
+      }
+    }));
+    await staleSave;
+
+    expect(draft!.model.contractName).toBe("销毁前本地值");
+    expect(draft!.savedRevision.value).toBe(3);
+    expect(draft!.conflict.value).toBeNull();
   });
 
   it("cancels a scheduled save when the composable scope is disposed", async () => {
@@ -609,6 +797,30 @@ describe("useContractDraft", () => {
     expect(mockSaveDraft).not.toHaveBeenCalled();
   });
 
+  it("fails closed when discard is attempted during an in-flight save", async () => {
+    const draft = makeDraft();
+    const pendingSave = deferred<{ id: string; draftRevision: number }>();
+    mockFetchWorkbench.mockResolvedValue(makeFormallySavedWorkbench());
+    mockSaveDraft.mockReturnValueOnce(pendingSave.promise);
+    await draft.load("ct-1");
+
+    draft.model.contractName = "保存中的本地输入";
+    draft.markDirty();
+    const save = draft.saveNow();
+    expect(draft.saveState.value).toBe("saving");
+
+    expect(draft.discardLocalState()).toBe(false);
+    expect(draft.model.contractName).toBe("保存中的本地输入");
+    expect(draft.isDirty.value).toBe(true);
+    expect(globalThis.localStorage.getItem("contract-draft:cv-1"))
+      .toContain("保存中的本地输入");
+
+    pendingSave.resolve({ id: "cv-1", draftRevision: 4 });
+    await expect(save).resolves.toBe(true);
+    expect(draft.discardLocalState()).toBe(true);
+    expect(draft.isDirty.value).toBe(false);
+  });
+
   it("ignores a pending old-route load after local state is discarded", async () => {
     const draft = makeDraft();
     let resolveLoad!: (value: ReturnType<typeof makeWorkbench>) => void;
@@ -626,10 +838,10 @@ describe("useContractDraft", () => {
   it("coalesces an in-flight save and preserves edits made during the request", async () => {
     const draft = makeDraft();
     mockFetchWorkbench.mockResolvedValue(makeWorkbench());
-    let resolveFirst!: (value: unknown) => void;
+    let resolveFirst!: (value: SaveContractDraftResult) => void;
     mockSaveDraft
       .mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve; }))
-      .mockResolvedValueOnce({ version: { draftRevision: 5 } });
+      .mockResolvedValueOnce({ id: "cv-1", draftRevision: 5 });
     await draft.load("ct-1");
 
     draft.model.contractName = "第一次修改";
@@ -643,7 +855,7 @@ describe("useContractDraft", () => {
     const governanceFlush = draft.saveNow();
     expect(mockSaveDraft).toHaveBeenCalledTimes(1);
 
-    resolveFirst({ version: { draftRevision: 4 } });
+    resolveFirst({ id: "cv-1", draftRevision: 4 });
     await Promise.all([firstSave, governanceFlush]);
 
     expect(mockSaveDraft).toHaveBeenCalledTimes(2);
@@ -678,7 +890,7 @@ describe("useContractDraft", () => {
         }
       })
     );
-    mockSaveDraft.mockResolvedValue({ version: { draftRevision: 4 } });
+    mockSaveDraft.mockResolvedValue({ id: "cv-1", draftRevision: 4 });
 
     await draft.load("ct-1");
     draft.model.paymentRatioBps = 8500;
@@ -734,7 +946,7 @@ describe("useContractDraft", () => {
         ]
       }
     }));
-    mockSaveDraft.mockResolvedValue({ version: { draftRevision: 4 } });
+    mockSaveDraft.mockResolvedValue({ id: "cv-1", draftRevision: 4 });
 
     await draft.load("ct-1");
     expect(draft.model.paymentRatioBps).toBe(7000);
@@ -773,7 +985,7 @@ describe("useContractDraft", () => {
         }
       }
     }));
-    mockSaveDraft.mockResolvedValue({ version: { draftRevision: 4 } });
+    mockSaveDraft.mockResolvedValue({ id: "cv-1", draftRevision: 4 });
 
     await draft.load("ct-1");
     draft.markDirty();
@@ -808,7 +1020,7 @@ describe("useContractDraft", () => {
         }
       })
     );
-    mockSaveDraft.mockResolvedValue({ version: { draftRevision: 4 } });
+    mockSaveDraft.mockResolvedValue({ id: "cv-1", draftRevision: 4 });
 
     await draft.load("ct-1");
 
@@ -849,7 +1061,7 @@ describe("useContractDraft", () => {
         }
       })
     );
-    mockSaveDraft.mockResolvedValue({ version: { draftRevision: 4 } });
+    mockSaveDraft.mockResolvedValue({ id: "cv-1", draftRevision: 4 });
 
     await draft.load("ct-1");
 
@@ -874,7 +1086,7 @@ describe("useContractDraft", () => {
     expect(draft.saveState.value).toBe("idle");
 
     // saving -> saved
-    let resolveSave: (value: unknown) => void = () => {};
+    let resolveSave: (value: SaveContractDraftResult) => void = () => {};
     mockSaveDraft.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveSave = resolve;
@@ -884,7 +1096,7 @@ describe("useContractDraft", () => {
     draft.markDirty();
     const firstSave = draft.saveNow();
     expect(draft.saveState.value).toBe("saving");
-    resolveSave({ version: { draftRevision: 4 } });
+    resolveSave({ id: "cv-1", draftRevision: 4 });
     await firstSave;
     expect(draft.saveState.value).toBe("saved");
 
@@ -925,7 +1137,7 @@ describe("useContractDraft", () => {
     expect(backup).toContain("未保存的改动");
 
     // A non-conflict failure does NOT pause: the next explicit save may retry.
-    mockSaveDraft.mockResolvedValueOnce({ version: { draftRevision: 4 } });
+    mockSaveDraft.mockResolvedValueOnce({ id: "cv-1", draftRevision: 4 });
     draft.model.contractName = "重试的改动";
     draft.markDirty();
     await draft.saveNow();
@@ -968,7 +1180,7 @@ describe("useContractDraft", () => {
     expect(mockSaveDraft.mock.calls.length).toBe(callsAfterConflict);
 
     // Keeping local re-applies local edits against the latest server revision and resumes.
-    mockSaveDraft.mockResolvedValueOnce({ version: { draftRevision: 10 } });
+    mockSaveDraft.mockResolvedValueOnce({ id: "cv-1", draftRevision: 10 });
     await draft.keepLocalAfterConflict();
     expect(draft.saveState.value).not.toBe("conflict");
     expect(draft.conflict.value).toBeNull();

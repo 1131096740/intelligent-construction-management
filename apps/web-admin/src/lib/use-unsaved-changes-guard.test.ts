@@ -167,4 +167,28 @@ describe("unsaved changes guard", () => {
 
     await expect(guard.requestLeave()).resolves.toBe(false);
   });
+
+  it("blocks navigation while a save is active and allows a fresh retry after it settles", async () => {
+    const saving = ref(true);
+    const dirty = ref(true);
+    const discardChanges = vi.fn(() => {
+      if (saving.value) {
+        throw new Error("合同草稿正在保存");
+      }
+      dirty.value = false;
+    });
+    const guard = createUnsavedChangesGuard({
+      isDirty: () => dirty.value,
+      confirmLeave: async () => true,
+      discardChanges
+    });
+
+    await expect(guard.requestLeave()).resolves.toBe(false);
+    expect(dirty.value).toBe(true);
+
+    saving.value = false;
+    await expect(guard.requestLeave()).resolves.toBe(true);
+    expect(discardChanges).toHaveBeenCalledTimes(2);
+    expect(dirty.value).toBe(false);
+  });
 });

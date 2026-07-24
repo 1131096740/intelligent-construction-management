@@ -670,6 +670,7 @@
           </t-button>
           <t-button
             theme="danger"
+            :disabled="saveState === 'saving'"
             @click="resolveNavigationDecision(true)"
           >
             放弃并离开
@@ -853,11 +854,15 @@ const navigationBypass = ref(false);
 let resolvePendingNavigation: ((decision: boolean) => void) | null = null;
 
 const navigationUnsavedTitle = computed(() => {
+  if (saveState.value === "saving") return "合同草稿正在保存";
   if (isDirty.value && billEditorDirty.value) return "合同基础信息和清单均未保存";
   if (billEditorDirty.value) return "合同清单尚未保存";
   return "合同基础信息尚未保存";
 });
 const navigationUnsavedMessage = computed(() => {
+  if (saveState.value === "saving") {
+    return "保存请求正在处理中，当前不能放弃并离开。请等待保存完成后重试，系统不会中断已发出的保存请求。";
+  }
   if (isDirty.value && billEditorDirty.value) {
     return "当前合同基础信息和清单都有未保存修改。放弃后两类本地修改都会丢失，服务端最近保存内容不受影响。";
   }
@@ -887,11 +892,11 @@ function resolveNavigationDecision(decision: boolean) {
 }
 
 function discardNavigationChanges() {
+  if (isDirty.value && !discardLocalState()) {
+    throw new Error("合同草稿正在保存，请等待保存完成后重试");
+  }
   if (billEditorDirty.value) {
     billFocusEditorRef.value?.discardChanges();
-  }
-  if (isDirty.value) {
-    discardLocalState();
   }
 }
 

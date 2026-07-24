@@ -110,6 +110,18 @@ describe("contract workbench document canvas structure", () => {
     expect(pageSource).not.toContain("requestUnsavedClose");
   });
 
+  it("fails closed instead of discarding local state while a draft save is in flight", () => {
+    expect(pageSource).toContain("合同草稿正在保存");
+    expect(pageSource).toContain("系统不会中断已发出的保存请求");
+    expect(pageSource).toContain(':disabled="saveState === \'saving\'"');
+    expect(pageSource).toMatch(
+      /if \(isDirty\.value && !discardLocalState\(\)\) \{[\s\S]*throw new Error/u
+    );
+    expect(pageSource).toMatch(
+      /function discardNavigationChanges\(\) \{[\s\S]*discardLocalState\(\)[\s\S]*billFocusEditorRef\.value\?\.discardChanges\(\)/u
+    );
+  });
+
   it("fully reloads the workbench after a bill batch instead of keeping a partial projection", () => {
     expect(pageSource).toMatch(
       /async function onBillSaved\([^)]*\)[\s\S]*await reloadCurrent\(\)/u

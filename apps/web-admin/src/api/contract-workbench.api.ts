@@ -246,8 +246,16 @@ export interface SaveContractDraftPayload {
   [key: string]: unknown;
 }
 
+export interface SaveContractDraftResult {
+  id: string;
+  draftRevision: number;
+}
+
 export function saveContractDraft(contractVersionId: string, body: SaveContractDraftPayload) {
-  return patchJson<unknown>(`/contract-workbench/${contractVersionId}`, body);
+  return patchJson<SaveContractDraftResult>(
+    `/contract-workbench/${contractVersionId}`,
+    body
+  );
 }
 
 export interface CreateDraftCheckpointPayload {

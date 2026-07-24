@@ -158,8 +158,8 @@ export interface UseContractDraft {
   /** Re-fetches the currently loaded workbench through the same guarded load path. */
   reload: () => Promise<void>;
   markDirty: () => void;
-  /** Clears only client-side editing state after a successful server termination. */
-  discardLocalState: () => void;
+  /** Clears client editing state, but fails closed while a save request is in flight. */
+  discardLocalState: () => boolean;
   /** Pauses editing while a server-side lifecycle action runs. */
   suspendAutosaveForLifecycleAction: () => boolean;
   /** Resumes editing after a failed lifecycle action without losing local edits. */
@@ -382,17 +382,6 @@ function isConflictError(error: unknown): boolean {
   return error instanceof Error && error.message.includes(REVISION_CONFLICT_PHRASE);
 }
 
-function readRevision(result: unknown): number | null {
-  if (isRecord(result) && isRecord(result["version"])) {
-    const version = result["version"] as Record<string, unknown>;
-    const revision = version["draftRevision"] ?? version["revision"];
-    if (typeof revision === "number") {
-      return revision;
-    }
-  }
-  return null;
-}
-
 function getStorage(): Storage | null {
   return typeof globalThis.localStorage !== "undefined" ? globalThis.localStorage : null;
 }
@@ -488,7 +477,10 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     }, AUTOSAVE_DELAY_MS);
   }
 
-  function discardLocalState(): void {
+  function discardLocalState(): boolean {
+    if (activeSave || saveState.value === "saving") {
+      return false;
+    }
     cancelScheduledSave();
     clearBackup();
     // Invalidate pending loads and make any in-flight save response stale.
@@ -502,6 +494,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     lastSavedAt.value = null;
     saveState.value = "idle";
     saveError.value = "";
+    return true;
   }
 
   function suspendAutosaveForLifecycleAction(): boolean {
@@ -521,7 +514,15 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   async function load(contractId: string): Promise<void> {
     cancelScheduledSave();
     const requestId = ++loadRequestId;
-    const result = (await fetchContractWorkbench(contractId)) as ContractWorkbenchReadModel;
+    let result: ContractWorkbenchReadModel;
+    try {
+      result = await fetchContractWorkbench(contractId);
+    } catch (error) {
+      if (!disposed && requestId === loadRequestId) {
+        scheduleSave();
+      }
+      throw error;
+    }
     if (disposed || requestId !== loadRequestId) return;
     workbench.value = result;
     contractVersionId.value = result.version.id;
@@ -543,6 +544,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       assignModel(model, normalizeBackupTemplateFields(backup, templateFieldKeySet(result)));
       dirtyRef.value = true;
     }
+    scheduleSave();
   }
 
   // -- Dirty tracking ----------------------------------------------------------
@@ -609,10 +611,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       // contract's revision, dirty state, backup, or conflict UI.
       if (contractVersionId.value !== savingVersionId) return true;
       // Only now is it safe to clear dirty state + the backup (brief rule).
-      const nextRevision = readRevision(result);
-      if (nextRevision !== null) {
-        currentRevision.value = nextRevision;
-      }
+      currentRevision.value = result.draftRevision;
       formalSaveCompleted.value = true;
       lastSavedAt.value = new Date();
       if (editGeneration === savingGeneration) {
@@ -633,7 +632,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       if (contractVersionId.value !== savingVersionId) return true;
       if (isConflictError(error)) {
         saveError.value = "合同草稿已在其他页面更新，请处理版本冲突后重试";
-        await enterConflict();
+        await enterConflict(savingVersionId);
       } else {
         // Non-conflict failure: keep local edits + backup, do NOT pause.
         saveError.value = error instanceof Error ? error.message : "合同草稿保存失败";
@@ -670,29 +669,38 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
 
   // -- Conflict handling ------------------------------------------------------
 
-  async function enterConflict(): Promise<void> {
+  async function enterConflict(conflictingVersionId: string): Promise<void> {
+    const conflictLoadRequestId = loadRequestId;
+    const conflictingContractId =
+      workbench.value?.contract.id ?? conflictingVersionId;
+    const isCurrentConflictRequest = () =>
+      !disposed &&
+      loadRequestId === conflictLoadRequestId &&
+      contractVersionId.value === conflictingVersionId;
+
     pausedRef.value = true;
     cancelScheduledSave();
 
-    const local = cloneModel(model);
-    let server = cloneModel(model);
+    let server: ContractDraftModel | null = null;
 
     // Re-fetch to learn the latest server state + revision for the merge UI.
-    if (contractVersionId.value) {
-      try {
-        const fresh = (await fetchContractWorkbench(
-          workbench.value?.contract.id ?? contractVersionId.value
-        )) as ContractWorkbenchReadModel;
-        workbench.value = fresh;
-        currentRevision.value = fresh.version.draftRevision;
-        server = modelFromWorkbench(fresh);
-      } catch {
-        // If the re-fetch fails we still surface the conflict with local data
-        // mirrored as the server side; the user can retry.
-      }
+    try {
+      const fresh = await fetchContractWorkbench(conflictingContractId);
+      if (
+        !isCurrentConflictRequest() ||
+        fresh.version.id !== conflictingVersionId
+      ) return;
+      workbench.value = fresh;
+      currentRevision.value = fresh.version.draftRevision;
+      server = modelFromWorkbench(fresh);
+    } catch {
+      // If the re-fetch fails we still surface the conflict with local data
+      // mirrored as the server side; the user can retry.
     }
 
-    conflict.value = { local, server };
+    if (!isCurrentConflictRequest()) return;
+    const local = cloneModel(model);
+    conflict.value = { local, server: server ?? cloneModel(model) };
     saveState.value = "conflict";
   }
 

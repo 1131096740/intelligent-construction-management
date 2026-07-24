@@ -240,9 +240,12 @@ describe("contract workbench API client", () => {
   });
 
   it("saveContractDraft – PATCH /contract-workbench/:contractVersionId (autosave must be PATCH)", async () => {
-    mockApiFetch.mockReturnValue(makeOkJson({ revision: 2 }));
+    mockApiFetch.mockReturnValue(makeOkJson({
+      id: "version-1",
+      draftRevision: 2
+    }));
 
-    await saveContractDraft("version-1", {
+    const saved = await saveContractDraft("version-1", {
       expectedRevision: 1,
       draftData: { name: "钢材采购合同" },
       clauses: [],
@@ -273,6 +276,7 @@ describe("contract workbench API client", () => {
         source: "contract_document"
       }
     });
+    expect(saved).toEqual({ id: "version-1", draftRevision: 2 });
   });
 
   it("createDraftCheckpoint – POST /contract-workbench/:contractVersionId/checkpoints", async () => {
