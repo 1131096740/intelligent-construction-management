@@ -764,6 +764,59 @@ describe("ContractBillService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
+  it("does not update numerically equivalent Decimal row facts", async () => {
+    const existing = {
+      ...existingRow(0),
+      quantity: new Prisma.Decimal("3.30"),
+      unitPrice: new Prisma.Decimal("100.10"),
+      taxRate: new Prisma.Decimal("13.00"),
+      taxInclusiveAmountCents: 33033n,
+      taxExclusiveAmountCents: 29233n,
+      taxAmountCents: 3800n
+    };
+    const { service, tx } = fixture({ rows: [existing] });
+
+    await service.replaceRows("bill-1", "owner-1", {
+      expectedBillRevision: 2,
+      idempotencyKey: "equivalent-decimal-row",
+      rows: [batchRow("equivalent", "key-0", {
+        quantity: "3.3",
+        unitPrice: "100.1",
+        taxRatePercent: "13.0"
+      })]
+    });
+
+    expect(tx.contractBillRow.update).not.toHaveBeenCalled();
+  });
+
+  it("returns a matching receipt before current tax and schema facts are parsed", async () => {
+    const { service, tx, bill, version } = fixture({ rows: [existingRow(1)] });
+    const input = {
+      expectedBillRevision: 2,
+      idempotencyKey: "retry-after-facts-changed",
+      rows: [batchRow("local-1", "key-1")]
+    };
+    const requestDigest = createHash("sha256")
+      .update(canonicalJson({
+        expectedBillRevision: 2,
+        rows: [{ ...input.rows[0], expectedBillRevision: 2, sortOrder: 0 }]
+      }))
+      .digest("hex");
+    tx.auditLog.findFirst.mockResolvedValueOnce({ metadata: { requestDigest } });
+    version.defaultTaxRatePercent = new Prisma.Decimal("6");
+    bill.schemaSnapshot = {
+      columns: [{ key: "newRequired", label: "新增列", type: "text", required: true }]
+    };
+
+    await expect(service.replaceRows("bill-1", "owner-1", input)).resolves.toMatchObject({
+      bill: { id: "bill-1" }, rows: [{ rowKey: "key-1" }]
+    });
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("rejects a reused idempotency key for a different request without row writes", async () => {
     const { service, tx } = fixture();
     tx.auditLog.findFirst.mockResolvedValueOnce({ metadata: { requestDigest: "another-request" } });

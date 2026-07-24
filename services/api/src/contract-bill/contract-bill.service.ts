@@ -56,6 +56,26 @@ type ParsedBatchRow = ReplaceBillRowDto & {
   sortOrder: number;
 };
 
+type ReplaceRowsEnvelope = {
+  expectedBillRevision: number;
+  idempotencyKey: string;
+  rows: Array<Record<string, unknown>>;
+};
+
+const REPLACE_ROW_INPUT_FIELDS = [
+  "itemCode",
+  "itemName",
+  "specification",
+  "unit",
+  "quantity",
+  "unitPrice",
+  "taxRatePercent",
+  "taxRateSource",
+  "isProvisional",
+  "settlementBasis",
+  "customData"
+] as const;
+
 function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -87,20 +107,21 @@ export class ContractBillService {
         FOR UPDATE
       `);
       const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
-      const existingRows = await tx.contractBillRow.findMany({
-        where: { contractBillId: bill.id },
-        orderBy: { sortOrder: "asc" }
-      });
-      const existingByKey = new Map(existingRows.map((row) => [row.rowKey, row]));
-      const input = this.parseReplaceInput(rawInput, bill, version, existingByKey);
-      const idempotencyKeyDigest = sha256(input.idempotencyKey);
+      const envelope = this.parseReplaceEnvelope(rawInput);
+      const idempotencyKeyDigest = sha256(envelope.idempotencyKey);
       const requestDigest = sha256(stableJson({
-        expectedBillRevision: input.expectedBillRevision,
-        rows: input.rows.map((row) => {
-          const requestRow: Record<string, unknown> = { ...row };
-          delete requestRow.facts;
-          return requestRow;
-        })
+        expectedBillRevision: envelope.expectedBillRevision,
+        rows: envelope.rows.map((row, index) => ({
+          ...row,
+          ...(typeof row.clientRowKey === "string"
+            ? { clientRowKey: row.clientRowKey.trim() }
+            : {}),
+          ...(typeof row.rowKey === "string" && row.rowKey.trim()
+            ? { rowKey: row.rowKey.trim() }
+            : {}),
+          sortOrder: index,
+          expectedBillRevision: envelope.expectedBillRevision
+        }))
       }));
       const receipt = await tx.auditLog.findFirst({
         where: {
@@ -122,6 +143,13 @@ export class ContractBillService {
         }
         return this.readBill(tx, bill.id);
       }
+
+      const existingRows = await tx.contractBillRow.findMany({
+        where: { contractBillId: bill.id },
+        orderBy: { sortOrder: "asc" }
+      });
+      const existingByKey = new Map(existingRows.map((row) => [row.rowKey, row]));
+      const input = this.parseReplaceInput(envelope, bill, version, existingByKey);
 
       const requestedKeys = new Set(
         input.rows.flatMap((row) => (row.rowKey ? [row.rowKey] : []))
@@ -516,6 +544,59 @@ export class ContractBillService {
     };
   }
 
+  private parseReplaceEnvelope(rawInput: unknown): ReplaceRowsEnvelope {
+    const input = this.requireObject(rawInput, "合同清单整表提交内容");
+    this.assertExpectedRevision(input.expectedBillRevision);
+    if (
+      typeof input.idempotencyKey !== "string" ||
+      !/^[A-Za-z0-9:_-]{8,128}$/.test(input.idempotencyKey)
+    ) {
+      throw new BadRequestException("清单保存标识格式无效");
+    }
+    if (!Array.isArray(input.rows) || input.rows.length > 5000) {
+      throw new BadRequestException("合同清单行数必须在 0 到 5000 行之间");
+    }
+    const rows = input.rows.map((rawRow, index) => {
+      const row = this.requireObject(rawRow, `合同清单第 ${index + 1} 行`);
+      const normalized: Record<string, unknown> = {
+        clientRowKey: row.clientRowKey,
+        sortOrder: row.sortOrder
+      };
+      if (row.rowKey !== undefined) normalized.rowKey = row.rowKey;
+      for (const field of REPLACE_ROW_INPUT_FIELDS) {
+        if (row[field] !== undefined) normalized[field] = row[field];
+      }
+      this.assertJsonEnvelopeValue(normalized, new WeakSet<object>());
+      return normalized;
+    });
+    return {
+      expectedBillRevision: input.expectedBillRevision as number,
+      idempotencyKey: input.idempotencyKey,
+      rows
+    };
+  }
+
+  private assertJsonEnvelopeValue(value: unknown, seen: WeakSet<object>): void {
+    if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      return;
+    }
+    if (Array.isArray(value)) {
+      if (seen.has(value)) throw new BadRequestException("清单保存内容必须是 JSON 数据");
+      seen.add(value);
+      value.forEach((item) => this.assertJsonEnvelopeValue(item, seen));
+      seen.delete(value);
+      return;
+    }
+    if (this.isPlainObject(value)) {
+      if (seen.has(value)) throw new BadRequestException("清单保存内容必须是 JSON 数据");
+      seen.add(value);
+      Object.values(value).forEach((item) => this.assertJsonEnvelopeValue(item, seen));
+      seen.delete(value);
+      return;
+    }
+    throw new BadRequestException("清单保存内容必须是 JSON 数据");
+  }
+
   private batchRowError(clientRowKey: string, error: unknown): BatchRowError {
     if (error instanceof ContractBillRowInputValidationException) {
       return { clientRowKey, field: error.field, message: error.message };
@@ -637,16 +718,17 @@ export class ContractBillService {
     },
     data: ReturnType<ContractBillService["batchRowData"]>
   ) {
-    const decimal = (value: Prisma.Decimal | string | null) => value?.toString() ?? null;
+    const decimalEquals = (left: Prisma.Decimal | null, right: string | null) =>
+      left === null ? right === null : right !== null && left.eq(new Prisma.Decimal(right));
     return (
       existing.sortOrder !== data.sortOrder ||
       existing.itemCode !== data.itemCode ||
       existing.itemName !== data.itemName ||
       existing.specification !== data.specification ||
       existing.unit !== data.unit ||
-      decimal(existing.quantity) !== decimal(data.quantity) ||
-      decimal(existing.unitPrice) !== decimal(data.unitPrice) ||
-      decimal(existing.taxRate) !== decimal(data.taxRate) ||
+      !decimalEquals(existing.quantity, data.quantity) ||
+      !decimalEquals(existing.unitPrice, data.unitPrice) ||
+      !decimalEquals(existing.taxRate, data.taxRate) ||
       existing.taxRateSource !== data.taxRateSource ||
       existing.pricingFactStatus !== data.pricingFactStatus ||
       existing.precisionPolicy !== data.precisionPolicy ||
