@@ -85,7 +85,7 @@
       <div class="library-row">
         <t-select
           :value="selectedClauseIds[clause.key] ?? ''"
-          :options="standardClauseOptions"
+          :options="standardClauseOptionsFor(clause)"
           :disabled="clauseDisabled(clause.key) || libraryBusy"
           :data-testid="`clause-standard-${clause.key}`"
           placeholder="选择已发布标准条款"
@@ -213,7 +213,7 @@
 
 <script setup lang="ts">
 import type { ContractClauseDefinition } from "@jiangkong/shared-domain";
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onServerPrefetch, ref, watch } from "vue";
 import {
   listPublishedStandardClauses,
   type PublishedStandardClause
@@ -261,14 +261,22 @@ const pendingReplacement = ref<{
   source: PublishedStandardClause;
 } | null>(null);
 
-const standardClauseOptions = computed(() =>
-  standardClauses.value.map((clause) => ({
-    label: `${clause.name || clause.title || clause.code} v${clause.versionNo}`,
-    value: clause.standardClauseVersionId
-  }))
-);
+const publishedStandardClauseOptions = computed(() => {
+  const seenVersionIds = new Set<string>();
+  return standardClauses.value.flatMap((clause) => {
+    if (seenVersionIds.has(clause.standardClauseVersionId)) {
+      return [];
+    }
+    seenVersionIds.add(clause.standardClauseVersionId);
+    return [{
+      label: `${clause.name || clause.title || clause.code} v${clause.versionNo}`,
+      value: clause.standardClauseVersionId
+    }];
+  });
+});
 
 onMounted(loadStandardClauses);
+onServerPrefetch(loadStandardClauses);
 
 watch(
   () =>
@@ -292,6 +300,61 @@ function updateClause(key: string, patch: Partial<ContractClauseDefinition>) {
   const clause = props.model.clauses.find((item) => item.key === key);
   if (!clause) return;
   replaceClause({ ...clause, ...patch });
+}
+
+function standardClauseOptionsFor(clause: ContractClauseDefinition) {
+  const options = [...publishedStandardClauseOptions.value];
+  const savedVersionId = clause.standardClauseVersionId;
+  if (
+    savedVersionId &&
+    !options.some((option) => option.value === savedVersionId)
+  ) {
+    options.push({
+      label: historicalStandardClauseLabel(clause, savedVersionId),
+      value: savedVersionId
+    });
+  }
+  return options;
+}
+
+function historicalStandardClauseLabel(
+  clause: ContractClauseDefinition,
+  savedVersionId: string
+): string {
+  const content = clauseContentRecord(clause.content);
+  const sourceName = readableHistoryLabelPart(
+    content["standardClauseSourceName"],
+    savedVersionId
+  );
+  const versionNo = content["standardClauseVersionNo"];
+  if (sourceName) {
+    return typeof versionNo === "number" && Number.isFinite(versionNo)
+      ? `${sourceName} v${versionNo}`
+      : `${sourceName}（历史版本）`;
+  }
+  const title =
+    readableHistoryLabelPart(content["standardTitle"], savedVersionId) ||
+    readableHistoryLabelPart(clause.title, savedVersionId) ||
+    "标准条款";
+  return `${title}（历史版本）`;
+}
+
+function readableHistoryLabelPart(
+  value: unknown,
+  savedVersionId: string
+): string {
+  if (typeof value !== "string") return "";
+  const normalized = value.trim();
+  if (
+    !normalized ||
+    normalized === savedVersionId ||
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      normalized
+    )
+  ) {
+    return "";
+  }
+  return normalized;
 }
 
 function replaceClause(nextClause: ContractClauseDefinition) {

@@ -149,6 +149,12 @@ test.describe("合同条款即时受控输入", () => {
       page.getByTestId("clause-paragraph-payment-0").locator("textarea")
     ).toHaveValue("新版付款正文");
     await expect(paymentSelect.locator("input")).toHaveValue("公司付款条款 v4");
+    await paymentSelect.click();
+    const latestOptions = page.locator(".t-select__dropdown:visible");
+    await expect(
+      latestOptions.getByText("公司付款条款 v2", { exact: true })
+    ).toHaveCount(0);
+    await page.keyboard.press("Escape");
 
     await mkdir(screenshotDir, { recursive: true });
     await page.screenshot({
@@ -339,20 +345,6 @@ async function selectStandardClause(
 
 function publishedStandardClauses() {
   return [
-    {
-      standardClauseVersionId: "standard-clause-payment-v2",
-      versionId: "standard-clause-payment-v2",
-      versionNo: 2,
-      title: "标准付款条款",
-      content: {
-        text: "标准付款正文",
-        blocks: [{ type: "paragraph", text: "标准付款正文" }]
-      },
-      clauseId: "standard-clause-payment",
-      code: "PAYMENT",
-      name: "公司付款条款",
-      category: "付款"
-    },
     {
       standardClauseVersionId: "standard-clause-quality-v3",
       versionId: "standard-clause-quality-v3",

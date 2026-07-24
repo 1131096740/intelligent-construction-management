@@ -9,8 +9,12 @@ import {
   type PropType
 } from "vue";
 import { renderToString } from "vue/server-renderer";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  listPublishedStandardClauses,
+  type PublishedStandardClause
+} from "../../../api/contract-workbench.api";
 import * as contractBillEditor from "./contract-bill-editor";
 import ContractClausesSection from "./ContractClausesSection.vue";
 import type { ContractDraftModel } from "./use-contract-draft";
@@ -23,10 +27,17 @@ interface FieldControl {
   kind: "input" | "textarea" | "select";
   testId: string;
   value: unknown;
+  options: Array<{ label: string; value: string }>;
   disabled: boolean;
   update: (value: string) => void;
   change: (value: string) => void;
 }
+
+beforeEach(() => {
+  vi.mocked(listPublishedStandardClauses).mockResolvedValue(
+    publishedStandardClauses()
+  );
+});
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -141,13 +152,54 @@ describe("ContractClausesSection controlled inputs", () => {
   it("restores saved standard source ids and removes the second insert action", async () => {
     const harness = clauseHarness();
     const html = await harness.render();
-
-    expect(controlByTestId(harness, "clause-standard-payment").value).toBe(
-      "standard-payment-v2"
+    const paymentStandardSelect = controlByTestId(
+      harness,
+      "clause-standard-payment"
     );
+
+    expect(paymentStandardSelect.value).toBe("standard-payment-v2");
+    expect(paymentStandardSelect.options).toEqual([
+      { label: "公司付款条款 v4", value: "standard-payment-v4" },
+      { label: "公司质量验收条款 v3", value: "standard-quality-v3" },
+      { label: "公司付款条款 v2", value: "standard-payment-v2" }
+    ]);
+    expect(
+      paymentStandardSelect.options.filter(
+        (option) => option.value === "standard-payment-v4"
+      )
+    ).toHaveLength(1);
     expect(controlByTestId(harness, "clause-standard-quality").value).toBe("");
     expect(html).not.toContain("插入标准条款");
     expect(html).toContain("当前标题和正文将被覆盖");
+    expect(listPublishedStandardClauses).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses a readable historical label when saved source metadata is incomplete", async () => {
+    const model = contractDraftModel();
+    model.clauses[0] = {
+      ...model.clauses[0],
+      title: "旧版付款约定",
+      standardClauseVersionId: "legacy-standard-version-id",
+      content: {
+        text: "旧版付款正文",
+        blocks: [{ type: "paragraph", text: "旧版付款正文" }],
+        deviatedFromStandard: false
+      }
+    };
+    const harness = clauseHarness(model);
+    await harness.render();
+
+    const options = controlByTestId(
+      harness,
+      "clause-standard-payment"
+    ).options;
+    expect(options).toContainEqual({
+      label: "旧版付款约定（历史版本）",
+      value: "legacy-standard-version-id"
+    });
+    expect(options.map((option) => option.label)).not.toContain(
+      "legacy-standard-version-id"
+    );
   });
 
   it("does not write the model for a missing standard source", async () => {
@@ -162,8 +214,8 @@ describe("ContractClausesSection controlled inputs", () => {
   });
 });
 
-function clauseHarness() {
-  const model = ref(contractDraftModel());
+function clauseHarness(initialModel = contractDraftModel()) {
+  const model = ref(initialModel);
   const visible = ref(true);
   const disabled = ref(false);
   const dirtyCount = ref(0);
@@ -256,6 +308,10 @@ function controlledField(
         type: [String, Number, Boolean] as PropType<string | number | boolean>,
         default: undefined
       },
+      options: {
+        type: Array as PropType<Array<{ label: string; value: string }>>,
+        default: () => []
+      },
       disabled: { type: Boolean, default: false }
     },
     emits: ["update:modelValue", "change"],
@@ -264,6 +320,7 @@ function controlledField(
         kind,
         testId: String(attrs["data-testid"] ?? ""),
         value: props.modelValue ?? props.value ?? "",
+        options: props.options,
         disabled: props.disabled,
         update: (value) => emit("update:modelValue", value),
         change: (value) => emit("change", value)
@@ -351,4 +408,51 @@ function paymentClause(harness: ReturnType<typeof clauseHarness>) {
   return harness.model.value.clauses[0] as ContractClauseDefinition & {
     content: Record<string, unknown>;
   };
+}
+
+function publishedStandardClauses(): PublishedStandardClause[] {
+  return [
+    {
+      standardClauseVersionId: "standard-payment-v4",
+      versionId: "standard-payment-v4",
+      versionNo: 4,
+      title: "付款条款（新版）",
+      content: {
+        text: "新版付款正文",
+        blocks: [{ type: "paragraph", text: "新版付款正文" }]
+      },
+      clauseId: "standard-payment",
+      code: "PAYMENT",
+      name: "公司付款条款",
+      category: "付款"
+    },
+    {
+      standardClauseVersionId: "standard-payment-v4",
+      versionId: "standard-payment-v4-duplicate",
+      versionNo: 4,
+      title: "付款条款（重复）",
+      content: {
+        text: "重复来源不应显示",
+        blocks: [{ type: "paragraph", text: "重复来源不应显示" }]
+      },
+      clauseId: "standard-payment",
+      code: "PAYMENT",
+      name: "重复付款条款",
+      category: "付款"
+    },
+    {
+      standardClauseVersionId: "standard-quality-v3",
+      versionId: "standard-quality-v3",
+      versionNo: 3,
+      title: "质量验收条款",
+      content: {
+        text: "质量验收标准正文",
+        blocks: [{ type: "paragraph", text: "质量验收标准正文" }]
+      },
+      clauseId: "standard-quality",
+      code: "QUALITY",
+      name: "公司质量验收条款",
+      category: "质量"
+    }
+  ];
 }
