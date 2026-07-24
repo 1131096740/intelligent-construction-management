@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
@@ -89,6 +89,79 @@ test.describe("合同条款即时受控输入", () => {
     expect(consoleIssues).toEqual([]);
     expect(pageErrors).toEqual([]);
   });
+
+  test("选择标准条款时空内容直接填充，非空内容确认后才覆盖", async ({ page }, testInfo) => {
+    const consoleIssues: string[] = [];
+    const pageErrors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error" || message.type() === "warning") {
+        consoleIssues.push(`${message.type()}: ${message.text()}`);
+      }
+    });
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+
+    await installRoutes(page);
+    await loginAndOpenWorkbench(page);
+    await openSection(page, "条款");
+
+    const qualitySelect = page.getByTestId("clause-standard-quality");
+    await selectStandardClause(page, qualitySelect, "公司质量验收条款 v3");
+    await expect(
+      page.getByTestId("clause-title-quality").locator("input")
+    ).toHaveValue("质量验收条款");
+    await expect(
+      page.getByTestId("clause-paragraph-quality-0").locator("textarea")
+    ).toHaveValue("质量验收标准正文");
+    await expect(page.getByText("已填充标准条款，可继续调整。")).toBeVisible();
+    await expect(page.getByRole("button", { name: "插入标准条款" })).toHaveCount(0);
+
+    const paymentSelect = page.getByTestId("clause-standard-payment");
+    await selectStandardClause(page, paymentSelect, "公司付款条款 v4");
+    const replacementDialog = page
+      .locator(".t-dialog:visible")
+      .filter({ hasText: "确认替换标准条款" });
+    await expect(replacementDialog).toBeVisible();
+    await expect(replacementDialog).toContainText("当前标题和正文将被覆盖");
+    await expect(
+      page.getByTestId("clause-title-payment").locator("input")
+    ).toHaveValue("标准付款条款");
+    await expect(paymentSelect.locator("input")).toHaveValue("公司付款条款 v2");
+
+    await replacementDialog.getByRole("button", { name: "取消" }).click();
+    await expect(replacementDialog).toBeHidden();
+    await expect(
+      page.getByTestId("clause-title-payment").locator("input")
+    ).toHaveValue("标准付款条款");
+    await expect(
+      page.getByTestId("clause-paragraph-payment-0").locator("textarea")
+    ).toHaveValue("标准付款正文");
+    await expect(paymentSelect.locator("input")).toHaveValue("公司付款条款 v2");
+
+    await selectStandardClause(page, paymentSelect, "公司付款条款 v4");
+    await replacementDialog
+      .getByRole("button", { name: "确认替换" })
+      .click();
+    await expect(replacementDialog).toBeHidden();
+    await expect(
+      page.getByTestId("clause-title-payment").locator("input")
+    ).toHaveValue("付款条款（新版）");
+    await expect(
+      page.getByTestId("clause-paragraph-payment-0").locator("textarea")
+    ).toHaveValue("新版付款正文");
+    await expect(paymentSelect.locator("input")).toHaveValue("公司付款条款 v4");
+
+    await mkdir(screenshotDir, { recursive: true });
+    await page.screenshot({
+      path: path.join(
+        screenshotDir,
+        `${testInfo.project.name}-standard-clause-replacement.png`
+      ),
+      fullPage: true
+    });
+
+    expect(consoleIssues).toEqual([]);
+    expect(pageErrors).toEqual([]);
+  });
 });
 
 async function installRoutes(page: Page) {
@@ -132,7 +205,9 @@ async function installRoutes(page: Page) {
   );
   await page.route("**/api/contract-number-rules", (route) => fulfillJson(route, []));
   await page.route("**/api/company-entities*", (route) => fulfillJson(route, []));
-  await page.route("**/api/standard-clauses*", (route) => fulfillJson(route, []));
+  await page.route("**/api/standard-clauses*", (route) =>
+    fulfillJson(route, publishedStandardClauses())
+  );
   await page.route(
     `**/api/contract-workbench/${versionId}/negotiation-rounds`,
     (route) => fulfillJson(route, [])
@@ -203,6 +278,17 @@ function workbench() {
             standardClauseVersionNo: 2,
             deviatedFromStandard: false
           }
+        },
+        {
+          key: "quality",
+          title: "",
+          numberingMode: "automatic",
+          required: false,
+          standardClauseVersionId: null,
+          content: {
+            text: "",
+            blocks: [{ type: "paragraph", text: "" }]
+          }
         }
       ],
       templateSnapshot: {
@@ -237,6 +323,65 @@ async function openSection(page: Page, label: "条款" | "清单") {
     .locator(".business-tabs")
     .getByText(label, { exact: true })
     .click();
+}
+
+async function selectStandardClause(
+  page: Page,
+  select: Locator,
+  label: string
+) {
+  await select.click();
+  await page
+    .locator(".t-select__dropdown:visible")
+    .getByText(label, { exact: true })
+    .click();
+}
+
+function publishedStandardClauses() {
+  return [
+    {
+      standardClauseVersionId: "standard-clause-payment-v2",
+      versionId: "standard-clause-payment-v2",
+      versionNo: 2,
+      title: "标准付款条款",
+      content: {
+        text: "标准付款正文",
+        blocks: [{ type: "paragraph", text: "标准付款正文" }]
+      },
+      clauseId: "standard-clause-payment",
+      code: "PAYMENT",
+      name: "公司付款条款",
+      category: "付款"
+    },
+    {
+      standardClauseVersionId: "standard-clause-quality-v3",
+      versionId: "standard-clause-quality-v3",
+      versionNo: 3,
+      title: "质量验收条款",
+      content: {
+        text: "质量验收标准正文",
+        blocks: [{ type: "paragraph", text: "质量验收标准正文" }]
+      },
+      clauseId: "standard-clause-quality",
+      code: "QUALITY",
+      name: "公司质量验收条款",
+      category: "质量"
+    },
+    {
+      standardClauseVersionId: "standard-clause-payment-v4",
+      versionId: "standard-clause-payment-v4",
+      versionNo: 4,
+      title: "付款条款（新版）",
+      content: {
+        text: "新版付款正文",
+        blocks: [{ type: "paragraph", text: "新版付款正文" }]
+      },
+      clauseId: "standard-clause-payment",
+      code: "PAYMENT",
+      name: "公司付款条款",
+      category: "付款"
+    }
+  ];
 }
 
 function fulfillJson(route: Route, body: unknown) {

@@ -87,17 +87,10 @@
           :value="selectedClauseIds[clause.key] ?? ''"
           :options="standardClauseOptions"
           :disabled="clauseDisabled(clause.key) || libraryBusy"
+          :data-testid="`clause-standard-${clause.key}`"
           placeholder="选择已发布标准条款"
           @change="(value: string) => selectStandardClause(clause.key, value)"
         />
-        <t-button
-          size="small"
-          variant="outline"
-          :disabled="clauseDisabled(clause.key) || !selectedClauseIds[clause.key]"
-          @click="insertStandardClause(clause.key)"
-        >
-          插入标准条款
-        </t-button>
       </div>
 
       <div class="content-editor">
@@ -200,6 +193,15 @@
       </div>
     </div>
 
+    <SensitiveActionDialog
+      v-model="replacementVisible"
+      title="确认替换标准条款"
+      description="当前标题和正文将被覆盖，请确认是否继续。"
+      confirm-text="确认替换"
+      @confirm="confirmStandardReplacement"
+      @cancel="cancelStandardReplacement"
+    />
+
     <p
       v-if="message"
       class="message"
@@ -211,11 +213,12 @@
 
 <script setup lang="ts">
 import type { ContractClauseDefinition } from "@jiangkong/shared-domain";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import {
   listPublishedStandardClauses,
   type PublishedStandardClause
 } from "../../../api/contract-workbench.api";
+import SensitiveActionDialog from "../../../components/SensitiveActionDialog.vue";
 import {
   clauseDocumentText,
   clauseReadinessMessages,
@@ -223,7 +226,10 @@ import {
   type ClauseBlock,
   type ClauseDocument
 } from "./contract-bill-editor";
-import { withClauseDeviation } from "./contract-clause-editing";
+import {
+  applyPublishedStandardClause,
+  withClauseDeviation
+} from "./contract-clause-editing";
 import type { ContractDraftModel } from "./use-contract-draft";
 
 const props = defineProps<{
@@ -249,6 +255,11 @@ const standardClauses = ref<PublishedStandardClause[]>([]);
 const selectedClauseIds = ref<Record<string, string>>({});
 const libraryBusy = ref(false);
 const message = ref("");
+const replacementVisible = ref(false);
+const pendingReplacement = ref<{
+  key: string;
+  source: PublishedStandardClause;
+} | null>(null);
 
 const standardClauseOptions = computed(() =>
   standardClauses.value.map((clause) => ({
@@ -258,6 +269,24 @@ const standardClauseOptions = computed(() =>
 );
 
 onMounted(loadStandardClauses);
+
+watch(
+  () =>
+    props.model.clauses.map((clause) => ({
+      key: clause.key,
+      standardClauseVersionId: clause.standardClauseVersionId
+    })),
+  (clauses) => {
+    const next: Record<string, string> = {};
+    clauses.forEach((clause) => {
+      if (clause.standardClauseVersionId) {
+        next[clause.key] = clause.standardClauseVersionId;
+      }
+    });
+    selectedClauseIds.value = next;
+  },
+  { immediate: true }
+);
 
 function updateClause(key: string, patch: Partial<ContractClauseDefinition>) {
   const clause = props.model.clauses.find((item) => item.key === key);
@@ -402,26 +431,63 @@ async function loadStandardClauses() {
   }
 }
 
-function insertStandardClause(key: string) {
-  const selectedId = selectedClauseIds.value[key];
-  const source = standardClauses.value.find((item) => item.standardClauseVersionId === selectedId);
-  if (!source) return;
-  const content = normalizeClauseDocument(source.content);
-  updateClause(key, {
-    standardClauseVersionId: source.standardClauseVersionId,
-    title: source.title,
-    content: {
-      ...content,
-      standardContent: source.content,
-      standardClauseSourceName: source.name || source.title || source.code,
-      standardClauseVersionNo: source.versionNo
-    }
-  });
-  message.value = "已插入标准条款。";
+function clauseHasUserContent(clause: ContractClauseDefinition): boolean {
+  return Boolean(
+    clause.title.trim() ||
+      clauseDocumentText(normalizeClauseDocument(clause.content)).trim()
+  );
 }
 
-function selectStandardClause(key: string, value: string) {
-  selectedClauseIds.value = { ...selectedClauseIds.value, [key]: value };
+function selectStandardClause(key: string, selectedId: string) {
+  if (clauseDisabled(key)) return;
+  const clause = props.model.clauses.find((item) => item.key === key);
+  const source = standardClauses.value.find(
+    (item) => item.standardClauseVersionId === selectedId
+  );
+  if (!clause || !source) return;
+  if (clauseHasUserContent(clause)) {
+    pendingReplacement.value = { key, source };
+    replacementVisible.value = true;
+    return;
+  }
+  applyStandardClause(key, source);
+}
+
+function applyStandardClause(
+  key: string,
+  source: PublishedStandardClause
+) {
+  if (
+    clauseDisabled(key) ||
+    !standardClauses.value.some(
+      (item) =>
+        item.standardClauseVersionId === source.standardClauseVersionId
+    )
+  ) {
+    return;
+  }
+  const clause = props.model.clauses.find((item) => item.key === key);
+  if (!clause) return;
+  replaceClause(applyPublishedStandardClause(clause, source));
+  selectedClauseIds.value = {
+    ...selectedClauseIds.value,
+    [key]: source.standardClauseVersionId
+  };
+  message.value = "已填充标准条款，可继续调整。";
+}
+
+function confirmStandardReplacement() {
+  const pending = pendingReplacement.value;
+  if (pending) {
+    applyStandardClause(pending.key, pending.source);
+  }
+  pendingReplacement.value = null;
+  replacementVisible.value = false;
+}
+
+function cancelStandardReplacement() {
+  pendingReplacement.value = null;
+  replacementVisible.value = false;
 }
 
 function readinessFor(key: string) {

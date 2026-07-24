@@ -129,12 +129,36 @@ describe("ContractClausesSection controlled inputs", () => {
     for (const testId of [
       "clause-title-payment",
       "clause-numbering-payment",
+      "clause-standard-payment",
       "clause-paragraph-payment-0",
       "clause-list-payment-1",
       "clause-table-payment-2-0-0"
     ]) {
       expect(controlByTestId(harness, testId).disabled).toBe(true);
     }
+  });
+
+  it("restores saved standard source ids and removes the second insert action", async () => {
+    const harness = clauseHarness();
+    const html = await harness.render();
+
+    expect(controlByTestId(harness, "clause-standard-payment").value).toBe(
+      "standard-payment-v2"
+    );
+    expect(controlByTestId(harness, "clause-standard-quality").value).toBe("");
+    expect(html).not.toContain("插入标准条款");
+    expect(html).toContain("当前标题和正文将被覆盖");
+  });
+
+  it("does not write the model for a missing standard source", async () => {
+    const harness = clauseHarness();
+    await harness.render();
+    const before = JSON.parse(JSON.stringify(harness.model.value)) as ContractDraftModel;
+
+    controlByTestId(harness, "clause-standard-payment").change("missing-source");
+
+    expect(harness.model.value).toEqual(before);
+    expect(harness.dirtyCount.value).toBe(0);
   });
 });
 
@@ -165,7 +189,7 @@ function clauseHarness() {
     controls.splice(0);
     const app = createSSRApp(ParentHarness);
     registerTDesignStubs(app, controls);
-    await renderToString(app);
+    return renderToString(app);
   }
 
   return { model, visible, disabled, dirtyCount, controls, render };
@@ -190,6 +214,27 @@ function registerTDesignStubs(app: App, controls: FieldControl[]) {
       name: "TButton",
       setup(_props, { attrs, slots }) {
         return () => h("button", attrs, slots.default?.());
+      }
+    })
+  );
+  app.component(
+    "TDialog",
+    defineComponent({
+      name: "TDialog",
+      setup(_props, { slots }) {
+        return () => h("section", [slots.default?.(), slots.footer?.()]);
+      }
+    })
+  );
+  app.component(
+    "TAlert",
+    defineComponent({
+      name: "TAlert",
+      props: {
+        message: { type: String, default: "" }
+      },
+      setup(props) {
+        return () => h("div", props.message);
       }
     })
   );
