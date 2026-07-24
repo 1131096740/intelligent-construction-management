@@ -1,4 +1,9 @@
-import { createMemoryHistory, createRouter, createWebHistory } from "vue-router";
+import {
+  START_LOCATION,
+  createMemoryHistory,
+  createRouter,
+  createWebHistory
+} from "vue-router";
 import type { RouterScrollBehavior } from "vue-router";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { useAuthStore } from "../auth/auth.store";
@@ -6,12 +11,59 @@ import { hasAnyRole, webAdminRoutes } from "./route-records";
 
 type SavedScrollPosition = Parameters<RouterScrollBehavior>[2];
 
+interface ScrollCoordinates {
+  left: number;
+  top: number;
+}
+
+export class BrowserHistoryScrollPositionRegistry {
+  private readonly positions = new Map<number, ScrollCoordinates>();
+  private currentPosition: number | null;
+  private pendingTargetPosition: number | null = null;
+
+  constructor(initialHistoryState: unknown) {
+    this.currentPosition = readHistoryPosition(initialHistoryState);
+  }
+
+  capturePopState(
+    targetHistoryState: unknown,
+    outgoingScrollPosition: ScrollCoordinates
+  ) {
+    if (this.currentPosition !== null) {
+      this.positions.set(
+        this.currentPosition,
+        normalizeScrollCoordinates(outgoingScrollPosition)
+      );
+    }
+    this.pendingTargetPosition = readHistoryPosition(targetHistoryState);
+  }
+
+  syncCurrentPosition(historyState: unknown) {
+    this.currentPosition = readHistoryPosition(historyState);
+  }
+
+  consumePendingScrollPosition(): ScrollCoordinates | null {
+    const targetPosition = this.pendingTargetPosition;
+    this.pendingTargetPosition = null;
+    if (targetPosition === null) {
+      return null;
+    }
+
+    const position = this.positions.get(targetPosition);
+    return position ? { ...position } : null;
+  }
+}
+
 export function resolveRouteScrollPosition(
   to: { hash?: string },
-  savedPosition: SavedScrollPosition
+  savedPosition: SavedScrollPosition,
+  pendingPopPosition: ScrollCoordinates | null = null
 ) {
   if (savedPosition) {
     return savedPosition;
+  }
+  if (pendingPopPosition) {
+    return pendingPopPosition;
   }
   if (to.hash && to.hash !== "#") {
     return { el: to.hash };
@@ -19,11 +71,75 @@ export function resolveRouteScrollPosition(
   return { left: 0, top: 0 };
 }
 
+const browserScrollRegistryKey =
+  "__JIANGKONG_BROWSER_HISTORY_SCROLL_POSITION_REGISTRY__";
+
+type RegistryWindow = Window & {
+  [browserScrollRegistryKey]?: BrowserHistoryScrollPositionRegistry;
+};
+
+function installBrowserHistoryScrollPositionRegistry(
+  windowRef: Window
+): BrowserHistoryScrollPositionRegistry {
+  const registryWindow = windowRef as RegistryWindow;
+  const installed = registryWindow[browserScrollRegistryKey];
+  if (installed) {
+    return installed;
+  }
+
+  const registry = new BrowserHistoryScrollPositionRegistry(
+    windowRef.history.state
+  );
+  windowRef.addEventListener("popstate", (event) => {
+    registry.capturePopState(event.state, {
+      left: windowRef.scrollX,
+      top: windowRef.scrollY
+    });
+  });
+  Object.defineProperty(registryWindow, browserScrollRegistryKey, {
+    configurable: true,
+    value: registry
+  });
+  return registry;
+}
+
+function readHistoryPosition(state: unknown): number | null {
+  if (!state || typeof state !== "object") {
+    return null;
+  }
+  const position = (state as { position?: unknown }).position;
+  return typeof position === "number" &&
+    Number.isSafeInteger(position) &&
+    position >= 0
+    ? position
+    : null;
+}
+
+function normalizeScrollCoordinates(
+  position: ScrollCoordinates
+): ScrollCoordinates {
+  return {
+    left: Number.isFinite(position.left) ? position.left : 0,
+    top: Number.isFinite(position.top) ? position.top : 0
+  };
+}
+
+const browserHistoryScrollRegistry =
+  typeof window === "undefined"
+    ? null
+    : installBrowserHistoryScrollPositionRegistry(window);
+const routerHistory =
+  typeof window === "undefined" ? createMemoryHistory() : createWebHistory();
+
 export const router = createRouter({
-  history: typeof window === "undefined" ? createMemoryHistory() : createWebHistory(),
+  history: routerHistory,
   routes: webAdminRoutes,
   scrollBehavior(to, _from, savedPosition) {
-    return resolveRouteScrollPosition(to, savedPosition);
+    return resolveRouteScrollPosition(
+      to,
+      savedPosition,
+      browserHistoryScrollRegistry?.consumePendingScrollPosition() ?? null
+    );
   }
 });
 
@@ -108,7 +224,7 @@ export function resolveRouteNavigation(
   from: RouteNavigationSource,
   auth: RouteAccessAuth
 ) {
-  if (from.matched.length === 0) {
+  if (from === START_LOCATION) {
     const encodedRouteRedirect = buildEncodedRouteRedirect(to);
     if (encodedRouteRedirect) {
       return encodedRouteRedirect;
@@ -139,11 +255,14 @@ router.beforeEach((to, from) => {
   });
 });
 
-router.afterEach((to) => {
+router.afterEach((to, _from, failure) => {
   if (typeof document === "undefined" || typeof window === "undefined") {
     return;
   }
 
+  if (!failure) {
+    browserHistoryScrollRegistry?.syncCurrentPosition(window.history.state);
+  }
   document.title = buildRouteDocumentTitle(to);
   window.setTimeout(() => focusMainContent(document), 0);
 });

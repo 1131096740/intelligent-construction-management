@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { START_LOCATION } from "vue-router";
 import {
+  BrowserHistoryScrollPositionRegistry,
   buildEncodedRouteRedirect,
   buildRouteDocumentTitle,
   focusMainContent,
@@ -88,7 +90,7 @@ describe("web admin routes", () => {
           hash: "#members",
           meta: {}
         },
-        { matched: [] },
+        START_LOCATION,
         { isAuthenticated: false, roleKeys: [] }
       )
     ).toEqual({
@@ -96,6 +98,27 @@ describe("web admin routes", () => {
       query: { tab: "roles" },
       hash: "#members",
       replace: true
+    });
+  });
+
+  it("does not treat an unmatched SPA route as the initial navigation", () => {
+    expect(
+      resolveRouteNavigation(
+        {
+          path: "/%E7%BB%84%E7%BB%87%E6%9D%83%E9%99%90",
+          fullPath: "/%E7%BB%84%E7%BB%87%E6%9D%83%E9%99%90?tab=roles#members",
+          query: { tab: "roles" },
+          hash: "#members",
+          meta: {}
+        },
+        { matched: [] },
+        { isAuthenticated: false, roleKeys: [] }
+      )
+    ).toEqual({
+      path: "/login",
+      query: {
+        redirect: "/%E7%BB%84%E7%BB%87%E6%9D%83%E9%99%90?tab=roles#members"
+      }
     });
   });
 
@@ -124,9 +147,54 @@ describe("web admin routes", () => {
     expect(
       resolveRouteScrollPosition(
         { hash: "#files%20archive" },
-        { left: 0, top: 640 }
+        { left: 0, top: 640 },
+        { left: 0, top: 350 }
       )
     ).toEqual({ left: 0, top: 640 });
+  });
+
+  it("restores a pending forward target by browser history position", () => {
+    const registry = new BrowserHistoryScrollPositionRegistry({ position: 1 });
+
+    registry.capturePopState(
+      { position: 0 },
+      { left: 0, top: 350 }
+    );
+    expect(registry.consumePendingScrollPosition()).toBeNull();
+    registry.syncCurrentPosition({ position: 0 });
+
+    registry.capturePopState(
+      { position: 1 },
+      { left: 0, top: 700 }
+    );
+
+    expect(
+      resolveRouteScrollPosition(
+        { hash: "" },
+        null,
+        registry.consumePendingScrollPosition()
+      )
+    ).toEqual({ left: 0, top: 350 });
+  });
+
+  it("does not restore an old registry entry during an ordinary push", () => {
+    const registry = new BrowserHistoryScrollPositionRegistry({ position: 1 });
+
+    registry.capturePopState(
+      { position: 0 },
+      { left: 0, top: 350 }
+    );
+    expect(registry.consumePendingScrollPosition()).toBeNull();
+    registry.syncCurrentPosition({ position: 0 });
+    registry.syncCurrentPosition({ position: 1 });
+
+    expect(
+      resolveRouteScrollPosition(
+        { hash: "" },
+        null,
+        registry.consumePendingScrollPosition()
+      )
+    ).toEqual({ left: 0, top: 0 });
   });
 
   it("uses the route hash unchanged when no saved position exists", () => {
