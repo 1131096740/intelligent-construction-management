@@ -77,6 +77,7 @@ import {
   type WorkItemReadModel,
   type WorkItemsReadModel
 } from "../../api/core-flow-read.api";
+import { navigateToApprovalWorkItem } from "./approval-center-navigation";
 
 interface ApprovalView {
   key: ApprovalCenterViewKey;
@@ -125,7 +126,7 @@ async function loadWorkItems() {
 }
 
 function goDetail(item: WorkItemReadModel) {
-  void router.push({ path: item.targetPath });
+  void navigateToApprovalWorkItem(router, item);
 }
 
 onMounted(() => {

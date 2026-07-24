@@ -31,8 +31,7 @@ describe("responsive operational ledgers", () => {
     expect(pages.approval).not.toContain("jg-table-region");
   });
 
-  it("opens approval work items without adding a shared invalid anchor", () => {
-    expect(pages.approval).toContain("router.push({ path: item.targetPath })");
+  it("does not add a shared invalid anchor to approval work items", () => {
     expect(pages.approval).not.toContain('hash: "#approval"');
   });
 });
