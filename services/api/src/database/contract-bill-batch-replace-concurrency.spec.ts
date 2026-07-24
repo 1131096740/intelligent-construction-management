@@ -3,14 +3,22 @@ import { PrismaClient } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { ContractBillService } from "../contract-bill/contract-bill.service";
 
+const TEST_DATABASE = "jiangkong_contract_bill_batch_test";
+
+export function contractBillBatchDatabaseUrl(value: string | undefined) {
+  if (!value || process.env.NODE_ENV === "production") throw new Error("合同清单整表集成测试必须连接非生产专用数据库");
+  const url = new URL(value);
+  if (!['postgresql:', 'postgres:'].includes(url.protocol) || !['127.0.0.1', 'localhost', '::1'].includes(url.hostname) || url.pathname !== `/${TEST_DATABASE}`) {
+    throw new Error("合同清单整表集成测试拒绝非本机专用数据库");
+  }
+  return url.toString();
+}
+
 describe("contract bill batch replace PostgreSQL evidence", () => {
   const integrationTest = process.env.RUN_CONTRACT_BILL_BATCH_DATABASE === "1" ? it : it.skip;
 
   integrationTest("uses JSONB receipt, serializes writes, and rolls back on audit failure", async () => {
-    const databaseUrl = process.env.DATABASE_URL;
-    if (!databaseUrl || process.env.NODE_ENV === "production") {
-      throw new Error("合同清单整表集成测试必须连接非生产隔离数据库");
-    }
+    const databaseUrl = contractBillBatchDatabaseUrl(process.env.CONTRACT_BILL_BATCH_DATABASE_URL);
     const schema = `contract_bill_batch_${randomUUID().replace(/-/gu, "")}`;
     const admin = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
     const url = new URL(databaseUrl); url.searchParams.set("schema", schema);

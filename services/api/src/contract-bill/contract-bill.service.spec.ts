@@ -665,6 +665,19 @@ describe("ContractBillService", () => {
     expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
   });
 
+  it("aggregates primitive batch rows into structured row errors without writes", async () => {
+    const { service, tx } = fixture();
+    await expect(service.replaceRows("bill-1", "owner-1", {
+      expectedBillRevision: 2, idempotencyKey: "primitive-row-errors", rows: [null, "bad"]
+    })).rejects.toMatchObject({ response: { code: "CONTRACT_BILL_VALIDATION_FAILED", rowErrors: [
+      expect.objectContaining({ clientRowKey: "row-1", field: "row" }),
+      expect.objectContaining({ clientRowKey: "row-2", field: "row" })
+    ] } });
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("reports explicit batch fields without guessing from validation messages", async () => {
     const { service, tx } = fixture();
 

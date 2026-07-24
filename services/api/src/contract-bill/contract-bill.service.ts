@@ -556,8 +556,16 @@ export class ContractBillService {
     if (!Array.isArray(input.rows) || input.rows.length > 5000) {
       throw new BadRequestException("合同清单行数必须在 0 到 5000 行之间");
     }
-    const rows = input.rows.map((rawRow, index) => {
-      const row = this.requireObject(rawRow, `合同清单第 ${index + 1} 行`);
+    const rowErrors: BatchRowError[] = [];
+    const rows = input.rows.flatMap((rawRow, index) => {
+      const fallbackClientRowKey = `row-${index + 1}`;
+      let row: Record<string, unknown>;
+      try {
+        row = this.requireObject(rawRow, `合同清单第 ${index + 1} 行`);
+      } catch (error) {
+        rowErrors.push(this.batchRowError(fallbackClientRowKey, error));
+        return [];
+      }
       const normalized: Record<string, unknown> = {
         clientRowKey: row.clientRowKey,
         sortOrder: row.sortOrder
@@ -567,8 +575,15 @@ export class ContractBillService {
         if (row[field] !== undefined) normalized[field] = row[field];
       }
       this.assertJsonEnvelopeValue(normalized, new WeakSet<object>());
-      return normalized;
+      return [normalized];
     });
+    if (rowErrors.length) {
+      throw new BadRequestException({
+        code: "CONTRACT_BILL_VALIDATION_FAILED",
+        message: `清单有 ${rowErrors.length} 处需要修改`,
+        rowErrors
+      });
+    }
     return {
       expectedBillRevision: input.expectedBillRevision as number,
       idempotencyKey: input.idempotencyKey,
