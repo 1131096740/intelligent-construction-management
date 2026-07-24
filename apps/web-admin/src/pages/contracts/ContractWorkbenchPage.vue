@@ -275,7 +275,31 @@
           <span class="contract-code">{{ workbench?.contract.temporaryCode ?? "" }}</span>
         </div>
         <div class="status-right">
-          <span :class="['autosave-status', autosaveTone]">{{ autosaveLabel }}</span>
+          <div
+            class="save-feedback"
+            aria-live="polite"
+          >
+            <span
+              :class="['autosave-status', autosaveTone]"
+              data-testid="contract-draft-save-status"
+            >
+              {{ autosaveLabel }}
+            </span>
+            <small
+              v-if="saveReceiptText"
+              class="save-receipt"
+              data-testid="contract-draft-save-receipt"
+            >
+              {{ saveReceiptText }}
+            </small>
+            <small
+              v-if="manualSaveMessage"
+              class="manual-save-message"
+              data-testid="contract-draft-manual-save-message"
+            >
+              {{ manualSaveMessage }}
+            </small>
+          </div>
           <t-button
             v-if="canTransfer"
             size="small"
@@ -756,7 +780,7 @@ import type {
   ContractReadinessResult,
   ContractWorkbenchReadModel
 } from "@jiangkong/shared-domain";
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   abandonContractDraft,
@@ -817,6 +841,12 @@ import ContractPricingSection from "./workbench/ContractPricingSection.vue";
 import ContractProfessionalFieldsSection from "./workbench/ContractProfessionalFieldsSection.vue";
 import ContractReadinessPanel from "./workbench/ContractReadinessPanel.vue";
 import ContractTaxFactsSection from "./workbench/ContractTaxFactsSection.vue";
+import {
+  contractDraftManualSaveMessage,
+  contractDraftSaveReceiptText,
+  contractDraftSaveStatusText,
+  shouldReloadContractAfterManualSave
+} from "./workbench/contract-draft-save-status";
 import type { ContractDocumentCanvasRecord } from "./workbench/contract-document-canvas";
 import type {
   ContractNegotiationRoundReadModel,
@@ -863,6 +893,8 @@ const {
   suspendAutosaveForLifecycleAction,
   resumeAutosaveAfterLifecycleAction,
   savedRevision,
+  formalSaveCompleted,
+  lastSavedAt,
   saveNow,
   createCheckpoint,
   restoreCheckpoint,
@@ -1001,6 +1033,9 @@ type StructuredReadiness = ContractReadinessResult & {
 const activeSection = ref<SectionKey>("overview");
 const creating = ref(false);
 const errorMessage = ref("");
+const manualSaveMessage = ref("");
+const sessionLastSavedAt = ref<Date | null>(null);
+const sessionSavedRevision = ref(0);
 const exactVersionError = ref("");
 const transferVisible = ref(false);
 const transferUserId = ref("");
@@ -1200,20 +1235,60 @@ const canTransfer = computed(() => Boolean(workbench.value));
 const transferUserOptions = computed(() =>
   transferUsers.value.map((user) => ({ label: user.name, value: user.id }))
 );
-const autosaveLabel = computed(() => {
-  switch (saveState.value) {
-    case "saving":
-      return "保存中…";
-    case "saved":
-      return "已保存";
-    case "failed":
-      return "保存失败，修改已保留";
-    case "conflict":
-      return "版本冲突，待处理";
-    default:
-      return dirty.value ? "有未保存修改" : "未改动";
+const autosaveLabel = computed(() =>
+  contractDraftSaveStatusText({
+    formalSaveCompleted: formalSaveCompleted.value,
+    dirty: dirty.value,
+    saveState: saveState.value
+  })
+);
+
+const saveReceiptText = computed(() => {
+  return contractDraftSaveReceiptText({
+    formalSaveCompleted: formalSaveCompleted.value,
+    savedRevision: sessionSavedRevision.value,
+    lastSavedAt: sessionLastSavedAt.value
+  });
+});
+
+let manualSaveMessageTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearManualSaveMessage() {
+  if (manualSaveMessageTimer !== null) {
+    clearTimeout(manualSaveMessageTimer);
+    manualSaveMessageTimer = null;
+  }
+  manualSaveMessage.value = "";
+}
+
+function showManualSaveMessage(message: string) {
+  clearManualSaveMessage();
+  manualSaveMessage.value = message;
+  manualSaveMessageTimer = setTimeout(() => {
+    manualSaveMessageTimer = null;
+    manualSaveMessage.value = "";
+  }, 4_000);
+}
+
+function clearSessionSaveReceipt() {
+  sessionLastSavedAt.value = null;
+  sessionSavedRevision.value = 0;
+}
+
+watch(lastSavedAt, (value) => {
+  if (value !== null) {
+    sessionLastSavedAt.value = value;
+    sessionSavedRevision.value = savedRevision.value;
+  }
+}, { flush: "sync" });
+
+watch([saveState, isDirty], ([state, draftDirty]) => {
+  if (draftDirty || state === "failed" || state === "conflict") {
+    clearManualSaveMessage();
   }
 });
+
+onBeforeUnmount(clearManualSaveMessage);
 
 const autosaveTone = computed(() => {
   switch (saveState.value) {
@@ -1655,12 +1730,44 @@ async function onCreateDraft() {
 
 async function onSave() {
   if (writeLocked.value) return;
-  const saved = await saveNow();
+  clearManualSaveMessage();
+  errorMessage.value = "";
+  const hadDirtyContent = isDirty.value;
+  const wasFormallySaved = formalSaveCompleted.value;
+  let saved = false;
+  try {
+    saved = await saveNow();
+  } catch (error) {
+    errorMessage.value = error instanceof Error
+      ? error.message
+      : "合同草稿未保存成功，已保留当前内容，请重试。";
+    return;
+  }
   if (!saved) {
     errorMessage.value = saveError.value || "合同草稿未保存成功，已保留当前内容，请重试。";
     return;
   }
-  if (contractId.value) await loadExpectedWorkbench(contractId.value);
+  showManualSaveMessage(
+    contractDraftManualSaveMessage({
+      hadDirtyContent,
+      formalSaveCompleted: formalSaveCompleted.value
+    })
+  );
+  if (
+    shouldReloadContractAfterManualSave({
+      wasFormalSaveCompleted: wasFormallySaved,
+      formalSaveCompleted: formalSaveCompleted.value,
+      contractId: contractId.value
+    })
+  ) {
+    try {
+      await loadExpectedWorkbench(contractId.value);
+    } catch (error) {
+      errorMessage.value = error instanceof Error
+        ? `合同内容已保存，但正式编号读取失败：${error.message}`
+        : "合同内容已保存，但正式编号读取失败，请刷新页面重试。";
+    }
+  }
 }
 
 async function prepareGovernanceMutation() {
@@ -1841,6 +1948,7 @@ onMounted(() => {
 // Loading a different contract (or arriving from the create flow) reloads.
 watch(contractId, (next, previous) => {
   if (next && next !== previous) {
+    clearSessionSaveReceipt();
     focusedBillKey.value = "";
     billEditorDirty.value = false;
     workbenchLoadRequestId += 1;
@@ -1852,6 +1960,7 @@ watch(contractId, (next, previous) => {
 
 watch(() => route.query.versionId, (next, previous) => {
   if (contractId.value && next !== previous) {
+    clearSessionSaveReceipt();
     workbenchLoadRequestId += 1;
     workbench.value = null;
     exactVersionError.value = "";
@@ -2103,6 +2212,25 @@ function initializeDraftFromQuery() {
 
 .autosave-status {
   font-size: 12px;
+  font-weight: 600;
+}
+
+.save-feedback {
+  display: grid;
+  justify-items: end;
+  gap: var(--jg-space-xs);
+  min-width: 0;
+}
+
+.save-receipt,
+.manual-save-message {
+  color: var(--jg-text-muted);
+  font-size: var(--jg-font-meta);
+  line-height: 1.3;
+}
+
+.manual-save-message {
+  color: var(--jg-success);
   font-weight: 600;
 }
 
@@ -2389,6 +2517,10 @@ function initializeDraftFromQuery() {
 
   .status-right {
     justify-content: flex-start;
+  }
+
+  .save-feedback {
+    justify-items: start;
   }
 
   .workbench-summary {

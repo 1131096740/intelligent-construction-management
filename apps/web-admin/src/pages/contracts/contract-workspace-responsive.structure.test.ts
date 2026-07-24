@@ -58,4 +58,28 @@ describe("contract workspace responsive governance", () => {
       'class="canvas-stage jg-workspace-scroll"'
     );
   });
+
+  it("keeps save feedback accurate without reloading after every manual save", () => {
+    const onSave = workbench.slice(
+      workbench.indexOf("async function onSave()"),
+      workbench.indexOf("async function prepareGovernanceMutation()")
+    );
+    const governance = workbench.slice(
+      workbench.indexOf("async function prepareGovernanceMutation()"),
+      workbench.indexOf("function requestSubmission()")
+    );
+
+    expect(workbench).toContain("contractDraftSaveStatusText");
+    expect(workbench).toContain("formalSaveCompleted");
+    expect(workbench).toContain("lastSavedAt");
+    expect(workbench).toContain("saveReceiptText");
+    expect(workbench).toContain("manualSaveMessage");
+    expect(onSave).toContain("const hadDirtyContent = isDirty.value");
+    expect(onSave).toContain("const wasFormallySaved = formalSaveCompleted.value");
+    expect(onSave).toContain("shouldReloadContractAfterManualSave");
+    expect(onSave).not.toContain(
+      "if (contractId.value) await loadExpectedWorkbench(contractId.value)"
+    );
+    expect(governance).toContain("await loadExpectedWorkbench(id)");
+  });
 });
