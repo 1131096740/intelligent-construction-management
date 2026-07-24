@@ -647,34 +647,64 @@
     />
 
     <t-dialog
-      v-model:visible="leaveConfirmVisible"
-      :header="billEditorDirty ? '放弃未保存清单？' : '离开合同工作台？'"
+      v-model:visible="navigationConfirmVisible"
+      :header="navigationUnsavedTitle"
       :close-on-overlay-click="false"
       :close-on-esc-keydown="false"
       width="520px"
       :footer="false"
-      @close="resolveLeaveDecision(false)"
+      @close="resolveNavigationDecision(false)"
     >
       <div class="leave-confirm">
         <t-alert
           theme="warning"
           title="请确认未保存内容"
-          :message="billEditorDirty
-            ? '放弃后将恢复到最近一次整表保存的清单；服务端已有内容不受影响。'
-            : '当前填写尚未保存。离开后本次未保存修改不会生效。'"
+          :message="navigationUnsavedMessage"
         />
         <div class="leave-confirm-actions">
           <t-button
             variant="outline"
-            @click="resolveLeaveDecision(false)"
+            @click="resolveNavigationDecision(false)"
           >
             继续编辑
           </t-button>
           <t-button
             theme="danger"
-            @click="resolveLeaveDecision(true)"
+            @click="resolveNavigationDecision(true)"
           >
-            放弃未保存修改
+            放弃并离开
+          </t-button>
+        </div>
+      </div>
+    </t-dialog>
+
+    <t-dialog
+      v-model:visible="focusCloseConfirmVisible"
+      header="放弃未保存清单？"
+      :close-on-overlay-click="false"
+      :close-on-esc-keydown="false"
+      width="520px"
+      :footer="false"
+      @close="resolveFocusClose(false)"
+    >
+      <div class="leave-confirm">
+        <t-alert
+          theme="warning"
+          title="只处理当前清单"
+          message="放弃后只恢复清单到最近一次整表保存状态；合同基础信息的本地草稿不会被清除。"
+        />
+        <div class="leave-confirm-actions">
+          <t-button
+            variant="outline"
+            @click="resolveFocusClose(false)"
+          >
+            继续编辑清单
+          </t-button>
+          <t-button
+            theme="danger"
+            @click="resolveFocusClose(true)"
+          >
+            放弃清单修改
           </t-button>
         </div>
       </div>
@@ -789,7 +819,7 @@ const submissionMessageTone = ref<"success" | "error">("success");
 const governanceMutationLocked = ref(false);
 const focusedBillKey = ref("");
 const billEditorDirty = ref(false);
-const focusCloseCheck = ref(false);
+const focusCloseConfirmVisible = ref(false);
 const billFocusEditorRef = ref<InstanceType<typeof ContractBillFocusEditor> | null>(null);
 
 const draft = useContractDraft({
@@ -819,32 +849,51 @@ const {
   loadServerAfterConflict
 } = draft;
 
-const leaveConfirmVisible = ref(false);
+const navigationConfirmVisible = ref(false);
 const navigationBypass = ref(false);
-let resolvePendingLeave: ((decision: boolean) => void) | null = null;
+let resolvePendingNavigation: ((decision: boolean) => void) | null = null;
 
-const { requestClose: requestUnsavedClose } = useUnsavedChangesGuard({
-  isDirty: () => {
-    if (navigationBypass.value) return false;
-    return focusCloseCheck.value
-      ? billEditorDirty.value
-      : isDirty.value || billEditorDirty.value;
-  },
-  confirmLeave: () => new Promise<boolean>((resolve) => {
-    resolvePendingLeave?.(false);
-    resolvePendingLeave = resolve;
-    leaveConfirmVisible.value = true;
-  })
+const navigationUnsavedTitle = computed(() => {
+  if (isDirty.value && billEditorDirty.value) return "合同基础信息和清单均未保存";
+  if (billEditorDirty.value) return "合同清单尚未保存";
+  return "合同基础信息尚未保存";
+});
+const navigationUnsavedMessage = computed(() => {
+  if (isDirty.value && billEditorDirty.value) {
+    return "当前合同基础信息和清单都有未保存修改。放弃后两类本地修改都会丢失，服务端最近保存内容不受影响。";
+  }
+  if (billEditorDirty.value) {
+    return "当前清单有未保存修改。放弃后将恢复到最近一次整表保存状态。";
+  }
+  return "当前合同基础信息有未保存修改。放弃后将恢复到服务端最近保存状态。";
 });
 
-function resolveLeaveDecision(decision: boolean) {
-  leaveConfirmVisible.value = false;
-  if (decision && billEditorDirty.value) {
+useUnsavedChangesGuard({
+  isDirty: () =>
+    !navigationBypass.value && (isDirty.value || billEditorDirty.value),
+  confirmLeave: () => new Promise<boolean>((resolve) => {
+    focusCloseConfirmVisible.value = false;
+    resolvePendingNavigation?.(false);
+    resolvePendingNavigation = resolve;
+    navigationConfirmVisible.value = true;
+  }),
+  discardChanges: discardNavigationChanges
+});
+
+function resolveNavigationDecision(decision: boolean) {
+  navigationConfirmVisible.value = false;
+  const resolve = resolvePendingNavigation;
+  resolvePendingNavigation = null;
+  resolve?.(decision);
+}
+
+function discardNavigationChanges() {
+  if (billEditorDirty.value) {
     billFocusEditorRef.value?.discardChanges();
   }
-  const resolve = resolvePendingLeave;
-  resolvePendingLeave = null;
-  resolve?.(decision);
+  if (isDirty.value) {
+    discardLocalState();
+  }
 }
 
 const contractDraftActions = computed(() => workbench.value?.availableActions ?? []);
@@ -1050,18 +1099,23 @@ function openBillFocus(billKey: string, openImport = false) {
   }
 }
 
-async function requestBillFocusClose() {
+function requestBillFocusClose() {
   if (!focusedBill.value) return;
   if (billEditorDirty.value) {
-    focusCloseCheck.value = true;
-    try {
-      const mayClose = await requestUnsavedClose();
-      if (!mayClose) return;
-    } finally {
-      focusCloseCheck.value = false;
-    }
+    focusCloseConfirmVisible.value = true;
+    return;
   }
+  closeBillFocus();
+}
+
+function resolveFocusClose(discard: boolean) {
+  focusCloseConfirmVisible.value = false;
+  if (!discard) return;
   billFocusEditorRef.value?.discardChanges();
+  closeBillFocus();
+}
+
+function closeBillFocus() {
   focusedBillKey.value = "";
   billEditorDirty.value = false;
 }

@@ -1,8 +1,34 @@
-import { effectScope, ref } from "vue";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { createUnsavedChangesGuard } from "./use-unsaved-changes-guard";
+import { createSSRApp, defineComponent, effectScope, h, ref } from "vue";
+import { renderToString } from "vue/server-renderer";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const routeHooks = vi.hoisted(() => ({
+  leave: null as null | (() => Promise<boolean>),
+  update: null as null | ((to: unknown, from: unknown) => Promise<boolean>)
+}));
+
+vi.mock("vue-router", () => ({
+  onBeforeRouteLeave: (hook: () => Promise<boolean>) => {
+    routeHooks.leave = hook;
+  },
+  onBeforeRouteUpdate: (
+    hook: (to: unknown, from: unknown) => Promise<boolean>
+  ) => {
+    routeHooks.update = hook;
+  }
+}));
+
+import {
+  createUnsavedChangesGuard,
+  useUnsavedChangesGuard
+} from "./use-unsaved-changes-guard";
 
 describe("unsaved changes guard", () => {
+  beforeEach(() => {
+    routeHooks.leave = null;
+    routeHooks.update = null;
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -75,5 +101,70 @@ describe("unsaved changes guard", () => {
     const pending = guard.requestClose();
     scope.stop();
     await expect(pending).resolves.toBe(false);
+  });
+
+  it.each([
+    [
+      "contractId",
+      { params: { contractId: "contract-2" }, query: {} },
+      { params: { contractId: "contract-1" }, query: {} }
+    ],
+    [
+      "versionId",
+      { params: { contractId: "contract-1" }, query: { versionId: "version-2" } },
+      { params: { contractId: "contract-1" }, query: { versionId: "version-1" } }
+    ]
+  ])(
+    "guards same-component %s updates before route watchers can replace local state",
+    async (_kind, to, from) => {
+      const rows = ref(["baseline", "unsaved-candidate"]);
+      const decisions = [false, true];
+      const discardChanges = vi.fn(() => {
+        rows.value = ["baseline"];
+      });
+      const app = createSSRApp(defineComponent({
+        setup() {
+          useUnsavedChangesGuard({
+            isDirty: () => rows.value.length > 1,
+            confirmLeave: async () => decisions.shift() ?? false,
+            discardChanges
+          });
+          return () => h("div");
+        }
+      }));
+      await renderToString(app);
+
+      expect(routeHooks.leave).toBeTypeOf("function");
+      expect(routeHooks.update).toBeTypeOf("function");
+      const routeWatcher = vi.fn(() => [...rows.value]);
+      const navigate = async () => {
+        const allowed = await routeHooks.update?.(to, from);
+        if (allowed) routeWatcher();
+        return allowed;
+      };
+
+      await expect(navigate()).resolves.toBe(false);
+      expect(discardChanges).not.toHaveBeenCalled();
+      expect(routeWatcher).not.toHaveBeenCalled();
+      expect(rows.value).toEqual(["baseline", "unsaved-candidate"]);
+
+      await expect(navigate()).resolves.toBe(true);
+      expect(discardChanges).toHaveBeenCalledTimes(1);
+      expect(routeWatcher).toHaveBeenCalledWith();
+      expect(routeWatcher.mock.results[0]?.value).toEqual(["baseline"]);
+      expect(rows.value).toEqual(["baseline"]);
+    }
+  );
+
+  it("fails closed when discarding local state throws", async () => {
+    const guard = createUnsavedChangesGuard({
+      isDirty: () => true,
+      confirmLeave: async () => true,
+      discardChanges: () => {
+        throw new Error("discard failed");
+      }
+    });
+
+    await expect(guard.requestLeave()).resolves.toBe(false);
   });
 });

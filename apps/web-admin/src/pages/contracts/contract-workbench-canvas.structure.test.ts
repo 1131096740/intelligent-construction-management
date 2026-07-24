@@ -96,7 +96,18 @@ describe("contract workbench document canvas structure", () => {
     );
     expect(pageSource).toContain("isDirty.value || billEditorDirty.value");
     expect(pageSource).toContain("billFocusEditorRef.value?.discardChanges()");
+    expect(pageSource).toContain("discardChanges: discardNavigationChanges");
+    expect(pageSource).toContain("discardLocalState()");
     expect(pageSource).toContain(':disabled="writeLocked || billEditorDirty"');
+  });
+
+  it("separates combined route navigation loss from bill-only focus closing", () => {
+    expect(pageSource).toContain("合同基础信息和清单均未保存");
+    expect(pageSource).toContain("放弃后两类本地修改都会丢失");
+    expect(pageSource).toContain("合同基础信息的本地草稿不会被清除");
+    expect(pageSource).toContain("focusCloseConfirmVisible");
+    expect(pageSource).not.toContain("focusCloseCheck");
+    expect(pageSource).not.toContain("requestUnsavedClose");
   });
 
   it("blocks bill preview and batch save until current tax facts are explicitly saved", () => {

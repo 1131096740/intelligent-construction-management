@@ -6,7 +6,7 @@ import {
   type MaybeRefOrGetter,
   toValue
 } from "vue";
-import { onBeforeRouteLeave } from "vue-router";
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from "vue-router";
 
 interface BeforeUnloadTarget {
   addEventListener(type: "beforeunload", listener: (event: BeforeUnloadEvent) => void): void;
@@ -16,6 +16,7 @@ interface BeforeUnloadTarget {
 export interface UnsavedChangesGuardOptions {
   isDirty: MaybeRefOrGetter<boolean>;
   confirmLeave: () => boolean | Promise<boolean>;
+  discardChanges?: () => void | Promise<void>;
 }
 
 export interface UnsavedChangesGuard {
@@ -62,8 +63,13 @@ export function createUnsavedChangesGuard(
       return promise;
     }
     Promise.resolve(confirmation)
+      .then(async (decision) => {
+        if (decision !== true) return false;
+        await options.discardChanges?.();
+        return true;
+      })
       .then(
-        (decision) => settle(current, decision === true),
+        (decision) => settle(current, decision),
         () => settle(current, false)
       );
     return promise;
@@ -105,6 +111,7 @@ export function useUnsavedChangesGuard(options: UnsavedChangesGuardOptions) {
   const guard = createUnsavedChangesGuard(options);
 
   onBeforeRouteLeave((): Promise<boolean> => guard.requestLeave());
+  onBeforeRouteUpdate((): Promise<boolean> => guard.requestLeave());
   onMounted(() => guard.mount(window));
   onBeforeUnmount(guard.dispose);
 
