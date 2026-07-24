@@ -50,23 +50,6 @@
         <span>合同付款闭环管理</span>
         <span class="header-user">{{ currentUserText }}</span>
       </t-header>
-      <div
-        v-if="recentBusinessRoutes.length"
-        class="recent-strip"
-        aria-label="最近打开的业务单据"
-      >
-        <span>最近打开</span>
-        <t-button
-          v-for="item in recentBusinessRoutes"
-          :key="item.path"
-          class="recent-route"
-          size="small"
-          variant="outline"
-          @click="go(item.path)"
-        >
-          {{ item.label }}
-        </t-button>
-      </div>
       <t-content
         id="main-content"
         class="content"
@@ -80,26 +63,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { fetchWorkItems } from "../api/core-flow-read.api";
 import { useAuthStore } from "../auth/auth.store";
 import SiteFilingFooter from "../components/SiteFilingFooter.vue";
 import { roleLabels } from "../pages/settings/approval-flow-readonly.config";
 import { visibleAdminNavigationGroups } from "../routes/route-records";
-import {
-  parseRecentBusinessRoutes,
-  recentBusinessRouteFromPath,
-  recentBusinessStorageKey,
-  upsertRecentBusinessRoute,
-  type RecentBusinessRoute
-} from "./recent-business-routes";
+import { clearLegacyRecentBusinessRoutes } from "./legacy-layout-storage";
 import { navigationWorkItemBadgeCounts } from "./navigation-work-item-badges";
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
-const recentBusinessRoutes = ref<RecentBusinessRoute[]>([]);
 const navigationBadgeCounts = ref<Record<string, number>>({});
 let workItemBadgeRequestId = 0;
 
@@ -124,33 +100,19 @@ const activePath = computed(() => {
     .sort((left, right) => right.path.length - left.path.length)[0];
   return parent?.path ?? route.path;
 });
-const currentRecentStorageKey = computed(() => (auth.user?.id ? recentBusinessStorageKey(auth.user.id) : ""));
 const currentUserText = computed(() => {
   if (!auth.user) return "未登录";
   const roles = auth.user.roleKeys.map((role) => roleLabels[role]).filter(Boolean);
   return roles.length ? `${auth.user.name} · ${roles.join("、")}` : auth.user.name;
 });
 
-watch(
-  () => [route.path, currentRecentStorageKey.value] as const,
-  ([path, storageKey]) => {
-    if (!storageKey) {
-      recentBusinessRoutes.value = [];
-      return;
-    }
-
-    const storedRoutes = loadRecentBusinessRoutes(storageKey);
-    const item = recentBusinessRouteFromPath(path);
-    if (!item) {
-      recentBusinessRoutes.value = storedRoutes;
-      return;
-    }
-
-    recentBusinessRoutes.value = upsertRecentBusinessRoute(storedRoutes, item);
-    saveRecentBusinessRoutes(storageKey, recentBusinessRoutes.value);
-  },
-  { immediate: true }
-);
+onMounted(() => {
+  try {
+    clearLegacyRecentBusinessRoutes(window.localStorage);
+  } catch {
+    // 浏览器禁用本地存储时不影响主布局和业务导航。
+  }
+});
 
 watch(
   () => auth.user?.id,
@@ -180,30 +142,6 @@ async function loadNavigationBadges(requestId: number) {
     navigationBadgeCounts.value = navigationWorkItemBadgeCounts(workItems);
   } catch {
     if (requestId === workItemBadgeRequestId) navigationBadgeCounts.value = {};
-  }
-}
-
-function getRecentStorage(): Storage | null {
-  try {
-    return typeof window === "undefined" ? null : window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
-function loadRecentBusinessRoutes(storageKey: string): RecentBusinessRoute[] {
-  try {
-    return parseRecentBusinessRoutes(getRecentStorage()?.getItem(storageKey) ?? null);
-  } catch {
-    return [];
-  }
-}
-
-function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRoute[]) {
-  try {
-    getRecentStorage()?.setItem(storageKey, JSON.stringify(routes));
-  } catch {
-    return;
   }
 }
 </script>
@@ -334,37 +272,6 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
   margin-left: auto;
 }
 
-.recent-strip {
-  min-height: 38px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 var(--jg-layout-content-padding);
-  background: var(--jg-color-bg-surface);
-  border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
-}
-
-.recent-strip span {
-  flex: 0 0 auto;
-  color: var(--jg-color-text-muted);
-  font-size: var(--jg-font-size-meta);
-  font-weight: var(--jg-font-weight-semibold);
-}
-
-.recent-route {
-  max-width: 190px;
-  overflow: hidden;
-  border-radius: var(--jg-radius-control);
-  font-size: var(--jg-font-size-meta);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.recent-route:focus-visible {
-  outline: var(--jg-border-width-accent) solid var(--jg-color-focus-outline);
-  outline-offset: var(--jg-space-xs);
-}
-
 .content {
   box-sizing: border-box;
   width: 100%;
@@ -423,11 +330,6 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
 
   .header-user {
     margin-left: 0;
-  }
-
-  .recent-strip {
-    flex-wrap: wrap;
-    padding: 8px 12px;
   }
 
   .content {

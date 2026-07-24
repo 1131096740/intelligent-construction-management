@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { clearLegacyRecentBusinessRoutes } from "./legacy-layout-storage";
 
@@ -26,6 +27,15 @@ function createMemoryStorage(seed: Record<string, string> = {}): Storage {
 }
 
 describe("legacy layout storage", () => {
+  it("keeps the admin layout free of recent business route UI and state", () => {
+    const source = readFileSync(new URL("./AdminLayout.vue", import.meta.url), "utf8");
+
+    expect(source).not.toContain("recent-strip");
+    expect(source).not.toContain("recentBusinessRoutes");
+    expect(source).not.toContain("upsertRecentBusinessRoute");
+    expect(source).toContain("clearLegacyRecentBusinessRoutes");
+  });
+
   it("removes the exact legacy key and its account-scoped suffixes", () => {
     const storage = createMemoryStorage({
       "jiangkong:recent-business-routes": "[]",
