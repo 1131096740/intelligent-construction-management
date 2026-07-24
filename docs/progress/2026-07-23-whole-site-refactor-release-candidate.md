@@ -1,7 +1,7 @@
 # 建工智管整站受控改造：统一发布候选
 
-日期：2026-07-23
-状态：**已部署候选 `8172b7b7…` 健康；其后的费用/借款收尾切片仅在本地候选，尚未申请发布**
+日期：2026-07-24
+状态：**生产 `8172b7b7…` 保持已发布且本轮未触碰；本地统一候选代码 SHA `be71795d01a3c4974d23c7bb3b9317e401214188` 已完成自动化、隔离迁移和候选审查，等待新的精确 SHA 推送/部署授权**
 
 本文件是阶段 1 至阶段 5 的候选与发布收据；生产推送、部署和前向迁移已在用户 2026-07-24 的精确授权范围内完成。它不授权生产数据清理、旧能力删除、历史改写或超出测试项目范围的业务写入。
 
@@ -10,8 +10,8 @@
 | 项目 | 事实 |
 | --- | --- |
 | 唯一实施分支 | `codex/whole-site-phase0` |
-| 运行候选 SHA | `44b09874bc05dc7271746386914828b9483de0a7` |
-| 证据 HEAD | 以本文件提交后的 HEAD 为准；仅允许 `docs/`、`PROGRESS.md` 与已审查的本地演练文件差异，发布前必须重新核验运行树零差异 |
+| 运行候选 SHA | `be71795d01a3c4974d23c7bb3b9317e401214188` |
+| 证据 HEAD | 本文件所在提交仅补充候选收据与 `PROGRESS.md`；发布前必须重新核验其与运行候选在 `apps/`、`services/`、`packages/`、`scripts/` 和 `.github/` 中零差异 |
 | 需求基线 | `docs/superpowers/specs/2026-07-23-whole-site-business-ui-and-expense-design.md` |
 | 能力矩阵 | `docs/superpowers/plans/2026-07-23-whole-site-capability-matrix.md` |
 | 生产动作 | 本候选期间均未执行：未推送、未部署、未连接/读取生产数据库或备份、未执行生产迁移/清理、未写入生产业务数据 |
@@ -41,13 +41,14 @@
 
 | 门禁 | 结果 |
 | --- | --- |
-| `CI=true /Users/leoyang/.local/bin/pnpm test` | shared-domain 12 文件 110/110；Web 116 文件 975/975；API 190 suites，4,259 passed、15 条条件跳过 |
-| `CI=true /Users/leoyang/.local/bin/pnpm typecheck` | 通过 |
-| `CI=true /Users/leoyang/.local/bin/pnpm lint` | 通过 |
-| `pnpm --filter @jiangkong/api check:business-errors` | 通过，扫描 351 个生产 TypeScript 文件 |
+| `CI=true /Users/leoyang/.local/bin/pnpm test` | shared-domain 12 文件 110/110；Web 116 文件 977/977；API 全量 Jest 通过。输出中的 Fontconfig 缓存与模拟 COS 错误是既有负向用例日志，不是生产连接 |
+| `CI=true /Users/leoyang/.local/bin/pnpm typecheck` | 三个 workspace 包通过 |
+| `CI=true /Users/leoyang/.local/bin/pnpm lint` | 三个 workspace 包通过 |
+| `pnpm --filter @jiangkong/api check:business-errors` | 通过，扫描 353 个生产 TypeScript 文件 |
 | `pnpm --filter @jiangkong/web-admin check:ui` | 通过 |
 | `pnpm --filter @jiangkong/api build` | 通过 |
 | `pnpm --filter @jiangkong/web-admin build` | 通过 |
+| `CI=true /Users/leoyang/.local/bin/pnpm --filter @jiangkong/web-admin test:e2e:p0` | Chromium 2 passed、2 条仅在提供真实试运行账号时启用的条件跳过（3.1 秒）；隔离 mock，不连接生产 |
 | `CI=true bash scripts/ops/go-live-safety-self-test.sh` | 通过；仅自测脚本的预期失败/重试，不连接 COS 或生产 |
 | `git diff --check` | 通过 |
 
@@ -82,9 +83,9 @@
 
 ### 3.4 候选差异审查与自检
 
-- 独立复核范围：首轮门禁 `a501c66f` 至证据 HEAD `ffa97212`；仅涉及 `PROGRESS.md` 与 6 个本地演练/静态回归文件。
-- 结论：没有业务运行代码、Prisma schema/迁移、生产运维脚本或部署配置改动；`git diff --check` 通过，未发现发布阻断问题。
-- 自检：未暂存/提交浏览器报告生成物；未执行生产命令；未删除旧能力；候选运行树与后续文档 HEAD 的差异须在每次发布授权前重新执行 `git diff --quiet <运行候选> <证据HEAD> -- apps services packages scripts .github`。
+- 独立复核范围：费用/借款收尾 `57451e71` 至运行候选 `be71795d`。复核了新账本的金额上限、凭证唯一性、密码确认、放款/还款/确认/反向更正权限、PDF 归档和前向迁移。
+- 发现并修复：`ExpenseClaimPaymentExecution.voucherFileId` 最初漏入应用侧统一文件绑定注册表；全仓 Schema 守卫测试捕获该问题，`be71795d` 已将其补入非收货绑定查询和迁移独占触发器守卫测试。不存在未处理的候选审查发现。
+- 自检：`git diff --check` 通过；未暂存/提交浏览器报告生成物；未执行生产命令；未删除旧能力；发布前重新执行 `git diff --quiet <运行候选> <证据HEAD> -- apps services packages scripts .github`。
 
 ## 4. 迁移影响与演练策略
 
