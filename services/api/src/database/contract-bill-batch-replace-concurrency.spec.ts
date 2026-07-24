@@ -33,10 +33,20 @@ describe("contract bill batch replace PostgreSQL evidence", () => {
       await expect(service(first).replaceRows('bill-1','owner-1',input)).resolves.toBeDefined();
       expect(await first.contractBill.findUnique({ where: { id: 'bill-1' } })).toMatchObject({ revision: 2 });
       expect(await first.auditLog.count({ where: { action: 'contract.bill.rows.replace' } })).toBe(1);
-      await expect(service(second).replaceRows('bill-1','owner-1',{ ...input, idempotencyKey: 'postgres-batch-save-002', expectedBillRevision: 1 })).rejects.toThrow('合同清单已变化');
+      const concurrent = await Promise.allSettled([
+        service(first).replaceRows('bill-1','owner-1',{ ...input, idempotencyKey: 'postgres-batch-save-002', expectedBillRevision: 2, rows: [{ ...input.rows[0], itemName: '并发甲' }] }),
+        service(second).replaceRows('bill-1','owner-1',{ ...input, idempotencyKey: 'postgres-batch-save-003', expectedBillRevision: 2, rows: [{ ...input.rows[0], itemName: '并发乙' }] })
+      ]);
+      expect(concurrent.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+      expect(concurrent.filter((result) => result.status === 'rejected')).toHaveLength(1);
+      expect(await first.contractBill.findUnique({ where: { id: 'bill-1' } })).toMatchObject({ revision: 3 });
+      expect(await first.auditLog.count({ where: { action: 'contract.bill.rows.replace' } })).toBe(2);
+      const beforeRollbackRows = await first.contractBillRow.findMany({ where: { contractBillId: 'bill-1' } });
       const failingAudit = { record: async () => { throw new Error('audit failure'); } };
-      await expect(service(first, failingAudit as never).replaceRows('bill-1','owner-1',{ ...input, idempotencyKey: 'postgres-batch-save-003', expectedBillRevision: 2, rows: [{ ...input.rows[0], itemName: '回滚' }] })).rejects.toThrow('audit failure');
-      expect(await first.contractBill.findUnique({ where: { id: 'bill-1' } })).toMatchObject({ revision: 2 });
+      await expect(service(first, failingAudit as never).replaceRows('bill-1','owner-1',{ ...input, idempotencyKey: 'postgres-batch-save-004', expectedBillRevision: 3, rows: [{ ...input.rows[0], itemName: '回滚' }] })).rejects.toThrow('audit failure');
+      expect(await first.contractBill.findUnique({ where: { id: 'bill-1' } })).toMatchObject({ revision: 3 });
+      expect(await first.contractBillRow.findMany({ where: { contractBillId: 'bill-1' } })).toEqual(beforeRollbackRows);
+      expect(await first.auditLog.count({ where: { action: 'contract.bill.rows.replace' } })).toBe(2);
     } finally {
       await Promise.allSettled([first.$disconnect(), second.$disconnect()]);
       await admin.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
