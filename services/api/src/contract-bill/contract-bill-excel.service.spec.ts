@@ -17,6 +17,7 @@ const FIELD_CODES = [
   "unit",
   "quantity",
   "unitPrice",
+  "taxExclusiveUnitPrice",
   "taxRatePercent",
   "isProvisional",
   "settlementBasis"
@@ -462,6 +463,138 @@ describe("ContractBillExcelService", () => {
     expect(update.updated).toBe(1);
     expect(update.added).toBe(0);
     expect(update.candidateRows).toEqual([]);
+  });
+
+  it.each(["append", "replace", "update"] as const)(
+    "returns a recorded header error without row writes for a header-only %s import",
+    async (mode) => {
+      const existing = {
+        id: "row-existing",
+        contractBillId: "bill-1",
+        rowKey: "existing-row-key",
+        sortOrder: 0,
+        taxInclusiveAmountCents: 100n,
+        taxExclusiveAmountCents: 100n,
+        taxAmountCents: 0n
+      };
+      const { service, tx, rows, fileService } = billFixture({ rows: [{ ...existing }] });
+      const buffer = await buildWorkbookBuffer({
+        fieldCodes: FIELD_CODES.filter((code) => code !== "specification"),
+        rows: []
+      });
+      (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+        file: { id: `file-header-only-${mode}`, originalName: "bill.xlsx" },
+        buffer
+      });
+
+      const preview = await service.previewImport("bill-1", "owner-1", {
+        fileId: `file-header-only-${mode}`,
+        mode
+      });
+
+      expect(preview.errors).toContainEqual(
+        expect.objectContaining({
+          sheet: DATA_SHEET,
+          row: 2,
+          column: "specification",
+          message: expect.stringContaining("模板列结构与当前系统标准模板不一致")
+        })
+      );
+      expect(preview.candidateRows).toEqual([]);
+      expect(preview.rows).toEqual([]);
+      expect(preview.added).toBe(0);
+      expect(preview.updated).toBe(0);
+      expect(preview.removed).toBe(0);
+      expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+      expect(tx.contractBillRow.updateMany).not.toHaveBeenCalled();
+      expect(tx.contractBillRow.deleteMany).not.toHaveBeenCalled();
+      expect(rows).toEqual([existing]);
+    }
+  );
+
+  it.each([
+    {
+      name: "a missing optional core column",
+      fieldCodes: FIELD_CODES.filter((code) => code !== "settlementBasis"),
+      schemaColumns: [] as TestSchemaColumn[],
+      expectedColumn: "settlementBasis",
+      message: "缺少"
+    },
+    {
+      name: "a missing current custom column",
+      fieldCodes: FIELD_CODES,
+      schemaColumns: [{ key: "brand", label: "品牌", type: "text" }],
+      expectedColumn: "brand",
+      message: "缺少"
+    },
+    {
+      name: "a duplicate field code",
+      fieldCodes: [
+        "itemCode",
+        "itemCode",
+        ...FIELD_CODES.slice(2)
+      ],
+      schemaColumns: [] as TestSchemaColumn[],
+      expectedColumn: "itemCode",
+      message: "重复"
+    },
+    {
+      name: "a non-empty extra field code",
+      fieldCodes: [...FIELD_CODES, "unexpectedColumn"],
+      schemaColumns: [] as TestSchemaColumn[],
+      expectedColumn: "unexpectedColumn",
+      message: "非系统字段"
+    }
+  ])("rejects header-only uploads with $name", async ({
+    fieldCodes,
+    schemaColumns,
+    expectedColumn,
+    message
+  }) => {
+    const { service, tx, bill, rows, fileService } = billFixture();
+    bill.schemaSnapshot = { columns: schemaColumns };
+    const buffer = await buildWorkbookBuffer({ fieldCodes, rows: [] });
+    (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: `file-malformed-${expectedColumn}`, originalName: "bill.xlsx" },
+      buffer
+    });
+
+    const preview = await service.previewImport("bill-1", "owner-1", {
+      fileId: `file-malformed-${expectedColumn}`,
+      mode: "replace"
+    });
+
+    expect(preview.errors).toContainEqual(
+      expect.objectContaining({
+        sheet: DATA_SHEET,
+        row: 2,
+        column: expectedColumn,
+        message: expect.stringContaining(message)
+      })
+    );
+    expect(preview.candidateRows).toEqual([]);
+    expect(preview.rows).toEqual([]);
+    expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.deleteMany).not.toHaveBeenCalled();
+    expect(rows).toEqual([]);
+  });
+
+  it("permits a header-only upload when its complete template is current", async () => {
+    const { service, fileService } = billFixture();
+    const buffer = await buildWorkbookBuffer({ rows: [] });
+    (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-standard-empty", originalName: "bill.xlsx" },
+      buffer
+    });
+
+    const preview = await service.previewImport("bill-1", "owner-1", {
+      fileId: "file-standard-empty",
+      mode: "replace"
+    });
+
+    expect(preview.errors).toEqual([]);
+    expect(preview.candidateRows).toEqual([]);
   });
 
   it("returns one complete replace candidate without writing contract bill rows", async () => {

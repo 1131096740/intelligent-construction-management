@@ -416,9 +416,14 @@ export class ContractBillExcelService {
     const updates: ResolvedRow[] = [];
     let skipped = 0;
 
-    const codes = this.readFieldCodes(sheet);
-    const codeIndex = new Map(codes.map((code, index) => [code, index + 1]));
     const columnDefs = this.templateColumns(bill);
+    const codes = this.readFieldCodes(sheet);
+    this.assertTemplateColumns(codes, columnDefs, errors);
+    if (errors.length > 0) {
+      return { adds, updates, removeKeys: [], skipped, errors, previewRows };
+    }
+
+    const codeIndex = new Map(codes.map((code, index) => [code, index + 1]));
     const customColumns = this.schemaColumns(bill.schemaSnapshot);
 
     const seenKeys = new Set<string>();
@@ -803,7 +808,61 @@ export class ContractBillExcelService {
     codeRow.eachCell({ includeEmpty: true }, (cell: Cell, column: number) => {
       codes[column - 1] = String(cell.value ?? "").trim();
     });
+    while (codes.length > 0 && !codes[codes.length - 1]) {
+      codes.pop();
+    }
     return codes;
+  }
+
+  private assertTemplateColumns(
+    actualCodes: string[],
+    columns: CoreFieldDef[],
+    errors: PreviewError[]
+  ) {
+    const expectedCodes = columns.map((column) => column.code);
+    const seen = new Set<string>();
+
+    actualCodes.forEach((code) => {
+      if (!code) return;
+      if (seen.has(code)) {
+        errors.push({
+          sheet: DATA_SHEET,
+          row: HEADER_ROWS,
+          column: code,
+          message: `模板列结构与当前系统标准模板不一致：字段码重复：${code}`
+        });
+        return;
+      }
+      seen.add(code);
+      if (!expectedCodes.includes(code)) {
+        errors.push({
+          sheet: DATA_SHEET,
+          row: HEADER_ROWS,
+          column: code,
+          message: `模板列结构与当前系统标准模板不一致：存在非系统字段码：${code}`
+        });
+      }
+    });
+
+    expectedCodes.forEach((expectedCode, index) => {
+      const actualCode = actualCodes[index] ?? "";
+      if (actualCode === expectedCode) return;
+      if (!actualCodes.includes(expectedCode)) {
+        errors.push({
+          sheet: DATA_SHEET,
+          row: HEADER_ROWS,
+          column: expectedCode,
+          message: `模板列结构与当前系统标准模板不一致：缺少字段码：${expectedCode}`
+        });
+        return;
+      }
+      errors.push({
+        sheet: DATA_SHEET,
+        row: HEADER_ROWS,
+        column: expectedCode,
+        message: `模板列结构与当前系统标准模板不一致：字段码顺序错误，应为：${expectedCode}`
+      });
+    });
   }
 
   private parseBoolean(value: unknown, rowNumber: number, errors: PreviewError[]): boolean {
