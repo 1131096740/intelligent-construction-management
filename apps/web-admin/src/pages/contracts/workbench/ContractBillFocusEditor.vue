@@ -62,6 +62,7 @@ export interface ContractBillFocusController {
   rows: Ref<ContractBillCandidateRow[]>;
   errors: Ref<ContractBillCellError[]>;
   saving: Ref<boolean>;
+  batchSaving: Ref<boolean>;
   saveMessage: Ref<string>;
   messageDanger: Ref<boolean>;
   preview: Ref<BillImportPreview | null>;
@@ -116,6 +117,7 @@ export function createContractBillFocusController(
   const baselineDigest = ref(candidateDigest(rows.value));
   const errors = ref<ContractBillCellError[]>([]);
   const saving = ref(false);
+  const batchSaving = ref(false);
   const saveMessage = ref("");
   const messageDanger = ref(false);
   const preview = ref<BillImportPreview | null>(null);
@@ -271,6 +273,7 @@ export function createContractBillFocusController(
     lastAttemptDigest.value = attemptDigest;
     const attemptKey = saveKey.value;
     try {
+      batchSaving.value = true;
       const saved = await dependencies.replaceRows(
         billSnapshot.value.id,
         toReplaceBillRowsInput(rows.value, {
@@ -296,12 +299,13 @@ export function createContractBillFocusController(
       }
       setError(errorMessage(error, "保存清单失败"));
     } finally {
+      batchSaving.value = false;
       saving.value = false;
     }
   }
 
   function discardChanges() {
-    if (saving.value) return false;
+    if (batchSaving.value) return false;
     replaceCandidateRows(baselineRows.value);
     errors.value = [];
     pendingImportRows.value = null;
@@ -378,6 +382,7 @@ export function createContractBillFocusController(
     rows,
     errors,
     saving,
+    batchSaving,
     saveMessage,
     messageDanger,
     preview,
@@ -622,7 +627,7 @@ const emit = defineEmits<{
   close: [];
   saved: [readModel: ReplaceContractBillRowsReadModel];
   "dirty-change": [dirty: boolean];
-  "saving-change": [saving: boolean];
+  "batch-saving-change": [saving: boolean];
 }>();
 
 const importFiles = ref<UploadFile[]>([]);
@@ -643,6 +648,7 @@ const {
   rows,
   errors,
   saving,
+  batchSaving,
   saveMessage,
   messageDanger,
   preview,
@@ -670,8 +676,8 @@ watch(
 );
 
 watch(
-  saving,
-  (value) => emit("saving-change", value),
+  batchSaving,
+  (value) => emit("batch-saving-change", value),
   { immediate: true, flush: "sync" }
 );
 
@@ -682,7 +688,7 @@ function openImportPicker() {
 }
 
 function requestClose() {
-  if (saving.value) return;
+  if (batchSaving.value) return;
   emit("close");
 }
 
@@ -710,7 +716,7 @@ defineExpose({
         <t-button
           variant="text"
           data-testid="bill-focus-close"
-          :disabled="disabled || saving"
+          :disabled="batchSaving"
           @click="requestClose"
         >
           返回合同

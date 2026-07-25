@@ -400,7 +400,7 @@
         :ordinary-draft-dirty="isDirty"
         @close="requestBillFocusClose"
         @dirty-change="billEditorDirty = $event"
-        @saving-change="billEditorSaving = $event"
+        @batch-saving-change="billBatchSaving = $event"
         @saved="onBillSaved"
       />
 
@@ -716,7 +716,7 @@
           </t-button>
           <t-button
             theme="danger"
-            :disabled="saveState === 'saving' || billEditorSaving"
+            :disabled="saveState === 'saving' || billBatchSaving"
             @click="resolveNavigationDecision(true)"
           >
             放弃并离开
@@ -749,7 +749,7 @@
           </t-button>
           <t-button
             theme="danger"
-            :disabled="billEditorSaving"
+            :disabled="billBatchSaving"
             @click="resolveFocusClose(true)"
           >
             放弃清单修改
@@ -835,6 +835,10 @@ import ContractClausesSection from "./workbench/ContractClausesSection.vue";
 import ContractDocumentCanvas from "./workbench/ContractDocumentCanvas.vue";
 import ContractDocumentsSection from "./workbench/ContractDocumentsSection.vue";
 import ContractFormalDocumentSection from "./workbench/ContractFormalDocumentSection.vue";
+import {
+  contractWorkbenchNavigationPrompt,
+  shouldCancelPendingNavigation
+} from "./workbench/contract-workbench-navigation.state";
 import ContractNegotiationCanvas from "./workbench/ContractNegotiationCanvas.vue";
 import ContractOverviewSection from "./workbench/ContractOverviewSection.vue";
 import ContractPartySection from "./workbench/ContractPartySection.vue";
@@ -873,7 +877,7 @@ const submissionMessageTone = ref<"success" | "error">("success");
 const governanceMutationLocked = ref(false);
 const focusedBillKey = ref("");
 const billEditorDirty = ref(false);
-const billEditorSaving = ref(false);
+const billBatchSaving = ref(false);
 const focusCloseConfirmVisible = ref(false);
 const billFocusEditorRef = ref<InstanceType<typeof ContractBillFocusEditor> | null>(null);
 
@@ -908,46 +912,31 @@ const {
 } = draft;
 
 const navigationConfirmVisible = ref(false);
+const navigationDecisionPending = ref(false);
 const navigationBypass = ref(false);
 let resolvePendingNavigation: ((decision: boolean) => void) | null = null;
 
-const navigationUnsavedTitle = computed(() => {
-  if (billEditorSaving.value && saveState.value === "saving") {
-    return "合同草稿和清单正在保存";
-  }
-  if (billEditorSaving.value) return "合同清单正在保存";
-  if (saveState.value === "saving") return "合同草稿正在保存";
-  if (isDirty.value && billEditorDirty.value) return "合同基础信息和清单均未保存";
-  if (billEditorDirty.value) return "合同清单尚未保存";
-  return "合同基础信息尚未保存";
-});
-const navigationUnsavedMessage = computed(() => {
-  if (billEditorSaving.value && saveState.value === "saving") {
-    return "合同草稿和清单都在保存，请等待保存完成后再离开。";
-  }
-  if (billEditorSaving.value) {
-    return "合同清单正在保存，请等待保存完成后再离开。";
-  }
-  if (saveState.value === "saving") {
-    return "保存请求正在处理中，当前不能放弃并离开。请等待保存完成后重试，系统不会中断已发出的保存请求。";
-  }
-  if (isDirty.value && billEditorDirty.value) {
-    return "当前合同基础信息和清单都有未保存修改。放弃后两类本地修改都会丢失，服务端最近保存内容不受影响。";
-  }
-  if (billEditorDirty.value) {
-    return "当前清单有未保存修改。放弃后将恢复到最近一次整表保存状态。";
-  }
-  return "当前合同基础信息有未保存修改。放弃后将恢复到服务端最近保存状态。";
-});
+const navigationState = computed(() => ({
+  draftDirty: isDirty.value,
+  billDirty: billEditorDirty.value,
+  draftSaving: saveState.value === "saving",
+  billBatchSaving: billBatchSaving.value
+}));
+const navigationPrompt = computed(() =>
+  contractWorkbenchNavigationPrompt(navigationState.value)
+);
+const navigationUnsavedTitle = computed(() => navigationPrompt.value?.title ?? "");
+const navigationUnsavedMessage = computed(() => navigationPrompt.value?.message ?? "");
 
 useUnsavedChangesGuard({
   isDirty: () =>
     !navigationBypass.value &&
-    (isDirty.value || billEditorDirty.value || billEditorSaving.value),
+    navigationPrompt.value !== null,
   confirmLeave: () => new Promise<boolean>((resolve) => {
     focusCloseConfirmVisible.value = false;
     resolvePendingNavigation?.(false);
     resolvePendingNavigation = resolve;
+    navigationDecisionPending.value = true;
     navigationConfirmVisible.value = true;
   }),
   discardChanges: discardNavigationChanges
@@ -956,18 +945,29 @@ useUnsavedChangesGuard({
 function resolveNavigationDecision(decision: boolean) {
   if (
     decision &&
-    (saveState.value === "saving" || billEditorSaving.value)
+    (saveState.value === "saving" || billBatchSaving.value)
   ) {
     return;
   }
   navigationConfirmVisible.value = false;
+  navigationDecisionPending.value = false;
   const resolve = resolvePendingNavigation;
   resolvePendingNavigation = null;
   resolve?.(decision);
 }
 
+watch(
+  navigationState,
+  (state) => {
+    if (shouldCancelPendingNavigation(navigationDecisionPending.value, state)) {
+      resolveNavigationDecision(false);
+    }
+  },
+  { flush: "sync" }
+);
+
 function discardNavigationChanges() {
-  if (billEditorSaving.value) {
+  if (billBatchSaving.value) {
     throw new Error("合同清单正在保存，请等待保存完成后重试");
   }
   if (isDirty.value && !discardLocalState()) {
@@ -1182,7 +1182,7 @@ function openBillFocus(billKey: string, openImport = false) {
   if (!exists) return;
   focusedBillKey.value = billKey;
   billEditorDirty.value = false;
-  billEditorSaving.value = false;
+  billBatchSaving.value = false;
   if (openImport) {
     void nextTick(() => billFocusEditorRef.value?.openImportPicker());
   }
@@ -1190,7 +1190,7 @@ function openBillFocus(billKey: string, openImport = false) {
 
 function requestBillFocusClose() {
   if (!focusedBill.value) return;
-  if (billEditorSaving.value) return;
+  if (billBatchSaving.value) return;
   if (billEditorDirty.value) {
     focusCloseConfirmVisible.value = true;
     return;
@@ -1203,7 +1203,7 @@ function resolveFocusClose(discard: boolean) {
     focusCloseConfirmVisible.value = false;
     return;
   }
-  if (billEditorSaving.value) return;
+  if (billBatchSaving.value) return;
   const discarded = billFocusEditorRef.value?.discardChanges() ?? false;
   if (!discarded) return;
   focusCloseConfirmVisible.value = false;
@@ -1211,10 +1211,10 @@ function resolveFocusClose(discard: boolean) {
 }
 
 function closeBillFocus() {
-  if (billEditorSaving.value) return;
+  if (billBatchSaving.value) return;
   focusedBillKey.value = "";
   billEditorDirty.value = false;
-  billEditorSaving.value = false;
+  billBatchSaving.value = false;
 }
 
 async function onBillSaved() {

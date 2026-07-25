@@ -128,6 +128,8 @@ function controllerOptions(overrides: {
   replaceRows?: (billId: string, input: ReplaceContractBillRowsInput) =>
     Promise<ReplaceContractBillRowsReadModel>;
   previewImport?: () => Promise<unknown>;
+  uploadFile?: (file: Blob, fileName: string) => Promise<{ id: string }>;
+  downloadTemplate?: (billId: string) => Promise<void>;
 } = {}) {
   let key = 0;
   return {
@@ -137,8 +139,8 @@ function controllerOptions(overrides: {
     emit: vi.fn(),
     deps: {
       createKey: () => `save-key-${++key}`,
-      downloadTemplate: vi.fn().mockResolvedValue(undefined),
-      uploadFile: vi.fn().mockResolvedValue({ id: "file-1" }),
+      downloadTemplate: overrides.downloadTemplate ?? vi.fn().mockResolvedValue(undefined),
+      uploadFile: overrides.uploadFile ?? vi.fn().mockResolvedValue({ id: "file-1" }),
       previewImport: overrides.previewImport ?? vi.fn().mockResolvedValue({ candidateRows: [] }),
       replaceRows: overrides.replaceRows ?? vi.fn().mockResolvedValue(authoritativeRows())
     }
@@ -485,6 +487,7 @@ describe("ContractBillFocusEditor state", () => {
     const savePromise = controller.saveAll();
     expect(replaceRows).toHaveBeenCalledOnce();
     expect(controller.saving.value).toBe(true);
+    expect(controller.batchSaving.value).toBe(true);
 
     expect(controller.discardChanges()).toBe(false);
     expect(controller.rows.value[0]?.itemName).toBe("保存中的本地钢筋");
@@ -493,6 +496,43 @@ describe("ContractBillFocusEditor state", () => {
     replacement.resolve(authoritativeRows());
     await savePromise;
     expect(controller.saving.value).toBe(false);
+    expect(controller.batchSaving.value).toBe(false);
+
+    const failedReplacement = deferred<ReplaceContractBillRowsReadModel>();
+    const failedController = createContractBillFocusController(
+      controllerOptions({
+        replaceRows: vi.fn().mockReturnValue(failedReplacement.promise)
+      })
+    );
+    const failedSave = failedController.saveAll();
+    expect(failedController.batchSaving.value).toBe(true);
+    failedReplacement.reject(new Error("保存失败"));
+    await failedSave;
+    expect(failedController.batchSaving.value).toBe(false);
+  });
+
+  it("does not report Excel preview or template download as batch saving", async () => {
+    const upload = deferred<{ id: string }>();
+    const download = deferred<void>();
+    const controller = createContractBillFocusController(controllerOptions({
+      uploadFile: vi.fn().mockReturnValue(upload.promise),
+      downloadTemplate: vi.fn().mockReturnValue(download.promise)
+    }));
+
+    const previewPromise = controller.previewExcel(new File(["xlsx"], "清单.xlsx"));
+    expect(controller.saving.value).toBe(true);
+    expect(controller.batchSaving.value).toBe(false);
+    expect(controller.discardChanges()).toBe(true);
+    upload.resolve({ id: "file-1" });
+    await previewPromise;
+
+    const downloadPromise = controller.downloadTemplate();
+    expect(controller.saving.value).toBe(true);
+    expect(controller.batchSaving.value).toBe(false);
+    download.resolve(undefined);
+    await downloadPromise;
+    expect(controller.saving.value).toBe(false);
+    expect(controller.batchSaving.value).toBe(false);
   });
 });
 
@@ -532,6 +572,22 @@ describe("Contract bill workbench surfaces", () => {
     expect(html).toContain("保存全部");
     expect(html).toContain("accept=\".xlsx");
     expect(html.match(/data-testid="contract-bill-grid"/gu)).toHaveLength(1);
+  });
+
+  it("keeps the return action enabled when the focused bill is read-only", async () => {
+    const app = createSSRApp(ContractBillFocusEditor, {
+      bill,
+      disabled: true,
+      ordinaryDraftDirty: false
+    });
+    registerTDesignStubs(app);
+    const html = await renderToString(app);
+    const closeButton = html.match(
+      /<button[^>]*data-testid="bill-focus-close"[^>]*>/u
+    )?.[0];
+
+    expect(closeButton).toBeTruthy();
+    expect(closeButton).not.toContain("disabled");
   });
 
 });

@@ -18,6 +18,10 @@ const billEditorSource = fs.readFileSync(
   path.resolve(__dirname, "workbench/ContractBillFocusEditor.vue"),
   "utf8"
 );
+const navigationStateSource = fs.readFileSync(
+  path.resolve(__dirname, "workbench/contract-workbench-navigation.state.ts"),
+  "utf8"
+);
 const documentsSource = fs.readFileSync(
   path.resolve(__dirname, "workbench/ContractDocumentsSection.vue"),
   "utf8"
@@ -94,7 +98,8 @@ describe("contract workbench document canvas structure", () => {
     expect(pageSource).toMatch(
       /ContractBillFocusEditor[\s\S]*v-else-if="!exactVersionError"[\s\S]*class="shell-body"/u
     );
-    expect(pageSource).toContain("isDirty.value || billEditorDirty.value");
+    expect(pageSource).toContain("draftDirty: isDirty.value");
+    expect(pageSource).toContain("billDirty: billEditorDirty.value");
     expect(pageSource).toContain("billFocusEditorRef.value?.discardChanges()");
     expect(pageSource).toContain("discardChanges: discardNavigationChanges");
     expect(pageSource).toContain("discardLocalState()");
@@ -102,8 +107,8 @@ describe("contract workbench document canvas structure", () => {
   });
 
   it("separates combined route navigation loss from bill-only focus closing", () => {
-    expect(pageSource).toContain("合同基础信息和清单均未保存");
-    expect(pageSource).toContain("放弃后两类本地修改都会丢失");
+    expect(navigationStateSource).toContain("合同基础信息和清单均未保存");
+    expect(navigationStateSource).toContain("放弃后两类本地修改都会丢失");
     expect(pageSource).toContain("合同基础信息的本地草稿不会被清除");
     expect(pageSource).toContain("focusCloseConfirmVisible");
     expect(pageSource).not.toContain("focusCloseCheck");
@@ -111,10 +116,10 @@ describe("contract workbench document canvas structure", () => {
   });
 
   it("fails closed instead of discarding local state while a draft save is in flight", () => {
-    expect(pageSource).toContain("合同草稿正在保存");
-    expect(pageSource).toContain("系统不会中断已发出的保存请求");
+    expect(navigationStateSource).toContain("合同草稿正在保存");
+    expect(navigationStateSource).toContain("系统不会中断已发出的保存请求");
     expect(pageSource).toContain(
-      ':disabled="saveState === \'saving\' || billEditorSaving"'
+      ':disabled="saveState === \'saving\' || billBatchSaving"'
     );
     expect(pageSource).toMatch(
       /if \(isDirty\.value && !discardLocalState\(\)\) \{[\s\S]*throw new Error/u
@@ -125,24 +130,28 @@ describe("contract workbench document canvas structure", () => {
   });
 
   it("lifts bill batch saving separately and blocks every discard or close path", () => {
-    expect(billEditorSource).toContain('"saving-change"');
-    expect(billEditorSource).toContain(':disabled="disabled || saving"');
+    expect(billEditorSource).toContain('"batch-saving-change"');
+    expect(billEditorSource).toContain(':disabled="batchSaving"');
     expect(billEditorSource).toContain('@click="requestClose"');
     expect(billEditorSource).toMatch(
-      /function requestClose\(\) \{[\s\S]*if \(saving\.value\) return;[\s\S]*emit\("close"\)/u
+      /function requestClose\(\) \{[\s\S]*if \(batchSaving\.value\) return;[\s\S]*emit\("close"\)/u
     );
-    expect(pageSource).toContain('@saving-change="billEditorSaving = $event"');
+    expect(pageSource).toContain('@batch-saving-change="billBatchSaving = $event"');
+    expect(pageSource).toContain("navigationPrompt.value !== null");
     expect(pageSource).toContain(
-      "isDirty.value || billEditorDirty.value || billEditorSaving.value"
-    );
-    expect(pageSource).toContain(
-      ':disabled="saveState === \'saving\' || billEditorSaving"'
+      "shouldCancelPendingNavigation(navigationDecisionPending.value, state)"
     );
     expect(pageSource).toMatch(
-      /function discardNavigationChanges\(\) \{[\s\S]*if \(billEditorSaving\.value\)[\s\S]*throw new Error[\s\S]*billFocusEditorRef\.value\?\.discardChanges\(\)/u
+      /shouldCancelPendingNavigation[\s\S]*resolveNavigationDecision\(false\)/u
+    );
+    expect(pageSource).toContain(
+      ':disabled="saveState === \'saving\' || billBatchSaving"'
     );
     expect(pageSource).toMatch(
-      /function resolveFocusClose\(discard: boolean\) \{[\s\S]*billEditorSaving\.value[\s\S]*discardChanges\(\)[\s\S]*closeBillFocus\(\)/u
+      /function discardNavigationChanges\(\) \{[\s\S]*if \(billBatchSaving\.value\)[\s\S]*throw new Error[\s\S]*billFocusEditorRef\.value\?\.discardChanges\(\)/u
+    );
+    expect(pageSource).toMatch(
+      /function resolveFocusClose\(discard: boolean\) \{[\s\S]*billBatchSaving\.value[\s\S]*discardChanges\(\)[\s\S]*closeBillFocus\(\)/u
     );
   });
 
