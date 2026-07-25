@@ -192,6 +192,26 @@ describe("web admin routes", () => {
     ).toEqual({ left: 0, top: 640 });
   });
 
+  it("restores a back target from its frozen history scroll when the map has no target", () => {
+    const registry = new BrowserHistoryScrollPositionRegistry({ position: 2 });
+
+    registry.capturePopState(
+      {
+        position: 1,
+        scroll: { left: 0, top: 700 }
+      },
+      { left: 0, top: 350 },
+      "/%E9%A6%96%E9%A1%B5"
+    );
+
+    expect(
+      registry.consumePendingScrollPosition(
+        { position: 1, scroll: false },
+        "/首页"
+      )
+    ).toEqual({ left: 0, top: 700 });
+  });
+
   it("restores a pending forward target by browser history position", () => {
     const registry = new BrowserHistoryScrollPositionRegistry({ position: 1 });
 
@@ -209,7 +229,7 @@ describe("web admin routes", () => {
     registry.syncCurrentPosition({ position: 0 });
 
     registry.capturePopState(
-      { position: 1 },
+      { position: 1, scroll: false },
       { left: 0, top: 700 },
       "/合同工作台/合同-B"
     );
@@ -301,7 +321,10 @@ describe("web admin routes", () => {
     ).toBeNull();
     registry.syncCurrentPosition({ position: 1 });
     registry.capturePopState(
-      { position: 0 },
+      {
+        position: 0,
+        scroll: { left: 0, top: 999 }
+      },
       { left: 0, top: 350 },
       "/%E5%90%88%E5%90%8C%E5%B7%A5%E4%BD%9C%E5%8F%B0/%E5%90%88%E5%90%8C-A?tab=bill#rows"
     );
@@ -312,6 +335,35 @@ describe("web admin routes", () => {
         "/合同工作台/合同-A?tab=bill#rows"
       )
     ).toEqual({ left: 0, top: 700 });
+  });
+
+  it("ignores malformed target history scroll values", () => {
+    const malformedScrollValues = [
+      null,
+      false,
+      { left: 0 },
+      { top: 700 },
+      { left: 0, top: Number.POSITIVE_INFINITY },
+      { left: "0", top: 700 }
+    ];
+
+    for (const scroll of malformedScrollValues) {
+      const registry = new BrowserHistoryScrollPositionRegistry({
+        position: 2
+      });
+      registry.capturePopState(
+        { position: 1, scroll },
+        { left: 0, top: 350 },
+        "/首页"
+      );
+
+      expect(
+        registry.consumePendingScrollPosition(
+          { position: 1, scroll: false },
+          "/首页"
+        )
+      ).toBeNull();
+    }
   });
 
   it("uses the route hash unchanged when no saved position exists", () => {

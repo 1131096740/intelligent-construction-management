@@ -18,6 +18,7 @@ interface ScrollCoordinates {
 interface PendingPopTarget {
   position: number;
   routeIdentity: string;
+  historyScrollPosition: ScrollCoordinates | null;
 }
 
 export class BrowserHistoryScrollPositionRegistry {
@@ -41,13 +42,16 @@ export class BrowserHistoryScrollPositionRegistry {
       );
     }
     const targetPosition = readHistoryPosition(targetHistoryState);
+    const historyScrollPosition =
+      readHistoryScrollPosition(targetHistoryState);
     const canonicalRouteIdentity =
       canonicalizeRouteIdentity(targetRouteIdentity);
     this.pendingTarget =
       targetPosition !== null && canonicalRouteIdentity
         ? {
             position: targetPosition,
-            routeIdentity: canonicalRouteIdentity
+            routeIdentity: canonicalRouteIdentity,
+            historyScrollPosition
           }
         : null;
   }
@@ -76,7 +80,9 @@ export class BrowserHistoryScrollPositionRegistry {
       return null;
     }
 
-    const position = this.positions.get(pendingTarget.position);
+    const position =
+      this.positions.get(pendingTarget.position) ??
+      pendingTarget.historyScrollPosition;
     return position ? { ...position } : null;
   }
 }
@@ -143,6 +149,26 @@ function readHistoryPosition(state: unknown): number | null {
     Number.isSafeInteger(position) &&
     position >= 0
     ? position
+    : null;
+}
+
+function readHistoryScrollPosition(state: unknown): ScrollCoordinates | null {
+  if (!state || typeof state !== "object") {
+    return null;
+  }
+  const scroll = (state as { scroll?: unknown }).scroll;
+  if (!scroll || typeof scroll !== "object") {
+    return null;
+  }
+  const { left, top } = scroll as {
+    left?: unknown;
+    top?: unknown;
+  };
+  return typeof left === "number" &&
+    Number.isFinite(left) &&
+    typeof top === "number" &&
+    Number.isFinite(top)
+    ? { left, top }
     : null;
 }
 
