@@ -92,13 +92,17 @@ test("restores independent scroll positions across browser history", async ({
   await expect.poll(() => decodeURIComponent(new URL(page.url()).pathname)).toBe(
     "/首页"
   );
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(650);
+  await expect
+    .poll(() => page.evaluate(() => Math.abs(window.scrollY - 700)))
+    .toBeLessThan(50);
 
   await page.goForward();
   await expect.poll(() => decodeURIComponent(new URL(page.url()).pathname)).toBe(
     "/系统配置"
   );
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(300);
+  await expect
+    .poll(() => page.evaluate(() => Math.abs(window.scrollY - 350)))
+    .toBeLessThan(50);
 
   await assertHealthyPage(page, diagnostics);
 });
@@ -334,6 +338,12 @@ async function assertHealthyPage(
   page: Page,
   diagnostics: ReturnType<typeof monitorPage>
 ) {
+  const mainContent = page.locator("#main-content");
+  await expect(mainContent).toHaveCount(1);
+  await expect(mainContent).toBeVisible();
+  await expect
+    .poll(async () => (await mainContent.innerText()).trim().length)
+    .toBeGreaterThan(0);
   await expect(
     page.locator("vite-error-overlay, #webpack-dev-server-client-overlay")
   ).toHaveCount(0);
