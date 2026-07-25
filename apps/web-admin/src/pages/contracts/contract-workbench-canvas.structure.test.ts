@@ -113,12 +113,36 @@ describe("contract workbench document canvas structure", () => {
   it("fails closed instead of discarding local state while a draft save is in flight", () => {
     expect(pageSource).toContain("合同草稿正在保存");
     expect(pageSource).toContain("系统不会中断已发出的保存请求");
-    expect(pageSource).toContain(':disabled="saveState === \'saving\'"');
+    expect(pageSource).toContain(
+      ':disabled="saveState === \'saving\' || billEditorSaving"'
+    );
     expect(pageSource).toMatch(
       /if \(isDirty\.value && !discardLocalState\(\)\) \{[\s\S]*throw new Error/u
     );
     expect(pageSource).toMatch(
       /function discardNavigationChanges\(\) \{[\s\S]*discardLocalState\(\)[\s\S]*billFocusEditorRef\.value\?\.discardChanges\(\)/u
+    );
+  });
+
+  it("lifts bill batch saving separately and blocks every discard or close path", () => {
+    expect(billEditorSource).toContain('"saving-change"');
+    expect(billEditorSource).toContain(':disabled="disabled || saving"');
+    expect(billEditorSource).toContain('@click="requestClose"');
+    expect(billEditorSource).toMatch(
+      /function requestClose\(\) \{[\s\S]*if \(saving\.value\) return;[\s\S]*emit\("close"\)/u
+    );
+    expect(pageSource).toContain('@saving-change="billEditorSaving = $event"');
+    expect(pageSource).toContain(
+      "isDirty.value || billEditorDirty.value || billEditorSaving.value"
+    );
+    expect(pageSource).toContain(
+      ':disabled="saveState === \'saving\' || billEditorSaving"'
+    );
+    expect(pageSource).toMatch(
+      /function discardNavigationChanges\(\) \{[\s\S]*if \(billEditorSaving\.value\)[\s\S]*throw new Error[\s\S]*billFocusEditorRef\.value\?\.discardChanges\(\)/u
+    );
+    expect(pageSource).toMatch(
+      /function resolveFocusClose\(discard: boolean\) \{[\s\S]*billEditorSaving\.value[\s\S]*discardChanges\(\)[\s\S]*closeBillFocus\(\)/u
     );
   });
 

@@ -83,7 +83,7 @@ export interface ContractBillFocusController {
   confirmImportReplace: () => void;
   downloadTemplate: () => Promise<void>;
   saveAll: () => Promise<void>;
-  discardChanges: () => void;
+  discardChanges: () => boolean;
   syncBill: (bill: WorkbenchBill) => void;
 }
 
@@ -301,6 +301,7 @@ export function createContractBillFocusController(
   }
 
   function discardChanges() {
+    if (saving.value) return false;
     replaceCandidateRows(baselineRows.value);
     errors.value = [];
     pendingImportRows.value = null;
@@ -308,6 +309,7 @@ export function createContractBillFocusController(
     selectedClientRowKey.value = rows.value[0]?.clientRowKey ?? "";
     saveMessage.value = "";
     messageDanger.value = false;
+    return true;
   }
 
   function syncBill(nextBill: WorkbenchBill) {
@@ -620,6 +622,7 @@ const emit = defineEmits<{
   close: [];
   saved: [readModel: ReplaceContractBillRowsReadModel];
   "dirty-change": [dirty: boolean];
+  "saving-change": [saving: boolean];
 }>();
 
 const importFiles = ref<UploadFile[]>([]);
@@ -666,10 +669,21 @@ watch(
   { deep: true }
 );
 
+watch(
+  saving,
+  (value) => emit("saving-change", value),
+  { immediate: true, flush: "sync" }
+);
+
 function openImportPicker() {
   if (props.disabled || saving.value) return;
   const input = uploadRef.value?.$el?.querySelector<HTMLInputElement>('input[type="file"]');
   input?.click();
+}
+
+function requestClose() {
+  if (saving.value) return;
+  emit("close");
 }
 
 async function onFileSelected(files: UploadFile[]) {
@@ -696,7 +710,8 @@ defineExpose({
         <t-button
           variant="text"
           data-testid="bill-focus-close"
-          @click="emit('close')"
+          :disabled="disabled || saving"
+          @click="requestClose"
         >
           返回合同
         </t-button>

@@ -400,6 +400,7 @@
         :ordinary-draft-dirty="isDirty"
         @close="requestBillFocusClose"
         @dirty-change="billEditorDirty = $event"
+        @saving-change="billEditorSaving = $event"
         @saved="onBillSaved"
       />
 
@@ -715,7 +716,7 @@
           </t-button>
           <t-button
             theme="danger"
-            :disabled="saveState === 'saving'"
+            :disabled="saveState === 'saving' || billEditorSaving"
             @click="resolveNavigationDecision(true)"
           >
             放弃并离开
@@ -748,6 +749,7 @@
           </t-button>
           <t-button
             theme="danger"
+            :disabled="billEditorSaving"
             @click="resolveFocusClose(true)"
           >
             放弃清单修改
@@ -871,6 +873,7 @@ const submissionMessageTone = ref<"success" | "error">("success");
 const governanceMutationLocked = ref(false);
 const focusedBillKey = ref("");
 const billEditorDirty = ref(false);
+const billEditorSaving = ref(false);
 const focusCloseConfirmVisible = ref(false);
 const billFocusEditorRef = ref<InstanceType<typeof ContractBillFocusEditor> | null>(null);
 
@@ -909,12 +912,22 @@ const navigationBypass = ref(false);
 let resolvePendingNavigation: ((decision: boolean) => void) | null = null;
 
 const navigationUnsavedTitle = computed(() => {
+  if (billEditorSaving.value && saveState.value === "saving") {
+    return "合同草稿和清单正在保存";
+  }
+  if (billEditorSaving.value) return "合同清单正在保存";
   if (saveState.value === "saving") return "合同草稿正在保存";
   if (isDirty.value && billEditorDirty.value) return "合同基础信息和清单均未保存";
   if (billEditorDirty.value) return "合同清单尚未保存";
   return "合同基础信息尚未保存";
 });
 const navigationUnsavedMessage = computed(() => {
+  if (billEditorSaving.value && saveState.value === "saving") {
+    return "合同草稿和清单都在保存，请等待保存完成后再离开。";
+  }
+  if (billEditorSaving.value) {
+    return "合同清单正在保存，请等待保存完成后再离开。";
+  }
   if (saveState.value === "saving") {
     return "保存请求正在处理中，当前不能放弃并离开。请等待保存完成后重试，系统不会中断已发出的保存请求。";
   }
@@ -929,7 +942,8 @@ const navigationUnsavedMessage = computed(() => {
 
 useUnsavedChangesGuard({
   isDirty: () =>
-    !navigationBypass.value && (isDirty.value || billEditorDirty.value),
+    !navigationBypass.value &&
+    (isDirty.value || billEditorDirty.value || billEditorSaving.value),
   confirmLeave: () => new Promise<boolean>((resolve) => {
     focusCloseConfirmVisible.value = false;
     resolvePendingNavigation?.(false);
@@ -940,6 +954,12 @@ useUnsavedChangesGuard({
 });
 
 function resolveNavigationDecision(decision: boolean) {
+  if (
+    decision &&
+    (saveState.value === "saving" || billEditorSaving.value)
+  ) {
+    return;
+  }
   navigationConfirmVisible.value = false;
   const resolve = resolvePendingNavigation;
   resolvePendingNavigation = null;
@@ -947,11 +967,17 @@ function resolveNavigationDecision(decision: boolean) {
 }
 
 function discardNavigationChanges() {
+  if (billEditorSaving.value) {
+    throw new Error("合同清单正在保存，请等待保存完成后重试");
+  }
   if (isDirty.value && !discardLocalState()) {
     throw new Error("合同草稿正在保存，请等待保存完成后重试");
   }
   if (billEditorDirty.value) {
-    billFocusEditorRef.value?.discardChanges();
+    const discarded = billFocusEditorRef.value?.discardChanges() ?? false;
+    if (!discarded) {
+      throw new Error("合同清单正在保存，请等待保存完成后重试");
+    }
   }
 }
 
@@ -1156,6 +1182,7 @@ function openBillFocus(billKey: string, openImport = false) {
   if (!exists) return;
   focusedBillKey.value = billKey;
   billEditorDirty.value = false;
+  billEditorSaving.value = false;
   if (openImport) {
     void nextTick(() => billFocusEditorRef.value?.openImportPicker());
   }
@@ -1163,6 +1190,7 @@ function openBillFocus(billKey: string, openImport = false) {
 
 function requestBillFocusClose() {
   if (!focusedBill.value) return;
+  if (billEditorSaving.value) return;
   if (billEditorDirty.value) {
     focusCloseConfirmVisible.value = true;
     return;
@@ -1171,15 +1199,22 @@ function requestBillFocusClose() {
 }
 
 function resolveFocusClose(discard: boolean) {
+  if (!discard) {
+    focusCloseConfirmVisible.value = false;
+    return;
+  }
+  if (billEditorSaving.value) return;
+  const discarded = billFocusEditorRef.value?.discardChanges() ?? false;
+  if (!discarded) return;
   focusCloseConfirmVisible.value = false;
-  if (!discard) return;
-  billFocusEditorRef.value?.discardChanges();
   closeBillFocus();
 }
 
 function closeBillFocus() {
+  if (billEditorSaving.value) return;
   focusedBillKey.value = "";
   billEditorDirty.value = false;
+  billEditorSaving.value = false;
 }
 
 async function onBillSaved() {

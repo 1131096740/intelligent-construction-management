@@ -471,6 +471,29 @@ describe("ContractBillFocusEditor state", () => {
     expect(controller.rows.value).toEqual(baseline);
     expect(controller.dirty.value).toBe(false);
   });
+
+  it("fails closed when discard is requested while the batch replacement is in flight", async () => {
+    const replacement = deferred<ReplaceContractBillRowsReadModel>();
+    const replaceRows = vi.fn().mockReturnValue(replacement.promise);
+    const controller = createContractBillFocusController(
+      controllerOptions({ replaceRows })
+    );
+    const localRows = plainRows(controller.rows.value);
+    localRows[0]!.itemName = "保存中的本地钢筋";
+    controller.setRows(localRows);
+
+    const savePromise = controller.saveAll();
+    expect(replaceRows).toHaveBeenCalledOnce();
+    expect(controller.saving.value).toBe(true);
+
+    expect(controller.discardChanges()).toBe(false);
+    expect(controller.rows.value[0]?.itemName).toBe("保存中的本地钢筋");
+    expect(controller.dirty.value).toBe(true);
+
+    replacement.resolve(authoritativeRows());
+    await savePromise;
+    expect(controller.saving.value).toBe(false);
+  });
 });
 
 describe("Contract bill workbench surfaces", () => {
@@ -577,4 +600,14 @@ function importRow(index: number) {
     isProvisional: false,
     customData: {}
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }
