@@ -206,6 +206,13 @@ export class ContractBillExcelService {
     return this.prisma.$transaction(async (tx) => {
       // loadOwnedEditableBill 同时完成 owner + 可编辑状态校验；preview 不改动任何金额或行。
       const { bill } = await this.loadBillContext(tx, billId, actorUserId);
+      const sourceFile = await tx.fileObject?.findUnique({
+        where: { id: fileId },
+        select: { contentSha256: true, storageStatus: true }
+      });
+      if (sourceFile && sourceFile.storageStatus !== "active") {
+        throw new BadRequestException("导入文件不存在或不可用，请重新上传后预检");
+      }
       const buffer = (await this.files.getFileBuffer(fileId)).buffer;
       const existingRows = await tx.contractBillRow.findMany({
         where: { contractBillId: bill.id },
@@ -219,6 +226,11 @@ export class ContractBillExcelService {
           id: importId,
           contractBillId: bill.id,
           fileId,
+          fileSha256: sourceFile?.contentSha256 ?? null,
+          sourceContractVersionId: bill.contractVersionId,
+          targetContractVersionId: bill.contractVersionId,
+          expectedBillRevision: bill.revision,
+          mappingStatus: "legacy_replace",
           mode,
           status: "preview",
           preview: this.toJson({ billRevision: bill.revision, preview }),
@@ -268,6 +280,28 @@ export class ContractBillExcelService {
       );
       if (bill.revision !== storedPreview.billRevision) {
         throw new BadRequestException("合同清单已变化，请重新预检后再应用");
+      }
+      if (
+        record.expectedBillRevision !== null &&
+        record.expectedBillRevision !== bill.revision
+      ) {
+        throw new BadRequestException("合同清单修订已变化，请重新预检后再应用");
+      }
+      if (
+        record.sourceContractVersionId !== null &&
+        record.sourceContractVersionId !== version.id
+      ) {
+        throw new BadRequestException("合同清单来源版本已变化，请重新预检后再应用");
+      }
+      const sourceFile = await tx.fileObject?.findUnique({
+        where: { id: record.fileId },
+        select: { contentSha256: true, storageStatus: true }
+      });
+      if (sourceFile && (
+        sourceFile.storageStatus !== "active" ||
+        (record.fileSha256 !== null && sourceFile.contentSha256 !== record.fileSha256)
+      )) {
+        throw new BadRequestException("导入文件已变化或不可用，请重新预检后再应用");
       }
       const buffer = (await this.files.getFileBuffer(record.fileId)).buffer;
       const existingRows = await tx.contractBillRow.findMany({
