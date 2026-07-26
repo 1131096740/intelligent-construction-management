@@ -35,3 +35,9 @@
 1. P1 先处理结算来源行/人工调整：行数、计算、粘贴和异常定位需求最接近合同清单，但必须独立设计后台核算与提交原子性。
 2. P1 分别处理合同条款保存生命周期、零星付款材料领域网格、税务复核批量填充和现场收货桌面效率，不把敏感收款渠道或文件上传强行统一为二维网格。
 3. P2 再评估合同接管、采购材料和报销明细的操作一致性；已有 `JgBusinessGrid` 的页面优先补领域能力，不重复更换底座。
+
+结算改造的规范性要求、数据迁移和任务顺序已经分别固化在：
+
+- [正式规格](../specs/2026-07-27-contract-bill-lineage-settlement-workbench-v2.md)
+- [数据模型前向迁移与历史回填方案](../data-migrations/2026-07-27-contract-bill-lineage-settlement-v2.md)
+- [实施任务与验收门禁](../plans/2026-07-27-contract-bill-lineage-settlement-workbench-v2.md)
