@@ -4,6 +4,7 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { ContractFormalFileService } from "./contract-formal-file.service";
+import { ContractVersionActivationService } from "./contract-version-activation.service";
 import type {
   ApproveContractSealDto,
   CompleteContractSealDto,
@@ -44,7 +45,8 @@ export class ContractSealService {
     private readonly prisma: PrismaService,
     @Optional() private readonly audit?: AuditService,
     @Optional() private readonly formalFiles?: ContractFormalFileService,
-    @Optional() private readonly auth?: AuthService
+    @Optional() private readonly auth?: AuthService,
+    private readonly activation: ContractVersionActivationService = new ContractVersionActivationService()
   ) {}
 
   async ensurePendingTask(
@@ -505,49 +507,10 @@ export class ContractSealService {
           confirmationSnapshot: confirmationSnapshot as Prisma.InputJsonValue
         }
       });
-      let supersededVersionId: string | null = null;
-      if (version.changeType === "change" || version.changeType === "supplement") {
-        if (!version.baseVersionId) throw new BadRequestException("合同变更缺少直接来源版本，不能生效");
-        await tx.$queryRaw(Prisma.sql`
-          SELECT "id" FROM "ContractVersion" WHERE "id" = ${version.baseVersionId} FOR UPDATE
-        `);
-        const predecessor = await tx.contractVersion.findUnique({ where: { id: version.baseVersionId } });
-        if (!predecessor || predecessor.contractId !== version.contractId || predecessor.status !== "effective") {
-          throw new BadRequestException("被替代合同版本已不是当前生效版本，请刷新后重试");
-        }
-        const latest = await tx.contractVersion.findFirst({
-          where: { contractId: version.contractId, status: "effective" },
-          orderBy: { versionNo: "desc" },
-          select: { id: true }
-        });
-        if (latest?.id !== predecessor.id) {
-          throw new BadRequestException("只能让当前最新生效版本的直接变更版本生效");
-        }
-        const superseded = await tx.contractVersion.updateMany({
-          where: { id: predecessor.id, status: "effective" },
-          data: { status: "superseded" }
-        });
-        if (superseded.count !== 1) {
-          throw new BadRequestException("被替代合同版本状态已变化，请刷新后重试");
-        }
-        await tx.paymentTermsVersion.updateMany({
-          where: { contractVersionId: predecessor.id, status: "effective" },
-          data: { status: "superseded" }
-        });
-        supersededVersionId = predecessor.id;
-      }
-      const result = await tx.contractVersion.update({
-        where: { id: version.id },
-        data: {
-          status: "effective",
-          taxFactStatus: "confirmed",
-          effectiveAt: confirmedAt,
-          ...(supersededVersionId ? { supersedesVersionId: supersededVersionId } : {})
-        }
-      });
-      await tx.paymentTermsVersion.updateMany({
-        where: { contractVersionId: version.id },
-        data: { status: "effective" }
+      const { effectiveVersion: result, supersededVersionId } = await this.activation.activate(tx, {
+        contractVersionId: version.id,
+        actorUserId,
+        effectiveAt: confirmedAt
       });
       await this.audit?.record(tx, {
         actorUserId,

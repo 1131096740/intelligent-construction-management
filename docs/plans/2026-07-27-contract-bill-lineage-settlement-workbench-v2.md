@@ -229,7 +229,7 @@ T04、T05 和 T09 在 T03 完成后可以按文件边界并行设计，但合入
 
 ### T06 合同版本生效门禁与 carry-forward
 
-状态：`[ ]`
+状态：`[x]`
 
 依赖：T04、T05。
 
@@ -261,6 +261,8 @@ T04、T05 和 T09 在 T03 完成后可以按文件边界并行设计，但合入
 - 并发确认只生效一次。
 
 完成标准：任何合同版本生效路径都不能绕过结算和 lineage 门禁。
+
+实施结果（2026-07-27）：已新增 `ContractVersionActivationService`，由旧归档确认与双方最终版归档确认共同调用。服务在合同锁与来源版本锁内：只将旧版未提交普通结算草稿及其过程标记为 `invalidated`，对已提交、签章、审批或归档中的过程返回稳定码 `CONTRACT_VERSION_BLOCKED_BY_ACTIVE_SETTLEMENT`；对历史占用行要求已确认的一对一来源映射并校验数量/金额守恒，生成不可原地改写的 `ContractBillRowCarryForward` 和 SHA-256 来源摘要。版本替代、付款条款替代和新版本生效仅在上述检查后发生。聚焦 API Jest 155/155、API typecheck、lint 与 `git diff --check` 通过；未连接生产、未执行生产迁移或历史回填。
 
 ### T07 跨版本来源、占用与提交时重算
 

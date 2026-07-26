@@ -16,6 +16,7 @@ import { ContractApprovalRouteService } from "./contract-approval-route.service"
 import { ContractFormalFileService } from "./contract-formal-file.service";
 import { ContractAuthorizationService } from "./contract-authorization.service";
 import { ContractSealService } from "./contract-seal.service";
+import { ContractVersionActivationService } from "./contract-version-activation.service";
 
 @Module({
   imports: [
@@ -34,7 +35,8 @@ import { ContractSealService } from "./contract-seal.service";
     ContractApprovalRouteService,
     ContractFormalFileService,
     ContractAuthorizationService,
-    ContractSealService
+    ContractSealService,
+    ContractVersionActivationService
   ],
   exports: [
     ContractService,
@@ -42,7 +44,8 @@ import { ContractSealService } from "./contract-seal.service";
     ContractReadService,
     ContractFormalFileService,
     ContractAuthorizationService,
-    ContractSealService
+    ContractSealService,
+    ContractVersionActivationService
   ]
 })
 export class ContractModule {}

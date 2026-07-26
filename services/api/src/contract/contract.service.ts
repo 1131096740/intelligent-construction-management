@@ -65,6 +65,7 @@ import {
 import { ContractAuthorizationService } from "./contract-authorization.service";
 import { ContractSealService } from "./contract-seal.service";
 import { ContractBillLineageService } from "../contract-bill/contract-bill-lineage.service";
+import { ContractVersionActivationService } from "./contract-version-activation.service";
 
 interface ContractApprovalAssignment {
   kind: "transfer" | "delegate";
@@ -159,7 +160,8 @@ export class ContractService {
     private readonly authorizations?: ContractAuthorizationService,
     @Optional()
     private readonly seals?: ContractSealService,
-    private readonly lineage: ContractBillLineageService = new ContractBillLineageService()
+    private readonly lineage: ContractBillLineageService = new ContractBillLineageService(),
+    private readonly activation: ContractVersionActivationService = new ContractVersionActivationService()
   ) {}
 
   async createDraft(input: CreateContractDraftDto, actorUserId: string) {
@@ -2692,53 +2694,10 @@ export class ContractService {
         }
       });
 
-      let supersededVersionId: string | null = null;
-      if (version.changeType === "change" || version.changeType === "supplement") {
-        if (!version.baseVersionId) {
-          throw new BadRequestException("合同变更缺少直接来源版本，不能确认归档");
-        }
-        const predecessor = await tx.contractVersion.findUnique({
-          where: { id: version.baseVersionId }
-        });
-        if (
-          !predecessor ||
-          predecessor.contractId !== version.contractId ||
-          predecessor.status !== "effective"
-        ) {
-          throw new BadRequestException("被替代合同版本已不是当前生效版本，请刷新后重试");
-        }
-        const latestEffective = await tx.contractVersion.findFirst({
-          where: { contractId: version.contractId, status: "effective" },
-          orderBy: { versionNo: "desc" },
-          select: { id: true }
-        });
-        if (latestEffective?.id !== predecessor.id) {
-          throw new BadRequestException("只能让当前最新生效版本的直接变更版本生效");
-        }
-        await tx.contractVersion.update({
-          where: { id: predecessor.id },
-          data: { status: "superseded" }
-        });
-        await tx.paymentTermsVersion.updateMany({
-          where: { contractVersionId: predecessor.id, status: "effective" },
-          data: { status: "superseded" }
-        });
-        supersededVersionId = predecessor.id;
-      }
-
-      const effectiveVersion = await tx.contractVersion.update({
-        where: { id: version.id },
-        data: {
-          status: "effective",
-          taxFactStatus: "confirmed",
-          effectiveAt: confirmedAt,
-          ...(supersededVersionId ? { supersedesVersionId: supersededVersionId } : {})
-        }
-      });
-
-      await tx.paymentTermsVersion.updateMany({
-        where: { contractVersionId: version.id },
-        data: { status: "effective" }
+      const { effectiveVersion, supersededVersionId } = await this.activation.activate(tx, {
+        contractVersionId: version.id,
+        actorUserId,
+        effectiveAt: confirmedAt
       });
 
       await this.audit.record(tx, {
