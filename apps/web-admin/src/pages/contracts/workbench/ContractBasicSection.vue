@@ -75,12 +75,37 @@
           message="暂无可用的我方公司主体，请先到主体台账完善并启用资料。"
         />
       </label>
+
+      <div class="field">
+        <span class="field-label">结算方式</span>
+        <t-select
+          :value="settlementMode.value ?? undefined"
+          :options="settlementModeOptions"
+          :disabled="disabled || !settlementMode.canConfirm || settlementModeBusy"
+          placeholder="等待系统建议"
+          @change="onSettlementModeChange"
+        />
+        <span class="field-help">
+          <template v-if="settlementMode.confirmationRequired">
+            系统已给出建议，需由合同部主管确认后才能提交审批、开结算或按合同发起应付款。
+          </template>
+          <template v-else>
+            已由合同部主管确认；审批后如需变更，请通过合同变更版本处理。
+          </template>
+        </span>
+        <t-alert
+          v-if="settlementMode.confirmationRequired"
+          theme="warning"
+          message="结算方式待合同部主管确认"
+        />
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import type { ContractSettlementMode } from "@jiangkong/shared-domain";
 import {
   fetchActiveCompanyEntities,
   type CompanyEntityModel
@@ -92,12 +117,21 @@ import {
   type ContractDraftModel
 } from "./use-contract-draft";
 
-const emit = defineEmits<{ (event: "update", patch: Partial<ContractDraftModel>): void }>();
+const emit = defineEmits<{
+  (event: "update", patch: Partial<ContractDraftModel>): void;
+  (event: "confirm-settlement-mode", mode: ContractSettlementMode): void;
+}>();
 const props = defineProps<{
   model: ContractDraftModel;
   disabled: boolean;
   nameDisabled?: boolean;
   companyDisabled?: boolean;
+  settlementMode: {
+    value: ContractSettlementMode | null;
+    confirmationRequired: boolean;
+    canConfirm: boolean;
+  };
+  settlementModeBusy?: boolean;
 }>();
 const candidates = ref<CompanyEntityModel[]>([]);
 const loading = ref(false);
@@ -107,6 +141,10 @@ const companyOptions = computed(() => candidates.value.map((candidate) => ({
   value: candidate.id,
   label: `${candidate.name}（${candidate.unifiedSocialCreditCode ?? "信用代码待补全"}）`
 })));
+const settlementModeOptions = [
+  { value: "settlement_required", label: "需要结算" },
+  { value: "direct_payment", label: "按合同直接付款" }
+] satisfies Array<{ value: ContractSettlementMode; label: string }>;
 const selectedCandidate = computed(() =>
   candidates.value.find((candidate) => candidate.id === props.model.companyEntityId) ?? null
 );
@@ -128,6 +166,12 @@ function selectCompany(value: string) {
 
 function syncCompany() {
   if (selectedCandidate.value) selectCompany(selectedCandidate.value.id);
+}
+
+function onSettlementModeChange(value: string) {
+  if (value === "settlement_required" || value === "direct_payment") {
+    emit("confirm-settlement-mode", value);
+  }
 }
 
 async function loadCandidates() {

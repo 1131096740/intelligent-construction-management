@@ -158,6 +158,73 @@ describe("ContractService", () => {
     expect(tx.contract.findUnique).not.toHaveBeenCalled();
   });
 
+  it("blocks approval submission until a contract director confirms the settlement mode", async () => {
+    const tx = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: "contract-1" }])
+        .mockResolvedValueOnce([{
+          id: "version-1",
+          contractId: "contract-1",
+          status: "draft",
+          changeType: "original",
+          settlementMode: null,
+          settlementModeConfirmedAt: null
+        }]),
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "contract-staff-1",
+          voidedAt: null
+        })
+      }
+    };
+    const service = new ContractService({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never, audit as never);
+
+    await expect(service.submitApproval("version-1", "contract-staff-1")).rejects.toThrow(
+      "合同结算方式尚未由合同部主管确认"
+    );
+    expect(tx.contract.findUnique).toHaveBeenCalled();
+  });
+
+  it("blocks approval submission when progress payment terms contradict the confirmed mode", async () => {
+    const tx = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: "contract-1" }])
+        .mockResolvedValueOnce([{
+          id: "version-1",
+          contractId: "contract-1",
+          status: "draft",
+          changeType: "original",
+          settlementMode: "direct_payment",
+          settlementModeConfirmedAt: new Date("2026-07-27T00:00:00.000Z")
+        }]),
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "contract-staff-1",
+          voidedAt: null
+        })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "terms-1" })
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([
+          { stageType: "progress", basis: "current_settlement" }
+        ])
+      }
+    };
+    const service = new ContractService({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never, audit as never);
+
+    await expect(service.submitApproval("version-1", "contract-staff-1")).rejects.toThrow(
+      "付款条款与已确认的合同结算方式不一致"
+    );
+  });
+
   it("fails closed before numbering or writes when the locked project is inactive", async () => {
     const version = {
       id: "version-1",
@@ -479,7 +546,9 @@ describe("ContractService", () => {
         contractId: "contract-1",
         status: "draft",
         taxFactStatus: "draft",
-        contractGovernanceVersion: 1
+        contractGovernanceVersion: 1,
+        settlementMode: "settlement_required",
+        settlementModeSource: "rule"
       })
     });
     expect(tx.contractBill.createMany).toHaveBeenCalledWith({
@@ -1562,6 +1631,9 @@ describe("ContractService", () => {
       originalBaseAmountCents: null,
       cumulativeIncreaseCents: 0n,
       cumulativeDecreaseCents: 0n,
+      settlementMode: "settlement_required",
+      settlementModeConfirmedByUserId: "director-1",
+      settlementModeConfirmedAt: new Date("2026-07-02T00:00:00.000Z"),
       businessTemplateVersionId: "template-1",
       layoutTemplateVersionId: null,
       pricingNature: "fixed_total",
@@ -1648,7 +1720,10 @@ describe("ContractService", () => {
         companyEntityNameSnapshot: "我方建设公司",
         companyEntityCreditCodeSnapshot: "91350211M000100Y46",
         companyEntityRegisteredAddressSnapshot: null,
-        contractGovernanceVersion: 1
+        contractGovernanceVersion: 1,
+        settlementMode: "settlement_required",
+        settlementModeSource: "inherited",
+        settlementModeConfirmedByUserId: "director-1"
       })
     });
   });

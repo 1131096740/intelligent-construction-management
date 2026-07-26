@@ -234,10 +234,9 @@ function modelFromWorkbench(workbench: ContractWorkbenchReadModel): ContractDraf
     }
   }
   const paymentStage = workbench.paymentTerms.stages.find(
-    (stage) => stage.basis === (
-      workbench.contract.contractTypeKey === "generic_contract"
-        ? "contract_amount"
-        : "current_settlement"
+    (stage) => stage.basis === paymentStageBasis(
+      workbench.settlementMode.value,
+      workbench.contract.contractTypeKey
     )
   );
 
@@ -355,26 +354,36 @@ function assignModel(target: ContractDraftModel, source: ContractDraftModel): vo
   target.clauses = source.clauses.map((clause) => ({ ...clause }));
 }
 
+function paymentStageBasis(
+  settlementMode: "settlement_required" | "direct_payment" | null | undefined,
+  contractTypeKey: string
+) {
+  return settlementMode === "direct_payment" || (
+    settlementMode == null && contractTypeKey === "generic_contract"
+  ) ? "contract_amount" : "current_settlement";
+}
+
 function paymentStagesFromModel(
   model: ContractDraftModel,
+  settlementMode: "settlement_required" | "direct_payment" | null | undefined,
   contractTypeKey: string
 ): NonNullable<SaveContractDraftPayload["paymentStages"]> {
   if (model.paymentRatioBps === null || model.paymentDueDays === null) {
     return [];
   }
-  const isGenericContract = contractTypeKey === "generic_contract";
+  const isDirectPayment = paymentStageBasis(settlementMode, contractTypeKey) === "contract_amount";
   return [
     {
-      name: isGenericContract ? "合同约定付款" : "当期结算款",
-      basis: isGenericContract ? "contract_amount" : "current_settlement",
+      name: isDirectPayment ? "合同约定付款" : "当期结算款",
+      basis: isDirectPayment ? "contract_amount" : "current_settlement",
       ratioBps: model.paymentRatioBps,
-      triggerEvent: isGenericContract
+      triggerEvent: isDirectPayment
         ? "合同归档确认生效"
         : "结算归档确认生效",
       dueDays: model.paymentDueDays,
       requiresInvoice: model.paymentRequiresInvoice,
       allowsInstallments: model.paymentAllowsInstallments,
-      originalText: model.paymentTermsOriginalText || (isGenericContract
+      originalText: model.paymentTermsOriginalText || (isDirectPayment
         ? "合同归档确认生效后按约定比例付款。"
         : "结算归档确认生效后按比例付款。")
     }
@@ -667,6 +676,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
             paymentTermsOriginalText: model.paymentTermsOriginalText,
             paymentStages: paymentStagesFromModel(
               model,
+              workbench.value?.settlementMode.value,
               workbench.value?.contract.contractTypeKey ?? ""
             )
           }

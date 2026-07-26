@@ -58,11 +58,13 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import type { ContractSettlementMode } from "@jiangkong/shared-domain";
 import type { ContractDraftModel } from "./use-contract-draft";
 
 const props = defineProps<{
   model: ContractDraftModel;
   contractTypeKey: string;
+  settlementMode?: ContractSettlementMode | null;
   disabled: boolean;
 }>();
 
@@ -74,13 +76,16 @@ const ratioPercentText = computed(() =>
 const dueDaysText = computed(() =>
   props.model.paymentDueDays === null ? "" : String(props.model.paymentDueDays)
 );
+const isDirectPayment = computed(() => props.settlementMode === "direct_payment" || (
+  props.settlementMode == null && props.contractTypeKey === "generic_contract"
+));
 const ratioLabel = computed(() =>
-  props.contractTypeKey === "generic_contract"
+  isDirectPayment.value
     ? "合同可付款比例（%）"
     : "当期结算款比例（%）"
 );
 const dueDaysLabel = computed(() =>
-  props.contractTypeKey === "generic_contract"
+  isDirectPayment.value
     ? "合同生效后付款期限（天）"
     : "结算生效后付款期限（天）"
 );

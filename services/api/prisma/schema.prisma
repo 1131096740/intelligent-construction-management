@@ -208,6 +208,10 @@ model ContractVersion {
   cumulativeIncreaseCents                BigInt    @default(0)
   cumulativeDecreaseCents                BigInt    @default(0)
   amountLimitType                        String    @default("capped")
+  settlementMode                         String?
+  settlementModeSource                   String?
+  settlementModeConfirmedByUserId        String?
+  settlementModeConfirmedAt              DateTime?
   effectiveAt                            DateTime?
   businessTemplateVersionId              String?
   layoutTemplateVersionId                String?

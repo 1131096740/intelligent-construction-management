@@ -1,4 +1,5 @@
 import type { MoneyCents } from "./money";
+import type { ContractSettlementMode, ContractSettlementModeSource } from "./contract-settlement-mode";
 import type {
   ContractInvoiceType,
   ContractTaxFactSource,
@@ -231,6 +232,10 @@ export interface ContractWorkbenchReadModel {
     amountCents: MoneyCents;
     pricingNature: string;
     amountSource: string;
+    settlementMode: ContractSettlementMode | null;
+    settlementModeSource: ContractSettlementModeSource | null;
+    settlementModeConfirmedByUserId: string | null;
+    settlementModeConfirmedAt: string | null;
     taxFacts: {
       invoiceType: ContractInvoiceType | null;
       taxMode: ContractTaxMode;
@@ -249,6 +254,14 @@ export interface ContractWorkbenchReadModel {
       attachmentSchema: ContractTemplateSchema["attachments"];
       validationSchema: ContractTemplateSchema["validations"];
     };
+  };
+  settlementMode: {
+    value: ContractSettlementMode | null;
+    source: ContractSettlementModeSource | null;
+    confirmedAt: string | null;
+    confirmedByUserId: string | null;
+    confirmationRequired: boolean;
+    canConfirm: boolean;
   };
   parties: Array<{
     id: string;

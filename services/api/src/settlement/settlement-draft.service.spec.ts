@@ -97,6 +97,44 @@ describe("SettlementDraftService", () => {
     finalNoFurtherOrdinarySettlements: true
   };
 
+  it("blocks a legacy contract version whose settlement mode is not confirmed", async () => {
+    const { tx, service } = context({
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "effective",
+          settlementMode: null,
+          settlementModeConfirmedAt: null
+        })
+      }
+    });
+
+    await expect(service.create("project-1", "owner-1", draftInput)).rejects.toThrow(
+      "合同结算方式尚未由合同部主管确认"
+    );
+    expect(tx.settlementDraft.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a direct-payment contract version from the settlement entry", async () => {
+    const { tx, service } = context({
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "effective",
+          settlementMode: "direct_payment",
+          settlementModeConfirmedAt: new Date("2026-07-27T00:00:00.000Z")
+        })
+      }
+    });
+
+    await expect(service.create("project-1", "owner-1", draftInput)).rejects.toThrow(
+      "该合同已确认按合同直接付款"
+    );
+    expect(tx.settlementDraft.create).not.toHaveBeenCalled();
+  });
+
   it("copies an abandoned draft into a new identity and records its source", async () => {
     const sourceUpdatedAt = new Date("2026-07-20T02:00:00.000Z");
     const { tx, audit, service } = context();

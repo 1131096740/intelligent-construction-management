@@ -11,6 +11,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import type {
   ApplyContractTypeChangeDto,
+  ConfirmContractSettlementModeDto,
   CreateDraftCheckpointDto,
   PreviewContractTypeChangeDto,
   SaveContractDraftDto,
@@ -43,6 +44,15 @@ export class ContractWorkbenchController {
     @Body() body: SaveContractDraftDto
   ) {
     return this.workbench.saveDraft(contractVersionId, user.id, body);
+  }
+
+  @Post(":contractVersionId/settlement-mode/confirm")
+  confirmSettlementMode(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ConfirmContractSettlementModeDto
+  ) {
+    return this.workbench.confirmSettlementMode(contractVersionId, user.id, body);
   }
 
   @Post(":contractVersionId/checkpoints")

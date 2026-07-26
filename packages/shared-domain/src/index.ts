@@ -15,6 +15,7 @@ export * from "./money";
 export * from "./core-flow-read-model";
 export * from "./permissions";
 export * from "./contract-workbench";
+export * from "./contract-settlement-mode";
 export {
   COMPANY_ENTITY_DATA_STATUSES,
   COMPANY_ENTITY_MAINTAINER_ROLES,

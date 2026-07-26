@@ -852,7 +852,7 @@ describe("PaymentRequestService", () => {
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
-  it("creates a contract due payment request from an effective contract version without selecting a settlement", async () => {
+  it("creates a contract due payment request for a confirmed direct-payment contract without selecting a settlement", async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date("2026-07-20T00:00:00.000Z"));
 
@@ -880,7 +880,9 @@ describe("PaymentRequestService", () => {
             contractId: "contract-1",
             status: "effective",
             amountCents: BigInt(1_000_000),
-            effectiveAt: new Date("2026-06-01T00:00:00.000Z")
+            effectiveAt: new Date("2026-06-01T00:00:00.000Z"),
+            settlementMode: "direct_payment",
+            settlementModeConfirmedAt: new Date("2026-07-01T00:00:00.000Z")
           }),
           findMany: jest.fn().mockResolvedValue([
             {
@@ -893,7 +895,7 @@ describe("PaymentRequestService", () => {
           findUnique: jest.fn().mockResolvedValue({
             id: "contract-1",
             projectId: "project-1",
-            contractTypeKey: "generic_contract"
+            contractTypeKey: "material_purchase"
           })
         },
         paymentTermsVersion: {
@@ -8161,6 +8163,84 @@ describe("PaymentRequestService", () => {
       })
     ).rejects.toThrow("付款申请已被更新，请刷新后重试");
     expect(tx.paymentRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("blocks ordinary contract-due payment until the settlement mode is confirmed", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective",
+          amountCents: 100_000n,
+          effectiveAt: new Date("2026-07-01T00:00:00.000Z"),
+          settlementMode: null,
+          settlementModeConfirmedAt: null
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          contractTypeKey: "generic_contract"
+        })
+      },
+      paymentTermsVersion: { findFirst: jest.fn() },
+      paymentTermsStage: { findUnique: jest.fn() },
+      paymentRequest: { create: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(paymentService.create({
+      sourceType: "contract_due",
+      contractVersionId: "contract-version-1",
+      paymentTermsStageId: "stage-1",
+      code: "FK-HT-MODE-001",
+      requestedAmountCents: "10000"
+    } as never)).rejects.toThrow("合同结算方式尚未由合同部主管确认");
+
+    expect(tx.paymentTermsVersion.findFirst).not.toHaveBeenCalled();
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects contract-due payment for a confirmed settlement-required contract", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective",
+          amountCents: 100_000n,
+          effectiveAt: new Date("2026-07-01T00:00:00.000Z"),
+          settlementMode: "settlement_required",
+          settlementModeConfirmedAt: new Date("2026-07-27T00:00:00.000Z")
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          contractTypeKey: "generic_contract"
+        })
+      },
+      paymentTermsVersion: { findFirst: jest.fn() },
+      paymentTermsStage: { findUnique: jest.fn() },
+      paymentRequest: { create: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(paymentService.create({
+      sourceType: "contract_due",
+      contractVersionId: "contract-version-1",
+      paymentTermsStageId: "stage-1",
+      code: "FK-HT-MODE-002",
+      requestedAmountCents: "10000"
+    } as never)).rejects.toThrow("该合同已确认需要结算");
+
+    expect(tx.paymentTermsVersion.findFirst).not.toHaveBeenCalled();
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
   it("requires the latest returned approval instance and its return action", async () => {

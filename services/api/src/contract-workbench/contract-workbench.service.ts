@@ -11,6 +11,7 @@ import {
   CONTRACT_TAX_MODES,
   contractInvoiceTypeLabel,
   contractPricingPolicy,
+  isContractSettlementMode,
   normalizeTaxRatePercent,
   type ContractBillDefinition,
   type ContractClauseDefinition,
@@ -33,6 +34,7 @@ import {
 } from "../money/decimal-money";
 import type {
   ApplyContractTypeChangeDto,
+  ConfirmContractSettlementModeDto,
   CreateDraftCheckpointDto,
   PreviewContractTypeChangeDto,
   SaveContractDraftDto,
@@ -307,6 +309,14 @@ export class ContractWorkbenchService {
           : [],
         changePolicy
       },
+      settlementMode: {
+        value: version.settlementMode,
+        source: version.settlementModeSource,
+        confirmedAt: version.settlementModeConfirmedAt?.toISOString() ?? null,
+        confirmedByUserId: version.settlementModeConfirmedByUserId,
+        confirmationRequired: !version.settlementModeConfirmedAt,
+        canConfirm: await this.hasGlobalContractDirector(this.prisma, actorUserId)
+      },
       readiness: this.readinessFromSnapshot(version.readinessSnapshot),
       governance: version.contractGovernanceVersion === 1
         ? {
@@ -490,7 +500,13 @@ export class ContractWorkbenchService {
         !isChangeVersion &&
         (input.paymentTermsOriginalText !== undefined || input.paymentStages !== undefined)
       ) {
-        await this.savePaymentTerms(tx, version.id, contract.contractTypeKey, input);
+        await this.savePaymentTerms(
+          tx,
+          version.id,
+          contract.contractTypeKey,
+          version.settlementMode,
+          input
+        );
       }
       await this.markOlderSuccessfulDocumentsStale(
         tx,
@@ -532,6 +548,67 @@ export class ContractWorkbenchService {
       return this.toReadModel(
         await tx.contractVersion.findUnique({ where: { id: contractVersionId } })
       );
+    });
+  }
+
+  async confirmSettlementMode(
+    contractVersionId: string,
+    actorUserId: string,
+    input: ConfirmContractSettlementModeDto
+  ) {
+    if (!isContractSettlementMode(input?.settlementMode)) {
+      throw new BadRequestException("合同结算方式不正确，请重新选择");
+    }
+    if (!Number.isInteger(input?.expectedRevision) || input.expectedRevision < 1) {
+      throw new BadRequestException("合同草稿版本号不正确，请刷新后重试");
+    }
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertGlobalContractDirector(tx, actorUserId);
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id" FROM "ContractVersion"
+        WHERE "id" = ${contractVersionId}
+        FOR UPDATE
+      `);
+      const version = await tx.contractVersion.findUnique({
+        where: { id: contractVersionId }
+      });
+      if (!version) throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
+      if (!EDITABLE_STATUSES.has(version.status)) {
+        throw new BadRequestException("合同草稿当前不可确认结算方式，请刷新后查看最新状态");
+      }
+      this.assertRevision(version.draftRevision, input.expectedRevision);
+      const updated = await tx.contractVersion.updateMany({
+        where: {
+          id: contractVersionId,
+          status: { in: [...EDITABLE_STATUSES] },
+          draftRevision: input.expectedRevision
+        },
+        data: {
+          settlementMode: input.settlementMode,
+          settlementModeSource: "contract_director",
+          settlementModeConfirmedByUserId: actorUserId,
+          settlementModeConfirmedAt: new Date(),
+          draftRevision: { increment: 1 },
+          readinessSnapshot: Prisma.DbNull
+        }
+      });
+      this.assertCas(updated.count);
+      const confirmed = await tx.contractVersion.findUnique({
+        where: { id: contractVersionId }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract.settlement_mode.confirm",
+        businessType: "contract_version",
+        businessId: contractVersionId,
+        metadata: {
+          settlementMode: input.settlementMode,
+          previousSettlementMode: version.settlementMode,
+          revisionBefore: input.expectedRevision,
+          revisionAfter: input.expectedRevision + 1
+        }
+      });
+      return this.toReadModel(confirmed!);
     });
   }
 
@@ -1241,6 +1318,7 @@ export class ContractWorkbenchService {
     client: Pick<PrismaService, "userPosition" | "position">,
     actorUserId: string
   ) {
+    if (!client.userPosition || !client.position) return false;
     const userPositions = await client.userPosition.findMany({
       where: { userId: actorUserId, projectId: null }
     });
@@ -1451,6 +1529,7 @@ export class ContractWorkbenchService {
     tx: Prisma.TransactionClient,
     contractVersionId: string,
     contractTypeKey: string | null,
+    settlementMode: string | null,
     input: SaveContractDraftDto
   ) {
     const terms = await tx.paymentTermsVersion.findFirst({
@@ -1469,20 +1548,29 @@ export class ContractWorkbenchService {
       where: { paymentTermsVersionId: terms.id }
     });
     if (input.paymentStages?.length) {
-      if (
+      const explicitSettlementMode = isContractSettlementMode(settlementMode);
+      const effectiveMode = explicitSettlementMode
+        ? settlementMode
+        : contractTypeKey === "generic_contract"
+          ? "direct_payment"
+          : "settlement_required";
+      if (!explicitSettlementMode &&
         contractTypeKey !== "generic_contract" &&
-        !SETTLEMENT_CONTRACT_TYPE_KEYS.has(contractTypeKey ?? "")
-      ) {
+        !SETTLEMENT_CONTRACT_TYPE_KEYS.has(contractTypeKey ?? "")) {
         throw new BadRequestException("合同类型不正确，不能保存付款条款");
       }
-      const expectedBasis = contractTypeKey === "generic_contract"
+      const expectedBasis = effectiveMode === "direct_payment"
         ? "contract_amount"
         : "current_settlement";
       if (input.paymentStages.some((stage) => stage.basis !== expectedBasis)) {
         throw new BadRequestException(
-          contractTypeKey === "generic_contract"
-            ? "通用合同付款条款必须按合同金额计算"
-            : "该合同类型付款条款必须按当期结算计算"
+          explicitSettlementMode
+            ? effectiveMode === "direct_payment"
+              ? "按合同直接付款的付款条款必须按合同金额计算"
+              : "需要结算的付款条款必须按当期结算计算"
+            : contractTypeKey === "generic_contract"
+              ? "通用合同付款条款必须按合同金额计算"
+              : "该合同类型付款条款必须按当期结算计算"
         );
       }
       await tx.paymentTermsStage.createMany({

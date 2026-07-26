@@ -14,6 +14,7 @@ import {
   createContractNumberRule,
   createDraftCheckpoint,
   checkContractSubmissionReadiness,
+  confirmContractSettlementMode,
   createLayoutTemplate,
   createStandardClause,
   createWorkbenchDraft,
@@ -277,6 +278,26 @@ describe("contract workbench API client", () => {
       }
     });
     expect(saved).toEqual({ id: "version-1", draftRevision: 2 });
+  });
+
+  it("confirmContractSettlementMode – POST /contract-workbench/:contractVersionId/settlement-mode/confirm", async () => {
+    mockApiFetch.mockReturnValue(makeOkJson({ id: "version-1", draftRevision: 2 }));
+
+    await confirmContractSettlementMode("version-1", {
+      expectedRevision: 1,
+      settlementMode: "settlement_required"
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/contract-workbench/version-1/settlement-mode/confirm",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          expectedRevision: 1,
+          settlementMode: "settlement_required"
+        })
+      })
+    );
   });
 
   it("createDraftCheckpoint – POST /contract-workbench/:contractVersionId/checkpoints", async () => {

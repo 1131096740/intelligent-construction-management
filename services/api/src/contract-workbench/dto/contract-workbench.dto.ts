@@ -1,6 +1,7 @@
 import type {
   ContractClauseDefinition,
   ContractInvoiceType,
+  ContractSettlementMode,
   ContractTaxMode
 } from "@jiangkong/shared-domain";
 
@@ -37,6 +38,11 @@ export interface SaveContractDraftDto {
 
 export interface CreateDraftCheckpointDto {
   name?: string;
+}
+
+export interface ConfirmContractSettlementModeDto {
+  expectedRevision: number;
+  settlementMode: ContractSettlementMode;
 }
 
 export interface VoidDraftDto {

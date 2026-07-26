@@ -8,6 +8,7 @@ import {
 import { Prisma } from "@prisma/client";
 import {
   canCreateSettlementFromContractStatus,
+  isContractSettlementMode,
   SETTLEMENT_IN_PROGRESS_STATUSES,
   SETTLEMENT_OCCUPANCY_STATUSES,
   type ContractVersionStatus,
@@ -406,7 +407,23 @@ export class SettlementDraftService {
     if (!contract) {
       throw new NotFoundException("未找到结算关联合同，请刷新合同台账后重试");
     }
-    assertSettlementContractType(contract.contractTypeKey);
+    // `undefined` only exists in pre-migration test doubles. A persisted legacy
+    // value is NULL and must be explicitly confirmed by the contract director.
+    if (version.settlementMode !== undefined) {
+      if (
+        !isContractSettlementMode(version.settlementMode) ||
+        !version.settlementModeConfirmedAt
+      ) {
+        throw new BadRequestException(
+          "合同结算方式尚未由合同部主管确认，不能新建结算"
+        );
+      }
+      if (version.settlementMode !== "settlement_required") {
+        throw new BadRequestException("该合同已确认按合同直接付款，不能新建结算");
+      }
+    } else {
+      assertSettlementContractType(contract.contractTypeKey);
+    }
     if (contract.projectId !== projectId) {
       throw new BadRequestException("合同版本不属于当前项目，不能保存到该项目的结算草稿");
     }

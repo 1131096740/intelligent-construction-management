@@ -487,7 +487,10 @@
                 :disabled="editorDisabled"
                 :name-disabled="editorDisabled || (isChangeVersion && !changePolicy.editableFieldKeys.includes(CONTRACT_NAME_DRAFT_KEY))"
                 :company-disabled="editorDisabled || isChangeVersion"
+                :settlement-mode="workbench?.settlementMode ?? emptySettlementMode"
+                :settlement-mode-busy="settlementModeConfirming"
                 @update="applyPatch"
+                @confirm-settlement-mode="onConfirmSettlementMode"
               />
               <ContractPartySection
                 v-else-if="activeSection === 'party'"
@@ -533,6 +536,7 @@
                 v-else-if="activeSection === 'payment'"
                 :model="model"
                 :contract-type-key="workbench?.contract.contractTypeKey ?? ''"
+                :settlement-mode="workbench?.settlementMode.value"
                 :disabled="editorDisabled || isChangeVersion"
                 @update="applyPatch"
               />
@@ -780,6 +784,7 @@
 <script setup lang="ts">
 import type {
   ContractReadinessResult,
+  ContractSettlementMode,
   ContractWorkbenchReadModel
 } from "@jiangkong/shared-domain";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
@@ -788,6 +793,7 @@ import {
   abandonContractDraft,
   applyContractTypeChange,
   checkContractSubmissionReadiness,
+  confirmContractSettlementMode,
   listPublishedContractTemplates,
   previewContractTypeChange,
   submitContractFromWorkbench,
@@ -874,6 +880,7 @@ const submissionConfirmVisible = ref(false);
 const submissionError = ref("");
 const submissionMessage = ref("");
 const submissionMessageTone = ref<"success" | "error">("success");
+const settlementModeConfirming = ref(false);
 const governanceMutationLocked = ref(false);
 const focusedBillKey = ref("");
 const billEditorDirty = ref(false);
@@ -1037,6 +1044,11 @@ const emptyReadiness: ContractReadinessResult = {
   ready: false,
   blockingMessages: [],
   warningMessages: []
+};
+const emptySettlementMode = {
+  value: null,
+  confirmationRequired: true,
+  canConfirm: false
 };
 
 const sections = [
@@ -1798,6 +1810,32 @@ async function onSave() {
         ? `合同内容已保存，但正式编号读取失败：${error.message}`
         : "合同内容已保存，但正式编号读取失败，请刷新页面重试。";
     }
+  }
+}
+
+async function onConfirmSettlementMode(mode: ContractSettlementMode) {
+  if (settlementModeConfirming.value || governanceMutationLocked.value) return;
+  settlementModeConfirming.value = true;
+  errorMessage.value = "";
+  const current = await prepareGovernanceMutation();
+  if (!current) {
+    settlementModeConfirming.value = false;
+    return;
+  }
+  try {
+    await confirmContractSettlementMode(current.version.id, {
+      expectedRevision: current.version.draftRevision,
+      settlementMode: mode
+    });
+    await completeGovernanceMutation(true);
+    showManualSaveMessage("结算方式已由合同部主管确认并保存。");
+  } catch (error) {
+    await completeGovernanceMutation(false);
+    errorMessage.value = error instanceof Error
+      ? error.message
+      : "确认合同结算方式失败，请稍后重试。";
+  } finally {
+    settlementModeConfirming.value = false;
   }
 }
 

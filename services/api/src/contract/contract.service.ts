@@ -7,7 +7,13 @@ import {
   Optional
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { approvalElapsedHours, canRemindApproval, type RoleKey } from "@jiangkong/shared-domain";
+import {
+  approvalElapsedHours,
+  canRemindApproval,
+  suggestedContractSettlementMode,
+  isContractSettlementMode,
+  type RoleKey
+} from "@jiangkong/shared-domain";
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
 import { ApprovalFormService } from "../approval/approval-form.service";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
@@ -242,6 +248,22 @@ export class ContractService {
         validationSchema: templateVersion.validationSchema,
         supplementChangePolicy: templateVersion.supplementChangePolicy
       };
+      const suggestedSettlementMode = suggestedContractSettlementMode({
+        contractTypeKey: input.contractTypeKey,
+        hasBill: Array.isArray(templateVersion.billSchema) && templateVersion.billSchema.length > 0
+      });
+      const expectedProgressBasis = suggestedSettlementMode === "direct_payment"
+        ? "contract_amount"
+        : "current_settlement";
+      if (normalizedPaymentStages.some((stage) =>
+        stage.stageType === "progress" && stage.basis !== expectedProgressBasis
+      )) {
+        throw new BadRequestException(
+          suggestedSettlementMode === "direct_payment"
+            ? "系统建议按合同直接付款，普通付款阶段必须按合同金额计算"
+            : "系统建议需要结算，普通付款阶段必须按当期结算计算"
+        );
+      }
 
       // 从 fieldSchema 中初始化 draftData（每个字段取 defaultValue，否则为 null）。
       const fields = (templateVersion.fieldSchema as Array<{ key: string; defaultValue?: unknown }>) ?? [];
@@ -284,6 +306,8 @@ export class ContractService {
           contractGovernanceVersion: 1,
           amountCents: 0n,
           amountLimitType: input.amountLimitType ?? "capped",
+          settlementMode: suggestedSettlementMode,
+          settlementModeSource: "rule",
           businessTemplateVersionId: input.businessTemplateVersionId,
           draftData: draftData as never,
           templateSnapshot: templateSnapshot as never,
@@ -690,6 +714,12 @@ export class ContractService {
           cumulativeIncreaseCents,
           cumulativeDecreaseCents,
           amountLimitType,
+          settlementMode: latest.settlementMode,
+          settlementModeSource: latest.settlementMode === null
+            ? null
+            : "inherited",
+          settlementModeConfirmedByUserId: latest.settlementModeConfirmedByUserId,
+          settlementModeConfirmedAt: latest.settlementModeConfirmedAt,
           businessTemplateVersionId: latest.businessTemplateVersionId,
           layoutTemplateVersionId: latest.layoutTemplateVersionId,
           pricingNature: latest.pricingNature,
@@ -1527,6 +1557,36 @@ export class ContractService {
         }
         if (version.changeType === "supplement") {
           throw new BadRequestException("历史补充协议仅保留只读查看，不能重新提交");
+        }
+        if (version.settlementMode !== undefined && (
+          !isContractSettlementMode(version.settlementMode) ||
+          !version.settlementModeConfirmedAt
+        )) {
+          throw new BadRequestException(
+            "合同结算方式尚未由合同部主管确认，不能提交审批"
+          );
+        }
+        if (isContractSettlementMode(version.settlementMode)) {
+          const terms = await tx.paymentTermsVersion.findFirst({
+            where: { contractVersionId: version.id },
+            select: { id: true }
+          });
+          if (terms) {
+            const stages = await tx.paymentTermsStage.findMany({
+              where: { paymentTermsVersionId: terms.id },
+              select: { stageType: true, basis: true }
+            });
+            const expectedBasis = version.settlementMode === "direct_payment"
+              ? "contract_amount"
+              : "current_settlement";
+            if (stages.some((stage) =>
+              stage.stageType === "progress" && stage.basis !== expectedBasis
+            )) {
+              throw new BadRequestException(
+                "付款条款与已确认的合同结算方式不一致，请保存草稿后再提交审批"
+              );
+            }
+          }
         }
         await this.assertChangeAmountProjection(tx, version);
         const projectLocks = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>(Prisma.sql`

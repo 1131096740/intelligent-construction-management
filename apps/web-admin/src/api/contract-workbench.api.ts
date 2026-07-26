@@ -2,6 +2,7 @@ import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 import type {
   ContractInvoiceType,
+  ContractSettlementMode,
   ContractTaxMode,
   ContractWorkbenchReadModel as SharedContractWorkbenchReadModel,
   DetailActionReadModel
@@ -254,6 +255,21 @@ export interface SaveContractDraftResult {
 export function saveContractDraft(contractVersionId: string, body: SaveContractDraftPayload) {
   return patchJson<SaveContractDraftResult>(
     `/contract-workbench/${contractVersionId}`,
+    body
+  );
+}
+
+export interface ConfirmContractSettlementModePayload {
+  expectedRevision: number;
+  settlementMode: ContractSettlementMode;
+}
+
+export function confirmContractSettlementMode(
+  contractVersionId: string,
+  body: ConfirmContractSettlementModePayload
+) {
+  return postJson<SaveContractDraftResult>(
+    `/contract-workbench/${contractVersionId}/settlement-mode/confirm`,
     body
   );
 }

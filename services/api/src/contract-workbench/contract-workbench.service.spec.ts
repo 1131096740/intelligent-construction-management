@@ -164,6 +164,36 @@ describe("ContractWorkbenchService", () => {
     expect(audit.record).toHaveBeenCalledTimes(1);
   });
 
+  it("lets a contract director confirm the suggested settlement mode with a CAS revision", async () => {
+    const tx = ownedVersionTx({
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "position-1", projectId: null }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ id: "position-1", key: "contract_director" }])
+      }
+    });
+    const service = makeService(tx);
+
+    await service.confirmSettlementMode("version-1", "director-1", {
+      expectedRevision: 4,
+      settlementMode: "settlement_required"
+    });
+
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ draftRevision: 4 }),
+      data: expect.objectContaining({
+        settlementMode: "settlement_required",
+        settlementModeSource: "contract_director",
+        settlementModeConfirmedByUserId: "director-1",
+        draftRevision: { increment: 1 }
+      })
+    }));
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "contract.settlement_mode.confirm"
+    }));
+  });
+
   it("allocates the formal daily number only for the first successful system-contract save", async () => {
     const tx = ownedVersionTx({
       contract: {

@@ -10,6 +10,7 @@ import {
   approvalElapsedHours,
   canCreatePaymentFromSettlementStatus,
   canRemindApproval,
+  isContractSettlementMode,
   SettlementStatus,
   type RoleKey
 } from "@jiangkong/shared-domain";
@@ -613,7 +614,9 @@ export class PaymentRequestService {
         contractId: true,
         status: true,
         amountCents: true,
-        effectiveAt: true
+        effectiveAt: true,
+        settlementMode: true,
+        settlementModeConfirmedAt: true
       }
     });
     if (!contractVersion) {
@@ -629,7 +632,21 @@ export class PaymentRequestService {
     if (!contract) {
       throw new Error("未找到关联合同，请刷新合同台账后重试");
     }
-    if (contract.contractTypeKey !== "generic_contract") {
+    // `undefined` only exists in pre-migration test doubles. A persisted legacy
+    // value is NULL and must be confirmed before ordinary contract-due payment.
+    if (contractVersion.settlementMode !== undefined) {
+      if (
+        !isContractSettlementMode(contractVersion.settlementMode) ||
+        !contractVersion.settlementModeConfirmedAt
+      ) {
+        throw new BadRequestException(
+          "合同结算方式尚未由合同部主管确认，不能按合同发起应付款"
+        );
+      }
+      if (contractVersion.settlementMode !== "direct_payment") {
+        throw new BadRequestException("该合同已确认需要结算，应从生效结算发起付款");
+      }
+    } else if (contract.contractTypeKey !== "generic_contract") {
       throw new BadRequestException("该合同类型应从生效结算发起付款");
     }
     if (!input.paymentTermsStageId) {
