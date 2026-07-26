@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Optional,
@@ -15,6 +16,7 @@ import { SettlementService } from "./settlement.service";
 import { SettlementCounterpartyDocumentService } from "./settlement-counterparty-document.service";
 import { SettlementFrozenDocumentService } from "./settlement-frozen-document.service";
 import { ContractSettlementProcessService } from "./contract-settlement-process.service";
+import { settlementSourceSnapshotToken } from "./settlement-line-occupancy";
 
 @Injectable()
 export class SettlementSubmissionService {
@@ -81,6 +83,22 @@ export class SettlementSubmissionService {
           }
           await this.frozenDocuments.assertCurrentFacts(tx, draft);
           await this.counterpartyDocuments.assertReadyForSubmission(tx, draft);
+          if (draft.calculationVersion === 2) {
+            if (!Array.isArray(draft.lines)) {
+              throw new BadRequestException("结算草稿明细已损坏，请重新保存后再提交");
+            }
+            const currentSourceSnapshotToken = await settlementSourceSnapshotToken(
+              tx,
+              draft.contractVersionId,
+              draft.lines as Array<{ contractBillRowId?: string | null }>
+            );
+            if (currentSourceSnapshotToken !== draft.sourceSnapshotToken) {
+              throw new ConflictException({
+                code: "SETTLEMENT_SOURCE_OCCUPANCY_CHANGED",
+                message: "结算草稿引用的清单来源或历史占用已变化，请刷新工作台、重新核对本期数量后再提交。"
+              });
+            }
+          }
 
           const claimed = await tx.settlementDraft.updateMany({
             where: {

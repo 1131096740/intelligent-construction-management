@@ -128,6 +128,35 @@ export async function loadSettlementLineOccupancy(
   return result;
 }
 
+export async function settlementSourceSnapshotToken(
+  tx: unknown,
+  contractVersionId: string,
+  lineItems: ReadonlyArray<{ contractBillRowId?: string | null }>
+) {
+  const rowIds = [...new Set(lineItems.flatMap((line) => line.contractBillRowId ? [line.contractBillRowId] : []))].sort();
+  if (!rowIds.length) return null;
+  const rowStore = tx as {
+    contractBillRow?: {
+      findMany(args: unknown): Promise<Array<{ id: string; lineageId: string | null }>>;
+    };
+  };
+  if (!rowStore.contractBillRow) return null;
+  const rows = await rowStore.contractBillRow.findMany({
+    where: { id: { in: rowIds } },
+    select: { id: true, lineageId: true }
+  });
+  if (rows.length !== rowIds.length) {
+    throw unresolved("结算草稿引用的合同清单行已不存在或不属于当前有效版本");
+  }
+  const occupancy = await loadSettlementLineOccupancy(tx, contractVersionId, rows);
+  return createHash("sha256").update(JSON.stringify(rows
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .map((row) => {
+      const facts = occupancy.get(row.id);
+      return [row.id, row.lineageId, facts?.amountCents.toString() ?? "0", facts?.quantity.toString() ?? "0", facts?.sourceSnapshotToken];
+    }))).digest("hex");
+}
+
 function snapshotToken(
   row: SourceRow,
   carry: Awaited<ReturnType<NonNullable<OccupancyStore["contractBillRowCarryForward"]>["findMany"]>>[number] | undefined,

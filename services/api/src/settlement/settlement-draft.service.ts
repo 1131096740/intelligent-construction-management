@@ -27,6 +27,7 @@ import {
   settlementContractTypeBlockReason
 } from "./contract-settlement-capacity";
 import { ContractSettlementProcessService } from "./contract-settlement-process.service";
+import { settlementSourceSnapshotToken } from "./settlement-line-occupancy";
 
 @Injectable()
 export class SettlementDraftService {
@@ -55,6 +56,11 @@ export class SettlementDraftService {
         isFinal: input.isFinal === true,
         periodEnd: input.periodEnd
       });
+      const sourceSnapshotToken = await settlementSourceSnapshotToken(
+        tx,
+        context.version.id,
+        input.settlementLines
+      );
       const created = await tx.settlementDraft.create({
         data: {
           projectId: context.contract.projectId,
@@ -70,6 +76,8 @@ export class SettlementDraftService {
           isFinal: input.isFinal === true,
           finalCumulativeAmountCents: this.finalAmount(input),
           lines: this.toJson(input.settlementLines),
+          calculationVersion: 2,
+          sourceSnapshotToken,
           ownerUserId: actorUserId,
           governanceVersion: 1,
           fieldReviewerUserId: input.fieldReviewerUserId?.trim() || null,
@@ -263,6 +271,11 @@ export class SettlementDraftService {
         projectId,
         input.contractVersionId
       );
+      const sourceSnapshotToken = await settlementSourceSnapshotToken(
+        tx,
+        context.version.id,
+        input.settlementLines
+      );
       const updated = await tx.settlementDraft.updateMany({
         where: {
           id: draftId,
@@ -281,6 +294,8 @@ export class SettlementDraftService {
           isFinal: input.isFinal === true,
           finalCumulativeAmountCents: this.finalAmount(input),
           lines: this.toJson(input.settlementLines),
+          calculationVersion: 2,
+          sourceSnapshotToken,
           governanceVersion: 1,
           fieldReviewerUserId: input.fieldReviewerUserId?.trim() || null,
           fieldReviewerRoleKey: input.fieldReviewerRoleKey ?? null,
