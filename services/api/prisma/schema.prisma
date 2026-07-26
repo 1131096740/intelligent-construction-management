@@ -182,6 +182,8 @@ model Contract {
   scenarioTemplateMappingId String?
   scenarioSnapshot          Json?
   temporaryCode             String?   @unique
+  settlementClosedAt        DateTime?
+  finalSettlementId         String?   @unique
   voidedAt                  DateTime?
   voidedReason              String?
   createdAt                 DateTime  @default(now())
@@ -535,6 +537,13 @@ model SettlementDraft {
   periodLabel                       String
   isFinal                           Boolean   @default(false)
   finalCumulativeAmountCents        BigInt?
+  processId                         String?   @unique
+  periodStart                       DateTime? @db.Date
+  periodEnd                         DateTime? @db.Date
+  finalDeclarationVersion           Int?
+  finalDeclarationSnapshot          Json?
+  calculationVersion                Int?
+  sourceSnapshotToken               String?
   lines                             Json
   revision                          Int       @default(1)
   status                            String    @default("draft")
@@ -548,7 +557,7 @@ model SettlementDraft {
   finalWithinContractCap            Boolean?
   finalNoFurtherOrdinarySettlements Boolean?
   submittedSettlementId             String?   @unique
-  copiedFromDraftId                  String?
+  copiedFromDraftId                 String?
   submittedAt                       DateTime?
   abandonedAt                       DateTime?
   abandonedByUserId                 String?
@@ -558,27 +567,35 @@ model SettlementDraft {
 
   @@index([projectId, ownerUserId, status, updatedAt])
   @@index([contractVersionId, status])
+  @@index([contractId, status])
   @@index([copiedFromDraftId])
   @@index([status, updatedAt])
 }
 
 model Settlement {
-  id                                String   @id @default(uuid())
+  id                                String    @id @default(uuid())
   projectId                         String
   contractId                        String
   contractVersionId                 String
   paymentTermsVersionId             String
-  code                              String   @unique
+  code                              String    @unique
   periodLabel                       String
   status                            String
   amountCents                       BigInt
   finalCumulativeAmountCents        BigInt?
+  processId                         String?   @unique
+  periodStart                       DateTime? @db.Date
+  periodEnd                         DateTime? @db.Date
+  finalDeclarationVersion           Int?
+  finalDeclarationSnapshot          Json?
+  calculationVersion                Int?
+  sourceSnapshotToken               String?
   payableAmountCents                BigInt
-  paidAmountCents                   BigInt   @default(0)
-  sourceType                        String   @default("system")
-  sourceTakeoverId                  String?  @unique
+  paidAmountCents                   BigInt    @default(0)
+  sourceType                        String    @default("system")
+  sourceTakeoverId                  String?   @unique
   settlementTemplateVersionId       String?
-  isFinal                           Boolean  @default(false)
+  isFinal                           Boolean   @default(false)
   invoiceTypeSnapshot               String?
   taxFactRevisionSnapshot           Int?
   governanceVersion                 Int?
@@ -593,10 +610,12 @@ model Settlement {
   finalNoOutstandingSettlements     Boolean?
   finalWithinContractCap            Boolean?
   finalNoFurtherOrdinarySettlements Boolean?
-  createdAt                         DateTime @default(now())
-  updatedAt                         DateTime @updatedAt
+  createdAt                         DateTime  @default(now())
+  updatedAt                         DateTime  @updatedAt
 
   @@index([settlementTemplateVersionId])
+  @@index([contractId, status])
+  @@index([contractId, periodEnd])
 }
 
 model SettlementSignedDocument {
@@ -613,6 +632,12 @@ model SettlementSignedDocument {
   status                String    @default("active")
   generationStatus      String
   declarationSnapshot   Json?
+  fileFactsSnapshot     Json?
+  reviewSnapshot        Json?
+  reviewedByUserId      String?
+  reviewedAt            DateTime?
+  derivedFromDocumentId String?
+  normalizationStatus   String?
   declaredByUserId      String?
   declaredAt            DateTime?
   invalidatedAt         DateTime?
@@ -654,18 +679,27 @@ model SettlementSignedDocumentGenerationClaim {
 }
 
 model SettlementLine {
-  id                       String   @id @default(uuid())
+  id                       String    @id @default(uuid())
   settlementId             String
   contractBillRowId        String?
+  lineKey                  String?
+  contractBillRowLineageId String?
+  sourceContractVersionId  String?
+  sourceItemType           String?
+  occurredOn               DateTime? @db.Date
+  description              String?
+  pricingBasis             String?
+  relatedSettlementLineId  String?
+  overageReason            String?
   sourceType               String
   name                     String
   unit                     String?
-  quantity                 Decimal? @db.Decimal(24, 6)
+  quantity                 Decimal?  @db.Decimal(24, 6)
   unitPriceCents           BigInt?
-  calculationMode          String   @default("legacy")
-  contractQuantitySnapshot Decimal? @db.Decimal(24, 6)
-  unitPriceSnapshot        Decimal? @db.Decimal(24, 6)
-  taxRatePercentSnapshot   Decimal? @db.Decimal(9, 6)
+  calculationMode          String    @default("legacy")
+  contractQuantitySnapshot Decimal?  @db.Decimal(24, 6)
+  unitPriceSnapshot        Decimal?  @db.Decimal(24, 6)
+  taxRatePercentSnapshot   Decimal?  @db.Decimal(9, 6)
   pricingModeSnapshot      String?
   amountCents              BigInt
   taxExclusiveAmountCents  BigInt?
@@ -673,11 +707,13 @@ model SettlementLine {
   reason                   String?
   remark                   String?
   sortOrder                Int
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
   @@index([settlementId, sortOrder])
   @@index([contractBillRowId])
+  @@index([contractBillRowLineageId])
+  @@index([relatedSettlementLineId])
 }
 
 model SettlementImport {
@@ -688,6 +724,9 @@ model SettlementImport {
   fileId                      String
   fileSha256                  String
   sourceRevision              String
+  settlementDraftId           String?
+  expectedDraftRevision       Int?
+  idempotencyKeyDigest        String?
   status                      String    @default("preview")
   preview                     Json
   result                      Json?
@@ -701,6 +740,7 @@ model SettlementImport {
   @@index([contractVersionId, createdAt])
   @@index([fileId])
   @@index([settlementTemplateVersionId])
+  @@index([settlementDraftId])
 }
 
 model SettlementTemplate {
@@ -2378,44 +2418,182 @@ model ContractBill {
 }
 
 model ContractBillRow {
-  id                      String   @id @default(uuid())
-  contractBillId          String
-  rowKey                  String
-  sortOrder               Int
-  itemCode                String?
-  itemName                String
-  specification           String?
-  unit                    String
-  quantity                Decimal? @db.Decimal(24, 6)
-  unitPrice               Decimal? @db.Decimal(24, 6)
-  taxRate                 Decimal? @db.Decimal(9, 6)
-  taxRateSource           String   @default("version_default")
-  pricingFactStatus       String   @default("unconfirmed")
-  precisionPolicy         String   @default("two_decimal")
-  taxInclusiveAmountCents BigInt?
-  taxExclusiveAmountCents BigInt?
-  taxAmountCents          BigInt?
-  isProvisional           Boolean  @default(false)
-  settlementBasis         String?
-  customData              Json
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  id                           String    @id @default(uuid())
+  contractBillId               String
+  rowKey                       String
+  sortOrder                    Int
+  itemCode                     String?
+  itemName                     String
+  specification                String?
+  unit                         String
+  quantity                     Decimal?  @db.Decimal(24, 6)
+  unitPrice                    Decimal?  @db.Decimal(24, 6)
+  taxRate                      Decimal?  @db.Decimal(9, 6)
+  taxRateSource                String    @default("version_default")
+  pricingFactStatus            String    @default("unconfirmed")
+  precisionPolicy              String    @default("two_decimal")
+  taxInclusiveAmountCents      BigInt?
+  taxExclusiveAmountCents      BigInt?
+  taxAmountCents               BigInt?
+  isProvisional                Boolean   @default(false)
+  settlementBasis              String?
+  lineageId                    String?
+  remainderDisposition         String?
+  remainderDispositionReason   String?
+  remainderDispositionByUserId String?
+  remainderDispositionAt       DateTime?
+  customData                   Json
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
 
   @@unique([contractBillId, rowKey])
   @@index([contractBillId, sortOrder])
+  @@index([lineageId])
 }
 
 model ContractBillImport {
-  id              String    @id @default(uuid())
-  contractBillId  String
-  fileId          String
-  mode            String
-  status          String
-  preview         Json
-  appliedByUserId String?
-  appliedAt       DateTime?
-  createdByUserId String
-  createdAt       DateTime  @default(now())
+  id                      String    @id @default(uuid())
+  contractBillId          String
+  fileId                  String
+  mode                    String
+  fileSha256              String?
+  sourceContractVersionId String?
+  targetContractVersionId String?
+  expectedBillRevision    Int?
+  mappingStatus           String?
+  idempotencyKeyDigest    String?
+  status                  String
+  preview                 Json
+  appliedByUserId         String?
+  appliedAt               DateTime?
+  createdByUserId         String
+  createdAt               DateTime  @default(now())
+}
+
+model ContractBillRowLineage {
+  id                         String   @id @default(uuid())
+  contractId                 String
+  createdInContractVersionId String
+  status                     String   @default("active")
+  createdByUserId            String
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  @@index([contractId, status])
+  @@index([createdInContractVersionId])
+}
+
+model ContractBillRowTransition {
+  id                             String    @id @default(uuid())
+  contractId                     String
+  fromContractVersionId          String
+  toContractVersionId            String
+  sourceContractBillRowId        String
+  targetContractBillRowId        String
+  relationType                   String
+  matchBasis                     String
+  sourceSettledQuantityAllocated Decimal?  @db.Decimal(24, 6)
+  targetOpeningQuantity          Decimal?  @db.Decimal(24, 6)
+  settledAmountAllocatedCents    BigInt?
+  quantityConversionBasis        String?
+  status                         String    @default("draft")
+  confirmedByUserId              String?
+  confirmedAt                    DateTime?
+  revision                       Int       @default(1)
+  createdAt                      DateTime  @default(now())
+  updatedAt                      DateTime  @updatedAt
+
+  @@unique([fromContractVersionId, toContractVersionId, sourceContractBillRowId, targetContractBillRowId])
+  @@index([contractId, status])
+  @@index([toContractVersionId, status])
+}
+
+model ContractBillRowCarryForward {
+  id                      String    @id @default(uuid())
+  contractVersionId       String
+  contractBillRowId       String    @unique
+  lineageId               String
+  priorSettledQuantity    Decimal?  @db.Decimal(24, 6)
+  priorSettledAmountCents BigInt    @default(0)
+  sourceSnapshotHash      String
+  generatedAt             DateTime  @default(now())
+  confirmedByUserId       String?
+  confirmedAt             DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@index([contractVersionId])
+  @@index([lineageId])
+}
+
+model ContractSettlementProcess {
+  id                             String    @id @default(uuid())
+  contractId                     String
+  sequenceNo                     Int
+  contractVersionId              String
+  settlementDraftId              String?   @unique
+  settlementId                   String?   @unique
+  status                         String    @default("open")
+  periodStart                    DateTime? @db.Date
+  periodEnd                      DateTime? @db.Date
+  isFinal                        Boolean   @default(false)
+  endedAt                        DateTime?
+  endedByUserId                  String?
+  endedReason                    String?
+  invalidatedByContractVersionId String?
+  createdAt                      DateTime  @default(now())
+  updatedAt                      DateTime  @updatedAt
+
+  @@unique([contractId, sequenceNo])
+  @@index([contractId, status])
+  @@index([contractVersionId, status])
+}
+
+model SettlementDraftLine {
+  id                       String    @id @default(uuid())
+  settlementDraftId        String
+  lineKey                  String
+  sourceType               String
+  contractBillRowId        String?
+  contractBillRowLineageId String?
+  relatedSettlementLineId  String?
+  sourceItemType           String?
+  occurredOn               DateTime? @db.Date
+  name                     String
+  description              String?
+  unit                     String?
+  quantity                 Decimal?  @db.Decimal(24, 6)
+  unitPriceCents           BigInt?
+  directAmountCents        BigInt?
+  calculationMode          String
+  pricingBasis             String?
+  overageReason            String?
+  reason                   String?
+  remark                   String?
+  sortOrder                Int
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  @@unique([settlementDraftId, lineKey])
+  @@index([contractBillRowId])
+  @@index([contractBillRowLineageId])
+  @@index([relatedSettlementLineId])
+}
+
+model SettlementLineAttachment {
+  id                    String   @id @default(uuid())
+  settlementDraftLineId String?
+  settlementLineId      String?
+  fileId                String
+  purpose               String
+  status                String   @default("active")
+  uploadedByUserId      String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([settlementDraftLineId])
+  @@index([settlementLineId])
+  @@index([fileId])
 }
 
 model ContractGeneratedDocument {

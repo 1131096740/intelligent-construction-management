@@ -99,9 +99,16 @@ T04、T05 和 T09 在 T03 完成后可以按文件边界并行设计，但合入
 
 ### T03 建立 M1 数据模型基础
 
-状态：`[ ]`
+状态：`[x]`（2026-07-27；仅本地前向结构，未执行生产迁移、历史回填或业务数据改写）
 
 目标：按 `JGZG-CSWV2-DM-001` 建立纯新增 Schema，不执行历史业务回填。
+
+已完成：
+
+- 新增 lineage、transition、carry-forward、settlement process、结构化草稿行和行附件模型，以及与既有合同、清单、结算、导入、文件表的兼容可空字段和索引；
+- `ContractSettlementProcess` 以合同内期次唯一和 `open` 部分唯一索引提供数据库并发兜底；所有新外键均为 `RESTRICT`，稳定结构约束均为 `NOT VALID`；
+- 行附件已进入统一私有文件绑定目录；旧 `SettlementDraft.lines` 和既有 `SettlementLine` 保持不变；
+- Prisma validate/generate、数据库 schema 聚焦 Jest 13/13、API typecheck/lint 与 `git diff --check` 通过；一次性本地 PostgreSQL 16 空库顺序完成 88 条迁移，实际验证同一合同第二个 `open` 结算过程被部分唯一索引拒绝。该容器已删除；未连接生产或任何业务数据库，未做历史回填或业务数据改写。
 
 主要结构：
 
