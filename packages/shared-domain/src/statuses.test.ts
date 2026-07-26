@@ -4,6 +4,7 @@ import {
   canCreatePaymentFromSettlementStatus,
   canCreateSettlementFromContractStatus,
   PAYMENT_REQUEST_STATUSES,
+  SETTLEMENT_IN_PROGRESS_STATUSES,
   SETTLEMENT_OCCUPANCY_STATUSES,
   SETTLEMENT_STATUSES
 } from "./statuses";
@@ -51,5 +52,23 @@ describe("domain statuses", () => {
     expect(SETTLEMENT_OCCUPANCY_STATUSES).not.toContain("draft");
     expect(SETTLEMENT_OCCUPANCY_STATUSES).not.toContain("approval_rejected");
     expect(SETTLEMENT_OCCUPANCY_STATUSES).not.toContain("withdrawn");
+  });
+
+  it("separates one-at-a-time settlement processing from historical capacity occupancy", () => {
+    expect(SETTLEMENT_IN_PROGRESS_STATUSES).toEqual([
+      "draft",
+      "in_approval",
+      "approval_pending",
+      "approval_rejected",
+      "withdrawn",
+      "pending_generation",
+      "approved_pending_archive",
+      "archive_pending",
+      "pending_archive_confirm"
+    ]);
+    expect(SETTLEMENT_IN_PROGRESS_STATUSES).not.toContain("effective");
+    expect(SETTLEMENT_IN_PROGRESS_STATUSES).not.toContain("partially_paid");
+    expect(SETTLEMENT_IN_PROGRESS_STATUSES).not.toContain("paid");
+    expect(SETTLEMENT_IN_PROGRESS_STATUSES).not.toContain("voided");
   });
 });

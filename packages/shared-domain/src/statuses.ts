@@ -33,6 +33,18 @@ export const SETTLEMENT_STATUSES = [
 
 export type SettlementStatus = (typeof SETTLEMENT_STATUSES)[number];
 
+export const SETTLEMENT_IN_PROGRESS_STATUSES = [
+  "draft",
+  "in_approval",
+  "approval_pending",
+  "approval_rejected",
+  "withdrawn",
+  "pending_generation",
+  "approved_pending_archive",
+  "archive_pending",
+  "pending_archive_confirm"
+] as const satisfies readonly SettlementStatus[];
+
 export const SETTLEMENT_OCCUPANCY_STATUSES = [
   "in_approval",
   "approval_pending",

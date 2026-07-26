@@ -8,6 +8,7 @@ import {
 import { Prisma } from "@prisma/client";
 import {
   canCreateSettlementFromContractStatus,
+  SETTLEMENT_IN_PROGRESS_STATUSES,
   SETTLEMENT_OCCUPANCY_STATUSES,
   type ContractVersionStatus,
   type DetailActionReadModel
@@ -42,6 +43,7 @@ export class SettlementDraftService {
         projectId,
         input.contractVersionId
       );
+      await this.assertNoActiveSettlement(tx, context.contract.id);
       const created = await tx.settlementDraft.create({
         data: {
           projectId: context.contract.projectId,
@@ -107,6 +109,7 @@ export class SettlementDraftService {
         throw new ConflictException("来源结算草稿已变化，请刷新台账后重试");
       }
       const context = await this.contractContext(tx, projectId, source!.contractVersionId);
+      await this.assertNoActiveSettlement(tx, context.contract.id);
       const suffix = new Date().toISOString().replace(/\D/gu, "").slice(4, 14);
       const created = await tx.settlementDraft.create({
         data: {
@@ -446,6 +449,38 @@ export class SettlementDraftService {
     }
     if (draft.ownerUserId !== actorUserId) {
       throw new ForbiddenException("只能查看和修改本人创建的结算草稿");
+    }
+  }
+
+  private async assertNoActiveSettlement(
+    tx: Prisma.TransactionClient,
+    contractId: string
+  ): Promise<void> {
+    const activeDraft = await tx.settlementDraft.findFirst({
+      where: {
+        contractId,
+        status: "draft",
+        submittedSettlementId: null
+      },
+      select: { id: true, code: true }
+    });
+    if (activeDraft) {
+      throw new ConflictException(
+        `该合同已有进行中的结算草稿（${activeDraft.code}），请继续办理或作废后再新建`
+      );
+    }
+
+    const activeSettlement = await tx.settlement.findFirst({
+      where: {
+        contractId,
+        status: { in: [...SETTLEMENT_IN_PROGRESS_STATUSES] }
+      },
+      select: { id: true, code: true, status: true }
+    });
+    if (activeSettlement) {
+      throw new ConflictException(
+        `该合同已有进行中的结算（${activeSettlement.code}），请先继续办理或正式作废`
+      );
     }
   }
 

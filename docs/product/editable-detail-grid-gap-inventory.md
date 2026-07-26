@@ -12,8 +12,8 @@
 | 合同接管 | [历史计价项目](../../apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue) | 逐合同结构化向导中的重复卡片，逐项新增/删除 | 是 | 是：数量、单价和税率需要校验与金额事实核对；无批量粘贴 | 后续评估 `JgBusinessGrid` 领域适配 | 不处理（P2；真实试运行高使用，但当前逐合同向导的网格收益有限且需独立验收） |
 | 合同接管 | [直接付款阶段](../../apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue) | 重复结构化阶段表单 | 是 | 是：比例或固定金额需校验；通常无需批量粘贴 | 保持结构化表单 | 不处理（P2；不是典型二维清单） |
 | 合同税务复核 | [清单行计价事实](../../apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue) | 由既有清单派生的固定行卡片，只补含税单价和例外税率 | 是 | 是：影响税额核算；当前无批量粘贴 | 后续评估轻量网格或批量填充 | 不处理（P1；需先守住税务复核审计语义） |
-| 结算 | [本期结算来源行](../../apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue) | `t-table` 内选择后逐行填写数量、人工金额和备注，另有多行粘贴弹窗 | 是 | 是：合同单价自动计价、人工金额、批量备注和多行数量粘贴 | 后续评估 `JgBusinessGrid` 领域适配 | 不处理（P1；高价值候选，需独立保证后台重算与异常链路） |
-| 结算 | [独立人工调整](../../apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue) | `t-table` 内逐行新增/删除并填写名称、金额、原因、备注 | 是 | 是：正负金额参与结算合计；无批量粘贴 | 可与结算来源行在同一后续切片评估 | 不处理（P1；必须与结算预览和提交原子性一起设计） |
+| 结算 | [本期结算来源行](../../apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue) | `t-table` 内选择后逐行填写数量、人工金额和备注，另有多行粘贴弹窗 | 是 | 是：合同单价自动计价、人工金额、批量备注和多行数量粘贴 | `JgBusinessGrid` 领域适配 | 实施中（P1；先完成跨版本清单账本、单一进行中结算与后台重算，再迁移工作台） |
+| 结算 | [独立人工调整](../../apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue) | `t-table` 内逐行新增/删除并填写名称、金额、原因、备注 | 是 | 是：正负金额参与结算合计；无批量粘贴 | 与结算来源行共用同一结算工作台切片 | 实施中（P1；与签证/变更项目、结算预览和提交原子性一起实施） |
 | 零星采购 | [采购材料明细](../../apps/web-admin/src/pages/spot-procurement/components/ProcurementLineEditor.vue) | `JgBusinessGrid` 编辑，表外逐行删除 | 是 | 是：数量校验；网格原生支持多单元格录入 | 继续使用 `JgBusinessGrid`，后续补领域操作 | 不处理（已有统一底座；P2 仅评估行操作体验） |
 | 零星付款 | [付款材料明细](../../apps/web-admin/src/pages/spot-procurement/components/PaymentApplicationStepper.vue) | 分步卡片表单；从已批准采购材料中逐行选择并填写数量、单价和票据事实 | 是 | 是：数量 × 单价预览；当前无批量粘贴 | 按整站总规格评估 `JgBusinessGrid` 领域适配 | 不处理（P1；另开切片守住来源和金额校验） |
 | 零星付款 | [收款渠道](../../apps/web-admin/src/pages/spot-procurement/components/PaymentApplicationStepper.vue) | 可新增/删除的受控结构化卡片，登记方式、账户、开户行和唯一主渠道 | 是 | 否：不做行金额计算，也不应任意粘贴敏感账户 | 保持受控结构化表单 | 不处理（敏感账户与主渠道约束不纳入通用网格） |

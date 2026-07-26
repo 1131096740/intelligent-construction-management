@@ -47,6 +47,7 @@ describe("SettlementDraftService", () => {
           updatedAt: new Date("2026-07-17T00:00:00.000Z"),
           ...data
         })),
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn().mockResolvedValue(null),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
@@ -56,7 +57,11 @@ describe("SettlementDraftService", () => {
         findMany: jest.fn().mockResolvedValue([])
       },
       fileObject: { findMany: jest.fn().mockResolvedValue([]) },
-      settlement: { create: jest.fn(), count: jest.fn().mockResolvedValue(0) },
+      settlement: {
+        create: jest.fn(),
+        count: jest.fn().mockResolvedValue(0),
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
       settlementLine: { createMany: jest.fn() },
       projectSettlementExceptionQuotaUsage: { createMany: jest.fn() },
       approvalInstance: { create: jest.fn() },
@@ -204,6 +209,61 @@ describe("SettlementDraftService", () => {
 
     expect(tx.settlementDraft.create).not.toHaveBeenCalled();
     expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects a second draft while the same contract already has an active draft", async () => {
+    const { tx, service } = context();
+    tx.settlementDraft.findFirst.mockResolvedValue({
+      id: "draft-existing",
+      code: "JS-2026-001"
+    });
+
+    await expect(
+      service.create("project-1", "owner-2", {
+        ...draftInput,
+        code: "JS-2026-002"
+      })
+    ).rejects.toThrow("JS-2026-001");
+
+    expect(tx.settlementDraft.create).not.toHaveBeenCalled();
+    expect(tx.settlement.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("rejects a new draft while a formal settlement is still in progress", async () => {
+    const { tx, service } = context();
+    tx.settlement.findFirst.mockResolvedValue({
+      id: "settlement-existing",
+      code: "JS-2026-001",
+      status: "approval_rejected"
+    });
+
+    await expect(
+      service.create("project-1", "owner-2", {
+        ...draftInput,
+        code: "JS-2026-002"
+      })
+    ).rejects.toThrow("JS-2026-001");
+
+    expect(tx.settlementDraft.create).not.toHaveBeenCalled();
+    expect(tx.settlement.findFirst).toHaveBeenCalledWith({
+      where: {
+        contractId: "contract-1",
+        status: {
+          in: [
+            "draft",
+            "in_approval",
+            "approval_pending",
+            "approval_rejected",
+            "withdrawn",
+            "pending_generation",
+            "approved_pending_archive",
+            "archive_pending",
+            "pending_archive_confirm"
+          ]
+        }
+      },
+      select: { id: true, code: true, status: true }
+    });
   });
 
   it("rejects updating an existing draft after an occupying final settlement exists", async () => {
