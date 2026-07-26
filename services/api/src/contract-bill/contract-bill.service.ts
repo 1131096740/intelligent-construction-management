@@ -19,6 +19,7 @@ import {
 } from "./contract-bill-row-rules";
 import { recalculateBillAndContractAmount } from "./contract-bill-totals";
 import { loadOwnedEditableBill } from "./contract-bill-guards";
+import { ContractBillLineageService } from "./contract-bill-lineage.service";
 import type {
   ReorderBillRowsDto,
   ReplaceBillRowDto,
@@ -85,7 +86,8 @@ function stableJson(value: unknown): string {
 export class ContractBillService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly lineage: ContractBillLineageService = new ContractBillLineageService()
   ) {}
 
   replaceRows(billId: string, actorUserId: string, rawInput: unknown) {
@@ -157,6 +159,10 @@ export class ContractBillService {
         .map((row) => row.rowKey)
         .filter((rowKey) => !requestedKeys.has(rowKey));
       if (deletedKeys.length) {
+        await this.lineage.assertRowsDeletable(
+          tx,
+          existingRows.filter((row) => deletedKeys.includes(row.rowKey)).map((row) => row.id)
+        );
         await tx.contractBillRow.deleteMany({
           where: { contractBillId: bill.id, rowKey: { in: deletedKeys } }
         });
@@ -173,8 +179,14 @@ export class ContractBillService {
             updatedCount += 1;
           }
         } else {
-          await tx.contractBillRow.create({
+          const created = await tx.contractBillRow.create({
             data: { contractBillId: bill.id, rowKey: randomUUID(), ...data }
+          });
+          await this.lineage.bindNewRow(tx, {
+            contractId: version.contractId,
+            contractVersionId: version.id,
+            contractBillRowId: created.id,
+            actorUserId
           });
           createdCount += 1;
         }
@@ -235,6 +247,12 @@ export class ContractBillService {
           settlementBasis: input.settlementBasis?.trim() || null,
           customData: this.toJson(input.customData)
         }
+      });
+      await this.lineage.bindNewRow(tx, {
+        contractId: version.contractId,
+        contractVersionId: version.id,
+        contractBillRowId: row.id,
+        actorUserId
       });
       return this.finishMutation(
         tx,
@@ -308,7 +326,8 @@ export class ContractBillService {
     return this.prisma.$transaction(async (tx) => {
       const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
       this.assertExpectedRevision(expectedBillRevision);
-      await this.findRow(tx, billId, rowKey);
+      const row = await this.findRow(tx, billId, rowKey);
+      await this.lineage.assertRowsDeletable(tx, [row.id]);
       const newRevision = await this.lockMutation(
         tx,
         bill,

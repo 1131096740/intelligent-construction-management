@@ -64,6 +64,7 @@ import {
 } from "./contract-formal-file.service";
 import { ContractAuthorizationService } from "./contract-authorization.service";
 import { ContractSealService } from "./contract-seal.service";
+import { ContractBillLineageService } from "../contract-bill/contract-bill-lineage.service";
 
 interface ContractApprovalAssignment {
   kind: "transfer" | "delegate";
@@ -157,7 +158,8 @@ export class ContractService {
     @Optional()
     private readonly authorizations?: ContractAuthorizationService,
     @Optional()
-    private readonly seals?: ContractSealService
+    private readonly seals?: ContractSealService,
+    private readonly lineage: ContractBillLineageService = new ContractBillLineageService()
   ) {}
 
   async createDraft(input: CreateContractDraftDto, actorUserId: string) {
@@ -540,6 +542,21 @@ export class ContractService {
             customData: row.customData as Prisma.InputJsonValue
           }))
         });
+        const targets = await tx.contractBillRow.findMany({
+          where: { contractBillId: bill.id },
+          orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+        });
+        const targetByKey = new Map(targets.map((row) => [row.rowKey, row]));
+        for (const source of rows) {
+          await this.lineage.cloneOneToOne(tx, {
+            contractId: contract.id,
+            fromContractVersionId: sourceBill.contractVersionId,
+            toContractVersionId: version.id,
+            source,
+            target: targetByKey.get(source.rowKey)!,
+            actorUserId
+          });
+        }
       }
       if (sourceParties.length) await tx.contractPartySnapshot.createMany({
         data: sourceParties.map((party) => ({
@@ -809,6 +826,21 @@ export class ContractService {
               customData: row.customData as Prisma.InputJsonValue
             }))
           });
+          const targets = await tx.contractBillRow.findMany({
+            where: { contractBillId: clonedBill.id },
+            orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+          });
+          const targetByKey = new Map(targets.map((row) => [row.rowKey, row]));
+          for (const source of rows) {
+            await this.lineage.cloneOneToOne(tx, {
+              contractId: contract.id,
+              fromContractVersionId: bill.contractVersionId,
+              toContractVersionId: version.id,
+              source,
+              target: targetByKey.get(source.rowKey)!,
+              actorUserId
+            });
+          }
         }
       }
 

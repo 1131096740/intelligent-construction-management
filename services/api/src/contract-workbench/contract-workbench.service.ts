@@ -24,6 +24,7 @@ import {
 } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { assertContractChangeContentAllowed } from "../contract/contract-change-policy";
+import { ContractBillLineageService } from "../contract-bill/contract-bill-lineage.service";
 import { PrismaService } from "../database/prisma.service";
 import { ContractReadinessService } from "./contract-readiness.service";
 import { BusinessNumberingService } from "../business-number/business-numbering.service";
@@ -129,7 +130,8 @@ export class ContractWorkbenchService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly readiness?: ContractReadinessService,
-    private readonly businessNumbers?: BusinessNumberingService
+    private readonly businessNumbers?: BusinessNumberingService,
+    private readonly lineage: ContractBillLineageService = new ContractBillLineageService()
   ) {}
 
   checkReadiness(contractVersionId: string, actorUserId: string) {
@@ -752,7 +754,7 @@ export class ContractWorkbenchService {
         actorUserId,
         restoredCompanySelection
       );
-      await this.replaceBillsFromSnapshot(tx, contractVersionId, snapshot.bills);
+      await this.replaceBillsFromSnapshot(tx, contractVersionId, snapshot.bills, version.contractId, actorUserId);
       await this.audit.record(tx, {
         actorUserId,
         action: "contract.draft.checkpoint.restore",
@@ -1999,9 +2001,15 @@ export class ContractWorkbenchService {
   private async replaceBillsFromSnapshot(
     tx: Prisma.TransactionClient,
     contractVersionId: string,
-    snapshots: BillSnapshot[]
+    snapshots: BillSnapshot[],
+    contractId?: string,
+    actorUserId?: string
   ) {
     const current = await tx.contractBill.findMany({ where: { contractVersionId } });
+    const currentRows = current.length
+      ? await tx.contractBillRow.findMany({ where: { contractBillId: { in: current.map((bill) => bill.id) } } })
+      : [];
+    const priorLineage = new Map(currentRows.map((row) => [`${row.contractBillId}:${row.rowKey}`, row.lineageId]));
     if (current.length) {
       await tx.contractBillRow.deleteMany({
         where: { contractBillId: { in: current.map((bill) => bill.id) } }
@@ -2063,6 +2071,22 @@ export class ContractWorkbenchService {
             };
           })
         });
+        const targets = await tx.contractBillRow.findMany({ where: { contractBillId: bill.id } });
+        for (const target of targets) {
+          const previousBill = current.find((candidate) => candidate.billKey === snapshot.billKey);
+          const lineageId = previousBill ? priorLineage.get(`${previousBill.id}:${target.rowKey}`) : null;
+          if (lineageId) {
+            await tx.contractBillRow.update({ where: { id: target.id }, data: { lineageId } });
+          } else {
+            if (!contractId || !actorUserId) continue;
+            await this.lineage.bindNewRow(tx, {
+              contractId,
+              contractVersionId,
+              contractBillRowId: target.id,
+              actorUserId
+            });
+          }
+        }
       }
     }
   }

@@ -19,6 +19,7 @@ import { moneyCentsToApi } from "../money/decimal-money";
 import { resolveContractBillRowFacts } from "./contract-bill-row-rules";
 import { recalculateBillAndContractAmount } from "./contract-bill-totals";
 import { loadOwnedEditableBill } from "./contract-bill-guards";
+import { ContractBillLineageService } from "./contract-bill-lineage.service";
 
 const DATA_SHEET = "清单数据";
 const INSTRUCTION_SHEET = "填写说明";
@@ -132,7 +133,8 @@ export class ContractBillExcelService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly files: FileService
+    private readonly files: FileService,
+    private readonly lineage: ContractBillLineageService = new ContractBillLineageService()
   ) {}
 
   async exportTemplate(billId: string, actorUserId: string) {
@@ -291,6 +293,8 @@ export class ContractBillExcelService {
       );
 
       for (const rowKey of plan.removeKeys) {
+        const existing = existingRows.find((row) => row.rowKey === rowKey);
+        if (existing) await this.lineage.assertRowsDeletable(tx, [existing.id]);
         await tx.contractBillRow.deleteMany({
           where: { contractBillId: bill.id, rowKey }
         });
@@ -303,13 +307,19 @@ export class ContractBillExcelService {
       }
       let sortOrder = await tx.contractBillRow.count({ where: { contractBillId: bill.id } });
       for (const row of plan.adds) {
-        await tx.contractBillRow.create({
+        const created = await tx.contractBillRow.create({
           data: {
             contractBillId: bill.id,
             rowKey: row.rowKey,
             sortOrder: sortOrder++,
             ...this.toRowData(row)
           }
+        });
+        await this.lineage.bindNewRow(tx, {
+          contractId: version.contractId,
+          contractVersionId: version.id,
+          contractBillRowId: created.id,
+          actorUserId
         });
       }
 
