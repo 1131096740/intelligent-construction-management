@@ -3,7 +3,8 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
@@ -25,12 +26,14 @@ import {
   assertSettlementContractType,
   settlementContractTypeBlockReason
 } from "./contract-settlement-capacity";
+import { ContractSettlementProcessService } from "./contract-settlement-process.service";
 
 @Injectable()
 export class SettlementDraftService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService = new AuditService()
+    private readonly audit: AuditService = new AuditService(),
+    @Optional() private readonly processes?: ContractSettlementProcessService
   ) {}
 
   async create(
@@ -45,6 +48,13 @@ export class SettlementDraftService {
         input.contractVersionId
       );
       await this.assertNoActiveSettlement(tx, context.contract.id);
+      const process = await this.processes?.createOpen(tx, {
+        contractId: context.contract.id,
+        contractVersionId: context.version.id,
+        contractEffectiveAt: context.version.effectiveAt,
+        isFinal: input.isFinal === true,
+        periodEnd: input.periodEnd
+      });
       const created = await tx.settlementDraft.create({
         data: {
           projectId: context.contract.projectId,
@@ -54,6 +64,9 @@ export class SettlementDraftService {
           settlementTemplateVersionId: input.settlementTemplateVersionId.trim(),
           code: input.code.trim(),
           periodLabel: input.periodLabel.trim(),
+          processId: process?.id,
+          periodStart: process?.periodStart,
+          periodEnd: process?.periodEnd,
           isFinal: input.isFinal === true,
           finalCumulativeAmountCents: this.finalAmount(input),
           lines: this.toJson(input.settlementLines),
@@ -64,6 +77,7 @@ export class SettlementDraftService {
           ...this.finalConfirmations(input)
         }
       });
+      if (process) await this.processes?.linkDraft(tx, process.id, created.id);
       return this.readModel(created);
     });
   }
@@ -96,6 +110,7 @@ export class SettlementDraftService {
         finalNoOutstandingSettlements: boolean | null;
         finalWithinContractCap: boolean | null;
         finalNoFurtherOrdinarySettlements: boolean | null;
+        periodEnd: Date | null;
         updatedAt: Date;
       }>>(Prisma.sql`
         SELECT * FROM "SettlementDraft"
@@ -111,6 +126,13 @@ export class SettlementDraftService {
       }
       const context = await this.contractContext(tx, projectId, source!.contractVersionId);
       await this.assertNoActiveSettlement(tx, context.contract.id);
+      const process = await this.processes?.createOpen(tx, {
+        contractId: context.contract.id,
+        contractVersionId: context.version.id,
+        contractEffectiveAt: context.version.effectiveAt,
+        isFinal: source!.isFinal,
+        periodEnd: source!.periodEnd?.toISOString().slice(0, 10)
+      });
       const suffix = new Date().toISOString().replace(/\D/gu, "").slice(4, 14);
       const created = await tx.settlementDraft.create({
         data: {
@@ -121,6 +143,9 @@ export class SettlementDraftService {
           settlementTemplateVersionId: source!.settlementTemplateVersionId,
           code: `${source!.code}-副本-${suffix}`,
           periodLabel: source!.periodLabel,
+          processId: process?.id,
+          periodStart: process?.periodStart,
+          periodEnd: process?.periodEnd,
           isFinal: source!.isFinal,
           finalCumulativeAmountCents: source!.finalCumulativeAmountCents,
           lines: source!.lines as Prisma.InputJsonValue,
@@ -136,6 +161,7 @@ export class SettlementDraftService {
           copiedFromDraftId: source!.id
         }
       });
+      if (process) await this.processes?.linkDraft(tx, process.id, created.id);
       await this.audit.record(tx, {
         actorUserId,
         action: "settlement.draft.copy",
@@ -348,6 +374,15 @@ export class SettlementDraftService {
       });
       if (updated.count !== 1) {
         throw new ConflictException("结算草稿已被其他操作处理，请刷新后重试");
+      }
+      if (draft!.processId) {
+        await this.processes?.voidOpenDraftProcess(
+          tx,
+          draft!.processId,
+          draftId,
+          actorUserId,
+          hasSigningEvidence ? reason : "删除纯净结算草稿"
+        );
       }
       await tx.settlementSignedDocument.updateMany({
         where: { settlementDraftId: draftId, status: "active" },

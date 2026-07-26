@@ -2,6 +2,7 @@ import { Type } from "class-transformer";
 import {
   IsArray,
   IsBoolean,
+  IsDateString,
   IsIn,
   IsInt,
   Min,
@@ -55,6 +56,10 @@ export class SaveSettlementDraftDto {
     blankMessage: "请填写结算期间"
   })
   periodLabel!: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsDateString({ strict: true }, { message: "结算结束日格式不正确" })
+  periodEnd?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
   @IsBoolean({ message: "是否最终结算必须是布尔值" })

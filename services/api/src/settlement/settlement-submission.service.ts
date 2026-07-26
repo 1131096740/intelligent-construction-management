@@ -14,6 +14,7 @@ import type {
 import { SettlementService } from "./settlement.service";
 import { SettlementCounterpartyDocumentService } from "./settlement-counterparty-document.service";
 import { SettlementFrozenDocumentService } from "./settlement-frozen-document.service";
+import { ContractSettlementProcessService } from "./contract-settlement-process.service";
 
 @Injectable()
 export class SettlementSubmissionService {
@@ -21,7 +22,8 @@ export class SettlementSubmissionService {
     private readonly prisma: PrismaService,
     private readonly settlements: SettlementService,
     @Optional() private readonly counterpartyDocuments?: SettlementCounterpartyDocumentService,
-    @Optional() private readonly frozenDocuments?: SettlementFrozenDocumentService
+    @Optional() private readonly frozenDocuments?: SettlementFrozenDocumentService,
+    @Optional() private readonly processes?: ContractSettlementProcessService
   ) {}
 
   submit(input: CreateSettlementDto, applicantUserId: string) {
@@ -103,6 +105,9 @@ export class SettlementSubmissionService {
             applicantUserId,
             {
               draftId: draft.id,
+              processId: draft.processId,
+              periodStart: draft.periodStart,
+              periodEnd: draft.periodEnd,
               governanceVersion: 1,
               fieldReviewerUserId: draft.fieldReviewerUserId,
               fieldReviewerRoleKey: draft.fieldReviewerRoleKey,
@@ -130,6 +135,9 @@ export class SettlementSubmissionService {
           if (marked.count !== 1) {
             throw new BadRequestException("结算草稿状态已变化，请刷新结算台账核对");
           }
+          if (draft.processId) {
+            await this.processes?.linkSettlement(tx, draft.processId, draft.id, created.id);
+          }
           return created;
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
@@ -151,6 +159,9 @@ export class SettlementSubmissionService {
     periodLabel: string;
     isFinal: boolean;
     finalCumulativeAmountCents: bigint | null;
+    processId?: string | null;
+    periodStart?: Date | null;
+    periodEnd?: Date | null;
     lines: Prisma.JsonValue;
     governanceVersion?: number | null;
   }): CreateSettlementDto {

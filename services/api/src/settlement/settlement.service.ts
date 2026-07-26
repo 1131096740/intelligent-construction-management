@@ -320,6 +320,9 @@ export interface PreparedSettlementSubmission {
 
 export interface GovernedSettlementDraftSubmission {
   draftId: string;
+  processId?: string | null;
+  periodStart?: Date | null;
+  periodEnd?: Date | null;
   governanceVersion: 1;
   fieldReviewerUserId: string | null;
   fieldReviewerRoleKey: string | null;
@@ -1433,6 +1436,9 @@ export class SettlementService {
         ...(settlementTemplateVersionId ? { settlementTemplateVersionId } : {}),
         code: input.code,
         periodLabel,
+        ...(governedDraft?.processId ? { processId: governedDraft.processId } : {}),
+        ...(governedDraft?.periodStart ? { periodStart: governedDraft.periodStart } : {}),
+        ...(governedDraft?.periodEnd ? { periodEnd: governedDraft.periodEnd } : {}),
         status: "approval_pending",
         amountCents: settlementAmountCents,
         payableAmountCents,

@@ -7,6 +7,7 @@ import { MeModule } from "../me/me.module";
 import { SettlementController } from "./settlement.controller";
 import { SettlementDraftController } from "./settlement-draft.controller";
 import { SettlementDraftService } from "./settlement-draft.service";
+import { ContractSettlementProcessService } from "./contract-settlement-process.service";
 import { SettlementImportController } from "./settlement-import.controller";
 import {
   SettlementTemplateGovernanceController,
@@ -37,6 +38,7 @@ import { SettlementFrozenDocumentService } from "./settlement-frozen-document.se
   providers: [
     SettlementService,
     SettlementDraftService,
+    ContractSettlementProcessService,
     SettlementSubmissionService,
     SettlementReadService,
     SettlementAttachmentTemplateService,
