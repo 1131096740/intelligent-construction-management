@@ -9,7 +9,7 @@ import {
   deriveTaxExclusiveUnitPrice,
   formatMoneyCentsAsYuan
 } from "../money/decimal-money";
-import { SETTLEMENT_LINE_OCCUPANCY_STATUSES } from "./settlement-line-occupancy";
+import { loadSettlementLineOccupancy } from "./settlement-line-occupancy";
 import {
   settlementCalculationMode,
   settlementSubmissionBlocker
@@ -103,7 +103,8 @@ export class SettlementWorkbenchService {
         pricingFactStatus: true,
         taxInclusiveAmountCents: true,
         isProvisional: true,
-        settlementBasis: true
+        settlementBasis: true,
+        lineageId: true
       }
     });
     const billOrder = new Map(bills.map((bill, index) => [bill.id, index]));
@@ -118,25 +119,7 @@ export class SettlementWorkbenchService {
       return this.emptySnapshot(version, contract.projectId);
     }
 
-    const settlementRows = await client.settlement.findMany({
-      where: {
-        contractVersionId: version.id,
-        status: { in: [...SETTLEMENT_LINE_OCCUPANCY_STATUSES] }
-      },
-      select: { id: true }
-    });
-    const settlementIds = settlementRows.map((settlement) => settlement.id);
-    const rowIds = rows.map((row) => row.id);
-    const occupiedLines = settlementIds.length
-      ? await client.settlementLine.findMany({
-          where: {
-            settlementId: { in: settlementIds },
-            contractBillRowId: { in: rowIds }
-          },
-          select: { contractBillRowId: true, quantity: true, amountCents: true }
-        })
-      : [];
-    const occupancy = this.occupancyByRowId(occupiedLines);
+    const occupancy = await loadSettlementLineOccupancy(client, version.id, rows);
     const billById = new Map(bills.map((bill) => [bill.id, bill]));
     const sourceRows = rows.map((row) =>
       this.toSourceLine(
@@ -245,34 +228,6 @@ export class SettlementWorkbenchService {
       },
       rows: []
     };
-  }
-
-  private occupancyByRowId(
-    lines: Array<{
-      contractBillRowId: string | null;
-      quantity: Prisma.Decimal | null;
-      amountCents: bigint;
-    }>
-  ): Map<string, SourceLineOccupancy> {
-    const result = new Map<string, SourceLineOccupancy>();
-    for (const line of lines) {
-      if (!line.contractBillRowId) continue;
-      const current = result.get(line.contractBillRowId) ?? {
-        amountCents: 0n,
-        quantity: new Prisma.Decimal(0),
-        quantityComplete: true,
-        count: 0
-      };
-      current.amountCents += line.amountCents;
-      current.count += 1;
-      if (line.quantity === null) {
-        current.quantityComplete = false;
-      } else {
-        current.quantity = current.quantity.plus(line.quantity);
-      }
-      result.set(line.contractBillRowId, current);
-    }
-    return result;
   }
 
   private toSourceLine(

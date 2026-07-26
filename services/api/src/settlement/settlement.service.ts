@@ -61,7 +61,10 @@ import {
   INVALID_SETTLEMENT_QUANTITY_MESSAGE,
   parseSettlementQuantity
 } from "./settlement-quantity";
-import { SETTLEMENT_LINE_OCCUPANCY_STATUSES } from "./settlement-line-occupancy";
+import {
+  loadSettlementLineOccupancy,
+  SETTLEMENT_LINE_OCCUPANCY_STATUSES
+} from "./settlement-line-occupancy";
 import {
   canonicalSettlementLine,
   settlementCalculationMode,
@@ -483,7 +486,7 @@ export class SettlementService {
     if (amountCents <= 0n) throw new BadRequestException("结算金额必须大于 0");
     const unlimitedFramework = isUnlimitedFrameworkContract(version);
     if (!unlimitedFramework) {
-      await this.assertContractBillRowSettlementLimits(tx, normalized);
+      await this.assertContractBillRowSettlementLimits(tx, version.id, normalized);
     }
 
     const occupiedContractAmountCents = await this.lockOccupiedContractSettlementAmount(
@@ -661,6 +664,7 @@ export class SettlementService {
       if (!preview.submissionBlockers.length && !isUnlimitedFrameworkContract(version)) {
         await this.assertContractBillRowSettlementLimits(
           tx,
+          version.id,
           preview.lines as NormalizedSettlementLine[]
         );
       }
@@ -1004,6 +1008,7 @@ export class SettlementService {
 
   private async assertContractBillRowSettlementLimits(
     tx: unknown,
+    contractVersionId: string,
     lines: NormalizedSettlementLine[]
   ): Promise<void> {
     const billRowLines = lines.filter(
@@ -1011,7 +1016,6 @@ export class SettlementService {
     );
     if (!billRowLines.length) return;
 
-    const client = tx as SettlementLineClient;
     const currentByRowId = new Map<
       string,
       {
@@ -1049,36 +1053,46 @@ export class SettlementService {
     const rowIds = [...currentByRowId.keys()];
     if (!rowIds.length) return;
 
-    const previousLines =
-      (await client.settlementLine.findMany?.({
+    const rowStore = tx as {
+      contractBillRow?: {
+        findMany(args: unknown): Promise<Array<{ id: string; lineageId: string | null }>>;
+      };
+    };
+    const occupancyRows = rowStore.contractBillRow
+      ? await rowStore.contractBillRow.findMany({
+          where: { id: { in: rowIds } },
+          select: { id: true, lineageId: true }
+        })
+      : rowIds.map((id) => ({ id, lineageId: null }));
+    if (occupancyRows.some((row) => row.lineageId)) {
+      const occupancy = await loadSettlementLineOccupancy(tx, contractVersionId, occupancyRows);
+      for (const [rowId, current] of currentByRowId) {
+        const previous = occupancy.get(rowId);
+        if (!previous) continue;
+        current.previousAmountCents = previous.amountCents;
+        current.previousQuantity = previous.quantity;
+        current.previousQuantityComplete = previous.quantityComplete;
+      }
+    } else {
+      const legacyClient = tx as SettlementLineClient;
+      const previousLines = (await legacyClient.settlementLine.findMany?.({
         where: { contractBillRowId: { in: rowIds } },
         select: { contractBillRowId: true, settlementId: true, quantity: true, amountCents: true }
       })) ?? [];
-
-    const previousSettlementIds = [...new Set(previousLines.map((line) => line.settlementId))];
-    const activeSettlementIds = previousSettlementIds.length
-      ? new Set(
-          (
-            (await client.settlement?.findMany({
-              where: {
-                id: { in: previousSettlementIds },
-                status: { in: [...SETTLEMENT_LINE_OCCUPANCY_STATUSES] }
-              },
-              select: { id: true }
-            })) ?? []
-          ).map((settlement) => settlement.id)
-        )
-      : new Set<string>();
-
-    for (const line of previousLines) {
-      if (!line.contractBillRowId || !activeSettlementIds.has(line.settlementId)) continue;
-      const current = currentByRowId.get(line.contractBillRowId);
-      if (!current) continue;
-      current.previousAmountCents += dbMoneyToBigInt(line.amountCents, "前序结算明细金额");
-      if (line.quantity === null) {
-        current.previousQuantityComplete = false;
-      } else if (line.quantity !== undefined) {
-        current.previousQuantity = current.previousQuantity.plus(line.quantity);
+      const previousSettlementIds = [...new Set(previousLines.map((line) => line.settlementId))];
+      const activeSettlementIds = previousSettlementIds.length
+        ? new Set(((await legacyClient.settlement?.findMany({
+            where: { id: { in: previousSettlementIds }, status: { in: [...SETTLEMENT_LINE_OCCUPANCY_STATUSES] } },
+            select: { id: true }
+          })) ?? []).map((settlement) => settlement.id))
+        : new Set<string>();
+      for (const line of previousLines) {
+        if (!line.contractBillRowId || !activeSettlementIds.has(line.settlementId)) continue;
+        const current = currentByRowId.get(line.contractBillRowId);
+        if (!current) continue;
+        current.previousAmountCents += dbMoneyToBigInt(line.amountCents, "前序结算明细金额");
+        if (line.quantity === null) current.previousQuantityComplete = false;
+        else if (line.quantity !== undefined) current.previousQuantity = current.previousQuantity.plus(line.quantity);
       }
     }
 
@@ -1359,7 +1373,7 @@ export class SettlementService {
     }
     const unlimitedFramework = isUnlimitedFrameworkContract(version);
     if (!unlimitedFramework) {
-      await this.assertContractBillRowSettlementLimits(tx, settlementLines);
+      await this.assertContractBillRowSettlementLimits(tx, version.id, settlementLines);
     }
 
     const occupiedContractAmountCents = await this.lockOccupiedContractSettlementAmount(
@@ -1407,7 +1421,7 @@ export class SettlementService {
       settlementAmountCents
     );
     if (!unlimitedFramework) {
-      await this.assertContractBillRowSettlementLimits(tx, settlementLines);
+      await this.assertContractBillRowSettlementLimits(tx, version.id, settlementLines);
     }
 
     const currentSettlementStage = await tx.paymentTermsStage.findFirst({
