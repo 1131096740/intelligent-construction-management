@@ -5,7 +5,8 @@ import { ContractBillService } from "./contract-bill.service";
 import type {
   ReorderBillRowsDto,
   ReplaceBillRowsDto,
-  SaveBillRowDto
+  SaveBillRowDto,
+  CancelBillRowRemainderDto
 } from "./dto/contract-bill.dto";
 
 @Controller("contract-bills")
@@ -44,6 +45,16 @@ export class ContractBillController {
       user.id,
       body.expectedBillRevision
     );
+  }
+
+  @Post(":billId/rows/:rowKey/remainder-cancellation")
+  cancelRemainder(
+    @Param("billId") billId: string,
+    @Param("rowKey") rowKey: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: CancelBillRowRemainderDto
+  ) {
+    return this.bills.cancelRemainder(billId, rowKey, user.id, body);
   }
 
   @Post(":billId/rows/reorder")

@@ -351,6 +351,38 @@ export class ContractBillService {
     });
   }
 
+  cancelRemainder(
+    billId: string,
+    rowKey: string,
+    actorUserId: string,
+    input: { expectedBillRevision: number; reason: string }
+  ) {
+    const reason = input.reason?.trim();
+    if (!reason) throw new BadRequestException("取消未实施余量必须填写原因");
+    return this.prisma.$transaction(async (tx) => {
+      const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
+      this.assertExpectedRevision(input.expectedBillRevision);
+      const row = await this.findRow(tx, billId, rowKey);
+      if (!await this.lineage.hasHistoricalOccupancy(tx, [row.id])) {
+        throw new BadRequestException("清单行尚无历史结算占用，应直接删除而不是取消未实施余量");
+      }
+      const newRevision = await this.lockMutation(
+        tx, bill, version, actorUserId, input.expectedBillRevision
+      );
+      const updated = await tx.contractBillRow.updateMany({
+        where: { id: row.id, contractBillId: billId, rowKey },
+        data: {
+          remainderDisposition: "cancelled",
+          remainderDispositionReason: reason,
+          remainderDispositionByUserId: actorUserId,
+          remainderDispositionAt: new Date()
+        }
+      });
+      if (updated.count !== 1) throw new NotFoundException("合同清单行不存在");
+      return this.finishMutation(tx, bill, version, actorUserId, "update", rowKey, newRevision);
+    });
+  }
+
   reorderRows(billId: string, actorUserId: string, rawInput: unknown) {
     return this.prisma.$transaction(async (tx) => {
       const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);

@@ -40,3 +40,8 @@ export interface ReplaceBillRowsDto {
   idempotencyKey: string;
   rows: ReplaceBillRowDto[];
 }
+
+export interface CancelBillRowRemainderDto {
+  expectedBillRevision: number;
+  reason: string;
+}

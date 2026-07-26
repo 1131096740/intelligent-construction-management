@@ -96,17 +96,22 @@ export class ContractBillLineageService {
 
   async assertRowsDeletable(tx: Prisma.TransactionClient, rowIds: string[]) {
     if (!rowIds.length) return;
+    if (await this.hasHistoricalOccupancy(tx, rowIds)) {
+      throw new BadRequestException("清单行已有历史结算占用，不能普通删除；请使用取消未实施余量流程");
+    }
+  }
+
+  async hasHistoricalOccupancy(tx: Prisma.TransactionClient, rowIds: string[]) {
+    if (!rowIds.length) return false;
     const settlementLine = (tx as unknown as {
       settlementLine?: typeof tx.settlementLine;
     }).settlementLine;
-    if (!settlementLine) return;
+    if (!settlementLine) return false;
     const occupied = await settlementLine.findFirst({
       where: { contractBillRowId: { in: rowIds } },
       select: { contractBillRowId: true }
     });
-    if (occupied?.contractBillRowId) {
-      throw new BadRequestException("清单行已有历史结算占用，不能普通删除；请使用取消未实施余量流程");
-    }
+    return Boolean(occupied?.contractBillRowId);
   }
 
   private isUniqueViolation(error: unknown) {
