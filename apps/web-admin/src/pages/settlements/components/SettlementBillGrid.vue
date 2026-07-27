@@ -13,8 +13,9 @@ import {
 const props = withDefaults(defineProps<{
   sourceRows: SettlementSourceLineReadModel[];
   drafts: SourceLineDraftMap;
+  previewAmounts?: Record<string, string>;
   readonly?: boolean;
-}>(), { readonly: false });
+}>(), { previewAmounts: () => ({}), readonly: false });
 
 const emit = defineEmits<{
   "update:drafts": [drafts: SourceLineDraftMap];
@@ -22,7 +23,7 @@ const emit = defineEmits<{
 }>();
 
 const rows = computed<JgBusinessGridRow[]>(() =>
-  settlementBillGridRows(props.sourceRows, props.drafts)
+  settlementBillGridRows(props.sourceRows, props.drafts, props.previewAmounts)
 );
 
 function onRowsChanged(value: JgBusinessGridRow[]) {

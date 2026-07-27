@@ -59,7 +59,13 @@ describe("settlement bill grid adapter", () => {
       "line-2": { quantity: "", amountYuan: "3200.50", remark: "暂估" }
     });
 
-    expect(rows[0]).toMatchObject({ selected: "否", currentQuantity: "", currentAmount: "" });
+    expect(rows[0]).toMatchObject({
+      selected: "否",
+      currentQuantity: "",
+      currentAmount: "待后端核算",
+      billName: "材料清单",
+      previousSettledQuantity: "2"
+    });
     expect(rows[1]).toMatchObject({ selected: "是", currentAmount: "3200.50", remark: "暂估" });
     expect(settlementDraftsFromBillGridRows(rows)).toEqual({
       "line-2": { quantity: "", amountYuan: "3200.50", remark: "暂估" }
@@ -75,6 +81,7 @@ describe("settlement bill grid adapter", () => {
     const quantity = settlementBillGridColumns.find((column) => column.prop === "currentQuantity")!;
     const amount = settlementBillGridColumns.find((column) => column.prop === "currentAmount")!;
     const selected = settlementBillGridColumns.find((column) => column.prop === "selected")!;
+    const itemName = settlementBillGridColumns.find((column) => column.prop === "itemName")!;
 
     expect(isSettlementSourceLineClosed(sourceRow({ remainingQuantity: "0.00" }))).toBe(true);
     expect(isSettlementSourceLineClosed(sourceRow({ remainingQuantity: null }))).toBe(false);
@@ -82,5 +89,7 @@ describe("settlement bill grid adapter", () => {
     expect(isReadonly(amount, manual)).toBe(false);
     expect(isReadonly(amount, { ...normal, selected: "是" })).toBe(true);
     expect(isReadonly(selected, closed)).toBe(true);
+    expect(selected.pin).toBe("colPinStart");
+    expect(itemName.pin).toBe("colPinStart");
   });
 });

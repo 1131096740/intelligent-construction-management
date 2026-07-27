@@ -325,6 +325,12 @@
             全部
           </t-radio-button>
         </t-radio-group>
+        <t-select
+          v-model="sourceBillId"
+          :options="sourceBillOptions"
+          placeholder="按原清单分组"
+          clearable
+        />
         <t-input
           v-model="sourceSearch"
           placeholder="搜索清单名称或编码"
@@ -401,124 +407,12 @@
       class="table-shell jg-table-region jg-table-region--workspace-wide"
     >
       <SettlementBillGrid
-        v-if="visibleWorkbenchRows.length > 100"
         :source-rows="visibleWorkbenchRows"
         :drafts="drafts"
+        :preview-amounts="previewAmounts"
+        :readonly="!templateReady"
         @update:drafts="onGridDraftsChanged"
       />
-      <t-table
-        v-else
-        row-key="id"
-        size="small"
-        table-layout="fixed"
-        :columns="sourceColumns"
-        :data="visibleWorkbenchRows"
-        :max-height="500"
-        :loading="sourceLoading"
-        :horizontal-scroll-affixed-bottom="true"
-        empty="请选择有效合同后加载清单"
-      >
-        <template #selected="{ row }">
-          <t-checkbox
-            :checked="isSelected(row.id)"
-            :disabled="!templateReady || isSettlementSourceLineClosed(row)"
-            :aria-label="`选择 ${row.itemName}`"
-            @change="onSelectionChange(row.id, $event)"
-          />
-        </template>
-        <template #itemName="{ row }">
-          <div class="item-cell">
-            <strong>{{ row.itemName }}</strong>
-            <span>{{ row.itemCode || '无编码' }} · {{ row.billName }}</span>
-            <t-tag
-              v-if="row.submissionBlocker"
-              size="small"
-              theme="warning"
-              variant="light"
-            >
-              {{ row.submissionBlocker.code === "missing_unit_price" ? "含税单价待确认" : "税务事实待确认" }}
-            </t-tag>
-          </div>
-        </template>
-        <template #calculationMode="{ row }">
-          <t-tag
-            :theme="row.calculationMode === 'normal_auto' ? 'success' : 'warning'"
-            variant="light"
-          >
-            {{ row.calculationMode === "normal_auto" ? "合同单价自动计价" : "人工填写金额" }}
-          </t-tag>
-        </template>
-        <template #contractUnitPrice="{ row }">
-          <span>{{ formatUnitPrice(row) }}</span>
-        </template>
-        <template #currentQuantity="{ row }">
-          <t-input
-            v-if="isSelected(row.id)"
-            :value="draftFor(row.id)?.quantity ?? ''"
-            placeholder="本期数量"
-            size="small"
-            @change="onDraftChange(row.id, 'quantity', $event)"
-          />
-          <span
-            v-else
-            class="muted-value"
-          >未选</span>
-        </template>
-        <template #cumulativeQuantity="{ row }">
-          {{ quantityProgress(row).cumulative ?? "待核对" }}
-        </template>
-        <template #remainingQuantity="{ row }">
-          <span :class="{ danger: isNegativeQuantity(quantityProgress(row).remaining) }">
-            {{ quantityProgress(row).remaining ?? "待核对" }}
-          </span>
-        </template>
-        <template #currentAmount="{ row }">
-          <t-input
-            v-if="isSelected(row.id) && row.calculationMode === 'manual_amount'"
-            :value="draftFor(row.id)?.amountYuan ?? ''"
-            placeholder="金额（元）"
-            size="small"
-            @change="onDraftChange(row.id, 'amountYuan', $event)"
-          />
-          <strong
-            v-else-if="isSelected(row.id) && previewAmount(row.id)"
-            class="backend-amount"
-          >
-            {{ previewAmount(row.id) }}
-          </strong>
-          <span
-            v-else-if="isSelected(row.id)"
-            class="muted-value"
-          >待后台核算</span>
-          <span
-            v-else
-            class="muted-value"
-          >未选</span>
-        </template>
-        <template #remark="{ row }">
-          <t-input
-            v-if="isSelected(row.id)"
-            :value="draftFor(row.id)?.remark ?? ''"
-            placeholder="本期备注"
-            size="small"
-            @change="onDraftChange(row.id, 'remark', $event)"
-          />
-          <span
-            v-else
-            class="muted-value"
-          >—</span>
-        </template>
-        <template #exception="{ row }">
-          <t-link
-            v-if="sourceExceptions(row).length"
-            theme="danger"
-            @click="anomalyDrawerVisible = true"
-          >
-            {{ sourceExceptions(row).length }} 项异常
-          </t-link>
-          <span v-else>正常</span>
-        </template>
-      </t-table>
     </div>
 
     <section
@@ -882,9 +776,7 @@ import {
   canApplySettlementImportResponse,
   canApplySettlementPreviewResponse,
   restoreSettlementDraftLines,
-  setSourceLineSelection,
   settlementPayloadFingerprint,
-  settlementQuantityProgress,
   settlementSignatureNextAction,
   settlementSignatureStateAfterDraftRevision,
   settlementWorkbenchDraftFingerprint,
@@ -893,7 +785,6 @@ import {
   type ManualAdjustmentDraft,
   type VisaChangeDraft,
   type FinalSettlementConfirmationState,
-  type SourceLineDraft,
   type SourceLineDraftMap
 } from "./settlement-workbench.state";
 import { canApplySettlementSourceResponse } from "./settlement-source-lines.state";
@@ -919,15 +810,6 @@ import {
   resolveSettlementTemplateRecommendation,
   type SettlementTemplateSelectionState
 } from "../settlement-templates/settlement-template.state";
-
-interface WorkbenchSourceRow extends SettlementSourceLineReadModel {
-  contractUnitPrice: string | null;
-  currentQuantity: string;
-  cumulativeQuantity: string;
-  remainingQuantityView: string;
-  currentAmount: string;
-  remark: string;
-}
 
 interface ImportErrorRow extends SettlementImportErrorReadModel {
   key: string;
@@ -960,6 +842,7 @@ const projects = ref<ProjectOptionReadModel[]>([]);
 const contracts = ref<ContractBusinessOptionReadModel[]>([]);
 const sourceRows = ref<SettlementSourceLineReadModel[]>([]);
 const sourceView = ref<"open" | "all">("open");
+const sourceBillId = ref("");
 const sourceSearch = ref("");
 const onlySelected = ref(false);
 const drafts = ref<SourceLineDraftMap>({});
@@ -1029,21 +912,6 @@ let importApplyRequestId = 0;
 let templateRequestId = 0;
 let previewTimer: ReturnType<typeof setTimeout> | undefined;
 
-const sourceColumns: PrimaryTableCol<WorkbenchSourceRow>[] = [
-  { colKey: "selected", title: "本期选择", width: 76, fixed: "left" },
-  { colKey: "itemName", title: "合同清单项", width: 210, fixed: "left" },
-  { colKey: "unit", title: "单位", width: 64 },
-  { colKey: "calculationMode", title: "计价方式", width: 142 },
-  { colKey: "quantity", title: "合同数量", width: 112, align: "right" },
-  { colKey: "contractUnitPrice", title: "合同单价", width: 122, align: "right" },
-  { colKey: "previousSettledQuantity", title: "前期已结算", width: 116, align: "right" },
-  { colKey: "currentQuantity", title: "本期数量", width: 150 },
-  { colKey: "cumulativeQuantity", title: "累计结算", width: 112, align: "right" },
-  { colKey: "remainingQuantity", title: "剩余可结算", width: 120, align: "right" },
-  { colKey: "currentAmount", title: "后端本期金额", width: 160, align: "right" },
-  { colKey: "remark", title: "本期备注", width: 180 },
-  { colKey: "exception", title: "异常", width: 92, fixed: "right" }
-];
 const adjustmentColumns: PrimaryTableCol<ManualAdjustmentDraft>[] = [
   { colKey: "name", title: "调整名称", minWidth: 180 },
   { colKey: "amountYuan", title: "调整金额（元）", width: 180 },
@@ -1163,13 +1031,25 @@ const selectedContractHint = computed(() =>
     : "请先选择项目和有效合同。"
 );
 const selectedRowIds = computed(() => Object.keys(drafts.value));
+const sourceBillOptions = computed(() => Array.from(
+  new Map(sourceRows.value.map((row) => [row.billId, row.billName])).entries()
+).map(([value, label]) => ({ value, label })));
 const visibleWorkbenchRows = computed(() => {
   const keyword = sourceSearch.value.trim().toLowerCase();
-  return workbenchRows.value.filter((row) => {
+  return sourceRows.value.filter((row) => {
     if (sourceView.value === "open" && isSettlementSourceLineClosed(row)) return false;
+    if (sourceBillId.value && row.billId !== sourceBillId.value) return false;
     if (onlySelected.value && !isSelected(row.id)) return false;
     return !keyword || `${row.itemCode ?? ""} ${row.itemName} ${row.billName}`.toLowerCase().includes(keyword);
   });
+});
+const previewAmounts = computed<Record<string, string>>(() => {
+  if (!previewIsCurrent.value || !preview.value) return {};
+  return Object.fromEntries(preview.value.lines.flatMap((line) =>
+    line.contractBillRowId && line.amountCents !== null && line.amountCents !== undefined
+      ? [[line.contractBillRowId, `¥${centsTextToYuanText(line.amountCents)}`]]
+      : []
+  ));
 });
 const currentDraftFingerprint = computed(() =>
   settlementWorkbenchDraftFingerprint(drafts.value, adjustments.value, visaChanges.value)
@@ -1348,17 +1228,6 @@ const primaryActionDisabledReason = computed(() => {
   if (workflowNextAction.value.step === 5) return createDisabledReason.value;
   return "";
 });
-const workbenchRows = computed<WorkbenchSourceRow[]>(() =>
-  sourceRows.value.map((row) => ({
-    ...row,
-    contractUnitPrice: row.unitPrice,
-    currentQuantity: drafts.value[row.id]?.quantity ?? "",
-    cumulativeQuantity: quantityProgress(row).cumulative ?? "",
-    remainingQuantityView: quantityProgress(row).remaining ?? "",
-    currentAmount: previewAmount(row.id),
-    remark: drafts.value[row.id]?.remark ?? ""
-  }))
-);
 const pasteStartOptions = computed(() =>
   sourceRows.value.map((row, index) => ({ label: `${index + 1}. ${row.itemName}`, value: row.id }))
 );
@@ -1391,63 +1260,9 @@ function isSelected(rowId: string) {
   return Boolean(drafts.value[rowId]);
 }
 
-function draftFor(rowId: string): SourceLineDraft | undefined {
-  return drafts.value[rowId];
-}
-
-function toggleSelection(rowId: string, selected: boolean) {
-  if (!templateReady.value) return;
-  drafts.value = setSourceLineSelection(drafts.value, rowId, selected);
-  invalidatePreview();
-  schedulePreview();
-}
-
-function onSelectionChange(rowId: string, value: unknown) {
-  toggleSelection(rowId, Boolean(value));
-}
-
-function updateDraft(rowId: string, key: keyof SourceLineDraft, value: string) {
-  const draft = drafts.value[rowId];
-  if (!draft) return;
-  drafts.value = { ...drafts.value, [rowId]: { ...draft, [key]: value } };
-  invalidatePreview();
-  schedulePreview();
-}
-
-function onDraftChange(rowId: string, key: keyof SourceLineDraft, value: unknown) {
-  updateDraft(rowId, key, String(value ?? ""));
-}
-
-function quantityProgress(row: SettlementSourceLineReadModel) {
-  if (!isSelected(row.id)) {
-    return {
-      cumulative: row.previousSettledQuantity,
-      remaining: row.remainingQuantity
-    };
-  }
-  return settlementQuantityProgress(
-    row.quantity,
-    row.previousSettledQuantity,
-    drafts.value[row.id]?.quantity || (row.calculationMode === "manual_amount" ? "0" : "")
-  );
-}
-
 function sourceExceptions(row: SettlementSourceLineReadModel): SettlementSourceLineException[] {
   if (Array.isArray(row.exceptions)) return row.exceptions;
   return row.exception ? [row.exception] : [];
-}
-
-function previewAmount(rowId: string): string {
-  if (!previewIsCurrent.value || !preview.value) return "";
-  const line = preview.value.lines.find((item) => item.contractBillRowId === rowId);
-  return line?.amountCents !== null && line?.amountCents !== undefined
-    ? `¥${centsTextToYuanText(line.amountCents)}`
-    : "";
-}
-
-function formatUnitPrice(row: SettlementSourceLineReadModel): string {
-  if (row.unitPrice === null) return "待确认";
-  return `${row.unitPrice} 元（${row.pricingMode === "tax_inclusive" ? "含税" : "不含税"}）`;
 }
 
 function formatBlockedDraftAmount(value: string | undefined): string {
@@ -1457,10 +1272,6 @@ function formatBlockedDraftAmount(value: string | undefined): string {
   } catch {
     return "已保存金额格式异常";
   }
-}
-
-function isNegativeQuantity(value: string | null) {
-  return Boolean(value?.startsWith("-"));
 }
 
 async function downloadImportTemplate() {

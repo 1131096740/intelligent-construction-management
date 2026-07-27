@@ -1,6 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
-  expectHorizontalScrollOwner,
   expectNoDocumentHorizontalOverflow,
   expectNoNestedHorizontalScrollers
 } from "./helpers/responsive-assertions";
@@ -79,7 +78,8 @@ test("结算签章治理五步在宽表格外完成且响应式滚动唯一", as
   await expect(page.locator(".table-shell")).toHaveCount(1);
   await expect(page.locator(".table-shell").getByText("项目现场复核人", { exact: true })).toHaveCount(0);
 
-  await expect(page.locator(".table-shell .backend-amount")).toHaveText("¥100.00");
+  await expect(page.locator(".table-shell .settlement-bill-grid revo-grid")).toBeVisible();
+  await expect(page.locator(".workbench-footer .total-metric strong")).toHaveText("¥100.00");
   await page.getByRole("button", { name: "生成当前修订版", exact: true }).click();
   await expect(page.getByText("R3 · 2 页", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "下载冻结结算单" })).toBeEnabled();
@@ -139,7 +139,7 @@ test("结算签章治理五步在宽表格外完成且响应式滚动唯一", as
     await page.setViewportSize(viewport);
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoNestedHorizontalScrollers(page);
-    await expectHorizontalScrollOwner(page.locator(".table-shell .t-table__content"));
+    await expect(page.locator(".table-shell .settlement-bill-grid revo-grid")).toBeVisible();
     await expect(participant).toBeVisible();
   }
 });
