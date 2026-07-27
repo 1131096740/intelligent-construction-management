@@ -329,6 +329,71 @@ describe("SettlementWorkbenchService", () => {
     expect(prisma.auditLog.create).not.toHaveBeenCalled();
   });
 
+  it("carries prior-version settled quantity into the current version remaining quantity", async () => {
+    const prisma = buildPrisma();
+    prisma.contractBillRow.findMany.mockResolvedValue([
+      {
+        id: "row-v2",
+        contractBillId: "bill-a",
+        rowKey: "row-1",
+        sortOrder: 1,
+        itemCode: "CL-001",
+        itemName: "跨版本清单项",
+        specification: null,
+        unit: "项",
+        quantity: new Decimal("120"),
+        unitPrice: new Decimal("100"),
+        taxRate: new Decimal("3"),
+        taxInclusiveAmountCents: 1_200_000n,
+        pricingFactStatus: "confirmed",
+        isProvisional: false,
+        settlementBasis: null,
+        lineageId: "lineage-1"
+      }
+    ]);
+    prisma.settlement.findMany.mockResolvedValue([]);
+    prisma.settlementLine.findMany.mockResolvedValue([]);
+    const carryForward = {
+      findMany: jest.fn().mockResolvedValue([
+        {
+          contractBillRowId: "row-v2",
+          lineageId: "lineage-1",
+          priorSettledQuantity: new Decimal("30"),
+          priorSettledAmountCents: 300_000n,
+          sourceSnapshotHash: "a".repeat(64),
+          updatedAt: new Date("2026-07-27T00:00:00.000Z")
+        }
+      ])
+    };
+    Object.assign(prisma, {
+      contractBillRowCarryForward: carryForward
+    });
+    const service = new SettlementWorkbenchService(prisma as never);
+
+    const result = await service.sourceLines("version-1");
+
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        id: "row-v2",
+        quantity: "120",
+        settledQuantity: "30",
+        previousSettledQuantity: "30",
+        remainingQuantity: "90",
+        calculationAvailable: true,
+        submissionBlocker: null
+      })
+    ]);
+    expect(carryForward.findMany).toHaveBeenCalledWith({
+      where: { contractVersionId: "version-1", contractBillRowId: { in: ["row-v2"] } },
+      select: expect.objectContaining({
+        contractBillRowId: true,
+        lineageId: true,
+        priorSettledQuantity: true,
+        priorSettledAmountCents: true
+      })
+    });
+  });
+
   it.each([
     ["missing", null, "未找到可结算的合同版本"],
     ["draft", { id: "version-1", contractId: "contract-1", status: "draft", amountCents: 1n }, "合同尚未归档生效"],
