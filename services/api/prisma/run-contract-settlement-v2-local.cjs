@@ -92,6 +92,7 @@ async function main() {
     await waitForPostgres(containerName);
     await run(pnpm, ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"], { env: runtimeEnv, forwardOutput: true });
     await run(pnpm, ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "status"], { env: runtimeEnv, forwardOutput: true });
+    await run(pnpm, ["--filter", "@jiangkong/api", "seed"], { env: runtimeEnv });
     await run(process.execPath, [path.join(root, "services/api/prisma/precheck-contract-settlement-v2.cjs"), "--output", path.resolve(evidencePath)], { env: runtimeEnv, forwardOutput: true });
     await run(pnpm, ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/contract-bill-batch-replace-concurrency.spec.ts"], { env: runtimeEnv, forwardOutput: true });
     process.stdout.write(JSON.stringify({ mode: "isolated_contract_settlement_v2", evidencePath: path.resolve(evidencePath), database: databaseName, concurrency: "contract_bill_batch_replace" }) + "\n");
