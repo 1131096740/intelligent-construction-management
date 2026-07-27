@@ -85,6 +85,7 @@ export class SettlementDraftService {
           ...this.finalConfirmations(input)
         }
       });
+      await this.replaceStructuredLines(tx, created.id, input.settlementLines);
       if (process) await this.processes?.linkDraft(tx, process.id, created.id);
       return this.readModel(created);
     });
@@ -306,6 +307,7 @@ export class SettlementDraftService {
       if (updated.count !== 1) {
         throw new BadRequestException("结算草稿已被更新，请刷新后继续编辑");
       }
+      await this.replaceStructuredLines(tx, draftId, input.settlementLines);
       await tx.settlementSignedDocument.updateMany({
         where: { settlementDraftId: draftId, status: "active" },
         data: {
@@ -322,6 +324,63 @@ export class SettlementDraftService {
       }
       return this.readModel(result);
     });
+  }
+
+  private async replaceStructuredLines(
+    tx: Prisma.TransactionClient,
+    settlementDraftId: string,
+    lines: SaveSettlementDraftDto["settlementLines"]
+  ) {
+    await tx.settlementDraftLine.deleteMany({ where: { settlementDraftId } });
+    if (!lines.length) return;
+    await tx.settlementDraftLine.createMany({
+      data: lines.map((line, index) => ({
+        settlementDraftId,
+        lineKey: `line-${index + 1}`,
+        sourceType: line.sourceType,
+        contractBillRowId: line.contractBillRowId?.trim() || null,
+        sourceItemType: line.sourceType,
+        name: line.name?.trim() || line.contractBillRowId?.trim() || "待补充结算明细",
+        description: null,
+        unit: line.unit?.trim() || null,
+        quantity: this.optionalDecimal(line.quantity),
+        unitPriceCents: this.optionalMoney(line.unitPriceCents),
+        directAmountCents: this.optionalSignedMoney(line.amountCents),
+        calculationMode: line.sourceType === "manual_adjustment" ? "manual_adjustment" : "pending_source",
+        pricingBasis: null,
+        overageReason: null,
+        reason: line.reason?.trim() || null,
+        remark: line.remark?.trim() || null,
+        sortOrder: line.sortOrder ?? index
+      }))
+    });
+  }
+
+  private optionalDecimal(value: unknown) {
+    if (value === undefined || value === null || value === "") return null;
+    try {
+      return new Prisma.Decimal(value as string | number);
+    } catch {
+      return null;
+    }
+  }
+
+  private optionalMoney(value: unknown) {
+    if (typeof value !== "string" || !value.trim()) return null;
+    try {
+      return parseMoneyCentsInput(value, "结算草稿明细单价");
+    } catch {
+      return null;
+    }
+  }
+
+  private optionalSignedMoney(value: unknown) {
+    if (typeof value !== "string" || !value.trim()) return null;
+    try {
+      return BigInt(value);
+    } catch {
+      return null;
+    }
   }
 
   async abandon(

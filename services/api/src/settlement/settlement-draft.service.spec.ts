@@ -63,6 +63,10 @@ describe("SettlementDraftService", () => {
         findFirst: jest.fn().mockResolvedValue(null)
       },
       settlementLine: { createMany: jest.fn() },
+      settlementDraftLine: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        createMany: jest.fn().mockResolvedValue({ count: 0 })
+      },
       projectSettlementExceptionQuotaUsage: { createMany: jest.fn() },
       approvalInstance: { create: jest.fn() },
       $queryRaw: jest.fn().mockResolvedValue([{ id: "locked" }]),
@@ -346,6 +350,17 @@ describe("SettlementDraftService", () => {
     expect(tx.settlementLine.createMany).not.toHaveBeenCalled();
     expect(tx.projectSettlementExceptionQuotaUsage.createMany).not.toHaveBeenCalled();
     expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+    expect(tx.settlementDraftLine.deleteMany).toHaveBeenCalledWith({
+      where: { settlementDraftId: "draft-1" }
+    });
+    expect(tx.settlementDraftLine.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({
+        settlementDraftId: "draft-1",
+        sourceType: "contract_bill_row",
+        contractBillRowId: "row-with-missing-price",
+        calculationMode: "pending_source"
+      })]
+    });
   });
 
   it("uses the contract's real project and rejects a forged path scope", async () => {
