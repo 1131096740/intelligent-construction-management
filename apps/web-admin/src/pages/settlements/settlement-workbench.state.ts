@@ -147,6 +147,7 @@ export interface SourceLineDraft {
   amountYuan: string;
   remark: string;
   reason?: string;
+  overageReason?: string;
 }
 
 export type SourceLineDraftMap = Record<string, SourceLineDraft>;
@@ -260,6 +261,7 @@ export function buildSettlementLinePayload(
       contractBillRowId: row.id,
       ...(draft.quantity.trim() ? { quantity: draft.quantity.trim() } : {}),
       ...(draft.reason?.trim() ? { reason: draft.reason.trim() } : {}),
+      ...(draft.overageReason?.trim() ? { overageReason: draft.overageReason.trim() } : {}),
       ...(draft.remark.trim() ? { remark: draft.remark.trim() } : {}),
       sortOrder: result.length + 1
     };
@@ -561,6 +563,7 @@ export function applyImportedSettlementLines(
             ? centsTextToInputYuan(line.amountCents)
             : "",
         ...(line.reason?.trim() ? { reason: line.reason.trim() } : {}),
+        ...(line.overageReason?.trim() ? { overageReason: line.overageReason.trim() } : {}),
         remark: line.remark?.trim() ?? ""
       };
       continue;
@@ -604,6 +607,7 @@ export function restoreSettlementDraftLines(
             ? centsTextToInputYuan(line.amountCents)
             : "",
         ...(line.reason?.trim() ? { reason: line.reason.trim() } : {}),
+        ...(line.overageReason?.trim() ? { overageReason: line.overageReason.trim() } : {}),
         remark: line.remark?.trim() ?? ""
       };
       continue;

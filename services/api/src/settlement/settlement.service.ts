@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Optional } from "@nestjs/common";
-import { Prisma, type Settlement, type SettlementDraft } from "@prisma/client";
+import { Prisma, type ContractVersion, type Settlement, type SettlementDraft } from "@prisma/client";
 import {
   approvalElapsedHours,
   canCreateSettlementFromContractStatus,
@@ -503,10 +503,7 @@ export class SettlementService {
       : null;
     const amountCents = this.settlementAmountFromLines(calculatedCurrentAmount, normalized, v2Final);
     if (!v2Final && amountCents <= 0n) throw new BadRequestException("结算金额必须大于 0");
-    const unlimitedFramework = isUnlimitedFrameworkContract(version);
-    if (!unlimitedFramework) {
-      await this.assertContractBillRowSettlementLimits(tx, version.id, normalized);
-    }
+    await this.assertContractBillRowSettlementLimits(tx, version, normalized);
 
     const occupiedContractAmountCents = await this.lockOccupiedContractSettlementAmount(
       tx,
@@ -694,10 +691,10 @@ export class SettlementService {
             preview.lines as NormalizedSettlementLine[],
             input.isFinal === true
           );
-      if (!preview.submissionBlockers.length && !isUnlimitedFrameworkContract(version)) {
+      if (!preview.submissionBlockers.length) {
         await this.assertContractBillRowSettlementLimits(
           tx,
-          version.id,
+          version,
           preview.lines as NormalizedSettlementLine[]
         );
       }
@@ -1052,7 +1049,7 @@ export class SettlementService {
 
   private async assertContractBillRowSettlementLimits(
     tx: unknown,
-    contractVersionId: string,
+    version: Pick<ContractVersion, "id" | "pricingNature" | "amountLimitType">,
     lines: NormalizedSettlementLine[]
   ): Promise<void> {
     const billRowLines = lines.filter(
@@ -1071,6 +1068,7 @@ export class SettlementService {
         limitQuantity: Prisma.Decimal | null;
         previousQuantityComplete: boolean;
         enforceAmountLimit: boolean;
+        overageReason: string | null;
         name: string;
       }
     >();
@@ -1087,6 +1085,7 @@ export class SettlementService {
         limitQuantity: line.contractQuantitySnapshot,
         previousQuantityComplete: true,
         enforceAmountLimit: line.calculationMode === "normal_auto",
+        overageReason: line.overageReason,
         name: line.name
       };
       current.currentAmountCents += dbMoneyToBigInt(line.amountCents, "结算明细金额");
@@ -1109,7 +1108,7 @@ export class SettlementService {
         })
       : rowIds.map((id) => ({ id, lineageId: null }));
     if (occupancyRows.some((row) => row.lineageId)) {
-      const occupancy = await loadSettlementLineOccupancy(tx, contractVersionId, occupancyRows);
+      const occupancy = await loadSettlementLineOccupancy(tx, version.id, occupancyRows);
       for (const [rowId, current] of currentByRowId) {
         const previous = occupancy.get(rowId);
         if (!previous) continue;
@@ -1149,6 +1148,7 @@ export class SettlementService {
       limitQuantity,
       previousQuantityComplete,
       enforceAmountLimit,
+      overageReason,
       name
     } of currentByRowId.values()) {
       if (limitQuantity !== null && !previousQuantityComplete) {
@@ -1156,16 +1156,24 @@ export class SettlementService {
           `合同清单项“${name}”存在未记录数量的历史结算明细，无法校验剩余数量，请先完成历史数据核对。`
         );
       }
-      if (
-        limitQuantity !== null &&
-        previousQuantity.plus(currentQuantity).greaterThan(limitQuantity)
-      ) {
+      const exceedsEstimatedQuantity = limitQuantity !== null &&
+        previousQuantity.plus(currentQuantity).greaterThan(limitQuantity);
+      const totalAmountCents = currentAmountCents + previousAmountCents;
+      const exceedsEstimatedAmount = enforceAmountLimit && totalAmountCents > limitCents;
+      if (isUnlimitedFrameworkContract(version) && (exceedsEstimatedQuantity || exceedsEstimatedAmount)) {
+        if (!overageReason?.trim()) {
+          throw new BadRequestException(
+            `无限额框架合同的清单项“${name}”超出预计数量或金额时必须填写超量说明。`
+          );
+        }
+        continue;
+      }
+      if (exceedsEstimatedQuantity) {
         throw new BadRequestException(
           `合同清单项“${name}”累计结算数量不能超过合同数量。本期 ${currentQuantity.toString()}，前期 ${previousQuantity.toString()}，合同数量 ${limitQuantity.toString()}。`
         );
       }
-      const totalAmountCents = currentAmountCents + previousAmountCents;
-      if (enforceAmountLimit && totalAmountCents > limitCents) {
+      if (exceedsEstimatedAmount) {
         const exceededAmountCents = totalAmountCents - limitCents;
         throw new BadRequestException(
           `合同清单项“${name}”累计结算金额不能超过合同清单金额。本次结算 ${formatSettlementAmount(
@@ -1413,6 +1421,7 @@ export class SettlementService {
       input.contractVersionId,
       true
     );
+    const unlimitedFramework = isUnlimitedFrameworkContract(version);
     if (version.contractGovernanceVersion === 1 && !governedDraft) {
       throw new BadRequestException("新受治理结算必须从草稿完成参与人和乙方签章文件门禁后提交");
     }
@@ -1480,10 +1489,7 @@ export class SettlementService {
     if (settlementAmountCents <= 0n) {
       this.assertNonPositiveSettlementTraceability(settlementLines);
     }
-    const unlimitedFramework = isUnlimitedFrameworkContract(version);
-    if (!unlimitedFramework) {
-      await this.assertContractBillRowSettlementLimits(tx, version.id, settlementLines);
-    }
+    await this.assertContractBillRowSettlementLimits(tx, version, settlementLines);
 
     const occupiedContractAmountCents = await this.lockOccupiedContractSettlementAmount(
       tx,
@@ -1528,9 +1534,7 @@ export class SettlementService {
     const exceptionQuotaAllocations = settlementAmountCents > 0n
       ? await this.reserveSettlementQuota(tx, contract.projectId, version.contractId, settlementAmountCents)
       : [];
-    if (!unlimitedFramework) {
-      await this.assertContractBillRowSettlementLimits(tx, version.id, settlementLines);
-    }
+    await this.assertContractBillRowSettlementLimits(tx, version, settlementLines);
 
     const currentSettlementStage = await tx.paymentTermsStage.findFirst({
       where: {

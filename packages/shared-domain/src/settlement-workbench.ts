@@ -64,6 +64,10 @@ export interface SettlementSourceLinesReadModel {
   contractId: string;
   projectId: string;
   contractAmountCents: string;
+  capacityPolicy: {
+    kind: "capped" | "unlimited_framework";
+    overageExplanationRequired: boolean;
+  };
   calculationVersion: number;
   sourceSnapshotToken: string | null;
   summary: {

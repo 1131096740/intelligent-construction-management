@@ -147,6 +147,12 @@ export class SettlementWorkbenchService {
       contractId: version.contractId,
       projectId: contract.projectId,
       contractAmountCents: version.amountCents.toString(),
+      capacityPolicy: {
+        kind: version.pricingNature === "framework" && version.amountLimitType === "unlimited"
+          ? "unlimited_framework"
+          : "capped",
+        overageExplanationRequired: version.pricingNature === "framework" && version.amountLimitType === "unlimited"
+      },
       calculationVersion: 2,
       sourceSnapshotToken,
       summary: this.summary(sourceRows),
@@ -221,7 +227,7 @@ export class SettlementWorkbenchService {
   }
 
   private emptySnapshot(
-    version: { id: string; contractId: string; amountCents: bigint },
+    version: { id: string; contractId: string; amountCents: bigint; pricingNature: string; amountLimitType: string },
     projectId: string
   ): SettlementSourceLinesReadModel {
     return {
@@ -229,6 +235,12 @@ export class SettlementWorkbenchService {
       contractId: version.contractId,
       projectId,
       contractAmountCents: version.amountCents.toString(),
+      capacityPolicy: {
+        kind: version.pricingNature === "framework" && version.amountLimitType === "unlimited"
+          ? "unlimited_framework"
+          : "capped",
+        overageExplanationRequired: version.pricingNature === "framework" && version.amountLimitType === "unlimited"
+      },
       calculationVersion: 2,
       sourceSnapshotToken: null,
       summary: {

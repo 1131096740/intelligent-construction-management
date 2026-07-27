@@ -110,6 +110,13 @@
       </label>
     </section>
 
+    <t-alert
+      v-if="sourceCapacityPolicy.kind === 'unlimited_framework'"
+      theme="warning"
+      title="无限额框架合同：超量需要说明"
+      message="本期可超过清单预计数量或金额，但对应清单行必须填写“框架超量说明”；该说明会随结算明细冻结并在合同部主任审批时显示。"
+    />
+
     <section
       v-if="form.isFinal && !draftSubmissionBlockingReason"
       class="final-confirmations"
@@ -820,7 +827,8 @@ import type {
   ContractBusinessOptionReadModel,
   DetailActionReadModel,
   SettlementSourceLineException,
-  SettlementSourceLineReadModel
+  SettlementSourceLineReadModel,
+  SettlementSourceLinesReadModel
 } from "@jiangkong/shared-domain";
 import type { PrimaryTableCol, UploadChangeContext, UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
@@ -974,6 +982,10 @@ const finalPreparation = ref<SettlementFinalPreparationReadModel | null>(null);
 const projects = ref<ProjectOptionReadModel[]>([]);
 const contracts = ref<ContractBusinessOptionReadModel[]>([]);
 const sourceRows = ref<SettlementSourceLineReadModel[]>([]);
+const sourceCapacityPolicy = ref<SettlementSourceLinesReadModel["capacityPolicy"]>({
+  kind: "capped",
+  overageExplanationRequired: false
+});
 const sourceView = ref<"open" | "all">("open");
 const sourceBillId = ref("");
 const sourceSearch = ref("");
@@ -1826,6 +1838,7 @@ function resetSourceState() {
   invalidatePreview();
   resetImportState();
   sourceRows.value = [];
+  sourceCapacityPolicy.value = { kind: "capped", overageExplanationRequired: false };
   drafts.value = {};
   adjustments.value = [];
   visaChanges.value = [];
@@ -1929,6 +1942,7 @@ async function loadSourceLines() {
       )
     ) {
       sourceRows.value = result.rows;
+      sourceCapacityPolicy.value = result.capacityPolicy;
     }
     await loadParticipantOptions(contractVersionId);
     const recommendation = await fetchSettlementTemplateRecommendations(projectId, contractVersionId);

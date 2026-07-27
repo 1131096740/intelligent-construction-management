@@ -13,6 +13,7 @@ function context(input: {
   isFinal?: boolean;
   finalCumulativeAmountCents?: bigint | null;
   contractQuantity?: string;
+  unlimitedFramework?: boolean;
 } = {}) {
   const pricingMode = input.pricingMode ?? "tax_inclusive";
   const unitPrice = input.unitPrice ?? "100";
@@ -29,8 +30,8 @@ function context(input: {
     changeDirection: null,
     changeAmountCents: null,
     cumulativeIncreaseCents: 0n,
-    pricingNature: "fixed_total",
-    amountLimitType: "capped",
+    pricingNature: input.unlimitedFramework ? "framework" : "fixed_total",
+    amountLimitType: input.unlimitedFramework ? "unlimited" : "capped",
     effectiveAt: new Date("2026-07-01T00:00:00.000Z"),
     invoiceType: "vat_special",
     taxMode: "single_rate",
@@ -180,6 +181,17 @@ describe("SettlementService.prepareDraftDocumentFacts", () => {
     const { service, tx, draft } = context({ contractQuantity: "1" });
     await expect(service.prepareDraftDocumentFacts(tx as never, draft as never))
       .rejects.toThrow("累计结算数量不能超过合同数量");
+  });
+
+  it("allows an unlimited framework overage only with an immutable line explanation", async () => {
+    const { service, tx, draft } = context({ contractQuantity: "1", unlimitedFramework: true });
+    await expect(service.prepareDraftDocumentFacts(tx as never, draft as never))
+      .rejects.toThrow("必须填写超量说明");
+
+    (draft.lines[0] as { overageReason?: string }).overageReason = "现场实际工程量超出预计清单";
+    await expect(service.prepareDraftDocumentFacts(tx as never, draft as never)).resolves.toEqual(
+      expect.objectContaining({ amountCents: 20_000n })
+    );
   });
 
   it("rejects a negative adjustment linked to another contract or an inactive settlement", async () => {

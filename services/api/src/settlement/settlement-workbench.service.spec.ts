@@ -222,6 +222,10 @@ describe("SettlementWorkbenchService", () => {
       contractId: "contract-1",
       projectId: "project-1",
       contractAmountCents: "9007199254740993",
+      capacityPolicy: {
+        kind: "capped",
+        overageExplanationRequired: false
+      },
       calculationVersion: 2,
       sourceSnapshotToken: expect.stringMatching(/^[a-f0-9]{64}$/u),
       summary: {

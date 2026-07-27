@@ -266,7 +266,7 @@ export function canonicalSettlementLine(
     pricingModeSnapshot: normalizedPricingMode(sourceRow.pricingMode),
     pricingBasis: null,
     relatedSettlementLineId: null,
-    overageReason: null,
+    overageReason: optionalText(input.overageReason),
     amountCents,
     reason: optionalText(input.reason),
     remark: optionalText(input.remark),

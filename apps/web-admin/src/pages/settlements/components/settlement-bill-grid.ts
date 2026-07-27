@@ -45,6 +45,7 @@ export function settlementBillGridRows(
       currentAmount: row.calculationMode === "manual_amount"
         ? draft?.amountYuan ?? ""
         : previewAmounts[row.id] ?? "待后端核算",
+      overageReason: draft?.overageReason ?? "",
       remark: draft?.remark ?? "",
       exception: String(Array.isArray(row.exceptions) ? row.exceptions.length : row.exception ? 1 : 0)
     };
@@ -61,6 +62,7 @@ export function settlementDraftsFromBillGridRows(
     next[rowId] = {
       quantity: String(row.currentQuantity ?? ""),
       amountYuan: row.calculationMode === "手工金额" ? String(row.currentAmount ?? "") : "",
+      overageReason: String(row.overageReason ?? ""),
       remark: String(row.remark ?? "")
     };
   }
@@ -104,6 +106,12 @@ export const settlementBillGridColumns: ColumnRegular[] = [
     readonly: ({ model }) => !isSelected(model as JgBusinessGridRow) ||
       isClosed(model as JgBusinessGridRow) ||
       model.calculationMode !== "手工金额"
+  },
+  {
+    prop: "overageReason",
+    name: "框架超量说明",
+    size: 200,
+    readonly: ({ model }) => !isSelected(model as JgBusinessGridRow) || isClosed(model as JgBusinessGridRow)
   },
   {
     prop: "remark",
