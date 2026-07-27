@@ -622,7 +622,7 @@
               <p>文件下载继续经过权限、身份校验、短时效链接和审计记录。</p>
             </div>
           </header>
-          <EvidenceFileCards :files="settlementArchiveFilesView" />
+          <JgAttachmentPanel :files="settlementArchiveFilesView" />
           <EmptyBusinessState
             v-if="!settlementArchiveFilesView.length"
             title="暂无归档资料"
@@ -757,7 +757,7 @@ import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import BusinessDetailHeader from "../../components/BusinessDetailHeader.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
-import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
+import JgAttachmentPanel from "../../components/JgAttachmentPanel.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
 import { CORE_ARCHIVE_UPLOAD_POLICY } from "../../components/file-upload-policy.config";

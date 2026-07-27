@@ -25,6 +25,7 @@ describe("settlement detail page configuration", () => {
     expect(source).toContain("<BusinessDetailHeader");
     expect(source).toContain("<t-tabs");
     expect(source).toContain("<t-upload");
+    expect(source).toContain("<JgAttachmentPanel");
     expect(source).toContain("<SensitiveActionDialog");
     expect(source).not.toContain("<input");
     expect(source).not.toContain("confirmSensitiveAction");
