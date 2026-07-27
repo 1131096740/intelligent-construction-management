@@ -46,6 +46,7 @@ function context(preparedFacts: ReturnType<typeof facts>[] = [facts(), facts()])
     code: "JS-001",
     periodLabel: "2026-07",
     isFinal: false,
+    calculationVersion: null,
     finalCumulativeAmountCents: null,
     lines: [],
     revision: 3,
@@ -189,6 +190,15 @@ describe("SettlementFrozenDocumentService", () => {
         sortOrder: 2
       }]
     );
+  });
+
+  it("fails closed when a V3 draft has no structured rows", async () => {
+    const { service, draft, files } = context();
+    (draft as { calculationVersion: number | null }).calculationVersion = 3;
+
+    await expect(service.generate("project-1", "draft-1", "owner-1", 3))
+      .rejects.toThrow("结算草稿缺少结构化明细");
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
   });
 
   it("discards the uploaded orphan and refuses activation when facts drift", async () => {

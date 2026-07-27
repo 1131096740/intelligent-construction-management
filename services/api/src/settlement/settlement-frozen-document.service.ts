@@ -284,7 +284,7 @@ export class SettlementFrozenDocumentService {
     const calculated = (await this.settlements.prepareDraftDocumentFacts(
       tx,
       draft,
-      await this.structuredDraftLines(tx, draft.id)
+      await this.structuredDraftLines(tx, draft.id, draft.calculationVersion)
     )) as DraftDocumentFacts;
     const taxFacts = calculated.taxFacts;
     if (
@@ -343,13 +343,19 @@ export class SettlementFrozenDocumentService {
 
   private async structuredDraftLines(
     tx: Prisma.TransactionClient,
-    settlementDraftId: string
+    settlementDraftId: string,
+    calculationVersion: number | null
   ): Promise<CreateSettlementLineDto[] | undefined> {
     const rows = await tx.settlementDraftLine.findMany({
       where: { settlementDraftId },
       orderBy: { sortOrder: "asc" }
     });
-    if (!rows.length) return undefined;
+    if (!rows.length) {
+      if ((calculationVersion ?? 0) >= 3) {
+        throw new BadRequestException("结算草稿缺少结构化明细，请重新保存后再生成冻结版");
+      }
+      return undefined;
+    }
     return rows.map((line) => ({
       sourceType: line.sourceType as CreateSettlementLineDto["sourceType"],
       ...(line.contractBillRowId ? { contractBillRowId: line.contractBillRowId } : {}),

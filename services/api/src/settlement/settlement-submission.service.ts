@@ -84,7 +84,7 @@ export class SettlementSubmissionService {
           await this.frozenDocuments.assertCurrentFacts(tx, draft);
           await this.counterpartyDocuments.assertReadyForSubmission(tx, draft);
           const settlementLines = await this.submissionLines(tx, draft);
-          if (draft.calculationVersion === 2) {
+          if ((draft.calculationVersion ?? 0) >= 2) {
             const currentSourceSnapshotToken = await settlementSourceSnapshotToken(
               tx,
               draft.contractVersionId,
@@ -170,7 +170,7 @@ export class SettlementSubmissionService {
 
   private async submissionLines(
     tx: Prisma.TransactionClient,
-    draft: { id: string; lines: Prisma.JsonValue }
+    draft: { id: string; calculationVersion: number | null; lines: Prisma.JsonValue }
   ): Promise<CreateSettlementLineDto[]> {
     const structuredLines = await tx.settlementDraftLine.findMany({
       where: { settlementDraftId: draft.id },
@@ -200,6 +200,9 @@ export class SettlementSubmissionService {
         ...(line.remark ? { remark: line.remark } : {}),
         sortOrder: line.sortOrder
       }));
+    }
+    if ((draft.calculationVersion ?? 0) >= 3) {
+      throw new BadRequestException("结算草稿缺少结构化明细，请重新保存后再提交");
     }
     if (!Array.isArray(draft.lines)) {
       throw new BadRequestException("结算草稿明细已损坏，请重新保存后再提交");

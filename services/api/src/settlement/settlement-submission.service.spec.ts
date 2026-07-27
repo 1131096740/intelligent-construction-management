@@ -194,6 +194,15 @@ describe("SettlementSubmissionService", () => {
     );
   });
 
+  it("fails closed when a V3 draft has no structured rows", async () => {
+    const { tx, settlements, service } = context({ calculationVersion: 3 });
+
+    await expect(service.submitDraft("project-1", "draft-1", "owner-1", 3))
+      .rejects.toThrow("结算草稿缺少结构化明细");
+    expect(tx.settlementDraft.updateMany).not.toHaveBeenCalled();
+    expect(settlements.submitInTransaction).not.toHaveBeenCalled();
+  });
+
   it("keeps the draft unchanged when the frozen business token has drifted", async () => {
     const current = context();
     current.frozenDocuments.assertCurrentFacts.mockRejectedValueOnce(
