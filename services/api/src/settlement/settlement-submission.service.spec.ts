@@ -66,6 +66,9 @@ describe("SettlementSubmissionService", () => {
           .fn()
           .mockResolvedValueOnce({ count: 1 })
           .mockResolvedValueOnce({ count: 1 })
+      },
+      settlementDraftLine: {
+        findMany: jest.fn().mockResolvedValue([])
       }
     };
     const prisma = {
@@ -151,6 +154,43 @@ describe("SettlementSubmissionService", () => {
     });
     expect(frozenDocuments.assertCurrentFacts.mock.invocationCallOrder[0]).toBeLessThan(
       counterpartyDocuments.assertReadyForSubmission.mock.invocationCallOrder[0]!
+    );
+  });
+
+  it("uses structured draft lines over stale compatibility JSON when submitting", async () => {
+    const { tx, settlements, service } = context({
+      lines: [{ sourceType: "manual_adjustment", amountCents: "999999" }]
+    });
+    tx.settlementDraftLine.findMany.mockResolvedValueOnce([
+      {
+        sourceType: "contract_bill_row",
+        contractBillRowId: "row-authoritative",
+        name: "权威结构化清单行",
+        unit: "m",
+        quantity: { toString: () => "2.5" },
+        unitPriceCents: 1200n,
+        directAmountCents: null,
+        reason: null,
+        remark: "来自结构化草稿行",
+        sortOrder: 7
+      }
+    ]);
+
+    await service.submitDraft("project-1", "draft-1", "owner-1", 3);
+
+    expect(settlements.prepareSubmission).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settlementLines: [{
+          sourceType: "contract_bill_row",
+          contractBillRowId: "row-authoritative",
+          name: "权威结构化清单行",
+          unit: "m",
+          quantity: "2.5",
+          unitPriceCents: "1200",
+          remark: "来自结构化草稿行",
+          sortOrder: 7
+        }]
+      })
     );
   });
 

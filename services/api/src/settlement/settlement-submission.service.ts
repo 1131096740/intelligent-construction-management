@@ -83,14 +83,12 @@ export class SettlementSubmissionService {
           }
           await this.frozenDocuments.assertCurrentFacts(tx, draft);
           await this.counterpartyDocuments.assertReadyForSubmission(tx, draft);
+          const settlementLines = await this.submissionLines(tx, draft);
           if (draft.calculationVersion === 2) {
-            if (!Array.isArray(draft.lines)) {
-              throw new BadRequestException("结算草稿明细已损坏，请重新保存后再提交");
-            }
             const currentSourceSnapshotToken = await settlementSourceSnapshotToken(
               tx,
               draft.contractVersionId,
-              draft.lines as Array<{ contractBillRowId?: string | null }>
+              settlementLines
             );
             if (currentSourceSnapshotToken !== draft.sourceSnapshotToken) {
               throw new ConflictException({
@@ -115,7 +113,7 @@ export class SettlementSubmissionService {
           }
 
           const prepared = this.settlements.prepareSubmission(
-            this.submissionInput(draft)
+            this.submissionInput(draft, settlementLines)
           );
           const created = await this.settlements.submitInTransaction(
             tx,
@@ -170,6 +168,38 @@ export class SettlementSubmissionService {
     return this.settlements.finalizeSubmission(settlement, applicantUserId);
   }
 
+  private async submissionLines(
+    tx: Prisma.TransactionClient,
+    draft: { id: string; lines: Prisma.JsonValue }
+  ): Promise<CreateSettlementLineDto[]> {
+    const structuredLines = await tx.settlementDraftLine.findMany({
+      where: { settlementDraftId: draft.id },
+      orderBy: { sortOrder: "asc" }
+    });
+    if (structuredLines.length) {
+      return structuredLines.map((line) => ({
+        sourceType: line.sourceType as CreateSettlementLineDto["sourceType"],
+        ...(line.contractBillRowId ? { contractBillRowId: line.contractBillRowId } : {}),
+        ...(line.name ? { name: line.name } : {}),
+        ...(line.unit ? { unit: line.unit } : {}),
+        ...(line.quantity ? { quantity: line.quantity.toString() } : {}),
+        ...(line.unitPriceCents !== null
+          ? { unitPriceCents: line.unitPriceCents.toString() }
+          : {}),
+        ...(line.directAmountCents !== null
+          ? { amountCents: line.directAmountCents.toString() }
+          : {}),
+        ...(line.reason ? { reason: line.reason } : {}),
+        ...(line.remark ? { remark: line.remark } : {}),
+        sortOrder: line.sortOrder
+      }));
+    }
+    if (!Array.isArray(draft.lines)) {
+      throw new BadRequestException("结算草稿明细已损坏，请重新保存后再提交");
+    }
+    return draft.lines as unknown as CreateSettlementLineDto[];
+  }
+
   private submissionInput(draft: {
     contractVersionId: string;
     settlementTemplateVersionId: string | null;
@@ -182,10 +212,7 @@ export class SettlementSubmissionService {
     periodEnd?: Date | null;
     lines: Prisma.JsonValue;
     governanceVersion?: number | null;
-  }): CreateSettlementDto {
-    if (!Array.isArray(draft.lines)) {
-      throw new BadRequestException("结算草稿明细已损坏，请重新保存草稿后再提交");
-    }
+  }, settlementLines: CreateSettlementLineDto[]): CreateSettlementDto {
     return {
       contractVersionId: draft.contractVersionId,
       ...(draft.settlementTemplateVersionId
@@ -197,7 +224,7 @@ export class SettlementSubmissionService {
       ...(draft.isFinal && draft.finalCumulativeAmountCents !== null
         ? { amountCents: draft.finalCumulativeAmountCents.toString() }
         : {}),
-      settlementLines: draft.lines as unknown as CreateSettlementLineDto[]
+      settlementLines
     };
   }
 }
