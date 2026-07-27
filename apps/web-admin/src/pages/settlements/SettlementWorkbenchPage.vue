@@ -731,6 +731,7 @@
         @download="openFrozenDownloadDialog"
         @select-file="uploadCounterpartySignedPdf"
         @clear-file="clearStagedCounterpartyFile"
+        @review="requestPdfReview"
         @link="linkCounterpartySignedPdf"
       />
       <t-alert
@@ -819,6 +820,31 @@
       :error="frozenDownloadError"
       @confirm="downloadFrozenDocument"
     />
+    <SensitiveActionDialog
+      v-model="pdfReviewTicketDialogVisible"
+      title="打开两份 PDF 核对"
+      description="系统将为冻结结算单和乙方签章原件各生成一份短时预览链接，并记录本次查看审计。"
+      confirm-text="打开核对视图"
+      require-reason
+      require-password
+      reason-label="核对用途"
+      :loading="pdfReviewTicketBusy"
+      :error="pdfReviewTicketError"
+      @confirm="preparePdfReview"
+    />
+    <t-dialog
+      v-model:visible="pdfReviewDialogVisible"
+      header="冻结结算单与乙方签章原件核对"
+      width="1180px"
+      :footer="false"
+    >
+      <SettlementPdfComparisonPanel
+        v-if="pdfReviewUrls.frozen && pdfReviewUrls.original"
+        :frozen-preview-url="pdfReviewUrls.frozen"
+        :original-preview-url="pdfReviewUrls.original"
+        :storage-key="pdfReviewStorageKey"
+      />
+    </t-dialog>
   </section>
 </template>
 
@@ -831,7 +857,7 @@ import type {
   SettlementSourceLinesReadModel
 } from "@jiangkong/shared-domain";
 import type { PrimaryTableCol, UploadChangeContext, UploadFile } from "tdesign-vue-next";
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../../auth/auth.store";
 import {
@@ -1037,6 +1063,14 @@ const counterpartyLinkBusy = ref(false);
 const frozenDownloadDialogVisible = ref(false);
 const frozenDownloadBusy = ref(false);
 const frozenDownloadError = ref("");
+const pdfReviewTicketDialogVisible = ref(false);
+const pdfReviewTicketBusy = ref(false);
+const pdfReviewTicketError = ref("");
+const pdfReviewDialogVisible = ref(false);
+const pdfReviewUrls = reactive({ frozen: "", original: "" });
+const SettlementPdfComparisonPanel = defineAsyncComponent(
+  () => import("./components/SettlementPdfComparisonPanel.vue")
+);
 const participantSectionRef = ref<HTMLElement | null>(null);
 const counterpartyPanelRef = ref<InstanceType<typeof SettlementCounterpartySignedPdfPanel> | null>(null);
 const pageMessage = ref("");
@@ -1408,6 +1442,14 @@ const counterpartyPanelKey = computed(() => [
   stagedUploadedFileId.value,
   linkedOriginalDocumentId.value,
   counterpartyEvidenceEpoch.value
+].join(":"));
+const pdfReviewStorageKey = computed(() => [
+  "settlement-pdf-review-v1",
+  authStore.user?.id ?? "anonymous",
+  activeDraft.value?.id ?? "unsaved",
+  activeDraft.value?.revision ?? 0,
+  frozenDocument.value?.id ?? "none",
+  stagedUploadedFileId.value || linkedOriginalDocumentId.value || "none"
 ].join(":"));
 const primaryActionBusy = computed(() =>
   saveBusy.value || createBusy.value || frozenDocumentBusy.value || counterpartyLinkBusy.value
@@ -2299,6 +2341,42 @@ function openFrozenDownloadDialog() {
   if (!frozenDocument.value) return;
   frozenDownloadError.value = "";
   frozenDownloadDialogVisible.value = true;
+}
+
+function requestPdfReview() {
+  if (!frozenDocument.value || !stagedUploadedFileId.value) return;
+  pdfReviewTicketError.value = "";
+  pdfReviewTicketDialogVisible.value = true;
+}
+
+async function preparePdfReview(values: { reason: string; password: string }) {
+  const frozen = frozenDocument.value;
+  const originalFileId = stagedUploadedFileId.value;
+  if (!frozen || !originalFileId) return;
+  pdfReviewTicketBusy.value = true;
+  pdfReviewTicketError.value = "";
+  try {
+    const [frozenTicket, originalTicket] = await Promise.all([
+      createPrivateFileDownloadTicket(frozen.fileId, {
+        confirmationPassword: values.password,
+        downloadReason: values.reason,
+        accessMode: "preview"
+      }),
+      createPrivateFileDownloadTicket(originalFileId, {
+        confirmationPassword: values.password,
+        downloadReason: values.reason,
+        accessMode: "preview"
+      })
+    ]);
+    pdfReviewUrls.frozen = apiDownloadUrl(frozenTicket.downloadUrl);
+    pdfReviewUrls.original = apiDownloadUrl(originalTicket.downloadUrl);
+    pdfReviewTicketDialogVisible.value = false;
+    pdfReviewDialogVisible.value = true;
+  } catch (error) {
+    pdfReviewTicketError.value = error instanceof Error ? error.message : "生成 PDF 核对链接失败";
+  } finally {
+    pdfReviewTicketBusy.value = false;
+  }
 }
 
 async function downloadFrozenDocument(values: { reason: string; password: string }) {

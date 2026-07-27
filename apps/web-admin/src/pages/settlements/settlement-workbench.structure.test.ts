@@ -10,6 +10,10 @@ const counterpartyPanel = readFileSync(
   new URL("./components/SettlementCounterpartySignedPdfPanel.vue", import.meta.url),
   "utf8"
 );
+const pdfComparisonPanel = readFileSync(
+  new URL("./components/SettlementPdfComparisonPanel.vue", import.meta.url),
+  "utf8"
+);
 const state = readFileSync(new URL("./settlement-workbench.state.ts", import.meta.url), "utf8");
 const routes = readFileSync(new URL("../../routes/route-records.ts", import.meta.url), "utf8");
 const ledger = readFileSync(new URL("./SettlementListPage.vue", import.meta.url), "utf8");
@@ -63,6 +67,17 @@ describe("settlement creation workbench structure", () => {
     expect(counterpartyPanel).toContain("页数、方向或尺寸差异（如有）已确认");
     expect(counterpartyPanel).toContain("PDF 核验快照");
     expect(page).toContain(':linked-declaration="linkedOriginalDeclaration"');
+  });
+
+  it("uses audited private preview tickets for desktop comparison and mobile PDF switching", () => {
+    expect(page).toContain("SettlementPdfComparisonPanel");
+    expect(page).toContain('accessMode: "preview"');
+    expect(page).toContain("preparePdfReview");
+    expect(counterpartyPanel).toContain("在线核对两份 PDF");
+    expect(pdfComparisonPanel).toContain("同步两份文件");
+    expect(pdfComparisonPanel).toContain("按冻结版重新对齐");
+    expect(page).toContain("settlement-pdf-review-v1");
+    expect(pdfComparisonPanel).toContain("mobile-document-switch");
   });
 
   it("uses an independent workbench route and keeps the ledger as the only created-order entry point", () => {

@@ -104,6 +104,13 @@
       <span>{{ linked ? "系统已校验并关联当前修订版原件。" : linkHint }}</span>
       <t-button
         variant="outline"
+        :disabled="disabled || !frozenDocument || !stagedFileId"
+        @click="$emit('review')"
+      >
+        在线核对两份 PDF
+      </t-button>
+      <t-button
+        variant="outline"
         :loading="linkBusy"
         :disabled="disabled || linked || !canLink"
         @click="emitLink"
@@ -167,6 +174,7 @@ const emit = defineEmits<{
   download: [];
   "select-file": [file: File];
   "clear-file": [];
+  review: [];
   link: [declaration: SettlementCounterpartyDeclaration];
 }>();
 
