@@ -74,6 +74,19 @@ describe("contract ledger page configuration", () => {
     expect(source).not.toContain("enabled: true");
   });
 
+  it("offers a guarded direct deletion only for server-classified pristine drafts", () => {
+    const source = readFileSync(new URL("./ContractListPage.vue", import.meta.url), "utf8");
+    expect(source).toContain("v-if=\"canDeleteDraftFromLedger(row)\"");
+    expect(source).toContain("<SensitiveActionDialog");
+    expect(source).toContain("businessDraftActionConfig.delete_pristine_draft");
+    expect(source).toContain("action: \"delete_pristine_draft\"");
+    expect(source).toContain("expectedRevision: draftRevision");
+    expect(source).toContain('activeTab.value === "my_drafts"');
+    expect(source).toContain('row.lifecycleKind === "pristine_draft"');
+    expect(source).toContain('row.workbenchEditable === true');
+    expect(source).not.toContain("window.confirm");
+  });
+
   it("builds stable select options from the currently loaded contract ledger", () => {
     const rows = [
       contractRow({
