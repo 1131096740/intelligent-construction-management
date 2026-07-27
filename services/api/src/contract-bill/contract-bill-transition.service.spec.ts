@@ -1,4 +1,4 @@
-import { ConflictException } from "@nestjs/common";
+import { BadRequestException, ConflictException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { ContractBillTransitionService } from "./contract-bill-transition.service";
 
@@ -92,6 +92,73 @@ describe("ContractBillTransitionService", () => {
     expect(current.tx.contractVersion.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ id: "version-2", draftRevision: 4 })
     }));
+  });
+
+  it("classifies two source rows carried into one target row as a merge", async () => {
+    const current = context();
+    current.tx.contractBillRow.findMany.mockResolvedValue([
+      { id: "source-row-a", contractBillId: "source-bill", unit: "m" },
+      { id: "source-row-b", contractBillId: "source-bill", unit: "m" },
+      { id: "target-row", contractBillId: "target-bill", unit: "m" }
+    ]);
+    current.tx.contractBill.findMany.mockResolvedValue([
+      { id: "source-bill", contractVersionId: "version-1" },
+      { id: "target-bill", contractVersionId: "version-2" }
+    ]);
+    current.tx.contractBillRowTransition.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await current.service.saveDraftMappings("version-2", "handler-1", {
+      fromContractVersionId: "version-1",
+      expectedTargetVersionRevision: 4,
+      mappings: [
+        {
+          sourceContractBillRowId: "source-row-a",
+          targetContractBillRowId: "target-row",
+          sourceSettledQuantityAllocated: "10",
+          targetOpeningQuantity: "10",
+          settledAmountAllocatedCents: "1000"
+        },
+        {
+          sourceContractBillRowId: "source-row-b",
+          targetContractBillRowId: "target-row",
+          sourceSettledQuantityAllocated: "20",
+          targetOpeningQuantity: "20",
+          settledAmountAllocatedCents: "2000"
+        }
+      ]
+    });
+
+    expect(current.tx.contractBillRowTransition.upsert).toHaveBeenCalledTimes(2);
+    expect(current.tx.contractBillRowTransition.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ relationType: "merge", matchBasis: "manual", status: "draft" })
+    }));
+  });
+
+  it("rejects a many-to-many mapping mesh before writing any draft mapping", async () => {
+    const current = context();
+    current.tx.contractBillRow.findMany.mockResolvedValue([
+      { id: "source-row-a", contractBillId: "source-bill", unit: "m" },
+      { id: "source-row-b", contractBillId: "source-bill", unit: "m" },
+      { id: "target-row-a", contractBillId: "target-bill", unit: "m" },
+      { id: "target-row-b", contractBillId: "target-bill", unit: "m" }
+    ]);
+    current.tx.contractBill.findMany.mockResolvedValue([
+      { id: "source-bill", contractVersionId: "version-1" },
+      { id: "target-bill", contractVersionId: "version-2" }
+    ]);
+
+    await expect(current.service.saveDraftMappings("version-2", "handler-1", {
+      fromContractVersionId: "version-1",
+      expectedTargetVersionRevision: 4,
+      mappings: [
+        { sourceContractBillRowId: "source-row-a", targetContractBillRowId: "target-row-a", sourceSettledQuantityAllocated: "10", targetOpeningQuantity: "10", settledAmountAllocatedCents: "1000" },
+        { sourceContractBillRowId: "source-row-a", targetContractBillRowId: "target-row-b", sourceSettledQuantityAllocated: "20", targetOpeningQuantity: "20", settledAmountAllocatedCents: "2000" },
+        { sourceContractBillRowId: "source-row-b", targetContractBillRowId: "target-row-a", sourceSettledQuantityAllocated: "30", targetOpeningQuantity: "30", settledAmountAllocatedCents: "3000" }
+      ]
+    })).rejects.toBeInstanceOf(BadRequestException);
+    expect(current.tx.contractBillRowTransition.upsert).not.toHaveBeenCalled();
   });
 
   it("rejects a draft mapping that tries to overwrite a director-confirmed mapping", async () => {
