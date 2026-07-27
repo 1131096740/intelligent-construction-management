@@ -11,7 +11,8 @@ import {
   SettlementStatus,
   type ContractInvoiceType,
   type ContractTaxMode,
-  type RoleKey
+  type RoleKey,
+  type SettlementSubmissionBlockerCode
 } from "@jiangkong/shared-domain";
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
 import { ApprovalFormService } from "../approval/approval-form.service";
@@ -309,7 +310,7 @@ type PreviewSettlementLine = Omit<CanonicalSettlementLine, "amountCents"> & {
 };
 
 export interface PreviewSettlementSubmissionBlocker {
-  code: "missing_invoice_type" | "missing_tax_rate" | "missing_unit_price";
+  code: SettlementSubmissionBlockerCode;
   contractBillRowId: string | null;
   message: string;
   remedyPath: string;

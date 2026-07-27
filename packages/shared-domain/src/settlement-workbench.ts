@@ -16,7 +16,8 @@ export interface SettlementSourceLineException {
 export type SettlementSubmissionBlockerCode =
   | "missing_invoice_type"
   | "missing_tax_rate"
-  | "missing_unit_price";
+  | "missing_unit_price"
+  | "over_settled_quantity";
 
 export interface SettlementSubmissionBlocker {
   code: SettlementSubmissionBlockerCode;

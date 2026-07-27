@@ -302,7 +302,7 @@ export class SettlementWorkbenchService {
       isProvisional: row.isProvisional,
       pricingFactStatus
     };
-    const submissionBlocker = settlementSubmissionBlocker(sourceFactRow, factContext);
+    const sourceFactBlocker = settlementSubmissionBlocker(sourceFactRow, factContext);
     const exceptions: SettlementSourceLineReadModel["exceptions"] = [];
     if (previousSettledQuantity === null) {
       exceptions.push({
@@ -324,6 +324,15 @@ export class SettlementWorkbenchService {
         )} 元`
       });
     }
+    const submissionBlocker = sourceFactBlocker ?? (
+      remainingQuantity?.isNegative()
+        ? {
+            code: "over_settled_quantity" as const,
+            message: "该清单项历史累计结算数量已超过当前合同数量，不能继续发起正向结算。",
+            remedyPath: factContext.remedyPath
+          }
+        : null
+    );
     return {
       id: row.id,
       billId: bill.id,

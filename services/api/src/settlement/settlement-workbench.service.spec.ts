@@ -394,6 +394,55 @@ describe("SettlementWorkbenchService", () => {
     });
   });
 
+  it("blocks a current contract row whose inherited settled quantity already exceeds its new quantity", async () => {
+    const prisma = buildPrisma();
+    const [existingRow] = await prisma.contractBillRow.findMany();
+    prisma.contractBillRow.findMany.mockResolvedValue([
+      {
+        ...existingRow,
+        id: "row-v2",
+        quantity: new Decimal("20"),
+        lineageId: "lineage-1"
+      }
+    ]);
+    prisma.settlement.findMany.mockResolvedValue([]);
+    prisma.settlementLine.findMany.mockResolvedValue([]);
+    Object.assign(prisma, {
+      contractBillRowCarryForward: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            contractBillRowId: "row-v2",
+            lineageId: "lineage-1",
+            priorSettledQuantity: new Decimal("30"),
+            priorSettledAmountCents: 3_000n,
+            sourceSnapshotHash: "a".repeat(64),
+            updatedAt: new Date("2026-07-27T00:00:00.000Z")
+          }
+        ])
+      }
+    });
+    const service = new SettlementWorkbenchService(prisma as never);
+
+    const result = await service.sourceLines("version-1");
+
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        id: "row-v2",
+        remainingQuantity: "-10",
+        calculationAvailable: false,
+        submissionBlocker: {
+          code: "over_settled_quantity",
+          message: "该清单项历史累计结算数量已超过当前合同数量，不能继续发起正向结算。",
+          remedyPath: "/合同工作台/contract-1"
+        },
+        exception: {
+          code: "negative_remaining_quantity",
+          message: "累计已结算数量超过合同数量 10"
+        }
+      })
+    ]);
+  });
+
   it.each([
     ["missing", null, "未找到可结算的合同版本"],
     ["draft", { id: "version-1", contractId: "contract-1", status: "draft", amountCents: 1n }, "合同尚未归档生效"],
