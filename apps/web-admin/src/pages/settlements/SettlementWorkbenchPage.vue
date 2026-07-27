@@ -314,6 +314,25 @@
         <span>{{ selectedContractHint }}</span>
       </div>
       <div class="toolbar-actions">
+        <t-radio-group
+          v-model="sourceView"
+          variant="default-filled"
+        >
+          <t-radio-button value="open">
+            未结清
+          </t-radio-button>
+          <t-radio-button value="all">
+            全部
+          </t-radio-button>
+        </t-radio-group>
+        <t-input
+          v-model="sourceSearch"
+          placeholder="搜索清单名称或编码"
+          clearable
+        />
+        <t-checkbox v-model="onlySelected">
+          仅看已选
+        </t-checkbox>
         <t-input
           v-model="batchRemark"
           class="batch-remark"
@@ -386,7 +405,7 @@
         size="small"
         table-layout="fixed"
         :columns="sourceColumns"
-        :data="workbenchRows"
+        :data="visibleWorkbenchRows"
         :max-height="500"
         :loading="sourceLoading"
         :horizontal-scroll-affixed-bottom="true"
@@ -931,6 +950,9 @@ const finalConfirmations = reactive<FinalSettlementConfirmationState>({});
 const projects = ref<ProjectOptionReadModel[]>([]);
 const contracts = ref<ContractBusinessOptionReadModel[]>([]);
 const sourceRows = ref<SettlementSourceLineReadModel[]>([]);
+const sourceView = ref<"open" | "all">("open");
+const sourceSearch = ref("");
+const onlySelected = ref(false);
 const drafts = ref<SourceLineDraftMap>({});
 const adjustments = ref<ManualAdjustmentDraft[]>([]);
 const visaChanges = ref<VisaChangeDraft[]>([]);
@@ -1132,6 +1154,14 @@ const selectedContractHint = computed(() =>
     : "请先选择项目和有效合同。"
 );
 const selectedRowIds = computed(() => Object.keys(drafts.value));
+const visibleWorkbenchRows = computed(() => {
+  const keyword = sourceSearch.value.trim().toLowerCase();
+  return workbenchRows.value.filter((row) => {
+    if (sourceView.value === "open" && row.remainingQuantity === "0") return false;
+    if (onlySelected.value && !isSelected(row.id)) return false;
+    return !keyword || `${row.itemCode ?? ""} ${row.itemName} ${row.billName}`.toLowerCase().includes(keyword);
+  });
+});
 const currentDraftFingerprint = computed(() =>
   settlementWorkbenchDraftFingerprint(drafts.value, adjustments.value)
 );
