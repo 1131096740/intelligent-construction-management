@@ -29,6 +29,7 @@
     "inspect:contract-settlement-governance-readiness": "node scripts/inspect-contract-settlement-governance-readiness.cjs",
     "inspect:draft-lifecycle-readiness": "node scripts/inspect-draft-lifecycle-readiness.cjs",
     "precheck:contract-settlement-v2": "node prisma/precheck-contract-settlement-v2.cjs",
+    "verify:contract-settlement-v2:local": "node prisma/run-contract-settlement-v2-local.cjs",
     "backfill:contract-settlement-v2": "node prisma/backfill-contract-settlement-v2.cjs",
     "create:trial-users": "node scripts/create-trial-users.cjs",
     "contract-master:review-pack": "node scripts/generate-contract-master-review-pack.cjs",

@@ -571,7 +571,9 @@ T04、T05 和 T09 在 T03 完成后可以按文件边界并行设计，但合入
 
 验证：全仓测试 Shared 137/137、Web 126 文件 1156/1156、API 199 套通过（5 套条件跳过）、4352/4368 断言通过（16 条条件跳过）；Shared/API/Web typecheck、lint、`check:business-errors`、`check:ui`、Prisma validate/generate、API/Web production build 与 `git diff --check` 通过。Chromium/WebKit：合同详情 2/2、结算签章/PDF/最终件 6/6、合同清单原子导入与 100+ 行编辑 8/8、业务网格 36/36。P1 尚未支持的拆分/合并、追溯调价和资金回收仍未暴露写入口，后续任务 T16-T18 承接。
 
-未满足的环境级门禁：本机 PostgreSQL `localhost:5432` 未运行，`precheck:contract-settlement-v2 --output …` 因无法连接而未生成历史只读报告；因此尚未在隔离恢复库执行空库/升级库/并发数据库演练，未运行任何生产预检、迁移或回填。本任务继续保持进行中，不能据此发起推送、部署或生产数据操作。
+未满足的环境级门禁：本机常驻 PostgreSQL `localhost:5432` 未运行，尚无经授权的历史恢复副本；因此不能生成有真实历史事实的只读预检报告，也未执行历史升级库/恢复库演练。未运行任何生产预检、迁移或回填。本任务继续保持进行中，不能据此发起推送、部署或生产数据操作。
+
+补充验证（2026-07-27）：新增 `verify:contract-settlement-v2:local`，仅允许本机 Docker endpoint，使用随机端口和凭据启动一次性 PostgreSQL 16，完成 89 条迁移的空库部署、V2 只读预检报告及合同清单整表保存的双连接并发证据（恰一成功、另一条拒绝，审计失败回滚）。临时容器和目录自动清理，报告仅写入调用方指定路径。本次隔离报告摘要为 `resolved=0/manualReview=0/blocking=0`，证明空库路径与工具可执行；它不是生产历史数据报告。真实历史升级库/恢复库预检仍待具备经授权的历史副本后执行。
 
 ## 4. P2 任务
 
