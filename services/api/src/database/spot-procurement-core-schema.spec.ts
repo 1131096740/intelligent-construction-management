@@ -409,6 +409,7 @@ const GOVERNANCE_FILE_BINDING_TABLES = new Set([
 // The final registry remains covered by unified-file-business-binding-guard.
 const POST_INVOICE_EVIDENCE_FILE_BINDING_TABLES = new Set([
   "SettlementLineAttachment",
+  "SettlementRecoveryEntry",
   "EmployeeLoanRepayment",
   "EmployeeProjectLoanEntry",
   "ExpenseClaimAttachment",
