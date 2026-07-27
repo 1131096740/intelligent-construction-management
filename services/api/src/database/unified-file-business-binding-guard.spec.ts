@@ -39,7 +39,7 @@ const expenseClaimPaymentExecutionBindingMigration = readFileSync(
 const currentBindingMigration = readFileSync(
   join(
     process.cwd(),
-    "prisma/migrations/20260727120000_contract_bill_lineage_settlement_v2_foundation/migration.sql"
+    "prisma/migrations/20260727180000_settlement_recovery_ledger/migration.sql"
   ),
   "utf8"
 );
@@ -78,7 +78,7 @@ function migrationBindings(): Array<{
 describe("unified file business binding migration", () => {
   it("registers every current Prisma FileObject reference exactly once", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(60);
+    expect(registered).toHaveLength(61);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
   });
@@ -94,6 +94,7 @@ describe("unified file business binding migration", () => {
       "InvoiceExceptionConfirmation.proofFileId",
       "InvoiceRecord.fileId",
       "NoInvoiceConfirmation.proofFileId",
+      "SettlementRecoveryEntry.evidenceFileId",
       "SpotProcurementPaymentAttachment.fileId",
       "SpotProcurementPaymentExecution.voucherFileId",
       "SpotProcurementPaymentExecutionVoucher.fileId",

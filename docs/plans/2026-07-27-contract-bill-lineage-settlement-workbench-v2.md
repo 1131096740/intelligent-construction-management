@@ -630,6 +630,8 @@ T04、T05 和 T09 在 T03 完成后可以按文件边界并行设计，但合入
 
 验证：回收服务、结算归档和控制器 Jest 273/273；回收 API 与结算详情配置 Vitest 18/18；API/Web typecheck、API/Web lint、Web `check:ui` 与 `git diff --check` 通过。一次性本机 PostgreSQL 16 已完整应用 91 条迁移，预检报告为 `resolved=0/manualReview=2/blocking=0`，并完成既有两项双连接并发测试；容器和临时数据库自动清理。未连接生产、未执行生产迁移、回填或业务数据写入。
 
+收口修复（2026-07-27）：全仓回归发现 `SettlementRecoveryEntry.evidenceFileId` 已在数据库触发器目录登记，却遗漏于应用层非收据文件绑定注册表，且目录一致性测试仍读取前一版迁移。现已补齐注册表，并将测试指向承载最新目录的回收台账迁移；该凭证重新纳入同一私有文件排他检查。文件绑定聚焦 Jest 10/10、全仓测试（Shared 137/137、Web 128 文件 1165/1165、API 全量）以及 Shared/API/Web typecheck、lint 通过。
+
 验收：部分退款、多次抵扣、并发超额、反向更正、最终结算后未结余额持续可见。
 
 ### T19 框架超量、统一文件事实和移动端增强
