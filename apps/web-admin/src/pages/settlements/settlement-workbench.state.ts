@@ -150,6 +150,20 @@ export interface ManualAdjustmentDraft {
   name: string;
   amountYuan: string;
   reason: string;
+  relatedSettlementLineId?: string;
+  remark: string;
+}
+
+export interface VisaChangeDraft {
+  clientId: string;
+  sourceItemType: string;
+  occurredOn: string;
+  name: string;
+  description: string;
+  pricingBasis: string;
+  quantity: string;
+  unitPriceYuan: string;
+  amountYuan: string;
   remark: string;
 }
 
@@ -160,6 +174,7 @@ export interface SettlementWorkbenchValidationInput {
   rows: readonly SettlementSourceLineReadModel[];
   drafts: SourceLineDraftMap;
   adjustments: readonly ManualAdjustmentDraft[];
+  visaChanges?: readonly VisaChangeDraft[];
 }
 
 export function setSourceLineSelection(
@@ -222,7 +237,8 @@ export function applyTsvQuantityPaste(
 export function buildSettlementLinePayload(
   rows: readonly SettlementSourceLineReadModel[],
   drafts: SourceLineDraftMap,
-  adjustments: readonly ManualAdjustmentDraft[]
+  adjustments: readonly ManualAdjustmentDraft[],
+  visaChanges: readonly VisaChangeDraft[] = []
 ): SettlementLineDraftPayload[] {
   const result: SettlementLineDraftPayload[] = [];
   for (const row of rows) {
@@ -247,7 +263,29 @@ export function buildSettlementLinePayload(
       name: adjustment.name.trim(),
       amountCents: signedYuanTextToCentsText(adjustment.amountYuan.trim()),
       reason: adjustment.reason.trim(),
+      ...(adjustment.relatedSettlementLineId?.trim()
+        ? { relatedSettlementLineId: adjustment.relatedSettlementLineId.trim() }
+        : {}),
       ...(adjustment.remark.trim() ? { remark: adjustment.remark.trim() } : {}),
+      sortOrder: result.length + 1
+    });
+  }
+  for (const visa of visaChanges) {
+    result.push({
+      sourceType: "visa_change",
+      sourceItemType: visa.sourceItemType.trim(),
+      occurredOn: visa.occurredOn.trim(),
+      name: visa.name.trim(),
+      description: visa.description.trim(),
+      pricingBasis: visa.pricingBasis.trim(),
+      ...(visa.quantity.trim() ? { quantity: visa.quantity.trim() } : {}),
+      ...(visa.unitPriceYuan.trim()
+        ? { unitPriceCents: yuanTextToCentsText(visa.unitPriceYuan.trim()) }
+        : {}),
+      ...(visa.amountYuan.trim()
+        ? { amountCents: yuanTextToCentsText(visa.amountYuan.trim()) }
+        : {}),
+      ...(visa.remark.trim() ? { remark: visa.remark.trim() } : {}),
       sortOrder: result.length + 1
     });
   }
