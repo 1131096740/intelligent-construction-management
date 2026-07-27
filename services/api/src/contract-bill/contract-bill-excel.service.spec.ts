@@ -550,7 +550,7 @@ describe("ContractBillExcelService", () => {
       taxExclusiveAmountCents: 100n,
       taxAmountCents: 0n
     };
-    const { service, tx, rows, fileService } = billFixture({ rows: [{ ...existing }] });
+    const { service, tx, rows, fileService, imports } = billFixture({ rows: [{ ...existing }] });
     const buffer = await buildWorkbookBuffer({
       rows: [{
         rowKey: "key-1",
@@ -579,6 +579,10 @@ describe("ContractBillExcelService", () => {
         message: "单位变化不能自动确认清单来源关系，请人工复核后再导入"
       })
     );
+    expect(preview.diffs).toEqual([
+      expect.objectContaining({ kind: "manual_review", rowKey: "key-1" })
+    ]);
+    expect(imports[0]).toMatchObject({ mappingStatus: "pending" });
     await expect(service.applyImport(preview.importId, "owner-1")).rejects.toThrow(
       "合同清单导入预检存在错误，请先修正后重新预检"
     );

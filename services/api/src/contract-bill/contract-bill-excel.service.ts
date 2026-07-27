@@ -19,6 +19,11 @@ import { moneyCentsToApi } from "../money/decimal-money";
 import { resolveContractBillRowFacts } from "./contract-bill-row-rules";
 import { recalculateBillAndContractAmount } from "./contract-bill-totals";
 import { loadOwnedEditableBill } from "./contract-bill-guards";
+import {
+  describeContractBillImportDiff,
+  type ContractBillImportDiff,
+  type ContractBillImportDiffRow
+} from "./contract-bill-import-diff";
 import { ContractBillLineageService } from "./contract-bill-lineage.service";
 
 const DATA_SHEET = "清单数据";
@@ -99,6 +104,7 @@ export interface BillImportPreview {
   rows: PreviewRowChange[];
   errors: PreviewError[];
   candidateRows: BillImportCandidateRow[];
+  diffs: ContractBillImportDiff[];
 }
 
 interface StoredBillImportPreview {
@@ -230,7 +236,11 @@ export class ContractBillExcelService {
           sourceContractVersionId: bill.contractVersionId,
           targetContractVersionId: bill.contractVersionId,
           expectedBillRevision: bill.revision,
-          mappingStatus: "resolved",
+          mappingStatus:
+            mode === "version_replace" &&
+            preview.diffs.some((diff) => diff.kind === "manual_review")
+              ? "pending"
+              : "resolved",
           mode,
           status: "preview",
           preview: this.toJson({ billRevision: bill.revision, preview }),
@@ -422,6 +432,16 @@ export class ContractBillExcelService {
     for (const row of plan.adds) {
       afterAmountCents += row.taxInclusiveAmountCents ?? 0n;
     }
+    const diffs = mode === "version_replace"
+      ? describeContractBillImportDiff(
+          existingRows.map((row) => this.toDiffRow(row)),
+          [
+            ...plan.updates,
+            ...plan.adds,
+            ...plan.manualReviews.map((review) => review.incoming)
+          ].map((row) => this.toDiffRow(row))
+        )
+      : [];
 
     return {
       added: plan.adds.length,
@@ -432,6 +452,7 @@ export class ContractBillExcelService {
       afterAmountCents: moneyCentsToApi(afterAmountCents),
       rows: plan.previewRows,
       errors: plan.errors,
+      diffs,
       candidateRows:
         mode === "replace" && plan.errors.length === 0
           ? plan.adds.map((row, index) => this.toCandidateRow(row, importId, index))
@@ -462,13 +483,14 @@ export class ContractBillExcelService {
     const previewRows: PreviewRowChange[] = [];
     const adds: ResolvedRow[] = [];
     const updates: ResolvedRow[] = [];
+    const manualReviews: Array<{ source: ExistingRow; incoming: ResolvedRow }> = [];
     let skipped = 0;
 
     const columnDefs = this.templateColumns(bill);
     const codes = this.readFieldCodes(sheet);
     this.assertTemplateColumns(codes, columnDefs, errors);
     if (errors.length > 0) {
-      return { adds, updates, removeKeys: [], skipped, errors, previewRows };
+      return { adds, updates, manualReviews, removeKeys: [], skipped, errors, previewRows };
     }
 
     const codeIndex = new Map(codes.map((code, index) => [code, index + 1]));
@@ -543,18 +565,6 @@ export class ContractBillExcelService {
           skipped += 1;
           return;
         }
-        if (mode === "version_replace" &&
-          typeof existing.unit === "string" && existing.unit !== resolved.unit) {
-          errors.push({
-            sheet: DATA_SHEET,
-            row: rowNumber,
-            column: "unit",
-            message: "单位变化不能自动确认清单来源关系，请人工复核后再导入"
-          });
-          previewRows.push({ action: "skip", rowKey: sheetRowKey, values: raw });
-          skipped += 1;
-          return;
-        }
         if (seenKeys.has(sheetRowKey)) {
           errors.push({
             sheet: DATA_SHEET,
@@ -569,6 +579,18 @@ export class ContractBillExcelService {
         seenKeys.add(sheetRowKey);
         sheetKeys.add(sheetRowKey);
         resolved.rowKey = sheetRowKey;
+        if (mode === "version_replace" && existing.unit !== resolved.unit) {
+          manualReviews.push({ source: existing, incoming: resolved });
+          errors.push({
+            sheet: DATA_SHEET,
+            row: rowNumber,
+            column: "unit",
+            message: "单位变化不能自动确认清单来源关系，请人工复核后再导入"
+          });
+          previewRows.push({ action: "skip", rowKey: sheetRowKey, values: raw });
+          skipped += 1;
+          return;
+        }
         updates.push(resolved);
         previewRows.push({ action: "update", rowKey: sheetRowKey, values: raw });
         return;
@@ -589,7 +611,7 @@ export class ContractBillExcelService {
       }
     }
 
-    return { adds, updates, removeKeys, skipped, errors, previewRows };
+    return { adds, updates, manualReviews, removeKeys, skipped, errors, previewRows };
   }
 
   private resolveRow(
@@ -974,6 +996,16 @@ export class ContractBillExcelService {
     return String(value).trim();
   }
 
+  private toDiffRow(row: ExistingRow | ResolvedRow): ContractBillImportDiffRow {
+    return {
+      rowKey: row.rowKey,
+      itemCode: row.itemCode,
+      itemName: row.itemName,
+      specification: row.specification,
+      unit: row.unit
+    };
+  }
+
   private isTaxRateOverride(value: string, defaultRate: string | null) {
     if (!value) return false;
     if (defaultRate === null) return true;
@@ -1186,6 +1218,9 @@ interface BillContext {
 
 interface ExistingRow {
   rowKey: string;
+  itemCode: string | null;
+  itemName: string;
+  specification: string | null;
   unit: string;
   quantity: Prisma.Decimal | null;
   unitPrice: Prisma.Decimal | null;
@@ -1201,6 +1236,7 @@ interface ExistingRow {
 interface ResolvedPlan {
   adds: ResolvedRow[];
   updates: ResolvedRow[];
+  manualReviews: Array<{ source: ExistingRow; incoming: ResolvedRow }>;
   removeKeys: string[];
   skipped: number;
   errors: PreviewError[];

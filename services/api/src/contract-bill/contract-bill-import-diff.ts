@@ -13,27 +13,46 @@ export interface ContractBillImportDiffRow {
   unit: string;
 }
 
+export interface ContractBillImportDiff {
+  kind: ContractBillImportDiffKind;
+  rowKey: string;
+  source?: ContractBillImportDiffRow;
+  incoming?: ContractBillImportDiffRow;
+}
+
 export function classifyContractBillImportDiff(
   previous: readonly ContractBillImportDiffRow[],
   incoming: readonly ContractBillImportDiffRow[]
 ): ContractBillImportDiffKind[] {
+  return describeContractBillImportDiff(previous, incoming).map((diff) => diff.kind);
+}
+
+export function describeContractBillImportDiff(
+  previous: readonly ContractBillImportDiffRow[],
+  incoming: readonly ContractBillImportDiffRow[]
+): ContractBillImportDiff[] {
   const previousByKey = new Map(previous.map((row) => [row.rowKey, row]));
   const incomingByKey = new Map(incoming.map((row) => [row.rowKey, row]));
-  const kinds: ContractBillImportDiffKind[] = [];
+  const diffs: ContractBillImportDiff[] = [];
   for (const row of incoming) {
     const source = previousByKey.get(row.rowKey);
     if (!source) {
-      kinds.push("added");
+      diffs.push({ kind: "added", rowKey: row.rowKey, incoming: row });
       continue;
     }
-    if (sameIdentity(source, row)) kinds.push("unchanged");
-    else if (source.unit === row.unit) kinds.push("one_to_one");
-    else kinds.push("manual_review");
+    const kind = sameIdentity(source, row)
+      ? "unchanged"
+      : source.unit === row.unit
+        ? "one_to_one"
+        : "manual_review";
+    diffs.push({ kind, rowKey: row.rowKey, source, incoming: row });
   }
   for (const row of previous) {
-    if (!incomingByKey.has(row.rowKey)) kinds.push("removed");
+    if (!incomingByKey.has(row.rowKey)) {
+      diffs.push({ kind: "removed", rowKey: row.rowKey, source: row });
+    }
   }
-  return kinds;
+  return diffs;
 }
 
 function sameIdentity(left: ContractBillImportDiffRow, right: ContractBillImportDiffRow) {

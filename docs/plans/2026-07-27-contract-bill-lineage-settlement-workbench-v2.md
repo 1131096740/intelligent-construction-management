@@ -324,7 +324,7 @@ T04、T05 和 T09 在 T03 完成后可以按文件边界并行设计，但合入
 
 完成标准：普通用户不再选择 `replace/update/append`；“预检成功”与“正式应用成功”有独立证据。
 
-实施进展（2026-07-27，首段）：服务端新增内部 `version_replace` 模式。原 `__rowKey` 且单位一致的 Excel 行原位更新，从而保留物理行与 lineage；空行标识新增，未列出的既有行继续纳入删除及正式结算占用校验。单位变化一律返回“需人工复核”预检错误，应用操作整批失败关闭，避免部分落库。导入记录不再写入不符合约束的 `legacy_replace` 映射状态。Excel 服务 Jest 54/54、API typecheck、lint 与 `git diff --check` 通过。五类差异读模型、人工确认和业务页面尚未实施，故本任务未完成。
+实施进展（2026-07-27，两段）：服务端新增内部 `version_replace` 模式。原 `__rowKey` 且单位一致的 Excel 行原位更新，从而保留物理行与 lineage；空行标识新增，未列出的既有行继续纳入删除及正式结算占用校验。预检返回逐行 `unchanged/added/removed/one_to_one/manual_review`，并保留来源行和导入行，清晰暴露自动一对一建议。单位变化一律标为 `manual_review`、写入 `pending` 映射状态并返回“需人工复核”预检错误，应用操作整批失败关闭，避免部分落库。普通成功预检不再写入不符合约束的 `legacy_replace` 映射状态。差异/Excel 服务 Jest 56/56、API typecheck、lint 与 `git diff --check` 通过。人工确认和业务页面尚未实施，故本任务未完成。
 
 ### T09 结构化草稿行、三类来源与后台权威计算
 
