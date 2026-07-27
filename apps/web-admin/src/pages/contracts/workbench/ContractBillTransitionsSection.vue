@@ -1,25 +1,106 @@
 <template>
-  <t-card class="transition-card" title="旧版结算承接映射">
-    <p class="hint">只处理旧版已生效结算的清单。保存后由合同部主任确认；确认前不能提交变更合同。</p>
-    <t-alert v-if="error" theme="error" :message="error" />
-    <t-loading v-if="loading" text="正在读取旧版结算清单……" />
+  <t-card
+    class="transition-card"
+    title="旧版结算承接映射"
+  >
+    <p class="hint">
+      只处理旧版已生效结算的清单。保存后由合同部主任确认；确认前不能提交变更合同。
+    </p>
+    <t-alert
+      v-if="error"
+      theme="error"
+      :message="error"
+    />
+    <t-loading
+      v-if="loading"
+      text="正在读取旧版结算清单……"
+    />
     <template v-else-if="options">
-      <p v-if="!options.sources.length" class="hint">旧版没有需要承接的已结算清单行。</p>
-      <div v-else class="rows">
-        <div v-for="(row, index) in rows" :key="row.key" class="row">
-          <t-select v-model="row.sourceId" :options="sourceOptions" placeholder="旧版已结算行" @change="syncSource(row)" />
-          <t-select v-model="row.targetId" :options="targetOptions" placeholder="新版目标行" />
-          <t-input v-model="row.sourceQuantity" placeholder="来源已结数量" />
-          <t-input v-model="row.targetQuantity" placeholder="目标期初数量" />
-          <t-input v-model="row.amountCents" placeholder="历史金额（分）" />
-          <t-input v-model="row.basis" placeholder="单位变化时填写换算依据" />
-          <t-button variant="text" theme="danger" :disabled="disabled || busy" @click="rows.splice(index, 1)">删除</t-button>
+      <p
+        v-if="!options.sources.length"
+        class="hint"
+      >
+        旧版没有需要承接的已结算清单行。
+      </p>
+      <div
+        v-else
+        class="rows"
+      >
+        <div
+          v-for="(row, index) in rows"
+          :key="row.key"
+          class="row"
+        >
+          <t-select
+            v-model="row.sourceId"
+            :options="sourceOptions"
+            placeholder="旧版已结算行"
+            @change="syncSource(row)"
+          />
+          <t-select
+            v-model="row.targetId"
+            :options="targetOptions"
+            placeholder="新版目标行"
+          />
+          <t-input
+            v-model="row.sourceQuantity"
+            placeholder="来源已结数量"
+          />
+          <t-input
+            v-model="row.targetQuantity"
+            placeholder="目标期初数量"
+          />
+          <t-input
+            v-model="row.amountCents"
+            placeholder="历史金额（分）"
+          />
+          <t-input
+            v-model="row.basis"
+            placeholder="单位变化时填写换算依据"
+          />
+          <t-button
+            variant="text"
+            theme="danger"
+            :disabled="disabled || busy"
+            @click="rows.splice(index, 1)"
+          >
+            删除
+          </t-button>
         </div>
         <div class="actions">
-          <t-button variant="outline" :disabled="disabled || busy" @click="addRow">新增映射</t-button>
-          <t-button theme="primary" :loading="busy === 'save'" :disabled="disabled || !rows.length" @click="save">保存映射</t-button>
-          <t-button v-if="hasDraft" theme="warning" variant="outline" :loading="busy === 'discard'" :disabled="disabled" @click="discard">撤销未确认映射</t-button>
-          <t-button v-if="options.canConfirm && hasDraft" theme="success" :loading="busy === 'confirm'" @click="confirm">合同部主任确认</t-button>
+          <t-button
+            variant="outline"
+            :disabled="disabled || busy"
+            @click="addRow"
+          >
+            新增映射
+          </t-button>
+          <t-button
+            theme="primary"
+            :loading="busy === 'save'"
+            :disabled="disabled || !rows.length"
+            @click="save"
+          >
+            保存映射
+          </t-button>
+          <t-button
+            v-if="hasDraft"
+            theme="warning"
+            variant="outline"
+            :loading="busy === 'discard'"
+            :disabled="disabled"
+            @click="discard"
+          >
+            撤销未确认映射
+          </t-button>
+          <t-button
+            v-if="options.canConfirm && hasDraft"
+            theme="success"
+            :loading="busy === 'confirm'"
+            @click="confirm"
+          >
+            合同部主任确认
+          </t-button>
         </div>
       </div>
     </template>

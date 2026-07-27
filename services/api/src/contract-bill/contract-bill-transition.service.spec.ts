@@ -180,4 +180,23 @@ describe("ContractBillTransitionService", () => {
       data: { status: "invalidated", revision: { increment: 1 } }
     });
   });
+
+  it("fails closed when a second director confirmation loses the version revision CAS", async () => {
+    const current = context();
+    current.tx.userPosition.findMany.mockResolvedValue([{ positionId: "position-contract-director" }]);
+    current.tx.position.findMany.mockResolvedValue([{ id: "position-contract-director", key: "contract_director" }]);
+    current.tx.contractBillRowTransition.findMany.mockResolvedValueOnce([{
+      id: "transition-1", sourceContractBillRowId: "source-row", targetContractBillRowId: "target-row",
+      sourceSettledQuantityAllocated: new Prisma.Decimal("30"), targetOpeningQuantity: new Prisma.Decimal("30"), settledAmountAllocatedCents: 3000n
+    }]);
+    current.tx.contractBillRow.findMany.mockResolvedValue([{ id: "source-row", contractBillId: "source-bill", unit: "m" }]);
+    current.tx.settlement.findMany.mockResolvedValue([{ id: "settlement-1" }]);
+    current.tx.settlementLine.findMany.mockResolvedValue([{ contractBillRowId: "source-row", quantity: new Prisma.Decimal("30"), amountCents: 3000n }]);
+    current.tx.contractBillRowTransition.updateMany.mockResolvedValue({ count: 1 });
+    current.tx.contractVersion.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(current.service.confirmDraftMappings("version-2", "director-1", {
+      expectedTargetVersionRevision: 4
+    })).rejects.toBeInstanceOf(ConflictException);
+  });
 });

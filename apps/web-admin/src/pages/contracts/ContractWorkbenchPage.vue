@@ -525,7 +525,10 @@
                 :editable-keys="isChangeVersion ? changePolicy.editableFieldKeys : undefined"
                 @update="applyPatch"
               />
-              <div v-else-if="activeSection === 'bills'" class="bill-sections">
+              <div
+                v-else-if="activeSection === 'bills'"
+                class="bill-sections"
+              >
                 <ContractBillsSection
                   :workbench="billWorkbench"
                   :disabled="editorDisabled"
