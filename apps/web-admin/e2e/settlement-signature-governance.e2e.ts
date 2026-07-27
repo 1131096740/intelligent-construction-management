@@ -279,6 +279,9 @@ async function installMocks(
   }));
   await page.route("**/api/projects/project-1/settlement-drafts**", (route) => {
     const url = new URL(route.request().url());
+    if (route.request().method() === "GET" && url.pathname.endsWith("/line-attachments")) {
+      return route.fulfill({ contentType: "application/json", body: "[]" });
+    }
     if (route.request().method() === "GET" && url.pathname.endsWith("/draft-1")) {
       return route.fulfill({ contentType: "application/json", body: JSON.stringify(draft) });
     }
@@ -584,6 +587,12 @@ function sourceLines(rowCount = 1) {
     contractId: "contract-1",
     projectId: "project-1",
     contractAmountCents: "1000000",
+    capacityPolicy: {
+      kind: "capped",
+      overageExplanationRequired: false
+    },
+    calculationVersion: 2,
+    sourceSnapshotToken: "source-snapshot-1",
     summary: {
       rowCount: 1,
       exceptionCount: 0,

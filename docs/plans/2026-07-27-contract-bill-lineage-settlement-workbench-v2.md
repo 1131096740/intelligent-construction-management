@@ -575,6 +575,8 @@ T04、T05 和 T09 在 T03 完成后可以按文件边界并行设计，但合入
 
 补充验证（2026-07-27）：新增 `verify:contract-settlement-v2:local`，仅允许本机 Docker endpoint，使用随机端口和凭据启动一次性 PostgreSQL 16，完成 91 条迁移的空库部署、V2 只读预检报告及合同清单整表保存的双连接并发证据（恰一成功、另一条拒绝，审计失败回滚）。临时容器和目录自动清理，报告仅写入调用方指定路径。本次隔离报告摘要为 `resolved=0/manualReview=2/blocking=0`、digest `e611dc6c33093d0cd43e259eb8af9bc4f617ab99cf9a277272b5a7b9a33253f4`，证明空库路径与工具可执行；它不是生产历史数据报告。真实历史升级库/恢复库预检仍待具备经授权的历史副本后执行。
 
+复核（2026-07-27）：当前 HEAD 的 Shared 137/137、Web 128 文件 1165/1165 与 API 全量 Jest 通过；Shared/API/Web typecheck、lint、`check:business-errors`、`check:ui`、Prisma validate/generate、API/Web production build、E2E typecheck 与 `git diff --check` 通过。Chromium/WebKit 的结算签章、100+ 行多维清单与详情证据链 6/6 通过。该浏览器夹具已随 V2 `capacityPolicy` 读模型补全必填策略和明细附件空列表；此前缺字段会在测试页面渲染时触发 `undefined.kind`，不代表生产 API 缺失。以上均为本地自动化，不替代真实历史恢复库预检或人工 UAT。
+
 ## 4. P2 任务
 
 ### T16 清单一对多、多对一与历史分配守恒

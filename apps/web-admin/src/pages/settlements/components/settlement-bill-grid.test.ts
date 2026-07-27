@@ -56,7 +56,12 @@ describe("settlement bill grid adapter", () => {
       sourceRow(),
       sourceRow({ id: "line-2", itemName: "水泥", calculationMode: "manual_amount" })
     ], {
-      "line-2": { quantity: "", amountYuan: "3200.50", remark: "暂估" }
+      "line-2": {
+        quantity: "",
+        amountYuan: "3200.50",
+        overageReason: "现场签证增加用量",
+        remark: "暂估"
+      }
     });
 
     expect(rows[0]).toMatchObject({
@@ -66,9 +71,19 @@ describe("settlement bill grid adapter", () => {
       billName: "材料清单",
       previousSettledQuantity: "2"
     });
-    expect(rows[1]).toMatchObject({ selected: "是", currentAmount: "3200.50", remark: "暂估" });
+    expect(rows[1]).toMatchObject({
+      selected: "是",
+      currentAmount: "3200.50",
+      overageReason: "现场签证增加用量",
+      remark: "暂估"
+    });
     expect(settlementDraftsFromBillGridRows(rows)).toEqual({
-      "line-2": { quantity: "", amountYuan: "3200.50", remark: "暂估" }
+      "line-2": {
+        quantity: "",
+        amountYuan: "3200.50",
+        overageReason: "现场签证增加用量",
+        remark: "暂估"
+      }
     });
   });
 
