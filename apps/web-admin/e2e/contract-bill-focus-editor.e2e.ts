@@ -111,16 +111,17 @@ test.describe("合同清单全宽专注编辑", () => {
     await downloadPromise;
     expect(mock.templateDownloadCalls()).toBe(1);
 
-    // 101 行预检：取消保留 21 行手工候选；确认仅替换本地候选。
+    // 101 行新版清单预检：取消保留 21 行手工候选；确认只走服务端原子应用。
     await uploadPreviewFile(page);
-    await expect(page.getByText("预检：新增 101 行，移除 21 行。", { exact: true })).toBeVisible();
-    await page.getByTestId("bill-import-cancel").click();
+    await expect(page.getByText(/新增\s*101\s*行，\s*删除\s*21\s*行。/u)).toBeVisible();
+    await page.getByRole("button", { name: "取消", exact: true }).click();
     await expect(page.locator(".focus-summary")).toContainText("候选行数 21");
     await expect(page.getByTestId("contract-bill-grid")).toContainText("粘贴材料甲");
     expect(mock.putBodies).toHaveLength(0);
 
     await uploadPreviewFile(page);
-    await page.getByTestId("bill-import-confirm").click();
+    await page.getByTestId("bill-version-import-confirm").click();
+    await expect.poll(() => mock.applyImportCalls()).toBe(1);
     await expect(page.locator(".focus-summary")).toContainText("候选行数 101");
     await expect(page.getByTestId("contract-bill-grid")).toContainText("Excel 材料 1");
     await expect(page.getByTestId("contract-bill-grid")).not.toContainText("粘贴材料甲");
@@ -287,6 +288,7 @@ async function installContractBillRoutes(page: Page) {
   const putBodies: ReplaceRowsBody[] = [];
   let putResponseItemNames: string[] = [];
   let templateDownloads = 0;
+  let applyImportCalls = 0;
   let workbenchReads = 0;
   let revision = 1;
   let rows: Array<Record<string, unknown>> = [{ ...initialRow }];
@@ -350,15 +352,44 @@ async function installContractBillRoutes(page: Page) {
   await page.route(`**/api/contract-bills/${billId}/excel-imports`, (route) =>
     fulfillJson(route, {
       importId: "import-bill-focus",
-      mode: "replace",
+      mode: "version_replace",
       added: 101,
       updated: 0,
       removed: 21,
       skipped: 0,
+      beforeAmountCents: "10000",
+      afterAmountCents: "10100",
       errors: [],
-      candidateRows: previewRows(101)
+      diffs: previewRows(101).map((row) => ({
+        kind: "added",
+        rowKey: row.clientRowKey
+      }))
     })
   );
+  await page.route("**/api/contract-bill-imports/import-bill-focus/apply", (route) => {
+    applyImportCalls += 1;
+    revision += 1;
+    rows = previewRows(101).map((row, index) => ({
+      rowKey: `import-row-${index + 1}`,
+      itemCode: row.itemCode,
+      itemName: row.itemName,
+      specification: row.specification,
+      unit: row.unit,
+      quantity: row.quantity,
+      unitPrice: row.unitPrice,
+      taxRatePercent: row.taxRatePercent,
+      taxRateSource: row.taxRateSource,
+      pricingFactStatus: "complete",
+      precisionPolicy: "two_decimal",
+      taxInclusiveAmountCents: "100",
+      taxExclusiveAmountCents: "88",
+      taxAmountCents: "12",
+      isProvisional: row.isProvisional,
+      settlementBasis: row.settlementBasis,
+      customData: row.customData
+    }));
+    return fulfillJson(route, {});
+  });
   await page.route(`**/api/contract-bills/${billId}/rows`, async (route) => {
     expect(route.request().method()).toBe("PUT");
     const body = route.request().postDataJSON() as ReplaceRowsBody;
@@ -400,6 +431,7 @@ async function installContractBillRoutes(page: Page) {
   return {
     putBodies,
     templateDownloadCalls: () => templateDownloads,
+    applyImportCalls: () => applyImportCalls,
     workbenchReadCalls: () => workbenchReads,
     putResponseItemNames: () => putResponseItemNames
   };
@@ -490,7 +522,7 @@ async function uploadPreviewFile(page: Page) {
     mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     buffer: Buffer.from("xlsx-e2e-fixture")
   });
-  await expect(page.getByTestId("bill-import-confirm")).toBeVisible();
+  await expect(page.getByTestId("bill-version-import-confirm")).toBeVisible();
 }
 
 function previewRows(count: number) {

@@ -91,7 +91,7 @@ test("结算签章治理五步在宽表格外完成且响应式滚动唯一", as
     buffer: Buffer.from("stable-mock-pdf")
   });
   await expect(page.getByText("已上传：乙方签章扫描件.pdf", { exact: true })).toBeVisible();
-  await page.getByText("扫描件页数、页序与当前冻结版一致", { exact: true }).click();
+  await page.getByText("已人工核对扫描件页序与签章；页数、方向或尺寸差异（如有）已确认", { exact: true }).click();
   await page.getByText("乙方已在所有要求位置签字并填写日期", { exact: true }).click();
   await page.getByText("乙方已逐页盖章", { exact: true }).click();
   await page.getByText("多页文件已加盖骑缝章", { exact: false }).click();
@@ -120,7 +120,7 @@ test("结算签章治理五步在宽表格外完成且响应式滚动唯一", as
   });
   await expect(page.getByText("已上传：乙方签章替换件.pdf", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "确认关联扫描件" })).toBeDisabled();
-  await page.getByText("扫描件页数、页序与当前冻结版一致", { exact: true }).click();
+  await page.getByText("已人工核对扫描件页序与签章；页数、方向或尺寸差异（如有）已确认", { exact: true }).click();
   await page.getByText("乙方已在所有要求位置签字并填写日期", { exact: true }).click();
   await page.getByText("乙方已逐页盖章", { exact: true }).click();
   await page.getByText("多页文件已加盖骑缝章", { exact: false }).click();

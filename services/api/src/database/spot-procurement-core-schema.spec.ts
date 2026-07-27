@@ -408,6 +408,7 @@ const GOVERNANCE_FILE_BINDING_TABLES = new Set([
 // expected registries must not be retroactively compared with later tables.
 // The final registry remains covered by unified-file-business-binding-guard.
 const POST_INVOICE_EVIDENCE_FILE_BINDING_TABLES = new Set([
+  "SettlementLineAttachment",
   "EmployeeLoanRepayment",
   "EmployeeProjectLoanEntry",
   "ExpenseClaimAttachment",

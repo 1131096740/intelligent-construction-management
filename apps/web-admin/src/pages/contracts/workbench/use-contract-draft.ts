@@ -235,7 +235,7 @@ function modelFromWorkbench(workbench: ContractWorkbenchReadModel): ContractDraf
   }
   const paymentStage = workbench.paymentTerms.stages.find(
     (stage) => stage.basis === paymentStageBasis(
-      workbench.settlementMode.value,
+      workbench.settlementMode?.value,
       workbench.contract.contractTypeKey
     )
   );
@@ -676,7 +676,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
             paymentTermsOriginalText: model.paymentTermsOriginalText,
             paymentStages: paymentStagesFromModel(
               model,
-              workbench.value?.settlementMode.value,
+              workbench.value?.settlementMode?.value,
               workbench.value?.contract.contractTypeKey ?? ""
             )
           }

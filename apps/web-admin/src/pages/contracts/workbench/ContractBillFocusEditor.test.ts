@@ -218,7 +218,7 @@ describe("ContractBillFocusEditor state", () => {
     expect(replaceRows).not.toHaveBeenCalled();
   });
 
-  it("previews and atomically applies a version bill import without replacing local candidates", async () => {
+  it("allows a version bill import after local additions and atomically applies it", async () => {
     const applyImport = vi.fn().mockResolvedValue({});
     const options = controllerOptions({
       previewImport: vi.fn().mockResolvedValue({
@@ -238,7 +238,9 @@ describe("ContractBillFocusEditor state", () => {
       applyImport
     });
     const controller = createContractBillFocusController(options);
+    controller.addRow();
     const before = plainRows(controller.rows.value);
+    expect(controller.dirty.value).toBe(true);
 
     await controller.previewVersionExcel(new File(["xlsx"], "新版清单.xlsx"));
 
@@ -249,6 +251,8 @@ describe("ContractBillFocusEditor state", () => {
     expect(applyImport).toHaveBeenCalledWith("import-v2");
     expect(options.emit).toHaveBeenCalledWith("saved");
     expect(controller.versionImportConfirmVisible.value).toBe(false);
+    expect(controller.dirty.value).toBe(false);
+    expect(controller.rows.value).toHaveLength(bill.rows.length);
   });
 
   it("accepts a valid empty replacement preview so Excel can clear all local rows", async () => {

@@ -235,10 +235,6 @@ export function createContractBillFocusController(
       setError(ORDINARY_DRAFT_MESSAGE);
       return;
     }
-    if (dirty.value) {
-      setError("请先保存或放弃当前清单修改，再导入新版清单");
-      return;
-    }
     if (!isXlsxFile(file)) {
       setError("仅支持上传 .xlsx 格式的系统标准模板");
       return;
@@ -300,6 +296,11 @@ export function createContractBillFocusController(
     batchSaving.value = true;
     try {
       await dependencies.applyImport(importId);
+      // 新版清单已在服务端原子应用；放弃仅存在于本地的候选，才能接收随后
+      // 刷新的权威清单，避免 syncBill 因 dirty 而拒绝回读。
+      replaceCandidateRows(baselineRows.value);
+      selectedClientRowKey.value = rows.value[0]?.clientRowKey ?? "";
+      errors.value = [];
       versionImportConfirmVisible.value = false;
       versionPreview.value = null;
       saveMessage.value = "新版清单已原子应用，正在刷新合同工作台";
@@ -978,6 +979,9 @@ defineExpose({
       @close="controller.cancelVersionImport"
     >
       <p>本次应用会原子更新合同清单；任一来源、文件或占用事实变化都会整体失败。</p>
+      <p v-if="dirty">
+        当前未保存的本地清单候选不会写入系统；确认应用后会以新版清单的权威结果刷新。
+      </p>
       <p v-if="versionPreview">
         未变化 {{ versionPreview.diffs.filter((item) => item.kind === 'unchanged').length }} 行，
         已修改 {{ versionPreview.diffs.filter((item) => item.kind === 'one_to_one').length }} 行，
