@@ -14,6 +14,7 @@ import {
 export type SettlementCalculationMode =
   | "normal_auto"
   | "manual_amount"
+  | "visa_change"
   | "manual_adjustment";
 
 export interface SettlementContractSourceRow {
@@ -40,7 +41,10 @@ export interface CanonicalSettlementLine {
   sourceType: SettlementLineSourceType;
   calculationMode: SettlementCalculationMode;
   contractBillRowId: string | null;
+  sourceItemType: string | null;
+  occurredOn: Date | null;
   name: string;
+  description: string | null;
   unit: string | null;
   quantity: Prisma.Decimal | null;
   unitPriceCents: bigint | null;
@@ -48,6 +52,9 @@ export interface CanonicalSettlementLine {
   unitPriceSnapshot: Prisma.Decimal | null;
   taxRatePercentSnapshot: Prisma.Decimal | null;
   pricingModeSnapshot: string | null;
+  pricingBasis: string | null;
+  relatedSettlementLineId: string | null;
+  overageReason: string | null;
   amountCents: bigint;
   reason: string | null;
   remark: string | null;
@@ -57,7 +64,7 @@ export interface CanonicalSettlementLine {
 
 export function settlementCalculationMode(
   row: Pick<SettlementContractSourceRow, "amountRole" | "isProvisional">
-): Exclude<SettlementCalculationMode, "manual_adjustment"> {
+): Exclude<SettlementCalculationMode, "manual_adjustment" | "visa_change"> {
   if (!["included", "reference", "non_priced", "provisional"].includes(row.amountRole)) {
     throw new BadRequestException("合同清单金额属性不正确，请联系合同人员核对合同版本。");
   }
@@ -116,11 +123,19 @@ export function canonicalSettlementLine(
     if (amountCents === 0n) {
       throw new BadRequestException("手工调整金额不能为 0。");
     }
+    const reason = requiredText(input.reason, "手工调整原因");
+    const relatedSettlementLineId = optionalText(input.relatedSettlementLineId);
+    if (amountCents < 0n && !relatedSettlementLineId) {
+      throw new BadRequestException("负向调整必须关联可追溯的原结算明细。");
+    }
     return {
       sourceType: "manual_adjustment",
       calculationMode: "manual_adjustment",
       contractBillRowId: null,
+      sourceItemType: null,
+      occurredOn: null,
       name: requiredText(input.name, "结算明细名称"),
+      description: null,
       unit: optionalText(input.unit),
       quantity: optionalNonNegativeQuantity(input.quantity, "手工调整数量"),
       unitPriceCents: optionalNonNegativeMoney(input.unitPriceCents, "结算明细单价"),
@@ -128,8 +143,55 @@ export function canonicalSettlementLine(
       unitPriceSnapshot: null,
       taxRatePercentSnapshot: null,
       pricingModeSnapshot: null,
+      pricingBasis: null,
+      relatedSettlementLineId,
+      overageReason: null,
       amountCents,
-      reason: requiredText(input.reason, "手工调整原因"),
+      reason,
+      remark: optionalText(input.remark),
+      sortOrder: input.sortOrder ?? index,
+      contractBillRowLimitCents: null
+    };
+  }
+
+  if (input.sourceType === "visa_change") {
+    const quantity = optionalNonNegativeQuantity(input.quantity, "签证或变更数量");
+    const unitPriceCents = optionalNonNegativeMoney(input.unitPriceCents, "签证或变更单价");
+    const suppliedAmount = input.amountCents === undefined
+      ? null
+      : requiredNonNegativeAmount(input.amountCents, "签证或变更金额");
+    if ((quantity === null) !== (unitPriceCents === null)) {
+      throw new BadRequestException("签证或变更项目应同时填写数量和单价，或直接填写金额。");
+    }
+    if (quantity === null && suppliedAmount === null) {
+      throw new BadRequestException("签证或变更项目必须填写数量和单价，或直接填写金额。");
+    }
+    const calculatedAmount = quantity === null || unitPriceCents === null
+      ? null
+      : BigInt(quantity.mul(unitPriceCents.toString()).toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP).toFixed(0));
+    if (suppliedAmount !== null && calculatedAmount !== null && suppliedAmount !== calculatedAmount) {
+      throw new BadRequestException("签证或变更项目金额与后台计算结果不一致。");
+    }
+    return {
+      sourceType: "visa_change",
+      calculationMode: "visa_change",
+      contractBillRowId: null,
+      sourceItemType: requiredText(input.sourceItemType, "签证或变更项目类别"),
+      occurredOn: requiredDate(input.occurredOn, "签证或变更发生日期"),
+      name: requiredText(input.name, "签证或变更项目名称"),
+      description: requiredText(input.description, "签证或变更项目说明"),
+      unit: optionalText(input.unit),
+      quantity,
+      unitPriceCents,
+      contractQuantitySnapshot: null,
+      unitPriceSnapshot: null,
+      taxRatePercentSnapshot: null,
+      pricingModeSnapshot: null,
+      pricingBasis: requiredText(input.pricingBasis, "签证或变更计价依据"),
+      relatedSettlementLineId: null,
+      overageReason: null,
+      amountCents: suppliedAmount ?? calculatedAmount!,
+      reason: optionalText(input.reason),
       remark: optionalText(input.remark),
       sortOrder: input.sortOrder ?? index,
       contractBillRowLimitCents: null
@@ -162,7 +224,10 @@ export function canonicalSettlementLine(
     sourceType: "contract_bill_row",
     calculationMode,
     contractBillRowId: sourceRow.id,
+    sourceItemType: null,
+    occurredOn: null,
     name: sourceRow.itemName,
+    description: null,
     unit: sourceRow.unit,
     quantity,
     unitPriceCents: null,
@@ -170,6 +235,9 @@ export function canonicalSettlementLine(
     unitPriceSnapshot: sourceRow.unitPrice,
     taxRatePercentSnapshot: sourceRow.taxRatePercent,
     pricingModeSnapshot: normalizedPricingMode(sourceRow.pricingMode),
+    pricingBasis: null,
+    relatedSettlementLineId: null,
+    overageReason: null,
     amountCents,
     reason: optionalText(input.reason),
     remark: optionalText(input.remark),
@@ -270,4 +338,13 @@ function requiredText(value: string | undefined, label: string): string {
 
 function optionalText(value: string | undefined): string | null {
   return value?.trim() || null;
+}
+
+function requiredDate(value: string | undefined, label: string): Date {
+  const normalized = requiredText(value, label);
+  const date = new Date(`${normalized}T00:00:00.000Z`);
+  if (Number.isNaN(date.valueOf()) || date.toISOString().slice(0, 10) !== normalized) {
+    throw new BadRequestException(`${label}格式不正确。`);
+  }
+  return date;
 }

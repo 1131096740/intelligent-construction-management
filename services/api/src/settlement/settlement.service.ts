@@ -277,8 +277,12 @@ interface SettlementLineClient {
       data: Array<{
         settlementId: string;
         contractBillRowId: string | null;
+        sourceContractVersionId: string | null;
+        sourceItemType: string | null;
+        occurredOn: Date | null;
         sourceType: SettlementLineSourceType;
         name: string;
+        description: string | null;
         unit: string | null;
         quantity: Prisma.Decimal | null;
         unitPriceCents: bigint | null;
@@ -287,6 +291,9 @@ interface SettlementLineClient {
         unitPriceSnapshot: Prisma.Decimal | null;
         taxRatePercentSnapshot: Prisma.Decimal | null;
         pricingModeSnapshot: string | null;
+        pricingBasis: string | null;
+        relatedSettlementLineId: string | null;
+        overageReason: string | null;
         amountCents: bigint;
         taxExclusiveAmountCents: bigint | null;
         taxAmountCents: bigint | null;
@@ -616,9 +623,10 @@ export class SettlementService {
         taxFactRevision: version.taxFactRevision
       },
       lines: normalized.map((line) => {
-        const manualAdjustment = line.sourceType === "manual_adjustment";
+        const nonContractSource = line.sourceType !== "contract_bill_row";
+        const visaChange = line.sourceType === "visa_change";
         const taxAmounts = this.settlementLineTaxAmounts(line);
-        const prices = manualAdjustment
+        const prices = nonContractSource
           ? { inclusive: null, exclusive: null }
           : settlementDocumentUnitPrices(
               decimalSnapshotText(line.unitPriceSnapshot),
@@ -626,17 +634,21 @@ export class SettlementService {
               line.pricingModeSnapshot
             );
         return {
-          sourceType: manualAdjustment ? "manual_adjustment" : "contract_bill_row",
+          sourceType: visaChange
+            ? "visa_change"
+            : nonContractSource
+              ? "manual_adjustment"
+              : "contract_bill_row",
           contractBillRowId: line.contractBillRowId,
           name: line.name,
           specification: line.contractBillRowId
             ? specificationByRowId.get(line.contractBillRowId) ?? null
             : null,
           unit: line.unit,
-          quantity: manualAdjustment ? null : decimalSnapshotText(line.quantity),
+          quantity: decimalSnapshotText(line.quantity),
           taxInclusiveUnitPrice: prices.inclusive,
           taxExclusiveUnitPrice: prices.exclusive,
-          taxRatePercent: manualAdjustment ? null : decimalSnapshotText(line.taxRatePercentSnapshot),
+          taxRatePercent: nonContractSource ? null : decimalSnapshotText(line.taxRatePercentSnapshot),
           taxInclusiveAmountCents: line.amountCents,
           taxExclusiveAmountCents: taxAmounts.taxExclusiveAmountCents,
           taxAmountCents: taxAmounts.taxAmountCents,
@@ -753,7 +765,10 @@ export class SettlementService {
         sourceType: "contract_bill_row",
         calculationMode: settlementCalculationMode(row),
         contractBillRowId: row.id,
+        sourceItemType: null,
+        occurredOn: null,
         name: row.itemName,
+        description: null,
         unit: row.unit,
         quantity: this.optionalDecimal(line.quantity),
         unitPriceCents: null,
@@ -761,6 +776,9 @@ export class SettlementService {
         unitPriceSnapshot: row.unitPrice,
         taxRatePercentSnapshot: row.taxRatePercent,
         pricingModeSnapshot: row.pricingMode,
+        pricingBasis: null,
+        relatedSettlementLineId: null,
+        overageReason: null,
         amountCents: null,
         reason: line.reason?.trim() || null,
         remark: line.remark?.trim() || null,
@@ -1142,7 +1160,8 @@ export class SettlementService {
   private async createSettlementLines(
     tx: unknown,
     settlementId: string,
-    lines: NormalizedSettlementLine[]
+    lines: NormalizedSettlementLine[],
+    sourceContractVersionId: string
   ): Promise<void> {
     if (!lines.length) return;
 
@@ -1153,8 +1172,12 @@ export class SettlementService {
         return {
           settlementId,
           contractBillRowId: line.contractBillRowId,
+          sourceContractVersionId,
+          sourceItemType: line.sourceItemType,
+          occurredOn: line.occurredOn,
           sourceType: line.sourceType,
           name: line.name,
+          description: line.description,
           unit: line.unit,
           quantity: line.quantity,
           unitPriceCents: line.unitPriceCents,
@@ -1163,6 +1186,9 @@ export class SettlementService {
           unitPriceSnapshot: line.unitPriceSnapshot,
           taxRatePercentSnapshot: line.taxRatePercentSnapshot,
           pricingModeSnapshot: line.pricingModeSnapshot,
+          pricingBasis: line.pricingBasis,
+          relatedSettlementLineId: line.relatedSettlementLineId,
+          overageReason: line.overageReason,
           amountCents: line.amountCents,
           ...taxAmounts,
           reason: line.reason,
@@ -1178,7 +1204,7 @@ export class SettlementService {
     taxAmountCents: bigint | null;
   } {
     if (
-      line.sourceType === "manual_adjustment" ||
+      line.sourceType !== "contract_bill_row" ||
       line.taxRatePercentSnapshot === null
     ) {
       return {
@@ -1479,7 +1505,7 @@ export class SettlementService {
           : {})
       }
     });
-    await this.createSettlementLines(tx, settlement.id, settlementLines);
+    await this.createSettlementLines(tx, settlement.id, settlementLines, version.id);
 
     if (applicantUserId && governedFacts) {
       await this.audit.record(tx, {
@@ -3252,8 +3278,9 @@ export class SettlementService {
       contractTypeKey: contract.contractTypeKey as SettlementDocumentInput["contractTypeKey"],
       fieldReviewerRoleKey: settlement.fieldReviewerRoleKey as SettlementDocumentInput["fieldReviewerRoleKey"],
       lines: settlementLines.map((line) => {
-        const manualAdjustment = line.sourceType === "manual_adjustment";
-        const unitPrices = manualAdjustment
+        const nonContractSource = line.sourceType !== "contract_bill_row";
+        const visaChange = line.sourceType === "visa_change";
+        const unitPrices = nonContractSource
           ? { inclusive: null, exclusive: null }
           : settlementDocumentUnitPrices(
               decimalSnapshotText(line.unitPriceSnapshot),
@@ -3261,23 +3288,27 @@ export class SettlementService {
               line.pricingModeSnapshot
             );
         return {
-          sourceType: manualAdjustment ? "manual_adjustment" : "contract_bill_row",
+          sourceType: visaChange
+            ? "visa_change"
+            : nonContractSource
+              ? "manual_adjustment"
+              : "contract_bill_row",
           name: line.name,
           specification: line.contractBillRowId
             ? specificationById.get(line.contractBillRowId) ?? null
             : null,
           unit: line.unit,
-          quantity: manualAdjustment ? null : decimalSnapshotText(line.quantity),
+          quantity: decimalSnapshotText(line.quantity),
           taxInclusiveUnitPrice: unitPrices.inclusive,
           taxExclusiveUnitPrice: unitPrices.exclusive,
-          taxRatePercent: manualAdjustment
+          taxRatePercent: nonContractSource
             ? null
             : decimalSnapshotText(line.taxRatePercentSnapshot),
           taxInclusiveAmountCents: line.amountCents,
-          taxExclusiveAmountCents: manualAdjustment
+          taxExclusiveAmountCents: nonContractSource
             ? null
             : line.taxExclusiveAmountCents,
-          taxAmountCents: manualAdjustment ? null : line.taxAmountCents,
+          taxAmountCents: nonContractSource ? null : line.taxAmountCents,
           remark: line.remark
         };
       }),

@@ -137,12 +137,64 @@ describe("canonicalSettlementLine", () => {
           sourceType: "manual_adjustment",
           name: "扣款",
           amountCents: "-100",
-          reason: "质量扣款"
+          reason: "质量扣款",
+          relatedSettlementLineId: "settlement-line-1"
         },
         undefined,
         0
       )
     ).toMatchObject({ calculationMode: "manual_adjustment", amountCents: -100n });
+
+    expect(() =>
+      canonicalSettlementLine(
+        {
+          sourceType: "manual_adjustment",
+          name: "扣款",
+          amountCents: "-100",
+          reason: "质量扣款"
+        },
+        undefined,
+        0
+      )
+    ).toThrow("负向调整必须关联可追溯的原结算明细");
+  });
+
+  it("calculates visa-change lines to cents and requires their business facts", () => {
+    expect(
+      canonicalSettlementLine(
+        {
+          sourceType: "visa_change",
+          sourceItemType: "现场签证",
+          occurredOn: "2026-07-27",
+          name: "基础加深",
+          description: "现场基坑开挖后确认加深",
+          pricingBasis: "现场签证单 QZ-001",
+          quantity: "1.25",
+          unitPriceCents: "101"
+        },
+        undefined,
+        0
+      )
+    ).toMatchObject({
+      calculationMode: "visa_change",
+      amountCents: 126n,
+      occurredOn: new Date("2026-07-27T00:00:00.000Z")
+    });
+
+    expect(() =>
+      canonicalSettlementLine(
+        {
+          sourceType: "visa_change",
+          sourceItemType: "现场签证",
+          occurredOn: "2026-07-27",
+          name: "基础加深",
+          description: "现场基坑开挖后确认加深",
+          quantity: "1"
+        },
+        undefined,
+        0
+      )
+    ).toThrow("签证或变更项目应同时填写数量和单价");
   });
 
   it("keeps manual adjustments but blocks only selected contract rows with missing facts", () => {

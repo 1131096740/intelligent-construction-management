@@ -6,6 +6,7 @@ export type SettlementSourceLineExceptionCode =
 export type SettlementCalculationMode =
   | "normal_auto"
   | "manual_amount"
+  | "visa_change"
   | "manual_adjustment";
 
 export interface SettlementSourceLineException {
@@ -45,7 +46,7 @@ export interface SettlementSourceLineReadModel {
   submissionBlocker: SettlementSubmissionBlocker | null;
   amountRole: "included" | "reference" | "non_priced" | "provisional";
   pricingMode: "tax_inclusive" | "tax_exclusive";
-  calculationMode: Exclude<SettlementCalculationMode, "manual_adjustment">;
+  calculationMode: Exclude<SettlementCalculationMode, "manual_adjustment" | "visa_change">;
   contractAmountCents: string | null;
   settledQuantity: string | null;
   previousSettledQuantity: string | null;

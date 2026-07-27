@@ -339,16 +339,22 @@ export class SettlementDraftService {
         lineKey: `line-${index + 1}`,
         sourceType: line.sourceType,
         contractBillRowId: line.contractBillRowId?.trim() || null,
-        sourceItemType: line.sourceType,
+        sourceItemType: line.sourceItemType?.trim() || null,
+        occurredOn: this.optionalDate(line.occurredOn),
         name: line.name?.trim() || line.contractBillRowId?.trim() || "待补充结算明细",
-        description: null,
+        description: line.description?.trim() || null,
         unit: line.unit?.trim() || null,
         quantity: this.optionalDecimal(line.quantity),
         unitPriceCents: this.optionalMoney(line.unitPriceCents),
         directAmountCents: this.optionalSignedMoney(line.amountCents),
-        calculationMode: line.sourceType === "manual_adjustment" ? "manual_adjustment" : "pending_source",
-        pricingBasis: null,
+        calculationMode: line.sourceType === "manual_adjustment"
+          ? "manual_adjustment"
+          : line.sourceType === "visa_change"
+            ? "visa_change"
+            : "pending_source",
+        pricingBasis: line.pricingBasis?.trim() || null,
         overageReason: null,
+        relatedSettlementLineId: line.relatedSettlementLineId?.trim() || null,
         reason: line.reason?.trim() || null,
         remark: line.remark?.trim() || null,
         sortOrder: line.sortOrder ?? index
@@ -381,6 +387,12 @@ export class SettlementDraftService {
     } catch {
       return null;
     }
+  }
+
+  private optionalDate(value: unknown) {
+    if (typeof value !== "string" || !value.trim()) return null;
+    const date = new Date(`${value.trim()}T00:00:00.000Z`);
+    return Number.isNaN(date.valueOf()) ? null : date;
   }
 
   async abandon(

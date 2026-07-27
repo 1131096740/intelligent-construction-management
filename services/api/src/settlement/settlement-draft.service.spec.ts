@@ -363,6 +363,36 @@ describe("SettlementDraftService", () => {
     });
   });
 
+  it("preserves visa-change facts in the structured draft rows", async () => {
+    const { tx, service } = context();
+
+    await service.create("project-1", "owner-1", {
+      ...draftInput,
+      settlementLines: [{
+        sourceType: "visa_change",
+        sourceItemType: "现场签证",
+        occurredOn: "2026-07-27",
+        name: "基础加深",
+        description: "现场确认基础加深",
+        pricingBasis: "签证单 QZ-001",
+        quantity: "1.25",
+        unitPriceCents: "101",
+        remark: "待补附件"
+      }]
+    });
+
+    expect(tx.settlementDraftLine.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({
+        sourceType: "visa_change",
+        sourceItemType: "现场签证",
+        occurredOn: new Date("2026-07-27T00:00:00.000Z"),
+        description: "现场确认基础加深",
+        pricingBasis: "签证单 QZ-001",
+        calculationMode: "visa_change"
+      })]
+    });
+  });
+
   it("uses the contract's real project and rejects a forged path scope", async () => {
     const { tx, service } = context();
 

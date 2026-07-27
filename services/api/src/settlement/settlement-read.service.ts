@@ -98,10 +98,11 @@ export class SettlementReadService {
     });
 
     return lines.map((line) => {
-      const manualAdjustment = line.sourceType === "manual_adjustment";
+      const nonContractSource = line.sourceType !== "contract_bill_row";
+      const visaChange = line.sourceType === "visa_change";
       const unitPriceSnapshot = decimalText(line.unitPriceSnapshot);
       const taxRatePercent = decimalText(line.taxRatePercentSnapshot);
-      const unitPrices = manualAdjustment
+      const unitPrices = nonContractSource
         ? { inclusive: null, exclusive: null }
         : this.taxUnitPrices(
             unitPriceSnapshot,
@@ -117,18 +118,23 @@ export class SettlementReadService {
 
       return {
         id: line.id,
-        sourceType: manualAdjustment ? "manual_adjustment" : "contract_bill_row",
-        sourceLabel: manualAdjustment ? "手工调整项" : "合同清单项",
+        sourceType: visaChange
+          ? "visa_change"
+          : nonContractSource
+            ? "manual_adjustment"
+            : "contract_bill_row",
+        sourceLabel: visaChange ? "签证/变更项" : nonContractSource ? "手工调整项" : "合同清单项",
         name: line.name,
         unit: line.unit ?? "-",
         quantity: this.formatQuantity(line.quantity),
-        unitPrice: manualAdjustment ? "-" : legacyUnitPrice,
+        unitPrice: nonContractSource ? "-" : legacyUnitPrice,
         taxInclusiveUnitPrice: this.formatUnitPriceValue(unitPrices.inclusive),
         taxExclusiveUnitPrice: this.formatUnitPriceValue(unitPrices.exclusive),
-        taxRate: taxRatePercent === null || manualAdjustment ? "-" : `${taxRatePercent}%`,
+        taxRate: taxRatePercent === null || nonContractSource ? "-" : `${taxRatePercent}%`,
         calculationMode:
           line.calculationMode === "normal_auto" ||
           line.calculationMode === "manual_amount" ||
+          line.calculationMode === "visa_change" ||
           line.calculationMode === "manual_adjustment"
             ? line.calculationMode
             : "legacy",
@@ -136,15 +142,17 @@ export class SettlementReadService {
         amountCents: moneyCentsToApi(line.amountCents),
         taxInclusiveAmount: this.formatMoney(line.amountCents),
         taxExclusiveAmount:
-          manualAdjustment || line.taxExclusiveAmountCents == null
+          nonContractSource || line.taxExclusiveAmountCents == null
             ? "-"
             : this.formatMoney(line.taxExclusiveAmountCents),
         taxAmount:
-          manualAdjustment || line.taxAmountCents == null
+          nonContractSource || line.taxAmountCents == null
             ? "-"
             : this.formatMoney(line.taxAmountCents),
-        taxBreakdownNote: manualAdjustment
-          ? "人工调整，不适用合同单价税额拆分"
+        taxBreakdownNote: nonContractSource
+          ? visaChange
+            ? "签证/变更项，不适用合同清单税额拆分"
+            : "人工调整，不适用合同单价税额拆分"
           : "-",
         reason: line.reason ?? "-",
         remark: line.remark ?? "-"

@@ -353,7 +353,10 @@ export class SettlementFrozenDocumentService {
     return rows.map((line) => ({
       sourceType: line.sourceType as CreateSettlementLineDto["sourceType"],
       ...(line.contractBillRowId ? { contractBillRowId: line.contractBillRowId } : {}),
+      ...(line.sourceItemType ? { sourceItemType: line.sourceItemType } : {}),
+      ...(line.occurredOn ? { occurredOn: line.occurredOn.toISOString().slice(0, 10) } : {}),
       name: line.name,
+      ...(line.description ? { description: line.description } : {}),
       ...(line.unit ? { unit: line.unit } : {}),
       ...(line.quantity ? { quantity: line.quantity.toString() } : {}),
       ...(line.unitPriceCents !== null
@@ -361,6 +364,10 @@ export class SettlementFrozenDocumentService {
         : {}),
       ...(line.directAmountCents !== null
         ? { amountCents: line.directAmountCents.toString() }
+        : {}),
+      ...(line.pricingBasis ? { pricingBasis: line.pricingBasis } : {}),
+      ...(line.relatedSettlementLineId
+        ? { relatedSettlementLineId: line.relatedSettlementLineId }
         : {}),
       ...(line.reason ? { reason: line.reason } : {}),
       ...(line.remark ? { remark: line.remark } : {}),

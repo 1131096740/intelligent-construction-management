@@ -1,6 +1,7 @@
 import { Type } from "class-transformer";
 import {
   IsBoolean,
+  IsDateString,
   IsIn,
   IsString,
   registerDecorator,
@@ -18,7 +19,10 @@ import {
   isSettlementQuantityInput
 } from "../settlement-quantity";
 
-export type SettlementLineSourceType = "contract_bill_row" | "manual_adjustment";
+export type SettlementLineSourceType =
+  | "contract_bill_row"
+  | "visa_change"
+  | "manual_adjustment";
 
 function IsSettlementQuantity(): PropertyDecorator {
   return (target, propertyKey) => {
@@ -68,7 +72,7 @@ function IsRequiredSettlementLinesArray(): PropertyDecorator {
 }
 
 export class CreateSettlementLineDto {
-  @IsIn(["contract_bill_row", "manual_adjustment"], {
+  @IsIn(["contract_bill_row", "visa_change", "manual_adjustment"], {
     message: "结算明细来源类型不正确"
   })
   sourceType!: SettlementLineSourceType;
@@ -76,6 +80,26 @@ export class CreateSettlementLineDto {
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "合同清单项编号必须是文字" })
   contractBillRowId?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "签证或变更项目类别必须是文字" })
+  sourceItemType?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsDateString({ strict: true }, { message: "签证或变更发生日期格式不正确" })
+  occurredOn?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "签证或变更项目说明必须是文字" })
+  description?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "签证或变更计价依据必须是文字" })
+  pricingBasis?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "负向调整来源必须是文字" })
+  relatedSettlementLineId?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "结算明细名称必须是文字" })

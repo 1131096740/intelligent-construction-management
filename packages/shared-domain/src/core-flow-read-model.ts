@@ -267,7 +267,7 @@ export interface SettlementPayableCalculationReadModel {
 
 export interface SettlementLineReadModel {
   id: string;
-  sourceType: "contract_bill_row" | "manual_adjustment";
+  sourceType: "contract_bill_row" | "visa_change" | "manual_adjustment";
   sourceLabel: string;
   name: string;
   unit: string;
@@ -276,7 +276,7 @@ export interface SettlementLineReadModel {
   taxInclusiveUnitPrice: string;
   taxExclusiveUnitPrice: string;
   taxRate: string;
-  calculationMode: "legacy" | "normal_auto" | "manual_amount" | "manual_adjustment";
+  calculationMode: "legacy" | "normal_auto" | "manual_amount" | "visa_change" | "manual_adjustment";
   amount: string;
   amountCents: MoneyCents;
   taxInclusiveAmount: string;

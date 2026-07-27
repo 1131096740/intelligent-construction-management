@@ -73,7 +73,7 @@ export interface SettlementDocumentInput {
 }
 
 export interface SettlementDocumentLine {
-  sourceType: "contract_bill_row" | "manual_adjustment";
+  sourceType: "contract_bill_row" | "visa_change" | "manual_adjustment";
   name: string;
   specification?: string | null;
   unit: string | null;
@@ -235,9 +235,10 @@ export async function renderSettlementDraftExcel(input: SettlementDocumentInput)
 
   input.lines.forEach((line, index) => {
     const manualAdjustment = line.sourceType === "manual_adjustment";
+    const visaChange = line.sourceType === "visa_change";
     const excelRow = sheet.addRow([
       index + 1,
-      manualAdjustment ? "人工调整" : "合同清单项",
+      manualAdjustment ? "人工调整" : visaChange ? "签证/变更" : "合同清单项",
       line.name,
       line.unit ?? "-",
       line.quantity ?? "-",
@@ -495,6 +496,7 @@ function drawSettlementLineTable(
   drawFixedRow(doc, x, y, [...PDF_TABLE_HEADERS], widths, 30, PDF_TABLE_HEADERS.map((_, index) => index), 6.5);
   page.lines.forEach((line, index) => {
     const manualAdjustment = line.sourceType === "manual_adjustment";
+    const visaChange = line.sourceType === "visa_change";
     drawFixedRow(
       doc,
       x,
@@ -513,6 +515,8 @@ function drawSettlementLineTable(
         centsToYuanText(line.taxInclusiveAmountCents),
         manualAdjustment
           ? `人工调整${line.remark ? `；${line.remark}` : ""}`
+          : visaChange
+            ? `签证/变更${line.remark ? `；${line.remark}` : ""}`
           : line.remark ?? ""
       ],
       widths,
