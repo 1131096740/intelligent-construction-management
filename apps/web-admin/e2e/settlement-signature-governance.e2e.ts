@@ -95,7 +95,7 @@ test("结算签章治理五步在宽表格外完成且响应式滚动唯一", as
   await page.getByText("乙方已在所有要求位置签字并填写日期", { exact: true }).click();
   await page.getByText("乙方已逐页盖章", { exact: true }).click();
   await page.getByText("多页文件已加盖骑缝章", { exact: false }).click();
-  await page.getByRole("button", { name: "确认关联扫描件" }).click();
+  await page.getByRole("button", { name: "核对通过并关联扫描件" }).click();
   await expect(page.getByText("当前修订版已关联", { exact: true })).toBeVisible();
   await expect(page.getByText(/可以提交审批/)).toBeVisible();
   expect(requests.frozen).toEqual([{ expectedRevision: 3 }]);
@@ -119,12 +119,12 @@ test("结算签章治理五步在宽表格外完成且响应式滚动唯一", as
     buffer: Buffer.from("replacement-mock-pdf")
   });
   await expect(page.getByText("已上传：乙方签章替换件.pdf", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "确认关联扫描件" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "核对通过并关联扫描件" })).toBeDisabled();
   await page.getByText("已人工核对扫描件页序与签章；页数、方向或尺寸差异（如有）已确认", { exact: true }).click();
   await page.getByText("乙方已在所有要求位置签字并填写日期", { exact: true }).click();
   await page.getByText("乙方已逐页盖章", { exact: true }).click();
   await page.getByText("多页文件已加盖骑缝章", { exact: false }).click();
-  await page.getByRole("button", { name: "确认关联扫描件" }).click();
+  await page.getByRole("button", { name: "核对通过并关联扫描件" }).click();
   expect(requests.linked.at(-1)).toMatchObject({
     uploadedFileId: "file-counterparty-2",
     declaration: {

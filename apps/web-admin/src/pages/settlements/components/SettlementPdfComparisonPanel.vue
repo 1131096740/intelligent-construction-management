@@ -125,7 +125,7 @@
 
 <script setup lang="ts">
 import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from "pdfjs-dist";
-import { computed, nextTick, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
 
 GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
 
@@ -163,6 +163,8 @@ const activeDocument = ref<DocumentKey>("frozen");
 const syncViews = ref(true);
 const documents: Partial<Record<DocumentKey, PDFDocumentProxy>> = {};
 const canvases: Partial<Record<DocumentKey, HTMLCanvasElement>> = {};
+let documentLoadGeneration = 0;
+const renderGenerations: Record<DocumentKey, number> = { frozen: 0, original: 0 };
 const views = reactive<Record<DocumentKey, ViewState>>({
   frozen: freshView(),
   original: freshView()
@@ -191,28 +193,38 @@ function freshView(): ViewState {
 }
 
 function setCanvas(key: DocumentKey, element: Element | null) {
-  if (!(element instanceof HTMLCanvasElement)) return;
+  if (!(element instanceof HTMLCanvasElement)) {
+    delete canvases[key];
+    return;
+  }
   canvases[key] = element;
   void render(key);
 }
 
 async function loadDocuments() {
+  const generation = ++documentLoadGeneration;
   await Promise.all(documentKeys.map(async (key) => {
     documents[key] = undefined;
     Object.assign(views[key], freshView());
     try {
       const url = key === "frozen" ? props.frozenPreviewUrl : props.originalPreviewUrl;
       const document = await getDocument({ url, withCredentials: true }).promise;
+      if (generation !== documentLoadGeneration) {
+        return;
+      }
       documents[key] = document;
       views[key].pageCount = document.numPages;
       views[key].loading = false;
     } catch (error) {
+      if (generation !== documentLoadGeneration) return;
       views[key].loading = false;
       views[key].error = error instanceof Error ? error.message : "PDF 预览暂不可用，请重新申请查看。";
     }
   }));
+  if (generation !== documentLoadGeneration) return;
   restoreState();
   await nextTick();
+  if (generation !== documentLoadGeneration) return;
   await Promise.all(documentKeys.map((key) => render(key)));
 }
 
@@ -246,9 +258,14 @@ async function render(key: DocumentKey) {
   const document = documents[key];
   const canvas = canvases[key];
   if (!document || !canvas || views[key].loading || views[key].error) return;
+  const generation = ++renderGenerations[key];
   const view = views[key];
-  const page = await document.getPage(clamp(view.page, 1, document.numPages));
-  const viewport = page.getViewport({ scale: view.zoom, rotation: view.rotation });
+  const pageNumber = clamp(view.page, 1, document.numPages);
+  const zoom = view.zoom;
+  const rotation = view.rotation;
+  const page = await document.getPage(pageNumber);
+  if (generation !== renderGenerations[key] || document !== documents[key] || canvas !== canvases[key]) return;
+  const viewport = page.getViewport({ scale: zoom, rotation });
   const pixelRatio = window.devicePixelRatio || 1;
   const context = canvas.getContext("2d");
   if (!context) return;
@@ -257,8 +274,19 @@ async function render(key: DocumentKey) {
   canvas.style.width = `${Math.ceil(viewport.width)}px`;
   canvas.style.height = `${Math.ceil(viewport.height)}px`;
   await page.render({ canvas, canvasContext: context, viewport, transform: [pixelRatio, 0, 0, pixelRatio, 0, 0] }).promise;
-  view.viewedPage = Math.max(view.viewedPage, view.page);
+  if (generation !== renderGenerations[key] || document !== documents[key] || canvas !== canvases[key]) {
+    if (document === documents[key] && canvas === canvases[key]) void render(key);
+    return;
+  }
+  view.viewedPage = Math.max(view.viewedPage, pageNumber);
 }
+
+onBeforeUnmount(() => {
+  documentLoadGeneration += 1;
+  for (const key of documentKeys) {
+    renderGenerations[key] += 1;
+  }
+});
 
 function restoreState() {
   try {

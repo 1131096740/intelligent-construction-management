@@ -115,7 +115,7 @@
         :disabled="disabled || linked || !canLink"
         @click="emitLink"
       >
-        确认关联扫描件
+        核对通过并关联扫描件
       </t-button>
     </div>
   </section>
@@ -221,7 +221,7 @@ const linkHint = computed(() => {
   if (!props.frozenDocument) return "请先生成当前修订版冻结结算单。";
   if (!props.stagedFileId) return "请上传乙方完整签章扫描件。";
   if (!declarationComplete.value) return "请逐项完成签章声明。";
-  return "可以确认关联当前草稿修订版。";
+  return "可以执行一次核对通过并关联当前草稿修订版。";
 });
 
 watch(requiresCrossPageSeal, (required) => {

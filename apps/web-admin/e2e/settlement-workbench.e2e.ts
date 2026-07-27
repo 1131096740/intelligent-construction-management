@@ -703,7 +703,7 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
   await page.getByText("乙方已在所有要求位置签字并填写日期", { exact: true }).click();
   await page.getByText("乙方已逐页盖章", { exact: true }).click();
   await page.getByText("多页文件已加盖骑缝章", { exact: false }).click();
-  await page.getByRole("button", { name: "确认关联扫描件", exact: true }).click();
+  await page.getByRole("button", { name: "核对通过并关联扫描件", exact: true }).click();
   await expect(page.getByText("当前修订版已关联", { exact: true })).toBeVisible();
 
   const screenshotDir = process.env.UI_RESPONSIVE_SCREENSHOT_DIR ?? testInfo.outputDir;
@@ -1039,7 +1039,7 @@ test("税务事实缺失时保存草稿，确认后同一草稿可提交", async
   await page.getByText("乙方已在所有要求位置签字并填写日期", { exact: true }).click();
   await page.getByText("乙方已逐页盖章", { exact: true }).click();
   await page.getByText("多页文件已加盖骑缝章", { exact: false }).click();
-  await page.getByRole("button", { name: "确认关联扫描件", exact: true }).click();
+  await page.getByRole("button", { name: "核对通过并关联扫描件", exact: true }).click();
   await expect(page.getByRole("button", { name: "提交结算审批", exact: true })).toBeEnabled();
   await page.screenshot({
     path: path.join(screenshotDir, "settlement-workbench-tax-confirmed-1440x900.png"),
