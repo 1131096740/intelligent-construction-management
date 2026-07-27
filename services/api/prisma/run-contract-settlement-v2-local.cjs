@@ -78,7 +78,9 @@ async function main() {
     NODE_ENV: "test",
     DATABASE_URL: databaseUrl,
     CONTRACT_BILL_BATCH_DATABASE_URL: databaseUrl,
-    RUN_CONTRACT_BILL_BATCH_DATABASE: "1"
+    RUN_CONTRACT_BILL_BATCH_DATABASE: "1",
+    CONTRACT_BILL_TRANSITION_CONFIRM_DATABASE_URL: databaseUrl,
+    RUN_CONTRACT_BILL_TRANSITION_CONFIRM_DATABASE: "1"
   };
 
   try {
@@ -94,8 +96,8 @@ async function main() {
     await run(pnpm, ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "status"], { env: runtimeEnv, forwardOutput: true });
     await run(pnpm, ["--filter", "@jiangkong/api", "seed"], { env: runtimeEnv });
     await run(process.execPath, [path.join(root, "services/api/prisma/precheck-contract-settlement-v2.cjs"), "--output", path.resolve(evidencePath)], { env: runtimeEnv, forwardOutput: true });
-    await run(pnpm, ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/contract-bill-batch-replace-concurrency.spec.ts"], { env: runtimeEnv, forwardOutput: true });
-    process.stdout.write(JSON.stringify({ mode: "isolated_contract_settlement_v2", evidencePath: path.resolve(evidencePath), database: databaseName, concurrency: "contract_bill_batch_replace" }) + "\n");
+    await run(pnpm, ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/contract-bill-batch-replace-concurrency.spec.ts", "src/database/contract-bill-transition-confirm-concurrency.spec.ts"], { env: runtimeEnv, forwardOutput: true });
+    process.stdout.write(JSON.stringify({ mode: "isolated_contract_settlement_v2", evidencePath: path.resolve(evidencePath), database: databaseName, concurrency: "contract_bill_batch_replace,contract_bill_transition_confirm" }) + "\n");
   } finally {
     await run(docker, ["rm", "--force", containerName]).catch(() => undefined);
     await rm(temporaryRoot, { recursive: true, force: true });

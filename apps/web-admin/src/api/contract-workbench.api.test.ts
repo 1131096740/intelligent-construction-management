@@ -14,15 +14,19 @@ import {
   createContractNumberRule,
   createDraftCheckpoint,
   checkContractSubmissionReadiness,
+  confirmContractBillTransitions,
   confirmContractSettlementMode,
   createLayoutTemplate,
   createStandardClause,
   createWorkbenchDraft,
   deleteBillRow,
+  discardContractBillTransitions,
   discardContractTemplateVersion,
   discardLayoutTemplateVersion,
   discardStandardClauseVersion,
   downloadBillExcelTemplate,
+  fetchContractBillTransitionOptions,
+  fetchContractBillTransitions,
   fetchContractWorkbench,
   setContractAuthorization,
   submitContractFromWorkbench,
@@ -54,6 +58,7 @@ import {
   revokeLayoutTemplateVersion,
   restoreDraftCheckpoint,
   retryContractDocument,
+  saveContractBillTransitions,
   saveContractDraft,
   stopContractNumberRule,
   stopContractTemplateVersion,
@@ -296,6 +301,77 @@ describe("contract workbench API client", () => {
           expectedRevision: 1,
           settlementMode: "settlement_required"
         })
+      })
+    );
+  });
+
+  it("connects the cross-version bill mapping routes with the exact revision payloads", async () => {
+    mockApiFetch.mockImplementation(() => makeOkJson([]));
+
+    await fetchContractBillTransitionOptions("version/1");
+    await fetchContractBillTransitions("version/1");
+    await saveContractBillTransitions("version/1", {
+      fromContractVersionId: "version-0",
+      expectedTargetVersionRevision: 4,
+      mappings: [{
+        sourceContractBillRowId: "source-1",
+        targetContractBillRowId: "target-1",
+        sourceSettledQuantityAllocated: "30",
+        targetOpeningQuantity: "30",
+        settledAmountAllocatedCents: "3000"
+      }]
+    });
+    await discardContractBillTransitions("version/1", {
+      fromContractVersionId: "version-0",
+      expectedTargetVersionRevision: 4
+    });
+    await confirmContractBillTransitions("version/1", {
+      expectedTargetVersionRevision: 4
+    });
+
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      1,
+      "/contract-versions/version%2F1/bill-transitions/options"
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      2,
+      "/contract-versions/version%2F1/bill-transitions"
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      3,
+      "/contract-versions/version%2F1/bill-transitions",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({
+          fromContractVersionId: "version-0",
+          expectedTargetVersionRevision: 4,
+          mappings: [{
+            sourceContractBillRowId: "source-1",
+            targetContractBillRowId: "target-1",
+            sourceSettledQuantityAllocated: "30",
+            targetOpeningQuantity: "30",
+            settledAmountAllocatedCents: "3000"
+          }]
+        })
+      })
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      4,
+      "/contract-versions/version%2F1/bill-transitions",
+      expect.objectContaining({
+        method: "DELETE",
+        body: JSON.stringify({
+          fromContractVersionId: "version-0",
+          expectedTargetVersionRevision: 4
+        })
+      })
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      5,
+      "/contract-versions/version%2F1/bill-transitions/confirm",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ expectedTargetVersionRevision: 4 })
       })
     );
   });

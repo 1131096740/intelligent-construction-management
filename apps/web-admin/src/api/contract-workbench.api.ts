@@ -291,23 +291,23 @@ export interface ContractBillTransitionOptions {
 }
 
 export function fetchContractBillTransitionOptions(contractVersionId: string) {
-  return readJson<ContractBillTransitionOptions>(`/contract-versions/${contractVersionId}/bill-transitions/options`);
+  return readJson<ContractBillTransitionOptions>(`/contract-versions/${encodeURIComponent(contractVersionId)}/bill-transitions/options`);
 }
 
 export function fetchContractBillTransitions(contractVersionId: string) {
-  return readJson<Array<Record<string, unknown>>>(`/contract-versions/${contractVersionId}/bill-transitions`);
+  return readJson<Array<Record<string, unknown>>>(`/contract-versions/${encodeURIComponent(contractVersionId)}/bill-transitions`);
 }
 
 export function saveContractBillTransitions(contractVersionId: string, body: { fromContractVersionId: string; expectedTargetVersionRevision: number; mappings: ContractBillTransitionMappingPayload[] }) {
-  return putJson<Array<Record<string, unknown>>>(`/contract-versions/${contractVersionId}/bill-transitions`, body);
+  return putJson<Array<Record<string, unknown>>>(`/contract-versions/${encodeURIComponent(contractVersionId)}/bill-transitions`, body);
 }
 
 export function discardContractBillTransitions(contractVersionId: string, body: { fromContractVersionId: string; expectedTargetVersionRevision: number }) {
-  return deleteJson<Array<Record<string, unknown>>>(`/contract-versions/${contractVersionId}/bill-transitions`, body);
+  return deleteJson<Array<Record<string, unknown>>>(`/contract-versions/${encodeURIComponent(contractVersionId)}/bill-transitions`, body);
 }
 
 export function confirmContractBillTransitions(contractVersionId: string, body: { expectedTargetVersionRevision: number }) {
-  return postJson<Array<Record<string, unknown>>>(`/contract-versions/${contractVersionId}/bill-transitions/confirm`, body);
+  return postJson<Array<Record<string, unknown>>>(`/contract-versions/${encodeURIComponent(contractVersionId)}/bill-transitions/confirm`, body);
 }
 
 export interface CreateDraftCheckpointPayload {
