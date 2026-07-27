@@ -400,7 +400,14 @@
       v-else-if="!draftSubmissionBlockingReason"
       class="table-shell jg-table-region jg-table-region--workspace-wide"
     >
+      <SettlementBillGrid
+        v-if="visibleWorkbenchRows.length > 100"
+        :source-rows="visibleWorkbenchRows"
+        :drafts="drafts"
+        @update:drafts="onGridDraftsChanged"
+      />
       <t-table
+        v-else
         row-key="id"
         size="small"
         table-layout="fixed"
@@ -903,6 +910,7 @@ import SettlementCounterpartySignedPdfPanel, {
   type SettlementFrozenDocumentSummary
 } from "./components/SettlementCounterpartySignedPdfPanel.vue";
 import SettlementTemplateRecommendationPanel from "./components/SettlementTemplateRecommendationPanel.vue";
+import SettlementBillGrid from "./components/SettlementBillGrid.vue";
 import {
   blockedSettlementTemplateSelection,
   canApplySettlementTemplateRecommendation,
@@ -1690,6 +1698,12 @@ function removeAdjustment(clientId: string) {
 
 function onAdjustmentChange() {
   adjustments.value = adjustments.value.map((item) => ({ ...item }));
+  invalidatePreview();
+  schedulePreview();
+}
+
+function onGridDraftsChanged(value: SourceLineDraftMap) {
+  drafts.value = value;
   invalidatePreview();
   schedulePreview();
 }
