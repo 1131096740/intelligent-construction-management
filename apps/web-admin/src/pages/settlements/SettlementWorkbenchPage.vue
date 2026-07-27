@@ -341,7 +341,13 @@
         >
           新增人工调整
         </t-button>
-        <t-button variant="outline" :disabled="!templateReady" @click="addVisaChange">新增签证/变更</t-button>
+        <t-button
+          variant="outline"
+          :disabled="!templateReady"
+          @click="addVisaChange"
+        >
+          新增签证/变更
+        </t-button>
         <t-button
           variant="outline"
           :loading="previewBusy"
@@ -530,6 +536,14 @@
             @change="onAdjustmentChange"
           />
         </template>
+        <template #relatedSettlementLineId="{ row }">
+          <t-input
+            v-model="row.relatedSettlementLineId"
+            placeholder="负向调整必填原结算行编号"
+            size="small"
+            @change="onAdjustmentChange"
+          />
+        </template>
         <template #remark="{ row }">
           <t-input
             v-model="row.remark"
@@ -549,18 +563,92 @@
       </t-table>
     </section>
 
-    <section v-if="!draftSubmissionBlockingReason && visaChanges.length" class="adjustment-section jg-table-region jg-table-region--standard">
-      <div class="section-title"><div><strong>签证/变更项目</strong><span>必须填写发生事实与计价依据；可填数量和单价，或直接金额。</span></div></div>
-      <t-table row-key="clientId" size="small" :columns="visaChangeColumns" :data="visaChanges" :horizontal-scroll-affixed-bottom="true">
-        <template #sourceItemType="{ row }"><t-input v-model="row.sourceItemType" size="small" placeholder="类别" @change="onVisaChange" /></template>
-        <template #occurredOn="{ row }"><t-date-picker v-model="row.occurredOn" value-type="YYYY-MM-DD" size="small" @change="onVisaChange" /></template>
-        <template #name="{ row }"><t-input v-model="row.name" size="small" placeholder="名称" @change="onVisaChange" /></template>
-        <template #description="{ row }"><t-input v-model="row.description" size="small" placeholder="说明" @change="onVisaChange" /></template>
-        <template #pricingBasis="{ row }"><t-input v-model="row.pricingBasis" size="small" placeholder="计价依据" @change="onVisaChange" /></template>
-        <template #quantity="{ row }"><t-input v-model="row.quantity" size="small" placeholder="数量" @change="onVisaChange" /></template>
-        <template #unitPriceYuan="{ row }"><t-input v-model="row.unitPriceYuan" size="small" placeholder="单价" @change="onVisaChange" /></template>
-        <template #amountYuan="{ row }"><t-input v-model="row.amountYuan" size="small" placeholder="直接金额" @change="onVisaChange" /></template>
-        <template #operation="{ row }"><t-link theme="danger" @click="removeVisaChange(row.clientId)">删除</t-link></template>
+    <section
+      v-if="!draftSubmissionBlockingReason && visaChanges.length"
+      class="adjustment-section jg-table-region jg-table-region--standard"
+    >
+      <div class="section-title">
+        <div><strong>签证/变更项目</strong><span>必须填写发生事实与计价依据；可填数量和单价，或直接金额。</span></div>
+      </div>
+      <t-table
+        row-key="clientId"
+        size="small"
+        :columns="visaChangeColumns"
+        :data="visaChanges"
+        :horizontal-scroll-affixed-bottom="true"
+      >
+        <template #sourceItemType="{ row }">
+          <t-input
+            v-model="row.sourceItemType"
+            size="small"
+            placeholder="类别"
+            @change="onVisaChange"
+          />
+        </template>
+        <template #occurredOn="{ row }">
+          <t-date-picker
+            v-model="row.occurredOn"
+            value-type="YYYY-MM-DD"
+            size="small"
+            @change="onVisaChange"
+          />
+        </template>
+        <template #name="{ row }">
+          <t-input
+            v-model="row.name"
+            size="small"
+            placeholder="名称"
+            @change="onVisaChange"
+          />
+        </template>
+        <template #description="{ row }">
+          <t-input
+            v-model="row.description"
+            size="small"
+            placeholder="说明"
+            @change="onVisaChange"
+          />
+        </template>
+        <template #pricingBasis="{ row }">
+          <t-input
+            v-model="row.pricingBasis"
+            size="small"
+            placeholder="计价依据"
+            @change="onVisaChange"
+          />
+        </template>
+        <template #quantity="{ row }">
+          <t-input
+            v-model="row.quantity"
+            size="small"
+            placeholder="数量"
+            @change="onVisaChange"
+          />
+        </template>
+        <template #unitPriceYuan="{ row }">
+          <t-input
+            v-model="row.unitPriceYuan"
+            size="small"
+            placeholder="单价"
+            @change="onVisaChange"
+          />
+        </template>
+        <template #amountYuan="{ row }">
+          <t-input
+            v-model="row.amountYuan"
+            size="small"
+            placeholder="直接金额"
+            @change="onVisaChange"
+          />
+        </template>
+        <template #operation="{ row }">
+          <t-link
+            theme="danger"
+            @click="removeVisaChange(row.clientId)"
+          >
+            删除
+          </t-link>
+        </template>
       </t-table>
     </section>
 
@@ -929,6 +1017,7 @@ const adjustmentColumns: PrimaryTableCol<ManualAdjustmentDraft>[] = [
   { colKey: "name", title: "调整名称", minWidth: 180 },
   { colKey: "amountYuan", title: "调整金额（元）", width: 180 },
   { colKey: "reason", title: "调整原因", minWidth: 220 },
+  { colKey: "relatedSettlementLineId", title: "原结算行", minWidth: 180 },
   { colKey: "remark", title: "备注", minWidth: 180 },
   { colKey: "operation", title: "操作", width: 76, fixed: "right" }
 ];
