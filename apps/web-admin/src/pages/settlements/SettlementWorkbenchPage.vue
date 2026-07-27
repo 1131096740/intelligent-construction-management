@@ -341,6 +341,7 @@
         >
           新增人工调整
         </t-button>
+        <t-button variant="outline" :disabled="!templateReady" @click="addVisaChange">新增签证/变更</t-button>
         <t-button
           variant="outline"
           :loading="previewBusy"
@@ -545,6 +546,21 @@
             删除
           </t-link>
         </template>
+      </t-table>
+    </section>
+
+    <section v-if="!draftSubmissionBlockingReason && visaChanges.length" class="adjustment-section jg-table-region jg-table-region--standard">
+      <div class="section-title"><div><strong>签证/变更项目</strong><span>必须填写发生事实与计价依据；可填数量和单价，或直接金额。</span></div></div>
+      <t-table row-key="clientId" size="small" :columns="visaChangeColumns" :data="visaChanges" :horizontal-scroll-affixed-bottom="true">
+        <template #sourceItemType="{ row }"><t-input v-model="row.sourceItemType" size="small" placeholder="类别" @change="onVisaChange" /></template>
+        <template #occurredOn="{ row }"><t-date-picker v-model="row.occurredOn" value-type="YYYY-MM-DD" size="small" @change="onVisaChange" /></template>
+        <template #name="{ row }"><t-input v-model="row.name" size="small" placeholder="名称" @change="onVisaChange" /></template>
+        <template #description="{ row }"><t-input v-model="row.description" size="small" placeholder="说明" @change="onVisaChange" /></template>
+        <template #pricingBasis="{ row }"><t-input v-model="row.pricingBasis" size="small" placeholder="计价依据" @change="onVisaChange" /></template>
+        <template #quantity="{ row }"><t-input v-model="row.quantity" size="small" placeholder="数量" @change="onVisaChange" /></template>
+        <template #unitPriceYuan="{ row }"><t-input v-model="row.unitPriceYuan" size="small" placeholder="单价" @change="onVisaChange" /></template>
+        <template #amountYuan="{ row }"><t-input v-model="row.amountYuan" size="small" placeholder="直接金额" @change="onVisaChange" /></template>
+        <template #operation="{ row }"><t-link theme="danger" @click="removeVisaChange(row.clientId)">删除</t-link></template>
       </t-table>
     </section>
 
@@ -761,6 +777,7 @@ import {
   validateFinalSettlementConfirmations,
   validateSettlementWorkbench,
   type ManualAdjustmentDraft,
+  type VisaChangeDraft,
   type FinalSettlementConfirmationState,
   type SourceLineDraft,
   type SourceLineDraftMap
@@ -828,6 +845,7 @@ const contracts = ref<ContractBusinessOptionReadModel[]>([]);
 const sourceRows = ref<SettlementSourceLineReadModel[]>([]);
 const drafts = ref<SourceLineDraftMap>({});
 const adjustments = ref<ManualAdjustmentDraft[]>([]);
+const visaChanges = ref<VisaChangeDraft[]>([]);
 const preview = ref<SettlementCanonicalPreviewReadModel | null>(null);
 const previewAppliedFingerprint = ref("");
 const importFiles = ref<UploadFile[]>([]);
@@ -913,6 +931,17 @@ const adjustmentColumns: PrimaryTableCol<ManualAdjustmentDraft>[] = [
   { colKey: "reason", title: "调整原因", minWidth: 220 },
   { colKey: "remark", title: "备注", minWidth: 180 },
   { colKey: "operation", title: "操作", width: 76, fixed: "right" }
+];
+const visaChangeColumns: PrimaryTableCol<VisaChangeDraft>[] = [
+  { colKey: "sourceItemType", title: "类别", width: 120 },
+  { colKey: "occurredOn", title: "发生日期", width: 130 },
+  { colKey: "name", title: "名称", minWidth: 160 },
+  { colKey: "description", title: "说明", minWidth: 180 },
+  { colKey: "pricingBasis", title: "计价依据", minWidth: 160 },
+  { colKey: "quantity", title: "数量", width: 110 },
+  { colKey: "unitPriceYuan", title: "单价（元）", width: 120 },
+  { colKey: "amountYuan", title: "直接金额（元）", width: 130 },
+  { colKey: "operation", title: "操作", width: 70, fixed: "right" }
 ];
 const importErrorColumns: PrimaryTableCol<ImportErrorRow>[] = [
   { colKey: "row", title: "Excel 行", width: 100 },
@@ -1026,10 +1055,10 @@ const currentPayload = computed(() => {
   ) {
     return frozenImport.value.settlementLines;
   }
-  return buildSettlementLinePayload(sourceRows.value, drafts.value, adjustments.value);
+  return buildSettlementLinePayload(sourceRows.value, drafts.value, adjustments.value, visaChanges.value);
 });
 const draftPayload = computed(() =>
-  buildSettlementDraftLinePayload(sourceRows.value, drafts.value, adjustments.value)
+  buildSettlementDraftLinePayload(sourceRows.value, drafts.value, adjustments.value, visaChanges.value)
 );
 const currentFingerprint = computed(() =>
   settlementPayloadFingerprint(templateResourceKey.value, currentPayload.value)
@@ -1041,7 +1070,8 @@ const validationErrors = computed(() =>
     periodLabel: form.periodLabel,
     rows: sourceRows.value,
     drafts: drafts.value,
-    adjustments: adjustments.value
+    adjustments: adjustments.value,
+    visaChanges: visaChanges.value
   })
 );
 const previewIsCurrent = computed(
@@ -1507,6 +1537,27 @@ function addAdjustment() {
     }
   ];
   invalidatePreview();
+}
+
+function addVisaChange() {
+  visaChanges.value = [...visaChanges.value, {
+    clientId: `visa-${Date.now()}-${visaChanges.value.length + 1}`,
+    sourceItemType: "", occurredOn: "", name: "", description: "", pricingBasis: "",
+    quantity: "", unitPriceYuan: "", amountYuan: "", remark: ""
+  }];
+  invalidatePreview();
+}
+
+function removeVisaChange(clientId: string) {
+  visaChanges.value = visaChanges.value.filter((item) => item.clientId !== clientId);
+  invalidatePreview();
+  schedulePreview();
+}
+
+function onVisaChange() {
+  visaChanges.value = visaChanges.value.map((item) => ({ ...item }));
+  invalidatePreview();
+  schedulePreview();
 }
 
 function removeAdjustment(clientId: string) {

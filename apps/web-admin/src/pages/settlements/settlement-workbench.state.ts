@@ -295,7 +295,8 @@ export function buildSettlementLinePayload(
 export function buildSettlementDraftLinePayload(
   rows: readonly SettlementSourceLineReadModel[],
   drafts: SourceLineDraftMap,
-  adjustments: readonly ManualAdjustmentDraft[]
+  adjustments: readonly ManualAdjustmentDraft[],
+  visaChanges: readonly VisaChangeDraft[] = []
 ): SettlementLineDraftPayload[] {
   const result: SettlementLineDraftPayload[] = [];
   for (const row of rows) {
@@ -323,7 +324,31 @@ export function buildSettlementDraftLinePayload(
       ...(adjustment.name.trim() ? { name: adjustment.name.trim() } : {}),
       ...(amountCents ? { amountCents } : {}),
       ...(adjustment.reason.trim() ? { reason: adjustment.reason.trim() } : {}),
+      ...(adjustment.relatedSettlementLineId?.trim()
+        ? { relatedSettlementLineId: adjustment.relatedSettlementLineId.trim() }
+        : {}),
       ...(adjustment.remark.trim() ? { remark: adjustment.remark.trim() } : {}),
+      sortOrder: result.length + 1
+    });
+  }
+  for (const visa of visaChanges) {
+    const unitPriceCents = isNonNegativeYuan(visa.unitPriceYuan.trim())
+      ? yuanTextToCentsText(visa.unitPriceYuan.trim())
+      : undefined;
+    const amountCents = isNonNegativeYuan(visa.amountYuan.trim())
+      ? yuanTextToCentsText(visa.amountYuan.trim())
+      : undefined;
+    result.push({
+      sourceType: "visa_change",
+      ...(visa.sourceItemType.trim() ? { sourceItemType: visa.sourceItemType.trim() } : {}),
+      ...(visa.occurredOn.trim() ? { occurredOn: visa.occurredOn.trim() } : {}),
+      ...(visa.name.trim() ? { name: visa.name.trim() } : {}),
+      ...(visa.description.trim() ? { description: visa.description.trim() } : {}),
+      ...(visa.pricingBasis.trim() ? { pricingBasis: visa.pricingBasis.trim() } : {}),
+      ...(visa.quantity.trim() ? { quantity: visa.quantity.trim() } : {}),
+      ...(unitPriceCents ? { unitPriceCents } : {}),
+      ...(amountCents ? { amountCents } : {}),
+      ...(visa.remark.trim() ? { remark: visa.remark.trim() } : {}),
       sortOrder: result.length + 1
     });
   }
@@ -368,8 +393,28 @@ export function validateSettlementWorkbench(
       errors.push(`第 ${order} 条人工调整金额必须是非零数字，最多保留两位小数。`);
     }
     if (!adjustment.reason.trim()) errors.push(`第 ${order} 条人工调整必须填写原因。`);
+    if (adjustment.amountYuan.trim().startsWith("-") && !adjustment.relatedSettlementLineId?.trim()) {
+      errors.push(`第 ${order} 条负向人工调整必须关联原结算明细。`);
+    }
   });
-  if (!Object.keys(input.drafts).length && !input.adjustments.length) {
+  (input.visaChanges ?? []).forEach((visa, index) => {
+    const order = index + 1;
+    if (!visa.sourceItemType.trim() || !visa.occurredOn.trim() || !visa.name.trim() ||
+      !visa.description.trim() || !visa.pricingBasis.trim()) {
+      errors.push(`第 ${order} 条签证/变更必须填写类别、日期、名称、说明和计价依据。`);
+    }
+    const quantity = visa.quantity.trim();
+    const price = visa.unitPriceYuan.trim();
+    const amount = visa.amountYuan.trim();
+    if (Boolean(quantity) !== Boolean(price)) {
+      errors.push(`第 ${order} 条签证/变更应同时填写数量和单价，或直接填写金额。`);
+    }
+    if (!amount && !quantity) errors.push(`第 ${order} 条签证/变更必须填写数量和单价，或直接填写金额。`);
+    if (quantity && !QUANTITY_INPUT_PATTERN.test(quantity)) errors.push(`第 ${order} 条签证/变更数量最多保留两位小数。`);
+    if (price && !isNonNegativeYuan(price)) errors.push(`第 ${order} 条签证/变更单价必须是非负金额。`);
+    if (amount && !isNonNegativeYuan(amount)) errors.push(`第 ${order} 条签证/变更金额必须是非负金额。`);
+  });
+  if (!Object.keys(input.drafts).length && !input.adjustments.length && !(input.visaChanges?.length)) {
     errors.push("请至少选择一条本期真实发生的合同清单项或新增一条人工调整。");
   }
   return errors;
