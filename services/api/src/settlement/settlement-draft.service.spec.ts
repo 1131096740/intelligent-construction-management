@@ -50,6 +50,7 @@ describe("SettlementDraftService", () => {
         findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn().mockResolvedValue(null),
+        count: jest.fn().mockResolvedValue(0),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       settlementSignedDocument: {
@@ -60,7 +61,8 @@ describe("SettlementDraftService", () => {
       settlement: {
         create: jest.fn(),
         count: jest.fn().mockResolvedValue(0),
-        findFirst: jest.fn().mockResolvedValue(null)
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([])
       },
       settlementLine: { createMany: jest.fn() },
       settlementDraftLine: {
@@ -77,6 +79,7 @@ describe("SettlementDraftService", () => {
     const prisma = {
       settlementDraft: tx.settlementDraft,
       contract: tx.contract,
+      settlement: tx.settlement,
       settlementSignedDocument: tx.settlementSignedDocument,
       fileObject: tx.fileObject,
       $transaction: jest.fn(async (callback) => callback(tx))
@@ -214,6 +217,67 @@ describe("SettlementDraftService", () => {
         fieldReviewerUserId: "material-1",
         ...finalConfirmations
       })
+    });
+  });
+
+  it("stores the V2 final declaration without a hand-entered cumulative amount or five checks", async () => {
+    const { tx, service } = context();
+
+    await service.create("project-1", "owner-1", {
+      ...draftInput,
+      isFinal: true,
+      finalDeclarationAccepted: false,
+      fieldReviewerUserId: "material-1",
+      fieldReviewerRoleKey: "material_staff"
+    });
+
+    expect(tx.settlementDraft.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        finalCumulativeAmountCents: null,
+        finalDeclarationVersion: 1,
+        finalDeclarationSnapshot: expect.objectContaining({ accepted: false }),
+        finalScopeCompleted: null,
+        finalNoFurtherOrdinarySettlements: null
+      })
+    });
+  });
+
+  it("rejects V2 final declaration mixed with the retired manual fields", async () => {
+    const { tx, service } = context();
+
+    await expect(service.create("project-1", "owner-1", {
+      ...draftInput,
+      isFinal: true,
+      finalDeclarationAccepted: true,
+      finalCumulativeAmountCents: "1000"
+    })).rejects.toThrow("不再填写累计金额或五项完结确认");
+
+    expect(tx.settlementDraft.create).not.toHaveBeenCalled();
+  });
+
+  it("builds final preparation from backend settlement and contract facts", async () => {
+    const { tx, service } = context();
+    tx.settlementDraft.findUnique.mockResolvedValue({
+      id: "draft-final-1",
+      projectId: "project-1",
+      ownerUserId: "owner-1",
+      contractId: "contract-1",
+      isFinal: true,
+      finalDeclarationSnapshot: { accepted: true }
+    });
+    tx.settlement.findMany = jest.fn().mockResolvedValue([{ amountCents: 1200n }]);
+    tx.settlement.count = jest.fn().mockResolvedValue(0);
+
+    const result = await service.finalPreparation("project-1", "draft-final-1", "owner-1");
+
+    expect(result).toMatchObject({
+      isFinal: true,
+      checks: expect.arrayContaining([
+        expect.objectContaining({ key: "final_declaration", status: "ready" }),
+        expect.objectContaining({ key: "prior_effective_history", amountCents: "1200" }),
+        expect.objectContaining({ key: "unresolved_settlements", status: "ready" }),
+        expect.objectContaining({ key: "settlement_entry", status: "ready" })
+      ])
     });
   });
 

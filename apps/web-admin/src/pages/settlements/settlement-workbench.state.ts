@@ -177,6 +177,7 @@ export interface SettlementWorkbenchValidationInput {
   contractVersionId: string;
   code: string;
   periodLabel: string;
+  isFinal?: boolean;
   rows: readonly SettlementSourceLineReadModel[];
   drafts: SourceLineDraftMap;
   adjustments: readonly ManualAdjustmentDraft[];
@@ -426,7 +427,7 @@ export function validateSettlementWorkbench(
     if (price && !isNonNegativeYuan(price)) errors.push(`第 ${order} 条签证/变更单价必须是非负金额。`);
     if (amount && !isNonNegativeYuan(amount)) errors.push(`第 ${order} 条签证/变更金额必须是非负金额。`);
   });
-  if (!Object.keys(input.drafts).length && !input.adjustments.length && !(input.visaChanges?.length)) {
+  if (!input.isFinal && !Object.keys(input.drafts).length && !input.adjustments.length && !(input.visaChanges?.length)) {
     errors.push("请至少选择一条本期真实发生的合同清单项或新增一条人工调整。");
   }
   return errors;

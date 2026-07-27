@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Optional } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, Optional } from "@nestjs/common";
 import { Prisma, type Settlement, type SettlementDraft } from "@prisma/client";
 import {
   approvalElapsedHours,
@@ -337,6 +337,8 @@ export interface GovernedSettlementDraftSubmission {
   governanceVersion: 1;
   fieldReviewerUserId: string | null;
   fieldReviewerRoleKey: string | null;
+  finalDeclarationVersion?: number | null;
+  finalDeclarationSnapshot?: Prisma.JsonValue | null;
   finalConfirmations: {
     finalScopeCompleted: boolean | null;
     finalPriorSettlementsIncluded: boolean | null;
@@ -435,7 +437,7 @@ export class SettlementService {
     tx: Prisma.TransactionClient,
     draft: Pick<SettlementDraft,
       "id" | "contractId" | "contractVersionId" | "paymentTermsVersionId" |
-      "isFinal" | "finalCumulativeAmountCents" | "lines"
+      "isFinal" | "finalCumulativeAmountCents" | "finalDeclarationVersion" | "lines"
     >,
     settlementLinesOverride?: CreateSettlementLineDto[]
   ): Promise<{
@@ -486,7 +488,8 @@ export class SettlementService {
       (total, item) => total + item.amountCents,
       0n
     );
-    const calculatedCurrentAmount = draft.isFinal
+    const v2Final = draft.isFinal && draft.finalDeclarationVersion === 1;
+    const calculatedCurrentAmount = draft.isFinal && !v2Final
       ? draft.finalCumulativeAmountCents === null
         ? (() => { throw new BadRequestException("最终结算必须填写审定累计结算金额"); })()
         : await this.calculateFinalSettlementCurrentAmount(
@@ -495,8 +498,8 @@ export class SettlementService {
             draft.finalCumulativeAmountCents
           )
       : null;
-    const amountCents = this.settlementAmountFromLines(calculatedCurrentAmount, normalized);
-    if (amountCents <= 0n) throw new BadRequestException("结算金额必须大于 0");
+    const amountCents = this.settlementAmountFromLines(calculatedCurrentAmount, normalized, v2Final);
+    if (!v2Final && amountCents <= 0n) throw new BadRequestException("结算金额必须大于 0");
     const unlimitedFramework = isUnlimitedFrameworkContract(version);
     if (!unlimitedFramework) {
       await this.assertContractBillRowSettlementLimits(tx, version.id, normalized);
@@ -527,18 +530,20 @@ export class SettlementService {
     if (!capacityVersion) {
       throw new BadRequestException("当前合同版本不在合同版本谱系中，暂不能核验结算金额上限");
     }
-    assertContractSettlementCapacity(
-      {
-        contractId: draft.contractId,
-        contractVersionId: version.id,
-        contractAmountCents: dbMoneyToBigInt(capacityVersion.amountCents, "合同金额"),
-        historicalPositiveIncreaseCents: historicalPositiveIncreaseCents(lineage),
-        pricingNature: capacityVersion.pricingNature,
-        amountLimitType: capacityVersion.amountLimitType
-      },
-      occupiedContractAmountCents,
-      amountCents
-    );
+    if (amountCents > 0n) {
+      assertContractSettlementCapacity(
+        {
+          contractId: draft.contractId,
+          contractVersionId: version.id,
+          contractAmountCents: dbMoneyToBigInt(capacityVersion.amountCents, "合同金额"),
+          historicalPositiveIncreaseCents: historicalPositiveIncreaseCents(lineage),
+          pricingNature: capacityVersion.pricingNature,
+          amountLimitType: capacityVersion.amountLimitType
+        },
+        occupiedContractAmountCents,
+        amountCents
+      );
+    }
 
     const existingFinalCount = await tx.settlement.count({
       where: {
@@ -610,9 +615,15 @@ export class SettlementService {
     );
     return {
       amountCents,
-      finalCumulativeAmountCents: draft.finalCumulativeAmountCents,
+      finalCumulativeAmountCents: draft.isFinal
+        ? v2Final
+          ? previousEffectiveSettlementCents + amountCents
+          : draft.finalCumulativeAmountCents
+        : null,
       previousEffectiveSettlementCents,
-      payableAmountCents: this.calculatePayableAmount(amountCents, currentSettlementStage.ratioBps),
+      payableAmountCents: amountCents > 0n
+        ? this.calculatePayableAmount(amountCents, currentSettlementStage.ratioBps)
+        : 0n,
       currentSettlementStage: {
         id: currentSettlementStage.id,
         ratioBps: currentSettlementStage.ratioBps
@@ -677,7 +688,8 @@ export class SettlementService {
         ? null
         : this.settlementAmountFromLines(
             null,
-            preview.lines as NormalizedSettlementLine[]
+            preview.lines as NormalizedSettlementLine[],
+            input.isFinal === true
           );
       if (!preview.submissionBlockers.length && !isUnlimitedFrameworkContract(version)) {
         await this.assertContractBillRowSettlementLimits(
@@ -962,10 +974,12 @@ export class SettlementService {
 
   private settlementAmountFromLines(
     calculatedAmountCents: bigint | null,
-    lines: NormalizedSettlementLine[]
+    lines: NormalizedSettlementLine[],
+    allowEmptyFinal = false
   ): bigint {
     if (!lines.length) {
       if (calculatedAmountCents === null) {
+        if (allowEmptyFinal) return 0n;
         throw new BadRequestException("请至少选择一条本期真实发生的合同清单项或填写一条手工调整。");
       }
       return calculatedAmountCents;
@@ -1358,8 +1372,8 @@ export class SettlementService {
     const submittedAmountCents =
       input.amountCents === undefined
         ? null
-        : this.requiredMoneyCents(input.amountCents, "结算金额");
-    if (submittedAmountCents !== null && submittedAmountCents <= 0n) {
+        : this.requiredMoneyCents(input.amountCents, "结算金额", input.isFinal === true);
+    if (input.isFinal !== true && submittedAmountCents !== null && submittedAmountCents <= 0n) {
       throw new BadRequestException("结算金额必须大于 0，不能创建零金额或负数结算。");
     }
     for (const line of input.settlementLines ?? []) {
@@ -1402,6 +1416,9 @@ export class SettlementService {
     if (!contract) {
       throw new Error("未找到结算关联合同，请刷新合同台账后重试");
     }
+    if (contract.settlementClosedAt || contract.finalSettlementId) {
+      throw new BadRequestException("该合同已由最终结算关闭，不能再发起结算审批");
+    }
     assertSettlementContractType(contract.contractTypeKey);
     const governedFacts = governedDraft && applicantUserId
       ? await this.freezeGovernedSettlementFacts(tx, contract, input.isFinal === true, applicantUserId, governedDraft)
@@ -1430,8 +1447,9 @@ export class SettlementService {
       );
     }
 
+    const v2Final = input.isFinal === true && governedDraft?.finalDeclarationVersion === 1;
     const calculatedSettlementAmountCents =
-      input.isFinal === true
+      input.isFinal === true && !v2Final
         ? submittedAmountCents === null
           ? (() => {
               throw new BadRequestException("最终结算必须填写审定累计结算金额。");
@@ -1444,9 +1462,10 @@ export class SettlementService {
         : submittedAmountCents;
     const settlementAmountCents = this.settlementAmountFromLines(
       calculatedSettlementAmountCents,
-      settlementLines
+      settlementLines,
+      v2Final
     );
-    if (settlementAmountCents <= 0n) {
+    if (!v2Final && settlementAmountCents <= 0n) {
       throw new BadRequestException("结算金额必须大于 0，不能创建零金额或负数结算。");
     }
     const unlimitedFramework = isUnlimitedFrameworkContract(version);
@@ -1479,25 +1498,24 @@ export class SettlementService {
     if (!capacityVersion) {
       throw new BadRequestException("当前合同版本不在合同版本谱系中，暂不能核验结算金额上限");
     }
-    assertContractSettlementCapacity(
-      {
-        contractId: version.contractId,
-        contractVersionId: version.id,
-        contractAmountCents: dbMoneyToBigInt(capacityVersion.amountCents, "合同金额"),
-        historicalPositiveIncreaseCents: historicalPositiveIncreaseCents(lineage),
-        pricingNature: capacityVersion.pricingNature,
-        amountLimitType: capacityVersion.amountLimitType
-      },
-      occupiedContractAmountCents,
-      settlementAmountCents
-    );
+    if (settlementAmountCents > 0n) {
+      assertContractSettlementCapacity(
+        {
+          contractId: version.contractId,
+          contractVersionId: version.id,
+          contractAmountCents: dbMoneyToBigInt(capacityVersion.amountCents, "合同金额"),
+          historicalPositiveIncreaseCents: historicalPositiveIncreaseCents(lineage),
+          pricingNature: capacityVersion.pricingNature,
+          amountLimitType: capacityVersion.amountLimitType
+        },
+        occupiedContractAmountCents,
+        settlementAmountCents
+      );
+    }
 
-    const exceptionQuotaAllocations = await this.reserveSettlementQuota(
-      tx,
-      contract.projectId,
-      version.contractId,
-      settlementAmountCents
-    );
+    const exceptionQuotaAllocations = settlementAmountCents > 0n
+      ? await this.reserveSettlementQuota(tx, contract.projectId, version.contractId, settlementAmountCents)
+      : [];
     if (!unlimitedFramework) {
       await this.assertContractBillRowSettlementLimits(tx, version.id, settlementLines);
     }
@@ -1514,10 +1532,14 @@ export class SettlementService {
         "合同付款条款缺少结算款阶段，不能创建结算。请先补齐结构化付款条款后再办理。"
       );
     }
-    const payableAmountCents = this.calculatePayableAmount(
-      settlementAmountCents,
-      currentSettlementStage.ratioBps
-    );
+    const payableAmountCents = settlementAmountCents > 0n
+      ? this.calculatePayableAmount(settlementAmountCents, currentSettlementStage.ratioBps)
+      : 0n;
+    const finalCumulativeAmountCents = input.isFinal === true
+      ? v2Final
+        ? await this.currentFinalCumulativeAmount(tx, version.contractId, settlementAmountCents)
+        : submittedAmountCents
+      : null;
 
     const settlement = await tx.settlement.create({
       data: {
@@ -1548,7 +1570,19 @@ export class SettlementService {
           ...governedFacts.finalConfirmations
         } : {}),
         ...(input.isFinal === true
-          ? { isFinal: true, finalCumulativeAmountCents: submittedAmountCents! }
+          ? {
+              isFinal: true,
+              finalCumulativeAmountCents,
+              ...(v2Final
+                ? {
+                    finalDeclarationVersion: 1,
+                    finalDeclarationSnapshot: this.freezeFinalDeclaration(
+                      governedDraft?.finalDeclarationSnapshot,
+                      applicantUserId
+                    )
+                  }
+                : {})
+            }
           : {})
       }
     });
@@ -1583,7 +1617,9 @@ export class SettlementService {
         metadata: {
           tag: "settlement.final_confirmation.freeze",
           draftId: governedDraft?.draftId,
-          ...governedFacts.finalConfirmations
+          ...(v2Final
+            ? { declaration: this.freezeFinalDeclaration(governedDraft?.finalDeclarationSnapshot, applicantUserId) }
+            : governedFacts.finalConfirmations)
         }
       });
     }
@@ -1713,6 +1749,7 @@ export class SettlementService {
       ? [fieldNode, node("物资主管", "material_director", candidates("material_director")), node("合同部主管", "contract_director", candidates("contract_director")), node("项目经理", "project_manager", candidates("project_manager", projectRows)), node("财务主管", "finance_director", candidates("finance_director"))]
       : [fieldNode, node("项目总工", "engineering_director", participants.engineeringDirectorUserId === applicantUserId ? [] : [participants.engineeringDirectorUserId!]), node("合同部主管", "contract_director", candidates("contract_director")), node("项目经理", "project_manager", candidates("project_manager", projectRows)), node("财务主管", "finance_director", candidates("finance_director"))];
     const confirmations = governed.finalConfirmations;
+    const v2Final = governed.finalDeclarationVersion === 1;
     const confirmationChecks = [
       ["finalScopeCompleted", "请确认合同范围内应结事项已经完成"],
       ["finalPriorSettlementsIncluded", "请确认历史过程结算已完整纳入累计数据"],
@@ -1720,7 +1757,12 @@ export class SettlementService {
       ["finalWithinContractCap", "请确认本次累计结算符合当前有效合同金额上限"],
       ["finalNoFurtherOrdinarySettlements", "请确认最终结算后不再发起普通过程结算"]
     ] as const;
-    if (isFinal) {
+    if (isFinal && v2Final) {
+      const declaration = governed.finalDeclarationSnapshot as { accepted?: unknown } | null;
+      if (declaration?.accepted !== true) {
+        throw new SettlementGovernanceSubmissionDenial("请确认最终结算总体声明后再提交");
+      }
+    } else if (isFinal) {
       for (const [key, message] of confirmationChecks) {
         if (confirmations[key] !== true) {
           throw new SettlementGovernanceSubmissionDenial(message);
@@ -1750,7 +1792,20 @@ export class SettlementService {
       ]);
       if (draftCount + settlementCount > 0) throw new SettlementGovernanceSubmissionDenial("仍存在尚未处理的结算草稿或审批中结算，暂不能提交最终结算");
     }
-    return { ...participants, finalConfirmations: confirmations, frozenNodes, preparerSignature: await snapshotApprovalSignature(tx, applicantUserId, { required: true }) };
+    return {
+      ...participants,
+      finalConfirmations: v2Final
+        ? {
+            finalScopeCompleted: null,
+            finalPriorSettlementsIncluded: null,
+            finalNoOutstandingSettlements: null,
+            finalWithinContractCap: null,
+            finalNoFurtherOrdinarySettlements: null
+          }
+        : confirmations,
+      frozenNodes,
+      preparerSignature: await snapshotApprovalSignature(tx, applicantUserId, { required: true })
+    };
   }
 
   async persistGovernanceDenial(
@@ -1845,6 +1900,40 @@ export class SettlementService {
     }
 
     return currentAmountCents;
+  }
+
+  private async currentFinalCumulativeAmount(
+    tx: Prisma.TransactionClient,
+    contractId: string,
+    currentAmountCents: bigint
+  ): Promise<bigint> {
+    const previousSettlements = await tx.settlement.findMany({
+      where: {
+        contractId,
+        status: { in: [...SETTLEMENT_PREVIOUS_EFFECTIVE_STATUSES] }
+      },
+      select: { amountCents: true }
+    });
+    return calculateSettlementLineTotalBigInt([
+      ...previousSettlements.map((settlement) => settlement.amountCents),
+      currentAmountCents
+    ]);
+  }
+
+  private freezeFinalDeclaration(snapshot: Prisma.JsonValue | null | undefined, applicantUserId?: string) {
+    const declaration = snapshot as { accepted?: unknown; statement?: unknown } | null;
+    if (declaration?.accepted !== true) {
+      throw new SettlementGovernanceSubmissionDenial("请确认最终结算总体声明后再提交");
+    }
+    return {
+      version: 1,
+      statement: typeof declaration.statement === "string"
+        ? declaration.statement
+        : "本次为最终结算，生效后不再发起新结算，未实施余量不再结算。",
+      accepted: true,
+      ...(applicantUserId ? { acceptedByUserId: applicantUserId } : {}),
+      acceptedAt: new Date().toISOString()
+    } as Prisma.InputJsonValue;
   }
 
   private async reserveSettlementQuota(
@@ -2668,6 +2757,7 @@ export class SettlementService {
         const effectiveSettlement = await tx.settlement.update({
           where: { id: settlement.id }, data: { status: "effective" satisfies SettlementStatus }
         });
+        await this.closeContractAfterFinalSettlement(tx, effectiveSettlement, actorUserId);
         await this.useSettlementExceptionQuotaUsage(tx, settlement.id, actorUserId);
         await this.audit.record(tx, {
           actorUserId,
@@ -2713,6 +2803,7 @@ export class SettlementService {
         data: { status: "effective" satisfies SettlementStatus }
       });
 
+      await this.closeContractAfterFinalSettlement(tx, effectiveSettlement, actorUserId);
       await this.useSettlementExceptionQuotaUsage(tx, settlement.id, actorUserId);
 
       await this.audit.record(tx, {
@@ -2726,6 +2817,36 @@ export class SettlementService {
       });
 
       return effectiveSettlement;
+    });
+  }
+
+  private async closeContractAfterFinalSettlement(
+    tx: Prisma.TransactionClient,
+    settlement: Pick<Settlement, "id" | "contractId" | "isFinal">,
+    actorUserId: string
+  ) {
+    if (!settlement.isFinal) return;
+    const closedAt = new Date();
+    const closed = await tx.contract.updateMany({
+      where: {
+        id: settlement.contractId,
+        settlementClosedAt: null,
+        finalSettlementId: null
+      },
+      data: {
+        settlementClosedAt: closedAt,
+        finalSettlementId: settlement.id
+      }
+    });
+    if (closed.count !== 1) {
+      throw new ConflictException("合同结算入口已被其他最终结算关闭，请刷新后核对");
+    }
+    await this.audit.record(tx, {
+      actorUserId,
+      action: "contract.settlement.close",
+      businessType: "contract",
+      businessId: settlement.contractId,
+      metadata: { finalSettlementId: settlement.id, settlementClosedAt: closedAt.toISOString() }
     });
   }
 

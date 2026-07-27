@@ -129,6 +129,8 @@ export class SettlementSubmissionService {
               governanceVersion: 1,
               fieldReviewerUserId: draft.fieldReviewerUserId,
               fieldReviewerRoleKey: draft.fieldReviewerRoleKey,
+              finalDeclarationVersion: draft.finalDeclarationVersion,
+              finalDeclarationSnapshot: draft.finalDeclarationSnapshot,
               finalConfirmations: {
                 finalScopeCompleted: draft.finalScopeCompleted,
                 finalPriorSettlementsIncluded: draft.finalPriorSettlementsIncluded,
@@ -228,6 +230,8 @@ export class SettlementSubmissionService {
     periodLabel: string;
     isFinal: boolean;
     finalCumulativeAmountCents: bigint | null;
+    finalDeclarationVersion?: number | null;
+    finalDeclarationSnapshot?: Prisma.JsonValue | null;
     processId?: string | null;
     periodStart?: Date | null;
     periodEnd?: Date | null;
@@ -242,7 +246,7 @@ export class SettlementSubmissionService {
       code: draft.code,
       periodLabel: draft.periodLabel,
       isFinal: draft.isFinal,
-      ...(draft.isFinal && draft.finalCumulativeAmountCents !== null
+      ...(draft.isFinal && draft.finalDeclarationVersion !== 1 && draft.finalCumulativeAmountCents !== null
         ? { amountCents: draft.finalCumulativeAmountCents.toString() }
         : {}),
       settlementLines

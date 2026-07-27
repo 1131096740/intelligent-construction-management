@@ -179,6 +179,64 @@ describe("SettlementService", () => {
     }
   });
 
+  it("accepts the V2 final declaration without the retired five confirmations", async () => {
+    const frozen = await service.freezeGovernedSettlementFacts(
+      governedRouteTx([
+        { projectId: "project-1", userId: "material-1", roleKey: "material_staff", userIsActive: true },
+        { projectId: "project-1", userId: "manager-1", roleKey: "project_manager", userIsActive: true }
+      ], [
+        { userId: "material-director-1", roleKey: "material_director" },
+        { userId: "contract-director-1", roleKey: "contract_director" },
+        { userId: "finance-director-1", roleKey: "finance_director" }
+      ]) as never,
+      { id: "contract-1", projectId: "project-1", contractTypeKey: "material_purchase" },
+      true,
+      "owner-1",
+      {
+        draftId: "draft-1",
+        governanceVersion: 1,
+        fieldReviewerUserId: "material-1",
+        fieldReviewerRoleKey: "material_staff",
+        finalDeclarationVersion: 1,
+        finalDeclarationSnapshot: { accepted: true },
+        finalConfirmations: Object.fromEntries(Object.keys(finalFacts).map((key) => [key, null])) as never
+      }
+    );
+
+    expect(frozen.finalConfirmations).toEqual({
+      finalScopeCompleted: null,
+      finalPriorSettlementsIncluded: null,
+      finalNoOutstandingSettlements: null,
+      finalWithinContractCap: null,
+      finalNoFurtherOrdinarySettlements: null
+    });
+  });
+
+  it("rejects an unaccepted V2 final declaration", async () => {
+    await expect(service.freezeGovernedSettlementFacts(
+      governedRouteTx([
+        { projectId: "project-1", userId: "material-1", roleKey: "material_staff", userIsActive: true },
+        { projectId: "project-1", userId: "manager-1", roleKey: "project_manager", userIsActive: true }
+      ], [
+        { userId: "material-director-1", roleKey: "material_director" },
+        { userId: "contract-director-1", roleKey: "contract_director" },
+        { userId: "finance-director-1", roleKey: "finance_director" }
+      ]) as never,
+      { id: "contract-1", projectId: "project-1", contractTypeKey: "material_purchase" },
+      true,
+      "owner-1",
+      {
+        draftId: "draft-1",
+        governanceVersion: 1,
+        fieldReviewerUserId: "material-1",
+        fieldReviewerRoleKey: "material_staff",
+        finalDeclarationVersion: 1,
+        finalDeclarationSnapshot: { accepted: false },
+        finalConfirmations: Object.fromEntries(Object.keys(finalFacts).map((key) => [key, null])) as never
+      }
+    )).rejects.toThrow("总体声明");
+  });
+
   it("rejects any final fact on an ordinary settlement", async () => {
     await expect(service.freezeGovernedSettlementFacts(
       governedRouteTx([
@@ -925,7 +983,9 @@ describe("SettlementService", () => {
         })
       },
       settlement: {
-        findMany: jest.fn().mockResolvedValue([]),
+        findMany: jest.fn()
+          .mockResolvedValueOnce([{ id: "settlement-previous" }])
+          .mockResolvedValue([]),
         create: jest.fn()
       },
       ...settlementQuotaTables()
@@ -999,14 +1059,20 @@ describe("SettlementService", () => {
         })
       },
       settlement: {
-        findMany: jest.fn().mockResolvedValue([]),
+        findMany: jest.fn()
+          .mockResolvedValueOnce([{ id: "settlement-previous" }])
+          .mockResolvedValueOnce([])
+          .mockResolvedValue([]),
         create: jest.fn().mockResolvedValue({
           id: "settlement-1",
           code: "JS-2026-020"
         })
       },
       settlementLine: {
-        findMany: jest.fn().mockResolvedValue([]),
+        findMany: jest.fn().mockResolvedValue([{
+          id: "settlement-line-previous",
+          settlementId: "settlement-previous"
+        }]),
         createMany: jest.fn()
       },
       ...settlementQuotaTables()
@@ -1032,7 +1098,8 @@ describe("SettlementService", () => {
           sourceType: "manual_adjustment",
           name: "材料扣款",
           amountCents: "-10000",
-          reason: "现场扣款确认"
+          reason: "现场扣款确认",
+          relatedSettlementLineId: "settlement-line-previous"
         }
       ]
     });
@@ -1047,7 +1114,7 @@ describe("SettlementService", () => {
     });
     expect(tx.settlementLine.createMany).toHaveBeenCalledWith({
       data: [
-        {
+        expect.objectContaining({
           settlementId: "settlement-1",
           contractBillRowId: "bill-row-1",
           sourceType: "contract_bill_row",
@@ -1066,8 +1133,8 @@ describe("SettlementService", () => {
           reason: null,
           remark: null,
           sortOrder: 1
-        },
-        {
+        }),
+        expect.objectContaining({
           settlementId: "settlement-1",
           contractBillRowId: null,
           sourceType: "manual_adjustment",
@@ -1083,10 +1150,11 @@ describe("SettlementService", () => {
           amountCents: -10000n,
           taxExclusiveAmountCents: null,
           taxAmountCents: null,
+          relatedSettlementLineId: "settlement-line-previous",
           reason: "现场扣款确认",
           remark: null,
           sortOrder: 2
-        }
+        })
       ]
     });
   });
@@ -4736,6 +4804,47 @@ describe("SettlementService", () => {
         archiveFileId: "settlement-archive-file-1"
       }
     });
+  });
+
+  it("closes the contract atomically when a final settlement archive becomes effective", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-final-1",
+          contractId: "contract-1",
+          isFinal: true,
+          status: "pending_archive_confirm"
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "settlement-final-1",
+          contractId: "contract-1",
+          isFinal: true,
+          status: "effective"
+        })
+      },
+      settlementArchiveFile: {
+        findFirst: jest.fn().mockResolvedValue({ id: "archive-1", status: "pending_confirm" }),
+        update: jest.fn().mockResolvedValue({ id: "archive-1", status: "confirmed" })
+      },
+      contract: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      projectSettlementExceptionQuotaUsage: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const settlementService = new SettlementService(prisma as never, audit as never, auth as never);
+
+    await settlementService.confirmArchiveFile("settlement-final-1", "user-contract-director", {
+      archiveFileId: "archive-1",
+      confirmationPassword: "current-password"
+    });
+
+    expect(tx.contract.updateMany).toHaveBeenCalledWith({
+      where: { id: "contract-1", settlementClosedAt: null, finalSettlementId: null },
+      data: { settlementClosedAt: expect.any(Date), finalSettlementId: "settlement-final-1" }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "contract.settlement.close",
+      businessId: "contract-1"
+    }));
   });
 
   it("rejects settlement archive confirmation without a confirmation password", async () => {

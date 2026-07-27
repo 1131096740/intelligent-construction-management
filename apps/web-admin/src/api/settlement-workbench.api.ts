@@ -142,7 +142,7 @@ export async function fetchSettlementParticipantOptions(
 
 export async function previewSettlementLines(
   contractVersionId: string,
-  body: { settlementLines: SettlementLineDraftPayload[] }
+  body: { isFinal?: boolean; settlementLines: SettlementLineDraftPayload[] }
 ): Promise<SettlementCanonicalPreviewReadModel> {
   const response = await apiFetch(
     `/settlement-workbench/contract-versions/${encodeURIComponent(contractVersionId)}/preview`,

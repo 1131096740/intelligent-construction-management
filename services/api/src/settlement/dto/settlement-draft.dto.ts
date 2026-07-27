@@ -65,6 +65,14 @@ export class SaveSettlementDraftDto {
   @IsBoolean({ message: "是否最终结算必须是布尔值" })
   isFinal?: boolean;
 
+  /**
+   * V2 最终结算只保留一份总体声明。五项历史确认字段仍保留在
+   * 既有记录中用于只读追溯，新的工作台不得再写入它们。
+   */
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsBoolean({ message: "最终结算总体声明必须是布尔值" })
+  finalDeclarationAccepted?: boolean;
+
   @ValidateIf((_object, value) => value !== undefined)
   @IsBoolean({ message: "请确认合同范围内应结事项已完成" })
   finalScopeCompleted?: boolean;

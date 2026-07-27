@@ -70,6 +70,16 @@ export class SettlementDraftController {
     return this.drafts.get(projectId, draftId, user.id);
   }
 
+  @Get(":draftId/final-preparation")
+  @RequireProjectRole("settlement.create")
+  finalPreparation(
+    @Param("projectId") projectId: string,
+    @Param("draftId") draftId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.drafts.finalPreparation(projectId, draftId, user.id);
+  }
+
   @Get(":draftId/line-attachments")
   @RequireProjectRole("settlement.create")
   listLineAttachments(

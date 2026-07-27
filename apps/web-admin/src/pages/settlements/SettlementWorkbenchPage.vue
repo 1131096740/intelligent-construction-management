@@ -108,13 +108,6 @@
           <t-radio :value="true">最终结算</t-radio>
         </t-radio-group>
       </label>
-      <t-input
-        v-if="form.isFinal"
-        v-model="form.finalCumulativeAmountYuan"
-        label="审定累计结算金额（元）"
-        placeholder="请输入最终审定累计金额"
-        :readonly="Boolean(draftSubmissionBlockingReason)"
-      />
     </section>
 
     <section
@@ -123,15 +116,22 @@
       aria-labelledby="final-confirmations-title"
     >
       <div>
-        <strong id="final-confirmations-title">最终结算完结确认</strong>
-        <span>五项事实将分别保存并在提交时由后端逐项复核。</span>
+        <strong id="final-confirmations-title">最终结算准备情况</strong>
+        <span>系统核对历史结算与未完成事项；未实施余量不需要补零行。</span>
       </div>
-      <t-checkbox
-        v-for="item in FINAL_SETTLEMENT_CONFIRMATIONS"
-        :key="item.key"
-        v-model="finalConfirmations[item.key]"
-      >
-        {{ item.label }}
+      <t-alert
+        v-for="check in finalPreparation?.checks ?? []"
+        :key="check.key"
+        :theme="check.status === 'ready' ? 'success' : check.status === 'blocking' ? 'error' : 'warning'"
+        :message="`${check.label}：${check.message}`"
+      />
+      <t-alert
+        v-if="!activeDraft"
+        theme="info"
+        message="保存草稿后，系统会生成最终结算准备情况。"
+      />
+      <t-checkbox v-model="form.finalDeclarationAccepted">
+        我确认：本次为最终结算，生效后不再发起新结算，未实施余量不再结算。
       </t-checkbox>
     </section>
 
@@ -798,6 +798,7 @@ import {
   createSettlementDraftRecord,
   abandonSettlementDraftRecord,
   fetchSettlementDraftRecord,
+  fetchSettlementFinalPreparation,
   generateSettlementFrozenDocument,
   linkSettlementCounterpartySignedDocument,
   listSettlementDraftRecords,
@@ -805,6 +806,7 @@ import {
   updateSettlementDraftRecord,
   type SaveSettlementDraftPayload,
   type SettlementDraftReadModel,
+  type SettlementFinalPreparationReadModel,
   type SettlementSignedDocumentRecordReadModel
 } from "../../api/settlement-drafts.api";
 import {
@@ -823,13 +825,12 @@ import {
   type SettlementParticipantOptionsReadModel
 } from "../../api/settlement-workbench.api";
 import { fetchSettlementTemplateRecommendations } from "../../api/settlement-template.api";
-import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
+import { centsTextToYuanText } from "../../lib/money";
 import {
   findContractOption,
   toContractSelectOptions
 } from "../contracts/contract-business-options.config";
 import {
-  FINAL_SETTLEMENT_CONFIRMATIONS,
   SETTLEMENT_WORKBENCH_STEPS,
   applyBatchRemark,
   applyImportedSettlementLines,
@@ -845,11 +846,9 @@ import {
   settlementSignatureStateAfterDraftRevision,
   settlementWorkbenchDraftFingerprint,
   validateSettlementDraftForSave,
-  validateFinalSettlementConfirmations,
   validateSettlementWorkbench,
   type ManualAdjustmentDraft,
   type VisaChangeDraft,
-  type FinalSettlementConfirmationState,
   type SourceLineDraftMap
 } from "./settlement-workbench.state";
 import { canApplySettlementSourceResponse } from "./settlement-source-lines.state";
@@ -906,11 +905,10 @@ interface SettlementWorkbenchRecoverySnapshot {
     code: string;
     periodLabel: string;
     isFinal: boolean;
-    finalCumulativeAmountYuan: string;
+    finalDeclarationAccepted: boolean;
     fieldReviewerUserId: string;
     fieldReviewerRoleKey: "" | "material_staff" | "engineering_foreman" | "engineering_tech";
   };
-  finalConfirmations: FinalSettlementConfirmationState;
   settlementTemplateVersionId: string;
   drafts: SourceLineDraftMap;
   adjustments: ManualAdjustmentDraft[];
@@ -929,11 +927,11 @@ const form = reactive({
   code: `JS-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
   periodLabel: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`,
   isFinal: false,
-  finalCumulativeAmountYuan: "",
+  finalDeclarationAccepted: false,
   fieldReviewerUserId: "",
   fieldReviewerRoleKey: "" as "" | "material_staff" | "engineering_foreman" | "engineering_tech"
 });
-const finalConfirmations = reactive<FinalSettlementConfirmationState>({});
+const finalPreparation = ref<SettlementFinalPreparationReadModel | null>(null);
 const projects = ref<ProjectOptionReadModel[]>([]);
 const contracts = ref<ContractBusinessOptionReadModel[]>([]);
 const sourceRows = ref<SettlementSourceLineReadModel[]>([]);
@@ -1189,6 +1187,7 @@ const validationErrors = computed(() =>
     contractVersionId: selectedContractVersionId.value,
     code: form.code,
     periodLabel: form.periodLabel,
+    isFinal: form.isFinal,
     rows: sourceRows.value,
     drafts: drafts.value,
     adjustments: adjustments.value,
@@ -1276,7 +1275,7 @@ const createDisabledReason = computed(() => {
     return "当前存在未确认的税务或价格事实，暂不能提交结算审批。";
   }
   try {
-    if (BigInt(preview.value.amountCents) <= 0n) return "结算合计必须大于 0。";
+    if (!form.isFinal && BigInt(preview.value.amountCents) <= 0n) return "结算合计必须大于 0。";
   } catch {
     return "后台合计格式不正确，请重新核算。";
   }
@@ -1287,17 +1286,9 @@ const createDisabledReason = computed(() => {
     return "所选现场复核人当前已不在本项目可选范围，请重新选择。";
   }
   if (form.isFinal) {
-    if (!form.finalCumulativeAmountYuan.trim()) return "请填写审定累计结算金额。";
-    try {
-      yuanTextToCentsText(form.finalCumulativeAmountYuan.trim());
-    } catch {
-      return "审定累计结算金额必须是非负数字，最多保留两位小数。";
-    }
-    const confirmationError = validateFinalSettlementConfirmations(
-      true,
-      finalConfirmations
-    )[0];
-    if (confirmationError) return confirmationError;
+    if (!form.finalDeclarationAccepted) return "请确认最终结算总体声明。";
+    const blocking = finalPreparation.value?.checks.find((check) => check.status === "blocking");
+    if (blocking) return blocking.message;
   }
   return "";
 });
@@ -1750,13 +1741,16 @@ async function requestCanonicalPreview() {
     return;
   }
   const contractVersionId = selectedContractVersionId.value;
-  const payload = buildSettlementLinePayload(sourceRows.value, drafts.value, adjustments.value);
+  const payload = buildSettlementLinePayload(sourceRows.value, drafts.value, adjustments.value, visaChanges.value);
   const fingerprint = settlementPayloadFingerprint(templateResourceKey.value, payload);
   const requestId = ++previewRequestId;
   previewBusy.value = true;
   pageMessage.value = "";
   try {
-    const result = await previewSettlementLines(contractVersionId, { settlementLines: payload });
+    const result = await previewSettlementLines(contractVersionId, {
+      isFinal: form.isFinal,
+      settlementLines: payload
+    });
     if (
       canApplySettlementPreviewResponse(
         requestId,
@@ -1975,15 +1969,7 @@ function settlementDraftPayload(): SaveSettlementDraftPayload {
   const finalPayload = form.isFinal
     ? {
         isFinal: true,
-        ...(form.finalCumulativeAmountYuan.trim()
-          ? { finalCumulativeAmountCents: yuanTextToCentsText(form.finalCumulativeAmountYuan.trim()) }
-          : {}),
-        finalScopeCompleted: finalConfirmations.finalScopeCompleted === true,
-        finalPriorSettlementsIncluded: finalConfirmations.finalPriorSettlementsIncluded === true,
-        finalNoOutstandingSettlements: finalConfirmations.finalNoOutstandingSettlements === true,
-        finalWithinContractCap: finalConfirmations.finalWithinContractCap === true,
-        finalNoFurtherOrdinarySettlements:
-          finalConfirmations.finalNoFurtherOrdinarySettlements === true
+        finalDeclarationAccepted: form.finalDeclarationAccepted
       }
     : { isFinal: false };
   return {
@@ -2033,6 +2019,7 @@ async function persistDraft(showSuccessMessage: boolean) {
         : await createSettlementDraftRecord(form.projectId, payload);
     const previousRevision = activeDraft.value?.revision ?? 0;
     activeDraft.value = saved;
+    await refreshFinalPreparation();
     if (previousRevision !== saved.revision) {
       const reset = settlementSignatureStateAfterDraftRevision(
         {
@@ -2339,7 +2326,6 @@ async function submitSettlement() {
 function workbenchSnapshot() {
   return JSON.stringify({
     form: { ...form },
-    finalConfirmations: { ...finalConfirmations },
     settlementTemplateVersionId: selectedSettlementTemplateVersionId.value,
     drafts: drafts.value,
     adjustments: adjustments.value,
@@ -2350,7 +2336,6 @@ function workbenchSnapshot() {
 function localRecoverySnapshot(): SettlementWorkbenchRecoverySnapshot {
   return {
     form: { ...form },
-    finalConfirmations: { ...finalConfirmations },
     settlementTemplateVersionId: selectedSettlementTemplateVersionId.value,
     drafts: { ...drafts.value },
     adjustments: adjustments.value.map((item) => ({ ...item })),
@@ -2436,7 +2421,6 @@ function restoreLocalRecovery() {
   if (!recovery) return;
   const snapshot = recovery.snapshot;
   Object.assign(form, snapshot.form);
-  Object.assign(finalConfirmations, snapshot.finalConfirmations);
   if (
     snapshot.settlementTemplateVersionId &&
     snapshot.settlementTemplateVersionId !== selectedSettlementTemplateVersionId.value
@@ -2526,12 +2510,8 @@ async function restoreDraft(draft: SettlementDraftReadModel) {
   form.code = draft.code;
   form.periodLabel = draft.periodLabel;
   form.isFinal = draft.isFinal;
-  form.finalCumulativeAmountYuan = draft.finalCumulativeAmountCents
-    ? centsTextToYuanText(draft.finalCumulativeAmountCents).replace(/,/g, "")
-    : "";
-  for (const item of FINAL_SETTLEMENT_CONFIRMATIONS) {
-    finalConfirmations[item.key] = draft[item.key] === true;
-  }
+  form.finalDeclarationAccepted = draft.finalDeclarationSnapshot?.accepted === true;
+  await refreshFinalPreparation();
   if (draftSubmissionBlockingReason.value) {
     baselineDraftSnapshot.value = workbenchSnapshot();
     pageMessage.value = "";
@@ -2590,6 +2570,21 @@ async function restoreDraft(draft: SettlementDraftReadModel) {
   schedulePreview();
 }
 
+async function refreshFinalPreparation() {
+  const draft = activeDraft.value;
+  if (!draft?.isFinal) {
+    finalPreparation.value = null;
+    return;
+  }
+  try {
+    finalPreparation.value = await fetchSettlementFinalPreparation(draft.projectId, draft.id);
+  } catch (error) {
+    finalPreparation.value = null;
+    pageMessage.value = error instanceof Error ? error.message : "读取最终结算准备情况失败。";
+    pageMessageTone.value = "warning";
+  }
+}
+
 async function initializeWorkbench() {
   await loadProjects();
   const draftId = typeof route.query.draftId === "string"
@@ -2613,6 +2608,16 @@ async function initializeWorkbench() {
 watch(
   () => JSON.stringify(localRecoverySnapshot()),
   () => saveLocalRecovery()
+);
+
+watch(
+  () => form.isFinal,
+  (isFinal) => {
+    if (!isFinal) {
+      form.finalDeclarationAccepted = false;
+      finalPreparation.value = null;
+    }
+  }
 );
 
 onMounted(() => {

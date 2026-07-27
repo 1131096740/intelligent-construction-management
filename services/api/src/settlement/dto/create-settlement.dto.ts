@@ -66,7 +66,12 @@ function IsRequiredSettlementLinesArray(): PropertyDecorator {
       options: {
         message: "请至少选择一条本期真实发生的合同清单项或填写一条人工调整"
       },
-      validator: { validate: (value) => !Array.isArray(value) || value.length > 0 }
+      validator: {
+        validate: (value, args) =>
+          !Array.isArray(value) ||
+          value.length > 0 ||
+          (args?.object as CreateSettlementDto | undefined)?.isFinal === true
+      }
     });
   };
 }

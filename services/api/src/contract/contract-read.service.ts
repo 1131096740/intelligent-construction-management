@@ -649,6 +649,9 @@ export class ContractReadService {
         takeover
       );
       const settlementTypeBlockReason = settlementContractTypeBlockReason(contract.contractTypeKey);
+      const settlementClosedReason = contract.settlementClosedAt || contract.finalSettlementId
+        ? "该合同已完成最终结算，不能再发起新的结算"
+        : null;
       const paymentTypeBlockReason =
         contract.contractTypeKey === "generic_contract" || !settlementTypeBlockReason
           ? null
@@ -674,9 +677,9 @@ export class ContractReadService {
         takeoverStatus: takeover?.takeoverStatus ?? null,
         takeoverStatusLabel: takeover ? this.takeoverStatusLabel(takeover.takeoverStatus) : null,
         historicalBalanceConfirmedAt: takeover?.historicalBalanceConfirmedAt?.toISOString() ?? null,
-        canCreateSettlement: Boolean(effectiveVersion) && !settlementTypeBlockReason,
+        canCreateSettlement: Boolean(effectiveVersion) && !settlementTypeBlockReason && !settlementClosedReason,
         settlementUnavailableReason: effectiveVersion
-          ? settlementTypeBlockReason
+          ? settlementClosedReason ?? settlementTypeBlockReason
           : "合同尚未生效，不能发起结算",
         canCreatePayment: !paymentUnavailableReason && !paymentTypeBlockReason,
         paymentUnavailableReason: paymentUnavailableReason ?? paymentTypeBlockReason,

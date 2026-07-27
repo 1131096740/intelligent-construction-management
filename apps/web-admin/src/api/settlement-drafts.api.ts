@@ -6,21 +6,13 @@ import type {
   SettlementLineDraftPayload
 } from "./settlement-workbench.api";
 
-export interface SettlementFinalConfirmationsPayload {
-  finalScopeCompleted?: boolean;
-  finalPriorSettlementsIncluded?: boolean;
-  finalNoOutstandingSettlements?: boolean;
-  finalWithinContractCap?: boolean;
-  finalNoFurtherOrdinarySettlements?: boolean;
-}
-
-export interface SaveSettlementDraftPayload extends SettlementFinalConfirmationsPayload {
+export interface SaveSettlementDraftPayload {
   contractVersionId: string;
   settlementTemplateVersionId: string;
   code: string;
   periodLabel: string;
   isFinal?: boolean;
-  finalCumulativeAmountCents?: string;
+  finalDeclarationAccepted?: boolean;
   fieldReviewerUserId?: string;
   fieldReviewerRoleKey?: SettlementFieldReviewerRoleKey;
   settlementLines: SettlementLineDraftPayload[];
@@ -38,6 +30,8 @@ export interface SettlementDraftReadModel {
   periodLabel: string;
   isFinal: boolean;
   finalCumulativeAmountCents: string | null;
+  finalDeclarationVersion: number | null;
+  finalDeclarationSnapshot: { accepted?: boolean; statement?: string } | null;
   governanceVersion: number | null;
   fieldReviewerUserId: string | null;
   fieldReviewerRoleKey: SettlementFieldReviewerRoleKey | null;
@@ -64,6 +58,17 @@ export interface SettlementDraftReadModel {
   submissionBlockingReason: string | null;
   /** Present on the draft detail endpoint; create/update/list responses remain scalar-only. */
   documents?: SettlementDraftDocumentsReadModel;
+}
+
+export interface SettlementFinalPreparationReadModel {
+  isFinal: boolean;
+  checks: Array<{
+    key: string;
+    label: string;
+    status: "ready" | "action_required" | "blocking";
+    message: string;
+    amountCents?: string;
+  }>;
 }
 
 export interface SettlementLineAttachmentReadModel {
@@ -193,6 +198,14 @@ export function fetchSettlementDraftRecord(projectId: string, draftId: string) {
     draftItemPath(projectId, draftId),
     { method: "GET" },
     "读取结算草稿失败"
+  );
+}
+
+export function fetchSettlementFinalPreparation(projectId: string, draftId: string) {
+  return requestDraft<SettlementFinalPreparationReadModel>(
+    `${draftItemPath(projectId, draftId)}/final-preparation`,
+    { method: "GET" },
+    "读取最终结算准备情况失败"
   );
 }
 

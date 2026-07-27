@@ -300,6 +300,18 @@ describe("settlement workbench state", () => {
     ]);
   });
 
+  it("allows an empty final settlement so unimplemented remainder needs no fake zero line", () => {
+    expect(validateSettlementWorkbench({
+      contractVersionId: "version-1",
+      code: "JS-FINAL-001",
+      periodLabel: "最终结算",
+      isFinal: true,
+      rows: [normalRow()],
+      drafts: {},
+      adjustments: []
+    })).toEqual([]);
+  });
+
   it("pastes TSV quantities across visible normal rows and selects only affected rows", () => {
     expect(
       applyTsvQuantityPaste([normalRow(), normalRow({ id: "row-2", itemName: "模板" })], {}, 0, "1.5\t忽略\n2.75")

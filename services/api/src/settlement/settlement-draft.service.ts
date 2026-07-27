@@ -61,6 +61,7 @@ export class SettlementDraftService {
         context.version.id,
         input.settlementLines
       );
+      const finalFacts = this.finalDraftFacts(input);
       const created = await tx.settlementDraft.create({
         data: {
           projectId: context.contract.projectId,
@@ -74,15 +75,14 @@ export class SettlementDraftService {
           periodStart: process?.periodStart,
           periodEnd: process?.periodEnd,
           isFinal: input.isFinal === true,
-          finalCumulativeAmountCents: this.finalAmount(input),
+          ...finalFacts,
           lines: this.toJson(input.settlementLines),
           calculationVersion: 3,
           sourceSnapshotToken,
           ownerUserId: actorUserId,
           governanceVersion: 1,
           fieldReviewerUserId: input.fieldReviewerUserId?.trim() || null,
-          fieldReviewerRoleKey: input.fieldReviewerRoleKey ?? null,
-          ...this.finalConfirmations(input)
+          fieldReviewerRoleKey: input.fieldReviewerRoleKey ?? null
         }
       });
       await this.replaceStructuredLines(tx, created.id, input.settlementLines);
@@ -109,6 +109,8 @@ export class SettlementDraftService {
         periodLabel: string;
         isFinal: boolean;
         finalCumulativeAmountCents: bigint | null;
+        finalDeclarationVersion: number | null;
+        finalDeclarationSnapshot: Prisma.JsonValue | null;
         lines: Prisma.JsonValue;
         status: string;
         ownerUserId: string;
@@ -157,6 +159,10 @@ export class SettlementDraftService {
           periodEnd: process?.periodEnd,
           isFinal: source!.isFinal,
           finalCumulativeAmountCents: source!.finalCumulativeAmountCents,
+          finalDeclarationVersion: source!.finalDeclarationVersion,
+          finalDeclarationSnapshot: source!.finalDeclarationSnapshot === null
+            ? Prisma.JsonNull
+            : source!.finalDeclarationSnapshot as Prisma.InputJsonValue,
           lines: source!.lines as Prisma.InputJsonValue,
           ownerUserId: actorUserId,
           governanceVersion: 1,
@@ -233,6 +239,65 @@ export class SettlementDraftService {
     };
   }
 
+  async finalPreparation(projectId: string, draftId: string, actorUserId: string) {
+    const draft = await this.prisma.settlementDraft.findUnique({ where: { id: draftId } });
+    this.assertOwnedDraft(draft, projectId, actorUserId);
+    if (!draft!.isFinal) {
+      return { isFinal: false, checks: [] };
+    }
+    const [contract, previousSettlements, otherDraftCount, inProgressSettlementCount] = await Promise.all([
+      this.prisma.contract.findUnique({ where: { id: draft!.contractId } }),
+      this.prisma.settlement.findMany({
+        where: {
+          contractId: draft!.contractId,
+          status: { in: ["effective", "partially_paid", "paid"] }
+        },
+        select: { amountCents: true }
+      }),
+      this.prisma.settlementDraft.count({
+        where: { contractId: draft!.contractId, id: { not: draftId }, status: "draft" }
+      }),
+      this.prisma.settlement.count({
+        where: { contractId: draft!.contractId, status: { in: [...SETTLEMENT_IN_PROGRESS_STATUSES] } }
+      })
+    ]);
+    const declaration = draft!.finalDeclarationSnapshot as { accepted?: unknown } | null;
+    const checks = [
+      {
+        key: "final_declaration",
+        label: "最终结算总体声明",
+        status: declaration?.accepted === true ? "ready" : "action_required",
+        message: declaration?.accepted === true
+          ? "已确认：生效后不再发起新结算，未实施余量不再结算。"
+          : "请确认最终结算总体声明。"
+      },
+      {
+        key: "prior_effective_history",
+        label: "历史已生效结算",
+        status: "ready",
+        amountCents: previousSettlements.reduce((total, item) => total + item.amountCents, 0n).toString(),
+        message: `已纳入 ${previousSettlements.length} 笔历史生效结算。`
+      },
+      {
+        key: "unresolved_settlements",
+        label: "未完成结算",
+        status: otherDraftCount + inProgressSettlementCount === 0 ? "ready" : "blocking",
+        message: otherDraftCount + inProgressSettlementCount === 0
+          ? "不存在其他未完成的结算草稿或审批中结算。"
+          : `仍有 ${otherDraftCount + inProgressSettlementCount} 笔未完成结算，暂不能提交最终结算。`
+      },
+      {
+        key: "settlement_entry",
+        label: "合同结算入口",
+        status: contract?.settlementClosedAt || contract?.finalSettlementId ? "blocking" : "ready",
+        message: contract?.settlementClosedAt || contract?.finalSettlementId
+          ? "合同已经由最终结算关闭。"
+          : "最终归档生效后将自动关闭新的结算入口。"
+      }
+    ];
+    return { isFinal: true, checks };
+  }
+
   async update(
     projectId: string,
     draftId: string,
@@ -277,6 +342,7 @@ export class SettlementDraftService {
         context.version.id,
         input.settlementLines
       );
+      const finalFacts = this.finalDraftFacts(input);
       const updated = await tx.settlementDraft.updateMany({
         where: {
           id: draftId,
@@ -293,14 +359,13 @@ export class SettlementDraftService {
           code: input.code.trim(),
           periodLabel: input.periodLabel.trim(),
           isFinal: input.isFinal === true,
-          finalCumulativeAmountCents: this.finalAmount(input),
+          ...finalFacts,
           lines: this.toJson(input.settlementLines),
           calculationVersion: 3,
           sourceSnapshotToken,
           governanceVersion: 1,
           fieldReviewerUserId: input.fieldReviewerUserId?.trim() || null,
           fieldReviewerRoleKey: input.fieldReviewerRoleKey ?? null,
-          ...this.finalConfirmations(input),
           revision: { increment: 1 }
         }
       });
@@ -563,6 +628,9 @@ export class SettlementDraftService {
     if (!contract) {
       throw new NotFoundException("未找到结算关联合同，请刷新合同台账后重试");
     }
+    if (contract.settlementClosedAt || contract.finalSettlementId) {
+      throw new BadRequestException("该合同已由最终结算关闭，不能再新建或修改结算草稿");
+    }
     // `undefined` only exists in pre-migration test doubles. A persisted legacy
     // value is NULL and must be explicitly confirmed by the contract director.
     if (version.settlementMode !== undefined) {
@@ -685,6 +753,57 @@ export class SettlementDraftService {
     return Object.fromEntries(
       Object.entries(values).map(([key, value]) => [key, value ?? null])
     );
+  }
+
+  private finalDraftFacts(input: SaveSettlementDraftDto) {
+    const hasV2Declaration = input.finalDeclarationAccepted !== undefined;
+    if (input.isFinal !== true) {
+      if (hasV2Declaration) {
+        throw new BadRequestException("过程结算不能填写最终结算总体声明");
+      }
+      return {
+        finalCumulativeAmountCents: null,
+        finalDeclarationVersion: null,
+        finalDeclarationSnapshot: Prisma.JsonNull,
+        ...this.finalConfirmations(input)
+      };
+    }
+
+    if (!hasV2Declaration) {
+      return {
+        finalCumulativeAmountCents: this.finalAmount(input),
+        finalDeclarationVersion: null,
+        finalDeclarationSnapshot: Prisma.JsonNull,
+        ...this.finalConfirmations(input)
+      };
+    }
+
+    const legacyValues = [
+      input.finalCumulativeAmountCents,
+      input.finalScopeCompleted,
+      input.finalPriorSettlementsIncluded,
+      input.finalNoOutstandingSettlements,
+      input.finalWithinContractCap,
+      input.finalNoFurtherOrdinarySettlements
+    ];
+    if (legacyValues.some((value) => value !== undefined)) {
+      throw new BadRequestException("最终结算 V2 不再填写累计金额或五项完结确认");
+    }
+
+    return {
+      finalCumulativeAmountCents: null,
+      finalDeclarationVersion: 1,
+      finalDeclarationSnapshot: {
+        version: 1,
+        statement: "本次为最终结算，生效后不再发起新结算，未实施余量不再结算。",
+        accepted: input.finalDeclarationAccepted === true
+      } as Prisma.InputJsonValue,
+      finalScopeCompleted: null,
+      finalPriorSettlementsIncluded: null,
+      finalNoOutstandingSettlements: null,
+      finalWithinContractCap: null,
+      finalNoFurtherOrdinarySettlements: null
+    };
   }
 
   private toJson(value: unknown): Prisma.InputJsonValue {
