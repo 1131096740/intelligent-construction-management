@@ -429,7 +429,8 @@ export class SettlementService {
     draft: Pick<SettlementDraft,
       "id" | "contractId" | "contractVersionId" | "paymentTermsVersionId" |
       "isFinal" | "finalCumulativeAmountCents" | "lines"
-    >
+    >,
+    settlementLinesOverride?: CreateSettlementLineDto[]
   ): Promise<{
     amountCents: bigint;
     finalCumulativeAmountCents: bigint | null;
@@ -445,21 +446,24 @@ export class SettlementService {
     lines: Array<SettlementDocumentInput["lines"][number] & { contractBillRowId: string | null }>;
   }> {
     const version = await lockContractAndAssertCurrentEffective(tx, draft.contractVersionId);
-    if (version.contractId !== draft.contractId || !Array.isArray(draft.lines)) {
+    if (version.contractId !== draft.contractId ||
+      (!settlementLinesOverride && !Array.isArray(draft.lines))) {
       throw new BadRequestException("结算草稿合同或明细事实已损坏，请重新保存草稿");
     }
+    const settlementLines = settlementLinesOverride ??
+      (draft.lines as unknown as CreateSettlementLineDto[]);
     const contract = await tx.contract.findUnique({ where: { id: draft.contractId } });
     if (!contract) throw new BadRequestException("未找到结算关联合同，请刷新合同台账后重试");
     assertSettlementContractType(contract.contractTypeKey);
     await this.assertTaxFactsReadyForSubmission(
       tx,
       version,
-      draft.lines as unknown as CreateSettlementLineDto[]
+      settlementLines
     );
     const preview = await this.previewSettlementLines(
       tx,
       version,
-      draft.lines as unknown as CreateSettlementLineDto[]
+      settlementLines
     );
     if (preview.submissionBlockers.length) this.throwSubmissionBlocker(preview.submissionBlockers[0]);
     const normalized = preview.lines as NormalizedSettlementLine[];

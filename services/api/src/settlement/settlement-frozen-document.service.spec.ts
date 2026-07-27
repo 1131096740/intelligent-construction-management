@@ -69,6 +69,7 @@ function context(preparedFacts: ReturnType<typeof facts>[] = [facts(), facts()])
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue([{ id: "locked" }]),
     settlementDraft: { findUnique: jest.fn().mockResolvedValue(draft) },
+    settlementDraftLine: { findMany: jest.fn().mockResolvedValue([]) },
     contract: { findUnique: jest.fn().mockResolvedValue({
       id: "contract-1", code: "HT-001", name: "钢材采购合同",
       contractTypeKey: "material_purchase", counterparty: "供应商",
@@ -156,6 +157,38 @@ describe("SettlementFrozenDocumentService", () => {
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
       action: "settlement.frozen_document.generated"
     }));
+  });
+
+  it("uses structured draft lines when freezing the counterparty copy", async () => {
+    const { service, tx, settlements } = context();
+    tx.settlementDraftLine.findMany.mockResolvedValueOnce([{
+      sourceType: "contract_bill_row",
+      contractBillRowId: "row-authoritative",
+      name: "权威结构化行",
+      unit: "吨",
+      quantity: { toString: () => "3" },
+      unitPriceCents: 1200n,
+      directAmountCents: null,
+      reason: null,
+      remark: null,
+      sortOrder: 2
+    }]);
+
+    await service.generate("project-1", "draft-1", "owner-1", 3);
+
+    expect(settlements.prepareDraftDocumentFacts).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ id: "draft-1" }),
+      [{
+        sourceType: "contract_bill_row",
+        contractBillRowId: "row-authoritative",
+        name: "权威结构化行",
+        unit: "吨",
+        quantity: "3",
+        unitPriceCents: "1200",
+        sortOrder: 2
+      }]
+    );
   });
 
   it("discards the uploaded orphan and refuses activation when facts drift", async () => {

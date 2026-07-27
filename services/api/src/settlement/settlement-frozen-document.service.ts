@@ -14,6 +14,7 @@ import {
   type SettlementDocumentInput
 } from "./settlement-document-renderer";
 import { SettlementService } from "./settlement.service";
+import type { CreateSettlementLineDto } from "./dto/create-settlement.dto";
 
 type DraftDocumentFacts = Awaited<
   ReturnType<SettlementService["prepareDraftDocumentFacts"]>
@@ -282,7 +283,8 @@ export class SettlementFrozenDocumentService {
     );
     const calculated = (await this.settlements.prepareDraftDocumentFacts(
       tx,
-      draft
+      draft,
+      await this.structuredDraftLines(tx, draft.id)
     )) as DraftDocumentFacts;
     const taxFacts = calculated.taxFacts;
     if (
@@ -337,6 +339,33 @@ export class SettlementFrozenDocumentService {
       settlementFrozenBusinessSnapshotToken(snapshot);
     const input = settlementFrozenDocumentInput(snapshot, new Date());
     return { draft, input, snapshot, businessSnapshotToken };
+  }
+
+  private async structuredDraftLines(
+    tx: Prisma.TransactionClient,
+    settlementDraftId: string
+  ): Promise<CreateSettlementLineDto[] | undefined> {
+    const rows = await tx.settlementDraftLine.findMany({
+      where: { settlementDraftId },
+      orderBy: { sortOrder: "asc" }
+    });
+    if (!rows.length) return undefined;
+    return rows.map((line) => ({
+      sourceType: line.sourceType as CreateSettlementLineDto["sourceType"],
+      ...(line.contractBillRowId ? { contractBillRowId: line.contractBillRowId } : {}),
+      name: line.name,
+      ...(line.unit ? { unit: line.unit } : {}),
+      ...(line.quantity ? { quantity: line.quantity.toString() } : {}),
+      ...(line.unitPriceCents !== null
+        ? { unitPriceCents: line.unitPriceCents.toString() }
+        : {}),
+      ...(line.directAmountCents !== null
+        ? { amountCents: line.directAmountCents.toString() }
+        : {}),
+      ...(line.reason ? { reason: line.reason } : {}),
+      ...(line.remark ? { remark: line.remark } : {}),
+      sortOrder: line.sortOrder
+    }));
   }
 
   private async lockDocuments(tx: Prisma.TransactionClient, draftId: string) {
