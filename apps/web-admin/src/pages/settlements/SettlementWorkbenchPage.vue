@@ -1157,7 +1157,9 @@ const selectedRowIds = computed(() => Object.keys(drafts.value));
 const visibleWorkbenchRows = computed(() => {
   const keyword = sourceSearch.value.trim().toLowerCase();
   return workbenchRows.value.filter((row) => {
-    if (sourceView.value === "open" && row.remainingQuantity === "0") return false;
+    if (sourceView.value === "open" &&
+      row.remainingQuantity !== null &&
+      Number(row.remainingQuantity) <= 0) return false;
     if (onlySelected.value && !isSelected(row.id)) return false;
     return !keyword || `${row.itemCode ?? ""} ${row.itemName} ${row.billName}`.toLowerCase().includes(keyword);
   });
