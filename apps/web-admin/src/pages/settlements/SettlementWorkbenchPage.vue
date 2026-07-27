@@ -2287,6 +2287,7 @@ async function restoreDraft(draft: SettlementDraftReadModel) {
   const restored = restoreSettlementDraftLines(sourceRows.value, draft.lines);
   drafts.value = restored.drafts;
   adjustments.value = restored.adjustments;
+  visaChanges.value = restored.visaChanges ?? [];
   const restoredFrozen = draft.documents?.frozenDocument;
   frozenDocument.value = restoredFrozen
     ? {

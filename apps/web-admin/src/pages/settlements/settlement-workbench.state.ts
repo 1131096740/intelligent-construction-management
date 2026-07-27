@@ -507,10 +507,11 @@ export function applyImportedSettlementLines(
 export function restoreSettlementDraftLines(
   rows: readonly SettlementSourceLineReadModel[],
   settlementLines: readonly SettlementLineDraftPayload[]
-): { drafts: SourceLineDraftMap; adjustments: ManualAdjustmentDraft[] } {
+): { drafts: SourceLineDraftMap; adjustments: ManualAdjustmentDraft[]; visaChanges?: VisaChangeDraft[] } {
   const rowById = new Map(rows.map((row) => [row.id, row]));
   const drafts: SourceLineDraftMap = {};
   const adjustments: ManualAdjustmentDraft[] = [];
+  const visaChanges: VisaChangeDraft[] = [];
   for (const line of settlementLines) {
     if (line.sourceType === "contract_bill_row") {
       const row = line.contractBillRowId
@@ -528,16 +529,34 @@ export function restoreSettlementDraftLines(
       };
       continue;
     }
+    if (line.sourceType === "visa_change") {
+      visaChanges.push({
+        clientId: `draft-visa-${visaChanges.length + 1}`,
+        sourceItemType: line.sourceItemType?.trim() ?? "",
+        occurredOn: line.occurredOn?.trim() ?? "",
+        name: line.name?.trim() ?? "",
+        description: line.description?.trim() ?? "",
+        pricingBasis: line.pricingBasis?.trim() ?? "",
+        quantity: line.quantity?.trim() ?? "",
+        unitPriceYuan: line.unitPriceCents ? centsTextToInputYuan(line.unitPriceCents) : "",
+        amountYuan: line.amountCents ? centsTextToInputYuan(line.amountCents) : "",
+        remark: line.remark?.trim() ?? ""
+      });
+      continue;
+    }
     if (line.sourceType !== "manual_adjustment") continue;
     adjustments.push({
       clientId: `draft-adjustment-${adjustments.length + 1}`,
       name: line.name?.trim() ?? "",
       amountYuan: line.amountCents ? centsTextToInputYuan(line.amountCents) : "",
       reason: line.reason?.trim() ?? "",
+      ...(line.relatedSettlementLineId?.trim()
+        ? { relatedSettlementLineId: line.relatedSettlementLineId.trim() }
+        : {}),
       remark: line.remark?.trim() ?? ""
     });
   }
-  return { drafts, adjustments };
+  return visaChanges.length ? { drafts, adjustments, visaChanges } : { drafts, adjustments };
 }
 
 export function settlementWorkbenchDraftFingerprint(
