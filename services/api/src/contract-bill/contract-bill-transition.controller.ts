@@ -17,6 +17,11 @@ export class ContractBillTransitionController {
     return this.transitions.listMappings(toContractVersionId, user.id);
   }
 
+  @Get("options")
+  options(@Param("toContractVersionId") toContractVersionId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.transitions.listOptions(toContractVersionId, user.id);
+  }
+
   @Put()
   save(
     @Param("toContractVersionId") toContractVersionId: string,

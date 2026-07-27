@@ -274,6 +274,42 @@ export function confirmContractSettlementMode(
   );
 }
 
+export interface ContractBillTransitionMappingPayload {
+  sourceContractBillRowId: string;
+  targetContractBillRowId: string;
+  sourceSettledQuantityAllocated: string;
+  targetOpeningQuantity: string;
+  settledAmountAllocatedCents: string;
+  quantityConversionBasis?: string;
+}
+
+export interface ContractBillTransitionOptions {
+  fromContractVersionId: string | null;
+  canConfirm: boolean;
+  sources: Array<{ id: string; itemName: string; specification: string | null; unit: string; historicalQuantity: string | null; historicalAmountCents: string }>;
+  targets: Array<{ id: string; itemName: string; specification: string | null; unit: string }>;
+}
+
+export function fetchContractBillTransitionOptions(contractVersionId: string) {
+  return readJson<ContractBillTransitionOptions>(`/contract-versions/${contractVersionId}/bill-transitions/options`);
+}
+
+export function fetchContractBillTransitions(contractVersionId: string) {
+  return readJson<Array<Record<string, unknown>>>(`/contract-versions/${contractVersionId}/bill-transitions`);
+}
+
+export function saveContractBillTransitions(contractVersionId: string, body: { fromContractVersionId: string; expectedTargetVersionRevision: number; mappings: ContractBillTransitionMappingPayload[] }) {
+  return putJson<Array<Record<string, unknown>>>(`/contract-versions/${contractVersionId}/bill-transitions`, body);
+}
+
+export function discardContractBillTransitions(contractVersionId: string, body: { fromContractVersionId: string; expectedTargetVersionRevision: number }) {
+  return deleteJson<Array<Record<string, unknown>>>(`/contract-versions/${contractVersionId}/bill-transitions`, body);
+}
+
+export function confirmContractBillTransitions(contractVersionId: string, body: { expectedTargetVersionRevision: number }) {
+  return postJson<Array<Record<string, unknown>>>(`/contract-versions/${contractVersionId}/bill-transitions/confirm`, body);
+}
+
 export interface CreateDraftCheckpointPayload {
   name: string;
 }

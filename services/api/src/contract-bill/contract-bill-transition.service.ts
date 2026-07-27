@@ -259,6 +259,48 @@ export class ContractBillTransitionService {
     return this.readMappings(this.prisma, version.baseVersionId, version.id);
   }
 
+  async listOptions(toContractVersionId: string, actorUserId: string) {
+    const version = await this.prisma.contractVersion.findUnique({ where: { id: toContractVersionId } });
+    if (!version) throw new NotFoundException("合同草稿版本不存在");
+    const contract = await this.prisma.contract.findUnique({ where: { id: version.contractId } });
+    if (!contract) throw new NotFoundException("合同不存在");
+    const canConfirm = await this.hasGlobalContractDirector(this.prisma, actorUserId);
+    if (contract.ownerUserId !== actorUserId && !canConfirm) {
+      throw new ForbiddenException("当前账号无权查看该合同的跨版本映射");
+    }
+    if (!version.baseVersionId) return { fromContractVersionId: null, canConfirm, sources: [], targets: [] };
+    const [sourceBills, targetBills] = await Promise.all([
+      this.prisma.contractBill.findMany({ where: { contractVersionId: version.baseVersionId }, select: { id: true } }),
+      this.prisma.contractBill.findMany({ where: { contractVersionId: version.id }, select: { id: true } })
+    ]);
+    const [sourceRows, targetRows] = await Promise.all([
+      sourceBills.length ? this.prisma.contractBillRow.findMany({ where: { contractBillId: { in: sourceBills.map((bill) => bill.id) } }, select: { id: true, itemName: true, specification: true, unit: true } }) : [],
+      targetBills.length ? this.prisma.contractBillRow.findMany({ where: { contractBillId: { in: targetBills.map((bill) => bill.id) } }, select: { id: true, itemName: true, specification: true, unit: true } }) : []
+    ]);
+    const settlements = await this.prisma.settlement.findMany({
+      where: { contractId: version.contractId, status: { in: ["effective", "partially_paid", "paid"] } },
+      select: { id: true }
+    });
+    const lines = settlements.length && sourceRows.length
+      ? await this.prisma.settlementLine.findMany({
+          where: { settlementId: { in: settlements.map((settlement) => settlement.id) }, contractBillRowId: { in: sourceRows.map((row) => row.id) } },
+          select: { contractBillRowId: true, quantity: true, amountCents: true }
+        })
+      : [];
+    return {
+      fromContractVersionId: version.baseVersionId,
+      canConfirm,
+      sources: sourceRows.map((row) => {
+        const matched = lines.filter((line) => line.contractBillRowId === row.id);
+        const quantity = matched.some((line) => line.quantity === null)
+          ? null
+          : matched.reduce((total, line) => total.plus(line.quantity!), new Prisma.Decimal(0));
+        return { ...row, historicalQuantity: quantity?.toString() ?? null, historicalAmountCents: matched.reduce((total, line) => total + line.amountCents, 0n).toString() };
+      }).filter((row) => row.historicalQuantity !== null || row.historicalAmountCents !== "0"),
+      targets: targetRows
+    };
+  }
+
   private async lockEditablePair(
     tx: Prisma.TransactionClient,
     requestedFromVersionId: string | undefined,

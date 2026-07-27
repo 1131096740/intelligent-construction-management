@@ -525,13 +525,21 @@
                 :editable-keys="isChangeVersion ? changePolicy.editableFieldKeys : undefined"
                 @update="applyPatch"
               />
-              <ContractBillsSection
-                v-else-if="activeSection === 'bills'"
-                :workbench="billWorkbench"
-                :disabled="editorDisabled"
-                @edit="openBillFocus($event)"
-                @import="openBillFocus($event, true)"
-              />
+              <div v-else-if="activeSection === 'bills'" class="bill-sections">
+                <ContractBillsSection
+                  :workbench="billWorkbench"
+                  :disabled="editorDisabled"
+                  @edit="openBillFocus($event)"
+                  @import="openBillFocus($event, true)"
+                />
+                <ContractBillTransitionsSection
+                  v-if="isChangeVersion"
+                  :contract-version-id="workbench?.version.id ?? ''"
+                  :revision="workbench?.version.draftRevision ?? 0"
+                  :disabled="editorDisabled"
+                  @changed="reloadCurrent"
+                />
+              </div>
               <ContractPaymentTermsSection
                 v-else-if="activeSection === 'payment'"
                 :model="model"
@@ -836,6 +844,7 @@ import {
 import ContractBasicSection from "./workbench/ContractBasicSection.vue";
 import ContractAuthorizationSection from "./workbench/ContractAuthorizationSection.vue";
 import ContractBillFocusEditor from "./workbench/ContractBillFocusEditor.vue";
+import ContractBillTransitionsSection from "./workbench/ContractBillTransitionsSection.vue";
 import ContractBillsSection from "./workbench/ContractBillsSection.vue";
 import ContractClausesSection from "./workbench/ContractClausesSection.vue";
 import ContractDocumentCanvas from "./workbench/ContractDocumentCanvas.vue";
