@@ -199,6 +199,41 @@ describe("ContractReadinessService", () => {
     expect(rental.blocking).not.toContainEqual(expect.objectContaining({ key: "field.rentalStartDate" }));
   });
 
+  it("blocks a change draft when an occupied old bill row has no director-confirmed mapping", async () => {
+    const current = tx({
+      contractBill: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce([{ id: "target-bill", billKey: "main_bill", amountRole: "included", taxInclusiveAmountCents: 1_000n }])
+          .mockResolvedValueOnce([{ id: "source-bill" }])
+      },
+      contractBillRow: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce([{
+            id: "target-row", contractBillId: "target-bill", itemName: "钢材", unit: "吨", quantity: new Prisma.Decimal("1"),
+            unitPrice: new Prisma.Decimal("1000"), taxRate: new Prisma.Decimal("13"), taxRateSource: "version_default",
+            pricingFactStatus: "confirmed", taxInclusiveAmountCents: 1_000n, taxExclusiveAmountCents: 885n,
+            taxAmountCents: 115n, customData: { item_name: "钢材" }
+          }])
+          .mockResolvedValueOnce([{ id: "source-row" }])
+      },
+      settlement: { findMany: jest.fn().mockResolvedValue([{ id: "settlement-1" }]) },
+      settlementLine: { findMany: jest.fn().mockResolvedValue([{ contractBillRowId: "source-row" }]) },
+      contractBillRowTransition: { findMany: jest.fn().mockResolvedValue([]) }
+    });
+
+    const result = await new ContractReadinessService().check(current as never, {
+      ...version,
+      contractId: "contract-1",
+      changeType: "change",
+      baseVersionId: "version-0"
+    }, contract, false);
+
+    expect(result.blocking).toContainEqual(expect.objectContaining({
+      key: "bill.cross_version_mapping",
+      section: "bills"
+    }));
+  });
+
   function prismaForCheckAndStore(overrides: Record<string, unknown> = {}) {
     const transactionClient = {
       contractVersion: {

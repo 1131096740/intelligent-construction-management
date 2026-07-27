@@ -28,6 +28,8 @@ export interface ContractReadinessResult {
 type ReadinessVersion = {
   id: string;
   contractId: string;
+  changeType?: string;
+  baseVersionId?: string | null;
   draftRevision: number;
   amountCents: bigint;
   amountLimitType: string;
@@ -67,6 +69,7 @@ type ReadinessClient = {
   contractBillRow: {
     findMany(input: unknown): Promise<
       Array<{
+        id: string;
         contractBillId: string;
         itemName: string;
         unit?: string;
@@ -81,6 +84,19 @@ type ReadinessClient = {
         customData: Prisma.JsonValue;
       }>
     >;
+  };
+  contractBillRowTransition: {
+    findMany(input: unknown): Promise<Array<{
+      sourceContractBillRowId: string;
+      targetContractBillRowId: string;
+      status: string;
+    }>>;
+  };
+  settlement: {
+    findMany(input: unknown): Promise<Array<{ id: string }>>;
+  };
+  settlementLine: {
+    findMany(input: unknown): Promise<Array<{ contractBillRowId: string | null }>>;
   };
   contractPartySnapshot: {
     findMany(input: unknown): Promise<Array<{ id: string; roleKey: string }>>;
@@ -282,6 +298,7 @@ export class ContractReadinessService {
           orderBy: [{ contractBillId: "asc" }]
         })
       : [];
+    await this.appendCrossVersionMappingReadiness(tx, version, rows, blocking);
     if (
       version.invoiceType == null ||
       !CONTRACT_INVOICE_TYPES.some((value) => value === version.invoiceType)
@@ -754,6 +771,59 @@ export class ContractReadinessService {
     }
 
     return { blocking, warnings, checkedRevision: version.draftRevision };
+  }
+
+  private async appendCrossVersionMappingReadiness(
+    tx: ReadinessClient,
+    version: ReadinessVersion,
+    targetRows: Array<{ id: string }>,
+    blocking: ContractReadinessResult["blocking"]
+  ) {
+    if (version.changeType !== "change" || !version.baseVersionId) return;
+    const sourceBills = await tx.contractBill.findMany({
+      where: { contractVersionId: version.baseVersionId },
+      select: { id: true }
+    });
+    if (!sourceBills.length) return;
+    const sourceRows = await tx.contractBillRow.findMany({
+      where: { contractBillId: { in: sourceBills.map((bill) => bill.id) } },
+      select: { id: true }
+    });
+    if (!sourceRows.length) return;
+    const settlements = await tx.settlement.findMany({
+      where: { contractId: version.contractId, status: { in: ["effective", "partially_paid", "paid"] } },
+      select: { id: true }
+    });
+    if (!settlements.length) return;
+    const occupied = await tx.settlementLine.findMany({
+      where: {
+        settlementId: { in: settlements.map((settlement) => settlement.id) },
+        contractBillRowId: { in: sourceRows.map((row) => row.id) }
+      },
+      select: { contractBillRowId: true }
+    });
+    const occupiedSourceIds = [...new Set(occupied.flatMap((line) => line.contractBillRowId ? [line.contractBillRowId] : []))];
+    if (!occupiedSourceIds.length) return;
+    const transitions = await tx.contractBillRowTransition.findMany({
+      where: {
+        fromContractVersionId: version.baseVersionId,
+        toContractVersionId: version.id,
+        sourceContractBillRowId: { in: occupiedSourceIds },
+        status: "confirmed"
+      },
+      select: { sourceContractBillRowId: true, targetContractBillRowId: true, status: true }
+    });
+    const targetIds = new Set(targetRows.map((row) => row.id));
+    const unresolved = occupiedSourceIds.filter((sourceId) => !transitions.some((transition) =>
+      transition.sourceContractBillRowId === sourceId && targetIds.has(transition.targetContractBillRowId)
+    ));
+    if (unresolved.length) {
+      blocking.push({
+        key: "bill.cross_version_mapping",
+        section: "bills",
+        message: `有 ${unresolved.length} 条已结算旧版清单尚未由合同部主任确认跨版本映射`
+      });
+    }
   }
 
   private hasStructuredCompanyEntitySelection(draftData: Record<string, unknown>) {
