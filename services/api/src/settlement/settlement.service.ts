@@ -474,6 +474,7 @@ export class SettlementService {
     );
     if (preview.submissionBlockers.length) this.throwSubmissionBlocker(preview.submissionBlockers[0]);
     const normalized = preview.lines as NormalizedSettlementLine[];
+    await this.assertNegativeAdjustmentSources(tx, version.contractId, normalized);
     const previousSettlements = await tx.settlement.findMany({
       where: {
         contractId: draft.contractId,
@@ -1157,6 +1158,49 @@ export class SettlementService {
     }
   }
 
+  private async assertNegativeAdjustmentSources(
+    tx: Prisma.TransactionClient,
+    contractId: string,
+    lines: NormalizedSettlementLine[]
+  ): Promise<void> {
+    const relatedLineIds = lines
+      .filter((line) =>
+        line.sourceType === "manual_adjustment" &&
+        line.amountCents < 0n &&
+        line.relatedSettlementLineId !== null
+      )
+      .map((line) => line.relatedSettlementLineId!);
+    if (!relatedLineIds.length) return;
+
+    const sourceClient = tx as unknown as {
+      settlementLine: {
+        findMany(args: unknown): Promise<Array<{ id: string; settlementId: string }>>;
+      };
+      settlement: {
+        findMany(args: unknown): Promise<Array<{ id: string }>>;
+      };
+    };
+    const sourceLines = await sourceClient.settlementLine.findMany({
+      where: { id: { in: relatedLineIds } },
+      select: { id: true, settlementId: true }
+    });
+    if (new Set(sourceLines.map((line) => line.id)).size !== new Set(relatedLineIds).size) {
+      throw new BadRequestException("负向调整关联的原结算明细不存在，请刷新后重新选择。");
+    }
+    const sourceSettlements = await sourceClient.settlement.findMany({
+      where: {
+        id: { in: sourceLines.map((line) => line.settlementId) },
+        contractId,
+        status: { in: ["effective", "partially_paid", "paid"] }
+      },
+      select: { id: true }
+    });
+    if (new Set(sourceSettlements.map((settlement) => settlement.id)).size !==
+      new Set(sourceLines.map((line) => line.settlementId)).size) {
+      throw new BadRequestException("负向调整只能关联本合同已生效的原结算明细。");
+    }
+  }
+
   private async createSettlementLines(
     tx: unknown,
     settlementId: string,
@@ -1368,6 +1412,7 @@ export class SettlementService {
       version.id,
       input.settlementLines
     );
+    await this.assertNegativeAdjustmentSources(tx, version.contractId, settlementLines);
 
     const terms = await tx.paymentTermsVersion.findFirst({
         where: {

@@ -181,4 +181,28 @@ describe("SettlementService.prepareDraftDocumentFacts", () => {
     await expect(service.prepareDraftDocumentFacts(tx as never, draft as never))
       .rejects.toThrow("累计结算数量不能超过合同数量");
   });
+
+  it("rejects a negative adjustment linked to another contract or an inactive settlement", async () => {
+    const { service, tx, draft } = context();
+    (draft.lines as unknown[]).push({
+      sourceType: "manual_adjustment",
+      name: "质量扣款",
+      amountCents: "-100",
+      reason: "质量问题",
+      relatedSettlementLineId: "source-line-1"
+    });
+    tx.settlementLine.findMany
+      .mockResolvedValueOnce([{ id: "source-line-1", settlementId: "settlement-other" }]);
+
+    await expect(service.prepareDraftDocumentFacts(tx as never, draft as never))
+      .rejects.toThrow("负向调整只能关联本合同已生效的原结算明细");
+    expect(tx.settlement.findMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ["settlement-other"] },
+        contractId: "contract-1",
+        status: { in: ["effective", "partially_paid", "paid"] }
+      },
+      select: { id: true }
+    });
+  });
 });
