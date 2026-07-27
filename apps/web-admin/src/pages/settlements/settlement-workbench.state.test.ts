@@ -214,6 +214,35 @@ describe("settlement workbench state", () => {
     });
   });
 
+  it("restores visa-change facts without collapsing them into a manual adjustment", () => {
+    expect(restoreSettlementDraftLines([], [{
+      sourceType: "visa_change",
+      sourceItemType: "现场签证",
+      occurredOn: "2026-07-27",
+      name: "基础加深",
+      description: "现场确认基础加深",
+      pricingBasis: "签证单 QZ-001",
+      quantity: "1.25",
+      unitPriceCents: "101",
+      remark: "待补附件"
+    }])).toEqual({
+      drafts: {},
+      adjustments: [],
+      visaChanges: [{
+        clientId: "draft-visa-1",
+        sourceItemType: "现场签证",
+        occurredOn: "2026-07-27",
+        name: "基础加深",
+        description: "现场确认基础加深",
+        pricingBasis: "签证单 QZ-001",
+        quantity: "1.25",
+        unitPriceYuan: "1.01",
+        amountYuan: "",
+        remark: "待补附件"
+      }]
+    });
+  });
+
   it("validates normal, special and adjustment inputs with Chinese reasons", () => {
     expect(
       validateSettlementWorkbench({
