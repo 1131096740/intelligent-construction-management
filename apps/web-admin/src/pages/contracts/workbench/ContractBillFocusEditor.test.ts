@@ -128,6 +128,7 @@ function controllerOptions(overrides: {
   replaceRows?: (billId: string, input: ReplaceContractBillRowsInput) =>
     Promise<ReplaceContractBillRowsReadModel>;
   previewImport?: () => Promise<unknown>;
+  applyImport?: (importId: string) => Promise<unknown>;
   uploadFile?: (file: Blob, fileName: string) => Promise<{ id: string }>;
   downloadTemplate?: (billId: string) => Promise<void>;
 } = {}) {
@@ -142,6 +143,7 @@ function controllerOptions(overrides: {
       downloadTemplate: overrides.downloadTemplate ?? vi.fn().mockResolvedValue(undefined),
       uploadFile: overrides.uploadFile ?? vi.fn().mockResolvedValue({ id: "file-1" }),
       previewImport: overrides.previewImport ?? vi.fn().mockResolvedValue({ candidateRows: [] }),
+      applyImport: overrides.applyImport ?? vi.fn().mockResolvedValue({}),
       replaceRows: overrides.replaceRows ?? vi.fn().mockResolvedValue(authoritativeRows())
     }
   };
@@ -214,6 +216,39 @@ describe("ContractBillFocusEditor state", () => {
       expect.objectContaining({ clientRowKey: "import-1", itemName: "导入钢筋" })
     ]);
     expect(replaceRows).not.toHaveBeenCalled();
+  });
+
+  it("previews and atomically applies a version bill import without replacing local candidates", async () => {
+    const applyImport = vi.fn().mockResolvedValue({});
+    const options = controllerOptions({
+      previewImport: vi.fn().mockResolvedValue({
+        importId: "import-v2",
+        added: 1,
+        updated: 1,
+        removed: 0,
+        skipped: 0,
+        beforeAmountCents: "1000",
+        afterAmountCents: "1200",
+        errors: [],
+        diffs: [
+          { kind: "one_to_one", rowKey: "row-1" },
+          { kind: "added", rowKey: "row-2" }
+        ]
+      }),
+      applyImport
+    });
+    const controller = createContractBillFocusController(options);
+    const before = plainRows(controller.rows.value);
+
+    await controller.previewVersionExcel(new File(["xlsx"], "新版清单.xlsx"));
+
+    expect(controller.versionImportConfirmVisible.value).toBe(true);
+    expect(controller.rows.value).toEqual(before);
+    await controller.confirmVersionImport();
+
+    expect(applyImport).toHaveBeenCalledWith("import-v2");
+    expect(options.emit).toHaveBeenCalledWith("saved");
+    expect(controller.versionImportConfirmVisible.value).toBe(false);
   });
 
   it("accepts a valid empty replacement preview so Excel can clear all local rows", async () => {

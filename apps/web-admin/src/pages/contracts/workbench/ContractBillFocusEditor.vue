@@ -7,12 +7,14 @@ import {
   type Ref
 } from "vue";
 import {
+  applyBillExcelImport,
   downloadBillExcelTemplate,
   previewBillExcelImport,
   replaceContractBillRows,
   type ContractBillValidationError,
   type ReplaceContractBillRowsInput,
-  type ReplaceContractBillRowsReadModel
+  type ReplaceContractBillRowsReadModel,
+  type VersionBillExcelImportPreview
 } from "../../../api/contract-workbench.api";
 import { uploadPrivateFile } from "../../../api/core-flow-read.api";
 import {
@@ -39,7 +41,8 @@ interface FocusControllerDependencies {
   createKey: () => string;
   downloadTemplate: (billId: string) => Promise<void>;
   uploadFile: (file: Blob, fileName: string) => Promise<UploadedFileReadModel>;
-  previewImport: (billId: string, body: { fileId: string; mode: "replace" }) => Promise<unknown>;
+  previewImport: (billId: string, body: { fileId: string; mode: "replace" | "version_replace" }) => Promise<unknown>;
+  applyImport: (importId: string) => Promise<unknown>;
   replaceRows: (
     billId: string,
     input: ReplaceContractBillRowsInput
@@ -68,6 +71,8 @@ export interface ContractBillFocusController {
   preview: Ref<BillImportPreview | null>;
   replaceConfirmVisible: Ref<boolean>;
   pendingImportRows: Ref<ContractBillCandidateRow[] | null>;
+  versionPreview: Ref<VersionBillExcelImportPreview | null>;
+  versionImportConfirmVisible: Ref<boolean>;
   selectedClientRowKey: Ref<string>;
   saveKey: Ref<string>;
   lastAttemptDigest: Ref<string | null>;
@@ -80,8 +85,11 @@ export interface ContractBillFocusController {
   moveSelectedRow: (offset: -1 | 1) => void;
   setRows: (rows: ContractBillCandidateRow[]) => void;
   previewExcel: (file: File) => Promise<void>;
+  previewVersionExcel: (file: File) => Promise<void>;
   cancelImportReplace: () => void;
   confirmImportReplace: () => void;
+  cancelVersionImport: () => void;
+  confirmVersionImport: () => Promise<void>;
   downloadTemplate: () => Promise<void>;
   saveAll: () => Promise<void>;
   discardChanges: () => boolean;
@@ -108,6 +116,7 @@ export function createContractBillFocusController(
     downloadTemplate: downloadBillExcelTemplate,
     uploadFile: uploadPrivateFile,
     previewImport: previewBillExcelImport,
+    applyImport: applyBillExcelImport,
     replaceRows: replaceContractBillRows,
     ...options.deps
   };
@@ -123,6 +132,8 @@ export function createContractBillFocusController(
   const preview = ref<BillImportPreview | null>(null);
   const replaceConfirmVisible = ref(false);
   const pendingImportRows = ref<ContractBillCandidateRow[] | null>(null);
+  const versionPreview = ref<VersionBillExcelImportPreview | null>(null);
+  const versionImportConfirmVisible = ref(false);
   const selectedClientRowKey = ref(rows.value[0]?.clientRowKey ?? "");
   const saveKey = ref(dependencies.createKey());
   const lastAttemptDigest = ref<string | null>(null);
@@ -218,6 +229,44 @@ export function createContractBillFocusController(
     }
   }
 
+  async function previewVersionExcel(file: File) {
+    clearMessage();
+    if (options.ordinaryDraftDirty()) {
+      setError(ORDINARY_DRAFT_MESSAGE);
+      return;
+    }
+    if (dirty.value) {
+      setError("请先保存或放弃当前清单修改，再导入新版清单");
+      return;
+    }
+    if (!isXlsxFile(file)) {
+      setError("仅支持上传 .xlsx 格式的系统标准模板");
+      return;
+    }
+    saving.value = true;
+    try {
+      const uploaded = await dependencies.uploadFile(file, file.name);
+      const result = normalizeVersionImportPreview(
+        await dependencies.previewImport(billSnapshot.value.id, {
+          fileId: uploaded.id,
+          mode: "version_replace"
+        })
+      );
+      versionPreview.value = result;
+      if (result.errors.length) {
+        versionImportConfirmVisible.value = false;
+        setError(result.errors.map((error) => error.message).join("；"));
+        return;
+      }
+      versionImportConfirmVisible.value = true;
+      saveMessage.value = "新版清单预检完成，请核对差异后确认应用";
+    } catch (error) {
+      setError(errorMessage(error, "导入新版清单预检失败"));
+    } finally {
+      saving.value = false;
+    }
+  }
+
   function cancelImportReplace() {
     replaceConfirmVisible.value = false;
     pendingImportRows.value = null;
@@ -234,6 +283,34 @@ export function createContractBillFocusController(
     replaceConfirmVisible.value = false;
     saveMessage.value = "Excel 预检结果已载入本地，点击“保存全部”后才会写入系统";
     messageDanger.value = false;
+  }
+
+  function cancelVersionImport() {
+    versionImportConfirmVisible.value = false;
+    versionPreview.value = null;
+    saveMessage.value = "已取消导入新版清单，当前清单保持不变";
+    messageDanger.value = false;
+  }
+
+  async function confirmVersionImport() {
+    const importId = versionPreview.value?.importId;
+    if (!importId || options.disabled()) return;
+    clearMessage();
+    saving.value = true;
+    batchSaving.value = true;
+    try {
+      await dependencies.applyImport(importId);
+      versionImportConfirmVisible.value = false;
+      versionPreview.value = null;
+      saveMessage.value = "新版清单已原子应用，正在刷新合同工作台";
+      messageDanger.value = false;
+      options.emit("saved");
+    } catch (error) {
+      setError(errorMessage(error, "应用新版清单失败"));
+    } finally {
+      batchSaving.value = false;
+      saving.value = false;
+    }
   }
 
   async function downloadTemplate() {
@@ -310,6 +387,8 @@ export function createContractBillFocusController(
     errors.value = [];
     pendingImportRows.value = null;
     replaceConfirmVisible.value = false;
+    versionPreview.value = null;
+    versionImportConfirmVisible.value = false;
     selectedClientRowKey.value = rows.value[0]?.clientRowKey ?? "";
     saveMessage.value = "";
     messageDanger.value = false;
@@ -388,6 +467,8 @@ export function createContractBillFocusController(
     preview,
     replaceConfirmVisible,
     pendingImportRows,
+    versionPreview,
+    versionImportConfirmVisible,
     selectedClientRowKey,
     saveKey,
     lastAttemptDigest,
@@ -400,8 +481,11 @@ export function createContractBillFocusController(
     moveSelectedRow,
     setRows,
     previewExcel,
+    previewVersionExcel,
     cancelImportReplace,
     confirmImportReplace,
+    cancelVersionImport,
+    confirmVersionImport,
     downloadTemplate,
     saveAll,
     discardChanges,
@@ -491,6 +575,37 @@ function isContractBillValidationError(
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
+}
+
+function normalizeVersionImportPreview(value: unknown): VersionBillExcelImportPreview {
+  const source = record(value);
+  const importId = requiredText(source["importId"]);
+  if (!importId) throw new Error("新版清单预检未返回有效导入标识，请重新上传");
+  const errors = Array.isArray(source["errors"])
+    ? source["errors"].map(importError).filter((error): error is { message: string } => Boolean(error))
+    : [];
+  const diffs = Array.isArray(source["diffs"])
+    ? source["diffs"].filter(isVersionImportDiff)
+    : [];
+  return {
+    importId,
+    added: count(source["added"]),
+    updated: count(source["updated"]),
+    removed: count(source["removed"]),
+    skipped: count(source["skipped"]),
+    beforeAmountCents: text(source["beforeAmountCents"]),
+    afterAmountCents: text(source["afterAmountCents"]),
+    errors,
+    diffs
+  };
+}
+
+function isVersionImportDiff(value: unknown): value is VersionBillExcelImportPreview["diffs"][number] {
+  if (!isRecord(value)) return false;
+  const kind = value["kind"];
+  return typeof value["rowKey"] === "string" &&
+    (kind === "unchanged" || kind === "added" || kind === "removed" ||
+      kind === "one_to_one" || kind === "manual_review");
 }
 
 function normalizeImportPreview(value: unknown): BillImportPreview {
@@ -653,6 +768,8 @@ const {
   messageDanger,
   preview,
   replaceConfirmVisible,
+  versionPreview,
+  versionImportConfirmVisible,
   selectedClientRowKey,
   dirty,
   totals,
@@ -696,7 +813,7 @@ async function onFileSelected(files: UploadFile[]) {
   const raw = files[0]?.raw ?? importFiles.value[0]?.raw;
   const file = raw instanceof File ? raw : null;
   importFiles.value = [];
-  if (file) await controller.previewExcel(file);
+  if (file) await controller.previewVersionExcel(file);
 }
 
 function moneyText(value: string) {
@@ -788,7 +905,7 @@ defineExpose({
         :max="1"
         :disabled="disabled || saving"
         :loading="saving"
-        placeholder="导入 Excel"
+        placeholder="导入新版清单"
         @change="onFileSelected"
       />
     </div>
@@ -849,6 +966,37 @@ defineExpose({
           @click="controller.confirmImportReplace"
         >
           确认载入本地
+        </t-button>
+      </template>
+    </t-dialog>
+
+    <t-dialog
+      v-model:visible="versionImportConfirmVisible"
+      header="确认应用新版清单"
+      width="620px"
+      :close-on-overlay-click="false"
+      @close="controller.cancelVersionImport"
+    >
+      <p>本次应用会原子更新合同清单；任一来源、文件或占用事实变化都会整体失败。</p>
+      <p v-if="versionPreview">
+        未变化 {{ versionPreview.diffs.filter((item) => item.kind === 'unchanged').length }} 行，
+        已修改 {{ versionPreview.diffs.filter((item) => item.kind === 'one_to_one').length }} 行，
+        新增 {{ versionPreview.added }} 行，删除 {{ versionPreview.removed }} 行。
+      </p>
+      <template #footer>
+        <t-button
+          variant="outline"
+          @click="controller.cancelVersionImport"
+        >
+          取消
+        </t-button>
+        <t-button
+          theme="primary"
+          data-testid="bill-version-import-confirm"
+          :loading="batchSaving"
+          @click="controller.confirmVersionImport"
+        >
+          确认应用
         </t-button>
       </template>
     </t-dialog>

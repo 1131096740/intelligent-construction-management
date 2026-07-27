@@ -993,15 +993,55 @@ export async function downloadBillExcelTemplate(billId: string): Promise<void> {
 export interface PreviewBillExcelImportPayload {
   /** Already-uploaded private file id — send as JSON, NOT FormData. */
   fileId: string;
-  mode?: "replace" | "update";
+  mode?: "replace" | "update" | "append" | "version_replace";
+}
+
+export type ContractBillImportDiffKind =
+  | "unchanged"
+  | "added"
+  | "removed"
+  | "one_to_one"
+  | "manual_review";
+
+export interface ContractBillImportDiffRow {
+  rowKey: string;
+  itemCode: string | null;
+  itemName: string;
+  specification: string | null;
+  unit: string;
+}
+
+export interface ContractBillImportDiff {
+  kind: ContractBillImportDiffKind;
+  rowKey: string;
+  source?: ContractBillImportDiffRow;
+  incoming?: ContractBillImportDiffRow;
+}
+
+export interface VersionBillExcelImportPreview {
+  importId: string;
+  added: number;
+  updated: number;
+  removed: number;
+  skipped: number;
+  beforeAmountCents: string;
+  afterAmountCents: string;
+  errors: Array<{ message: string }>;
+  diffs: ContractBillImportDiff[];
 }
 
 // Preview: file is already uploaded via /files; we only pass its id as JSON.
-export function previewBillExcelImport(billId: string, body: PreviewBillExcelImportPayload) {
-  return postJson<unknown>(`/contract-bills/${billId}/excel-imports`, body);
+export function previewBillExcelImport(
+  billId: string,
+  body: PreviewBillExcelImportPayload
+) {
+  return postJson<VersionBillExcelImportPreview>(
+    `/contract-bills/${billId}/excel-imports`,
+    body
+  );
 }
 
-export function applyBillExcelImport(importId: string) {
+export function applyBillExcelImport(importId: string): Promise<unknown> {
   return postJson<unknown>(`/contract-bill-imports/${importId}/apply`);
 }
 
