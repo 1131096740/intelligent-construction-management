@@ -4,6 +4,7 @@ import type { SettlementSubmissionBlocker } from "@jiangkong/shared-domain";
 import { calculateBillRow, parseMoneyCentsInput, parseSignedMoneyCentsInput } from "../money/decimal-money";
 import type {
   CreateSettlementLineDto,
+  SettlementAdjustmentKind,
   SettlementLineSourceType
 } from "./dto/create-settlement.dto";
 import {
@@ -40,6 +41,7 @@ export interface SettlementSubmissionFactContext {
 export interface CanonicalSettlementLine {
   lineKey: string | null;
   sourceType: SettlementLineSourceType;
+  adjustmentKind: SettlementAdjustmentKind | null;
   calculationMode: SettlementCalculationMode;
   contractBillRowId: string | null;
   sourceItemType: string | null;
@@ -126,12 +128,33 @@ export function canonicalSettlementLine(
     }
     const reason = requiredText(input.reason, "手工调整原因");
     const relatedSettlementLineId = optionalText(input.relatedSettlementLineId);
+    const adjustmentKind = input.adjustmentKind ?? "ordinary";
     if (amountCents < 0n && !relatedSettlementLineId) {
       throw new BadRequestException("负向调整必须关联可追溯的原结算明细。");
+    }
+    if (adjustmentKind === "retrospective_price_difference") {
+      if (!relatedSettlementLineId) {
+        throw new BadRequestException("追溯调价必须关联原结算明细。");
+      }
+      if (!optionalText(input.pricingBasis)) {
+        throw new BadRequestException("追溯调价必须填写调价依据。");
+      }
+    }
+    if (adjustmentKind === "over_settlement_offset") {
+      if (amountCents >= 0n) {
+        throw new BadRequestException("超结冲减金额必须小于 0。");
+      }
+      if (!relatedSettlementLineId) {
+        throw new BadRequestException("超结冲减必须关联原结算明细。");
+      }
+      if (!optionalText(input.overageReason)) {
+        throw new BadRequestException("超结冲减必须填写超结原因。");
+      }
     }
     return {
       lineKey: optionalText(input.lineKey),
       sourceType: "manual_adjustment",
+      adjustmentKind,
       calculationMode: "manual_adjustment",
       contractBillRowId: null,
       sourceItemType: null,
@@ -145,9 +168,9 @@ export function canonicalSettlementLine(
       unitPriceSnapshot: null,
       taxRatePercentSnapshot: null,
       pricingModeSnapshot: null,
-      pricingBasis: null,
+      pricingBasis: optionalText(input.pricingBasis),
       relatedSettlementLineId,
-      overageReason: null,
+      overageReason: optionalText(input.overageReason),
       amountCents,
       reason,
       remark: optionalText(input.remark),
@@ -177,6 +200,7 @@ export function canonicalSettlementLine(
     return {
       lineKey: optionalText(input.lineKey),
       sourceType: "visa_change",
+      adjustmentKind: null,
       calculationMode: "visa_change",
       contractBillRowId: null,
       sourceItemType: requiredText(input.sourceItemType, "签证或变更项目类别"),
@@ -226,6 +250,7 @@ export function canonicalSettlementLine(
   return {
     lineKey: optionalText(input.lineKey),
     sourceType: "contract_bill_row",
+    adjustmentKind: null,
     calculationMode,
     contractBillRowId: sourceRow.id,
     sourceItemType: null,

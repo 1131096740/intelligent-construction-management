@@ -191,6 +191,7 @@ export class SettlementSubmissionService {
     if (structuredLines.length) {
       return structuredLines.map((line) => ({
         sourceType: line.sourceType as CreateSettlementLineDto["sourceType"],
+        ...(line.adjustmentKind ? { adjustmentKind: line.adjustmentKind as CreateSettlementLineDto["adjustmentKind"] } : {}),
         lineKey: line.lineKey,
         ...(line.contractBillRowId ? { contractBillRowId: line.contractBillRowId } : {}),
         ...(line.sourceItemType ? { sourceItemType: line.sourceItemType } : {}),
@@ -206,6 +207,7 @@ export class SettlementSubmissionService {
           ? { amountCents: line.directAmountCents.toString() }
           : {}),
         ...(line.pricingBasis ? { pricingBasis: line.pricingBasis } : {}),
+        ...(line.overageReason ? { overageReason: line.overageReason } : {}),
         ...(line.relatedSettlementLineId
           ? { relatedSettlementLineId: line.relatedSettlementLineId }
           : {}),

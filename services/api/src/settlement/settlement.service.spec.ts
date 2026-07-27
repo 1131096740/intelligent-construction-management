@@ -960,7 +960,7 @@ describe("SettlementService", () => {
     ).rejects.toThrow("未找到结算关联合同");
   });
 
-  it("rejects zero amount settlement creation with a Chinese business reason", async () => {
+  it("rejects a zero amount settlement without a traceable adjustment", async () => {
     const tx = {
       contractVersion: {
         findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
@@ -1002,8 +1002,25 @@ describe("SettlementService", () => {
         periodLabel: "2026-06",
         amountCents: "0"
       })
-    ).rejects.toThrow("结算金额必须大于 0，不能创建零金额或负数结算。");
+    ).rejects.toThrow("零金额或负金额结算必须包含有原因且可追溯的调整或冲减明细。");
     expect(tx.settlement.create).not.toHaveBeenCalled();
+  });
+
+  it("allows a non-positive settlement only when its adjustment is traceable", () => {
+    const verify = (service as unknown as {
+      assertNonPositiveSettlementTraceability(lines: unknown[]): void;
+    }).assertNonPositiveSettlementTraceability.bind(service);
+
+    expect(() => verify([{
+      sourceType: "manual_adjustment",
+      relatedSettlementLineId: "settlement-line-1",
+      reason: "超结冲减"
+    }])).not.toThrow();
+    expect(() => verify([{
+      sourceType: "manual_adjustment",
+      relatedSettlementLineId: null,
+      reason: "无法追溯"
+    }])).toThrow("零金额或负金额结算必须包含有原因且可追溯的调整或冲减明细。");
   });
 
   it("stores settlement lines and refuses to trust a mismatched frontend total", async () => {

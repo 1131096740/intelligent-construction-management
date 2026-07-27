@@ -692,6 +692,7 @@ model SettlementLine {
   relatedSettlementLineId  String?
   overageReason            String?
   sourceType               String
+  adjustmentKind           String?
   name                     String
   unit                     String?
   quantity                 Decimal?  @db.Decimal(24, 6)
@@ -2554,6 +2555,7 @@ model SettlementDraftLine {
   settlementDraftId        String
   lineKey                  String
   sourceType               String
+  adjustmentKind           String?
   contractBillRowId        String?
   contractBillRowLineageId String?
   relatedSettlementLineId  String?

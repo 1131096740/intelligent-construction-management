@@ -703,6 +703,7 @@ export class SettlementService {
         amountCents: amountCents?.toString() ?? null,
         lines: preview.lines.map((line) => ({
           sourceType: line.sourceType,
+          adjustmentKind: line.adjustmentKind,
           calculationMode: line.calculationMode,
           contractBillRowId: line.contractBillRowId,
           name: line.name,
@@ -777,6 +778,7 @@ export class SettlementService {
       return {
         lineKey: line.lineKey?.trim() || null,
         sourceType: "contract_bill_row",
+        adjustmentKind: null,
         calculationMode: settlementCalculationMode(row),
         contractBillRowId: row.id,
         sourceItemType: null,
@@ -1181,7 +1183,6 @@ export class SettlementService {
     const relatedLineIds = lines
       .filter((line) =>
         line.sourceType === "manual_adjustment" &&
-        line.amountCents < 0n &&
         line.relatedSettlementLineId !== null
       )
       .map((line) => line.relatedSettlementLineId!);
@@ -1213,6 +1214,17 @@ export class SettlementService {
     if (new Set(sourceSettlements.map((settlement) => settlement.id)).size !==
       new Set(sourceLines.map((line) => line.settlementId)).size) {
       throw new BadRequestException("负向调整只能关联本合同已生效的原结算明细。");
+    }
+  }
+
+  private assertNonPositiveSettlementTraceability(lines: NormalizedSettlementLine[]): void {
+    const tracedAdjustment = lines.find(
+      (line) => line.sourceType === "manual_adjustment" &&
+        line.relatedSettlementLineId !== null &&
+        line.reason !== null
+    );
+    if (!tracedAdjustment) {
+      throw new BadRequestException("零金额或负金额结算必须包含有原因且可追溯的调整或冲减明细。");
     }
   }
 
@@ -1373,9 +1385,6 @@ export class SettlementService {
       input.amountCents === undefined
         ? null
         : this.requiredMoneyCents(input.amountCents, "结算金额", input.isFinal === true);
-    if (input.isFinal !== true && submittedAmountCents !== null && submittedAmountCents <= 0n) {
-      throw new BadRequestException("结算金额必须大于 0，不能创建零金额或负数结算。");
-    }
     for (const line of input.settlementLines ?? []) {
       this.optionalDecimal(line.quantity);
     }
@@ -1465,8 +1474,8 @@ export class SettlementService {
       settlementLines,
       v2Final
     );
-    if (!v2Final && settlementAmountCents <= 0n) {
-      throw new BadRequestException("结算金额必须大于 0，不能创建零金额或负数结算。");
+    if (settlementAmountCents <= 0n) {
+      this.assertNonPositiveSettlementTraceability(settlementLines);
     }
     const unlimitedFramework = isUnlimitedFrameworkContract(version);
     if (!unlimitedFramework) {

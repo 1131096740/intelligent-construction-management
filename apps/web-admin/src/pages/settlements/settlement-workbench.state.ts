@@ -153,10 +153,13 @@ export type SourceLineDraftMap = Record<string, SourceLineDraft>;
 
 export interface ManualAdjustmentDraft {
   clientId: string;
+  adjustmentKind?: "ordinary" | "retrospective_price_difference" | "over_settlement_offset";
   name: string;
   amountYuan: string;
   reason: string;
   relatedSettlementLineId?: string;
+  pricingBasis?: string;
+  overageReason?: string;
   remark: string;
 }
 
@@ -268,6 +271,7 @@ export function buildSettlementLinePayload(
   for (const adjustment of adjustments) {
     result.push({
       sourceType: "manual_adjustment",
+      ...(adjustment.adjustmentKind ? { adjustmentKind: adjustment.adjustmentKind } : {}),
       lineKey: `adjustment:${adjustment.clientId}`,
       name: adjustment.name.trim(),
       amountCents: signedYuanTextToCentsText(adjustment.amountYuan.trim()),
@@ -275,6 +279,8 @@ export function buildSettlementLinePayload(
       ...(adjustment.relatedSettlementLineId?.trim()
         ? { relatedSettlementLineId: adjustment.relatedSettlementLineId.trim() }
         : {}),
+      ...(adjustment.pricingBasis?.trim() ? { pricingBasis: adjustment.pricingBasis.trim() } : {}),
+      ...(adjustment.overageReason?.trim() ? { overageReason: adjustment.overageReason.trim() } : {}),
       ...(adjustment.remark.trim() ? { remark: adjustment.remark.trim() } : {}),
       sortOrder: result.length + 1
     });
@@ -332,6 +338,7 @@ export function buildSettlementDraftLinePayload(
       : undefined;
     result.push({
       sourceType: "manual_adjustment",
+      ...(adjustment.adjustmentKind ? { adjustmentKind: adjustment.adjustmentKind } : {}),
       lineKey: `adjustment:${adjustment.clientId}`,
       ...(adjustment.name.trim() ? { name: adjustment.name.trim() } : {}),
       ...(amountCents ? { amountCents } : {}),
@@ -339,6 +346,8 @@ export function buildSettlementDraftLinePayload(
       ...(adjustment.relatedSettlementLineId?.trim()
         ? { relatedSettlementLineId: adjustment.relatedSettlementLineId.trim() }
         : {}),
+      ...(adjustment.pricingBasis?.trim() ? { pricingBasis: adjustment.pricingBasis.trim() } : {}),
+      ...(adjustment.overageReason?.trim() ? { overageReason: adjustment.overageReason.trim() } : {}),
       ...(adjustment.remark.trim() ? { remark: adjustment.remark.trim() } : {}),
       sortOrder: result.length + 1
     });
@@ -408,6 +417,15 @@ export function validateSettlementWorkbench(
     if (!adjustment.reason.trim()) errors.push(`第 ${order} 条人工调整必须填写原因。`);
     if (adjustment.amountYuan.trim().startsWith("-") && !adjustment.relatedSettlementLineId?.trim()) {
       errors.push(`第 ${order} 条负向人工调整必须关联原结算明细。`);
+    }
+    if (adjustment.adjustmentKind === "retrospective_price_difference") {
+      if (!adjustment.relatedSettlementLineId?.trim()) errors.push(`第 ${order} 条追溯调价必须关联原结算明细。`);
+      if (!adjustment.pricingBasis?.trim()) errors.push(`第 ${order} 条追溯调价必须填写调价依据。`);
+    }
+    if (adjustment.adjustmentKind === "over_settlement_offset") {
+      if (!adjustment.amountYuan.trim().startsWith("-")) errors.push(`第 ${order} 条超结冲减金额必须小于 0。`);
+      if (!adjustment.relatedSettlementLineId?.trim()) errors.push(`第 ${order} 条超结冲减必须关联原结算明细。`);
+      if (!adjustment.overageReason?.trim()) errors.push(`第 ${order} 条超结冲减必须填写超结原因。`);
     }
   });
   (input.visaChanges ?? []).forEach((visa, index) => {
@@ -555,6 +573,7 @@ export function applyImportedSettlementLines(
     }
     adjustments.push({
       clientId: `import-adjustment-${adjustments.length + 1}`,
+      ...(line.adjustmentKind ? { adjustmentKind: line.adjustmentKind } : {}),
       name: line.name.trim(),
       amountYuan: centsTextToInputYuan(line.amountCents),
       reason: line.reason.trim(),
@@ -607,12 +626,15 @@ export function restoreSettlementDraftLines(
     if (line.sourceType !== "manual_adjustment") continue;
     adjustments.push({
       clientId: line.lineKey?.replace(/^adjustment:/u, "") || `draft-adjustment-${adjustments.length + 1}`,
+      ...(line.adjustmentKind ? { adjustmentKind: line.adjustmentKind } : {}),
       name: line.name?.trim() ?? "",
       amountYuan: line.amountCents ? centsTextToInputYuan(line.amountCents) : "",
       reason: line.reason?.trim() ?? "",
       ...(line.relatedSettlementLineId?.trim()
         ? { relatedSettlementLineId: line.relatedSettlementLineId.trim() }
         : {}),
+      ...(line.pricingBasis?.trim() ? { pricingBasis: line.pricingBasis.trim() } : {}),
+      ...(line.overageReason?.trim() ? { overageReason: line.overageReason.trim() } : {}),
       remark: line.remark?.trim() ?? ""
     });
   }

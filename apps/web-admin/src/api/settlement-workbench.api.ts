@@ -35,6 +35,7 @@ export interface SettlementParticipantOptionsReadModel {
 
 export interface SettlementLineDraftPayload {
   sourceType: "contract_bill_row" | "visa_change" | "manual_adjustment";
+  adjustmentKind?: "ordinary" | "retrospective_price_difference" | "over_settlement_offset";
   lineKey?: string;
   contractBillRowId?: string;
   sourceItemType?: string;
@@ -46,6 +47,7 @@ export interface SettlementLineDraftPayload {
   unitPriceCents?: string;
   amountCents?: string;
   pricingBasis?: string;
+  overageReason?: string;
   relatedSettlementLineId?: string;
   reason?: string;
   remark?: string;

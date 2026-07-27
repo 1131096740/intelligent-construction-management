@@ -24,6 +24,11 @@ export type SettlementLineSourceType =
   | "visa_change"
   | "manual_adjustment";
 
+export type SettlementAdjustmentKind =
+  | "ordinary"
+  | "retrospective_price_difference"
+  | "over_settlement_offset";
+
 function IsSettlementQuantity(): PropertyDecorator {
   return (target, propertyKey) => {
     registerDecorator({
@@ -82,6 +87,12 @@ export class CreateSettlementLineDto {
   })
   sourceType!: SettlementLineSourceType;
 
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsIn(["ordinary", "retrospective_price_difference", "over_settlement_offset"], {
+    message: "结算调整类型不正确"
+  })
+  adjustmentKind?: SettlementAdjustmentKind;
+
   // 草稿行的稳定身份：用于附件在草稿修订及提交为正式结算后保持可追溯。
   // 正式创建接口仍可省略，服务端会按输入顺序兼容处理。
   @ValidateIf((_object, value) => value !== undefined)
@@ -107,6 +118,10 @@ export class CreateSettlementLineDto {
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "签证或变更计价依据必须是文字" })
   pricingBasis?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "超结原因必须是文字" })
+  overageReason?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "负向调整来源必须是文字" })

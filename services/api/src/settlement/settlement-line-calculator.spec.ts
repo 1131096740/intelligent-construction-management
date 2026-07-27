@@ -159,6 +159,45 @@ describe("canonicalSettlementLine", () => {
     ).toThrow("负向调整必须关联可追溯的原结算明细");
   });
 
+  it("freezes retrospective price differences and over-settlement offsets as distinct adjustments", () => {
+    expect(
+      canonicalSettlementLine(
+        {
+          sourceType: "manual_adjustment",
+          adjustmentKind: "retrospective_price_difference",
+          name: "钢筋追溯调价差额",
+          amountCents: "12500",
+          reason: "补充协议调价",
+          relatedSettlementLineId: "settlement-line-1",
+          pricingBasis: "补充协议 BG-001"
+        },
+        undefined,
+        0
+      )
+    ).toMatchObject({
+      adjustmentKind: "retrospective_price_difference",
+      relatedSettlementLineId: "settlement-line-1",
+      pricingBasis: "补充协议 BG-001",
+      amountCents: 12500n
+    });
+
+    expect(() =>
+      canonicalSettlementLine(
+        {
+          sourceType: "manual_adjustment",
+          adjustmentKind: "over_settlement_offset",
+          name: "超结冲减",
+          amountCents: "100",
+          reason: "变更后超结",
+          relatedSettlementLineId: "settlement-line-1",
+          overageReason: "合同清单调减"
+        },
+        undefined,
+        0
+      )
+    ).toThrow("超结冲减金额必须小于 0");
+  });
+
   it("calculates visa-change lines to cents and requires their business facts", () => {
     expect(
       canonicalSettlementLine(

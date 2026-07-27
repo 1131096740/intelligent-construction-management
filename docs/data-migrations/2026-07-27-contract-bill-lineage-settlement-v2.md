@@ -473,6 +473,8 @@ prisma generate
 
 拆分/合并、追溯调价和退款/抵扣分别使用独立迁移。P2 迁移不得与 P1 首次上线绑成一个不可回滚批次。
 
+已新增前向迁移 `20260727170000_settlement_adjustment_lineage`：仅为 `SettlementLine` 和 `SettlementDraftLine` 增加可空 `adjustmentKind`，并以检查约束限定 `ordinary`、`retrospective_price_difference`、`over_settlement_offset`。旧行保持 `NULL` 并按普通历史调整兼容读取，不扫描、不回填、不改写历史金额。回滚仅允许在确认不存在非空新值的隔离库中移除约束与列；生产回滚不得通过删除已冻结的调整事实实现。
+
 ## 7. SQL 与并发要求
 
 - 迁移开头检查目标表、旧约束和索引定义，发现意外结构立即失败。

@@ -400,6 +400,7 @@ export class SettlementDraftService {
       lineKey: this.lineKey(line, index),
       data: {
         sourceType: line.sourceType,
+        adjustmentKind: line.adjustmentKind?.trim() || null,
         contractBillRowId: line.contractBillRowId?.trim() || null,
         sourceItemType: line.sourceItemType?.trim() || null,
         occurredOn: this.optionalDate(line.occurredOn),
@@ -416,7 +417,7 @@ export class SettlementDraftService {
             : "pending_source",
         status: "active",
         pricingBasis: line.pricingBasis?.trim() || null,
-        overageReason: null,
+        overageReason: line.overageReason?.trim() || null,
         relatedSettlementLineId: line.relatedSettlementLineId?.trim() || null,
         reason: line.reason?.trim() || null,
         remark: line.remark?.trim() || null,

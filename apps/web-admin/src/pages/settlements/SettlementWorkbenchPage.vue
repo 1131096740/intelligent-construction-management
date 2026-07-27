@@ -473,8 +473,8 @@
     >
       <div class="section-title">
         <div>
-          <strong>独立人工调整</strong>
-          <span>扣款或金额调整可填写正负金额，必须说明原因。</span>
+          <strong>独立调整、追溯调价与超结冲减</strong>
+          <span>保留原结算事实不改写；追溯调价和超结冲减必须关联原结算行。</span>
         </div>
       </div>
       <t-table
@@ -484,6 +484,26 @@
         :data="adjustments"
         :horizontal-scroll-affixed-bottom="true"
       >
+        <template #adjustmentKind="{ row }">
+          <t-select
+            v-model="row.adjustmentKind"
+            size="small"
+            @change="onAdjustmentChange"
+          >
+            <t-option
+              value="ordinary"
+              label="普通调整"
+            />
+            <t-option
+              value="retrospective_price_difference"
+              label="追溯调价"
+            />
+            <t-option
+              value="over_settlement_offset"
+              label="超结冲减"
+            />
+          </t-select>
+        </template>
         <template #name="{ row }">
           <t-input
             v-model="row.name"
@@ -511,7 +531,25 @@
         <template #relatedSettlementLineId="{ row }">
           <t-input
             v-model="row.relatedSettlementLineId"
-            placeholder="负向调整必填原结算行编号"
+            placeholder="追溯/超结及负向调整必填"
+            size="small"
+            @change="onAdjustmentChange"
+          />
+        </template>
+        <template #pricingBasis="{ row }">
+          <t-input
+            v-model="row.pricingBasis"
+            :disabled="row.adjustmentKind !== 'retrospective_price_difference'"
+            placeholder="追溯调价必填"
+            size="small"
+            @change="onAdjustmentChange"
+          />
+        </template>
+        <template #overageReason="{ row }">
+          <t-input
+            v-model="row.overageReason"
+            :disabled="row.adjustmentKind !== 'over_settlement_offset'"
+            placeholder="超结冲减必填"
             size="small"
             @change="onAdjustmentChange"
           />
@@ -1013,10 +1051,13 @@ let templateRequestId = 0;
 let previewTimer: ReturnType<typeof setTimeout> | undefined;
 
 const adjustmentColumns: PrimaryTableCol<ManualAdjustmentDraft>[] = [
+  { colKey: "adjustmentKind", title: "调整类型", width: 150 },
   { colKey: "name", title: "调整名称", minWidth: 180 },
   { colKey: "amountYuan", title: "调整金额（元）", width: 180 },
   { colKey: "reason", title: "调整原因", minWidth: 220 },
   { colKey: "relatedSettlementLineId", title: "原结算行", minWidth: 180 },
+  { colKey: "pricingBasis", title: "调价依据", minWidth: 180 },
+  { colKey: "overageReason", title: "超结原因", minWidth: 180 },
   { colKey: "remark", title: "备注", minWidth: 180 },
   { colKey: "operation", title: "操作", width: 76, fixed: "right" }
 ];
@@ -1639,6 +1680,7 @@ function addAdjustment() {
     ...adjustments.value,
     {
       clientId: `adjustment-${Date.now()}-${adjustments.value.length + 1}`,
+      adjustmentKind: "ordinary",
       name: "",
       amountYuan: "",
       reason: "",
