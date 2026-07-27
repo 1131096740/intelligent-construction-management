@@ -1790,6 +1790,7 @@ function resetSourceState() {
   sourceRows.value = [];
   drafts.value = {};
   adjustments.value = [];
+  visaChanges.value = [];
   templateRequestId += 1;
   templateSelection.value = emptySettlementTemplateSelection();
   resetGovernedPreparation();
