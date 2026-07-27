@@ -625,6 +625,20 @@
       </section>
 
       <section
+        v-else-if="activeTab === 'recovery'"
+        class="tab-content"
+        aria-label="结算回收台账"
+      >
+        <section class="content-panel">
+          <SettlementRecoveryLedgerPanel
+            :settlement-id="settlementDetail.id"
+            :can-record="canRecordSettlementRecovery"
+            @download="requestGovernedSettlementFileDownload"
+          />
+        </section>
+      </section>
+
+      <section
         v-else
         class="tab-content"
         aria-label="结算关联与审计"
@@ -711,6 +725,7 @@ import type { CoreFlowTone, SettlementDetailReadModel } from "@jiangkong/shared-
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useAuthStore } from "../../auth/auth.store";
 import {
   confirmSettlementArchive,
   createPrivateFileDownloadTicket,
@@ -752,6 +767,7 @@ import {
   settlementSignatureGenerationState
 } from "./settlement-detail.config";
 import SettlementSignatureEvidencePanel from "./components/SettlementSignatureEvidencePanel.vue";
+import SettlementRecoveryLedgerPanel from "./components/SettlementRecoveryLedgerPanel.vue";
 
 type SettlementReviewDecision = "approve" | "reject" | "reject_previous" | "return_to_applicant";
 type SensitiveActionKind =
@@ -782,6 +798,7 @@ interface SensitiveActionState {
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
 const settlementDetail = ref<SettlementDetailReadModel | null>(null);
 const detailLoading = ref(false);
 const settlementDetailLoadError = ref("");
@@ -915,6 +932,9 @@ const requiresSettlementSelfReviewConfirmation = computed(() =>
   settlementActionByKey.value.get("review_approval")?.requiresSelfReviewConfirmation === true
 );
 const canRunSettlementAction = computed(() => Boolean(settlementDetail.value?.settlementId));
+const canRecordSettlementRecovery = computed(() =>
+  auth.user?.roleKeys.includes("finance_staff") || auth.user?.globalRoleKeys.includes("finance_staff")
+);
 const showSettlementApprovalActions = computed(() =>
   isSettlementActionEnabled("review_approval") || isSettlementActionEnabled("download_approval_form")
 );

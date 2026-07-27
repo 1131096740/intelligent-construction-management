@@ -130,6 +130,7 @@ describe("settlement detail page configuration", () => {
       "流程办理",
       "结算明细",
       "凭证资料",
+      "回收台账",
       "关联与审计"
     ]);
   });

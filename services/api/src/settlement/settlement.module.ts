@@ -25,6 +25,7 @@ import { SettlementCounterpartyDocumentService } from "./settlement-counterparty
 import { SettlementSignedDocumentService } from "./settlement-signed-document.service";
 import { SettlementFrozenDocumentService } from "./settlement-frozen-document.service";
 import { SettlementLineAttachmentService } from "./settlement-line-attachment.service";
+import { SettlementRecoveryService } from "./settlement-recovery.service";
 
 @Module({
   imports: [ApprovalModule, AuditModule, AuthModule, FileModule, MeModule],
@@ -49,7 +50,8 @@ import { SettlementLineAttachmentService } from "./settlement-line-attachment.se
     SettlementCounterpartyDocumentService,
     SettlementFrozenDocumentService,
     SettlementLineAttachmentService,
-    SettlementSignedDocumentService
+    SettlementSignedDocumentService,
+    SettlementRecoveryService
   ],
   exports: [
     SettlementService,

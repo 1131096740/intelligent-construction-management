@@ -717,6 +717,42 @@ model SettlementLine {
   @@index([relatedSettlementLineId])
 }
 
+model SettlementRecoveryBalance {
+  id                     String   @id @default(uuid())
+  settlementId           String   @unique
+  projectId              String
+  contractId             String
+  originalAmountCents    BigInt
+  resolvedAmountCents    BigInt    @default(0)
+  outstandingAmountCents BigInt
+  status                 String   @default("open")
+  revision               Int      @default(1)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@index([projectId, status])
+  @@index([contractId, status])
+}
+
+model SettlementRecoveryEntry {
+  id                   String   @id @default(uuid())
+  balanceId            String
+  entryType            String
+  amountCents          BigInt
+  occurredAt           DateTime @db.Date
+  relatedPaymentId     String?
+  evidenceFileId       String
+  reason               String
+  recordedByUserId     String
+  idempotencyKey       String   @unique
+  reversalOfEntryId    String?  @unique
+  createdAt            DateTime @default(now())
+
+  @@index([balanceId, createdAt])
+  @@index([relatedPaymentId])
+  @@index([evidenceFileId])
+}
+
 model SettlementImport {
   id                          String    @id @default(uuid())
   projectId                   String

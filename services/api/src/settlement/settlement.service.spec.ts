@@ -4741,16 +4741,22 @@ describe("SettlementService", () => {
     });
   });
 
-  it("confirms a signed settlement archive file and makes the settlement effective", async () => {
+  it("confirms a signed negative settlement archive and creates its recovery balance", async () => {
     const tx = {
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
-          status: "pending_archive_confirm"
+          status: "pending_archive_confirm",
+          projectId: "project-1",
+          contractId: "contract-1",
+          amountCents: -10_000n
         }),
         update: jest.fn().mockResolvedValue({
           id: "settlement-1",
-          status: "effective"
+          status: "effective",
+          projectId: "project-1",
+          contractId: "contract-1",
+          amountCents: -10_000n
         })
       },
       settlementArchiveFile: {
@@ -4773,7 +4779,18 @@ describe("SettlementService", () => {
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
-    const settlementService = new SettlementService(prisma as never, audit as never, auth as never);
+    const recoveries = { ensureBalanceForEffectiveSettlement: jest.fn() };
+    const settlementService = new SettlementService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      recoveries as never
+    );
 
     const result = await settlementService.confirmArchiveFile(
       "settlement-1",
@@ -4801,6 +4818,11 @@ describe("SettlementService", () => {
       where: { id: "settlement-1" },
       data: { status: "effective" }
     });
+    expect(recoveries.ensureBalanceForEffectiveSettlement).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ id: "settlement-1", amountCents: -10_000n }),
+      "user-contract-director"
+    );
     expect(tx.projectSettlementExceptionQuotaUsage.updateMany).toHaveBeenCalledWith({
       where: { settlementId: "settlement-1", status: "occupied" },
       data: { status: "used" }
@@ -4830,13 +4852,15 @@ describe("SettlementService", () => {
           id: "settlement-final-1",
           contractId: "contract-1",
           isFinal: true,
-          status: "pending_archive_confirm"
+          status: "pending_archive_confirm",
+          amountCents: 0n
         }),
         update: jest.fn().mockResolvedValue({
           id: "settlement-final-1",
           contractId: "contract-1",
           isFinal: true,
-          status: "effective"
+          status: "effective",
+          amountCents: 0n
         })
       },
       settlementArchiveFile: {

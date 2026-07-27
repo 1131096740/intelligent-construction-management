@@ -84,6 +84,7 @@ import {
 } from "./contract-settlement-capacity";
 import { freezeSettlementParticipants } from "./settlement-participant-freeze";
 import { SettlementSignedDocumentService } from "./settlement-signed-document.service";
+import { SettlementRecoveryService } from "./settlement-recovery.service";
 
 type SettlementContractKind = "material_mechanical" | "labor_professional";
 
@@ -424,7 +425,9 @@ export class SettlementService {
     @Optional()
     private readonly settlementTemplates?: SettlementTemplateService,
     @Optional()
-    private readonly signedDocuments?: SettlementSignedDocumentService
+    private readonly signedDocuments?: SettlementSignedDocumentService,
+    @Optional()
+    private readonly recoveries?: SettlementRecoveryService
   ) {}
 
   assertContractVersionEffective(status: ContractVersionStatus): void {
@@ -2766,6 +2769,7 @@ export class SettlementService {
         const effectiveSettlement = await tx.settlement.update({
           where: { id: settlement.id }, data: { status: "effective" satisfies SettlementStatus }
         });
+        await this.ensureRecoveryBalance(tx, effectiveSettlement, actorUserId);
         await this.closeContractAfterFinalSettlement(tx, effectiveSettlement, actorUserId);
         await this.useSettlementExceptionQuotaUsage(tx, settlement.id, actorUserId);
         await this.audit.record(tx, {
@@ -2811,6 +2815,7 @@ export class SettlementService {
         where: { id: settlement.id },
         data: { status: "effective" satisfies SettlementStatus }
       });
+      await this.ensureRecoveryBalance(tx, effectiveSettlement, actorUserId);
 
       await this.closeContractAfterFinalSettlement(tx, effectiveSettlement, actorUserId);
       await this.useSettlementExceptionQuotaUsage(tx, settlement.id, actorUserId);
@@ -2857,6 +2862,18 @@ export class SettlementService {
       businessId: settlement.contractId,
       metadata: { finalSettlementId: settlement.id, settlementClosedAt: closedAt.toISOString() }
     });
+  }
+
+  private async ensureRecoveryBalance(
+    tx: Prisma.TransactionClient,
+    settlement: Pick<Settlement, "id" | "projectId" | "contractId" | "amountCents">,
+    actorUserId: string
+  ) {
+    if (settlement.amountCents >= 0n) return;
+    if (!this.recoveries) {
+      throw new BadRequestException("负结算回收余额服务暂不可用，不能确认归档");
+    }
+    await this.recoveries.ensureBalanceForEffectiveSettlement(tx, settlement, actorUserId);
   }
 
   async generatePdfArchive(

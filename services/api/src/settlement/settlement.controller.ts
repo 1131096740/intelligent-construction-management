@@ -40,6 +40,8 @@ import { SettlementService } from "./settlement.service";
 import { SettlementSubmissionService } from "./settlement-submission.service";
 import { SettlementSignedDocumentService } from "./settlement-signed-document.service";
 import { RegenerateSettlementSignedDocumentDto } from "./dto/settlement-signed-document-action.dto";
+import { RecordSettlementRecoveryDto, ReverseSettlementRecoveryDto } from "./dto/record-settlement-recovery.dto";
+import { SettlementRecoveryService } from "./settlement-recovery.service";
 
 @Controller("settlements")
 export class SettlementController {
@@ -49,7 +51,8 @@ export class SettlementController {
     private readonly settlements: SettlementService,
     private readonly projectVisibility: ProjectVisibilityService,
     private readonly submissions: SettlementSubmissionService,
-    @Optional() private readonly signedDocuments?: SettlementSignedDocumentService
+    @Optional() private readonly signedDocuments?: SettlementSignedDocumentService,
+    @Optional() private readonly recoveries?: SettlementRecoveryService
   ) {}
 
   @Post()
@@ -142,6 +145,41 @@ export class SettlementController {
       ].join("; ")
     });
     return new StreamableFile(result.buffer);
+  }
+
+  @Get(":settlementId/recovery")
+  @RequirePositions(...LEDGER_READ_POSITION_KEYS)
+  async recovery(@Param("settlementId") settlementId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.requireRecoveries().listForSettlement(
+      settlementId,
+      await this.projectVisibility.visibleProjectIds(user.id)
+    );
+  }
+
+  @Post(":settlementId/recovery-entries")
+  @RequirePositions("finance_staff")
+  recordRecovery(
+    @Param("settlementId") settlementId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RecordSettlementRecoveryDto
+  ) {
+    return this.requireRecoveries().record(settlementId, user.id, body);
+  }
+
+  @Post(":settlementId/recovery-entries/:entryId/reversal")
+  @RequirePositions("finance_staff")
+  reverseRecovery(
+    @Param("settlementId") settlementId: string,
+    @Param("entryId") entryId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ReverseSettlementRecoveryDto
+  ) {
+    return this.requireRecoveries().reverse(settlementId, entryId, user.id, body);
+  }
+
+  private requireRecoveries() {
+    if (!this.recoveries) throw new BadRequestException("结算回收台账服务暂不可用，请稍后重试");
+    return this.recoveries;
   }
 
   @Get(":settlementId")

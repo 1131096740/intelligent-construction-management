@@ -132,6 +132,7 @@ export const settlementDetailTabs = [
   { value: "process", label: "流程办理" },
   { value: "lines", label: "结算明细" },
   { value: "evidence", label: "凭证资料" },
+  { value: "recovery", label: "回收台账" },
   { value: "audit", label: "关联与审计" }
 ];
 
