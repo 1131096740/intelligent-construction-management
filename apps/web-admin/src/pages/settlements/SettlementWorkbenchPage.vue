@@ -677,7 +677,7 @@
     >
       <div class="footer-metric">
         <span>本期明细</span>
-        <strong>{{ selectedRowIds.length + adjustments.length }}</strong>
+        <strong>{{ selectedRowIds.length + adjustments.length + visaChanges.length }}</strong>
       </div>
       <div class="footer-metric">
         <span>异常</span>
