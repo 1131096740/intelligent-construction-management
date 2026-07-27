@@ -286,4 +286,195 @@ describe("ContractVersionActivationService", () => {
     expect(carryForwardCreate).not.toHaveBeenCalled();
     expect(transaction.contractVersion.updateMany).not.toHaveBeenCalled();
   });
+
+  it("freezes a confirmed split by its director-approved target opening allocations", async () => {
+    const sourceQuantity = new Prisma.Decimal("30");
+    const carryForwardCreate = jest.fn();
+    const transitionUpdate = jest.fn();
+    const transaction = tx({
+      contractBill: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce([{ id: "target-bill" }])
+          .mockResolvedValueOnce([{ id: "source-bill" }])
+      },
+      contractBillRow: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce([
+            { id: "target-row-a", lineageId: "lineage-a", unit: "m" },
+            { id: "target-row-b", lineageId: "lineage-b", unit: "m" }
+          ])
+          .mockResolvedValueOnce([{ id: "source-row", lineageId: "lineage-source", unit: "m" }])
+      },
+      settlement: { findMany: jest.fn().mockResolvedValue([{ id: "settlement-1" }]) },
+      settlementLine: {
+        findMany: jest.fn().mockResolvedValue([{
+          settlementId: "settlement-1",
+          contractBillRowId: "source-row",
+          quantity: sourceQuantity,
+          amountCents: 3000n
+        }])
+      },
+      contractBillRowTransition: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "transition-a",
+            sourceContractBillRowId: "source-row",
+            targetContractBillRowId: "target-row-a",
+            relationType: "split",
+            status: "confirmed",
+            sourceSettledQuantityAllocated: new Prisma.Decimal("10"),
+            targetOpeningQuantity: new Prisma.Decimal("10"),
+            settledAmountAllocatedCents: 1000n,
+            quantityConversionBasis: null
+          },
+          {
+            id: "transition-b",
+            sourceContractBillRowId: "source-row",
+            targetContractBillRowId: "target-row-b",
+            relationType: "split",
+            status: "confirmed",
+            sourceSettledQuantityAllocated: new Prisma.Decimal("20"),
+            targetOpeningQuantity: new Prisma.Decimal("20"),
+            settledAmountAllocatedCents: 2000n,
+            quantityConversionBasis: null
+          }
+        ]),
+        update: transitionUpdate
+      },
+      contractBillRowCarryForward: { create: carryForwardCreate }
+    });
+
+    await new ContractVersionActivationService().activate(transaction as never, {
+      contractVersionId: "version-2",
+      actorUserId: "director-1"
+    });
+
+    expect(transitionUpdate).not.toHaveBeenCalled();
+    expect(carryForwardCreate).toHaveBeenNthCalledWith(1, {
+      data: expect.objectContaining({
+        contractBillRowId: "target-row-a",
+        priorSettledQuantity: new Prisma.Decimal("10"),
+        priorSettledAmountCents: 1000n
+      })
+    });
+    expect(carryForwardCreate).toHaveBeenNthCalledWith(2, {
+      data: expect.objectContaining({
+        contractBillRowId: "target-row-b",
+        priorSettledQuantity: new Prisma.Decimal("20"),
+        priorSettledAmountCents: 2000n
+      })
+    });
+  });
+
+  it("blocks a split when its director-approved monetary allocation leaves a one-cent gap", async () => {
+    const carryForwardCreate = jest.fn();
+    const transaction = tx({
+      contractBill: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce([{ id: "target-bill" }])
+          .mockResolvedValueOnce([{ id: "source-bill" }])
+      },
+      contractBillRow: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce([
+            { id: "target-row-a", lineageId: "lineage-a", unit: "m" },
+            { id: "target-row-b", lineageId: "lineage-b", unit: "m" }
+          ])
+          .mockResolvedValueOnce([{ id: "source-row", lineageId: "lineage-source", unit: "m" }])
+      },
+      settlement: { findMany: jest.fn().mockResolvedValue([{ id: "settlement-1" }]) },
+      settlementLine: {
+        findMany: jest.fn().mockResolvedValue([{
+          settlementId: "settlement-1",
+          contractBillRowId: "source-row",
+          quantity: new Prisma.Decimal("30"),
+          amountCents: 3000n
+        }])
+      },
+      contractBillRowTransition: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "transition-a",
+            sourceContractBillRowId: "source-row",
+            targetContractBillRowId: "target-row-a",
+            relationType: "split",
+            status: "confirmed",
+            sourceSettledQuantityAllocated: new Prisma.Decimal("10"),
+            targetOpeningQuantity: new Prisma.Decimal("10"),
+            settledAmountAllocatedCents: 1000n,
+            quantityConversionBasis: null
+          },
+          {
+            id: "transition-b",
+            sourceContractBillRowId: "source-row",
+            targetContractBillRowId: "target-row-b",
+            relationType: "split",
+            status: "confirmed",
+            sourceSettledQuantityAllocated: new Prisma.Decimal("20"),
+            targetOpeningQuantity: new Prisma.Decimal("20"),
+            settledAmountAllocatedCents: 1999n,
+            quantityConversionBasis: null
+          }
+        ]),
+        update: jest.fn()
+      },
+      contractBillRowCarryForward: { create: carryForwardCreate }
+    });
+
+    await expect(new ContractVersionActivationService().activate(transaction as never, {
+      contractVersionId: "version-2",
+      actorUserId: "director-1"
+    })).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "SETTLEMENT_SOURCE_LINEAGE_UNRESOLVED" })
+    });
+    expect(carryForwardCreate).not.toHaveBeenCalled();
+  });
+
+  it("requires a conversion basis whenever a confirmed manual allocation changes units", async () => {
+    const carryForwardCreate = jest.fn();
+    const transaction = tx({
+      contractBill: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce([{ id: "target-bill" }])
+          .mockResolvedValueOnce([{ id: "source-bill" }])
+      },
+      contractBillRow: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce([{ id: "target-row", lineageId: "lineage-target", unit: "㎡" }])
+          .mockResolvedValueOnce([{ id: "source-row", lineageId: "lineage-source", unit: "m" }])
+      },
+      settlement: { findMany: jest.fn().mockResolvedValue([{ id: "settlement-1" }]) },
+      settlementLine: {
+        findMany: jest.fn().mockResolvedValue([{
+          settlementId: "settlement-1",
+          contractBillRowId: "source-row",
+          quantity: new Prisma.Decimal("30"),
+          amountCents: 3000n
+        }])
+      },
+      contractBillRowTransition: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "transition-1",
+          sourceContractBillRowId: "source-row",
+          targetContractBillRowId: "target-row",
+          relationType: "merge",
+          status: "confirmed",
+          sourceSettledQuantityAllocated: new Prisma.Decimal("30"),
+          targetOpeningQuantity: new Prisma.Decimal("60"),
+          settledAmountAllocatedCents: 3000n,
+          quantityConversionBasis: null
+        }]),
+        update: jest.fn()
+      },
+      contractBillRowCarryForward: { create: carryForwardCreate }
+    });
+
+    await expect(new ContractVersionActivationService().activate(transaction as never, {
+      contractVersionId: "version-2",
+      actorUserId: "director-1"
+    })).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "SETTLEMENT_SOURCE_LINEAGE_UNRESOLVED" })
+    });
+    expect(carryForwardCreate).not.toHaveBeenCalled();
+  });
 });

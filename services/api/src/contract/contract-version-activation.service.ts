@@ -32,6 +32,7 @@ type Transition = {
   sourceSettledQuantityAllocated: Prisma.Decimal | null;
   targetOpeningQuantity: Prisma.Decimal | null;
   settledAmountAllocatedCents: bigint | null;
+  quantityConversionBasis?: string | null;
 };
 
 type ActivationStore = {
@@ -337,35 +338,110 @@ export class ContractVersionActivationService {
       const source = sourceById.get(sourceId)!;
       const matching = transitions.filter((transition) =>
         transition.sourceContractBillRowId === sourceId &&
-        transition.relationType === "one_to_one" &&
-        targetById.get(transition.targetContractBillRowId)?.lineageId === source.lineageId
+        targetById.has(transition.targetContractBillRowId)
       );
-      if (matching.length !== 1) {
-        throw this.unresolvedLineage("历史结算占用的清单行缺少已确认的一对一跨版本映射");
+      if (!matching.length) {
+        throw this.unresolvedLineage("历史结算占用的清单行缺少已确认的跨版本映射");
       }
-      const transition = matching[0];
       const sourceLines = lines.filter((line) => line.contractBillRowId === sourceId);
       const quantity = this.sumQuantity(sourceLines.map((line) => line.quantity));
       const amountCents = sourceLines.reduce((total, line) => total + line.amountCents, 0n);
-      if (
-        (transition.sourceSettledQuantityAllocated && !transition.sourceSettledQuantityAllocated.equals(quantity ?? new Prisma.Decimal(0))) ||
-        (transition.targetOpeningQuantity && !transition.targetOpeningQuantity.equals(quantity ?? new Prisma.Decimal(0))) ||
-        (transition.settledAmountAllocatedCents !== null && transition.settledAmountAllocatedCents !== amountCents)
-      ) {
-        throw this.unresolvedLineage("已确认跨版本映射与历史结算占用不守恒");
+      const autoOneToOne = matching.length === 1 &&
+        matching[0].relationType === "one_to_one" &&
+        targetById.get(matching[0].targetContractBillRowId)?.lineageId === source.lineageId &&
+        matching[0].sourceSettledQuantityAllocated === null &&
+        matching[0].targetOpeningQuantity === null &&
+        matching[0].settledAmountAllocatedCents === null;
+
+      if (autoOneToOne) {
+        const transition = matching[0];
+        await store.contractBillRowTransition.update({
+          where: { id: transition.id },
+          data: {
+            sourceSettledQuantityAllocated: quantity,
+            targetOpeningQuantity: quantity,
+            settledAmountAllocatedCents: amountCents
+          }
+        });
+        this.appendTargetAllocation(targetAllocations, transition.targetContractBillRowId, {
+          sourceId,
+          quantity,
+          amountCents,
+          transitionId: transition.id
+        });
+        continue;
       }
-      await store.contractBillRowTransition.update({
-        where: { id: transition.id },
-        data: {
-          sourceSettledQuantityAllocated: quantity,
-          targetOpeningQuantity: quantity,
-          settledAmountAllocatedCents: amountCents
-        }
+
+      this.assertManualAllocationConserved({
+        source,
+        sourceQuantity: quantity,
+        sourceAmountCents: amountCents,
+        transitions: matching,
+        targetById
       });
-      const allocations = targetAllocations.get(transition.targetContractBillRowId) ?? [];
-      allocations.push({ sourceId, quantity, amountCents, transitionId: transition.id });
-      targetAllocations.set(transition.targetContractBillRowId, allocations);
+      for (const transition of matching) {
+        this.appendTargetAllocation(targetAllocations, transition.targetContractBillRowId, {
+          sourceId,
+          quantity: transition.targetOpeningQuantity,
+          amountCents: transition.settledAmountAllocatedCents!,
+          transitionId: transition.id
+        });
+      }
     }
+  }
+
+  private appendTargetAllocation(
+    targetAllocations: Map<string, Array<{ sourceId: string; quantity: Prisma.Decimal | null; amountCents: bigint; transitionId?: string }>>,
+    targetId: string,
+    allocation: { sourceId: string; quantity: Prisma.Decimal | null; amountCents: bigint; transitionId?: string }
+  ) {
+    const allocations = targetAllocations.get(targetId) ?? [];
+    allocations.push(allocation);
+    targetAllocations.set(targetId, allocations);
+  }
+
+  private assertManualAllocationConserved(input: {
+    source: BillRow;
+    sourceQuantity: Prisma.Decimal | null;
+    sourceAmountCents: bigint;
+    transitions: Transition[];
+    targetById: Map<string, BillRow>;
+  }) {
+    const allowedRelationTypes = new Set(["one_to_one", "split", "merge"]);
+    if (input.transitions.some((transition) => !allowedRelationTypes.has(transition.relationType))) {
+      throw this.unresolvedLineage("已确认跨版本映射关系类型无效");
+    }
+    if (input.transitions.some((transition) =>
+      transition.sourceSettledQuantityAllocated === null ||
+      transition.targetOpeningQuantity === null ||
+      transition.settledAmountAllocatedCents === null
+    )) {
+      throw this.unresolvedLineage("人工跨版本映射缺少已确认的数量或金额分配");
+    }
+    const sourceQuantityAllocated = this.sumQuantity(input.transitions.map(
+      (transition) => transition.sourceSettledQuantityAllocated
+    ));
+    if (!this.quantitiesEqual(sourceQuantityAllocated, input.sourceQuantity)) {
+      throw this.unresolvedLineage("同一来源清单行的历史数量分配不守恒");
+    }
+    const amountAllocated = input.transitions.reduce(
+      (total, transition) => total + transition.settledAmountAllocatedCents!,
+      0n
+    );
+    if (amountAllocated !== input.sourceAmountCents) {
+      throw this.unresolvedLineage("同一来源清单行的历史金额分配不守恒");
+    }
+    if (input.transitions.some((transition) => {
+      const target = input.targetById.get(transition.targetContractBillRowId)!;
+      return target.unit !== input.source.unit && !transition.quantityConversionBasis?.trim();
+    })) {
+      throw this.unresolvedLineage("单位变化的跨版本映射缺少换算依据");
+    }
+  }
+
+  private quantitiesEqual(left: Prisma.Decimal | null, right: Prisma.Decimal | null) {
+    if (left === null || right === null) return left === right;
+    return left.equals(right);
   }
 
   private async rowsForVersion(store: ActivationStore, contractVersionId: string) {
