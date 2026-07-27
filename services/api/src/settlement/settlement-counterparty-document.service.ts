@@ -37,6 +37,14 @@ type SignedDocumentRow = {
   supersedesId: string | null;
 };
 
+type PdfInspectionSnapshot = {
+  version: 1;
+  frozenPageCount: number;
+  originalPageCount: number;
+  hasDifferences: boolean;
+  differences: Array<"page_count" | "orientation" | "dimensions" | "rotation">;
+};
+
 @Injectable()
 export class SettlementCounterpartyDocumentService {
   constructor(
@@ -80,8 +88,8 @@ export class SettlementCounterpartyDocumentService {
           throw this.deny("冻结版结算单完整性校验失败，请重新生成", "settlement.counterparty_document.frozen_denied");
         }
         const uploadedPdf = inspections.get("uploaded")!;
-        this.assertSamePages(frozenPdf, uploadedPdf);
         this.assertDeclaration(input, uploadedPdf.pageCount);
+        const pdfInspection = this.comparePdfFacts(frozenPdf, uploadedPdf);
         const bound = await tx.settlementSignedDocument.findFirst({
           where: { fileId: input.uploadedFileId }
         });
@@ -117,7 +125,10 @@ export class SettlementCounterpartyDocumentService {
             businessSnapshotToken: frozen.businessSnapshotToken,
             status: "active",
             generationStatus: "not_applicable",
-            declarationSnapshot: input.declaration as unknown as Prisma.InputJsonValue,
+            declarationSnapshot: {
+              ...input.declaration,
+              pdfInspection
+            } as unknown as Prisma.InputJsonValue,
             declaredByUserId: actorUserId,
             declaredAt: new Date(),
             uploadedByUserId: actorUserId,
@@ -129,7 +140,12 @@ export class SettlementCounterpartyDocumentService {
           action: "settlement.counterparty_document.link",
           businessType: "settlement_draft",
           businessId: draft.id,
-          metadata: { documentId: created.id, sourceRevision: draft.revision, pageCount: created.pageCount }
+          metadata: {
+            documentId: created.id,
+            sourceRevision: draft.revision,
+            pageCount: created.pageCount,
+            pdfInspection
+          }
         });
         return created;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -177,8 +193,11 @@ export class SettlementCounterpartyDocumentService {
     }
     const frozenPdf = inspections.get(frozen.id)!;
     const originalPdf = inspections.get(original.id)!;
-    this.assertSamePages(frozenPdf, originalPdf);
-    return { frozen, counterpartyOriginal: original };
+    return {
+      frozen,
+      counterpartyOriginal: original,
+      pdfInspection: this.comparePdfFacts(frozenPdf, originalPdf)
+    };
   }
 
   private async lockDraft(tx: Prisma.TransactionClient, id: string) {
@@ -261,11 +280,28 @@ export class SettlementCounterpartyDocumentService {
     try { return await inspectSignedPdf(loaded.buffer); } catch { throw this.deny("无法读取结算 PDF，请确认文件未损坏、未加密后重试", "settlement.counterparty_document.file_denied"); }
   }
 
-  private assertSamePages(left: Awaited<ReturnType<typeof inspectSignedPdf>>, right: Awaited<ReturnType<typeof inspectSignedPdf>>) {
-    if (left.pageCount !== right.pageCount || left.pages.some((page, index) => {
-      const other = right.pages[index];
-      return !other || page.orientation !== "landscape" || other.orientation !== "landscape" || Math.abs(page.width - other.width) > 12 || Math.abs(page.height - other.height) > 12 || page.rotationDegrees !== other.rotationDegrees;
-    })) throw this.deny("乙方扫描件页数、方向或页面尺寸与冻结版不一致", "settlement.counterparty_document.page_denied");
+  private comparePdfFacts(
+    frozen: Awaited<ReturnType<typeof inspectSignedPdf>>,
+    original: Awaited<ReturnType<typeof inspectSignedPdf>>
+  ): PdfInspectionSnapshot {
+    const differences = new Set<PdfInspectionSnapshot["differences"][number]>();
+    if (frozen.pageCount !== original.pageCount) differences.add("page_count");
+    for (let index = 0; index < Math.min(frozen.pages.length, original.pages.length); index += 1) {
+      const left = frozen.pages[index];
+      const right = original.pages[index];
+      if (left.orientation !== right.orientation) differences.add("orientation");
+      if (Math.abs(left.width - right.width) > 12 || Math.abs(left.height - right.height) > 12) {
+        differences.add("dimensions");
+      }
+      if (left.rotationDegrees !== right.rotationDegrees) differences.add("rotation");
+    }
+    return {
+      version: 1,
+      frozenPageCount: frozen.pageCount,
+      originalPageCount: original.pageCount,
+      hasDifferences: differences.size > 0,
+      differences: [...differences]
+    };
   }
 
   private deny(message: string, action: string) { return new SettlementDocumentGovernanceDenial(message, action); }

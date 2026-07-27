@@ -677,6 +677,7 @@
         :staged-file-name="stagedUploadedFileName"
         :evidence-epoch="counterpartyEvidenceEpoch"
         :linked="Boolean(linkedOriginalDocumentId)"
+        :linked-declaration="linkedOriginalDeclaration"
         :disabled="!activeDraft || !form.fieldReviewerUserId || isDirty"
         :generate-busy="frozenDocumentBusy"
         :upload-busy="counterpartyUploadBusy"

@@ -25,6 +25,12 @@ async function multiPageLandscapePdf() {
   return Buffer.from(await document.save());
 }
 
+async function portraitPdf() {
+  const document = await PDFDocument.create();
+  document.addPage([595.28, 841.89]);
+  return Buffer.from(await document.save());
+}
+
 describe("SettlementCounterpartyDocumentService", () => {
   it("links the original uploaded PDF to the current frozen draft revision without rewriting bytes", async () => {
     const buffer = await landscapePdf();
@@ -60,7 +66,15 @@ describe("SettlementCounterpartyDocumentService", () => {
         pageCount: 1,
         sourceRevision: 3,
         businessSnapshotToken: "snapshot-3",
-        declarationSnapshot: { ...declaration, crossPageSealCompleted: false },
+        declarationSnapshot: expect.objectContaining({
+          ...declaration,
+          crossPageSealCompleted: false,
+          pdfInspection: expect.objectContaining({
+            frozenPageCount: 1,
+            originalPageCount: 1,
+            hasDifferences: false
+          })
+        }),
         uploadedByUserId: "owner-1"
       })
     });
@@ -83,6 +97,52 @@ describe("SettlementCounterpartyDocumentService", () => {
       declaration: { ...declaration, crossPageSealCompleted: false }
     })).rejects.toThrow("请逐项确认");
     expect(tx.settlementSignedDocument.create).not.toHaveBeenCalled();
+  });
+
+  it("allows a readable signed scan with page-layout differences and freezes the inspection facts", async () => {
+    const frozenBuffer = await multiPageLandscapePdf();
+    const uploadedBuffer = await portraitPdf();
+    const frozenSha256 = createHash("sha256").update(frozenBuffer).digest("hex");
+    const uploadedSha256 = createHash("sha256").update(uploadedBuffer).digest("hex");
+    const draft = { id: "draft-1", projectId: "project-1", ownerUserId: "owner-1", revision: 3, status: "draft", governanceVersion: 1 };
+    const frozen = { id: "frozen-1", settlementDraftId: "draft-1", purpose: "frozen_counterparty_copy", fileId: "frozen-file", contentSha256: frozenSha256, pageCount: 2, sourceRevision: 3, businessSnapshotToken: "snapshot-3", status: "active", declarationSnapshot: null, supersedesId: null };
+    const file = (id: string, buffer: Buffer, contentSha256: string) => ({ id, uploadedByUserId: "owner-1", storageStatus: "active", mimeType: "application/pdf", sizeBytes: buffer.length, contentSha256 });
+    const tx = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([draft])
+        .mockResolvedValueOnce([frozen])
+        .mockResolvedValueOnce([file("frozen-file", frozenBuffer, frozenSha256)])
+        .mockResolvedValueOnce([file("uploaded-file", uploadedBuffer, uploadedSha256)]),
+      settlementSignedDocument: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: "signed-1" }), update: jest.fn() }
+    };
+    const files = {
+      getFileBuffer: jest.fn(async (id: string) => id === "frozen-file"
+        ? { file: file(id, frozenBuffer, frozenSha256), buffer: frozenBuffer }
+        : { file: file(id, uploadedBuffer, uploadedSha256), buffer: uploadedBuffer })
+    };
+    const service = new SettlementCounterpartyDocumentService({ $transaction: jest.fn(async (callback) => callback(tx)) } as never, undefined, files as never);
+
+    await expect(service.link("project-1", "draft-1", "owner-1", {
+      expectedRevision: 3,
+      frozenDocumentId: "frozen-1",
+      uploadedFileId: "uploaded-file",
+      declaration
+    })).resolves.toMatchObject({ id: "signed-1" });
+
+    expect(tx.settlementSignedDocument.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        contentSha256: uploadedSha256,
+        declarationSnapshot: expect.objectContaining({
+          ...declaration,
+          pdfInspection: expect.objectContaining({
+            frozenPageCount: 2,
+            originalPageCount: 1,
+            hasDifferences: true,
+            differences: expect.arrayContaining(["page_count", "orientation"])
+          })
+        })
+      })
+    });
   });
 
   it("locks the frozen and uploaded FileObject rows in stable file-id order", async () => {

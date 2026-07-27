@@ -41,7 +41,7 @@
 
     <div class="signing-instructions">
       <strong>线下签章要求</strong>
-      <span>打印完整冻结版，由乙方在每个要求位置签字并填写日期、逐页盖章；超过一页时加盖骑缝章，再扫描为一份 PDF。</span>
+      <span>打印完整冻结版，由乙方在要求位置签字并填写日期、逐页盖章；超过一页时加盖骑缝章，再扫描为一份 PDF。系统校验 PDF 可读性和原字节摘要，不做 OCR 或逐页正文比对。</span>
     </div>
 
     <div class="upload-row">
@@ -69,7 +69,7 @@
         :disabled="disabled || uploadBusy || !stagedFileId"
         @click="bindDeclarationToCurrentEvidence"
       >
-        扫描件页数、页序与当前冻结版一致
+        已人工核对扫描件页序与签章；页数、方向或尺寸差异（如有）已确认
       </t-checkbox>
       <t-checkbox
         v-model="declaration.counterpartySignedAndDated"
@@ -93,6 +93,12 @@
         多页文件已加盖骑缝章{{ requiresCrossPageSeal ? "" : "（单页不适用）" }}
       </t-checkbox>
     </fieldset>
+
+    <t-alert
+      v-if="linkedInspection"
+      theme="info"
+      :message="linkedInspectionMessage"
+    />
 
     <div class="panel-footer">
       <span>{{ linked ? "系统已校验并关联当前修订版原件。" : linkHint }}</span>
@@ -124,6 +130,13 @@ export interface SettlementCounterpartyDeclaration {
   counterpartySignedAndDated: boolean;
   everyPageStamped: boolean;
   crossPageSealCompleted: boolean;
+  pdfInspection?: {
+    version: 1;
+    frozenPageCount: number;
+    originalPageCount: number;
+    hasDifferences: boolean;
+    differences: Array<"page_count" | "orientation" | "dimensions" | "rotation">;
+  };
 }
 
 const props = withDefaults(defineProps<{
@@ -132,6 +145,7 @@ const props = withDefaults(defineProps<{
   stagedFileId?: string;
   evidenceEpoch?: number;
   linked?: boolean;
+  linkedDeclaration?: SettlementCounterpartyDeclaration | null;
   disabled?: boolean;
   generateBusy?: boolean;
   uploadBusy?: boolean;
@@ -141,6 +155,7 @@ const props = withDefaults(defineProps<{
   stagedFileId: "",
   evidenceEpoch: 0,
   linked: false,
+  linkedDeclaration: null,
   disabled: false,
   generateBusy: false,
   uploadBusy: false,
@@ -165,6 +180,21 @@ const declaration = reactive<SettlementCounterpartyDeclaration>({
 });
 
 const requiresCrossPageSeal = computed(() => (props.frozenDocument?.pageCount ?? 0) > 1);
+const linkedInspection = computed(() => props.linkedDeclaration?.pdfInspection ?? null);
+const pdfDifferenceLabel: Record<NonNullable<SettlementCounterpartyDeclaration["pdfInspection"]>["differences"][number], string> = {
+  page_count: "页数",
+  orientation: "方向",
+  dimensions: "页面尺寸",
+  rotation: "旋转角度"
+};
+const linkedInspectionMessage = computed(() => {
+  const inspection = linkedInspection.value;
+  if (!inspection) return "";
+  const differences = inspection.hasDifferences
+    ? `已记录版式差异：${inspection.differences.map((item) => pdfDifferenceLabel[item]).join("、")}。`
+    : "版式核验未发现差异。";
+  return `PDF 核验快照：冻结版 ${inspection.frozenPageCount} 页，乙方原件 ${inspection.originalPageCount} 页；${differences}`;
+});
 const declarationComplete = computed(() =>
   declaration.pageOrderMatchesFrozenDocument &&
   declaration.counterpartySignedAndDated &&

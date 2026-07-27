@@ -44,9 +44,11 @@ describe("settlement creation workbench structure", () => {
     expect(counterpartyPanel).not.toContain('type="file"');
   });
 
-  it("keeps final settlement facts structured and restores revision-bound evidence after refresh", () => {
-    expect(page).toContain("FINAL_SETTLEMENT_CONFIRMATIONS");
-    expect(page).toContain("finalCumulativeAmountCents");
+  it("keeps the final-settlement declaration structured and restores revision-bound evidence after refresh", () => {
+    expect(page).toContain("finalDeclarationAccepted");
+    expect(page).toContain("fetchSettlementFinalPreparation");
+    expect(page).not.toContain("FINAL_SETTLEMENT_CONFIRMATIONS");
+    expect(page).not.toContain("finalCumulativeAmountCents");
     expect(page).toContain("draft.documents?.frozenDocument");
     expect(page).toContain("draft.documents?.counterpartySignedOriginal");
     expect(page).toContain("generateSettlementFrozenDocument");
@@ -54,6 +56,13 @@ describe("settlement creation workbench structure", () => {
     expect(page).toContain("createPrivateFileDownloadTicket");
     expect(page).not.toContain("window.confirm");
     expect(page).not.toContain("window.prompt");
+  });
+
+  it("keeps PDF readability and byte integrity strict while allowing manually reviewed layout differences", () => {
+    expect(counterpartyPanel).toContain("不做 OCR 或逐页正文比对");
+    expect(counterpartyPanel).toContain("页数、方向或尺寸差异（如有）已确认");
+    expect(counterpartyPanel).toContain("PDF 核验快照");
+    expect(page).toContain(':linked-declaration="linkedOriginalDeclaration"');
   });
 
   it("uses an independent workbench route and keeps the ledger as the only created-order entry point", () => {

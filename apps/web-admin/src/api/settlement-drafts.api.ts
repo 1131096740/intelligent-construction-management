@@ -146,6 +146,13 @@ export interface SettlementCounterpartySignedDeclaration {
   counterpartySignedAndDated: boolean;
   everyPageStamped: boolean;
   crossPageSealCompleted: boolean;
+  pdfInspection?: {
+    version: 1;
+    frozenPageCount: number;
+    originalPageCount: number;
+    hasDifferences: boolean;
+    differences: Array<"page_count" | "orientation" | "dimensions" | "rotation">;
+  };
 }
 
 export interface SettlementDraftDocumentReadModel {

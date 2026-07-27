@@ -1,6 +1,6 @@
 # 合同清单跨版本与结算工作台 V2 数据模型前向迁移与历史回填方案
 
-> 实施注记（2026-07-27）：T12 最终结算新口径复用本方案已定义并已在本地 Schema 中存在的 `Contract.settlementClosedAt/finalSettlementId` 与 `SettlementDraft/Settlement.finalDeclarationVersion/finalDeclarationSnapshot`；本切片未新增迁移、未执行迁移、未回填或改写任何历史业务记录。
+> 实施注记（2026-07-27）：T12 最终结算新口径复用本方案已定义并已在本地 Schema 中存在的 `Contract.settlementClosedAt/finalSettlementId` 与 `SettlementDraft/Settlement.finalDeclarationVersion/finalDeclarationSnapshot`；T13 PDF 核验将版式差异事实写入既有 `SettlementSignedDocument.declarationSnapshot` 和审计元数据，不增加表或字段。本轮未新增迁移、未执行迁移、未回填或改写任何历史业务记录。
 
 | 项目 | 内容 |
 | --- | --- |
