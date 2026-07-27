@@ -572,6 +572,16 @@
       </t-table>
     </section>
 
+    <SettlementLineAttachmentPanel
+      v-if="!draftSubmissionBlockingReason && activeDraft"
+      :project-id="activeDraft.projectId"
+      :draft-id="activeDraft.id"
+      :revision="activeDraft.revision"
+      :lines="attachmentTargets"
+      :disabled-reason="isDirty ? '请先保存当前清单修改，再关联结算明细附件。' : ''"
+      @updated="onLineAttachmentUpdated"
+    />
+
     <footer
       v-if="!draftSubmissionBlockingReason"
       class="workbench-footer"
@@ -802,6 +812,7 @@ import SettlementCounterpartySignedPdfPanel, {
 } from "./components/SettlementCounterpartySignedPdfPanel.vue";
 import SettlementTemplateRecommendationPanel from "./components/SettlementTemplateRecommendationPanel.vue";
 import SettlementBillGrid from "./components/SettlementBillGrid.vue";
+import SettlementLineAttachmentPanel from "./components/SettlementLineAttachmentPanel.vue";
 import { isSettlementSourceLineClosed } from "./components/settlement-bill-grid";
 import {
   blockedSettlementTemplateSelection,
@@ -1068,6 +1079,18 @@ const currentPayload = computed(() => {
 const draftPayload = computed(() =>
   buildSettlementDraftLinePayload(sourceRows.value, drafts.value, adjustments.value, visaChanges.value)
 );
+const attachmentTargets = computed(() => draftPayload.value.flatMap((line) => {
+  if (!line.lineKey) return [];
+  const contractRow = line.contractBillRowId
+    ? sourceRows.value.find((row) => row.id === line.contractBillRowId)
+    : undefined;
+  return [{
+    lineKey: line.lineKey,
+    label: contractRow
+      ? `合同清单：${contractRow.itemName}`
+      : `${line.sourceType === "visa_change" ? "签证/变更" : "人工调整"}：${line.name || "待补充名称"}`
+  }];
+}));
 const currentFingerprint = computed(() =>
   settlementPayloadFingerprint(templateResourceKey.value, currentPayload.value)
 );
@@ -1632,6 +1655,19 @@ function resetGovernedPreparation() {
   linkedOriginalDocumentId.value = "";
   linkedOriginalDeclaration.value = null;
   counterpartyEvidenceEpoch.value += 1;
+}
+
+function onLineAttachmentUpdated(revision: number) {
+  if (!activeDraft.value || revision <= activeDraft.value.revision) return;
+  activeDraft.value = { ...activeDraft.value, revision };
+  frozenDocument.value = null;
+  stagedUploadedFileId.value = "";
+  stagedUploadedFileName.value = "";
+  linkedOriginalDocumentId.value = "";
+  linkedOriginalDeclaration.value = null;
+  counterpartyEvidenceEpoch.value += 1;
+  pageMessage.value = "结算明细附件已更新；请按新修订号重新生成冻结结算单。";
+  pageMessageTone.value = "success";
 }
 
 function resetImportState() {

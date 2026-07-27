@@ -127,6 +127,7 @@ describe("settlement workbench state", () => {
     expect(buildSettlementLinePayload(rows, drafts, adjustments)).toEqual([
       {
         sourceType: "contract_bill_row",
+        lineKey: "contract:row-normal",
         contractBillRowId: "row-normal",
         quantity: "2.5",
         remark: "一区",
@@ -134,6 +135,7 @@ describe("settlement workbench state", () => {
       },
       {
         sourceType: "contract_bill_row",
+        lineKey: "contract:row-manual",
         contractBillRowId: "row-manual",
         quantity: "1",
         amountCents: "1234",
@@ -142,6 +144,7 @@ describe("settlement workbench state", () => {
       },
       {
         sourceType: "manual_adjustment",
+        lineKey: "adjustment:adjustment-1",
         name: "质量扣款",
         amountCents: "-125",
         reason: "现场签认",
@@ -175,12 +178,14 @@ describe("settlement workbench state", () => {
     expect(draftLines).toEqual([
       {
         sourceType: "contract_bill_row",
+        lineKey: "contract:row-normal",
         contractBillRowId: "row-normal",
         remark: "待补数量",
         sortOrder: 1
       },
       {
         sourceType: "contract_bill_row",
+        lineKey: "contract:row-manual",
         contractBillRowId: "row-manual",
         quantity: "1",
         remark: "待补金额",
@@ -188,6 +193,7 @@ describe("settlement workbench state", () => {
       },
       {
         sourceType: "manual_adjustment",
+        lineKey: "adjustment:adjustment-1",
         remark: "待补调整依据",
         sortOrder: 3
       }
@@ -204,7 +210,7 @@ describe("settlement workbench state", () => {
       },
       adjustments: [
         {
-          clientId: "draft-adjustment-1",
+          clientId: "adjustment-1",
           name: "",
           amountYuan: "",
           reason: "",
@@ -398,6 +404,7 @@ describe("settlement workbench state", () => {
     expect(buildSettlementLinePayload([blocked], drafts, [])).toEqual([
       {
         sourceType: "contract_bill_row",
+        lineKey: "contract:row-normal",
         contractBillRowId: "row-normal",
         quantity: "2.25",
         remark: "本期实际量",

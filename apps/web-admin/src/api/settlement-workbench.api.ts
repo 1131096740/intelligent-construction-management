@@ -35,6 +35,7 @@ export interface SettlementParticipantOptionsReadModel {
 
 export interface SettlementLineDraftPayload {
   sourceType: "contract_bill_row" | "visa_change" | "manual_adjustment";
+  lineKey?: string;
   contractBillRowId?: string;
   sourceItemType?: string;
   occurredOn?: string;

@@ -9,6 +9,13 @@ const migration = readFileSync(
   ),
   "utf8"
 );
+const lifecycleMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260727153000_settlement_draft_line_attachment_lifecycle/migration.sql"
+  ),
+  "utf8"
+);
 
 const model = (name: string) =>
   schema.match(new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`, "u"))?.[1] ?? "";
@@ -21,6 +28,7 @@ describe("contract bill lineage and settlement workbench v2 foundation schema", 
     expect(model("ContractBillRowCarryForward")).toMatch(/contractBillRowId\s+String\s+@unique/u);
     expect(model("ContractSettlementProcess")).toContain("@@unique([contractId, sequenceNo])");
     expect(model("SettlementDraftLine")).toContain("@@unique([settlementDraftId, lineKey])");
+    expect(model("SettlementDraftLine")).toContain('status                   String    @default("active")');
     expect(model("SettlementLineAttachment")).toContain("settlementDraftLineId String?");
     expect(model("SettlementLineAttachment")).toContain("settlementLineId      String?");
     expect(model("SettlementDraft")).toContain("lines                             Json");
@@ -44,7 +52,9 @@ describe("contract bill lineage and settlement workbench v2 foundation schema", 
     expect(migration).toContain('FOREIGN KEY ("lineageId") REFERENCES "ContractBillRowLineage"("id") ON DELETE RESTRICT ON UPDATE RESTRICT');
     expect(migration).toContain('FOREIGN KEY ("fileId") REFERENCES "FileObject"("id") ON DELETE RESTRICT ON UPDATE RESTRICT');
     expect(migration).toContain('"SettlementLineAttachment_parent_check" CHECK (("settlementDraftLineId" IS NULL) <> ("settlementLineId" IS NULL)) NOT VALID');
-    expect(migration).toContain('"SettlementDraftLine_calculation_fields_check"');
+    expect(lifecycleMigration).toContain('DROP CONSTRAINT IF EXISTS "SettlementDraftLine_calculation_fields_check"');
+    expect(lifecycleMigration).toContain("'visa_change', 'manual_adjustment'");
+    expect(lifecycleMigration).toContain('"SettlementDraftLine_status_check"');
     expect(migration).toContain('"ContractSettlementProcess_period_check"');
     expect(migration).toContain("pg_advisory_xact_lock(190731, 27)");
   });
@@ -54,5 +64,6 @@ describe("contract bill lineage and settlement workbench v2 foundation schema", 
     expect(migration).not.toMatch(/\b(?:UPDATE|DELETE)\s+"(?:Contract|ContractBillRow|SettlementDraft|Settlement|SettlementLine)"/u);
     expect(migration).toMatch(/^-- T03[\s\S]*?BEGIN;/u);
     expect(migration).toMatch(/COMMIT;\s*$/u);
+    expect(lifecycleMigration).toMatch(/^BEGIN;[\s\S]*COMMIT;\s*$/u);
   });
 });

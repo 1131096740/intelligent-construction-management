@@ -14,6 +14,11 @@ import { GenerateSettlementFrozenDocumentDto } from "./dto/settlement-signed-doc
 import { SettlementFrozenDocumentService } from "./settlement-frozen-document.service";
 import { AbandonSettlementDraftDto } from "./dto/abandon-settlement-draft.dto";
 import { CopySettlementDraftDto } from "./dto/copy-settlement-draft.dto";
+import {
+  CreateSettlementLineAttachmentDto,
+  InvalidateSettlementLineAttachmentDto
+} from "./dto/settlement-line-attachment.dto";
+import { SettlementLineAttachmentService } from "./settlement-line-attachment.service";
 
 @Controller("projects/:projectId/settlement-drafts")
 export class SettlementDraftController {
@@ -21,7 +26,8 @@ export class SettlementDraftController {
     private readonly drafts: SettlementDraftService,
     private readonly submissions: SettlementSubmissionService,
     private readonly counterpartyDocuments: SettlementCounterpartyDocumentService,
-    private readonly frozenDocuments: SettlementFrozenDocumentService
+    private readonly frozenDocuments: SettlementFrozenDocumentService,
+    private readonly lineAttachments: SettlementLineAttachmentService
   ) {}
 
   @Post()
@@ -62,6 +68,40 @@ export class SettlementDraftController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.drafts.get(projectId, draftId, user.id);
+  }
+
+  @Get(":draftId/line-attachments")
+  @RequireProjectRole("settlement.create")
+  listLineAttachments(
+    @Param("projectId") projectId: string,
+    @Param("draftId") draftId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.lineAttachments.listDraftAttachments(projectId, draftId, user.id);
+  }
+
+  @Post(":draftId/lines/:lineKey/attachments")
+  @RequireProjectRole("settlement.create")
+  attachLineFile(
+    @Param("projectId") projectId: string,
+    @Param("draftId") draftId: string,
+    @Param("lineKey") lineKey: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: CreateSettlementLineAttachmentDto
+  ) {
+    return this.lineAttachments.attachToDraftLine(projectId, draftId, lineKey, user.id, body);
+  }
+
+  @Post(":draftId/line-attachments/:attachmentId/invalidation")
+  @RequireProjectRole("settlement.create")
+  invalidateLineAttachment(
+    @Param("projectId") projectId: string,
+    @Param("draftId") draftId: string,
+    @Param("attachmentId") attachmentId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: InvalidateSettlementLineAttachmentDto
+  ) {
+    return this.lineAttachments.invalidateDraftAttachment(projectId, draftId, attachmentId, user.id, body);
   }
 
   @Patch(":draftId")

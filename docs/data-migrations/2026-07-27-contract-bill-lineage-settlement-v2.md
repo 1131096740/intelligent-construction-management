@@ -273,13 +273,14 @@ CHECK ("periodEnd" >= "periodStart");
 | 字段 | 说明 |
 | --- | --- |
 | `settlementDraftId/lineKey` | 联合唯一 |
-| `sourceType` | `contract_bill_row/signature_change/adjustment` |
+| `sourceType` | `contract_bill_row/visa_change/manual_adjustment` |
 | `contractBillRowId/contractBillRowLineageId` | 合同清单来源 |
 | `relatedSettlementLineId` | 负向或追溯调价来源 |
 | `sourceItemType/occurredOn` | 签证/变更事实 |
 | `name/description/unit` | 明细内容 |
 | `quantity/unitPriceCents/directAmountCents` | 数量计价或直接金额 |
-| `calculationMode` | `quantity_price/direct_amount` |
+| `calculationMode` | 草稿可为 `pending_source`，正式核算为 `normal_auto/manual_amount/visa_change/manual_adjustment` |
+| `status` | `active/removed`；已移除行保留以承载已作废附件的审计关系 |
 | `pricingBasis/overageReason/reason/remark` | 依据和说明 |
 | `sortOrder` | 稳定排序 |
 | `createdAt/updatedAt` | 审计时间 |
@@ -291,6 +292,8 @@ CHECK ("periodEnd" >= "periodStart");
 附件记录必须恰好绑定 `SettlementDraftLine` 或 `SettlementLine` 之一，保存 `fileId`、用途、状态、上传人和时间。提交时复制绑定关系，不移动或覆盖原文件。
 
 该表的 `fileId` 必须加入统一文件业务绑定清单和敏感下载权限检查。
+
+草稿行的 `lineKey` 是附件的稳定对应键：草稿修订按该键更新在位，移除行改为 `removed` 而不是物理删除；提交时以同一 `lineKey` 将有效附件复制到正式 `SettlementLine`。附件关联或作废会递增草稿修订号，并使既有冻结/签章文件失效。
 
 #### `SettlementRecoveryBalance`（P2）
 
@@ -328,9 +331,9 @@ CHECK ("periodEnd" >= "periodStart");
 2. 检查结算模式、最终关闭事实和历史来源覆盖。
 3. 创建 `ContractSettlementProcess(status=open)`；部分唯一索引裁决并发。
 4. 创建草稿和结构化草稿行。
-5. 保存时更新 `SettlementDraftLine`，并生成兼容 `lines` 快照。
+5. 保存时按稳定 `lineKey` 更新或移除 `SettlementDraftLine`，并生成兼容 `lines` 快照。
 6. 提交时锁过程和草稿，重新计算期间、占用、金额、合同上限和文件事实。
-7. 在同一事务创建 `Settlement`、`SettlementLine`，并将过程关联到正式结算。
+7. 在同一事务创建 `Settlement`、`SettlementLine`，复制有效明细附件，并将过程关联到正式结算。
 8. 归档生效时过程改为 `effective`；最终结算同时更新合同关闭事实。
 
 ### 4.3 付款

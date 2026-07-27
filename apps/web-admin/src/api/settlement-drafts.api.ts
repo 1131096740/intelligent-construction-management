@@ -66,6 +66,23 @@ export interface SettlementDraftReadModel {
   documents?: SettlementDraftDocumentsReadModel;
 }
 
+export interface SettlementLineAttachmentReadModel {
+  id: string;
+  lineKey: string;
+  fileId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  purpose: string;
+  status: "active" | "invalidated";
+  createdAt: string;
+}
+
+export interface SettlementLineAttachmentMutationReadModel {
+  revision: number;
+  idempotent?: boolean;
+}
+
 export interface AbandonSettlementDraftPayload {
   expectedRevision: number;
   action: "delete_pristine_draft" | "abandon_application";
@@ -176,6 +193,40 @@ export function fetchSettlementDraftRecord(projectId: string, draftId: string) {
     draftItemPath(projectId, draftId),
     { method: "GET" },
     "读取结算草稿失败"
+  );
+}
+
+export function listSettlementDraftLineAttachments(projectId: string, draftId: string) {
+  return requestDraft<SettlementLineAttachmentReadModel[]>(
+    `${draftItemPath(projectId, draftId)}/line-attachments`,
+    { method: "GET" },
+    "读取结算明细附件失败"
+  );
+}
+
+export function attachSettlementDraftLineFile(
+  projectId: string,
+  draftId: string,
+  lineKey: string,
+  body: { fileId: string; purpose: string; expectedRevision: number }
+) {
+  return requestDraft<SettlementLineAttachmentMutationReadModel>(
+    `${draftItemPath(projectId, draftId)}/lines/${encodeURIComponent(lineKey)}/attachments`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+    "关联结算明细附件失败"
+  );
+}
+
+export function invalidateSettlementDraftLineAttachment(
+  projectId: string,
+  draftId: string,
+  attachmentId: string,
+  expectedRevision: number
+) {
+  return requestDraft<SettlementLineAttachmentMutationReadModel>(
+    `${draftItemPath(projectId, draftId)}/line-attachments/${encodeURIComponent(attachmentId)}/invalidation`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedRevision }) },
+    "作废结算明细附件失败"
   );
 }
 

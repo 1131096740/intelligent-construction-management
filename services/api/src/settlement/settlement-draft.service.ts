@@ -331,12 +331,9 @@ export class SettlementDraftService {
     settlementDraftId: string,
     lines: SaveSettlementDraftDto["settlementLines"]
   ) {
-    await tx.settlementDraftLine.deleteMany({ where: { settlementDraftId } });
-    if (!lines.length) return;
-    await tx.settlementDraftLine.createMany({
-      data: lines.map((line, index) => ({
-        settlementDraftId,
-        lineKey: `line-${index + 1}`,
+    const prepared = lines.map((line, index) => ({
+      lineKey: this.lineKey(line, index),
+      data: {
         sourceType: line.sourceType,
         contractBillRowId: line.contractBillRowId?.trim() || null,
         sourceItemType: line.sourceItemType?.trim() || null,
@@ -352,14 +349,52 @@ export class SettlementDraftService {
           : line.sourceType === "visa_change"
             ? "visa_change"
             : "pending_source",
+        status: "active",
         pricingBasis: line.pricingBasis?.trim() || null,
         overageReason: null,
         relatedSettlementLineId: line.relatedSettlementLineId?.trim() || null,
         reason: line.reason?.trim() || null,
         remark: line.remark?.trim() || null,
         sortOrder: line.sortOrder ?? index
-      }))
+      }
+    }));
+    if (new Set(prepared.map((line) => line.lineKey)).size !== prepared.length) {
+      throw new BadRequestException("结算草稿明细行标识重复，请刷新页面后重试");
+    }
+    const activeLineKeys = prepared.map((line) => line.lineKey);
+    await tx.settlementDraftLine.updateMany({
+      where: {
+        settlementDraftId,
+        status: "active",
+        ...(activeLineKeys.length ? { lineKey: { notIn: activeLineKeys } } : {})
+      },
+      data: { status: "removed" }
     });
+    await Promise.all(prepared.map(async ({ lineKey, data }) => {
+      const existing = await tx.settlementDraftLine.findUnique({
+        where: { settlementDraftId_lineKey: { settlementDraftId, lineKey } },
+        select: { id: true }
+      });
+      if (existing) {
+        await tx.settlementDraftLine.update({ where: { id: existing.id }, data });
+        return;
+      }
+      await tx.settlementDraftLine.create({
+        data: { settlementDraftId, lineKey, ...data }
+      });
+    }));
+  }
+
+  private lineKey(
+    line: SaveSettlementDraftDto["settlementLines"][number],
+    index: number
+  ) {
+    const supplied = line.lineKey?.trim();
+    if (supplied) return supplied;
+    if (line.sourceType === "contract_bill_row" && line.contractBillRowId?.trim()) {
+      return `contract:${line.contractBillRowId.trim()}`;
+    }
+    return `${line.sourceType}:${index + 1}`;
   }
 
   private optionalDecimal(value: unknown) {

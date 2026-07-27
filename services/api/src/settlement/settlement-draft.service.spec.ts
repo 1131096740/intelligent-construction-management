@@ -64,8 +64,10 @@ describe("SettlementDraftService", () => {
       },
       settlementLine: { createMany: jest.fn() },
       settlementDraftLine: {
-        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
-        createMany: jest.fn().mockResolvedValue({ count: 0 })
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "draft-line-1" }),
+        update: jest.fn().mockResolvedValue({ id: "draft-line-1" })
       },
       projectSettlementExceptionQuotaUsage: { createMany: jest.fn() },
       approvalInstance: { create: jest.fn() },
@@ -350,16 +352,18 @@ describe("SettlementDraftService", () => {
     expect(tx.settlementLine.createMany).not.toHaveBeenCalled();
     expect(tx.projectSettlementExceptionQuotaUsage.createMany).not.toHaveBeenCalled();
     expect(tx.approvalInstance.create).not.toHaveBeenCalled();
-    expect(tx.settlementDraftLine.deleteMany).toHaveBeenCalledWith({
-      where: { settlementDraftId: "draft-1" }
-    });
-    expect(tx.settlementDraftLine.createMany).toHaveBeenCalledWith({
-      data: [expect.objectContaining({
+    expect(tx.settlementDraftLine.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ settlementDraftId: "draft-1", status: "active" }),
+      data: { status: "removed" }
+    }));
+    expect(tx.settlementDraftLine.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
         settlementDraftId: "draft-1",
+        lineKey: "contract:row-with-missing-price",
         sourceType: "contract_bill_row",
         contractBillRowId: "row-with-missing-price",
         calculationMode: "pending_source"
-      })]
+      })
     });
   });
 
@@ -381,15 +385,16 @@ describe("SettlementDraftService", () => {
       }]
     });
 
-    expect(tx.settlementDraftLine.createMany).toHaveBeenCalledWith({
-      data: [expect.objectContaining({
+    expect(tx.settlementDraftLine.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
         sourceType: "visa_change",
+        lineKey: "visa_change:1",
         sourceItemType: "现场签证",
         occurredOn: new Date("2026-07-27T00:00:00.000Z"),
         description: "现场确认基础加深",
         pricingBasis: "签证单 QZ-001",
         calculationMode: "visa_change"
-      })]
+      })
     });
   });
 

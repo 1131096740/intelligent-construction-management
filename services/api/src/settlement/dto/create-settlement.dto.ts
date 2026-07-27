@@ -77,6 +77,12 @@ export class CreateSettlementLineDto {
   })
   sourceType!: SettlementLineSourceType;
 
+  // 草稿行的稳定身份：用于附件在草稿修订及提交为正式结算后保持可追溯。
+  // 正式创建接口仍可省略，服务端会按输入顺序兼容处理。
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "结算明细行标识必须是文字" })
+  lineKey?: string;
+
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "合同清单项编号必须是文字" })
   contractBillRowId?: string;

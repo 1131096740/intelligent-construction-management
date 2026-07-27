@@ -246,6 +246,7 @@ export function buildSettlementLinePayload(
     if (!draft) continue;
     const base: SettlementLineDraftPayload = {
       sourceType: "contract_bill_row",
+      lineKey: `contract:${row.id}`,
       contractBillRowId: row.id,
       ...(draft.quantity.trim() ? { quantity: draft.quantity.trim() } : {}),
       ...(draft.reason?.trim() ? { reason: draft.reason.trim() } : {}),
@@ -260,6 +261,7 @@ export function buildSettlementLinePayload(
   for (const adjustment of adjustments) {
     result.push({
       sourceType: "manual_adjustment",
+      lineKey: `adjustment:${adjustment.clientId}`,
       name: adjustment.name.trim(),
       amountCents: signedYuanTextToCentsText(adjustment.amountYuan.trim()),
       reason: adjustment.reason.trim(),
@@ -273,6 +275,7 @@ export function buildSettlementLinePayload(
   for (const visa of visaChanges) {
     result.push({
       sourceType: "visa_change",
+      lineKey: `visa:${visa.clientId}`,
       sourceItemType: visa.sourceItemType.trim(),
       occurredOn: visa.occurredOn.trim(),
       name: visa.name.trim(),
@@ -304,6 +307,7 @@ export function buildSettlementDraftLinePayload(
     if (!draft) continue;
     const line: SettlementLineDraftPayload = {
       sourceType: "contract_bill_row",
+      lineKey: `contract:${row.id}`,
       contractBillRowId: row.id,
       ...(draft.quantity.trim() ? { quantity: draft.quantity.trim() } : {}),
       ...(draft.reason?.trim() ? { reason: draft.reason.trim() } : {}),
@@ -321,6 +325,7 @@ export function buildSettlementDraftLinePayload(
       : undefined;
     result.push({
       sourceType: "manual_adjustment",
+      lineKey: `adjustment:${adjustment.clientId}`,
       ...(adjustment.name.trim() ? { name: adjustment.name.trim() } : {}),
       ...(amountCents ? { amountCents } : {}),
       ...(adjustment.reason.trim() ? { reason: adjustment.reason.trim() } : {}),
@@ -340,6 +345,7 @@ export function buildSettlementDraftLinePayload(
       : undefined;
     result.push({
       sourceType: "visa_change",
+      lineKey: `visa:${visa.clientId}`,
       ...(visa.sourceItemType.trim() ? { sourceItemType: visa.sourceItemType.trim() } : {}),
       ...(visa.occurredOn.trim() ? { occurredOn: visa.occurredOn.trim() } : {}),
       ...(visa.name.trim() ? { name: visa.name.trim() } : {}),
@@ -531,7 +537,7 @@ export function restoreSettlementDraftLines(
     }
     if (line.sourceType === "visa_change") {
       visaChanges.push({
-        clientId: `draft-visa-${visaChanges.length + 1}`,
+        clientId: line.lineKey?.replace(/^visa:/u, "") || `draft-visa-${visaChanges.length + 1}`,
         sourceItemType: line.sourceItemType?.trim() ?? "",
         occurredOn: line.occurredOn?.trim() ?? "",
         name: line.name?.trim() ?? "",
@@ -546,7 +552,7 @@ export function restoreSettlementDraftLines(
     }
     if (line.sourceType !== "manual_adjustment") continue;
     adjustments.push({
-      clientId: `draft-adjustment-${adjustments.length + 1}`,
+      clientId: line.lineKey?.replace(/^adjustment:/u, "") || `draft-adjustment-${adjustments.length + 1}`,
       name: line.name?.trim() ?? "",
       amountYuan: line.amountCents ? centsTextToInputYuan(line.amountCents) : "",
       reason: line.reason?.trim() ?? "",

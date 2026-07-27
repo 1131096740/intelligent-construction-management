@@ -347,7 +347,7 @@ export class SettlementFrozenDocumentService {
     calculationVersion: number | null
   ): Promise<CreateSettlementLineDto[] | undefined> {
     const rows = await tx.settlementDraftLine.findMany({
-      where: { settlementDraftId },
+      where: { settlementDraftId, status: "active" },
       orderBy: { sortOrder: "asc" }
     });
     if (!rows.length) {
@@ -358,6 +358,7 @@ export class SettlementFrozenDocumentService {
     }
     return rows.map((line) => ({
       sourceType: line.sourceType as CreateSettlementLineDto["sourceType"],
+      lineKey: line.lineKey,
       ...(line.contractBillRowId ? { contractBillRowId: line.contractBillRowId } : {}),
       ...(line.sourceItemType ? { sourceItemType: line.sourceItemType } : {}),
       ...(line.occurredOn ? { occurredOn: line.occurredOn.toISOString().slice(0, 10) } : {}),

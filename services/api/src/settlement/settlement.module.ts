@@ -24,6 +24,7 @@ import { SettlementSubmissionService } from "./settlement-submission.service";
 import { SettlementCounterpartyDocumentService } from "./settlement-counterparty-document.service";
 import { SettlementSignedDocumentService } from "./settlement-signed-document.service";
 import { SettlementFrozenDocumentService } from "./settlement-frozen-document.service";
+import { SettlementLineAttachmentService } from "./settlement-line-attachment.service";
 
 @Module({
   imports: [ApprovalModule, AuditModule, AuthModule, FileModule, MeModule],
@@ -47,6 +48,7 @@ import { SettlementFrozenDocumentService } from "./settlement-frozen-document.se
     SettlementTemplateService,
     SettlementCounterpartyDocumentService,
     SettlementFrozenDocumentService,
+    SettlementLineAttachmentService,
     SettlementSignedDocumentService
   ],
   exports: [

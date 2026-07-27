@@ -38,6 +38,7 @@ export const NON_RECEIPT_FILE_BINDINGS = [
     columns: ["previewXlsxFileId", "previewPdfFileId"]
   },
   { table: "SettlementArchiveFile", columns: ["fileId"] },
+  { table: "SettlementLineAttachment", columns: ["fileId"] },
   { table: "PaymentExecution", columns: ["voucherFileId"] },
   { table: "SpotProcurementAttachment", columns: ["fileId"] },
   {

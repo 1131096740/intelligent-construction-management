@@ -38,6 +38,7 @@ export interface SettlementSubmissionFactContext {
 }
 
 export interface CanonicalSettlementLine {
+  lineKey: string | null;
   sourceType: SettlementLineSourceType;
   calculationMode: SettlementCalculationMode;
   contractBillRowId: string | null;
@@ -129,6 +130,7 @@ export function canonicalSettlementLine(
       throw new BadRequestException("负向调整必须关联可追溯的原结算明细。");
     }
     return {
+      lineKey: optionalText(input.lineKey),
       sourceType: "manual_adjustment",
       calculationMode: "manual_adjustment",
       contractBillRowId: null,
@@ -173,6 +175,7 @@ export function canonicalSettlementLine(
       throw new BadRequestException("签证或变更项目金额与后台计算结果不一致。");
     }
     return {
+      lineKey: optionalText(input.lineKey),
       sourceType: "visa_change",
       calculationMode: "visa_change",
       contractBillRowId: null,
@@ -221,6 +224,7 @@ export function canonicalSettlementLine(
   }
 
   return {
+    lineKey: optionalText(input.lineKey),
     sourceType: "contract_bill_row",
     calculationMode,
     contractBillRowId: sourceRow.id,

@@ -17,6 +17,7 @@ import { SettlementCounterpartyDocumentService } from "./settlement-counterparty
 import { SettlementFrozenDocumentService } from "./settlement-frozen-document.service";
 import { ContractSettlementProcessService } from "./contract-settlement-process.service";
 import { settlementSourceSnapshotToken } from "./settlement-line-occupancy";
+import { SettlementLineAttachmentService } from "./settlement-line-attachment.service";
 
 @Injectable()
 export class SettlementSubmissionService {
@@ -25,7 +26,8 @@ export class SettlementSubmissionService {
     private readonly settlements: SettlementService,
     @Optional() private readonly counterpartyDocuments?: SettlementCounterpartyDocumentService,
     @Optional() private readonly frozenDocuments?: SettlementFrozenDocumentService,
-    @Optional() private readonly processes?: ContractSettlementProcessService
+    @Optional() private readonly processes?: ContractSettlementProcessService,
+    @Optional() private readonly lineAttachments?: SettlementLineAttachmentService
   ) {}
 
   submit(input: CreateSettlementDto, applicantUserId: string) {
@@ -136,6 +138,14 @@ export class SettlementSubmissionService {
               }
             }
           );
+          if (this.lineAttachments) {
+            await this.lineAttachments.copyActiveDraftAttachmentsToSettlement(
+              tx,
+              draft.id,
+              created.id,
+              applicantUserId
+            );
+          }
           const marked = await tx.settlementDraft.updateMany({
             where: {
               id: draftId,
@@ -173,12 +183,13 @@ export class SettlementSubmissionService {
     draft: { id: string; calculationVersion: number | null; lines: Prisma.JsonValue }
   ): Promise<CreateSettlementLineDto[]> {
     const structuredLines = await tx.settlementDraftLine.findMany({
-      where: { settlementDraftId: draft.id },
+      where: { settlementDraftId: draft.id, status: "active" },
       orderBy: { sortOrder: "asc" }
     });
     if (structuredLines.length) {
       return structuredLines.map((line) => ({
         sourceType: line.sourceType as CreateSettlementLineDto["sourceType"],
+        lineKey: line.lineKey,
         ...(line.contractBillRowId ? { contractBillRowId: line.contractBillRowId } : {}),
         ...(line.sourceItemType ? { sourceItemType: line.sourceItemType } : {}),
         ...(line.occurredOn ? { occurredOn: line.occurredOn.toISOString().slice(0, 10) } : {}),

@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   abandonSettlementDraftRecord,
+  attachSettlementDraftLineFile,
   createSettlementDraftRecord,
   fetchSettlementDraftRecord,
   generateSettlementFrozenDocument,
   linkSettlementCounterpartySignedDocument,
+  listSettlementDraftLineAttachments,
+  invalidateSettlementDraftLineAttachment,
   listSettlementDraftRecords,
   submitSettlementDraftRecord,
   updateSettlementDraftRecord
@@ -113,6 +116,23 @@ describe("settlement drafts API", () => {
         })
       }
     );
+  });
+
+  it("uses scoped, revision-protected endpoints for settlement line attachments", async () => {
+    await listSettlementDraftLineAttachments("project/1", "draft/1");
+    await attachSettlementDraftLineFile("project/1", "draft/1", "visa:line/1", {
+      fileId: "file-1", purpose: "现场签证单", expectedRevision: 5
+    });
+    await invalidateSettlementDraftLineAttachment("project/1", "draft/1", "attachment/1", 6);
+
+    expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
+      "/projects/project%2F1/settlement-drafts/draft%2F1/line-attachments",
+      "/projects/project%2F1/settlement-drafts/draft%2F1/lines/visa%3Aline%2F1/attachments",
+      "/projects/project%2F1/settlement-drafts/draft%2F1/line-attachments/attachment%2F1/invalidation"
+    ]);
+    expect(mockApiFetch).toHaveBeenNthCalledWith(2, expect.any(String), expect.objectContaining({
+      method: "POST", body: JSON.stringify({ fileId: "file-1", purpose: "现场签证单", expectedRevision: 5 })
+    }));
   });
 
   it("preserves the Chinese settlement abandonment failure", async () => {

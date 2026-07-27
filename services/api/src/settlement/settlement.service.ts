@@ -763,6 +763,7 @@ export class SettlementService {
         contractBillRowId: row.id
       });
       return {
+        lineKey: line.lineKey?.trim() || null,
         sourceType: "contract_bill_row",
         calculationMode: settlementCalculationMode(row),
         contractBillRowId: row.id,
@@ -1215,6 +1216,7 @@ export class SettlementService {
         const taxAmounts = this.settlementLineTaxAmounts(line);
         return {
           settlementId,
+          lineKey: line.lineKey,
           contractBillRowId: line.contractBillRowId,
           sourceContractVersionId,
           sourceItemType: line.sourceItemType,
