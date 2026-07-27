@@ -63,6 +63,8 @@ export interface SettlementSourceLinesReadModel {
   contractId: string;
   projectId: string;
   contractAmountCents: string;
+  calculationVersion: number;
+  sourceSnapshotToken: string | null;
   summary: {
     rowCount: number;
     exceptionCount: number;

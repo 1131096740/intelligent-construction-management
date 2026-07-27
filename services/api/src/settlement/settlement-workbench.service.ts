@@ -9,7 +9,10 @@ import {
   deriveTaxExclusiveUnitPrice,
   formatMoneyCentsAsYuan
 } from "../money/decimal-money";
-import { loadSettlementLineOccupancy } from "./settlement-line-occupancy";
+import {
+  loadSettlementLineOccupancy,
+  settlementSourceSnapshotToken
+} from "./settlement-line-occupancy";
 import {
   settlementCalculationMode,
   settlementSubmissionBlocker
@@ -133,12 +136,19 @@ export class SettlementWorkbenchService {
         }
       )
     );
+    const sourceSnapshotToken = await settlementSourceSnapshotToken(
+      client,
+      version.id,
+      rows.map((row) => ({ contractBillRowId: row.id }))
+    );
 
     return {
       contractVersionId: version.id,
       contractId: version.contractId,
       projectId: contract.projectId,
       contractAmountCents: version.amountCents.toString(),
+      calculationVersion: 2,
+      sourceSnapshotToken,
       summary: this.summary(sourceRows),
       rows: sourceRows
     };
@@ -219,6 +229,8 @@ export class SettlementWorkbenchService {
       contractId: version.contractId,
       projectId,
       contractAmountCents: version.amountCents.toString(),
+      calculationVersion: 2,
+      sourceSnapshotToken: null,
       summary: {
         rowCount: 0,
         exceptionCount: 0,

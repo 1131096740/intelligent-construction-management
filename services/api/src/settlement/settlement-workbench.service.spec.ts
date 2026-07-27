@@ -222,6 +222,8 @@ describe("SettlementWorkbenchService", () => {
       contractId: "contract-1",
       projectId: "project-1",
       contractAmountCents: "9007199254740993",
+      calculationVersion: 2,
+      sourceSnapshotToken: expect.stringMatching(/^[a-f0-9]{64}$/u),
       summary: {
         rowCount: 2,
         exceptionCount: 1,
@@ -464,6 +466,8 @@ describe("SettlementWorkbenchService", () => {
 
     await expect(service.sourceLines("version-1")).resolves.toMatchObject({
       contractVersionId: "version-1",
+      calculationVersion: 2,
+      sourceSnapshotToken: null,
       summary: {
         rowCount: 0,
         exceptionCount: 0,
