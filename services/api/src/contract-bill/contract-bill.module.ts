@@ -6,11 +6,13 @@ import { ContractBillExcelController } from "./contract-bill-excel.controller";
 import { ContractBillExcelService } from "./contract-bill-excel.service";
 import { ContractBillService } from "./contract-bill.service";
 import { ContractBillLineageService } from "./contract-bill-lineage.service";
+import { ContractBillTransitionController } from "./contract-bill-transition.controller";
+import { ContractBillTransitionService } from "./contract-bill-transition.service";
 
 @Module({
   imports: [AuditModule, FileModule],
-  controllers: [ContractBillController, ContractBillExcelController],
-  providers: [ContractBillService, ContractBillExcelService, ContractBillLineageService],
+  controllers: [ContractBillController, ContractBillExcelController, ContractBillTransitionController],
+  providers: [ContractBillService, ContractBillExcelService, ContractBillLineageService, ContractBillTransitionService],
   exports: [ContractBillLineageService]
 })
 export class ContractBillModule {}
