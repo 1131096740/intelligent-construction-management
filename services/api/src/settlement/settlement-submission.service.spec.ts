@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException
 } from "@nestjs/common";
@@ -162,6 +163,37 @@ describe("SettlementSubmissionService", () => {
     );
     await expect(current.service.submitDraft("project-1", "draft-1", "owner-1", 3))
       .rejects.toThrow("重新生成冻结版并由乙方重新签章");
+    expect(current.tx.settlementDraft.updateMany).not.toHaveBeenCalled();
+    expect(current.settlements.submitInTransaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects submission before claiming the draft when the source occupancy snapshot has changed", async () => {
+    const current = context({
+      calculationVersion: 2,
+      sourceSnapshotToken: "saved-before-occupancy-changed"
+    });
+    Object.assign(current.tx, {
+      contractBillRow: {
+        findMany: jest.fn().mockResolvedValue([{ id: "row-1", lineageId: null }])
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      settlementLine: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    });
+
+    try {
+      await current.service.submitDraft("project-1", "draft-1", "owner-1", 3);
+      fail("expected the changed source snapshot to block submission");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        code: "SETTLEMENT_SOURCE_OCCUPANCY_CHANGED"
+      });
+    }
+
     expect(current.tx.settlementDraft.updateMany).not.toHaveBeenCalled();
     expect(current.settlements.submitInTransaction).not.toHaveBeenCalled();
   });
