@@ -1163,7 +1163,7 @@ const visibleWorkbenchRows = computed(() => {
   });
 });
 const currentDraftFingerprint = computed(() =>
-  settlementWorkbenchDraftFingerprint(drafts.value, adjustments.value)
+  settlementWorkbenchDraftFingerprint(drafts.value, adjustments.value, visaChanges.value)
 );
 const currentPayload = computed(() => {
   if (validationErrors.value.length) return [];
@@ -1578,7 +1578,8 @@ async function confirmApplyImport() {
     adjustments.value = importedState.adjustments;
     const draftFingerprint = settlementWorkbenchDraftFingerprint(
       importedState.drafts,
-      importedState.adjustments
+      importedState.adjustments,
+      []
     );
     frozenImport.value = {
       contractVersionId,
@@ -2310,7 +2311,8 @@ function workbenchSnapshot() {
     finalConfirmations: { ...finalConfirmations },
     settlementTemplateVersionId: selectedSettlementTemplateVersionId.value,
     drafts: drafts.value,
-    adjustments: adjustments.value
+    adjustments: adjustments.value,
+    visaChanges: visaChanges.value
   });
 }
 

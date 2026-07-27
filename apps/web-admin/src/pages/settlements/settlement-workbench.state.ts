@@ -561,9 +561,10 @@ export function restoreSettlementDraftLines(
 
 export function settlementWorkbenchDraftFingerprint(
   drafts: SourceLineDraftMap,
-  adjustments: readonly ManualAdjustmentDraft[]
+  adjustments: readonly ManualAdjustmentDraft[],
+  visaChanges: readonly VisaChangeDraft[] = []
 ): string {
-  return JSON.stringify([drafts, adjustments]);
+  return JSON.stringify([drafts, adjustments, visaChanges]);
 }
 
 export function canApplySettlementImportResponse(
