@@ -421,7 +421,7 @@
         <template #selected="{ row }">
           <t-checkbox
             :checked="isSelected(row.id)"
-            :disabled="!templateReady"
+            :disabled="!templateReady || isSettlementSourceLineClosed(row)"
             :aria-label="`选择 ${row.itemName}`"
             @change="onSelectionChange(row.id, $event)"
           />
@@ -911,6 +911,7 @@ import SettlementCounterpartySignedPdfPanel, {
 } from "./components/SettlementCounterpartySignedPdfPanel.vue";
 import SettlementTemplateRecommendationPanel from "./components/SettlementTemplateRecommendationPanel.vue";
 import SettlementBillGrid from "./components/SettlementBillGrid.vue";
+import { isSettlementSourceLineClosed } from "./components/settlement-bill-grid";
 import {
   blockedSettlementTemplateSelection,
   canApplySettlementTemplateRecommendation,
@@ -1165,9 +1166,7 @@ const selectedRowIds = computed(() => Object.keys(drafts.value));
 const visibleWorkbenchRows = computed(() => {
   const keyword = sourceSearch.value.trim().toLowerCase();
   return workbenchRows.value.filter((row) => {
-    if (sourceView.value === "open" &&
-      row.remainingQuantity !== null &&
-      Number(row.remainingQuantity) <= 0) return false;
+    if (sourceView.value === "open" && isSettlementSourceLineClosed(row)) return false;
     if (onlySelected.value && !isSelected(row.id)) return false;
     return !keyword || `${row.itemCode ?? ""} ${row.itemName} ${row.billName}`.toLowerCase().includes(keyword);
   });

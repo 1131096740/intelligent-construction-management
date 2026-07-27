@@ -60,7 +60,7 @@ test("结算签章治理五步在宽表格外完成且响应式滚动唯一", as
   };
   await installMocks(page, requests);
   await login(page);
-  await page.goto("/结算工作台?draftId=draft-1&project=project-1");
+  await page.goto("/结算工作台/新建?draftId=draft-1&project=project-1");
 
   await expect(page.getByRole("heading", { name: "结算工作台" })).toBeVisible();
   const steps = page.getByRole("list", { name: "结算审批准备步骤" });
@@ -144,6 +144,23 @@ test("结算签章治理五步在宽表格外完成且响应式滚动唯一", as
   }
 });
 
+test("超过 100 行的结算清单使用多维网格且保留唯一滚动边界", async ({ page }) => {
+  test.setTimeout(60_000);
+  const requests = {
+    frozen: [] as Array<Record<string, unknown>>,
+    linked: [] as Array<Record<string, unknown>>
+  };
+  await installMocks(page, requests, sourceLines(101));
+  await login(page);
+  await page.goto("/结算工作台/新建?draftId=draft-1&project=project-1");
+
+  await expect(page.getByRole("heading", { name: "结算工作台" })).toBeVisible();
+  await expect(page.locator(".settlement-bill-grid revo-grid")).toBeVisible();
+  await expect(page.locator(".table-shell .t-table")).toHaveCount(0);
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalScrollers(page);
+});
+
 test("结算详情展示双证据并按后端状态重试与敏感重新生成", async ({ page }) => {
   let generationState: "failed" | "completed" = "failed";
   let retryCalls = 0;
@@ -198,7 +215,8 @@ async function installMocks(
   requests: {
     frozen: Array<Record<string, unknown>>;
     linked: Array<Record<string, unknown>>;
-  }
+  },
+  source = sourceLines()
 ) {
   let uploadCount = 0;
   await page.route("**/api/auth/login", (route) => route.fulfill({
@@ -305,7 +323,7 @@ async function installMocks(
   );
   await page.route(
     "**/api/settlement-workbench/contract-versions/version-1/source-lines",
-    (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(sourceLines()) })
+    (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(source) })
   );
   await page.route(
     "**/api/settlement-workbench/projects/project-1/contract-versions/version-1/template-recommendations",
@@ -528,7 +546,39 @@ function signedDocument(id: string, fileId: string, purpose: string) {
   };
 }
 
-function sourceLines() {
+function sourceLines(rowCount = 1) {
+  const rows = Array.from({ length: rowCount }, (_unused, index) => ({
+    id: `row-${index + 1}`,
+    billId: "bill-1",
+    billKey: "material",
+    billName: "材料清单",
+    rowKey: `row-${index + 1}`,
+    sortOrder: index + 1,
+    itemCode: `CL-${String(index + 1).padStart(3, "0")}`,
+    itemName: index === 0 ? "螺纹钢" : `材料 ${index + 1}`,
+    specification: "HRB400",
+    unit: "吨",
+    quantity: "10",
+    unitPrice: "50.00",
+    taxRatePercent: "13",
+    taxExclusiveUnitPrice: "44.25",
+    pricingFactStatus: "confirmed",
+    calculationAvailable: true,
+    submissionBlocker: null,
+    amountRole: "included",
+    pricingMode: "tax_inclusive",
+    calculationMode: "normal_auto",
+    contractAmountCents: "50000",
+    settledQuantity: "0",
+    previousSettledQuantity: "0",
+    remainingQuantity: "10",
+    settledAmountCents: "0",
+    remainingAmountCents: "50000",
+    provisional: false,
+    settlementBasis: null,
+    exception: null,
+    exceptions: []
+  }));
   return {
     contractVersionId: "version-1",
     contractId: "contract-1",
@@ -541,38 +591,7 @@ function sourceLines() {
       settledAmountCents: "0",
       remainingAmountCents: "1000000"
     },
-    rows: [{
-      id: "row-1",
-      billId: "bill-1",
-      billKey: "material",
-      billName: "材料清单",
-      rowKey: "row-1",
-      sortOrder: 1,
-      itemCode: "CL-001",
-      itemName: "螺纹钢",
-      specification: "HRB400",
-      unit: "吨",
-      quantity: "10",
-      unitPrice: "50.00",
-      taxRatePercent: "13",
-      taxExclusiveUnitPrice: "44.25",
-      pricingFactStatus: "confirmed",
-      calculationAvailable: true,
-      submissionBlocker: null,
-      amountRole: "included",
-      pricingMode: "tax_inclusive",
-      calculationMode: "normal_auto",
-      contractAmountCents: "50000",
-      settledQuantity: "0",
-      previousSettledQuantity: "0",
-      remainingQuantity: "10",
-      settledAmountCents: "0",
-      remainingAmountCents: "50000",
-      provisional: false,
-      settlementBasis: null,
-      exception: null,
-      exceptions: []
-    }]
+    rows
   };
 }
 
