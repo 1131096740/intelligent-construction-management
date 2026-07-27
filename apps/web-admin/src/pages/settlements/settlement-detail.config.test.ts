@@ -31,6 +31,13 @@ describe("settlement detail page configuration", () => {
     expect(source).not.toContain("promptSensitiveActionReason");
   });
 
+  it("shows frozen unlimited-framework overage reasons to the current approver", () => {
+    const source = readFileSync(new URL("./SettlementDetailPage.vue", import.meta.url), "utf8");
+    expect(source).toContain("框架合同超量复核");
+    expect(source).toContain("settlementOverageReviewMessage");
+    expect(settlementLineColumns.some((column) => column.colKey === "overageReason")).toBe(true);
+  });
+
   it("renders the governed settlement evidence pair without the legacy upload instruction", () => {
     const source = readFileSync(new URL("./SettlementDetailPage.vue", import.meta.url), "utf8");
     const panel = readFileSync(
@@ -194,6 +201,7 @@ describe("settlement detail page configuration", () => {
       "不含税金额",
       "税额",
       "依据/原因",
+      "框架超量说明",
       "备注"
     ]);
     expect(

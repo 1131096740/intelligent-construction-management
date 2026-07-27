@@ -563,6 +563,7 @@ describe("SettlementReadService", () => {
             taxExclusiveAmountCents: 496n,
             taxAmountCents: 65n,
             reason: null,
+            overageReason: "现场实际工程量超出预计清单",
             remark: "本期完成量"
           },
           {
@@ -669,6 +670,7 @@ describe("SettlementReadService", () => {
         taxAmount: "¥0.65",
         taxBreakdownNote: "-",
         reason: "-",
+        overageReason: "现场实际工程量超出预计清单",
         remark: "本期完成量"
       },
       {
@@ -690,6 +692,7 @@ describe("SettlementReadService", () => {
         taxAmount: "-",
         taxBreakdownNote: "人工调整，不适用合同单价税额拆分",
         reason: "项目确认扣款",
+        overageReason: "-",
         remark: "-"
       }
     ]);

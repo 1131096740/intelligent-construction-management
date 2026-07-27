@@ -252,6 +252,13 @@
           <BusinessActionPanel :actions="settlementDetail.availableActions" />
 
           <t-alert
+            v-if="showSettlementOverageReviewNotice"
+            theme="warning"
+            title="框架合同超量复核"
+            :message="settlementOverageReviewMessage"
+          />
+
+          <t-alert
             v-if="settlementDetail.disabledReasons.length"
             theme="info"
             title="当前不可办理原因"
@@ -873,6 +880,15 @@ const settlementPayableCalculationView = computed(() => settlementDetail.value?.
   note: "详情读取成功后显示本期可付金额、已申请付款、已实付和剩余可申请金额。"
 });
 const settlementLinesView = computed(() => settlementDetail.value?.settlementLines ?? []);
+const settlementOverageReviewLines = computed(() => settlementLinesView.value.filter((line) =>
+  line.overageReason.trim() && line.overageReason !== "-"
+));
+const showSettlementOverageReviewNotice = computed(() =>
+  isSettlementActionEnabled("review_approval") && settlementOverageReviewLines.value.length > 0
+);
+const settlementOverageReviewMessage = computed(() => settlementOverageReviewLines.value
+  .map((line) => `“${line.name}”：${line.overageReason}`)
+  .join("；"));
 const settlementPaymentBlockMessageView = computed(() =>
   settlementDetail.value?.paymentBlockMessage ?? "详情读取成功后显示付款申请规则。"
 );

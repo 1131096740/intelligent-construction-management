@@ -66,6 +66,7 @@ interface SettlementLineStore {
         taxExclusiveAmountCents?: bigint | null;
         taxAmountCents?: bigint | null;
         reason: string | null;
+        overageReason?: string | null;
         remark: string | null;
       }>
     >;
@@ -155,6 +156,7 @@ export class SettlementReadService {
             : "人工调整，不适用合同单价税额拆分"
           : "-",
         reason: line.reason ?? "-",
+        overageReason: line.overageReason ?? "-",
         remark: line.remark ?? "-"
       };
     });
@@ -1088,6 +1090,7 @@ export class SettlementReadService {
           taxAmount: "¥36,814.16",
           taxBreakdownNote: "-",
           reason: "-",
+          overageReason: "-",
           remark: "-"
         }
       ],

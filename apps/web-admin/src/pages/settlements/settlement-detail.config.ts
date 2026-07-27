@@ -41,6 +41,7 @@ export interface SettlementLineRow {
   taxAmount: string;
   taxBreakdownNote: string;
   reason: string;
+  overageReason: string;
   remark: string;
 }
 
@@ -198,6 +199,7 @@ export const settlementLineColumns: PrimaryTableCol<SettlementLineRow>[] = [
   { colKey: "taxExclusiveAmount", title: "不含税金额", width: 132, align: "right" },
   { colKey: "taxAmount", title: "税额", width: 120, align: "right" },
   { colKey: "reason", title: "依据/原因", minWidth: 160 },
+  { colKey: "overageReason", title: "框架超量说明", minWidth: 200 },
   { colKey: "remark", title: "备注", minWidth: 160 }
 ];
 

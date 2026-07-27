@@ -284,6 +284,7 @@ export interface SettlementLineReadModel {
   taxAmount: string;
   taxBreakdownNote: string;
   reason: string;
+  overageReason: string;
   remark: string;
 }
 
