@@ -485,6 +485,109 @@ describe("ContractBillExcelService", () => {
     expect(update.candidateRows).toEqual([]);
   });
 
+  it("applies a version replacement by updating an explicit one-to-one row without replacing its lineage", async () => {
+    const existing = {
+      id: "row-1",
+      contractBillId: "bill-1",
+      rowKey: "key-1",
+      lineageId: "lineage-1",
+      sortOrder: 0,
+      itemName: "旧名称",
+      unit: "t",
+      taxInclusiveAmountCents: 100n,
+      taxExclusiveAmountCents: 100n,
+      taxAmountCents: 0n
+    };
+    const { service, tx, rows, fileService } = billFixture({ rows: [{ ...existing }] });
+    const buffer = await buildWorkbookBuffer({
+      rows: [{
+        rowKey: "key-1",
+        values: {
+          itemName: "新名称",
+          unit: "t",
+          quantity: "2",
+          unitPrice: "10",
+          taxRatePercent: ""
+        }
+      }]
+    });
+    (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-version-replace", originalName: "bill.xlsx" },
+      buffer
+    });
+
+    const preview = await service.previewImport("bill-1", "owner-1", {
+      fileId: "file-version-replace",
+      mode: "version_replace"
+    } as never);
+    await service.applyImport(preview.importId, "owner-1");
+
+    expect(tx.contractBillRow.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { contractBillId: "bill-1", rowKey: "key-1" } })
+    );
+    expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.deleteMany).not.toHaveBeenCalled();
+    expect(rows).toEqual([
+      expect.objectContaining({
+        id: "row-1",
+        rowKey: "key-1",
+        lineageId: "lineage-1",
+        itemName: "新名称"
+      })
+    ]);
+  });
+
+  it("blocks the whole version replacement when an explicit row changes unit", async () => {
+    const existing = {
+      id: "row-1",
+      contractBillId: "bill-1",
+      rowKey: "key-1",
+      lineageId: "lineage-1",
+      sortOrder: 0,
+      itemName: "旧名称",
+      unit: "t",
+      taxInclusiveAmountCents: 100n,
+      taxExclusiveAmountCents: 100n,
+      taxAmountCents: 0n
+    };
+    const { service, tx, rows, fileService } = billFixture({ rows: [{ ...existing }] });
+    const buffer = await buildWorkbookBuffer({
+      rows: [{
+        rowKey: "key-1",
+        values: {
+          itemName: "新名称",
+          unit: "m",
+          quantity: "2",
+          unitPrice: "10",
+          taxRatePercent: ""
+        }
+      }]
+    });
+    (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-version-replace-unit", originalName: "bill.xlsx" },
+      buffer
+    });
+
+    const preview = await service.previewImport("bill-1", "owner-1", {
+      fileId: "file-version-replace-unit",
+      mode: "version_replace"
+    } as never);
+
+    expect(preview.errors).toContainEqual(
+      expect.objectContaining({
+        column: "unit",
+        message: "单位变化不能自动确认清单来源关系，请人工复核后再导入"
+      })
+    );
+    await expect(service.applyImport(preview.importId, "owner-1")).rejects.toThrow(
+      "合同清单导入预检存在错误，请先修正后重新预检"
+    );
+    expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.deleteMany).not.toHaveBeenCalled();
+    expect(rows).toEqual([existing]);
+  });
+
   it.each(["append", "replace", "update"] as const)(
     "returns a recorded header error without row writes for a header-only %s import",
     async (mode) => {
@@ -1414,7 +1517,7 @@ describe("ContractBillExcelService", () => {
   it.each([
     { input: null, message: "Excel 导入提交内容必须是对象" },
     { input: { fileId: "", mode: "append" }, message: "文件标识不能为空" },
-    { input: { fileId: "file-1", mode: "merge" }, message: "导入模式必须是替换、更新或追加" }
+    { input: { fileId: "file-1", mode: "merge" }, message: "导入模式必须是替换、更新、追加或新版清单导入" }
   ])("导入参数无效时返回中文错误", async ({ input, message }) => {
     const { service } = billFixture();
 

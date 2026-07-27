@@ -26,7 +26,7 @@ const INSTRUCTION_SHEET = "填写说明";
 const ROW_KEY_CODE = "__rowKey";
 const HEADER_ROWS = 2;
 
-export type ImportMode = "replace" | "update" | "append";
+export type ImportMode = "replace" | "update" | "append" | "version_replace";
 
 export interface ContractBillExcelImportDto {
   fileId: string;
@@ -230,7 +230,7 @@ export class ContractBillExcelService {
           sourceContractVersionId: bill.contractVersionId,
           targetContractVersionId: bill.contractVersionId,
           expectedBillRevision: bill.revision,
-          mappingStatus: "legacy_replace",
+          mappingStatus: "resolved",
           mode,
           status: "preview",
           preview: this.toJson({ billRevision: bill.revision, preview }),
@@ -501,7 +501,7 @@ export class ContractBillExcelService {
         customColumns,
         rowNumber,
         errors,
-        mode === "update" && sheetRowKey
+        (mode === "update" || mode === "version_replace") && sheetRowKey
           ? existingRows.find((row) => row.rowKey === sheetRowKey)
           : undefined
       );
@@ -513,8 +513,14 @@ export class ContractBillExcelService {
         return;
       }
 
-      if (mode === "update") {
+      if (mode === "update" || mode === "version_replace") {
         if (!sheetRowKey) {
+          if (mode === "version_replace") {
+            resolved.rowKey = randomUUID();
+            adds.push(resolved);
+            previewRows.push({ action: "add", values: raw });
+            return;
+          }
           errors.push({
             sheet: DATA_SHEET,
             row: rowNumber,
@@ -532,6 +538,18 @@ export class ContractBillExcelService {
             row: rowNumber,
             column: ROW_KEY_CODE,
             message: `清单中不存在行标识：${sheetRowKey}`
+          });
+          previewRows.push({ action: "skip", rowKey: sheetRowKey, values: raw });
+          skipped += 1;
+          return;
+        }
+        if (mode === "version_replace" &&
+          typeof existing.unit === "string" && existing.unit !== resolved.unit) {
+          errors.push({
+            sheet: DATA_SHEET,
+            row: rowNumber,
+            column: "unit",
+            message: "单位变化不能自动确认清单来源关系，请人工复核后再导入"
           });
           previewRows.push({ action: "skip", rowKey: sheetRowKey, values: raw });
           skipped += 1;
@@ -563,8 +581,9 @@ export class ContractBillExcelService {
     });
 
     const removeKeys: string[] = [];
-    if (mode === "replace") {
+    if (mode === "replace" || mode === "version_replace") {
       for (const row of existingRows) {
+        if (mode === "version_replace" && sheetKeys.has(row.rowKey)) continue;
         removeKeys.push(row.rowKey);
         previewRows.push({ action: "remove", rowKey: row.rowKey, values: null });
       }
@@ -1095,8 +1114,9 @@ export class ContractBillExcelService {
     if (typeof input.fileId !== "string" || !input.fileId.trim()) {
       throw new BadRequestException("文件标识不能为空");
     }
-    if (input.mode !== "replace" && input.mode !== "update" && input.mode !== "append") {
-      throw new BadRequestException("导入模式必须是替换、更新或追加");
+    if (input.mode !== "replace" && input.mode !== "update" && input.mode !== "append" &&
+      input.mode !== "version_replace") {
+      throw new BadRequestException("导入模式必须是替换、更新、追加或新版清单导入");
     }
     return { fileId: input.fileId.trim(), mode: input.mode };
   }
@@ -1166,6 +1186,7 @@ interface BillContext {
 
 interface ExistingRow {
   rowKey: string;
+  unit: string;
   quantity: Prisma.Decimal | null;
   unitPrice: Prisma.Decimal | null;
   taxRate: Prisma.Decimal | null;
