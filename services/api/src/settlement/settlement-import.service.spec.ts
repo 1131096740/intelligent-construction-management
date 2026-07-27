@@ -195,6 +195,70 @@ describe("SettlementImportService", () => {
     );
   });
 
+  it("keeps 98 correct Excel rows in preview when two selected rows are invalid", async () => {
+    const rows = Array.from({ length: 100 }, (_value, index) => {
+      const sequence = index + 1;
+      return {
+        ...sourceSnapshot.rows[0],
+        id: `row-${sequence}`,
+        rowKey: String(sequence),
+        sortOrder: sequence,
+        itemCode: `A-${sequence}`,
+        itemName: `清单项 ${sequence}`
+      };
+    });
+    const largeSource = {
+      ...sourceSnapshot,
+      summary: { ...sourceSnapshot.summary, rowCount: rows.length },
+      rows
+    };
+    const buffer = await importWorkbook(rows.map((row, index) => [
+      row.itemCode,
+      row.itemName,
+      "是",
+      index < 98 ? "1" : "",
+      "",
+      "",
+      "",
+      row.id
+    ]));
+    const tx = { settlementImport: { create: jest.fn().mockResolvedValue({ id: "import-98-2" }) } };
+    const settlements = { previewLines: jest.fn() };
+    const service = new SettlementImportService(
+      { $transaction: jest.fn(async (callback) => callback(tx)) } as never,
+      { record: jest.fn() } as never,
+      {
+        getFileBuffer: jest.fn().mockResolvedValue({
+          file: {
+            originalName: "98正确2错误.xlsx",
+            mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            sizeBytes: buffer.length,
+            uploadedByUserId: "user-1",
+            storageStatus: "active"
+          },
+          buffer
+        })
+      } as never,
+      { sourceLines: jest.fn().mockResolvedValue(largeSource) } as never,
+      settlements as never
+    );
+
+    await expect(service.previewImport("version-1", "user-1", { fileId: "file-98-2" }))
+      .resolves.toMatchObject({
+        importId: "import-98-2",
+        selectedCount: 98,
+        settlementLines: expect.arrayContaining([
+          expect.objectContaining({ contractBillRowId: "row-1", quantity: "1" }),
+          expect.objectContaining({ contractBillRowId: "row-98", quantity: "1" })
+        ]),
+        errors: [
+          expect.objectContaining({ row: 100, column: "本期数量" }),
+          expect.objectContaining({ row: 101, column: "本期数量" })
+        ]
+      });
+    expect(settlements.previewLines).not.toHaveBeenCalled();
+  });
+
   it("writes no import preview when the selected template is incompatible", async () => {
     const buffer = await importWorkbook([
       ["A-1", "自动计价行", "是", "1", "", "", "", "row-1"]

@@ -44,6 +44,12 @@ export type FinalSettlementConfirmationState = Partial<
   Record<FinalSettlementConfirmationKey, boolean>
 >;
 
+export function settlementImportErrorBlocker(errorCount: number): string {
+  return errorCount > 0
+    ? `当前 Excel 仍有 ${errorCount} 项错误，请修正后重新预检。`
+    : "";
+}
+
 export interface SettlementSignatureWorkflowState {
   draftId: string;
   revision: number;
@@ -423,6 +429,53 @@ export function validateSettlementWorkbench(
   if (!Object.keys(input.drafts).length && !input.adjustments.length && !(input.visaChanges?.length)) {
     errors.push("请至少选择一条本期真实发生的合同清单项或新增一条人工调整。");
   }
+  return errors;
+}
+
+/**
+ * Drafts may be incomplete, but a non-empty value must never be silently
+ * dropped by payload normalization. The caller surfaces only the first error
+ * so the operator can correct the exact field and save the remaining draft.
+ */
+export function validateSettlementDraftForSave(
+  input: Pick<SettlementWorkbenchValidationInput, "rows" | "drafts" | "adjustments" | "visaChanges">
+): string[] {
+  const errors: string[] = [];
+  const rowById = new Map(input.rows.map((row) => [row.id, row]));
+  for (const [rowId, draft] of Object.entries(input.drafts)) {
+    const row = rowById.get(rowId);
+    if (!row) {
+      errors.push("合同清单已变化，请刷新后重新选择本期清单项。");
+      continue;
+    }
+    if (draft.quantity.trim() && !STORED_QUANTITY_PATTERN.test(draft.quantity.trim())) {
+      errors.push(`合同清单项“${row.itemName}”本期数量必须是非负数字，最多保留 6 位小数。`);
+    }
+    if (
+      row.calculationMode === "manual_amount" &&
+      draft.amountYuan.trim() &&
+      !isNonNegativeYuan(draft.amountYuan.trim())
+    ) {
+      errors.push(`合同清单项“${row.itemName}”本期金额必须是非负数字，最多保留两位小数。`);
+    }
+  }
+  input.adjustments.forEach((adjustment, index) => {
+    if (adjustment.amountYuan.trim() && !isSignedNonZeroYuan(adjustment.amountYuan.trim())) {
+      errors.push(`第 ${index + 1} 条人工调整金额必须是非零数字，最多保留两位小数。`);
+    }
+  });
+  (input.visaChanges ?? []).forEach((visa, index) => {
+    const order = index + 1;
+    if (visa.quantity.trim() && !STORED_QUANTITY_PATTERN.test(visa.quantity.trim())) {
+      errors.push(`第 ${order} 条签证/变更数量必须是非负数字，最多保留 6 位小数。`);
+    }
+    if (visa.unitPriceYuan.trim() && !isNonNegativeYuan(visa.unitPriceYuan.trim())) {
+      errors.push(`第 ${order} 条签证/变更单价必须是非负金额。`);
+    }
+    if (visa.amountYuan.trim() && !isNonNegativeYuan(visa.amountYuan.trim())) {
+      errors.push(`第 ${order} 条签证/变更金额必须是非负金额。`);
+    }
+  });
   return errors;
 }
 

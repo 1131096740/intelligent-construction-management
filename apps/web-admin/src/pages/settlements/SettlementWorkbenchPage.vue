@@ -15,6 +15,12 @@
         >
           返回结算台账
         </t-button>
+        <t-tag
+          :theme="localRecoveryStateTheme"
+          variant="light"
+        >
+          {{ localRecoveryStateLabel }}
+        </t-tag>
         <t-tooltip
           v-if="saveDisabledReason"
           :content="saveDisabledReason"
@@ -141,6 +147,32 @@
       :message="pageMessage"
       class="page-message"
     />
+
+    <t-alert
+      v-if="pendingLocalRecovery"
+      theme="warning"
+      title="发现本机未保存暂存"
+      message="该内容只保存在当前浏览器，尚未写入后台；恢复后仍需点击“保存草稿”。"
+      class="page-message"
+    >
+      <template #operation>
+        <t-space>
+          <t-button
+            size="small"
+            @click="restoreLocalRecovery"
+          >
+            恢复本机暂存
+          </t-button>
+          <t-button
+            size="small"
+            variant="outline"
+            @click="discardLocalRecovery"
+          >
+            丢弃本机暂存
+          </t-button>
+        </t-space>
+      </template>
+    </t-alert>
 
     <BusinessDraftAction
       v-if="activeDraft"
@@ -271,7 +303,27 @@
             下载预检结果
           </t-button>
           <t-tooltip
-            v-if="importApplyDisabledReason"
+            v-if="importPreview.errors.length && partialImportDisabledReason"
+            :content="partialImportDisabledReason"
+          >
+            <span>
+              <t-button
+                theme="primary"
+                disabled
+              >
+                载入正确行
+              </t-button>
+            </span>
+          </t-tooltip>
+          <t-button
+            v-else-if="importPreview.errors.length"
+            theme="primary"
+            @click="applyPartialImport"
+          >
+            {{ partialImportId === importPreview.importId ? "重新载入正确行" : "载入正确行" }}
+          </t-button>
+          <t-tooltip
+            v-else-if="importApplyDisabledReason"
             :content="importApplyDisabledReason"
           >
             <span><t-button
@@ -732,8 +784,9 @@ import type {
   SettlementSourceLineReadModel
 } from "@jiangkong/shared-domain";
 import type { PrimaryTableCol, UploadChangeContext, UploadFile } from "tdesign-vue-next";
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useAuthStore } from "../../auth/auth.store";
 import {
   createPrivateFileDownloadTicket,
   fetchProjects,
@@ -787,9 +840,11 @@ import {
   canApplySettlementPreviewResponse,
   restoreSettlementDraftLines,
   settlementPayloadFingerprint,
+  settlementImportErrorBlocker,
   settlementSignatureNextAction,
   settlementSignatureStateAfterDraftRevision,
   settlementWorkbenchDraftFingerprint,
+  validateSettlementDraftForSave,
   validateFinalSettlementConfirmations,
   validateSettlementWorkbench,
   type ManualAdjustmentDraft,
@@ -815,6 +870,14 @@ import SettlementBillGrid from "./components/SettlementBillGrid.vue";
 import SettlementLineAttachmentPanel from "./components/SettlementLineAttachmentPanel.vue";
 import { isSettlementSourceLineClosed } from "./components/settlement-bill-grid";
 import {
+  clearSettlementWorkbenchLocalRecovery,
+  getSettlementWorkbenchDeviceId,
+  readSettlementWorkbenchLocalRecovery,
+  writeSettlementWorkbenchLocalRecovery,
+  type SettlementWorkbenchLocalRecovery,
+  type SettlementWorkbenchRecoveryIdentity
+} from "./settlement-local-recovery";
+import {
   blockedSettlementTemplateSelection,
   canApplySettlementTemplateRecommendation,
   emptySettlementTemplateSelection,
@@ -836,8 +899,30 @@ interface BlockedDraftRow {
   remark: string;
 }
 
+interface SettlementWorkbenchRecoverySnapshot {
+  form: {
+    projectId: string;
+    contractOptionValue: string;
+    code: string;
+    periodLabel: string;
+    isFinal: boolean;
+    finalCumulativeAmountYuan: string;
+    fieldReviewerUserId: string;
+    fieldReviewerRoleKey: "" | "material_staff" | "engineering_foreman" | "engineering_tech";
+  };
+  finalConfirmations: FinalSettlementConfirmationState;
+  settlementTemplateVersionId: string;
+  drafts: SourceLineDraftMap;
+  adjustments: ManualAdjustmentDraft[];
+  visaChanges: VisaChangeDraft[];
+  importFileName: string;
+  importPreview: SettlementImportPreviewReadModel | null;
+  partialImportId: string;
+}
+
 const router = useRouter();
 const route = useRoute();
+const authStore = useAuthStore();
 const form = reactive({
   projectId: "",
   contractOptionValue: "",
@@ -864,6 +949,7 @@ const previewAppliedFingerprint = ref("");
 const importFiles = ref<UploadFile[]>([]);
 const importFileName = ref("");
 const importPreview = ref<SettlementImportPreviewReadModel | null>(null);
+const partialImportId = ref("");
 const importBusy = ref(false);
 const importApplyBusy = ref(false);
 const importDownloadBusy = ref<"" | "template" | "errors" | "result">("");
@@ -913,6 +999,10 @@ const pasteText = ref("");
 const anomalyDrawerVisible = ref(false);
 const activeDraft = ref<SettlementDraftReadModel | null>(null);
 const baselineDraftSnapshot = ref("");
+const pendingLocalRecovery = ref<SettlementWorkbenchLocalRecovery<SettlementWorkbenchRecoverySnapshot> | null>(null);
+const localRecoveryState = ref<"clean" | "dirty" | "local_backed_up" | "failed">("clean");
+let localRecoveryEnabled = false;
+let lastLocalRecoveryIdentity: SettlementWorkbenchRecoveryIdentity | null = null;
 const leaveDialogVisible = ref(false);
 const allowNavigation = ref(false);
 let resolveLeaveConfirmation: ((confirmed: boolean) => void) | null = null;
@@ -1105,6 +1195,12 @@ const validationErrors = computed(() =>
     visaChanges: visaChanges.value
   })
 );
+const draftSaveValidationErrors = computed(() => validateSettlementDraftForSave({
+  rows: sourceRows.value,
+  drafts: drafts.value,
+  adjustments: adjustments.value,
+  visaChanges: visaChanges.value
+}));
 const previewIsCurrent = computed(
   () => Boolean(preview.value) && previewAppliedFingerprint.value === currentFingerprint.value
 );
@@ -1130,6 +1226,9 @@ const importAppliedIsCurrent = computed(
 );
 const importStatusLabel = computed(() => {
   if (importAppliedIsCurrent.value) return "已应用冻结结果";
+  if (importPreview.value?.errors.length && partialImportId.value === importPreview.value.importId) {
+    return "已载入正确行，错误待修正";
+  }
   if (importPreview.value?.errors.length) return "预检未通过";
   if (importPreview.value?.canonical) return "预检通过，待应用";
   return "等待预检";
@@ -1148,6 +1247,14 @@ const importApplyDisabledReason = computed(() => {
   if (!form.projectId || !selectedContractVersionId.value) return "请重新选择项目和有效合同。";
   return "";
 });
+const partialImportDisabledReason = computed(() => {
+  if (draftSubmissionBlockingReason.value) return draftSubmissionBlockingReason.value;
+  if (templateBlockedReason.value) return templateBlockedReason.value;
+  if (!importPreview.value) return "请先选择 XLSX 文件并完成预检。";
+  if (!importPreview.value.errors.length) return "当前预检没有可部分载入的错误行。";
+  if (!importPreview.value.settlementLines.length) return "Excel 中没有可载入的正确结算行。";
+  return "";
+});
 const importErrorRows = computed<ImportErrorRow[]>(() =>
   (importPreview.value?.errors ?? []).map((error, index) => ({
     ...error,
@@ -1157,6 +1264,9 @@ const importErrorRows = computed<ImportErrorRow[]>(() =>
 const createDisabledReason = computed(() => {
   if (draftSubmissionBlockingReason.value) return draftSubmissionBlockingReason.value;
   if (templateBlockedReason.value) return templateBlockedReason.value;
+  if (importPreview.value?.errors.length) {
+    return settlementImportErrorBlocker(importPreview.value.errors.length);
+  }
   if (validationErrors.value[0]) return validationErrors.value[0];
   if (!previewIsCurrent.value || !preview.value) return "请先完成后台核算。";
   if (preview.value.submissionBlockers[0]) {
@@ -1204,12 +1314,30 @@ const isDirty = computed(() =>
   Boolean(baselineDraftSnapshot.value) &&
   workbenchSnapshot() !== baselineDraftSnapshot.value
 );
+const localRecoveryStateLabel = computed(() => ({
+  clean: "已与后台同步",
+  dirty: "未保存修改",
+  local_backed_up: "本机已暂存",
+  failed: "本机暂存失败"
+})[localRecoveryState.value]);
+const localRecoveryStateTheme = computed<"success" | "warning" | "danger">(() =>
+  localRecoveryState.value === "clean"
+    ? "success"
+    : localRecoveryState.value === "failed"
+      ? "danger"
+      : "warning"
+);
 useUnsavedChangesGuard({
-  isDirty: computed(() => isDirty.value && !allowNavigation.value),
+  isDirty: computed(() => (isDirty.value || saveBusy.value) && !allowNavigation.value),
   confirmLeave: () => new Promise<boolean>((resolve) => {
     resolveLeaveConfirmation = resolve;
     leaveDialogVisible.value = true;
-  })
+  }),
+  discardChanges: () => {
+    clearCurrentLocalRecovery();
+    pendingLocalRecovery.value = null;
+    localRecoveryState.value = "clean";
+  }
 });
 const workflowNextAction = computed(() => {
   if (isDirty.value) {
@@ -1326,6 +1454,7 @@ async function selectImportFile(files: UploadFile[], context: UploadChangeContex
   importBusy.value = true;
   importFileName.value = file.name;
   importPreview.value = null;
+  partialImportId.value = "";
   pageMessage.value = "";
   try {
     const uploaded = await uploadPrivateFile(file, file.name);
@@ -1360,6 +1489,31 @@ async function selectImportFile(files: UploadFile[], context: UploadChangeContex
       importBusy.value = false;
       importFiles.value = [];
     }
+  }
+}
+
+function applyPartialImport() {
+  if (partialImportDisabledReason.value) return;
+  const currentImport = importPreview.value;
+  if (!currentImport) return;
+  try {
+    const importedState = applyImportedSettlementLines(
+      sourceRows.value,
+      currentImport.settlementLines
+    );
+    drafts.value = importedState.drafts;
+    adjustments.value = importedState.adjustments;
+    partialImportId.value = currentImport.importId;
+    frozenImport.value = null;
+    invalidatePreview();
+    pageMessage.value =
+      `已载入 ${currentImport.settlementLines.length} 条正确行；` +
+      `仍有 ${currentImport.errors.length} 项 Excel 错误，修正后请重新上传预检，期间不能提交审批。`;
+    pageMessageTone.value = "warning";
+    schedulePreview();
+  } catch (error) {
+    pageMessage.value = error instanceof Error ? error.message : "载入正确行失败，请重新预检。";
+    pageMessageTone.value = "error";
   }
 }
 
@@ -1678,6 +1832,7 @@ function resetImportState() {
   importDownloadBusy.value = "";
   importFileName.value = "";
   importPreview.value = null;
+  partialImportId.value = "";
   frozenImport.value = null;
   importFiles.value = [];
 }
@@ -1853,6 +2008,12 @@ async function persistDraft(showSuccessMessage: boolean) {
     pageMessageTone.value = "warning";
     return null;
   }
+  if (draftSaveValidationErrors.value[0]) {
+    pageMessage.value = `请先修正：${draftSaveValidationErrors.value[0]}`;
+    pageMessageTone.value = "warning";
+    anomalyDrawerVisible.value = true;
+    return null;
+  }
   saveBusy.value = true;
   pageMessage.value = "";
   try {
@@ -1892,6 +2053,8 @@ async function persistDraft(showSuccessMessage: boolean) {
       linkedOriginalDeclaration.value = null;
     }
     baselineDraftSnapshot.value = workbenchSnapshot();
+    clearCurrentLocalRecovery();
+    localRecoveryState.value = "clean";
     await router.replace({
       path: route.path,
       query: {
@@ -1906,6 +2069,7 @@ async function persistDraft(showSuccessMessage: boolean) {
     }
     return saved;
   } catch (error) {
+    saveLocalRecovery();
     const reason = error instanceof Error ? error.message : "未知错误";
     pageMessage.value = `结算草稿未能保存：${reason}。本页已填写内容仍然保留，请修正后重试。`;
     pageMessageTone.value = "error";
@@ -1939,6 +2103,8 @@ async function executeSettlementDraftAction(request: BusinessDraftActionRequest)
     action: request.action,
     ...(request.reason.trim() ? { reason: request.reason.trim() } : {})
   });
+  clearCurrentLocalRecovery();
+  localRecoveryState.value = "clean";
   allowNavigation.value = true;
   pageMessage.value = request.action === "delete_pristine_draft"
     ? "草稿已删除，历史审计记录仍保留。"
@@ -2153,6 +2319,8 @@ async function submitSettlement() {
       saved.id,
       saved.revision
     );
+    clearCurrentLocalRecovery();
+    localRecoveryState.value = "clean";
     allowNavigation.value = true;
     pageMessage.value = "结算审批已发起。";
     pageMessageTone.value = "success";
@@ -2179,11 +2347,137 @@ function workbenchSnapshot() {
   });
 }
 
+function localRecoverySnapshot(): SettlementWorkbenchRecoverySnapshot {
+  return {
+    form: { ...form },
+    finalConfirmations: { ...finalConfirmations },
+    settlementTemplateVersionId: selectedSettlementTemplateVersionId.value,
+    drafts: { ...drafts.value },
+    adjustments: adjustments.value.map((item) => ({ ...item })),
+    visaChanges: visaChanges.value.map((item) => ({ ...item })),
+    importFileName: importFileName.value,
+    importPreview: importPreview.value
+      ? JSON.parse(JSON.stringify(importPreview.value)) as SettlementImportPreviewReadModel
+      : null,
+    partialImportId: partialImportId.value
+  };
+}
+
+function localRecoveryStorage(): Storage | null {
+  return typeof globalThis.localStorage === "undefined" ? null : globalThis.localStorage;
+}
+
+function currentLocalRecoveryIdentity(): SettlementWorkbenchRecoveryIdentity | null {
+  const storage = localRecoveryStorage();
+  const userId = authStore.user?.id?.trim();
+  const projectId = form.projectId.trim();
+  const contractVersionId = selectedContractVersionId.value.trim();
+  if (!storage || !userId || !projectId || !contractVersionId) return null;
+  const deviceId = getSettlementWorkbenchDeviceId(storage);
+  if (!deviceId) return null;
+  return {
+    userId,
+    deviceId,
+    projectId,
+    draftId: activeDraft.value?.id ?? `new:${contractVersionId}`,
+    revision: activeDraft.value?.revision ?? 0
+  };
+}
+
+function saveLocalRecovery() {
+  if (!localRecoveryEnabled) return;
+  if (!isDirty.value) {
+    clearCurrentLocalRecovery();
+    localRecoveryState.value = "clean";
+    return;
+  }
+  const storage = localRecoveryStorage();
+  const identity = currentLocalRecoveryIdentity();
+  if (!storage || !identity) {
+    localRecoveryState.value = "dirty";
+    return;
+  }
+  const saved = writeSettlementWorkbenchLocalRecovery(
+    storage,
+    identity,
+    localRecoverySnapshot()
+  );
+  if (saved) lastLocalRecoveryIdentity = identity;
+  localRecoveryState.value = saved ? "local_backed_up" : "failed";
+}
+
+function clearCurrentLocalRecovery() {
+  const storage = localRecoveryStorage();
+  const identity = lastLocalRecoveryIdentity ?? currentLocalRecoveryIdentity();
+  if (storage && identity) clearSettlementWorkbenchLocalRecovery(storage, identity);
+  lastLocalRecoveryIdentity = null;
+}
+
+function inspectLocalRecovery() {
+  const storage = localRecoveryStorage();
+  const identity = currentLocalRecoveryIdentity();
+  if (!storage || !identity) return;
+  const recovery = readSettlementWorkbenchLocalRecovery<SettlementWorkbenchRecoverySnapshot>(
+    storage,
+    identity
+  );
+  if (!recovery) return;
+  if (JSON.stringify(recovery.snapshot) === JSON.stringify(localRecoverySnapshot())) {
+    clearSettlementWorkbenchLocalRecovery(storage, identity);
+    return;
+  }
+  pendingLocalRecovery.value = recovery;
+  lastLocalRecoveryIdentity = identity;
+  localRecoveryState.value = "local_backed_up";
+}
+
+function restoreLocalRecovery() {
+  const recovery = pendingLocalRecovery.value;
+  if (!recovery) return;
+  const snapshot = recovery.snapshot;
+  Object.assign(form, snapshot.form);
+  Object.assign(finalConfirmations, snapshot.finalConfirmations);
+  if (
+    snapshot.settlementTemplateVersionId &&
+    snapshot.settlementTemplateVersionId !== selectedSettlementTemplateVersionId.value
+  ) {
+    selectSettlementTemplate(snapshot.settlementTemplateVersionId);
+  }
+  drafts.value = { ...snapshot.drafts };
+  adjustments.value = snapshot.adjustments.map((item) => ({ ...item }));
+  visaChanges.value = snapshot.visaChanges.map((item) => ({ ...item }));
+  importFileName.value = snapshot.importFileName;
+  importPreview.value = snapshot.importPreview;
+  partialImportId.value = snapshot.partialImportId;
+  pendingLocalRecovery.value = null;
+  invalidatePreview();
+  schedulePreview();
+  localRecoveryState.value = "local_backed_up";
+  pageMessage.value = "已恢复本机暂存；这些内容尚未写入后台，请点击“保存草稿”。";
+  pageMessageTone.value = "warning";
+}
+
+function discardLocalRecovery() {
+  const storage = localRecoveryStorage();
+  const recovery = pendingLocalRecovery.value;
+  if (storage && recovery) clearSettlementWorkbenchLocalRecovery(storage, recovery.identity);
+  pendingLocalRecovery.value = null;
+  localRecoveryState.value = isDirty.value ? "dirty" : "clean";
+}
+
 function requestBackToLedger() {
   void router.push("/结算管理");
 }
 
 function confirmLeave() {
+  if (saveBusy.value) {
+    leaveDialogVisible.value = false;
+    resolveLeaveConfirmation?.(false);
+    resolveLeaveConfirmation = null;
+    pageMessage.value = "结算草稿正在保存，暂不能离开；请等待保存成功或失败后再决定。";
+    pageMessageTone.value = "warning";
+    return;
+  }
   leaveDialogVisible.value = false;
   resolveLeaveConfirmation?.(true);
   resolveLeaveConfirmation = null;
@@ -2312,12 +2606,20 @@ async function initializeWorkbench() {
   if (!baselineDraftSnapshot.value) {
     baselineDraftSnapshot.value = workbenchSnapshot();
   }
+  localRecoveryEnabled = true;
+  inspectLocalRecovery();
 }
+
+watch(
+  () => JSON.stringify(localRecoverySnapshot()),
+  () => saveLocalRecovery()
+);
 
 onMounted(() => {
   void initializeWorkbench();
 });
 onBeforeUnmount(() => {
+  saveLocalRecovery();
   if (previewTimer) clearTimeout(previewTimer);
   sourceRequestId += 1;
   previewRequestId += 1;

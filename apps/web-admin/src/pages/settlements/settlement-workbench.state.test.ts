@@ -11,6 +11,8 @@ import {
   canApplySettlementImportResponse,
   canApplySettlementPreviewResponse,
   restoreSettlementDraftLines,
+  settlementImportErrorBlocker,
+  validateSettlementDraftForSave,
   setSourceLineSelection,
   settlementQuantityProgress,
   settlementWorkbenchDraftFingerprint,
@@ -220,6 +222,32 @@ describe("settlement workbench state", () => {
     });
   });
 
+  it("allows incomplete drafts but stops the first non-empty invalid value before it is dropped", () => {
+    const rows = [normalRow(), manualRow()];
+    expect(validateSettlementDraftForSave({
+      rows,
+      drafts: {
+        "row-normal": { quantity: "", amountYuan: "", remark: "待补数量" },
+        "row-manual": { quantity: "", amountYuan: "", remark: "待补金额" }
+      },
+      adjustments: [{ clientId: "adjustment-1", name: "", amountYuan: "", reason: "", remark: "" }],
+      visaChanges: []
+    })).toEqual([]);
+    expect(validateSettlementDraftForSave({
+      rows,
+      drafts: {
+        "row-normal": { quantity: "abc", amountYuan: "", remark: "" },
+        "row-manual": { quantity: "", amountYuan: "12.345", remark: "" }
+      },
+      adjustments: [{ clientId: "adjustment-1", name: "", amountYuan: "0", reason: "", remark: "" }],
+      visaChanges: []
+    })).toEqual([
+      "合同清单项“钢筋”本期数量必须是非负数字，最多保留 6 位小数。",
+      "合同清单项“暂定项目”本期金额必须是非负数字，最多保留两位小数。",
+      "第 1 条人工调整金额必须是非零数字，最多保留两位小数。"
+    ]);
+  });
+
   it("restores visa-change facts without collapsing them into a manual adjustment", () => {
     expect(restoreSettlementDraftLines([], [{
       sourceType: "visa_change",
@@ -371,6 +399,29 @@ describe("settlement workbench state", () => {
     expect(settlementWorkbenchDraftFingerprint(result.drafts, result.adjustments)).toContain(
       "质量扣款"
     );
+  });
+
+  it("keeps 98 correct Excel rows available while two reported errors still block submission", () => {
+    const rows = Array.from({ length: 100 }, (_value, index) => normalRow({
+      id: `row-${index + 1}`,
+      itemCode: `A-${index + 1}`
+    }));
+    const result = applyImportedSettlementLines(
+      rows,
+      rows.slice(0, 98).map((row) => ({
+        sourceType: "contract_bill_row" as const,
+        contractBillRowId: row.id,
+        quantity: "1"
+      }))
+    );
+
+    expect(Object.keys(result.drafts)).toHaveLength(98);
+    expect(result.drafts["row-98"]?.quantity).toBe("1");
+    expect(result.drafts["row-99"]).toBeUndefined();
+    expect(settlementImportErrorBlocker(2)).toBe(
+      "当前 Excel 仍有 2 项错误，请修正后重新预检。"
+    );
+    expect(settlementImportErrorBlocker(0)).toBe("");
   });
 
   it("preserves selected input while reporting a precise source fact blocker", () => {
