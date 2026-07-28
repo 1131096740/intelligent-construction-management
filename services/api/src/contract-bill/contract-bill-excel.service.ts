@@ -7,7 +7,8 @@ import {
 import { Prisma } from "@prisma/client";
 import {
   isContractBillCustomColumn,
-  normalizeContractBillBoolean
+  normalizeContractBillBoolean,
+  normalizeTaxRatePercent
 } from "@jiangkong/shared-domain";
 import * as ExcelJS from "exceljs";
 import type { Cell, Row, Worksheet } from "exceljs";
@@ -517,23 +518,46 @@ export class ContractBillExcelService {
       for (const def of columnDefs) {
         if (def.code === ROW_KEY_CODE) continue;
         const column = codeIndex.get(def.code);
-        raw[def.code] = column ? this.rawCellText(excelRow.getCell(column)) : "";
+        if (!column) {
+          raw[def.code] = "";
+          continue;
+        }
+        const cell = excelRow.getCell(column);
+        if (def.code !== "taxRatePercent") {
+          raw[def.code] = this.rawCellText(cell);
+          continue;
+        }
+        try {
+          raw[def.code] = this.taxRatePercentFromCell(cell);
+        } catch (error) {
+          raw[def.code] = this.rawCellText(cell);
+          errors.push(
+            this.fieldError(
+              rowNumber,
+              "taxRatePercent",
+              error instanceof Error ? error.message : "税率单元格格式不正确"
+            )
+          );
+        }
       }
       const rowKeyColumn = codeIndex.get(ROW_KEY_CODE);
       const sheetRowKey = rowKeyColumn
         ? this.rawCellText(excelRow.getCell(rowKeyColumn))
         : "";
 
-      const resolved = this.resolveRow(
-        bill,
-        raw,
-        customColumns,
-        rowNumber,
-        errors,
-        (mode === "update" || mode === "version_replace") && sheetRowKey
-          ? existingRows.find((row) => row.rowKey === sheetRowKey)
-          : undefined
-      );
+      const resolved =
+        errors.length === rowErrorsBefore
+          ? this.resolveRow(
+              bill,
+              raw,
+              customColumns,
+              rowNumber,
+              errors,
+              (mode === "update" || mode === "version_replace") && sheetRowKey
+                ? existingRows.find((row) => row.rowKey === sheetRowKey)
+                : undefined
+            )
+          : null;
 
       if (errors.length !== rowErrorsBefore || !resolved) {
         const values = { ...raw, ...(sheetRowKey ? { __rowKey: sheetRowKey } : {}) };
@@ -784,6 +808,27 @@ export class ContractBillExcelService {
   }
 
   // ── Excel cell helpers ────────────────────────────────────────────────
+
+  private taxRatePercentFromCell(cell: Cell): string {
+    const raw = cell.value;
+    if (raw === null || raw === undefined) return "";
+    if (
+      typeof raw === "object" &&
+      ("formula" in raw || "sharedFormula" in raw)
+    ) {
+      throw new Error("税率公式单元格暂不支持，请改为数值或文本税率");
+    }
+    if (typeof raw === "number" && /%/u.test(cell.numFmt ?? "")) {
+      if (!Number.isFinite(raw)) {
+        throw new Error("税率必须是 0 到 100 之间且最多 6 位小数的数字");
+      }
+      return normalizeTaxRatePercent(
+        new Prisma.Decimal(this.numberToPlainString(raw)).mul(100).toString()
+      );
+    }
+    const text = this.rawCellText(cell);
+    return text ? normalizeTaxRatePercent(text) : "";
+  }
 
   // 读取单元格原始文本：忽略公式缓存结果，对货币字段只取用户填写的原始值。
   private rawCellText(cell: Cell): string {

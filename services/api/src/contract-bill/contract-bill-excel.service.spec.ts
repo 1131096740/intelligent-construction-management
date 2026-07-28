@@ -26,6 +26,7 @@ const FIELD_CODES = [
 interface SheetRow {
   values: Record<string, unknown>;
   rowKey?: string;
+  numFmts?: Record<string, string>;
 }
 
 type TestSchemaColumn = { key: string; label?: string; type?: string; required?: boolean };
@@ -46,7 +47,11 @@ async function buildWorkbookBuffer(options: {
   for (const row of options.rows) {
     const cells = codes.map((code) => row.values[code] ?? null);
     cells.push(row.rowKey ?? null);
-    sheet.addRow(cells);
+    const excelRow = sheet.addRow(cells);
+    for (const [code, numFmt] of Object.entries(row.numFmts ?? {})) {
+      const column = columns.indexOf(code);
+      if (column >= 0) excelRow.getCell(column + 1).numFmt = numFmt;
+    }
   }
   if (options.mergeDataCell) {
     sheet.mergeCells(3, 1, 3, 2);
@@ -204,6 +209,150 @@ function billFixture(options: { rows?: Array<Record<string, unknown>> } = {}) {
 }
 
 describe("ContractBillExcelService", () => {
+  it.each([
+    { value: 9, numFmt: "0.######", expected: "9" },
+    { value: "9%", numFmt: "General", expected: "9" },
+    { value: 0.09, numFmt: "0%", expected: "9" },
+    { value: 0.09, numFmt: "0.######%", expected: "9" },
+    { value: 0.13, numFmt: "0.######%", expected: "13" }
+  ])(
+    "normalizes Excel tax cell $value with $numFmt to $expected percent",
+    async ({ value, numFmt, expected }) => {
+      const fixture = billFixture();
+      fixture.version.defaultTaxRatePercent = new Prisma.Decimal(expected);
+      const buffer = await buildWorkbookBuffer({
+        rows: [
+          {
+            values: {
+              itemName: "钢筋",
+              unit: "t",
+              quantity: "1",
+              unitPrice: "100",
+              taxRatePercent: value
+            },
+            numFmts: { taxRatePercent: numFmt }
+          }
+        ]
+      });
+      (fixture.fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+        file: { id: "file-tax-cell", originalName: "bill.xlsx" },
+        buffer
+      });
+
+      const preview = await fixture.service.previewImport("bill-1", "owner-1", {
+        fileId: "file-tax-cell",
+        mode: "append"
+      });
+
+      expect(preview.errors).toEqual([]);
+      await fixture.service.applyImport(preview.importId, "owner-1");
+      expect(fixture.rows).toEqual([
+        expect.objectContaining({
+          taxRate: expected,
+          taxRateSource: "version_default"
+        })
+      ]);
+    }
+  );
+
+  it.each([
+    {
+      value: 0.09,
+      numFmt: "General",
+      expected: "0.09"
+    },
+    {
+      value: 0.06,
+      numFmt: "0.######%",
+      expected: "6"
+    }
+  ])(
+    "keeps Excel tax cell $value with $numFmt as the real multi-rate exception $expected",
+    async ({ value, numFmt, expected }) => {
+      const fixture = billFixture();
+      fixture.version.taxMode = "multiple_rate";
+      fixture.version.defaultTaxRatePercent = new Prisma.Decimal("9");
+      const buffer = await buildWorkbookBuffer({
+        rows: [
+          {
+            values: {
+              itemName: "例外税率项目",
+              unit: "项",
+              quantity: "1",
+              unitPrice: "100",
+              taxRatePercent: value
+            },
+            numFmts: { taxRatePercent: numFmt }
+          }
+        ]
+      });
+      (fixture.fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+        file: { id: "file-tax-exception", originalName: "bill.xlsx" },
+        buffer
+      });
+
+      const preview = await fixture.service.previewImport("bill-1", "owner-1", {
+        fileId: "file-tax-exception",
+        mode: "append"
+      });
+
+      expect(preview.errors).toEqual([]);
+      await fixture.service.applyImport(preview.importId, "owner-1");
+      expect(fixture.rows).toEqual([
+        expect.objectContaining({
+          taxRate: expected,
+          taxRateSource: "row_override"
+        })
+      ]);
+    }
+  );
+
+  it.each([
+    {
+      value: { formula: "0.09", result: 0.09 },
+      numFmt: "0%",
+      message: "税率公式单元格暂不支持"
+    },
+    { value: Number.NaN, numFmt: "0%", message: "税率必须是 0 到 100" },
+    { value: -0.09, numFmt: "0%", message: "税率不能小于 0" },
+    { value: 1.01, numFmt: "0%", message: "税率不能超过 100" }
+  ])(
+    "rejects unsafe Excel tax cell $value with $numFmt",
+    async ({ value, numFmt, message }) => {
+      const fixture = billFixture();
+      const buffer = await buildWorkbookBuffer({
+        rows: [
+          {
+            values: {
+              itemName: "钢筋",
+              unit: "t",
+              quantity: "1",
+              unitPrice: "100",
+              taxRatePercent: value
+            },
+            numFmts: { taxRatePercent: numFmt }
+          }
+        ]
+      });
+      (fixture.fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+        file: { id: "file-unsafe-tax-cell", originalName: "bill.xlsx" },
+        buffer
+      });
+
+      const preview = await fixture.service.previewImport("bill-1", "owner-1", {
+        fileId: "file-unsafe-tax-cell",
+        mode: "append"
+      });
+
+      expect(preview.errors).toContainEqual(
+        expect.objectContaining({
+          column: "taxRatePercent",
+          message: expect.stringContaining(message)
+        })
+      );
+    }
+  );
+
   it("exports an instruction sheet and one named data sheet", async () => {
     const { service } = billFixture();
 
