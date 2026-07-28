@@ -47,11 +47,16 @@ export class ContractDraftAggregateService {
           select: { name: true }
         })
       : null;
-    const leaseState = !lease || leaseExpired
+    const leaseState = !lease
       ? "available"
+      : leaseExpired
+        ? "expired"
       : lease.holderUserId === actorUserId
         ? "held_by_me"
         : "held_by_other";
+    const canTakeOver = leaseState === "held_by_other"
+      ? await this.isContractDirector(actorUserId)
+      : false;
     const legacyWithoutCheckpoints = { ...legacyReadModel };
     Reflect.deleteProperty(legacyWithoutCheckpoints, "checkpoints");
     return {
@@ -65,9 +70,22 @@ export class ContractDraftAggregateService {
       lease: {
         state: leaseState,
         holderDisplayName: holder?.name ?? null,
-        expiresAt: lease && !leaseExpired ? lease.expiresAt.toISOString() : null,
-        canTakeOver: false
+        expiresAt: lease?.expiresAt.toISOString() ?? null,
+        canTakeOver
       }
     };
+  }
+
+  private async isContractDirector(actorUserId: string) {
+    const assignments = await this.prisma.userPosition.findMany({
+      where: { userId: actorUserId, projectId: null }
+    });
+    if (!assignments.length) return false;
+    const positions = await this.prisma.position.findMany({
+      where: {
+        id: { in: assignments.map((assignment) => assignment.positionId) }
+      }
+    });
+    return positions.some((position) => position.key === "contract_director");
   }
 }

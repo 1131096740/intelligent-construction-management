@@ -28,6 +28,11 @@ describe("ContractDraftAggregateService", () => {
   function makeService(overrides: {
     foundVersion?: typeof version | null;
     readError?: Error;
+    lease?: {
+      holderUserId: string;
+      expiresAt: Date;
+    } | null;
+    director?: boolean;
   } = {}) {
     const prisma = {
       contractVersion: {
@@ -39,10 +44,20 @@ describe("ContractDraftAggregateService", () => {
         findMany: jest.fn().mockResolvedValue([])
       },
       contractDraftEditLease: {
-        findUnique: jest.fn().mockResolvedValue(null)
+        findUnique: jest.fn().mockResolvedValue(overrides.lease ?? null)
       },
       user: {
-        findUnique: jest.fn()
+        findUnique: jest.fn().mockResolvedValue({ name: "当前编辑人" })
+      },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue(
+          overrides.director ? [{ positionId: "director-position" }] : []
+        )
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "director-position", key: "contract_director" }
+        ])
       }
     };
     const workbench = {
@@ -95,5 +110,39 @@ describe("ContractDraftAggregateService", () => {
         readError: new ForbiddenException("无权查看该合同草稿")
       }).service.getWorkbench("cv-1", "actor-2")
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("exposes an active lease as readonly and allows explicit director takeover", async () => {
+    const { service } = makeService({
+      lease: {
+        holderUserId: "owner-1",
+        expiresAt: new Date(Date.now() + 120_000)
+      },
+      director: true
+    });
+
+    const result = await service.getWorkbench("cv-1", "director-1");
+
+    expect(result.lease).toMatchObject({
+      state: "held_by_other",
+      holderDisplayName: "当前编辑人",
+      canTakeOver: true
+    });
+  });
+
+  it("reports a naturally expired lease without silently reacquiring it", async () => {
+    const expiredAt = new Date(Date.now() - 1);
+    const { service } = makeService({
+      lease: { holderUserId: "owner-1", expiresAt: expiredAt }
+    });
+
+    const result = await service.getWorkbench("cv-1", "owner-1");
+
+    expect(result.lease).toEqual({
+      state: "expired",
+      holderDisplayName: null,
+      expiresAt: expiredAt.toISOString(),
+      canTakeOver: false
+    });
   });
 });
