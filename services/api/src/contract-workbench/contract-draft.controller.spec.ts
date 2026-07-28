@@ -22,6 +22,12 @@ describe("ContractDraftController", () => {
         contractVersionId: "cv-1",
         status: "abandoned",
         lifecycleKind: "pristine_draft"
+      }),
+      submitApproval: jest.fn().mockResolvedValue({
+        contractVersionId: "cv-1",
+        approvalInstanceId: "approval-1",
+        formalCode: "HT-20260728-001",
+        status: "in_approval"
       })
     };
     return {
@@ -143,5 +149,43 @@ describe("ContractDraftController", () => {
         action: "delete_pristine_draft"
       }
     );
+  });
+
+  it("delegates version-scoped submission with revision, idempotency and lease", async () => {
+    const { contracts, controller } = makeController();
+    const body = {
+      expectedRevision: 8,
+      idempotencyKey: "7ea6e68d-18cd-4ca7-83b8-99e7d1457125"
+    };
+
+    await expect(
+      controller.submitDraft(
+        "cv-1",
+        "opaque-lease-token",
+        body,
+        { id: "owner-1" } as never
+      )
+    ).resolves.toMatchObject({
+      approvalInstanceId: "approval-1",
+      formalCode: "HT-20260728-001"
+    });
+    expect(contracts.submitApproval).toHaveBeenCalledWith(
+      "cv-1",
+      "owner-1",
+      body,
+      "opaque-lease-token"
+    );
+    expect(
+      Reflect.getMetadata(
+        METHOD_METADATA,
+        ContractDraftController.prototype.submitDraft
+      )
+    ).toBe(RequestMethod.POST);
+    expect(
+      Reflect.getMetadata(
+        PATH_METADATA,
+        ContractDraftController.prototype.submitDraft
+      )
+    ).toBe(":contractVersionId/submission");
   });
 });

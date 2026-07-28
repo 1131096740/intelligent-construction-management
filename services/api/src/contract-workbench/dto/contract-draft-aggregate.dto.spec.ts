@@ -1,5 +1,8 @@
 import { createApiValidationPipe } from "../../validation/api-validation";
-import { SaveContractDraftAggregateDto } from "./contract-workbench.dto";
+import {
+  SaveContractDraftAggregateDto,
+  SubmitContractDraftDto
+} from "./contract-workbench.dto";
 
 const bodyMetadata = {
   type: "body" as const,
@@ -174,5 +177,42 @@ describe("SaveContractDraftAggregateDto", () => {
         draft: { ...payload.draft, status: "effective", amountCents: "1" }
       })
     ).rejects.toBeTruthy();
+  });
+});
+
+describe("SubmitContractDraftDto", () => {
+  const metadata = {
+    type: "body" as const,
+    metatype: SubmitContractDraftDto
+  };
+
+  it("accepts the exact revision and UUID idempotency contract", async () => {
+    await expect(
+      createApiValidationPipe().transform(
+        {
+          expectedRevision: 8,
+          idempotencyKey: "7ea6e68d-18cd-4ca7-83b8-99e7d1457125"
+        },
+        metadata
+      )
+    ).resolves.toBeInstanceOf(SubmitContractDraftDto);
+  });
+
+  it("fails closed with the draft validation code for incomplete submissions", async () => {
+    await expect(
+      createApiValidationPipe().transform(
+        {
+          expectedRevision: 0,
+          idempotencyKey: "retry-key",
+          formalCode: "HT-FORGED"
+        },
+        metadata
+      )
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        statusCode: 400,
+        code: "DRAFT_VALIDATION_FAILED"
+      })
+    });
   });
 });

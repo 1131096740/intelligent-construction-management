@@ -7,6 +7,7 @@ import {
   Optional
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { createHash } from "node:crypto";
 import {
   approvalElapsedHours,
   canRemindApproval,
@@ -27,7 +28,7 @@ import { snapshotApprovalSignature } from "../approval/approval-signature-snapsh
 import { lockApprovalReviewRow } from "../approval/approval-review-lock";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
-import { ContractNumberingService } from "../contract-workbench/contract-numbering.service";
+import { BusinessNumberingService } from "../business-number/business-numbering.service";
 import { ContractReadinessService } from "../contract-workbench/contract-readiness.service";
 import { lockBusinessTemplateVersion } from "../contract-template/contract-template-locks";
 import { PrismaService } from "../database/prisma.service";
@@ -148,10 +149,8 @@ export class ContractService {
     private readonly approvalForms?: ApprovalFormService,
     @Optional()
     private readonly readiness?: ContractReadinessService,
-    // Retained for constructor compatibility while legacy numbering administration
-    // is still available for historic records; new contracts use daily numbering on save.
     @Optional()
-    private readonly numbering?: ContractNumberingService,
+    private readonly businessNumbers?: BusinessNumberingService,
     @Optional()
     private readonly approvalRoutes?: ContractApprovalRouteService,
     @Optional()
@@ -1586,12 +1585,19 @@ export class ContractService {
   async submitApproval(
     contractVersionId: string,
     actorUserId: string,
-    rawInput?: unknown
+    rawInput?: unknown,
+    rawLeaseToken?: string
   ) {
     // The controller keeps accepting the legacy body during the staged client rollout.
     // New contracts no longer read a number-rule selection at submission time.
-    void rawInput;
-    void this.numbering;
+    const submissionRequest = this.contractDraftSubmissionRequest(rawInput);
+    const requestSha256 = submissionRequest
+      ? this.contractDraftSubmissionRequestSha256(
+          contractVersionId,
+          actorUserId,
+          submissionRequest.expectedRevision
+        )
+      : null;
     try {
       return await this.prisma.$transaction(async (tx) => {
         const contractLocks = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
@@ -1613,7 +1619,34 @@ export class ContractService {
           FOR UPDATE
         `);
         if (!version) throw new Error("未找到要提交审批的合同版本，请刷新合同后重试");
+        if (submissionRequest) {
+          const receipt = await tx.contractDraftSubmissionRequest.findUnique({
+            where: { idempotencyKey: submissionRequest.idempotencyKey }
+          });
+          if (receipt) {
+            if (
+              receipt.contractVersionId !== contractVersionId ||
+              receipt.expectedRevision !== submissionRequest.expectedRevision ||
+              receipt.applicantUserId !== actorUserId ||
+              receipt.requestSha256 !== requestSha256
+            ) {
+              throw new ConflictException({
+                statusCode: 409,
+                code: "IDEMPOTENCY_KEY_REUSED",
+                message: "提交幂等键已用于另一份合同审批请求，请重新提交"
+              });
+            }
+            return receipt.responseSnapshot;
+          }
+        }
         if (version.status !== "draft") {
+          if (submissionRequest) {
+            throw new ConflictException({
+              statusCode: 409,
+              code: "DRAFT_NOT_EDITABLE",
+              message: "合同草稿当前不可提交，请刷新后按最新状态处理"
+            });
+          }
           throw new BadRequestException("当前合同版本不在草稿状态，不能重复提交审批");
         }
 
@@ -1624,6 +1657,52 @@ export class ContractService {
         if (contract.voidedAt) throw new Error("作废合同不能提交审批，请重新选择有效合同");
         if (contract.ownerUserId && contract.ownerUserId !== actorUserId) {
           throw new Error("只有合同经办人可以提交该合同审批");
+        }
+        if (submissionRequest) {
+          await tx.$queryRaw(Prisma.sql`
+            SELECT "contractVersionId" FROM "ContractDraftEditLease"
+            WHERE "contractVersionId" = ${contractVersionId}
+            FOR UPDATE
+          `);
+          const lease = await tx.contractDraftEditLease.findUnique({
+            where: { contractVersionId }
+          });
+          const now = new Date();
+          if (version.draftRevision !== submissionRequest.expectedRevision) {
+            throw new ConflictException({
+              statusCode: 409,
+              code: "DRAFT_REVISION_CONFLICT",
+              message: "合同资料已变化，请刷新后重新提交",
+              latestRevision: version.draftRevision,
+              conflictReason: "draft_revision_changed",
+              canReacquireLease:
+                !lease || lease.expiresAt.getTime() <= now.getTime()
+            });
+          }
+          if (!rawLeaseToken || !lease) {
+            throw new ConflictException({
+              statusCode: 409,
+              code: "EDIT_LEASE_REQUIRED",
+              message: "提交审批前请先取得合同草稿编辑权"
+            });
+          }
+          const leaseConflictReason = lease.expiresAt.getTime() <= now.getTime()
+            ? "lease_expired"
+            : lease.holderUserId !== actorUserId
+              ? "lease_taken_over"
+              : lease.tokenHash !== this.sha256(rawLeaseToken)
+                ? "lease_token_mismatch"
+                : null;
+          if (leaseConflictReason) {
+            throw new ConflictException({
+              statusCode: 409,
+              code: "EDIT_LEASE_LOST",
+              message: "合同草稿编辑权已失效，请保留当前内容并重新取得编辑权",
+              latestRevision: version.draftRevision,
+              conflictReason: leaseConflictReason,
+              canReacquireLease: leaseConflictReason === "lease_expired"
+            });
+          }
         }
         if (version.changeType === "supplement") {
           throw new BadRequestException("历史补充协议仅保留只读查看，不能重新提交");
@@ -1696,7 +1775,7 @@ export class ContractService {
           } as unknown as Prisma.JsonValue;
         }
         const requiresReadiness = Boolean(contract.ownerUserId);
-        const formalCode = contract.code;
+        let formalCode = contract.code;
         let readinessSnapshot = version.readinessSnapshot;
         let templateSnapshot = version.templateSnapshot;
         if (requiresReadiness) {
@@ -1749,10 +1828,26 @@ export class ContractService {
           actorUserId
         );
 
-        if (requiresReadiness && contract.source === "system" && !formalCode) {
-          throw new BadRequestException("合同尚未生成正式编号，请先成功保存草稿后再提交审批");
+        if (!formalCode) {
+          if (!this.businessNumbers) {
+            throw new Error("正式合同编号服务暂不可用，请稍后重试或联系管理员");
+          }
+          formalCode = await this.businessNumbers.allocateDaily(tx, "HT");
+        }
+        if (requiresReadiness) {
+          const existingTemplate = templateSnapshot as Prisma.JsonObject;
+          templateSnapshot = {
+            ...existingTemplate,
+            submissionSnapshot: {
+              ...((existingTemplate.submissionSnapshot as
+                | Prisma.JsonObject
+                | undefined) ?? {}),
+              formalCode
+            }
+          } as unknown as Prisma.JsonValue;
         }
 
+        const submittedAt = new Date();
         const submitted = await tx.contractVersion.updateMany({
           where: {
             id: version.id,
@@ -1762,7 +1857,8 @@ export class ContractService {
           data: {
             status: "in_approval",
             taxFactStatus: "frozen",
-            taxFactsFrozenAt: new Date(),
+            taxFactsFrozenAt: submittedAt,
+            firstSubmittedAt: version.firstSubmittedAt ?? submittedAt,
             ...(companySnapshot ?? {}),
             ...(requiresReadiness
               ? {
@@ -1784,14 +1880,14 @@ export class ContractService {
           },
           data: {
             ownerUserId: contract.ownerUserId,
-            ...(formalCode ? { code: formalCode } : {})
+            code: formalCode
           }
         });
         if (parentGate.count !== 1) {
           throw new Error("合同提交审批时数据已变化，请刷新合同后重试");
         }
 
-        await tx.approvalInstance.create({
+        const approvalInstance = await tx.approvalInstance.create({
           data: {
             flowType: "contract.approve",
             businessType: "contract_version",
@@ -1825,6 +1921,31 @@ export class ContractService {
           }
         });
 
+        if (submissionRequest) {
+          const responseSnapshot = {
+            contractVersionId: version.id,
+            approvalInstanceId: approvalInstance.id,
+            status: "in_approval",
+            formalCode,
+            draftRevision: version.draftRevision,
+            firstSubmittedAt: (
+              version.firstSubmittedAt ?? submittedAt
+            ).toISOString()
+          };
+          await tx.contractDraftSubmissionRequest.create({
+            data: {
+              idempotencyKey: submissionRequest.idempotencyKey,
+              contractVersionId: version.id,
+              expectedRevision: submissionRequest.expectedRevision,
+              applicantUserId: actorUserId,
+              requestSha256: requestSha256!,
+              approvalInstanceId: approvalInstance.id,
+              formalCode,
+              responseSnapshot
+            }
+          });
+          return responseSnapshot;
+        }
         return {
           ...version,
           amountCents: String(version.amountCents ?? 0n),
@@ -1841,9 +1962,25 @@ export class ContractService {
         "code" in error &&
         error.code === "P2002"
       ) {
+        const target = "meta" in error &&
+          error.meta !== null &&
+          typeof error.meta === "object" &&
+          "target" in error.meta
+          ? JSON.stringify(error.meta.target)
+          : "";
+        if (
+          target.includes("ContractDraftSubmissionRequest") ||
+          target.includes("idempotencyKey")
+        ) {
+          throw new ConflictException({
+            statusCode: 409,
+            code: "IDEMPOTENCY_KEY_REUSED",
+            message: "提交幂等键已用于另一份合同审批请求，请重新提交"
+          });
+        }
         throw new BadRequestException("正式合同编号已存在，请刷新后重新提交或选择其他编号");
       }
-      if (
+      const serializationFailure =
         error &&
         typeof error === "object" &&
         "code" in error &&
@@ -1853,8 +1990,22 @@ export class ContractService {
             error.meta !== null &&
             typeof error.meta === "object" &&
             "code" in error.meta &&
-            error.meta.code === "40001"))
-      ) {
+            error.meta.code === "40001"));
+      if (serializationFailure) {
+        if (submissionRequest) {
+          const conflict = await this.contractSubmissionConflictSnapshot(
+            contractVersionId,
+            submissionRequest.expectedRevision
+          );
+          throw new ConflictException({
+            statusCode: 409,
+            code: "DRAFT_REVISION_CONFLICT",
+            message: "合同资料已变化，请刷新后重新提交",
+            latestRevision: conflict.latestRevision,
+            conflictReason: "serialization_failure",
+            canReacquireLease: conflict.canReacquireLease
+          });
+        }
         throw new BadRequestException("合同审批资料正在被更新，请稍后刷新并重新提交");
       }
       if (error instanceof ContractGovernanceDenial) {
@@ -1867,6 +2018,67 @@ export class ContractService {
         }));
       }
       throw error;
+    }
+  }
+
+  private contractDraftSubmissionRequest(rawInput: unknown) {
+    if (
+      rawInput === null ||
+      typeof rawInput !== "object" ||
+      !("expectedRevision" in rawInput) ||
+      !("idempotencyKey" in rawInput) ||
+      typeof rawInput.expectedRevision !== "number" ||
+      typeof rawInput.idempotencyKey !== "string"
+    ) {
+      return null;
+    }
+    return {
+      expectedRevision: rawInput.expectedRevision,
+      idempotencyKey: rawInput.idempotencyKey
+    };
+  }
+
+  private contractDraftSubmissionRequestSha256(
+    contractVersionId: string,
+    applicantUserId: string,
+    expectedRevision: number
+  ) {
+    return this.sha256(JSON.stringify({
+      applicantUserId,
+      contractVersionId,
+      expectedRevision
+    }));
+  }
+
+  private sha256(value: string) {
+    return createHash("sha256").update(value).digest("hex");
+  }
+
+  private async contractSubmissionConflictSnapshot(
+    contractVersionId: string,
+    fallbackRevision: number
+  ) {
+    try {
+      const [version, lease] = await Promise.all([
+        this.prisma.contractVersion.findUnique({
+          where: { id: contractVersionId },
+          select: { draftRevision: true }
+        }),
+        this.prisma.contractDraftEditLease.findUnique({
+          where: { contractVersionId },
+          select: { expiresAt: true }
+        })
+      ]);
+      return {
+        latestRevision: version?.draftRevision ?? fallbackRevision,
+        canReacquireLease:
+          !lease || lease.expiresAt.getTime() <= Date.now()
+      };
+    } catch {
+      return {
+        latestRevision: fallbackRevision,
+        canReacquireLease: false
+      };
     }
   }
 

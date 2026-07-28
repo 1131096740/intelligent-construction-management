@@ -411,3 +411,18 @@ export class DeleteContractDraftDto {
   @MaxLength(256, { message: "当前密码长度不正确" })
   currentPassword?: string;
 }
+
+export class SubmitContractDraftDto {
+  static readonly [API_VALIDATION_ERROR_CODE] = "DRAFT_VALIDATION_FAILED";
+
+  @IsIntegerInRange({
+    min: 1,
+    max: 2_147_483_647,
+    typeMessage: "合同草稿修订必须是整数",
+    rangeMessage: "合同草稿修订必须大于 0"
+  })
+  expectedRevision!: number;
+
+  @IsUUID("4", { message: "提交幂等键必须是 UUID" })
+  idempotencyKey!: string;
+}

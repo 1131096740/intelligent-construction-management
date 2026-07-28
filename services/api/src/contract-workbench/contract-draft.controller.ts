@@ -17,7 +17,8 @@ import { ContractDraftAggregateService } from "./contract-draft-aggregate.servic
 import { ContractDraftEditLeaseService } from "./contract-draft-edit-lease.service";
 import {
   DeleteContractDraftDto,
-  SaveContractDraftAggregateDto
+  SaveContractDraftAggregateDto,
+  SubmitContractDraftDto
 } from "./dto/contract-workbench.dto";
 
 @Controller("contract-drafts")
@@ -62,6 +63,21 @@ export class ContractDraftController {
       ...body,
       action: "delete_pristine_draft"
     });
+  }
+
+  @Post(":contractVersionId/submission")
+  submitDraft(
+    @Param("contractVersionId") contractVersionId: string,
+    @Headers("x-contract-draft-lease") leaseToken: string,
+    @Body() body: SubmitContractDraftDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.contracts.submitApproval(
+      contractVersionId,
+      user.id,
+      body,
+      leaseToken
+    );
   }
 
   @Post(":contractVersionId/edit-lease")

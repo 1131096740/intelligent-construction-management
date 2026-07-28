@@ -208,7 +208,7 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
       displayOrder: number;
     }>;
   } = {}) {
-    let receipt: Record<string, unknown> | null = null;
+    const receipts = new Map<string, Record<string, unknown>>();
     const version = {
       id: "cv-1",
       contractId: "contract-1",
@@ -260,9 +260,11 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       contractDraftSaveRequest: {
-        findUnique: jest.fn().mockImplementation(async () => receipt),
+        findUnique: jest.fn().mockImplementation(async ({ where }) =>
+          receipts.get(where.idempotencyKey) ?? null
+        ),
         create: jest.fn().mockImplementation(async ({ data }) => {
-          receipt = data;
+          receipts.set(data.idempotencyKey, data);
           return data;
         })
       },
@@ -468,6 +470,28 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     );
 
     expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("keeps the formal contract code empty across ten aggregate draft saves", async () => {
+    const { service, tx } = makeSaveService();
+
+    for (let index = 1; index <= 10; index += 1) {
+      await service.saveAggregate(
+        "cv-1",
+        "owner-1",
+        leaseToken,
+        {
+          ...aggregateInput(),
+          idempotencyKey:
+            `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`
+        } as never
+      );
+    }
+
+    expect(tx.contract.updateMany).toHaveBeenCalledTimes(10);
+    for (const [input] of tx.contract.updateMany.mock.calls) {
+      expect(input.data).not.toHaveProperty("code");
+    }
   });
 
   it("performs zero business writes when an attachment is already bound elsewhere", async () => {
