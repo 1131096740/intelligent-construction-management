@@ -463,7 +463,7 @@
           </p>
 
           <ContractNegotiationCanvas
-            v-if="activeSection === 'documents'"
+            v-if="activeSection === 'negotiation_documents'"
             :selected="selectedNegotiation"
             :readiness="workbench?.readiness"
             :disabled="editorDisabled"
@@ -474,14 +474,14 @@
             :contract-name="workbench?.contract.name ?? ''"
             :draft-revision="workbench?.version.draftRevision ?? 0"
             :documents="canvasDocuments"
-            @open-documents="activeSection = 'documents'"
+            @open-documents="selectWorkbenchSection('negotiation_documents')"
           />
         </main>
 
         <aside class="business-sidebar">
-          <ContractReadinessPanel
-            class="readiness-slot"
-            :readiness="workbench?.readiness ?? emptyReadiness"
+          <ContractWorkbenchSectionNav
+            :active-id="activeSection"
+            @select="selectWorkbenchSection"
           />
 
           <section class="business-editor">
@@ -492,59 +492,84 @@
               </div>
             </div>
 
-            <t-tabs
-              v-model="activeSection"
-              class="business-tabs"
+            <div
+              id="contract-workbench-sections"
+              class="workbench-sections"
             >
-              <t-tab-panel
-                v-for="section in sections"
-                :key="section.key"
-                :value="section.key"
-                :label="section.shortLabel"
-              />
-            </t-tabs>
-
-            <div class="section-editor">
-              <div
-                v-if="activeSection === 'overview' && workbench && !isChangeVersion"
-                class="migration-control"
+              <section
+                :id="contractWorkbenchSectionAnchorId('inspection')"
+                class="workbench-section-card"
+                data-section-id="inspection"
               >
-                <span class="migration-label">变更合同类型</span>
-                <t-select
-                  :value="workbench.contract.contractTypeKey"
-                  :options="contractTypeOptions"
-                  :disabled="editorDisabled || migrationBusy"
-                  placeholder="切换合同类型"
-                  @change="onExistingTypeChange"
+                <ContractReadinessPanel
+                  :readiness="workbench?.readiness ?? emptyReadiness"
                 />
-                <span class="migration-hint">切换前先预览数据迁移，确认后才会应用。</span>
-              </div>
+              </section>
 
-              <ContractOverviewSection
-                v-if="activeSection === 'overview'"
-                :workbench="workbench"
-              />
-              <ContractBasicSection
-                v-else-if="activeSection === 'basic'"
-                :model="model"
-                :disabled="editorDisabled"
-                :name-disabled="editorDisabled || (isChangeVersion && !changePolicy.editableFieldKeys.includes(CONTRACT_NAME_DRAFT_KEY))"
-                :company-disabled="editorDisabled || isChangeVersion"
-                :settlement-mode="workbench?.settlementMode ?? emptySettlementMode"
-                :settlement-mode-busy="settlementModeConfirming"
-                @update="applyPatch"
-                @confirm-settlement-mode="onConfirmSettlementMode"
-              />
-              <ContractPartySection
-                v-else-if="activeSection === 'party'"
-                :parties="aggregateModel.parties"
-                :disabled="editorDisabled || isChangeVersion"
-                @update:parties="updateParties"
-                @edited="markDirty('parties')"
-              />
-              <div
-                v-else-if="activeSection === 'pricing'"
-                class="pricing-sections"
+              <section
+                :id="contractWorkbenchSectionAnchorId('basic')"
+                class="workbench-section-card"
+                data-section-id="basic"
+              >
+                <div
+                  v-if="workbench && !isChangeVersion"
+                  class="migration-control"
+                >
+                  <span class="migration-label">变更合同类型</span>
+                  <t-select
+                    :value="workbench.contract.contractTypeKey"
+                    :options="contractTypeOptions"
+                    :disabled="editorDisabled || migrationBusy"
+                    placeholder="切换合同类型"
+                    @change="onExistingTypeChange"
+                  />
+                  <span class="migration-hint">切换前先预览数据迁移，确认后才会应用。</span>
+                </div>
+                <ContractOverviewSection :workbench="workbench" />
+                <ContractBasicSection
+                  mode="basic"
+                  :model="model"
+                  :disabled="editorDisabled"
+                  :name-disabled="editorDisabled || (isChangeVersion && !changePolicy.editableFieldKeys.includes(CONTRACT_NAME_DRAFT_KEY))"
+                  :company-disabled="editorDisabled || isChangeVersion"
+                  :settlement-mode="workbench?.settlementMode ?? emptySettlementMode"
+                  :settlement-mode-busy="settlementModeConfirming"
+                  @update="applyPatch"
+                  @confirm-settlement-mode="onConfirmSettlementMode"
+                />
+              </section>
+
+              <section
+                :id="contractWorkbenchSectionAnchorId('parties')"
+                class="workbench-section-card"
+                data-section-id="parties"
+              >
+                <ContractPartySection
+                  :parties="aggregateModel.parties"
+                  :disabled="editorDisabled || isChangeVersion"
+                  @update:parties="updateParties"
+                  @edited="markDirty('parties')"
+                />
+              </section>
+
+              <section
+                :id="contractWorkbenchSectionAnchorId('professional')"
+                class="workbench-section-card"
+                data-section-id="professional"
+              >
+                <ContractProfessionalFieldsSection
+                  :model="model"
+                  :workbench="workbench"
+                  :disabled="editorDisabled || (isChangeVersion && !changePolicy.valid)"
+                  :editable-keys="isChangeVersion ? changePolicy.editableFieldKeys : undefined"
+                  @update="applyPatch"
+                />
+              </section>
+
+              <section
+                :id="contractWorkbenchSectionAnchorId('bill_tax')"
+                class="workbench-section-card pricing-sections"
+                data-section-id="bill_tax"
               >
                 <ContractTaxFactsSection
                   :model="model"
@@ -558,19 +583,6 @@
                   :disabled="editorDisabled || isChangeVersion"
                   @update="applyPatch"
                 />
-              </div>
-              <ContractProfessionalFieldsSection
-                v-else-if="activeSection === 'fields'"
-                :model="model"
-                :workbench="workbench"
-                :disabled="editorDisabled || (isChangeVersion && !changePolicy.valid)"
-                :editable-keys="isChangeVersion ? changePolicy.editableFieldKeys : undefined"
-                @update="applyPatch"
-              />
-              <div
-                v-else-if="activeSection === 'bills'"
-                class="bill-sections"
-              >
                 <ContractBillsSection
                   :workbench="billWorkbench"
                   :disabled="editorDisabled"
@@ -584,26 +596,96 @@
                   :disabled="editorDisabled"
                   @changed="reloadCurrent"
                 />
-              </div>
-              <ContractPaymentTermsSection
-                v-else-if="activeSection === 'payment'"
-                :model="model"
-                :contract-type-key="workbench?.contract.contractTypeKey ?? ''"
-                :settlement-mode="workbench?.settlementMode.value"
-                :disabled="editorDisabled || isChangeVersion"
-                @update="applyPatch($event, 'payment_terms')"
-              />
-              <ContractClausesSection
-                v-else-if="activeSection === 'clauses'"
-                :model="model"
-                :readiness="workbench?.readiness"
-                :disabled="editorDisabled || (isChangeVersion && !changePolicy.valid)"
-                :editable-keys="isChangeVersion ? changePolicy.editableClauseKeys : undefined"
-                @update="applyPatch"
-              />
-              <div
-                v-else-if="activeSection === 'documents'"
-                class="document-governance-flow"
+              </section>
+
+              <section
+                :id="contractWorkbenchSectionAnchorId('settlement_payment')"
+                class="workbench-section-card"
+                data-section-id="settlement_payment"
+              >
+                <ContractBasicSection
+                  mode="settlement"
+                  :model="model"
+                  :disabled="editorDisabled"
+                  :settlement-mode="workbench?.settlementMode ?? emptySettlementMode"
+                  :settlement-mode-busy="settlementModeConfirming"
+                  @update="applyPatch"
+                  @confirm-settlement-mode="onConfirmSettlementMode"
+                />
+                <ContractPaymentTermsSection
+                  :model="model"
+                  :contract-type-key="workbench?.contract.contractTypeKey ?? ''"
+                  :settlement-mode="workbench?.settlementMode.value"
+                  :disabled="editorDisabled || isChangeVersion"
+                  @update="applyPatch($event, 'payment_terms')"
+                />
+              </section>
+
+              <section
+                :id="contractWorkbenchSectionAnchorId('clauses')"
+                class="workbench-section-card"
+                data-section-id="clauses"
+              >
+                <ContractClausesSection
+                  :model="model"
+                  :readiness="workbench?.readiness"
+                  :disabled="editorDisabled || (isChangeVersion && !changePolicy.valid)"
+                  :editable-keys="isChangeVersion ? changePolicy.editableClauseKeys : undefined"
+                  @update="applyPatch"
+                />
+              </section>
+
+              <section
+                :id="contractWorkbenchSectionAnchorId('attachments')"
+                class="workbench-section-card document-governance-flow"
+                data-section-id="attachments"
+              >
+                <ContractFormalDocumentSection
+                  v-if="governedWorkbench"
+                  :workbench="governedWorkbench"
+                  :disabled="editorDisabled"
+                  :prepare-mutation="prepareGovernanceMutation"
+                  :complete-mutation="completeGovernanceMutation"
+                />
+                <ContractAuthorizationSection
+                  v-if="governedWorkbench"
+                  :workbench="governedWorkbench"
+                  :disabled="editorDisabled"
+                  :prepare-mutation="prepareGovernanceMutation"
+                  :complete-mutation="completeGovernanceMutation"
+                />
+                <div class="attachment-schema">
+                  <h2>模板附件要求</h2>
+                  <p
+                    v-if="!attachmentSchemaStatus.length"
+                    class="section-empty"
+                  >
+                    当前模板没有额外附件槽位。
+                  </p>
+                  <div
+                    v-for="attachment in attachmentSchemaStatus"
+                    :key="attachment.key"
+                    class="attachment-schema-row"
+                  >
+                    <div>
+                      <strong>{{ attachment.name }}</strong>
+                      <small>{{ attachment.required ? "提交前必须补齐" : "按业务需要补充" }}</small>
+                    </div>
+                    <t-tag
+                      size="small"
+                      variant="light"
+                      :theme="attachment.attached ? 'success' : attachment.required ? 'warning' : 'default'"
+                    >
+                      {{ attachment.attached ? "已关联" : "尚未关联" }}
+                    </t-tag>
+                  </div>
+                </div>
+              </section>
+
+              <section
+                :id="contractWorkbenchSectionAnchorId('negotiation_documents')"
+                class="workbench-section-card document-governance-flow"
+                data-section-id="negotiation_documents"
               >
                 <ContractDocumentsSection
                   :workbench="workbench"
@@ -614,20 +696,6 @@
                   @reload="reloadCurrent"
                   @negotiation-selection="selectedNegotiation = $event"
                   @negotiation-changed="onNegotiationChanged"
-                />
-                <ContractAuthorizationSection
-                  v-if="governedWorkbench"
-                  :workbench="governedWorkbench"
-                  :disabled="editorDisabled"
-                  :prepare-mutation="prepareGovernanceMutation"
-                  :complete-mutation="completeGovernanceMutation"
-                />
-                <ContractFormalDocumentSection
-                  v-if="governedWorkbench"
-                  :workbench="governedWorkbench"
-                  :disabled="editorDisabled"
-                  :prepare-mutation="prepareGovernanceMutation"
-                  :complete-mutation="completeGovernanceMutation"
                 />
                 <section
                   class="submission-section"
@@ -644,7 +712,39 @@
                     :message="submissionMessage"
                   />
                 </section>
-              </div>
+              </section>
+
+              <section
+                :id="contractWorkbenchSectionAnchorId('flow_history')"
+                class="workbench-section-card flow-history"
+                data-section-id="flow_history"
+              >
+                <h2>流程记录</h2>
+                <dl class="flow-history-facts">
+                  <div>
+                    <dt>当前状态</dt>
+                    <dd>{{ contractVersionStatusLabel(workbench?.version.status ?? "") }}</dd>
+                  </div>
+                  <div>
+                    <dt>草稿修订</dt>
+                    <dd>{{ workbench?.version.draftRevision ?? 0 }}</dd>
+                  </div>
+                  <div>
+                    <dt>审批路线</dt>
+                    <dd>{{ approvalRouteText }}</dd>
+                  </div>
+                </dl>
+                <t-alert
+                  theme="info"
+                  message="工作台只展示当前草稿版本事实；本轮审批与完整操作记录继续在合同详情中只读查看。"
+                />
+                <t-button
+                  variant="outline"
+                  @click="returnToContractDetail"
+                >
+                  查看合同详情
+                </t-button>
+              </section>
             </div>
           </section>
         </aside>
@@ -881,6 +981,15 @@ import ContractPricingSection from "./workbench/ContractPricingSection.vue";
 import ContractProfessionalFieldsSection from "./workbench/ContractProfessionalFieldsSection.vue";
 import ContractReadinessPanel from "./workbench/ContractReadinessPanel.vue";
 import ContractTaxFactsSection from "./workbench/ContractTaxFactsSection.vue";
+import ContractWorkbenchSectionNav from "./workbench/ContractWorkbenchSectionNav.vue";
+import {
+  CONTRACT_WORKBENCH_SECTIONS,
+  contractWorkbenchSectionAnchorId,
+  isContractWorkbenchSectionId,
+  selectActiveContractWorkbenchSection,
+  type ContractWorkbenchSectionId,
+  type ContractWorkbenchSectionObservation
+} from "./workbench/contract-workbench-sections";
 import {
   contractDraftManualSaveMessage,
   contractDraftSaveReceiptText,
@@ -1072,25 +1181,25 @@ const emptySettlementMode = {
   canConfirm: false
 };
 
-const sections = [
-  { key: "overview", label: "状态概览", shortLabel: "概览", hint: "先看卡点" },
-  { key: "basic", label: "合同信息", shortLabel: "信息", hint: "名称与主体" },
-  { key: "party", label: "合作单位", shortLabel: "单位", hint: "相对方资料" },
-  { key: "pricing", label: "金额计价", shortLabel: "计价", hint: "金额来源" },
-  { key: "fields", label: "专业信息", shortLabel: "专业", hint: "模板字段" },
-  { key: "bills", label: "清单明细", shortLabel: "清单", hint: "材料/劳务" },
-  { key: "payment", label: "付款条款", shortLabel: "付款", hint: "比例与期限" },
-  { key: "clauses", label: "合同条款", shortLabel: "条款", hint: "付款与约定" },
-  { key: "documents", label: "文档生成", shortLabel: "文档", hint: "合同与预览" }
-] as const;
-
-type SectionKey = (typeof sections)[number]["key"];
 type StructuredReadiness = ContractReadinessResult & {
   blocking?: unknown;
   warnings?: unknown;
 };
 
-const activeSection = ref<SectionKey>("overview");
+const SECTION_HINTS: Record<ContractWorkbenchSectionId, string> = {
+  inspection: "先处理阻断项和提醒项",
+  basic: "核对合同概览、名称和我方主体",
+  parties: "维护合同相对方资料",
+  professional: "填写模板专业字段",
+  bill_tax: "统一维护计价、税务和清单",
+  settlement_payment: "确认结算方式和付款约定",
+  clauses: "维护合同条款",
+  attachments: "核对正式文件、授权和附件要求",
+  negotiation_documents: "管理协商版本和合同文档",
+  flow_history: "只读查看当前版本与流程入口"
+};
+
+const activeSection = ref<ContractWorkbenchSectionId>("inspection");
 const creating = ref(false);
 const errorMessage = ref("");
 const manualSaveMessage = ref("");
@@ -1105,6 +1214,11 @@ const selectedNegotiation = ref<{
   revision: ContractOfflineRevisionReadModel;
 } | null>(null);
 const negotiationRefreshToken = ref(0);
+const sectionObservations = new Map<
+  ContractWorkbenchSectionId,
+  ContractWorkbenchSectionObservation
+>();
+let sectionObserver: IntersectionObserver | null = null;
 
 // Contract-type migration (existing loaded draft): preview -> confirm -> apply.
 const migrationVisible = ref(false);
@@ -1193,17 +1307,83 @@ function moneyText(value: string | undefined) {
 }
 
 const activeSectionLabel = computed(
-  () => sections.find((section) => section.key === activeSection.value)?.label ?? "状态概览"
+  () =>
+    CONTRACT_WORKBENCH_SECTIONS.find(
+      (section) => section.id === activeSection.value
+    )?.label ?? "资料检查"
 );
-const activeSectionHint = computed(
-  () => sections.find((section) => section.key === activeSection.value)?.hint ?? "先看卡点"
-);
+const activeSectionHint = computed(() => SECTION_HINTS[activeSection.value]);
+const attachmentSchemaStatus = computed(() => {
+  const schema = workbench.value?.version.templateSnapshot.attachmentSchema ?? [];
+  return schema.map((attachment) => ({
+    ...attachment,
+    attached: aggregateModel.attachments.some(
+      (candidate) => candidate.slotKey === attachment.key
+    )
+  }));
+});
 const canvasDocuments = computed(
   () =>
     ((workbench.value?.documents ?? []) as unknown as ContractDocumentCanvasRecord[]).map(
       (document) => ({ ...document })
     )
 );
+
+function selectWorkbenchSection(id: ContractWorkbenchSectionId) {
+  activeSection.value = id;
+  void nextTick(() => {
+    document
+      .getElementById(contractWorkbenchSectionAnchorId(id))
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+function disconnectSectionObserver() {
+  sectionObserver?.disconnect();
+  sectionObserver = null;
+  sectionObservations.clear();
+}
+
+async function connectSectionObserver() {
+  disconnectSectionObserver();
+  if (!workbench.value || focusedBillKey.value || typeof IntersectionObserver === "undefined") {
+    return;
+  }
+  await nextTick();
+  const targets = CONTRACT_WORKBENCH_SECTIONS.flatMap((section) => {
+    const element = document.getElementById(contractWorkbenchSectionAnchorId(section.id));
+    return element ? [{ section, element }] : [];
+  });
+  if (targets.length !== CONTRACT_WORKBENCH_SECTIONS.length) {
+    return;
+  }
+  sectionObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        const id = (entry.target as HTMLElement).dataset["sectionId"] ?? "";
+        if (!isContractWorkbenchSectionId(id)) continue;
+        sectionObservations.set(id, {
+          id,
+          isIntersecting: entry.isIntersecting,
+          top: entry.boundingClientRect.top
+        });
+      }
+      activeSection.value = selectActiveContractWorkbenchSection(
+        [...sectionObservations.values()],
+        activeSection.value
+      );
+    },
+    {
+      root: null,
+      rootMargin: "-64px 0px -55% 0px",
+      threshold: [0, 0.01, 0.5]
+    }
+  );
+  for (const { element } of targets) {
+    sectionObserver.observe(element);
+  }
+}
+
 const billWorkbench = computed(() => {
   const current = workbench.value;
   if (!current) {
@@ -1401,6 +1581,7 @@ watch([saveState, isDirty], ([state, draftDirty]) => {
 onBeforeUnmount(() => {
   clearManualSaveMessage();
   cancelPendingNavigation();
+  disconnectSectionObserver();
 });
 
 const autosaveTone = computed(() => {
@@ -1990,7 +2171,7 @@ async function confirmSubmission() {
     await loadExpectedWorkbench(contractId.value);
     const blocking = structuredMessages(readiness.blocking) ?? stringMessages(readiness.blockingMessages);
     if (!readiness.ready || blocking.length) {
-      activeSection.value = "documents";
+      selectWorkbenchSection("inspection");
       throw new Error(blocking[0] ?? "合同尚未满足提交条件，请按就绪检查补齐资料。");
     }
     const latest = workbench.value;
@@ -2126,6 +2307,14 @@ watch(() => route.query.versionId, (next, previous) => {
     void loadExisting();
   }
 });
+
+watch(
+  [() => workbench.value?.version.id, focusedBillKey],
+  () => {
+    void connectSectionObserver();
+  },
+  { flush: "post" }
+);
 
 watch(
   () => [route.query.contractType, route.query.templateVersionId],
@@ -2499,7 +2688,8 @@ function initializeDraftFromQuery() {
 .document-canvas-slot,
 .business-sidebar,
 .business-editor,
-.section-editor {
+.workbench-sections,
+.workbench-section-card {
   display: grid;
   align-content: start;
   gap: var(--jg-space-md);
@@ -2537,22 +2727,79 @@ function initializeDraftFromQuery() {
   font-size: var(--jg-font-meta);
 }
 
-.business-tabs {
-  min-width: 0;
-  padding: 0 var(--jg-space-sm);
-}
-
-:deep(.business-tabs .t-tabs__nav-item) {
-  font-size: var(--jg-font-meta);
-}
-
-.section-editor {
+.workbench-sections {
   padding: 0 var(--jg-space-lg) var(--jg-space-lg);
 }
 
+.workbench-section-card {
+  scroll-margin-top: calc(var(--jg-layout-header-height) + var(--jg-space-lg));
+  padding: var(--jg-space-lg) 0;
+  border-top: var(--jg-border-width-base) solid var(--jg-border);
+}
+
+.workbench-section-card:first-child {
+  border-top: 0;
+}
+
 .pricing-sections {
-  display: grid;
   gap: var(--jg-space-section);
+}
+
+.attachment-schema,
+.flow-history {
+  display: grid;
+  gap: var(--jg-space-md);
+}
+
+.attachment-schema h2,
+.flow-history h2 {
+  margin: 0;
+  color: var(--jg-text-strong);
+  font-size: var(--jg-font-section-title);
+}
+
+.attachment-schema-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--jg-space-md);
+  padding: var(--jg-space-md);
+  background: var(--jg-bg-muted);
+  border-radius: var(--jg-radius-sm);
+}
+
+.attachment-schema-row > div {
+  display: grid;
+  gap: var(--jg-space-xs);
+}
+
+.attachment-schema-row small,
+.section-empty,
+.flow-history-facts dt {
+  color: var(--jg-text-muted);
+  font-size: var(--jg-font-meta);
+}
+
+.section-empty {
+  margin: 0;
+}
+
+.flow-history-facts {
+  display: grid;
+  gap: var(--jg-space-sm);
+  margin: 0;
+}
+
+.flow-history-facts > div {
+  display: grid;
+  grid-template-columns: minmax(96px, auto) minmax(0, 1fr);
+  gap: var(--jg-space-md);
+}
+
+.flow-history-facts dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .readonly-banner {
@@ -2563,13 +2810,6 @@ function initializeDraftFromQuery() {
   border-radius: 3px;
   font-size: 12px;
   font-weight: 600;
-}
-
-.readiness-slot {
-  align-self: start;
-  position: sticky;
-  top: calc(var(--jg-layout-header-height) + var(--jg-space-md));
-  z-index: 2;
 }
 
 /* Migration control + preview ----------------------------------------------*/
@@ -2651,9 +2891,6 @@ function initializeDraftFromQuery() {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .readiness-slot {
-    position: static;
-  }
 }
 
 @container jg-page (max-width: 620px) {

@@ -1,11 +1,14 @@
 <template>
   <div class="workbench-section">
     <h2 class="section-title">
-      基础信息
+      {{ mode === "settlement" ? "结算方式" : "基础信息" }}
     </h2>
 
     <div class="field-grid">
-      <label class="field">
+      <label
+        v-if="mode !== 'settlement'"
+        class="field"
+      >
         <span class="field-label">合同名称</span>
         <t-input
           :value="model.contractName"
@@ -15,7 +18,10 @@
         />
       </label>
 
-      <label class="field">
+      <label
+        v-if="mode !== 'settlement'"
+        class="field"
+      >
         <span class="field-label">我方签约主体</span>
         <t-select
           :value="model.companyEntityId"
@@ -76,7 +82,10 @@
         />
       </label>
 
-      <div class="field">
+      <div
+        v-if="mode !== 'basic'"
+        class="field"
+      >
         <span class="field-label">结算方式</span>
         <t-select
           :value="settlementMode.value ?? undefined"
@@ -121,9 +130,10 @@ const emit = defineEmits<{
   (event: "update", patch: Partial<ContractDraftModel>): void;
   (event: "confirm-settlement-mode", mode: ContractSettlementMode): void;
 }>();
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   model: ContractDraftModel;
   disabled: boolean;
+  mode?: "all" | "basic" | "settlement";
   nameDisabled?: boolean;
   companyDisabled?: boolean;
   settlementMode: {
@@ -132,7 +142,9 @@ const props = defineProps<{
     canConfirm: boolean;
   };
   settlementModeBusy?: boolean;
-}>();
+}>(), {
+  mode: "all"
+});
 const candidates = ref<CompanyEntityModel[]>([]);
 const loading = ref(false);
 const loaded = ref(false);
@@ -190,7 +202,11 @@ async function loadCandidates() {
   }
 }
 
-onMounted(loadCandidates);
+onMounted(() => {
+  if (props.mode !== "settlement") {
+    void loadCandidates();
+  }
+});
 </script>
 
 <style scoped>

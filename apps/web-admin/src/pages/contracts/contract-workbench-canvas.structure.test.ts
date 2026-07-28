@@ -45,15 +45,18 @@ describe("contract workbench document canvas structure", () => {
     expect(pageSource).toContain("ContractNegotiationCanvas");
     expect(pageSource).toContain('class="document-canvas-slot"');
     expect(pageSource).toContain('class="business-sidebar"');
-    expect(pageSource).toMatch(/<t-tabs\s+v-model="activeSection"/u);
-    expect(pageSource).toContain(':value="section.key"');
+    expect(pageSource).toContain("<ContractWorkbenchSectionNav");
+    expect(pageSource).not.toMatch(/<t-tabs\s+v-model="activeSection"/u);
+    expect(pageSource).toContain('data-section-id="inspection"');
+    expect(pageSource).toContain('data-section-id="flow_history"');
     expect(pageSource).not.toContain('class="section-nav"');
   });
 
   it("keeps readiness visible and preserves all structured and document sections", () => {
     expect(pageSource).toMatch(
-      /class="business-sidebar"[\s\S]*ContractReadinessPanel[\s\S]*<t-tabs/u
+      /class="business-sidebar"[\s\S]*ContractWorkbenchSectionNav[\s\S]*data-section-id="inspection"[\s\S]*ContractReadinessPanel/u
     );
+    expect(pageSource.match(/data-section-id="[^"]+"/gu)).toHaveLength(10);
     for (const component of [
       "ContractOverviewSection",
       "ContractBasicSection",
