@@ -718,23 +718,99 @@ export class ExpenseClaimService {
     const voucherFileId = requiredText(input.voucherFileId, "放款凭证必填");
     const paymentMethod = requiredText(input.paymentMethod, "放款方式必填");
     const paidAt = dateOnly(input.paidAt, "放款日期");
+    const note = optionalText(input.note);
     if (paidAt.getTime() > Date.now()) throw new BadRequestException("放款日期不能晚于当前时间");
     if (!input.confirmationPassword?.trim()) throw new BadRequestException("放款登记需要当前登录密码确认");
     if (!this.auth) throw new ServiceUnavailableException("放款身份确认服务暂不可用，请稍后重试");
     await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
 
     const result = await this.prisma.$transaction(async (tx) => {
+      const fundingScope = this.projectFunding
+        ? await tx.expenseClaim.findUnique({
+            where: { id: claimId },
+            select: { id: true, projectId: true }
+          })
+        : null;
+      if (this.projectFunding && !fundingScope?.projectId) {
+        throw new BadRequestException(
+          "借款申请未关联项目，不能登记放款"
+        );
+      }
+      if (this.projectFunding && fundingScope?.projectId) {
+        await this.projectFunding.lockFundingContext(
+          tx,
+          fundingScope.projectId
+        );
+      }
       const claims = await tx.$queryRaw<Array<{
         id: string; claimType: string; status: string; projectId: string | null; companyEntityId: string; applicantUserId: string | null; requestedAmountCents: bigint; fundedAmountCents: bigint;
       }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "companyEntityId", "applicantUserId", "requestedAmountCents", "fundedAmountCents" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
       const claim = claims[0];
       if (!claim) throw new NotFoundException("借款申请不存在");
+      if (
+        fundingScope &&
+        (fundingScope.id !== claim.id ||
+          fundingScope.projectId !== claim.projectId)
+      ) {
+        throw new ConflictException(
+          "借款申请的项目资金范围已变化，请刷新后重试"
+        );
+      }
       if (claim.claimType !== "loan" || !claim.projectId || !claim.applicantUserId) throw new BadRequestException("当前申请不支持登记借款放款");
+      const existingEntry = this.projectFunding
+        ? await tx.employeeProjectLoanEntry.findFirst({
+            where: {
+              voucherFileId,
+              entryType: "disbursement"
+            }
+          })
+        : null;
+      if (existingEntry) {
+        if (
+          existingEntry.sourceExpenseClaimId !== claim.id ||
+          existingEntry.amountCents !== amountCents ||
+          existingEntry.balanceDeltaCents !== amountCents ||
+          existingEntry.occurredAt.getTime() !== paidAt.getTime() ||
+          existingEntry.createdByUserId !== actorUserId ||
+          existingEntry.paymentMethod !== paymentMethod ||
+          existingEntry.note !== note
+        ) {
+          throw new ConflictException(
+            "该放款凭证已绑定不同的借款放款事实"
+          );
+        }
+        await this.projectFunding!.allocateExecution(tx, {
+          projectId: claim.projectId,
+          executionType: "employee_loan_disbursement",
+          executionId: existingEntry.id,
+          businessType: "expense_claim",
+          businessId: claim.id,
+          amountCents,
+          occurredAt: paidAt,
+          actorUserId
+        });
+        return {
+          id: existingEntry.id,
+          expenseClaimId: claim.id,
+          loanAccountId: existingEntry.loanAccountId,
+          amountCents: moneyCentsToApi(amountCents),
+          fundedAmountCents:
+            moneyCentsToApi(claim.fundedAmountCents),
+          status: claim.status,
+          replayed: true
+        };
+      }
       if (!["approved_pending_disbursement", "partially_disbursed"].includes(claim.status)) throw new BadRequestException("当前借款申请不可登记放款");
       if (amountCents > claim.requestedAmountCents - claim.fundedAmountCents) throw new BadRequestException("放款金额超过借款申请剩余批准金额");
       const voucher = await tx.fileObject.findUnique({ where: { id: voucherFileId }, select: { id: true, uploadedByUserId: true } });
       if (!voucher) throw new NotFoundException("放款凭证不存在");
       if (voucher.uploadedByUserId !== actorUserId) throw new BadRequestException("放款凭证必须由登记人本人上传");
+      if (this.files) {
+        await this.files.assertFileHasNoBusinessBinding(
+          tx,
+          voucherFileId
+        );
+      }
       const scopeKey = `project:${claim.projectId}`;
       await tx.employeeProjectLoanAccount.upsert({
         where: { userId_scopeKey: { userId: claim.applicantUserId, scopeKey } },
@@ -745,22 +821,42 @@ export class ExpenseClaimService {
       const account = accounts[0];
       if (!account) throw new BadRequestException("借款账户创建失败");
       const sequences = await tx.$queryRaw<Array<{ nextSequenceNo: bigint }>>(Prisma.sql`SELECT COALESCE(MAX("sequenceNo"), 0) + 1 AS "nextSequenceNo" FROM "EmployeeProjectLoanEntry" WHERE "loanAccountId" = ${account.id}`);
-      const entry = await tx.employeeProjectLoanEntry.create({ data: { loanAccountId: account.id, sequenceNo: sequences[0]!.nextSequenceNo, entryType: "disbursement", amountCents, balanceDeltaCents: amountCents, sourceExpenseClaimId: claim.id, occurredAt: paidAt, createdByUserId: actorUserId, voucherFileId, paymentMethod, note: optionalText(input.note) } });
+      const entry = await tx.employeeProjectLoanEntry.create({ data: { loanAccountId: account.id, sequenceNo: sequences[0]!.nextSequenceNo, entryType: "disbursement", amountCents, balanceDeltaCents: amountCents, sourceExpenseClaimId: claim.id, occurredAt: paidAt, createdByUserId: actorUserId, voucherFileId, paymentMethod, note } });
+      const fundingAllocation =
+        this.projectFunding
+          ? await this.projectFunding.allocateExecution(tx, {
+              projectId: claim.projectId,
+              executionType: "employee_loan_disbursement",
+              executionId: entry.id,
+              businessType: "expense_claim",
+              businessId: claim.id,
+              amountCents,
+              occurredAt: paidAt,
+              actorUserId
+            })
+          : null;
       const fundedAmountCents = account.fundedAmountCents + amountCents;
       const balanceAmountCents = account.balanceAmountCents + amountCents;
       await tx.employeeProjectLoanAccount.update({ where: { id: account.id }, data: { fundedAmountCents, balanceAmountCents } });
       const claimFundedAmountCents = claim.fundedAmountCents + amountCents;
       const claimStatus = claimFundedAmountCents === claim.requestedAmountCents ? "disbursed" : "partially_disbursed";
       await tx.expenseClaim.update({ where: { id: claim.id }, data: { fundedAmountCents: claimFundedAmountCents, status: claimStatus } });
-      await this.audit.record(tx, { actorUserId, action: "expense_claim.loan.disbursement.record", businessType: "expense_claim", businessId: claim.id, metadata: { loanAccountId: account.id, loanEntryId: entry.id, amountCents: amountCents.toString(), voucherFileId, paymentMethod } });
-      return { id: entry.id, expenseClaimId: claim.id, loanAccountId: account.id, amountCents: moneyCentsToApi(amountCents), fundedAmountCents: moneyCentsToApi(claimFundedAmountCents), status: claimStatus };
+      await this.audit.record(tx, { actorUserId, action: "expense_claim.loan.disbursement.record", businessType: "expense_claim", businessId: claim.id, metadata: { loanAccountId: account.id, loanEntryId: entry.id, amountCents: amountCents.toString(), voucherFileId, paymentMethod, fundingAllocation: fundingAllocation ? { kind: fundingAllocation.kind, projectCashAmountCents: fundingAllocation.projectCashAmountCents.toString(), financingQuotaAmountCents: fundingAllocation.financingQuotaAmountCents.toString(), allocations: fundingAllocation.allocations.map((allocation) => ({ sourceType: allocation.sourceType, sourceId: allocation.sourceId, amountCents: allocation.amountCents.toString() })) } : null } });
+      return { id: entry.id, expenseClaimId: claim.id, loanAccountId: account.id, amountCents: moneyCentsToApi(amountCents), fundedAmountCents: moneyCentsToApi(claimFundedAmountCents), status: claimStatus, replayed: false };
     });
-    if (result.status === "disbursed") {
+    if (result.status === "disbursed" && !result.replayed) {
       await this.ensureLoanFinalDisbursementPdf(claimId, actorUserId).catch(async () => {
         await this.audit.record(this.prisma, { actorUserId, action: "expense_claim.loan.final_pdf.generation_failed", businessType: "expense_claim", businessId: claimId, metadata: {} });
       });
     }
-    return result;
+    return {
+      id: result.id,
+      expenseClaimId: result.expenseClaimId,
+      loanAccountId: result.loanAccountId,
+      amountCents: result.amountCents,
+      fundedAmountCents: result.fundedAmountCents,
+      status: result.status
+    };
   }
 
   async recordReimbursementPayment(claimId: string, actorUserId: string, input: RecordExpenseClaimPaymentDto) {

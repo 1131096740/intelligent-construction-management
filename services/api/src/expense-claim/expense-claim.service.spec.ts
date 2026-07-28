@@ -18,7 +18,7 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
     expenseClaimAttachment: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn().mockResolvedValue([]), update: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     fileObject: { findUnique: jest.fn() },
     employeeProjectLoanAccount: { upsert: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
-    employeeProjectLoanEntry: { create: jest.fn(), findMany: jest.fn() },
+    employeeProjectLoanEntry: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn() },
     employeeLoanRepayment: { create: jest.fn(), update: jest.fn() },
     expenseClaimPaymentExecution: { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     expenseLoanOffsetReservation: { findMany: jest.fn().mockResolvedValue([]), createMany: jest.fn(), updateMany: jest.fn() },
@@ -562,8 +562,29 @@ describe("ExpenseClaimService", () => {
 
   it("records a voucher-backed actual loan disbursement and only then increases the locked account balance", async () => {
     const auth = { confirmPassword: jest.fn().mockResolvedValue({}) };
-    const { service, tx, audit } = createHarness({ auth });
+    const projectFunding = {
+      lockFundingContext: jest.fn().mockResolvedValue(undefined),
+      allocateExecution: jest.fn().mockResolvedValue({
+        kind: "allocated",
+        projectCashAmountCents: 3000n,
+        financingQuotaAmountCents: 0n,
+        allocations: [{ sourceType: "project_cash", sourceId: null, amountCents: 3000n }]
+      })
+    };
+    const files = {
+      assertFileHasNoBusinessBinding: jest.fn().mockResolvedValue({
+        id: "voucher-1",
+        uploadedByUserId: "finance-1",
+        storageStatus: "active"
+      })
+    };
+    const { service, tx, audit } = createHarness({
+      auth,
+      files,
+      projectFunding
+    });
     const claim = { id: "claim-1", claimType: "loan", status: "approved_pending_disbursement", projectId: "project-1", companyEntityId: "company-1", applicantUserId: "user-a", requestedAmountCents: 10000n, fundedAmountCents: 2000n };
+    tx.expenseClaim.findUnique.mockResolvedValue({ id: "claim-1", projectId: "project-1" });
     tx.$queryRaw
       .mockResolvedValueOnce([claim])
       .mockResolvedValueOnce([{ id: "account-1", fundedAmountCents: 2000n, offsetAmountCents: 0n, repaidAmountCents: 0n, reservedOffsetAmountCents: 0n, balanceAmountCents: 2000n }])
@@ -576,9 +597,130 @@ describe("ExpenseClaimService", () => {
     })).resolves.toEqual({ id: "entry-2", expenseClaimId: "claim-1", loanAccountId: "account-1", amountCents: "3000", fundedAmountCents: "5000", status: "partially_disbursed" });
 
     expect(tx.employeeProjectLoanEntry.create).toHaveBeenCalledWith({ data: expect.objectContaining({ loanAccountId: "account-1", sequenceNo: 2n, entryType: "disbursement", amountCents: 3000n, voucherFileId: "voucher-1", paymentMethod: "银行转账" }) });
+    expect(projectFunding.lockFundingContext).toHaveBeenCalledWith(tx, "project-1");
+    expect(
+      projectFunding.lockFundingContext.mock.invocationCallOrder[0]
+    ).toBeLessThan(tx.$queryRaw.mock.invocationCallOrder[0]);
+    expect(projectFunding.allocateExecution).toHaveBeenCalledWith(tx, {
+      projectId: "project-1",
+      executionType: "employee_loan_disbursement",
+      executionId: "entry-2",
+      businessType: "expense_claim",
+      businessId: "claim-1",
+      amountCents: 3000n,
+      occurredAt: new Date("2026-07-23"),
+      actorUserId: "finance-1"
+    });
+    expect(
+      projectFunding.allocateExecution.mock.invocationCallOrder[0]
+    ).toBeLessThan(
+      tx.employeeProjectLoanAccount.update.mock.invocationCallOrder[0]
+    );
+    expect(files.assertFileHasNoBusinessBinding).toHaveBeenCalledWith(tx, "voucher-1");
     expect(tx.employeeProjectLoanAccount.update).toHaveBeenCalledWith({ where: { id: "account-1" }, data: { fundedAmountCents: 5000n, balanceAmountCents: 5000n } });
     expect(tx.expenseClaim.update).toHaveBeenCalledWith({ where: { id: "claim-1" }, data: { fundedAmountCents: 5000n, status: "partially_disbursed" } });
-    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: "expense_claim.loan.disbursement.record" }));
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "expense_claim.loan.disbursement.record",
+      metadata: expect.objectContaining({
+        fundingAllocation: {
+          kind: "allocated",
+          projectCashAmountCents: "3000",
+          financingQuotaAmountCents: "0",
+          allocations: [
+            {
+              sourceType: "project_cash",
+              sourceId: null,
+              amountCents: "3000"
+            }
+          ]
+        }
+      })
+    }));
+  });
+
+  it("rolls back loan balances and audit when unified project funding is insufficient", async () => {
+    const auth = { confirmPassword: jest.fn().mockResolvedValue({}) };
+    const projectFunding = {
+      lockFundingContext: jest.fn().mockResolvedValue(undefined),
+      allocateExecution: jest.fn().mockRejectedValue(
+        new BadRequestException("项目可用资金不足，当前最多可实际支付 2000 分")
+      )
+    };
+    const { service, tx, audit } = createHarness({
+      auth,
+      files: { assertFileHasNoBusinessBinding: jest.fn().mockResolvedValue({}) },
+      projectFunding
+    });
+    const claim = { id: "claim-1", claimType: "loan", status: "approved_pending_disbursement", projectId: "project-1", companyEntityId: "company-1", applicantUserId: "user-a", requestedAmountCents: 10000n, fundedAmountCents: 2000n };
+    tx.expenseClaim.findUnique.mockResolvedValue({ id: "claim-1", projectId: "project-1" });
+    tx.$queryRaw
+      .mockResolvedValueOnce([claim])
+      .mockResolvedValueOnce([{ id: "account-1", fundedAmountCents: 2000n, offsetAmountCents: 0n, repaidAmountCents: 0n, reservedOffsetAmountCents: 0n, balanceAmountCents: 2000n }])
+      .mockResolvedValueOnce([{ nextSequenceNo: 2n }]);
+    tx.fileObject.findUnique.mockResolvedValue({ id: "voucher-1", uploadedByUserId: "finance-1" });
+    tx.employeeProjectLoanEntry.create.mockResolvedValue({ id: "entry-2" });
+
+    await expect(service.recordLoanDisbursement("claim-1", "finance-1", {
+      amountCents: "3000", paidAt: "2026-07-23", paymentMethod: "银行转账", voucherFileId: "voucher-1", confirmationPassword: "current-password"
+    })).rejects.toThrow("项目可用资金不足，当前最多可实际支付 2000 分");
+
+    expect(tx.employeeProjectLoanEntry.create).toHaveBeenCalled();
+    expect(tx.employeeProjectLoanAccount.update).not.toHaveBeenCalled();
+    expect(tx.expenseClaim.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("replays the same loan disbursement and funding allocation for an exact voucher retry", async () => {
+    const paidAt = new Date("2026-07-23");
+    const auth = { confirmPassword: jest.fn().mockResolvedValue({}) };
+    const projectFunding = {
+      lockFundingContext: jest.fn().mockResolvedValue(undefined),
+      allocateExecution: jest.fn().mockResolvedValue({
+        kind: "replayed",
+        projectCashAmountCents: 3000n,
+        financingQuotaAmountCents: 0n,
+        allocations: [{ sourceType: "project_cash", sourceId: null, amountCents: 3000n }]
+      })
+    };
+    const { service, tx, audit } = createHarness({
+      auth,
+      projectFunding
+    });
+    const claim = { id: "claim-1", claimType: "loan", status: "disbursed", projectId: "project-1", companyEntityId: "company-1", applicantUserId: "user-a", requestedAmountCents: 3000n, fundedAmountCents: 3000n };
+    tx.expenseClaim.findUnique.mockResolvedValue({ id: "claim-1", projectId: "project-1" });
+    tx.$queryRaw.mockResolvedValueOnce([claim]);
+    tx.employeeProjectLoanEntry.findFirst.mockResolvedValue({
+      id: "entry-1",
+      loanAccountId: "account-1",
+      entryType: "disbursement",
+      amountCents: 3000n,
+      balanceDeltaCents: 3000n,
+      sourceExpenseClaimId: "claim-1",
+      occurredAt: paidAt,
+      createdByUserId: "finance-1",
+      voucherFileId: "voucher-1",
+      paymentMethod: "银行转账",
+      note: null
+    });
+
+    await expect(service.recordLoanDisbursement("claim-1", "finance-1", {
+      amountCents: "3000", paidAt: "2026-07-23", paymentMethod: "银行转账", voucherFileId: "voucher-1", confirmationPassword: "current-password"
+    })).resolves.toEqual({
+      id: "entry-1",
+      expenseClaimId: "claim-1",
+      loanAccountId: "account-1",
+      amountCents: "3000",
+      fundedAmountCents: "3000",
+      status: "disbursed"
+    });
+    expect(projectFunding.allocateExecution).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ executionId: "entry-1" })
+    );
+    expect(tx.employeeProjectLoanEntry.create).not.toHaveBeenCalled();
+    expect(tx.employeeProjectLoanAccount.update).not.toHaveBeenCalled();
+    expect(tx.expenseClaim.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("does not create a loan ledger entry when a disbursement exceeds the remaining approved amount", async () => {
