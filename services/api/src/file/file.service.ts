@@ -1150,7 +1150,7 @@ export class FileService {
         UNION ALL SELECT 1 FROM "ProjectProxyPayment" WHERE "voucherFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectUpstreamSettlement" WHERE "voucherFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectSettlementExceptionQuota" WHERE "attachmentFileId" = ${fileId}
-        UNION ALL SELECT 1 FROM "ProjectFinancingQuota" WHERE "attachmentFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ProjectFinancingQuota" WHERE "attachmentFileId" = ${fileId} OR "terminationSignatureFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ApprovalActionLog" WHERE "signatureFileIdSnapshot" = ${fileId}
         UNION ALL SELECT 1 FROM "ContractLayoutTemplateVersion" WHERE "docxFileId" = ${fileId} OR "previewPdfFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ContractLayoutPreviewJob" WHERE "previewPdfFileId" = ${fileId}

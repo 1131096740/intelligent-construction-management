@@ -2129,21 +2129,29 @@ model ProjectSettlementExceptionQuotaUsage {
 }
 
 model ProjectFinancingQuota {
-  id                String    @id @default(uuid())
-  projectId         String
-  amountCents       BigInt
-  reason            String
-  validUntil        DateTime
-  attachmentFileId  String
-  requestedByUserId String
-  approvedByUserId  String?
-  approvedAt        DateTime?
-  status            String    @default("approval_pending")
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                            String    @id @default(uuid())
+  projectId                     String
+  amountCents                   BigInt
+  reason                        String
+  validUntil                    DateTime?
+  attachmentFileId              String
+  requestedByUserId             String
+  approvedByUserId              String?
+  approvedAt                    DateTime?
+  status                        String    @default("approval_pending")
+  terminatedAt                  DateTime?
+  terminatedByUserId            String?
+  terminationReason             String?
+  terminationSignatureFileId    String?
+  terminationSignatureSha256    String?
+  terminationSignatureVersionId String?
+  createdAt                     DateTime  @default(now())
+  updatedAt                     DateTime  @updatedAt
 
   @@index([projectId, validUntil])
   @@index([attachmentFileId])
+  @@index([terminationSignatureFileId])
+  @@index([terminationSignatureVersionId])
 }
 
 model ProjectFinancingQuotaUsage {

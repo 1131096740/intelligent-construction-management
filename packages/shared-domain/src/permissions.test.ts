@@ -336,14 +336,18 @@ describe("role-specific gates", () => {
     expect(canPerform("project.settlement_exception_quota.approve", ["finance_staff"])).toBe(false);
   });
 
-  it("routes project financing quota request and approval through project and finance roles", () => {
-    expect(canPerform("project.financing_quota.request", ["project_manager"])).toBe(true);
-    expect(canPerform("project.financing_quota.request", ["finance_director"])).toBe(false);
-    expect(canPerform("project.financing_quota.approve", ["project_manager"])).toBe(true);
+  it("routes project financing quota lifecycle through finance and final approval roles", () => {
+    expect(canPerform("project.financing_quota.request", ["finance_staff"])).toBe(true);
+    expect(canPerform("project.financing_quota.request", ["finance_director"])).toBe(true);
+    expect(canPerform("project.financing_quota.request", ["project_manager"])).toBe(false);
     expect(canPerform("project.financing_quota.approve", ["finance_director"])).toBe(true);
     expect(canPerform("project.financing_quota.approve", ["chairman"])).toBe(true);
     expect(canPerform("project.financing_quota.approve", ["general_manager"])).toBe(true);
     expect(canPerform("project.financing_quota.approve", ["finance_staff"])).toBe(false);
+    expect(canPerform("project.financing_quota.approve", ["project_manager"])).toBe(false);
+    expect(canPerform("project.financing_quota.terminate", ["finance_director"])).toBe(true);
+    expect(canPerform("project.financing_quota.terminate", ["finance_staff"])).toBe(false);
+    expect(canPerform("project.financing_quota.terminate", ["project_manager"])).toBe(false);
   });
 
   it("routes project expense actions through applicant, approval, cashier, finance, and void roles", () => {

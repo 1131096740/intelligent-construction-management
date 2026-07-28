@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, GoneException } from "@nestjs/common";
 import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
 import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { createApiValidationPipe } from "../validation/api-validation";
@@ -14,7 +14,8 @@ type ProjectMoneyBodyMethod =
   | "requestSettlementExceptionQuota"
   | "reviewSettlementExceptionQuota"
   | "requestProjectFinancingQuota"
-  | "reviewProjectFinancingQuota";
+  | "reviewProjectFinancingQuota"
+  | "terminateProjectFinancingQuota";
 
 const projectMoneyBodyIndex: Record<ProjectMoneyBodyMethod, number> = {
   recordReceipt: 2,
@@ -25,7 +26,8 @@ const projectMoneyBodyIndex: Record<ProjectMoneyBodyMethod, number> = {
   requestSettlementExceptionQuota: 2,
   reviewSettlementExceptionQuota: 3,
   requestProjectFinancingQuota: 2,
-  reviewProjectFinancingQuota: 3
+  reviewProjectFinancingQuota: 3,
+  terminateProjectFinancingQuota: 3
 };
 
 function projectMoneyBodyMetatype(method: ProjectMoneyBodyMethod) {
@@ -108,6 +110,10 @@ describe("ProjectController authorization wiring", () => {
     confirmationPassword: string;
     comment?: string;
   };
+  type ProjectFinancingQuotaTerminationBody = {
+    reason: string;
+    confirmationPassword: string;
+  };
 
   const projectCreatePositions = ["chairman", "general_manager"];
 
@@ -180,6 +186,10 @@ describe("ProjectController authorization wiring", () => {
     [
       "reviewProjectFinancingQuota",
       { decision: "reject", confirmationPassword: "current-password", comment: "资料不足" }
+    ],
+    [
+      "terminateProjectFinancingQuota",
+      { reason: "项目已具备自有资金，不再允许新占用", confirmationPassword: "current-password" }
     ]
   ] as const)("accepts a valid %s body through its controller runtime DTO", async (method, value) => {
     const result = await validateProjectMoneyBody(method, value);
@@ -418,6 +428,16 @@ describe("ProjectController authorization wiring", () => {
     }
   );
 
+  it("accepts a project financing quota without an expiry date", async () => {
+    await expect(
+      validateProjectMoneyBody("requestProjectFinancingQuota", {
+        amountCents: "10000",
+        reason: "项目垫资",
+        attachmentFileId: "file-1"
+      })
+    ).resolves.toBeDefined();
+  });
+
   it("rejects empty required project money fields and unknown fields", async () => {
     const requiredResponse = await getProjectMoneyValidationResponse("recordReceipt", {
       ...validProjectReceiptBody,
@@ -608,7 +628,7 @@ describe("ProjectController authorization wiring", () => {
     ).toBe("project.settlement_exception_quota.approve");
   });
 
-  it("guards project financing quota request and approval with project roles", () => {
+  it("guards project financing quota request, approval and termination with project roles", () => {
     expect(
       Reflect.getMetadata(
         "requiredProjectAction",
@@ -623,6 +643,13 @@ describe("ProjectController authorization wiring", () => {
           .reviewProjectFinancingQuota
       )
     ).toBe("project.financing_quota.approve");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        (ProjectController.prototype as never as { terminateProjectFinancingQuota: object })
+          .terminateProjectFinancingQuota
+      )
+    ).toBe("project.financing_quota.terminate");
   });
 
   it("forwards the authenticated user id when listing projects", async () => {
@@ -778,7 +805,7 @@ describe("ProjectController authorization wiring", () => {
     );
   });
 
-  it("forwards settlement exception quota request payload with authenticated user id", async () => {
+  it("fails closed every new settlement exception quota request", () => {
     const projects = { requestSettlementExceptionQuota: jest.fn() };
     const controller = new ProjectController(projects as never);
     const body = {
@@ -789,22 +816,21 @@ describe("ProjectController authorization wiring", () => {
       attachmentFileId: "file-1"
     };
 
-    await (controller as never as {
+    expect(() => (controller as never as {
       requestSettlementExceptionQuota: (
         projectId: string,
         user: { id: string },
         body: SettlementExceptionQuotaRequestBody
       ) => Promise<unknown>;
-    }).requestSettlementExceptionQuota("project-1", { id: "project-manager-1" }, body);
-
-    expect(projects.requestSettlementExceptionQuota).toHaveBeenCalledWith(
+    }).requestSettlementExceptionQuota(
       "project-1",
-      "project-manager-1",
+      { id: "project-manager-1" },
       body
-    );
+    )).toThrow(GoneException);
+    expect(projects.requestSettlementExceptionQuota).not.toHaveBeenCalled();
   });
 
-  it("forwards settlement exception quota approval metadata and actor", async () => {
+  it("fails closed every settlement exception quota approval write", () => {
     const projects = { reviewSettlementExceptionQuota: jest.fn() };
     const controller = new ProjectController(projects as never);
     const body = {
@@ -813,21 +839,20 @@ describe("ProjectController authorization wiring", () => {
       comment: "同意"
     };
 
-    await (controller as never as {
+    expect(() => (controller as never as {
       reviewSettlementExceptionQuota: (
         projectId: string,
         quotaId: string,
         user: { id: string },
         body: SettlementExceptionQuotaReviewBody
       ) => Promise<unknown>;
-    }).reviewSettlementExceptionQuota("project-1", "quota-1", { id: "budget-director-1" }, body);
-
-    expect(projects.reviewSettlementExceptionQuota).toHaveBeenCalledWith(
+    }).reviewSettlementExceptionQuota(
       "project-1",
       "quota-1",
-      "budget-director-1",
+      { id: "budget-director-1" },
       body
-    );
+    )).toThrow(GoneException);
+    expect(projects.reviewSettlementExceptionQuota).not.toHaveBeenCalled();
   });
 
   it("forwards project financing quota request payload with authenticated user id", async () => {
@@ -874,6 +899,36 @@ describe("ProjectController authorization wiring", () => {
     }).reviewProjectFinancingQuota("project-1", "quota-1", { id: "finance-director-1" }, body);
 
     expect(projects.reviewProjectFinancingQuota).toHaveBeenCalledWith(
+      "project-1",
+      "quota-1",
+      "finance-director-1",
+      body
+    );
+  });
+
+  it("forwards project financing quota termination receipt and actor", async () => {
+    const projects = { terminateProjectFinancingQuota: jest.fn() };
+    const controller = new ProjectController(projects as never);
+    const body = {
+      reason: "项目已具备自有资金，不再允许新占用",
+      confirmationPassword: "current-password"
+    };
+
+    await (controller as never as {
+      terminateProjectFinancingQuota: (
+        projectId: string,
+        quotaId: string,
+        user: { id: string },
+        body: ProjectFinancingQuotaTerminationBody
+      ) => Promise<unknown>;
+    }).terminateProjectFinancingQuota(
+      "project-1",
+      "quota-1",
+      { id: "finance-director-1" },
+      body
+    );
+
+    expect(projects.terminateProjectFinancingQuota).toHaveBeenCalledWith(
       "project-1",
       "quota-1",
       "finance-director-1",

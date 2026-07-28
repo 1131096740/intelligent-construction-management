@@ -4,6 +4,30 @@ import type { RecordProjectReceiptDto } from "./dto/record-project-receipt.dto";
 import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
 import { projectMoneyToApi, ProjectService } from "./project.service";
 
+function addApprovalSignatureQueries<T extends Record<string, unknown>>(
+  tx: T
+): T & { $queryRaw: jest.Mock } {
+  return Object.assign(tx, {
+    $queryRaw: jest
+      .fn()
+      .mockResolvedValueOnce([{ id: "signature-user", isActive: true }])
+      .mockResolvedValueOnce([
+        {
+          id: "signature-version-1",
+          fileId: "signature-file-1",
+          contentSha256: "a".repeat(64)
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "signature-file-1",
+          contentSha256: "a".repeat(64),
+          storageStatus: "active"
+        }
+      ])
+  });
+}
+
 describe("project money API boundary", () => {
   it("returns large bigint values as exact decimal strings", () => {
     expect(projectMoneyToApi(9_007_199_254_740_993n)).toBe("9007199254740993");
@@ -810,7 +834,11 @@ describe("ProjectService", () => {
       select: { approvedAmountCents: true }
     });
     expect(prisma.projectFinancingQuota.findMany).toHaveBeenCalledWith({
-      where: { projectId: "project-1", status: "approved", validUntil: { gte: expect.any(Date) } },
+      where: {
+        projectId: "project-1",
+        status: "approved",
+        OR: [{ validUntil: null }, { validUntil: { gte: expect.any(Date) } }]
+      },
       select: { id: true, amountCents: true }
     });
     expect(prisma.spotProcurementPaymentExecution.findMany).toHaveBeenCalledWith({
@@ -2220,15 +2248,14 @@ describe("ProjectService", () => {
     });
   });
 
-  it("requests a project financing quota with attachment and frozen approval route", async () => {
-    const validUntil = "2099-07-02T00:00:00.000Z";
+  it("allows finance staff to request a project financing quota without an expiry date", async () => {
     const createdAt = new Date("2026-07-02T01:00:00.000Z");
     const tx = {
       project: {
         findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
       },
       fileObject: {
-        findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "project-manager-1" })
+        findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "finance-staff-1" })
       },
       projectFinancingQuota: {
         create: jest.fn().mockResolvedValue({
@@ -2236,9 +2263,9 @@ describe("ProjectService", () => {
           projectId: "project-1",
           amountCents: BigInt(5000000),
           reason: "阶段性垫资保障项目付款",
-          validUntil: new Date(validUntil),
+          validUntil: null,
           attachmentFileId: "file-1",
-          requestedByUserId: "project-manager-1",
+          requestedByUserId: "finance-staff-1",
           approvedByUserId: null,
           approvedAt: null,
           status: "approval_pending",
@@ -2254,10 +2281,9 @@ describe("ProjectService", () => {
     };
     const service = new ProjectService(prisma as never);
 
-    const result = await service.requestProjectFinancingQuota("project-1", "project-manager-1", {
+    const result = await service.requestProjectFinancingQuota("project-1", "finance-staff-1", {
       amountCents: "5000000",
       reason: " 阶段性垫资保障项目付款 ",
-      validUntil,
       attachmentFileId: "file-1"
     });
 
@@ -2266,16 +2292,17 @@ describe("ProjectService", () => {
       projectId: "project-1",
       amountCents: "5000000",
       status: "approval_pending",
-      approvedByUserId: null
+      approvedByUserId: null,
+      validUntil: null
     });
     expect(tx.projectFinancingQuota.create).toHaveBeenCalledWith({
       data: {
         projectId: "project-1",
         amountCents: BigInt(5000000),
         reason: "阶段性垫资保障项目付款",
-        validUntil: new Date(validUntil),
+        validUntil: null,
         attachmentFileId: "file-1",
-        requestedByUserId: "project-manager-1",
+        requestedByUserId: "finance-staff-1",
         status: "approval_pending"
       }
     });
@@ -2286,19 +2313,18 @@ describe("ProjectService", () => {
         businessId: "financing-quota-1",
         status: "in_progress",
         currentNodeIndex: 0,
-        applicantUserId: "project-manager-1",
+        applicantUserId: "finance-staff-1",
         frozenNodes: [
-          { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
-          { name: "财务", mode: "any", roleKeys: ["finance_director"] },
+          { name: "财务主管", mode: "any", roleKeys: ["finance_director"] },
           { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
         ]
       })
     });
   });
 
-  it("advances project financing quota approval from the finance node", async () => {
+  it("allows an initiating finance director to independently approve the supervisor node", async () => {
     const createdAt = new Date("2026-07-02T01:00:00.000Z");
-    const tx = {
+    const tx = addApprovalSignatureQueries({
       projectFinancingQuota: {
         findFirst: jest.fn().mockResolvedValue({
           id: "financing-quota-1",
@@ -2307,7 +2333,7 @@ describe("ProjectService", () => {
           reason: "阶段性垫资保障项目付款",
           validUntil: new Date("2099-07-02T00:00:00.000Z"),
           attachmentFileId: "file-1",
-          requestedByUserId: "project-manager-1",
+          requestedByUserId: "finance-director-1",
           approvedByUserId: null,
           approvedAt: null,
           status: "approval_pending",
@@ -2321,7 +2347,7 @@ describe("ProjectService", () => {
           reason: "阶段性垫资保障项目付款",
           validUntil: new Date("2099-07-02T00:00:00.000Z"),
           attachmentFileId: "file-1",
-          requestedByUserId: "project-manager-1",
+          requestedByUserId: "finance-director-1",
           approvedByUserId: null,
           approvedAt: null,
           status: "approval_pending",
@@ -2332,15 +2358,10 @@ describe("ProjectService", () => {
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
           id: "approval-1",
-          currentNodeIndex: 1,
+          applicantUserId: "finance-director-1",
+          currentNodeIndex: 0,
           frozenNodes: [
-            {
-              name: "项目经理",
-              mode: "any",
-              roleKeys: ["project_manager"],
-              approvedRoleKeys: ["project_manager"]
-            },
-            { name: "财务", mode: "any", roleKeys: ["finance_director"] },
+            { name: "财务主管", mode: "any", roleKeys: ["finance_director"] },
             { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
           ]
         }),
@@ -2351,7 +2372,7 @@ describe("ProjectService", () => {
       projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_director" }]) },
       position: { findMany: jest.fn().mockResolvedValue([]) },
       auditLog: { create: jest.fn() }
-    };
+    });
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -2362,15 +2383,112 @@ describe("ProjectService", () => {
       "project-1",
       "financing-quota-1",
       "finance-director-1",
-      { decision: "approve", confirmationPassword: "current-password" }
+      {
+        decision: "approve",
+        confirmationPassword: "current-password",
+        selfReviewReason: "项目资金安排由本人发起并独立复核"
+      }
     );
 
     expect(result.status).toBe("approval_pending");
     expect(tx.approvalInstance.update).toHaveBeenCalledWith({
       where: { id: "approval-1" },
       data: expect.objectContaining({
-        currentNodeIndex: 2,
+        currentNodeIndex: 1,
         status: "in_progress"
+      })
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        approvedRoleKey: "finance_director",
+        signatureFileIdSnapshot: "signature-file-1",
+        signatureSha256Snapshot: "a".repeat(64),
+        signatureVersionIdSnapshot: "signature-version-1",
+        metadata: {
+          selfReview: true,
+          selfReviewReason: "项目资金安排由本人发起并独立复核"
+        }
+      })
+    });
+  });
+
+  it("freezes the reviewer signature when a financing quota is rejected", async () => {
+    const createdAt = new Date("2026-07-02T01:00:00.000Z");
+    const tx = addApprovalSignatureQueries({
+      projectFinancingQuota: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "financing-quota-1",
+          projectId: "project-1",
+          amountCents: 5_000_000n,
+          reason: "阶段性垫资保障项目付款",
+          validUntil: null,
+          attachmentFileId: "file-1",
+          requestedByUserId: "finance-staff-1",
+          approvedByUserId: null,
+          approvedAt: null,
+          status: "approval_pending",
+          createdAt,
+          updatedAt: createdAt
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "financing-quota-1",
+          projectId: "project-1",
+          amountCents: 5_000_000n,
+          reason: "阶段性垫资保障项目付款",
+          validUntil: null,
+          attachmentFileId: "file-1",
+          requestedByUserId: "finance-staff-1",
+          approvedByUserId: null,
+          approvedAt: null,
+          status: "rejected",
+          createdAt,
+          updatedAt: createdAt
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-1",
+          applicantUserId: "finance-staff-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            { name: "财务主管", mode: "any", roleKeys: ["finance_director"] },
+            { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+          ]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn() },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_director" }])
+      },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      auditLog: { create: jest.fn() }
+    });
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
+    const service = new ProjectService(prisma as never, undefined, auth as never);
+
+    await service.reviewProjectFinancingQuota(
+      "project-1",
+      "financing-quota-1",
+      "finance-director-1",
+      {
+        decision: "reject",
+        confirmationPassword: "current-password",
+        comment: "资金安排依据不足"
+      }
+    );
+
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "reject",
+        approvedRoleKey: "finance_director",
+        signatureFileIdSnapshot: "signature-file-1",
+        signatureSha256Snapshot: "a".repeat(64),
+        signatureVersionIdSnapshot: "signature-version-1"
       })
     });
   });
@@ -2378,7 +2496,7 @@ describe("ProjectService", () => {
   it("approves a project financing quota after final OR-sign", async () => {
     const createdAt = new Date("2026-07-02T01:00:00.000Z");
     const approvedAt = new Date("2026-07-02T02:00:00.000Z");
-    const tx = {
+    const tx = addApprovalSignatureQueries({
       projectFinancingQuota: {
         findFirst: jest.fn().mockResolvedValue({
           id: "financing-quota-1",
@@ -2387,7 +2505,7 @@ describe("ProjectService", () => {
           reason: "阶段性垫资保障项目付款",
           validUntil: new Date("2099-07-02T00:00:00.000Z"),
           attachmentFileId: "file-1",
-          requestedByUserId: "project-manager-1",
+          requestedByUserId: "finance-staff-1",
           approvedByUserId: null,
           approvedAt: null,
           status: "approval_pending",
@@ -2412,16 +2530,11 @@ describe("ProjectService", () => {
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
           id: "approval-1",
-          currentNodeIndex: 2,
+          applicantUserId: "finance-staff-1",
+          currentNodeIndex: 1,
           frozenNodes: [
             {
-              name: "项目经理",
-              mode: "any",
-              roleKeys: ["project_manager"],
-              approvedRoleKeys: ["project_manager"]
-            },
-            {
-              name: "财务",
+              name: "财务主管",
               mode: "any",
               roleKeys: ["finance_director"],
               approvedRoleKeys: ["finance_director"]
@@ -2436,7 +2549,7 @@ describe("ProjectService", () => {
       projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "chairman" }]) },
       position: { findMany: jest.fn().mockResolvedValue([]) },
       auditLog: { create: jest.fn() }
-    };
+    });
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -2462,10 +2575,112 @@ describe("ProjectService", () => {
     expect(tx.approvalInstance.update).toHaveBeenCalledWith({
       where: { id: "approval-1" },
       data: expect.objectContaining({
-        currentNodeIndex: 3,
+        currentNodeIndex: 2,
         status: "approved"
       })
     });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        approvedRoleKey: "chairman",
+        signatureFileIdSnapshot: "signature-file-1",
+        signatureSha256Snapshot: "a".repeat(64),
+        signatureVersionIdSnapshot: "signature-version-1"
+      })
+    });
+  });
+
+  it("terminates an approved financing quota without deleting historical allocations", async () => {
+    const createdAt = new Date("2026-07-02T01:00:00.000Z");
+    const approvedAt = new Date("2026-07-02T02:00:00.000Z");
+    const tx = addApprovalSignatureQueries({
+      projectFinancingQuota: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "financing-quota-1",
+          projectId: "project-1",
+          amountCents: 5_000_000n,
+          reason: "阶段性垫资保障项目付款",
+          validUntil: null,
+          attachmentFileId: "file-1",
+          requestedByUserId: "finance-staff-1",
+          approvedByUserId: "chairman-1",
+          approvedAt,
+          status: "approved",
+          terminatedAt: null,
+          terminatedByUserId: null,
+          terminationReason: null,
+          terminationSignatureFileId: null,
+          terminationSignatureSha256: null,
+          terminationSignatureVersionId: null,
+          createdAt,
+          updatedAt: approvedAt
+        }),
+        update: jest.fn().mockImplementation(({ data }) => ({
+          id: "financing-quota-1",
+          projectId: "project-1",
+          amountCents: 5_000_000n,
+          reason: "阶段性垫资保障项目付款",
+          validUntil: null,
+          attachmentFileId: "file-1",
+          requestedByUserId: "finance-staff-1",
+          approvedByUserId: "chairman-1",
+          approvedAt,
+          createdAt,
+          updatedAt: data.terminatedAt,
+          ...data
+        }))
+      },
+      projectFundingAllocation: {
+        deleteMany: jest.fn()
+      },
+      auditLog: { create: jest.fn() }
+    });
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
+    const funding = { lockFundingContext: jest.fn().mockResolvedValue(undefined) };
+    const service = new ProjectService(
+      prisma as never,
+      undefined,
+      auth as never,
+      funding as never
+    );
+
+    const result = await service.terminateProjectFinancingQuota(
+      "project-1",
+      "financing-quota-1",
+      "finance-director-1",
+      {
+        reason: " 项目已具备自有资金，不再允许新占用 ",
+        confirmationPassword: "current-password"
+      }
+    );
+
+    expect(auth.confirmPassword).toHaveBeenCalledWith(
+      "finance-director-1",
+      "current-password"
+    );
+    expect(funding.lockFundingContext).toHaveBeenCalledWith(tx, "project-1");
+    expect(tx.projectFinancingQuota.update).toHaveBeenCalledWith({
+      where: { id: "financing-quota-1" },
+      data: {
+        status: "terminated",
+        terminatedAt: expect.any(Date),
+        terminatedByUserId: "finance-director-1",
+        terminationReason: "项目已具备自有资金，不再允许新占用",
+        terminationSignatureFileId: "signature-file-1",
+        terminationSignatureSha256: "a".repeat(64),
+        terminationSignatureVersionId: "signature-version-1"
+      }
+    });
+    expect(result).toMatchObject({
+      status: "terminated",
+      validUntil: null,
+      terminatedByUserId: "finance-director-1",
+      terminationReason: "项目已具备自有资金，不再允许新占用",
+      terminationSignatureFileId: "signature-file-1"
+    });
+    expect(tx.projectFundingAllocation.deleteMany).not.toHaveBeenCalled();
   });
 
   it("rejects upstream settlement voucher uploaded by another user", async () => {

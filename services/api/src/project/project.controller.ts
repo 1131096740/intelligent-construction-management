@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Get, GoneException, Param, Patch, Post } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
@@ -14,6 +14,7 @@ import { RequestProjectFinancingQuotaDto } from "./dto/request-project-financing
 import { RequestSettlementExceptionQuotaDto } from "./dto/request-settlement-exception-quota.dto";
 import { ReviewProjectFinancingQuotaDto } from "./dto/review-project-financing-quota.dto";
 import { ReviewSettlementExceptionQuotaDto } from "./dto/review-settlement-exception-quota.dto";
+import { TerminateProjectFinancingQuotaDto } from "./dto/terminate-project-financing-quota.dto";
 import type { UpdateProjectDto } from "./dto/update-project.dto";
 import { ProjectService } from "./project.service";
 
@@ -116,7 +117,12 @@ export class ProjectController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: RequestSettlementExceptionQuotaDto
   ) {
-    return this.projects.requestSettlementExceptionQuota(projectId, user.id, body);
+    void projectId;
+    void user;
+    void body;
+    throw new GoneException(
+      "结算例外额度已停止新增；下游结算超过上游时改为风险提示和审计"
+    );
   }
 
   @Post(":projectId/settlement-exception-quotas/:quotaId/approval")
@@ -127,7 +133,13 @@ export class ProjectController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: ReviewSettlementExceptionQuotaDto
   ) {
-    return this.projects.reviewSettlementExceptionQuota(projectId, quotaId, user.id, body);
+    void projectId;
+    void quotaId;
+    void user;
+    void body;
+    throw new GoneException(
+      "结算例外额度审批写入已停止；历史记录仅保留查询和审计"
+    );
   }
 
   @Post(":projectId/financing-quotas")
@@ -149,5 +161,16 @@ export class ProjectController {
     @Body() body: ReviewProjectFinancingQuotaDto
   ) {
     return this.projects.reviewProjectFinancingQuota(projectId, quotaId, user.id, body);
+  }
+
+  @Post(":projectId/financing-quotas/:quotaId/termination")
+  @RequireProjectRole("project.financing_quota.terminate")
+  terminateProjectFinancingQuota(
+    @Param("projectId") projectId: string,
+    @Param("quotaId") quotaId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: TerminateProjectFinancingQuotaDto
+  ) {
+    return this.projects.terminateProjectFinancingQuota(projectId, quotaId, user.id, body);
   }
 }

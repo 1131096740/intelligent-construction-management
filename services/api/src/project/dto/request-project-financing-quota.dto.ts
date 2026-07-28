@@ -1,4 +1,4 @@
-import { IsDateString } from "class-validator";
+import { IsDateString, IsOptional } from "class-validator";
 import {
   IsCanonicalMoneyText,
   IsRequiredText
@@ -18,8 +18,9 @@ export class RequestProjectFinancingQuotaDto {
   })
   reason!: string;
 
+  @IsOptional()
   @IsDateString({ strict: true }, { message: "额度有效期格式不正确" })
-  validUntil!: string;
+  validUntil?: string;
 
   @IsRequiredText({
     requiredMessage: "额度附件不能为空",

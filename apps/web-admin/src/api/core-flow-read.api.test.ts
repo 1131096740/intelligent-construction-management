@@ -42,6 +42,7 @@ import {
   requestProjectFinancingQuota,
   reviewSettlementExceptionQuota,
   reviewProjectFinancingQuota,
+  terminateProjectFinancingQuota,
   createProjectExpenseRequest,
   reviewProjectExpenseApproval,
   withdrawProjectExpenseApproval,
@@ -852,7 +853,7 @@ describe("core flow read API client", () => {
     );
   });
 
-  it("requests and reviews project financing quotas through the backend", async () => {
+  it("requests, reviews and terminates project financing quotas through the backend", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       json: async () => ({ id: "quota-1" })
@@ -861,25 +862,29 @@ describe("core flow read API client", () => {
     await requestProjectFinancingQuota("project-1", {
       amountCents: "5000000",
       reason: "阶段性垫资保障项目付款",
-      validUntil: "2026-08-31",
       attachmentFileId: "file-financing-1"
     });
     await reviewProjectFinancingQuota("project-1", "quota-1", {
       decision: "approve",
       confirmationPassword: "current-password",
-      comment: "同意"
+      comment: "同意",
+      selfReviewReason: "财务主管独立复核本人发起的额度"
+    });
+    await terminateProjectFinancingQuota("project-1", "quota-1", {
+      reason: "项目已具备自有资金，不再允许新占用",
+      confirmationPassword: "current-password"
     });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/projects/project-1/financing-quotas",
-      "/api/projects/project-1/financing-quotas/quota-1/approval"
+      "/api/projects/project-1/financing-quotas/quota-1/approval",
+      "/api/projects/project-1/financing-quotas/quota-1/termination"
     ]);
     expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
       JSON.stringify({
         amountCents: "5000000",
         reason: "阶段性垫资保障项目付款",
-        validUntil: "2026-08-31",
         attachmentFileId: "file-financing-1"
       })
     );
@@ -887,7 +892,14 @@ describe("core flow read API client", () => {
       JSON.stringify({
         decision: "approve",
         confirmationPassword: "current-password",
-        comment: "同意"
+        comment: "同意",
+        selfReviewReason: "财务主管独立复核本人发起的额度"
+      })
+    );
+    expect(fetchMock.mock.calls[2][1]?.body).toBe(
+      JSON.stringify({
+        reason: "项目已具备自有资金，不再允许新占用",
+        confirmationPassword: "current-password"
       })
     );
   });

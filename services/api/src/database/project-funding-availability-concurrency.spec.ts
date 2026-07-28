@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
+import { ProjectService } from "../project/project.service";
 
 const TEST_DATABASE = "jiangkong_project_funding_integration_test";
 
@@ -218,6 +219,186 @@ describe("project funding PostgreSQL evidence", () => {
               projectId: inactiveQuotaProjectId,
               executionId: executionId("inactive-quota"),
               businessId: businessId("inactive-quota"),
+              amountCents: 1n
+            })
+          )
+        ).rejects.toThrow("项目可用资金不足，当前最多可实际支付 0 分");
+
+        const terminationProjectId = projectId("terminated-quota");
+        const terminationQuotaId = `pf-live-terminated-quota-${marker}`;
+        const signatureFileId = `pf-live-signature-file-${marker}`;
+        await clients[0]!.project.create({
+          data: {
+            id: terminationProjectId,
+            code: `PF-TERMINATE-${marker}`,
+            name: "垫资额度终止并发夹具"
+          }
+        });
+        await clients[0]!.fileObject.create({
+          data: {
+            id: signatureFileId,
+            bucket: "local-test",
+            objectKey: `project-funding/${marker}/signature.png`,
+            originalName: "signature.png",
+            mimeType: "image/png",
+            sizeBytes: 128,
+            uploadedByUserId: actorId,
+            contentSha256: "a".repeat(64),
+            storageStatus: "active"
+          }
+        });
+        await clients[0]!.handwrittenSignatureVersion.create({
+          data: {
+            id: `pf-live-signature-version-${marker}`,
+            userId: actorId,
+            fileId: signatureFileId,
+            contentSha256: "a".repeat(64),
+            source: "canvas"
+          }
+        });
+        await clients[0]!.projectFinancingQuota.create({
+          data: {
+            id: terminationQuotaId,
+            projectId: terminationProjectId,
+            amountCents: 2_000n,
+            reason: "实库终止并发门禁",
+            validUntil: null,
+            attachmentFileId: signatureFileId,
+            requestedByUserId: actorId,
+            approvedByUserId: actorId,
+            approvedAt: new Date(),
+            status: "approved"
+          }
+        });
+        const projectService = new ProjectService(
+          clients[0]! as never,
+          undefined,
+          { confirmPassword: jest.fn().mockResolvedValue(undefined) } as never,
+          service
+        );
+        const terminationExecutionId = executionId("terminated-quota-race");
+        const [terminationResult, concurrentQuotaPayment] = await Promise.allSettled([
+          projectService.terminateProjectFinancingQuota(
+            terminationProjectId,
+            terminationQuotaId,
+            actorId,
+            {
+              reason: "实库并发终止门禁",
+              confirmationPassword: "local-test-password"
+            }
+          ),
+          clients[1]!.$transaction((tx) =>
+            service.allocateExecution(tx, {
+              ...retryInput,
+              projectId: terminationProjectId,
+              executionId: terminationExecutionId,
+              businessId: businessId("terminated-quota-race"),
+              amountCents: 500n
+            })
+          )
+        ]);
+        expect(terminationResult.status).toBe("fulfilled");
+        expect(["fulfilled", "rejected"]).toContain(concurrentQuotaPayment.status);
+        expect(
+          await clients[0]!.projectFinancingQuota.findUnique({
+            where: { id: terminationQuotaId },
+            select: {
+              status: true,
+              terminatedAt: true,
+              terminatedByUserId: true,
+              terminationSignatureVersionId: true
+            }
+          })
+        ).toMatchObject({
+          status: "terminated",
+          terminatedAt: expect.any(Date),
+          terminatedByUserId: actorId,
+          terminationSignatureVersionId: `pf-live-signature-version-${marker}`
+        });
+        const terminationRaceAllocations =
+          await clients[0]!.projectFundingAllocation.findMany({
+            where: { executionId: terminationExecutionId }
+          });
+        expect(terminationRaceAllocations.length === 0 || terminationRaceAllocations.length === 1)
+          .toBe(true);
+        if (terminationRaceAllocations.length === 1) {
+          expect(terminationRaceAllocations[0]).toMatchObject({
+            sourceId: terminationQuotaId,
+            direction: "debit",
+            amountCents: 500n
+          });
+        }
+        await expect(
+          clients[0]!.$transaction((tx) =>
+            service.allocateExecution(tx, {
+              ...retryInput,
+              projectId: terminationProjectId,
+              executionId: executionId("terminated-quota-after"),
+              businessId: businessId("terminated-quota-after"),
+              amountCents: 1n
+            })
+          )
+        ).rejects.toThrow("项目可用资金不足，当前最多可实际支付 0 分");
+
+        const preservedProjectId = projectId("terminated-quota-preserved");
+        const preservedQuotaId = `pf-live-preserved-quota-${marker}`;
+        const preservedExecutionId = executionId("terminated-quota-preserved");
+        await clients[0]!.project.create({
+          data: {
+            id: preservedProjectId,
+            code: `PF-PRESERVE-${marker}`,
+            name: "垫资额度终止保留流水夹具"
+          }
+        });
+        await clients[0]!.projectFinancingQuota.create({
+          data: {
+            id: preservedQuotaId,
+            projectId: preservedProjectId,
+            amountCents: 2_000n,
+            reason: "实库终止保留流水门禁",
+            validUntil: null,
+            attachmentFileId: signatureFileId,
+            requestedByUserId: actorId,
+            approvedByUserId: actorId,
+            approvedAt: new Date(),
+            status: "approved"
+          }
+        });
+        await clients[0]!.$transaction((tx) =>
+          service.allocateExecution(tx, {
+            ...retryInput,
+            projectId: preservedProjectId,
+            executionId: preservedExecutionId,
+            businessId: businessId("terminated-quota-preserved"),
+            amountCents: 500n
+          })
+        );
+        await projectService.terminateProjectFinancingQuota(
+          preservedProjectId,
+          preservedQuotaId,
+          actorId,
+          {
+            reason: "实库终止后保留既有资金流水",
+            confirmationPassword: "local-test-password"
+          }
+        );
+        expect(
+          await clients[0]!.projectFundingAllocation.aggregate({
+            where: { projectId: preservedProjectId },
+            _count: true,
+            _sum: { amountCents: true }
+          })
+        ).toMatchObject({
+          _count: 1,
+          _sum: { amountCents: 500n }
+        });
+        await expect(
+          clients[0]!.$transaction((tx) =>
+            service.allocateExecution(tx, {
+              ...retryInput,
+              projectId: preservedProjectId,
+              executionId: executionId("terminated-quota-preserved-after"),
+              businessId: businessId("terminated-quota-preserved-after"),
               amountCents: 1n
             })
           )

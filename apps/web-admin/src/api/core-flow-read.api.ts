@@ -1072,7 +1072,7 @@ export interface ReviewSettlementExceptionQuotaPayload {
 export interface RequestProjectFinancingQuotaPayload {
   amountCents: string;
   reason: string;
-  validUntil: string;
+  validUntil?: string;
   attachmentFileId: string;
 }
 
@@ -1080,6 +1080,12 @@ export interface ReviewProjectFinancingQuotaPayload {
   decision: "approve" | "reject";
   confirmationPassword: string;
   comment?: string;
+  selfReviewReason?: string;
+}
+
+export interface TerminateProjectFinancingQuotaPayload {
+  reason: string;
+  confirmationPassword: string;
 }
 
 export type ProjectExpenseType =
@@ -1401,6 +1407,17 @@ export function reviewProjectFinancingQuota(
   body: ReviewProjectFinancingQuotaPayload
 ) {
   return postJson<unknown>(`/projects/${projectId}/financing-quotas/${quotaId}/approval`, body);
+}
+
+export function terminateProjectFinancingQuota(
+  projectId: string,
+  quotaId: string,
+  body: TerminateProjectFinancingQuotaPayload
+) {
+  return postJson<unknown>(
+    `/projects/${projectId}/financing-quotas/${quotaId}/termination`,
+    body
+  );
 }
 
 export function createProjectExpenseRequest(

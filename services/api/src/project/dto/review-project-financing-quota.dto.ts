@@ -1,5 +1,8 @@
 import { IsIn, IsString, ValidateIf } from "class-validator";
-import { IsRequiredText } from "../../validation/static-field-validation";
+import {
+  IsMaxUnicodeTextLength,
+  IsRequiredText
+} from "../../validation/static-field-validation";
 
 export class ReviewProjectFinancingQuotaDto {
   @IsIn(["approve", "reject"], { message: "审批决定不正确" })
@@ -15,4 +18,9 @@ export class ReviewProjectFinancingQuotaDto {
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "审批意见必须是文字" })
   comment?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "自审原因必须是文字" })
+  @IsMaxUnicodeTextLength({ max: 500, message: "自审原因不能超过 500 个字符" })
+  selfReviewReason?: string;
 }
