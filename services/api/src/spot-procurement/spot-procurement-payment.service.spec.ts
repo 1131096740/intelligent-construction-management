@@ -282,6 +282,21 @@ function harness() {
   const closure = {
     recalculateAndClose: jest.fn().mockResolvedValue({ closed: false })
   };
+  const projectFunding = {
+    lockFundingContext: jest.fn().mockResolvedValue(undefined),
+    allocateExecution: jest.fn().mockResolvedValue({
+      kind: "allocated",
+      projectCashAmountCents: 4_000n,
+      financingQuotaAmountCents: 0n,
+      allocations: [
+        {
+          sourceType: "project_cash",
+          sourceId: null,
+          amountCents: 4_000n
+        }
+      ]
+    })
+  };
   const service = Reflect.construct(SpotProcurementPaymentService, [
     prisma,
     audit,
@@ -290,7 +305,8 @@ function harness() {
     auth,
     files,
     approvalForms,
-    closure
+    closure,
+    projectFunding
   ]) as SpotProcurementPaymentService;
   return {
     service,
@@ -301,7 +317,8 @@ function harness() {
     balance,
     auth,
     files,
-    approvalForms
+    approvalForms,
+    projectFunding
   };
 }
 
@@ -475,10 +492,11 @@ function executionHarness(
   current.tx.$queryRaw
     .mockResolvedValueOnce([version])
     .mockResolvedValueOnce([payment])
-    .mockResolvedValueOnce([
-      { id: "project-1", isActive: true }
-    ])
     .mockResolvedValueOnce(activeExecutions);
+  current.tx.spotProcurementPayment.findUnique.mockResolvedValue({
+    id: payment.id,
+    projectId: payment.projectId
+  });
   roles(current.tx, {
     project: options.projectRoles ?? ["finance_staff"],
     global: options.globalRoles ?? []
@@ -3802,6 +3820,33 @@ describe("SpotProcurementPaymentService", () => {
         idempotencyKey: "spot-execution-key-1"
       }
     });
+    expect(current.projectFunding.lockFundingContext).toHaveBeenCalledWith(
+      current.tx,
+      "project-1"
+    );
+    expect(
+      current.projectFunding.lockFundingContext.mock.invocationCallOrder[0]
+    ).toBeLessThan(
+      current.tx.$queryRaw.mock.invocationCallOrder[0]
+    );
+    expect(current.projectFunding.allocateExecution).toHaveBeenCalledWith(
+      current.tx,
+      {
+        projectId: "project-1",
+        executionType: "spot_procurement_payment_execution",
+        executionId: "execution-1",
+        businessType: "spot_procurement_payment",
+        businessId: "payment-1",
+        amountCents: 4_000n,
+        occurredAt: new Date(input.paidAt),
+        actorUserId: "finance-1"
+      }
+    );
+    expect(
+      current.projectFunding.allocateExecution.mock.invocationCallOrder[0]
+    ).toBeLessThan(
+      current.tx.spotProcurementPayment.updateMany.mock.invocationCallOrder[0]
+    );
     expect(
       current.tx.spotProcurementPayment.updateMany
     ).toHaveBeenCalledWith({
@@ -3852,24 +3897,9 @@ describe("SpotProcurementPaymentService", () => {
         voucherFileId: "file-voucher",
         paidAmountCents: "4000",
         remainingCompanyPaymentAmountCents: "6000",
-        projectCashBefore: expect.any(Object),
-        projectCashAfter: expect.any(Object)
+        fundingAllocation: expect.any(Object)
       })
     );
-    expect(auditInput.metadata?.projectCashBefore).toEqual({
-      actualReceiptsCents: "10000",
-      supplierRefundsCents: "0",
-      actualPaidCents: "0",
-      occupiedCents: "10000",
-      availableCents: "0"
-    });
-    expect(auditInput.metadata?.projectCashAfter).toEqual({
-      actualReceiptsCents: "10000",
-      supplierRefundsCents: "0",
-      actualPaidCents: "4000",
-      occupiedCents: "6000",
-      availableCents: "0"
-    });
     expect(JSON.stringify(auditInput)).not.toContain("Current@123");
     expect(current.approvalForms.tryRefreshLatestForBusiness).toHaveBeenCalledWith(
       "spot_procurement_payment",
@@ -4126,8 +4156,13 @@ describe("SpotProcurementPaymentService", () => {
     );
   });
 
-  it("blocks payment when project cash excluding the current payment's own occupation is insufficient and writes nothing", async () => {
-    const current = executionHarness({ receipts: [9_000n] });
+  it("rolls back payment state and audit when unified project funding is insufficient", async () => {
+    const current = executionHarness();
+    current.projectFunding.allocateExecution.mockRejectedValue(
+      new BadRequestException(
+        "项目可用资金不足，当前最多可实际支付 9000 分"
+      )
+    );
 
     await expect(
       current.service.recordExecution(
@@ -4136,15 +4171,39 @@ describe("SpotProcurementPaymentService", () => {
         validExecutionInput({ amountCents: "10000" })
       )
     ).rejects.toThrow(
-      "项目现金不足，当前最多可实际支付 9000 分"
+      "项目可用资金不足，当前最多可实际支付 9000 分"
+    );
+    expect(
+      current.tx.spotProcurementPaymentExecution.create
+    ).toHaveBeenCalled();
+    expect(
+      current.tx.spotProcurementPayment.updateMany
+    ).not.toHaveBeenCalled();
+    expect(current.audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects a changed project funding scope before creating an execution", async () => {
+    const current = executionHarness();
+    current.tx.spotProcurementPayment.findUnique.mockResolvedValue({
+      id: "payment-1",
+      projectId: "project-other"
+    });
+
+    await expect(
+      current.service.recordExecution(
+        "payment-1",
+        "finance-1",
+        validExecutionInput()
+      )
+    ).rejects.toThrow(
+      "零星采购付款的项目资金范围已变化，请刷新后重试"
     );
     expect(
       current.tx.spotProcurementPaymentExecution.create
     ).not.toHaveBeenCalled();
     expect(
-      current.tx.spotProcurementPayment.updateMany
+      current.projectFunding.allocateExecution
     ).not.toHaveBeenCalled();
-    expect(current.audit.record).not.toHaveBeenCalled();
   });
 
   it("requires project-scoped finance staff and does not grant execution to global finance staff or finance director", async () => {
@@ -4267,6 +4326,19 @@ describe("SpotProcurementPaymentService", () => {
       exact.tx.spotProcurementPayment.updateMany
     ).not.toHaveBeenCalled();
     expect(exact.audit.record).not.toHaveBeenCalled();
+    expect(exact.projectFunding.allocateExecution).toHaveBeenCalledWith(
+      exact.tx,
+      {
+        projectId: "project-1",
+        executionType: "spot_procurement_payment_execution",
+        executionId: "execution-existing",
+        businessType: "spot_procurement_payment",
+        businessId: "payment-1",
+        amountCents: 4_000n,
+        occurredAt: paidAt,
+        actorUserId: "finance-1"
+      }
+    );
 
     const changed = executionHarness();
     changed.tx.spotProcurementPaymentExecution.findUnique.mockResolvedValue({

@@ -114,6 +114,7 @@ function createHarness() {
     {} as never,
     {} as never,
     { tryRefreshLatestForBusiness: jest.fn().mockResolvedValue(undefined) } as never,
+    {} as never,
     {} as never
   );
   return { service, tx, prisma };

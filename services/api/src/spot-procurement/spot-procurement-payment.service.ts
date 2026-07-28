@@ -19,15 +19,9 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
-import {
-  calculateProjectCashPoolBigInt,
-  dbMoneyToBigInt,
-  findProjectSpotProcurementRefundAmounts,
-  outstandingMoneyRequestCentsBigInt,
-  SPOT_PROCUREMENT_CASH_POOL_STATUSES,
-  spotProcurementPaymentToMoneyRequestValue
-} from "../money/decimal-money";
+import { dbMoneyToBigInt } from "../money/decimal-money";
 import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
+import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 import type { RecordSpotProcurementPaymentDto } from "./dto/record-spot-procurement-payment.dto";
 import type { AbandonSpotProcurementPaymentDraftDto } from "./dto/abandon-spot-procurement-payment-draft.dto";
 import type { ReviewSpotProcurementPaymentDto } from "./dto/review-spot-procurement-payment.dto";
@@ -91,15 +85,6 @@ const PAYMENT_METHODS = new Set<string>(
   SPOT_PROCUREMENT_PAYMENT_METHODS
 );
 const VAT_RATE_PERCENT = /^(?:(?:0|[1-9]\d?)(?:\.\d{1,2})?|100(?:\.0{1,2})?)$/u;
-const PROJECT_CASH_REQUEST_STATUSES = [
-  "approval_pending",
-  "in_approval",
-  "approved_pending_payment",
-  "partially_paid",
-  "paid",
-  "settled"
-] as const;
-
 type VersionLockRow = {
   id: string;
   procurementId: string;
@@ -226,6 +211,7 @@ export class SpotProcurementPaymentService {
     private readonly files: FileService,
     private readonly approvalForms: ApprovalFormService,
     private readonly closure: SpotProcurementClosureService,
+    private readonly projectFunding: ProjectFundingAvailabilityService,
     private readonly archives?: SpotProcurementPaymentArchiveService
   ) {}
 
@@ -292,8 +278,19 @@ export class SpotProcurementPaymentService {
 
     try {
       const result = await this.runSerializable(async (tx) => {
-        // 与 Task 5 保持同一锁序：冻结采购版本 -> 该采购全部付款。
-        // 随后锁项目行，把不同采购的项目现金检查串行化；实际付款不锁供应商余额。
+        const fundingScope =
+          await tx.spotProcurementPayment.findUnique({
+            where: { id: paymentId },
+            select: { id: true, projectId: true }
+          });
+        if (!fundingScope) {
+          throw new NotFoundException("付款申请不存在");
+        }
+        // 统一锁序：项目 -> 垫资来源 -> 采购版本 -> 该采购全部付款 -> 实付明细。
+        await this.projectFunding.lockFundingContext(
+          tx,
+          fundingScope.projectId
+        );
         const version = await this.requireLockedVersionForPayment(
           tx,
           paymentId
@@ -308,6 +305,15 @@ export class SpotProcurementPaymentService {
           procurementPayments,
           paymentId
         );
+        if (
+          fundingScope.id !== payment.id ||
+          fundingScope.projectId !== version.projectId ||
+          fundingScope.projectId !== payment.projectId
+        ) {
+          throw new ConflictException(
+            "零星采购付款的项目资金范围已变化，请刷新后重试"
+          );
+        }
         const isRealFormPayment = Boolean(payment.paymentType);
         await this.requireActiveUser(
           tx,
@@ -357,6 +363,18 @@ export class SpotProcurementPaymentService {
               voucherFileId
             });
           }
+          await this.projectFunding.allocateExecution(tx, {
+            projectId: version.projectId,
+            executionType:
+              "spot_procurement_payment_execution",
+            executionId: existingByIdempotencyKey.id,
+            businessType:
+              SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+            businessId: payment.id,
+            amountCents,
+            occurredAt: paidAt,
+            actorUserId
+          });
           return this.executionReadModel(
             existingByIdempotencyKey,
             payment,
@@ -458,10 +476,6 @@ export class SpotProcurementPaymentService {
           await this.files.assertCanDownloadFile(tx, voucher!.id, actorUserId);
         }
 
-        await this.lockProjectForExecution(
-          tx,
-          version.projectId
-        );
         const activeExecutions =
           await this.lockActivePaymentExecutions(
             tx,
@@ -509,27 +523,6 @@ export class SpotProcurementPaymentService {
           )
         );
 
-        const cashPoolBefore =
-          await this.calculateLockedProjectCashPool(
-            tx,
-            version.projectId
-          );
-        const currentOutstanding =
-          outstandingMoneyRequestCentsBigInt(
-            spotProcurementPaymentToMoneyRequestValue(payment)
-          );
-        const availableForCurrentExecution =
-          cashPoolBefore.availableCents + currentOutstanding;
-        if (amountCents > availableForCurrentExecution) {
-          throw new BadRequestException(
-            `项目现金不足，当前最多可实际支付 ${
-              availableForCurrentExecution > 0n
-                ? availableForCurrentExecution
-                : 0n
-            } 分`
-          );
-        }
-
         const newPaidAmountCents =
           payment.paidAmountCents + amountCents;
         const newStatus =
@@ -562,6 +555,19 @@ export class SpotProcurementPaymentService {
             }))
           });
         }
+        const fundingAllocation =
+          await this.projectFunding.allocateExecution(tx, {
+            projectId: version.projectId,
+            executionType:
+              "spot_procurement_payment_execution",
+            executionId: execution.id,
+            businessType:
+              SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+            businessId: payment.id,
+            amountCents,
+            occurredAt: paidAt,
+            actorUserId
+          });
         const updated =
           await tx.spotProcurementPayment.updateMany({
             where: {
@@ -589,12 +595,6 @@ export class SpotProcurementPaymentService {
           paidAmountCents: newPaidAmountCents,
           status: newStatus
         };
-        const cashPoolAfter =
-          cashPoolWithReplacedSpotPayment(
-            cashPoolBefore,
-            payment,
-            paymentAfter
-          );
         await this.audit.record(tx, {
           actorUserId,
           action: "spot_procurement.payment.execution.record",
@@ -619,10 +619,20 @@ export class SpotProcurementPaymentService {
               effectiveCompanyPaymentAmountCents -
               newPaidAmountCents
             ).toString(),
-            projectCashBefore:
-              cashPoolAuditFacts(cashPoolBefore),
-            projectCashAfter:
-              cashPoolAuditFacts(cashPoolAfter)
+            fundingAllocation: {
+              kind: fundingAllocation.kind,
+              projectCashAmountCents:
+                fundingAllocation.projectCashAmountCents.toString(),
+              financingQuotaAmountCents:
+                fundingAllocation.financingQuotaAmountCents.toString(),
+              allocations:
+                fundingAllocation.allocations.map((allocation) => ({
+                  sourceType: allocation.sourceType,
+                  sourceId: allocation.sourceId,
+                  amountCents:
+                    allocation.amountCents.toString()
+                }))
+            }
           }
         });
         await this.closure.recalculateAndClose(
@@ -2523,25 +2533,6 @@ export class SpotProcurementPaymentService {
     `);
   }
 
-  private async lockProjectForExecution(
-    tx: Prisma.TransactionClient,
-    projectId: string
-  ) {
-    const rows = await tx.$queryRaw<
-      Array<{ id: string; isActive: boolean }>
-    >(Prisma.sql`
-      SELECT "id", "isActive"
-      FROM "Project"
-      WHERE "id" = ${projectId}
-      FOR UPDATE
-    `);
-    if (!rows[0]?.isActive) {
-      throw new ConflictException(
-        "项目不存在或已停用，不能登记实际付款"
-      );
-    }
-  }
-
   private lockActivePaymentExecutions(
     tx: Prisma.TransactionClient,
     paymentId: string
@@ -2569,75 +2560,6 @@ export class SpotProcurementPaymentService {
         FOR UPDATE
       `
     );
-  }
-
-  private async calculateLockedProjectCashPool(
-    tx: Prisma.TransactionClient,
-    projectId: string
-  ) {
-    const [
-      receipts,
-      supplierRefundAmountCents,
-      paymentRequests,
-      expenseRequests,
-      spotProcurementPayments
-    ] = await Promise.all([
-      tx.projectReceipt.findMany({
-        where: { projectId, voidedAt: null },
-        select: { amountCents: true }
-      }),
-      findProjectSpotProcurementRefundAmounts(tx, projectId),
-      tx.paymentRequest.findMany({
-        where: {
-          projectId,
-          status: { in: [...PROJECT_CASH_REQUEST_STATUSES] }
-        },
-        select: {
-          status: true,
-          requestedAmountCents: true,
-          approvedAmountCents: true,
-          paidAmountCents: true
-        }
-      }),
-      tx.projectExpenseRequest.findMany({
-        where: {
-          projectId,
-          status: { in: [...PROJECT_CASH_REQUEST_STATUSES] },
-          voidedAt: null
-        },
-        select: {
-          status: true,
-          requestedAmountCents: true,
-          approvedAmountCents: true,
-          paidAmountCents: true
-        }
-      }),
-      tx.spotProcurementPayment.findMany({
-        where: {
-          projectId,
-          status: {
-            in: [...SPOT_PROCUREMENT_CASH_POOL_STATUSES]
-          }
-        },
-        select: {
-          status: true,
-          companyPaymentAmountCents: true,
-          canceledCompanyPaymentAmountCents: true,
-          paidAmountCents: true
-        }
-      })
-    ]);
-    return calculateProjectCashPoolBigInt({
-      receiptAmountCents: receipts.map(
-        (receipt) => receipt.amountCents
-      ),
-      supplierRefundAmountCents,
-      paymentRequests,
-      expenseRequests,
-      spotProcurementPayments: spotProcurementPayments.map(
-        spotProcurementPaymentToMoneyRequestValue
-      )
-    });
   }
 
   private effectiveCompanyPaymentAmount(
@@ -4235,60 +4157,6 @@ function requiredExecutionVoucherFileIds(input: RecordSpotProcurementPaymentDto)
     throw new BadRequestException("同一笔实际付款不能重复上传同一凭证");
   }
   return ids;
-}
-
-function cashPoolAuditFacts(cashPool: {
-  actualReceiptsCents: bigint;
-  supplierRefundsCents: bigint;
-  actualPaidCents: bigint;
-  occupiedCents: bigint;
-  availableCents: bigint;
-}) {
-  return {
-    actualReceiptsCents:
-      cashPool.actualReceiptsCents.toString(),
-    supplierRefundsCents:
-      cashPool.supplierRefundsCents.toString(),
-    actualPaidCents: cashPool.actualPaidCents.toString(),
-    occupiedCents: cashPool.occupiedCents.toString(),
-    availableCents: cashPool.availableCents.toString()
-  };
-}
-
-function cashPoolWithReplacedSpotPayment(
-  cashPool: {
-    actualReceiptsCents: bigint;
-    supplierRefundsCents: bigint;
-    actualPaidCents: bigint;
-    occupiedCents: bigint;
-    availableCents: bigint;
-  },
-  before: PaymentLockRow,
-  after: PaymentLockRow
-) {
-  const beforeRequest =
-    spotProcurementPaymentToMoneyRequestValue(before);
-  const afterRequest =
-    spotProcurementPaymentToMoneyRequestValue(after);
-  const actualPaidCents =
-    cashPool.actualPaidCents -
-    beforeRequest.paidAmountCents +
-    afterRequest.paidAmountCents;
-  const occupiedCents =
-    cashPool.occupiedCents -
-    outstandingMoneyRequestCentsBigInt(beforeRequest) +
-    outstandingMoneyRequestCentsBigInt(afterRequest);
-  return {
-    actualReceiptsCents: cashPool.actualReceiptsCents,
-    supplierRefundsCents: cashPool.supplierRefundsCents,
-    actualPaidCents,
-    occupiedCents,
-    availableCents:
-      cashPool.actualReceiptsCents +
-      cashPool.supplierRefundsCents -
-      actualPaidCents -
-      occupiedCents
-  };
 }
 
 function auditBankAccountFacts(value: string | null) {
