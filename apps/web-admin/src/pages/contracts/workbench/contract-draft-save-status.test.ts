@@ -11,7 +11,8 @@ describe("contract draft save status", () => {
   it.each([
     ["saving", "保存中"],
     ["failed", "保存失败"],
-    ["conflict", "存在保存冲突"]
+    ["conflict", "存在保存冲突"],
+    ["readonly", "编辑租约已失效，当前页面只读"]
   ] as const)("prioritizes %s over lifecycle and dirty state", (saveState, expected) => {
     expect(
       contractDraftSaveStatusText({

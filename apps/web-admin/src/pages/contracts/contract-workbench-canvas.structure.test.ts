@@ -206,7 +206,8 @@ describe("contract workbench document canvas structure", () => {
     expect(pageSource.match(/:disabled="editorDisabled/g)?.length ?? 0).toBeGreaterThanOrEqual(10);
     expect(pageSource).toContain("if (writeLocked.value) return;");
     expect(draftSource).toContain("let activeSave: Promise<boolean> | null = null");
-    expect(draftSource).toContain("editGeneration === savingGeneration");
+    expect(draftSource).toContain("const responseState = aggregateSaveState.value");
+    expect(draftSource).toContain("completeAggregateSave(");
     expect(draftSource).toContain("while (dirtyRef.value || activeSave)");
   });
 });

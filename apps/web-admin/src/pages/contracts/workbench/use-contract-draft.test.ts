@@ -778,10 +778,153 @@ describe("useContractDraft", () => {
 
     draft.model.contractName = "首存后输入";
     draft.markDirty();
-    await vi.advanceTimersByTimeAsync(999);
+    await vi.advanceTimersByTimeAsync(1_999);
     expect(mockSaveDraft).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
     expect(mockSaveDraft).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the first edit's two-second autosave deadline while including later edits", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeFormallySavedWorkbench());
+    mockSaveDraft.mockResolvedValue(saveResult("cv-1", 4));
+    await draft.load("cv-1");
+
+    draft.model.contractName = "窗口开始";
+    draft.markDirty();
+    await vi.advanceTimersByTimeAsync(1_500);
+    draft.model.contractName = "窗口内最后输入";
+    draft.markDirty();
+
+    await vi.advanceTimersByTimeAsync(499);
+    expect(mockSaveDraft).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(mockSaveDraft).toHaveBeenCalledTimes(1);
+    expect(mockSaveDraft.mock.calls[0]?.[2]).toMatchObject({
+      saveKind: "auto",
+      expectedRevision: 3,
+      changedSections: ["draft"],
+      draft: {
+        draftData: { contractName: "窗口内最后输入" }
+      }
+    });
+  });
+
+  it("keeps temporary invalid input dirty and local instead of serializing it", async () => {
+    const draft = makeDraft();
+    const workbench = makeFormallySavedWorkbench();
+    mockFetchWorkbench.mockResolvedValue(makeFormallySavedWorkbench({
+      version: {
+        ...workbench.version,
+        templateSnapshot: {
+          ...workbench.version.templateSnapshot,
+          fieldSchema: [{
+            key: "plannedStartDate",
+            label: "计划开始日期",
+            type: "date"
+          }]
+        }
+      }
+    }));
+    mockSaveDraft.mockResolvedValue(saveResult("cv-1", 4));
+    await draft.load("cv-1");
+
+    draft.model.defaultTaxRatePercent = "-";
+    draft.markDirty();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(mockSaveDraft).not.toHaveBeenCalled();
+    expect(draft.isDirty.value).toBe(true);
+    expect(draft.saveError.value).toContain("默认税率");
+    expect(contractDraftRecoveryText()).toContain(
+      '"defaultTaxRatePercent":"-"'
+    );
+
+    draft.model.defaultTaxRatePercent = ".";
+    draft.markDirty();
+    await expect(draft.saveNow()).resolves.toBe(false);
+    expect(mockSaveDraft).not.toHaveBeenCalled();
+
+    draft.model.defaultTaxRatePercent = "13";
+    draft.model.fieldValues.plannedStartDate = "2026-07-";
+    draft.markDirty();
+    await expect(draft.saveNow()).resolves.toBe(false);
+    expect(draft.saveError.value).toContain("计划开始日期");
+    expect(mockSaveDraft).not.toHaveBeenCalled();
+
+    draft.model.fieldValues.plannedStartDate = "2026-07-28";
+    draft.markDirty();
+    await expect(draft.saveNow()).resolves.toBe(true);
+    expect(mockSaveDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("merges save-derived facts when their source sections stayed unchanged", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeFormallySavedWorkbench());
+    mockSaveDraft.mockResolvedValue({
+      ...saveResult("cv-1", 4),
+      amounts: {
+        taxInclusiveAmountCents: "1130",
+        taxExclusiveAmountCents: "1000",
+        taxAmountCents: "130"
+      },
+      issueCounts: { blocking: 2 },
+      readiness: {
+        ready: true,
+        blockingMessages: [],
+        warningMessages: []
+      }
+    });
+    await draft.load("cv-1");
+
+    draft.model.contractName = "等待派生结果";
+    draft.markDirty();
+    await expect(draft.saveNow()).resolves.toBe(true);
+
+    expect(draft.workbench.value?.version.amountCents).toBe("1130");
+    expect(draft.workbench.value?.readiness.ready).toBe(true);
+    expect(draft.workbench.value?.draft["issueCounts"]).toEqual({
+      blocking: 2
+    });
+    expect(draft.workbench.value?.draft["documentsOutdated"]).toBe(true);
+  });
+
+  it("does not merge stale derived facts when their source changed in flight", async () => {
+    const draft = makeDraft();
+    const pendingSave = deferred<SaveContractDraftAggregateResult>();
+    mockFetchWorkbench.mockResolvedValue(makeFormallySavedWorkbench());
+    mockSaveDraft.mockReturnValueOnce(pendingSave.promise);
+    await draft.load("cv-1");
+
+    draft.model.contractName = "请求开始";
+    draft.markDirty();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(mockSaveDraft).toHaveBeenCalledTimes(1);
+
+    draft.markDirty("bills");
+    pendingSave.resolve({
+      ...saveResult("cv-1", 4),
+      amounts: {
+        taxInclusiveAmountCents: "1130",
+        taxExclusiveAmountCents: "1000",
+        taxAmountCents: "130"
+      },
+      issueCounts: { blocking: 2 },
+      readiness: {
+        ready: true,
+        blockingMessages: [],
+        warningMessages: []
+      }
+    });
+    await vi.waitFor(() => {
+      expect(draft.savedRevision.value).toBe(4);
+    });
+
+    expect(draft.workbench.value?.version.amountCents).toBe("0");
+    expect(draft.workbench.value?.readiness.ready).toBe(false);
+    expect(draft.workbench.value?.draft["issueCounts"]).toBeUndefined();
+    expect(draft.isDirty.value).toBe(true);
   });
 
   it("advances expectedRevision from the real top-level save response across repeated autosaves", async () => {
@@ -799,10 +942,10 @@ describe("useContractDraft", () => {
 
     draft.model.contractName = "第一次自动保存";
     draft.markDirty();
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(2_000);
     draft.model.contractName = "第二次自动保存";
     draft.markDirty();
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(2_000);
 
     expect(mockSaveDraft.mock.calls.map((call) => call[2].expectedRevision))
       .toEqual([3, 4, 5]);
@@ -822,7 +965,7 @@ describe("useContractDraft", () => {
     await draft.reload();
     expect(draft.model.contractName).toBe("重载前未保存输入");
 
-    await vi.advanceTimersByTimeAsync(999);
+    await vi.advanceTimersByTimeAsync(1_999);
     expect(mockSaveDraft).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(mockSaveDraft).toHaveBeenCalledTimes(1);
@@ -840,7 +983,7 @@ describe("useContractDraft", () => {
     draft.markDirty();
     await expect(draft.reload()).rejects.toThrow("刷新失败");
 
-    await vi.advanceTimersByTimeAsync(999);
+    await vi.advanceTimersByTimeAsync(1_999);
     expect(mockSaveDraft).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(mockSaveDraft).toHaveBeenCalledTimes(1);
@@ -973,7 +1116,7 @@ describe("useContractDraft", () => {
 
     draft.model.contractName = "自动保存中的修改";
     draft.markDirty();
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(2_000);
     expect(mockSaveDraft).toHaveBeenCalledTimes(1);
 
     const manualFlush = draft.saveNow();
@@ -1000,7 +1143,7 @@ describe("useContractDraft", () => {
 
     draft.model.contractName = "请求开始时的输入";
     draft.markDirty();
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(2_000);
     draft.model.contractName = "请求期间的新输入";
     draft.markDirty();
     const manualFlush = draft.saveNow();
@@ -1033,7 +1176,7 @@ describe("useContractDraft", () => {
 
     draft.model.contractName = "自动保存失败的输入";
     draft.markDirty();
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(2_000);
 
     expect(draft.model.contractName).toBe("自动保存失败的输入");
     expect(draft.isDirty.value).toBe(true);
@@ -1056,15 +1199,13 @@ describe("useContractDraft", () => {
     await expect(draft.saveNow()).resolves.toBe(false);
 
     draft.resumeAutosaveAfterLifecycleAction();
-    await vi.advanceTimersByTimeAsync(999);
-    expect(mockSaveDraft).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(0);
     expect(mockSaveDraft).toHaveBeenCalledTimes(1);
     expect(draft.isDirty.value).toBe(false);
 
     expect(draft.suspendAutosaveForLifecycleAction()).toBe(true);
     draft.resumeAutosaveAfterLifecycleAction();
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(2_000);
     expect(mockSaveDraft).toHaveBeenCalledTimes(1);
   });
 
@@ -1083,7 +1224,7 @@ describe("useContractDraft", () => {
 
     draft.model.contractName = "发生冲突的输入";
     draft.markDirty();
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(2_000);
     expect(draft.saveState.value).toBe("conflict");
     expect(mockSaveDraft).toHaveBeenCalledTimes(1);
 
@@ -1766,11 +1907,25 @@ describe("useContractDraft", () => {
     expect(backup).toContain("未保存的改动");
 
     // A non-conflict failure does NOT pause: the next explicit save may retry.
-    mockSaveDraft.mockResolvedValueOnce(saveResult("cv-1", 4));
+    mockSaveDraft
+      .mockResolvedValueOnce(saveResult("cv-1", 4))
+      .mockResolvedValueOnce(saveResult("cv-1", 5));
     draft.model.contractName = "重试的改动";
     draft.markDirty();
     await draft.saveNow();
-    expect(mockSaveDraft).toHaveBeenCalledTimes(2);
+    // Retry the uncertain request with its original key, then flush the newer
+    // edit as a new logical save.
+    expect(mockSaveDraft).toHaveBeenCalledTimes(3);
+    expect(mockSaveDraft.mock.calls[1]?.[2].idempotencyKey)
+      .toBe(mockSaveDraft.mock.calls[0]?.[2].idempotencyKey);
+    expect(mockSaveDraft.mock.calls[2]?.[2]).toMatchObject({
+      expectedRevision: 4,
+      draft: {
+        draftData: { contractName: "重试的改动" }
+      }
+    });
+    expect(mockSaveDraft.mock.calls[2]?.[2].idempotencyKey)
+      .not.toBe(mockSaveDraft.mock.calls[0]?.[2].idempotencyKey);
     expect(draft.saveState.value).toBe("saved");
     // The successful retry clears the localStorage backup.
     expect(contractDraftRecoveryText()).toBeNull();

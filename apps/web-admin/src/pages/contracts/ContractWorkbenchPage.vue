@@ -1412,7 +1412,12 @@ watch(lastSavedAt, (value) => {
 }, { flush: "sync" });
 
 watch([saveState, isDirty], ([state, draftDirty]) => {
-  if (draftDirty || state === "failed" || state === "conflict") {
+  if (
+    draftDirty ||
+    state === "failed" ||
+    state === "conflict" ||
+    state === "readonly"
+  ) {
     clearManualSaveMessage();
   }
 });
@@ -1425,6 +1430,7 @@ const autosaveTone = computed(() => {
       return "tone-success";
     case "failed":
     case "conflict":
+    case "readonly":
       return "tone-danger";
     case "saving":
       return "tone-primary";

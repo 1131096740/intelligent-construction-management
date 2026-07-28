@@ -8,6 +8,7 @@ export function contractDraftSaveStatusText(input: {
   if (input.saveState === "saving") return "保存中";
   if (input.saveState === "failed") return "保存失败";
   if (input.saveState === "conflict") return "存在保存冲突";
+  if (input.saveState === "readonly") return "编辑租约已失效，当前页面只读";
   if (!input.formalSaveCompleted) {
     return input.dirty ? "本地已备份，尚未正式保存" : "未正式保存";
   }

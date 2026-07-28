@@ -13,6 +13,7 @@ import {
   reactive,
   readonly,
   ref,
+  shallowRef,
   type ComputedRef,
   type Ref
 } from "vue";
@@ -26,6 +27,7 @@ import {
   takeOverContractDraftEditLease,
   type ContractDraftAttachmentModel,
   type ContractDraftBillModel,
+  type ContractDraftChangedSection,
   type ContractDraftNegotiationDocumentsModel,
   type ContractDraftPartyModel,
   type ContractDraftPaymentTermsModel,
@@ -48,6 +50,17 @@ import {
   contractDraftLeaseViewFromWorkbench,
   type ContractDraftLeaseView
 } from "./contract-draft-lease.state";
+import {
+  acceptAggregateSaveServerVersion,
+  beginAggregateSave,
+  canMergeAggregateSaveDerivedFacts,
+  completeAggregateSave,
+  createAggregateSaveState,
+  failAggregateSave,
+  markAggregateSaveEdited,
+  rebaseAggregateSaveAfterConflict,
+  type AggregateSaveState
+} from "./contract-workbench-save.state";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -55,8 +68,6 @@ import {
 
 /** Backend phrase emitted on optimistic-lock failure (Task 9). */
 const REVISION_CONFLICT_PHRASE = "Contract draft revision conflict";
-
-const AUTOSAVE_DELAY_MS = 1_000;
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -67,7 +78,8 @@ export type ContractDraftSaveState =
   | "saving"
   | "saved"
   | "failed"
-  | "conflict";
+  | "conflict"
+  | "readonly";
 
 /**
  * Flat, two-way-bindable editing surface for the basic sections. Anything the
@@ -200,7 +212,7 @@ export interface UseContractDraft {
   load: (contractVersionId: string) => Promise<void>;
   /** Re-fetches the currently loaded workbench through the same guarded load path. */
   reload: () => Promise<void>;
-  markDirty: () => void;
+  markDirty: (section?: ContractDraftChangedSection) => void;
   /** Clears client editing state, but fails closed while a save request is in flight. */
   discardLocalState: () => boolean;
   /** Pauses editing while a server-side lifecycle action runs. */
@@ -613,7 +625,179 @@ function paymentStagesFromModel(
 }
 
 function isConflictError(error: unknown): boolean {
-  return error instanceof Error && error.message.includes(REVISION_CONFLICT_PHRASE);
+  return Boolean(
+    error &&
+    typeof error === "object" &&
+    (
+      ("code" in error && error.code === "DRAFT_REVISION_CONFLICT") ||
+      (
+        error instanceof Error &&
+        error.message.includes(REVISION_CONFLICT_PHRASE)
+      )
+    )
+  );
+}
+
+function incompleteDecimalInput(value: unknown): boolean {
+  return typeof value === "string" &&
+    value.trim() !== "" &&
+    !/^-?(?:\d+|\d*\.\d+)$/.test(value.trim());
+}
+
+function incompleteIntegerInput(value: unknown): boolean {
+  return typeof value === "string" &&
+    value.trim() !== "" &&
+    !/^-?\d+$/.test(value.trim());
+}
+
+function invalidDateInput(value: unknown): boolean {
+  if (typeof value !== "string" || value.trim() === "") return false;
+  const normalized = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return true;
+  const [year, month, day] = normalized.split("-").map(Number);
+  const candidate = new Date(Date.UTC(year!, month! - 1, day));
+  return candidate.getUTCFullYear() !== year ||
+    candidate.getUTCMonth() !== month! - 1 ||
+    candidate.getUTCDate() !== day;
+}
+
+function aggregateSerializationIssue(
+  snapshot: ContractDraftAggregateModel,
+  currentWorkbench: ContractDraftWorkbenchReadModel | null
+): string | null {
+  const draft = snapshot.draft;
+  if (
+    draft.amountSource === "manual" &&
+    incompleteIntegerInput(draft.manualAmountCents)
+  ) {
+    return "合同金额仍是未完成的输入，请补充完整后再保存";
+  }
+  if (incompleteIntegerInput(draft.estimatedAmountCents)) {
+    return "预计金额仍是未完成的输入，请补充完整后再保存";
+  }
+  if (incompleteDecimalInput(draft.defaultTaxRatePercent)) {
+    return "默认税率仍是未完成的输入，请补充完整后再保存";
+  }
+  for (const bill of snapshot.bills) {
+    for (const row of bill.rows) {
+      if (
+        incompleteDecimalInput(row["quantity"]) ||
+        incompleteDecimalInput(row["unitPrice"]) ||
+        incompleteDecimalInput(row["taxRatePercent"])
+      ) {
+        return "清单中仍有未完成的数字输入，请补充完整后再保存";
+      }
+    }
+  }
+  for (const field of currentWorkbench?.version.templateSnapshot.fieldSchema ?? []) {
+    const value = draft.fieldValues[field.key];
+    if (
+      (field.type === "number" || field.type === "money") &&
+      incompleteDecimalInput(value)
+    ) {
+      return `${field.label}仍是未完成的数字输入，请补充完整后再保存`;
+    }
+    if (field.type === "date" && invalidDateInput(value)) {
+      return `${field.label}仍是未完成的日期输入，请补充完整后再保存`;
+    }
+  }
+  return null;
+}
+
+function savePayloadFromSnapshot(
+  snapshot: ContractDraftAggregateModel,
+  state: Extract<
+    AggregateSaveState<ContractDraftAggregateModel>,
+    { kind: "saving" }
+  >,
+  currentWorkbench: ContractDraftWorkbenchReadModel | null
+): SaveContractDraftAggregatePayload {
+  const draft = snapshot.draft;
+  const changeType = (
+    currentWorkbench?.version as unknown as { changeType?: unknown }
+  )?.changeType;
+  const isChangeDraft = changeType === "change" || changeType === "supplement";
+  const paymentStages = paymentStagesFromModel(
+    draft,
+    currentWorkbench?.settlementMode?.value,
+    currentWorkbench?.contract.contractTypeKey ?? ""
+  );
+  const paymentTerms = isChangeDraft
+    ? snapshot.paymentTerms
+    : draft.paymentTermsOriginalText || paymentStages.length
+      ? {
+          originalText:
+            draft.paymentTermsOriginalText ||
+            paymentStages[0]?.originalText ||
+            "",
+          stages: paymentStages
+        }
+      : null;
+  const changedSections = state.sentChangedSections.filter(
+    (section) => !isChangeDraft || section !== "payment_terms"
+  );
+  if (changedSections.length === 0) {
+    throw new Error("变更草稿的付款条件不可在当前版本直接修改");
+  }
+  return {
+    idempotencyKey: state.idempotencyKey,
+    saveKind: state.saveKind,
+    expectedRevision: state.serverRevision,
+    changedSections,
+    draft: {
+      ...(draft.companyEntityId
+        ? { companyEntityId: draft.companyEntityId }
+        : {}),
+      draftData: draftDataFromModel(draft),
+      clauses: draft.clauses.map((clause) => ({ ...clause })),
+      pricingNature:
+        draft.pricingNature as SaveContractDraftAggregatePayload["draft"]["pricingNature"],
+      amountSource:
+        draft.amountSource as SaveContractDraftAggregatePayload["draft"]["amountSource"],
+      taxFacts: {
+        invoiceType: draft.invoiceType,
+        taxMode: draft.taxMode,
+        defaultTaxRatePercent: draft.defaultTaxRatePercent,
+        source: "contract_document"
+      },
+      ...(draft.amountSource === "manual"
+        ? { manualAmountCents: draft.manualAmountCents ?? "0" }
+        : {}),
+      ...(draft.estimatedAmountCents === null
+        ? {}
+        : { estimatedAmountCents: draft.estimatedAmountCents }),
+      ...(draft.amountAdjustmentReason
+        ? { amountAdjustmentReason: draft.amountAdjustmentReason }
+        : {})
+    },
+    parties: snapshot.parties.map((party) => ({
+      ...party,
+      snapshot: { ...party.snapshot }
+    })),
+    bills: snapshot.bills.map((bill) => ({
+      ...bill,
+      rows: bill.rows.map((row) => ({ ...row }))
+    })),
+    paymentTerms,
+    attachments: snapshot.attachments.map((attachment) => ({ ...attachment })),
+    negotiationDocuments: {
+      ...snapshot.negotiationDocuments,
+      referencedGeneratedDocumentIds: [
+        ...snapshot.negotiationDocuments.referencedGeneratedDocumentIds
+      ]
+    }
+  };
+}
+
+function isContractReadinessResult(
+  value: unknown
+): value is ContractReadinessResult {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    "ready" in value &&
+    typeof value.ready === "boolean"
+  );
 }
 
 function getStorage(): Storage | null {
@@ -637,11 +821,27 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   }) as ContractDraftAggregateModel;
   const model = aggregateModel.draft;
   const workbench = ref<ContractDraftWorkbenchReadModel | null>(null);
-  const saveState = ref<ContractDraftSaveState>("idle");
   const saveError = ref("");
   const conflict = ref<ContractDraftConflict | null>(null);
   const formalSaveCompleted = ref(false);
   const lastSavedAt = ref<Date | null>(null);
+  const aggregateSaveState = shallowRef<
+    AggregateSaveState<ContractDraftAggregateModel>
+  >(createAggregateSaveState(0));
+  const saveState = computed<ContractDraftSaveState>(() => {
+    switch (aggregateSaveState.value.kind) {
+      case "saving":
+      case "failed":
+      case "conflict":
+      case "readonly":
+        return aggregateSaveState.value.kind;
+      case "clean":
+        return lastSavedAt.value ? "saved" : "idle";
+      case "dirty":
+        return "idle";
+    }
+    return "idle";
+  });
   const lease = ref<ContractDraftLeaseView>({
     kind: "available",
     canTakeOver: false
@@ -652,22 +852,24 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
 
   // Loaded contract-version identity + revision drive every save's optimistic lock.
   const contractVersionId = ref<string | null>(null);
-  const currentRevision = ref<number>(0);
+  const currentRevision = computed(() => aggregateSaveState.value.serverRevision);
 
   // Internal-only. Editing is paused while a conflict awaits a user decision.
   const pausedRef = ref(false);
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let loadRequestId = 0;
-  let editGeneration = 0;
   let activeSave: Promise<boolean> | null = null;
   let leaseToken: string | null = null;
   let leaseHeartbeatTimer: ReturnType<typeof setTimeout> | null = null;
   let leaseExpiryTimer: ReturnType<typeof setTimeout> | null = null;
   let activeLeaseVerification: Promise<boolean> | null = null;
   let disposed = false;
-  // `dirty` stays true from the first edit until a save RESOLVES successfully.
-  const dirtyRef = ref(false);
+  const dirtyRef = computed(
+    () =>
+      aggregateSaveState.value.localGeneration >
+      aggregateSaveState.value.ackedGeneration
+  );
 
   const canEdit = computed(() => contractDraftLeaseCanEdit(lease.value));
 
@@ -726,7 +928,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     }
     if (found.revisionMatches) {
       assignAggregateModel(aggregateModel, found.recovery.snapshot);
-      dirtyRef.value = true;
+      markAllAggregateSectionsEdited();
       return;
     }
     pendingLocalRecovery.value = found;
@@ -739,7 +941,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       return false;
     }
     assignAggregateModel(aggregateModel, found.recovery.snapshot);
-    dirtyRef.value = true;
+    markAllAggregateSectionsEdited();
     pendingLocalRecovery.value = null;
     writeBackup();
     scheduleSave();
@@ -923,20 +1125,24 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   }
 
   function scheduleSave(): void {
-    cancelScheduledSave();
+    if (debounceTimer !== null) return;
     if (
       disposed ||
       !formalSaveCompleted.value ||
       pausedRef.value ||
-      !dirtyRef.value ||
-      conflict.value !== null
+      conflict.value !== null ||
+      aggregateSaveState.value.kind !== "dirty"
     ) {
       return;
     }
+    const delayMs = Math.max(
+      0,
+      aggregateSaveState.value.deadlineAt - Date.now()
+    );
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
-      void saveNow();
-    }, AUTOSAVE_DELAY_MS);
+      void runScheduledSave();
+    }, delayMs);
   }
 
   function discardLocalState(): boolean {
@@ -949,13 +1155,11 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     // Invalidate pending loads and make any in-flight save response stale.
     loadRequestId += 1;
     contractVersionId.value = null;
-    editGeneration += 1;
-    dirtyRef.value = false;
+    aggregateSaveState.value = createAggregateSaveState(0);
     pausedRef.value = false;
     conflict.value = null;
     formalSaveCompleted.value = false;
     lastSavedAt.value = null;
-    saveState.value = "idle";
     saveError.value = "";
     lease.value = { kind: "available", canTakeOver: false };
     return true;
@@ -1030,14 +1234,13 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     }
     workbench.value = result;
     contractVersionId.value = result.version.id;
-    currentRevision.value = result.version.draftRevision;
-    editGeneration += 1;
+    aggregateSaveState.value = createAggregateSaveState(
+      result.version.draftRevision
+    );
     conflict.value = null;
     pausedRef.value = false;
-    dirtyRef.value = false;
     formalSaveCompleted.value = Boolean(result.contract.code);
     lastSavedAt.value = null;
-    saveState.value = "idle";
     saveError.value = "";
     assignAggregateModel(aggregateModel, nextAggregate);
 
@@ -1057,19 +1260,84 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
 
   // -- Dirty tracking ----------------------------------------------------------
 
-  function markDirty(): void {
-    editGeneration += 1;
-    dirtyRef.value = true;
-    if (!activeSave && conflict.value === null) {
-      saveState.value = "idle";
-    }
+  function markDirty(section: ContractDraftChangedSection = "draft"): void {
+    aggregateSaveState.value = markAggregateSaveEdited(
+      aggregateSaveState.value,
+      section
+    );
+    if (!activeSave && conflict.value === null) saveError.value = "";
     writeBackup();
     scheduleSave();
   }
 
+  function markAllAggregateSectionsEdited(): void {
+    const now = Date.now();
+    for (const section of [
+      "draft",
+      "parties",
+      "bills",
+      "payment_terms",
+      "attachments",
+      "negotiation_documents"
+    ] satisfies ContractDraftChangedSection[]) {
+      aggregateSaveState.value = markAggregateSaveEdited(
+        aggregateSaveState.value,
+        section,
+        now
+      );
+    }
+  }
+
   // -- Save -------------------------------------------------------------------
 
-  async function performSave(): Promise<boolean> {
+  function mergeSafeSaveResult(
+    result: Awaited<ReturnType<typeof saveContractDraftAggregate>>,
+    savingState: Extract<
+      AggregateSaveState<ContractDraftAggregateModel>,
+      { kind: "saving" }
+    >
+  ): void {
+    const currentWorkbench = workbench.value;
+    if (!currentWorkbench) return;
+    if (
+      canMergeAggregateSaveDerivedFacts(savingState, ["draft", "bills"])
+    ) {
+      currentWorkbench.version.amountCents =
+        result.amounts.taxInclusiveAmountCents;
+    }
+    if (canMergeAggregateSaveDerivedFacts(savingState, ["bills"])) {
+      for (const bill of aggregateModel.bills) {
+        const revision = result.billRevisions[bill.billKey];
+        if (revision !== undefined) bill.expectedRevision = revision;
+      }
+      for (const bill of currentWorkbench.bills) {
+        const revision = result.billRevisions[bill.billKey];
+        if (revision !== undefined) bill.revision = revision;
+      }
+    }
+    const allSections: ContractDraftChangedSection[] = [
+      "draft",
+      "parties",
+      "bills",
+      "payment_terms",
+      "attachments",
+      "negotiation_documents"
+    ];
+    if (
+      canMergeAggregateSaveDerivedFacts(savingState, allSections) &&
+      isContractReadinessResult(result.readiness)
+    ) {
+      currentWorkbench.readiness = result.readiness;
+      currentWorkbench.availableActions = [...result.availableActions];
+    }
+    if (canMergeAggregateSaveDerivedFacts(savingState, allSections)) {
+      currentWorkbench.draft["issueCounts"] = { ...result.issueCounts };
+      currentWorkbench.draft["documentsOutdated"] =
+        result.documentsOutdated;
+    }
+  }
+
+  async function performSave(saveKind: "auto" | "manual"): Promise<boolean> {
     const savingVersionId = contractVersionId.value;
     if (disposed || !savingVersionId) {
       return false;
@@ -1078,89 +1346,77 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       cancelScheduledSave();
       return true;
     }
-    if (!leaseToken) {
-      saveError.value = "当前页面未取得合同草稿编辑租约，已保留本地内容";
-      saveState.value = "failed";
+
+    const stateBeforeSave = aggregateSaveState.value;
+    if (stateBeforeSave.kind === "conflict" || stateBeforeSave.kind === "readonly") {
       return false;
     }
-    if (!contractDraftLeaseCanEdit(lease.value)) {
-      loseLease("lease_expired");
-      saveError.value = "当前编辑租约已失效，页面已转为只读；本机副本仍保留。";
-      saveState.value = "failed";
-      return false;
+    if (stateBeforeSave.kind === "dirty") {
+      const snapshot = cloneAggregateModel(aggregateModel);
+      const issue = aggregateSerializationIssue(snapshot, workbench.value);
+      if (issue) {
+        saveError.value = issue;
+        writeBackup();
+        return false;
+      }
+      aggregateSaveState.value = beginAggregateSave(
+        stateBeforeSave,
+        snapshot,
+        crypto.randomUUID(),
+        saveKind
+      );
+    } else if (stateBeforeSave.kind === "failed") {
+      aggregateSaveState.value = beginAggregateSave(
+        stateBeforeSave,
+        stateBeforeSave.inFlightSnapshot,
+        stateBeforeSave.idempotencyKey,
+        stateBeforeSave.saveKind
+      );
     }
 
     cancelScheduledSave();
-    saveState.value = "saving";
     saveError.value = "";
-    const savingGeneration = editGeneration;
+    const savingState = aggregateSaveState.value;
+    if (savingState.kind !== "saving") return false;
+    const token = leaseToken;
+    if (!token || !contractDraftLeaseCanEdit(lease.value)) {
+      const message = token
+        ? "当前编辑租约已失效，页面已转为只读；本机副本仍保留。"
+        : "当前页面未取得合同草稿编辑租约，已保留本地内容";
+      aggregateSaveState.value = failAggregateSave(
+        savingState,
+        "readonly",
+        message
+      );
+      if (token) loseLease("lease_expired");
+      saveError.value = message;
+      writeBackup();
+      return false;
+    }
 
-    const changeType = (workbench.value?.version as unknown as { changeType?: unknown })?.changeType;
-    const isChangeDraft = changeType === "change" || changeType === "supplement";
-    const paymentStages = paymentStagesFromModel(
-      model,
-      workbench.value?.settlementMode?.value,
-      workbench.value?.contract.contractTypeKey ?? ""
-    );
-    const paymentTerms = isChangeDraft
-      ? aggregateModel.paymentTerms
-      : model.paymentTermsOriginalText || paymentStages.length
-        ? {
-            originalText: model.paymentTermsOriginalText || paymentStages[0]?.originalText || "",
-            stages: paymentStages
-          }
-        : null;
-    const changedSections: SaveContractDraftAggregatePayload["changedSections"] = [
-      "draft",
-      "parties",
-      "bills",
-      ...(!isChangeDraft ? ["payment_terms" as const] : []),
-      "attachments",
-      "negotiation_documents"
-    ];
-    const payload: SaveContractDraftAggregatePayload = {
-      idempotencyKey: crypto.randomUUID(),
-      saveKind: "manual",
-      expectedRevision: currentRevision.value,
-      changedSections,
-      draft: {
-        ...(model.companyEntityId ? { companyEntityId: model.companyEntityId } : {}),
-        draftData: draftDataFromModel(model),
-        clauses: model.clauses,
-        pricingNature: model.pricingNature as SaveContractDraftAggregatePayload["draft"]["pricingNature"],
-        amountSource: model.amountSource as SaveContractDraftAggregatePayload["draft"]["amountSource"],
-        taxFacts: {
-          invoiceType: model.invoiceType,
-          taxMode: model.taxMode,
-          defaultTaxRatePercent: model.defaultTaxRatePercent,
-          source: "contract_document"
-        },
-        ...(model.amountSource === "manual"
-          ? { manualAmountCents: model.manualAmountCents ?? "0" }
-          : {}),
-        ...(model.estimatedAmountCents === null
-          ? {}
-          : { estimatedAmountCents: model.estimatedAmountCents }),
-        ...(model.amountAdjustmentReason
-          ? { amountAdjustmentReason: model.amountAdjustmentReason }
-          : {})
-      },
-      parties: cloneAggregateModel(aggregateModel).parties,
-      bills: cloneAggregateModel(aggregateModel).bills,
-      paymentTerms,
-      attachments: cloneAggregateModel(aggregateModel).attachments,
-      negotiationDocuments: {
-        ...aggregateModel.negotiationDocuments,
-        referencedGeneratedDocumentIds: [
-          ...aggregateModel.negotiationDocuments.referencedGeneratedDocumentIds
-        ]
-      }
-    };
+    let payload: SaveContractDraftAggregatePayload;
+    try {
+      payload = savePayloadFromSnapshot(
+        savingState.inFlightSnapshot,
+        savingState,
+        workbench.value
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "合同草稿保存失败";
+      aggregateSaveState.value = failAggregateSave(
+        savingState,
+        "network",
+        message
+      );
+      saveError.value = message;
+      writeBackup();
+      return false;
+    }
 
     try {
       const result = await saveContractDraftAggregate(
         savingVersionId,
-        leaseToken,
+        token,
         payload
       );
       // A late response from another route must never mutate the newly loaded
@@ -1171,39 +1427,77 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
           "合同草稿协议错误：保存响应版本与请求版本不一致，已保留当前编辑内容"
         );
       }
-      // Only now is it safe to clear dirty state + the backup (brief rule).
-      currentRevision.value = result.draftRevision;
+      const responseState = aggregateSaveState.value;
+      if (responseState.kind !== "saving") return false;
+      mergeSafeSaveResult(result, responseState);
+      aggregateSaveState.value = completeAggregateSave(
+        responseState,
+        result.draftRevision,
+        Date.now()
+      );
       formalSaveCompleted.value = true;
       lastSavedAt.value = new Date();
-      if (editGeneration === savingGeneration) {
-        dirtyRef.value = false;
+      if (aggregateSaveState.value.kind === "clean") {
         clearBackup();
-        saveState.value = "saved";
       } else {
-        // The request only persisted its start-of-flight snapshot. Preserve
-        // edits made while it was in flight so the serialized next save can
-        // flush them against the returned revision.
-        dirtyRef.value = true;
         writeBackup();
-        saveState.value = "saving";
-        scheduleSave();
       }
       return true;
     } catch (error) {
       if (contractVersionId.value !== savingVersionId) return true;
       if (isConflictError(error)) {
+        aggregateSaveState.value = failAggregateSave(
+          aggregateSaveState.value,
+          "conflict",
+          "合同草稿已在其他页面更新"
+        );
         saveError.value = "合同草稿已在其他页面更新，请处理版本冲突后重试";
         await enterConflict(savingVersionId);
-      } else if (leaseLossReason(error)) {
-        loseLease(leaseLossReason(error)!);
-        saveError.value = "编辑租约已失效，页面已转为只读；未保存内容仍保留在本机。";
-        saveState.value = "failed";
       } else {
-        // Non-conflict failure: keep local edits + backup, do NOT pause.
-        saveError.value = error instanceof Error ? error.message : "合同草稿保存失败";
-        saveState.value = "failed";
+        const lostReason = leaseLossReason(error);
+        if (lostReason) {
+          aggregateSaveState.value = failAggregateSave(
+            aggregateSaveState.value,
+            "readonly",
+            "编辑租约已失效"
+          );
+          loseLease(lostReason);
+          saveError.value = "编辑租约已失效，页面已转为只读；未保存内容仍保留在本机。";
+        } else {
+          const message =
+            error instanceof Error ? error.message : "合同草稿保存失败";
+          aggregateSaveState.value = failAggregateSave(
+            aggregateSaveState.value,
+            "network",
+            message
+          );
+          saveError.value = message;
+        }
+        writeBackup();
       }
       return false;
+    }
+  }
+
+  async function runScheduledSave(): Promise<void> {
+    if (
+      activeSave ||
+      disposed ||
+      pausedRef.value ||
+      aggregateSaveState.value.kind !== "dirty"
+    ) {
+      return;
+    }
+    const pending = performSave("auto");
+    activeSave = pending;
+    let saved = false;
+    try {
+      saved = await pending;
+    } finally {
+      if (activeSave === pending) activeSave = null;
+    }
+    if (saved && aggregateSaveState.value.kind === "dirty") {
+      scheduleSave();
     }
   }
 
@@ -1218,7 +1512,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
         continue;
       }
       if (!dirtyRef.value) return true;
-      const pending = performSave();
+      const pending = performSave("manual");
       activeSave = pending;
       let saved = false;
       try {
@@ -1255,7 +1549,6 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       serverLoading: true,
       serverLoadError: ""
     };
-    saveState.value = "conflict";
 
     // Re-fetch to learn the latest server state + revision for the merge UI.
     try {
@@ -1268,14 +1561,16 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
         return false;
       }
       workbench.value = fresh;
-      currentRevision.value = fresh.version.draftRevision;
+      aggregateSaveState.value = {
+        ...aggregateSaveState.value,
+        serverRevision: fresh.version.draftRevision
+      };
       conflict.value = {
         local: cloneModel(model),
         server: modelFromWorkbench(fresh),
         serverLoading: false,
         serverLoadError: ""
       };
-      saveState.value = "conflict";
       return true;
     } catch {
       if (!isCurrentConflictRequest()) return false;
@@ -1294,7 +1589,6 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       serverLoadError: message
     };
     saveError.value = message;
-    saveState.value = "conflict";
   }
 
   async function retryConflictServerLoad(): Promise<boolean> {
@@ -1323,7 +1617,11 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     }
     // The editor remains live while the dialog is open. Preserve the model as
     // it exists when the user confirms instead of restoring an older snapshot.
-    dirtyRef.value = true;
+    aggregateSaveState.value = rebaseAggregateSaveAfterConflict(
+      aggregateSaveState.value,
+      currentRevision.value,
+      Date.now()
+    );
     writeBackup();
     resumeAfterConflict();
     return saveNow();
@@ -1337,11 +1635,20 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       return false;
     }
     // Discard local edits in favour of the latest server snapshot.
-    assignModel(model, conflict.value.server);
-    dirtyRef.value = false;
+    if (workbench.value) {
+      assignAggregateModel(
+        aggregateModel,
+        aggregateModelFromWorkbench(workbench.value)
+      );
+    } else {
+      assignModel(model, conflict.value.server);
+    }
+    aggregateSaveState.value = acceptAggregateSaveServerVersion(
+      aggregateSaveState.value,
+      currentRevision.value
+    );
     clearBackup();
     resumeAfterConflict();
-    saveState.value = "idle";
     saveError.value = "";
     return true;
   }
@@ -1441,10 +1748,8 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       }
       loadRequestId += 1;
       contractVersionId.value = null;
-      editGeneration += 1;
       pausedRef.value = false;
       conflict.value = null;
-      saveState.value = "idle";
     });
   }
 
