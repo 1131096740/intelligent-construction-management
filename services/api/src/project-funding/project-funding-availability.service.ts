@@ -6,7 +6,6 @@ import {
 import { Prisma } from "@prisma/client";
 import {
   dbMoneyToBigInt,
-  findProjectSpotProcurementRefundAmounts,
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
 
@@ -34,6 +33,8 @@ export interface ReverseProjectFundingInput {
   projectId: string;
   executionType: ProjectFundingExecutionType;
   executionId: string;
+  amountCents?: bigint;
+  occurredAt?: Date;
   reversalKey: string;
   reason: string;
   actorUserId: string;
@@ -99,7 +100,7 @@ export class ProjectFundingAvailabilityService {
 
     await this.lockActiveProject(tx, input.projectId);
     const quotas = await this.lockAvailableQuotas(tx, input.projectId);
-    const [receipts, supplierRefundAmountCents, projectAllocations] =
+    const [receipts, projectAllocations] =
       await Promise.all([
         tx.projectReceipt.findMany({
           where: {
@@ -111,22 +112,16 @@ export class ProjectFundingAvailabilityService {
           },
           select: { amountCents: true }
         }),
-        findProjectSpotProcurementRefundAmounts(tx, input.projectId),
         tx.projectFundingAllocation.findMany({
           where: { projectId: input.projectId },
           orderBy: [{ createdAt: "asc" }, { id: "asc" }]
         })
       ]);
 
-    const projectCashReceipts =
-      sumDbMoneyToBigInt(
-        receipts.map((receipt) => receipt.amountCents),
-        "项目自有资金到账"
-      ) +
-      sumDbMoneyToBigInt(
-        supplierRefundAmountCents,
-        "供应商退款到账"
-      );
+    const projectCashReceipts = sumDbMoneyToBigInt(
+      receipts.map((receipt) => receipt.amountCents),
+      "项目自有资金到账"
+    );
     const netUsedBySource = this.netUsedBySource(projectAllocations);
     const projectCashAvailable = this.nonNegative(
       projectCashReceipts - (netUsedBySource.get("project_cash") ?? 0n)
@@ -203,6 +198,10 @@ export class ProjectFundingAvailabilityService {
     if (!reversalKey || reversalKey === "original" || !reason) {
       throw new BadRequestException("资金更正编号和原因不能为空");
     }
+    if (input.amountCents !== undefined && input.amountCents <= 0n) {
+      throw new BadRequestException("资金更正金额必须大于 0");
+    }
+    await this.lockActiveProject(tx, input.projectId);
     const allocations = await tx.projectFundingAllocation.findMany({
       where: {
         executionType: input.executionType,
@@ -220,12 +219,78 @@ export class ProjectFundingAvailabilityService {
       (row) => row.direction === "credit" && row.reversalKey === reversalKey
     );
     if (existingCredits.length) {
+      const existingAmountCents = existingCredits.reduce(
+        (total, row) =>
+          total + dbMoneyToBigInt(row.amountCents, "项目资金反向分配金额"),
+        0n
+      );
+      if (
+        existingCredits.some((row) => row.projectId !== input.projectId) ||
+        (input.amountCents !== undefined &&
+          existingAmountCents !== input.amountCents)
+      ) {
+        throw new ConflictException("资金更正编号已用于其他金额或项目");
+      }
       return this.result("replayed", this.facts(existingCredits));
     }
 
-    await this.lockActiveProject(tx, input.projectId);
+    const creditedByDebitId = new Map<string, bigint>();
+    for (const credit of allocations) {
+      if (credit.direction !== "credit" || !credit.reversalOfAllocationId) {
+        continue;
+      }
+      creditedByDebitId.set(
+        credit.reversalOfAllocationId,
+        (creditedByDebitId.get(credit.reversalOfAllocationId) ?? 0n) +
+          dbMoneyToBigInt(credit.amountCents, "项目资金反向分配金额")
+      );
+    }
+    const debitAvailability = debits.map((debit) => ({
+        debit,
+        availableCents:
+          dbMoneyToBigInt(debit.amountCents, "项目资金原始分配金额") -
+          (creditedByDebitId.get(debit.id) ?? 0n)
+      }));
+    if (debitAvailability.some(({ availableCents }) => availableCents < 0n)) {
+      throw new ConflictException("项目资金反向分配累计已超过原执行");
+    }
+    const availableDebits = debitAvailability
+      .filter(({ availableCents }) => availableCents > 0n)
+      .sort((left, right) => {
+        const leftCash = left.debit.sourceType === "project_cash" ? 1 : 0;
+        const rightCash = right.debit.sourceType === "project_cash" ? 1 : 0;
+        return (
+          leftCash - rightCash ||
+          right.debit.sourceKey.localeCompare(left.debit.sourceKey)
+        );
+      });
+    const availableTotalCents = availableDebits.reduce(
+      (total, row) => total + row.availableCents,
+      0n
+    );
+    const targetAmountCents = input.amountCents ?? availableTotalCents;
+    if (targetAmountCents > availableTotalCents || targetAmountCents === 0n) {
+      throw new BadRequestException(
+        `资金更正金额超过原执行尚可冲销金额 ${availableTotalCents} 分`
+      );
+    }
+    let remainingCents = targetAmountCents;
+    const plannedCredits: Array<{
+      debit: FundingAllocationRow;
+      amountCents: bigint;
+    }> = [];
+    for (const row of availableDebits) {
+      if (remainingCents === 0n) break;
+      const amountCents =
+        row.availableCents >= remainingCents
+          ? remainingCents
+          : row.availableCents;
+      plannedCredits.push({ debit: row.debit, amountCents });
+      remainingCents -= amountCents;
+    }
+
     await tx.projectFundingAllocation.createMany({
-      data: debits.map((debit) => ({
+      data: plannedCredits.map(({ debit, amountCents }) => ({
         projectId: debit.projectId,
         executionType: debit.executionType,
         executionId: debit.executionId,
@@ -235,15 +300,22 @@ export class ProjectFundingAvailabilityService {
         sourceKey: debit.sourceKey,
         sourceId: debit.sourceId,
         direction: "credit",
-        amountCents: debit.amountCents,
-        occurredAt: new Date(),
+        amountCents,
+        occurredAt: input.occurredAt ?? new Date(),
         createdByUserId: input.actorUserId,
         reversalOfAllocationId: debit.id,
         reversalKey,
         reason
       }))
     });
-    return this.result("allocated", this.facts(debits));
+    return this.result(
+      "allocated",
+      plannedCredits.map(({ debit, amountCents }) => ({
+        sourceType: debit.sourceType as FundingSourceType,
+        sourceId: debit.sourceId,
+        amountCents
+      }))
+    );
   }
 
   private async lockActiveProject(

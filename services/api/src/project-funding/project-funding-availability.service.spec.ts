@@ -246,6 +246,117 @@ describe("ProjectFundingAvailabilityService", () => {
     expect(tx.projectFundingAllocation).not.toHaveProperty("delete");
   });
 
+  it("partially reverses financing before cash and never credits more than the original execution", async () => {
+    const tx = transactionMock({
+      allocations: [{
+        id: "cash-original",
+        executionType: "payment_execution",
+        executionId: "execution-1",
+        sourceType: "project_cash",
+        sourceKey: "project_cash",
+        sourceId: null,
+        direction: "debit",
+        amountCents: 8_000n,
+        reversalOfAllocationId: null
+      }, {
+        id: "quota-original",
+        executionType: "payment_execution",
+        executionId: "execution-1",
+        sourceType: "financing_quota",
+        sourceKey: "financing_quota:quota-1",
+        sourceId: "quota-1",
+        direction: "debit",
+        amountCents: 4_000n,
+        reversalOfAllocationId: null
+      }]
+    });
+
+    await service.reverseExecution(
+      tx as unknown as Prisma.TransactionClient,
+      {
+        projectId: "project-1",
+        executionType: "payment_execution",
+        executionId: "execution-1",
+        amountCents: 1_000n,
+        occurredAt: new Date("2026-07-28T08:00:00.000Z"),
+        reversalKey: "refund-1",
+        reason: "供应商退款到账",
+        actorUserId: "finance-1"
+      }
+    );
+
+    expect(tx.projectFundingAllocation.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({
+        sourceType: "financing_quota",
+        reversalOfAllocationId: "quota-original",
+        amountCents: 1_000n,
+        occurredAt: new Date("2026-07-28T08:00:00.000Z")
+      })]
+    });
+
+    const overCreditTx = transactionMock({
+      allocations: [{
+        id: "cash-original",
+        executionType: "payment_execution",
+        executionId: "execution-1",
+        sourceType: "project_cash",
+        sourceKey: "project_cash",
+        sourceId: null,
+        direction: "debit",
+        amountCents: 8_000n,
+        reversalOfAllocationId: null
+      }]
+    });
+    await expect(service.reverseExecution(
+      overCreditTx as unknown as Prisma.TransactionClient,
+      {
+        projectId: "project-1",
+        executionType: "payment_execution",
+        executionId: "execution-1",
+        amountCents: 8_001n,
+        reversalKey: "refund-too-large",
+        reason: "错误退款金额",
+        actorUserId: "finance-1"
+      }
+    )).rejects.toBeInstanceOf(BadRequestException);
+    expect(overCreditTx.projectFundingAllocation.createMany).not.toHaveBeenCalled();
+  });
+
+  it("restores refunded funding only through reversal credits, not a second cash receipt", async () => {
+    const tx = transactionMock({
+      receipts: [10_000n],
+      refunds: [1_000n],
+      allocations: [{
+        id: "cash-used",
+        executionType: "spot_procurement_payment_execution",
+        executionId: "spot-execution-1",
+        sourceType: "project_cash",
+        sourceKey: "project_cash",
+        sourceId: null,
+        direction: "debit",
+        amountCents: 8_000n,
+        reversalOfAllocationId: null
+      }, {
+        id: "cash-refund",
+        executionType: "spot_procurement_payment_execution",
+        executionId: "spot-execution-1",
+        sourceType: "project_cash",
+        sourceKey: "project_cash",
+        sourceId: null,
+        direction: "credit",
+        amountCents: 1_000n,
+        reversalOfAllocationId: "cash-used"
+      }]
+    });
+
+    await expect(service.allocateExecution(
+      tx as unknown as Prisma.TransactionClient,
+      { ...execution, amountCents: 4_000n }
+    )).rejects.toEqual(expect.objectContaining<Partial<BadRequestException>>({
+      message: "项目可用资金不足，当前最多可实际支付 3000 分"
+    }));
+  });
+
   it("excludes owner direct payments from self-owned project cash", async () => {
     const tx = transactionMock({ receipts: [12_000n] });
 

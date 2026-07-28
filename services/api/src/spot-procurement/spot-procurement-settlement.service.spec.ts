@@ -53,6 +53,7 @@ type TestRefund = {
   id: string;
   discrepancyId: string;
   procurementId: string;
+  paymentId: string | null;
   amountCents: bigint;
   receivedAt: Date;
   refundMethod: string;
@@ -135,6 +136,7 @@ function refundRow(
     id: "refund-1",
     discrepancyId: "discrepancy-1",
     procurementId: "procurement-1",
+    paymentId: "payment-1",
     amountCents: 1_000n,
     receivedAt: new Date("2020-01-02T03:04:05.000Z"),
     refundMethod: "bank_transfer",
@@ -254,7 +256,8 @@ function createHarness(options?: {
               {
                 id: `execution-${payment.id}`,
                 paymentId: payment.id,
-                amountCents: payment.paidAmountCents
+                amountCents: payment.paidAmountCents,
+                paidAt: new Date("2026-07-28T08:00:00.000Z")
               }
             ]
           : []
@@ -417,6 +420,12 @@ function createHarness(options?: {
         }
       )
     },
+    spotProcurement: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: "procurement-1",
+        projectId: "project-1"
+      })
+    },
     spotProcurementRefund: {
       findUnique: jest.fn().mockImplementation(
         ({
@@ -535,6 +544,26 @@ function createHarness(options?: {
   const closure = {
     recalculateAndClose: jest.fn().mockResolvedValue({ closed: false })
   };
+  const funding = {
+    lockFundingContext: jest.fn().mockImplementation(() => {
+      events.push("funding-lock");
+      return Promise.resolve();
+    }),
+    reverseExecution: jest.fn().mockImplementation(() => {
+      events.push("funding-reversal");
+      return Promise.resolve({
+        kind: "allocated",
+        projectCashAmountCents: 1_000n,
+        financingQuotaAmountCents: 0n,
+        allocations: [{
+          sourceType: "project_cash",
+          sourceId: null,
+          amountCents: 1_000n
+        }]
+      });
+    }),
+    tryCreateVersion: jest.fn().mockResolvedValue(undefined)
+  };
   const service = new SpotProcurementSettlementService(
     prisma as never,
     audit as never,
@@ -543,7 +572,8 @@ function createHarness(options?: {
     auth as never,
     files as never,
     approvalForms as never,
-    closure as never
+    closure as never,
+    funding as never
   );
 
   return {
@@ -554,6 +584,7 @@ function createHarness(options?: {
     balances,
     auth,
     files,
+    funding,
     approvalForms,
     events,
     payments,
@@ -1040,9 +1071,12 @@ describe("SpotProcurementSettlementService refund workflow", () => {
 
     expect(first).toEqual(replay);
     expect(harness.events).toEqual([
-      "project-lock",
+      "funding-lock",
       "file-unbound-lock",
-      "file-download-lock"
+      "file-download-lock",
+      "funding-reversal",
+      "funding-lock",
+      "funding-reversal"
     ]);
     expect(
       harness.tx.spotProcurementRefund.create
@@ -1050,6 +1084,27 @@ describe("SpotProcurementSettlementService refund workflow", () => {
     expect(
       harness.tx.spotProcurementDiscrepancy.updateMany
     ).toHaveBeenCalledTimes(1);
+    expect(
+      harness.tx.spotProcurementRefund.create
+    ).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        paymentId: "payment-1"
+      })
+    });
+    expect(harness.funding.reverseExecution).toHaveBeenCalledWith(
+      harness.tx,
+      {
+        projectId: "project-1",
+        executionType: "spot_procurement_payment_execution",
+        executionId: "execution-payment-1",
+        amountCents: 1_000n,
+        occurredAt: new Date(refundInput.receivedAt),
+        reversalKey: "spot-refund:refund-created",
+        reason: "零星采购供应商退款到账",
+        actorUserId: ACTORS.financeStaff
+      }
+    );
+    expect(harness.funding.reverseExecution).toHaveBeenCalledTimes(2);
     expect(first).toMatchObject({
       refund: { amountCents: "1000" },
       discrepancy: { status: "resolved" },

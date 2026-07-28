@@ -17,6 +17,7 @@ import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
+import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 import type { CreateProcurementDiscrepancyDto } from "./dto/create-procurement-discrepancy.dto";
 import type { ExecuteSupplierBalanceDto } from "./dto/execute-supplier-balance.dto";
 import {
@@ -28,6 +29,7 @@ import { SpotProcurementClosureService } from "./spot-procurement-closure.servic
 import { deriveSpotProcurementPaymentExecutionStatus } from "./spot-procurement-payment-status";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 import { SpotProcurementPaymentArchiveService } from "./spot-procurement-payment-archive.service";
+import { spotPaymentRefundOwnerId } from "./spot-payment-refund-owner";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
 
 const HANDLER_ROLES = new Set<RoleKey>([
@@ -153,6 +155,7 @@ type PaymentExecutionLockRow = {
   id: string;
   paymentId: string;
   amountCents: bigint;
+  paidAt: Date;
 };
 
 type LockedSettlementContext = {
@@ -180,6 +183,7 @@ export class SpotProcurementSettlementService {
     private readonly files: FileService,
     private readonly approvalForms: ApprovalFormService,
     private readonly closure: SpotProcurementClosureService,
+    private readonly funding: ProjectFundingAvailabilityService,
     private readonly archives?: SpotProcurementPaymentArchiveService
   ) {}
 
@@ -572,10 +576,26 @@ export class SpotProcurementSettlementService {
 
     try {
       const result = await this.runSerializable(async (tx) => {
+        const fundingScope = await tx.spotProcurement.findUnique({
+          where: { id: procurementId },
+          select: { projectId: true }
+        });
+        if (!fundingScope) {
+          throw new NotFoundException("零星采购不存在");
+        }
+        await this.funding.lockFundingContext(
+          tx,
+          fundingScope.projectId
+        );
         const context = await this.requireLockedReviewedContext(
           tx,
           procurementId
         );
+        if (context.procurement.projectId !== fundingScope.projectId) {
+          throw new ConflictException(
+            "零星采购所属项目已变化，请刷新后重试"
+          );
+        }
         await this.requireProjectFinanceStaff(
           tx,
           actorUserId,
@@ -590,7 +610,7 @@ export class SpotProcurementSettlementService {
             payment.procurementVersionId === context.version.id &&
             !payment.invalidatedAt
         );
-        await this.assertPaymentExecutionFacts(
+        const executions = await this.assertPaymentExecutionFacts(
           tx,
           currentPayments
         );
@@ -630,6 +650,15 @@ export class SpotProcurementSettlementService {
             existing,
             discrepancy,
             context
+          );
+          await this.reverseRefundFunding(
+            tx,
+            context.procurement.projectId,
+            executions,
+            existing.id,
+            existing.amountCents,
+            existing.receivedAt,
+            actorUserId
           );
           return this.refundResult(
             existing,
@@ -676,10 +705,6 @@ export class SpotProcurementSettlementService {
             `退款到账金额必须等于待退款整笔差额 ${discrepancy.overpaidAmountCents} 分`
           );
         }
-        await this.lockProjectForCashFacts(
-          tx,
-          context.procurement.projectId
-        );
         await this.files.assertFileHasNoBusinessBinding(
           tx,
           voucherFileId
@@ -693,6 +718,10 @@ export class SpotProcurementSettlementService {
           data: {
             discrepancyId: discrepancy.id,
             procurementId: context.procurement.id,
+            paymentId: spotPaymentRefundOwnerId(
+              discrepancy,
+              currentPayments
+            ),
             amountCents,
             receivedAt,
             refundMethod: input.refundMethod,
@@ -701,6 +730,20 @@ export class SpotProcurementSettlementService {
             idempotencyKey
           }
         });
+        if (!refund.paymentId) {
+          throw new ConflictException(
+            "供应商退款无法定位对应付款单，请联系财务核对"
+          );
+        }
+        await this.reverseRefundFunding(
+          tx,
+          context.procurement.projectId,
+          executions,
+          refund.id,
+          refund.amountCents,
+          refund.receivedAt,
+          actorUserId
+        );
         const resolved =
           await tx.spotProcurementDiscrepancy.updateMany({
             where: {
@@ -1537,25 +1580,6 @@ export class SpotProcurementSettlementService {
     );
   }
 
-  private async lockProjectForCashFacts(
-    tx: Prisma.TransactionClient,
-    projectId: string
-  ) {
-    const rows = await tx.$queryRaw<
-      Array<{ id: string; isActive: boolean }>
-    >(Prisma.sql`
-      SELECT "id", "isActive"
-      FROM "Project"
-      WHERE "id" = ${projectId}
-      FOR UPDATE
-    `);
-    if (!rows[0]?.isActive) {
-      throw new ConflictException(
-        "项目不存在或已停用，不能登记供应商退款到账"
-      );
-    }
-  }
-
   private async readCurrentPaymentFacts(
     tx: Prisma.TransactionClient,
     procurementId: string,
@@ -1581,7 +1605,8 @@ export class SpotProcurementSettlementService {
             SELECT
               "id",
               "paymentId",
-              "amountCents"
+              "amountCents",
+              "paidAt"
             FROM "SpotProcurementPaymentExecution"
             WHERE "paymentId" IN (${Prisma.join(paymentIds)})
               AND "voidedAt" IS NULL
@@ -1607,6 +1632,47 @@ export class SpotProcurementSettlementService {
           "付款累计已付与实际付款明细不一致，请联系财务核对"
         );
       }
+    }
+    return executions;
+  }
+
+  private async reverseRefundFunding(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    executions: PaymentExecutionLockRow[],
+    refundId: string,
+    amountCents: bigint,
+    receivedAt: Date,
+    actorUserId: string
+  ) {
+    let remainingCents = amountCents;
+    const orderedExecutions = [...executions].sort(
+      (left, right) =>
+        right.paidAt.getTime() - left.paidAt.getTime() ||
+        right.id.localeCompare(left.id)
+    );
+    for (const execution of orderedExecutions) {
+      if (remainingCents === 0n) break;
+      const reversalAmountCents =
+        execution.amountCents >= remainingCents
+          ? remainingCents
+          : execution.amountCents;
+      await this.funding.reverseExecution(tx, {
+        projectId,
+        executionType: "spot_procurement_payment_execution",
+        executionId: execution.id,
+        amountCents: reversalAmountCents,
+        occurredAt: receivedAt,
+        reversalKey: `spot-refund:${refundId}`,
+        reason: "零星采购供应商退款到账",
+        actorUserId
+      });
+      remainingCents -= reversalAmountCents;
+    }
+    if (remainingCents > 0n) {
+      throw new ConflictException(
+        "供应商退款超过可反向的实际付款资金，请联系财务核对"
+      );
     }
   }
 
