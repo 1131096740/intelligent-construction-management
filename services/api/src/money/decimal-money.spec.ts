@@ -28,7 +28,8 @@ describe("calculateBillRow", () => {
     ).toEqual({
       taxInclusiveAmountCents: 561n,
       taxExclusiveAmountCents: 496n,
-      taxAmountCents: 65n
+      taxAmountCents: 65n,
+      taxExclusiveUnitPrice: "4.032520"
     });
   });
 
@@ -43,7 +44,8 @@ describe("calculateBillRow", () => {
     ).toEqual({
       taxInclusiveAmountCents: 33371n,
       taxExclusiveAmountCents: 29532n,
-      taxAmountCents: 3839n
+      taxAmountCents: 3839n,
+      taxExclusiveUnitPrice: "88.604860"
     });
   });
 
@@ -58,8 +60,120 @@ describe("calculateBillRow", () => {
     ).toEqual({
       taxInclusiveAmountCents: 10599n,
       taxExclusiveAmountCents: 9999n,
-      taxAmountCents: 600n
+      taxAmountCents: 600n,
+      taxExclusiveUnitPrice: "9.999000"
     });
+  });
+
+  it("derives six-decimal net unit price from the authoritative rounded row total", () => {
+    expect(
+      calculateBillRow({
+        quantity: "2000",
+        unitPrice: "375",
+        taxRatePercent: "9",
+        pricingMode: "tax_inclusive"
+      })
+    ).toEqual({
+      taxInclusiveAmountCents: 75_000_000n,
+      taxExclusiveAmountCents: 68_807_339n,
+      taxAmountCents: 6_192_661n,
+      taxExclusiveUnitPrice: "344.036695"
+    });
+  });
+
+  it("rounds half cents per row with ROUND_HALF_UP and never derives a unit price for zero quantity", () => {
+    expect(
+      calculateBillRow({
+        quantity: "1",
+        unitPrice: "0.005",
+        taxRatePercent: "0",
+        pricingMode: "tax_inclusive"
+      })
+    ).toEqual({
+      taxInclusiveAmountCents: 1n,
+      taxExclusiveAmountCents: 1n,
+      taxAmountCents: 0n,
+      taxExclusiveUnitPrice: "0.010000"
+    });
+    expect(
+      calculateBillRow({
+        quantity: "0",
+        unitPrice: "375",
+        taxRatePercent: "9",
+        pricingMode: "tax_inclusive"
+      })
+    ).toEqual({
+      taxInclusiveAmountCents: 0n,
+      taxExclusiveAmountCents: 0n,
+      taxAmountCents: 0n,
+      taxExclusiveUnitPrice: null
+    });
+  });
+
+  it("keeps six-decimal boundaries and multi-row totals on Decimal and bigint facts", () => {
+    expect(
+      calculateBillRow({
+        quantity: "3",
+        unitPrice: "1.01",
+        taxRatePercent: "13",
+        pricingMode: "tax_inclusive"
+      }).taxExclusiveUnitPrice
+    ).toBe("0.893333");
+
+    const rows = [
+      calculateBillRow({
+        quantity: "2000",
+        unitPrice: "375",
+        taxRatePercent: "9",
+        pricingMode: "tax_inclusive"
+      }),
+      calculateBillRow({
+        quantity: "1",
+        unitPrice: "0.005",
+        taxRatePercent: "0",
+        pricingMode: "tax_inclusive"
+      })
+    ];
+    expect(
+      rows.reduce((total, row) => total + row.taxExclusiveAmountCents, 0n)
+    ).toBe(68_807_340n);
+  });
+
+  it.each([
+    {
+      quantity: "-1",
+      unitPrice: "1",
+      taxRatePercent: "13",
+      pricingMode: "tax_inclusive" as const
+    },
+    {
+      quantity: "1",
+      unitPrice: "-1",
+      taxRatePercent: "13",
+      pricingMode: "tax_inclusive" as const
+    },
+    {
+      quantity: "1",
+      unitPrice: "1",
+      taxRatePercent: "-0.01",
+      pricingMode: "tax_inclusive" as const
+    },
+    {
+      quantity: "1",
+      unitPrice: "1",
+      taxRatePercent: "100.000001",
+      pricingMode: "tax_inclusive" as const
+    },
+    {
+      quantity: "NaN",
+      unitPrice: "1",
+      taxRatePercent: "13",
+      pricingMode: "tax_inclusive" as const
+    }
+  ])("rejects invalid bill-row decimal facts: %p", (input) => {
+    expect(() => calculateBillRow(input)).toThrow(
+      "合同清单行计价参数无效"
+    );
   });
 
   it("rounds every row to cents before summing instead of rounding an aggregate", () => {

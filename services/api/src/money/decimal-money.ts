@@ -17,6 +17,30 @@ function assertBillRowAmountsWithinStorageRange(amounts: readonly bigint[]): voi
   }
 }
 
+function billRowDecimal(value: string): Prisma.Decimal {
+  try {
+    const decimal = new Prisma.Decimal(value);
+    if (!decimal.isFinite() || decimal.isNeg()) {
+      throw new Error("invalid");
+    }
+    return decimal;
+  } catch {
+    throw new Error("合同清单行计价参数无效");
+  }
+}
+
+function sixDecimalUnitPrice(
+  amountCents: bigint,
+  quantity: Prisma.Decimal
+): string | null {
+  if (quantity.isZero()) return null;
+  return new Prisma.Decimal(amountCents.toString())
+    .div(HUNDRED)
+    .div(quantity)
+    .toDecimalPlaces(6, Prisma.Decimal.ROUND_HALF_UP)
+    .toFixed(6);
+}
+
 export function deriveTaxExclusiveUnitPrice(input: {
   taxInclusiveUnitPrice: string;
   taxRatePercent: string;
@@ -34,9 +58,13 @@ export function calculateBillRow(input: {
   taxRatePercent: string;
   pricingMode: "tax_inclusive" | "tax_exclusive";
 }) {
-  const quantity = new Prisma.Decimal(input.quantity);
-  const unitPrice = new Prisma.Decimal(input.unitPrice);
-  const rate = new Prisma.Decimal(input.taxRatePercent).div(HUNDRED);
+  const quantity = billRowDecimal(input.quantity);
+  const unitPrice = billRowDecimal(input.unitPrice);
+  const taxRatePercent = billRowDecimal(input.taxRatePercent);
+  if (taxRatePercent.gt(HUNDRED)) {
+    throw new Error("合同清单行计价参数无效");
+  }
+  const rate = taxRatePercent.div(HUNDRED);
 
   if (input.pricingMode === "tax_inclusive") {
     const inclusive = yuanToCents(quantity.mul(unitPrice));
@@ -51,7 +79,8 @@ export function calculateBillRow(input: {
     return {
       taxInclusiveAmountCents: inclusive,
       taxExclusiveAmountCents: exclusive,
-      taxAmountCents: tax
+      taxAmountCents: tax,
+      taxExclusiveUnitPrice: sixDecimalUnitPrice(exclusive, quantity)
     };
   }
 
@@ -67,7 +96,8 @@ export function calculateBillRow(input: {
   return {
     taxInclusiveAmountCents: inclusive,
     taxExclusiveAmountCents: exclusive,
-    taxAmountCents: tax
+    taxAmountCents: tax,
+    taxExclusiveUnitPrice: sixDecimalUnitPrice(exclusive, quantity)
   };
 }
 

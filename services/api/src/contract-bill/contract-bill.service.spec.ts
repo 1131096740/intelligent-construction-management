@@ -238,6 +238,26 @@ describe("ContractBillService", () => {
     expect(audit.record).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps the authoritative 750,000 yuan net total independent from its displayed unit price", async () => {
+    const { service, tx, version } = fixture();
+    version.defaultTaxRatePercent = new Prisma.Decimal("9");
+
+    await service.addRow("bill-1", "owner-1", {
+      ...rowInput,
+      quantity: "2000",
+      unitPrice: "375",
+      taxRatePercent: "9"
+    });
+
+    expect(tx.contractBillRow.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        taxInclusiveAmountCents: 75_000_000n,
+        taxExclusiveAmountCents: 68_807_339n,
+        taxAmountCents: 6_192_661n
+      })
+    });
+  });
+
   it("updates a row only when bill revision matches", async () => {
     const existing = {
       id: "row-1",

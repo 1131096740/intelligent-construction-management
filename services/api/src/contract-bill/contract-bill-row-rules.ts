@@ -51,6 +51,7 @@ export interface ResolvedContractBillRowFacts {
   taxInclusiveAmountCents: bigint | null;
   taxExclusiveAmountCents: bigint | null;
   taxAmountCents: bigint | null;
+  taxExclusiveUnitPrice: string | null;
 }
 
 export function resolveContractBillRowFacts(
@@ -90,7 +91,8 @@ export function resolveContractBillRowFacts(
       precisionPolicy: "legacy",
       taxInclusiveAmountCents: existing.taxInclusiveAmountCents,
       taxExclusiveAmountCents: existing.taxExclusiveAmountCents,
-      taxAmountCents: existing.taxAmountCents
+      taxAmountCents: existing.taxAmountCents,
+      taxExclusiveUnitPrice: null
     };
   }
 
@@ -118,7 +120,8 @@ export function resolveContractBillRowFacts(
       precisionPolicy: "two_decimal",
       taxInclusiveAmountCents: null,
       taxExclusiveAmountCents: null,
-      taxAmountCents: null
+      taxAmountCents: null,
+      taxExclusiveUnitPrice: null
     };
   }
 
