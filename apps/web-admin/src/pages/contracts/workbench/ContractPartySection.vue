@@ -14,14 +14,27 @@
         class="party-row"
       >
         <div class="party-head">
-          <strong>{{ roleLabel(party.roleKey) }}</strong>
-          <t-tag
+          <div class="party-identity">
+            <strong>{{ roleLabel(party.roleKey) }}</strong>
+            <t-tag
+              size="small"
+              variant="light"
+              :theme="party.businessPartyVersionId ? 'primary' : 'default'"
+            >
+              {{ party.businessPartyVersionId ? "档案引用" : "临时快照" }}
+            </t-tag>
+          </div>
+          <t-button
             size="small"
-            variant="light"
-            :theme="party.businessPartyVersionId ? 'primary' : 'default'"
+            variant="text"
+            theme="danger"
+            data-action="delete-party"
+            :data-party-index="index"
+            :disabled="disabled || busy"
+            @click="requestDelete(index)"
           >
-            {{ party.businessPartyVersionId ? "档案引用" : "临时快照" }}
-          </t-tag>
+            删除
+          </t-button>
         </div>
         <div class="party-fields">
           <label
@@ -32,8 +45,11 @@
             <span class="field-label">{{ field.label }}</span>
             <t-input
               :value="partyValue(party, field.key)"
-              disabled
+              :data-party-field="field.key"
+              :data-party-index="index"
+              :disabled="disabled || busy"
               :placeholder="field.placeholder"
+              @change="(value: string) => updateExistingParty(index, field.key, value)"
             />
           </label>
         </div>
@@ -152,13 +168,33 @@
         </t-button>
       </div>
     </form>
+
+    <t-dialog
+      v-model:visible="deleteVisible"
+      header="删除合同主体"
+      :confirm-btn="{ content: '确认删除', theme: 'danger' }"
+      :cancel-btn="{ content: '取消', variant: 'outline' }"
+      @confirm="confirmDelete"
+      @close="cancelDelete"
+    >
+      <div class="delete-confirmation">
+        <p>{{ deleteWarning }}</p>
+        <p>该操作只修改当前本地草稿，待右上角统一保存后由服务端重新校验主体约束。</p>
+      </div>
+    </t-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { computed, reactive, ref } from "vue";
 import type { ContractDraftPartyModel } from "../../../api/contract-workbench.api";
 import { uploadPrivateFile } from "../../../api/core-flow-read.api";
+import {
+  cloneContractDraftParty,
+  contractDraftPartyDeleteWarning,
+  removeContractDraftParty,
+  updateContractDraftParty
+} from "./use-contract-draft";
 
 const props = defineProps<{
   parties: ContractDraftPartyModel[];
@@ -302,6 +338,11 @@ const attachmentCards = reactive<AttachmentCard[]>([
 ]);
 const busy = ref(false);
 const message = ref("");
+const deleteVisible = ref(false);
+const pendingDeleteIndex = ref(-1);
+const deleteWarning = computed(() =>
+  contractDraftPartyDeleteWarning(props.parties, pendingDeleteIndex.value)
+);
 
 function roleLabel(roleKey: string): string {
   return ROLE_LABELS[roleKey] ?? "其他单位";
@@ -403,7 +444,7 @@ function submitInlineParty() {
   emit(
     "update:parties",
     [
-      ...props.parties.map(cloneParty),
+      ...props.parties.map(cloneContractDraftParty),
       {
         roleKey: form.roleKey,
         displayOrder,
@@ -416,28 +457,50 @@ function submitInlineParty() {
   message.value = "已加入合同草稿，等待右上角统一保存";
 }
 
-function cloneParty(party: ContractDraftPartyModel): ContractDraftPartyModel {
-  return {
-    roleKey: party.roleKey,
-    displayOrder: party.displayOrder,
-    ...(party.businessPartyVersionId
-      ? { businessPartyVersionId: party.businessPartyVersionId }
-      : {}),
-    snapshot: {
-      ...party.snapshot,
-      ...(Array.isArray(party.snapshot["attachments"])
-        ? {
-            attachments: party.snapshot["attachments"].map((attachment) =>
-              attachment !== null &&
-              typeof attachment === "object" &&
-              !Array.isArray(attachment)
-                ? { ...attachment }
-                : attachment
-            )
-          }
-        : {})
-    }
-  };
+function updateExistingParty(
+  index: number,
+  fieldKey: SnapshotFieldKey,
+  value: string
+) {
+  if (props.disabled || busy.value) return;
+  emit(
+    "update:parties",
+    updateContractDraftParty(props.parties, index, {
+      [fieldKey]: value
+    })
+  );
+  emit("edited");
+  message.value = "主体资料已修改，等待右上角统一保存";
+}
+
+function requestDelete(index: number) {
+  if (props.disabled || busy.value || !props.parties[index]) return;
+  pendingDeleteIndex.value = index;
+  deleteVisible.value = true;
+}
+
+function confirmDelete() {
+  if (
+    props.disabled ||
+    busy.value ||
+    pendingDeleteIndex.value < 0 ||
+    !props.parties[pendingDeleteIndex.value]
+  ) {
+    cancelDelete();
+    return;
+  }
+  emit(
+    "update:parties",
+    removeContractDraftParty(props.parties, pendingDeleteIndex.value)
+  );
+  emit("edited");
+  message.value = "主体已从本地草稿移除，等待右上角统一保存";
+  cancelDelete();
+}
+
+function cancelDelete() {
+  deleteVisible.value = false;
+  pendingDeleteIndex.value = -1;
 }
 </script>
 
@@ -551,7 +614,23 @@ function cloneParty(party: ContractDraftPartyModel): ContractDraftPartyModel {
 .party-head {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  gap: var(--jg-space-sm);
+}
+
+.party-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--jg-space-sm);
+}
+
+.delete-confirmation {
+  display: grid;
+  gap: var(--jg-space-sm);
+}
+
+.delete-confirmation p {
+  margin: 0;
 }
 
 .party-fields {

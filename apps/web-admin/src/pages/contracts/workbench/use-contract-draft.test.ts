@@ -30,7 +30,10 @@ import {
 import {
   companyEntitySelectionUnavailable,
   companyEntitySyncPatch,
+  contractDraftPartyDeleteWarning,
   hasCompanyEntityVersionDrift,
+  removeContractDraftParty,
+  updateContractDraftParty,
   useContractDraft
 } from "./use-contract-draft";
 import { canApplyExpectedWorkbenchVersion } from "../contract-change.state";
@@ -204,6 +207,49 @@ beforeEach(() => {
     leaseRevision: 2,
     expiresAt: "2026-07-28T00:02:00.000Z",
     heartbeatIntervalMs: 30_000
+  });
+});
+
+describe("contract draft party aggregate mutations", () => {
+  const parties = [
+    {
+      roleKey: "party_a",
+      displayOrder: 0,
+      snapshot: { name: "我方公司" }
+    },
+    {
+      roleKey: "party_b",
+      displayOrder: 1,
+      snapshot: {
+        name: "供应商",
+        attachments: [{ category: "business_license", fileId: "file-1" }]
+      }
+    }
+  ];
+
+  it("updates one party snapshot without mutating the loaded aggregate", () => {
+    const updated = updateContractDraftParty(parties, 1, {
+      contactPhone: "13800000000"
+    });
+
+    expect(updated[1]?.snapshot).toMatchObject({
+      name: "供应商",
+      contactPhone: "13800000000"
+    });
+    expect(updated[1]?.snapshot["attachments"]).not.toBe(
+      parties[1]?.snapshot["attachments"]
+    );
+    expect(parties[1]?.snapshot).not.toHaveProperty("contactPhone");
+  });
+
+  it("removes only the confirmed party and warns for governance or the sole counterparty", () => {
+    expect(contractDraftPartyDeleteWarning(parties, 0)).toContain("公司治理主体");
+    expect(contractDraftPartyDeleteWarning(parties, 1)).toContain("唯一乙方");
+
+    const removed = removeContractDraftParty(parties, 1);
+    expect(removed).toHaveLength(1);
+    expect(removed[0]?.roleKey).toBe("party_a");
+    expect(parties).toHaveLength(2);
   });
 });
 

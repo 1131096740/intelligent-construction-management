@@ -123,6 +123,77 @@ export interface ContractDraftAggregateModel {
   negotiationDocuments: ContractDraftNegotiationDocumentsModel;
 }
 
+export function cloneContractDraftParty(
+  party: ContractDraftPartyModel
+): ContractDraftPartyModel {
+  return {
+    roleKey: party.roleKey,
+    displayOrder: party.displayOrder,
+    ...(party.businessPartyVersionId
+      ? { businessPartyVersionId: party.businessPartyVersionId }
+      : {}),
+    snapshot: {
+      ...party.snapshot,
+      ...(Array.isArray(party.snapshot["attachments"])
+        ? {
+            attachments: party.snapshot["attachments"].map((attachment) =>
+              attachment !== null &&
+              typeof attachment === "object" &&
+              !Array.isArray(attachment)
+                ? { ...attachment }
+                : attachment
+            )
+          }
+        : {})
+    }
+  };
+}
+
+export function updateContractDraftParty(
+  parties: ContractDraftPartyModel[],
+  index: number,
+  snapshotPatch: Record<string, unknown>
+): ContractDraftPartyModel[] {
+  return parties.map((party, currentIndex) => {
+    const cloned = cloneContractDraftParty(party);
+    return currentIndex === index
+      ? {
+          ...cloned,
+          snapshot: {
+            ...cloned.snapshot,
+            ...snapshotPatch
+          }
+        }
+      : cloned;
+  });
+}
+
+export function removeContractDraftParty(
+  parties: ContractDraftPartyModel[],
+  index: number
+): ContractDraftPartyModel[] {
+  return parties.flatMap((party, currentIndex) =>
+    currentIndex === index ? [] : [cloneContractDraftParty(party)]
+  );
+}
+
+export function contractDraftPartyDeleteWarning(
+  parties: ContractDraftPartyModel[],
+  index: number
+): string {
+  const party = parties[index];
+  if (party?.roleKey === "party_a") {
+    return "该主体属于公司治理主体，删除后可能阻断合同提交。";
+  }
+  if (
+    party?.roleKey === "party_b" &&
+    parties.filter((candidate) => candidate.roleKey === "party_b").length === 1
+  ) {
+    return "这是当前唯一乙方，删除后将阻断合同提交。";
+  }
+  return "删除后该主体将从当前合同草稿中移除。";
+}
+
 export interface ContractDraftConflict {
   local: ContractDraftModel;
   server: ContractDraftModel | null;
