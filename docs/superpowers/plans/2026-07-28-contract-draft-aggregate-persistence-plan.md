@@ -1,8 +1,12 @@
-# 合同草稿聚合持久化与生命周期实施计划
+# 核心契约、合同草稿聚合与模板治理实施计划
 
 > **执行要求：** 按任务顺序实施；每个行为任务先锁定失败用例，任何完成声明前运行计划列出的全部验证命令。
 
-**目标：** 建立以 `contractVersionId` 为唯一标识的草稿聚合 API，使顶部保存一次性持久化全部合同资料，并修复继续办理锁死、分散保存和草稿编号提前生成的问题。日常删除继续复用现有受审计逻辑删除；物理清理留到切换包的受控保留任务。
+**目标：** 建立以 `contractVersionId` 为唯一标识的草稿聚合 API，使顶部保存
+一次性持久化全部合同资料，并修复继续办理锁死、分散保存和草稿编号提前生成
+的问题；同时固化六类合同、金额性质、业务场景自动映射、模板/条款停用和
+手写签名冻结契约。日常删除继续复用现有受审计逻辑删除；物理清理留到切换
+包的受控保留任务。
 
 **核心架构：** 在现有 `ContractWorkbenchModule` 中新增版本级聚合服务与控制器。旧服务暂时保留供切换期读取，任何新写入只走聚合事务。文档预览是资料事务之后的独立命令。
 
@@ -820,3 +824,152 @@ git diff --check
 git add PROGRESS.md
 git commit -m "docs: record contract draft aggregate progress"
 ```
+
+---
+
+## Task 10：把合同类型、金额性质和付款前置固化为后端契约
+
+**目标：** 退出 `generic_contract => generic_direct` 的隐式旁路，建立六类合同和
+两种直接付款金额性质。
+
+### Step 1：先写 RED
+
+覆盖 `packages/shared-domain/src/contract-settlement-mode.ts`、
+`services/api/src/contract/contract.service.ts`、
+`services/api/src/payment/payment-request.service.ts` 和金额占用服务：
+
+1. 材料采购、机械租赁、劳务分包、专业分包、通用结算类正常付款均要求生效
+   结算；
+2. 上述类型只有冻结付款条款中的正式预付款可以在结算前创建；
+3. 通用直接付款合同可以不经结算创建付款申请；
+4. 固定金额/最高限额合同按审批中、已批待付和实付累计占用硬阻断；
+5. 无固定总价合同不使用虚构上限，但必须保存付款事项和金额计算说明；
+6. 预计发生金额不参与付款容量和项目资金；
+7. 合同提交后改变类型或金额性质必须走合同变更；
+8. 旧 `generic_contract` 没有完成分类时禁止创建新付款，不得继续自动直付。
+
+### Step 2：实现共享枚举和迁移
+
+- 在 shared-domain 定义稳定业务值，禁止前后端各自维护字符串集合；
+- Prisma 使用前向迁移增加通用结算类、通用直接付款类及金额性质，不批量猜测
+  旧 `generic_contract`；
+- 输出旧数据只读分类报告，`ready/manual_review` 分开；
+- 付款容量在事务内重算，不依赖页面累计值。
+
+### Step 3：运行 GREEN
+
+运行 shared-domain 合同付款模式、合同服务、付款创建、付款容量、迁移结构和
+并发测试，再运行 API typecheck/lint/Prisma validate。
+
+---
+
+## Task 11：收口业务场景、资料规则和文件版式映射
+
+**目标：** 经办人只选择业务场景，系统自动冻结合同类型、唯一资料规则和默认
+文件版式。
+
+### Step 1：先写 RED
+
+覆盖 `contract-scenario.service`、`contract-template.service`、
+`layout-template.service` 和合同创建服务：
+
+- 每个场景固定归属一个合同类型；
+- 每个“场景＋合同类型”只允许一个生效资料规则映射；
+- 同一映射只有一个默认版式，可以有多个兼容备选；
+- `super_admin` 不能创建、修改、启停场景或映射；
+- 缺资料规则时禁止创建草稿；
+- 缺默认版式时允许保存草稿，但禁止生成文件和提交审批；
+- 请求中的人工模板 ID 与服务端映射不一致时失败关闭；
+- 替换映射不改写已有草稿快照。
+
+### Step 2：实现
+
+- 用数据库唯一约束和事务锁保证单有效映射及单默认版式；
+- 推荐接口改为确定性解析接口，删除 `choice_required` 和优先级选择语义；
+- 合同创建只接收业务场景 ID，合同类型和版本 ID 由服务端解析；
+- 保留映射历史和修改原因。
+
+### Step 3：运行 GREEN
+
+运行场景、模板、版式、合同创建和并发测试，并检查 controller 运行时 DTO、
+权限和审计。
+
+---
+
+## Task 12：统一停用语义并补齐标准条款治理
+
+### Step 1：先写 RED
+
+- 发布新版资料规则、版式、标准条款或结算模板时自动停用同族旧发布版本；
+- 手动风险停用阻断所有未提交草稿；
+- 自动换版停用要求升级或合同主管明确确认旧版；
+- 标准条款停用后旧发布版本不得重新成为可选项；
+- 历史合同继续读取冻结版本；
+- 未提交、未引用草稿可以废弃；
+- `revoke` 路由不再存在。
+
+### Step 2：实现
+
+- 为停用记录 `reasonType`、原因、操作人和时间，区分 `superseded` 与
+  `risk_stop`；
+- 标准条款发布使用同族锁并原子停用旧版本；
+- 增加标准条款停用服务和 controller；
+- 删除资料规则和版式的 revoke controller/service 分支，前端删除归实施包 3；
+- 正式引用按精确版本读取，不以当前状态拒绝历史显示。
+
+### Step 3：运行 GREEN
+
+运行合同模板、版式、标准条款、结算模板、就绪检查和历史冻结读取测试。
+
+---
+
+## Task 13：建立手写签名不可变版本和审批冻结契约
+
+**目标：** 全项目审批统一使用审批人预先创建的手写电子签名。
+
+### Step 1：先写 RED
+
+- 电脑端二维码会话一次性、短时有效、绑定当前账号和用途；
+- 手机端签名只能写入发起二维码的本人账号；
+- 直接用手机打开也可以创建本人签名；
+- 保存新签名只追加版本，不覆盖历史文件；
+- 缺少有效签名时所有审批动作失败关闭；
+- 审批密码校验、签名版本冻结、动作日志和审计原子提交；
+- 历史 PDF 读取动作冻结版本，用户更换签名后不变化；
+- 二维码会话 token 不写审计明文、不进入 URL 长期日志。
+
+### Step 2：实现
+
+复用现有私有 `FileObject`、短票据和
+`approval-signature-snapshot`，新增最小签名版本/二维码会话结构；不引入公开
+对象、浏览器本地永久密钥或第二套身份系统。
+
+### Step 3：运行 GREEN
+
+运行认证、文件 ACL、签名快照、审批动作、PDF 生成、并发和敏感日志测试。
+前端 Canvas/二维码和横屏体验归实施包 3。
+
+---
+
+## Task 14：扩展后的实施包 1 总门禁
+
+除 Task 9 外，必须运行：
+
+```bash
+pnpm --filter @jiangkong/shared-domain test
+pnpm --filter @jiangkong/api test -- --runInBand \
+  src/contract-template/contract-scenario.service.spec.ts \
+  src/contract-template/contract-template.service.spec.ts \
+  src/contract-template/layout-template.service.spec.ts \
+  src/settlement/settlement-template.service.spec.ts \
+  src/contract/contract.service.spec.ts \
+  src/payment/payment-request.service.spec.ts \
+  src/approval/approval-signature-snapshot.spec.ts
+pnpm --filter @jiangkong/api typecheck
+pnpm --filter @jiangkong/api lint
+pnpm --filter @jiangkong/api exec prisma validate
+git diff --check
+```
+
+门禁同时检查：无 `generic_contract` 新直付旁路、无模板 `revoke` 路由、无
+`super_admin` 业务模板治理写权限、无读取用户当前签名生成历史审批 PDF。

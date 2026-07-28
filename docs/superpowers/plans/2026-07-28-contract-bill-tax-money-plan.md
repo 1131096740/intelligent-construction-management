@@ -1,8 +1,10 @@
-# 合同清单、税率与金额精度实施计划
+# 合同清单、金额精度与统一资金规则实施计划
 
 > **执行要求：** 按任务顺序实施；金额、税率和 Excel 任务先锁定失败用例，完成前运行计划列出的全部验证命令。
 
-**目标：** 统一系统与 Excel 的税率表达和逐行金额算法，使不含税单价内部保留 6 位、页面默认显示 2 位，同时保证合同总额只由权威行总价汇总。
+**目标：** 统一系统与 Excel 的税率表达和逐行金额算法，使不含税单价内部
+保留 6 位、页面默认显示 2 位，同时保证合同总额只由权威行总价汇总；在同一
+金额底座上实现结算/直接付款、零星材料/费用、项目资金和垫资额度硬门禁。
 
 **核心架构：** `decimal-money.ts` 是唯一金额计算入口；`contract-bill-row-rules.ts` 负责领域校验；Excel 导入只负责把单元格归一化为同一领域输入。前端不得自行重算权威总额。
 
@@ -540,3 +542,142 @@ git diff --check
 预期：全部退出码 `0`，且 75 万元回归精确输出 `688,073.39` 元不含税总价。
 取得真实 Excel 后，还必须把
 `src/contract-bill/contract-bill-real-regression.spec.ts` 纳入本门禁。
+
+---
+
+## Task 9：建立全项目统一资金可用性事务
+
+**目标：** 合同付款、零星材料、零星费用和其他我方实付共用同一后端资金
+门禁。
+
+### Step 1：先写 RED
+
+覆盖付款、项目支出、零星采购、报销补付和项目资金服务：
+
+- 审批通过不占用垫资额度；
+- 只有实际支付和唯一有效付款凭证在同一事务落库后才占用资金来源；
+- 事务内先重新读取项目自有资金和有效垫资额度；
+- 自有资金优先、垫资额度补足；
+- 总可用资金不足时硬性失败，任何来源页面都不能绕过；
+- 重试保持同一实付和同一资金分配，不重复占用；
+- 退款和更正追加反向资金流水，不删除原分配；
+- 业主向挂靠企业付款不进入我方资金池，挂靠企业向我方拨款才进入。
+
+### Step 2：实现
+
+- 提取共享 `ProjectFundingAvailabilityService`（名称可按仓库风格调整）；
+- 固定项目、资金来源、额度、付款业务单和执行记录锁序；
+- 资金来源分配、凭证绑定、实际付款和 AuditLog 原子提交；
+- 所有来源 controller 只调用领域执行服务，不复制资金公式。
+
+### Step 3：运行 GREEN
+
+至少覆盖并发双付、凭证失败、额度终止、退款、重试、跨项目和错误资金来源
+负向测试。
+
+---
+
+## Task 10：重构项目垫资额度申请、审批、分配和终止
+
+### Step 1：先写 RED
+
+- 财务人员和财务主管可以发起；
+- 财务主管执行主管审批，发起人为财务主管时允许独立本人审批；
+- 董事长或总经理 OR 签终审；
+- 项目经理不进入审批链；
+- 有效期选填；
+- 终止后禁止新占用，既有实付和额度流水保留；
+- 额度只在 Task 9 的实付事务占用；
+- 普通业务支付不能手工选择优先使用垫资额度。
+
+### Step 2：实现
+
+复核 `request-project-financing-quota`、`review-project-financing-quota`、项目资金
+服务和审批节点冻结；增加终止 DTO、服务动作、密码/签名和审计，不用删除或
+重建额度记录表达终止。
+
+### Step 3：删除结算例外额度
+
+在实施包 5 的生产零调用门禁通过后删除
+`request-settlement-exception-quota`、`review-settlement-exception-quota`
+及其页面封装；本 Task 先使所有新调用失败关闭。下游结算超过上游只提示风险
+并审计，合同有效金额约束不变。
+
+---
+
+## Task 11：按 3000 元边界拆分零星材料和零星费用
+
+### Step 1：先写分类 RED
+
+- 同一材料申请全部行合计大于等于 3000 元时拒绝零星材料流程；
+- 多种材料合计达到门槛同样拒绝；
+- 不允许通过删除行、拆分提交或多请求并发绕过同一申请门禁；
+- 小于 3000 元走零星材料付款审批；
+- 非材料服务、临时机械台班和零星用工走零星费用支付；
+- 零星费用必须关联项目且无金额上限；
+- 两类支撑附件均选填，附件缺失不能成为提交硬门禁。
+
+系统只拒绝错误流程并要求重新提交，不自动把原审批单变形成另一业务类型。
+
+### Step 2：实现
+
+- 保留 `SpotProcurement` 材料行领域，不把非材料费用塞进材料清单；
+- 将旧 `ProjectExpenseRequest` 仅作历史兼容，新增或收口明确的零星费用业务
+  类型和读写服务；
+- 分类判断、审批状态、付款执行和项目资金全部由后端决定；
+- 页面实现归实施包 3。
+
+---
+
+## Task 12：收口零星材料收货、付款和办结
+
+### Step 1：先写状态 RED
+
+- 付款可以先于收货；
+- 收货可以先于付款；
+- 收货必须由发起材料员或受控同项目受托人办理并上传照片；
+- 未付款或未收货任一存在时不得办结；
+- 两者完成后无论发票是否到位均可办结；
+- 零星费用实付完成即可办结，不创建收货根单；
+- 差异、复核、委托、退款和异常终止不删除原照片或原付款；
+- 财务人员和财务主管按既有权限记录实际付款，均受 Task 9 资金门禁。
+
+### Step 2：实现
+
+以服务端派生 `canClose/blockedReasons` 作为唯一办结依据；不要在页面按状态
+字符串猜测。收货照片继续使用私有文件、绑定清单、水印和下载审计。
+
+---
+
+## Task 13：固定金额、无固定总价和直接付款容量
+
+### Step 1：先写 RED
+
+- 通用直接付款合同不要求结算；
+- 固定金额/最高限额累计占用超过合同有效金额时硬阻断；
+- 无固定总价合同要求本次事项和计算说明，允许多次付款；
+- 无固定总价读模型返回累计申请、累计批准、累计实付及本次后累计；
+- 预计发生金额不占用付款容量；
+- 所有直接付款仍走完整付款审批、实际付款、凭证和项目资金检查；
+- 合同变更生效前不得使用新金额或新金额性质。
+
+### Step 2：运行扩展门禁
+
+```bash
+pnpm --filter @jiangkong/shared-domain test
+pnpm --filter @jiangkong/api test -- --runInBand \
+  src/payment/payment-request.service.spec.ts \
+  src/payment/payment-amount.service.spec.ts \
+  src/spot-procurement/spot-procurement-payment.service.spec.ts \
+  src/spot-procurement/spot-procurement-receipt.service.spec.ts \
+  src/spot-procurement/spot-procurement-closure.service.spec.ts \
+  src/project-expense/project-expense.service.spec.ts \
+  src/expense-claim/expense-claim.service.spec.ts \
+  src/funds-workbench/funds-workbench.service.spec.ts
+pnpm --filter @jiangkong/api typecheck
+pnpm --filter @jiangkong/api lint
+pnpm --filter @jiangkong/api exec prisma validate
+git diff --check
+```
+
+必须额外运行数据库并发测试，证明不同业务来源不能各自读取旧余额后同时超付。
