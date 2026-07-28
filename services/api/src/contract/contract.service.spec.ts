@@ -5549,6 +5549,8 @@ describe("ContractService", () => {
       contractArchiveFile: { count: jest.fn().mockResolvedValue(0) },
       settlement: { count: jest.fn().mockResolvedValue(0) },
       paymentRequest: { count: jest.fn().mockResolvedValue(0) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
       contractVersion: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       contractGeneratedDocument: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       ...overrides
@@ -5658,6 +5660,90 @@ describe("ContractService", () => {
       action: "delete_pristine_draft"
     })).rejects.toThrow("合同草稿已被更新");
     expect(staleTx.contractVersion.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("allows a contract director to proxy-delete a pristine draft with password and reason", async () => {
+    const tx = abandonDraftTx({
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "position-director" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "position-director", key: "contract_director" }
+        ])
+      }
+    });
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
+    const service = new ContractService(
+      prisma as never,
+      audit as never,
+      auth as never
+    );
+
+    await expect(
+      service.abandonDraft("contract-version-1", "director-1", {
+        expectedRevision: 3,
+        action: "delete_pristine_draft",
+        reason: "清理重复创建的纯净草稿",
+        currentPassword: "current-password"
+      })
+    ).resolves.toMatchObject({
+      status: "abandoned",
+      lifecycleKind: "pristine_draft",
+      reason: "清理重复创建的纯净草稿"
+    });
+    expect(auth.confirmPassword).toHaveBeenCalledWith(
+      "director-1",
+      "current-password"
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          proxyCleanup: true,
+          ownerUserId: "owner-1",
+          reason: "清理重复创建的纯净草稿"
+        })
+      })
+    );
+  });
+
+  it("requires both a reason and current password for director proxy cleanup", async () => {
+    const tx = abandonDraftTx({
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "position-director" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "position-director", key: "contract_director" }
+        ])
+      }
+    });
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
+    const service = new ContractService(
+      prisma as never,
+      audit as never,
+      auth as never
+    );
+
+    await expect(
+      service.abandonDraft("contract-version-1", "director-1", {
+        expectedRevision: 3,
+        action: "delete_pristine_draft",
+        currentPassword: "current-password"
+      })
+    ).rejects.toThrow("合同部主管代清理必须填写原因");
+    await expect(
+      service.abandonDraft("contract-version-1", "director-1", {
+        expectedRevision: 3,
+        action: "delete_pristine_draft",
+        reason: "清理重复创建的纯净草稿"
+      })
+    ).rejects.toThrow("合同部主管代清理必须验证当前密码");
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
   });
 
   it("returns the existing terminal fact for a repeated abandonment request", async () => {

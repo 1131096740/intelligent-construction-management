@@ -940,8 +940,38 @@ export class ContractService {
         if (!locked) {
           throw new NotFoundException("未找到合同草稿，请刷新合同工作台后重试");
         }
+        let proxyCleanup = false;
         if (locked.ownerUserId !== actorUserId) {
-          throw new ForbiddenException("只有当前合同经办人可以删除草稿或放弃申请");
+          if (input.action !== "delete_pristine_draft") {
+            throw new ForbiddenException("只有当前合同经办人可以删除草稿或放弃申请");
+          }
+          const assignments = await tx.userPosition.findMany({
+            where: { userId: actorUserId, projectId: null }
+          });
+          const positions = assignments.length
+            ? await tx.position.findMany({
+                where: {
+                  id: {
+                    in: assignments.map((assignment) => assignment.positionId)
+                  }
+                }
+              })
+            : [];
+          if (!positions.some((position) => position.key === "contract_director")) {
+            throw new ForbiddenException("只有当前合同经办人或合同部主管可以删除纯净草稿");
+          }
+          if (!reason) {
+            throw new BadRequestException("合同部主管代清理必须填写原因");
+          }
+          const currentPassword = input.currentPassword ?? "";
+          if (!currentPassword.trim()) {
+            throw new BadRequestException("合同部主管代清理必须验证当前密码");
+          }
+          if (!this.auth) {
+            throw new Error("当前密码校验服务不可用，请稍后重试");
+          }
+          await this.auth.confirmPassword(actorUserId, currentPassword);
+          proxyCleanup = true;
         }
         if (locked.abandonedAt || locked.status === "abandoned") {
           const terminalAction = locked.abandonReason
@@ -956,7 +986,7 @@ export class ContractService {
             action: terminalAction,
             abandonedAt: locked.abandonedAt,
             abandonedByUserId: locked.abandonedByUserId,
-            reason: locked.abandonReason,
+            reason: locked.abandonReason ?? (proxyCleanup ? reason : null),
             idempotent: true
           };
         }
@@ -1076,7 +1106,11 @@ export class ContractService {
               : "approval_draft",
             previousStatus: locked.status,
             blockers,
-            reason: expectedAction === "abandon_application" ? reason : null
+            reason: expectedAction === "abandon_application" || proxyCleanup
+              ? reason
+              : null,
+            proxyCleanup,
+            ...(proxyCleanup ? { ownerUserId: locked.ownerUserId } : {})
           }
         });
 
@@ -1089,7 +1123,9 @@ export class ContractService {
           action: expectedAction,
           abandonedAt: now,
           abandonedByUserId: actorUserId,
-          reason: expectedAction === "abandon_application" ? reason : null,
+          reason: expectedAction === "abandon_application" || proxyCleanup
+            ? reason
+            : null,
           blockers,
           idempotent: false
         };

@@ -18,6 +18,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  MaxLength,
   Matches,
   ValidateIf,
   ValidateNested
@@ -30,6 +31,7 @@ import {
   IsIntegerInRange,
   IsRequiredText
 } from "../../validation/static-field-validation";
+import { API_VALIDATION_ERROR_CODE } from "../../validation/api-validation";
 
 export class SaveContractTaxFactsDto {
   @ValidateIf((_object, value) => value !== null)
@@ -320,6 +322,8 @@ export class SaveContractDraftNegotiationDocumentsDto {
 }
 
 export class SaveContractDraftAggregateDto {
+  static readonly [API_VALIDATION_ERROR_CODE] = "DRAFT_VALIDATION_FAILED";
+
   @IsUUID("4", { message: "保存幂等键必须是 UUID" })
   idempotencyKey!: string;
 
@@ -376,4 +380,34 @@ export class SaveContractDraftAggregateDto {
   @ValidateNested({ message: "磋商文档选择必须是对象" })
   @Type(() => SaveContractDraftNegotiationDocumentsDto)
   negotiationDocuments!: SaveContractDraftNegotiationDocumentsDto;
+}
+
+export class DeleteContractDraftDto {
+  static readonly [API_VALIDATION_ERROR_CODE] = "DRAFT_VALIDATION_FAILED";
+
+  @IsIntegerInRange({
+    min: 1,
+    max: 2_147_483_647,
+    typeMessage: "合同草稿修订必须是整数",
+    rangeMessage: "合同草稿修订必须大于 0"
+  })
+  expectedRevision!: number;
+
+  @IsOptional()
+  @IsRequiredText({
+    requiredMessage: "主管代清理原因不能为空",
+    typeMessage: "主管代清理原因必须是文字",
+    blankMessage: "主管代清理原因不能为空白"
+  })
+  @MaxLength(200, { message: "主管代清理原因不能超过 200 个字" })
+  reason?: string;
+
+  @IsOptional()
+  @IsRequiredText({
+    requiredMessage: "当前密码不能为空",
+    typeMessage: "当前密码必须是文字",
+    blankMessage: "当前密码不能为空白"
+  })
+  @MaxLength(256, { message: "当前密码长度不正确" })
+  currentPassword?: string;
 }

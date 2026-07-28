@@ -116,7 +116,12 @@ describe("SaveContractDraftAggregateDto", () => {
     ["empty changed sections", { changedSections: [] }],
     ["duplicate changed sections", { changedSections: ["draft", "draft"] }]
   ])("rejects %s", async (_label, override) => {
-    await expect(validate({ ...validPayload(), ...override })).rejects.toBeTruthy();
+    await expect(validate({ ...validPayload(), ...override })).rejects.toMatchObject({
+      response: expect.objectContaining({
+        statusCode: 400,
+        code: "DRAFT_VALIDATION_FAILED"
+      })
+    });
   });
 
   it("rejects duplicate party, bill, row and attachment positions", async () => {

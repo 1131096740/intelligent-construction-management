@@ -1,9 +1,10 @@
-import { Module } from "@nestjs/common";
+import { forwardRef, Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
 import { BusinessPartyModule } from "../business-party/business-party.module";
 import { ContractBillModule } from "../contract-bill/contract-bill.module";
 import { FileModule } from "../file/file.module";
+import { ContractModule } from "../contract/contract.module";
 import { ContractNumberingService } from "./contract-numbering.service";
 import { ContractDraftAggregateService } from "./contract-draft-aggregate.service";
 import { ContractDraftController } from "./contract-draft.controller";
@@ -18,6 +19,7 @@ import { ContractWorkbenchService } from "./contract-workbench.service";
     AuthModule,
     BusinessPartyModule,
     ContractBillModule,
+    forwardRef(() => ContractModule),
     FileModule
   ],
   controllers: [ContractWorkbenchController, ContractDraftController],

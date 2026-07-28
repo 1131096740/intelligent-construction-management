@@ -178,7 +178,9 @@ export class ContractDraftAggregateService {
             statusCode: 409,
             code: "DRAFT_REVISION_CONFLICT",
             message: "合同资料已变化，请刷新后重试",
-            latestRevision: version.draftRevision
+            latestRevision: version.draftRevision,
+            conflictReason: "draft_revision_changed",
+            canReacquireLease: this.canReacquireLease(lease, new Date())
           });
         }
         const now = new Date();
@@ -194,11 +196,18 @@ export class ContractDraftAggregateService {
           lease.tokenHash !== this.sha256(rawLeaseToken) ||
           lease.expiresAt.getTime() <= now.getTime()
         ) {
+          const conflictReason = lease.expiresAt.getTime() <= now.getTime()
+            ? "lease_expired"
+            : lease.holderUserId !== actorUserId
+              ? "lease_taken_over"
+              : "lease_token_mismatch";
           throw new ConflictException({
             statusCode: 409,
             code: "EDIT_LEASE_LOST",
             message: "合同草稿编辑权已失效，请保留当前内容并重新取得编辑权",
-            latestRevision: version.draftRevision
+            latestRevision: version.draftRevision,
+            conflictReason,
+            canReacquireLease: conflictReason === "lease_expired"
           });
         }
 
@@ -340,7 +349,10 @@ export class ContractDraftAggregateService {
             throw new ConflictException({
               statusCode: 409,
               code: "DRAFT_REVISION_CONFLICT",
-              message: "合同资料已变化，请刷新后重试"
+              message: "合同资料已变化，请刷新后重试",
+              latestRevision: version.draftRevision,
+              conflictReason: "parent_contract_changed",
+              canReacquireLease: false
             });
           }
           const versionGate = await tx.contractVersion.updateMany({
@@ -358,7 +370,10 @@ export class ContractDraftAggregateService {
             throw new ConflictException({
               statusCode: 409,
               code: "DRAFT_REVISION_CONFLICT",
-              message: "合同资料已变化，请刷新后重试"
+              message: "合同资料已变化，请刷新后重试",
+              latestRevision: version.draftRevision,
+              conflictReason: "draft_revision_changed",
+              canReacquireLease: false
             });
           }
           await tx.contractGeneratedDocument.updateMany({
@@ -457,13 +472,86 @@ export class ContractDraftAggregateService {
         (error instanceof Error &&
           (error as Error & { code?: string }).code === "40001")
       ) {
+        const conflict = await this.loadConflictSnapshot(
+          contractVersionId,
+          input.expectedRevision
+        );
         throw new ConflictException({
           statusCode: 409,
           code: "DRAFT_REVISION_CONFLICT",
-          message: "合同资料已变化，请刷新后重试"
+          message: "合同资料已变化，请刷新后重试",
+          latestRevision: conflict.latestRevision,
+          conflictReason: "serialization_failure",
+          canReacquireLease: conflict.canReacquireLease
+        });
+      }
+      if (error instanceof BadRequestException) {
+        const response = error.getResponse();
+        if (
+          typeof response === "object" &&
+          response !== null &&
+          "code" in response &&
+          response.code === "DRAFT_VALIDATION_FAILED"
+        ) {
+          throw error;
+        }
+        const message = typeof response === "string"
+          ? response
+          : typeof response === "object" &&
+              response !== null &&
+              "message" in response &&
+              typeof response.message === "string"
+            ? response.message
+            : "合同草稿校验未通过，请检查后重试";
+        const errors = typeof response === "object" &&
+          response !== null &&
+          "errors" in response &&
+          Array.isArray(response.errors) &&
+          response.errors.every((item) => typeof item === "string")
+          ? response.errors
+          : undefined;
+        throw new BadRequestException({
+          statusCode: 400,
+          code: "DRAFT_VALIDATION_FAILED",
+          message,
+          ...(errors ? { errors } : {})
         });
       }
       throw error;
+    }
+  }
+
+  private canReacquireLease(
+    lease: { expiresAt: Date } | null,
+    now: Date
+  ) {
+    return !lease || lease.expiresAt.getTime() <= now.getTime();
+  }
+
+  private async loadConflictSnapshot(
+    contractVersionId: string,
+    fallbackRevision: number
+  ) {
+    try {
+      const [version, lease] = await Promise.all([
+        this.prisma.contractVersion.findUnique({
+          where: { id: contractVersionId },
+          select: { draftRevision: true }
+        }),
+        this.prisma.contractDraftEditLease.findUnique({
+          where: { contractVersionId },
+          select: { expiresAt: true }
+        })
+      ]);
+      return {
+        latestRevision: version?.draftRevision ?? fallbackRevision,
+        canReacquireLease: this.canReacquireLease(lease, new Date())
+      };
+    } catch {
+      return {
+        latestRevision: fallbackRevision,
+        canReacquireLease: false
+      };
     }
   }
 

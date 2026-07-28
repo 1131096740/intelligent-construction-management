@@ -14,9 +14,11 @@ const SAFE_PROPERTY_PATH = /^[A-Za-z0-9_.[\]-]+$/u;
 const DYNAMIC_MESSAGE_TOKEN = /\$(?:value|target|constraint\d+)/u;
 
 export const API_RAW_BODY_PREFLIGHT = Symbol("apiRawBodyPreflight");
+export const API_VALIDATION_ERROR_CODE = Symbol("apiValidationErrorCode");
 
 type RawBodyPreflightMetatype = {
   [API_RAW_BODY_PREFLIGHT]?: (value: unknown) => void;
+  [API_VALIDATION_ERROR_CODE]?: string;
 };
 
 function safePropertyPath(path: string): string | null {
@@ -169,30 +171,44 @@ function createBadRequest(validationErrors: ValidationError[]): BadRequestExcept
 
 class ApiValidationPipe extends ValidationPipe {
   override async transform(value: unknown, metadata: ArgumentMetadata): Promise<unknown> {
-    if (
-      metadata.type === "body" &&
-      (value === null || typeof value !== "object" || Array.isArray(value))
-    ) {
-      throw new BadRequestException({
-        message: INVALID_REQUEST_MESSAGE,
-        errors: [BODY_MUST_BE_OBJECT_MESSAGE]
-      });
-    }
-    if (metadata.type === "body" && metadata.metatype) {
-      try {
+    try {
+      if (
+        metadata.type === "body" &&
+        (value === null || typeof value !== "object" || Array.isArray(value))
+      ) {
+        throw new BadRequestException({
+          message: INVALID_REQUEST_MESSAGE,
+          errors: [BODY_MUST_BE_OBJECT_MESSAGE]
+        });
+      }
+      if (metadata.type === "body" && metadata.metatype) {
         const preflight = (metadata.metatype as RawBodyPreflightMetatype)[
           API_RAW_BODY_PREFLIGHT
         ];
         preflight?.(value);
-      } catch (error) {
-        if (error instanceof BadRequestException) throw error;
+      }
+      return await super.transform(value, metadata);
+    } catch (error) {
+      const errorCode = metadata.metatype
+        ? (metadata.metatype as RawBodyPreflightMetatype)[API_VALIDATION_ERROR_CODE]
+        : undefined;
+      if (error instanceof BadRequestException && errorCode) {
+        const response = error.getResponse();
+        const publicResponse = typeof response === "string"
+          ? { message: response }
+          : response;
         throw new BadRequestException({
-          message: INVALID_REQUEST_MESSAGE,
-          errors: [FALLBACK_ERROR_MESSAGE]
+          ...publicResponse,
+          statusCode: 400,
+          code: errorCode
         });
       }
+      if (error instanceof BadRequestException) throw error;
+      throw new BadRequestException({
+        message: INVALID_REQUEST_MESSAGE,
+        errors: [FALLBACK_ERROR_MESSAGE]
+      });
     }
-    return super.transform(value, metadata);
   }
 }
 

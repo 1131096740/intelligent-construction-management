@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { forwardRef, Module } from "@nestjs/common";
 import { ApprovalModule } from "../approval/approval.module";
 import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
@@ -25,7 +25,7 @@ import { ContractVersionActivationService } from "./contract-version-activation.
     AuditModule,
     AuthModule,
     ContractBillModule,
-    ContractWorkbenchModule,
+    forwardRef(() => ContractWorkbenchModule),
     FileModule,
     MeModule
   ],

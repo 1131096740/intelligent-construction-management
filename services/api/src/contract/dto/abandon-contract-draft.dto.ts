@@ -14,4 +14,9 @@ export class AbandonContractDraftDto {
   @IsString({ message: "放弃原因必须是文字" })
   @MaxLength(200, { message: "放弃原因不能超过 200 个字" })
   reason?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "当前密码必须是文字" })
+  @MaxLength(256, { message: "当前密码长度不正确" })
+  currentPassword?: string;
 }

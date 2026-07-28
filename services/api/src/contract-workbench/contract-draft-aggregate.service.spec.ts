@@ -190,9 +190,15 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
 
   function makeSaveService(options: {
     leaseTokenHash?: string;
+    leaseHolderUserId?: string;
+    leaseExpiresAt?: Date;
+    leaseMissing?: boolean;
+    versionRevision?: number;
+    versionStatus?: string;
     fieldChanged?: boolean;
     referencesChanged?: boolean;
     failParties?: boolean;
+    validationError?: boolean;
     failFiles?: boolean;
     currentAttachments?: Array<{
       id: string;
@@ -206,8 +212,8 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     const version = {
       id: "cv-1",
       contractId: "contract-1",
-      status: "draft",
-      draftRevision: 7,
+      status: options.versionStatus ?? "draft",
+      draftRevision: options.versionRevision ?? 7,
       amountCents: 0n,
       amountLimitType: "capped",
       pricingNature: "fixed_total",
@@ -261,12 +267,17 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
         })
       },
       contractDraftEditLease: {
-        findUnique: jest.fn().mockResolvedValue({
-          holderUserId: "owner-1",
-          tokenHash: options.leaseTokenHash ??
-            createHash("sha256").update(leaseToken).digest("hex"),
-          expiresAt: new Date(Date.now() + 120_000)
-        })
+        findUnique: jest.fn().mockResolvedValue(
+          options.leaseMissing
+            ? null
+            : {
+                holderUserId: options.leaseHolderUserId ?? "owner-1",
+                tokenHash: options.leaseTokenHash ??
+                  createHash("sha256").update(leaseToken).digest("hex"),
+                expiresAt: options.leaseExpiresAt ??
+                  new Date(Date.now() + 120_000)
+              }
+        )
       },
       contractBill: {
         findMany: jest.fn().mockResolvedValue([])
@@ -306,6 +317,8 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     const parties = {
       replaceContractPartiesInTransaction: options.failParties
         ? jest.fn().mockRejectedValue(new Error("second aggregate section failed"))
+        : options.validationError
+          ? jest.fn().mockRejectedValue(new BadRequestException("合同主体快照不完整"))
         : jest.fn().mockResolvedValue({ changed: false })
     };
     const files = {
@@ -547,9 +560,101 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
         leaseToken,
         aggregateInput() as never
       )
-    ).rejects.toBeInstanceOf(ConflictException);
+    ).rejects.toMatchObject({
+      response: {
+        statusCode: 409,
+        code: "EDIT_LEASE_LOST",
+        message: expect.any(String),
+        latestRevision: 7,
+        conflictReason: "lease_token_mismatch",
+        canReacquireLease: false
+      }
+    });
     expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
     expect(tx.contractDraftSaveRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("distinguishes a missing edit lease from a lost edit lease", async () => {
+    const { service } = makeSaveService({ leaseMissing: true });
+
+    await expect(
+      service.saveAggregate(
+        "cv-1",
+        "owner-1",
+        leaseToken,
+        aggregateInput() as never
+      )
+    ).rejects.toMatchObject({
+      response: {
+        statusCode: 409,
+        code: "EDIT_LEASE_REQUIRED",
+        message: expect.any(String)
+      }
+    });
+  });
+
+  it("returns the stable non-editable draft error without leaking storage details", async () => {
+    const { service } = makeSaveService({ versionStatus: "in_approval" });
+
+    let response: unknown;
+    try {
+      await service.saveAggregate(
+        "cv-1",
+        "owner-1",
+        leaseToken,
+        aggregateInput() as never
+      );
+    } catch (error) {
+      response = (error as ConflictException).getResponse();
+    }
+
+    expect(response).toMatchObject({
+      statusCode: 409,
+      code: "DRAFT_NOT_EDITABLE",
+      message: expect.any(String)
+    });
+    expect(JSON.stringify(response)).not.toMatch(/objectKey|stack|tokenHash/u);
+  });
+
+  it("returns the latest revision and lease recovery fact for a stale snapshot", async () => {
+    const { service } = makeSaveService({ versionRevision: 8 });
+
+    await expect(
+      service.saveAggregate(
+        "cv-1",
+        "owner-1",
+        leaseToken,
+        aggregateInput() as never
+      )
+    ).rejects.toMatchObject({
+      response: {
+        statusCode: 409,
+        code: "DRAFT_REVISION_CONFLICT",
+        message: expect.any(String),
+        latestRevision: 8,
+        conflictReason: "draft_revision_changed",
+        canReacquireLease: false
+      }
+    });
+  });
+
+  it("maps aggregate business validation to the stable public error code", async () => {
+    const { service } = makeSaveService({ validationError: true });
+
+    await expect(
+      service.saveAggregate(
+        "cv-1",
+        "owner-1",
+        leaseToken,
+        aggregateInput() as never
+      )
+    ).rejects.toMatchObject({
+      response: {
+        statusCode: 400,
+        code: "DRAFT_VALIDATION_FAILED",
+        message: "合同主体快照不完整"
+      }
+    });
   });
 
   it("does not commit the version or receipt when a later aggregate section fails", async () => {
