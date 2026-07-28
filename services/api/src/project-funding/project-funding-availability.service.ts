@@ -1,0 +1,355 @@
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable
+} from "@nestjs/common";
+import { Prisma } from "@prisma/client";
+import {
+  dbMoneyToBigInt,
+  findProjectSpotProcurementRefundAmounts,
+  sumDbMoneyToBigInt
+} from "../money/decimal-money";
+
+export type ProjectFundingExecutionType =
+  | "payment_execution"
+  | "project_expense_execution"
+  | "spot_procurement_payment_execution"
+  | "expense_claim_payment_execution"
+  | "employee_loan_disbursement";
+
+type FundingSourceType = "project_cash" | "financing_quota";
+
+export interface AllocateProjectFundingInput {
+  projectId: string;
+  executionType: ProjectFundingExecutionType;
+  executionId: string;
+  businessType: string;
+  businessId: string;
+  amountCents: bigint;
+  occurredAt: Date;
+  actorUserId: string;
+}
+
+export interface ReverseProjectFundingInput {
+  projectId: string;
+  executionType: ProjectFundingExecutionType;
+  executionId: string;
+  reversalKey: string;
+  reason: string;
+  actorUserId: string;
+}
+
+interface FundingAllocationFact {
+  sourceType: FundingSourceType;
+  sourceId: string | null;
+  amountCents: bigint;
+}
+
+interface FundingAllocationResult {
+  kind: "allocated" | "replayed";
+  projectCashAmountCents: bigint;
+  financingQuotaAmountCents: bigint;
+  allocations: FundingAllocationFact[];
+}
+
+interface FundingAllocationRow {
+  id: string;
+  projectId: string;
+  executionType: string;
+  executionId: string;
+  businessType: string;
+  businessId: string;
+  sourceType: string;
+  sourceKey: string;
+  sourceId: string | null;
+  direction: string;
+  amountCents: bigint;
+  occurredAt: Date;
+  createdByUserId: string;
+  reversalOfAllocationId: string | null;
+  reversalKey: string;
+  reason: string | null;
+}
+
+@Injectable()
+export class ProjectFundingAvailabilityService {
+  async allocateExecution(
+    tx: Prisma.TransactionClient,
+    input: AllocateProjectFundingInput
+  ): Promise<FundingAllocationResult> {
+    this.assertAllocationInput(input);
+    const existing = await tx.projectFundingAllocation.findMany({
+      where: {
+        executionType: input.executionType,
+        executionId: input.executionId
+      },
+      orderBy: [{ direction: "asc" }, { sourceKey: "asc" }]
+    });
+    if (existing.length) {
+      return this.replayResult(existing, input);
+    }
+
+    await this.lockActiveProject(tx, input.projectId);
+    const quotas = await this.lockAvailableQuotas(tx, input.projectId);
+    const [receipts, supplierRefundAmountCents, projectAllocations] =
+      await Promise.all([
+        tx.projectReceipt.findMany({
+          where: {
+            projectId: input.projectId,
+            voidedAt: null,
+            sourceType: {
+              in: ["general_contractor_payment", "other"]
+            }
+          },
+          select: { amountCents: true }
+        }),
+        findProjectSpotProcurementRefundAmounts(tx, input.projectId),
+        tx.projectFundingAllocation.findMany({
+          where: { projectId: input.projectId },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+        })
+      ]);
+
+    const projectCashReceipts =
+      sumDbMoneyToBigInt(
+        receipts.map((receipt) => receipt.amountCents),
+        "项目自有资金到账"
+      ) +
+      sumDbMoneyToBigInt(
+        supplierRefundAmountCents,
+        "供应商退款到账"
+      );
+    const netUsedBySource = this.netUsedBySource(projectAllocations);
+    const projectCashAvailable = this.nonNegative(
+      projectCashReceipts - (netUsedBySource.get("project_cash") ?? 0n)
+    );
+    let remaining = input.amountCents;
+    const allocations: FundingAllocationFact[] = [];
+
+    if (projectCashAvailable > 0n) {
+      const amount =
+        projectCashAvailable >= remaining ? remaining : projectCashAvailable;
+      allocations.push({
+        sourceType: "project_cash",
+        sourceId: null,
+        amountCents: amount
+      });
+      remaining -= amount;
+    }
+
+    let availableQuotaCents = 0n;
+    for (const quota of quotas) {
+      const sourceKey = this.financingSourceKey(quota.id);
+      const available = this.nonNegative(
+        dbMoneyToBigInt(quota.amountCents, "项目垫资额度") -
+        (netUsedBySource.get(sourceKey) ?? 0n)
+      );
+      availableQuotaCents += available;
+      if (remaining === 0n || available === 0n) continue;
+      const amount = available >= remaining ? remaining : available;
+      allocations.push({
+        sourceType: "financing_quota",
+        sourceId: quota.id,
+        amountCents: amount
+      });
+      remaining -= amount;
+    }
+
+    if (remaining > 0n) {
+      throw new BadRequestException(
+        `项目可用资金不足，当前最多可实际支付 ${
+          projectCashAvailable + availableQuotaCents
+        } 分`
+      );
+    }
+
+    await tx.projectFundingAllocation.createMany({
+      data: allocations.map((allocation) => ({
+        projectId: input.projectId,
+        executionType: input.executionType,
+        executionId: input.executionId,
+        businessType: input.businessType,
+        businessId: input.businessId,
+        sourceType: allocation.sourceType,
+        sourceKey: allocation.sourceId
+          ? this.financingSourceKey(allocation.sourceId)
+          : "project_cash",
+        sourceId: allocation.sourceId,
+        direction: "debit",
+        amountCents: allocation.amountCents,
+        occurredAt: input.occurredAt,
+        createdByUserId: input.actorUserId,
+        reversalKey: "original"
+      }))
+    });
+
+    return this.result("allocated", allocations);
+  }
+
+  async reverseExecution(
+    tx: Prisma.TransactionClient,
+    input: ReverseProjectFundingInput
+  ): Promise<FundingAllocationResult> {
+    const reversalKey = input.reversalKey.trim();
+    const reason = input.reason.trim();
+    if (!reversalKey || reversalKey === "original" || !reason) {
+      throw new BadRequestException("资金更正编号和原因不能为空");
+    }
+    const allocations = await tx.projectFundingAllocation.findMany({
+      where: {
+        executionType: input.executionType,
+        executionId: input.executionId
+      },
+      orderBy: [{ direction: "asc" }, { sourceKey: "asc" }]
+    });
+    const debits = allocations.filter(
+      (row) => row.direction === "debit" && row.reversalKey === "original"
+    );
+    if (!debits.length || debits.some((row) => row.projectId !== input.projectId)) {
+      throw new BadRequestException("未找到可更正的原始项目资金分配");
+    }
+    const existingCredits = allocations.filter(
+      (row) => row.direction === "credit" && row.reversalKey === reversalKey
+    );
+    if (existingCredits.length) {
+      return this.result("replayed", this.facts(existingCredits));
+    }
+
+    await this.lockActiveProject(tx, input.projectId);
+    await tx.projectFundingAllocation.createMany({
+      data: debits.map((debit) => ({
+        projectId: debit.projectId,
+        executionType: debit.executionType,
+        executionId: debit.executionId,
+        businessType: debit.businessType,
+        businessId: debit.businessId,
+        sourceType: debit.sourceType,
+        sourceKey: debit.sourceKey,
+        sourceId: debit.sourceId,
+        direction: "credit",
+        amountCents: debit.amountCents,
+        occurredAt: new Date(),
+        createdByUserId: input.actorUserId,
+        reversalOfAllocationId: debit.id,
+        reversalKey,
+        reason
+      }))
+    });
+    return this.result("allocated", this.facts(debits));
+  }
+
+  private async lockActiveProject(
+    tx: Prisma.TransactionClient,
+    projectId: string
+  ) {
+    const projects = await tx.$queryRaw<
+      Array<{ id: string; isActive: boolean }>
+    >(Prisma.sql`
+      SELECT "id", "isActive"
+      FROM "Project"
+      WHERE "id" = ${projectId}
+      FOR UPDATE
+    `);
+    if (!projects[0]?.isActive) {
+      throw new BadRequestException("项目不存在或已停用，不能登记实际付款");
+    }
+  }
+
+  private lockAvailableQuotas(
+    tx: Prisma.TransactionClient,
+    projectId: string
+  ) {
+    return tx.$queryRaw<Array<{ id: string; amountCents: bigint }>>(Prisma.sql`
+      SELECT "id", "amountCents"
+      FROM "ProjectFinancingQuota"
+      WHERE "projectId" = ${projectId}
+        AND "status" = 'approved'
+        AND ("validUntil" IS NULL OR "validUntil" >= CURRENT_TIMESTAMP)
+      ORDER BY "validUntil" ASC NULLS LAST, "id" ASC
+      FOR UPDATE
+    `);
+  }
+
+  private replayResult(
+    rows: FundingAllocationRow[],
+    input: AllocateProjectFundingInput
+  ): FundingAllocationResult {
+    const debits = rows.filter(
+      (row) => row.direction === "debit" && row.reversalKey === "original"
+    );
+    const total = debits.reduce(
+      (sum, row) => sum + dbMoneyToBigInt(row.amountCents, "项目资金分配金额"),
+      0n
+    );
+    if (
+      !debits.length ||
+      total !== input.amountCents ||
+      debits.some((row) =>
+        row.projectId !== input.projectId ||
+        row.businessType !== input.businessType ||
+        row.businessId !== input.businessId
+      )
+    ) {
+      throw new ConflictException("同一实付编号已绑定不同的项目资金事实");
+    }
+    return this.result("replayed", this.facts(debits));
+  }
+
+  private netUsedBySource(rows: FundingAllocationRow[]) {
+    return rows.reduce((totals, row) => {
+      const signedAmount =
+        row.direction === "credit" ? -row.amountCents : row.amountCents;
+      totals.set(
+        row.sourceKey,
+        (totals.get(row.sourceKey) ?? 0n) + signedAmount
+      );
+      return totals;
+    }, new Map<string, bigint>());
+  }
+
+  private facts(rows: FundingAllocationRow[]): FundingAllocationFact[] {
+    return rows.map((row) => ({
+      sourceType: row.sourceType as FundingSourceType,
+      sourceId: row.sourceId,
+      amountCents: row.amountCents
+    }));
+  }
+
+  private result(
+    kind: "allocated" | "replayed",
+    allocations: FundingAllocationFact[]
+  ): FundingAllocationResult {
+    return {
+      kind,
+      projectCashAmountCents: allocations
+        .filter((row) => row.sourceType === "project_cash")
+        .reduce((sum, row) => sum + row.amountCents, 0n),
+      financingQuotaAmountCents: allocations
+        .filter((row) => row.sourceType === "financing_quota")
+        .reduce((sum, row) => sum + row.amountCents, 0n),
+      allocations
+    };
+  }
+
+  private assertAllocationInput(input: AllocateProjectFundingInput) {
+    if (
+      !input.projectId.trim() ||
+      !input.executionId.trim() ||
+      !input.businessType.trim() ||
+      !input.businessId.trim() ||
+      !input.actorUserId.trim() ||
+      input.amountCents <= 0n ||
+      Number.isNaN(input.occurredAt.getTime())
+    ) {
+      throw new BadRequestException("项目资金分配参数不完整");
+    }
+  }
+
+  private financingSourceKey(quotaId: string) {
+    return `financing_quota:${quotaId}`;
+  }
+
+  private nonNegative(value: bigint) {
+    return value > 0n ? value : 0n;
+  }
+}

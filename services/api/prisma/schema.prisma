@@ -2161,6 +2161,32 @@ model ProjectFinancingQuotaUsage {
   @@index([projectId])
 }
 
+model ProjectFundingAllocation {
+  id                     String   @id @default(uuid())
+  projectId              String
+  executionType          String
+  executionId            String
+  businessType           String
+  businessId             String
+  sourceType             String
+  sourceKey              String
+  sourceId               String?
+  direction              String
+  amountCents            BigInt
+  occurredAt             DateTime
+  createdByUserId        String
+  reversalOfAllocationId String?
+  reversalKey            String   @default("original")
+  reason                 String?
+  createdAt              DateTime @default(now())
+
+  @@unique([executionType, executionId, sourceKey, direction, reversalKey], map: "ProjectFundingAllocation_exec_source_dir_reversal_key")
+  @@index([projectId, createdAt])
+  @@index([sourceId, createdAt])
+  @@index([businessType, businessId])
+  @@index([reversalOfAllocationId])
+}
+
 model ApprovalFlow {
   id        String   @id @default(uuid())
   type      String
