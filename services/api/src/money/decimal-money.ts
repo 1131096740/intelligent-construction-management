@@ -21,7 +21,7 @@ function billRowDecimal(value: string): Prisma.Decimal {
   try {
     const decimal = new Prisma.Decimal(value);
     if (!decimal.isFinite() || decimal.isNeg()) {
-      throw new Error("invalid");
+      throw new Error("无效");
     }
     return decimal;
   } catch {
@@ -29,14 +29,18 @@ function billRowDecimal(value: string): Prisma.Decimal {
   }
 }
 
-function sixDecimalUnitPrice(
+export function deriveSixDecimalUnitPriceFromAmountCents(
   amountCents: bigint,
-  quantity: Prisma.Decimal
+  quantity: Prisma.Decimal | string
 ): string | null {
-  if (quantity.isZero()) return null;
+  const normalizedQuantity =
+    quantity instanceof Prisma.Decimal
+      ? quantity
+      : new Prisma.Decimal(quantity);
+  if (normalizedQuantity.isZero()) return null;
   return new Prisma.Decimal(amountCents.toString())
     .div(HUNDRED)
-    .div(quantity)
+    .div(normalizedQuantity)
     .toDecimalPlaces(6, Prisma.Decimal.ROUND_HALF_UP)
     .toFixed(6);
 }
@@ -80,7 +84,10 @@ export function calculateBillRow(input: {
       taxInclusiveAmountCents: inclusive,
       taxExclusiveAmountCents: exclusive,
       taxAmountCents: tax,
-      taxExclusiveUnitPrice: sixDecimalUnitPrice(exclusive, quantity)
+      taxExclusiveUnitPrice: deriveSixDecimalUnitPriceFromAmountCents(
+        exclusive,
+        quantity
+      )
     };
   }
 
@@ -97,7 +104,10 @@ export function calculateBillRow(input: {
     taxInclusiveAmountCents: inclusive,
     taxExclusiveAmountCents: exclusive,
     taxAmountCents: tax,
-    taxExclusiveUnitPrice: sixDecimalUnitPrice(exclusive, quantity)
+    taxExclusiveUnitPrice: deriveSixDecimalUnitPriceFromAmountCents(
+      exclusive,
+      quantity
+    )
   };
 }
 

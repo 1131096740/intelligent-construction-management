@@ -25,6 +25,7 @@ import {
 import { AuditService } from "../audit/audit.service";
 import { assertContractChangeContentAllowed } from "../contract/contract-change-policy";
 import { ContractBillLineageService } from "../contract-bill/contract-bill-lineage.service";
+import { assertContractBillDerivedUnitPrices } from "../contract-bill/contract-bill-totals";
 import { PrismaService } from "../database/prisma.service";
 import { ContractReadinessService } from "./contract-readiness.service";
 import {
@@ -100,6 +101,7 @@ interface BillSnapshot {
     taxInclusiveAmountCents: string | null;
     taxExclusiveAmountCents: string | null;
     taxAmountCents: string | null;
+    taxExclusiveUnitPrice?: string | null;
     isProvisional: boolean;
     settlementBasis: string | null;
     customData: unknown;
@@ -266,6 +268,7 @@ export class ContractWorkbenchService {
           orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }]
         })
       : [];
+    assertContractBillDerivedUnitPrices(rows);
     const baseVersion = version.baseVersionId
       ? await this.prisma.contractVersion.findUnique({
           where: { id: version.baseVersionId },
@@ -1319,7 +1322,9 @@ export class ContractWorkbenchService {
             taxRatePercent: row.taxRate?.toString() ?? null,
             taxInclusiveAmountCents: row.taxInclusiveAmountCents?.toString() ?? null,
             taxExclusiveAmountCents: row.taxExclusiveAmountCents?.toString() ?? null,
-            taxAmountCents: row.taxAmountCents?.toString() ?? null
+            taxAmountCents: row.taxAmountCents?.toString() ?? null,
+            taxExclusiveUnitPrice:
+              row.taxExclusiveUnitPrice?.toFixed(6) ?? null
           }))
       }));
       const retainedKeys = new Set(
@@ -2276,6 +2281,7 @@ export class ContractWorkbenchService {
           orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }]
         })
       : [];
+    assertContractBillDerivedUnitPrices(rows);
     return bills.map((bill) => ({
       billKey: bill.billKey,
       name: bill.name,
@@ -2308,6 +2314,8 @@ export class ContractWorkbenchService {
           taxInclusiveAmountCents: row.taxInclusiveAmountCents?.toString() ?? null,
           taxExclusiveAmountCents: row.taxExclusiveAmountCents?.toString() ?? null,
           taxAmountCents: row.taxAmountCents?.toString() ?? null,
+          taxExclusiveUnitPrice:
+            row.taxExclusiveUnitPrice?.toFixed(6) ?? null,
           isProvisional: row.isProvisional,
           settlementBasis: row.settlementBasis,
           customData: row.customData

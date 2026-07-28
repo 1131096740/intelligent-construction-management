@@ -18,6 +18,7 @@ import {
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { contractDocumentCandidateMatchesLedger } from "../contract-document/contract-document-ledger-candidate";
+import { assertContractBillDerivedUnitPrices } from "../contract-bill/contract-bill-totals";
 
 export interface ContractReadinessResult {
   blocking: Array<{ key: string; section: string; message: string }>;
@@ -298,6 +299,7 @@ export class ContractReadinessService {
           orderBy: [{ contractBillId: "asc" }]
         })
       : [];
+    assertContractBillDerivedUnitPrices(rows);
     await this.appendCrossVersionMappingReadiness(tx, version, rows, blocking);
     if (
       version.invoiceType == null ||
@@ -846,6 +848,7 @@ export class ContractReadinessService {
           orderBy: [{ contractBillId: "asc" }]
         })
       : [];
+    assertContractBillDerivedUnitPrices(rows);
     const parties = await tx.contractPartySnapshot.findMany({
       where: { contractVersionId: version.id }
     });

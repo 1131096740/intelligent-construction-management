@@ -17,7 +17,10 @@ import {
   ContractBillRowFactsValidationException,
   resolveContractBillRowFacts
 } from "./contract-bill-row-rules";
-import { recalculateBillAndContractAmount } from "./contract-bill-totals";
+import {
+  assertContractBillDerivedUnitPrices,
+  recalculateBillAndContractAmount
+} from "./contract-bill-totals";
 import { loadOwnedEditableBill } from "./contract-bill-guards";
 import { ContractBillLineageService } from "./contract-bill-lineage.service";
 import type {
@@ -66,6 +69,12 @@ const REPLACE_ROW_INPUT_FIELDS = [
   "settlementBasis",
   "customData"
 ] as const;
+const REPLACE_ROW_ENVELOPE_FIELDS = new Set<string>([
+  "clientRowKey",
+  "rowKey",
+  "sortOrder",
+  ...REPLACE_ROW_INPUT_FIELDS
+]);
 
 function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
@@ -363,6 +372,7 @@ export class ContractBillService {
           taxInclusiveAmountCents: input.facts.taxInclusiveAmountCents,
           taxExclusiveAmountCents: input.facts.taxExclusiveAmountCents,
           taxAmountCents: input.facts.taxAmountCents,
+          taxExclusiveUnitPrice: input.facts.taxExclusiveUnitPrice,
           isProvisional: input.isProvisional ?? false,
           settlementBasis: input.settlementBasis?.trim() || null,
           customData: this.toJson(input.customData)
@@ -419,6 +429,7 @@ export class ContractBillService {
           taxInclusiveAmountCents: input.facts.taxInclusiveAmountCents,
           taxExclusiveAmountCents: input.facts.taxExclusiveAmountCents,
           taxAmountCents: input.facts.taxAmountCents,
+          taxExclusiveUnitPrice: input.facts.taxExclusiveUnitPrice,
           isProvisional: input.isProvisional ?? false,
           settlementBasis: input.settlementBasis?.trim() || null,
           customData: this.toJson(input.customData)
@@ -725,6 +736,15 @@ export class ContractBillService {
         if (typeof row.clientRowKey === "string" && row.clientRowKey.trim()) {
           clientRowKey = row.clientRowKey.trim();
         }
+        const unexpectedField = Object.keys(row).find(
+          (field) => !REPLACE_ROW_ENVELOPE_FIELDS.has(field)
+        );
+        if (unexpectedField) {
+          throw new ContractBillRowInputValidationException(
+            unexpectedField,
+            "清单行包含不允许提交的字段"
+          );
+        }
         const normalized: Record<string, unknown> = {
           clientRowKey: row.clientRowKey,
           sortOrder: row.sortOrder
@@ -863,6 +883,7 @@ export class ContractBillService {
       taxInclusiveAmountCents: row.facts.taxInclusiveAmountCents,
       taxExclusiveAmountCents: row.facts.taxExclusiveAmountCents,
       taxAmountCents: row.facts.taxAmountCents,
+      taxExclusiveUnitPrice: row.facts.taxExclusiveUnitPrice,
       isProvisional: row.isProvisional ?? false,
       settlementBasis: row.settlementBasis?.trim() || null,
       customData: this.toJson(row.customData)
@@ -896,14 +917,20 @@ export class ContractBillService {
       taxInclusiveAmountCents: bigint | null;
       taxExclusiveAmountCents: bigint | null;
       taxAmountCents: bigint | null;
+      taxExclusiveUnitPrice?: Prisma.Decimal | null;
       isProvisional: boolean;
       settlementBasis: string | null;
       customData: Prisma.JsonValue;
     },
     data: ReturnType<ContractBillService["batchRowData"]>
   ) {
-    const decimalEquals = (left: Prisma.Decimal | null, right: string | null) =>
-      left === null ? right === null : right !== null && left.eq(new Prisma.Decimal(right));
+    const decimalEquals = (
+      left: Prisma.Decimal | null | undefined,
+      right: string | null
+    ) =>
+      left == null
+        ? right === null
+        : right !== null && left.eq(new Prisma.Decimal(right));
     return (
       existing.sortOrder !== data.sortOrder ||
       existing.itemCode !== data.itemCode ||
@@ -919,6 +946,10 @@ export class ContractBillService {
       existing.taxInclusiveAmountCents !== data.taxInclusiveAmountCents ||
       existing.taxExclusiveAmountCents !== data.taxExclusiveAmountCents ||
       existing.taxAmountCents !== data.taxAmountCents ||
+      !decimalEquals(
+        existing.taxExclusiveUnitPrice,
+        data.taxExclusiveUnitPrice
+      ) ||
       existing.isProvisional !== data.isProvisional ||
       existing.settlementBasis !== data.settlementBasis ||
       stableJson(existing.customData) !== stableJson(data.customData)
@@ -947,6 +978,7 @@ export class ContractBillService {
       taxInclusiveAmountCents: bigint | null;
       taxExclusiveAmountCents: bigint | null;
       taxAmountCents: bigint | null;
+      taxExclusiveUnitPrice?: Prisma.Decimal | null;
     }
   ): SaveBillRowDto & {
     facts: ReturnType<typeof resolveContractBillRowFacts>;
@@ -1148,6 +1180,13 @@ export class ContractBillService {
   }
 
   private toReadModel<T>(value: T): T {
+    if (this.isPlainObject(value) && Array.isArray(value.rows)) {
+      assertContractBillDerivedUnitPrices(
+        value.rows as Parameters<
+          typeof assertContractBillDerivedUnitPrices
+        >[0]
+      );
+    }
     return this.convertReadValue(value) as T;
   }
 

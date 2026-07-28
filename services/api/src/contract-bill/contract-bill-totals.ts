@@ -1,4 +1,43 @@
 import { Prisma } from "@prisma/client";
+import { Logger } from "@nestjs/common";
+import { deriveSixDecimalUnitPriceFromAmountCents } from "../money/decimal-money";
+
+const derivedFactsLogger = new Logger("ContractBillDerivedFacts");
+
+export function assertContractBillDerivedUnitPrices(
+  rows: ReadonlyArray<{
+    id?: string;
+    rowKey?: string;
+    quantity: Prisma.Decimal | null;
+    taxExclusiveAmountCents: bigint | null;
+    taxExclusiveUnitPrice?: Prisma.Decimal | string | null;
+  }>
+): void {
+  for (const row of rows) {
+    if (row.taxExclusiveUnitPrice == null) continue;
+    const expected =
+      row.quantity === null || row.taxExclusiveAmountCents === null
+        ? null
+        : deriveSixDecimalUnitPriceFromAmountCents(
+            row.taxExclusiveAmountCents,
+            row.quantity
+          );
+    if (
+      expected !== null &&
+      new Prisma.Decimal(row.taxExclusiveUnitPrice).eq(
+        new Prisma.Decimal(expected)
+      )
+    ) {
+      continue;
+    }
+    derivedFactsLogger.error({
+      event: "contract_bill_derived_unit_price_mismatch",
+      rowId: row.id ?? null,
+      rowKey: row.rowKey ?? null
+    });
+    throw new Error("合同清单派生不含税单价与权威金额不一致");
+  }
+}
 
 // 从清单行汇总到清单合计，再在 amountSource === "bill_sum" 时汇总到合同版本金额。
 // 由行 CRUD 与 Excel 导入共享，避免重复的金额（分）求和逻辑。
@@ -17,6 +56,7 @@ export async function recalculateBillAndContractAmount(
     where: { contractBillId: bill.id },
     orderBy: { sortOrder: "asc" }
   });
+  assertContractBillDerivedUnitPrices(rows);
   const totals = rows.reduce(
     (sum, row) =>
       row.taxInclusiveAmountCents === null ||

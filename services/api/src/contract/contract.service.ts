@@ -538,6 +538,7 @@ export class ContractService {
             taxInclusiveAmountCents: row.taxInclusiveAmountCents,
             taxExclusiveAmountCents: row.taxExclusiveAmountCents,
             taxAmountCents: row.taxAmountCents,
+            taxExclusiveUnitPrice: row.taxExclusiveUnitPrice,
             isProvisional: row.isProvisional,
             settlementBasis: row.settlementBasis,
             customData: row.customData as Prisma.InputJsonValue
@@ -822,6 +823,7 @@ export class ContractService {
               taxInclusiveAmountCents: row.taxInclusiveAmountCents,
               taxExclusiveAmountCents: row.taxExclusiveAmountCents,
               taxAmountCents: row.taxAmountCents,
+              taxExclusiveUnitPrice: row.taxExclusiveUnitPrice,
               isProvisional: row.isProvisional,
               settlementBasis: row.settlementBasis,
               customData: row.customData as Prisma.InputJsonValue

@@ -32,6 +32,7 @@ export interface ExistingContractBillRowFacts {
   taxInclusiveAmountCents: bigint | null;
   taxExclusiveAmountCents: bigint | null;
   taxAmountCents: bigint | null;
+  taxExclusiveUnitPrice?: Prisma.Decimal | null;
 }
 
 export interface ResolveContractBillRowFactsInput {
@@ -92,7 +93,8 @@ export function resolveContractBillRowFacts(
       taxInclusiveAmountCents: existing.taxInclusiveAmountCents,
       taxExclusiveAmountCents: existing.taxExclusiveAmountCents,
       taxAmountCents: existing.taxAmountCents,
-      taxExclusiveUnitPrice: null
+      taxExclusiveUnitPrice:
+        existing.taxExclusiveUnitPrice?.toFixed(6) ?? null
     };
   }
 

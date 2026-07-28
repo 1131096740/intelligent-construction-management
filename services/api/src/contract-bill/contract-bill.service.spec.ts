@@ -189,6 +189,7 @@ describe("ContractBillService", () => {
       taxInclusiveAmountCents: 33340n,
       taxExclusiveAmountCents: 29504n,
       taxAmountCents: 3836n,
+      taxExclusiveUnitPrice: new Prisma.Decimal("88.600601"),
       isProvisional: false,
       settlementBasis: null,
       customData: {}
@@ -219,6 +220,7 @@ describe("ContractBillService", () => {
         taxInclusiveAmountCents: 33340n,
         taxExclusiveAmountCents: 29504n,
         taxAmountCents: 3836n,
+        taxExclusiveUnitPrice: "88.600601",
         taxRate: "13",
         taxRateSource: "version_default",
         pricingFactStatus: "confirmed",
@@ -253,9 +255,61 @@ describe("ContractBillService", () => {
       data: expect.objectContaining({
         taxInclusiveAmountCents: 75_000_000n,
         taxExclusiveAmountCents: 68_807_339n,
-        taxAmountCents: 6_192_661n
+        taxAmountCents: 6_192_661n,
+        taxExclusiveUnitPrice: "344.036695"
       })
     });
+  });
+
+  it("rejects a client-supplied derived net unit price", async () => {
+    const { service } = fixture();
+
+    await expect(
+      service.replaceRows("bill-1", "owner-1", {
+        expectedBillRevision: 2,
+        idempotencyKey: "spoof-derived-net-unit-price",
+        rows: [
+          batchRow("local-1", undefined, {
+            taxExclusiveUnitPrice: "0.000001"
+          })
+        ]
+      })
+    ).rejects.toMatchObject({
+      response: {
+        rowErrors: [
+          expect.objectContaining({
+            field: "taxExclusiveUnitPrice",
+            message: "清单行包含不允许提交的字段"
+          })
+        ]
+      }
+    });
+  });
+
+  it("fails closed when a stored derived unit price disagrees with authoritative row amounts", async () => {
+    const mismatched = {
+      ...existingRow(0),
+      taxExclusiveUnitPrice: new Prisma.Decimal("999.000000")
+    };
+    const { service, tx } = fixture({ rows: [mismatched] });
+    const input = {
+      expectedBillRevision: 2,
+      idempotencyKey: "read-derived-mismatch",
+      rows: [batchRow("local-1", "key-0")]
+    };
+    const requestDigest = createHash("sha256")
+      .update(
+        canonicalJson({
+          expectedBillRevision: 2,
+          rows: [{ ...input.rows[0], expectedBillRevision: 2, sortOrder: 0 }]
+        })
+      )
+      .digest("hex");
+    tx.auditLog.findFirst.mockResolvedValueOnce({ metadata: { requestDigest } });
+
+    await expect(
+      service.replaceRows("bill-1", "owner-1", input)
+    ).rejects.toThrow("合同清单派生不含税单价与权威金额不一致");
   });
 
   it("updates a row only when bill revision matches", async () => {
@@ -950,7 +1004,8 @@ describe("ContractBillService", () => {
       taxRate: new Prisma.Decimal("13.00"),
       taxInclusiveAmountCents: 33033n,
       taxExclusiveAmountCents: 29233n,
-      taxAmountCents: 3800n
+      taxAmountCents: 3800n,
+      taxExclusiveUnitPrice: new Prisma.Decimal("88.584848")
     };
     const { service, tx } = fixture({ rows: [existing] });
 

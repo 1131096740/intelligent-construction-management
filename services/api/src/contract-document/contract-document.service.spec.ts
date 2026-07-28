@@ -492,7 +492,7 @@ describe("ContractDocumentService", () => {
       quantity: "2.5",
       unitPrice: "3500.00",
       taxInclusiveUnitPrice: "3500.00",
-      taxExclusiveUnitPrice: "3097.35",
+      taxExclusiveUnitPrice: "3097.344000",
       taxRatePercent: "13%",
       taxInclusiveAmount: "8,750.00",
       taxExclusiveAmount: "7,743.36",

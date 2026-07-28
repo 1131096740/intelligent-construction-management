@@ -13,9 +13,10 @@ import {
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
+import { assertContractBillDerivedUnitPrices } from "../contract-bill/contract-bill-totals";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
-import { deriveTaxExclusiveUnitPrice } from "../money/decimal-money";
+import { deriveSixDecimalUnitPriceFromAmountCents } from "../money/decimal-money";
 import {
   formatChineseUppercaseMoney,
   formatMoneyCents
@@ -193,6 +194,7 @@ export class ContractDocumentService {
               orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }]
             })
           : [];
+        assertContractBillDerivedUnitPrices(rows);
         const inputSnapshot: ContractDocumentInputSnapshot = {
           templateFileId: layout.docxFileId,
           outputBaseName: `${contract.code ?? contract.temporaryCode ?? contract.name}-${PURPOSE_FILE_LABELS[input.purpose]}-修订${version.draftRevision}`,
@@ -785,6 +787,7 @@ export class ContractDocumentService {
         taxInclusiveAmountCents: bigint | null;
         taxExclusiveAmountCents: bigint | null;
         taxAmountCents: bigint | null;
+        taxExclusiveUnitPrice?: Prisma.Decimal | null;
         isProvisional: boolean;
         settlementBasis: string | null;
         customData: Prisma.JsonValue;
@@ -890,11 +893,13 @@ export class ContractDocumentService {
       values[`bill.${bill.billKey}`] = bill.rows.map((row) => {
         const taxInclusiveUnitPrice = row.unitPrice?.toFixed(2) ?? "—";
         const taxExclusiveUnitPrice =
-          row.unitPrice && row.taxRate
-            ? deriveTaxExclusiveUnitPrice({
-                taxInclusiveUnitPrice: row.unitPrice.toString(),
-                taxRatePercent: row.taxRate.toString()
-              })
+          row.taxExclusiveUnitPrice != null
+            ? row.taxExclusiveUnitPrice.toFixed(6)
+            : row.quantity && row.taxExclusiveAmountCents !== null
+              ? deriveSixDecimalUnitPriceFromAmountCents(
+                  row.taxExclusiveAmountCents,
+                  row.quantity.toString()
+                ) ?? "—"
             : "—";
         return {
           ...(this.isObject(row.customData) ? row.customData : {}),

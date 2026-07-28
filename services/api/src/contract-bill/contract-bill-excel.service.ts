@@ -17,7 +17,10 @@ import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { moneyCentsToApi } from "../money/decimal-money";
 import { resolveContractBillRowFacts } from "./contract-bill-row-rules";
-import { recalculateBillAndContractAmount } from "./contract-bill-totals";
+import {
+  assertContractBillDerivedUnitPrices,
+  recalculateBillAndContractAmount
+} from "./contract-bill-totals";
 import { loadOwnedEditableBill } from "./contract-bill-guards";
 import {
   describeContractBillImportDiff,
@@ -132,6 +135,7 @@ interface ResolvedRow {
   taxInclusiveAmountCents: bigint | null;
   taxExclusiveAmountCents: bigint | null;
   taxAmountCents: bigint | null;
+  taxExclusiveUnitPrice: string | null;
 }
 
 @Injectable()
@@ -224,6 +228,7 @@ export class ContractBillExcelService {
         where: { contractBillId: bill.id },
         orderBy: { sortOrder: "asc" }
       });
+      assertContractBillDerivedUnitPrices(existingRows);
       const importId = randomUUID();
       const preview = await this.buildPreview(bill, mode, buffer, existingRows, importId);
 
@@ -318,6 +323,7 @@ export class ContractBillExcelService {
         where: { contractBillId: bill.id },
         orderBy: { sortOrder: "asc" }
       });
+      assertContractBillDerivedUnitPrices(existingRows);
       // 重新解析以拿到可落库的精确金额；同时再次校验，拒绝中途被改动的文件。
       const plan = await this.buildResolvedPlan(
         bill,
@@ -401,6 +407,7 @@ export class ContractBillExcelService {
         where: { contractBillId: bill.id },
         orderBy: { sortOrder: "asc" }
       });
+      assertContractBillDerivedUnitPrices(rows);
       return this.toReadModel({ importId: record.id, bill: updatedBill, rows });
     });
   }
@@ -722,7 +729,8 @@ export class ContractBillExcelService {
       customData: this.toJson(customData),
       taxInclusiveAmountCents: facts.taxInclusiveAmountCents,
       taxExclusiveAmountCents: facts.taxExclusiveAmountCents,
-      taxAmountCents: facts.taxAmountCents
+      taxAmountCents: facts.taxAmountCents,
+      taxExclusiveUnitPrice: facts.taxExclusiveUnitPrice
     };
   }
 
@@ -741,6 +749,7 @@ export class ContractBillExcelService {
       taxInclusiveAmountCents: row.taxInclusiveAmountCents,
       taxExclusiveAmountCents: row.taxExclusiveAmountCents,
       taxAmountCents: row.taxAmountCents,
+      taxExclusiveUnitPrice: row.taxExclusiveUnitPrice,
       isProvisional: row.isProvisional,
       settlementBasis: row.settlementBasis,
       customData: row.customData
@@ -1231,6 +1240,7 @@ interface ExistingRow {
   taxInclusiveAmountCents: bigint | null;
   taxExclusiveAmountCents: bigint | null;
   taxAmountCents: bigint | null;
+  taxExclusiveUnitPrice: Prisma.Decimal | null;
 }
 
 interface ResolvedPlan {

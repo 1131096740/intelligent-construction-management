@@ -133,6 +133,7 @@ type HistoricalPricingItem = {
   taxInclusiveAmountCents: bigint | null;
   taxExclusiveAmountCents: bigint | null;
   taxAmountCents: bigint | null;
+  taxExclusiveUnitPrice: string | null;
 };
 type TakeoverReadClient = Pick<
   Prisma.TransactionClient,
@@ -3278,6 +3279,7 @@ export class ContractTakeoverService {
           taxInclusiveAmountCents: row.taxInclusiveAmountCents,
           taxExclusiveAmountCents: row.taxExclusiveAmountCents,
           taxAmountCents: row.taxAmountCents,
+          taxExclusiveUnitPrice: row.taxExclusiveUnitPrice,
           isProvisional: row.isProvisional,
           settlementBasis: row.settlementBasis,
           customData: {
@@ -3608,7 +3610,8 @@ function normalizeHistoricalPricingItems(
         : {
             taxInclusiveAmountCents: null,
             taxExclusiveAmountCents: null,
-            taxAmountCents: null
+            taxAmountCents: null,
+            taxExclusiveUnitPrice: null
           };
     normalized.push({
       billKey,
