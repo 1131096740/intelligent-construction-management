@@ -304,6 +304,13 @@ function contractPaymentApplicationPreview(
       contractOccupiedCents: "0",
       contractRemainingCents: "0"
     },
+    directPaymentSummary: {
+      amountNature: "fixed_limit",
+      unlimitedTotal: false,
+      cumulativeRequestedCents: "0",
+      cumulativeApprovedCents: "0",
+      cumulativePaidCents: "0"
+    },
     asOf: "2026-07-03T00:00:00.000Z",
     includedSettlements: [],
     capacity: {

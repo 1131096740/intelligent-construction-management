@@ -5,6 +5,8 @@ export const CONTRACT_SETTLEMENT_MODES = [
 
 export type ContractSettlementMode = (typeof CONTRACT_SETTLEMENT_MODES)[number];
 
+export type DirectPaymentAmountNature = "fixed_limit" | "unlimited_total";
+
 export function isContractSettlementMode(value: unknown): value is ContractSettlementMode {
   return CONTRACT_SETTLEMENT_MODES.includes(value as ContractSettlementMode);
 }
@@ -30,4 +32,13 @@ export function suggestedContractSettlementMode(input: {
 
 export function contractSettlementModeLabel(mode: ContractSettlementMode) {
   return mode === "direct_payment" ? "按合同直接付款" : "需要结算";
+}
+
+export function directPaymentAmountNature(input: {
+  amountLimitType: string | null | undefined;
+  amountCents?: bigint | string | number | null;
+}): DirectPaymentAmountNature {
+  return input.amountLimitType === "unlimited"
+    ? "unlimited_total"
+    : "fixed_limit";
 }

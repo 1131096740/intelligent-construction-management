@@ -47,6 +47,7 @@ describe("ContractService change draft version lineage", () => {
     effectiveAt: new Date("2026-07-01T00:00:00.000Z"),
     changeType: "original",
     amountCents: 1_000_000n,
+    estimatedAmountCents: null,
     amountLimitType: "capped",
     baseVersionId: null,
     originalBaseAmountCents: null,
@@ -197,6 +198,42 @@ describe("ContractService change draft version lineage", () => {
     expect(JSON.stringify(tx.contractPartySnapshot.createMany.mock.calls[0][0])).not.toContain(
       "fileId"
     );
+  });
+
+  it("inherits an unlimited contract estimate without changing its amount nature", async () => {
+    const tx = makeChangeTx({
+      latest: {
+        amountCents: 0n,
+        estimatedAmountCents: 300_000n,
+        amountLimitType: "unlimited",
+        pricingNature: "framework"
+      }
+    });
+    const prisma = {
+      $transaction: jest.fn(
+        async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)
+      )
+    };
+    const service = new ContractService(
+      prisma as never,
+      { record: jest.fn() } as never
+    );
+
+    await service.createChangeDraft("v1", {
+      changeType: "change",
+      changeReason: "更新预计发生量",
+      changeDirection: "unchanged",
+      changeAmountCents: "0"
+    }, "owner-1");
+
+    expect(tx.contractVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        amountCents: 0n,
+        estimatedAmountCents: 300_000n,
+        amountLimitType: "unlimited",
+        pricingNature: "framework"
+      })
+    });
   });
 
   it("synthesizes safe historical facts without copying file identifiers", async () => {

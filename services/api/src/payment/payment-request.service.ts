@@ -10,6 +10,7 @@ import {
   approvalElapsedHours,
   canCreatePaymentFromSettlementStatus,
   canRemindApproval,
+  directPaymentAmountNature,
   isContractSettlementMode,
   SettlementStatus,
   type RoleKey
@@ -135,6 +136,11 @@ function positiveMoneyCents(value: string, message: string): bigint {
   const cents = parseMoneyCentsInput(value, "金额", message);
   if (cents <= 0n) throw new BadRequestException(message);
   return cents;
+}
+
+function optionalTrimmedText(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
 }
 
 const PAYMENT_APPROVAL_NODES = [
@@ -577,6 +583,7 @@ export class PaymentRequestService {
         contractId: true,
         status: true,
         amountCents: true,
+        amountLimitType: true,
         effectiveAt: true,
         settlementMode: true,
         settlementModeConfirmedAt: true
@@ -650,6 +657,26 @@ export class PaymentRequestService {
       }
     });
     this.assertGenericContractPaymentStage(paymentTermsStage, paymentTermsVersion.id);
+    const paymentMatter = optionalTrimmedText(input.paymentMatter);
+    const amountCalculationExplanation = optionalTrimmedText(
+      input.amountCalculationExplanation
+    );
+    const amountNature = directPaymentAmountNature(contractVersion);
+    if (
+      (paymentMatter === null) !== (amountCalculationExplanation === null)
+    ) {
+      throw new BadRequestException(
+        "本次付款事项和金额计算说明必须同时填写"
+      );
+    }
+    if (
+      amountNature === "unlimited_total" &&
+      (paymentMatter === null || amountCalculationExplanation === null)
+    ) {
+      throw new BadRequestException(
+        "无固定总价合同必须填写本次付款事项和金额计算说明"
+      );
+    }
 
     await this.assertGenericContractPaymentStageCapacity(
       tx,
@@ -670,7 +697,10 @@ export class PaymentRequestService {
         status: "approval_pending",
         requestedAmountCents: input.requestedAmountCents,
         approvedAmountCents: null,
-        paidAmountCents: 0n
+        paidAmountCents: 0n,
+        ...(paymentMatter === null || amountCalculationExplanation === null
+          ? {}
+          : { paymentMatter, amountCalculationExplanation })
       }
     });
 
@@ -733,6 +763,7 @@ export class PaymentRequestService {
       id: string;
       contractId: string;
       amountCents: bigint;
+      amountLimitType: string;
       effectiveAt: Date | null;
     },
     stage: {
@@ -757,6 +788,15 @@ export class PaymentRequestService {
     const dueAt = new Date(
       effectiveAt.getTime() + Math.max(stage.dueDays, 0) * 24 * 60 * 60 * 1000
     );
+    const amountNature = directPaymentAmountNature(contractVersion);
+    if (amountNature === "unlimited_total") {
+      if (dueAt > new Date() && !stage.allowsEarlyPayment) {
+        throw new BadRequestException(
+          "合同冻结付款阶段尚未到期，不能提前发起付款申请"
+        );
+      }
+      return;
+    }
     const contractAmountCents = dbMoneyToBigInt(contractVersion.amountCents, "合同金额");
     const configuredAmountCents = stage.fixedAmountCents !== null
       ? dbMoneyToBigInt(stage.fixedAmountCents, "付款阶段固定金额")

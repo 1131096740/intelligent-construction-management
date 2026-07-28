@@ -365,6 +365,7 @@ function contractDraftModel(): ContractDraftModel {
     pricingNature: "",
     amountSource: "",
     manualAmountCents: null,
+    estimatedAmountCents: null,
     amountAdjustmentReason: "",
     paymentTermsOriginalText: "",
     paymentRatioBps: null,

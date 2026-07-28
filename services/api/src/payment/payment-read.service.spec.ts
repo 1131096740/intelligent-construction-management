@@ -932,7 +932,16 @@ describe("PaymentReadService", () => {
           requestedAmountCents: 100_000n,
           approvedAmountCents: 100_000n,
           paidAmountCents: 100_000n
-        })
+        }),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            sourceType: "contract_due",
+            status: "paid",
+            requestedAmountCents: 100_000n,
+            approvedAmountCents: 100_000n,
+            paidAmountCents: 100_000n
+          }
+        ])
       },
       settlement: {
         findUnique: jest.fn(),
@@ -1073,6 +1082,13 @@ describe("PaymentReadService", () => {
     expect(detail.traceRules).toContain(
       "付款申请按合同下全部已生效结算累计计算，实付后自动生成分摊台账"
     );
+    expect(detail.directPaymentSummary).toMatchObject({
+      amountNature: "fixed_limit",
+      cumulativeRequestedCents: "100000",
+      cumulativeApprovedCents: "100000",
+      cumulativePaidCents: "100000",
+      afterCurrentRequestCents: "100000"
+    });
   });
 
   it("fails closed when a frozen payment stage belongs to another terms version", async () => {
@@ -1957,6 +1973,15 @@ describe("PaymentReadService", () => {
       currentDeductionCents: "20000",
       remainingAdvanceToDeductCents: "30000"
     });
+    expect((preview as unknown as {
+      directPaymentSummary: unknown;
+    }).directPaymentSummary).toEqual({
+      amountNature: "fixed_limit",
+      unlimitedTotal: false,
+      cumulativeRequestedCents: "0",
+      cumulativeApprovedCents: "0",
+      cumulativePaidCents: "0"
+    });
     expect(preview.sections.map((section) => section.type)).toEqual(["advance", "progress"]);
     expect(prisma.paymentTermsStage.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1989,6 +2014,117 @@ describe("PaymentReadService", () => {
       })
     ]);
     expect(preview.formula).toContain("当前生效合同金额 - 合同已占用金额");
+  });
+
+  it("returns unlimited direct-payment cumulative risk without inventing a contract cap", async () => {
+    const prisma = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-unlimited",
+          contractId: "contract-unlimited",
+          versionNo: 1,
+          status: "effective",
+          amountCents: 0n,
+          pricingNature: "framework",
+          amountLimitType: "unlimited",
+          effectiveAt: new Date("2026-06-01T00:00:00.000Z"),
+          settlementMode: "direct_payment",
+          settlementModeConfirmedAt: new Date("2026-06-02T00:00:00.000Z")
+        }),
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-unlimited",
+          code: "HT-WGDZJ-001",
+          name: "驻场服务无固定总价合同",
+          projectId: "project-1",
+          contractTypeKey: "generic_contract"
+        })
+      },
+      project: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "project-1",
+          name: "总部综合楼"
+        })
+      },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentTermsVersion: {
+        findMany: jest.fn().mockResolvedValue([{ id: "terms-unlimited" }])
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "stage-unlimited",
+            paymentTermsVersionId: "terms-unlimited",
+            name: "按月据实支付",
+            stageType: "progress",
+            basis: "contract_amount",
+            ratioBps: null,
+            fixedAmountCents: 10_000n,
+            triggerAnchor: "contract_effective",
+            triggerEvent: "服务发生并核验",
+            dueDays: 0,
+            advanceDeductionMode: "none",
+            advanceDeductionRatioBps: null,
+            advanceDeductionStartRatioBps: null,
+            requiresInvoice: true,
+            allowsEarlyPayment: true,
+            allowsInstallments: false
+          }
+        ])
+      },
+      settlementArchiveFile: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            settlementId: null,
+            sourceType: "contract_due",
+            paymentTermsVersionId: "terms-unlimited",
+            paymentTermsStageId: "stage-unlimited",
+            status: "approval_pending",
+            requestedAmountCents: 30_000n,
+            approvedAmountCents: null,
+            paidAmountCents: 0n
+          },
+          {
+            settlementId: null,
+            sourceType: "contract_due",
+            paymentTermsVersionId: "terms-unlimited",
+            paymentTermsStageId: "stage-unlimited",
+            status: "paid",
+            requestedAmountCents: 50_000n,
+            approvedAmountCents: 45_000n,
+            paidAmountCents: 45_000n
+          }
+        ])
+      },
+      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const service = new PaymentReadService(prisma as never);
+
+    const preview = await service.getContractApplication(
+      "contract-version-unlimited",
+      "2026-07-20T00:00:00.000Z"
+    );
+
+    expect(preview.directPaymentSummary).toEqual({
+      amountNature: "unlimited_total",
+      unlimitedTotal: true,
+      cumulativeRequestedCents: "80000",
+      cumulativeApprovedCents: "45000",
+      cumulativePaidCents: "45000"
+    });
+    expect(preview.genericContractCapacity).toEqual({
+      contractAmountCents: "0",
+      contractOccupiedCents: "75000",
+      contractRemainingCents: "0"
+    });
+    expect(preview.availableStages[0]).toMatchObject({
+      disabledReason: null,
+      maxRequestableCents: "0"
+    });
+    expect(preview.formula).toContain("不设置合同金额上限");
   });
 
   it("builds contract payment application preview with historical takeover balance breakdown", async () => {

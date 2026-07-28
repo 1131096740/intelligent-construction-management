@@ -114,6 +114,7 @@ interface CheckpointSnapshot {
   pricingNature: string;
   amountSource: string;
   amountCents: string;
+  estimatedAmountCents?: string | null;
   amountAdjustmentReason: string | null;
   layoutTemplateVersionId: string | null;
   taxFacts?: {
@@ -482,6 +483,10 @@ export class ContractWorkbenchService {
         : pricingPolicy.kind === "priced_bill"
           ? billAmount
           : this.toCents(input.manualAmountCents, "manualAmountCents");
+      const estimatedAmountCents = this.resolveEstimatedAmountCents(
+        input.estimatedAmountCents,
+        pricingPolicy
+      );
       if (isChangeVersion) {
         if (!changeBase || version.changeAmountCents === null || !version.changeDirection) {
           throw new BadRequestException("合同变更金额声明不完整，不能保存草稿");
@@ -507,6 +512,7 @@ export class ContractWorkbenchService {
           pricingNature: input.pricingNature,
           amountSource: input.amountSource,
           amountCents,
+          estimatedAmountCents,
           amountAdjustmentReason: null,
           invoiceType: input.taxFacts.invoiceType,
           taxMode: input.taxFacts.taxMode,
@@ -559,6 +565,10 @@ export class ContractWorkbenchService {
           ),
           amountBeforeCents: version.amountCents.toString(),
           amountAfterCents: amountCents.toString(),
+          estimatedAmountBeforeCents:
+            version.estimatedAmountCents?.toString() ?? null,
+          estimatedAmountAfterCents:
+            estimatedAmountCents?.toString() ?? null,
           taxFactsBefore: this.taxFactsAuditSnapshot(version),
           taxFactsAfter: {
             invoiceType: input.taxFacts.invoiceType,
@@ -687,6 +697,10 @@ export class ContractWorkbenchService {
       : pricingPolicy.kind === "priced_bill"
         ? this.sumIncludedBills(bills)
         : this.toCents(input.manualAmountCents, "manualAmountCents");
+    const estimatedAmountCents = this.resolveEstimatedAmountCents(
+      input.estimatedAmountCents,
+      pricingPolicy
+    );
     if (isChangeVersion) {
       if (!changeBase || version.changeAmountCents === null || !version.changeDirection) {
         throw new BadRequestException("合同变更金额声明不完整，不能保存草稿");
@@ -718,6 +732,7 @@ export class ContractWorkbenchService {
       version.pricingNature !== input.pricingNature ||
       version.amountSource !== input.amountSource ||
       version.amountCents !== amountCents ||
+      version.estimatedAmountCents !== estimatedAmountCents ||
       version.amountAdjustmentReason !==
         (aggregateInput.draft.amountAdjustmentReason ?? null) ||
       version.layoutTemplateVersionId !==
@@ -728,6 +743,7 @@ export class ContractWorkbenchService {
       workbenchReferencesChanged,
       companySelection,
       amountCents,
+      estimatedAmountCents,
       storedDraftData,
       data: {
         draftData: this.toJson(storedDraftData),
@@ -735,6 +751,7 @@ export class ContractWorkbenchService {
         pricingNature: input.pricingNature,
         amountSource: input.amountSource,
         amountCents,
+        estimatedAmountCents,
         amountAdjustmentReason:
           aggregateInput.draft.amountAdjustmentReason ?? null,
         invoiceType: input.taxFacts.invoiceType,
@@ -990,6 +1007,8 @@ export class ContractWorkbenchService {
             pricingNature: version.pricingNature,
             amountSource: version.amountSource,
             amountCents: version.amountCents.toString(),
+            estimatedAmountCents:
+              version.estimatedAmountCents?.toString() ?? null,
             amountAdjustmentReason: version.amountAdjustmentReason,
             layoutTemplateVersionId: version.layoutTemplateVersionId,
             taxFacts: {
@@ -1042,6 +1061,18 @@ export class ContractWorkbenchService {
         throw new NotFoundException("未找到合同草稿保存点，请刷新后重试");
       }
       const snapshot = this.parseCheckpoint(checkpoint.snapshot);
+      if (
+        snapshot.estimatedAmountCents !== undefined &&
+        snapshot.estimatedAmountCents !== null &&
+        (
+          version.amountLimitType !== "unlimited" ||
+          snapshot.pricingNature !== "framework"
+        )
+      ) {
+        throw new BadRequestException(
+          "保存点中的预计发生金额与合同金额性质不一致，不能恢复"
+        );
+      }
       const checkpointCompanySelection = this.companySelectionFromDraft(snapshot.draftData);
       const restoredCompanySelection = checkpointCompanySelection
         ? await this.lockAndLoadCompanyEntitySelection(tx, checkpointCompanySelection.id)
@@ -1069,6 +1100,14 @@ export class ContractWorkbenchService {
           pricingNature: snapshot.pricingNature,
           amountSource: snapshot.amountSource,
           amountCents: parseMoneyCents(snapshot.amountCents, "合同金额"),
+          ...(snapshot.estimatedAmountCents === undefined
+            ? {}
+            : {
+                estimatedAmountCents: this.parseNullableMoney(
+                  snapshot.estimatedAmountCents,
+                  "预计发生金额"
+                )
+              }),
           amountAdjustmentReason: snapshot.amountAdjustmentReason,
           layoutTemplateVersionId: snapshot.layoutTemplateVersionId,
           ...(snapshot.taxFacts
@@ -1712,6 +1751,12 @@ export class ContractWorkbenchService {
     if (input.amountSource === "manual" || input.manualAmountCents !== undefined) {
       this.toCents(input.manualAmountCents as string | undefined, "手工合同金额");
     }
+    if (input.estimatedAmountCents !== undefined) {
+      this.toCents(
+        input.estimatedAmountCents as string | undefined,
+        "预计发生金额"
+      );
+    }
     if (
       input.amountAdjustmentReason !== undefined &&
       typeof input.amountAdjustmentReason !== "string"
@@ -1750,6 +1795,9 @@ export class ContractWorkbenchService {
       ...(input.manualAmountCents === undefined
         ? {}
         : { manualAmountCents: input.manualAmountCents as string }),
+      ...(input.estimatedAmountCents === undefined
+        ? {}
+        : { estimatedAmountCents: input.estimatedAmountCents as string }),
       ...(input.amountAdjustmentReason === undefined
         ? {}
         : { amountAdjustmentReason: input.amountAdjustmentReason }),
@@ -1764,6 +1812,19 @@ export class ContractWorkbenchService {
         : { paymentStages: this.parsePaymentStages(input.paymentStages) }),
       taxFacts
     };
+  }
+
+  private resolveEstimatedAmountCents(
+    value: string | undefined,
+    pricingPolicy: ReturnType<typeof contractPricingPolicy>
+  ): bigint | null {
+    if (value === undefined) return null;
+    if (pricingPolicy.kind !== "unlimited_framework") {
+      throw new BadRequestException(
+        "预计发生金额仅适用于无固定总价合同"
+      );
+    }
+    return this.toCents(value, "预计发生金额");
   }
 
   private parseTaxFacts(value: unknown): SaveContractTaxFactsDto {
@@ -2333,7 +2394,12 @@ export class ContractWorkbenchService {
       typeof snapshot.draftData !== "object" ||
       !Array.isArray(snapshot.clauseSnapshot) ||
       !Array.isArray(snapshot.bills) ||
-      typeof snapshot.amountCents !== "string"
+      typeof snapshot.amountCents !== "string" ||
+      !(
+        snapshot.estimatedAmountCents === undefined ||
+        snapshot.estimatedAmountCents === null ||
+        typeof snapshot.estimatedAmountCents === "string"
+      )
     ) {
       throw new BadRequestException("合同草稿保存点异常，请重新选择保存点");
     }

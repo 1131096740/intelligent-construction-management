@@ -113,6 +113,18 @@ describe("SaveContractDraftAggregateDto", () => {
     );
   });
 
+  it("accepts an optional canonical estimated amount for an unlimited draft", async () => {
+    const payload = validPayload();
+    payload.draft.pricingNature = "framework";
+    payload.draft.amountSource = "bill_sum";
+    Reflect.deleteProperty(payload.draft, "manualAmountCents");
+    Object.assign(payload.draft, { estimatedAmountCents: "300000" });
+
+    await expect(validate(payload)).resolves.toBeInstanceOf(
+      SaveContractDraftAggregateDto
+    );
+  });
+
   it.each([
     ["non-integer revision", { expectedRevision: 7.1 }],
     ["invalid idempotency key", { idempotencyKey: "retry-key" }],

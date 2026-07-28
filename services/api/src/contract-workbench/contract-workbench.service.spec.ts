@@ -421,7 +421,7 @@ describe("ContractWorkbenchService", () => {
     );
   });
 
-  it.each(["0", "-1", "101", "13.1234"] as const)(
+  it.each(["-1", "101", "13.1234567"] as const)(
     "rejects an invalid canonical tax rate %s",
     async (defaultTaxRatePercent) => {
       const tx = ownedVersionTx();
@@ -490,6 +490,51 @@ describe("ContractWorkbenchService", () => {
         })
       })
     );
+  });
+
+  it("stores an optional estimate only for an unlimited framework contract", async () => {
+    const tx = ownedVersionTx();
+    tx.contractVersion.findUnique.mockResolvedValue({
+      ...(await tx.contractVersion.findUnique()),
+      amountLimitType: "unlimited"
+    });
+    const service = makeService(tx);
+
+    await service.saveDraft("version-1", "owner-1", {
+      expectedRevision: 4,
+      draftData: {},
+      clauses: [],
+      pricingNature: "framework",
+      amountSource: "bill_sum",
+      estimatedAmountCents: "300000",
+      taxFacts: VALID_TAX_FACTS
+    });
+
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          amountCents: 0n,
+          estimatedAmountCents: 300_000n
+        })
+      })
+    );
+  });
+
+  it("rejects an estimate on a fixed or capped contract", async () => {
+    const tx = ownedVersionTx();
+    const service = makeService(tx);
+
+    await expect(service.saveDraft("version-1", "owner-1", {
+      expectedRevision: 4,
+      draftData: {},
+      clauses: [],
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      manualAmountCents: "1000000",
+      estimatedAmountCents: "300000",
+      taxFacts: VALID_TAX_FACTS
+    })).rejects.toThrow("预计发生金额仅适用于无固定总价合同");
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -1826,9 +1871,11 @@ describe("ContractWorkbenchService", () => {
           contractId: "contract-1",
           status: "draft",
           draftRevision: 4,
-          amountCents: 1_250_000n,
-          pricingNature: "provisional_total",
-          amountSource: "manual",
+          amountCents: 0n,
+          estimatedAmountCents: 1_500_000n,
+          amountLimitType: "unlimited",
+          pricingNature: "framework",
+          amountSource: "bill_sum",
           amountAdjustmentReason: "暂定金额",
           layoutTemplateVersionId: "layout-1",
           invoiceType: "vat_special",
@@ -1888,9 +1935,10 @@ describe("ContractWorkbenchService", () => {
         clauseSnapshot: [
           expect.objectContaining({ key: "clause_1", content: { text: "检查点条款" } })
         ],
-        pricingNature: "provisional_total",
-        amountSource: "manual",
-        amountCents: "1250000",
+        pricingNature: "framework",
+        amountSource: "bill_sum",
+        amountCents: "0",
+        estimatedAmountCents: "1500000",
         amountAdjustmentReason: "暂定金额",
         layoutTemplateVersionId: "layout-1",
         taxFacts: {

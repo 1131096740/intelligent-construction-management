@@ -71,6 +71,8 @@ function makeWorkbench(
       status: "draft",
       draftRevision: 3,
       amountCents: "0",
+      estimatedAmountCents: null,
+      amountLimitType: "capped",
       pricingNature: "fixed_total",
       amountSource: "manual",
       taxFacts: {
@@ -153,6 +155,34 @@ describe("useContractDraft", () => {
 
     await expect(draft.saveNow()).resolves.toBe(true);
     expect(mockSaveDraft.mock.calls[0]?.[1]).toMatchObject({ manualAmountCents: "0" });
+  });
+
+  it("preserves an unlimited contract estimate without treating it as the manual amount", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench({
+      version: {
+        ...makeWorkbench().version,
+        amountLimitType: "unlimited",
+        pricingNature: "framework",
+        amountSource: "bill_sum",
+        amountCents: "0",
+        estimatedAmountCents: "300000"
+      }
+    }));
+    mockSaveDraft.mockResolvedValue({ id: "cv-1", draftRevision: 4 });
+
+    await draft.load("ct-1");
+    draft.model.contractName = "无固定总价合同";
+    draft.markDirty();
+
+    await expect(draft.saveNow()).resolves.toBe(true);
+    expect(mockSaveDraft.mock.calls[0]?.[1]).toMatchObject({
+      amountSource: "bill_sum",
+      estimatedAmountCents: "300000"
+    });
+    expect(mockSaveDraft.mock.calls[0]?.[1]).not.toHaveProperty(
+      "manualAmountCents"
+    );
   });
 
   it("does not report an unavailable selection while candidate loading failed", () => {

@@ -7,6 +7,10 @@ import type {
   RoleKey
 } from "@jiangkong/shared-domain";
 import {
+  directPaymentAmountNature,
+  isContractSettlementMode
+} from "@jiangkong/shared-domain";
+import {
   approvalReviewAccessOnFrozenNode,
   type ApprovalReviewAccess
 } from "../approval/approval-node-access";
@@ -58,6 +62,44 @@ interface PaymentLedgerQuery {
 
 function emptyApprovalReviewAccess(): ApprovalReviewAccess {
   return { canAct: false, canReview: false, requiresSelfReviewConfirmation: false };
+}
+
+function directPaymentSummary(
+  amountLimitType: string | null | undefined,
+  payments: Array<{
+    sourceType: string;
+    status: string;
+    requestedAmountCents: bigint;
+    approvedAmountCents: bigint | null;
+    paidAmountCents: bigint;
+  }>
+) {
+  const directPayments = payments.filter(
+    (payment) => payment.sourceType === "contract_due"
+  );
+  const cumulativeRequestedCents = sumMoneyCents(
+    directPayments.map((payment) => payment.requestedAmountCents)
+  );
+  const cumulativeApprovedCents = sumMoneyCents(
+    directPayments.map((payment) =>
+      ["approved_pending_payment", "partially_paid", "paid"].includes(
+        payment.status
+      )
+        ? (payment.approvedAmountCents ?? payment.requestedAmountCents)
+        : 0n
+    )
+  );
+  const cumulativePaidCents = sumMoneyCents(
+    directPayments.map((payment) => payment.paidAmountCents)
+  );
+  const amountNature = directPaymentAmountNature({ amountLimitType });
+  return {
+    amountNature,
+    unlimitedTotal: amountNature === "unlimited_total",
+    cumulativeRequestedCents: moneyCentsToApi(cumulativeRequestedCents),
+    cumulativeApprovedCents: moneyCentsToApi(cumulativeApprovedCents),
+    cumulativePaidCents: moneyCentsToApi(cumulativePaidCents)
+  };
 }
 
 @Injectable()
@@ -611,7 +653,6 @@ export class PaymentReadService {
     if (!terms) {
       throw new NotFoundException("未找到合同付款条款版本，请先核对合同归档记录");
     }
-
     const stage = payment.paymentTermsStageId
       ? await this.prisma.paymentTermsStage.findUnique({
           where: { id: payment.paymentTermsStageId }
@@ -638,6 +679,47 @@ export class PaymentReadService {
     ) {
       throw new NotFoundException("付款申请冻结的付款阶段与付款条款不一致，请联系管理员核对");
     }
+    const directPaymentRows =
+      payment.sourceType === "contract_due"
+        ? await this.prisma.paymentRequest.findMany({
+            where: {
+              contractId: payment.contractId,
+              sourceType: "contract_due",
+              status: {
+                in: [
+                  ...SETTLEMENT_CAPACITY_PAYMENT_STATUSES,
+                  "paid"
+                ]
+              }
+            },
+            select: {
+              sourceType: true,
+              status: true,
+              requestedAmountCents: true,
+              approvedAmountCents: true,
+              paidAmountCents: true
+            }
+          })
+        : [];
+    const paymentDirectSummary =
+      payment.sourceType === "contract_due"
+        ? {
+            ...directPaymentSummary(
+              contractVersion.amountLimitType,
+              directPaymentRows
+            ),
+            afterCurrentRequestCents: moneyCentsToApi(
+              sumMoneyCents(
+                directPaymentRows.map(
+                  (row) => row.requestedAmountCents
+                )
+              )
+            ),
+            paymentMatter: payment.paymentMatter ?? null,
+            amountCalculationExplanation:
+              payment.amountCalculationExplanation ?? null
+          }
+        : undefined;
     const executionAmountCents = sumDbMoneyToBigInt(
       executions.map((execution) => execution.amountCents),
       "付款实付金额"
@@ -826,6 +908,29 @@ export class PaymentReadService {
         { label: "付款账期", value: stage ? `${stage.dueDays}天` : "-" },
         { label: "发票要求", value: stage?.requiresInvoice ? "需提供发票" : "不要求发票" },
         { label: "申请金额", value: this.formatMoney(payment.requestedAmountCents) },
+        ...(paymentDirectSummary?.unlimitedTotal
+          ? [
+              {
+                label: "金额性质",
+                value: "无固定总价"
+              },
+              {
+                label: "本次付款事项",
+                value: paymentDirectSummary.paymentMatter ?? "-"
+              },
+              {
+                label: "金额计算说明",
+                value:
+                  paymentDirectSummary.amountCalculationExplanation ?? "-"
+              },
+              {
+                label: "本次申请后累计",
+                value: this.formatMoney(
+                  BigInt(paymentDirectSummary.afterCurrentRequestCents)
+                )
+              }
+            ]
+          : []),
         { label: "已付金额", value: this.formatMoney(paidAmountCents) }
       ],
       approvalSteps: this.approvalSteps(payment.status),
@@ -882,6 +987,9 @@ export class PaymentReadService {
         "实付登记必须上传付款凭证并写入审计日志"
       ],
       executionBlockMessage: this.executionBlockMessage(payment.status, execution.complete),
+      ...(paymentDirectSummary
+        ? { directPaymentSummary: paymentDirectSummary }
+        : {}),
       chainLinks: [
         isContractLevelPayment
           ? { label: "关联合同", to: `/contracts/${contract?.code ?? payment.contractId}` }
@@ -923,6 +1031,21 @@ export class PaymentReadService {
     }
     if (contract.contractTypeKey !== "generic_contract") {
       throw new BadRequestException("该合同类型应从生效结算发起付款");
+    }
+    if (contractVersion.settlementMode !== undefined) {
+      if (
+        !isContractSettlementMode(contractVersion.settlementMode) ||
+        !contractVersion.settlementModeConfirmedAt
+      ) {
+        throw new BadRequestException(
+          "合同结算方式尚未由合同部主管确认，不能按合同发起应付款"
+        );
+      }
+      if (contractVersion.settlementMode !== "direct_payment") {
+        throw new BadRequestException(
+          "该合同已确认需要结算，应从生效结算发起付款"
+        );
+      }
     }
 
     const project = await this.prisma.project.findUnique({
@@ -1171,6 +1294,12 @@ export class PaymentReadService {
           }
         : {})
     };
+    const contractDirectPaymentSummary = directPaymentSummary(
+      contractVersion.amountLimitType,
+      paymentRequests
+    );
+    const unlimitedDirectPayment =
+      contractDirectPaymentSummary.unlimitedTotal;
 
     return {
       contract: {
@@ -1192,11 +1321,23 @@ export class PaymentReadService {
           genericStageCapacity.contractOccupiedCents
         ),
         contractRemainingCents: moneyCentsToApi(
-          genericStageCapacity.contractRemainingCents
+          unlimitedDirectPayment
+            ? 0n
+            : genericStageCapacity.contractRemainingCents
         )
       },
+      directPaymentSummary: contractDirectPaymentSummary,
       availableStages: eligibleStages.map((stage) => {
         const stageCapacity = genericStageCapacity.byStageId.get(stage.id)!;
+        const dueAt = contractVersion.effectiveAt
+          ? new Date(
+              contractVersion.effectiveAt.getTime() +
+                Math.max(stage.dueDays, 0) * 24 * 60 * 60 * 1000
+            )
+          : null;
+        const unlimitedStageOpen =
+          dueAt !== null &&
+          (dueAt <= asOf || stage.allowsEarlyPayment);
         return {
           paymentTermsStageId: stage.id,
           paymentTermsVersionId: stage.paymentTermsVersionId,
@@ -1208,10 +1349,18 @@ export class PaymentReadService {
           dueDays: stage.dueDays,
           requiresInvoice: stage.requiresInvoice,
           allowsInstallments: stage.allowsInstallments,
-          payableCents: moneyCentsToApi(stageCapacity.payableCents),
+          payableCents: moneyCentsToApi(
+            unlimitedDirectPayment ? 0n : stageCapacity.payableCents
+          ),
           occupiedCents: moneyCentsToApi(stageCapacity.occupiedCents),
-          maxRequestableCents: moneyCentsToApi(stageCapacity.maxRequestableCents),
-          disabledReason: stageCapacity.disabledReason
+          maxRequestableCents: moneyCentsToApi(
+            unlimitedDirectPayment ? 0n : stageCapacity.maxRequestableCents
+          ),
+          disabledReason: unlimitedDirectPayment
+            ? unlimitedStageOpen
+              ? null
+              : "合同冻结付款阶段尚未到期"
+            : stageCapacity.disabledReason
         };
       }),
       asOf: asOf.toISOString(),
@@ -1225,33 +1374,64 @@ export class PaymentReadService {
       })),
       capacity,
       advanceDeduction: preview.advanceDeduction,
-      capacityExplanation: [
-        {
-          label: "合同金额",
-          amountCents: moneyCentsToApi(
-            dbMoneyToBigInt(contractVersion.amountCents, "合同金额")
-          ),
-          operator: "add" as const,
-          note: "按当前生效合同版本的金额上限",
-          tone: "primary" as const
-        },
-        {
-          label: "扣合同已占用金额",
-          amountCents: moneyCentsToApi(genericStageCapacity.contractOccupiedCents),
-          operator: "subtract" as const,
-          note: "含跨版本直接付款、预付款、代付和已确认历史占用",
-          tone: "default" as const
-        },
-        {
-          label: "合同当前剩余额度",
-          amountCents: moneyCentsToApi(
-            genericContractRemainingCents > 0n ? genericContractRemainingCents : 0n
-          ),
-          operator: "result" as const,
-          note: "实际申请仍受所选冻结付款阶段额度约束",
-          tone: "success" as const
-        }
-      ],
+      capacityExplanation: unlimitedDirectPayment
+        ? [
+            {
+              label: "累计申请",
+              amountCents:
+                contractDirectPaymentSummary.cumulativeRequestedCents,
+              operator: "add" as const,
+              note: "无固定总价，仅作累计风险展示",
+              tone: "primary" as const
+            },
+            {
+              label: "累计批准",
+              amountCents:
+                contractDirectPaymentSummary.cumulativeApprovedCents,
+              operator: "result" as const,
+              note: "不形成合同法律金额上限",
+              tone: "default" as const
+            },
+            {
+              label: "累计实付",
+              amountCents:
+                contractDirectPaymentSummary.cumulativePaidCents,
+              operator: "result" as const,
+              note: "项目可用资金和垫资额度仍单独硬阻断",
+              tone: "warning" as const
+            }
+          ]
+        : [
+            {
+              label: "合同金额",
+              amountCents: moneyCentsToApi(
+                dbMoneyToBigInt(contractVersion.amountCents, "合同金额")
+              ),
+              operator: "add" as const,
+              note: "按当前生效合同版本的金额上限",
+              tone: "primary" as const
+            },
+            {
+              label: "扣合同已占用金额",
+              amountCents: moneyCentsToApi(
+                genericStageCapacity.contractOccupiedCents
+              ),
+              operator: "subtract" as const,
+              note: "含跨版本直接付款、预付款、代付和已确认历史占用",
+              tone: "default" as const
+            },
+            {
+              label: "合同当前剩余额度",
+              amountCents: moneyCentsToApi(
+                genericContractRemainingCents > 0n
+                  ? genericContractRemainingCents
+                  : 0n
+              ),
+              operator: "result" as const,
+              note: "实际申请仍受所选冻结付款阶段额度约束",
+              tone: "success" as const
+            }
+          ],
       ...(preview.historicalBalance ? { historicalBalance: preview.historicalBalance } : {}),
       sections: preview.sections.map((section) => ({
         type: section.type,
@@ -1276,7 +1456,9 @@ export class PaymentReadService {
           };
         })
       })),
-      formula: "当前生效合同金额 - 合同已占用金额 = 合同当前剩余额度；本次申请同时受所选冻结付款阶段约束"
+      formula: unlimitedDirectPayment
+        ? "无固定总价合同不设置合同金额上限；每次申请必须填写付款事项和金额计算说明，并继续执行完整审批、实付凭证和项目资金检查"
+        : "当前生效合同金额 - 合同已占用金额 = 合同当前剩余额度；本次申请同时受所选冻结付款阶段约束"
     };
   }
 

@@ -61,6 +61,7 @@ export interface ContractDraftModel {
   pricingNature: string;
   amountSource: string;
   manualAmountCents: string | null;
+  estimatedAmountCents: string | null;
   amountAdjustmentReason: string;
   paymentTermsOriginalText: string;
   paymentRatioBps: number | null;
@@ -190,6 +191,7 @@ function emptyModel(): ContractDraftModel {
     pricingNature: "",
     amountSource: "",
     manualAmountCents: null,
+    estimatedAmountCents: null,
     amountAdjustmentReason: "",
     paymentTermsOriginalText: "",
     paymentRatioBps: null,
@@ -255,6 +257,7 @@ function modelFromWorkbench(workbench: ContractWorkbenchReadModel): ContractDraf
     amountSource: workbench.version.amountSource ?? "",
     manualAmountCents:
       workbench.version.amountSource === "manual" ? workbench.version.amountCents ?? null : null,
+    estimatedAmountCents: workbench.version.estimatedAmountCents ?? null,
     amountAdjustmentReason: "",
     paymentTermsOriginalText: workbench.paymentTerms.originalText ?? "",
     paymentRatioBps: paymentStage?.ratioBps ?? null,
@@ -339,6 +342,7 @@ function assignModel(target: ContractDraftModel, source: ContractDraftModel): vo
   target.pricingNature = source.pricingNature;
   target.amountSource = source.amountSource;
   target.manualAmountCents = source.manualAmountCents;
+  target.estimatedAmountCents = source.estimatedAmountCents;
   target.amountAdjustmentReason = source.amountAdjustmentReason;
   target.paymentTermsOriginalText = source.paymentTermsOriginalText;
   target.paymentRatioBps = source.paymentRatioBps;
@@ -671,6 +675,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       ...(model.amountSource === "manual"
         ? { manualAmountCents: model.manualAmountCents ?? "0" }
         : {}),
+      ...(model.estimatedAmountCents === null
+        ? {}
+        : { estimatedAmountCents: model.estimatedAmountCents }),
       ...(!isChangeDraft
         ? {
             paymentTermsOriginalText: model.paymentTermsOriginalText,

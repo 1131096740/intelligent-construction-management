@@ -200,6 +200,7 @@ model ContractVersion {
   changeType                             String
   status                                 String
   amountCents                            BigInt
+  estimatedAmountCents                   BigInt?
   baseVersionId                          String?
   supersedesVersionId                    String?
   copiedFromContractVersionId            String?
@@ -929,6 +930,8 @@ model PaymentRequest {
   requestedAmountCents  BigInt
   approvedAmountCents   BigInt?
   paidAmountCents       BigInt             @default(0)
+  paymentMatter         String?
+  amountCalculationExplanation String?
   dueDate               DateTime?
   abandonedAt           DateTime?
   abandonedByUserId     String?

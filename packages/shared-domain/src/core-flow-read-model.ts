@@ -342,6 +342,7 @@ export interface PaymentDetailReadModel {
   traceRules: string[];
   executionBlockMessage: string;
   chainLinks: BusinessChainLink[];
+  directPaymentSummary?: DirectPaymentSummaryReadModel;
 }
 
 export type ContractPaymentApplicationSectionType =
@@ -389,6 +390,7 @@ export interface ContractPaymentApplicationPreviewReadModel {
     contractOccupiedCents: MoneyCents;
     contractRemainingCents: MoneyCents;
   };
+  directPaymentSummary: DirectPaymentSummaryReadModel;
   asOf: string;
   includedSettlements: Array<{
     settlementId: string;
@@ -466,6 +468,17 @@ export interface ContractPaymentApplicationPreviewReadModel {
     }>;
   }>;
   formula: string;
+}
+
+export interface DirectPaymentSummaryReadModel {
+  amountNature: "fixed_limit" | "unlimited_total";
+  unlimitedTotal: boolean;
+  cumulativeRequestedCents: MoneyCents;
+  cumulativeApprovedCents: MoneyCents;
+  cumulativePaidCents: MoneyCents;
+  afterCurrentRequestCents?: MoneyCents;
+  paymentMatter?: string | null;
+  amountCalculationExplanation?: string | null;
 }
 
 export type ContractBusinessOptionSource = "system" | "historical_takeover";

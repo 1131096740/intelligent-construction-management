@@ -227,6 +227,7 @@ export interface SaveContractDraftPayload {
   pricingNature?: string;
   amountSource?: string;
   manualAmountCents?: string;
+  estimatedAmountCents?: string;
   taxFacts: {
     invoiceType: ContractInvoiceType | null;
     taxMode: ContractTaxMode;

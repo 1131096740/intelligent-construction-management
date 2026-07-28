@@ -230,6 +230,8 @@ export interface ContractWorkbenchReadModel {
     draftRevision: number;
     contractGovernanceVersion?: number | null;
     amountCents: MoneyCents;
+    estimatedAmountCents: MoneyCents | null;
+    amountLimitType: "capped" | "unlimited";
     pricingNature: string;
     amountSource: string;
     settlementMode: ContractSettlementMode | null;

@@ -1090,6 +1090,176 @@ describe("PaymentRequestService", () => {
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
+  it("requires payment matter and calculation explanation for an unlimited direct-payment contract", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-unlimited",
+          contractId: "contract-unlimited",
+          status: "effective",
+          amountCents: 0n,
+          pricingNature: "framework",
+          amountLimitType: "unlimited",
+          effectiveAt: new Date("2026-06-01T00:00:00.000Z"),
+          settlementMode: "direct_payment",
+          settlementModeConfirmedAt: new Date("2026-06-02T00:00:00.000Z")
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-unlimited",
+          projectId: "project-1",
+          contractTypeKey: "generic_contract",
+          source: "system"
+        })
+      },
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-unlimited",
+          contractVersionId: "contract-version-unlimited",
+          status: "effective"
+        })
+      },
+      paymentTermsStage: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "stage-unlimited",
+          paymentTermsVersionId: "terms-unlimited",
+          stageType: "progress",
+          basis: "contract_amount",
+          ratioBps: null,
+          fixedAmountCents: 10_000n,
+          triggerAnchor: "contract_effective",
+          dueDays: 0,
+          allowsEarlyPayment: true,
+          allowsInstallments: true
+        })
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn()
+      },
+      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "contract-unlimited" }])
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const service = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never
+    );
+
+    await expect(
+      service.create({
+        sourceType: "contract_due",
+        contractVersionId: "contract-version-unlimited",
+        paymentTermsStageId: "stage-unlimited",
+        code: "FK-WGDZJ-RED-1",
+        requestedAmountCents: "50000"
+      } as never)
+    ).rejects.toThrow("无固定总价合同必须填写本次付款事项和金额计算说明");
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("allows repeated unlimited direct payments without treating estimates or prior occupancy as a legal cap", async () => {
+    const create = jest.fn().mockResolvedValue({
+      id: "payment-unlimited-2",
+      code: "FK-WGDZJ-2"
+    });
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-unlimited",
+          contractId: "contract-unlimited",
+          status: "effective",
+          amountCents: 0n,
+          estimatedAmountCents: 30_000n,
+          pricingNature: "framework",
+          amountLimitType: "unlimited",
+          effectiveAt: new Date("2026-06-01T00:00:00.000Z"),
+          settlementMode: "direct_payment",
+          settlementModeConfirmedAt: new Date("2026-06-02T00:00:00.000Z")
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-unlimited",
+          projectId: "project-1",
+          contractTypeKey: "generic_contract",
+          source: "system"
+        })
+      },
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-unlimited",
+          contractVersionId: "contract-version-unlimited",
+          status: "effective"
+        })
+      },
+      paymentTermsStage: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "stage-unlimited",
+          paymentTermsVersionId: "terms-unlimited",
+          stageType: "progress",
+          basis: "contract_amount",
+          ratioBps: null,
+          fixedAmountCents: 10_000n,
+          triggerAnchor: "contract_effective",
+          dueDays: 0,
+          allowsEarlyPayment: true,
+          allowsInstallments: false
+        })
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            paymentTermsStageId: "stage-unlimited",
+            status: "paid",
+            requestedAmountCents: 900_000n,
+            approvedAmountCents: 900_000n,
+            paidAmountCents: 900_000n
+          }
+        ]),
+        create
+      },
+      projectProxyPayment: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 500_000n }])
+      },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "contract-unlimited" }])
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const service = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never
+    );
+
+    await expect(
+      service.create({
+        sourceType: "contract_due",
+        contractVersionId: "contract-version-unlimited",
+        paymentTermsStageId: "stage-unlimited",
+        code: "FK-WGDZJ-2",
+        requestedAmountCents: "50000",
+        paymentMatter: "六月驻场服务费",
+        amountCalculationExplanation: "5 人 × 10 天 × 100 元/人天"
+      } as never)
+    ).resolves.toMatchObject({ code: "FK-WGDZJ-2" });
+
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        requestedAmountCents: 50_000n,
+        paymentMatter: "六月驻场服务费",
+        amountCalculationExplanation: "5 人 × 10 天 × 100 元/人天"
+      })
+    });
+  });
+
   it("caps a generic stage by every existing contract payment across contract versions", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([{ id: "contract-1" }]),

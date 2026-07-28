@@ -670,6 +670,8 @@ export interface CreatePaymentRequestPayload {
   contractVersionId?: string;
   paymentTermsVersionId?: string;
   paymentTermsStageId?: string;
+  paymentMatter?: string;
+  amountCalculationExplanation?: string;
   code: string;
   requestedAmountCents: string;
 }

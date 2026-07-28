@@ -61,6 +61,7 @@ export interface SaveContractDraftDto {
   pricingNature: "fixed_total" | "provisional_total" | "unit_price" | "framework";
   amountSource: "bill_sum" | "manual";
   manualAmountCents?: string;
+  estimatedAmountCents?: string;
   amountAdjustmentReason?: string;
   layoutTemplateVersionId?: string;
   paymentTermsOriginalText?: string;
@@ -207,6 +208,13 @@ export class SaveContractDraftFieldsDto {
     formatMessage: "手工合同金额必须按分填写为 0 或更大的整数"
   })
   manualAmountCents?: string;
+
+  @IsOptional()
+  @IsCanonicalMoneyText({
+    typeMessage: "预计发生金额必须是整数字符串",
+    formatMessage: "预计发生金额必须按分填写为 0 或更大的整数"
+  })
+  estimatedAmountCents?: string;
 
   @IsOptional()
   @IsRequiredText({

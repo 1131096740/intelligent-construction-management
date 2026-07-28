@@ -48,6 +48,13 @@ describe("core flow read model contract", () => {
         contractOccupiedCents: "0",
         contractRemainingCents: "500000"
       },
+      directPaymentSummary: {
+        amountNature: "fixed_limit",
+        unlimitedTotal: false,
+        cumulativeRequestedCents: "0",
+        cumulativeApprovedCents: "0",
+        cumulativePaidCents: "0"
+      },
       asOf: "2026-07-18T00:00:00.000Z",
       includedSettlements: [],
       capacity: {
@@ -75,5 +82,6 @@ describe("core flow read model contract", () => {
     expect(preview.availableStages[0]?.paymentTermsStageId).toBe("stage-1");
     expect(preview.genericContractCapacity.contractAmountCents).toBe("500000");
     expect(preview.genericContractCapacity.contractRemainingCents).toBe("500000");
+    expect(preview.directPaymentSummary.amountNature).toBe("fixed_limit");
   });
 });
