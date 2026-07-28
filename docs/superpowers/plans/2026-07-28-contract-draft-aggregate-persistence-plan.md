@@ -2,7 +2,7 @@
 
 > **执行要求：** 按任务顺序实施；每个行为任务先锁定失败用例，任何完成声明前运行计划列出的全部验证命令。
 
-**目标：** 建立以 `contractVersionId` 为唯一标识的草稿聚合 API，使顶部保存一次性持久化全部合同资料，并修复继续办理锁死、分散保存、草稿编号提前生成和纯净草稿无法真正删除的问题。
+**目标：** 建立以 `contractVersionId` 为唯一标识的草稿聚合 API，使顶部保存一次性持久化全部合同资料，并修复继续办理锁死、分散保存和草稿编号提前生成的问题。日常删除继续复用现有受审计逻辑删除；物理清理留到切换包的受控保留任务。
 
 **核心架构：** 在现有 `ContractWorkbenchModule` 中新增版本级聚合服务与控制器。旧服务暂时保留供切换期读取，任何新写入只走聚合事务。文档预览是资料事务之后的独立命令。
 
@@ -10,7 +10,7 @@
 
 ---
 
-## Task 1：用数据库结构承载编辑租约、草稿附件和可恢复删除
+## Task 1：用数据库结构承载编辑租约、草稿附件和保存幂等
 
 **Files:**
 
@@ -26,8 +26,9 @@
 - 租约只存 `tokenHash`，不存客户端原始 token。
 - `ContractDraftAttachment` 以 `(contractVersionId, slotKey, displayOrder)` 唯一。
 - `ContractDraftSaveRequest.idempotencyKey` 唯一，并保存请求摘要和权威响应修订号。
-- `ContractDraftPurgeTask` 可在合同版本删除后保留短期恢复状态，因此只存逻辑 ID，不建立级联删除外键。
-- `Contract.performanceStatus` 只承载生效后的履约状态，状态变化另有不可覆盖事件。
+- `ContractDraftSaveRequest.expiresAt` 有清理索引，自动保存技术收据不永久增长。
+- `ContractDraftSubmissionRequest` 把提交幂等键绑定到合同版本、修订、申请人、
+  审批实例和正式编号。
 - 新表对版本、文件、用户使用 `RESTRICT` 或显式清理，不允许无意级联到正式业务记录。
 
 建议 schema：
@@ -58,56 +59,35 @@ model ContractDraftAttachment {
   @@index([fileId])
 }
 
-model ContractDraftPurgeTask {
-  id                String    @id @default(uuid())
-  contractVersionId String
-  contractId        String
-  expectedRevision  Int
-  status            String
-  fileIds           Json
-  requestedByUserId String
-  errorCode         String?
-  startedAt         DateTime?
-  completedAt       DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-
-  @@index([contractVersionId, status])
-}
-
 model ContractDraftSaveRequest {
   idempotencyKey    String   @id
   contractVersionId String
   expectedRevision  Int
   resultRevision    Int
+  saveKind          String
   requestSha256     String
   responseSnapshot  Json
   createdByUserId   String
   createdAt         DateTime @default(now())
+  expiresAt         DateTime
+
+  @@index([contractVersionId, createdAt])
+  @@index([expiresAt])
+}
+
+model ContractDraftSubmissionRequest {
+  idempotencyKey     String   @id
+  contractVersionId  String
+  expectedRevision   Int
+  applicantUserId    String
+  requestSha256      String
+  approvalInstanceId String   @unique
+  formalCode         String
+  responseSnapshot   Json
+  createdAt          DateTime @default(now())
 
   @@index([contractVersionId, createdAt])
 }
-
-model ContractPerformanceStatusEvent {
-  id           String   @id @default(uuid())
-  contractId   String
-  fromStatus   String?
-  toStatus     String
-  reason       String
-  actorUserId  String
-  confirmedByUserId String?
-  createdAt    DateTime @default(now())
-
-  @@index([contractId, createdAt])
-}
-```
-
-给 `Contract` 增加：
-
-```prisma
-performanceStatus          String?
-performanceStatusUpdatedAt DateTime?
-performanceStatusUpdatedByUserId String?
 ```
 
 给 `ContractVersion` 增加：
@@ -129,7 +109,8 @@ pnpm --filter @jiangkong/api test -- --runInBand src/database/contract-draft-agg
 
 ### Step 3：添加 Prisma 模型和迁移
 
-迁移只做增量建表和约束，不修改现有合同状态，不回填业务事实，不删除 `ContractDraftCheckpoint`。
+迁移只做增量建表和约束，不修改现有合同状态，不回填业务事实，不删除
+`ContractDraftCheckpoint`，也不引入物理删除或全站履约状态字段。
 
 租约默认参数写在服务常量中：
 
@@ -334,11 +315,14 @@ git commit -m "feat: add contract draft edit lease"
 
 ### Step 1：先写 DTO 校验测试
 
-聚合请求必须是完整快照，不接受“只保存当前页签”的部分语义：
+聚合请求必须是完整快照，不接受“只保存当前页签”的部分语义。客户端
+`changedSections` 只用于诊断和性能提示，服务端必须根据锁定后的数据库事实
+自行计算实际差异，不能把它当作跳过写入或校验的授权：
 
 ```ts
 export interface SaveContractDraftAggregateDto {
   idempotencyKey: string;
+  saveKind: "auto" | "manual";
   expectedRevision: number;
   changedSections: Array<
     "draft" | "parties" | "bills" | "payment_terms" |
@@ -386,7 +370,7 @@ export interface SaveContractDraftAggregateDto {
 测试拒绝：
 
 - 非整数或旧 `expectedRevision`。
-- 非 UUID 幂等键、空 `changedSections` 或重复 section。
+- 非 UUID 幂等键、非法 `saveKind`、空 `changedSections` 或重复 section。
 - 重复主体位置、清单 key、清单 row key、附件位置。
 - 金额不是整数字符串。
 - 附件 fileId 为空。
@@ -441,6 +425,10 @@ git commit -m "feat: define contract draft aggregate payload"
 - 两个相同 `expectedRevision` 并发保存只有一个成功。
 - 同一个 idempotency key 和相同请求摘要重试时返回第一次权威响应，不重复增加 revision。
 - 同一个 idempotency key 用于不同 payload 时返回 `IDEMPOTENCY_KEY_REUSED`，零业务写。
+- `changedSections` 漏报时仍由服务端差异计算保存真实变化，并在响应返回
+  `effectiveChangedSections`。
+- 完整快照与锁定后事实完全相同时返回当前 revision，不重写子表、不新增业务
+  审计；同一编辑窗口内无效抖动不能制造大量 delete/create。
 - 成功保存只把 `ContractVersion.draftRevision` 从 `7` 增加到 `8`，不能按子域多次增加。
 - 成功响应回传全部权威金额、子域 revision 和 `savedAt`。
 - 租约失效时零业务写。
@@ -474,6 +462,11 @@ saveNegotiationDocumentReferencesInTransaction(
 磋商和文档本身的上传、比较、差异处置仍是独立领域命令；这里只保存当前草稿选择和引用关系，并写入服务端命名的 `draftData.workbenchReferences`，不能伪造文档状态。
 
 不要在助手内再次调用 `this.prisma.$transaction`。
+
+这些助手接收完整权威快照，但必须先和锁定后的当前事实做稳定 key 级差异
+比较，只更新、新增或逻辑移除实际变化的行；不能因为协议是全量快照就每 2 秒
+把 1000 行清单全部 delete/create。客户端 `changedSections` 仍不能代替该
+服务端差异计算。
 
 ### Step 4：实现固定锁序
 
@@ -509,7 +502,14 @@ const result = await tx.contractVersion.updateMany({
 
 事务隔离级别使用 `Serializable`；`P2034` 和 PostgreSQL `40001` 转为稳定的“资料已变化，请刷新后重试”。
 
-成功提交前在同一事务写入 `ContractDraftSaveRequest`。响应快照至少包含新 revision、保存时间、分章节问题数、readiness、文档是否过期和 `availableActions`；网络重试直接返回该权威快照。
+成功提交前在同一事务写入 `ContractDraftSaveRequest`，默认 `expiresAt` 为 7 天后。
+响应快照至少包含新 revision、保存时间、服务端计算的实际变化分区、分章节问题
+数、readiness、文档是否过期和 `availableActions`；网络重试直接返回该权威
+快照。
+
+手动保存继续写 `contract.draft.save` 业务审计。后台自动保存只写短期幂等技术
+收据并更新版本的最后保存人/时间，不为每个 2 秒窗口追加永久 AuditLog；租约
+接管、冲突、提交和删除等治理动作仍完整审计。
 
 ### Step 5：删除保存草稿时的正式编号分配
 
@@ -586,6 +586,22 @@ Content-Type: application/json
 
 `DRAFT_REVISION_CONFLICT` 和 `EDIT_LEASE_LOST` 响应必须包含服务器最新 revision、冲突原因和是否可重新取得租约；不得回传数据库字段、堆栈或 COS objectKey。
 
+同一控制器同时提供日常逻辑删除：
+
+```http
+DELETE /contract-drafts/:contractVersionId
+{
+  "expectedRevision": 8,
+  "reason": "主管代清理时必填",
+  "currentPassword": "主管代清理时必填"
+}
+```
+
+它只委托现有 `ContractService.abandonDraft(...delete_pristine_draft...)` 的生命周期
+判断和 CAS，不在请求内删除数据库行或 COS 对象。经办人只能删除自己的纯净
+草稿；合同部主管代清理必须校验当前密码和原因。已提交、已有正式事实或不再
+是当前修订时稳定拒绝。
+
 ### Step 2：运行 RED
 
 ```bash
@@ -661,7 +677,22 @@ const formalCode = contract.code ??
 POST /contract-drafts/:contractVersionId/submission
 ```
 
-它只委托同一个 `ContractService.submitApproval`，不得复制提交逻辑。提交前必须由前端先完成全局 PUT；后端仍重新校验当前 revision、租约和 readiness。
+请求：
+
+```http
+X-Contract-Draft-Lease: <opaque token>
+Content-Type: application/json
+
+{
+  "expectedRevision": 8,
+  "idempotencyKey": "uuid"
+}
+```
+
+它只委托同一个 `ContractService.submitApproval`，不得复制提交逻辑。提交前必须
+由前端先完成全局 PUT；后端仍重新校验当前 revision、租约和 readiness。提交
+幂等键必须与合同版本、revision、申请人和第一次权威响应绑定；网络丢响应后
+重试返回同一审批实例和正式编号，不能以“当前已不是 draft”掩盖第一次成功。
 
 ### Step 4：运行 GREEN
 
@@ -744,193 +775,7 @@ git commit -m "feat: separate contract draft save from preview generation"
 
 ---
 
-## Task 9：实现纯净草稿的受控物理删除
-
-**Files:**
-
-- Create: `services/api/src/contract-workbench/contract-draft-purge.service.ts`
-- Create: `services/api/src/contract-workbench/contract-draft-purge.service.spec.ts`
-- Modify: `services/api/src/contract-workbench/contract-draft.controller.ts`
-- Modify: `services/api/src/contract-workbench/contract-draft.controller.spec.ts`
-- Modify: `services/api/src/file/file.service.ts`
-- Modify: `services/api/src/file/file.service.spec.ts`
-- Modify: `services/api/src/contract-workbench/contract-workbench.module.ts`
-
-### Step 1：先写“能删”和“绝不能删”测试
-
-允许删除必须同时满足：
-
-- `ContractVersion.status === "draft"`。
-- `expectedRevision` 命中。
-- 合同来源是系统草稿。
-- 从未存在审批实例、提交审计、用章任务、正式文件、归档、结算、付款或已激活历史接管。
-- 当前操作者是经办人或合同部主管。
-
-以下任何一种必须拒绝物理删除：
-
-- 曾提交后退回。
-- 已逻辑作废或已归档。
-- 有结算或付款历史。
-- 有正式编号但无法证明由旧错误逻辑提前生成。
-- 有其他版本仍依赖该版本。
-
-### Step 2：运行 RED
-
-```bash
-pnpm --filter @jiangkong/api test -- --runInBand src/contract-workbench/contract-draft-purge.service.spec.ts src/contract-workbench/contract-draft.controller.spec.ts
-```
-
-### Step 3：实现幂等删除流程
-
-路由：
-
-```http
-DELETE /contract-drafts/:contractVersionId?expectedRevision=8
-```
-
-流程：
-
-1. 串行化事务锁定合同、版本和依赖记录，建立 `ContractDraftPurgeTask`。
-2. 该任务存在期间，草稿不再出现在列表，也不允许继续保存。
-3. 只收集仅由该草稿占用的 Excel、预览、附件临时文件；共享文件不得删除。
-4. 事务外逐个调用 `PrivateFileStorage.delete`，失败可按任务重试。
-5. 全部对象删除成功后，在最终事务按显式顺序删除草稿依赖、FileObject、版本；若合同不再有任何版本且无历史，则删除空 Contract。
-6. 写一条最小审计收据：
-
-```json
-{
-  "action": "contract.draft.purge",
-  "businessType": "contract_draft",
-  "businessId": "cv-1",
-  "metadata": {
-    "contractId": "c-1",
-    "draftRevision": 8,
-    "deletedFileCount": 3
-  }
-}
-```
-
-不得在审计中保存对象键、原始合同正文或租约 token。
-
-### Step 4：运行 GREEN
-
-```bash
-pnpm --filter @jiangkong/api test -- --runInBand src/contract-workbench/contract-draft-purge.service.spec.ts src/contract-workbench/contract-draft.controller.spec.ts src/file/file.service.spec.ts
-```
-
-### Step 5：提交
-
-```bash
-git add services/api/src/contract-workbench services/api/src/file
-git commit -m "feat: purge pristine contract drafts safely"
-```
-
----
-
-## Task 10：把多套内部状态收敛为一个前端当前状态
-
-**Files:**
-
-- Create: `packages/shared-domain/src/contract-performance-status.ts`
-- Create: `packages/shared-domain/src/contract-performance-status.test.ts`
-- Modify: `packages/shared-domain/src/index.ts`
-- Create: `services/api/src/contract/contract-performance-status.service.ts`
-- Create: `services/api/src/contract/contract-performance-status.service.spec.ts`
-- Modify: `services/api/src/contract/contract.controller.ts`
-- Modify: `services/api/src/contract/contract-read.service.ts`
-- Modify: `services/api/src/contract/contract-read.service.spec.ts`
-- Modify: `services/api/src/contract/contract.module.ts`
-- Modify: `services/api/src/contract/contract-version-activation.service.ts`
-- Modify: `services/api/src/contract/contract-version-activation.service.spec.ts`
-- Modify: `services/api/src/settlement/settlement.service.ts`
-- Modify: `services/api/src/settlement/settlement.service.spec.ts`
-- Create: `apps/web-admin/src/pages/contracts/contract-current-status.ts`
-- Create: `apps/web-admin/src/pages/contracts/contract-current-status.test.ts`
-- Modify: `apps/web-admin/src/pages/contracts/ContractListPage.vue`
-- Modify: `apps/web-admin/src/pages/contracts/ContractDetailPage.vue`
-- Modify: `apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue`
-
-### Step 1：先写单一状态 RED
-
-生效前 read model 只返回一个办理状态：
-
-```text
-draft -> 草稿编制
-approval_pending -> 待审批
-in_approval -> 审批中
-in_seal -> 待用印
-awaiting_mutual_signature -> 待双方签署
-awaiting_archive_confirmation -> 待归档确认
-```
-
-生效后只返回一个履约状态：
-
-```text
-not_started -> 未开始
-performing -> 履约中
-suspended -> 已暂停
-completed -> 已完成
-terminated -> 已终止
-```
-
-争议、异常超付、资料缺失只进入 `riskTags`，不能覆盖主状态。
-
-测试还要断言：
-
-- 台账、详情、工作台显示同一个后端 `currentStatus`。
-- 页面不并排展示流程状态、版本状态、归档状态三套标签。
-- read model 只给一个 `nextAction`。
-
-### Step 2：运行 RED
-
-```bash
-pnpm --filter @jiangkong/shared-domain test -- contract-performance-status.test.ts
-pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-performance-status.service.spec.ts src/contract/contract-read.service.spec.ts src/contract/contract-version-activation.service.spec.ts src/settlement/settlement.service.spec.ts
-pnpm --filter @jiangkong/web-admin test -- src/pages/contracts/contract-current-status.test.ts
-```
-
-### Step 3：实现履约状态权限和流转
-
-路由：
-
-```http
-POST /contracts/:contractId/performance-status
-{
-  "toStatus": "performing",
-  "reason": "项目已进场"
-}
-```
-
-后端规则：
-
-- 只有合同版本已 effective 才能更新。
-- 经办人可更新 `not_started`、`performing`、`suspended`。
-- `completed`、`terminated` 必须由合同部主管二次确认。
-- `completed` 禁止发起普通履约结算。
-- `terminated` 只允许终止清算或更正流程。
-- 每次变更写 `ContractPerformanceStatusEvent` 和 AuditLog。
-- 普通合同首次归档生效时初始化 `not_started`；合同变更版本生效时继承同一 Contract 当前履约状态，不重置。
-
-历史接管激活时根据已确认事实初始化 `performing` 或 `completed`，不能再使用一套仅历史接管可见的 lifecycle 主状态。
-
-### Step 4：运行 GREEN
-
-```bash
-pnpm --filter @jiangkong/shared-domain test -- contract-performance-status.test.ts
-pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-performance-status.service.spec.ts src/contract/contract-read.service.spec.ts src/contract/contract-version-activation.service.spec.ts src/settlement/settlement.service.spec.ts
-pnpm --filter @jiangkong/web-admin test -- src/pages/contracts/contract-current-status.test.ts
-```
-
-### Step 5：提交
-
-```bash
-git add packages/shared-domain/src services/api/src/contract services/api/src/settlement apps/web-admin/src/pages/contracts
-git commit -m "feat: expose one current contract status"
-```
-
----
-
-## Task 11：收口后端验证
+## Task 9：收口后端验证
 
 ### Step 1：运行定向测试
 
@@ -938,14 +783,9 @@ git commit -m "feat: expose one current contract status"
 pnpm --filter @jiangkong/api test -- --runInBand \
   src/contract-workbench/contract-draft-aggregate.service.spec.ts \
   src/contract-workbench/contract-draft-edit-lease.service.spec.ts \
-  src/contract-workbench/contract-draft-purge.service.spec.ts \
   src/contract-workbench/contract-draft.controller.spec.ts \
   src/contract-workbench/contract-workbench.service.spec.ts \
   src/contract/contract.service.spec.ts \
-  src/contract/contract-performance-status.service.spec.ts \
-  src/contract/contract-read.service.spec.ts \
-  src/contract/contract-version-activation.service.spec.ts \
-  src/settlement/settlement.service.spec.ts \
   src/contract-document/contract-document.service.spec.ts \
   src/contract-document/contract-document.processor.spec.ts \
   src/database/contract-draft-aggregate-schema.spec.ts \
@@ -963,12 +803,17 @@ git diff --check
 
 预期：全部退出码 `0`。
 
+另用 100、500、1000 行清单覆盖连续编辑和无变化手动保存，记录请求体大小、
+事务耗时、实际变更行数、锁持有时间和 AuditLog 增长；任何全表重写或明显
+超出既有交互预算的结果都阻断实施包 3 接入。
+
 ### Step 3：更新进度并提交
 
 在 `PROGRESS.md` 记录：
 
 - 已完成的具体 API 和测试证据。
-- 尚未切换前端、未删除旧接口。
+- 尚未切换前端、未删除旧接口；日常删除仍是受审计逻辑删除，物理清理尚未启用。
+- 全站履约状态写模型不在本包内重构。
 - 未执行生产迁移、未部署、未修改生产业务数据。
 
 ```bash

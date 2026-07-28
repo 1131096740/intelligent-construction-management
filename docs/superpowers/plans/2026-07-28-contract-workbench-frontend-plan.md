@@ -2,9 +2,9 @@
 
 > **执行要求：** 按任务顺序实施；先锁定保存、离开和定位行为的失败用例，完成前运行计划列出的全部验证命令。
 
-**目标：** 保留桌面端“左边看文档、右边填资料”，把右侧改为十个竖向章节；顶部唯一“保存草稿”统一保存全部资料，自动保存不生成预览，问题项可直接定位到字段或清单行。
+**目标：** 保留桌面端“左边看文档、右边填资料”，把右侧改为十个竖向章节；顶部唯一“保存草稿”统一保存全部资料，自动保存不生成预览，租约和本机恢复形成闭环，旧保存响应不能覆盖后续输入，问题项可直接定位到字段或清单行。
 
-**核心架构：** `use-contract-draft.ts` 持有唯一聚合 model 和保存调度；子组件只编辑 model 或发出领域命令，不再自行持久化草稿。`ContractWorkbenchPage.vue` 负责布局和治理动作，不直接拼 API 请求。
+**核心架构：** `use-contract-draft.ts` 持有唯一聚合 model、租约生命周期、本机恢复和保存调度；子组件只编辑 model 或发出领域命令，不再自行持久化草稿。`ContractWorkbenchPage.vue` 负责布局和治理动作，不直接拼 API 请求。
 
 **依赖：** Vue 3、TDesign Vue Next、现有工作台子组件、实施包 1 的聚合 API、实施包 2 的清单 read model。
 
@@ -30,7 +30,10 @@ heartbeatContractDraftEditLease(contractVersionId, leaseToken)
 takeOverContractDraftEditLease(contractVersionId, confirmation)
 saveContractDraftAggregate(contractVersionId, leaseToken, payload)
 queueContractDraftPreview(contractVersionId, sourceRevision)
-submitContractDraft(contractVersionId)
+submitContractDraft(contractVersionId, leaseToken, {
+  expectedRevision,
+  idempotencyKey
+})
 deletePristineContractDraft(contractVersionId, expectedRevision, confirmation)
 ```
 
@@ -79,7 +82,66 @@ git commit -m "feat: adopt version scoped contract draft api"
 
 ---
 
-## Task 2：建立唯一保存状态机
+## Task 2：建立编辑租约生命周期和本机恢复
+
+**Files:**
+
+- Create: `apps/web-admin/src/pages/contracts/workbench/contract-draft-lease.state.ts`
+- Create: `apps/web-admin/src/pages/contracts/workbench/contract-draft-lease.state.test.ts`
+- Create: `apps/web-admin/src/pages/contracts/workbench/contract-draft-local-recovery.ts`
+- Create: `apps/web-admin/src/pages/contracts/workbench/contract-draft-local-recovery.test.ts`
+- Modify: `apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts`
+- Modify: `apps/web-admin/src/pages/contracts/workbench/use-contract-draft.test.ts`
+
+### Step 1：先写租约和恢复 RED
+
+覆盖：
+
+1. 页面进入可编辑草稿时取得租约，原始 token 只保存在当前页面内存。
+2. 每 30 秒心跳；页面从后台恢复时立即核验，120 秒失效后转只读。
+3. 同用户第二个页面也不能静默复用或接管第一个页面 token。
+4. 合同部主管显式接管后，旧页面下一次心跳或保存立即只读。
+5. 页面卸载只做 best-effort 释放；释放失败不能延长租约。
+6. 本地恢复按账号、设备、项目、合同版本和服务端 revision 隔离，24 小时过期。
+7. 本地副本不包含租约 token、附件字节、密码、短时下载 URL 或 COS objectKey。
+8. 服务端 revision 更新后只提示比较，不把旧副本自动覆盖到新 model。
+9. 保存成功、提交、逻辑删除、退出登录和过期都会清理对应副本。
+
+### Step 2：运行 RED
+
+```bash
+pnpm --filter @jiangkong/web-admin test -- \
+  src/pages/contracts/workbench/contract-draft-lease.state.test.ts \
+  src/pages/contracts/workbench/contract-draft-local-recovery.test.ts \
+  src/pages/contracts/workbench/use-contract-draft.test.ts
+```
+
+### Step 3：实现
+
+- 租约 token 只存在 composable 闭包，不写 localStorage、sessionStorage、Pinia 或错误日志。
+- 本地结构化副本使用独立存储 key 和版本化 schema；只保存可序列化业务 model。
+- `visibilitychange` 回到前台时先核验租约；不能自动调用 takeover。
+- 网络离线时保留 dirty 和本地副本，恢复网络后仍以当前服务端 revision 做 CAS。
+
+### Step 4：运行 GREEN
+
+```bash
+pnpm --filter @jiangkong/web-admin test -- \
+  src/pages/contracts/workbench/contract-draft-lease.state.test.ts \
+  src/pages/contracts/workbench/contract-draft-local-recovery.test.ts \
+  src/pages/contracts/workbench/use-contract-draft.test.ts
+```
+
+### Step 5：提交
+
+```bash
+git add apps/web-admin/src/pages/contracts/workbench
+git commit -m "feat: govern contract draft lease and local recovery"
+```
+
+---
+
+## Task 3：建立唯一保存状态机
 
 **Files:**
 
@@ -104,17 +166,45 @@ git commit -m "feat: adopt version scoped contract draft api"
 8. 409 冲突保留本地 model，不用后端响应覆盖。
 9. `EDIT_LEASE_LOST` 转为只读并保留未提交内容供用户复制。
 10. clean 状态手动保存不发 PUT，但仍可在已有保存 revision 上手动刷新预览。
+11. 请求发出时冻结 `inFlightSnapshot`；保存期间继续编辑会增加
+    `localGeneration`，旧响应只能推进 `serverRevision/ackedGeneration`。
+12. 后端派生金额、readiness 和问题数只有在对应字段自请求发出后未再次编辑时
+    才能合并；否则保留新输入并标记等待下一轮保存。
+13. 输入暂时为 `-`、`.`、未完成日期等不可序列化形态时不发送请求，保持
+    dirty 和本机恢复副本；离开页面仍失败关闭。
 
 建议状态：
 
 ```ts
 type AggregateSaveState =
-  | { kind: "clean"; revision: number }
-  | { kind: "dirty"; revision: number; deadlineAt: number }
-  | { kind: "saving"; revision: number; requestGeneration: number }
-  | { kind: "failed"; revision: number; message: string }
-  | { kind: "conflict"; revision: number }
-  | { kind: "readonly"; revision: number; reason: string };
+  | {
+      kind: "clean";
+      serverRevision: number;
+      localGeneration: number;
+      ackedGeneration: number;
+    }
+  | {
+      kind: "dirty";
+      serverRevision: number;
+      localGeneration: number;
+      ackedGeneration: number;
+      deadlineAt: number;
+    }
+  | {
+      kind: "saving";
+      serverRevision: number;
+      localGeneration: number;
+      sentGeneration: number;
+      ackedGeneration: number;
+      inFlightSnapshot: ContractDraftAggregateModel;
+    }
+  | {
+      kind: "failed" | "conflict" | "readonly";
+      serverRevision: number;
+      localGeneration: number;
+      ackedGeneration: number;
+      reason: string;
+    };
 ```
 
 ### Step 2：运行 RED
@@ -136,7 +226,8 @@ pnpm --filter @jiangkong/web-admin test -- src/pages/contracts/workbench/contrac
   saveState,
   savedAt,
   revision,
-  leaseState
+  leaseState,
+  recoveryState
 }
 ```
 
@@ -157,7 +248,7 @@ git commit -m "feat: unify contract workbench save state"
 
 ---
 
-## Task 3：取消清单和其他章节的独立保存
+## Task 4：取消清单和其他章节的独立保存
 
 **Files:**
 
@@ -225,7 +316,7 @@ git commit -m "refactor: route contract section edits through global save"
 
 ---
 
-## Task 4：简化离开页面保护
+## Task 5：简化离开页面保护
 
 **Files:**
 
@@ -280,7 +371,7 @@ git commit -m "fix: save contract draft before leaving workbench"
 
 ---
 
-## Task 5：定义十个竖向章节和稳定锚点
+## Task 6：定义十个竖向章节和稳定锚点
 
 **Files:**
 
@@ -355,7 +446,7 @@ git commit -m "feat: add vertical contract workbench sections"
 
 ---
 
-## Task 6：让资料问题可以定位到字段或清单行
+## Task 7：让资料问题可以定位到字段或清单行
 
 **Files:**
 
@@ -423,7 +514,7 @@ git commit -m "feat: locate contract readiness issues in workbench"
 
 ---
 
-## Task 7：补齐主体编辑和删除
+## Task 8：补齐主体编辑和删除
 
 **Files:**
 
@@ -438,7 +529,9 @@ git commit -m "feat: locate contract readiness issues in workbench"
 
 - 草稿且持有租约：可新增、编辑、删除主体。
 - 提交后：全部主体只读。
-- 删除使用 `SensitiveActionDialog`，确认后只改本地聚合 model，等待全局保存。
+- 删除使用普通 TDesign 确认弹窗，确认后只改本地聚合 model，等待全局保存。
+  由于该动作此时没有独立后端命令，不得显示密码输入或伪装成已完成服务端
+  二次确认；最终保存仍由后端完整校验主体约束。
 - 删除公司治理主体或必填唯一乙方时，页面先提示，但后端仍是最终校验。
 - 取消删除不修改 model。
 
@@ -463,11 +556,13 @@ git commit -m "feat: edit contract parties before submission"
 
 ---
 
-## Task 8：实现顶部手动保存与独立预览反馈
+## Task 9：实现顶部手动保存与独立预览反馈
 
 **Files:**
 
 - Modify: `apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue`
+- Modify: `apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts`
+- Modify: `apps/web-admin/src/pages/contracts/workbench/use-contract-draft.test.ts`
 - Modify: `apps/web-admin/src/pages/contracts/workbench/contract-draft-save-status.ts`
 - Modify: `apps/web-admin/src/pages/contracts/workbench/contract-draft-save-status.test.ts`
 - Modify: `apps/web-admin/src/pages/contracts/contract-workbench-canvas.structure.test.ts`
@@ -502,10 +597,26 @@ flush 全部资料
 
 自动保存只执行 PUT，不调用 preview-generation。
 
+提交审批必须使用新版本级接口：
+
+```text
+flush 最新全部资料
+-> 等待 PUT 成功并取得最新 revision
+-> 用当前租约、expectedRevision 和稳定 idempotency key 调用 submission
+-> 成功后显示正式编号和审批实例，并清理本地副本
+```
+
+测试必须覆盖保存失败时不提交、网络丢响应时复用同一提交幂等键、租约丢失时
+不提交、重复点击只产生一个审批实例，以及成功提交后不再把页面当作可编辑
+草稿。页面不得继续调用旧的按合同 ID 提交入口。
+
 ### Step 2：运行 RED
 
 ```bash
-pnpm --filter @jiangkong/web-admin test -- src/pages/contracts/workbench/contract-draft-save-status.test.ts src/pages/contracts/contract-workbench-canvas.structure.test.ts
+pnpm --filter @jiangkong/web-admin test -- \
+  src/pages/contracts/workbench/use-contract-draft.test.ts \
+  src/pages/contracts/workbench/contract-draft-save-status.test.ts \
+  src/pages/contracts/contract-workbench-canvas.structure.test.ts
 ```
 
 ### Step 3：实现
@@ -521,7 +632,10 @@ pnpm --filter @jiangkong/web-admin test -- src/pages/contracts/workbench/contrac
 ### Step 4：运行 GREEN 和条款 E2E
 
 ```bash
-pnpm --filter @jiangkong/web-admin test -- src/pages/contracts/workbench/contract-draft-save-status.test.ts src/pages/contracts/contract-workbench-canvas.structure.test.ts
+pnpm --filter @jiangkong/web-admin test -- \
+  src/pages/contracts/workbench/use-contract-draft.test.ts \
+  src/pages/contracts/workbench/contract-draft-save-status.test.ts \
+  src/pages/contracts/contract-workbench-canvas.structure.test.ts
 pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.contract-clause-save.config.ts
 ```
 
@@ -534,7 +648,7 @@ git commit -m "feat: save full contract draft from top action"
 
 ---
 
-## Task 9：实现移动端文档/资料切换
+## Task 10：实现移动端文档/资料切换
 
 **Files:**
 
@@ -553,8 +667,9 @@ git commit -m "feat: save full contract draft from top action"
 移动宽度：
 
 - 使用 TDesign `t-radio-group` 或 `t-segmented` 在“文档”“资料”间切换。
-- 同时只渲染一个主面板，避免窄屏双栏。
-- 切换不卸载聚合 model、不丢输入焦点前的值。
+- 同时只显示一个主面板，避免窄屏双栏。
+- 通过受控 model 配合 `v-show` 或等价 KeepAlive 策略切换，不能因 `v-if`
+  卸载表单而丢失输入焦点前的值。
 - 资料内部仍使用竖向章节导航。
 - 全页无横向溢出。
 
@@ -581,12 +696,14 @@ git commit -m "feat: add responsive contract document data switch"
 
 ---
 
-## Task 10：前端总门禁
+## Task 11：前端总门禁
 
 ```bash
 pnpm --filter @jiangkong/web-admin test -- \
   src/api/contract-workbench.api.test.ts \
   src/pages/contracts/workbench/use-contract-draft.test.ts \
+  src/pages/contracts/workbench/contract-draft-lease.state.test.ts \
+  src/pages/contracts/workbench/contract-draft-local-recovery.test.ts \
   src/pages/contracts/workbench/contract-workbench-save.state.test.ts \
   src/pages/contracts/workbench/contract-workbench-navigation.state.test.ts \
   src/pages/contracts/workbench/contract-workbench-sections.test.ts \

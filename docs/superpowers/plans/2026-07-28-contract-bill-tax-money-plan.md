@@ -8,6 +8,11 @@
 
 **依赖：** Prisma Decimal、ExcelJS、现有 `ContractBillService` 和 `JgBusinessGrid`。
 
+**定稿门禁：** 金额计算器可以先按已确认规则实现；真实 Excel 未取得前，
+Excel 单元格 adapter、模板兼容输入集合和生产发布状态都只能标记为“候选”。
+拿到原文件后先读取 value、numFmt、公式及结果类型，再决定支持或明确拒绝的
+单元格形态，不能用示例文件替代事实。
+
 ---
 
 ## Task 1：锁定含税计价的权威公式
@@ -49,6 +54,8 @@ expect(result.taxExclusiveUnitPrice).toBe("344.036695");
 - 零数量时不生成派生不含税单价。
 - 负数、超存储范围、非法税率失败关闭。
 - 不含税计价模式仍以不含税总价为权威，再计算含税总价。
+- 覆盖恰好半分、6 位单价边界、超大数量和多行汇总，明确全部使用
+  `ROUND_HALF_UP` 且不经过 JavaScript `number`。
 
 ### Step 2：运行 RED
 
@@ -124,6 +131,8 @@ taxExclusiveUnitPrice Decimal? @db.Decimal(24, 6)
 - 客户端伪造 `taxExclusiveUnitPrice` 被 DTO 丢弃或拒绝。
 - 更新数量、含税单价或税率时重新派生。
 - 汇总逻辑只使用三项 `...AmountCents`，不读取派生单价。
+- read model 遇到非空但与权威金额重新计算不一致的派生值时失败关闭并记录
+  数据治理错误，不能把旧派生值继续带入文档。
 
 ### Step 2：运行 RED
 
@@ -227,15 +236,11 @@ git commit -m "fix: centralize contract bill tax normalization"
 
 - Modify: `services/api/src/contract-bill/contract-bill-excel.service.ts`
 - Modify: `services/api/src/contract-bill/contract-bill-excel.service.spec.ts`
-- Create: `services/api/src/contract-bill/contract-draft-bill-excel.controller.ts`
-- Create: `services/api/src/contract-bill/contract-draft-bill-excel.controller.spec.ts`
-- Modify: `services/api/src/contract-bill/contract-bill.module.ts`
-- Modify: `apps/web-admin/src/api/contract-workbench.api.ts`
-- Modify: `apps/web-admin/src/api/contract-workbench.api.test.ts`
 
 ### Step 1：先写四种单元格 RED
 
-用 ExcelJS 在内存中生成：
+先用 ExcelJS 在内存中锁定候选兼容行为；取得真实 Excel 后必须用真实单元格
+形态替换或补充这些用例：
 
 | 单元格 value | numFmt | 领域结果 |
 | --- | --- | --- |
@@ -278,6 +283,11 @@ private taxRatePercentFromCell(cell: Cell): string {
 
 读取 worksheet 时，税率列保留 `Cell` 上下文；其他字段继续使用原始文本策略。
 
+这里的整数 `9`、字符串 `9%` 只作为旧文件导入兼容。系统新下载模板始终写
+数值 `0.09` 并显示 `9%`，不得继续制造多种格式；真实 Excel 如果包含公式税率，
+先输出公式和 cached result 证据，再决定支持安全结果或给出明确人工处置，
+不能在未见原文件前假定一律拒绝。
+
 ### Step 4：运行 GREEN
 
 ```bash
@@ -299,6 +309,11 @@ git commit -m "fix: normalize excel percentage tax cells"
 
 - Modify: `services/api/src/contract-bill/contract-bill-excel.service.ts`
 - Modify: `services/api/src/contract-bill/contract-bill-excel.service.spec.ts`
+- Create: `services/api/src/contract-bill/contract-draft-bill-excel.controller.ts`
+- Create: `services/api/src/contract-bill/contract-draft-bill-excel.controller.spec.ts`
+- Modify: `services/api/src/contract-bill/contract-bill.module.ts`
+- Modify: `apps/web-admin/src/api/contract-workbench.api.ts`
+- Modify: `apps/web-admin/src/api/contract-workbench.api.test.ts`
 
 ### Step 1：先写模板 RED
 
@@ -495,7 +510,8 @@ git add services/api/src/contract-bill/fixtures/real-tax-rounding-regression.jso
 git commit -m "test: add real contract bill rounding regression"
 ```
 
-如果尚未取得真实 Excel，本 Task 必须保持未完成，整个改造不得进入生产发布。
+如果尚未取得真实 Excel，本 Task 必须保持未完成，Task 4/5 只能标记为候选，
+整个改造不得进入生产发布。
 
 ---
 
@@ -507,6 +523,7 @@ pnpm --filter @jiangkong/api test -- --runInBand \
   src/money/decimal-money.spec.ts \
   src/contract-bill/contract-bill.service.spec.ts \
   src/contract-bill/contract-bill-excel.service.spec.ts \
+  src/contract-bill/contract-draft-bill-excel.controller.spec.ts \
   src/contract-bill/contract-bill-guards.spec.ts \
   src/database/contract-bill-net-unit-price-schema.spec.ts
 pnpm --filter @jiangkong/web-admin test -- \
@@ -521,3 +538,5 @@ git diff --check
 ```
 
 预期：全部退出码 `0`，且 75 万元回归精确输出 `688,073.39` 元不含税总价。
+取得真实 Excel 后，还必须把
+`src/contract-bill/contract-bill-real-regression.spec.ts` 纳入本门禁。
