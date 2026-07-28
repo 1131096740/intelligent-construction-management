@@ -112,6 +112,7 @@ function authoritativeRows(): ReplaceContractBillRowsReadModel {
         taxInclusiveAmountCents: "1130",
         taxExclusiveAmountCents: "1000",
         taxAmountCents: "130",
+        taxExclusiveUnitPrice: "10.000000",
         isProvisional: false,
         settlementBasis: null,
         customData: {},

@@ -43,6 +43,10 @@ import type {
   ContractBillCandidateRow,
   ContractBillCellError
 } from "./contract-bill-grid";
+import {
+  netUnitPriceDetail,
+  netUnitPriceDisplay
+} from "./contract-bill-grid";
 
 const props = defineProps<{
   bill: WorkbenchBill;
@@ -67,6 +71,7 @@ const coreColumns: EditableColumn[] = [
   { key: "unit", label: "单位", required: true, size: 96 },
   { key: "quantity", label: "数量", required: true, size: 120 },
   { key: "unitPrice", label: "含税单价", required: true, size: 140 },
+  { key: "taxExclusiveUnitPrice", label: "不含税单价", size: 140 },
   { key: "taxRateSource", label: "税率来源", size: 140 },
   { key: "taxRatePercent", label: "税率（%）", required: true, size: 120 },
   { key: "isProvisional", label: "暂定项", size: 96 },
@@ -131,6 +136,14 @@ const columns = computed<ColumnRegular[]>(() =>
     cellProperties: ({ model }) => {
       const clientRowKey = String((model as JgBusinessGridRow).clientRowKey ?? "");
       const error = errorLookup.value.get(cellKey(clientRowKey, column.key));
+      if (column.key === "taxExclusiveUnitPrice") {
+        const row = props.rows.find((candidate) => candidate.clientRowKey === clientRowKey);
+        return {
+          className: "contract-bill-grid__cell--authoritative",
+          "data-authoritative-field": "taxExclusiveUnitPrice",
+          title: netUnitPriceDetail(row?.taxExclusiveUnitPrice)
+        };
+      }
       if (!error) return undefined;
       return {
         className: "contract-bill-grid__cell--error",
@@ -182,6 +195,7 @@ function toGridRow(row: ContractBillCandidateRow): JgBusinessGridRow {
     unit: row.unit,
     quantity: row.quantity,
     unitPrice: row.unitPrice,
+    taxExclusiveUnitPrice: netUnitPriceDisplay(row.taxExclusiveUnitPrice),
     taxRateSource: row.taxRateSource,
     taxRatePercent: row.taxRatePercent,
     isProvisional: row.isProvisional ? "true" : "false",
@@ -370,6 +384,7 @@ function errorRowNumber(clientRowKey: string) {
 
 function isReadonlyCell(field: string, row: JgBusinessGridRow) {
   if (props.readonly) return true;
+  if (field === "taxExclusiveUnitPrice") return true;
   if (field === "taxRateSource") return props.bill.taxMode !== "multiple_rate";
   if (field === "taxRatePercent") {
     return props.bill.taxMode !== "multiple_rate" || row.taxRateSource !== "row_override";
@@ -569,6 +584,17 @@ function cellKey(clientRowKey: string, field: string) {
               @update:model-value="updateMobileCell(row.clientRowKey, 'unitPrice', String($event))"
             />
           </label>
+          <div class="contract-bill-grid__field">
+            <span>不含税单价</span>
+            <span
+              class="contract-bill-grid__derived-value"
+              data-field="taxExclusiveUnitPrice"
+              :data-client-row-key="row.clientRowKey"
+              :title="netUnitPriceDetail(row.taxExclusiveUnitPrice)"
+            >
+              {{ netUnitPriceDisplay(row.taxExclusiveUnitPrice) }}
+            </span>
+          </div>
           <label class="contract-bill-grid__field">
             <span>税率来源</span>
             <t-select

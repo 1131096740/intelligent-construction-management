@@ -14,6 +14,7 @@ import {
   importPreviewRows,
   inheritedTaxRateText,
   normalizeClauseDocument,
+  rowValue,
   isUnsavedBillRow,
   selectedBillForDownload,
   updateRowPreservingKey,
@@ -65,6 +66,18 @@ describe("contract bill editor helpers", () => {
       ...bills[0],
       defaultTaxRatePercent: "13"
     })).toBe("继承合同税率（13%）");
+  });
+
+  it("keeps the full authoritative net unit price text from the workbench read model", () => {
+    expect(
+      rowValue(
+        {
+          rowKey: "row-authoritative",
+          taxExclusiveUnitPrice: "344.036695"
+        },
+        "taxExclusiveUnitPrice"
+      )
+    ).toBe("344.036695");
   });
 
   it("rejects quantity and tax-inclusive unit-price precision above two decimals", () => {

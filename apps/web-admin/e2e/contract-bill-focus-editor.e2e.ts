@@ -12,15 +12,16 @@ const initialRow = {
   itemName: "钢筋",
   specification: "HRB400",
   unit: "吨",
-  quantity: "1",
-  unitPrice: "100.00",
-  taxRatePercent: "13",
+  quantity: "2000",
+  unitPrice: "375.00",
+  taxRatePercent: "9",
   taxRateSource: "version_default",
   pricingFactStatus: "complete",
   precisionPolicy: "two_decimal",
-  taxInclusiveAmountCents: "10000",
-  taxExclusiveAmountCents: "8849",
-  taxAmountCents: "1151",
+  taxExclusiveUnitPrice: "344.036695",
+  taxInclusiveAmountCents: "75000000",
+  taxExclusiveAmountCents: "68807339",
+  taxAmountCents: "6192661",
   isProvisional: false,
   settlementBasis: "",
   customData: {}
@@ -53,6 +54,11 @@ test.describe("合同清单全宽专注编辑", () => {
     await expect(page.getByRole("heading", { name: "合同价格清单" })).toBeVisible();
     await expect(page.getByTestId("contract-bill-grid").locator("revo-grid")).toBeVisible();
     await expectWorkbenchRoute(page);
+    await expect(page.locator(".focus-summary")).toContainText(
+      "已保存不含税合计 688,073.39 元"
+    );
+    await expect(netUnitPriceCell(page, 0)).toContainText("344.04");
+    await expect(netUnitPriceCell(page, 0)).toHaveAttribute("title", "344.036695");
 
     // 连续新增至少 20 行，全部只存在于本地候选。
     for (let index = 0; index < 20; index += 1) {
@@ -153,6 +159,12 @@ test.describe("合同清单全宽专注编辑", () => {
     expect(body.rows).toHaveLength(101);
     expect(new Set(body.rows.map((row) => row.clientRowKey)).size).toBe(101);
     expect(body.rows.every((row, index) => row.sortOrder === index)).toBe(true);
+    expect(body.rows.every((row) =>
+      !("taxExclusiveUnitPrice" in row) &&
+      !("taxInclusiveAmountCents" in row) &&
+      !("taxExclusiveAmountCents" in row) &&
+      !("taxAmountCents" in row)
+    )).toBe(true);
     expect(body.rows[100]?.itemName).toBe("Excel 材料 101 已编辑");
     expect(mock.putResponseItemNames()).not.toContain(serverReloadSentinel);
     await page.locator("revo-grid").evaluate(async (grid: HTMLElement & {
@@ -208,6 +220,8 @@ test.describe("合同清单全宽专注编辑", () => {
         await expect(page.getByTestId("contract-bill-grid").locator("revo-grid")).toBeVisible();
         await expect(page.locator(".contract-bill-grid__cards")).toHaveCount(0);
         await expect(itemNameCell(page, 0)).toContainText("钢筋");
+        await expect(netUnitPriceCell(page, 0)).toContainText("344.04");
+        await expect(netUnitPriceCell(page, 0)).toHaveAttribute("title", "344.036695");
       } else {
         await expect(page.locator("revo-grid")).toHaveCount(0);
         await expect(page.locator(".contract-bill-grid__cards")).toBeVisible();
@@ -215,6 +229,11 @@ test.describe("合同清单全宽专注编辑", () => {
         await expect(page.locator(
           '.contract-bill-grid__card [data-field="itemName"][data-client-row-key="server-initial-row"] input'
         )).toHaveValue("钢筋");
+        const netPrice = page.locator(
+          '.contract-bill-grid__card [data-field="taxExclusiveUnitPrice"][data-client-row-key="server-initial-row"]'
+        );
+        await expect(netPrice).toHaveText("344.04");
+        await expect(netPrice).toHaveAttribute("title", "344.036695");
       }
 
       await saveLayoutScreenshot(page, testInfo.project.name, viewport.label);
@@ -245,6 +264,11 @@ test.describe("合同清单全宽专注编辑", () => {
     await expect(page.locator("revo-grid")).toHaveCount(0);
     await expect(page.locator(".contract-bill-grid__card")).toHaveCount(1);
     await expect(page.locator(".focus-summary")).toContainText("候选行数 1");
+    const netPrice = page.locator(
+      '.contract-bill-grid__card [data-field="taxExclusiveUnitPrice"][data-client-row-key="server-initial-row"]'
+    );
+    await expect(netPrice).toHaveText("344.04");
+    await expect(netPrice).toHaveAttribute("title", "344.036695");
     const statusMetrics = await mobileStatusMetrics(page);
     expect(statusMetrics.height).toBeLessThanOrEqual(96);
     expect(Number.isFinite(statusMetrics.designGap)).toBe(true);
@@ -381,6 +405,7 @@ async function installContractBillRoutes(page: Page) {
       taxRateSource: row.taxRateSource,
       pricingFactStatus: "complete",
       precisionPolicy: "two_decimal",
+      taxExclusiveUnitPrice: "0.884956",
       taxInclusiveAmountCents: "100",
       taxExclusiveAmountCents: "88",
       taxAmountCents: "12",
@@ -407,6 +432,7 @@ async function installContractBillRoutes(page: Page) {
       taxRateSource: row.taxRateSource ?? "version_default",
       pricingFactStatus: "complete",
       precisionPolicy: "two_decimal",
+      taxExclusiveUnitPrice: "0.884956",
       taxInclusiveAmountCents: "100",
       taxExclusiveAmountCents: "88",
       taxAmountCents: "12",
@@ -457,6 +483,12 @@ async function expectWorkbenchRoute(page: Page) {
 function itemNameCell(page: Page, rowIndex: number) {
   return page.locator(
     `revo-grid revogr-data[type="rgRow"] [data-rgrow="${rowIndex}"][data-rgcol="1"]`
+  );
+}
+
+function netUnitPriceCell(page: Page, rowIndex: number) {
+  return page.locator(
+    `revo-grid revogr-data[type="rgRow"] [data-rgrow="${rowIndex}"][data-rgcol="6"]`
   );
 }
 
@@ -563,7 +595,7 @@ function workbenchReadModel(
       status: "draft",
       changeType: "original",
       draftRevision: 3,
-      amountCents: "10000",
+      amountCents: "75000000",
       pricingNature: "unit_price",
       amountSource: "bill_sum",
       manualAmountCents: null,
@@ -571,7 +603,7 @@ function workbenchReadModel(
       taxFacts: {
         invoiceType: "vat_special",
         taxMode: "single_rate",
-        defaultTaxRatePercent: "13",
+        defaultTaxRatePercent: "9",
         status: "draft",
         source: "contract_document",
         revision: 0,
@@ -593,15 +625,15 @@ function workbenchReadModel(
       billKey: "materials",
       name: "合同价格清单",
       revision,
-      taxInclusiveAmountCents: "10000",
-      taxExclusiveAmountCents: "8849",
-      taxAmountCents: "1151",
+      taxInclusiveAmountCents: "75000000",
+      taxExclusiveAmountCents: "68807339",
+      taxAmountCents: "6192661",
       amountRole: "included",
       pricingMode: "tax_inclusive",
       pricingNature: "unit_price",
       amountLimitType: "capped",
       taxMode: "single_rate",
-      defaultTaxRatePercent: "13",
+      defaultTaxRatePercent: "9",
       schemaSnapshot: { columns: [] },
       rows
     }],
@@ -651,6 +683,7 @@ function batchSaveReadModel(
       taxRateSource: row.taxRateSource,
       pricingFactStatus: row.pricingFactStatus,
       precisionPolicy: row.precisionPolicy,
+      taxExclusiveUnitPrice: row.taxExclusiveUnitPrice,
       taxInclusiveAmountCents: row.taxInclusiveAmountCents,
       taxExclusiveAmountCents: row.taxExclusiveAmountCents,
       taxAmountCents: row.taxAmountCents,

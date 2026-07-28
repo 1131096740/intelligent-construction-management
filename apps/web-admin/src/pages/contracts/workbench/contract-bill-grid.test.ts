@@ -4,13 +4,16 @@ import type { WorkbenchBill } from "./contract-bill-editor";
 import {
   addBillCandidateRow,
   applyExcelCandidateRows,
-  candidateTotals,
+  authoritativeBillTotals,
   copyBillCandidateRow,
   emptyBillCandidateRow,
   fromBatchSaveReadModel,
   fromWorkbenchBill,
+  invalidateChangedAuthoritativePricing,
   mapServerBillCellErrors,
   moveBillCandidateRow,
+  netUnitPriceDetail,
+  netUnitPriceDisplay,
   removeBillCandidateRow,
   toReplaceBillRowsInput,
   validateBillCandidateRows,
@@ -77,6 +80,76 @@ describe("contract bill grid candidate model", () => {
     })]);
   });
 
+  it("preserves authoritative net prices for display but never submits them", () => {
+    const authoritative = fromWorkbenchBill({
+      ...bill,
+      taxInclusiveAmountCents: "75000000",
+      taxExclusiveAmountCents: "68807339",
+      taxAmountCents: "6192661",
+      rows: [{
+        ...bill.rows[0]!,
+        quantity: "2000",
+        unitPrice: "375.00",
+        taxExclusiveUnitPrice: "344.036695",
+        taxInclusiveAmountCents: "75000000",
+        taxExclusiveAmountCents: "68807339",
+        taxAmountCents: "6192661"
+      }]
+    })[0]!;
+
+    expect(authoritative.taxExclusiveUnitPrice).toBe("344.036695");
+    expect(netUnitPriceDisplay(authoritative.taxExclusiveUnitPrice)).toBe("344.04");
+    expect(netUnitPriceDetail(authoritative.taxExclusiveUnitPrice)).toBe("344.036695");
+    expect(authoritativeBillTotals({
+      ...bill,
+      taxInclusiveAmountCents: "75000000",
+      taxExclusiveAmountCents: "68807339",
+      taxAmountCents: "6192661"
+    })).toEqual({
+      kind: "authoritative",
+      taxInclusiveAmountCents: "75000000",
+      taxExclusiveAmountCents: "68807339",
+      taxAmountCents: "6192661"
+    });
+
+    const payloadRow = toReplaceBillRowsInput([authoritative], {
+      expectedBillRevision: 7,
+      idempotencyKey: "no-derived-fields",
+      taxMode: "multiple_rate",
+      defaultTaxRatePercent: "13"
+    }).rows[0]!;
+    expect(payloadRow).not.toHaveProperty("taxExclusiveUnitPrice");
+    expect(payloadRow).not.toHaveProperty("taxInclusiveAmountCents");
+    expect(payloadRow).not.toHaveProperty("taxExclusiveAmountCents");
+    expect(payloadRow).not.toHaveProperty("taxAmountCents");
+  });
+
+  it("clears stale authoritative pricing only when pricing inputs change", () => {
+    const current = validRow({
+      taxExclusiveUnitPrice: "344.036695",
+      taxInclusiveAmountCents: "75000000",
+      taxExclusiveAmountCents: "68807339",
+      taxAmountCents: "6192661"
+    });
+
+    expect(invalidateChangedAuthoritativePricing(
+      [current],
+      [{ ...current, itemName: "钢筋（复核）" }]
+    )[0]).toMatchObject({
+      taxExclusiveUnitPrice: "344.036695",
+      taxExclusiveAmountCents: "68807339"
+    });
+
+    const repriced = invalidateChangedAuthoritativePricing(
+      [current],
+      [{ ...current, quantity: "2001" }]
+    )[0]!;
+    expect(repriced).not.toHaveProperty("taxExclusiveUnitPrice");
+    expect(repriced).not.toHaveProperty("taxInclusiveAmountCents");
+    expect(repriced).not.toHaveProperty("taxExclusiveAmountCents");
+    expect(repriced).not.toHaveProperty("taxAmountCents");
+  });
+
   it("initializes legacy precision metadata from authoritative workbench and batch rows", () => {
     const legacyWorkbench = fromWorkbenchBill({
       ...bill,
@@ -92,7 +165,8 @@ describe("contract bill grid candidate model", () => {
         itemCode: null, itemName: "钢筋", specification: null, unit: "吨", quantity: "1.123",
         unitPrice: "2.345", taxRate: "13", taxRateSource: "row_override", pricingFactStatus: "confirmed",
         precisionPolicy: "legacy", taxInclusiveAmountCents: "263", taxExclusiveAmountCents: "233",
-        taxAmountCents: "30", isProvisional: false, settlementBasis: null, customData: {},
+        taxAmountCents: "30", taxExclusiveUnitPrice: "2.074799",
+        isProvisional: false, settlementBasis: null, customData: {},
         createdAt: "2026-07-24T00:00:00.000Z", updatedAt: "2026-07-24T00:00:00.000Z"
       }]
     };
@@ -145,14 +219,10 @@ describe("contract bill grid candidate model", () => {
     expect(copiedRow.initialUnitPrice).toBeUndefined();
     expect(copiedRow.initialTaxRatePercent).toBeUndefined();
     expect(validateBillCandidateRows([source], bill)).toEqual([]);
-    expect(candidateTotals([source])).toMatchObject({ kind: "calculated" });
     expect(validateBillCandidateRows([copiedRow], bill)).toEqual(expect.arrayContaining([
       expect.objectContaining({ field: "quantity" }),
       expect.objectContaining({ field: "unitPrice" })
     ]));
-    expect(candidateTotals([copiedRow])).toEqual({
-      kind: "not_calculable", clientRowKey: copiedRow.clientRowKey, field: "quantity"
-    });
     const unchanged = [source];
     expect(copyBillCandidateRow(unchanged, "missing")).toBe(unchanged);
   });
@@ -240,7 +310,8 @@ describe("contract bill grid candidate model", () => {
         itemCode: "B", itemName: "水泥", specification: null, unit: "吨", quantity: "2.00",
         unitPrice: "400.00", taxRate: "13", taxRateSource: "row_override", pricingFactStatus: "confirmed",
         precisionPolicy: "two_decimal", taxInclusiveAmountCents: "80000", taxExclusiveAmountCents: "70796",
-        taxAmountCents: "9204", isProvisional: false, settlementBasis: null, customData: { brand: "海螺" },
+        taxAmountCents: "9204", taxExclusiveUnitPrice: "353.980000",
+        isProvisional: false, settlementBasis: null, customData: { brand: "海螺" },
         createdAt: "2026-07-24T00:00:00.000Z", updatedAt: "2026-07-24T00:00:00.000Z"
       }]
     };
@@ -267,7 +338,6 @@ describe("contract bill grid candidate model", () => {
     expect(toReplaceBillRowsInput([legacy], {
       expectedBillRevision: 7, idempotencyKey: "legacy", taxMode: "multiple_rate", defaultTaxRatePercent: "13"
     }).rows[0]).toMatchObject({ quantity: "1.123", unitPrice: "2.345" });
-    expect(candidateTotals([legacy])).toMatchObject({ kind: "calculated" });
     expect(validateBillCandidateRows([{
       ...legacy, quantity: "3.300", initialQuantity: "3.30"
     }], bill)).not.toEqual(expect.arrayContaining([
@@ -290,33 +360,25 @@ describe("contract bill grid candidate model", () => {
       taxRatePercent: "9",
       taxRateSource: "version_default"
     });
-    const totalsOptions = { taxMode: "multiple_rate" as const, defaultTaxRatePercent: "13" };
     expect(validateBillCandidateRows([legacy], bill)).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ field: "quantity" }),
       expect.objectContaining({ field: "unitPrice" })
     ]));
-    expect(candidateTotals([legacy], totalsOptions)).toMatchObject({ kind: "calculated" });
 
     const convertedUnitPrice = { ...legacy, unitPrice: "2.35" };
     expect(validateBillCandidateRows([convertedUnitPrice], bill)).toEqual(expect.arrayContaining([
       expect.objectContaining({ field: "quantity" })
     ]));
-    expect(candidateTotals([convertedUnitPrice], totalsOptions)).toEqual({
-      kind: "not_calculable", clientRowKey: "local-test", field: "quantity"
-    });
 
     const convertedQuantity = { ...legacy, quantity: "1.12" };
     expect(validateBillCandidateRows([convertedQuantity], bill)).toEqual(expect.arrayContaining([
       expect.objectContaining({ field: "unitPrice" })
     ]));
-    expect(candidateTotals([convertedQuantity], totalsOptions)).toEqual({
-      kind: "not_calculable", clientRowKey: "local-test", field: "unitPrice"
-    });
   });
 
   it("returns stable cell errors for core, tax and required custom columns without rounding input", () => {
     const errors = validateBillCandidateRows([
-      validRow({ itemName: "", unit: "", quantity: "1.234", unitPrice: "0", taxRatePercent: "13.001", customData: { brand: "" } })
+      validRow({ itemName: "", unit: "", quantity: "1.234", unitPrice: "0", taxRatePercent: "13.0000001", customData: { brand: "" } })
     ], bill);
 
     expect(errors).toEqual(expect.arrayContaining([
@@ -324,48 +386,17 @@ describe("contract bill grid candidate model", () => {
       { clientRowKey: "local-test", field: "unit", message: "请填写单位" },
       { clientRowKey: "local-test", field: "quantity", message: "数量必须是最多保留 2 位小数的正数" },
       { clientRowKey: "local-test", field: "unitPrice", message: "含税单价必须大于 0" },
-      { clientRowKey: "local-test", field: "taxRatePercent", message: "税率最多保留 2 位小数" },
+      { clientRowKey: "local-test", field: "taxRatePercent", message: "税率最多保留 6 位小数" },
       { clientRowKey: "local-test", field: "brand", message: "请填写品牌" }
     ]));
   });
 
-  it("calculates exact half-up cent totals with BigInt, two-decimal trailing zeroes and multiple rows", () => {
-    expect(candidateTotals([validRow()])).toEqual({
-      kind: "calculated", taxInclusiveAmountCents: "3003", taxExclusiveAmountCents: "2658", taxAmountCents: "345"
-    });
-    expect(candidateTotals([
-      validRow({ quantity: "1.00", unitPrice: "10.01" }),
-      validRow({ clientRowKey: "second", quantity: "2", unitPrice: "10.01" })
-    ])).toEqual({
-      kind: "calculated", taxInclusiveAmountCents: "3003", taxExclusiveAmountCents: "2658", taxAmountCents: "345"
-    });
-  });
-
-  it("marks incomplete or invalid amount rows as not calculable instead of treating them as zero", () => {
-    expect(candidateTotals([validRow({ quantity: "", unitPrice: "10.01" })])).toEqual({
-      kind: "not_calculable", clientRowKey: "local-test", field: "quantity"
-    });
-    expect(candidateTotals([validRow({ quantity: "three" })])).toEqual({
-      kind: "not_calculable", clientRowKey: "local-test", field: "quantity"
-    });
-    expect(candidateTotals([validRow({ unitPrice: "0" })])).toEqual({
-      kind: "not_calculable", clientRowKey: "local-test", field: "unitPrice"
-    });
-    expect(candidateTotals([validRow({ quantity: "1.000" })])).toEqual({
-      kind: "not_calculable", clientRowKey: "local-test", field: "quantity"
-    });
-    expect(candidateTotals([validRow({ unitPrice: "10.010" })])).toEqual({
-      kind: "not_calculable", clientRowKey: "local-test", field: "unitPrice"
-    });
-    expect(candidateTotals([validRow({ quantity: "1000000000000000000" })])).toEqual({
-      kind: "not_calculable", clientRowKey: "local-test", field: "quantity"
-    });
-    expect(candidateTotals([validRow({ quantity: "92233720368547758", unitPrice: "100" })])).toEqual({
-      kind: "not_calculable", clientRowKey: "local-test", field: "unitPrice"
-    });
-    expect(candidateTotals([
-      validRow({ clientRowKey: "first", quantity: "50000000000000000", unitPrice: "1" }),
-      validRow({ clientRowKey: "second", quantity: "50000000000000000", unitPrice: "1" })
-    ])).toEqual({ kind: "not_calculable", clientRowKey: "second", field: "unitPrice" });
+  it("never invents totals when the backend projection is incomplete", () => {
+    expect(authoritativeBillTotals({
+      ...bill,
+      taxInclusiveAmountCents: "75000000",
+      taxExclusiveAmountCents: null,
+      taxAmountCents: "6192661"
+    })).toEqual({ kind: "unavailable" });
   });
 });

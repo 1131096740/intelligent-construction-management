@@ -25,6 +25,7 @@ export interface WorkbenchBillRow {
   taxInclusiveAmountCents?: string | null;
   taxExclusiveAmountCents?: string | null;
   taxAmountCents?: string | null;
+  taxExclusiveUnitPrice?: string | null;
   settlementBasis?: string | null;
   isProvisional?: boolean;
   customData?: Record<string, unknown>;

@@ -22,6 +22,10 @@ export interface ContractBillCandidateRow {
   initialQuantity?: string;
   initialUnitPrice?: string;
   initialTaxRatePercent?: string;
+  taxExclusiveUnitPrice?: string | null;
+  taxInclusiveAmountCents?: string | null;
+  taxExclusiveAmountCents?: string | null;
+  taxAmountCents?: string | null;
   isProvisional: boolean;
   settlementBasis: string;
   customData: Record<string, string>;
@@ -33,18 +37,14 @@ export interface ContractBillCellError {
   message: string;
 }
 
-export type CandidateTotals =
+export type AuthoritativeBillTotals =
   | {
-      kind: "calculated";
+      kind: "authoritative";
       taxInclusiveAmountCents: string;
       taxExclusiveAmountCents: string;
       taxAmountCents: string;
     }
-  | {
-      kind: "not_calculable";
-      clientRowKey: string;
-      field: "quantity" | "unitPrice" | "taxRatePercent";
-    };
+  | { kind: "unavailable" };
 
 export interface BillCandidateTotalsOptions {
   defaultTaxRatePercent?: string | null;
@@ -55,8 +55,6 @@ export interface ReplaceBillRowsOptions extends BillCandidateTotalsOptions {
   expectedBillRevision: number;
   idempotencyKey: string;
 }
-
-const SIGNED_BIGINT_MAX = 9223372036854775807n;
 
 /**
  * The optional key makes this factory deterministic. `addBillCandidateRow` supplies
@@ -108,6 +106,10 @@ export function copyBillCandidateRow(
   delete copied.initialQuantity;
   delete copied.initialUnitPrice;
   delete copied.initialTaxRatePercent;
+  delete copied.taxExclusiveUnitPrice;
+  delete copied.taxInclusiveAmountCents;
+  delete copied.taxExclusiveAmountCents;
+  delete copied.taxAmountCents;
   return [
     ...rows,
     copied
@@ -263,57 +265,58 @@ export function validateBillCandidateRows(
   return errors;
 }
 
-export function candidateTotals(
-  rows: ContractBillCandidateRow[],
-  options: BillCandidateTotalsOptions = {}
-): CandidateTotals {
-  let taxInclusiveAmountCents = 0n;
-  let taxExclusiveAmountCents = 0n;
-
-  for (const row of rows) {
-    const retainsLegacyPrecision = hasUnchangedLegacyPricingFacts(row, options);
-    const quantity = parsePositiveDecimal(
-      row.quantity,
-      retainsLegacyPrecision
-    );
-    if (!quantity) return notCalculable(row, "quantity");
-    const unitPrice = parsePositiveDecimal(
-      row.unitPrice,
-      retainsLegacyPrecision
-    );
-    if (!unitPrice) return notCalculable(row, "unitPrice");
-    const taxRateText = effectiveTaxRate(row, options);
-    let taxRate: Decimal;
-    try {
-      taxRate = parseTaxRate(taxRateText);
-    } catch {
-      return notCalculable(row, "taxRatePercent");
-    }
-
-    const rowInclusiveCents = decimalToCents(multiplyDecimals(quantity, unitPrice));
-    if (rowInclusiveCents > SIGNED_BIGINT_MAX) return notCalculable(row, "unitPrice");
-    const rowExclusiveCents = divideAndRoundHalfUp(
-      rowInclusiveCents * 100n * pow10(taxRate.scale),
-      100n * pow10(taxRate.scale) + taxRate.coefficient
-    );
-    if (rowExclusiveCents > SIGNED_BIGINT_MAX) return notCalculable(row, "unitPrice");
-    taxInclusiveAmountCents += rowInclusiveCents;
-    taxExclusiveAmountCents += rowExclusiveCents;
-    if (
-      taxInclusiveAmountCents > SIGNED_BIGINT_MAX ||
-      taxExclusiveAmountCents > SIGNED_BIGINT_MAX ||
-      taxInclusiveAmountCents - taxExclusiveAmountCents > SIGNED_BIGINT_MAX
-    ) {
-      return notCalculable(row, "unitPrice");
-    }
+export function authoritativeBillTotals(
+  bill: Pick<
+    WorkbenchBill,
+    "taxInclusiveAmountCents" | "taxExclusiveAmountCents" | "taxAmountCents"
+  >
+): AuthoritativeBillTotals {
+  const inclusive = bill.taxInclusiveAmountCents;
+  const exclusive = bill.taxExclusiveAmountCents;
+  const tax = bill.taxAmountCents;
+  if (
+    typeof inclusive !== "string" ||
+    typeof exclusive !== "string" ||
+    typeof tax !== "string" ||
+    !/^\d+$/u.test(inclusive) ||
+    !/^\d+$/u.test(exclusive) ||
+    !/^\d+$/u.test(tax)
+  ) {
+    return { kind: "unavailable" };
   }
-
   return {
-    kind: "calculated",
-    taxInclusiveAmountCents: taxInclusiveAmountCents.toString(),
-    taxExclusiveAmountCents: taxExclusiveAmountCents.toString(),
-    taxAmountCents: (taxInclusiveAmountCents - taxExclusiveAmountCents).toString()
+    kind: "authoritative",
+    taxInclusiveAmountCents: inclusive,
+    taxExclusiveAmountCents: exclusive,
+    taxAmountCents: tax
   };
+}
+
+export function netUnitPriceDisplay(value: string | null | undefined): string {
+  return decimalDisplay(value, 2);
+}
+
+export function netUnitPriceDetail(value: string | null | undefined): string {
+  return decimalDisplay(value, 6);
+}
+
+export function invalidateChangedAuthoritativePricing(
+  currentRows: readonly ContractBillCandidateRow[],
+  nextRows: readonly ContractBillCandidateRow[]
+): ContractBillCandidateRow[] {
+  const currentByKey = new Map(
+    currentRows.map((row) => [row.clientRowKey, row])
+  );
+  return nextRows.map((row) => {
+    const current = currentByKey.get(row.clientRowKey);
+    if (!current || pricingInputsEqual(current, row)) return row;
+    const next = { ...row };
+    delete next.taxExclusiveUnitPrice;
+    delete next.taxInclusiveAmountCents;
+    delete next.taxExclusiveAmountCents;
+    delete next.taxAmountCents;
+    return next;
+  });
 }
 
 function candidateFromWorkbenchRow(row: WorkbenchBillRow, clientRowKey: string): ContractBillCandidateRow {
@@ -338,6 +341,10 @@ function candidateFromWorkbenchRow(row: WorkbenchBillRow, clientRowKey: string):
       ? { initialUnitPrice: textValue(row.initialUnitPrice) }
       : { initialUnitPrice: textValue(row.unitPrice) }),
     initialTaxRatePercent: textValue(row.taxRatePercent ?? row.taxRate),
+    taxExclusiveUnitPrice: row.taxExclusiveUnitPrice ?? null,
+    taxInclusiveAmountCents: row.taxInclusiveAmountCents ?? null,
+    taxExclusiveAmountCents: row.taxExclusiveAmountCents ?? null,
+    taxAmountCents: row.taxAmountCents ?? null,
     isProvisional: Boolean(row.isProvisional),
     settlementBasis: textValue(row.settlementBasis),
     customData: stringRecord(row.customData)
@@ -365,6 +372,10 @@ function candidateFromBatchSaveRow(
     initialQuantity: textValue(row.quantity),
     initialUnitPrice: textValue(row.unitPrice),
     initialTaxRatePercent: textValue(row.taxRate),
+    taxExclusiveUnitPrice: row.taxExclusiveUnitPrice,
+    taxInclusiveAmountCents: row.taxInclusiveAmountCents,
+    taxExclusiveAmountCents: row.taxExclusiveAmountCents,
+    taxAmountCents: row.taxAmountCents,
     isProvisional: row.isProvisional,
     settlementBasis: textValue(row.settlementBasis),
     customData: stringRecord(row.customData)
@@ -396,6 +407,10 @@ function cloneCandidateRow(row: ContractBillCandidateRow): ContractBillCandidate
   delete candidate.initialQuantity;
   delete candidate.initialUnitPrice;
   delete candidate.initialTaxRatePercent;
+  delete candidate.taxExclusiveUnitPrice;
+  delete candidate.taxInclusiveAmountCents;
+  delete candidate.taxExclusiveAmountCents;
+  delete candidate.taxAmountCents;
   return { ...candidate, customData: { ...candidate.customData } };
 }
 
@@ -462,30 +477,6 @@ function addCellError(
   errors.push({ clientRowKey: row.clientRowKey, field, message });
 }
 
-interface Decimal {
-  coefficient: bigint;
-  scale: number;
-}
-
-function parsePositiveDecimal(value: string, allowLegacyPrecision = false): Decimal | null {
-  const text = value.trim();
-  const match = /^(0|[1-9]\d*)(?:\.(\d+))?$/u.exec(text);
-  if (!match) return null;
-  if (match[1].length > 18 || (!allowLegacyPrecision && (match[2] ?? "").length > 2)) {
-    return null;
-  }
-  const coefficient = BigInt(`${match[1]}${match[2] ?? ""}`);
-  if (coefficient === 0n) return null;
-  return { coefficient, scale: (match[2] ?? "").length };
-}
-
-function parseTaxRate(value: string): Decimal {
-  const normalized = normalizeTaxRatePercent(value);
-  const parsed = parsePositiveDecimal(normalized);
-  if (!parsed) throw new Error("invalid tax rate");
-  return parsed;
-}
-
 function hasUnchangedLegacyPricingFacts(
   row: ContractBillCandidateRow,
   options: Pick<WorkbenchBill, "taxMode" | "defaultTaxRatePercent"> | BillCandidateTotalsOptions
@@ -549,27 +540,33 @@ function replaceTaxFact(
   };
 }
 
-function multiplyDecimals(left: Decimal, right: Decimal): Decimal {
-  return { coefficient: left.coefficient * right.coefficient, scale: left.scale + right.scale };
+function decimalDisplay(
+  value: string | null | undefined,
+  scale: number
+): string {
+  if (typeof value !== "string") return "—";
+  const match = /^(0|[1-9]\d*)(?:\.(\d+))?$/u.exec(value);
+  if (!match) return "—";
+  const fraction = match[2] ?? "";
+  const factor = 10n ** BigInt(scale);
+  let scaled =
+    BigInt(match[1]) * factor +
+    BigInt((fraction.slice(0, scale) || "0").padEnd(scale, "0"));
+  if ((fraction[scale] ?? "0") >= "5") scaled += 1n;
+  const whole = scaled / factor;
+  if (scale === 0) return whole.toString();
+  const decimals = (scaled % factor).toString().padStart(scale, "0");
+  return `${whole}.${decimals}`;
 }
 
-function decimalToCents(value: Decimal): bigint {
-  return divideAndRoundHalfUp(value.coefficient * 100n, pow10(value.scale));
-}
-
-function divideAndRoundHalfUp(numerator: bigint, denominator: bigint): bigint {
-  const quotient = numerator / denominator;
-  const remainder = numerator % denominator;
-  return remainder * 2n >= denominator ? quotient + 1n : quotient;
-}
-
-function pow10(exponent: number): bigint {
-  return 10n ** BigInt(exponent);
-}
-
-function notCalculable(
-  row: ContractBillCandidateRow,
-  field: "quantity" | "unitPrice" | "taxRatePercent"
-): CandidateTotals {
-  return { kind: "not_calculable", clientRowKey: row.clientRowKey, field };
+function pricingInputsEqual(
+  current: ContractBillCandidateRow,
+  next: ContractBillCandidateRow
+): boolean {
+  return (
+    current.quantity === next.quantity &&
+    current.unitPrice === next.unitPrice &&
+    current.taxRatePercent === next.taxRatePercent &&
+    current.taxRateSource === next.taxRateSource
+  );
 }

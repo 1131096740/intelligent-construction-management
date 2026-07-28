@@ -932,6 +932,7 @@ export interface ContractBillBatchSaveRowReadModel {
   taxInclusiveAmountCents: string | null;
   taxExclusiveAmountCents: string | null;
   taxAmountCents: string | null;
+  taxExclusiveUnitPrice: string | null;
   isProvisional: boolean;
   settlementBasis: string | null;
   customData: Record<string, unknown>;

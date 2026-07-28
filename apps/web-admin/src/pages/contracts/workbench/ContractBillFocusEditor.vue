@@ -19,10 +19,11 @@ import {
 import { uploadPrivateFile } from "../../../api/core-flow-read.api";
 import {
   addBillCandidateRow,
-  candidateTotals,
+  authoritativeBillTotals,
   copyBillCandidateRow,
   fromBatchSaveReadModel,
   fromWorkbenchBill,
+  invalidateChangedAuthoritativePricing,
   mapServerBillCellErrors,
   moveBillCandidateRow,
   removeBillCandidateRow,
@@ -77,7 +78,7 @@ export interface ContractBillFocusController {
   saveKey: Ref<string>;
   lastAttemptDigest: Ref<string | null>;
   dirty: ComputedRef<boolean>;
-  totals: ComputedRef<ReturnType<typeof candidateTotals>>;
+  totals: ComputedRef<ReturnType<typeof authoritativeBillTotals>>;
   replacePrompt: ComputedRef<string>;
   addRow: () => void;
   copySelectedRow: () => void;
@@ -138,10 +139,7 @@ export function createContractBillFocusController(
   const saveKey = ref(dependencies.createKey());
   const lastAttemptDigest = ref<string | null>(null);
   const dirty = computed(() => candidateDigest(rows.value) !== baselineDigest.value);
-  const totals = computed(() => candidateTotals(rows.value, {
-    taxMode: billSnapshot.value.taxMode,
-    defaultTaxRatePercent: billSnapshot.value.defaultTaxRatePercent
-  }));
+  const totals = computed(() => authoritativeBillTotals(billSnapshot.value));
   const replacePrompt = computed(
     () => `将替换当前 ${rows.value.length} 行未保存清单，确认后仍需点击“保存全部”才会写入系统。`
   );
@@ -186,7 +184,9 @@ export function createContractBillFocusController(
 
   function setRows(nextRows: ContractBillCandidateRow[]) {
     if (options.disabled()) return;
-    replaceCandidateRows(nextRows);
+    replaceCandidateRows(
+      invalidateChangedAuthoritativePricing(rows.value, nextRows)
+    );
     clearTransientErrors();
   }
 
@@ -550,6 +550,7 @@ function billSnapshotFromBatchSave(
       taxInclusiveAmountCents: row.taxInclusiveAmountCents,
       taxExclusiveAmountCents: row.taxExclusiveAmountCents,
       taxAmountCents: row.taxAmountCents,
+      taxExclusiveUnitPrice: row.taxExclusiveUnitPrice,
       settlementBasis: row.settlementBasis,
       isProvisional: row.isProvisional,
       customData: { ...row.customData }
@@ -778,7 +779,7 @@ const {
 } = controller;
 
 const statusText = computed(() => dirty.value ? "有待保存修改" : "清单已保存");
-const totalsText = computed(() => totals.value.kind === "calculated"
+const totalsText = computed(() => totals.value.kind === "authoritative"
   ? {
       exclusive: moneyText(totals.value.taxExclusiveAmountCents),
       tax: moneyText(totals.value.taxAmountCents),
@@ -937,9 +938,9 @@ defineExpose({
 
     <footer class="focus-summary">
       <span>候选行数 <strong>{{ rows.length }}</strong></span>
-      <span>不含税合计 <strong>{{ totalsText.exclusive }}</strong></span>
-      <span>税额 <strong>{{ totalsText.tax }}</strong></span>
-      <span>含税合计 <strong>{{ totalsText.inclusive }}</strong></span>
+      <span>已保存不含税合计 <strong>{{ totalsText.exclusive }}</strong></span>
+      <span>已保存税额 <strong>{{ totalsText.tax }}</strong></span>
+      <span>已保存含税合计 <strong>{{ totalsText.inclusive }}</strong></span>
     </footer>
 
     <t-dialog
