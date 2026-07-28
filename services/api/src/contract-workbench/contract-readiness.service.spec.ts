@@ -617,7 +617,7 @@ describe("ContractReadinessService", () => {
               unit: "吨",
               quantity: new Prisma.Decimal("1"),
               unitPrice: new Prisma.Decimal("1000"),
-              taxRate: new Prisma.Decimal("0"),
+              taxRate: new Prisma.Decimal("100.000001"),
               taxRateSource: "row_override",
               pricingFactStatus: "confirmed",
               taxInclusiveAmountCents: 1_000n,

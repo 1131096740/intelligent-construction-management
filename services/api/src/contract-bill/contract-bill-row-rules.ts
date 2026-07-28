@@ -1,4 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
+import { normalizeTaxRatePercent } from "@jiangkong/shared-domain";
 import { Prisma } from "@prisma/client";
 import { calculateBillRow } from "../money/decimal-money";
 
@@ -146,16 +147,19 @@ function resolveTaxRate(
   input: ResolveContractBillRowFactsInput,
   context: ContractBillRowPricingContext
 ) {
-  const versionRate = validTaxRate(context.defaultTaxRatePercent?.toString() ?? null);
+  const versionRate =
+    context.defaultTaxRatePercent === null
+      ? null
+      : normalizeRowTaxRate(context.defaultTaxRatePercent.toString(), "row");
   const submittedRate = normalizeOptional(input.taxRatePercent);
 
   if (context.taxMode === "single_rate") {
-    if (!versionRate) {
+    if (versionRate === null) {
       throw new ContractBillRowFactsValidationException("row", "合同默认税率未明确");
     }
     if (submittedRate !== null) {
-      assertTaxRate(submittedRate);
-      if (!new Prisma.Decimal(submittedRate).eq(versionRate)) {
+      const normalizedSubmittedRate = normalizeRowTaxRate(submittedRate);
+      if (normalizedSubmittedRate !== versionRate) {
         throw new ContractBillRowFactsValidationException(
           "taxRatePercent",
           "单一税率合同的清单税率必须与合同默认税率一致"
@@ -171,28 +175,21 @@ function resolveTaxRate(
   if (context.taxMode !== "multiple_rate") {
     throw new ContractBillRowFactsValidationException("row", "合同税率模式无效");
   }
-  const source = input.taxRateSource ?? "version_default";
-  if (source === "row_override") {
-    if (submittedRate === null) {
-      throw new ContractBillRowFactsValidationException("taxRatePercent", "例外税率不能为空");
-    }
-    assertTaxRate(submittedRate);
-    return {
-      taxRatePercent: submittedRate,
-      taxRateSource: "row_override" as const
-    };
-  }
-  if (!versionRate) {
+  if (versionRate === null) {
     throw new ContractBillRowFactsValidationException("row", "合同默认税率未明确");
   }
   if (submittedRate !== null) {
-    assertTaxRate(submittedRate);
-    if (!new Prisma.Decimal(submittedRate).eq(versionRate)) {
-      throw new ContractBillRowFactsValidationException(
-        "taxRatePercent",
-        "使用合同默认税率时，清单税率必须与合同默认税率一致"
-      );
+    const normalizedSubmittedRate = normalizeRowTaxRate(submittedRate);
+    if (normalizedSubmittedRate !== versionRate) {
+      return {
+        taxRatePercent: normalizedSubmittedRate,
+        taxRateSource: "row_override" as const
+      };
     }
+    return {
+      taxRatePercent: versionRate,
+      taxRateSource: "version_default" as const
+    };
   }
   return {
     taxRatePercent: versionRate,
@@ -200,20 +197,17 @@ function resolveTaxRate(
   };
 }
 
-function validTaxRate(value: string | null) {
-  if (value === null || !CANONICAL_DECIMAL.test(value)) return null;
-  const decimal = new Prisma.Decimal(value);
-  return decimal.gt(0) && decimal.lte(100) ? value : null;
-}
-
-function assertTaxRate(value: string) {
-  assertDecimal(value, "税率", "taxRatePercent", 6, 3);
-  const decimal = new Prisma.Decimal(value);
-  if (decimal.lte(0)) {
-    throw new ContractBillRowFactsValidationException("taxRatePercent", "税率必须大于 0");
-  }
-  if (decimal.gt(100)) {
-    throw new ContractBillRowFactsValidationException("taxRatePercent", "税率不能超过 100");
+function normalizeRowTaxRate(
+  value: string,
+  field: "taxRatePercent" | "row" = "taxRatePercent"
+) {
+  try {
+    return normalizeTaxRatePercent(value);
+  } catch (error) {
+    throw new ContractBillRowFactsValidationException(
+      field,
+      error instanceof Error ? error.message : "税率格式无效"
+    );
   }
 }
 

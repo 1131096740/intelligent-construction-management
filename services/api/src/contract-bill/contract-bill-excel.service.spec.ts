@@ -1210,7 +1210,7 @@ describe("ContractBillExcelService", () => {
     );
   });
 
-  it("rejects zero tax and permits an explicit multiple-rate override", async () => {
+  it("treats zero as a valid mismatched rate and permits a multiple-rate override", async () => {
     const zero = billFixture();
     const zeroBuffer = await buildWorkbookBuffer({
       rows: [
@@ -1236,7 +1236,7 @@ describe("ContractBillExcelService", () => {
     expect(zeroPreview.errors).toContainEqual(
       expect.objectContaining({
         column: "taxRatePercent",
-        message: "税率必须大于 0"
+        message: "单一税率合同的清单税率必须与合同默认税率一致"
       })
     );
 

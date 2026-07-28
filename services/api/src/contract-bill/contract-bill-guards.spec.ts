@@ -1,4 +1,6 @@
+import { Prisma } from "@prisma/client";
 import { loadOwnedEditableBill } from "./contract-bill-guards";
+import { resolveContractBillRowFacts } from "./contract-bill-row-rules";
 
 describe("loadOwnedEditableBill", () => {
   const validBill = {
@@ -77,5 +79,78 @@ describe("loadOwnedEditableBill", () => {
     await expect(
       loadOwnedEditableBill(tx as never, "bill-1", "owner-1")
     ).rejects.toThrow(message);
+  });
+});
+
+describe("contract bill row tax normalization", () => {
+  const baseContext = {
+    pricingMode: "tax_inclusive",
+    pricingNature: "fixed_total",
+    amountLimitType: "capped",
+    defaultTaxRatePercent: new Prisma.Decimal("9")
+  };
+
+  it("always inherits the normalized version rate for a single-rate contract", () => {
+    expect(
+      resolveContractBillRowFacts(
+        {
+          quantity: "1",
+          unitPrice: "100",
+          taxRatePercent: "9.000000",
+          taxRateSource: "row_override"
+        },
+        { ...baseContext, taxMode: "single_rate" }
+      )
+    ).toMatchObject({
+      taxRatePercent: "9",
+      taxRateSource: "version_default"
+    });
+    expect(
+      resolveContractBillRowFacts(
+        {
+          quantity: "1",
+          unitPrice: "100"
+        },
+        {
+          ...baseContext,
+          taxMode: "single_rate",
+          defaultTaxRatePercent: new Prisma.Decimal("0")
+        }
+      )
+    ).toMatchObject({
+      taxRatePercent: "0",
+      taxRateSource: "version_default"
+    });
+  });
+
+  it("derives multi-rate source from normalized equality instead of trusting the client", () => {
+    expect(
+      resolveContractBillRowFacts(
+        {
+          quantity: "1",
+          unitPrice: "100",
+          taxRatePercent: "9.000000",
+          taxRateSource: "row_override"
+        },
+        { ...baseContext, taxMode: "multiple_rate" }
+      )
+    ).toMatchObject({
+      taxRatePercent: "9",
+      taxRateSource: "version_default"
+    });
+    expect(
+      resolveContractBillRowFacts(
+        {
+          quantity: "1",
+          unitPrice: "100",
+          taxRatePercent: "6",
+          taxRateSource: "version_default"
+        },
+        { ...baseContext, taxMode: "multiple_rate" }
+      )
+    ).toMatchObject({
+      taxRatePercent: "6",
+      taxRateSource: "row_override"
+    });
   });
 });

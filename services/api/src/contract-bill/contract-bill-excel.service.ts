@@ -158,7 +158,7 @@ export class ContractBillExcelService {
     instructions.addRow(["合同清单导入模板填写说明"]);
     instructions.addRow(["1. 仅在『清单数据』工作表中填写，第 1 行为中文表头，请勿修改。"]);
     instructions.addRow(["2. 系统识别用字段行和内部列已隐藏，请不要取消隐藏或改动。"]);
-    instructions.addRow(["3. 数量、含税单价最多保留 2 位小数；税率必须大于 0。"]);
+    instructions.addRow(["3. 数量、含税单价最多保留 2 位小数；税率必须在 0 到 100 之间。"]);
     instructions.addRow(["4. 不含税单价为系统只读计算列，导入时不读取该列。"]);
     instructions.addRow([
       bill.taxMode === "single_rate"

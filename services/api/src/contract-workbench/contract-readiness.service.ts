@@ -327,7 +327,7 @@ export class ContractReadinessService {
         blocking.push({
           key: "tax.default_rate",
           section: "tax",
-          message: "合同税率必须大于 0、不超过 100，且最多保留 2 位小数"
+          message: "合同税率必须在 0 到 100 之间，且最多保留 6 位小数"
         });
       }
     }

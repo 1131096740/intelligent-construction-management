@@ -491,7 +491,7 @@ describe("ContractBillService", () => {
     expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
   });
 
-  it("rejects non-canonical or unsafe decimal inputs", async () => {
+  it("rejects non-canonical, unsafe, or mismatched single-rate inputs", async () => {
     const { service } = fixture();
 
     for (const invalid of ["1e2", "NaN", "-1", "01", " 1"]) {
@@ -504,7 +504,7 @@ describe("ContractBillService", () => {
     ).rejects.toThrow("税率不能超过 100");
     await expect(
       service.addRow("bill-1", "owner-1", { ...rowInput, taxRatePercent: "0" })
-    ).rejects.toThrow("税率必须大于 0");
+    ).rejects.toThrow("单一税率合同的清单税率必须与合同默认税率一致");
   });
 
   it("requires positive quantity for ordinary contracts", async () => {
