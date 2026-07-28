@@ -216,9 +216,10 @@ describe("contract takeover page configuration", () => {
     expect(normalizeOptionalTaxRate("", "默认税率")).toBeUndefined();
     expect(normalizeOptionalTaxRate("13.00", "默认税率")).toBe("13");
     expect(normalizeOptionalTaxRate("13.01", "默认税率")).toBe("13.01");
-    expect(() => normalizeOptionalTaxRate("0", "默认税率")).toThrow("税率必须大于 0");
-    expect(() => normalizeOptionalTaxRate("13.001", "默认税率")).toThrow(
-      "税率最多保留 2 位小数"
+    expect(normalizeOptionalTaxRate("0", "默认税率")).toBe("0");
+    expect(normalizeOptionalTaxRate("13.001", "默认税率")).toBe("13.001");
+    expect(() => normalizeOptionalTaxRate("13.0000001", "默认税率")).toThrow(
+      "默认税率最多保留 6 位小数"
     );
     expect(() => normalizeOptionalTaxRate("100.01", "默认税率")).toThrow(
       "税率不能超过 100"

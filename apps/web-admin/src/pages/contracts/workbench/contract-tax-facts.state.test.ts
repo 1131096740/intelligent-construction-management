@@ -65,14 +65,21 @@ describe("contract tax facts state", () => {
         taxMode: "single_rate",
         rate: "0"
       })
-    ).toBe("税率必须大于 0");
+    ).toBe("");
     expect(
       taxFactsDisabledReason({
         invoiceType: "vat_special",
         taxMode: "single_rate",
         rate: "13.001"
       })
-    ).toBe("税率最多保留 2 位小数");
+    ).toBe("");
+    expect(
+      taxFactsDisabledReason({
+        invoiceType: "vat_special",
+        taxMode: "single_rate",
+        rate: "13.0000001"
+      })
+    ).toBe("税率最多保留 6 位小数");
   });
 
   it.each<ContractTaxFactsDraft>([

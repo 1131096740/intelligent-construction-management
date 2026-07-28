@@ -126,9 +126,11 @@ describe("contract tax fact review state", () => {
     draft.defaultTaxRatePercent = "13.01";
     expect(normalizeContractTaxFactDraft(draft).defaultTaxRatePercent).toBe("13.01");
     draft.defaultTaxRatePercent = "13.001";
-    expect(() => normalizeContractTaxFactDraft(draft)).toThrow("税率最多保留 2 位小数");
+    expect(normalizeContractTaxFactDraft(draft).defaultTaxRatePercent).toBe("13.001");
     draft.defaultTaxRatePercent = "0";
-    expect(() => normalizeContractTaxFactDraft(draft)).toThrow("税率必须大于 0");
+    expect(normalizeContractTaxFactDraft(draft).defaultTaxRatePercent).toBe("0");
+    draft.defaultTaxRatePercent = "13.0000001";
+    expect(() => normalizeContractTaxFactDraft(draft)).toThrow("默认税率最多保留 6 位小数");
     draft.defaultTaxRatePercent = "100.01";
     expect(() => normalizeContractTaxFactDraft(draft)).toThrow("税率不能超过 100");
 

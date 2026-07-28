@@ -567,7 +567,7 @@ function currentStatusLabel(value: string) {
         <div class="editor-heading">
           <div>
             <strong>{{ draft.kind === "correction" ? "纠正已确认事实" : "补录缺失事实" }}</strong>
-            <p>税率最多保留 2 位小数；未上传依据附件时必须填写确认说明。</p>
+            <p>税率最多保留 6 位小数；未上传依据附件时必须填写确认说明。</p>
           </div>
         </div>
         <div class="editor-grid">

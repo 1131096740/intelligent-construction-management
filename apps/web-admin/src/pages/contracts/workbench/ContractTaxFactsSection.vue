@@ -62,10 +62,10 @@
         <t-input
           :value="model.defaultTaxRatePercent ?? ''"
           :disabled="disabled"
-          placeholder="请输入大于 0 且不超过 100 的税率"
+          placeholder="请输入 0 到 100 之间的税率"
           @change="updateOtherRate"
         />
-        <small class="field-help">税率最多保留 2 位小数。</small>
+        <small class="field-help">税率最多保留 6 位小数。</small>
       </label>
     </div>
 

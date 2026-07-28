@@ -47,7 +47,8 @@ describe("contract change Web closure", () => {
   it("inherits amount limit and never resubmits immutable payment rules for a change", () => {
     expect(workbench).toContain("initializeDraft.amountLimitType.value");
     expect(draft).toContain("amountLimitType: initAmountLimitType.value");
-    expect(draft).toContain("...(!isChangeDraft");
+    expect(draft).toContain("const paymentTerms = isChangeDraft");
+    expect(draft).toContain('section !== "payment_terms"');
     expect(workbench).toContain(":disabled=\"editorDisabled || isChangeVersion\"");
   });
 
