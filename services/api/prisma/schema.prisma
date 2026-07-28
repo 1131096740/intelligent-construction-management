@@ -218,6 +218,8 @@ model ContractVersion {
   businessTemplateVersionId              String?
   layoutTemplateVersionId                String?
   draftRevision                          Int       @default(1)
+  firstSubmittedAt                       DateTime?
+  latestDraftPreviewDocumentId           String?
   pricingNature                          String    @default("fixed_total")
   amountSource                           String    @default("manual")
   amountAdjustmentReason                 String?
@@ -253,6 +255,67 @@ model ContractVersion {
   @@index([companyEntityIdSnapshot])
   @@index([companyEntityVersionId])
   @@index([status, updatedAt])
+}
+
+model ContractDraftEditLease {
+  contractVersionId String   @id
+  holderUserId      String
+  tokenHash         String   @unique
+  leaseRevision     Int      @default(1)
+  acquiredAt        DateTime @default(now())
+  heartbeatAt       DateTime @default(now())
+  expiresAt         DateTime
+  updatedAt         DateTime @updatedAt
+
+  @@index([holderUserId])
+  @@index([expiresAt])
+}
+
+model ContractDraftAttachment {
+  id                String   @id @default(uuid())
+  contractVersionId String
+  slotKey           String
+  fileId             String
+  displayOrder       Int
+  createdByUserId    String
+  createdAt          DateTime @default(now())
+
+  @@unique([contractVersionId, slotKey, displayOrder])
+  @@unique([contractVersionId, slotKey, fileId])
+  @@index([fileId])
+  @@index([createdByUserId])
+}
+
+model ContractDraftSaveRequest {
+  idempotencyKey    String   @id
+  contractVersionId String
+  expectedRevision  Int
+  resultRevision    Int
+  saveKind          String
+  requestSha256     String
+  responseSnapshot  Json
+  createdByUserId   String
+  createdAt         DateTime @default(now())
+  expiresAt         DateTime
+
+  @@index([contractVersionId, createdAt])
+  @@index([createdByUserId])
+  @@index([expiresAt])
+}
+
+model ContractDraftSubmissionRequest {
+  idempotencyKey     String   @id
+  contractVersionId  String
+  expectedRevision   Int
+  applicantUserId    String
+  requestSha256      String
+  approvalInstanceId String   @unique
+  formalCode         String
+  responseSnapshot   Json
+  createdAt          DateTime @default(now())
+
+  @@index([contractVersionId, createdAt])
+  @@index([applicantUserId])
 }
 
 model ContractTaxFactRevision {
