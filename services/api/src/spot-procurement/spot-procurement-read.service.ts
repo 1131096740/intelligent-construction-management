@@ -3614,7 +3614,7 @@ function receiptReadSummary(
         >)
     | null,
   discrepancy: Pick<SpotProcurementDiscrepancy, "status"> | null,
-  openedByActualPayment = false,
+  hasActualPayment = false,
   workflowFacts?: {
     actorUserId: string;
     currentRevisionSubmittedAt: Date | null;
@@ -3635,10 +3635,9 @@ function receiptReadSummary(
       available: false,
       status: "not_created",
       statusLabel: "尚未生成收货单",
-      openAfterActualPayment: openedByActualPayment,
-      blockedReason: openedByActualPayment
-        ? null
-        : "待财务登记实际付款后开放收货确认",
+      openAfterActualPayment: false,
+      hasActualPayment,
+      blockedReason: "尚未生成收货单",
       currentRevisionNo: null,
       firstSubmittedAt: null,
       submittedAt: null,
@@ -3650,10 +3649,9 @@ function receiptReadSummary(
     id: receipt.id,
     status: receipt.status,
     statusLabel: receiptStatusLabel(receipt.status),
-    openAfterActualPayment: openedByActualPayment,
-    blockedReason: openedByActualPayment
-      ? null
-      : "待财务登记实际付款后开放收货确认",
+    openAfterActualPayment: true,
+    hasActualPayment,
+    blockedReason: null,
     currentRevisionNo: receipt.currentRevisionNo,
     firstSubmittedAt: isoOrNull(receipt.firstSubmittedAt),
     submittedAt: isoOrNull(receipt.submittedAt),
@@ -3664,7 +3662,6 @@ function receiptReadSummary(
           workflow: receiptWorkflowReadModel({
             receipt,
             discrepancy,
-            openedByActualPayment,
             ...workflowFacts
           })
         }
@@ -3687,7 +3684,6 @@ function receiptWorkflowReadModel(input: {
       >
     >;
   discrepancy: Pick<SpotProcurementDiscrepancy, "status"> | null;
-  openedByActualPayment: boolean;
   actorUserId: string;
   currentRevisionSubmittedAt: Date | null;
   activeDelegation: {
@@ -3711,43 +3707,38 @@ function receiptWorkflowReadModel(input: {
         input.actorUserId &&
       input.activeDelegation.scope === "receipt_confirmation"
   );
-  const blocker = !input.openedByActualPayment
-    ? "待财务登记实际付款后开放收货确认"
-    : input.receipt.invalidatedAt
-      ? "收货单已失效，只能查看历史"
-      : input.receipt.status !== "draft" ||
-          input.receipt.firstSubmittedAt !== null ||
-          input.receipt.submittedAt !== null ||
-          input.currentRevisionSubmittedAt !== null
-        ? "只能重置从未提交的当前收货草稿"
-        : input.hasReview
-          ? "收货单已形成主管复核记录"
-          : input.hasPdf
-            ? "收货单已形成正式 PDF 或归档证据"
-            : input.hasInvoiceFact
-              ? "收货单已形成发票或无票业务事实"
-              : input.discrepancy
-                ? "收货单已形成差异或补货事实"
-                : input.refundCount > 0
-                  ? "收货单已关联退款事实"
-                  : !isHandler && !isActiveDelegate
-                    ? "只有采购经办人或当前有效受托人可以重置收货草稿"
-                    : !input.hasDraftContent
-                      ? "当前收货草稿尚未填写，无需重置"
-                      : null;
-  const stage = !input.openedByActualPayment
-    ? "waiting_payment"
-    : input.receipt.status === "submitted"
-      ? "awaiting_supervisor_review"
-      : input.receipt.status === "draft" &&
-          input.receipt.firstSubmittedAt === null &&
-          input.currentRevisionSubmittedAt === null
-        ? input.hasDraftContent
-          ? "reset_unsubmitted_receipt"
-          : "fill_receipt"
-        : "readonly_history";
+  const blocker = input.receipt.invalidatedAt
+    ? "收货单已失效，只能查看历史"
+    : input.receipt.status !== "draft" ||
+        input.receipt.firstSubmittedAt !== null ||
+        input.receipt.submittedAt !== null ||
+        input.currentRevisionSubmittedAt !== null
+      ? "只能重置从未提交的当前收货草稿"
+      : input.hasReview
+        ? "收货单已形成主管复核记录"
+        : input.hasPdf
+          ? "收货单已形成正式 PDF 或归档证据"
+          : input.hasInvoiceFact
+            ? "收货单已形成发票或无票业务事实"
+            : input.discrepancy
+              ? "收货单已形成差异或补货事实"
+              : input.refundCount > 0
+                ? "收货单已关联退款事实"
+                : !isHandler && !isActiveDelegate
+                  ? "只有采购经办人或当前有效受托人可以重置收货草稿"
+                  : !input.hasDraftContent
+                    ? "当前收货草稿尚未填写，无需重置"
+                    : null;
+  const stage = input.receipt.status === "submitted"
+    ? "awaiting_supervisor_review"
+    : input.receipt.status === "draft" &&
+        input.receipt.firstSubmittedAt === null &&
+        input.currentRevisionSubmittedAt === null
+      ? input.hasDraftContent
+        ? "reset_unsubmitted_receipt"
+        : "fill_receipt"
+      : "readonly_history";
   const stageLabels: Record<string, string> = {
-    waiting_payment: "等待实际付款",
     fill_receipt: "填写收货",
     reset_unsubmitted_receipt: "可重置未提交收货",
     awaiting_supervisor_review: "待物资主管复核",

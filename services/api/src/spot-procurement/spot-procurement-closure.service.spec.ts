@@ -44,14 +44,43 @@ describe("SpotProcurementClosureService", () => {
 
     expect(SpotProcurementClosureService.evaluate(snapshot)).toEqual({
       canClose: false,
-      blockers: [blocker]
+      blockers: [blocker],
+      blockedReasons: [blocker]
     });
   });
 
   it("allows closure only when every condition is satisfied", () => {
     expect(
       SpotProcurementClosureService.evaluate(completeSnapshot())
-    ).toEqual({ canClose: true, blockers: [] });
+    ).toEqual({
+      canClose: true,
+      blockers: [],
+      blockedReasons: []
+    });
+  });
+
+  it("keeps payment-first and receipt-first flows open until the other fact completes", () => {
+    const paymentFirst = completeSnapshot();
+    paymentFirst.receiptReviewed = false;
+    expect(
+      SpotProcurementClosureService.evaluate(paymentFirst)
+    ).toMatchObject({
+      canClose: false,
+      blockedReasons: ["receipt_not_reviewed"]
+    });
+
+    const receiptFirst = completeSnapshot();
+    receiptFirst.fundsSettledCents = 0n;
+    expect(
+      SpotProcurementClosureService.evaluate(receiptFirst)
+    ).toMatchObject({
+      canClose: false,
+      blockedReasons: ["funds_not_settled"]
+    });
+
+    expect(
+      SpotProcurementClosureService.evaluate(completeSnapshot())
+    ).toMatchObject({ canClose: true, blockedReasons: [] });
   });
 
   it("does not let invoices or historic supplier-balance facts block a real-form closure", () => {
@@ -67,7 +96,8 @@ describe("SpotProcurementClosureService", () => {
 
     expect(SpotProcurementClosureService.evaluate(snapshot)).toEqual({
       canClose: true,
-      blockers: []
+      blockers: [],
+      blockedReasons: []
     });
   });
 
@@ -94,7 +124,9 @@ describe("SpotProcurementClosureService", () => {
     ).resolves.toEqual({
       closed: false,
       alreadyClosed: false,
-      blockers: ["procurement_not_open"]
+      canClose: false,
+      blockers: ["procurement_not_open"],
+      blockedReasons: ["procurement_not_open"]
     });
     expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
   });
@@ -206,6 +238,10 @@ describe("SpotProcurementClosureService", () => {
     );
 
     expect(result.closed).toBe(true);
+    expect(result).toMatchObject({
+      canClose: true,
+      blockedReasons: []
+    });
     expect(tx.spotProcurement.updateMany).toHaveBeenCalledWith({
       where: { id: "procurement-1", status: "approved_in_progress", closedAt: null },
       data: { status: "closed", closedAt: expect.any(Date) }

@@ -321,6 +321,7 @@ function harness() {
     auth,
     files,
     approvalForms,
+    closure,
     projectFunding
   };
 }
@@ -3927,6 +3928,12 @@ describe("SpotProcurementPaymentService", () => {
     );
     expect(current.prisma.$transaction.mock.invocationCallOrder[0]).toBeLessThan(
       current.approvalForms.tryRefreshLatestForBusiness.mock.invocationCallOrder[0]
+    );
+    expect(current.closure.recalculateAndClose).toHaveBeenCalledWith(
+      current.tx,
+      "procurement-1",
+      "payment.execution.record",
+      "finance-1"
     );
   });
 

@@ -538,6 +538,9 @@ describe("SpotProcurementReadService", () => {
       note: "货物已到场，明细待补",
       actualCostCents: 0n
     });
+    fixture.prisma.spotProcurementPaymentExecution.findMany.mockResolvedValue(
+      []
+    );
     fixture.visibility.effectiveRoleKeys.mockResolvedValue([
       "material_staff"
     ]);
@@ -554,6 +557,9 @@ describe("SpotProcurementReadService", () => {
     );
 
     expect(detail.receipt).toMatchObject({
+      openAfterActualPayment: true,
+      hasActualPayment: false,
+      blockedReason: null,
       workflow: {
         stage: "reset_unsubmitted_receipt",
         stageLabel: "可重置未提交收货",
@@ -1364,7 +1370,8 @@ describe("SpotProcurementReadService", () => {
     });
     expect(result.receipt).toMatchObject({
       openAfterActualPayment: false,
-      blockedReason: "待财务登记实际付款后开放收货确认"
+      hasActualPayment: false,
+      blockedReason: "尚未生成收货单"
     });
     expect(
       fixture.prisma.spotProcurementPaymentExecution.findMany

@@ -516,6 +516,12 @@ export class SpotProcurementReceiptService {
             procurementId,
             receipt.procurementVersionId
           );
+        const receiptOpen =
+          procurement.status === "approved_in_progress" &&
+          version.status === "approved" &&
+          procurement.currentVersionId === version.id &&
+          receipt.procurementVersionId === version.id &&
+          receipt.lockedAt === null;
         const actorScope = await this.loadReceiptActionScope(
           tx,
           actorUserId,
@@ -590,16 +596,16 @@ export class SpotProcurementReceiptService {
             procurementVersionStatus: version.status,
             status: receipt.status,
             currentRevisionNo: receipt.currentRevisionNo,
-            receiptOpen: Boolean(firstActualPayment),
+            receiptOpen,
             firstActualPayment: firstActualPayment
               ? {
                   executionId: firstActualPayment.id,
                   paidAt: firstActualPayment.paidAt.toISOString()
                 }
               : null,
-            blockedReason: firstActualPayment
+            blockedReason: receiptOpen
               ? null
-              : "待财务登记实际付款后开放收货确认",
+              : "收货已锁定或采购版本不可办理",
             handler: {
               id: receipt.handlerUserId,
               name:
@@ -766,8 +772,7 @@ export class SpotProcurementReceiptService {
       input.procurement.currentVersionId === input.version.id &&
       input.receipt.procurementVersionId === input.version.id &&
       input.revision.procurementVersionId === input.version.id &&
-      input.receipt.lockedAt === null &&
-      Boolean(input.firstActualPayment);
+      input.receipt.lockedAt === null;
     const hasConfirmRole = actorScope.effectiveRoleKeys.some((role) =>
       RECEIPT_CONFIRM_ROLES.has(role)
     );
@@ -2688,7 +2693,7 @@ export class SpotProcurementReceiptService {
   }
 
   private async assertReceiptBusinessOpen(
-    tx: Prisma.TransactionClient,
+    _tx: Prisma.TransactionClient,
     context: LockedReceiptContext
   ) {
     this.pilot.assertEnabled(context.procurement.projectId);
@@ -2723,16 +2728,6 @@ export class SpotProcurementReceiptService {
     }
     if (context.receipt.status === "locked") {
       throw new ConflictException("收货单已锁定，不能继续修改");
-    }
-    const execution = await this.findActualPaymentExecution(
-      tx,
-      context.procurement.id,
-      context.version.id
-    );
-    if (!execution) {
-      throw new ConflictException(
-        "尚未登记实际付款，暂不能办理收货确认"
-      );
     }
   }
 

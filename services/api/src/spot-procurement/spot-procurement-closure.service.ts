@@ -59,6 +59,7 @@ export class SpotProcurementClosureService {
   static evaluate(snapshot: SpotProcurementClosureSnapshot): {
     canClose: boolean;
     blockers: ClosureBlocker[];
+    blockedReasons: ClosureBlocker[];
   } {
     const blockers: ClosureBlocker[] = [];
     if (!snapshot.approved) blockers.push("version_not_approved");
@@ -101,7 +102,11 @@ export class SpotProcurementClosureService {
     if (snapshot.pendingVersionChangeCount > 0) {
       blockers.push("version_change_pending");
     }
-    return { canClose: blockers.length === 0, blockers };
+    return {
+      canClose: blockers.length === 0,
+      blockers,
+      blockedReasons: blockers
+    };
   }
 
   async recalculateAndClose(
@@ -112,7 +117,9 @@ export class SpotProcurementClosureService {
   ): Promise<{
     closed: boolean;
     alreadyClosed: boolean;
+    canClose: boolean;
     blockers: string[];
+    blockedReasons: string[];
     snapshot?: SpotProcurementClosureSnapshot;
   }> {
     const rows = await tx.$queryRaw<ProcurementLockRow[]>(Prisma.sql`
@@ -130,13 +137,21 @@ export class SpotProcurementClosureService {
     const procurement = rows[0];
     if (!procurement) throw new NotFoundException("零星采购不存在");
     if (procurement.status === "closed") {
-      return { closed: true, alreadyClosed: true, blockers: [] };
+      return {
+        closed: true,
+        alreadyClosed: true,
+        canClose: true,
+        blockers: [],
+        blockedReasons: []
+      };
     }
     if (["voided", "abandoned", "abnormally_terminated"].includes(procurement.status)) {
       return {
         closed: false,
         alreadyClosed: false,
-        blockers: ["procurement_not_open"]
+        canClose: false,
+        blockers: ["procurement_not_open"],
+        blockedReasons: ["procurement_not_open"]
       };
     }
 
@@ -440,7 +455,9 @@ export class SpotProcurementClosureService {
       return {
         closed: false,
         alreadyClosed: false,
+        canClose: false,
         blockers: evaluation.blockers,
+        blockedReasons: evaluation.blockedReasons,
         snapshot
       };
     }
@@ -485,7 +502,9 @@ export class SpotProcurementClosureService {
     return {
       closed: true,
       alreadyClosed: false,
+      canClose: true,
       blockers: [],
+      blockedReasons: [],
       snapshot
     };
   }

@@ -826,6 +826,7 @@ describe("SpotProcurementReceiptService workflow", () => {
       files,
       watermark,
       receiptPdfs,
+      closure,
       procurementLines,
       receipt,
       revision
@@ -1018,7 +1019,7 @@ describe("SpotProcurementReceiptService workflow", () => {
     expect(enabledFinanceActions).not.toContain("edit_receipt");
   });
 
-  it("fails closed for receipt writes until at least one actual payment is recorded", async () => {
+  it("allows the handler to record receipt facts before any actual payment", async () => {
     const harness = createHarness({ hasActualPayment: false });
 
     await expect(
@@ -1027,20 +1028,32 @@ describe("SpotProcurementReceiptService workflow", () => {
         "handler-1",
         completeDraft
       )
-    ).rejects.toThrow("尚未登记实际付款");
+    ).resolves.toBeDefined();
   });
 
-  it("keeps the pre-created receipt readable and explains why it is not open yet", async () => {
-    const harness = createHarness({ hasActualPayment: false });
+  it("keeps receipt actions open before payment while exposing that no payment exists yet", async () => {
+    const harness = createHarness({
+      hasActualPayment: false,
+      actionProjectRoleKeys: ["material_staff"]
+    });
 
-    await expect(
-      harness.service.getReceipt("procurement-1", "handler-1")
-    ).resolves.toMatchObject({
+    const detail = await harness.service.getReceipt(
+      "procurement-1",
+      "handler-1"
+    );
+
+    expect(detail).toMatchObject({
       receipt: {
-        receiptOpen: false,
-        blockedReason: "待财务登记实际付款后开放收货确认"
+        receiptOpen: true,
+        firstActualPayment: null,
+        blockedReason: null
       }
     });
+    expect(
+      detail.availableActions.find(
+        (action) => action.key === "edit_receipt"
+      )
+    ).toMatchObject({ enabled: true });
   });
 
   it("exposes only the current formally reviewed PDF pointer in the receipt snapshot", async () => {
@@ -1988,6 +2001,12 @@ describe("SpotProcurementReceiptService workflow", () => {
         sourceRevisionNo: 1,
         reviewId: "review-approved"
       }
+    );
+    expect(harness.closure.recalculateAndClose).toHaveBeenCalledWith(
+      harness.tx,
+      "procurement-1",
+      "receipt.review.approved",
+      "material-director-1"
     );
   });
 

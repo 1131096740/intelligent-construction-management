@@ -351,6 +351,10 @@ describe("ExpenseClaimService", () => {
       files,
       projectFunding
     });
+    const createReceipt = jest.fn();
+    (tx as typeof tx & {
+      spotProcurementReceipt: { create: typeof createReceipt };
+    }).spotProcurementReceipt = { create: createReceipt };
     tx.expenseClaim.findUnique.mockResolvedValue({
       id: "claim-incidental-1",
       projectId: "project-1"
@@ -408,6 +412,7 @@ describe("ExpenseClaimService", () => {
         businessType: "incidental_expense"
       })
     );
+    expect(createReceipt).not.toHaveBeenCalled();
   });
 
   it("rolls back reimbursement state and audit when unified project funding is insufficient", async () => {

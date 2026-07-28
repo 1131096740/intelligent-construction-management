@@ -252,6 +252,7 @@ export interface SpotProcurementReceiptSummaryReadModel {
   status: string;
   statusLabel: string;
   openAfterActualPayment: boolean;
+  hasActualPayment: boolean;
   blockedReason: string | null;
   currentRevisionNo: number | null;
   firstSubmittedAt: string | null;
