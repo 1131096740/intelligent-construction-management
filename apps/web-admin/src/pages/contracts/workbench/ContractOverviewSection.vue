@@ -17,47 +17,6 @@
         <strong class="meta-value">{{ item.value }}</strong>
       </div>
     </div>
-
-    <div class="checkpoint-block">
-      <div class="checkpoint-head">
-        <strong>草稿检查点</strong>
-        <t-button
-          size="small"
-          variant="outline"
-          :disabled="disabled"
-          @click="emit('create-checkpoint')"
-        >
-          创建检查点
-        </t-button>
-      </div>
-
-      <ul
-        v-if="checkpoints.length"
-        class="checkpoint-list"
-      >
-        <li
-          v-for="checkpoint in checkpoints"
-          :key="checkpoint.id"
-          class="checkpoint-row"
-        >
-          <span>{{ checkpoint.label }}</span>
-          <span class="checkpoint-time">{{ checkpoint.createdAt }}</span>
-          <t-link
-            theme="primary"
-            :disabled="disabled"
-            @click="emit('restore-checkpoint', checkpoint.id)"
-          >
-            恢复
-          </t-link>
-        </li>
-      </ul>
-      <p
-        v-else
-        class="empty"
-      >
-        暂无检查点。最多保留 5 个手工检查点，创建第 6 个时将移除最早的一个。
-      </p>
-    </div>
   </div>
 </template>
 
@@ -68,15 +27,7 @@ import { contractTypeLabel, contractVersionStatusLabel } from "../contract-label
 
 const props = defineProps<{
   workbench: ContractWorkbenchReadModel | null;
-  disabled: boolean;
 }>();
-
-const emit = defineEmits<{
-  (event: "create-checkpoint"): void;
-  (event: "restore-checkpoint", checkpointId: string): void;
-}>();
-
-const checkpoints = computed(() => props.workbench?.checkpoints ?? []);
 
 const metaItems = computed(() => {
   const workbench = props.workbench;
@@ -130,44 +81,4 @@ const metaItems = computed(() => {
   font-size: 13px;
 }
 
-.checkpoint-block {
-  display: grid;
-  gap: 12px;
-  padding: 16px;
-  background: var(--jg-bg-panel);
-  border: 1px solid var(--jg-border);
-  border-radius: var(--jg-radius-sm);
-}
-
-.checkpoint-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.checkpoint-list {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.checkpoint-row {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  align-items: center;
-  gap: 12px;
-  font-size: 12px;
-}
-
-.checkpoint-time {
-  color: var(--jg-text-muted);
-}
-
-.empty {
-  margin: 0;
-  color: var(--jg-text-muted);
-  font-size: 12px;
-}
 </style>

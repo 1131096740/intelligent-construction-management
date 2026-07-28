@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addBillRow,
   abandonContractDraft,
+  acquireContractDraftEditLease,
   addContractParty,
   applyBillExcelImport,
   applyContractTypeChange,
@@ -19,6 +20,7 @@ import {
   createLayoutTemplate,
   createStandardClause,
   createWorkbenchDraft,
+  deletePristineContractDraft,
   deleteBillRow,
   discardContractBillTransitions,
   discardContractTemplateVersion,
@@ -28,7 +30,9 @@ import {
   downloadContractDraftBillExcelTemplate,
   fetchContractBillTransitionOptions,
   fetchContractBillTransitions,
+  fetchContractDraftWorkbench,
   fetchContractWorkbench,
+  heartbeatContractDraftEditLease,
   setContractAuthorization,
   submitContractFromWorkbench,
   uploadContractFormalApprovalFile,
@@ -53,6 +57,7 @@ import {
   publishLayoutTemplateVersion,
   publishStandardClauseVersion,
   queueLayoutTemplatePreview,
+  queueContractDraftPreview,
   queueContractDocument,
   reorderBillRows,
   replaceContractBillRows,
@@ -61,15 +66,18 @@ import {
   restoreDraftCheckpoint,
   retryContractDocument,
   saveContractBillTransitions,
+  saveContractDraftAggregate,
   saveContractDraft,
   stopContractNumberRule,
   stopContractTemplateVersion,
   stopLayoutTemplateVersion,
   submitStandardClauseVersion,
   submitContractTemplateVersion,
+  submitContractDraft,
   submitLayoutTemplateVersion,
   updateLayoutTemplateVersion,
   transferContractDraft,
+  takeOverContractDraftEditLease,
   updateContractNumberRule,
   updateContractTemplateVersion,
   updateBillRow,
@@ -146,6 +154,169 @@ describe("contract workbench API client", () => {
     await fetchContractWorkbench("contract/1");
 
     expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/contract%2F1");
+  });
+
+  it("uses the exact version-scoped aggregate draft routes and lease header", async () => {
+    mockApiFetch.mockImplementation(() => makeOkJson({
+      contractVersionId: "version/1",
+      draftRevision: 4,
+      token: "issued-token"
+    }));
+
+    await fetchContractDraftWorkbench("version/1");
+    await acquireContractDraftEditLease("version/1");
+    await heartbeatContractDraftEditLease("version/1", "lease-secret");
+    await takeOverContractDraftEditLease("version/1", {
+      currentPassword: "current-password"
+    });
+    await saveContractDraftAggregate("version/1", "lease-secret", {
+      idempotencyKey: "9aeb3ee8-1772-4a79-8d26-684411f91a20",
+      saveKind: "manual",
+      expectedRevision: 3,
+      changedSections: ["draft"],
+      draft: {
+        draftData: { contractName: "钢材采购合同" },
+        clauses: [],
+        pricingNature: "fixed_total",
+        amountSource: "manual",
+        manualAmountCents: "1000000",
+        taxFacts: {
+          invoiceType: "vat_special",
+          taxMode: "single_rate",
+          defaultTaxRatePercent: "13",
+          source: "contract_document"
+        }
+      },
+      parties: [],
+      bills: [],
+      paymentTerms: null,
+      attachments: [],
+      negotiationDocuments: {
+        referencedGeneratedDocumentIds: []
+      }
+    });
+    await queueContractDraftPreview("version/1", 4);
+    await submitContractDraft("version/1", "lease-secret", {
+      expectedRevision: 4,
+      idempotencyKey: "be5d8108-cc55-45f8-8883-0ca9165b10dd"
+    });
+    await deletePristineContractDraft("version/1", 4, {
+      currentPassword: "current-password"
+    });
+
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      1,
+      "/contract-drafts/version%2F1/workbench"
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      2,
+      "/contract-drafts/version%2F1/edit-lease",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      3,
+      "/contract-drafts/version%2F1/edit-lease/heartbeat",
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Contract-Draft-Lease": "lease-secret"
+        }
+      })
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      4,
+      "/contract-drafts/version%2F1/edit-lease/takeover",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ currentPassword: "current-password" })
+      })
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      5,
+      "/contract-drafts/version%2F1",
+      expect.objectContaining({
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Contract-Draft-Lease": "lease-secret"
+        }
+      })
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      6,
+      "/contract-drafts/version%2F1/preview-generation",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ sourceRevision: 4 })
+      })
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      7,
+      "/contract-drafts/version%2F1/submission",
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Contract-Draft-Lease": "lease-secret"
+        }
+      })
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      8,
+      "/contract-drafts/version%2F1",
+      expect.objectContaining({
+        method: "DELETE",
+        body: JSON.stringify({
+          expectedRevision: 4,
+          currentPassword: "current-password"
+        })
+      })
+    );
+  });
+
+  it("never includes the raw lease token in a failed write error", async () => {
+    mockApiFetch.mockResolvedValue(new Response(JSON.stringify({
+      message: "合同草稿编辑租约已失效"
+    }), {
+      status: 409,
+      headers: { "Content-Type": "application/json" }
+    }));
+
+    const error = await saveContractDraftAggregate(
+      "version-1",
+      "raw-lease-token-must-stay-private",
+      {
+        idempotencyKey: "9aeb3ee8-1772-4a79-8d26-684411f91a20",
+        saveKind: "manual",
+        expectedRevision: 3,
+        changedSections: ["draft"],
+        draft: {
+          draftData: {},
+          clauses: [],
+          pricingNature: "fixed_total",
+          amountSource: "manual",
+          manualAmountCents: "0",
+          taxFacts: {
+            invoiceType: null,
+            taxMode: "single_rate",
+            defaultTaxRatePercent: null,
+            source: "contract_document"
+          }
+        },
+        parties: [],
+        bills: [],
+        paymentTerms: null,
+        attachments: [],
+        negotiationDocuments: {
+          referencedGeneratedDocumentIds: []
+        }
+      }
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("合同草稿编辑租约已失效");
+    expect((error as Error).message).not.toContain("raw-lease-token-must-stay-private");
   });
 
   it("abandons the exact encoded contract version with revision, action and reason", async () => {

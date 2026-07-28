@@ -477,9 +477,6 @@
               <ContractOverviewSection
                 v-if="activeSection === 'overview'"
                 :workbench="workbench"
-                :disabled="editorDisabled"
-                @create-checkpoint="onCreateCheckpoint"
-                @restore-checkpoint="onRestoreCheckpoint"
               />
               <ContractBasicSection
                 v-else-if="activeSection === 'basic'"
@@ -689,15 +686,6 @@
     </t-dialog>
 
     <SensitiveActionDialog
-      v-model="checkpointEvictionVisible"
-      title="确认创建新检查点"
-      description="当前已保留 5 个手工检查点。继续后系统将移除最早的检查点，再创建本次检查点。"
-      confirm-text="确认创建"
-      :loading="checkpointBusy"
-      @confirm="confirmCheckpointEviction"
-    />
-
-    <SensitiveActionDialog
       v-model="submissionConfirmVisible"
       title="确认提交合同审批？"
       description="系统将先保存草稿，检查双方授权、乙方签章完整 PDF 和审批人员，全部通过后才会冻结并提交。"
@@ -832,7 +820,6 @@ import {
 import { contractTypeLabel, contractVersionStatusLabel } from "./contract-labels";
 import { centsTextToYuanText } from "../../lib/money";
 import {
-  canApplyExpectedWorkbenchVersion,
   contractApprovalRouteText,
   contractChangePolicyView,
   CONTRACT_NAME_DRAFT_KEY,
@@ -885,8 +872,6 @@ import {
 
 const route = useRoute();
 const router = useRouter();
-const checkpointEvictionVisible = ref(false);
-const checkpointBusy = ref(false);
 const submissionBusy = ref(false);
 const submissionConfirmVisible = ref(false);
 const submissionError = ref("");
@@ -923,8 +908,6 @@ const {
   formalSaveCompleted,
   lastSavedAt,
   saveNow,
-  createCheckpoint,
-  restoreCheckpoint,
   retryConflictServerLoad,
   keepLocalAfterConflict,
   loadServerAfterConflict
@@ -1928,34 +1911,6 @@ async function reloadCurrent() {
   }
 }
 
-async function onCreateCheckpoint() {
-  if (writeLocked.value) return;
-  if ((workbench.value?.checkpoints.length ?? 0) >= 5) {
-    checkpointEvictionVisible.value = true;
-    return;
-  }
-  await createCheckpoint();
-}
-
-async function confirmCheckpointEviction() {
-  if (writeLocked.value) return;
-  checkpointBusy.value = true;
-  errorMessage.value = "";
-  try {
-    await createCheckpoint({ confirmEviction: () => true });
-    checkpointEvictionVisible.value = false;
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "创建检查点失败";
-  } finally {
-    checkpointBusy.value = false;
-  }
-}
-
-async function onRestoreCheckpoint(checkpointId: string) {
-  if (writeLocked.value) return;
-  await restoreCheckpoint(checkpointId);
-}
-
 async function onKeepLocal() {
   await keepLocalAfterConflict();
 }
@@ -1999,13 +1954,11 @@ async function loadExisting() {
 async function loadExpectedWorkbench(id: string) {
   const requestId = ++workbenchLoadRequestId;
   const expectedVersionId = queryText(route.query.versionId).trim();
-  await load(id);
-  if (requestId !== workbenchLoadRequestId || id !== contractId.value) return;
-  if (!canApplyExpectedWorkbenchVersion(expectedVersionId, workbench.value?.version.id)) {
-    workbench.value = null;
-    exactVersionError.value = "工作台返回的合同版本与刚创建的变更草稿不一致，已停止展示和编辑。";
-    throw new Error(exactVersionError.value);
+  if (!expectedVersionId) {
+    throw new Error("工作台缺少合同版本编号，已停止读取最新草稿");
   }
+  await load(expectedVersionId);
+  if (requestId !== workbenchLoadRequestId || id !== contractId.value) return;
 }
 
 function returnToContractDetail() {

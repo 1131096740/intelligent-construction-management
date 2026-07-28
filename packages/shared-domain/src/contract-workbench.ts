@@ -147,6 +147,8 @@ export interface ContractBillReadModel {
   id: string;
   billKey: string;
   name: string;
+  /** Present on editable aggregate workbench projections. */
+  revision?: number;
   totalAmountCents: MoneyCents;
   rows: Array<Record<string, unknown>>;
 }
@@ -287,7 +289,8 @@ export interface ContractWorkbenchReadModel {
       originalText: string;
     }>;
   };
-  checkpoints: ContractDraftCheckpointReadModel[];
+  /** Legacy read-only projection; version-scoped aggregate workbench omits it. */
+  checkpoints?: ContractDraftCheckpointReadModel[];
   documents: ContractGeneratedDocumentReadModel[];
   governance?: {
     version: 1;

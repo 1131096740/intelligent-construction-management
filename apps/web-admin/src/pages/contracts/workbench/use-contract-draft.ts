@@ -17,13 +17,17 @@ import {
   type Ref
 } from "vue";
 import {
-  createDraftCheckpoint,
+  acquireContractDraftEditLease,
   createWorkbenchDraft,
-  fetchContractWorkbench,
-  restoreDraftCheckpoint,
-  saveContractDraft,
-  type ContractWorkbenchReadModel,
-  type SaveContractDraftPayload
+  fetchContractDraftWorkbench,
+  saveContractDraftAggregate,
+  type ContractDraftAttachmentModel,
+  type ContractDraftBillModel,
+  type ContractDraftNegotiationDocumentsModel,
+  type ContractDraftPartyModel,
+  type ContractDraftPaymentTermsModel,
+  type ContractDraftWorkbenchReadModel,
+  type SaveContractDraftAggregatePayload
 } from "../../../api/contract-workbench.api";
 
 // ---------------------------------------------------------------------------
@@ -32,9 +36,6 @@ import {
 
 /** Backend phrase emitted on optimistic-lock failure (Task 9). */
 const REVISION_CONFLICT_PHRASE = "Contract draft revision conflict";
-
-/** Maximum manual checkpoints the backend retains before evicting the oldest. */
-const MAX_RETAINED_CHECKPOINTS = 5;
 
 const BACKUP_KEY_PREFIX = "contract-draft:";
 const AUTOSAVE_DELAY_MS = 1_000;
@@ -54,7 +55,7 @@ export type ContractDraftSaveState =
  * Flat, two-way-bindable editing surface for the basic sections. Anything the
  * sections do not understand stays untouched inside {@link extraDraftData}.
  */
-export interface ContractDraftModel {
+export interface ContractDraftFieldsModel {
   contractName: string;
   companyEntityId: string;
   companyEntitySelection: ContractCompanyEntitySelection | null;
@@ -78,6 +79,18 @@ export interface ContractDraftModel {
   /** Any draftData keys the workbench does not surface as first-class fields. */
   extraDraftData: Record<string, unknown>;
   clauses: ContractClauseDefinition[];
+}
+
+/** Compatibility name used by the existing section components. */
+export type ContractDraftModel = ContractDraftFieldsModel;
+
+export interface ContractDraftAggregateModel {
+  draft: ContractDraftFieldsModel;
+  parties: ContractDraftPartyModel[];
+  bills: ContractDraftBillModel[];
+  paymentTerms: ContractDraftPaymentTermsModel | null;
+  attachments: ContractDraftAttachmentModel[];
+  negotiationDocuments: ContractDraftNegotiationDocumentsModel;
 }
 
 export interface ContractDraftConflict {
@@ -142,8 +155,10 @@ export interface UseContractDraftOptions {
 }
 
 export interface UseContractDraft {
+  aggregateModel: ContractDraftAggregateModel;
+  /** Transitional view over aggregateModel.draft for existing section components. */
   model: ContractDraftModel;
-  workbench: Ref<ContractWorkbenchReadModel | null>;
+  workbench: Ref<ContractDraftWorkbenchReadModel | null>;
   saveState: Ref<ContractDraftSaveState>;
   saveError: Readonly<Ref<string>>;
   conflict: Ref<ContractDraftConflict | null>;
@@ -157,7 +172,7 @@ export interface UseContractDraft {
   /** Client time of the latest successful server save in this editing session. */
   lastSavedAt: Readonly<Ref<Date | null>>;
   initializeDraft: InitializeDraftController;
-  load: (contractId: string) => Promise<void>;
+  load: (contractVersionId: string) => Promise<void>;
   /** Re-fetches the currently loaded workbench through the same guarded load path. */
   reload: () => Promise<void>;
   markDirty: () => void;
@@ -169,11 +184,6 @@ export interface UseContractDraft {
   resumeAutosaveAfterLifecycleAction: () => void;
   /** Flushes dirty draft data. Clean state is a successful no-op. */
   saveNow: () => Promise<boolean>;
-  createCheckpoint: (options?: {
-    name?: string;
-    confirmEviction?: () => boolean | Promise<boolean>;
-  }) => Promise<void>;
-  restoreCheckpoint: (checkpointId: string) => Promise<void>;
   retryConflictServerLoad: () => Promise<boolean>;
   keepLocalAfterConflict: () => Promise<boolean>;
   loadServerAfterConflict: () => Promise<boolean>;
@@ -217,7 +227,7 @@ const KNOWN_DRAFT_KEYS = new Set([
 ]);
 
 /** Projects a server read model into the flat editing model. */
-function modelFromWorkbench(workbench: ContractWorkbenchReadModel): ContractDraftModel {
+function modelFromWorkbench(workbench: ContractDraftWorkbenchReadModel): ContractDraftModel {
   const draftData = workbench.version.draftData ?? {};
   const fieldKeys = templateFieldKeySet(workbench);
   const fieldValues = isRecord(draftData["fieldValues"])
@@ -276,7 +286,122 @@ function modelFromWorkbench(workbench: ContractWorkbenchReadModel): ContractDraf
   };
 }
 
-function templateFieldKeySet(workbench: ContractWorkbenchReadModel): Set<string> {
+function aggregateModelFromWorkbench(
+  workbench: ContractDraftWorkbenchReadModel
+): ContractDraftAggregateModel {
+  const references = isRecord(workbench.draft["workbenchReferences"])
+    ? workbench.draft["workbenchReferences"]
+    : {};
+  return {
+    draft: modelFromWorkbench(workbench),
+    parties: workbench.parties.map((party) => ({
+      roleKey: party.roleKey,
+      displayOrder: party.displayOrder,
+      ...(party.businessPartyVersionId
+        ? { businessPartyVersionId: party.businessPartyVersionId }
+        : {}),
+      snapshot: { ...party.snapshot }
+    })),
+    bills: workbench.bills.map((bill) => ({
+      billKey: bill.billKey,
+      expectedRevision: contractBillRevision(bill),
+      rows: bill.rows.map(draftBillRowFromRead)
+    })),
+    paymentTerms: workbench.paymentTerms
+      ? {
+          originalText: workbench.paymentTerms.originalText,
+          stages: workbench.paymentTerms.stages.map((stage) => ({
+            name: stage.name,
+            basis: stage.basis === "contract_amount"
+              ? "contract_amount"
+              : "current_settlement",
+            ratioBps: stage.ratioBps ?? 0,
+            triggerEvent: stage.triggerEvent,
+            dueDays: stage.dueDays,
+            requiresInvoice: stage.requiresInvoice,
+            allowsInstallments: stage.allowsInstallments,
+            originalText: stage.originalText
+          }))
+        }
+      : null,
+    attachments: workbench.attachments.map((attachment) => ({
+      slotKey: attachment.slotKey,
+      fileId: attachment.fileId,
+      displayOrder: attachment.displayOrder
+    })),
+    negotiationDocuments: {
+      ...(typeof references["selectedNegotiationRoundId"] === "string"
+        ? { selectedNegotiationRoundId: references["selectedNegotiationRoundId"] }
+        : {}),
+      ...(typeof references["selectedOfflineRevisionId"] === "string"
+        ? { selectedOfflineRevisionId: references["selectedOfflineRevisionId"] }
+        : {}),
+      referencedGeneratedDocumentIds: Array.isArray(
+        references["referencedGeneratedDocumentIds"]
+      )
+        ? references["referencedGeneratedDocumentIds"].filter(
+            (value): value is string => typeof value === "string"
+          )
+        : []
+    }
+  };
+}
+
+function contractBillRevision(
+  bill: ContractDraftWorkbenchReadModel["bills"][number]
+): number {
+  if (!Number.isInteger(bill.revision) || (bill.revision ?? -1) < 0) {
+    throw new Error(`合同草稿协议错误：清单 ${bill.billKey} 缺少有效修订号`);
+  }
+  return bill.revision as number;
+}
+
+function draftBillRowFromRead(
+  row: Record<string, unknown>
+): Record<string, unknown> {
+  const rowKey = typeof row["rowKey"] === "string" ? row["rowKey"] : "";
+  const clientRowKey = typeof row["clientRowKey"] === "string"
+    ? row["clientRowKey"]
+    : rowKey;
+  if (
+    !clientRowKey ||
+    typeof row["sortOrder"] !== "number" ||
+    typeof row["itemName"] !== "string" ||
+    typeof row["unit"] !== "string" ||
+    typeof row["unitPrice"] !== "string"
+  ) {
+    throw new Error("合同草稿协议错误：清单行缺少聚合保存所需字段");
+  }
+  return {
+    clientRowKey,
+    ...(rowKey ? { rowKey } : {}),
+    sortOrder: row["sortOrder"],
+    ...(typeof row["itemCode"] === "string" ? { itemCode: row["itemCode"] } : {}),
+    itemName: row["itemName"],
+    ...(typeof row["specification"] === "string"
+      ? { specification: row["specification"] }
+      : {}),
+    unit: row["unit"],
+    ...(typeof row["quantity"] === "string" ? { quantity: row["quantity"] } : {}),
+    unitPrice: row["unitPrice"],
+    ...(typeof row["taxRatePercent"] === "string"
+      ? { taxRatePercent: row["taxRatePercent"] }
+      : {}),
+    ...(row["taxRateSource"] === "version_default" ||
+    row["taxRateSource"] === "row_override"
+      ? { taxRateSource: row["taxRateSource"] }
+      : {}),
+    ...(typeof row["isProvisional"] === "boolean"
+      ? { isProvisional: row["isProvisional"] }
+      : {}),
+    ...(typeof row["settlementBasis"] === "string"
+      ? { settlementBasis: row["settlementBasis"] }
+      : {}),
+    customData: isRecord(row["customData"]) ? { ...row["customData"] } : {}
+  };
+}
+
+function templateFieldKeySet(workbench: ContractDraftWorkbenchReadModel): Set<string> {
   return new Set(workbench.version.templateSnapshot.fieldSchema.map((field) => field.key));
 }
 
@@ -333,6 +458,63 @@ function cloneModel(model: ContractDraftModel): ContractDraftModel {
   };
 }
 
+function cloneAggregateModel(
+  model: ContractDraftAggregateModel
+): ContractDraftAggregateModel {
+  return {
+    draft: cloneModel(model.draft),
+    parties: model.parties.map((party) => ({
+      ...party,
+      snapshot: { ...party.snapshot }
+    })),
+    bills: model.bills.map((bill) => ({
+      ...bill,
+      rows: bill.rows.map((row) => ({ ...row }))
+    })),
+    paymentTerms: model.paymentTerms
+      ? {
+          ...model.paymentTerms,
+          stages: model.paymentTerms.stages.map((stage) => ({ ...stage }))
+        }
+      : null,
+    attachments: model.attachments.map((attachment) => ({ ...attachment })),
+    negotiationDocuments: {
+      ...model.negotiationDocuments,
+      referencedGeneratedDocumentIds: [
+        ...model.negotiationDocuments.referencedGeneratedDocumentIds
+      ]
+    }
+  };
+}
+
+function assignAggregateModel(
+  target: ContractDraftAggregateModel,
+  source: ContractDraftAggregateModel
+): void {
+  assignModel(target.draft, source.draft);
+  target.parties = source.parties.map((party) => ({
+    ...party,
+    snapshot: { ...party.snapshot }
+  }));
+  target.bills = source.bills.map((bill) => ({
+    ...bill,
+    rows: bill.rows.map((row) => ({ ...row }))
+  }));
+  target.paymentTerms = source.paymentTerms
+    ? {
+        ...source.paymentTerms,
+        stages: source.paymentTerms.stages.map((stage) => ({ ...stage }))
+      }
+    : null;
+  target.attachments = source.attachments.map((attachment) => ({ ...attachment }));
+  target.negotiationDocuments = {
+    ...source.negotiationDocuments,
+    referencedGeneratedDocumentIds: [
+      ...source.negotiationDocuments.referencedGeneratedDocumentIds
+    ]
+  };
+}
+
 function assignModel(target: ContractDraftModel, source: ContractDraftModel): void {
   target.contractName = source.contractName;
   target.companyEntityId = source.companyEntityId;
@@ -371,7 +553,7 @@ function paymentStagesFromModel(
   model: ContractDraftModel,
   settlementMode: "settlement_required" | "direct_payment" | null | undefined,
   contractTypeKey: string
-): NonNullable<SaveContractDraftPayload["paymentStages"]> {
+): ContractDraftPaymentTermsModel["stages"] {
   if (model.paymentRatioBps === null || model.paymentDueDays === null) {
     return [];
   }
@@ -407,8 +589,18 @@ function getStorage(): Storage | null {
 // ---------------------------------------------------------------------------
 
 export function useContractDraft(options: UseContractDraftOptions): UseContractDraft {
-  const model = reactive<ContractDraftModel>(emptyModel()) as ContractDraftModel;
-  const workbench = ref<ContractWorkbenchReadModel | null>(null);
+  const aggregateModel = reactive<ContractDraftAggregateModel>({
+    draft: emptyModel(),
+    parties: [],
+    bills: [],
+    paymentTerms: null,
+    attachments: [],
+    negotiationDocuments: {
+      referencedGeneratedDocumentIds: []
+    }
+  }) as ContractDraftAggregateModel;
+  const model = aggregateModel.draft;
+  const workbench = ref<ContractDraftWorkbenchReadModel | null>(null);
   const saveState = ref<ContractDraftSaveState>("idle");
   const saveError = ref("");
   const conflict = ref<ContractDraftConflict | null>(null);
@@ -426,7 +618,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   let loadRequestId = 0;
   let editGeneration = 0;
   let activeSave: Promise<boolean> | null = null;
-  let loadedContractId: string | null = null;
+  let leaseToken: string | null = null;
   let disposed = false;
   // `dirty` stays true from the first edit until a save RESOLVES successfully.
   const dirtyRef = ref(false);
@@ -502,7 +694,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     clearBackup();
     // Invalidate pending loads and make any in-flight save response stale.
     loadRequestId += 1;
-    loadedContractId = null;
+    leaseToken = null;
     contractVersionId.value = null;
     editGeneration += 1;
     dirtyRef.value = false;
@@ -529,11 +721,11 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
 
   // -- Loading ----------------------------------------------------------------
 
-  async function load(contractId: string): Promise<void> {
+  async function load(requestedVersionId: string): Promise<void> {
     const currentVersionId = contractVersionId.value;
     if (
       conflict.value &&
-      contractId === loadedContractId &&
+      requestedVersionId === currentVersionId &&
       currentVersionId
     ) {
       await readConflictServerVersion(currentVersionId);
@@ -541,91 +733,75 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     }
 
     cancelScheduledSave();
-    const sameContractReload =
-      contractId === loadedContractId &&
-      contractVersionId.value !== null;
+    const sameVersionReload = requestedVersionId === currentVersionId;
     const requestId = ++loadRequestId;
 
-    if (sameContractReload) {
-      let overlappingSave = activeSave;
-      while (overlappingSave) {
-        const saved = await overlappingSave;
-        if (disposed || requestId !== loadRequestId) return;
-        if (!saved) return;
-        overlappingSave =
-          activeSave && activeSave !== overlappingSave
-            ? activeSave
-            : null;
-      }
-    }
-
-    let stabilizationRetries = 0;
-    let shouldReadWorkbench = true;
-    while (shouldReadWorkbench) {
-      const generationBeforeRead = editGeneration;
-      let result: ContractWorkbenchReadModel;
-      try {
-        result = await fetchContractWorkbench(contractId);
-      } catch (error) {
-        if (
-          sameContractReload &&
-          !disposed &&
-          requestId === loadRequestId
-        ) {
-          scheduleSave();
-        }
-        throw error;
-      }
+    let overlappingSave = conflict.value ? null : activeSave;
+    while (overlappingSave) {
+      const saved = await overlappingSave;
       if (disposed || requestId !== loadRequestId) return;
-
-      const isCrossVersionRead =
-        result.version.id !== contractVersionId.value;
-      if (
-        sameContractReload &&
-        isCrossVersionRead &&
-        editGeneration !== generationBeforeRead
-      ) {
-        const saved = await saveNow();
-        if (disposed || requestId !== loadRequestId || !saved) return;
-        // One stable re-read is enough for the normal race. If editing also
-        // overlaps that retry, persist it but keep the current version visible
-        // instead of creating an unbounded save/read loop.
-        if (stabilizationRetries >= 1) return;
-        stabilizationRetries += 1;
-        continue;
-      }
-
-      if (
-        result.version.id === contractVersionId.value &&
-        result.version.draftRevision < currentRevision.value
-      ) {
-        scheduleSave();
-        return;
-      }
-      shouldReadWorkbench = false;
-      workbench.value = result;
-      loadedContractId = result.contract.id;
-      contractVersionId.value = result.version.id;
-      currentRevision.value = result.version.draftRevision;
-      editGeneration += 1;
-      conflict.value = null;
-      pausedRef.value = false;
-      dirtyRef.value = false;
-      formalSaveCompleted.value = Boolean(result.contract.code);
-      lastSavedAt.value = null;
-      saveState.value = "idle";
-      saveError.value = "";
-
-      assignModel(model, modelFromWorkbench(result));
-
-      // Surface any unsaved local edits left over from a prior session.
-      const backup = readBackup();
-      if (backup) {
-        assignModel(model, normalizeBackupTemplateFields(backup, templateFieldKeySet(result)));
-        dirtyRef.value = true;
-      }
-      scheduleSave();
+      if (!saved) return;
+      overlappingSave =
+        activeSave && activeSave !== overlappingSave
+          ? activeSave
+          : null;
     }
+
+    let result: ContractDraftWorkbenchReadModel;
+    try {
+      result = await fetchContractDraftWorkbench(requestedVersionId);
+    } catch (error) {
+      if (sameVersionReload && !disposed && requestId === loadRequestId) {
+        scheduleSave();
+      }
+      throw error;
+    }
+    if (disposed || requestId !== loadRequestId) return;
+    if (result.version.id !== requestedVersionId) {
+      throw new Error(
+        "合同草稿协议错误：响应版本与请求版本不一致，已保留当前编辑内容"
+      );
+    }
+    if (
+      result.version.id === contractVersionId.value &&
+      result.version.draftRevision < currentRevision.value
+    ) {
+      scheduleSave();
+      return;
+    }
+
+    const nextAggregate = aggregateModelFromWorkbench(result);
+    if (!sameVersionReload) {
+      leaseToken = null;
+    }
+    workbench.value = result;
+    contractVersionId.value = result.version.id;
+    currentRevision.value = result.version.draftRevision;
+    editGeneration += 1;
+    conflict.value = null;
+    pausedRef.value = false;
+    dirtyRef.value = false;
+    formalSaveCompleted.value = Boolean(result.contract.code);
+    lastSavedAt.value = null;
+    saveState.value = "idle";
+    saveError.value = "";
+    assignAggregateModel(aggregateModel, nextAggregate);
+
+    // Surface any unsaved local edits left over from a prior session.
+    const backup = readBackup();
+    if (backup) {
+      assignModel(model, normalizeBackupTemplateFields(backup, templateFieldKeySet(result)));
+      dirtyRef.value = true;
+    }
+    if (
+      !leaseToken &&
+      (result.lease.state === "available" || result.lease.state === "expired")
+    ) {
+      const lease = await acquireContractDraftEditLease(requestedVersionId);
+      if (disposed || requestId !== loadRequestId) return;
+      leaseToken = lease.token;
+    }
+    scheduleSave();
   }
 
   // -- Dirty tracking ----------------------------------------------------------
@@ -651,6 +827,11 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       cancelScheduledSave();
       return true;
     }
+    if (!leaseToken) {
+      saveError.value = "当前页面未取得合同草稿编辑租约，已保留本地内容";
+      saveState.value = "failed";
+      return false;
+    }
 
     cancelScheduledSave();
     saveState.value = "saving";
@@ -659,42 +840,79 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
 
     const changeType = (workbench.value?.version as unknown as { changeType?: unknown })?.changeType;
     const isChangeDraft = changeType === "change" || changeType === "supplement";
-    const payload = {
-      expectedRevision: currentRevision.value,
-      ...(model.companyEntityId ? { companyEntityId: model.companyEntityId } : {}),
-      draftData: draftDataFromModel(model),
-      clauses: model.clauses,
-      pricingNature: model.pricingNature,
-      amountSource: model.amountSource,
-      taxFacts: {
-        invoiceType: model.invoiceType,
-        taxMode: model.taxMode,
-        defaultTaxRatePercent: model.defaultTaxRatePercent,
-        source: "contract_document" as const
-      },
-      ...(model.amountSource === "manual"
-        ? { manualAmountCents: model.manualAmountCents ?? "0" }
-        : {}),
-      ...(model.estimatedAmountCents === null
-        ? {}
-        : { estimatedAmountCents: model.estimatedAmountCents }),
-      ...(!isChangeDraft
+    const paymentStages = paymentStagesFromModel(
+      model,
+      workbench.value?.settlementMode?.value,
+      workbench.value?.contract.contractTypeKey ?? ""
+    );
+    const paymentTerms = isChangeDraft
+      ? aggregateModel.paymentTerms
+      : model.paymentTermsOriginalText || paymentStages.length
         ? {
-            paymentTermsOriginalText: model.paymentTermsOriginalText,
-            paymentStages: paymentStagesFromModel(
-              model,
-              workbench.value?.settlementMode?.value,
-              workbench.value?.contract.contractTypeKey ?? ""
-            )
+            originalText: model.paymentTermsOriginalText || paymentStages[0]?.originalText || "",
+            stages: paymentStages
           }
-        : {})
+        : null;
+    const payload: SaveContractDraftAggregatePayload = {
+      idempotencyKey: crypto.randomUUID(),
+      saveKind: "manual",
+      expectedRevision: currentRevision.value,
+      changedSections: [
+        "draft",
+        "parties",
+        "bills",
+        "payment_terms",
+        "attachments",
+        "negotiation_documents"
+      ],
+      draft: {
+        ...(model.companyEntityId ? { companyEntityId: model.companyEntityId } : {}),
+        draftData: draftDataFromModel(model),
+        clauses: model.clauses,
+        pricingNature: model.pricingNature as SaveContractDraftAggregatePayload["draft"]["pricingNature"],
+        amountSource: model.amountSource as SaveContractDraftAggregatePayload["draft"]["amountSource"],
+        taxFacts: {
+          invoiceType: model.invoiceType,
+          taxMode: model.taxMode,
+          defaultTaxRatePercent: model.defaultTaxRatePercent,
+          source: "contract_document"
+        },
+        ...(model.amountSource === "manual"
+          ? { manualAmountCents: model.manualAmountCents ?? "0" }
+          : {}),
+        ...(model.estimatedAmountCents === null
+          ? {}
+          : { estimatedAmountCents: model.estimatedAmountCents }),
+        ...(model.amountAdjustmentReason
+          ? { amountAdjustmentReason: model.amountAdjustmentReason }
+          : {})
+      },
+      parties: cloneAggregateModel(aggregateModel).parties,
+      bills: cloneAggregateModel(aggregateModel).bills,
+      paymentTerms,
+      attachments: cloneAggregateModel(aggregateModel).attachments,
+      negotiationDocuments: {
+        ...aggregateModel.negotiationDocuments,
+        referencedGeneratedDocumentIds: [
+          ...aggregateModel.negotiationDocuments.referencedGeneratedDocumentIds
+        ]
+      }
     };
 
     try {
-      const result = await saveContractDraft(savingVersionId, payload);
+      const result = await saveContractDraftAggregate(
+        savingVersionId,
+        leaseToken,
+        payload
+      );
       // A late response from another route must never mutate the newly loaded
       // contract's revision, dirty state, backup, or conflict UI.
       if (contractVersionId.value !== savingVersionId) return true;
+      if (result.contractVersionId !== savingVersionId) {
+        throw new Error(
+          "合同草稿协议错误：保存响应版本与请求版本不一致，已保留当前编辑内容"
+        );
+      }
       // Only now is it safe to clear dirty state + the backup (brief rule).
       currentRevision.value = result.draftRevision;
       formalSaveCompleted.value = true;
@@ -762,8 +980,6 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     conflictingVersionId: string
   ): Promise<boolean> {
     const conflictLoadRequestId = ++loadRequestId;
-    const conflictingContractId =
-      loadedContractId ?? workbench.value?.contract.id ?? conflictingVersionId;
     const isCurrentConflictRequest = () =>
       !disposed &&
       loadRequestId === conflictLoadRequestId &&
@@ -781,7 +997,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
 
     // Re-fetch to learn the latest server state + revision for the merge UI.
     try {
-      const fresh = await fetchContractWorkbench(conflictingContractId);
+      const fresh = await fetchContractDraftWorkbench(conflictingVersionId);
       if (!isCurrentConflictRequest()) return false;
       if (fresh.version.id !== conflictingVersionId) {
         setConflictServerReadFailure(
@@ -790,7 +1006,6 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
         return false;
       }
       workbench.value = fresh;
-      loadedContractId = fresh.contract.id;
       currentRevision.value = fresh.version.draftRevision;
       conflict.value = {
         local: cloneModel(model),
@@ -869,48 +1084,16 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     return true;
   }
 
-  // -- Checkpoints ------------------------------------------------------------
-
-  async function createCheckpoint(options?: {
-    name?: string;
-    confirmEviction?: () => boolean | Promise<boolean>;
-  }): Promise<void> {
-    if (!contractVersionId.value) {
-      return;
-    }
-
-    // Creating a sixth manual checkpoint evicts the oldest retained one; require
-    // explicit confirmation before that happens.
-    const existing = workbench.value?.checkpoints.length ?? 0;
-    if (existing >= MAX_RETAINED_CHECKPOINTS) {
-      const confirmed = options?.confirmEviction ? await options.confirmEviction() : false;
-      if (!confirmed) {
-        return;
-      }
-    }
-
-    await createDraftCheckpoint(contractVersionId.value, { name: options?.name ?? "" });
-    await reloadWorkbench();
-  }
-
-  async function restoreCheckpoint(checkpointId: string): Promise<void> {
-    if (!contractVersionId.value) {
-      return;
-    }
-    await restoreDraftCheckpoint(contractVersionId.value, checkpointId);
-    await reloadWorkbench();
-  }
-
   async function reloadWorkbench(): Promise<void> {
     if (conflict.value) {
       await retryConflictServerLoad();
       return;
     }
-    const contractId = loadedContractId;
-    if (!contractId) {
+    const versionId = contractVersionId.value;
+    if (!versionId) {
       return;
     }
-    await load(contractId);
+    await load(versionId);
   }
 
   // -- Draft creation (/contracts/new) ----------------------------------------
@@ -951,7 +1134,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
         : basePayload
     );
 
-    options.replace(`/contracts/${created.contract.id}/workbench`);
+    options.replace(
+      `/contracts/${created.contract.id}/workbench?versionId=${encodeURIComponent(created.version.id)}`
+    );
   }
 
   const initializeDraft: InitializeDraftController = {
@@ -986,7 +1171,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       disposed = true;
       cancelScheduledSave();
       loadRequestId += 1;
-      loadedContractId = null;
+      leaseToken = null;
       contractVersionId.value = null;
       editGeneration += 1;
       pausedRef.value = false;
@@ -996,6 +1181,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   }
 
   return {
+    aggregateModel,
     model,
     workbench,
     saveState,
@@ -1014,8 +1200,6 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     suspendAutosaveForLifecycleAction,
     resumeAutosaveAfterLifecycleAction,
     saveNow,
-    createCheckpoint,
-    restoreCheckpoint,
     retryConflictServerLoad,
     keepLocalAfterConflict,
     loadServerAfterConflict

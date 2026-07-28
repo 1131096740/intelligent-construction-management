@@ -1,6 +1,7 @@
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 import type {
+  ContractClauseDefinition,
   ContractInvoiceType,
   ContractSettlementMode,
   ContractTaxMode,
@@ -49,6 +50,20 @@ async function postJson<TResponse>(path: string, body?: unknown): Promise<TRespo
   return response.json() as Promise<TResponse>;
 }
 
+async function postJsonWithHeaders<TResponse>(
+  path: string,
+  body: unknown,
+  headers: Record<string, string>
+): Promise<TResponse> {
+  const response = await apiFetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(body)
+  });
+  await ensureOk(response, "提交失败");
+  return response.json() as Promise<TResponse>;
+}
+
 async function patchJson<TResponse>(path: string, body?: unknown): Promise<TResponse> {
   const response = await apiFetch(path, {
     method: "PATCH",
@@ -74,6 +89,20 @@ async function putJson<TResponse>(
     if (parsedError) throw parsedError;
     await ensureOk(response, "保存失败");
   }
+  return response.json() as Promise<TResponse>;
+}
+
+async function putJsonWithHeaders<TResponse>(
+  path: string,
+  body: unknown,
+  headers: Record<string, string>
+): Promise<TResponse> {
+  const response = await apiFetch(path, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(body)
+  });
+  await ensureOk(response, "保存失败");
   return response.json() as Promise<TResponse>;
 }
 
@@ -128,9 +157,213 @@ export interface ContractWorkbenchReadModel extends SharedContractWorkbenchReadM
   availableActions?: DetailActionReadModel[];
 }
 
+export type ContractDraftWorkbenchReadModel =
+  Omit<ContractWorkbenchReadModel, "checkpoints"> & {
+    draft: Record<string, unknown>;
+    attachments: ContractDraftAttachmentModel[];
+    lease: ContractDraftLeaseState;
+    version: ContractWorkbenchReadModel["version"] & {
+      draftLifecycleKind?: "pristine_draft" | "approval_draft";
+    };
+  };
+
+export interface ContractDraftAttachmentModel {
+  id?: string;
+  slotKey: string;
+  fileId: string;
+  displayOrder: number;
+  [key: string]: unknown;
+}
+
+export interface ContractDraftLeaseState {
+  state: "available" | "held_by_me" | "held_by_other" | "expired";
+  holderDisplayName: string | null;
+  expiresAt: string | null;
+  canTakeOver: boolean;
+}
+
+export interface ContractDraftLeaseGrant {
+  token: string;
+  leaseRevision: number;
+  expiresAt: string;
+  heartbeatIntervalMs: number;
+}
+
+export interface ContractDraftLeaseHeartbeat {
+  leaseRevision: number | null;
+  expiresAt: string;
+}
+
+export interface ContractDraftFieldsPayload {
+  companyEntityId?: string;
+  draftData: Record<string, unknown>;
+  clauses: ContractClauseDefinition[];
+  pricingNature: "fixed_total" | "provisional_total" | "unit_price" | "framework";
+  amountSource: "bill_sum" | "manual";
+  manualAmountCents?: string;
+  estimatedAmountCents?: string;
+  amountAdjustmentReason?: string;
+  layoutTemplateVersionId?: string;
+  taxFacts: {
+    invoiceType: ContractInvoiceType | null;
+    taxMode: ContractTaxMode;
+    defaultTaxRatePercent: string | null;
+    source: "contract_document";
+  };
+}
+
+export interface ContractDraftPartyModel {
+  roleKey: string;
+  businessPartyVersionId?: string;
+  displayOrder: number;
+  snapshot: Record<string, unknown>;
+}
+
+export interface ContractDraftBillModel {
+  billKey: string;
+  expectedRevision: number;
+  rows: Array<Record<string, unknown>>;
+}
+
+export interface ContractDraftPaymentTermsModel {
+  originalText: string;
+  stages: Array<{
+    name: string;
+    basis: "current_settlement" | "contract_amount";
+    ratioBps: number;
+    triggerEvent: string;
+    dueDays: number;
+    requiresInvoice: boolean;
+    allowsInstallments: boolean;
+    originalText: string;
+  }>;
+}
+
+export interface ContractDraftNegotiationDocumentsModel {
+  selectedNegotiationRoundId?: string;
+  selectedOfflineRevisionId?: string;
+  referencedGeneratedDocumentIds: string[];
+}
+
+export type ContractDraftChangedSection =
+  | "draft"
+  | "parties"
+  | "bills"
+  | "payment_terms"
+  | "attachments"
+  | "negotiation_documents";
+
+export interface SaveContractDraftAggregatePayload {
+  idempotencyKey: string;
+  saveKind: "auto" | "manual";
+  expectedRevision: number;
+  changedSections: ContractDraftChangedSection[];
+  draft: ContractDraftFieldsPayload;
+  parties: ContractDraftPartyModel[];
+  bills: ContractDraftBillModel[];
+  paymentTerms: ContractDraftPaymentTermsModel | null;
+  attachments: ContractDraftAttachmentModel[];
+  negotiationDocuments: ContractDraftNegotiationDocumentsModel;
+}
+
+export interface SaveContractDraftAggregateResult {
+  contractVersionId: string;
+  draftRevision: number;
+  savedAt: string;
+  effectiveChangedSections: ContractDraftChangedSection[];
+  amounts: {
+    taxInclusiveAmountCents: string;
+    taxExclusiveAmountCents: string;
+    taxAmountCents: string;
+  };
+  billRevisions: Record<string, number>;
+  issueCounts: Record<string, number>;
+  readiness: unknown;
+  documentsOutdated: boolean;
+  availableActions: DetailActionReadModel[];
+}
+
 export function fetchContractWorkbench(contractId: string) {
   return readJson<ContractWorkbenchReadModel>(
     `/contract-workbench/${encodeURIComponent(contractId)}`
+  );
+}
+
+export function fetchContractDraftWorkbench(contractVersionId: string) {
+  return readJson<ContractDraftWorkbenchReadModel>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/workbench`
+  );
+}
+
+export function acquireContractDraftEditLease(contractVersionId: string) {
+  return postJson<ContractDraftLeaseGrant>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/edit-lease`
+  );
+}
+
+export function heartbeatContractDraftEditLease(
+  contractVersionId: string,
+  leaseToken: string
+) {
+  return postJsonWithHeaders<ContractDraftLeaseHeartbeat>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/edit-lease/heartbeat`,
+    {},
+    { "X-Contract-Draft-Lease": leaseToken }
+  );
+}
+
+export function takeOverContractDraftEditLease(
+  contractVersionId: string,
+  confirmation: { currentPassword: string }
+) {
+  return postJson<ContractDraftLeaseGrant>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/edit-lease/takeover`,
+    confirmation
+  );
+}
+
+export function saveContractDraftAggregate(
+  contractVersionId: string,
+  leaseToken: string,
+  payload: SaveContractDraftAggregatePayload
+) {
+  return putJsonWithHeaders<SaveContractDraftAggregateResult>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}`,
+    payload,
+    { "X-Contract-Draft-Lease": leaseToken }
+  );
+}
+
+export function queueContractDraftPreview(
+  contractVersionId: string,
+  sourceRevision: number
+) {
+  return postJson<unknown>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/preview-generation`,
+    { sourceRevision }
+  );
+}
+
+export function submitContractDraft(
+  contractVersionId: string,
+  leaseToken: string,
+  payload: { expectedRevision: number; idempotencyKey: string }
+) {
+  return postJsonWithHeaders<unknown>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/submission`,
+    payload,
+    { "X-Contract-Draft-Lease": leaseToken }
+  );
+}
+
+export function deletePristineContractDraft(
+  contractVersionId: string,
+  expectedRevision: number,
+  confirmation: { reason?: string; currentPassword?: string } = {}
+) {
+  return deleteJson<AbandonContractDraftReadModel>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}`,
+    { expectedRevision, ...confirmation }
   );
 }
 
