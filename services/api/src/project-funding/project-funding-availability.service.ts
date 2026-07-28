@@ -73,6 +73,14 @@ interface FundingAllocationRow {
 
 @Injectable()
 export class ProjectFundingAvailabilityService {
+  async lockFundingContext(
+    tx: Prisma.TransactionClient,
+    projectId: string
+  ): Promise<void> {
+    await this.lockActiveProject(tx, projectId);
+    await this.lockAvailableQuotas(tx, projectId);
+  }
+
   async allocateExecution(
     tx: Prisma.TransactionClient,
     input: AllocateProjectFundingInput
