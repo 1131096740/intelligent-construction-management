@@ -376,14 +376,6 @@ export class ContractDraftAggregateService {
               canReacquireLease: false
             });
           }
-          await tx.contractGeneratedDocument.updateMany({
-            where: {
-              contractVersionId,
-              status: "success",
-              sourceRevision: { lt: resultRevision }
-            },
-            data: { status: "stale" }
-          });
           if (input.saveKind === "manual") {
             await this.audit.record(tx, {
               actorUserId,

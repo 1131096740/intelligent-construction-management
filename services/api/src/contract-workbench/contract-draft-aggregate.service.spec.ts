@@ -371,6 +371,7 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
         data: expect.not.objectContaining({ code: expect.anything() })
       })
     );
+    expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
     expect(audit.record).toHaveBeenCalledTimes(1);
   });
 
