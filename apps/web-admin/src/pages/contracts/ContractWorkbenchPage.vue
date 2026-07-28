@@ -753,32 +753,34 @@
 
     <t-dialog
       v-model:visible="navigationConfirmVisible"
-      :header="navigationUnsavedTitle"
+      :header="navigationPrompt?.title ?? ''"
       :close-on-overlay-click="false"
       :close-on-esc-keydown="false"
       width="520px"
       :footer="false"
-      @close="resolveNavigationDecision(false)"
+      @close="cancelPendingNavigation"
     >
       <div class="leave-confirm">
         <t-alert
-          theme="warning"
-          title="请确认未保存内容"
-          :message="navigationUnsavedMessage"
+          :theme="navigationPrompt?.tone ?? 'warning'"
+          :title="navigationPrompt?.title ?? ''"
+          :message="navigationPrompt?.message ?? ''"
         />
         <div class="leave-confirm-actions">
           <t-button
             variant="outline"
-            @click="resolveNavigationDecision(false)"
+            :disabled="navigationFlushBusy"
+            @click="cancelPendingNavigation"
           >
             继续编辑
           </t-button>
           <t-button
-            theme="danger"
-            :disabled="saveState === 'saving'"
-            @click="resolveNavigationDecision(true)"
+            v-if="navigationPrompt?.canFlush"
+            theme="primary"
+            :loading="navigationFlushBusy"
+            @click="flushNavigationAndLeave"
           >
-            放弃并离开
+            {{ navigationPrompt.actionLabel }}
           </t-button>
         </div>
       </div>
@@ -868,7 +870,8 @@ import ContractDocumentsSection from "./workbench/ContractDocumentsSection.vue";
 import ContractFormalDocumentSection from "./workbench/ContractFormalDocumentSection.vue";
 import {
   contractWorkbenchNavigationPrompt,
-  shouldCancelPendingNavigation
+  contractWorkbenchShouldBlockUnload,
+  createContractWorkbenchLeaveSave
 } from "./workbench/contract-workbench-navigation.state";
 import ContractNegotiationCanvas from "./workbench/ContractNegotiationCanvas.vue";
 import ContractOverviewSection from "./workbench/ContractOverviewSection.vue";
@@ -951,60 +954,56 @@ const leaseTakeoverBusy = ref(false);
 const leaseTakeoverError = ref("");
 
 const navigationConfirmVisible = ref(false);
-const navigationDecisionPending = ref(false);
+const navigationFlushBusy = ref(false);
 const navigationBypass = ref(false);
 let resolvePendingNavigation: ((decision: boolean) => void) | null = null;
 
 const navigationState = computed(() => ({
-  draftDirty: isDirty.value,
-  billDirty: false,
-  draftSaving: saveState.value === "saving",
-  billBatchSaving: false
+  dirty: isDirty.value,
+  saveState: saveState.value,
+  error: saveError.value
 }));
 const navigationPrompt = computed(() =>
   contractWorkbenchNavigationPrompt(navigationState.value)
 );
-const navigationUnsavedTitle = computed(() => navigationPrompt.value?.title ?? "");
-const navigationUnsavedMessage = computed(() => navigationPrompt.value?.message ?? "");
+const leaveSave = createContractWorkbenchLeaveSave({
+  state: () => navigationState.value,
+  flushBeforeLeave: saveNow
+});
 
 useUnsavedChangesGuard({
   isDirty: () =>
     !navigationBypass.value &&
-    navigationPrompt.value !== null,
+    contractWorkbenchShouldBlockUnload(navigationState.value),
   confirmLeave: () => new Promise<boolean>((resolve) => {
     resolvePendingNavigation?.(false);
     resolvePendingNavigation = resolve;
-    navigationDecisionPending.value = true;
     navigationConfirmVisible.value = true;
-  }),
-  discardChanges: discardNavigationChanges
+  })
 });
 
-function resolveNavigationDecision(decision: boolean) {
-  if (decision && saveState.value === "saving") {
+function cancelPendingNavigation() {
+  navigationConfirmVisible.value = false;
+  navigationFlushBusy.value = false;
+  const resolve = resolvePendingNavigation;
+  resolvePendingNavigation = null;
+  resolve?.(false);
+}
+
+async function flushNavigationAndLeave() {
+  if (navigationFlushBusy.value || !navigationPrompt.value?.canFlush) {
+    return;
+  }
+  navigationFlushBusy.value = true;
+  const saved = await leaveSave.flush();
+  navigationFlushBusy.value = false;
+  if (!saved) {
     return;
   }
   navigationConfirmVisible.value = false;
-  navigationDecisionPending.value = false;
   const resolve = resolvePendingNavigation;
   resolvePendingNavigation = null;
-  resolve?.(decision);
-}
-
-watch(
-  navigationState,
-  (state) => {
-    if (shouldCancelPendingNavigation(navigationDecisionPending.value, state)) {
-      resolveNavigationDecision(false);
-    }
-  },
-  { flush: "sync" }
-);
-
-function discardNavigationChanges() {
-  if (isDirty.value && !discardLocalState()) {
-    throw new Error("合同草稿正在保存，请等待保存完成后重试");
-  }
+  resolve?.(true);
 }
 
 const contractDraftActions = computed(() => workbench.value?.availableActions ?? []);
@@ -1399,7 +1398,10 @@ watch([saveState, isDirty], ([state, draftDirty]) => {
   }
 });
 
-onBeforeUnmount(clearManualSaveMessage);
+onBeforeUnmount(() => {
+  clearManualSaveMessage();
+  cancelPendingNavigation();
+});
 
 const autosaveTone = computed(() => {
   switch (saveState.value) {

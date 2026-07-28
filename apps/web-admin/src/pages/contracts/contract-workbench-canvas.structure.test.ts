@@ -100,21 +100,25 @@ describe("contract workbench document canvas structure", () => {
     expect(pageSource).toMatch(
       /ContractBillFocusEditor[\s\S]*v-else-if="!exactVersionError"[\s\S]*class="shell-body"/u
     );
-    expect(pageSource).toContain("draftDirty: isDirty.value");
-    expect(pageSource).toContain("billDirty: false");
+    expect(pageSource).toContain("dirty: isDirty.value");
+    expect(pageSource).toContain("saveState: saveState.value");
     expect(pageSource).not.toContain("billEditorDirty");
     expect(pageSource).not.toContain("discardChanges()");
-    expect(pageSource).toContain("discardChanges: discardNavigationChanges");
+    expect(pageSource).not.toContain("discardChanges: discardNavigationChanges");
+    expect(pageSource).toContain("flushBeforeLeave: saveNow");
     expect(pageSource).toContain("discardLocalState()");
     expect(pageSource).toContain(':disabled="writeLocked"');
   });
 
-  it("uses one route guard and closes bill focus without discarding aggregate edits", () => {
-    expect(navigationStateSource).toContain("合同基础信息和清单均未保存");
-    expect(navigationStateSource).toContain("放弃后两类本地修改都会丢失");
+  it("uses one save-only route guard and closes bill focus without discarding aggregate edits", () => {
+    expect(navigationStateSource).toContain("保存合同草稿后离开");
+    expect(navigationStateSource).toContain("保存成功后才会离开当前页面");
+    expect(navigationStateSource).toContain("createContractWorkbenchLeaveSave");
     expect(pageSource).toMatch(
       /function requestBillFocusClose\(\) \{[\s\S]*closeBillFocus\(\)/u
     );
+    expect(pageSource).toContain("flushNavigationAndLeave");
+    expect(pageSource).not.toContain("放弃并离开");
     expect(pageSource).not.toContain("focusCloseConfirmVisible");
     expect(pageSource).not.toContain("focusCloseCheck");
     expect(pageSource).not.toContain("requestUnsavedClose");
@@ -122,11 +126,9 @@ describe("contract workbench document canvas structure", () => {
 
   it("fails closed instead of discarding local state while a draft save is in flight", () => {
     expect(navigationStateSource).toContain("合同草稿正在保存");
-    expect(navigationStateSource).toContain("系统不会中断已发出的保存请求");
-    expect(pageSource).toContain(':disabled="saveState === \'saving\'"');
-    expect(pageSource).toMatch(
-      /if \(isDirty\.value && !discardLocalState\(\)\) \{[\s\S]*throw new Error/u
-    );
+    expect(navigationStateSource).toContain("等待当前保存及其后的最新编辑全部收敛");
+    expect(pageSource).toContain(':loading="navigationFlushBusy"');
+    expect(pageSource).not.toContain("function discardNavigationChanges");
     expect(pageSource).not.toContain("billBatchSaving.value");
   });
 
@@ -136,14 +138,14 @@ describe("contract workbench document canvas structure", () => {
     expect(billEditorSource).toContain('@click="requestClose"');
     expect(billEditorSource).toMatch(/function requestClose\(\) \{[\s\S]*emit\("close"\)/u);
     expect(pageSource).not.toContain("@batch-saving-change");
-    expect(pageSource).toContain("navigationPrompt.value !== null");
+    expect(pageSource).toContain("contractWorkbenchShouldBlockUnload(navigationState.value)");
     expect(pageSource).toContain(
-      "shouldCancelPendingNavigation(navigationDecisionPending.value, state)"
+      "const saved = await leaveSave.flush()"
     );
     expect(pageSource).toMatch(
-      /shouldCancelPendingNavigation[\s\S]*resolveNavigationDecision\(false\)/u
+      /if \(!saved\) \{[\s\S]*return;[\s\S]*resolve\?\.\(true\)/u
     );
-    expect(pageSource).toContain(':disabled="saveState === \'saving\'"');
+    expect(pageSource).toContain('@click="cancelPendingNavigation"');
     expect(pageSource).not.toContain("resolveFocusClose");
   });
 
