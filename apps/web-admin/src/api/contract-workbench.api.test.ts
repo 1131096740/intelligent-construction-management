@@ -25,6 +25,7 @@ import {
   discardLayoutTemplateVersion,
   discardStandardClauseVersion,
   downloadBillExcelTemplate,
+  downloadContractDraftBillExcelTemplate,
   fetchContractBillTransitionOptions,
   fetchContractBillTransitions,
   fetchContractWorkbench,
@@ -46,6 +47,7 @@ import {
   listStandardClauseHistory,
   type PublishedStandardClause,
   previewBillExcelImport,
+  previewContractDraftBillExcelImport,
   previewContractTypeChange,
   publishContractTemplateVersion,
   publishLayoutTemplateVersion,
@@ -1154,6 +1156,32 @@ describe("contract workbench API client", () => {
     expect(mockApiFetch).toHaveBeenCalledWith("/contract-bills/bill-1/excel-template");
   });
 
+  it("downloadContractDraftBillExcelTemplate – encodes exact version and bill key", async () => {
+    const anchor = { href: "", download: "", click: vi.fn(), remove: vi.fn() };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const urlAny = globalThis.URL as any;
+    urlAny.createObjectURL = vi.fn().mockReturnValue("blob:mock-draft");
+    urlAny.revokeObjectURL = vi.fn();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const docAny = globalThis as any;
+    docAny.document ??= {};
+    docAny.document.createElement = vi.fn().mockReturnValue(anchor);
+    docAny.document.body = { appendChild: vi.fn().mockReturnValue(anchor) };
+    mockApiFetch.mockReturnValue(
+      makeOkBlob(
+        "draft-template",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "attachment; filename*=UTF-8''main-bill.xlsx"
+      )
+    );
+
+    await downloadContractDraftBillExcelTemplate("version / 1", "main / bill");
+
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/contract-drafts/version%20%2F%201/bills/main%20%2F%20bill/template"
+    );
+  });
+
   it("previewBillExcelImport – POST JSON body (NOT FormData) to /contract-bills/:billId/excel-imports", async () => {
     mockApiFetch.mockReturnValue(makeOkJson({ importId: "import-1", rows: [] }));
 
@@ -1168,6 +1196,32 @@ describe("contract workbench API client", () => {
     expect(JSON.parse((options as RequestInit).body as string)).toEqual({
       fileId: "file-1",
       mode: "update"
+    });
+  });
+
+  it("previewContractDraftBillExcelImport – returns candidates without an apply id", async () => {
+    mockApiFetch.mockReturnValue(
+      makeOkJson({
+        billKey: "main_bill",
+        targetBillRevision: 7,
+        rows: [],
+        errors: []
+      })
+    );
+
+    await previewContractDraftBillExcelImport(
+      "version / 1",
+      "main / bill",
+      { fileId: "file-1" }
+    );
+
+    const [path, options] = mockApiFetch.mock.calls[0];
+    expect(path).toBe(
+      "/contract-drafts/version%20%2F%201/bills/main%20%2F%20bill/import-preview"
+    );
+    expect((options as RequestInit).method).toBe("POST");
+    expect(JSON.parse((options as RequestInit).body as string)).toEqual({
+      fileId: "file-1"
     });
   });
 

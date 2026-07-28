@@ -1015,14 +1015,34 @@ export function replaceContractBillRows(
 
 // Excel template download: backend responds with a streaming .xlsx file.
 export async function downloadBillExcelTemplate(billId: string): Promise<void> {
-  const response = await apiFetch(`/contract-bills/${billId}/excel-template`);
+  return downloadBillExcelTemplateFromPath(
+    `/contract-bills/${billId}/excel-template`,
+    `合同清单模板-${billId}.xlsx`
+  );
+}
+
+export async function downloadContractDraftBillExcelTemplate(
+  contractVersionId: string,
+  billKey: string
+): Promise<void> {
+  return downloadBillExcelTemplateFromPath(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/bills/${encodeURIComponent(billKey)}/template`,
+    `合同清单模板-${billKey}.xlsx`
+  );
+}
+
+async function downloadBillExcelTemplateFromPath(
+  path: string,
+  fallbackFileName: string
+): Promise<void> {
+  const response = await apiFetch(path);
   await ensureOk(response, "下载清单模板失败");
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") ?? "";
   const match = /filename\*=UTF-8''([^;]+)/.exec(disposition);
   const fileName = match
     ? decodeURIComponent(match[1])
-    : `合同清单模板-${billId}.xlsx`;
+    : fallbackFileName;
   saveBlob(blob, fileName);
 }
 
@@ -1073,6 +1093,33 @@ export function previewBillExcelImport(
 ) {
   return postJson<VersionBillExcelImportPreview>(
     `/contract-bills/${billId}/excel-imports`,
+    body
+  );
+}
+
+export interface ContractDraftBillExcelImportPreview {
+  billKey: string;
+  targetBillRevision: number;
+  rows: ContractBillCandidateRowInput[];
+  added: number;
+  skipped: number;
+  beforeAmountCents: string;
+  afterAmountCents: string;
+  errors: Array<{
+    sheet: string;
+    row: number;
+    column: string;
+    message: string;
+  }>;
+}
+
+export function previewContractDraftBillExcelImport(
+  contractVersionId: string,
+  billKey: string,
+  body: { fileId: string }
+) {
+  return postJson<ContractDraftBillExcelImportPreview>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/bills/${encodeURIComponent(billKey)}/import-preview`,
     body
   );
 }

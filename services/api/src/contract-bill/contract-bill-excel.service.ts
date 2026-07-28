@@ -42,6 +42,10 @@ export interface ContractBillExcelImportDto {
   mode: ImportMode;
 }
 
+export interface ContractDraftBillExcelImportPreviewDto {
+  fileId: string;
+}
+
 interface CoreFieldDef {
   code: string;
   label: string;
@@ -152,6 +156,21 @@ export class ContractBillExcelService {
     const { bill } = await this.prisma.$transaction((tx) =>
       this.loadBillContext(tx, billId, actorUserId)
     );
+    return this.buildTemplateWorkbook(bill);
+  }
+
+  async exportDraftTemplate(
+    contractVersionId: string,
+    billKey: string,
+    actorUserId: string
+  ) {
+    const { bill } = await this.prisma.$transaction((tx) =>
+      this.loadDraftBillContext(tx, contractVersionId, billKey, actorUserId)
+    );
+    return this.buildTemplateWorkbook(bill);
+  }
+
+  private async buildTemplateWorkbook(bill: BillContext) {
     const columns = this.templateColumns(bill);
     const workbook = new ExcelJS.Workbook();
 
@@ -163,8 +182,8 @@ export class ContractBillExcelService {
     instructions.addRow(["4. 不含税单价为系统只读计算列，导入时不读取该列。"]);
     instructions.addRow([
       bill.taxMode === "single_rate"
-        ? `5. 本合同默认税率为 ${bill.defaultTaxRatePercent?.toString() ?? "未明确"}%，税率留空时自动继承。`
-        : "5. 多税率合同可在税率列填写例外税率；留空时继承合同默认税率。"
+        ? `5. 税率来自合同草稿，不需要填写；当前默认税率为 ${bill.defaultTaxRatePercent?.toString() ?? "未明确"}%。`
+        : "5. 多税率合同可在税率列填写例外税率；税率列留空继承合同默认税率。"
     ]);
     instructions.getColumn(1).width = 80;
 
@@ -174,7 +193,7 @@ export class ContractBillExcelService {
     sheet.addRow(
       columns.map((column) =>
         column.code === "taxRatePercent"
-          ? (bill.defaultTaxRatePercent?.toString() ?? null)
+          ? (bill.defaultTaxRatePercent?.div(100).toNumber() ?? null)
           : null
       )
     );
@@ -186,8 +205,10 @@ export class ContractBillExcelService {
     columns.forEach((column, index) => {
       const sheetColumn = sheet.getColumn(index + 1);
       sheetColumn.width = 18;
+      sheetColumn.protection = { locked: column.readonly === true };
       if (column.code === ROW_KEY_CODE) {
         sheetColumn.hidden = true;
+        sheetColumn.protection = { locked: true };
       } else if (column.code === "quantity") {
         sheetColumn.numFmt = quantityFormat;
       } else if (column.code === "unitPrice") {
@@ -196,8 +217,26 @@ export class ContractBillExcelService {
         sheetColumn.numFmt = unitPriceFormat;
         sheetColumn.protection = { locked: true };
       } else if (column.code === "taxRatePercent") {
-        sheetColumn.numFmt = "0.######";
+        sheetColumn.numFmt = "0.######%";
+        sheetColumn.protection = { locked: bill.taxMode === "single_rate" };
       }
+    });
+    columns.forEach((column, index) => {
+      const locked =
+        column.readonly === true ||
+        column.code === ROW_KEY_CODE ||
+        (column.code === "taxRatePercent" && bill.taxMode === "single_rate");
+      sheet.getRow(HEADER_ROWS + 1).getCell(index + 1).protection = { locked };
+    });
+    for (let rowNumber = 1; rowNumber <= HEADER_ROWS; rowNumber += 1) {
+      const row = sheet.getRow(rowNumber);
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.protection = { locked: true };
+      });
+    }
+    await sheet.protect("", {
+      selectLockedCells: false,
+      selectUnlockedCells: true
     });
 
     const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
@@ -269,6 +308,53 @@ export class ContractBillExcelService {
       });
 
       return { importId: record.id, ...preview };
+    });
+  }
+
+  async previewDraftImport(
+    contractVersionId: string,
+    billKey: string,
+    actorUserId: string,
+    input: ContractDraftBillExcelImportPreviewDto
+  ) {
+    const fileId = this.parseDraftImportInput(input);
+    return this.prisma.$transaction(async (tx) => {
+      const { bill } = await this.loadDraftBillContext(
+        tx,
+        contractVersionId,
+        billKey,
+        actorUserId
+      );
+      const sourceFile = await tx.fileObject?.findUnique({
+        where: { id: fileId },
+        select: { storageStatus: true }
+      });
+      if (sourceFile && sourceFile.storageStatus !== "active") {
+        throw new BadRequestException("导入文件不存在或不可用，请重新上传后预检");
+      }
+      const buffer = (await this.files.getFileBuffer(fileId)).buffer;
+      const existingRows = await tx.contractBillRow.findMany({
+        where: { contractBillId: bill.id },
+        orderBy: { sortOrder: "asc" }
+      });
+      assertContractBillDerivedUnitPrices(existingRows);
+      const preview = await this.buildPreview(
+        bill,
+        "replace",
+        buffer,
+        existingRows,
+        randomUUID()
+      );
+      return {
+        billKey,
+        targetBillRevision: bill.revision,
+        rows: preview.candidateRows,
+        added: preview.added,
+        skipped: preview.skipped,
+        beforeAmountCents: preview.beforeAmountCents,
+        afterAmountCents: preview.afterAmountCents,
+        errors: preview.errors
+      };
     });
   }
 
@@ -708,6 +794,15 @@ export class ContractBillExcelService {
     if (errors.length === before) {
       try {
         const defaultRate = bill.defaultTaxRatePercent?.toString() ?? null;
+        if (
+          bill.taxMode === "single_rate" &&
+          taxRatePercent &&
+          this.isTaxRateOverride(taxRatePercent, defaultRate)
+        ) {
+          throw new BadRequestException(
+            "模板税率已被修改，请重新下载当前合同模板"
+          );
+        }
         facts = resolveContractBillRowFacts(
           {
             ...(quantity ? { quantity } : {}),
@@ -1105,6 +1200,27 @@ export class ContractBillExcelService {
     };
   }
 
+  private async loadDraftBillContext(
+    tx: Prisma.TransactionClient,
+    contractVersionId: string,
+    billKey: string,
+    actorUserId: string
+  ) {
+    const bill = await tx.contractBill.findUnique({
+      where: {
+        contractVersionId_billKey: {
+          contractVersionId,
+          billKey
+        }
+      },
+      select: { id: true }
+    });
+    if (!bill) {
+      throw new NotFoundException("合同草稿清单不存在");
+    }
+    return this.loadBillContext(tx, bill.id, actorUserId);
+  }
+
   private async lockBillRevision(
     tx: Prisma.TransactionClient,
     bill: { id: string; contractVersionId: string; revision: number },
@@ -1205,6 +1321,17 @@ export class ContractBillExcelService {
       throw new BadRequestException("导入模式必须是替换、更新、追加或新版清单导入");
     }
     return { fileId: input.fileId.trim(), mode: input.mode };
+  }
+
+  private parseDraftImportInput(input: ContractDraftBillExcelImportPreviewDto) {
+    if (
+      !this.isPlainObject(input) ||
+      typeof input.fileId !== "string" ||
+      !input.fileId.trim()
+    ) {
+      throw new BadRequestException("文件标识不能为空");
+    }
+    return input.fileId.trim();
   }
 
   private parseStoredPreview(value: Prisma.JsonValue): StoredBillImportPreview {

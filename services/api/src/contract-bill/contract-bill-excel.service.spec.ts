@@ -365,6 +365,120 @@ describe("ContractBillExcelService", () => {
     expect(result.fileName).toMatch(/\.xlsx$/);
   }, 15_000);
 
+  it("locks a single-rate template tax column and unlocks editable inputs", async () => {
+    const { service, version } = billFixture();
+    version.defaultTaxRatePercent = new Prisma.Decimal("9");
+
+    const result = await service.exportTemplate("bill-1", "owner-1");
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
+    const sheet = workbook.getWorksheet(DATA_SHEET)!;
+    const codes = (sheet.getRow(2).values as unknown[]).map((value) => String(value ?? ""));
+    const taxCell = sheet.getRow(3).getCell(codes.indexOf("taxRatePercent"));
+    const quantityCell = sheet.getRow(3).getCell(codes.indexOf("quantity"));
+    const unitPriceCell = sheet.getRow(3).getCell(codes.indexOf("unitPrice"));
+    const instructions = workbook
+      .getWorksheet(INSTRUCTION_SHEET)!
+      .getColumn(1)
+      .values.map((value) => String(value ?? ""))
+      .join("\n");
+
+    expect(taxCell.value).toBe(0.09);
+    expect(taxCell.numFmt).toBe("0.######%");
+    expect(taxCell.protection?.locked ?? true).toBe(true);
+    expect(quantityCell.protection.locked).toBe(false);
+    expect(unitPriceCell.protection.locked).toBe(false);
+    expect(
+      (sheet as unknown as { sheetProtection?: { sheet?: boolean } }).sheetProtection
+        ?.sheet
+    ).toBe(true);
+    expect(instructions).toContain("税率来自合同草稿，不需要填写");
+  });
+
+  it("shows the default rate but unlocks exceptions in a multiple-rate template", async () => {
+    const { service, version } = billFixture();
+    version.taxMode = "multiple_rate";
+    version.defaultTaxRatePercent = new Prisma.Decimal("9");
+
+    const result = await service.exportTemplate("bill-1", "owner-1");
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
+    const sheet = workbook.getWorksheet(DATA_SHEET)!;
+    const codes = (sheet.getRow(2).values as unknown[]).map((value) => String(value ?? ""));
+    const taxCell = sheet.getRow(3).getCell(codes.indexOf("taxRatePercent"));
+    const instructions = workbook
+      .getWorksheet(INSTRUCTION_SHEET)!
+      .getColumn(1)
+      .values.map((value) => String(value ?? ""))
+      .join("\n");
+
+    expect(taxCell.value).toBe(0.09);
+    expect(taxCell.numFmt).toBe("0.######%");
+    expect(taxCell.protection.locked).toBe(false);
+    expect(instructions).toContain("留空继承");
+  });
+
+  it("previews draft candidates by version and bill key without creating an import record", async () => {
+    const fixture = billFixture();
+    fixture.version.defaultTaxRatePercent = new Prisma.Decimal("9");
+    const buffer = await buildWorkbookBuffer({
+      rows: [
+        {
+          values: {
+            itemName: "钢筋",
+            unit: "t",
+            quantity: "2",
+            unitPrice: "100",
+            taxRatePercent: 0.09
+          },
+          numFmts: { taxRatePercent: "0.######%" }
+        }
+      ]
+    });
+    (fixture.fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-draft-preview", originalName: "bill.xlsx" },
+      buffer
+    });
+
+    const preview = await fixture.service.previewDraftImport(
+      "version-1",
+      "main_bill",
+      "owner-1",
+      { fileId: "file-draft-preview" }
+    );
+
+    expect(fixture.tx.contractBill.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          contractVersionId_billKey: {
+            contractVersionId: "version-1",
+            billKey: "main_bill"
+          }
+        }
+      })
+    );
+    expect(preview).toMatchObject({
+      billKey: "main_bill",
+      targetBillRevision: 2,
+      added: 1,
+      skipped: 0,
+      errors: [],
+      rows: [
+        expect.objectContaining({
+          itemName: "钢筋",
+          taxRatePercent: "9",
+          taxRateSource: "version_default"
+        })
+      ]
+    });
+    expect(preview).not.toHaveProperty("importId");
+    expect(fixture.tx.contractBillImport.create).not.toHaveBeenCalled();
+    expect(fixture.tx.contractBillRow.create).not.toHaveBeenCalled();
+    expect(fixture.tx.contractBillRow.updateMany).not.toHaveBeenCalled();
+    expect(fixture.tx.contractBillRow.deleteMany).not.toHaveBeenCalled();
+    expect(fixture.audit.record).not.toHaveBeenCalled();
+  });
+
   it("hides internal field codes and row keys from business users", async () => {
     const { service } = billFixture();
 
@@ -442,7 +556,7 @@ describe("ContractBillExcelService", () => {
     sheet.getRow(2).eachCell((cell: Cell) => codes.push(String(cell.value)));
     expect(
       sheet.getRow(3).getCell(codes.indexOf("taxRatePercent") + 1).value
-    ).toBe("13");
+    ).toBe(0.13);
   });
 
   it("recalculates formulas from raw quantity, price, and tax cells", async () => {
@@ -1385,7 +1499,7 @@ describe("ContractBillExcelService", () => {
     expect(zeroPreview.errors).toContainEqual(
       expect.objectContaining({
         column: "taxRatePercent",
-        message: "单一税率合同的清单税率必须与合同默认税率一致"
+        message: "模板税率已被修改，请重新下载当前合同模板"
       })
     );
 
@@ -1457,7 +1571,7 @@ describe("ContractBillExcelService", () => {
     expect(preview.errors).toContainEqual(
       expect.objectContaining({
         column: "taxRatePercent",
-        message: "单一税率合同的清单税率必须与合同默认税率一致"
+        message: "模板税率已被修改，请重新下载当前合同模板"
       })
     );
     expect(preview.candidateRows).toEqual([]);
