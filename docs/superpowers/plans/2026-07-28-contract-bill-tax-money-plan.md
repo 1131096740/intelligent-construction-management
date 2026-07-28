@@ -1,6 +1,6 @@
 # 合同清单、税率与金额精度实施计划
 
-> **For Codex:** REQUIRED SUB-SKILL: 使用 executing-plans 逐任务实施；金额、税率和 Excel 任务必须使用 test-driven-development，完成前使用 verification-before-completion。
+> **执行要求：** 按任务顺序实施；金额、税率和 Excel 任务先锁定失败用例，完成前运行计划列出的全部验证命令。
 
 **目标：** 统一系统与 Excel 的税率表达和逐行金额算法，使不含税单价内部保留 6 位、页面默认显示 2 位，同时保证合同总额只由权威行总价汇总。
 

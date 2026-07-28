@@ -1,6 +1,6 @@
 # 合同草稿聚合持久化与生命周期实施计划
 
-> **For Codex:** REQUIRED SUB-SKILL: 使用 executing-plans 逐任务实施；每个行为任务使用 test-driven-development，任何完成声明前使用 verification-before-completion。
+> **执行要求：** 按任务顺序实施；每个行为任务先锁定失败用例，任何完成声明前运行计划列出的全部验证命令。
 
 **目标：** 建立以 `contractVersionId` 为唯一标识的草稿聚合 API，使顶部保存一次性持久化全部合同资料，并修复继续办理锁死、分散保存、草稿编号提前生成和纯净草稿无法真正删除的问题。
 

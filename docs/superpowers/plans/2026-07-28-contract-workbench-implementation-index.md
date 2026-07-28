@@ -1,6 +1,6 @@
 # 合同工作台与历史合同接管改造实施总计划
 
-> **For Codex:** REQUIRED SUB-SKILL: 使用 executing-plans 逐任务实施；每个行为任务使用 test-driven-development，任何完成声明前使用 verification-before-completion。
+> **执行要求：** 按任务顺序实施；每个行为任务先锁定失败用例，任何完成声明前运行计划列出的全部验证命令。
 
 **目标：** 按已确认规格重构合同草稿工作台、清单计税和历史合同接管，同时保持现有正式合同、结算、付款和审计链不被旁路。
 
