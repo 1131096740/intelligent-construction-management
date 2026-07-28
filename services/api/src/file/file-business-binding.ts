@@ -115,6 +115,7 @@ export const NON_RECEIPT_FILE_BINDINGS = [
   },
   { table: "ContractBill", columns: ["sourceExcelFileId"] },
   { table: "ContractBillImport", columns: ["fileId"] },
+  { table: "ContractDraftAttachment", columns: ["fileId"] },
   {
     table: "ContractGeneratedDocument",
     columns: ["docxFileId", "pdfFileId"]

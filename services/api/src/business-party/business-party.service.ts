@@ -5,6 +5,7 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
+import { isDeepStrictEqual } from "node:util";
 import { AuditService } from "../audit/audit.service";
 import { bumpContractRenderInputRevision } from "../contract-workbench/contract-render-input-revision";
 import { PrismaService } from "../database/prisma.service";
@@ -12,7 +13,8 @@ import type {
   AddContractPartyDto,
   BusinessPartyAttachmentCategory,
   BusinessPartySnapshotDto,
-  CreateBusinessPartyDto
+  CreateBusinessPartyDto,
+  SaveContractDraftPartyDto
 } from "./dto/business-party.dto";
 
 const ATTACHMENT_CATEGORIES = new Set<BusinessPartyAttachmentCategory>([
@@ -39,6 +41,79 @@ export class BusinessPartyService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService
   ) {}
+
+  async replaceContractPartiesInTransaction(
+    tx: Prisma.TransactionClient,
+    contractVersionId: string,
+    input: SaveContractDraftPartyDto[]
+  ) {
+    const versionIds = [...new Set(
+      input.flatMap((party) =>
+        party.businessPartyVersionId ? [party.businessPartyVersionId] : []
+      )
+    )].sort();
+    const versions = versionIds.length
+      ? await tx.businessPartyVersion.findMany({
+          where: { id: { in: versionIds } }
+        })
+      : [];
+    if (versions.length !== versionIds.length) {
+      throw new BadRequestException("合同主体版本不存在，请刷新合作单位后重试");
+    }
+    const versionById = new Map(versions.map((version) => [version.id, version]));
+    const desired = input.map((party) => ({
+      roleKey: party.roleKey,
+      displayOrder: party.displayOrder,
+      businessPartyVersionId: party.businessPartyVersionId ?? null,
+      snapshot: party.businessPartyVersionId
+        ? JSON.parse(JSON.stringify(
+            versionById.get(party.businessPartyVersionId)!.snapshot
+          )) as Prisma.InputJsonValue
+        : this.copyAggregateSnapshot(party.snapshot)
+    }));
+    const existing = await tx.contractPartySnapshot.findMany({
+      where: { contractVersionId },
+      orderBy: [{ roleKey: "asc" }, { displayOrder: "asc" }]
+    });
+    const key = (party: { roleKey: string; displayOrder: number }) =>
+      `${party.roleKey}:${party.displayOrder}`;
+    const desiredByKey = new Map(desired.map((party) => [key(party), party]));
+    const existingByKey = new Map(existing.map((party) => [key(party), party]));
+    const removed = existing.filter((party) => !desiredByKey.has(key(party)));
+    const added = desired.filter((party) => !existingByKey.has(key(party)));
+    const updated = desired.filter((party) => {
+      const current = existingByKey.get(key(party));
+      return current !== undefined && (
+        current.businessPartyVersionId !== party.businessPartyVersionId ||
+        !isDeepStrictEqual(current.snapshot, party.snapshot)
+      );
+    });
+    if (removed.length) {
+      await tx.contractPartySnapshot.deleteMany({
+        where: { id: { in: removed.map((party) => party.id) } }
+      });
+    }
+    for (const party of updated) {
+      await tx.contractPartySnapshot.update({
+        where: { id: existingByKey.get(key(party))!.id },
+        data: {
+          businessPartyVersionId: party.businessPartyVersionId,
+          snapshot: party.snapshot
+        }
+      });
+    }
+    if (added.length) {
+      await tx.contractPartySnapshot.createMany({
+        data: added.map((party) => ({
+          contractVersionId,
+          ...party
+        }))
+      });
+    }
+    return {
+      changed: removed.length > 0 || added.length > 0 || updated.length > 0
+    };
+  }
 
   list(query?: string) {
     const normalizedQuery = query?.trim();
@@ -330,6 +405,12 @@ export class BusinessPartyService {
   }
 
   private copySnapshot(snapshot: BusinessPartySnapshotDto): Prisma.InputJsonValue {
+    return JSON.parse(JSON.stringify(snapshot)) as Prisma.InputJsonValue;
+  }
+
+  private copyAggregateSnapshot(
+    snapshot: Record<string, unknown>
+  ): Prisma.InputJsonValue {
     return JSON.parse(JSON.stringify(snapshot)) as Prisma.InputJsonValue;
   }
 

@@ -1,8 +1,9 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
-import { BusinessNumberModule } from "../business-number/business-number.module";
+import { BusinessPartyModule } from "../business-party/business-party.module";
 import { ContractBillModule } from "../contract-bill/contract-bill.module";
+import { FileModule } from "../file/file.module";
 import { ContractNumberingService } from "./contract-numbering.service";
 import { ContractDraftAggregateService } from "./contract-draft-aggregate.service";
 import { ContractDraftController } from "./contract-draft.controller";
@@ -12,7 +13,13 @@ import { ContractWorkbenchController } from "./contract-workbench.controller";
 import { ContractWorkbenchService } from "./contract-workbench.service";
 
 @Module({
-  imports: [AuditModule, AuthModule, BusinessNumberModule, ContractBillModule],
+  imports: [
+    AuditModule,
+    AuthModule,
+    BusinessPartyModule,
+    ContractBillModule,
+    FileModule
+  ],
   controllers: [ContractWorkbenchController, ContractDraftController],
   providers: [
     ContractWorkbenchService,

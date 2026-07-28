@@ -23,6 +23,7 @@ import { ContractBillLineageService } from "./contract-bill-lineage.service";
 import type {
   ReorderBillRowsDto,
   ReplaceBillRowDto,
+  SaveContractBillRowDto,
   SaveBillRowDto
 } from "./dto/contract-bill.dto";
 
@@ -89,6 +90,125 @@ export class ContractBillService {
     private readonly audit: AuditService,
     private readonly lineage: ContractBillLineageService = new ContractBillLineageService()
   ) {}
+
+  async replaceRowsInTransaction(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    version: {
+      id: string;
+      contractId: string;
+      amountSource: string;
+      pricingNature: string;
+      amountLimitType: string;
+      defaultTaxRatePercent: Prisma.Decimal | null;
+      taxMode: string;
+    },
+    bill: {
+      id: string;
+      contractVersionId: string;
+      revision: number;
+      pricingMode: string;
+      quantityScale: number;
+      unitPriceScale: number;
+      schemaSnapshot: Prisma.JsonValue;
+    },
+    input: {
+      expectedRevision: number;
+      rows: SaveContractBillRowDto[];
+    }
+  ) {
+    if (bill.revision !== input.expectedRevision) {
+      throw new BadRequestException("合同清单已变化或当前状态不可编辑，请刷新后重试");
+    }
+    const existingRows = await tx.contractBillRow.findMany({
+      where: { contractBillId: bill.id },
+      orderBy: { sortOrder: "asc" }
+    });
+    const existingByKey = new Map(existingRows.map((row) => [row.rowKey, row]));
+    const parsed = this.parseReplaceInput(
+      {
+        expectedBillRevision: input.expectedRevision,
+        idempotencyKey: "aggregate-save",
+        rows: input.rows as unknown as Array<Record<string, unknown>>
+      },
+      bill,
+      version,
+      existingByKey
+    );
+    const requestedKeys = new Set(
+      parsed.rows.flatMap((row) => (row.rowKey ? [row.rowKey] : []))
+    );
+    if ([...requestedKeys].some((rowKey) => !existingByKey.has(rowKey))) {
+      throw new BadRequestException("清单已有行已变化，请刷新后重试");
+    }
+    const deletedRows = existingRows.filter((row) => !requestedKeys.has(row.rowKey));
+    const updatedRows = parsed.rows.filter((row) => {
+      if (!row.rowKey) return false;
+      return this.batchRowChanged(existingByKey.get(row.rowKey)!, this.batchRowData(row));
+    });
+    const newRows = parsed.rows.filter((row) => !row.rowKey);
+    const changed = deletedRows.length > 0 || updatedRows.length > 0 || newRows.length > 0;
+    if (!changed) {
+      return {
+        changed: false,
+        revision: bill.revision,
+        rows: existingRows
+      };
+    }
+
+    const billGate = await tx.contractBill.updateMany({
+      where: {
+        id: bill.id,
+        contractVersionId: bill.contractVersionId,
+        revision: input.expectedRevision
+      },
+      data: { revision: { increment: 1 } }
+    });
+    if (billGate.count !== 1) {
+      throw new BadRequestException("合同清单已变化或当前状态不可编辑，请刷新后重试");
+    }
+    if (deletedRows.length) {
+      await this.lineage.assertRowsDeletable(
+        tx,
+        deletedRows.map((row) => row.id)
+      );
+      await tx.contractBillRow.deleteMany({
+        where: {
+          contractBillId: bill.id,
+          rowKey: { in: deletedRows.map((row) => row.rowKey) }
+        }
+      });
+    }
+    for (const row of updatedRows) {
+      await tx.contractBillRow.update({
+        where: { id: existingByKey.get(row.rowKey!)!.id },
+        data: this.batchRowData(row)
+      });
+    }
+    for (const row of newRows) {
+      const created = await tx.contractBillRow.create({
+        data: {
+          contractBillId: bill.id,
+          rowKey: randomUUID(),
+          ...this.batchRowData(row)
+        }
+      });
+      await this.lineage.bindNewRow(tx, {
+        contractId: version.contractId,
+        contractVersionId: version.id,
+        contractBillRowId: created.id,
+        actorUserId
+      });
+    }
+    const rows = await recalculateBillAndContractAmount(tx, bill, version, {
+      updateContractVersionAmount: false
+    });
+    return {
+      changed: true,
+      revision: input.expectedRevision + 1,
+      rows
+    };
+  }
 
   replaceRows(billId: string, actorUserId: string, rawInput: unknown) {
     return this.prisma.$transaction(async (tx) => {

@@ -24,6 +24,12 @@ describe("contract draft aggregate foundation schema", () => {
     expect(attachment).toContain("@@unique([contractVersionId, slotKey, displayOrder])");
     expect(attachment).toContain("@@unique([contractVersionId, slotKey, fileId])");
     expect(attachment).toContain("@@index([fileId])");
+    expect(migration).toContain(
+      "('ContractDraftAttachment','fileId',FALSE)"
+    );
+    expect(migration).toContain(
+      "CREATE TRIGGER jg_efb_contract_draft_attachment"
+    );
   });
 
   it("stores expiring authoritative save receipts and durable submission receipts", () => {

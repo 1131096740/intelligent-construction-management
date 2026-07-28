@@ -27,7 +27,6 @@ import { assertContractChangeContentAllowed } from "../contract/contract-change-
 import { ContractBillLineageService } from "../contract-bill/contract-bill-lineage.service";
 import { PrismaService } from "../database/prisma.service";
 import { ContractReadinessService } from "./contract-readiness.service";
-import { BusinessNumberingService } from "../business-number/business-numbering.service";
 import {
   moneyCentsToApi,
   parseMoneyCents,
@@ -38,6 +37,7 @@ import type {
   ConfirmContractSettlementModeDto,
   CreateDraftCheckpointDto,
   PreviewContractTypeChangeDto,
+  SaveContractDraftAggregateDto,
   SaveContractDraftDto,
   SaveContractTaxFactsDto,
   TransferContractDraftDto,
@@ -130,7 +130,6 @@ export class ContractWorkbenchService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly readiness?: ContractReadinessService,
-    private readonly businessNumbers?: BusinessNumberingService,
     private readonly lineage: ContractBillLineageService = new ContractBillLineageService()
   ) {}
 
@@ -401,6 +400,7 @@ export class ContractWorkbenchService {
       const clientDraftData = { ...input.draftData };
       delete clientDraftData.companyEntitySelection;
       delete clientDraftData.myCompanyEntity;
+      delete clientDraftData.workbenchReferences;
       const normalizedClientDraftData = this.normalizeLegacyTemplateFieldLocations(
         clientDraftData,
         template,
@@ -408,6 +408,12 @@ export class ContractWorkbenchService {
       );
       const storedDraftData = this.withTaxFactMirror({
         ...normalizedClientDraftData,
+        ...(this.workbenchReferences(version.draftData)
+          ? {
+              workbenchReferences:
+                this.workbenchReferences(version.draftData)
+            }
+          : {}),
         ...(companySelection
           ? {
               companyEntitySelection: companySelection,
@@ -416,7 +422,7 @@ export class ContractWorkbenchService {
           : {})
       }, input.taxFacts);
       this.validateDraftAgainstTemplate(
-        storedDraftData,
+        this.withoutWorkbenchReferences(storedDraftData) as Record<string, unknown>,
         input.clauses,
         template,
         changeBase?.draftData
@@ -426,8 +432,12 @@ export class ContractWorkbenchService {
           throw new BadRequestException("合同变更直接来源版本不存在，不能保存草稿");
         }
         assertContractChangeContentAllowed({
-          baseDraftData: this.withoutTaxFactMirror(changeBase.draftData),
-          candidateDraftData: this.withoutTaxFactMirror(storedDraftData),
+          baseDraftData: this.withoutWorkbenchReferences(
+            this.withoutTaxFactMirror(changeBase.draftData)
+          ) as Prisma.JsonValue,
+          candidateDraftData: this.withoutWorkbenchReferences(
+            this.withoutTaxFactMirror(storedDraftData)
+          ) as Prisma.JsonValue,
           baseClauses: changeBase.clauseSnapshot,
           candidateClauses: input.clauses,
           template
@@ -510,12 +520,6 @@ export class ContractWorkbenchService {
         }
       });
       this.assertCas(updated.count);
-      const formalCode =
-        contract.source === "system" &&
-        contract.code === null &&
-        !isChangeVersion
-          ? await this.allocateInitialContractCode(tx)
-          : undefined;
       if (
         !isChangeVersion &&
         (input.paymentTermsOriginalText !== undefined || input.paymentStages !== undefined)
@@ -537,8 +541,7 @@ export class ContractWorkbenchService {
         tx,
         version.contractId,
         actorUserId,
-        companySelection ?? undefined,
-        formalCode
+        companySelection ?? undefined
       );
 
       await this.audit.record(tx, {
@@ -561,14 +564,337 @@ export class ContractWorkbenchService {
             source: input.taxFacts.source
           },
           revisionBefore: input.expectedRevision,
-          revisionAfter: input.expectedRevision + 1,
-          ...(formalCode ? { formalCode } : {})
+          revisionAfter: input.expectedRevision + 1
         }
       });
       return this.toReadModel(
         await tx.contractVersion.findUnique({ where: { id: contractVersionId } })
       );
     });
+  }
+
+  async prepareAggregateDraftFieldsInTransaction(
+    tx: Prisma.TransactionClient,
+    version: ContractVersion,
+    aggregateInput: SaveContractDraftAggregateDto
+  ) {
+    const input = this.parseSaveInput({
+      expectedRevision: aggregateInput.expectedRevision,
+      ...aggregateInput.draft,
+      paymentTermsOriginalText: aggregateInput.paymentTerms?.originalText,
+      paymentStages: aggregateInput.paymentTerms?.stages
+    });
+    const template = this.parseTemplateSnapshot(version.templateSnapshot);
+    const isChangeVersion =
+      version.changeType === "change" || version.changeType === "supplement";
+    const changeBase = isChangeVersion && version.baseVersionId
+      ? await tx.contractVersion.findUnique({ where: { id: version.baseVersionId } })
+      : null;
+    const companySelection = isChangeVersion
+      ? this.companySelectionFromDraft(changeBase?.draftData)
+      : input.companyEntityId
+        ? await this.lockAndLoadCompanyEntitySelection(tx, input.companyEntityId)
+        : this.companySelectionFromDraft(version.draftData);
+    if (
+      isChangeVersion &&
+      input.companyEntityId !== undefined &&
+      input.companyEntityId !== companySelection?.id
+    ) {
+      throw new BadRequestException("合同变更不得修改我方签约主体，如需换主体请新签合同");
+    }
+    const clientDraftData = { ...input.draftData };
+    delete clientDraftData.companyEntitySelection;
+    delete clientDraftData.myCompanyEntity;
+    delete clientDraftData.workbenchReferences;
+    const normalizedClientDraftData = this.normalizeLegacyTemplateFieldLocations(
+      clientDraftData,
+      template,
+      version.draftData
+    );
+    const storedDraftData = this.withTaxFactMirror({
+      ...normalizedClientDraftData,
+      workbenchReferences: {
+        selectedNegotiationRoundId:
+          aggregateInput.negotiationDocuments.selectedNegotiationRoundId ?? null,
+        selectedOfflineRevisionId:
+          aggregateInput.negotiationDocuments.selectedOfflineRevisionId ?? null,
+        referencedGeneratedDocumentIds:
+          aggregateInput.negotiationDocuments.referencedGeneratedDocumentIds
+      },
+      ...(companySelection
+        ? {
+            companyEntitySelection: companySelection,
+            myCompanyEntity: companySelection.name
+          }
+        : {})
+    }, input.taxFacts);
+    this.validateDraftAgainstTemplate(
+      this.withoutWorkbenchReferences(storedDraftData) as Record<string, unknown>,
+      input.clauses,
+      template,
+      changeBase?.draftData
+    );
+    if (isChangeVersion) {
+      if (!changeBase) {
+        throw new BadRequestException("合同变更直接来源版本不存在，不能保存草稿");
+      }
+      assertContractChangeContentAllowed({
+        baseDraftData: this.withoutWorkbenchReferences(
+          this.withoutTaxFactMirror(changeBase.draftData)
+        ) as Prisma.JsonValue,
+        candidateDraftData: this.withoutWorkbenchReferences(
+          this.withoutTaxFactMirror(storedDraftData)
+        ) as Prisma.JsonValue,
+        baseClauses: changeBase.clauseSnapshot,
+        candidateClauses: input.clauses,
+        template
+      });
+      await this.assertSupplementFixedFactsUnchanged(tx, version, input);
+    }
+    const bills = await tx.contractBill.findMany({
+      where: { contractVersionId: version.id }
+    });
+    const pricedBillIds = bills
+      .filter((bill) =>
+        bill.amountRole === "included" || bill.amountRole === "provisional"
+      )
+      .map((bill) => bill.id);
+    const pricedRows = pricedBillIds.length
+      ? await tx.contractBillRow.findMany({
+          where: { contractBillId: { in: pricedBillIds } },
+          select: { contractBillId: true }
+        })
+      : [];
+    const pricingPolicy = contractPricingPolicy({
+      pricingNature: input.pricingNature,
+      amountLimitType: version.amountLimitType,
+      hasPricedRows: pricedRows.length > 0
+    });
+    if (input.amountSource !== pricingPolicy.amountSource) {
+      throw new BadRequestException(
+        pricingPolicy.kind === "fixed_total_without_bill"
+          ? "纯固定总价且无计价清单时，请填写合同含税总价"
+          : pricingPolicy.kind === "unlimited_framework"
+            ? "无总价框架合同不设合同总价，金额来源必须按清单"
+            : "存在计价清单时，合同金额必须来自清单合计"
+      );
+    }
+    const amountCents = pricingPolicy.kind === "unlimited_framework"
+      ? pricingPolicy.contractAmountCents
+      : pricingPolicy.kind === "priced_bill"
+        ? this.sumIncludedBills(bills)
+        : this.toCents(input.manualAmountCents, "manualAmountCents");
+    if (isChangeVersion) {
+      if (!changeBase || version.changeAmountCents === null || !version.changeDirection) {
+        throw new BadRequestException("合同变更金额声明不完整，不能保存草稿");
+      }
+      const expected = version.changeDirection === "increase"
+        ? changeBase.amountCents + version.changeAmountCents
+        : version.changeDirection === "decrease"
+          ? changeBase.amountCents - version.changeAmountCents
+          : changeBase.amountCents;
+      if (amountCents !== expected) {
+        throw new BadRequestException("合同当前金额必须与已声明的增减金额保持一致");
+      }
+    }
+    const taxChanged =
+      version.invoiceType !== input.taxFacts.invoiceType ||
+      version.taxMode !== input.taxFacts.taxMode ||
+      (version.defaultTaxRatePercent?.toString() ?? null) !==
+        input.taxFacts.defaultTaxRatePercent ||
+      version.taxFactSource !== input.taxFacts.source;
+    const currentDraftFields = this.withoutWorkbenchReferences(version.draftData);
+    const nextDraftFields = this.withoutWorkbenchReferences(storedDraftData);
+    const workbenchReferencesChanged = !isDeepStrictEqual(
+      this.workbenchReferences(version.draftData),
+      this.workbenchReferences(storedDraftData)
+    );
+    const changed =
+      !isDeepStrictEqual(currentDraftFields, nextDraftFields) ||
+      !isDeepStrictEqual(version.clauseSnapshot, input.clauses) ||
+      version.pricingNature !== input.pricingNature ||
+      version.amountSource !== input.amountSource ||
+      version.amountCents !== amountCents ||
+      version.amountAdjustmentReason !==
+        (aggregateInput.draft.amountAdjustmentReason ?? null) ||
+      version.layoutTemplateVersionId !==
+        (input.layoutTemplateVersionId ?? null) ||
+      taxChanged;
+    return {
+      changed,
+      workbenchReferencesChanged,
+      companySelection,
+      amountCents,
+      storedDraftData,
+      data: {
+        draftData: this.toJson(storedDraftData),
+        clauseSnapshot: this.toJson(input.clauses),
+        pricingNature: input.pricingNature,
+        amountSource: input.amountSource,
+        amountCents,
+        amountAdjustmentReason:
+          aggregateInput.draft.amountAdjustmentReason ?? null,
+        invoiceType: input.taxFacts.invoiceType,
+        taxMode: input.taxFacts.taxMode,
+        defaultTaxRatePercent: input.taxFacts.defaultTaxRatePercent === null
+          ? null
+          : new Prisma.Decimal(input.taxFacts.defaultTaxRatePercent),
+        taxFactStatus: "draft",
+        taxFactSource: input.taxFacts.source,
+        ...(taxChanged ? { taxFactRevision: { increment: 1 } } : {}),
+        taxFactsFrozenAt: null,
+        layoutTemplateVersionId: input.layoutTemplateVersionId ?? null,
+        readinessSnapshot: Prisma.DbNull
+      } satisfies Prisma.ContractVersionUpdateManyMutationInput
+    };
+  }
+
+  private withoutWorkbenchReferences(value: unknown) {
+    if (!this.isPlainObject(value)) return value;
+    const result = { ...value };
+    delete result.workbenchReferences;
+    return result;
+  }
+
+  private workbenchReferences(value: unknown) {
+    if (!this.isPlainObject(value)) return null;
+    return this.isPlainObject(value.workbenchReferences)
+      ? value.workbenchReferences
+      : null;
+  }
+
+  async replacePaymentTermsInTransaction(
+    tx: Prisma.TransactionClient,
+    contract: { contractTypeKey: string | null },
+    version: ContractVersion,
+    paymentTerms: SaveContractDraftAggregateDto["paymentTerms"]
+  ) {
+    const terms = await tx.paymentTermsVersion.findFirst({
+      where: { contractVersionId: version.id }
+    });
+    if (!terms) {
+      if (paymentTerms === null) return { changed: false };
+      throw new BadRequestException("合同付款条款版本不存在，不能保存付款条款。");
+    }
+    const existingStages = await tx.paymentTermsStage.findMany({
+      where: { paymentTermsVersionId: terms.id },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+    });
+    if (paymentTerms === null) {
+      if (terms.originalText === "" && existingStages.length === 0) {
+        return { changed: false };
+      }
+      await tx.paymentTermsVersion.update({
+        where: { id: terms.id },
+        data: { originalText: "" }
+      });
+      await tx.paymentTermsStage.deleteMany({
+        where: { paymentTermsVersionId: terms.id }
+      });
+      return { changed: true };
+    }
+    const explicitSettlementMode = isContractSettlementMode(version.settlementMode);
+    const effectiveMode = explicitSettlementMode
+      ? version.settlementMode
+      : contract.contractTypeKey === "generic_contract"
+        ? "direct_payment"
+        : "settlement_required";
+    if (
+      !explicitSettlementMode &&
+      contract.contractTypeKey !== "generic_contract" &&
+      !SETTLEMENT_CONTRACT_TYPE_KEYS.has(contract.contractTypeKey ?? "")
+    ) {
+      throw new BadRequestException("合同类型不正确，不能保存付款条款");
+    }
+    const expectedBasis = effectiveMode === "direct_payment"
+      ? "contract_amount"
+      : "current_settlement";
+    if (paymentTerms.stages.some((stage) => stage.basis !== expectedBasis)) {
+      throw new BadRequestException(
+        effectiveMode === "direct_payment"
+          ? "按合同直接付款的付款条款必须按合同金额计算"
+          : "需要结算的付款条款必须按当期结算计算"
+      );
+    }
+    const stageData = paymentTerms.stages.map((stage) => ({
+      name: stage.name,
+      stageType: stage.stageType ?? "progress",
+      basis: stage.basis,
+      ratioBps: stage.ratioBps ?? null,
+      fixedAmountCents:
+        stage.fixedAmountCents === undefined ? null : BigInt(stage.fixedAmountCents),
+      triggerAnchor: stage.triggerAnchor ??
+        (stage.basis === "contract_amount"
+          ? "contract_effective"
+          : "settlement_effective"),
+      triggerEvent: stage.triggerEvent,
+      dueDays: stage.dueDays,
+      advanceDeductionMode: stage.advanceDeductionMode ?? "none",
+      advanceDeductionRatioBps: stage.advanceDeductionRatioBps ?? null,
+      advanceDeductionStartRatioBps:
+        stage.advanceDeductionStartRatioBps ?? null,
+      requiresInvoice: stage.requiresInvoice,
+      allowsEarlyPayment: stage.allowsEarlyPayment,
+      allowsInstallments: stage.allowsInstallments,
+      retentionBps: stage.retentionBps ?? null,
+      originalText: stage.originalText
+    }));
+    const existingComparable = existingStages.map((stage) => ({
+      name: stage.name,
+      stageType: stage.stageType,
+      basis: stage.basis,
+      ratioBps: stage.ratioBps,
+      fixedAmountCents: stage.fixedAmountCents,
+      triggerAnchor: stage.triggerAnchor,
+      triggerEvent: stage.triggerEvent,
+      dueDays: stage.dueDays,
+      advanceDeductionMode: stage.advanceDeductionMode,
+      advanceDeductionRatioBps: stage.advanceDeductionRatioBps,
+      advanceDeductionStartRatioBps: stage.advanceDeductionStartRatioBps,
+      requiresInvoice: stage.requiresInvoice,
+      allowsEarlyPayment: stage.allowsEarlyPayment,
+      allowsInstallments: stage.allowsInstallments,
+      retentionBps: stage.retentionBps,
+      originalText: stage.originalText
+    }));
+    const originalText = paymentTerms.originalText.trim();
+    if (
+      terms.originalText === originalText &&
+      isDeepStrictEqual(existingComparable, stageData)
+    ) {
+      return { changed: false };
+    }
+    if (terms.originalText !== originalText) {
+      await tx.paymentTermsVersion.update({
+        where: { id: terms.id },
+        data: { originalText }
+      });
+    }
+    const sharedStageCount = Math.min(existingStages.length, stageData.length);
+    for (let index = 0; index < sharedStageCount; index += 1) {
+      if (!isDeepStrictEqual(existingComparable[index], stageData[index])) {
+        await tx.paymentTermsStage.update({
+          where: { id: existingStages[index]!.id },
+          data: stageData[index]!
+        });
+      }
+    }
+    const removedStages = existingStages.slice(stageData.length);
+    if (removedStages.length) {
+      await tx.paymentTermsStage.deleteMany({
+        where: { id: { in: removedStages.map((stage) => stage.id) } }
+      });
+    }
+    const addedStages = stageData.slice(existingStages.length);
+    if (addedStages.length) {
+      await tx.paymentTermsStage.createMany({
+        data: addedStages.map((stage) => ({
+          paymentTermsVersionId: terms.id,
+          ...stage
+        }))
+      });
+    }
+    return { changed: true };
   }
 
   async confirmSettlementMode(
@@ -1269,18 +1595,15 @@ export class ContractWorkbenchService {
       id: string;
       name: string;
     } | null,
-    formalCode?: string
   ) {
     const parent = await tx.contract.updateMany({
       where: {
         id: contractId,
         ownerUserId: actorUserId,
-        voidedAt: null,
-        ...(formalCode ? { code: null } : {})
+        voidedAt: null
       },
       data: {
         ownerUserId: actorUserId,
-        ...(formalCode ? { code: formalCode } : {}),
         ...(companySelection === undefined
           ? {}
           : companySelection
@@ -1297,13 +1620,6 @@ export class ContractWorkbenchService {
     if (parent.count !== 1) {
       throw new BadRequestException("合同草稿已变化，请刷新后重试");
     }
-  }
-
-  private allocateInitialContractCode(tx: Prisma.TransactionClient) {
-    if (!this.businessNumbers) {
-      throw new Error("正式编号服务暂不可用，请稍后重试");
-    }
-    return this.businessNumbers.allocateDaily(tx, "HT");
   }
 
   private markOlderSuccessfulDocumentsStale(

@@ -13,6 +13,6 @@ import { ContractBillTransitionService } from "./contract-bill-transition.servic
   imports: [AuditModule, FileModule],
   controllers: [ContractBillController, ContractBillExcelController, ContractBillTransitionController],
   providers: [ContractBillService, ContractBillExcelService, ContractBillLineageService, ContractBillTransitionService],
-  exports: [ContractBillLineageService]
+  exports: [ContractBillLineageService, ContractBillService]
 })
 export class ContractBillModule {}

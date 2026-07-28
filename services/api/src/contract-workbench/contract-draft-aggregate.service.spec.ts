@@ -1,8 +1,10 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException
 } from "@nestjs/common";
+import { createHash } from "node:crypto";
 import { ContractDraftAggregateService } from "./contract-draft-aggregate.service";
 
 describe("ContractDraftAggregateService", () => {
@@ -68,7 +70,14 @@ describe("ContractDraftAggregateService", () => {
     return {
       prisma,
       workbench,
-      service: new ContractDraftAggregateService(prisma as never, workbench as never)
+      service: new ContractDraftAggregateService(
+        prisma as never,
+        workbench as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never
+      )
     };
   }
 
@@ -144,5 +153,417 @@ describe("ContractDraftAggregateService", () => {
       expiresAt: expiredAt.toISOString(),
       canTakeOver: false
     });
+  });
+});
+
+describe("ContractDraftAggregateService.saveAggregate", () => {
+  const leaseToken = "opaque-lease-token";
+
+  function aggregateInput() {
+    return {
+      idempotencyKey: "7ea6e68d-18cd-4ca7-83b8-99e7d1457125",
+      saveKind: "manual" as const,
+      expectedRevision: 7,
+      changedSections: ["attachments"] as ["attachments"],
+      draft: {
+        draftData: { fieldValues: { name: "新合同名称" } },
+        clauses: [],
+        pricingNature: "fixed_total" as const,
+        amountSource: "manual" as const,
+        manualAmountCents: "1000000",
+        taxFacts: {
+          invoiceType: "vat_special" as const,
+          taxMode: "single_rate" as const,
+          defaultTaxRatePercent: "9",
+          source: "contract_document" as const
+        }
+      },
+      parties: [],
+      bills: [],
+      paymentTerms: null,
+      attachments: [],
+      negotiationDocuments: {
+        referencedGeneratedDocumentIds: []
+      }
+    };
+  }
+
+  function makeSaveService(options: {
+    leaseTokenHash?: string;
+    fieldChanged?: boolean;
+    referencesChanged?: boolean;
+    failParties?: boolean;
+    failFiles?: boolean;
+    currentAttachments?: Array<{
+      id: string;
+      contractVersionId: string;
+      slotKey: string;
+      fileId: string;
+      displayOrder: number;
+    }>;
+  } = {}) {
+    let receipt: Record<string, unknown> | null = null;
+    const version = {
+      id: "cv-1",
+      contractId: "contract-1",
+      status: "draft",
+      draftRevision: 7,
+      amountCents: 0n,
+      amountLimitType: "capped",
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      amountAdjustmentReason: null,
+      invoiceType: null,
+      taxMode: "single_rate",
+      defaultTaxRatePercent: null,
+      taxFactStatus: "unconfirmed",
+      taxFactSource: null,
+      taxFactRevision: 0,
+      taxFactsFrozenAt: null,
+      layoutTemplateVersionId: null,
+      draftData: {
+        workbenchReferences: {
+          selectedNegotiationRoundId: null,
+          selectedOfflineRevisionId: null,
+          referencedGeneratedDocumentIds: []
+        }
+      },
+      clauseSnapshot: [],
+      templateSnapshot: {},
+      changeType: "initial",
+      baseVersionId: null,
+      settlementMode: "settlement_required"
+    };
+    const contract = {
+      id: "contract-1",
+      ownerUserId: "owner-1",
+      voidedAt: null,
+      contractTypeKey: "material_purchase",
+      code: null
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      contractVersion: {
+        findUnique: jest.fn().mockImplementation(async (query) =>
+          query.select ? { id: "cv-1", contractId: "contract-1" } : version
+        ),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue(contract),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contractDraftSaveRequest: {
+        findUnique: jest.fn().mockImplementation(async () => receipt),
+        create: jest.fn().mockImplementation(async ({ data }) => {
+          receipt = data;
+          return data;
+        })
+      },
+      contractDraftEditLease: {
+        findUnique: jest.fn().mockResolvedValue({
+          holderUserId: "owner-1",
+          tokenHash: options.leaseTokenHash ??
+            createHash("sha256").update(leaseToken).digest("hex"),
+          expiresAt: new Date(Date.now() + 120_000)
+        })
+      },
+      contractBill: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractGeneratedDocument: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractDraftAttachment: {
+        findMany: jest.fn().mockResolvedValue(options.currentAttachments ?? []),
+        deleteMany: jest.fn(),
+        update: jest.fn(),
+        createMany: jest.fn()
+      },
+      contractNegotiationRound: { findFirst: jest.fn() },
+      contractOfflineRevision: { findFirst: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(
+        async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)
+      )
+    };
+    const workbench = {
+      replacePaymentTermsInTransaction: jest.fn().mockResolvedValue({
+        changed: false
+      }),
+      prepareAggregateDraftFieldsInTransaction: jest.fn().mockResolvedValue({
+        changed: options.fieldChanged ?? true,
+        workbenchReferencesChanged: options.referencesChanged ?? false,
+        companySelection: null,
+        amountCents: 1_000_000n,
+        storedDraftData: {},
+        data: { draftData: {}, amountCents: 1_000_000n }
+      })
+    };
+    const bills = { replaceRowsInTransaction: jest.fn() };
+    const parties = {
+      replaceContractPartiesInTransaction: options.failParties
+        ? jest.fn().mockRejectedValue(new Error("second aggregate section failed"))
+        : jest.fn().mockResolvedValue({ changed: false })
+    };
+    const files = {
+      assertCanBindContractDraftAttachments: options.failFiles
+        ? jest.fn().mockRejectedValue(new ConflictException("文件已绑定其他业务"))
+        : jest.fn().mockResolvedValue(undefined)
+    };
+    const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
+    return {
+      tx,
+      prisma,
+      workbench,
+      audit,
+      service: new ContractDraftAggregateService(
+        prisma as never,
+        workbench as never,
+        bills as never,
+        parties as never,
+        files as never,
+        audit as never
+      )
+    };
+  }
+
+  it("computes effective changes from server facts and increments the draft once", async () => {
+    const { service, tx, audit } = makeSaveService();
+
+    const result = await service.saveAggregate(
+      "cv-1",
+      "owner-1",
+      leaseToken,
+      aggregateInput() as never
+    );
+
+    expect(result).toMatchObject({
+      draftRevision: 8,
+      effectiveChangedSections: ["draft"]
+    });
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ draftRevision: 7 }),
+        data: expect.objectContaining({ draftRevision: { increment: 1 } })
+      })
+    );
+    expect(tx.contract.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({ code: expect.anything() })
+      })
+    );
+    expect(audit.record).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the original authoritative receipt for an identical retry", async () => {
+    const { service, tx } = makeSaveService();
+    const input = aggregateInput();
+
+    const first = await service.saveAggregate(
+      "cv-1",
+      "owner-1",
+      leaseToken,
+      input as never
+    );
+    const second = await service.saveAggregate(
+      "cv-1",
+      "owner-1",
+      leaseToken,
+      input as never
+    );
+
+    expect(second).toEqual(first);
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.contractDraftSaveRequest.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects reuse of the same idempotency key for a different payload", async () => {
+    const { service } = makeSaveService();
+    const input = aggregateInput();
+    await service.saveAggregate("cv-1", "owner-1", leaseToken, input as never);
+
+    await expect(
+      service.saveAggregate(
+        "cv-1",
+        "owner-1",
+        leaseToken,
+        {
+          ...input,
+          draft: {
+            ...input.draft,
+            draftData: { fieldValues: { name: "另一份内容" } }
+          }
+        } as never
+      )
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "IDEMPOTENCY_KEY_REUSED" })
+    });
+  });
+
+  it("does not rewrite business rows or audit an identical aggregate", async () => {
+    const { service, tx, audit } = makeSaveService({ fieldChanged: false });
+
+    const result = await service.saveAggregate(
+      "cv-1",
+      "owner-1",
+      leaseToken,
+      aggregateInput() as never
+    );
+
+    expect(result).toMatchObject({
+      draftRevision: 7,
+      effectiveChangedSections: []
+    });
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contract.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(tx.contractDraftSaveRequest.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a negotiation-only reference change without mislabeling draft fields", async () => {
+    const { service } = makeSaveService({
+      fieldChanged: false,
+      referencesChanged: true
+    });
+
+    await expect(
+      service.saveAggregate(
+        "cv-1",
+        "owner-1",
+        leaseToken,
+        aggregateInput() as never
+      )
+    ).resolves.toMatchObject({
+      draftRevision: 8,
+      effectiveChangedSections: ["negotiation_documents"]
+    });
+  });
+
+  it("does not append a permanent audit log for an automatic save", async () => {
+    const { service, audit } = makeSaveService();
+    const input = aggregateInput();
+
+    await service.saveAggregate(
+      "cv-1",
+      "owner-1",
+      leaseToken,
+      { ...input, saveKind: "auto" } as never
+    );
+
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("performs zero business writes when an attachment is already bound elsewhere", async () => {
+    const { service, tx, audit } = makeSaveService({ failFiles: true });
+
+    await expect(
+      service.saveAggregate(
+        "cv-1",
+        "owner-1",
+        leaseToken,
+        aggregateInput() as never
+      )
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contract.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractDraftSaveRequest.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("swaps changed attachment positions without transient unique-key collisions", async () => {
+    const currentAttachments = [
+      {
+        id: "attachment-a",
+        contractVersionId: "cv-1",
+        slotKey: "supporting",
+        fileId: "file-a",
+        displayOrder: 0
+      },
+      {
+        id: "attachment-b",
+        contractVersionId: "cv-1",
+        slotKey: "supporting",
+        fileId: "file-b",
+        displayOrder: 1
+      }
+    ];
+    const { service, tx } = makeSaveService({
+      fieldChanged: false,
+      currentAttachments
+    });
+    const input = {
+      ...aggregateInput(),
+      attachments: [
+        { slotKey: "supporting", fileId: "file-b", displayOrder: 0 },
+        { slotKey: "supporting", fileId: "file-a", displayOrder: 1 }
+      ]
+    };
+
+    await expect(
+      service.saveAggregate(
+        "cv-1",
+        "owner-1",
+        leaseToken,
+        input as never
+      )
+    ).resolves.toMatchObject({
+      effectiveChangedSections: ["attachments"]
+    });
+    expect(tx.contractDraftAttachment.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: ["attachment-a", "attachment-b"] } }
+    });
+    expect(tx.contractDraftAttachment.update).not.toHaveBeenCalled();
+    expect(tx.contractDraftAttachment.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          contractVersionId: "cv-1",
+          createdByUserId: "owner-1",
+          slotKey: "supporting",
+          fileId: "file-b",
+          displayOrder: 0
+        },
+        {
+          contractVersionId: "cv-1",
+          createdByUserId: "owner-1",
+          slotKey: "supporting",
+          fileId: "file-a",
+          displayOrder: 1
+        }
+      ]
+    });
+  });
+
+  it("performs zero business writes after an edit lease is lost", async () => {
+    const { service, tx } = makeSaveService({ leaseTokenHash: "lost-token-hash" });
+
+    await expect(
+      service.saveAggregate(
+        "cv-1",
+        "owner-1",
+        leaseToken,
+        aggregateInput() as never
+      )
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractDraftSaveRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("does not commit the version or receipt when a later aggregate section fails", async () => {
+    const { service, tx } = makeSaveService({ failParties: true });
+
+    await expect(
+      service.saveAggregate(
+        "cv-1",
+        "owner-1",
+        leaseToken,
+        aggregateInput() as never
+      )
+    ).rejects.toThrow("second aggregate section failed");
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractDraftSaveRequest.create).not.toHaveBeenCalled();
   });
 });

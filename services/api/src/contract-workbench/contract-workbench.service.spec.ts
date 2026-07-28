@@ -38,11 +38,11 @@ describe("ContractWorkbenchService", () => {
     validationSchema: []
   };
 
-  function makeService(tx: Record<string, unknown>, businessNumbers?: { allocateDaily: jest.Mock }) {
+  function makeService(tx: Record<string, unknown>) {
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
     } as unknown as PrismaService;
-    return new ContractWorkbenchService(prisma, audit as never, undefined, businessNumbers as never);
+    return new ContractWorkbenchService(prisma, audit as never);
   }
 
   function ownedVersionTx(overrides: Record<string, unknown> = {}) {
@@ -194,7 +194,7 @@ describe("ContractWorkbenchService", () => {
     }));
   });
 
-  it("allocates the formal daily number only for the first successful system-contract save", async () => {
+  it("keeps the formal code null when a system-contract draft is saved", async () => {
     const tx = ownedVersionTx({
       contract: {
         findUnique: jest.fn().mockResolvedValue({
@@ -208,8 +208,7 @@ describe("ContractWorkbenchService", () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       }
     });
-    const businessNumbers = { allocateDaily: jest.fn().mockResolvedValue("HT-20260723-001") };
-    const service = makeService(tx, businessNumbers);
+    const service = makeService(tx);
 
     await service.saveDraft("version-1", "owner-1", {
       expectedRevision: 4,
@@ -221,14 +220,59 @@ describe("ContractWorkbenchService", () => {
       taxFacts: VALID_TAX_FACTS
     });
 
-    expect(businessNumbers.allocateDaily).toHaveBeenCalledWith(tx, "HT");
     expect(tx.contract.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ code: null }),
-      data: expect.objectContaining({ code: "HT-20260723-001" })
+      data: expect.not.objectContaining({ code: expect.anything() })
     }));
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
-      metadata: expect.objectContaining({ formalCode: "HT-20260723-001" })
+      metadata: expect.not.objectContaining({ formalCode: expect.anything() })
     }));
+  });
+
+  it("preserves server-owned workbench references through the legacy save path", async () => {
+    const tx = ownedVersionTx();
+    const currentVersion = await tx.contractVersion.findUnique();
+    tx.contractVersion.findUnique.mockResolvedValue({
+      ...currentVersion,
+      draftData: {
+        project_name: "旧",
+        workbenchReferences: {
+          selectedNegotiationRoundId: "server-round",
+          selectedOfflineRevisionId: null,
+          referencedGeneratedDocumentIds: ["server-document"]
+        }
+      }
+    });
+    const service = makeService(tx);
+
+    await service.saveDraft("version-1", "owner-1", {
+      expectedRevision: 4,
+      draftData: {
+        project_name: "新名称",
+        workbenchReferences: {
+          selectedNegotiationRoundId: "forged-round",
+          referencedGeneratedDocumentIds: []
+        }
+      },
+      clauses: [],
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      manualAmountCents: "1000000",
+      taxFacts: VALID_TAX_FACTS
+    });
+
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          draftData: expect.objectContaining({
+            workbenchReferences: {
+              selectedNegotiationRoundId: "server-round",
+              selectedOfflineRevisionId: null,
+              referencedGeneratedDocumentIds: ["server-document"]
+            }
+          })
+        })
+      })
+    );
   });
 
   it("normalizes a legacy top-level field when the current editor writes fieldValues", async () => {
@@ -911,6 +955,148 @@ describe("ContractWorkbenchService", () => {
         })
       ]
     });
+  });
+
+  it("keeps an identical aggregate payment-term snapshot stable", async () => {
+    const stage = {
+      id: "stage-1",
+      name: "当期结算款",
+      stageType: "progress",
+      basis: "current_settlement",
+      ratioBps: 8000,
+      fixedAmountCents: null,
+      triggerAnchor: "settlement_effective",
+      triggerEvent: "结算归档确认生效",
+      dueDays: 30,
+      advanceDeductionMode: "none",
+      advanceDeductionRatioBps: null,
+      advanceDeductionStartRatioBps: null,
+      requiresInvoice: true,
+      allowsEarlyPayment: false,
+      allowsInstallments: true,
+      retentionBps: null,
+      originalText: "结算归档后30天内付款80%。",
+      createdAt: new Date()
+    };
+    const tx = {
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-1",
+          originalText: "结算归档后30天内付款80%。"
+        }),
+        update: jest.fn()
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([stage]),
+        update: jest.fn(),
+        deleteMany: jest.fn(),
+        createMany: jest.fn()
+      }
+    };
+    const service = makeService(tx as never);
+
+    await expect(
+      service.replacePaymentTermsInTransaction(
+        tx as never,
+        { contractTypeKey: "material_purchase" },
+        {
+          id: "version-1",
+          settlementMode: "settlement_required"
+        } as never,
+        {
+          originalText: "结算归档后30天内付款80%。",
+          stages: [
+            {
+              name: stage.name,
+              basis: stage.basis,
+              ratioBps: stage.ratioBps,
+              triggerEvent: stage.triggerEvent,
+              dueDays: stage.dueDays,
+              requiresInvoice: stage.requiresInvoice,
+              allowsEarlyPayment: stage.allowsEarlyPayment,
+              allowsInstallments: stage.allowsInstallments,
+              originalText: stage.originalText
+            }
+          ]
+        } as never
+      )
+    ).resolves.toEqual({ changed: false });
+    expect(tx.paymentTermsVersion.update).not.toHaveBeenCalled();
+    expect(tx.paymentTermsStage.update).not.toHaveBeenCalled();
+    expect(tx.paymentTermsStage.deleteMany).not.toHaveBeenCalled();
+    expect(tx.paymentTermsStage.createMany).not.toHaveBeenCalled();
+  });
+
+  it("updates only the changed aggregate payment stage", async () => {
+    const stage = {
+      id: "stage-1",
+      name: "原阶段",
+      stageType: "progress",
+      basis: "current_settlement",
+      ratioBps: 8000,
+      fixedAmountCents: null,
+      triggerAnchor: "settlement_effective",
+      triggerEvent: "结算归档确认生效",
+      dueDays: 30,
+      advanceDeductionMode: "none",
+      advanceDeductionRatioBps: null,
+      advanceDeductionStartRatioBps: null,
+      requiresInvoice: true,
+      allowsEarlyPayment: false,
+      allowsInstallments: true,
+      retentionBps: null,
+      originalText: "原条款",
+      createdAt: new Date()
+    };
+    const tx = {
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-1",
+          originalText: "原条款"
+        }),
+        update: jest.fn()
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([stage]),
+        update: jest.fn().mockResolvedValue({ id: stage.id }),
+        deleteMany: jest.fn(),
+        createMany: jest.fn()
+      }
+    };
+    const service = makeService(tx as never);
+
+    await expect(
+      service.replacePaymentTermsInTransaction(
+        tx as never,
+        { contractTypeKey: "material_purchase" },
+        {
+          id: "version-1",
+          settlementMode: "settlement_required"
+        } as never,
+        {
+          originalText: "原条款",
+          stages: [
+            {
+              name: "更新阶段",
+              basis: "current_settlement",
+              ratioBps: 8000,
+              triggerEvent: "结算归档确认生效",
+              dueDays: 30,
+              requiresInvoice: true,
+              allowsEarlyPayment: false,
+              allowsInstallments: true,
+              originalText: "原条款"
+            }
+          ]
+        } as never
+      )
+    ).resolves.toEqual({ changed: true });
+    expect(tx.paymentTermsStage.update).toHaveBeenCalledWith({
+      where: { id: "stage-1" },
+      data: expect.objectContaining({ name: "更新阶段" })
+    });
+    expect(tx.paymentTermsStage.deleteMany).not.toHaveBeenCalled();
+    expect(tx.paymentTermsStage.createMany).not.toHaveBeenCalled();
   });
 
   it("为通用合同保存合同生效后的冻结直接付款阶段", async () => {

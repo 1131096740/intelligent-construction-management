@@ -10,7 +10,8 @@ export async function recalculateBillAndContractAmount(
     amountSource: string;
     pricingNature: string;
     amountLimitType: string;
-  }
+  },
+  options: { updateContractVersionAmount?: boolean } = {}
 ) {
   const rows = await tx.contractBillRow.findMany({
     where: { contractBillId: bill.id },
@@ -38,7 +39,11 @@ export async function recalculateBillAndContractAmount(
   await tx.contractBill.update({ where: { id: bill.id }, data: totals });
   const unlimitedFramework =
     version.pricingNature === "framework" && version.amountLimitType === "unlimited";
-  if (version.amountSource === "bill_sum" && !unlimitedFramework) {
+  if (
+    options.updateContractVersionAmount !== false &&
+    version.amountSource === "bill_sum" &&
+    !unlimitedFramework
+  ) {
     const bills = await tx.contractBill.findMany({
       where: { contractVersionId: bill.contractVersionId }
     });

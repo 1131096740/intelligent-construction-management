@@ -22,7 +22,8 @@ import { SpotProcurementAccessService } from "../spot-procurement/spot-procureme
 import { SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY } from "../spot-procurement/spot-procurement-form-renderer";
 import {
   acquireFileBusinessBindingTransactionLock,
-  hasNonReceiptBusinessFileBinding
+  hasNonReceiptBusinessFileBinding,
+  nonReceiptBusinessFileBindingIds
 } from "./file-business-binding";
 
 export interface UploadPrivateFileInput {
@@ -1292,6 +1293,60 @@ export class FileService {
     }
 
     return file;
+  }
+
+  async assertCanBindContractDraftAttachments(
+    tx: Prisma.TransactionClient,
+    contractVersionId: string,
+    fileIds: string[],
+    actorUserId: string
+  ) {
+    const normalizedIds = [...new Set(fileIds.map((fileId) => fileId.trim()))].sort();
+    if (normalizedIds.some((fileId) => !fileId)) {
+      throw new BadRequestException("合同草稿附件文件编号不能为空");
+    }
+    if (!normalizedIds.length) return;
+    await acquireFileBusinessBindingTransactionLock(tx);
+    const files = await tx.$queryRaw<LockedUnboundFileRow[]>(Prisma.sql`
+      SELECT "id", "mimeType", "uploadedByUserId", "storageStatus"
+      FROM "FileObject"
+      WHERE "id" IN (${Prisma.join(normalizedIds)})
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    if (files.length !== normalizedIds.length) {
+      throw new BadRequestException("合同草稿附件不存在或已被移除");
+    }
+    if (files.some((file) => file.storageStatus !== "active")) {
+      throw new BadRequestException("合同草稿附件当前不可用");
+    }
+    if (files.some((file) => file.uploadedByUserId !== actorUserId)) {
+      throw new ForbiddenException("合同草稿附件必须由当前经办人本人上传");
+    }
+    const [otherDraftBinding, receiptPhotoBinding, otherBindingIds] = await Promise.all([
+      tx.contractDraftAttachment.findFirst({
+        where: {
+          fileId: { in: normalizedIds },
+          contractVersionId: { not: contractVersionId }
+        },
+        select: { id: true }
+      }),
+      tx.spotProcurementReceiptPhoto.findFirst({
+        where: {
+          OR: [
+            { originalFileId: { in: normalizedIds } },
+            { watermarkedFileId: { in: normalizedIds } }
+          ]
+        },
+        select: { id: true }
+      }),
+      nonReceiptBusinessFileBindingIds(tx, normalizedIds, [
+        { table: "ContractDraftAttachment", column: "fileId" }
+      ])
+    ]);
+    if (otherDraftBinding || receiptPhotoBinding || otherBindingIds.length) {
+      throw new ConflictException(FILE_ALREADY_BOUND_MESSAGE);
+    }
   }
 
   // 供其它模块（如审批单下载）按 fileId 复用下载权限校验。

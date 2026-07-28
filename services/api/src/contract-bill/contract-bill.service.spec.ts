@@ -636,6 +636,52 @@ describe("ContractBillService", () => {
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
   });
 
+  it("keeps an identical aggregate bill snapshot stable without rewriting rows", async () => {
+    const row = existingRow(0);
+    const { service, tx, bill, version } = fixture({ rows: [row] });
+
+    const result = await service.replaceRowsInTransaction(
+      tx as never,
+      "owner-1",
+      version,
+      bill,
+      {
+        expectedRevision: 2,
+        rows: [batchRow("aggregate-row", "key-0")]
+      } as never
+    );
+
+    expect(result).toMatchObject({ changed: false, revision: 2 });
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.update).not.toHaveBeenCalled();
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+  });
+
+  it("updates an aggregate bill inside the caller transaction without publishing the contract amount", async () => {
+    const row = existingRow(0);
+    const { service, tx, bill, version } = fixture({ rows: [row] });
+
+    const result = await service.replaceRowsInTransaction(
+      tx as never,
+      "owner-1",
+      version,
+      bill,
+      {
+        expectedRevision: 2,
+        rows: [
+          batchRow("aggregate-row", "key-0", {
+            itemName: "更新后的钢筋"
+          })
+        ]
+      } as never
+    );
+
+    expect(result).toMatchObject({ changed: true, revision: 3 });
+    expect(tx.contractBill.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.contractBillRow.update).toHaveBeenCalledTimes(1);
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+  });
+
   it("不向用户暴露 not JSON 内部哨兵", async () => {
     const { service } = fixture();
     const cyclic: Record<string, unknown> = {};

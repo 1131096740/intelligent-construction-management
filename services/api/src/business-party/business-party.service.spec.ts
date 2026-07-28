@@ -207,6 +207,96 @@ describe("BusinessPartyService", () => {
     });
   });
 
+  it("keeps an identical aggregate party snapshot stable", async () => {
+    const currentSnapshot = { name: "乙方", attachments: [] };
+    const tx = {
+      businessPartyVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "party-version-b", snapshot: currentSnapshot }
+        ])
+      },
+      contractPartySnapshot: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-party-b",
+            roleKey: "party_b",
+            displayOrder: 1,
+            businessPartyVersionId: "party-version-b",
+            snapshot: currentSnapshot
+          }
+        ]),
+        deleteMany: jest.fn(),
+        update: jest.fn(),
+        createMany: jest.fn()
+      }
+    };
+    const service = new BusinessPartyService({} as PrismaService, audit as never);
+
+    await expect(
+      service.replaceContractPartiesInTransaction(
+        tx as never,
+        "contract-version-1",
+        [
+          {
+            roleKey: "party_b",
+            displayOrder: 1,
+            businessPartyVersionId: "party-version-b",
+            snapshot: {}
+          }
+        ]
+      )
+    ).resolves.toEqual({ changed: false });
+    expect(tx.contractPartySnapshot.deleteMany).not.toHaveBeenCalled();
+    expect(tx.contractPartySnapshot.update).not.toHaveBeenCalled();
+    expect(tx.contractPartySnapshot.createMany).not.toHaveBeenCalled();
+  });
+
+  it("uses the authoritative party version snapshot during aggregate replacement", async () => {
+    const tx = {
+      businessPartyVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "party-version-b",
+            snapshot: { name: "数据库权威乙方", attachments: [] }
+          }
+        ])
+      },
+      contractPartySnapshot: {
+        findMany: jest.fn().mockResolvedValue([]),
+        deleteMany: jest.fn(),
+        update: jest.fn(),
+        createMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    };
+    const service = new BusinessPartyService({} as PrismaService, audit as never);
+
+    await expect(
+      service.replaceContractPartiesInTransaction(
+        tx as never,
+        "contract-version-1",
+        [
+          {
+            roleKey: "party_b",
+            displayOrder: 1,
+            businessPartyVersionId: "party-version-b",
+            snapshot: { name: "客户端伪造乙方" }
+          }
+        ]
+      )
+    ).resolves.toEqual({ changed: true });
+    expect(tx.contractPartySnapshot.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          contractVersionId: "contract-version-1",
+          roleKey: "party_b",
+          displayOrder: 1,
+          businessPartyVersionId: "party-version-b",
+          snapshot: { name: "数据库权威乙方", attachments: [] }
+        }
+      ]
+    });
+  });
+
   it("adds multiple role snapshots to one draft contract", async () => {
     const tx = {
       contractVersion: {

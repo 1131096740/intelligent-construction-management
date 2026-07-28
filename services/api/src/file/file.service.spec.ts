@@ -2908,6 +2908,95 @@ describe("FileService", () => {
     }
   );
 
+  it("locks draft attachment files and allows only the current owner with no other binding", async () => {
+    const tx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ pg_advisory_xact_lock: null }])
+        .mockResolvedValueOnce([
+          {
+            id: "draft-attachment-1",
+            mimeType: "application/pdf",
+            uploadedByUserId: "owner-1",
+            storageStatus: "active"
+          }
+        ])
+        .mockResolvedValueOnce([]),
+      contractDraftAttachment: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      spotProcurementReceiptPhoto: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      }
+    };
+    const service = new FileService(
+      {} as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.assertCanBindContractDraftAttachments(
+        tx as never,
+        "contract-version-1",
+        ["draft-attachment-1"],
+        "owner-1"
+      )
+    ).resolves.toBeUndefined();
+    expect(
+      (tx.$queryRaw.mock.calls[0][0] as { strings: string[] }).strings.join(" ")
+    ).toContain("pg_advisory_xact_lock");
+    expect(
+      (tx.$queryRaw.mock.calls[1][0] as { strings: string[] }).strings.join(" ")
+    ).toContain("FOR UPDATE");
+  });
+
+  it.each(["other_draft", "other_business"])(
+    "rejects a draft attachment already bound by %s",
+    async (bindingType) => {
+      const tx = {
+        $queryRaw: jest
+          .fn()
+          .mockResolvedValueOnce([{ pg_advisory_xact_lock: null }])
+          .mockResolvedValueOnce([
+            {
+              id: "draft-attachment-1",
+              mimeType: "application/pdf",
+              uploadedByUserId: "owner-1",
+              storageStatus: "active"
+            }
+          ])
+          .mockResolvedValueOnce(
+            bindingType === "other_business"
+              ? [{ fileId: "draft-attachment-1" }]
+              : []
+          ),
+        contractDraftAttachment: {
+          findFirst: jest.fn().mockResolvedValue(
+            bindingType === "other_draft" ? { id: "other-draft-link" } : null
+          )
+        },
+        spotProcurementReceiptPhoto: {
+          findFirst: jest.fn().mockResolvedValue(null)
+        }
+      };
+      const service = new FileService(
+        {} as PrismaService,
+        audit as unknown as AuditService,
+        storage as unknown as PrivateFileStorage
+      );
+
+      await expect(
+        service.assertCanBindContractDraftAttachments(
+          tx as never,
+          "contract-version-1",
+          ["draft-attachment-1"],
+          "owner-1"
+        )
+      ).rejects.toThrow("该文件已绑定其他业务记录，不能重复使用");
+    }
+  );
+
   it("rejects a missing file before checking business bindings", async () => {
     const tx = {
       $queryRaw: jest
