@@ -1,6 +1,10 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AUTH_STORAGE_KEY, useAuthStore } from "./auth.store";
+import {
+  getContractDraftDeviceId,
+  writeContractDraftLocalRecovery
+} from "../pages/contracts/workbench/contract-draft-local-recovery";
 
 function memoryStorage(): Storage {
   const map = new Map<string, string>();
@@ -103,6 +107,13 @@ describe("useAuthStore", () => {
 
   it("clears the session and storage on logout", async () => {
     const store = await seedSession();
+    writeContractDraftLocalRecovery(localStorage, {
+      userId: "u1",
+      deviceId: getContractDraftDeviceId(localStorage)!,
+      projectId: "project-1",
+      contractVersionId: "version-1",
+      serverRevision: 1
+    }, { contractName: "退出前本机副本" });
     globalThis.fetch = vi.fn(async () => new Response("{}", { status: 200 })) as never;
 
     await store.logout();
@@ -110,6 +121,10 @@ describe("useAuthStore", () => {
     expect(store.isAuthenticated).toBe(false);
     expect(store.accessToken).toBeNull();
     expect(localStorage.getItem(AUTH_STORAGE_KEY)).toBeNull();
+    expect(Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)))
+      .not.toEqual(expect.arrayContaining([
+        expect.stringContaining("contract-draft-local-recovery")
+      ]));
   });
 
   it("restores a persisted session from storage", () => {

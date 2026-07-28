@@ -20,7 +20,10 @@ import {
   acquireContractDraftEditLease,
   createWorkbenchDraft,
   fetchContractDraftWorkbench,
+  heartbeatContractDraftEditLease,
+  releaseContractDraftEditLease,
   saveContractDraftAggregate,
+  takeOverContractDraftEditLease,
   type ContractDraftAttachmentModel,
   type ContractDraftBillModel,
   type ContractDraftNegotiationDocumentsModel,
@@ -29,6 +32,22 @@ import {
   type ContractDraftWorkbenchReadModel,
   type SaveContractDraftAggregatePayload
 } from "../../../api/contract-workbench.api";
+import {
+  clearContractDraftLocalRecoveryScope,
+  findContractDraftLocalRecovery,
+  getContractDraftDeviceId,
+  writeContractDraftLocalRecovery,
+  type ContractDraftLocalRecoveryMatch,
+  type ContractDraftRecoveryIdentity
+} from "./contract-draft-local-recovery";
+import {
+  contractDraftLeaseCanEdit,
+  contractDraftLeaseExpired,
+  contractDraftLeaseLost,
+  contractDraftLeaseViewFromGrant,
+  contractDraftLeaseViewFromWorkbench,
+  type ContractDraftLeaseView
+} from "./contract-draft-lease.state";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -37,7 +56,6 @@ import {
 /** Backend phrase emitted on optimistic-lock failure (Task 9). */
 const REVISION_CONFLICT_PHRASE = "Contract draft revision conflict";
 
-const BACKUP_KEY_PREFIX = "contract-draft:";
 const AUTOSAVE_DELAY_MS = 1_000;
 
 // ---------------------------------------------------------------------------
@@ -152,6 +170,8 @@ export interface UseContractDraftOptions {
   /** Injected router redirect (vue-router `router.replace`); keeps the
    * composable testable without a real router instance. */
   replace: (to: string) => void;
+  /** Current authenticated account. Required for account-isolated recovery. */
+  userId?: () => string | null | undefined;
 }
 
 export interface UseContractDraft {
@@ -171,6 +191,11 @@ export interface UseContractDraft {
   formalSaveCompleted: Readonly<Ref<boolean>>;
   /** Client time of the latest successful server save in this editing session. */
   lastSavedAt: Readonly<Ref<Date | null>>;
+  lease: Readonly<Ref<ContractDraftLeaseView>>;
+  canEdit: ComputedRef<boolean>;
+  pendingLocalRecovery: Ref<
+    ContractDraftLocalRecoveryMatch<ContractDraftAggregateModel> | null
+  >;
   initializeDraft: InitializeDraftController;
   load: (contractVersionId: string) => Promise<void>;
   /** Re-fetches the currently loaded workbench through the same guarded load path. */
@@ -184,6 +209,10 @@ export interface UseContractDraft {
   resumeAutosaveAfterLifecycleAction: () => void;
   /** Flushes dirty draft data. Clean state is a successful no-op. */
   saveNow: () => Promise<boolean>;
+  takeOverLease: (currentPassword: string) => Promise<boolean>;
+  restoreLocalRecovery: () => boolean;
+  discardLocalRecovery: () => void;
+  clearLocalRecovery: () => void;
   retryConflictServerLoad: () => Promise<boolean>;
   keepLocalAfterConflict: () => Promise<boolean>;
   loadServerAfterConflict: () => Promise<boolean>;
@@ -405,24 +434,31 @@ function templateFieldKeySet(workbench: ContractDraftWorkbenchReadModel): Set<st
   return new Set(workbench.version.templateSnapshot.fieldSchema.map((field) => field.key));
 }
 
-function normalizeBackupTemplateFields(
-  model: ContractDraftModel,
-  fieldKeys: Set<string>
-): ContractDraftModel {
-  const fieldValues = isRecord(model.fieldValues) ? { ...model.fieldValues } : {};
-  const extraDraftData = isRecord(model.extraDraftData) ? { ...model.extraDraftData } : {};
-  for (const key of fieldKeys) {
-    if (!Object.hasOwn(extraDraftData, key)) continue;
-    if (!Object.hasOwn(fieldValues, key)) {
-      fieldValues[key] = extraDraftData[key];
-    }
-    delete extraDraftData[key];
-  }
-  return { ...model, fieldValues, extraDraftData };
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isAggregateRecoverySnapshot(
+  value: unknown
+): value is ContractDraftAggregateModel {
+  if (!isRecord(value) || !isRecord(value["draft"])) return false;
+  const draft = value["draft"];
+  return Array.isArray(draft["clauses"]) &&
+    isRecord(draft["fieldValues"]) &&
+    isRecord(draft["partyValues"]) &&
+    isRecord(draft["extraDraftData"]) &&
+    Array.isArray(value["parties"]) &&
+    Array.isArray(value["bills"]) &&
+    (
+      value["paymentTerms"] === null ||
+      (
+        isRecord(value["paymentTerms"]) &&
+        Array.isArray(value["paymentTerms"]["stages"])
+      )
+    ) &&
+    Array.isArray(value["attachments"]) &&
+    isRecord(value["negotiationDocuments"]) &&
+    Array.isArray(value["negotiationDocuments"]["referencedGeneratedDocumentIds"]);
 }
 
 function isCompanyEntitySelection(value: unknown): value is ContractCompanyEntitySelection {
@@ -606,6 +642,13 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   const conflict = ref<ContractDraftConflict | null>(null);
   const formalSaveCompleted = ref(false);
   const lastSavedAt = ref<Date | null>(null);
+  const lease = ref<ContractDraftLeaseView>({
+    kind: "available",
+    canTakeOver: false
+  });
+  const pendingLocalRecovery = ref<
+    ContractDraftLocalRecoveryMatch<ContractDraftAggregateModel> | null
+  >(null);
 
   // Loaded contract-version identity + revision drive every save's optimistic lock.
   const contractVersionId = ref<string | null>(null);
@@ -619,46 +662,256 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   let editGeneration = 0;
   let activeSave: Promise<boolean> | null = null;
   let leaseToken: string | null = null;
+  let leaseHeartbeatTimer: ReturnType<typeof setTimeout> | null = null;
+  let leaseExpiryTimer: ReturnType<typeof setTimeout> | null = null;
+  let activeLeaseVerification: Promise<boolean> | null = null;
   let disposed = false;
   // `dirty` stays true from the first edit until a save RESOLVES successfully.
   const dirtyRef = ref(false);
 
-  function backupKey(): string | null {
-    return contractVersionId.value ? `${BACKUP_KEY_PREFIX}${contractVersionId.value}` : null;
+  const canEdit = computed(() => contractDraftLeaseCanEdit(lease.value));
+
+  function recoveryIdentity(): ContractDraftRecoveryIdentity | null {
+    const storage = getStorage();
+    const versionId = contractVersionId.value;
+    const projectId = workbench.value?.contract.projectId?.trim();
+    const userId = (
+      options.userId?.() ??
+      workbench.value?.contract.ownerUserId ??
+      ""
+    ).trim();
+    if (!storage || !versionId || !projectId || !userId) return null;
+    const deviceId = getContractDraftDeviceId(storage);
+    if (!deviceId) return null;
+    return {
+      userId,
+      deviceId,
+      projectId,
+      contractVersionId: versionId,
+      serverRevision: currentRevision.value
+    };
   }
 
   function writeBackup(): void {
-    const key = backupKey();
     const storage = getStorage();
-    if (!key || !storage) {
-      return;
-    }
-    storage.setItem(key, JSON.stringify(cloneModel(model)));
+    const identity = recoveryIdentity();
+    if (!storage || !identity) return;
+    writeContractDraftLocalRecovery(
+      storage,
+      identity,
+      cloneAggregateModel(aggregateModel)
+    );
   }
 
   function clearBackup(): void {
-    const key = backupKey();
     const storage = getStorage();
-    if (!key || !storage) {
-      return;
-    }
-    storage.removeItem(key);
+    const identity = recoveryIdentity();
+    if (!storage || !identity) return;
+    clearContractDraftLocalRecoveryScope(storage, identity);
+    pendingLocalRecovery.value = null;
   }
 
-  function readBackup(): ContractDraftModel | null {
-    const key = backupKey();
+  function inspectLocalRecovery(): void {
     const storage = getStorage();
-    if (!key || !storage) {
-      return null;
+    const identity = recoveryIdentity();
+    if (!storage || !identity) return;
+    const found = findContractDraftLocalRecovery<ContractDraftAggregateModel>(
+      storage,
+      identity
+    );
+    if (!found) return;
+    if (!isAggregateRecoverySnapshot(found.recovery.snapshot)) {
+      clearContractDraftLocalRecoveryScope(storage, identity);
+      return;
     }
-    const raw = storage.getItem(key);
-    if (!raw) {
-      return null;
+    if (found.revisionMatches) {
+      assignAggregateModel(aggregateModel, found.recovery.snapshot);
+      dirtyRef.value = true;
+      return;
+    }
+    pendingLocalRecovery.value = found;
+  }
+
+  function restoreLocalRecovery(): boolean {
+    const found = pendingLocalRecovery.value;
+    if (!found || !isAggregateRecoverySnapshot(found.recovery.snapshot)) {
+      clearBackup();
+      return false;
+    }
+    assignAggregateModel(aggregateModel, found.recovery.snapshot);
+    dirtyRef.value = true;
+    pendingLocalRecovery.value = null;
+    writeBackup();
+    scheduleSave();
+    return true;
+  }
+
+  function discardLocalRecovery(): void {
+    clearBackup();
+  }
+
+  function cancelLeaseTimers(): void {
+    if (leaseHeartbeatTimer !== null) {
+      clearTimeout(leaseHeartbeatTimer);
+      leaseHeartbeatTimer = null;
+    }
+    if (leaseExpiryTimer !== null) {
+      clearTimeout(leaseExpiryTimer);
+      leaseExpiryTimer = null;
+    }
+  }
+
+  function loseLease(
+    reason: Extract<ContractDraftLeaseView, { kind: "lost" }>["reason"]
+  ): void {
+    cancelLeaseTimers();
+    leaseToken = null;
+    lease.value = contractDraftLeaseLost(reason);
+    cancelScheduledSave();
+  }
+
+  function scheduleLeaseTimers(heartbeatDelayMs?: number): void {
+    cancelLeaseTimers();
+    const current = lease.value;
+    if (current.kind !== "held") return;
+    const now = Date.now();
+    const expiresIn = current.expiresAtMs - now;
+    if (expiresIn <= 0) {
+      loseLease("lease_expired");
+      return;
+    }
+    leaseExpiryTimer = setTimeout(() => {
+      leaseExpiryTimer = null;
+      loseLease("lease_expired");
+    }, expiresIn);
+    const heartbeatIn = heartbeatDelayMs ?? Math.max(
+      0,
+      current.lastVerifiedAtMs + current.heartbeatIntervalMs - now
+    );
+    leaseHeartbeatTimer = setTimeout(() => {
+      leaseHeartbeatTimer = null;
+      void verifyLease();
+    }, Math.min(heartbeatIn, expiresIn));
+  }
+
+  function setLeaseGrant(grant: {
+    token: string;
+    leaseRevision: number;
+    expiresAt: string;
+    heartbeatIntervalMs: number;
+  }): void {
+    leaseToken = grant.token;
+    lease.value = contractDraftLeaseViewFromGrant(grant);
+    scheduleLeaseTimers();
+  }
+
+  function leaseLossReason(error: unknown):
+    | Extract<ContractDraftLeaseView, { kind: "lost" }>["reason"]
+    | null {
+    if (!error || typeof error !== "object" || !("code" in error)) return null;
+    if (error.code !== "EDIT_LEASE_LOST") return null;
+    return "conflictReason" in error && error.conflictReason === "lease_expired"
+      ? "lease_expired"
+      : "lease_taken_over";
+  }
+
+  async function performLeaseVerification(): Promise<boolean> {
+    const versionId = contractVersionId.value;
+    const token = leaseToken;
+    if (
+      disposed ||
+      !versionId ||
+      !token ||
+      lease.value.kind !== "held"
+    ) {
+      return false;
+    }
+    if (contractDraftLeaseExpired(lease.value)) {
+      loseLease("lease_expired");
+      return false;
     }
     try {
-      return JSON.parse(raw) as ContractDraftModel;
-    } catch {
-      return null;
+      const result = await heartbeatContractDraftEditLease(versionId, token);
+      if (
+        disposed ||
+        contractVersionId.value !== versionId ||
+        leaseToken !== token
+      ) {
+        return false;
+      }
+      lease.value = contractDraftLeaseViewFromGrant({
+        leaseRevision: result.leaseRevision ?? (
+          lease.value.kind === "held" ? lease.value.leaseRevision : 0
+        ),
+        expiresAt: result.expiresAt,
+        heartbeatIntervalMs: lease.value.kind === "held"
+          ? lease.value.heartbeatIntervalMs
+          : 30_000
+      });
+      scheduleLeaseTimers();
+      return true;
+    } catch (error) {
+      if (
+        disposed ||
+        contractVersionId.value !== versionId ||
+        leaseToken !== token
+      ) {
+        return false;
+      }
+      const reason = leaseLossReason(error);
+      if (reason) {
+        loseLease(reason);
+      } else if (lease.value.kind === "held") {
+        // A network failure never extends the lease. Retry briefly while the
+        // original server expiry remains authoritative.
+        scheduleLeaseTimers(5_000);
+      }
+      return false;
+    }
+  }
+
+  function verifyLease(): Promise<boolean> {
+    if (activeLeaseVerification) return activeLeaseVerification;
+    const pending = performLeaseVerification();
+    activeLeaseVerification = pending;
+    return pending.finally(() => {
+      if (activeLeaseVerification === pending) activeLeaseVerification = null;
+    });
+  }
+
+  async function takeOverLease(currentPassword: string): Promise<boolean> {
+    const versionId = contractVersionId.value;
+    if (
+      !versionId ||
+      disposed ||
+      !("canTakeOver" in lease.value) ||
+      !lease.value.canTakeOver
+    ) {
+      return false;
+    }
+    const grant = await takeOverContractDraftEditLease(versionId, {
+      currentPassword
+    });
+    if (disposed || contractVersionId.value !== versionId) return false;
+    setLeaseGrant(grant);
+    return true;
+  }
+
+  function releaseCurrentLease(): void {
+    const versionId = contractVersionId.value;
+    const token = leaseToken;
+    cancelLeaseTimers();
+    leaseToken = null;
+    if (versionId && token) {
+      void releaseContractDraftEditLease(versionId, token).catch(() => {
+        // Unload release is best effort and must never extend the lease.
+      });
+    }
+  }
+
+  function onVisibilityChange(): void {
+    if (typeof document !== "undefined" && document.visibilityState === "visible") {
+      void verifyLease();
     }
   }
 
@@ -692,9 +945,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     }
     cancelScheduledSave();
     clearBackup();
+    releaseCurrentLease();
     // Invalidate pending loads and make any in-flight save response stale.
     loadRequestId += 1;
-    leaseToken = null;
     contractVersionId.value = null;
     editGeneration += 1;
     dirtyRef.value = false;
@@ -704,6 +957,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     lastSavedAt.value = null;
     saveState.value = "idle";
     saveError.value = "";
+    lease.value = { kind: "available", canTakeOver: false };
     return true;
   }
 
@@ -772,7 +1026,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
 
     const nextAggregate = aggregateModelFromWorkbench(result);
     if (!sameVersionReload) {
-      leaseToken = null;
+      releaseCurrentLease();
     }
     workbench.value = result;
     contractVersionId.value = result.version.id;
@@ -787,19 +1041,16 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     saveError.value = "";
     assignAggregateModel(aggregateModel, nextAggregate);
 
-    // Surface any unsaved local edits left over from a prior session.
-    const backup = readBackup();
-    if (backup) {
-      assignModel(model, normalizeBackupTemplateFields(backup, templateFieldKeySet(result)));
-      dirtyRef.value = true;
-    }
+    inspectLocalRecovery();
     if (
       !leaseToken &&
       (result.lease.state === "available" || result.lease.state === "expired")
     ) {
       const lease = await acquireContractDraftEditLease(requestedVersionId);
       if (disposed || requestId !== loadRequestId) return;
-      leaseToken = lease.token;
+      setLeaseGrant(lease);
+    } else if (!leaseToken) {
+      lease.value = contractDraftLeaseViewFromWorkbench(result.lease);
     }
     scheduleSave();
   }
@@ -832,6 +1083,12 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       saveState.value = "failed";
       return false;
     }
+    if (!contractDraftLeaseCanEdit(lease.value)) {
+      loseLease("lease_expired");
+      saveError.value = "当前编辑租约已失效，页面已转为只读；本机副本仍保留。";
+      saveState.value = "failed";
+      return false;
+    }
 
     cancelScheduledSave();
     saveState.value = "saving";
@@ -853,18 +1110,19 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
             stages: paymentStages
           }
         : null;
+    const changedSections: SaveContractDraftAggregatePayload["changedSections"] = [
+      "draft",
+      "parties",
+      "bills",
+      ...(!isChangeDraft ? ["payment_terms" as const] : []),
+      "attachments",
+      "negotiation_documents"
+    ];
     const payload: SaveContractDraftAggregatePayload = {
       idempotencyKey: crypto.randomUUID(),
       saveKind: "manual",
       expectedRevision: currentRevision.value,
-      changedSections: [
-        "draft",
-        "parties",
-        "bills",
-        "payment_terms",
-        "attachments",
-        "negotiation_documents"
-      ],
+      changedSections,
       draft: {
         ...(model.companyEntityId ? { companyEntityId: model.companyEntityId } : {}),
         draftData: draftDataFromModel(model),
@@ -936,6 +1194,10 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       if (isConflictError(error)) {
         saveError.value = "合同草稿已在其他页面更新，请处理版本冲突后重试";
         await enterConflict(savingVersionId);
+      } else if (leaseLossReason(error)) {
+        loseLease(leaseLossReason(error)!);
+        saveError.value = "编辑租约已失效，页面已转为只读；未保存内容仍保留在本机。";
+        saveState.value = "failed";
       } else {
         // Non-conflict failure: keep local edits + backup, do NOT pause.
         saveError.value = error instanceof Error ? error.message : "合同草稿保存失败";
@@ -1167,11 +1429,17 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   };
 
   if (getCurrentScope()) {
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisibilityChange);
+    }
     onScopeDispose(() => {
       disposed = true;
       cancelScheduledSave();
+      releaseCurrentLease();
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+      }
       loadRequestId += 1;
-      leaseToken = null;
       contractVersionId.value = null;
       editGeneration += 1;
       pausedRef.value = false;
@@ -1192,6 +1460,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     savedRevision: readonly(currentRevision),
     formalSaveCompleted: readonly(formalSaveCompleted),
     lastSavedAt: readonly(lastSavedAt),
+    lease: readonly(lease),
+    canEdit,
+    pendingLocalRecovery,
     initializeDraft,
     load,
     reload: reloadWorkbench,
@@ -1200,6 +1471,10 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     suspendAutosaveForLifecycleAction,
     resumeAutosaveAfterLifecycleAction,
     saveNow,
+    takeOverLease,
+    restoreLocalRecovery,
+    discardLocalRecovery,
+    clearLocalRecovery: clearBackup,
     retryConflictServerLoad,
     keepLocalAfterConflict,
     loadServerAfterConflict

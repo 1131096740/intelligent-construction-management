@@ -59,6 +59,7 @@ import {
   queueLayoutTemplatePreview,
   queueContractDraftPreview,
   queueContractDocument,
+  releaseContractDraftEditLease,
   reorderBillRows,
   replaceContractBillRows,
   revokeContractTemplateVersion,
@@ -166,6 +167,7 @@ describe("contract workbench API client", () => {
     await fetchContractDraftWorkbench("version/1");
     await acquireContractDraftEditLease("version/1");
     await heartbeatContractDraftEditLease("version/1", "lease-secret");
+    await releaseContractDraftEditLease("version/1", "lease-secret");
     await takeOverContractDraftEditLease("version/1", {
       currentPassword: "current-password"
     });
@@ -226,6 +228,17 @@ describe("contract workbench API client", () => {
     );
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       4,
+      "/contract-drafts/version%2F1/edit-lease",
+      expect.objectContaining({
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Contract-Draft-Lease": "lease-secret"
+        }
+      })
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      5,
       "/contract-drafts/version%2F1/edit-lease/takeover",
       expect.objectContaining({
         method: "POST",
@@ -233,7 +246,7 @@ describe("contract workbench API client", () => {
       })
     );
     expect(mockApiFetch).toHaveBeenNthCalledWith(
-      5,
+      6,
       "/contract-drafts/version%2F1",
       expect.objectContaining({
         method: "PUT",
@@ -244,7 +257,7 @@ describe("contract workbench API client", () => {
       })
     );
     expect(mockApiFetch).toHaveBeenNthCalledWith(
-      6,
+      7,
       "/contract-drafts/version%2F1/preview-generation",
       expect.objectContaining({
         method: "POST",
@@ -252,7 +265,7 @@ describe("contract workbench API client", () => {
       })
     );
     expect(mockApiFetch).toHaveBeenNthCalledWith(
-      7,
+      8,
       "/contract-drafts/version%2F1/submission",
       expect.objectContaining({
         method: "POST",
@@ -263,7 +276,7 @@ describe("contract workbench API client", () => {
       })
     );
     expect(mockApiFetch).toHaveBeenNthCalledWith(
-      8,
+      9,
       "/contract-drafts/version%2F1",
       expect.objectContaining({
         method: "DELETE",
@@ -277,7 +290,9 @@ describe("contract workbench API client", () => {
 
   it("never includes the raw lease token in a failed write error", async () => {
     mockApiFetch.mockResolvedValue(new Response(JSON.stringify({
-      message: "合同草稿编辑租约已失效"
+      message: "合同草稿编辑租约已失效",
+      code: "EDIT_LEASE_LOST",
+      conflictReason: "lease_taken_over"
     }), {
       status: 409,
       headers: { "Content-Type": "application/json" }
@@ -317,6 +332,10 @@ describe("contract workbench API client", () => {
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toContain("合同草稿编辑租约已失效");
     expect((error as Error).message).not.toContain("raw-lease-token-must-stay-private");
+    expect(error).toMatchObject({
+      code: "EDIT_LEASE_LOST",
+      conflictReason: "lease_taken_over"
+    });
   });
 
   it("abandons the exact encoded contract version with revision, action and reason", async () => {

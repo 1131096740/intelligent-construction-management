@@ -12,14 +12,20 @@ vi.mock("../../../api/contract-workbench.api", () => ({
   acquireContractDraftEditLease: vi.fn(),
   createWorkbenchDraft: vi.fn(),
   fetchContractDraftWorkbench: vi.fn(),
-  saveContractDraftAggregate: vi.fn()
+  heartbeatContractDraftEditLease: vi.fn(),
+  releaseContractDraftEditLease: vi.fn(),
+  saveContractDraftAggregate: vi.fn(),
+  takeOverContractDraftEditLease: vi.fn()
 }));
 
 import {
   acquireContractDraftEditLease,
   createWorkbenchDraft,
   fetchContractDraftWorkbench,
-  saveContractDraftAggregate
+  heartbeatContractDraftEditLease,
+  releaseContractDraftEditLease,
+  saveContractDraftAggregate,
+  takeOverContractDraftEditLease
 } from "../../../api/contract-workbench.api";
 import {
   companyEntitySelectionUnavailable,
@@ -32,7 +38,10 @@ import { canApplyExpectedWorkbenchVersion } from "../contract-change.state";
 const mockCreateDraft = vi.mocked(createWorkbenchDraft);
 const mockAcquireLease = vi.mocked(acquireContractDraftEditLease);
 const mockFetchWorkbench = vi.mocked(fetchContractDraftWorkbench);
+const mockHeartbeatLease = vi.mocked(heartbeatContractDraftEditLease);
+const mockReleaseLease = vi.mocked(releaseContractDraftEditLease);
 const mockSaveDraft = vi.mocked(saveContractDraftAggregate);
+const mockTakeOverLease = vi.mocked(takeOverContractDraftEditLease);
 
 function memoryStorage(): Storage {
   const map = new Map<string, string>();
@@ -50,6 +59,16 @@ function memoryStorage(): Storage {
     clear: () => map.clear(),
     key: (index) => Array.from(map.keys())[index] ?? null
   };
+}
+
+function contractDraftRecoveryText(storage = globalThis.localStorage): string | null {
+  const recoveries = Array.from({ length: storage.length }, (_, index) => storage.key(index))
+    .filter((key): key is string =>
+      key?.startsWith("jg%3Acontract-draft-local-recovery%3Av1:") === true
+    )
+    .map((key) => storage.getItem(key))
+    .filter((value): value is string => value !== null);
+  return recoveries.length > 0 ? recoveries.join("\n") : null;
 }
 
 /** Minimal workbench read model the composable consumes for a loaded version. */
@@ -113,7 +132,10 @@ function makeWorkbench(
 }
 
 function makeDraft() {
-  return useContractDraft({ replace: vi.fn() });
+  return useContractDraft({
+    replace: vi.fn(),
+    userId: () => "u-1"
+  });
 }
 
 function deferred<T>() {
@@ -163,6 +185,7 @@ function saveResult(
 
 beforeEach(() => {
   vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-07-28T00:00:00.000Z"));
   globalThis.localStorage = memoryStorage();
   vi.resetAllMocks();
   mockAcquireLease.mockResolvedValue({
@@ -171,14 +194,178 @@ beforeEach(() => {
     expiresAt: "2026-07-28T00:02:00.000Z",
     heartbeatIntervalMs: 30_000
   });
+  mockHeartbeatLease.mockResolvedValue({
+    leaseRevision: 1,
+    expiresAt: "2026-07-28T00:02:30.000Z"
+  });
+  mockReleaseLease.mockResolvedValue({ released: true });
+  mockTakeOverLease.mockResolvedValue({
+    token: "takeover-token",
+    leaseRevision: 2,
+    expiresAt: "2026-07-28T00:02:00.000Z",
+    heartbeatIntervalMs: 30_000
+  });
 });
 
 afterEach(() => {
   vi.runOnlyPendingTimers();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe("useContractDraft", () => {
+  it("holds the raw lease token only in memory and verifies it every 30 seconds", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench());
+
+    await draft.load("cv-1");
+
+    expect(draft.canEdit.value).toBe(true);
+    expect(draft.lease.value).toMatchObject({
+      kind: "held",
+      leaseRevision: 1,
+      heartbeatIntervalMs: 30_000
+    });
+    expect(JSON.stringify(draft.lease.value)).not.toContain("lease-token");
+    expect(contractDraftRecoveryText()).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(mockHeartbeatLease).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mockHeartbeatLease).toHaveBeenCalledWith("cv-1", "lease-token");
+    expect(draft.canEdit.value).toBe(true);
+  });
+
+  it("keeps a same-user second page readonly instead of reusing or taking over its lease", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench({
+      lease: {
+        state: "held_by_me",
+        holderDisplayName: "合同经办人",
+        expiresAt: "2026-07-28T00:02:00.000Z",
+        canTakeOver: false
+      }
+    }));
+
+    await draft.load("cv-1");
+
+    expect(mockAcquireLease).not.toHaveBeenCalled();
+    expect(draft.lease.value).toMatchObject({
+      kind: "held_elsewhere",
+      holderDisplayName: "合同经办人",
+      canTakeOver: false
+    });
+    expect(draft.canEdit.value).toBe(false);
+  });
+
+  it("turns readonly on the next heartbeat after takeover while preserving recovery", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench());
+    const lost = Object.assign(new Error("租约已被接管"), {
+      code: "EDIT_LEASE_LOST",
+      conflictReason: "lease_taken_over"
+    });
+    mockHeartbeatLease.mockRejectedValueOnce(lost);
+    await draft.load("cv-1");
+    draft.model.contractName = "租约丢失前输入";
+    draft.markDirty();
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(draft.lease.value).toEqual({
+      kind: "lost",
+      reason: "lease_taken_over"
+    });
+    expect(draft.canEdit.value).toBe(false);
+    expect(contractDraftRecoveryText()).toContain("租约丢失前输入");
+    await expect(draft.saveNow()).resolves.toBe(false);
+    expect(mockSaveDraft).not.toHaveBeenCalled();
+  });
+
+  it("requires an explicit password-confirmed takeover before enabling edits", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench({
+      lease: {
+        state: "held_by_other",
+        holderDisplayName: "另一位经办人",
+        expiresAt: "2026-07-28T00:02:00.000Z",
+        canTakeOver: true
+      }
+    }));
+    await draft.load("cv-1");
+
+    await expect(draft.takeOverLease("current-password")).resolves.toBe(true);
+
+    expect(mockTakeOverLease).toHaveBeenCalledWith("cv-1", {
+      currentPassword: "current-password"
+    });
+    expect(draft.canEdit.value).toBe(true);
+    expect(JSON.stringify(draft.lease.value)).not.toContain("takeover-token");
+  });
+
+  it("verifies the lease immediately when an editing page returns to the foreground", async () => {
+    const target = new EventTarget();
+    const fakeDocument = {
+      visibilityState: "hidden",
+      addEventListener: target.addEventListener.bind(target),
+      removeEventListener: target.removeEventListener.bind(target)
+    };
+    vi.stubGlobal("document", fakeDocument);
+    const scope = effectScope();
+    const draft = scope.run(makeDraft);
+    expect(draft).toBeDefined();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench());
+    await draft!.load("cv-1");
+
+    fakeDocument.visibilityState = "visible";
+    target.dispatchEvent(new Event("visibilitychange"));
+    await vi.waitFor(() => {
+      expect(mockHeartbeatLease).toHaveBeenCalledWith("cv-1", "lease-token");
+    });
+
+    scope.stop();
+    expect(mockReleaseLease).toHaveBeenCalledWith("cv-1", "lease-token");
+    vi.unstubAllGlobals();
+  });
+
+  it("does not extend a lease on heartbeat network failure and expires at 120 seconds", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench());
+    mockHeartbeatLease.mockRejectedValue(new Error("网络不可用"));
+    await draft.load("cv-1");
+
+    await vi.advanceTimersByTimeAsync(120_000);
+
+    expect(draft.lease.value).toEqual({
+      kind: "lost",
+      reason: "lease_expired"
+    });
+    expect(draft.canEdit.value).toBe(false);
+  });
+
+  it("keeps an older-revision recovery pending for comparison instead of overwriting server data", async () => {
+    const first = makeDraft();
+    mockFetchWorkbench.mockResolvedValueOnce(makeWorkbench());
+    await first.load("cv-1");
+    first.model.contractName = "旧修订本机输入";
+    first.markDirty();
+
+    const second = makeDraft();
+    mockFetchWorkbench.mockResolvedValueOnce(makeWorkbench({
+      version: {
+        ...makeWorkbench().version,
+        draftRevision: 4,
+        draftData: { contractName: "服务端新修订" }
+      }
+    }));
+    await second.load("cv-1");
+
+    expect(second.model.contractName).toBe("服务端新修订");
+    expect(second.pendingLocalRecovery.value?.revisionMatches).toBe(false);
+    expect(second.restoreLocalRecovery()).toBe(true);
+    expect(second.model.contractName).toBe("旧修订本机输入");
+  });
+
   it("loads and saves the complete aggregate without resubmitting bill derived facts", async () => {
     const draft = makeDraft();
     mockFetchWorkbench.mockResolvedValue(makeWorkbench({
@@ -559,7 +746,7 @@ describe("useContractDraft", () => {
     draft!.model.clauses[0]!.content = "首存前输入";
     draft!.markDirty();
 
-    expect(globalThis.localStorage.getItem("contract-draft:cv-1")).toContain("首存前输入");
+    expect(contractDraftRecoveryText()).toContain("首存前输入");
     expect(draft!.formalSaveCompleted.value).toBe(false);
     await vi.advanceTimersByTimeAsync(1_500);
     expect(mockSaveDraft).not.toHaveBeenCalled();
@@ -687,7 +874,7 @@ describe("useContractDraft", () => {
     expect(draft.model.contractName).toBe("PATCH 已保存输入");
     expect(draft.savedRevision.value).toBe(4);
     expect(draft.isDirty.value).toBe(false);
-    expect(globalThis.localStorage.getItem("contract-draft:cv-1")).toBeNull();
+    expect(contractDraftRecoveryText()).toBeNull();
   });
 
   it("waits for an overlapping save before loading and applies a legitimate new version", async () => {
@@ -825,7 +1012,7 @@ describe("useContractDraft", () => {
     expect(draft.model.contractName).toBe("请求期间的新输入");
     expect(draft.isDirty.value).toBe(true);
     expect(draft.saveState.value).not.toBe("saved");
-    expect(globalThis.localStorage.getItem("contract-draft:cv-1"))
+    expect(contractDraftRecoveryText())
       .toContain("请求期间的新输入");
     expect(mockSaveDraft.mock.calls[1]?.[2]).toMatchObject({
       expectedRevision: 4,
@@ -851,7 +1038,7 @@ describe("useContractDraft", () => {
     expect(draft.model.contractName).toBe("自动保存失败的输入");
     expect(draft.isDirty.value).toBe(true);
     expect(draft.saveState.value).toBe("failed");
-    expect(globalThis.localStorage.getItem("contract-draft:cv-1"))
+    expect(contractDraftRecoveryText())
       .toContain("自动保存失败的输入");
   });
 
@@ -1036,11 +1223,11 @@ describe("useContractDraft", () => {
     expect(draft.conflict.value?.server).toBeNull();
     expect(draft.conflict.value?.serverLoadError).toContain("服务器版本读取失败");
     expect(draft.isDirty.value).toBe(true);
-    const backup = globalThis.localStorage.getItem("contract-draft:cv-1");
+    const backup = contractDraftRecoveryText();
     await expect(draft.loadServerAfterConflict()).resolves.toBe(false);
     expect(draft.model.contractName).toBe("读取失败时的本地输入");
     expect(draft.isDirty.value).toBe(true);
-    expect(globalThis.localStorage.getItem("contract-draft:cv-1")).toBe(backup);
+    expect(contractDraftRecoveryText()).toBe(backup);
     expect(draft.conflict.value).not.toBeNull();
   });
 
@@ -1072,7 +1259,7 @@ describe("useContractDraft", () => {
     await expect(draft.saveNow()).resolves.toBe(false);
     draft.model.contractName = "冲突后继续编辑";
     draft.markDirty();
-    const backup = globalThis.localStorage.getItem("contract-draft:cv-1");
+    const backup = contractDraftRecoveryText();
     // The page can temporarily hide a projection after an exact-version
     // mismatch; the composable must still retain the loaded contract identity.
     draft.workbench.value = null;
@@ -1083,7 +1270,7 @@ describe("useContractDraft", () => {
     expect(draft.isDirty.value).toBe(true);
     expect(draft.saveState.value).toBe("conflict");
     expect(draft.conflict.value?.server?.contractName).toBe("直接 load 刷新的服务器版本");
-    expect(globalThis.localStorage.getItem("contract-draft:cv-1")).toBe(backup);
+    expect(contractDraftRecoveryText()).toBe(backup);
     await vi.advanceTimersByTimeAsync(5_000);
     expect(mockSaveDraft).toHaveBeenCalledTimes(1);
 
@@ -1193,7 +1380,7 @@ describe("useContractDraft", () => {
     await vi.advanceTimersByTimeAsync(1_000);
 
     expect(mockSaveDraft).not.toHaveBeenCalled();
-    expect(globalThis.localStorage.getItem("contract-draft:cv-1")).toContain("卸载前输入");
+    expect(contractDraftRecoveryText()).toContain("卸载前输入");
   });
 
   it("treats a clean flush as a successful no-op and reports dirty save failures", async () => {
@@ -1222,12 +1409,12 @@ describe("useContractDraft", () => {
 
     draft.model.contractName = "即将放弃的本地修改";
     draft.markDirty();
-    expect(globalThis.localStorage.getItem("contract-draft:cv-1")).toContain("即将放弃");
+    expect(contractDraftRecoveryText()).toContain("即将放弃");
 
     draft.discardLocalState();
     expect(draft.isDirty.value).toBe(false);
     expect(draft.saveState.value).toBe("idle");
-    expect(globalThis.localStorage.getItem("contract-draft:cv-1")).toBeNull();
+    expect(contractDraftRecoveryText()).toBeNull();
 
     await vi.runOnlyPendingTimersAsync();
     expect(mockSaveDraft).not.toHaveBeenCalled();
@@ -1248,7 +1435,7 @@ describe("useContractDraft", () => {
     expect(draft.discardLocalState()).toBe(false);
     expect(draft.model.contractName).toBe("保存中的本地输入");
     expect(draft.isDirty.value).toBe(true);
-    expect(globalThis.localStorage.getItem("contract-draft:cv-1"))
+    expect(contractDraftRecoveryText())
       .toContain("保存中的本地输入");
 
     pendingSave.resolve(saveResult("cv-1", 4));
@@ -1574,7 +1761,7 @@ describe("useContractDraft", () => {
     // Local edits survive a failure.
     expect(draft.model.contractName).toBe("未保存的改动");
     // The localStorage backup is retained for recovery.
-    const backup = globalThis.localStorage.getItem("contract-draft:cv-1");
+    const backup = contractDraftRecoveryText();
     expect(backup).not.toBeNull();
     expect(backup).toContain("未保存的改动");
 
@@ -1586,7 +1773,7 @@ describe("useContractDraft", () => {
     expect(mockSaveDraft).toHaveBeenCalledTimes(2);
     expect(draft.saveState.value).toBe("saved");
     // The successful retry clears the localStorage backup.
-    expect(globalThis.localStorage.getItem("contract-draft:cv-1")).toBeNull();
+    expect(contractDraftRecoveryText()).toBeNull();
   });
 
   it("pauses after a revision conflict until the user chooses local or server data", async () => {

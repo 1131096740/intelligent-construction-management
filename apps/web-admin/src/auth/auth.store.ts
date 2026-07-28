@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { formatApiErrorMessage, formatUnknownApiError } from "../api/error-message";
+import { clearContractDraftLocalRecoveriesForUser } from "../pages/contracts/workbench/contract-draft-local-recovery";
 
 export const AUTH_STORAGE_KEY = "jiangkong-web-admin-auth";
 
@@ -229,6 +230,11 @@ export const useAuthStore = defineStore("auth", {
     },
     async logout() {
       const refreshToken = this.refreshToken;
+      const userId = this.user?.id;
+      const storage = getStorage();
+      if (storage && userId) {
+        clearContractDraftLocalRecoveriesForUser(storage, userId);
+      }
       this.clearSession();
 
       if (!refreshToken) {

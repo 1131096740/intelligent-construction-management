@@ -13,14 +13,28 @@ import type {
 // Local HTTP helpers (built on apiFetch; keep isolated from core-flow client)
 // ---------------------------------------------------------------------------
 
-async function ensureOk(response: Response, fallback: string): Promise<void> {
+async function ensureOk(
+  response: Response,
+  fallback: string,
+  preserveConflictDetails = false
+): Promise<void> {
   if (response.ok) {
     return;
   }
 
   let message = `${fallback}：${response.status}`;
+  let code: string | undefined;
+  let conflictReason: string | undefined;
   try {
-    const data = (await response.clone().json()) as { message?: unknown };
+    const data = (await response.clone().json()) as {
+      message?: unknown;
+      code?: unknown;
+      conflictReason?: unknown;
+    };
+    if (preserveConflictDetails && typeof data.code === "string") code = data.code;
+    if (preserveConflictDetails && typeof data.conflictReason === "string") {
+      conflictReason = data.conflictReason;
+    }
     if (typeof data.message === "string") {
       message = formatApiErrorMessage(data.message, response.status, fallback);
     } else if (Array.isArray(data.message)) {
@@ -31,7 +45,13 @@ async function ensureOk(response: Response, fallback: string): Promise<void> {
     message = formatApiErrorMessage(message, response.status, fallback);
   }
 
-  throw new Error(message);
+  const error = new Error(message) as Error & {
+    code?: string;
+    conflictReason?: string;
+  };
+  if (code) error.code = code;
+  if (conflictReason) error.conflictReason = conflictReason;
+  throw error;
 }
 
 async function readJson<T>(path: string): Promise<T> {
@@ -60,7 +80,7 @@ async function postJsonWithHeaders<TResponse>(
     headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body)
   });
-  await ensureOk(response, "提交失败");
+  await ensureOk(response, "提交失败", true);
   return response.json() as Promise<TResponse>;
 }
 
@@ -102,7 +122,7 @@ async function putJsonWithHeaders<TResponse>(
     headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body)
   });
-  await ensureOk(response, "保存失败");
+  await ensureOk(response, "保存失败", true);
   return response.json() as Promise<TResponse>;
 }
 
@@ -113,6 +133,20 @@ async function deleteJson<TResponse>(path: string, body?: unknown): Promise<TRes
     body: JSON.stringify(body ?? {})
   });
   await ensureOk(response, "删除失败");
+  return response.json() as Promise<TResponse>;
+}
+
+async function deleteJsonWithHeaders<TResponse>(
+  path: string,
+  body: unknown,
+  headers: Record<string, string>
+): Promise<TResponse> {
+  const response = await apiFetch(path, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(body)
+  });
+  await ensureOk(response, "删除失败", true);
   return response.json() as Promise<TResponse>;
 }
 
@@ -307,6 +341,17 @@ export function heartbeatContractDraftEditLease(
 ) {
   return postJsonWithHeaders<ContractDraftLeaseHeartbeat>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/edit-lease/heartbeat`,
+    {},
+    { "X-Contract-Draft-Lease": leaseToken }
+  );
+}
+
+export function releaseContractDraftEditLease(
+  contractVersionId: string,
+  leaseToken: string
+) {
+  return deleteJsonWithHeaders<{ released: boolean }>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/edit-lease`,
     {},
     { "X-Contract-Draft-Lease": leaseToken }
   );

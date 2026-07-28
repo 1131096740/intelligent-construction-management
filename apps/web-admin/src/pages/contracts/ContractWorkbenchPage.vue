@@ -331,6 +331,53 @@
         </div>
       </header>
 
+      <t-alert
+        v-if="workbench && editable && !canEdit"
+        theme="warning"
+        title="当前页面只读"
+        :message="leaseReadonlyMessage"
+        class="workbench-governance-alert"
+      >
+        <template
+          v-if="leaseCanTakeOver"
+          #operation
+        >
+          <t-button
+            size="small"
+            variant="outline"
+            @click="requestLeaseTakeover"
+          >
+            主管接管编辑
+          </t-button>
+        </template>
+      </t-alert>
+
+      <t-alert
+        v-if="pendingLocalRecovery"
+        theme="warning"
+        title="发现旧服务端修订上的本机副本"
+        message="服务端修订已更新，系统没有自动覆盖当前数据。请先比较，再决定恢复本机副本或放弃副本。"
+        class="workbench-governance-alert"
+      >
+        <template #operation>
+          <t-space>
+            <t-button
+              size="small"
+              @click="restorePendingLocalRecovery"
+            >
+              恢复本机副本
+            </t-button>
+            <t-button
+              size="small"
+              variant="outline"
+              @click="discardLocalRecovery"
+            >
+              放弃本机副本
+            </t-button>
+          </t-space>
+        </template>
+      </t-alert>
+
       <div
         v-if="workbench"
         class="workbench-summary"
@@ -695,6 +742,17 @@
       @confirm="confirmSubmission"
     />
 
+    <SensitiveActionDialog
+      v-model="leaseTakeoverVisible"
+      title="确认接管合同草稿编辑？"
+      description="接管后，原页面在下一次心跳或保存时会转为只读。该操作只开放给后端已授权的合同部主管。"
+      confirm-text="确认接管"
+      require-password
+      :loading="leaseTakeoverBusy"
+      :error="leaseTakeoverError"
+      @confirm="confirmLeaseTakeover"
+    />
+
     <t-dialog
       v-model:visible="navigationConfirmVisible"
       :header="navigationUnsavedTitle"
@@ -788,6 +846,7 @@ import type {
 } from "@jiangkong/shared-domain";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useAuthStore } from "../../auth/auth.store";
 import {
   abandonContractDraft,
   applyContractTypeChange,
@@ -872,6 +931,7 @@ import {
 
 const route = useRoute();
 const router = useRouter();
+const authStore = useAuthStore();
 const submissionBusy = ref(false);
 const submissionConfirmVisible = ref(false);
 const submissionError = ref("");
@@ -888,7 +948,8 @@ const billFocusEditorRef = ref<InstanceType<typeof ContractBillFocusEditor> | nu
 const draft = useContractDraft({
   replace: (to) => {
     void router.replace(to);
-  }
+  },
+  userId: () => authStore.user?.id
 });
 const {
   model,
@@ -907,11 +968,21 @@ const {
   savedRevision,
   formalSaveCompleted,
   lastSavedAt,
+  lease,
+  canEdit,
+  pendingLocalRecovery,
   saveNow,
+  takeOverLease,
+  restoreLocalRecovery,
+  discardLocalRecovery,
+  clearLocalRecovery,
   retryConflictServerLoad,
   keepLocalAfterConflict,
   loadServerAfterConflict
 } = draft;
+const leaseTakeoverVisible = ref(false);
+const leaseTakeoverBusy = ref(false);
+const leaseTakeoverError = ref("");
 
 const navigationConfirmVisible = ref(false);
 const navigationDecisionPending = ref(false);
@@ -1128,8 +1199,28 @@ const editable = computed(() => {
   const status = workbench.value?.version.status;
   return status ? EDITABLE_STATUSES.has(status) : false;
 });
-const writeLocked = computed(() => governanceMutationLocked.value || submissionBusy.value);
-const editorDisabled = computed(() => !editable.value || writeLocked.value);
+const writeLocked = computed(() =>
+  governanceMutationLocked.value ||
+  submissionBusy.value ||
+  (editable.value && !canEdit.value)
+);
+const editorDisabled = computed(() => !editable.value || !canEdit.value || writeLocked.value);
+const leaseCanTakeOver = computed(() =>
+  "canTakeOver" in lease.value && lease.value.canTakeOver
+);
+const leaseReadonlyMessage = computed(() => {
+  if (lease.value.kind === "lost") {
+    return lease.value.reason === "lease_expired"
+      ? "编辑租约已超过有效期，未保存内容仍保留在本机；请刷新后重新取得租约。"
+      : "编辑租约已被其他页面接管，未保存内容仍保留在本机。";
+  }
+  if (lease.value.kind === "held_elsewhere") {
+    return lease.value.holderDisplayName
+      ? `草稿正由 ${lease.value.holderDisplayName} 编辑，本页面不会复用其租约。`
+      : "草稿正由其他页面编辑，本页面不会静默复用或接管租约。";
+  }
+  return "当前页面尚未取得有效编辑租约。";
+});
 const governedWorkbench = computed(() =>
   workbench.value?.governance ? workbench.value : null
 );
@@ -1868,6 +1959,36 @@ function requestSubmission() {
   submissionConfirmVisible.value = true;
 }
 
+function requestLeaseTakeover() {
+  leaseTakeoverError.value = "";
+  leaseTakeoverVisible.value = true;
+}
+
+async function confirmLeaseTakeover(values: { password: string }) {
+  if (leaseTakeoverBusy.value) return;
+  leaseTakeoverBusy.value = true;
+  leaseTakeoverError.value = "";
+  try {
+    const takenOver = await takeOverLease(values.password);
+    if (!takenOver) {
+      throw new Error("当前草稿不允许接管，请刷新后确认租约状态。");
+    }
+    leaseTakeoverVisible.value = false;
+  } catch (error) {
+    leaseTakeoverError.value = error instanceof Error
+      ? error.message
+      : "编辑租约接管失败，请稍后重试。";
+  } finally {
+    leaseTakeoverBusy.value = false;
+  }
+}
+
+function restorePendingLocalRecovery() {
+  if (restoreLocalRecovery()) {
+    manualSaveMessage.value = "已恢复本机副本；请核对服务端新修订后手动保存。";
+  }
+}
+
 async function confirmSubmission() {
   if (submissionBusy.value || governanceMutationLocked.value) return;
   submissionBusy.value = true;
@@ -1890,6 +2011,7 @@ async function confirmSubmission() {
     const latest = workbench.value;
     if (!latest) throw new Error("当前合同版本读取失败，本次未提交。");
     await submitContractFromWorkbench(latest.version.id);
+    clearLocalRecovery();
     submissionConfirmVisible.value = false;
     submissionMessageTone.value = "success";
     submissionMessage.value = "合同已提交审批。";
@@ -1947,6 +2069,14 @@ async function loadExisting() {
     exactVersionError.value = "";
     await loadExpectedWorkbench(contractId.value);
   } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.includes("响应版本与请求版本不一致")
+    ) {
+      exactVersionError.value =
+        "工作台返回的合同版本与刚创建的变更草稿不一致，已停止加载并保留原页面。";
+      workbench.value = null;
+    }
     errorMessage.value = error instanceof Error ? error.message : "工作台加载失败";
   }
 }
@@ -1959,6 +2089,15 @@ async function loadExpectedWorkbench(id: string) {
   }
   await load(expectedVersionId);
   if (requestId !== workbenchLoadRequestId || id !== contractId.value) return;
+  if (
+    workbench.value?.contract.id !== id ||
+    workbench.value.version.id !== expectedVersionId
+  ) {
+    exactVersionError.value =
+      "工作台返回的合同版本与刚创建的变更草稿不一致，已停止加载并保留原页面。";
+    workbench.value = null;
+    throw new Error(exactVersionError.value);
+  }
 }
 
 function returnToContractDetail() {
