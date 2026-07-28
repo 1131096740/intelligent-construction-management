@@ -514,9 +514,6 @@ export class ContractDocumentProcessor
         });
       }
       const finalDocx = appendDocxImageAttachments(docx, attachments);
-      const convertedPdf = await convertDocxToPdf(finalDocx);
-      const pdfAttachments = attachments.filter((attachment) => attachment.type === "pdf");
-      const normalized = await normalizeContractPdf(convertedPdf, pdfAttachments);
       const docxFile = await this.files.uploadPrivateFile({
         originalName: `${snapshot.outputBaseName}.docx`,
         mimeType:
@@ -526,6 +523,9 @@ export class ContractDocumentProcessor
         buffer: finalDocx
       });
       uploadedFileIds.push(docxFile.id);
+      const convertedPdf = await convertDocxToPdf(finalDocx);
+      const pdfAttachments = attachments.filter((attachment) => attachment.type === "pdf");
+      const normalized = await normalizeContractPdf(convertedPdf, pdfAttachments);
       const pdfFile = await this.files.uploadPrivateFile({
         originalName: `${snapshot.outputBaseName}.pdf`,
         mimeType: "application/pdf",
@@ -535,16 +535,18 @@ export class ContractDocumentProcessor
       });
       uploadedFileIds.push(pdfFile.id);
       const completedAt = new Date();
-      await this.prisma.$transaction(async (tx) => {
+      const outcome = await this.prisma.$transaction(async (tx) => {
         const [version] = await tx.$queryRaw<
           Array<{
             draftRevision: number;
             status: string;
             changeType: string | null;
             draftData: Prisma.JsonValue;
+            latestDraftPreviewDocumentId: string | null;
           }>
         >(Prisma.sql`
-          SELECT "draftRevision", "status", "changeType", "draftData"
+          SELECT "draftRevision", "status", "changeType", "draftData",
+                 "latestDraftPreviewDocumentId"
           FROM "ContractVersion"
           WHERE "id" = ${job.contractVersionId}
           FOR UPDATE
@@ -562,7 +564,7 @@ export class ContractDocumentProcessor
             },
             data: { status: "stale", completedAt, errorMessage: null }
           });
-          return;
+          return { published: false, discardFileIds: uploadedFileIds };
         }
         const draftData = version.draftData &&
           typeof version.draftData === "object" &&
@@ -612,7 +614,7 @@ export class ContractDocumentProcessor
               },
               data: { status: "stale", completedAt, errorMessage: null }
             });
-            return;
+            return { published: false, discardFileIds: uploadedFileIds };
           }
         }
         const updated = await tx.contractGeneratedDocument.updateMany({
@@ -638,16 +640,29 @@ export class ContractDocumentProcessor
             } as unknown as Prisma.InputJsonValue
           }
         });
-        if (updated.count !== 1) return;
+        if (updated.count !== 1) {
+          return { published: false, discardFileIds: uploadedFileIds };
+        }
         const predecessor = await tx.contractGeneratedDocument.findFirst({
-          where: {
-            contractVersionId: job.contractVersionId,
-            purpose: job.purpose,
-            sourceRevision: { lt: job.sourceRevision },
-            status: { in: ["success", "stale"] },
-            docxFileId: { not: null },
-            pdfFileId: { not: null }
-          },
+          where:
+            job.purpose === "draft" &&
+            version.latestDraftPreviewDocumentId
+              ? {
+                  id: version.latestDraftPreviewDocumentId,
+                  contractVersionId: job.contractVersionId,
+                  purpose: "draft",
+                  status: { in: ["success", "stale"] },
+                  docxFileId: { not: null },
+                  pdfFileId: { not: null }
+                }
+              : {
+                  contractVersionId: job.contractVersionId,
+                  purpose: job.purpose,
+                  sourceRevision: { lt: job.sourceRevision },
+                  status: { in: ["success", "stale"] },
+                  docxFileId: { not: null },
+                  pdfFileId: { not: null }
+                },
           orderBy: [
             { sourceRevision: "desc" },
             { createdAt: "desc" },
@@ -656,10 +671,18 @@ export class ContractDocumentProcessor
           select: {
             id: true,
             sourceRevision: true,
+            status: true,
             docxFileId: true,
             pdfFileId: true
           }
         });
+        if (
+          job.purpose === "draft" &&
+          version.latestDraftPreviewDocumentId &&
+          !predecessor
+        ) {
+          throw new Error("上一份合同草稿预览记录异常，请刷新后重试");
+        }
         let predecessorDocumentId: string | null = null;
         let docxOldFileId: string | null = null;
         let pdfOldFileId: string | null = null;
@@ -678,16 +701,50 @@ export class ContractDocumentProcessor
           predecessorDocumentId = id;
           docxOldFileId = docxFileId;
           pdfOldFileId = pdfFileId;
-          await this.files.linkFileReplacement(tx, {
-            newFileId: docxFile.id,
-            oldFileId: docxFileId,
-            actorUserId: job.createdByUserId
+          if (job.purpose !== "draft") {
+            await this.files.linkFileReplacement(tx, {
+              newFileId: docxFile.id,
+              oldFileId: docxFileId,
+              actorUserId: job.createdByUserId
+            });
+            await this.files.linkFileReplacement(tx, {
+              newFileId: pdfFile.id,
+              oldFileId: pdfFileId,
+              actorUserId: job.createdByUserId
+            });
+          }
+        }
+        if (job.purpose === "draft") {
+          const pointerUpdated = await tx.contractVersion.updateMany({
+            where: {
+              id: job.contractVersionId,
+              draftRevision: job.sourceRevision,
+              latestDraftPreviewDocumentId:
+                version.latestDraftPreviewDocumentId ?? null
+            },
+            data: { latestDraftPreviewDocumentId: job.id }
           });
-          await this.files.linkFileReplacement(tx, {
-            newFileId: pdfFile.id,
-            oldFileId: pdfFileId,
-            actorUserId: job.createdByUserId
-          });
+          if (pointerUpdated.count !== 1) {
+            throw new Error("合同草稿预览已被其他任务更新，请刷新后重试");
+          }
+          if (predecessor && docxOldFileId && pdfOldFileId) {
+            const superseded = await tx.contractGeneratedDocument.updateMany({
+              where: {
+                id: predecessor.id,
+                status: predecessor.status,
+                docxFileId: docxOldFileId,
+                pdfFileId: pdfOldFileId
+              },
+              data: {
+                status: "superseded",
+                docxFileId: null,
+                pdfFileId: null
+              }
+            });
+            if (superseded.count !== 1) {
+              throw new Error("上一份合同草稿预览状态已变化，请刷新后重试");
+            }
+          }
         }
         await this.audit.record(tx, {
           actorUserId: job.createdByUserId,
@@ -704,13 +761,30 @@ export class ContractDocumentProcessor
             pdfOldFileId,
             pdfNewFileId: pdfFile.id,
             replacementKind: predecessorDocumentId
-              ? "contract_generated_document_revision"
+              ? job.purpose === "draft"
+                ? "contract_draft_preview_superseded"
+                : "contract_generated_document_revision"
               : null
           }
         });
+        return {
+          published: true,
+          discardFileIds:
+            job.purpose === "draft" && docxOldFileId && pdfOldFileId
+              ? [docxOldFileId, pdfOldFileId]
+              : []
+        };
       });
+      await this.files.discardUnlinkedGeneratedFiles(
+        outcome.discardFileIds,
+        job.createdByUserId
+      );
     } catch (cause) {
       await this.failDocument(job, cause, uploadedFileIds);
+      await this.files.discardUnlinkedGeneratedFiles(
+        uploadedFileIds,
+        job.createdByUserId
+      );
     }
   }
 

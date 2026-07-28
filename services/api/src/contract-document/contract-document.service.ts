@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException
@@ -23,9 +24,13 @@ import {
 export type ContractDocumentPurpose = "draft" | "negotiation" | "internal_review";
 
 export interface QueueContractDocumentInput {
-  layoutTemplateVersionId: string;
+  layoutTemplateVersionId?: string;
   purpose: ContractDocumentPurpose;
   attachmentFileIds?: string[];
+}
+
+export interface QueueDraftPreviewInput {
+  sourceRevision: number;
 }
 
 export interface UploadOfflineRevisionInput {
@@ -81,9 +86,13 @@ export class ContractDocumentService {
   async queue(
     contractVersionId: string,
     actorUserId: string,
-    rawInput: QueueContractDocumentInput
+    rawInput: QueueContractDocumentInput,
+    command?: {
+      expectedSourceRevision: number;
+      useSavedLayout: true;
+    }
   ) {
-    const input = this.parseQueueInput(rawInput);
+    const input = this.parseQueueInput(rawInput, command?.useSavedLayout === true);
     let contestedKey: string | undefined;
     try {
       const result = await this.prisma.$transaction(async (tx) => {
@@ -95,13 +104,30 @@ export class ContractDocumentService {
         if (!EDITABLE_VERSION_STATUSES.includes(version.status)) {
           throw new BadRequestException("合同草稿当前不可编辑，不能生成或修订合同文档");
         }
+        if (
+          command &&
+          version.draftRevision !== command.expectedSourceRevision
+        ) {
+          throw new ConflictException({
+            statusCode: 409,
+            code: "DRAFT_REVISION_CONFLICT",
+            message: "合同资料已变化，请保存并刷新后重新生成预览",
+            latestRevision: version.draftRevision,
+            conflictReason: "draft_revision_changed"
+          });
+        }
         if (await this.markOriginalDraftCompanyDrift(tx, version)) {
           return COMPANY_ENTITY_DRIFT;
         }
-        await this.markOlderSuccessStale(tx, version.id, version.draftRevision);
 
+        const layoutTemplateVersionId = command?.useSavedLayout
+          ? version.layoutTemplateVersionId
+          : input.layoutTemplateVersionId;
+        if (!layoutTemplateVersionId) {
+          throw new BadRequestException("合同草稿尚未选择文件版式，不能生成预览");
+        }
         const layout = await tx.contractLayoutTemplateVersion.findUnique({
-          where: { id: input.layoutTemplateVersionId }
+          where: { id: layoutTemplateVersionId }
         });
         if (!layout || layout.status !== "published") {
           throw new BadRequestException("所选合同版式尚未发布，请重新选择已发布版式");
@@ -118,8 +144,17 @@ export class ContractDocumentService {
           version.draftRevision
         );
 
+        const attachmentFileIds = command
+          ? (
+              await tx.contractDraftAttachment.findMany({
+                where: { contractVersionId: version.id },
+                orderBy: [{ slotKey: "asc" }, { displayOrder: "asc" }],
+                select: { fileId: true }
+              })
+            ).map((attachment) => attachment.fileId)
+          : input.attachmentFileIds;
         const attachmentFiles = [];
-        for (const fileId of input.attachmentFileIds) {
+        for (const fileId of attachmentFileIds) {
           attachmentFiles.push(
             await this.files.assertCanDownloadFile(tx, fileId, actorUserId)
           );
@@ -130,7 +165,7 @@ export class ContractDocumentService {
           version.draftRevision,
           layout.id,
           input.purpose,
-          input.attachmentFileIds
+          attachmentFileIds
         );
         const existing = await tx.contractGeneratedDocument.findUnique({
           where: { idempotencyKey: contestedKey }
@@ -222,6 +257,33 @@ export class ContractDocumentService {
     }
   }
 
+  async queueDraftPreview(
+    contractVersionId: string,
+    actorUserId: string,
+    rawInput: QueueDraftPreviewInput
+  ) {
+    if (
+      !Number.isInteger(rawInput?.sourceRevision) ||
+      rawInput.sourceRevision < 1
+    ) {
+      throw new BadRequestException("合同草稿修订必须是大于 0 的整数");
+    }
+    const document = await this.queue(
+      contractVersionId,
+      actorUserId,
+      { purpose: "draft" },
+      {
+        expectedSourceRevision: rawInput.sourceRevision,
+        useSavedLayout: true
+      }
+    );
+    return {
+      generationId: document.id,
+      status: document.status,
+      sourceRevision: document.sourceRevision
+    };
+  }
+
   async list(contractVersionId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
       const { version } = await this.loadOwnedVersionForUpdate(
@@ -229,7 +291,6 @@ export class ContractDocumentService {
         contractVersionId,
         actorUserId
       );
-      await this.markOlderSuccessStale(tx, version.id, version.draftRevision);
       await this.markOriginalDraftCompanyDrift(tx, version);
       return tx.contractGeneratedDocument.findMany({
         where: { contractVersionId },
@@ -380,7 +441,6 @@ export class ContractDocumentService {
       if (await this.markOriginalDraftCompanyDrift(tx, version)) {
         return COMPANY_ENTITY_DRIFT;
       }
-      await this.markOlderSuccessStale(tx, version.id, version.draftRevision);
       if (document.status !== "failed") {
         throw new BadRequestException("只有生成失败的合同文档可以重试");
       }
@@ -464,13 +524,17 @@ export class ContractDocumentService {
     return result;
   }
 
-  private parseQueueInput(input: QueueContractDocumentInput) {
+  private parseQueueInput(
+    input: QueueContractDocumentInput,
+    allowSavedLayout = false
+  ) {
     if (!input || typeof input !== "object") {
       throw new BadRequestException("请填写合同文档生成信息");
     }
     if (
-      typeof input.layoutTemplateVersionId !== "string" ||
-      !input.layoutTemplateVersionId.trim()
+      !allowSavedLayout &&
+      (typeof input.layoutTemplateVersionId !== "string" ||
+        !input.layoutTemplateVersionId.trim())
     ) {
       throw new BadRequestException("请选择合同版式");
     }
@@ -491,7 +555,10 @@ export class ContractDocumentService {
       throw new BadRequestException("附件列表不能重复选择同一文件");
     }
     return {
-      layoutTemplateVersionId: input.layoutTemplateVersionId,
+      layoutTemplateVersionId:
+        typeof input.layoutTemplateVersionId === "string"
+          ? input.layoutTemplateVersionId
+          : undefined,
       purpose: input.purpose,
       attachmentFileIds
     };
@@ -630,21 +697,6 @@ export class ContractDocumentService {
     return new BadRequestException(
       "所选我方公司主体资料已更新或不再可用，请回到基本信息同步后重新生成预览"
     );
-  }
-
-  private markOlderSuccessStale(
-    tx: Prisma.TransactionClient,
-    contractVersionId: string,
-    currentRevision: number
-  ) {
-    return tx.contractGeneratedDocument.updateMany({
-      where: {
-        contractVersionId,
-        status: "success",
-        sourceRevision: { lt: currentRevision }
-      },
-      data: { status: "stale" }
-    });
   }
 
   private assertInternalReviewReady(

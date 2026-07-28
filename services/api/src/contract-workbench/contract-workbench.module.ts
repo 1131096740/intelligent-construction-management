@@ -3,6 +3,7 @@ import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
 import { BusinessPartyModule } from "../business-party/business-party.module";
 import { ContractBillModule } from "../contract-bill/contract-bill.module";
+import { ContractDocumentModule } from "../contract-document/contract-document.module";
 import { FileModule } from "../file/file.module";
 import { ContractModule } from "../contract/contract.module";
 import { ContractNumberingService } from "./contract-numbering.service";
@@ -19,6 +20,7 @@ import { ContractWorkbenchService } from "./contract-workbench.service";
     AuthModule,
     BusinessPartyModule,
     ContractBillModule,
+    ContractDocumentModule,
     forwardRef(() => ContractModule),
     FileModule
   ],

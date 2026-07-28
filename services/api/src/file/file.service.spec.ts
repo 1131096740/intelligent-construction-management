@@ -283,6 +283,25 @@ describe("FileService", () => {
     expect(storage.delete).toHaveBeenCalledWith("uploads/file-orphan.pdf");
   });
 
+  it("deduplicates generated-file cleanup and processes it in a stable order", async () => {
+    const service = new FileService(
+      {} as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    const discard = jest
+      .spyOn(service, "discardUnlinkedGeneratedFile")
+      .mockResolvedValue(undefined);
+
+    await service.discardUnlinkedGeneratedFiles(
+      ["pdf-file", "docx-file", "pdf-file"],
+      "actor-1"
+    );
+
+    expect(discard).toHaveBeenNthCalledWith(1, "docx-file", "actor-1");
+    expect(discard).toHaveBeenNthCalledWith(2, "pdf-file", "actor-1");
+  });
+
   it("keeps the discarded state when orphan storage deletion fails", async () => {
     const tx = {
       $queryRaw: jest.fn()

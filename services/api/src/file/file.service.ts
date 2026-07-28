@@ -1090,6 +1090,23 @@ export class FileService {
     }
   }
 
+  async discardUnlinkedGeneratedFiles(
+    fileIds: string[],
+    actorUserId: string
+  ): Promise<void> {
+    for (const fileId of [...new Set(fileIds)].sort()) {
+      try {
+        await this.discardUnlinkedGeneratedFile(fileId, actorUserId);
+      } catch (error) {
+        this.logger.error({
+          event: "generated_file_batch_cleanup_failed",
+          fileId,
+          error: safeErrorSummary(error, "orphan_cleanup")
+        });
+      }
+    }
+  }
+
   private async isFileReferenced(tx: Prisma.TransactionClient, fileId: string): Promise<boolean> {
     const rows = await tx.$queryRaw<Array<{ referenced: boolean }>>(Prisma.sql`
       SELECT EXISTS (

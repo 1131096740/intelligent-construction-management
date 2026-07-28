@@ -1,5 +1,6 @@
 import { createApiValidationPipe } from "../../validation/api-validation";
 import {
+  GenerateContractDraftPreviewDto,
   SaveContractDraftAggregateDto,
   SubmitContractDraftDto
 } from "./contract-workbench.dto";
@@ -206,6 +207,31 @@ describe("SubmitContractDraftDto", () => {
           idempotencyKey: "retry-key",
           formalCode: "HT-FORGED"
         },
+        metadata
+      )
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        statusCode: 400,
+        code: "DRAFT_VALIDATION_FAILED"
+      })
+    });
+  });
+});
+
+describe("GenerateContractDraftPreviewDto", () => {
+  const metadata = {
+    type: "body" as const,
+    metatype: GenerateContractDraftPreviewDto
+  };
+
+  it("accepts only a positive saved draft revision", async () => {
+    await expect(
+      createApiValidationPipe().transform({ sourceRevision: 8 }, metadata)
+    ).resolves.toBeInstanceOf(GenerateContractDraftPreviewDto);
+
+    await expect(
+      createApiValidationPipe().transform(
+        { sourceRevision: 0, purpose: "internal_review" },
         metadata
       )
     ).rejects.toMatchObject({

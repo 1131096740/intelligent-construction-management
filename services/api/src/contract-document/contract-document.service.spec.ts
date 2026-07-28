@@ -56,6 +56,7 @@ describe("ContractDocumentService", () => {
           contractId: "contract-1",
           status: "draft",
           draftRevision: 7,
+          layoutTemplateVersionId: "layout-1",
           amountCents: 1_000_000n,
           invoiceType: "vat_special",
           defaultTaxRatePercent: { toString: () => "13" },
@@ -123,6 +124,11 @@ describe("ContractDocumentService", () => {
       },
       contractBill: { findMany: jest.fn().mockResolvedValue([]) },
       contractBillRow: { findMany: jest.fn().mockResolvedValue([]) },
+      contractDraftAttachment: {
+        findMany: jest.fn().mockResolvedValue([
+          { fileId: "attachment-a" }
+        ])
+      },
       contractGeneratedDocument: {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockImplementation(({ data }) => ({
@@ -220,22 +226,89 @@ describe("ContractDocumentService", () => {
         })
       })
     });
+    expect(files.assertCanDownloadFile).toHaveBeenCalledWith(
+      tx,
+      "attachment-a",
+      "owner-1"
+    );
   });
 
-  it("marks older successful documents stale when listing as a safety net", async () => {
+  it("keeps the previous successful preview available while a newer revision has not succeeded", async () => {
     const tx = makeTx();
     const { service } = makeService(tx);
 
     await service.list("version-1", "owner-1");
 
-    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
-      where: {
-        contractVersionId: "version-1",
-        status: "success",
-        sourceRevision: { lt: 7 }
-      },
-      data: { status: "stale" }
+    expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("queues the saved current revision as an idempotent draft preview command", async () => {
+    const tx = makeTx();
+    const { service } = makeService(tx);
+
+    await expect(
+      service.queueDraftPreview("version-1", "owner-1", {
+        sourceRevision: 7
+      })
+    ).resolves.toEqual({
+      generationId: "document-1",
+      status: "queued",
+      sourceRevision: 7
     });
+    expect(tx.contractGeneratedDocument.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        contractVersionId: "version-1",
+        layoutTemplateVersionId: "layout-1",
+        purpose: "draft",
+        sourceRevision: 7,
+        inputSnapshot: expect.objectContaining({
+          attachmentFiles: [expect.objectContaining({ id: "attachment-a" })]
+        })
+      })
+    });
+    expect(tx.contractDraftAttachment.findMany).toHaveBeenCalledWith({
+      where: { contractVersionId: "version-1" },
+      orderBy: [{ slotKey: "asc" }, { displayOrder: "asc" }],
+      select: { fileId: true }
+    });
+  });
+
+  it("rejects preview generation for a revision that is not the current saved draft", async () => {
+    const tx = makeTx();
+    const { service } = makeService(tx);
+
+    await expect(
+      service.queueDraftPreview("version-1", "owner-1", {
+        sourceRevision: 6
+      })
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: "DRAFT_REVISION_CONFLICT",
+        latestRevision: 7
+      })
+    });
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+  });
+
+  it("replays the same draft preview generation for version, revision, layout and purpose", async () => {
+    const tx = makeTx();
+    tx.contractGeneratedDocument.findUnique.mockResolvedValue({
+      id: "document-existing",
+      status: "success",
+      sourceRevision: 7
+    });
+    const { service } = makeService(tx);
+
+    await expect(
+      service.queueDraftPreview("version-1", "owner-1", {
+        sourceRevision: 7
+      })
+    ).resolves.toEqual({
+      generationId: "document-existing",
+      status: "success",
+      sourceRevision: 7
+    });
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
   });
 
   it("returns an existing queued, processing, or successful document for the same key", async () => {

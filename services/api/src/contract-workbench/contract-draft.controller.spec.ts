@@ -30,14 +30,23 @@ describe("ContractDraftController", () => {
         status: "in_approval"
       })
     };
+    const documents = {
+      queueDraftPreview: jest.fn().mockResolvedValue({
+        generationId: "document-1",
+        status: "queued",
+        sourceRevision: 8
+      })
+    };
     return {
       aggregate,
       editLease,
       contracts,
+      documents,
       controller: new ContractDraftController(
         aggregate as never,
         editLease as never,
-        contracts as never
+        contracts as never,
+        documents as never
       )
     };
   }
@@ -49,6 +58,33 @@ describe("ContractDraftController", () => {
       controller.workbench("cv-1", { id: "actor-1" } as never)
     ).resolves.toEqual({ version: { id: "cv-1" } });
     expect(aggregate.getWorkbench).toHaveBeenCalledWith("cv-1", "actor-1");
+  });
+
+  it("queues preview generation for the exact saved revision", async () => {
+    const { controller, documents } = makeController();
+
+    await expect(
+      controller.generatePreview(
+        "cv-1",
+        { sourceRevision: 8 },
+        { id: "owner-1" } as never
+      )
+    ).resolves.toEqual({
+      generationId: "document-1",
+      status: "queued",
+      sourceRevision: 8
+    });
+    expect(documents.queueDraftPreview).toHaveBeenCalledWith(
+      "cv-1",
+      "owner-1",
+      { sourceRevision: 8 }
+    );
+    expect(
+      Reflect.getMetadata(
+        PATH_METADATA,
+        ContractDraftController.prototype.generatePreview
+      )
+    ).toBe(":contractVersionId/preview-generation");
   });
 
   it("forwards edit lease acquisition, heartbeat, takeover and release", async () => {

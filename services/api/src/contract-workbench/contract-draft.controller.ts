@@ -13,10 +13,12 @@ import {
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { ContractService } from "../contract/contract.service";
+import { ContractDocumentService } from "../contract-document/contract-document.service";
 import { ContractDraftAggregateService } from "./contract-draft-aggregate.service";
 import { ContractDraftEditLeaseService } from "./contract-draft-edit-lease.service";
 import {
   DeleteContractDraftDto,
+  GenerateContractDraftPreviewDto,
   SaveContractDraftAggregateDto,
   SubmitContractDraftDto
 } from "./dto/contract-workbench.dto";
@@ -27,7 +29,8 @@ export class ContractDraftController {
     private readonly aggregate: ContractDraftAggregateService,
     private readonly editLease: ContractDraftEditLeaseService,
     @Inject(forwardRef(() => ContractService))
-    private readonly contracts: ContractService
+    private readonly contracts: ContractService,
+    private readonly documents: ContractDocumentService
   ) {}
 
   @Get(":contractVersionId/workbench")
@@ -63,6 +66,15 @@ export class ContractDraftController {
       ...body,
       action: "delete_pristine_draft"
     });
+  }
+
+  @Post(":contractVersionId/preview-generation")
+  generatePreview(
+    @Param("contractVersionId") contractVersionId: string,
+    @Body() body: GenerateContractDraftPreviewDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.documents.queueDraftPreview(contractVersionId, user.id, body);
   }
 
   @Post(":contractVersionId/submission")
