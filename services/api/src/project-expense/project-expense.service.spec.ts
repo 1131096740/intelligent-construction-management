@@ -898,7 +898,7 @@ describe("ProjectExpenseService", () => {
     expect(auth.confirmPassword).not.toHaveBeenCalled();
   });
 
-  it("submits a sporadic payment request without settlement or payment terms", async () => {
+  it("fails closed when a caller tries to create a sporadic payment in the legacy expense table", async () => {
     const cashPool = cashPoolTables({ receiptAmountCents: 100_000n });
     const tx = {
       ...cashPool,
@@ -924,43 +924,20 @@ describe("ProjectExpenseService", () => {
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
 
-    const request = await service.create("project-1", "handler-1", {
-      code: "LX-2026-001",
-      expenseType: "sporadic_payment",
-      expenseSubtype: "sporadic_material",
-      paymentSubject: "建工智管",
-      reason: "零星材料",
-      requestedAmountCents: "30000",
-      paymentMethod: "bank_transfer",
-      counterpartyName: "材料供应商"
-    });
-
-    expect(request.status).toBe("approval_pending");
-    expect(request).toMatchObject({
-      requestedAmountCents: "30000",
-      approvedAmountCents: null,
-      paidAmountCents: "0"
-    });
-    expect(tx.projectExpenseRequest.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        projectId: "project-1",
+    await expect(
+      service.create("project-1", "handler-1", {
         code: "LX-2026-001",
         expenseType: "sporadic_payment",
-        requestedAmountCents: 30_000n,
-        paidAmountCents: 0n,
-        status: "approval_pending",
-        applicantUserId: "handler-1"
+        expenseSubtype: "sporadic_material",
+        paymentSubject: "建工智管",
+        reason: "零星材料",
+        requestedAmountCents: "30000",
+        paymentMethod: "bank_transfer",
+        counterpartyName: "材料供应商"
       })
-    });
-    expect(tx.approvalInstance.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        flowType: "project_expense.approve",
-        businessType: "project_expense_request",
-        businessId: "expense-1",
-        status: "in_progress",
-        applicantUserId: "handler-1"
-      })
-    });
+    ).rejects.toThrow("旧零星支出入口已停止新建，请使用零星费用支付流程");
+    expect(tx.projectExpenseRequest.create).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
   });
 
   it.each(["-1", "0"])(
@@ -1091,7 +1068,7 @@ describe("ProjectExpenseService", () => {
     });
   });
 
-  it("submits a spot purchase request with the confirmed material approval route", async () => {
+  it("fails closed when a caller tries to create spot procurement in the legacy expense table", async () => {
     const cashPool = cashPoolTables({ receiptAmountCents: 100_000n });
     const tx = {
       ...cashPool,
@@ -1118,43 +1095,24 @@ describe("ProjectExpenseService", () => {
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
 
-    await service.create("project-1", "material-1", {
-      code: "CG-2026-001",
-      expenseType: "spot_purchase",
-      expenseSubtype: "spot_material_purchase",
-      paymentSubject: "现场临时钢筋采购",
-      reason: "抢修临时用料",
-      requestedAmountCents: "30000",
-      paymentMethod: "bank_transfer",
-      counterpartyName: "临采供应商",
-      attachmentFileId: "file-purchase-1"
-    });
-
-    expect(tx.projectExpenseRequest.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+    await expect(
+      service.create("project-1", "material-1", {
+        code: "CG-2026-001",
         expenseType: "spot_purchase",
         expenseSubtype: "spot_material_purchase",
         paymentSubject: "现场临时钢筋采购",
         reason: "抢修临时用料",
-        requestedAmountCents: 30_000n,
+        requestedAmountCents: "30000",
+        paymentMethod: "bank_transfer",
         counterpartyName: "临采供应商",
-        attachmentFileId: "file-purchase-1",
-        status: "approval_pending"
+        attachmentFileId: "file-purchase-1"
       })
-    });
-    expect(tx.approvalInstance.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        frozenNodes: [
-          { name: "物资部主管", mode: "any", roleKeys: ["material_director"] },
-          { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
-          { name: "财务总监", mode: "any", roleKeys: ["finance_director"] },
-          { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
-        ]
-      })
-    });
+    ).rejects.toThrow("旧零星采购入口已停止新建，请使用零星材料申请流程");
+    expect(tx.projectExpenseRequest.create).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
   });
 
-  it("rejects spot purchase creation by non-material staff", async () => {
+  it("does not reopen the retired spot purchase writer for non-material staff", async () => {
     const cashPool = cashPoolTables({ receiptAmountCents: 100_000n });
     const tx = {
       ...cashPool,
@@ -1186,7 +1144,7 @@ describe("ProjectExpenseService", () => {
         counterpartyName: "临采供应商",
         attachmentFileId: "file-purchase-1"
       })
-    ).rejects.toThrow("只有物资员可以发起零星采购申请");
+    ).rejects.toThrow("旧零星采购入口已停止新建，请使用零星材料申请流程");
     expect(tx.projectExpenseRequest.create).not.toHaveBeenCalled();
   });
 
@@ -1240,7 +1198,7 @@ describe("ProjectExpenseService", () => {
     });
   });
 
-  it("does not occupy project financing quota when a project expense is submitted", async () => {
+  it("does not occupy project financing quota when the retired sporadic writer is rejected", async () => {
     const cashPool = cashPoolTables({
       receiptAmountCents: 20_000n,
       financingQuotas: [{ id: "financing-quota-1", amountCents: BigInt(100_000) }]
@@ -1262,15 +1220,17 @@ describe("ProjectExpenseService", () => {
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
 
-    await service.create("project-1", "handler-1", {
-      code: "LX-2026-003",
-      expenseType: "sporadic_payment",
-      expenseSubtype: "sporadic_labor",
-      paymentSubject: "建工智管",
-      reason: "零星用工",
-      requestedAmountCents: "50000",
-      paymentMethod: "wechat"
-    });
+    await expect(
+      service.create("project-1", "handler-1", {
+        code: "LX-2026-003",
+        expenseType: "sporadic_payment",
+        expenseSubtype: "sporadic_labor",
+        paymentSubject: "建工智管",
+        reason: "零星用工",
+        requestedAmountCents: "50000",
+        paymentMethod: "wechat"
+      })
+    ).rejects.toThrow("旧零星支出入口已停止新建，请使用零星费用支付流程");
 
     expect(tx.projectExpenseFinancingQuotaUsage.createMany).not.toHaveBeenCalled();
   });

@@ -39,6 +39,7 @@ function createHarness() {
   const tx = {
     spotProcurementPayment: {
       findUnique: jest.fn().mockResolvedValue(payment),
+      findMany: jest.fn().mockResolvedValue([]),
       update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ ...payment, ...data }))
     },
     spotProcurementPaymentExecution: {
@@ -56,7 +57,7 @@ function createHarness() {
     },
     spotProcurementLine: {
       findMany: jest.fn().mockResolvedValue([
-        { id: "procurement-line-1", quantity: new Prisma.Decimal("3") }
+        { id: "procurement-line-1", quantity: new Prisma.Decimal("1") }
       ])
     },
     vatRateOption: {
@@ -99,7 +100,23 @@ function createHarness() {
       })
     },
     auditLog: { create: jest.fn().mockResolvedValue({}) },
-    $queryRaw: jest.fn().mockResolvedValue([])
+    $queryRaw: jest.fn().mockResolvedValue([
+      {
+        id: "version-1",
+        procurementId: "procurement-1",
+        projectId: "project-1",
+        procurementCode: "LXCG-001",
+        currentVersionId: "version-1",
+        rootStatus: "approved_in_progress",
+        versionStatus: "approved",
+        versionNo: 1,
+        supplierPartyId: null,
+        supplierKey: "",
+        supplierNameSnapshot: "",
+        handlerUserId: "material-1",
+        totalAmountCents: null
+      }
+    ])
   };
   const prisma = {
     $transaction: jest.fn((operation) => operation(tx)),
@@ -247,7 +264,13 @@ describe("SpotProcurementPaymentService real-form draft", () => {
       approvalAmountCents: 700n
     };
     tx.spotProcurementPayment.findUnique.mockResolvedValue(completed);
-    tx.spotProcurementPaymentLine.findMany.mockResolvedValue([{ amountCents: 700n }]);
+    tx.spotProcurementPaymentLine.findMany.mockResolvedValue([
+      {
+        procurementLineId: "procurement-line-1",
+        paymentQuantity: new Prisma.Decimal("1"),
+        amountCents: 700n
+      }
+    ]);
     tx.spotProcurementPaymentChannel.findMany.mockResolvedValue([{ isPrimary: true }]);
     tx.spotProcurementPaymentMethodOption.findMany.mockResolvedValue([
       { paymentMethod: "bank_transfer" }
@@ -270,6 +293,134 @@ describe("SpotProcurementPaymentService real-form draft", () => {
         submittedVersionNo: 1
       })
     });
+  });
+
+  it("rejects a real-form material payment at the 3000 yuan boundary", async () => {
+    const { service, tx } = createHarness();
+    const completed = {
+      ...payment,
+      paymentType: "company_direct",
+      merchantNameSnapshot: "昆明建材商行",
+      payeeNameSnapshot: "昆明建材商行",
+      approvalAmountCents: 300_000n
+    };
+    tx.spotProcurementPayment.findUnique.mockResolvedValue(completed);
+    tx.spotProcurementPaymentLine.findMany.mockResolvedValue([
+      {
+        procurementLineId: "procurement-line-1",
+        paymentQuantity: new Prisma.Decimal("1"),
+        amountCents: 300_000n
+      }
+    ]);
+    tx.spotProcurementPaymentChannel.findMany.mockResolvedValue([{ isPrimary: true }]);
+    tx.spotProcurementPaymentMethodOption.findMany.mockResolvedValue([
+      { paymentMethod: "bank_transfer" }
+    ]);
+    const prisma = (service as unknown as {
+      prisma: { spotProcurementPayment: { findUnique: jest.Mock } };
+    }).prisma;
+    prisma.spotProcurementPayment.findUnique.mockResolvedValue(completed);
+
+    await expect(service.submit("payment-1", "material-1")).rejects.toThrow(
+      "材料申请合计达到 3000 元，请重新走材料采购审批流程"
+    );
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
+  });
+
+  it("uses the aggregate of every material line for the 3000 yuan boundary", async () => {
+    const { service, tx } = createHarness();
+    const completed = {
+      ...payment,
+      paymentType: "company_direct",
+      merchantNameSnapshot: "昆明建材商行",
+      payeeNameSnapshot: "昆明建材商行",
+      approvalAmountCents: 300_000n
+    };
+    tx.spotProcurementPayment.findUnique.mockResolvedValue(completed);
+    tx.spotProcurementLine.findMany.mockResolvedValue([
+      { id: "procurement-line-1", quantity: new Prisma.Decimal("1") },
+      { id: "procurement-line-2", quantity: new Prisma.Decimal("2") }
+    ]);
+    tx.spotProcurementPaymentLine.findMany.mockResolvedValue([
+      {
+        procurementLineId: "procurement-line-1",
+        paymentQuantity: new Prisma.Decimal("1"),
+        amountCents: 100_000n
+      },
+      {
+        procurementLineId: "procurement-line-2",
+        paymentQuantity: new Prisma.Decimal("2"),
+        amountCents: 200_000n
+      }
+    ]);
+    tx.spotProcurementPaymentChannel.findMany.mockResolvedValue([{ isPrimary: true }]);
+    tx.spotProcurementPaymentMethodOption.findMany.mockResolvedValue([
+      { paymentMethod: "bank_transfer" }
+    ]);
+    const prisma = (service as unknown as {
+      prisma: { spotProcurementPayment: { findUnique: jest.Mock } };
+    }).prisma;
+    prisma.spotProcurementPayment.findUnique.mockResolvedValue(completed);
+
+    await expect(service.submit("payment-1", "material-1")).rejects.toThrow(
+      "材料申请合计达到 3000 元，请重新走材料采购审批流程"
+    );
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+  });
+
+  it("requires one full payment line for every approved material line", async () => {
+    const { service, tx } = createHarness();
+    tx.spotProcurementLine.findMany.mockResolvedValue([
+      { id: "procurement-line-1", quantity: new Prisma.Decimal("3") },
+      { id: "procurement-line-2", quantity: new Prisma.Decimal("2") }
+    ]);
+
+    await expect(
+      service.updateDraft("payment-1", "material-1", realFormInput)
+    ).rejects.toThrow("零星材料付款必须完整覆盖本申请全部批准材料和数量");
+    expect(tx.spotProcurementPaymentLine.createMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects a sibling active payment for the same material application version", async () => {
+    const { service, tx } = createHarness();
+    const completed = {
+      ...payment,
+      paymentType: "company_direct",
+      merchantNameSnapshot: "昆明建材商行",
+      payeeNameSnapshot: "昆明建材商行",
+      approvalAmountCents: 700n
+    };
+    tx.spotProcurementPayment.findUnique.mockResolvedValue(completed);
+    tx.spotProcurementPaymentLine.findMany.mockResolvedValue([
+      {
+        procurementLineId: "procurement-line-1",
+        paymentQuantity: new Prisma.Decimal("3"),
+        amountCents: 700n
+      }
+    ]);
+    tx.spotProcurementPaymentChannel.findMany.mockResolvedValue([{ isPrimary: true }]);
+    tx.spotProcurementPaymentMethodOption.findMany.mockResolvedValue([
+      { paymentMethod: "bank_transfer" }
+    ]);
+    tx.spotProcurementPayment.findMany.mockResolvedValue([
+      {
+        ...completed,
+        id: "payment-sibling",
+        code: "LXCG-001-V1-P002",
+        status: "approval_pending"
+      }
+    ]);
+    const prisma = (service as unknown as {
+      prisma: { spotProcurementPayment: { findUnique: jest.Mock } };
+    }).prisma;
+    prisma.spotProcurementPayment.findUnique.mockResolvedValue(completed);
+
+    await expect(service.submit("payment-1", "material-1")).rejects.toThrow(
+      "同一材料申请已有活动付款，不能拆分或重复提交"
+    );
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
   });
 
   it("lets a project finance staff select only an active payer company on the draft", async () => {

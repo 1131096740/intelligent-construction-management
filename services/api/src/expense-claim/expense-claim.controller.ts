@@ -112,7 +112,7 @@ export class ExpenseClaimController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: RecordExpenseClaimPaymentDto
   ) {
-    return this.claims.recordReimbursementPayment(claimId, user.id, body);
+    return this.claims.recordPayment(claimId, user.id, body);
   }
 
   @Post(":claimId/final-payment-pdf")

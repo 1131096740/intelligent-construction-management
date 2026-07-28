@@ -62,6 +62,7 @@ const ACTIVE_CAPACITY_STATUSES = new Set([
   "paid",
   "settled"
 ]);
+const SPOT_MATERIAL_PAYMENT_LIMIT_CENTS = 300_000n;
 const PLANNED_PAYMENT_STATUSES = ACTIVE_CAPACITY_STATUSES;
 const PAYER_TASK_COMPLETED_ERROR = {
   code: "SPOT_PAYMENT_PAYER_TASK_COMPLETED",
@@ -3565,24 +3566,27 @@ export class SpotProcurementPaymentService {
   private submitRealForm(paymentId: string, actorUserId: string) {
     return this.runWrite(async () => {
       const result = await this.runSerializable(async (tx) => {
+        const version = await this.requireLockedVersionForPayment(tx, paymentId);
+        this.pilot.assertEnabled(version.projectId);
         const payment = await tx.spotProcurementPayment.findUnique({
           where: { id: paymentId }
         });
         if (!payment) throw new NotFoundException("零星材料付款申请不存在");
-        this.pilot.assertEnabled(payment.projectId);
         if (payment.status !== "draft") {
           throw new ConflictException("当前付款申请不是可提交草稿");
         }
         if (payment.handlerUserId !== actorUserId) {
           throw new ForbiddenException("只有采购经办人可以提交付款申请");
         }
-        const [version, lines, channels, methods] = await Promise.all([
-          tx.spotProcurementVersion.findUnique({
-            where: { id: payment.procurementVersionId }
-          }),
+        const [lines, procurementLines, channels, methods, siblingPayments] = await Promise.all([
           tx.spotProcurementPaymentLine.findMany({
             where: { paymentId: payment.id },
             orderBy: { sortOrder: "asc" }
+          }),
+          tx.spotProcurementLine.findMany({
+            where: { versionId: payment.procurementVersionId },
+            orderBy: { sortOrder: "asc" },
+            select: { id: true, quantity: true }
           }),
           tx.spotProcurementPaymentChannel.findMany({
             where: { paymentId: payment.id },
@@ -3591,11 +3595,17 @@ export class SpotProcurementPaymentService {
           tx.spotProcurementPaymentMethodOption.findMany({
             where: { paymentId: payment.id },
             orderBy: { sortOrder: "asc" }
+          }),
+          tx.spotProcurementPayment.findMany({
+            where: {
+              procurementVersionId: payment.procurementVersionId,
+              id: { not: payment.id },
+              status: { in: [...ACTIVE_CAPACITY_STATUSES] }
+            },
+            select: { id: true }
           })
         ]);
         if (
-          !version ||
-          version.status !== "approved" ||
           !payment.paymentType ||
           !payment.merchantNameSnapshot ||
           !payment.payeeNameSnapshot ||
@@ -3606,9 +3616,18 @@ export class SpotProcurementPaymentService {
         ) {
           throw new BadRequestException("请完整填写付款商户、明细、收款对象、收款渠道和拟付款方式后再提交");
         }
+        if (siblingPayments.length) {
+          throw new ConflictException("同一材料申请已有活动付款，不能拆分或重复提交");
+        }
+        this.assertCompleteRealFormMaterialScope(procurementLines, lines);
         const total = lines.reduce((sum, line) => sum + line.amountCents, 0n);
         if (total <= 0n || total !== payment.approvalAmountCents) {
           throw new ConflictException("付款申请金额与付款明细不一致，请刷新后重试");
+        }
+        if (total >= SPOT_MATERIAL_PAYMENT_LIMIT_CENTS) {
+          throw new BadRequestException(
+            "材料申请合计达到 3000 元，请重新走材料采购审批流程"
+          );
         }
         const now = new Date();
         const approval = await tx.approvalInstance.create({
@@ -3726,6 +3745,7 @@ export class SpotProcurementPaymentService {
         vatRateLabelSnapshot: vatRate?.label ?? null
       };
     });
+    this.assertCompleteRealFormMaterialScope(procurementLines, lines);
     const approvalAmountCents = lines.reduce((sum, line) => sum + line.amountCents, 0n);
     if (approvalAmountCents <= 0n) throw new BadRequestException("付款申请金额必须大于 0");
     if (new Set(input.paymentMethods).size !== input.paymentMethods.length) {
@@ -3755,6 +3775,33 @@ export class SpotProcurementPaymentService {
       attachments,
       approvalAmountCents
     };
+  }
+
+  private assertCompleteRealFormMaterialScope(
+    procurementLines: Array<{ id: string; quantity: Prisma.Decimal }>,
+    paymentLines: Array<{
+      procurementLineId: string;
+      paymentQuantity: Prisma.Decimal;
+    }>
+  ) {
+    if (procurementLines.length !== paymentLines.length) {
+      throw new BadRequestException(
+        "零星材料付款必须完整覆盖本申请全部批准材料和数量"
+      );
+    }
+    const paymentLineBySource = new Map(
+      paymentLines.map((line) => [line.procurementLineId, line])
+    );
+    if (
+      procurementLines.some((source) => {
+        const paymentLine = paymentLineBySource.get(source.id);
+        return !paymentLine || !paymentLine.paymentQuantity.equals(source.quantity);
+      })
+    ) {
+      throw new BadRequestException(
+        "零星材料付款必须完整覆盖本申请全部批准材料和数量"
+      );
+    }
   }
 
   private normalizeRealFormChannel(channel: SpotProcurementPaymentChannelDto) {

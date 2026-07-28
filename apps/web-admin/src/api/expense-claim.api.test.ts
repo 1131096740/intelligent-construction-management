@@ -64,6 +64,43 @@ describe("expense claim API", () => {
     }));
   });
 
+  it("posts a project-scoped incidental expense without inventing an attachment", async () => {
+    mockApiFetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "claim-incidental-1",
+          code: "LXFY-1",
+          status: "draft",
+          requestedAmountCents: "500000"
+        }),
+        { status: 201 }
+      )
+    );
+    const draft: CreateExpenseClaimPayload = {
+      claimType: "incidental_expense",
+      incidentalExpenseCategory: "temporary_machinery_shift",
+      companyEntityId: "company-1",
+      projectId: "project-1",
+      applicantUserId: "user-1",
+      reason: "临时机械台班",
+      requestedAmountCents: "500000"
+    };
+
+    await expect(createExpenseClaim(draft)).resolves.toMatchObject({
+      code: "LXFY-1"
+    });
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/expense-claims",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(draft)
+      })
+    );
+    expect(JSON.parse(String(mockApiFetch.mock.calls[0]?.[1]?.body))).not.toHaveProperty(
+      "attachmentFileId"
+    );
+  });
+
   it("submits a draft through its encoded new-domain action path", async () => {
     mockApiFetch.mockResolvedValue(new Response(JSON.stringify({ id: "claim-1", status: "approval_pending", submittedAt: "2026-07-23T10:00:00.000Z" }), { status: 201 }));
     await expect(submitExpenseClaim("claim/1")).resolves.toMatchObject({ status: "approval_pending" });

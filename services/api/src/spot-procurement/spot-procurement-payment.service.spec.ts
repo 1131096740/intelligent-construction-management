@@ -105,6 +105,9 @@ function transactionDelegate() {
       findMany: jest.fn().mockResolvedValue([]),
       createMany: jest.fn()
     },
+    spotProcurementLine: {
+      findMany: jest.fn().mockResolvedValue([])
+    },
     spotProcurementDiscrepancy: {
       findFirst: jest.fn().mockResolvedValue(null)
     },
@@ -1925,7 +1928,7 @@ describe("SpotProcurementPaymentService", () => {
         procurementVersionId: "version-1",
         procurementLineId: "procurement-line-1",
         sortOrder: 1,
-        approvedQuantitySnapshot: new Prisma.Decimal("12.5"),
+        approvedQuantitySnapshot: new Prisma.Decimal("10"),
         paymentQuantity: new Prisma.Decimal("10"),
         unitPrice: new Prisma.Decimal("10.00"),
         amountCents: 10_000n,
@@ -2144,6 +2147,21 @@ describe("SpotProcurementPaymentService", () => {
       status: "approved",
       versionNo: 1
     });
+    tx.$queryRaw.mockResolvedValueOnce([version]);
+    tx.spotProcurementPaymentLine.findMany.mockResolvedValueOnce(clonedLines);
+    tx.spotProcurementLine.findMany.mockResolvedValueOnce([
+      {
+        id: "procurement-line-1",
+        quantity: new Prisma.Decimal("10")
+      }
+    ]);
+    tx.spotProcurementPaymentChannel.findMany.mockResolvedValueOnce(
+      clonedChannels
+    );
+    tx.spotProcurementPaymentMethodOption.findMany.mockResolvedValueOnce(
+      clonedMethods
+    );
+    tx.spotProcurementPayment.findMany.mockResolvedValueOnce([]);
 
     await service.submit("payment-2", "material-1");
 

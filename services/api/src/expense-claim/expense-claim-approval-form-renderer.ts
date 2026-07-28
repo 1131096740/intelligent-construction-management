@@ -6,7 +6,8 @@ import { formatMoneyCentsAsYuan } from "../money/decimal-money";
 const FONT_PATH = resolve(__dirname, "../../assets/fonts/NotoSansSC-Regular.otf");
 
 export type ExpenseClaimApprovalFormInput = {
-  claimType: "reimbursement" | "loan";
+  claimType: "reimbursement" | "loan" | "incidental_expense";
+  incidentalExpenseCategory?: string | null;
   code: string;
   companyName: string;
   projectName: string;
@@ -51,7 +52,12 @@ export async function renderExpenseClaimApprovalForm(
   const doc = createDocument(margin);
   const done = collectPdf(doc);
   const contentWidth = doc.page.width - margin * 2;
-  const title = input.claimType === "reimbursement" ? "费用报销单" : "借款申请单";
+  const title =
+    input.claimType === "reimbursement"
+      ? "费用报销单"
+      : input.claimType === "incidental_expense"
+        ? "零星费用支付申请单"
+        : "借款申请单";
   const detailLines = input.claimType === "reimbursement" ? input.lines : [];
   const firstPageLines = detailLines.slice(0, 2);
 
@@ -71,13 +77,19 @@ export async function renderExpenseClaimApprovalForm(
     input.projectName || "非项目"
   ]);
   y = row(doc, margin, y, [64, contentWidth - 64], 36, ["事由", input.reason]);
+  if (input.claimType === "incidental_expense") {
+    y = row(doc, margin, y, [64, contentWidth - 64], 24, [
+      "费用分类",
+      incidentalExpenseCategoryLabel(input.incidentalExpenseCategory)
+    ]);
+  }
   y = row(doc, margin, y, [64, 120, 52, 134, 64, contentWidth - 434], 24, [
     "申请金额",
     `￥${formatMoneyCentsAsYuan(input.requestedAmountCents)}`,
     "大写",
     formatChineseUppercaseMoney(input.requestedAmountCents),
-    input.claimType === "reimbursement" ? "公司支付" : "预计清账",
-    input.claimType === "reimbursement"
+    input.claimType !== "loan" ? "公司支付" : "预计清账",
+    input.claimType !== "loan"
       ? `￥${formatMoneyCentsAsYuan(input.companyPayableAmountCents)}`
       : input.loanExpectedClearanceAt ? formatDate(input.loanExpectedClearanceAt) : ""
   ]);
@@ -233,6 +245,14 @@ function drawApprovalRows(
 function formatDate(value: Date) {
   const pad = (number: number) => String(number).padStart(2, "0");
   return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+}
+
+function incidentalExpenseCategoryLabel(category: string | null | undefined) {
+  if (category === "temporary_service") return "非材料临时服务";
+  if (category === "temporary_machinery_shift") return "临时机械台班";
+  if (category === "sporadic_labor") return "零星用工";
+  if (category === "other_incidental") return "其他非材料临时费用";
+  return "";
 }
 
 function stampWatermark(doc: PDFKit.PDFDocument, lines: string[] | undefined): void {

@@ -44,8 +44,33 @@ export class ExpenseClaimLineDto {
 }
 
 export class CreateExpenseClaimDto {
-  @IsIn(["reimbursement", "loan"], { message: "费用业务类型不正确" })
-  claimType!: "reimbursement" | "loan";
+  @IsIn(["reimbursement", "loan", "incidental_expense"], {
+    message: "费用业务类型不正确"
+  })
+  claimType!: "reimbursement" | "loan" | "incidental_expense";
+
+  @ValidateIf(
+    (input: CreateExpenseClaimDto) =>
+      input.claimType === "incidental_expense" ||
+      input.incidentalExpenseCategory !== undefined
+  )
+  @IsIn(
+    [
+      "temporary_service",
+      "temporary_machinery_shift",
+      "sporadic_labor",
+      "other_incidental"
+    ],
+    {
+      message:
+        "零星费用分类不正确；材料类支出请重新走零星材料申请流程"
+    }
+  )
+  incidentalExpenseCategory?:
+    | "temporary_service"
+    | "temporary_machinery_shift"
+    | "sporadic_labor"
+    | "other_incidental";
 
   @IsRequiredText({ requiredMessage: "使用单位不能为空", typeMessage: "使用单位必须是文字", blankMessage: "使用单位不能为空白" })
   companyEntityId!: string;

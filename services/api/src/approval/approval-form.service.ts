@@ -1772,6 +1772,7 @@ export class ApprovalFormService {
       where: { id: businessId },
       select: {
         claimType: true,
+        incidentalExpenseCategory: true,
         projectId: true,
         handledByNameSnapshot: true,
         submittedAt: true,
@@ -1784,7 +1785,14 @@ export class ApprovalFormService {
         loanExpectedClearanceAt: true
       }
     });
-    if (!claim || (claim.claimType !== "reimbursement" && claim.claimType !== "loan")) {
+    if (
+      !claim ||
+      (
+        claim.claimType !== "reimbursement" &&
+        claim.claimType !== "loan" &&
+        claim.claimType !== "incidental_expense"
+      )
+    ) {
       return null;
     }
     const [project, lines] = await Promise.all([
@@ -1808,6 +1816,7 @@ export class ApprovalFormService {
     ]);
     return {
       claimType: claim.claimType,
+      incidentalExpenseCategory: claim.incidentalExpenseCategory,
       projectName: project?.name ?? "",
       handlerName: claim.handledByNameSnapshot,
       submittedAt: claim.submittedAt,

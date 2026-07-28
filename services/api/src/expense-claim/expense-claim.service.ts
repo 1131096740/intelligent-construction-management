@@ -33,6 +33,15 @@ type ExpenseClaimApprovalNode = FrozenApprovalNode & {
 const COMPREHENSIVE_ROLE: RoleKey = "comprehensive_director";
 const FINAL_ROLES: RoleKey[] = ["chairman", "general_manager"];
 const PAYMENT_SUBJECT_ADJUSTMENT_ROLES: RoleKey[] = ["finance_staff", "finance_director", "comprehensive_director"];
+const INCIDENTAL_EXPENSE_CATEGORIES = [
+  "temporary_service",
+  "temporary_machinery_shift",
+  "sporadic_labor",
+  "other_incidental"
+] as const;
+const INCIDENTAL_EXPENSE_CATEGORY_SET = new Set<string>(
+  INCIDENTAL_EXPENSE_CATEGORIES
+);
 
 @Injectable()
 export class ExpenseClaimService {
@@ -82,7 +91,13 @@ export class ExpenseClaimService {
       projects,
       canProxy,
       applicantUsers: canProxy ? activeUsers : actor ? [actor] : [],
-      factWitnessUsers: activeUsers
+      factWitnessUsers: activeUsers,
+      incidentalExpenseCategories: [
+        { key: "temporary_service", label: "非材料临时服务" },
+        { key: "temporary_machinery_shift", label: "临时机械台班" },
+        { key: "sporadic_labor", label: "零星用工" },
+        { key: "other_incidental", label: "其他非材料临时费用" }
+      ]
     };
   }
 
@@ -101,7 +116,7 @@ export class ExpenseClaimService {
         ...(status ? { status: { in: status } } : {})
       },
       orderBy: [{ updatedAt: "desc" }, { code: "asc" }],
-      select: { id: true, code: true, claimType: true, status: true, projectId: true, companyEntityNameSnapshot: true, applicantNameSnapshot: true, handledByNameSnapshot: true, reason: true, requestedAmountCents: true, loanOffsetAmountCents: true, companyPayableAmountCents: true, fundedAmountCents: true, updatedAt: true }
+      select: { id: true, code: true, claimType: true, incidentalExpenseCategory: true, status: true, projectId: true, companyEntityNameSnapshot: true, applicantNameSnapshot: true, handledByNameSnapshot: true, reason: true, requestedAmountCents: true, loanOffsetAmountCents: true, companyPayableAmountCents: true, fundedAmountCents: true, updatedAt: true }
     });
     const projectIds = [...new Set(rows.flatMap((row) => row.projectId ? [row.projectId] : []))];
     const projects = projectIds.length
@@ -129,6 +144,23 @@ export class ExpenseClaimService {
     if (claimType === "loan" && !input.projectId?.trim()) {
       throw new BadRequestException("借款申请必须选择项目");
     }
+    if (claimType === "incidental_expense" && !input.projectId?.trim()) {
+      throw new BadRequestException("零星费用必须选择项目");
+    }
+    const incidentalExpenseCategory =
+      input.incidentalExpenseCategory?.trim() || null;
+    if (
+      claimType === "incidental_expense" &&
+      !INCIDENTAL_EXPENSE_CATEGORY_SET.has(incidentalExpenseCategory ?? "")
+    ) {
+      if (incidentalExpenseCategory === "sporadic_material") {
+        throw new BadRequestException("材料费用必须走零星材料或材料采购流程");
+      }
+      throw new BadRequestException("零星费用分类不正确");
+    }
+    if (claimType !== "incidental_expense" && incidentalExpenseCategory) {
+      throw new BadRequestException("只有零星费用可以填写零星费用分类");
+    }
 
     return this.prisma.$transaction(async (tx) => {
       const [actor, company, project] = await Promise.all([
@@ -149,11 +181,19 @@ export class ExpenseClaimService {
       const actorRoles = await this.loadRoleKeys(tx, actorUserId, project?.id);
       const applicant = await this.applicantSnapshot(tx, actor, input, actorRoles);
       const factWitness = await this.factWitnessSnapshot(tx, input, project?.id);
-      const code = await this.numbering.allocateDaily(tx, claimType === "reimbursement" ? "BX" : "JK");
+      const code = await this.numbering.allocateDaily(
+        tx,
+        claimType === "reimbursement"
+          ? "BX"
+          : claimType === "loan"
+            ? "JK"
+            : "LXFY"
+      );
       const claim = await tx.expenseClaim.create({
         data: {
           code,
           claimType,
+          incidentalExpenseCategory,
           status: "draft",
           companyEntityId: company.id,
           companyEntityNameSnapshot: company.name,
@@ -196,10 +236,22 @@ export class ExpenseClaimService {
       }
       await this.audit.record(tx, {
         actorUserId,
-        action: "expense_claim.draft.create",
-        businessType: "expense_claim",
+        action:
+          claimType === "incidental_expense"
+            ? "incidental_expense.draft.create"
+            : "expense_claim.draft.create",
+        businessType:
+          claimType === "incidental_expense"
+            ? "incidental_expense"
+            : "expense_claim",
         businessId: claim.id,
-        metadata: { code, claimType, projectId: project?.id ?? null, requestedAmountCents: requestedAmountCents.toString() }
+        metadata: {
+          code,
+          claimType,
+          incidentalExpenseCategory,
+          projectId: project?.id ?? null,
+          requestedAmountCents: requestedAmountCents.toString()
+        }
       });
       return { id: claim.id, code, status: claim.status, requestedAmountCents: moneyCentsToApi(requestedAmountCents) };
     });
@@ -209,7 +261,7 @@ export class ExpenseClaimService {
     const claim = await this.prisma.expenseClaim.findFirst({
       where: { id: claimId },
       select: {
-        id: true, code: true, claimType: true, status: true, projectId: true, applicantUserId: true, handledByUserId: true, companyEntityNameSnapshot: true,
+        id: true, code: true, claimType: true, incidentalExpenseCategory: true, status: true, projectId: true, applicantUserId: true, handledByUserId: true, companyEntityNameSnapshot: true,
         paymentSubjectCompanyEntityId: true, paymentSubjectNameSnapshot: true, paymentSubjectAdjustmentReason: true, paymentSubjectAdjustedAt: true, paymentSubjectAdjustedByUserId: true, paymentSubjectAdjustedByRoleKey: true,
         applicantNameSnapshot: true, applicantPhoneSnapshot: true, handledByNameSnapshot: true, proxyReason: true,
         factWitnessNameSnapshot: true, reason: true, requestedAmountCents: true, loanOffsetAmountCents: true,
@@ -345,6 +397,7 @@ export class ExpenseClaimService {
       paymentSubjectPermissions: { canAdjust: canAdjustPaymentSubject },
       paymentSubjectCompanyEntities,
       fundsPermissions: {
+        canRecordPayment: (claim.claimType === "reimbursement" || claim.claimType === "incidental_expense") && ["approved_pending_payment", "partially_paid"].includes(claim.status) && roles.includes("finance_staff"),
         canRecordReimbursementPayment: claim.claimType === "reimbursement" && ["approved_pending_payment", "partially_paid"].includes(claim.status) && roles.includes("finance_staff"),
         canGenerateFinalPaymentPdf: claim.claimType === "reimbursement" && claim.status === "paid" && roles.includes("finance_staff"),
         canGenerateLoanFinalDisbursementPdf: claim.claimType === "loan" && claim.status === "disbursed" && roles.includes("finance_staff"),
@@ -596,7 +649,12 @@ export class ExpenseClaimService {
           approvalInstanceId: instance.id,
           submittedAt: new Date(),
           loanOffsetAmountCents: offset.amountCents,
-          companyPayableAmountCents: claim.claimType === "reimbursement" ? claim.requestedAmountCents - offset.amountCents : 0n
+          companyPayableAmountCents:
+            claim.claimType === "reimbursement"
+              ? claim.requestedAmountCents - offset.amountCents
+              : claim.claimType === "incidental_expense"
+                ? claim.requestedAmountCents
+                : 0n
         }
       });
       await this.audit.record(tx, {
@@ -606,7 +664,13 @@ export class ExpenseClaimService {
         businessId: claim.id,
         metadata: { claimType: claim.claimType, approvalInstanceId: instance.id }
       });
-      return { id: updated.id, status: updated.status, approvalInstanceId: instance.id, loanOffsetAmountCents: moneyCentsToApi(offset.amountCents), companyPayableAmountCents: moneyCentsToApi(claim.claimType === "reimbursement" ? claim.requestedAmountCents - offset.amountCents : 0n) };
+      const companyPayableAmountCents =
+        claim.claimType === "reimbursement"
+          ? claim.requestedAmountCents - offset.amountCents
+          : claim.claimType === "incidental_expense"
+            ? claim.requestedAmountCents
+            : 0n;
+      return { id: updated.id, status: updated.status, approvalInstanceId: instance.id, loanOffsetAmountCents: moneyCentsToApi(offset.amountCents), companyPayableAmountCents: moneyCentsToApi(companyPayableAmountCents) };
     });
   }
 
@@ -665,7 +729,7 @@ export class ExpenseClaimService {
         ? await this.postLoanOffsetReservations(tx, claim, actorUserId)
         : 0n;
       const claimUpdate = completed
-        ? claim.claimType === "reimbursement"
+        ? claim.claimType === "reimbursement" || claim.claimType === "incidental_expense"
           ? { status: claim.companyPayableAmountCents > 0n ? "approved_pending_payment" : "offset_completed", approvedAt: new Date() }
           : { status: "approved_pending_disbursement", approvedAt: new Date() }
         : { status: "approval_pending" };
@@ -860,6 +924,10 @@ export class ExpenseClaimService {
   }
 
   async recordReimbursementPayment(claimId: string, actorUserId: string, input: RecordExpenseClaimPaymentDto) {
+    return this.recordPayment(claimId, actorUserId, input);
+  }
+
+  async recordPayment(claimId: string, actorUserId: string, input: RecordExpenseClaimPaymentDto) {
     const amountCents = positiveCents(input.amountCents, "补付金额必须大于零");
     const voucherFileId = requiredText(input.voucherFileId, "补付凭证必填");
     const paymentMethod = requiredText(input.paymentMethod, "补付方式必填");
@@ -873,12 +941,14 @@ export class ExpenseClaimService {
       const fundingScope = this.projectFunding
         ? await tx.expenseClaim.findUnique({
             where: { id: claimId },
-            select: { id: true, projectId: true }
+            select: { id: true, claimType: true, projectId: true }
           })
         : null;
       if (this.projectFunding && !fundingScope?.projectId) {
         throw new BadRequestException(
-          "报销申请未关联项目，不能登记公司补付"
+          fundingScope?.claimType === "incidental_expense"
+            ? "零星费用未关联项目，不能登记实际支付"
+            : "报销申请未关联项目，不能登记公司补付"
         );
       }
       if (this.projectFunding && fundingScope?.projectId) {
@@ -889,17 +959,26 @@ export class ExpenseClaimService {
       }
       const claims = await tx.$queryRaw<Array<{ id: string; claimType: string; status: string; projectId: string | null; companyPayableAmountCents: bigint; fundedAmountCents: bigint }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "companyPayableAmountCents", "fundedAmountCents" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
       const claim = claims[0];
-      if (!claim) throw new NotFoundException("费用报销申请不存在");
+      if (!claim) throw new NotFoundException("费用申请不存在");
       if (
         fundingScope &&
         (fundingScope.id !== claim.id ||
           fundingScope.projectId !== claim.projectId)
       ) {
         throw new BadRequestException(
-          "报销申请的项目资金范围已变化，请刷新后重试"
+          "费用申请的项目资金范围已变化，请刷新后重试"
         );
       }
-      if (claim.claimType !== "reimbursement") throw new BadRequestException("当前报销不可登记公司补付");
+      if (
+        claim.claimType !== "reimbursement" &&
+        claim.claimType !== "incidental_expense"
+      ) {
+        throw new BadRequestException("当前费用申请不可登记实际支付");
+      }
+      const businessType =
+        claim.claimType === "incidental_expense"
+          ? "incidental_expense"
+          : "expense_claim";
       const existingExecution = this.projectFunding
         ? await tx.expenseClaimPaymentExecution.findUnique({
             where: { voucherFileId }
@@ -922,7 +1001,7 @@ export class ExpenseClaimService {
           projectId: claim.projectId!,
           executionType: "expense_claim_payment_execution",
           executionId: existingExecution.id,
-          businessType: "expense_claim",
+          businessType,
           businessId: claim.id,
           amountCents,
           occurredAt: paidAt,
@@ -933,10 +1012,11 @@ export class ExpenseClaimService {
           expenseClaimId: claim.id,
           paidAmountCents: moneyCentsToApi(claim.fundedAmountCents),
           status: claim.status,
+          claimType: claim.claimType,
           replayed: true
         };
       }
-      if (!["approved_pending_payment", "partially_paid"].includes(claim.status)) throw new BadRequestException("当前报销不可登记公司补付");
+      if (!["approved_pending_payment", "partially_paid"].includes(claim.status)) throw new BadRequestException("当前费用申请不可登记实际支付");
       if (amountCents > claim.companyPayableAmountCents - claim.fundedAmountCents) throw new BadRequestException("补付金额超过当前待付金额");
       const voucher = await tx.fileObject.findUnique({ where: { id: voucherFileId }, select: { id: true, uploadedByUserId: true } });
       if (!voucher) throw new NotFoundException("补付凭证不存在");
@@ -957,7 +1037,7 @@ export class ExpenseClaimService {
               executionType:
                 "expense_claim_payment_execution",
               executionId: execution.id,
-              businessType: "expense_claim",
+              businessType,
               businessId: claim.id,
               amountCents,
               occurredAt: paidAt,
@@ -967,10 +1047,10 @@ export class ExpenseClaimService {
       const fundedAmountCents = claim.fundedAmountCents + amountCents;
       const status = fundedAmountCents === claim.companyPayableAmountCents ? "paid" : "partially_paid";
       await tx.expenseClaim.update({ where: { id: claim.id }, data: { fundedAmountCents, status } });
-      await this.audit.record(tx, { actorUserId, action: "expense_claim.reimbursement.payment.record", businessType: "expense_claim", businessId: claim.id, metadata: { paymentExecutionId: execution.id, amountCents: amountCents.toString(), voucherFileId, paymentMethod, fundingAllocation: fundingAllocation ? { kind: fundingAllocation.kind, projectCashAmountCents: fundingAllocation.projectCashAmountCents.toString(), financingQuotaAmountCents: fundingAllocation.financingQuotaAmountCents.toString(), allocations: fundingAllocation.allocations.map((allocation) => ({ sourceType: allocation.sourceType, sourceId: allocation.sourceId, amountCents: allocation.amountCents.toString() })) } : null } });
-      return { id: execution.id, expenseClaimId: claim.id, paidAmountCents: moneyCentsToApi(fundedAmountCents), status, replayed: false };
+      await this.audit.record(tx, { actorUserId, action: claim.claimType === "incidental_expense" ? "incidental_expense.payment.record" : "expense_claim.reimbursement.payment.record", businessType, businessId: claim.id, metadata: { paymentExecutionId: execution.id, amountCents: amountCents.toString(), voucherFileId, paymentMethod, fundingAllocation: fundingAllocation ? { kind: fundingAllocation.kind, projectCashAmountCents: fundingAllocation.projectCashAmountCents.toString(), financingQuotaAmountCents: fundingAllocation.financingQuotaAmountCents.toString(), allocations: fundingAllocation.allocations.map((allocation) => ({ sourceType: allocation.sourceType, sourceId: allocation.sourceId, amountCents: allocation.amountCents.toString() })) } : null } });
+      return { id: execution.id, expenseClaimId: claim.id, paidAmountCents: moneyCentsToApi(fundedAmountCents), status, claimType: claim.claimType, replayed: false };
     });
-    if (result.status === "paid" && !result.replayed) {
+    if (result.status === "paid" && !result.replayed && result.claimType === "reimbursement") {
       await this.ensureReimbursementFinalPaymentPdf(claimId, actorUserId).catch(async () => {
         await this.audit.record(this.prisma, { actorUserId, action: "expense_claim.reimbursement.final_pdf.generation_failed", businessType: "expense_claim", businessId: claimId, metadata: {} });
       });
@@ -1189,7 +1269,13 @@ export class ExpenseClaimService {
     tx: Prisma.TransactionClient,
     claim: { claimType: string; projectId: string | null; factWitnessUserId: string | null; handledByUserId: string }
   ): Promise<ExpenseClaimApprovalNode[]> {
-    if (claim.claimType !== "reimbursement" && claim.claimType !== "loan") throw new BadRequestException("费用业务类型不正确");
+    if (
+      claim.claimType !== "reimbursement" &&
+      claim.claimType !== "loan" &&
+      claim.claimType !== "incidental_expense"
+    ) {
+      throw new BadRequestException("费用业务类型不正确");
+    }
     const [assignments, memberships] = await Promise.all([
       tx.userPosition.findMany({
         where: claim.projectId ? { OR: [{ projectId: null }, { projectId: claim.projectId }] } : { projectId: null },

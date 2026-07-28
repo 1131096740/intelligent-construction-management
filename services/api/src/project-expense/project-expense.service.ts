@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ForbiddenException,
+  GoneException,
   Injectable,
   NotFoundException,
   Optional
@@ -622,13 +623,17 @@ export class ProjectExpenseService {
     const paymentSubject = requiredTrimmed(input.paymentSubject, "付款主体必填");
     const reason = requiredTrimmed(input.reason, "付款事由必填");
     const requestedAmountCents = positiveMoneyCents(input.requestedAmountCents, "申请金额必须大于零");
-    const attachmentFileId = input.attachmentFileId?.trim() || undefined;
-    if (expenseType === "spot_purchase") {
-      requiredTrimmed(input.counterpartyName, "零星采购供应商必填");
-      if (!attachmentFileId) {
-        throw new BadRequestException("零星采购附件必填");
-      }
+    if (expenseType === "sporadic_payment") {
+      throw new GoneException(
+        "旧零星支出入口已停止新建，请使用零星费用支付流程"
+      );
     }
+    if (expenseType === "spot_purchase") {
+      throw new GoneException(
+        "旧零星采购入口已停止新建，请使用零星材料申请流程"
+      );
+    }
+    const attachmentFileId = input.attachmentFileId?.trim() || undefined;
 
     const request = await this.prisma.$transaction(async (tx) => {
       const [project, attachmentFile] = await Promise.all([
@@ -649,13 +654,6 @@ export class ProjectExpenseService {
       if (attachmentFile && attachmentFile.uploadedByUserId !== actorUserId) {
         throw new BadRequestException("项目支出附件必须由申请人本人上传");
       }
-      if (expenseType === "spot_purchase") {
-        const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, project.id);
-        if (!actorRoleKeys.includes("material_staff")) {
-          throw new BadRequestException("只有物资员可以发起零星采购申请");
-        }
-      }
-
       const request = await tx.projectExpenseRequest.create({
         data: {
           projectId: project.id,

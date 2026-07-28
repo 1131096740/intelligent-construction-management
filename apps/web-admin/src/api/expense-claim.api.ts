@@ -6,7 +6,13 @@ export type ExpenseClaimWorkbenchView = "all" | "drafts" | "in_progress" | "pend
 export interface ExpenseClaimListItemReadModel {
   id: string;
   code: string;
-  claimType: "reimbursement" | "loan";
+  claimType: "reimbursement" | "loan" | "incidental_expense";
+  incidentalExpenseCategory:
+    | "temporary_service"
+    | "temporary_machinery_shift"
+    | "sporadic_labor"
+    | "other_incidental"
+    | null;
   status: string;
   projectId: string | null;
   project: { id: string; code: string; name: string } | null;
@@ -61,6 +67,7 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
   paymentSubjectPermissions: { canAdjust: boolean };
   paymentSubjectCompanyEntities: Array<{ id: string; name: string }>;
   fundsPermissions: {
+    canRecordPayment: boolean;
     canRecordReimbursementPayment: boolean;
     canGenerateFinalPaymentPdf: boolean;
     canGenerateLoanFinalDisbursementPdf: boolean;
@@ -92,10 +99,23 @@ export interface ExpenseClaimCreateOptions {
   canProxy: boolean;
   applicantUsers: Array<{ id: string; name: string }>;
   factWitnessUsers: Array<{ id: string; name: string }>;
+  incidentalExpenseCategories: Array<{
+    key:
+      | "temporary_service"
+      | "temporary_machinery_shift"
+      | "sporadic_labor"
+      | "other_incidental";
+    label: string;
+  }>;
 }
 
 export interface CreateExpenseClaimPayload {
-  claimType: "reimbursement" | "loan";
+  claimType: "reimbursement" | "loan" | "incidental_expense";
+  incidentalExpenseCategory?:
+    | "temporary_service"
+    | "temporary_machinery_shift"
+    | "sporadic_labor"
+    | "other_incidental";
   companyEntityId: string;
   projectId?: string;
   factWitnessUserId?: string;

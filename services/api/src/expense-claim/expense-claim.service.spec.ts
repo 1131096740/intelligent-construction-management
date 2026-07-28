@@ -111,6 +111,77 @@ describe("ExpenseClaimService", () => {
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: "expense_claim.draft.create" }));
   });
 
+  it("creates a project-scoped incidental expense without an amount cap or required attachment", async () => {
+    const { service, tx, numbering, audit } = createHarness();
+    tx.user.findUnique.mockResolvedValue(actor);
+    tx.companyEntity.findFirst.mockResolvedValue({ id: "company-1", name: "建工公司" });
+    tx.project.findFirst.mockResolvedValue({ id: "project-1" });
+    tx.expenseClaim.create.mockResolvedValue({ id: "claim-incidental-1", status: "draft" });
+
+    await expect(
+      service.create("user-a", {
+        claimType: "incidental_expense",
+        incidentalExpenseCategory: "temporary_machinery_shift",
+        companyEntityId: "company-1",
+        projectId: "project-1",
+        applicantUserId: "user-a",
+        reason: "临时机械台班",
+        requestedAmountCents: "999999999999"
+      } as never)
+    ).resolves.toMatchObject({
+      id: "claim-incidental-1",
+      status: "draft",
+      requestedAmountCents: "999999999999"
+    });
+
+    expect(numbering.allocateDaily).toHaveBeenCalledWith(tx, "LXFY");
+    expect(tx.expenseClaim.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        claimType: "incidental_expense",
+        incidentalExpenseCategory: "temporary_machinery_shift",
+        projectId: "project-1",
+        requestedAmountCents: 999_999_999_999n
+      })
+    });
+    expect(tx.expenseClaimLine.createMany).not.toHaveBeenCalled();
+    expect(tx.expenseClaimAttachment.create).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: "incidental_expense.draft.create",
+        businessType: "incidental_expense"
+      })
+    );
+  });
+
+  it("requires a project and rejects material classification for incidental expenses", async () => {
+    const { service, tx } = createHarness();
+
+    await expect(
+      service.create("user-a", {
+        claimType: "incidental_expense",
+        incidentalExpenseCategory: "temporary_service",
+        companyEntityId: "company-1",
+        applicantUserId: "user-a",
+        reason: "临时服务",
+        requestedAmountCents: "1000"
+      } as never)
+    ).rejects.toThrow("零星费用必须选择项目");
+
+    await expect(
+      service.create("user-a", {
+        claimType: "incidental_expense",
+        incidentalExpenseCategory: "sporadic_material",
+        companyEntityId: "company-1",
+        projectId: "project-1",
+        applicantUserId: "user-a",
+        reason: "材料费用",
+        requestedAmountCents: "1000"
+      } as never)
+    ).rejects.toThrow("材料费用必须走零星材料或材料采购流程");
+    expect(tx.expenseClaim.create).not.toHaveBeenCalled();
+  });
+
   it("requires exact line total and never falls back to the legacy project expense table", async () => {
     const { service, tx } = createHarness();
     await expect(
@@ -241,6 +312,102 @@ describe("ExpenseClaimService", () => {
         }
       })
     }));
+  });
+
+  it("records an incidental expense payment through the unified project funding transaction", async () => {
+    const claim = {
+      id: "claim-incidental-1",
+      claimType: "incidental_expense",
+      status: "approved_pending_payment",
+      projectId: "project-1",
+      companyPayableAmountCents: 500_000n,
+      fundedAmountCents: 0n
+    };
+    const projectFunding = {
+      lockFundingContext: jest.fn().mockResolvedValue(undefined),
+      allocateExecution: jest.fn().mockResolvedValue({
+        kind: "allocated",
+        projectCashAmountCents: 500_000n,
+        financingQuotaAmountCents: 0n,
+        allocations: [
+          {
+            sourceType: "project_cash",
+            sourceId: null,
+            amountCents: 500_000n
+          }
+        ]
+      })
+    };
+    const files = {
+      assertFileHasNoBusinessBinding: jest.fn().mockResolvedValue({
+        id: "voucher-incidental-1",
+        uploadedByUserId: "finance-1",
+        storageStatus: "active"
+      })
+    };
+    const { service, tx, audit } = createHarness({
+      claim,
+      auth: { confirmPassword: jest.fn().mockResolvedValue(undefined) },
+      files,
+      projectFunding
+    });
+    tx.expenseClaim.findUnique.mockResolvedValue({
+      id: "claim-incidental-1",
+      projectId: "project-1"
+    });
+    tx.fileObject.findUnique.mockResolvedValue({
+      id: "voucher-incidental-1",
+      uploadedByUserId: "finance-1"
+    });
+    tx.expenseClaimPaymentExecution.create.mockResolvedValue({
+      id: "payment-incidental-1"
+    });
+
+    const recordPayment = (
+      service as unknown as {
+        recordPayment(
+          claimId: string,
+          actorUserId: string,
+          input: {
+            amountCents: string;
+            paidAt: string;
+            paymentMethod: string;
+            voucherFileId: string;
+            confirmationPassword: string;
+          }
+        ): Promise<unknown>;
+      }
+    ).recordPayment.bind(service);
+    await expect(
+      recordPayment("claim-incidental-1", "finance-1", {
+        amountCents: "500000",
+        paidAt: "2020-07-24",
+        paymentMethod: "银行转账",
+        voucherFileId: "voucher-incidental-1",
+        confirmationPassword: "current-password"
+      })
+    ).resolves.toMatchObject({
+      id: "payment-incidental-1",
+      status: "paid",
+      paidAmountCents: "500000"
+    });
+    expect(projectFunding.allocateExecution).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        projectId: "project-1",
+        executionType: "expense_claim_payment_execution",
+        businessType: "incidental_expense",
+        businessId: "claim-incidental-1",
+        amountCents: 500_000n
+      })
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: "incidental_expense.payment.record",
+        businessType: "incidental_expense"
+      })
+    );
   });
 
   it("rolls back reimbursement state and audit when unified project funding is insufficient", async () => {
@@ -497,6 +664,49 @@ describe("ExpenseClaimService", () => {
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: "expense_claim.submit" }));
   });
 
+  it("submits an incidental expense with its full amount payable and no attachment requirement", async () => {
+    const claim = {
+      id: "claim-incidental-1",
+      claimType: "incidental_expense",
+      status: "draft",
+      projectId: "project-1",
+      applicantUserId: "user-a",
+      companyEntityId: "company-1",
+      requestedAmountCents: 500_000n,
+      handledByUserId: "user-a",
+      factWitnessUserId: null
+    };
+    const { service, tx } = createHarness({
+      claim,
+      approvalAssignments: [
+        { userId: "comp-1", positionId: "position-comp", role: "comprehensive_director" },
+        { userId: "pm-1", positionId: "position-pm", role: "project_manager" },
+        { userId: "finance-1", positionId: "position-finance", role: "finance_director" },
+        { userId: "leader-1", positionId: "position-leader", role: "general_manager" }
+      ]
+    });
+    tx.approvalInstance.create.mockResolvedValue({ id: "approval-incidental-1" });
+    tx.expenseClaim.update.mockResolvedValue({
+      id: "claim-incidental-1",
+      status: "approval_pending"
+    });
+
+    await expect(
+      service.submit("claim-incidental-1", "user-a")
+    ).resolves.toMatchObject({
+      status: "approval_pending",
+      loanOffsetAmountCents: "0",
+      companyPayableAmountCents: "500000"
+    });
+    expect(tx.expenseClaim.update).toHaveBeenCalledWith({
+      where: { id: "claim-incidental-1" },
+      data: expect.objectContaining({
+        status: "approval_pending",
+        companyPayableAmountCents: 500_000n
+      })
+    });
+  });
+
   it("advances only the frozen current approver and records the frozen role", async () => {
     const claim = { id: "claim-1", claimType: "reimbursement", status: "approval_pending", projectId: "project-1", handledByUserId: "user-a", factWitnessUserId: null, requestedAmountCents: 1200n };
     const instance = {
@@ -557,6 +767,74 @@ describe("ExpenseClaimService", () => {
     expect(auth.confirmPassword).toHaveBeenCalledWith("leader-1", "current-password");
     expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ metadata: { selfReview: true, selfReviewReason: "职责兼任" }, signatureFileIdSnapshot: "file-1", signatureVersionIdSnapshot: "signature-1" })
+    });
+  });
+
+  it("approves an incidental expense into payment instead of loan disbursement", async () => {
+    const claim = {
+      id: "claim-incidental-1",
+      claimType: "incidental_expense",
+      status: "approval_pending",
+      projectId: "project-1",
+      applicantUserId: "user-a",
+      handledByUserId: "user-a",
+      factWitnessUserId: null,
+      requestedAmountCents: 500_000n,
+      loanOffsetAmountCents: 0n,
+      companyPayableAmountCents: 500_000n
+    };
+    const instance = {
+      id: "approval-incidental-1",
+      currentNodeIndex: 0,
+      applicantUserId: "user-a",
+      frozenNodes: [
+        {
+          name: "董事长/总经理",
+          mode: "any",
+          roleKeys: ["general_manager"],
+          candidateUserIds: ["leader-1"],
+          candidateUserIdsByRole: { general_manager: ["leader-1"] }
+        }
+      ]
+    };
+    const { service, tx } = createHarness({ roles: ["general_manager"] });
+    tx.$queryRaw
+      .mockResolvedValueOnce([claim])
+      .mockResolvedValueOnce([instance])
+      .mockResolvedValueOnce([{ id: "leader-1", isActive: true }])
+      .mockResolvedValueOnce([
+        {
+          id: "signature-1",
+          fileId: "file-1",
+          contentSha256: "a".repeat(64)
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "file-1",
+          contentSha256: "a".repeat(64),
+          storageStatus: "active"
+        }
+      ]);
+    tx.expenseClaim.update.mockResolvedValue({
+      id: "claim-incidental-1",
+      status: "approved_pending_payment"
+    });
+
+    await expect(
+      service.review("claim-incidental-1", "leader-1", {
+        decision: "approve"
+      })
+    ).resolves.toEqual({
+      id: "claim-incidental-1",
+      status: "approved_pending_payment",
+      completed: true
+    });
+    expect(tx.expenseClaim.update).toHaveBeenCalledWith({
+      where: { id: "claim-incidental-1" },
+      data: expect.objectContaining({
+        status: "approved_pending_payment"
+      })
     });
   });
 

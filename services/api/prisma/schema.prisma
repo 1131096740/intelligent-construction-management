@@ -1807,6 +1807,7 @@ model ExpenseClaim {
   id                        String    @id @default(uuid())
   code                      String    @unique
   claimType                 String
+  incidentalExpenseCategory String?
   status                    String
   companyEntityId           String
   companyEntityNameSnapshot String

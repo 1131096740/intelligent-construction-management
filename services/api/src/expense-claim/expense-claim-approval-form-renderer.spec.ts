@@ -48,4 +48,32 @@ describe("expense claim approval form renderer", () => {
       expect(page.getHeight()).toBeCloseTo(419.53, 1);
     }
   });
+
+  it("renders a project incidental expense original without reimbursement lines", async () => {
+    const buffer = await renderExpenseClaimApprovalForm({
+      claimType: "incidental_expense",
+      incidentalExpenseCategory: "temporary_machinery_shift",
+      code: "LXFY-20260728-001",
+      companyName: "四川建工智管建筑工程有限公司",
+      projectName: "科技园项目",
+      applicantName: "申请人甲",
+      handlerName: "经办人乙",
+      submittedAt: new Date("2026-07-28T00:00:00.000Z"),
+      reason: "临时机械台班",
+      requestedAmountCents: 500_000n,
+      loanOffsetAmountCents: 0n,
+      companyPayableAmountCents: 500_000n,
+      paymentMethod: "银行转账",
+      payeeName: "机械服务商",
+      loanExpectedClearanceAt: null,
+      lines: [],
+      approvals: []
+    });
+
+    const document = await PDFDocument.load(buffer);
+    expect(buffer.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(document.getPageCount()).toBe(1);
+    expect(document.getPage(0).getWidth()).toBeCloseTo(595.28, 1);
+    expect(document.getPage(0).getHeight()).toBeCloseTo(419.53, 1);
+  });
 });
