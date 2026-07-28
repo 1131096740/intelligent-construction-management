@@ -61,3 +61,10 @@ export interface ApplyContractTypeChangeDto extends PreviewContractTypeChangeDto
 export interface TransferContractDraftDto {
   toUserId: string;
 }
+
+export interface ContractDraftLeaseReadModel {
+  state: "available" | "held_by_me" | "held_by_other" | "expired";
+  holderDisplayName: string | null;
+  expiresAt: string | null;
+  canTakeOver: boolean;
+}

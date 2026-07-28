@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, type ContractVersion } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
 import {
   CONTRACT_INVOICE_TYPES,
@@ -161,11 +161,29 @@ export class ContractWorkbenchService {
   }
 
   async getDraft(contractId: string, actorUserId: string) {
+    return this.loadDraft(contractId, actorUserId);
+  }
+
+  async getDraftFromExactVersion(version: ContractVersion, actorUserId: string) {
+    if (!EDITABLE_STATUSES.has(version.status)) {
+      throw new BadRequestException("合同版本当前不可按草稿办理，请刷新后重试");
+    }
+    return this.loadDraft(version.contractId, actorUserId, version);
+  }
+
+  private async loadDraft(
+    contractId: string,
+    actorUserId: string,
+    exactVersion?: ContractVersion
+  ) {
     const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
     if (!contract) throw new NotFoundException("未找到合同草稿，请刷新合同工作台后重试");
     await this.assertCanView(this.prisma, contract.ownerUserId, actorUserId);
+    if (exactVersion && contract.voidedAt) {
+      throw new BadRequestException("合同草稿已作废，不能继续办理");
+    }
 
-    const version = await this.prisma.contractVersion.findFirst({
+    const version = exactVersion ?? await this.prisma.contractVersion.findFirst({
       where: { contractId, status: { in: [...EDITABLE_STATUSES] } },
       orderBy: { versionNo: "desc" }
     });
