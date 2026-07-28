@@ -87,30 +87,35 @@ describe("contract workbench document canvas structure", () => {
     expect(pricingSource).not.toContain('value: "cost_plus"');
   });
 
-  it("adds repeated bill rows to one local candidate before the batch save", () => {
+  it("adds repeated bill rows to one aggregate candidate without section persistence", () => {
     expect(billEditorSource).toContain("addBillCandidateRow");
-    expect(billEditorSource).toContain("replaceContractBillRows");
-    expect(billEditorSource).toContain("保存全部");
+    expect(billEditorSource).toContain('options.emit("update:rows"');
+    expect(billEditorSource).toContain('options.emit("edited"');
+    expect(billEditorSource).not.toContain("replaceContractBillRows");
+    expect(billEditorSource).not.toContain("保存全部");
     expect(billEditorSource).not.toContain("addBillRow");
   });
 
-  it("replaces the two-column shell with focus editing and guards its local candidate", () => {
+  it("replaces the two-column shell with focus editing governed by the aggregate draft", () => {
     expect(pageSource).toMatch(
       /ContractBillFocusEditor[\s\S]*v-else-if="!exactVersionError"[\s\S]*class="shell-body"/u
     );
     expect(pageSource).toContain("draftDirty: isDirty.value");
-    expect(pageSource).toContain("billDirty: billEditorDirty.value");
-    expect(pageSource).toContain("billFocusEditorRef.value?.discardChanges()");
+    expect(pageSource).toContain("billDirty: false");
+    expect(pageSource).not.toContain("billEditorDirty");
+    expect(pageSource).not.toContain("discardChanges()");
     expect(pageSource).toContain("discardChanges: discardNavigationChanges");
     expect(pageSource).toContain("discardLocalState()");
-    expect(pageSource).toContain(':disabled="writeLocked || billEditorDirty"');
+    expect(pageSource).toContain(':disabled="writeLocked"');
   });
 
-  it("separates combined route navigation loss from bill-only focus closing", () => {
+  it("uses one route guard and closes bill focus without discarding aggregate edits", () => {
     expect(navigationStateSource).toContain("合同基础信息和清单均未保存");
     expect(navigationStateSource).toContain("放弃后两类本地修改都会丢失");
-    expect(pageSource).toContain("合同基础信息的本地草稿不会被清除");
-    expect(pageSource).toContain("focusCloseConfirmVisible");
+    expect(pageSource).toMatch(
+      /function requestBillFocusClose\(\) \{[\s\S]*closeBillFocus\(\)/u
+    );
+    expect(pageSource).not.toContain("focusCloseConfirmVisible");
     expect(pageSource).not.toContain("focusCloseCheck");
     expect(pageSource).not.toContain("requestUnsavedClose");
   });
@@ -118,25 +123,19 @@ describe("contract workbench document canvas structure", () => {
   it("fails closed instead of discarding local state while a draft save is in flight", () => {
     expect(navigationStateSource).toContain("合同草稿正在保存");
     expect(navigationStateSource).toContain("系统不会中断已发出的保存请求");
-    expect(pageSource).toContain(
-      ':disabled="saveState === \'saving\' || billBatchSaving"'
-    );
+    expect(pageSource).toContain(':disabled="saveState === \'saving\'"');
     expect(pageSource).toMatch(
       /if \(isDirty\.value && !discardLocalState\(\)\) \{[\s\S]*throw new Error/u
     );
-    expect(pageSource).toMatch(
-      /function discardNavigationChanges\(\) \{[\s\S]*discardLocalState\(\)[\s\S]*billFocusEditorRef\.value\?\.discardChanges\(\)/u
-    );
+    expect(pageSource).not.toContain("billBatchSaving.value");
   });
 
-  it("lifts bill batch saving separately and blocks every discard or close path", () => {
-    expect(billEditorSource).toContain('"batch-saving-change"');
-    expect(billEditorSource).toContain(':disabled="batchSaving"');
+  it("removes independent bill saving and leaves one aggregate navigation lock", () => {
+    expect(billEditorSource).not.toContain('"batch-saving-change"');
+    expect(billEditorSource).not.toContain("batchSaving");
     expect(billEditorSource).toContain('@click="requestClose"');
-    expect(billEditorSource).toMatch(
-      /function requestClose\(\) \{[\s\S]*if \(batchSaving\.value\) return;[\s\S]*emit\("close"\)/u
-    );
-    expect(pageSource).toContain('@batch-saving-change="billBatchSaving = $event"');
+    expect(billEditorSource).toMatch(/function requestClose\(\) \{[\s\S]*emit\("close"\)/u);
+    expect(pageSource).not.toContain("@batch-saving-change");
     expect(pageSource).toContain("navigationPrompt.value !== null");
     expect(pageSource).toContain(
       "shouldCancelPendingNavigation(navigationDecisionPending.value, state)"
@@ -144,15 +143,8 @@ describe("contract workbench document canvas structure", () => {
     expect(pageSource).toMatch(
       /shouldCancelPendingNavigation[\s\S]*resolveNavigationDecision\(false\)/u
     );
-    expect(pageSource).toContain(
-      ':disabled="saveState === \'saving\' || billBatchSaving"'
-    );
-    expect(pageSource).toMatch(
-      /function discardNavigationChanges\(\) \{[\s\S]*if \(billBatchSaving\.value\)[\s\S]*throw new Error[\s\S]*billFocusEditorRef\.value\?\.discardChanges\(\)/u
-    );
-    expect(pageSource).toMatch(
-      /function resolveFocusClose\(discard: boolean\) \{[\s\S]*billBatchSaving\.value[\s\S]*discardChanges\(\)[\s\S]*closeBillFocus\(\)/u
-    );
+    expect(pageSource).toContain(':disabled="saveState === \'saving\'"');
+    expect(pageSource).not.toContain("resolveFocusClose");
   });
 
   it("shows a recoverable conflict-read failure without enabling server discard", () => {
@@ -163,19 +155,20 @@ describe("contract workbench document canvas structure", () => {
     expect(pageSource).toContain(':disabled="conflict?.server === null"');
   });
 
-  it("fully reloads the workbench after a bill batch instead of keeping a partial projection", () => {
+  it("stages complete bill rows in the aggregate before the global save", () => {
+    expect(pageSource).toContain('@update:rows="updateFocusedBillRows"');
+    expect(pageSource).toContain('@edited="markDirty(\'bills\')"');
     expect(pageSource).toMatch(
-      /async function onBillSaved\([^)]*\)[\s\S]*await reloadCurrent\(\)/u
+      /function updateFocusedBillRows\([^)]*\) \{[\s\S]*bill\.rows = rows\.map/u
     );
-    expect(pageSource).not.toMatch(
-      /function onBillSaved\([^)]*\)[\s\S]*workbench\.value = \{[\s\S]*bills:/u
-    );
+    expect(pageSource).not.toContain("onBillSaved");
   });
 
-  it("blocks bill preview and batch save until current tax facts are explicitly saved", () => {
-    expect(pageSource).toContain(':ordinary-draft-dirty="isDirty"');
-    expect(billEditorSource).toContain("请先使用右上角保存当前合同基础信息");
-    expect(billEditorSource).toMatch(/ordinaryDraftDirty\(\)[\s\S]*previewExcel/u);
+  it("previews Excel into the same aggregate while document mutations still flush first", () => {
+    expect(pageSource).not.toContain(":ordinary-draft-dirty");
+    expect(billEditorSource).toContain("previewContractDraftBillExcelImport");
+    expect(billEditorSource).toContain("确认后由右上角统一保存合同草稿");
+    expect(billEditorSource).not.toContain("applyBillExcelImport");
     expect(pageSource).toMatch(/ContractDocumentsSection[\s\S]*:prepare-mutation="prepareGovernanceMutation"/u);
     expect(documentsSource).toContain("await props.prepareMutation()");
   });

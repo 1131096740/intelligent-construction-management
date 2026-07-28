@@ -9,8 +9,8 @@
 
     <div class="party-list">
       <div
-        v-for="party in parties"
-        :key="party.id"
+        v-for="(party, index) in parties"
+        :key="`${party.roleKey}-${party.displayOrder}-${index}`"
         class="party-row"
       >
         <div class="party-head">
@@ -68,7 +68,7 @@
         <span>{{ message }}</span>
       </div>
       <p class="section-hint">
-        保存后仅写入本合同合作单位快照，不会自动进入合作单位档案；需要长期复用时请到合作单位档案建档。
+        加入后只进入本合同聚合草稿，随右上角统一保存；不会自动进入合作单位档案。
       </p>
 
       <div class="party-fields">
@@ -147,7 +147,7 @@
           :loading="busy"
           :disabled="disabled || busy || !form.name.trim()"
         >
-          保存合作单位
+          加入合同草稿
         </t-button>
       </div>
     </form>
@@ -155,21 +155,18 @@
 </template>
 
 <script setup lang="ts">
-import type { ContractWorkbenchReadModel } from "@jiangkong/shared-domain";
-import { computed, reactive, ref } from "vue";
-import { addContractParty } from "../../../api/contract-workbench.api";
+import { reactive, ref } from "vue";
+import type { ContractDraftPartyModel } from "../../../api/contract-workbench.api";
 import { uploadPrivateFile } from "../../../api/core-flow-read.api";
-import type { ContractDraftModel } from "./use-contract-draft";
 
 const props = defineProps<{
-  model: ContractDraftModel;
-  workbench: ContractWorkbenchReadModel | null;
+  parties: ContractDraftPartyModel[];
   disabled: boolean;
 }>();
 
 const emit = defineEmits<{
-  (event: "update", patch: Partial<ContractDraftModel>): void;
-  (event: "reload"): void;
+  (event: "update:parties", parties: ContractDraftPartyModel[]): void;
+  (event: "edited"): void;
 }>();
 
 const ROLE_LABELS: Record<string, string> = {
@@ -180,8 +177,6 @@ const ROLE_LABELS: Record<string, string> = {
   consortium_member: "联合体成员",
   other: "其他"
 };
-
-const parties = computed(() => props.workbench?.parties ?? []);
 
 const roleOptions = Object.entries(ROLE_LABELS)
   .filter(([value]) => value !== "party_a")
@@ -312,14 +307,14 @@ function roleLabel(roleKey: string): string {
 }
 
 function partyValue(
-  party: ContractWorkbenchReadModel["parties"][number],
+  party: ContractDraftPartyModel,
   field: string
 ): string {
   const value = party.snapshot[field];
   return typeof value === "string" ? value : "";
 }
 
-function partyAttachments(party: ContractWorkbenchReadModel["parties"][number]) {
+function partyAttachments(party: ContractDraftPartyModel) {
   const value = party.snapshot["attachments"];
   return Array.isArray(value)
     ? (value as Array<{
@@ -396,24 +391,52 @@ function resetForm() {
   }
 }
 
-async function submitInlineParty() {
-  const versionId = props.workbench?.version.id;
-  if (!versionId) return;
-  busy.value = true;
+function submitInlineParty() {
+  if (props.disabled || busy.value || !form.name.trim()) return;
   message.value = "";
-  try {
-    await addContractParty(versionId, {
-      roleKey: form.roleKey,
-      snapshot: buildSnapshot()
-    });
-    resetForm();
-    message.value = "合作单位已保存";
-    emit("reload");
-  } catch (error) {
-    message.value = error instanceof Error ? error.message : "保存合作单位失败";
-  } finally {
-    busy.value = false;
-  }
+  const displayOrder =
+    props.parties.reduce(
+      (highest, party) => Math.max(highest, party.displayOrder),
+      -1
+    ) + 1;
+  emit(
+    "update:parties",
+    [
+      ...props.parties.map(cloneParty),
+      {
+        roleKey: form.roleKey,
+        displayOrder,
+        snapshot: buildSnapshot()
+      }
+    ]
+  );
+  emit("edited");
+  resetForm();
+  message.value = "已加入合同草稿，等待右上角统一保存";
+}
+
+function cloneParty(party: ContractDraftPartyModel): ContractDraftPartyModel {
+  return {
+    roleKey: party.roleKey,
+    displayOrder: party.displayOrder,
+    ...(party.businessPartyVersionId
+      ? { businessPartyVersionId: party.businessPartyVersionId }
+      : {}),
+    snapshot: {
+      ...party.snapshot,
+      ...(Array.isArray(party.snapshot["attachments"])
+        ? {
+            attachments: party.snapshot["attachments"].map((attachment) =>
+              attachment !== null &&
+              typeof attachment === "object" &&
+              !Array.isArray(attachment)
+                ? { ...attachment }
+                : attachment
+            )
+          }
+        : {})
+    }
+  };
 }
 </script>
 

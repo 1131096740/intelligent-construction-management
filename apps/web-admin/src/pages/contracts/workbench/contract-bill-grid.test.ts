@@ -80,6 +80,19 @@ describe("contract bill grid candidate model", () => {
     })]);
   });
 
+  it("preserves aggregate client row keys across controlled prop echoes", () => {
+    const rows = fromWorkbenchBill({
+      ...bill,
+      rows: [{
+        ...bill.rows[0]!,
+        clientRowKey: "local-new-7"
+      }]
+    });
+
+    expect(rows[0]?.clientRowKey).toBe("local-new-7");
+    expect(rows[0]?.rowKey).toBe("server-row-1");
+  });
+
   it("preserves authoritative net prices for display but never submits them", () => {
     const authoritative = fromWorkbenchBill({
       ...bill,

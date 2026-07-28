@@ -81,7 +81,13 @@ export function emptyBillCandidateRow(clientRowKey = "local-new"): ContractBillC
 export function fromWorkbenchBill(bill: WorkbenchBill): ContractBillCandidateRow[] {
   const usedKeys = new Set<string>();
   return bill.rows.map((row, index) => {
-    const clientRowKey = uniqueServerClientKey(row.rowKey, index, usedKeys);
+    const suppliedClientRowKey =
+      typeof row.clientRowKey === "string" ? row.clientRowKey.trim() : "";
+    const clientRowKey = uniqueClientKey(
+      suppliedClientRowKey || `server-${row.rowKey}`,
+      index,
+      usedKeys
+    );
     return candidateFromWorkbenchRow(row, clientRowKey);
   });
 }
@@ -197,7 +203,10 @@ export function fromBatchSaveReadModel(
     .map((row, index) => ({ row, index }))
     .sort((left, right) => left.row.sortOrder - right.row.sortOrder || left.index - right.index)
     .map(({ row, index }) =>
-      candidateFromBatchSaveRow(row, uniqueServerClientKey(row.rowKey, index, usedKeys))
+      candidateFromBatchSaveRow(
+        row,
+        uniqueClientKey(`server-${row.rowKey}`, index, usedKeys)
+      )
     );
 }
 
@@ -382,8 +391,7 @@ function candidateFromBatchSaveRow(
   };
 }
 
-function uniqueServerClientKey(rowKey: string, index: number, usedKeys: Set<string>): string {
-  const base = `server-${rowKey}`;
+function uniqueClientKey(base: string, index: number, usedKeys: Set<string>): string {
   let candidate = base;
   let suffix = index + 1;
   while (usedKeys.has(candidate)) {
