@@ -185,6 +185,158 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
     },
     30_000
   );
+
+  integrationTest(
+    "records 100, 500 and 1000 row aggregate-save budgets without no-op rewrites",
+    async () => {
+      const databaseUrl = contractDraftAggregateDatabaseUrl(
+        process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL
+      );
+      const client = new PrismaClient({
+        datasources: { db: { url: databaseUrl } }
+      });
+      const seededIds: Array<ReturnType<typeof makeIds>> = [];
+      const audit = new AuditService();
+      const aggregate = new ContractDraftAggregateService(
+        client as never,
+        new ContractWorkbenchService(client as never, audit),
+        new ContractBillService(client as never, audit),
+        new BusinessPartyService(client as never, audit),
+        {
+          assertCanBindContractDraftAttachments: async () => undefined
+        } as never,
+        audit
+      );
+
+      try {
+        for (const rowCount of [100, 500, 1000]) {
+          const ids = makeIds(`performance-${rowCount}`);
+          seededIds.push(ids);
+          await seedDraft(client, ids, true);
+          const firstInput = aggregatePerformanceInput(
+            randomUUID(),
+            1,
+            1,
+            performanceRows(rowCount)
+          );
+          const auditBefore = await client.auditLog.count({
+            where: {
+              action: "contract.draft.save",
+              businessId: ids.version
+            }
+          });
+          const firstStartedAt = process.hrtime.bigint();
+          const firstResult = await aggregate.saveAggregate(
+            ids.version,
+            ids.owner,
+            leaseToken(ids),
+            firstInput as never
+          );
+          const firstDurationMs = elapsedMilliseconds(firstStartedAt);
+          const persistedRows = await client.contractBillRow.findMany({
+            where: { contractBillId: ids.billA },
+            orderBy: { sortOrder: "asc" }
+          });
+          const billAfterFirst = await client.contractBill.findUniqueOrThrow({
+            where: { id: ids.billA }
+          });
+          const auditAfterFirst = await client.auditLog.count({
+            where: {
+              action: "contract.draft.save",
+              businessId: ids.version
+            }
+          });
+
+          expect(persistedRows).toHaveLength(rowCount);
+          expect(billAfterFirst.revision).toBe(2);
+          expect(firstResult).toMatchObject({
+            draftRevision: 2,
+            effectiveChangedSections: expect.arrayContaining(["bills"])
+          });
+          expect(auditAfterFirst - auditBefore).toBe(1);
+
+          const noChangeInput = aggregatePerformanceInput(
+            randomUUID(),
+            2,
+            2,
+            persistedRows.map((row) => ({
+              clientRowKey: `existing-${row.sortOrder}`,
+              rowKey: row.rowKey,
+              sortOrder: row.sortOrder,
+              itemCode: row.itemCode ?? undefined,
+              itemName: row.itemName,
+              specification: row.specification ?? undefined,
+              unit: row.unit,
+              quantity: row.quantity?.toString(),
+              unitPrice: row.unitPrice?.toString() ?? "0",
+              taxRatePercent: row.taxRate?.toString(),
+              taxRateSource: row.taxRateSource as
+                | "version_default"
+                | "row_override",
+              isProvisional: row.isProvisional,
+              settlementBasis: row.settlementBasis ?? undefined,
+              customData: row.customData
+            }))
+          );
+          const noChangeStartedAt = process.hrtime.bigint();
+          const noChangeResult = await aggregate.saveAggregate(
+            ids.version,
+            ids.owner,
+            leaseToken(ids),
+            noChangeInput as never
+          );
+          const noChangeDurationMs = elapsedMilliseconds(noChangeStartedAt);
+          const [billAfterNoChange, auditAfterNoChange] = await Promise.all([
+            client.contractBill.findUniqueOrThrow({ where: { id: ids.billA } }),
+            client.auditLog.count({
+              where: {
+                action: "contract.draft.save",
+                businessId: ids.version
+              }
+            })
+          ]);
+
+          expect(noChangeResult).toMatchObject({
+            draftRevision: 2,
+            effectiveChangedSections: []
+          });
+          expect(billAfterNoChange.revision).toBe(2);
+          expect(auditAfterNoChange).toBe(auditAfterFirst);
+          expect(firstDurationMs).toBeLessThan(30_000);
+          expect(noChangeDurationMs).toBeLessThan(10_000);
+
+          process.stdout.write(
+            `${JSON.stringify({
+              event: "contract_draft_aggregate_performance",
+              rowCount,
+              requestBytes: Buffer.byteLength(JSON.stringify(firstInput)),
+              transactionDurationMs: Number(firstDurationMs.toFixed(2)),
+              lockHoldUpperBoundMs: Number(firstDurationMs.toFixed(2)),
+              changedRows: rowCount,
+              auditLogGrowth: auditAfterFirst - auditBefore,
+              noChangeRequestBytes: Buffer.byteLength(
+                JSON.stringify(noChangeInput)
+              ),
+              noChangeTransactionDurationMs: Number(
+                noChangeDurationMs.toFixed(2)
+              ),
+              noChangeLockHoldUpperBoundMs: Number(
+                noChangeDurationMs.toFixed(2)
+              ),
+              noChangeChangedRows: 0,
+              noChangeAuditLogGrowth: auditAfterNoChange - auditAfterFirst
+            })}\n`
+          );
+        }
+      } finally {
+        for (const ids of seededIds.reverse()) {
+          await cleanupDraft(client, ids);
+        }
+        await client.$disconnect();
+      }
+    },
+    120_000
+  );
 });
 
 function makeIds(kind: string) {
@@ -240,6 +392,7 @@ async function seedDraft(
       pricingNature: "fixed_total",
       amountSource: "manual",
       amountLimitType: "capped",
+      defaultTaxRatePercent: "13",
       draftData: {},
       templateSnapshot: {
         fieldSchema: [],
@@ -271,7 +424,7 @@ async function seedDraft(
           pricingMode: "tax_inclusive",
           quantityScale: 2,
           unitPriceScale: 2,
-          schemaSnapshot: {}
+          schemaSnapshot: { columns: [] }
         },
         {
           id: ids.billB,
@@ -282,7 +435,7 @@ async function seedDraft(
           pricingMode: "tax_inclusive",
           quantityScale: 2,
           unitPriceScale: 2,
-          schemaSnapshot: {}
+          schemaSnapshot: { columns: [] }
         }
       ]
     });
@@ -327,6 +480,61 @@ function aggregateInput(idempotencyKey: string, withBill = false) {
   };
 }
 
+function performanceRows(rowCount: number) {
+  return Array.from({ length: rowCount }, (_, index) => ({
+    clientRowKey: `new-${index}`,
+    sortOrder: index,
+    itemCode: `ITEM-${index + 1}`,
+    itemName: `性能验证清单行 ${index + 1}`,
+    unit: "项",
+    quantity: "1",
+    unitPrice: "1.00",
+    taxRatePercent: "13",
+    taxRateSource: "version_default" as const,
+    isProvisional: false,
+    customData: {}
+  }));
+}
+
+function aggregatePerformanceInput(
+  idempotencyKey: string,
+  expectedRevision: number,
+  expectedBillRevision: number,
+  rows: Array<Record<string, unknown>>
+) {
+  const base = aggregateInput(idempotencyKey, true);
+  return {
+    ...base,
+    expectedRevision,
+    changedSections: ["draft", "bills"] as const,
+    draft: {
+      ...base.draft,
+      amountSource: "bill_sum" as const,
+      manualAmountCents: undefined,
+      taxFacts: {
+        ...base.draft.taxFacts,
+        defaultTaxRatePercent: "13"
+      }
+    },
+    bills: [
+      {
+        billKey: "main",
+        expectedRevision: expectedBillRevision,
+        rows
+      },
+      {
+        billKey: "secondary",
+        expectedRevision: 1,
+        rows: []
+      }
+    ]
+  };
+}
+
+function elapsedMilliseconds(startedAt: bigint) {
+  return Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+}
+
 async function cleanupDraft(
   client: PrismaClient,
   ids: ReturnType<typeof makeIds>
@@ -340,6 +548,9 @@ async function cleanupDraft(
   });
   await client.contractBillRow.deleteMany({
     where: { contractBillId: { in: [ids.billA, ids.billB] } }
+  });
+  await client.contractBillRowLineage.deleteMany({
+    where: { createdInContractVersionId: ids.version }
   });
   await client.contractBill.deleteMany({
     where: { contractVersionId: ids.version }

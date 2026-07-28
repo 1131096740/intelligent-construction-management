@@ -413,7 +413,8 @@ const POST_INVOICE_EVIDENCE_FILE_BINDING_TABLES = new Set([
   "EmployeeLoanRepayment",
   "EmployeeProjectLoanEntry",
   "ExpenseClaimAttachment",
-  "ExpenseClaimPaymentExecution"
+  "ExpenseClaimPaymentExecution",
+  "ContractDraftAttachment"
 ]);
 
 const existedAtInvoiceEvidenceGuard = (table: string) =>

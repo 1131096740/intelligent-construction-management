@@ -39,7 +39,7 @@ const expenseClaimPaymentExecutionBindingMigration = readFileSync(
 const currentBindingMigration = readFileSync(
   join(
     process.cwd(),
-    "prisma/migrations/20260727180000_settlement_recovery_ledger/migration.sql"
+    "prisma/migrations/20260728100000_contract_draft_aggregate_foundation/migration.sql"
   ),
   "utf8"
 );
@@ -78,9 +78,12 @@ function migrationBindings(): Array<{
 describe("unified file business binding migration", () => {
   it("registers every current Prisma FileObject reference exactly once", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(61);
+    expect(registered).toHaveLength(62);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
+    expect(currentBindingMigration).toContain(
+      'BEFORE INSERT OR UPDATE OF "fileId" ON "ContractDraftAttachment"'
+    );
   });
 
   it("preserves every existing exclusive spot and invoice fact", () => {
