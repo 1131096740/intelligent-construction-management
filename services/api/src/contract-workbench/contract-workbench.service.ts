@@ -2926,14 +2926,47 @@ export class ContractWorkbenchService {
 
     return value.flatMap((item) => {
       const record = this.objectValue(item);
-      return typeof record["message"] === "string"
-        ? [{
-            key: typeof record["key"] === "string" ? record["key"] : "",
-            section: typeof record["section"] === "string" ? record["section"] : "",
-            message: record["message"]
-          }]
-        : [];
+      if (typeof record["message"] !== "string") return [];
+      const location = this.readinessLocation(record["location"]);
+      return [{
+        key: typeof record["key"] === "string" ? record["key"] : "",
+        section: typeof record["section"] === "string" ? record["section"] : "",
+        message: record["message"],
+        ...(location ? { location } : {})
+      }];
     });
+  }
+
+  private readinessLocation(value: unknown) {
+    const record = this.objectValue(value);
+    const validSections = new Set([
+      "inspection",
+      "basic",
+      "parties",
+      "professional",
+      "bill_tax",
+      "settlement_payment",
+      "clauses",
+      "attachments",
+      "negotiation_documents",
+      "flow_history"
+    ]);
+    const sectionId = typeof record["sectionId"] === "string"
+      ? record["sectionId"]
+      : "";
+    if (!validSections.has(sectionId)) return null;
+    return {
+      sectionId,
+      ...(typeof record["fieldKey"] === "string"
+        ? { fieldKey: record["fieldKey"] }
+        : {}),
+      ...(typeof record["billKey"] === "string"
+        ? { billKey: record["billKey"] }
+        : {}),
+      ...(typeof record["rowKey"] === "string"
+        ? { rowKey: record["rowKey"] }
+        : {})
+    };
   }
 
   private readinessMessages(value: unknown) {

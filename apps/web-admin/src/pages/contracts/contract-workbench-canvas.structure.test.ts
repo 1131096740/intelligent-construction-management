@@ -54,7 +54,7 @@ describe("contract workbench document canvas structure", () => {
 
   it("keeps readiness visible and preserves all structured and document sections", () => {
     expect(pageSource).toMatch(
-      /class="business-sidebar"[\s\S]*ContractWorkbenchSectionNav[\s\S]*data-section-id="inspection"[\s\S]*ContractReadinessPanel/u
+      /class="business-sidebar"[\s\S]*ContractWorkbenchSectionNav[\s\S]*data-section-id="inspection"[\s\S]*ContractWorkbenchIssueList/u
     );
     expect(pageSource.match(/data-section-id="[^"]+"/gu)).toHaveLength(10);
     for (const component of [

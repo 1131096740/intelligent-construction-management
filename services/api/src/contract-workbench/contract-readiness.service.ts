@@ -21,9 +21,35 @@ import { contractDocumentCandidateMatchesLedger } from "../contract-document/con
 import { assertContractBillDerivedUnitPrices } from "../contract-bill/contract-bill-totals";
 
 export interface ContractReadinessResult {
-  blocking: Array<{ key: string; section: string; message: string }>;
-  warnings: Array<{ key: string; section: string; message: string }>;
+  blocking: ContractReadinessIssue[];
+  warnings: ContractReadinessIssue[];
   checkedRevision: number;
+}
+
+export type ContractWorkbenchSectionId =
+  | "inspection"
+  | "basic"
+  | "parties"
+  | "professional"
+  | "bill_tax"
+  | "settlement_payment"
+  | "clauses"
+  | "attachments"
+  | "negotiation_documents"
+  | "flow_history";
+
+export interface ContractReadinessLocation {
+  sectionId: ContractWorkbenchSectionId;
+  fieldKey?: string;
+  billKey?: string;
+  rowKey?: string;
+}
+
+export interface ContractReadinessIssue {
+  key: string;
+  section: string;
+  message: string;
+  location?: ContractReadinessLocation;
 }
 
 type ReadinessVersion = {
@@ -101,6 +127,12 @@ type ReadinessClient = {
   };
   contractPartySnapshot: {
     findMany(input: unknown): Promise<Array<{ id: string; roleKey: string }>>;
+  };
+  paymentTermsVersion: {
+    findFirst(input: unknown): Promise<{ id: string; originalText: string } | null>;
+  };
+  paymentTermsStage: {
+    findMany(input: unknown): Promise<Array<{ id: string }>>;
   };
   contractLayoutTemplateVersion: {
     findUnique(input: unknown): Promise<{
@@ -581,6 +613,25 @@ export class ContractReadinessService {
       }
     }
 
+    const paymentTerms = await tx.paymentTermsVersion.findFirst({
+      where: { contractVersionId: version.id },
+      orderBy: { versionNo: "desc" },
+      select: { id: true, originalText: true }
+    });
+    const paymentStages = paymentTerms
+      ? await tx.paymentTermsStage.findMany({
+          where: { paymentTermsVersionId: paymentTerms.id },
+          select: { id: true }
+        })
+      : [];
+    if (!paymentTerms || (!paymentTerms.originalText.trim() && !paymentStages.length)) {
+      blocking.push({
+        key: "payment_terms.missing",
+        section: "payment",
+        message: "请填写合同付款条款"
+      });
+    }
+
     if (requireInternalReviewDocument) {
       const rounds = await tx.contractNegotiationRound.findMany({
         where: { contractVersionId: version.id }
@@ -772,7 +823,139 @@ export class ContractReadinessService {
       }
     }
 
-    return { blocking, warnings, checkedRevision: version.draftRevision };
+    return {
+      blocking: blocking.map((issue) =>
+        this.withIssueLocation(issue, template.validationSchema, bills, rows)
+      ),
+      warnings: warnings.map((issue) =>
+        this.withIssueLocation(issue, template.validationSchema, bills, rows)
+      ),
+      checkedRevision: version.draftRevision
+    };
+  }
+
+  private withIssueLocation(
+    issue: ContractReadinessIssue,
+    validationRules: ContractValidationRule[],
+    bills: Array<{ id: string; billKey: string }>,
+    rows: Array<{ id: string; contractBillId: string }>
+  ): ContractReadinessIssue {
+    const known = this.knownIssueLocation(issue, validationRules, bills, rows);
+    return {
+      ...issue,
+      location: known ?? { sectionId: this.legacySectionId(issue.section) }
+    };
+  }
+
+  private knownIssueLocation(
+    issue: ContractReadinessIssue,
+    validationRules: ContractValidationRule[],
+    bills: Array<{ id: string; billKey: string }>,
+    rows: Array<{ id: string; contractBillId: string }>
+  ): ContractReadinessLocation | null {
+    if (issue.key.startsWith("field.")) {
+      return {
+        sectionId: "professional",
+        fieldKey: issue.key.slice("field.".length)
+      };
+    }
+    if (issue.key.startsWith("clause.")) {
+      return {
+        sectionId: "clauses",
+        fieldKey: issue.key.slice("clause.".length)
+      };
+    }
+    const validationRule = validationRules.find((rule) => rule.key === issue.key);
+    if (validationRule) {
+      return {
+        sectionId: "clauses",
+        fieldKey: validationRule.targetClauseKey
+      };
+    }
+    const knownFields: Record<string, ContractReadinessLocation> = {
+      "tax.invoice_type": { sectionId: "bill_tax", fieldKey: "invoiceType" },
+      "tax.default_rate": {
+        sectionId: "bill_tax",
+        fieldKey: "defaultTaxRatePercent"
+      },
+      "tax.mode": { sectionId: "bill_tax", fieldKey: "taxMode" },
+      "amount.fixed_total_source": {
+        sectionId: "bill_tax",
+        fieldKey: "manualAmountCents"
+      },
+      "layout.selected": {
+        sectionId: "negotiation_documents",
+        fieldKey: "layoutTemplateVersionId"
+      },
+      "layout.published": {
+        sectionId: "negotiation_documents",
+        fieldKey: "layoutTemplateVersionId"
+      },
+      "party.party_a": { sectionId: "parties", fieldKey: "firstParty" },
+      "party.party_b": { sectionId: "parties", fieldKey: "counterparty" },
+      "payment_terms.missing": {
+        sectionId: "settlement_payment",
+        fieldKey: "paymentTerms"
+      }
+    };
+    if (knownFields[issue.key]) return knownFields[issue.key]!;
+
+    const rowMatch = /^bill\.([^.]+)\.row\.(\d+)\.([^.]+)$/u.exec(issue.key);
+    if (rowMatch) {
+      const [, billKey = "", rowIndexText = "", rawField = ""] = rowMatch;
+      const bill = bills.find((candidate) => candidate.billKey === billKey);
+      const row = bill
+        ? rows.filter((candidate) => candidate.contractBillId === bill.id)[
+            Number.parseInt(rowIndexText, 10)
+          ]
+        : undefined;
+      return {
+        sectionId: "bill_tax",
+        billKey,
+        ...(row?.id ? { rowKey: row.id } : {}),
+        fieldKey: this.billFieldKey(rawField)
+      };
+    }
+    const billMatch = /^bill\.([^.]+)\./u.exec(issue.key);
+    if (billMatch) {
+      return {
+        sectionId: "bill_tax",
+        billKey: billMatch[1]
+      };
+    }
+    if (issue.key.startsWith("authorization.") ||
+        issue.key === "document.counterparty_signed_pdf_missing" ||
+        issue.key === "document.counterparty_signed_pdf_stale") {
+      return { sectionId: "attachments" };
+    }
+    if (issue.key.startsWith("negotiation.") || issue.key.startsWith("document.")) {
+      return { sectionId: "negotiation_documents" };
+    }
+    return null;
+  }
+
+  private billFieldKey(rawField: string) {
+    return {
+      item_name: "itemName",
+      unit_price: "unitPrice",
+      tax_rate: "taxRatePercent",
+      pricing_fact: "unitPrice",
+      amount: "unitPrice"
+    }[rawField] ?? rawField;
+  }
+
+  private legacySectionId(section: string): ContractWorkbenchSectionId {
+    return {
+      fields: "professional",
+      clauses: "clauses",
+      tax: "bill_tax",
+      bills: "bill_tax",
+      amount: "bill_tax",
+      layout: "negotiation_documents",
+      parties: "parties",
+      payment: "settlement_payment",
+      documents: "negotiation_documents"
+    }[section] as ContractWorkbenchSectionId | undefined ?? "inspection";
   }
 
   private async appendCrossVersionMappingReadiness(

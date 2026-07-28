@@ -501,8 +501,10 @@
                 class="workbench-section-card"
                 data-section-id="inspection"
               >
-                <ContractReadinessPanel
+                <ContractWorkbenchIssueList
                   :readiness="workbench?.readiness ?? emptyReadiness"
+                  :location-message="issueLocationMessage"
+                  @locate="locateReadinessIssue"
                 />
               </section>
 
@@ -979,9 +981,14 @@ import ContractPartySection from "./workbench/ContractPartySection.vue";
 import ContractPaymentTermsSection from "./workbench/ContractPaymentTermsSection.vue";
 import ContractPricingSection from "./workbench/ContractPricingSection.vue";
 import ContractProfessionalFieldsSection from "./workbench/ContractProfessionalFieldsSection.vue";
-import ContractReadinessPanel from "./workbench/ContractReadinessPanel.vue";
+import ContractWorkbenchIssueList from "./workbench/ContractWorkbenchIssueList.vue";
 import ContractTaxFactsSection from "./workbench/ContractTaxFactsSection.vue";
 import ContractWorkbenchSectionNav from "./workbench/ContractWorkbenchSectionNav.vue";
+import {
+  createContractWorkbenchIssueLocator,
+  type ContractReadinessLocation,
+  type ContractWorkbenchReadinessIssue
+} from "./workbench/contract-workbench-issue-location";
 import {
   CONTRACT_WORKBENCH_SECTIONS,
   contractWorkbenchSectionAnchorId,
@@ -1200,6 +1207,7 @@ const SECTION_HINTS: Record<ContractWorkbenchSectionId, string> = {
 };
 
 const activeSection = ref<ContractWorkbenchSectionId>("inspection");
+const issueLocationMessage = ref("");
 const creating = ref(false);
 const errorMessage = ref("");
 const manualSaveMessage = ref("");
@@ -1331,11 +1339,85 @@ const canvasDocuments = computed(
 
 function selectWorkbenchSection(id: ContractWorkbenchSectionId) {
   activeSection.value = id;
-  void nextTick(() => {
-    document
-      .getElementById(contractWorkbenchSectionAnchorId(id))
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
+  issueLocationMessage.value = "";
+  void scrollWorkbenchSection(id);
+}
+
+async function scrollWorkbenchSection(
+  id: ContractWorkbenchSectionId
+): Promise<boolean> {
+  await nextTick();
+  const section = document.getElementById(contractWorkbenchSectionAnchorId(id));
+  section?.scrollIntoView({ behavior: "smooth", block: "start" });
+  return Boolean(section);
+}
+
+async function focusWorkbenchField(
+  location: ContractReadinessLocation
+): Promise<boolean> {
+  if (!location.fieldKey) return false;
+  await nextTick();
+  const section = document.getElementById(
+    contractWorkbenchSectionAnchorId(location.sectionId)
+  );
+  const hosts = [...(section?.querySelectorAll<HTMLElement>("[data-field-key]") ?? [])]
+    .filter((candidate) => candidate.dataset["fieldKey"] === location.fieldKey);
+  const focusTarget = hosts
+    .flatMap((host) => host.matches("input, textarea, button, [tabindex]")
+      ? [host]
+      : [...host.querySelectorAll<HTMLElement>("input, textarea, button, [tabindex]")])
+    .find((candidate) =>
+      !candidate.hasAttribute("disabled") &&
+      candidate.getAttribute("aria-disabled") !== "true"
+    );
+  if (!focusTarget) return false;
+  focusTarget.focus();
+  focusTarget.scrollIntoView({ block: "center" });
+  return document.activeElement === focusTarget ||
+    Boolean(document.activeElement && focusTarget.contains(document.activeElement));
+}
+
+async function focusWorkbenchBillRow(
+  location: ContractReadinessLocation
+): Promise<boolean> {
+  if (!location.billKey || !location.rowKey) return false;
+  const bill = aggregateModel.bills.find(
+    (candidate) => candidate.billKey === location.billKey
+  );
+  const row = bill?.rows.find(
+    (candidate) =>
+      candidate["rowKey"] === location.rowKey ||
+      candidate["clientRowKey"] === location.rowKey
+  );
+  if (!bill || !row) return false;
+  openBillFocus(location.billKey);
+  await nextTick();
+  const focused = (
+    await billFocusEditorRef.value?.focusReadinessIssue(
+      location.rowKey,
+      location.fieldKey ?? "itemName"
+    )
+  ) ?? false;
+  if (!focused) {
+    closeBillFocus();
+    await scrollWorkbenchSection("bill_tax");
+  }
+  return focused;
+}
+
+const issueLocator = createContractWorkbenchIssueLocator({
+  activateSection: (id) => {
+    activeSection.value = id;
+    issueLocationMessage.value = "";
+  },
+  scrollSection: scrollWorkbenchSection,
+  focusField: focusWorkbenchField,
+  focusBillRow: focusWorkbenchBillRow
+});
+
+async function locateReadinessIssue(issue: ContractWorkbenchReadinessIssue) {
+  const result = await issueLocator.locate(issue);
+  issueLocationMessage.value = result.message;
 }
 
 function disconnectSectionObserver() {

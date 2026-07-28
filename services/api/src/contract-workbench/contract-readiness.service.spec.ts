@@ -4,6 +4,7 @@ import { ContractReadinessService } from "./contract-readiness.service";
 describe("ContractReadinessService", () => {
   const version = {
     id: "version-1",
+    contractId: "contract-1",
     draftRevision: 4,
     amountCents: 1_000n,
     amountLimitType: "capped",
@@ -88,6 +89,7 @@ describe("ContractReadinessService", () => {
       contractBillRow: {
         findMany: jest.fn().mockResolvedValue([
           {
+            id: "row-1",
             contractBillId: "bill-1",
             itemName: "钢材",
             unit: "吨",
@@ -108,6 +110,15 @@ describe("ContractReadinessService", () => {
           { id: "party-a", roleKey: "party_a" },
           { id: "party-b", roleKey: "party_b" }
         ])
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-1",
+          originalText: "结算生效后 30 天内付款"
+        })
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([{ id: "stage-1" }])
       },
       contractLayoutTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -163,6 +174,112 @@ describe("ContractReadinessService", () => {
   }
 
   const contract = { contractTypeKey: "material_purchase" };
+
+  it("locates a missing default tax rate in the bill and tax section", async () => {
+    const result = await new ContractReadinessService().check(
+      tx() as never,
+      { ...version, defaultTaxRatePercent: null },
+      contract,
+      false
+    );
+
+    expect(result.blocking).toContainEqual(expect.objectContaining({
+      key: "tax.default_rate",
+      location: {
+        sectionId: "bill_tax",
+        fieldKey: "defaultTaxRatePercent"
+      }
+    }));
+  });
+
+  it("locates a missing counterparty at the party input", async () => {
+    const current = tx({
+      contractPartySnapshot: {
+        findMany: jest.fn().mockResolvedValue([{ id: "party-a", roleKey: "party_a" }])
+      }
+    });
+
+    const result = await new ContractReadinessService().check(
+      current as never,
+      version,
+      contract,
+      false
+    );
+
+    expect(result.blocking).toContainEqual(expect.objectContaining({
+      key: "party.party_b",
+      location: {
+        sectionId: "parties",
+        fieldKey: "counterparty"
+      }
+    }));
+  });
+
+  it("locates a missing quantity on the exact bill row", async () => {
+    const rows = Array.from({ length: 23 }, (_unused, index) => ({
+      id: `row-${index + 1}`,
+      contractBillId: "bill-1",
+      itemName: `材料 ${index + 1}`,
+      unit: "吨",
+      quantity: index === 22 ? null : new Prisma.Decimal("1"),
+      unitPrice: new Prisma.Decimal("1000"),
+      taxRate: new Prisma.Decimal("13"),
+      taxRateSource: "version_default",
+      pricingFactStatus: "confirmed",
+      taxInclusiveAmountCents: index === 22 ? null : 1_000n,
+      taxExclusiveAmountCents: index === 22 ? null : 885n,
+      taxAmountCents: index === 22 ? null : 115n,
+      customData: { item_name: `材料 ${index + 1}` }
+    }));
+    const current = tx({
+      contractBillRow: {
+        findMany: jest.fn().mockResolvedValue(rows)
+      }
+    });
+
+    const result = await new ContractReadinessService().check(
+      current as never,
+      version,
+      contract,
+      false
+    );
+
+    expect(result.blocking).toContainEqual(expect.objectContaining({
+      key: "bill.main_bill.row.22.quantity",
+      location: {
+        sectionId: "bill_tax",
+        fieldKey: "quantity",
+        billKey: "main_bill",
+        rowKey: "row-23"
+      }
+    }));
+  });
+
+  it("locates missing payment terms in settlement and payment", async () => {
+    const current = tx({
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    });
+
+    const result = await new ContractReadinessService().check(
+      current as never,
+      version,
+      contract,
+      false
+    );
+
+    expect(result.blocking).toContainEqual(expect.objectContaining({
+      key: "payment_terms.missing",
+      location: {
+        sectionId: "settlement_payment",
+        fieldKey: "paymentTerms"
+      }
+    }));
+  });
 
   it("does not block removed material deadlines or optional labor and rental dates", async () => {
     const service = new ContractReadinessService();

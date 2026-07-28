@@ -30,6 +30,7 @@
         <t-select
           v-if="field.type === 'single_select'"
           :value="stringValue(field.key)"
+          :data-field-key="field.key"
           :options="field.options ?? []"
           :disabled="fieldDisabled(field.key)"
           :placeholder="`选择${field.label}`"
@@ -38,6 +39,7 @@
         <t-textarea
           v-else-if="field.type === 'long_text'"
           :value="stringValue(field.key)"
+          :data-field-key="field.key"
           :disabled="fieldDisabled(field.key)"
           :placeholder="`请输入${field.label}`"
           @change="(value: string) => update(field.key, value)"
@@ -45,6 +47,7 @@
         <t-input
           v-else
           :value="stringValue(field.key)"
+          :data-field-key="field.key"
           :disabled="fieldDisabled(field.key)"
           :placeholder="`请输入${field.label}`"
           @change="(value: string) => update(field.key, value)"

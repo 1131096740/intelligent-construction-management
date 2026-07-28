@@ -8,6 +8,7 @@
       <span class="field-label">付款条款原文摘要</span>
       <t-textarea
         :value="model.paymentTermsOriginalText"
+        data-field-key="paymentTerms"
         :disabled="disabled"
         :autosize="{ minRows: 3, maxRows: 6 }"
         placeholder="粘贴合同中与付款比例、期限、发票、分次付款有关的原文摘要"

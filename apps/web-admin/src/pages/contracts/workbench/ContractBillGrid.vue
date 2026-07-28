@@ -30,7 +30,7 @@ import {
   isContractBillCustomColumn,
   normalizeContractBillBoolean
 } from "@jiangkong/shared-domain";
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import JgBusinessGrid from "../../../components/JgBusinessGrid.vue";
 import type { JgBusinessGridRow } from "../../../components/jg-business-grid.config";
 import {
@@ -59,6 +59,7 @@ const emit = defineEmits<{
   "update:rows": [rows: ContractBillCandidateRow[]];
   "select-row": [clientRowKey: string];
 }>();
+const businessGridRef = ref<InstanceType<typeof JgBusinessGrid> | null>(null);
 
 interface EditableColumn extends WorkbenchBillColumn {
   size: number;
@@ -369,6 +370,45 @@ function selectNextError() {
   errorListSignature.value = cursor.signature;
 }
 
+async function focusReadinessCell(
+  rowKey: string,
+  field: string
+): Promise<boolean> {
+  const rowIndex = props.rows.findIndex(
+    (row) => row.rowKey === rowKey || row.clientRowKey === rowKey
+  );
+  if (rowIndex < 0) return false;
+  const row = props.rows[rowIndex]!;
+  emit("select-row", row.clientRowKey);
+  if (!isMobile.value) {
+    return (await businessGridRef.value?.focusCell(rowIndex, field)) ?? false;
+  }
+  await nextTick();
+  const control = [...document.querySelectorAll<HTMLElement>(
+    "[data-client-row-key]"
+  )].find(
+    (candidate) =>
+      candidate.dataset["clientRowKey"] === row.clientRowKey &&
+      candidate.dataset["field"] === field
+  );
+  const focusTarget = control?.matches("input, textarea, button, [tabindex]")
+    ? control
+    : control?.querySelector<HTMLElement>("input, textarea, button, [tabindex]");
+  if (
+    !focusTarget ||
+    focusTarget.hasAttribute("disabled") ||
+    focusTarget.getAttribute("aria-disabled") === "true"
+  ) {
+    return false;
+  }
+  focusTarget.focus();
+  focusTarget.scrollIntoView({ block: "center" });
+  return document.activeElement === focusTarget ||
+    Boolean(document.activeElement && focusTarget.contains(document.activeElement));
+}
+
+defineExpose({ focusReadinessCell });
+
 function errorFor(clientRowKey: string, field: string) {
   return errorLookup.value.get(cellKey(clientRowKey, field));
 }
@@ -489,6 +529,7 @@ function cellKey(clientRowKey: string, field: string) {
 
     <JgBusinessGrid
       v-if="!isMobile"
+      ref="businessGridRef"
       :source="gridRows"
       :columns="columns"
       :readonly="readonly"

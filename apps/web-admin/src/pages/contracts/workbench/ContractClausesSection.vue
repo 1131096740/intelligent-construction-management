@@ -16,6 +16,7 @@
       v-else
       :key="clause.key"
       class="clause-item"
+      :data-field-key="clause.key"
     >
       <div class="clause-head">
         <label class="field title-field">

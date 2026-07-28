@@ -1740,7 +1740,11 @@ describe("ContractWorkbenchService", () => {
                 {
                   key: "field.projectName",
                   section: "fields",
-                  message: "工程名称不能为空"
+                  message: "工程名称不能为空",
+                  location: {
+                    sectionId: "professional",
+                    fieldKey: "projectName"
+                  }
                 }
               ],
               warnings: [
@@ -1844,7 +1848,11 @@ describe("ContractWorkbenchService", () => {
         {
           key: "field.projectName",
           section: "fields",
-          message: "工程名称不能为空"
+          message: "工程名称不能为空",
+          location: {
+            sectionId: "professional",
+            fieldKey: "projectName"
+          }
         }
       ],
       warnings: [

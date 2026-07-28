@@ -20,7 +20,8 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
-test("合同工作台以正文为中央画布并在侧栏保留业务与就绪检查", async ({ page }, testInfo) => {
+test("合同工作台以纵向正文画布展示并可定位资料检查问题", async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
   let privateFileCalls = 0;
 
   await page.route("**/api/auth/login", (route) =>
@@ -68,14 +69,43 @@ test("合同工作台以正文为中央画布并在侧栏保留业务与就绪�
   await page.route("**/api/contract-layout-templates*", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" })
   );
+  await page.route("**/api/standard-clauses*", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
+  await page.route("**/api/contract-versions/version-1/bill-transitions/options", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
+  await page.route("**/api/contract-versions/version-1/bill-transitions", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
+  await page.route("**/api/company-entities*", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
   await page.route("**/api/contract-workbench/version-1/negotiation-rounds", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" })
   );
+  await page.route("**/api/contract-drafts/version-1/edit-lease**", (route) => {
+    if (route.request().method() === "DELETE") {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ released: true })
+      });
+    }
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        token: "lease-token",
+        leaseRevision: 1,
+        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+        heartbeatIntervalMs: 60_000
+      })
+    });
+  });
   await page.route("**/api/files/**", (route) => {
     privateFileCalls += 1;
     return route.abort();
   });
-  await page.route("**/api/contract-workbench/contract-1", (route) =>
+  await page.route("**/api/contract-drafts/version-1/workbench", (route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -93,13 +123,16 @@ test("合同工作台以正文为中央画布并在侧栏保留业务与就绪�
           versionNo: 1,
           status: "draft",
           draftRevision: 3,
+          changeType: "original",
           amountCents: "120000000",
+          estimatedAmountCents: null,
+          amountLimitType: "capped",
           pricingNature: "fixed_total",
           amountSource: "bill_sum",
           taxFacts: {
             invoiceType: "vat_special",
             taxMode: "single_rate",
-            defaultTaxRatePercent: "13",
+            defaultTaxRatePercent: null,
             status: "draft",
             source: "contract_document",
             revision: 0,
@@ -118,7 +151,22 @@ test("合同工作台以正文为中央画布并在侧栏保留业务与就绪�
         parties: [],
         bills: [],
         paymentTerms: { originalText: "", stages: [] },
-        checkpoints: [],
+        draft: {},
+        attachments: [],
+        lease: {
+          state: "available",
+          holderDisplayName: null,
+          expiresAt: null,
+          canTakeOver: false
+        },
+        settlementMode: {
+          value: "settlement_required",
+          source: "contract_director",
+          confirmedAt: "2026-07-12T05:00:00.000Z",
+          confirmedByUserId: "contract-director-1",
+          confirmationRequired: false,
+          canConfirm: false
+        },
         documents: [
           {
             id: "document-current",
@@ -133,8 +181,20 @@ test("合同工作台以正文为中央画布并在侧栏保留业务与就绪�
         ],
         readiness: {
           ready: false,
-          blockingMessages: ["请补齐合同主体"],
-          warningMessages: []
+          blockingMessages: ["请填写合同默认税率"],
+          warningMessages: [],
+          blocking: [
+            {
+              key: "tax.default_rate.missing",
+              section: "tax",
+              message: "请填写合同默认税率",
+              location: {
+                sectionId: "bill_tax",
+                fieldKey: "defaultTaxRatePercent"
+              }
+            }
+          ],
+          warnings: []
         }
       })
     })
@@ -146,21 +206,24 @@ test("合同工作台以正文为中央画布并在侧栏保留业务与就绪�
   await page.getByRole("button", { name: "登录" }).click();
 
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/contracts/contract-1/workbench");
+  await page.goto("/contracts/contract-1/workbench?versionId=version-1");
   await expect(page.getByRole("heading", { name: "合同正文画布" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "科技园钢材采购合同" }).last()).toBeVisible();
   await expect(page.getByText("正文可预览", { exact: true })).toBeVisible();
-  await expect(page.getByText("就绪检查", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "资料检查" })).toBeVisible();
+  await expect(page.locator("[data-section-id]")).toHaveCount(10);
+  await page.getByRole("button", { name: "请填写合同默认税率" }).click();
   await expect(
-    page.locator(".readiness-panel").getByText("请补齐合同主体", { exact: true })
-  ).toBeVisible();
+    page.locator('[data-field-key="defaultTaxRatePercent"] input:focus')
+  ).toHaveCount(1);
+  await expect(page.getByText("已定位到具体问题", { exact: true })).toBeVisible();
 
   const desktopCanvas = await page.locator(".document-canvas-slot").boundingBox();
   const desktopSidebar = await page.locator(".business-sidebar").boundingBox();
   expect(desktopCanvas).not.toBeNull();
   expect(desktopSidebar).not.toBeNull();
   expect(desktopCanvas!.x).toBeLessThan(desktopSidebar!.x);
-  await page.getByRole("button", { name: "安全打开正文" }).click();
+  await page.locator('[data-section-nav-id="negotiation_documents"]').click();
   await expect(page.getByRole("heading", { name: "合同文档" })).toBeVisible();
   expect(privateFileCalls).toBe(0);
 
@@ -176,7 +239,7 @@ test("合同工作台以正文为中央画布并在侧栏保留业务与就绪�
     } else {
       expect(sidebar!.y).toBeGreaterThan(canvas!.y);
     }
-    await expect(page.getByText("就绪检查", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "资料检查" })).toBeVisible();
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoNestedHorizontalScrollers(page);
     await page.screenshot({

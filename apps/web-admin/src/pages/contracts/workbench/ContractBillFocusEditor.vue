@@ -424,7 +424,7 @@ function errorMessage(error: unknown, fallback: string) {
 
 <script setup lang="ts">
 import type { UploadFile } from "tdesign-vue-next";
-import { watch } from "vue";
+import { nextTick, watch } from "vue";
 import { centsTextToYuanText } from "../../../lib/money";
 import ContractBillGrid from "./ContractBillGrid.vue";
 
@@ -442,6 +442,7 @@ const emit = defineEmits<{
 
 const importFiles = ref<UploadFile[]>([]);
 const uploadRef = ref<{ $el?: HTMLElement } | null>(null);
+const billGridRef = ref<InstanceType<typeof ContractBillGrid> | null>(null);
 const controller = createContractBillFocusController({
   bill: () => props.bill,
   contractVersionId: () => props.contractVersionId,
@@ -508,7 +509,23 @@ function moneyText(value: string) {
   return `${centsTextToYuanText(value)} 元`;
 }
 
-defineExpose({ openImportPicker });
+async function focusReadinessIssue(
+  rowKey: string,
+  fieldKey: string
+): Promise<boolean> {
+  const row = rows.value.find(
+    (candidate) =>
+      candidate.rowKey === rowKey || candidate.clientRowKey === rowKey
+  );
+  if (!row) return false;
+  selectedClientRowKey.value = row.clientRowKey;
+  await nextTick();
+  return (
+    (await billGridRef.value?.focusReadinessCell(rowKey, fieldKey)) ?? false
+  );
+}
+
+defineExpose({ openImportPicker, focusReadinessIssue });
 </script>
 
 <template>
@@ -600,6 +617,7 @@ defineExpose({ openImportPicker });
     </div>
 
     <ContractBillGrid
+      ref="billGridRef"
       data-testid="contract-bill-grid"
       :bill="billSnapshot"
       :rows="rows"

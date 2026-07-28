@@ -11,7 +11,7 @@ describe("contract negotiation workbench structure", () => {
   it("keeps negotiation comparison in the central canvas and readiness in the sidebar", () => {
     expect(page).toContain("ContractNegotiationCanvas");
     expect(page).toMatch(/document-canvas-slot[\s\S]*ContractNegotiationCanvas/u);
-    expect(page).toMatch(/business-sidebar[\s\S]*ContractReadinessPanel/u);
+    expect(page).toMatch(/business-sidebar[\s\S]*ContractWorkbenchIssueList/u);
     expect(documents).toContain("ContractNegotiationSection");
   });
 

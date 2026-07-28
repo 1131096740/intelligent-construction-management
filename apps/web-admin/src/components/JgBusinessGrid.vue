@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from "vue";
 import Grid, {
   type AfterEditEvent,
   type ColumnRegular,
@@ -20,6 +21,17 @@ const emit = defineEmits<{
   "update:source": [value: JgBusinessGridRow[]];
   "focus-row": [rowIndex: number];
 }>();
+
+interface RevoGridElement extends HTMLElement {
+  scrollToRow(rowIndex: number): Promise<void>;
+  scrollToColumnProp(columnProp: string): Promise<void>;
+  setCellsFocus(
+    start: { x: number; y: number },
+    end: { x: number; y: number }
+  ): Promise<void>;
+}
+
+const gridRef = ref<{ $el?: RevoGridElement } | null>(null);
 
 function onAfterEdit(event: CustomEvent<AfterEditEvent>) {
   const detail = event.detail;
@@ -44,6 +56,29 @@ function onAfterFocus(event: CustomEvent<FocusAfterRenderEvent>) {
     emit("focus-row", event.detail.rowIndex);
   }
 }
+
+async function focusCell(rowIndex: number, columnProp: string): Promise<boolean> {
+  const grid = gridRef.value?.$el;
+  const columnIndex = props.columns.findIndex(
+    (column) => String("prop" in column ? column.prop : "") === columnProp
+  );
+  if (!grid || columnIndex < 0 || !Number.isInteger(rowIndex) || rowIndex < 0) {
+    return false;
+  }
+  try {
+    await grid.scrollToRow(rowIndex);
+    await grid.scrollToColumnProp(columnProp);
+    await grid.setCellsFocus(
+      { x: columnIndex, y: rowIndex },
+      { x: columnIndex, y: rowIndex }
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+defineExpose({ focusCell });
 </script>
 
 <template>
@@ -53,6 +88,7 @@ function onAfterFocus(event: CustomEvent<FocusAfterRenderEvent>) {
     :aria-readonly="readonly"
   >
     <Grid
+      ref="gridRef"
       :columns="columns"
       :source="source"
       :readonly="readonly"

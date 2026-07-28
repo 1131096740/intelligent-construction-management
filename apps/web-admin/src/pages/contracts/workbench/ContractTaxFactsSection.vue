@@ -19,6 +19,7 @@
         <span class="field-label">发票类型 <em class="required">*</em></span>
         <t-select
           :value="model.invoiceType ?? undefined"
+          data-field-key="invoiceType"
           :options="contractInvoiceTypeOptions"
           :disabled="disabled"
           placeholder="选择增值税发票类型"
@@ -30,6 +31,7 @@
         <span class="field-label">计税模式 <em class="required">*</em></span>
         <t-select
           :value="model.taxMode"
+          data-field-key="taxMode"
           :options="contractTaxModeOptions"
           :disabled="disabled"
           placeholder="选择计税模式"
@@ -47,6 +49,7 @@
         </span>
         <t-select
           :value="quickRate"
+          data-field-key="defaultTaxRatePercent"
           :options="taxRateQuickOptions"
           :disabled="disabled"
           placeholder="选择常用税率"
@@ -61,6 +64,7 @@
         <span class="field-label">其他税率（%） <em class="required">*</em></span>
         <t-input
           :value="model.defaultTaxRatePercent ?? ''"
+          data-field-key="defaultTaxRatePercent"
           :disabled="disabled"
           placeholder="请输入 0 到 100 之间的税率"
           @change="updateOtherRate"

@@ -30,6 +30,7 @@
         <span class="field-label">含税合同总价（元）</span>
         <t-input
           v-model="manualAmountYuanText"
+          data-field-key="manualAmountCents"
           :disabled="disabled"
           placeholder="请输入含税合同总价"
           @change="onManualAmountChange"

@@ -9,6 +9,7 @@
         <span class="field-label">版式模板</span>
         <t-select
           v-model="layoutTemplateVersionId"
+          data-field-key="layoutTemplateVersionId"
           :options="layoutOptions"
           :disabled="disabled || busy"
           placeholder="选择已发布版式"

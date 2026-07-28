@@ -88,6 +88,7 @@
           <span class="field-label">{{ field.label }}</span>
           <t-input
             v-model="form[field.key]"
+            :data-field-key="field.key === 'name' ? 'counterparty' : field.key"
             :disabled="disabled || busy"
             :placeholder="field.placeholder"
           />
