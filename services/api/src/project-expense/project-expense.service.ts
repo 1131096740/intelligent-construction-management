@@ -17,18 +17,15 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
+import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 import { approvalTimelineForBusiness } from "../core-flow/approval-timeline-read";
 import { detailAction } from "../core-flow/detail-actions";
 import {
-  calculateProjectCashPoolBigInt,
   dbMoneyToBigInt,
-  findProjectSpotProcurementRefundAmounts,
   formatMoneyCentsAsYuan,
   mapBigIntMoneyFieldsToApi,
   moneyCentsToApi,
   parseMoneyCentsInput,
-  SPOT_PROCUREMENT_CASH_POOL_STATUSES,
-  spotProcurementPaymentToMoneyRequestValue,
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
@@ -143,13 +140,6 @@ const PROJECT_EXPENSE_READ_ROLES: readonly RoleKey[] = [
 
 const APPROVAL_PDF_TEMPLATE_KEY = "approval_form";
 const FINANCE_PDF_TEMPLATE_KEY = "project_expense_finance_archive";
-const CASH_POOL_STATUSES = [
-  "approval_pending",
-  "approved_pending_payment",
-  "partially_paid",
-  "paid"
-] as const;
-const ACTIVE_FINANCING_USAGE_STATUSES = ["occupied", "used"] as const;
 const EXPENSE_TYPES = [
   "sporadic_payment",
   "loan_reserve",
@@ -201,7 +191,8 @@ export class ProjectExpenseService {
     @Optional()
     private readonly auth?: AuthService,
     @Optional()
-    private readonly files?: FileService
+    private readonly files?: FileService,
+    private readonly projectFunding?: ProjectFundingAvailabilityService
   ) {}
 
   async list(projectId: string, actorUserId: string, query?: ProjectExpenseLedgerQuery) {
@@ -665,7 +656,6 @@ export class ProjectExpenseService {
         }
       }
 
-      const allocations = await this.reserveProjectCashPool(tx, project.id, requestedAmountCents);
       const request = await tx.projectExpenseRequest.create({
         data: {
           projectId: project.id,
@@ -688,31 +678,6 @@ export class ProjectExpenseService {
           status: "approval_pending"
         }
       });
-
-      if (allocations.length) {
-        await tx.projectExpenseFinancingQuotaUsage.createMany({
-          data: allocations.map((allocation) => ({
-            quotaId: allocation.quotaId,
-            projectExpenseRequestId: request.id,
-            projectId: project.id,
-            amountCents: allocation.amountCents,
-            status: "occupied"
-          }))
-        });
-        await this.audit.record(tx, {
-          actorUserId,
-          action: "project_expense.cash_pool.occupy",
-          businessType: "project_expense_request",
-          businessId: request.id,
-          metadata: {
-            projectId: project.id,
-            allocations: allocations.map((allocation) => ({
-              quotaId: allocation.quotaId,
-              amountCents: allocation.amountCents.toString()
-            }))
-          }
-        });
-      }
 
       await tx.approvalInstance.create({
         data: {
@@ -1012,11 +977,40 @@ export class ProjectExpenseService {
     }
     await this.auth.confirmPassword(actorUserId, confirmationPassword);
 
-    let blockedReason: string | undefined;
     const execution = await this.prisma.$transaction(async (tx) => {
+      if (this.projectFunding) {
+        await this.projectFunding.lockFundingContext(tx, projectId);
+      }
       const request = await this.lockExpenseRequestForExecution(tx, projectId, expenseRequestId);
       if (!request) {
         throw new NotFoundException("项目支出申请不存在");
+      }
+      const existingExecution = this.projectFunding
+        ? await tx.projectExpenseExecution.findFirst({
+            where: { voucherFileId }
+          })
+        : null;
+      if (existingExecution) {
+        if (
+          existingExecution.projectExpenseRequestId !== request.id ||
+          existingExecution.projectId !== request.projectId ||
+          existingExecution.amountCents !== amountCents ||
+          existingExecution.paidAt.getTime() !== paidAt.getTime() ||
+          existingExecution.executedByUserId !== actorUserId
+        ) {
+          throw new BadRequestException("该项目支出付款凭证已绑定不同的实付事实");
+        }
+        await this.projectFunding!.allocateExecution(tx, {
+          projectId: request.projectId,
+          executionType: "project_expense_execution",
+          executionId: existingExecution.id,
+          businessType: "project_expense_request",
+          businessId: request.id,
+          amountCents,
+          occurredAt: paidAt,
+          actorUserId
+        });
+        return existingExecution;
       }
       if (!["approved_pending_payment", "partially_paid"].includes(request.status)) {
         throw new BadRequestException("当前项目支出状态不可实付");
@@ -1039,15 +1033,6 @@ export class ProjectExpenseService {
       if (voucherFile.uploadedByUserId !== actorUserId) {
         throw new BadRequestException("项目支出实付凭证必须由登记人本人上传");
       }
-      const invalidFinancing = await this.releaseInvalidFinancingQuotaBeforeExecution(
-        tx,
-        request,
-        actorUserId
-      );
-      if (invalidFinancing) {
-        blockedReason = "项目垫资额度已失效，请重新提交支出申请";
-        return null;
-      }
       const newPaidAmountCents = request.paidAmountCents + amountCents;
       const status = newPaidAmountCents >= approvedAmountCents ? "paid" : "partially_paid";
       const created = await tx.projectExpenseExecution.create({
@@ -1060,15 +1045,22 @@ export class ProjectExpenseService {
           voucherFileId
         }
       });
+      if (this.projectFunding) {
+        await this.projectFunding.allocateExecution(tx, {
+          projectId: request.projectId,
+          executionType: "project_expense_execution",
+          executionId: created.id,
+          businessType: "project_expense_request",
+          businessId: request.id,
+          amountCents,
+          occurredAt: paidAt,
+          actorUserId
+        });
+      }
       await tx.projectExpenseRequest.update({
         where: { id: request.id },
         data: { paidAmountCents: newPaidAmountCents, status }
       });
-      await this.useFinancingQuotaUsage(
-        tx,
-        { ...request, paidAmountCents: newPaidAmountCents },
-        actorUserId
-      );
       await this.audit.record(tx, {
         actorUserId,
         action: "project_expense.execution.record",
@@ -1084,9 +1076,6 @@ export class ProjectExpenseService {
       return created;
     });
 
-    if (blockedReason || !execution) {
-      throw new BadRequestException(blockedReason ?? "项目支出实付登记被阻断");
-    }
     return projectExpensePostResponseToApi(execution);
   }
 
@@ -1455,134 +1444,6 @@ export class ProjectExpenseService {
     });
   }
 
-  private async reserveProjectCashPool(
-    tx: Prisma.TransactionClient,
-    projectId: string,
-    requestedAmountCents: bigint
-  ) {
-    const lockedProjects = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>(Prisma.sql`
-      SELECT "id", "isActive"
-      FROM "Project"
-      WHERE "id" = ${projectId}
-      FOR UPDATE
-    `);
-    if (!lockedProjects[0]?.isActive) {
-      throw new BadRequestException("项目不存在或已停用");
-    }
-
-    const [
-      receipts,
-      supplierRefundAmountCents,
-      paymentRequests,
-      expenseRequests,
-      spotProcurementPayments,
-      financingQuotas
-    ] = await Promise.all([
-      tx.projectReceipt.findMany({
-        where: { projectId, voidedAt: null },
-        select: { amountCents: true }
-      }),
-      findProjectSpotProcurementRefundAmounts(tx, projectId),
-      tx.paymentRequest.findMany({
-        where: { projectId, status: { in: [...CASH_POOL_STATUSES] } },
-        select: {
-          status: true,
-          requestedAmountCents: true,
-          approvedAmountCents: true,
-          paidAmountCents: true
-        }
-      }),
-      tx.projectExpenseRequest.findMany({
-        where: { projectId, status: { in: [...CASH_POOL_STATUSES] }, voidedAt: null },
-        select: {
-          status: true,
-          requestedAmountCents: true,
-          approvedAmountCents: true,
-          paidAmountCents: true
-        }
-      }),
-      tx.spotProcurementPayment.findMany({
-        where: {
-          projectId,
-          status: { in: [...SPOT_PROCUREMENT_CASH_POOL_STATUSES] }
-        },
-        select: {
-          status: true,
-          companyPaymentAmountCents: true,
-          canceledCompanyPaymentAmountCents: true,
-          paidAmountCents: true
-        }
-      }),
-      tx.projectFinancingQuota.findMany({
-        where: { projectId, status: "approved", validUntil: { gte: new Date() } },
-        select: { id: true, amountCents: true },
-        orderBy: { validUntil: "asc" }
-      })
-    ]);
-
-    const cashPool = calculateProjectCashPoolBigInt({
-      receiptAmountCents: receipts.map((receipt) => receipt.amountCents),
-      supplierRefundAmountCents,
-      paymentRequests,
-      expenseRequests,
-      spotProcurementPayments: spotProcurementPayments.map(
-        spotProcurementPaymentToMoneyRequestValue
-      )
-    });
-    const cashAvailable = cashPool.availableCents > 0n ? cashPool.availableCents : 0n;
-    const requestedAmount = dbMoneyToBigInt(requestedAmountCents, "项目支出申请金额");
-    if (requestedAmount <= cashAvailable) {
-      return [];
-    }
-
-    const quotaIds = financingQuotas.map((quota) => quota.id);
-    const [paymentUsages, expenseUsages] = quotaIds.length
-      ? await Promise.all([
-          tx.projectFinancingQuotaUsage.findMany({
-            where: { quotaId: { in: quotaIds }, status: { in: [...ACTIVE_FINANCING_USAGE_STATUSES] } },
-            select: { quotaId: true, amountCents: true }
-          }),
-          tx.projectExpenseFinancingQuotaUsage.findMany({
-            where: { quotaId: { in: quotaIds }, status: { in: [...ACTIVE_FINANCING_USAGE_STATUSES] } },
-            select: { quotaId: true, amountCents: true }
-          })
-        ])
-      : [[], []];
-    const usedByQuotaId = [...paymentUsages, ...expenseUsages].reduce((used, usage) => {
-      used.set(
-        usage.quotaId,
-        (used.get(usage.quotaId) ?? 0n) +
-          dbMoneyToBigInt(usage.amountCents, "项目支出垫资额度占用金额")
-      );
-      return used;
-    }, new Map<string, bigint>());
-
-    let remaining = requestedAmount - cashAvailable;
-    const allocations: Array<{ quotaId: string; amountCents: bigint }> = [];
-    let totalAvailableFinancing = 0n;
-    for (const quota of financingQuotas) {
-      const available =
-        dbMoneyToBigInt(quota.amountCents, "项目垫资额度") -
-        (usedByQuotaId.get(quota.id) ?? 0n);
-      if (available <= 0n) {
-        continue;
-      }
-      totalAvailableFinancing += available;
-      const amount = available >= remaining ? remaining : available;
-      allocations.push({ quotaId: quota.id, amountCents: amount });
-      remaining -= amount;
-      if (remaining === 0n) {
-        break;
-      }
-    }
-
-    if (remaining > 0n) {
-      const availableCents = cashAvailable + totalAvailableFinancing;
-      throw new BadRequestException(`项目现金资金池余额不足: ${availableCents.toString()}`);
-    }
-    return allocations;
-  }
-
   private async releaseFinancingQuotaUsage(
     tx: Prisma.TransactionClient,
     expenseRequestId: string,
@@ -1642,80 +1503,6 @@ export class ProjectExpenseService {
         metadata: { releasedAmountCents: releasedAmountCents.toString() }
       });
     }
-  }
-
-  private async useFinancingQuotaUsage(
-    tx: Prisma.TransactionClient,
-    request: ExpenseLockRow,
-    actorUserId: string
-  ) {
-    const usageTotals = await this.financingUsageTotals(tx, request.id);
-    const approvedAmountCents = request.approvedAmountCents ?? request.requestedAmountCents;
-    const activeFinancingCents = usageTotals.occupied + usageTotals.used;
-    const cashAllocatedCents =
-      dbMoneyToBigInt(approvedAmountCents, "项目支出批准金额") - activeFinancingCents;
-    const targetUsedCents =
-      dbMoneyToBigInt(request.paidAmountCents, "项目支出实付金额") > cashAllocatedCents
-        ? dbMoneyToBigInt(request.paidAmountCents, "项目支出实付金额") - cashAllocatedCents
-        : 0n;
-    const amountToUse = targetUsedCents > usageTotals.used ? targetUsedCents - usageTotals.used : 0n;
-    const usedAmountCents = await this.moveFinancingQuotaUsage(tx, request.id, amountToUse, "used");
-    if (usedAmountCents > 0n) {
-      await this.audit.record(tx, {
-        actorUserId,
-        action: "project_expense.financing_quota.use",
-        businessType: "project_expense_request",
-        businessId: request.id,
-        metadata: { usedAmountCents: usedAmountCents.toString() }
-      });
-    }
-  }
-
-  private async releaseInvalidFinancingQuotaBeforeExecution(
-    tx: Prisma.TransactionClient,
-    request: ExpenseLockRow,
-    actorUserId: string
-  ) {
-    const occupiedUsages = await tx.projectExpenseFinancingQuotaUsage.findMany({
-      where: { projectExpenseRequestId: request.id, status: "occupied" },
-      select: { quotaId: true, projectId: true }
-    });
-    if (!occupiedUsages.length) {
-      return false;
-    }
-    const lockedProjects = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>(Prisma.sql`
-      SELECT "id", "isActive"
-      FROM "Project"
-      WHERE "id" = ${request.projectId}
-      FOR UPDATE
-    `);
-    const quotaIds = [...new Set(occupiedUsages.map((usage) => usage.quotaId))];
-    const quotas = await tx.projectFinancingQuota.findMany({
-      where: { id: { in: quotaIds } },
-      select: { id: true, status: true, validUntil: true }
-    });
-    const quotaById = new Map(quotas.map((quota) => [quota.id, quota]));
-    const now = new Date();
-    const invalid =
-      !lockedProjects[0]?.isActive ||
-      occupiedUsages.some((usage) => {
-        const quota = quotaById.get(usage.quotaId);
-        return !quota || quota.status !== "approved" || quota.validUntil < now;
-      });
-    if (!invalid) {
-      return false;
-    }
-    await this.releaseFinancingQuotaUsage(
-      tx,
-      request.id,
-      actorUserId,
-      "project_expense.cash_pool.release.invalid_before_execution"
-    );
-    await tx.projectExpenseRequest.update({
-      where: { id: request.id },
-      data: { status: "payment_blocked" }
-    });
-    return true;
   }
 
   private async financingUsageTotals(tx: Prisma.TransactionClient, expenseRequestId: string) {

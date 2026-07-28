@@ -4,11 +4,30 @@ import { ProjectExpenseService } from "./project-expense.service";
 describe("ProjectExpenseService", () => {
   const audit = { record: jest.fn() };
   const auth = { confirmPassword: jest.fn() };
+  const projectFunding = {
+    lockFundingContext: jest.fn(),
+    allocateExecution: jest.fn()
+  };
 
   beforeEach(() => {
     audit.record.mockReset();
     auth.confirmPassword.mockReset();
     auth.confirmPassword.mockResolvedValue({ ok: true });
+    projectFunding.lockFundingContext.mockReset();
+    projectFunding.lockFundingContext.mockResolvedValue(undefined);
+    projectFunding.allocateExecution.mockReset();
+    projectFunding.allocateExecution.mockResolvedValue({
+      kind: "allocated",
+      projectCashAmountCents: 30_000n,
+      financingQuotaAmountCents: 0n,
+      allocations: [
+        {
+          sourceType: "project_cash",
+          sourceId: null,
+          amountCents: 30_000n
+        }
+      ]
+    });
   });
 
   it("keeps project expenses as submit-on-create records without a draft abandonment API", () => {
@@ -1171,112 +1190,6 @@ describe("ProjectExpenseService", () => {
     expect(tx.projectExpenseRequest.create).not.toHaveBeenCalled();
   });
 
-  it("blocks project expense submission when the project cash pool is insufficient", async () => {
-    const cashPool = cashPoolTables({
-      receiptAmountCents: 20_000n,
-      paymentRequests: [
-        {
-          status: "approved_pending_payment",
-          requestedAmountCents: 20_000n,
-          approvedAmountCents: 20_000n,
-          paidAmountCents: 0n
-        }
-      ]
-    });
-    const tx = {
-      ...cashPool,
-      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
-      projectExpenseRequest: {
-        ...cashPool.projectExpenseRequest,
-        create: jest.fn()
-      },
-      approvalInstance: { create: jest.fn() }
-    };
-    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
-    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
-
-    await expect(
-      service.create("project-1", "handler-1", {
-        code: "LX-2026-002",
-        expenseType: "loan_reserve",
-        expenseSubtype: "project_reserve",
-        paymentSubject: "建工智管",
-        reason: "项目备用金",
-        requestedAmountCents: "10000",
-        paymentMethod: "cash"
-      })
-    ).rejects.toThrow("项目现金资金池余额不足: 0");
-    expect(tx.projectExpenseRequest.create).not.toHaveBeenCalled();
-  });
-
-  it("blocks legacy project expenses when spot procurement company cash is already occupied", async () => {
-    const cashPool = cashPoolTables({
-      receiptAmountCents: 100_000n,
-      spotProcurementPayments: [
-        {
-          status: "partially_paid",
-          companyPaymentAmountCents: 90_000n,
-          canceledCompanyPaymentAmountCents: 10_000n,
-          paidAmountCents: 20_000n
-        }
-      ]
-    });
-    const tx = {
-      ...cashPool,
-      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
-      projectExpenseRequest: {
-        ...cashPool.projectExpenseRequest,
-        create: jest.fn()
-      },
-      approvalInstance: { create: jest.fn() }
-    };
-    const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
-    };
-    const service = new ProjectExpenseService(
-      prisma as never,
-      audit as never,
-      auth as never
-    );
-
-    await expect(
-      service.create("project-1", "handler-1", {
-        code: "LX-2026-SPOT",
-        expenseType: "loan_reserve",
-        expenseSubtype: "project_reserve",
-        paymentSubject: "建工智管",
-        reason: "项目备用金",
-        requestedAmountCents: "21000",
-        paymentMethod: "cash"
-      })
-    ).rejects.toThrow("项目现金资金池余额不足: 20000");
-    expect(tx.spotProcurementPayment.findMany).toHaveBeenCalled();
-    expect(tx.projectExpenseRequest.create).not.toHaveBeenCalled();
-  });
-
-  it("fails closed when the spot-procurement cash delegate is unavailable", async () => {
-    const tx = cashPoolTables({ receiptAmountCents: 100_000n });
-    delete (tx as Partial<typeof tx>).spotProcurementPayment;
-    const service = new ProjectExpenseService(
-      {} as never,
-      audit as never,
-      auth as never
-    );
-    const reserve = (
-      service as unknown as {
-        reserveProjectCashPool: (
-          client: typeof tx,
-          projectId: string,
-          requestedAmountCents: bigint
-        ) => Promise<unknown>;
-      }
-    ).reserveProjectCashPool.bind(service);
-
-    await expect(
-      reserve(tx, "project-1", 1n)
-    ).rejects.toBeInstanceOf(TypeError);
-  });
-
   it("rejects mismatched project expense type and subtype", async () => {
     const service = new ProjectExpenseService({} as never, audit as never, auth as never);
 
@@ -1327,7 +1240,7 @@ describe("ProjectExpenseService", () => {
     });
   });
 
-  it("occupies project financing quota for the cash shortfall", async () => {
+  it("does not occupy project financing quota when a project expense is submitted", async () => {
     const cashPool = cashPoolTables({
       receiptAmountCents: 20_000n,
       financingQuotas: [{ id: "financing-quota-1", amountCents: BigInt(100_000) }]
@@ -1359,17 +1272,7 @@ describe("ProjectExpenseService", () => {
       paymentMethod: "wechat"
     });
 
-    expect(tx.projectExpenseFinancingQuotaUsage.createMany).toHaveBeenCalledWith({
-      data: [
-        {
-          quotaId: "financing-quota-1",
-          projectExpenseRequestId: "expense-1",
-          projectId: "project-1",
-          amountCents: BigInt(30_000),
-          status: "occupied"
-        }
-      ]
-    });
+    expect(tx.projectExpenseFinancingQuotaUsage.createMany).not.toHaveBeenCalled();
   });
 
   it("approves the final OR node into approved pending payment", async () => {
@@ -2008,6 +1911,203 @@ describe("ProjectExpenseService", () => {
     });
   });
 
+  it("allocates shared project funding in the voucher-backed project expense execution transaction", async () => {
+    const request = {
+      id: "expense-1",
+      projectId: "project-1",
+      code: "LX-2026-005",
+      expenseType: "sporadic_payment",
+      status: "approved_pending_payment",
+      requestedAmountCents: 50_000n,
+      approvedAmountCents: 50_000n,
+      paidAmountCents: 20_000n,
+      applicantUserId: "handler-1",
+      purchaseExecutedAt: null,
+      receiptConfirmedAt: null
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValueOnce([request]),
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          uploadedByUserId: "cashier-1"
+        })
+      },
+      projectExpenseExecution: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: "execution-1",
+          projectExpenseRequestId: "expense-1",
+          projectId: "project-1",
+          amountCents: 30_000n,
+          paidAt: new Date("2026-07-02T00:00:00.000Z"),
+          executedByUserId: "cashier-1",
+          voucherFileId: "file-1"
+        })
+      },
+      projectExpenseRequest: {
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const service = new ProjectExpenseService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      undefined,
+      projectFunding as never
+    );
+
+    await service.recordExecution("project-1", "expense-1", "cashier-1", {
+      amountCents: "30000",
+      paidAt: "2026-07-02T00:00:00.000Z",
+      voucherFileId: "file-1",
+      confirmationPassword: "current-password"
+    });
+
+    expect(projectFunding.lockFundingContext).toHaveBeenCalledWith(tx, "project-1");
+    expect(projectFunding.allocateExecution).toHaveBeenCalledWith(tx, {
+      projectId: "project-1",
+      executionType: "project_expense_execution",
+      executionId: "execution-1",
+      businessType: "project_expense_request",
+      businessId: "expense-1",
+      amountCents: 30_000n,
+      occurredAt: new Date("2026-07-02T00:00:00.000Z"),
+      actorUserId: "cashier-1"
+    });
+    expect(projectFunding.allocateExecution.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.projectExpenseRequest.update.mock.invocationCallOrder[0]
+    );
+    expect(projectFunding.allocateExecution.mock.invocationCallOrder[0]).toBeLessThan(
+      audit.record.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("keeps project expense status and audit unchanged when shared funding is insufficient", async () => {
+    projectFunding.allocateExecution.mockRejectedValue(
+      new BadRequestException("项目可用资金不足，当前最多可实际支付 20000 分")
+    );
+    const request = {
+      id: "expense-1",
+      projectId: "project-1",
+      code: "LX-2026-005",
+      expenseType: "sporadic_payment",
+      status: "approved_pending_payment",
+      requestedAmountCents: 50_000n,
+      approvedAmountCents: 50_000n,
+      paidAmountCents: 20_000n,
+      applicantUserId: "handler-1",
+      purchaseExecutedAt: null,
+      receiptConfirmedAt: null
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValueOnce([request]),
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          uploadedByUserId: "cashier-1"
+        })
+      },
+      projectExpenseExecution: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "execution-1" })
+      },
+      projectExpenseRequest: {
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const service = new ProjectExpenseService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      undefined,
+      projectFunding as never
+    );
+
+    await expect(
+      service.recordExecution("project-1", "expense-1", "cashier-1", {
+        amountCents: "30000",
+        paidAt: "2026-07-02T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("项目可用资金不足，当前最多可实际支付 20000 分");
+
+    expect(tx.projectExpenseRequest.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("replays the same project expense voucher without duplicate execution or status writes", async () => {
+    const request = {
+      id: "expense-1",
+      projectId: "project-1",
+      code: "LX-2026-005",
+      expenseType: "sporadic_payment",
+      status: "paid",
+      requestedAmountCents: 50_000n,
+      approvedAmountCents: 50_000n,
+      paidAmountCents: 50_000n,
+      applicantUserId: "handler-1",
+      purchaseExecutedAt: null,
+      receiptConfirmedAt: null
+    };
+    const existingExecution = {
+      id: "execution-1",
+      projectExpenseRequestId: "expense-1",
+      projectId: "project-1",
+      amountCents: 30_000n,
+      paidAt: new Date("2026-07-02T00:00:00.000Z"),
+      executedByUserId: "cashier-1",
+      voucherFileId: "file-1"
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValueOnce([request]),
+      fileObject: {
+        findUnique: jest.fn()
+      },
+      projectExpenseExecution: {
+        findFirst: jest.fn().mockResolvedValue(existingExecution),
+        create: jest.fn()
+      },
+      projectExpenseRequest: {
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const service = new ProjectExpenseService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      undefined,
+      projectFunding as never
+    );
+
+    await expect(
+      service.recordExecution("project-1", "expense-1", "cashier-1", {
+        amountCents: "30000",
+        paidAt: "2026-07-02T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      })
+    ).resolves.toEqual({
+      ...existingExecution,
+      amountCents: "30000"
+    });
+
+    expect(projectFunding.allocateExecution).toHaveBeenCalledTimes(1);
+    expect(tx.projectExpenseExecution.create).not.toHaveBeenCalled();
+    expect(tx.projectExpenseRequest.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("rejects project expense execution when the voucher file was not uploaded by the recorder", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([
@@ -2071,75 +2171,6 @@ describe("ProjectExpenseService", () => {
       })
     ).rejects.toThrow("项目支出实付日期不能晚于当前时间");
     expect(auth.confirmPassword).not.toHaveBeenCalled();
-  });
-
-  it("blocks later execution attempts after occupied financing quota becomes invalid", async () => {
-    const tx = {
-      $queryRaw: jest
-        .fn()
-        .mockResolvedValueOnce([
-          {
-            id: "expense-1",
-            projectId: "project-1",
-            code: "LX-2026-007",
-            status: "approved_pending_payment",
-            requestedAmountCents: 50_000n,
-            approvedAmountCents: 50_000n,
-            paidAmountCents: 0n
-          }
-        ])
-        .mockResolvedValueOnce([{ id: "project-1", isActive: true }]),
-      fileObject: {
-        findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "cashier-1" })
-      },
-      projectExpenseFinancingQuotaUsage: {
-        findMany: jest
-          .fn()
-          .mockResolvedValueOnce([{ quotaId: "quota-1", projectId: "project-1" }])
-          .mockResolvedValueOnce([
-            {
-              id: "usage-1",
-              quotaId: "quota-1",
-              projectId: "project-1",
-              amountCents: BigInt(30_000)
-            }
-          ]),
-        update: jest.fn(),
-        create: jest.fn()
-      },
-      projectFinancingQuota: {
-        findMany: jest.fn().mockResolvedValue([
-          { id: "quota-1", status: "approved", validUntil: new Date("2026-01-01T00:00:00.000Z") }
-        ])
-      },
-      projectExpenseRequest: {
-        update: jest.fn()
-      },
-      projectExpenseExecution: {
-        create: jest.fn()
-      },
-      auditLog: { create: jest.fn() }
-    };
-    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
-    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
-
-    await expect(
-      service.recordExecution("project-1", "expense-1", "cashier-1", {
-        amountCents: "10000",
-        paidAt: "2026-07-02T00:00:00.000Z",
-        voucherFileId: "file-1",
-        confirmationPassword: "current-password"
-      })
-    ).rejects.toThrow("项目垫资额度已失效，请重新提交支出申请");
-    expect(tx.projectExpenseFinancingQuotaUsage.update).toHaveBeenCalledWith({
-      where: { id: "usage-1" },
-      data: { status: "released" }
-    });
-    expect(tx.projectExpenseRequest.update).toHaveBeenCalledWith({
-      where: { id: "expense-1" },
-      data: { status: "payment_blocked" }
-    });
-    expect(tx.projectExpenseExecution.create).not.toHaveBeenCalled();
   });
 
   it("records finance outflow only up to paid project expense amount", async () => {
