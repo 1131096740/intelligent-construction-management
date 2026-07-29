@@ -225,6 +225,9 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
               businessId: ids.version
             }
           });
+          const receiptsBefore = await client.contractDraftSaveRequest.count({
+            where: { contractVersionId: ids.version }
+          });
           const firstStartedAt = process.hrtime.bigint();
           const firstResult = await aggregate.saveAggregate(
             ids.version,
@@ -246,6 +249,10 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
               businessId: ids.version
             }
           });
+          const receiptsAfterFirst =
+            await client.contractDraftSaveRequest.count({
+              where: { contractVersionId: ids.version }
+            });
 
           expect(persistedRows).toHaveLength(rowCount);
           expect(billAfterFirst.revision).toBe(2);
@@ -253,7 +260,8 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
             draftRevision: 2,
             effectiveChangedSections: expect.arrayContaining(["bills"])
           });
-          expect(auditAfterFirst - auditBefore).toBe(1);
+          expect(auditAfterFirst - auditBefore).toBe(0);
+          expect(receiptsAfterFirst - receiptsBefore).toBe(1);
 
           const noChangeInput = aggregatePerformanceInput(
             randomUUID(),
@@ -286,13 +294,20 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
             noChangeInput as never
           );
           const noChangeDurationMs = elapsedMilliseconds(noChangeStartedAt);
-          const [billAfterNoChange, auditAfterNoChange] = await Promise.all([
+          const [
+            billAfterNoChange,
+            auditAfterNoChange,
+            receiptsAfterNoChange
+          ] = await Promise.all([
             client.contractBill.findUniqueOrThrow({ where: { id: ids.billA } }),
             client.auditLog.count({
               where: {
                 action: "contract.draft.save",
                 businessId: ids.version
               }
+            }),
+            client.contractDraftSaveRequest.count({
+              where: { contractVersionId: ids.version }
             })
           ]);
 
@@ -302,6 +317,7 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
           });
           expect(billAfterNoChange.revision).toBe(2);
           expect(auditAfterNoChange).toBe(auditAfterFirst);
+          expect(receiptsAfterNoChange - receiptsAfterFirst).toBe(1);
           expect(firstDurationMs).toBeLessThan(30_000);
           expect(noChangeDurationMs).toBeLessThan(10_000);
 
@@ -313,6 +329,7 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
               transactionDurationMs: Number(firstDurationMs.toFixed(2)),
               lockHoldUpperBoundMs: Number(firstDurationMs.toFixed(2)),
               changedRows: rowCount,
+              saveRequestGrowth: receiptsAfterFirst - receiptsBefore,
               auditLogGrowth: auditAfterFirst - auditBefore,
               noChangeRequestBytes: Buffer.byteLength(
                 JSON.stringify(noChangeInput)
@@ -324,6 +341,8 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
                 noChangeDurationMs.toFixed(2)
               ),
               noChangeChangedRows: 0,
+              noChangeSaveRequestGrowth:
+                receiptsAfterNoChange - receiptsAfterFirst,
               noChangeAuditLogGrowth: auditAfterNoChange - auditAfterFirst
             })}\n`
           );
@@ -505,6 +524,7 @@ function aggregatePerformanceInput(
   const base = aggregateInput(idempotencyKey, true);
   return {
     ...base,
+    saveKind: "auto" as const,
     expectedRevision,
     changedSections: ["draft", "bills"] as const,
     draft: {

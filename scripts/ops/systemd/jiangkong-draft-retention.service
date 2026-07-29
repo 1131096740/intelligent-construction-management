@@ -1,0 +1,28 @@
+[Unit]
+Description=JiangKong contract draft temporary retention
+Documentation=file:///opt/jiangkong/docs/superpowers/plans/2026-07-28-contract-workbench-cutover-plan.md
+Wants=network-online.target
+After=network-online.target postgresql.service jiangkong-api.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/jiangkong/services/api
+Environment=NODE_ENV=production
+Environment=CONTRACT_DRAFT_TEMP_RETENTION_ENABLED=false
+Environment=CONTRACT_DRAFT_BUSINESS_PURGE_ENABLED=false
+EnvironmentFile=/etc/jiangkong/api.env
+EnvironmentFile=-/etc/jiangkong/draft-retention.env
+ExecStart=/usr/bin/node /opt/jiangkong/services/api/scripts/execute-contract-draft-retention.cjs --timer-approved-temporary
+UMask=0077
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadOnlyPaths=/opt/jiangkong

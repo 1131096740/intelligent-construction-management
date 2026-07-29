@@ -17,6 +17,9 @@ HEALTH_ATTEMPTS="${HEALTH_ATTEMPTS:-15}"
 BACKUP_SCRIPT="${BACKUP_SCRIPT:-$REPO_ROOT/scripts/ops/db-backup.sh}"
 DB_BACKUP_TRANSFER_SCRIPT="${DB_BACKUP_TRANSFER_SCRIPT:-$REPO_ROOT/scripts/ops/cos-backup-transfer.mjs}"
 RUNTIME_HEALTH_SCRIPT="${RUNTIME_HEALTH_SCRIPT:-$REPO_ROOT/scripts/ops/check-runtime-health.sh}"
+SYSTEMD_UNIT_DIR="${SYSTEMD_UNIT_DIR:-/etc/systemd/system}"
+DRAFT_RETENTION_SERVICE_SOURCE="${DRAFT_RETENTION_SERVICE_SOURCE:-$REPO_ROOT/scripts/ops/systemd/jiangkong-draft-retention.service}"
+DRAFT_RETENTION_TIMER_SOURCE="${DRAFT_RETENTION_TIMER_SOURCE:-$REPO_ROOT/scripts/ops/systemd/jiangkong-draft-retention.timer}"
 STAGING_DIR=""
 ROLLBACK_DIR=""
 STOP_ATTEMPTED=false
@@ -92,6 +95,21 @@ fi
 cd "$repo_root"
 DATABASE_URL="$database_url" pnpm --filter @jiangkong/api exec prisma migrate deploy
 ROOT_MIGRATION
+}
+
+install_draft_retention_units() {
+  if [[ ! -f "$DRAFT_RETENTION_SERVICE_SOURCE" || ! -f "$DRAFT_RETENTION_TIMER_SOURCE" ]]; then
+    echo "Contract draft retention systemd units are missing" >&2
+    return 1
+  fi
+  sudo --non-interactive install -m 0644 \
+    "$DRAFT_RETENTION_SERVICE_SOURCE" \
+    "$SYSTEMD_UNIT_DIR/jiangkong-draft-retention.service"
+  sudo --non-interactive install -m 0644 \
+    "$DRAFT_RETENTION_TIMER_SOURCE" \
+    "$SYSTEMD_UNIT_DIR/jiangkong-draft-retention.timer"
+  sudo --non-interactive systemctl daemon-reload
+  echo "Installed contract draft retention units without enabling or starting the timer."
 }
 
 verified_backup_artifacts_exist() {
@@ -234,5 +252,7 @@ fi
 
 LOG_SINCE="2 minutes ago" \
   "$RUNTIME_HEALTH_SCRIPT"
+
+install_draft_retention_units
 
 DEPLOY_SUCCEEDED=true
