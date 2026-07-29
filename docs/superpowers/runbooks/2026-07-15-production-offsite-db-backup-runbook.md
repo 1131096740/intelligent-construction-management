@@ -270,6 +270,20 @@ sudo systemctl daemon-reload
 
 部署流程强制 `DB_BACKUP_OFFSITE_REQUIRED=true`，无法通过配置文件关闭。只有本地 dump、checksum 和远端收据全部非空后，才会停止 API、执行 Prisma 迁移和替换运行时。
 
+部署范围必须与获授权阶段一致：
+
+- `DEPLOY_SCOPE=api-only` 仅构建、快照和替换 API，不构建或触碰 Web 运行目录；用于合同工作台 Release A“增量后端先行、旧前端继续工作”。
+- `DEPLOY_SCOPE=full` 同时构建、快照和替换 API/Web，是默认兼容行为，只能在已授权前后端同切阶段使用。
+- 其他值在构建、备份、停服、迁移和运行时替换前直接失败。
+
+Release A 的部署入口必须显式写出范围，不能依赖默认值：
+
+```bash
+DEPLOY_SCOPE=api-only /opt/jiangkong/scripts/ops/deploy-production-server.sh
+```
+
+API-only 健康检查失败时只从该次 API 快照恢复，Web 运行目录保持不变；数据库迁移仍按前向兼容原则处理，不自动回滚。
+
 ## 7. Go / No-Go 证据
 
 以下技术证据全部齐全后，可关闭数据库异机备份与恢复能力 P0：

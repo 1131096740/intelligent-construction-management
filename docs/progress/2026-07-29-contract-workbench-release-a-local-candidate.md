@@ -6,7 +6,7 @@
 
 - 实施基线：`a0bbfacb5008abbcb255a96c79cb0bd05c76db56`
 - 隔离分支：`codex/whole-site-five-packages`
-- 运行代码候选：`3f8b1c5e410ebc2603066a81a6afb9acf7967b1a`
+- 运行代码候选：`701969cb99a75e9fa27ed1f3cce645558f0d4da1`
 - 状态：Release A 本地候选；未推送、未合并、未连接或修改生产、未执行生产迁移或部署、未执行物理删除。
 - 本收据提交后的精确 HEAD 由 Git 记录和发布授权回执给出；收据提交只增加文档，不改变上述运行代码。
 
@@ -46,9 +46,12 @@
 | API/Web build | 通过；Web 仅保留既有大 chunk 提示 |
 | Prisma validate | 使用非生产占位 `DATABASE_URL` 通过 |
 | Prisma generate | 已按用户明确授权重新生成并通过 |
+| 发布脚本安全自测 | 通过；`api-only` 成功、健康失败恢复、未知 scope 失败关闭及默认全量恢复均覆盖 |
 | `git diff --check` | 通过 |
 
 本轮浏览器 RED 额外发现聚合读取曾丢弃后端权威不含税单价和派生金额。修复后编辑候选保留这些只读事实，统一保存序列化仍明确剔除 `taxExclusiveUnitPrice`、行金额、税额、精度和初始计价辅助字段；聚合定向单测 65/65 通过。
+
+生产门前 runbook 审计另发现通用部署脚本原先无条件同时构建、快照和替换 API/Web，与 Release A“只发布增量后端、旧前端继续工作”冲突。先用自测复现 Web 被切换的 RED，再新增显式 `DEPLOY_SCOPE=api-only`：只构建、快照和替换 API，健康失败时只恢复 API，Web 运行目录不被读取或写入；未知 scope 在构建、备份、停服和迁移之前失败关闭。默认 `full` 双运行时行为及其恢复测试保持不变。
 
 ## API、页面与权限矩阵
 
