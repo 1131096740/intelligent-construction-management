@@ -613,6 +613,14 @@ describe("SettlementReadService", () => {
           { id: "user-upload", name: "合同员" },
           { id: "user-confirm", name: "合同主管" }
         ])
+      },
+      contractTakeoverBalanceEntry: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([
+            { id: "deduction-1", amountCents: 10_000_000n }
+          ])
+          .mockResolvedValueOnce([])
       }
     };
     const service = new SettlementReadService(prisma as never);
@@ -645,7 +653,17 @@ describe("SettlementReadService", () => {
     });
     expect(detail.payableCalculation.items).toEqual([
       { label: "本期结算金额", value: "¥580,000.00" },
-      { label: "本期可付金额", value: "¥464,000.00", tone: "success" },
+      { label: "本期期初应付", value: "¥564,000.00" },
+      {
+        label: "历史预付款抵扣",
+        value: "¥100,000.00",
+        tone: "warning"
+      },
+      {
+        label: "抵扣后可申请金额",
+        value: "¥464,000.00",
+        tone: "success"
+      },
       { label: "已申请付款", value: "¥200,000.00", tone: "warning" },
       { label: "已实付金额", value: "¥50,000.00" },
       { label: "剩余可申请", value: "¥264,000.00", tone: "primary" }

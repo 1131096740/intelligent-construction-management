@@ -189,7 +189,11 @@ describe("SettlementSignedDocumentService", () => {
     const tx = {
       $queryRaw: jest.fn(),
       settlement: { findUnique: jest.fn().mockResolvedValue({
-        id: "settlement-1", governanceVersion: 1, status: "pending_archive_confirm"
+        id: "settlement-1",
+        contractVersionId: "version-1",
+        payableAmountCents: 100n,
+        governanceVersion: 1,
+        status: "pending_archive_confirm"
       }) },
       settlementSignedDocument: {
         findFirst: jest.fn().mockResolvedValue({
@@ -207,7 +211,18 @@ describe("SettlementSignedDocumentService", () => {
       }) },
       fileObject: { findUnique: jest.fn().mockResolvedValue({ contentSha256: "c".repeat(64) }) }
     };
-    const service = new SettlementSignedDocumentService({} as never, {} as never, { record: jest.fn() } as never);
+    const balances = {
+      deductAdvanceForSettlement: jest.fn().mockResolvedValue({
+        deductionCents: 80n
+      })
+    };
+    const service = new SettlementSignedDocumentService(
+      {} as never,
+      {} as never,
+      { record: jest.fn() } as never,
+      undefined,
+      balances as never
+    );
     jest.spyOn(service as never, "loadFacts" as never).mockResolvedValue(facts as never);
 
     await expect(service.confirmInTransaction(tx as never, "settlement-1", "director-1"))
@@ -216,6 +231,15 @@ describe("SettlementSignedDocumentService", () => {
       where: { id: "final-1" },
       data: expect.objectContaining({ confirmedByUserId: "director-1", confirmedAt: expect.any(Date) })
     }));
+    expect(balances.deductAdvanceForSettlement).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        id: "settlement-1",
+        contractVersionId: "version-1",
+        payableAmountCents: 100n
+      }),
+      "director-1"
+    );
   });
 
   it("overlays frozen signature images on every page without rewriting the original bytes", async () => {

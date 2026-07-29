@@ -34,6 +34,7 @@ import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
+import { ContractTakeoverBalanceService } from "../contract-takeover/contract-takeover-balance.service";
 import {
   dbMoneyToBigInt,
   formatMoneyCentsAsYuan,
@@ -189,7 +190,9 @@ export class PaymentRequestService {
     private readonly delegations?: ApprovalDelegationService,
     @Optional()
     private readonly approvalForms?: ApprovalFormService,
-    private readonly projectFunding?: ProjectFundingAvailabilityService
+    private readonly projectFunding?: ProjectFundingAvailabilityService,
+    @Optional()
+    private readonly takeoverBalances?: ContractTakeoverBalanceService
   ) {}
 
   assertSettlementEffective(status: SettlementStatus): void {
@@ -288,6 +291,27 @@ export class PaymentRequestService {
           takeoverStatus: takeover.takeoverStatus
         });
         throw new BadRequestException(`C级历史接管仍有资料缺口或争议，不能${actionLabel}`);
+      }
+      if (this.takeoverBalances) {
+        try {
+          await this.takeoverBalances.assertNoAbnormalOverpayForContract(
+            tx,
+            input.contractId,
+            actionLabel
+          );
+        } catch (error) {
+          await this.recordHistoricalTakeoverPaymentBlock(tx, {
+            actorUserId: input.actorUserId,
+            businessType: "contract_takeover",
+            businessId: takeover.id,
+            contractId: input.contractId,
+            contractVersionId: input.contractVersionId,
+            sourceType: input.sourceType,
+            reason: "abnormal_overpay_unresolved",
+            takeoverStatus: takeover.takeoverStatus
+          });
+          throw error;
+        }
       }
       return;
     }

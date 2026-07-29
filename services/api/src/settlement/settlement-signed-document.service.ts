@@ -10,6 +10,7 @@ import {
   SETTLEMENT_SIGNATURE_BOARD_LAYOUT
 } from "./settlement-document-renderer";
 import { AuthService } from "../auth/auth.service";
+import { ContractTakeoverBalanceService } from "../contract-takeover/contract-takeover-balance.service";
 
 const SHA256 = /^[0-9a-f]{64}$/u;
 const GENERATION_LEASE_MS = 5 * 60 * 1000;
@@ -125,7 +126,9 @@ export class SettlementSignedDocumentService {
     private readonly prisma: PrismaService,
     private readonly files: FileService,
     private readonly audit: AuditService = new AuditService(),
-    @Optional() private readonly auth?: AuthService
+    @Optional() private readonly auth?: AuthService,
+    @Optional()
+    private readonly takeoverBalances?: ContractTakeoverBalanceService
   ) {}
 
   async generateFinal(
@@ -255,6 +258,13 @@ export class SettlementSignedDocumentService {
       document.approvalActionSetHash !== facts.approvalActionSetHash ||
       document.sourceRevision !== facts.sourceRevision) {
       throw new BadRequestException("最终签名合成件与当前原件、业务或审批证据不一致");
+    }
+    if (this.takeoverBalances) {
+      await this.takeoverBalances.deductAdvanceForSettlement(
+        tx,
+        settlement,
+        actorUserId
+      );
     }
     const confirmedAt = new Date();
     await tx.settlementSignedDocument.update({

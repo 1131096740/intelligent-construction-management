@@ -4,6 +4,7 @@ import { AuthModule } from "../auth/auth.module";
 import { FileModule } from "../file/file.module";
 import { ContractTaxFactsModule } from "../contract-tax-facts/contract-tax-facts.module";
 import { ContractTakeoverActivationService } from "./contract-takeover-activation.service";
+import { ContractTakeoverBalanceService } from "./contract-takeover-balance.service";
 import { ContractTakeoverController } from "./contract-takeover.controller";
 import { ContractTakeoverExcelService } from "./contract-takeover-excel.service";
 import { ContractTakeoverService } from "./contract-takeover.service";
@@ -14,8 +15,9 @@ import { ContractTakeoverService } from "./contract-takeover.service";
   providers: [
     ContractTakeoverService,
     ContractTakeoverExcelService,
-    ContractTakeoverActivationService
+    ContractTakeoverActivationService,
+    ContractTakeoverBalanceService
   ],
-  exports: [ContractTakeoverService]
+  exports: [ContractTakeoverService, ContractTakeoverBalanceService]
 })
 export class ContractTakeoverModule {}

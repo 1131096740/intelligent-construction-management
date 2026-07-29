@@ -883,7 +883,8 @@ export class SettlementReadService {
       approvalTimeline,
       paymentActivity,
       settlementLines,
-      generationClaim
+      generationClaim,
+      historicalAdvanceDeductionCents
     ] = await Promise.all([
       this.prisma.contract.findUnique({ where: { id: settlement.contractId } }),
       this.prisma.contractVersion.findUnique({ where: { id: settlement.contractVersionId } }),
@@ -902,7 +903,8 @@ export class SettlementReadService {
         ? this.prisma.settlementSignedDocumentGenerationClaim?.findUnique?.({
             where: { settlementId: settlement.id }
           }) ?? Promise.resolve(null)
-        : Promise.resolve(null)
+        : Promise.resolve(null),
+      this.historicalAdvanceDeductionCents(settlement.id)
     ]);
 
     if (!contract) {
@@ -995,7 +997,11 @@ export class SettlementReadService {
         paymentRequestStatus: paymentRequest?.status ?? this.defaultPaymentRequestStatus(settlement.status)
       })),
       settlementLines,
-      payableCalculation: this.payableCalculation(settlement, paymentActivity),
+      payableCalculation: this.payableCalculation(
+        settlement,
+        paymentActivity,
+        historicalAdvanceDeductionCents
+      ),
       paymentBlockMessage: this.paymentBlockMessage(settlement.status),
       archiveFiles,
       approvalTimeline,
@@ -1198,16 +1204,48 @@ export class SettlementReadService {
 
   private payableCalculation(
     settlement: { amountCents: bigint; payableAmountCents?: bigint | null },
-    paymentActivity: { requestedAmountCents: bigint; paidAmountCents: bigint; activeRequestCount: number }
+    paymentActivity: { requestedAmountCents: bigint; paidAmountCents: bigint; activeRequestCount: number },
+    historicalAdvanceDeductionCents = 0n
   ): SettlementDetailReadModel["payableCalculation"] {
     const payableAmountCents = settlement.payableAmountCents ?? 0n;
     const remainingBalance = payableAmountCents - paymentActivity.requestedAmountCents;
     const remainingRequestableCents = remainingBalance > 0n ? remainingBalance : 0n;
 
+    const historicalAdvanceItems =
+      historicalAdvanceDeductionCents > 0n
+        ? [
+            {
+              label: "本期期初应付",
+              value: this.formatMoney(
+                payableAmountCents +
+                  historicalAdvanceDeductionCents
+              )
+            },
+            {
+              label: "历史预付款抵扣",
+              value: this.formatMoney(
+                historicalAdvanceDeductionCents
+              ),
+              tone: "warning" as const
+            },
+            {
+              label: "抵扣后可申请金额",
+              value: this.formatMoney(payableAmountCents),
+              tone: "success" as const
+            }
+          ]
+        : [
+            {
+              label: "本期可付金额",
+              value: this.formatMoney(payableAmountCents),
+              tone: "success" as const
+            }
+          ];
+
     return {
       items: [
         { label: "本期结算金额", value: this.formatMoney(settlement.amountCents) },
-        { label: "本期可付金额", value: this.formatMoney(payableAmountCents), tone: "success" },
+        ...historicalAdvanceItems,
         {
           label: "已申请付款",
           value: this.formatMoney(paymentActivity.requestedAmountCents),
@@ -1216,8 +1254,74 @@ export class SettlementReadService {
         { label: "已实付金额", value: this.formatMoney(paymentActivity.paidAmountCents) },
         { label: "剩余可申请", value: this.formatMoney(remainingRequestableCents), tone: "primary" }
       ],
-      note: "剩余可申请按本结算可付金额扣减未作废/未驳回/未撤回的付款申请，最终以后端创建付款校验为准。"
+      note:
+        historicalAdvanceDeductionCents > 0n
+          ? "抵扣后可申请金额已扣除历史预付款；剩余可申请再扣减未作废/未驳回/未撤回的付款申请，最终以后端创建付款校验为准。"
+          : "剩余可申请按本结算可付金额扣减未作废/未驳回/未撤回的付款申请，最终以后端创建付款校验为准。"
     };
+  }
+
+  private async historicalAdvanceDeductionCents(
+    settlementId: string
+  ): Promise<bigint> {
+    const client = (this.prisma as unknown as {
+      contractTakeoverBalanceEntry?: {
+        findMany(args: unknown): Promise<
+          Array<{
+            id?: string;
+            amountCents: bigint;
+            reversesEntryId?: string | null;
+          }>
+        >;
+      };
+    }).contractTakeoverBalanceEntry;
+    if (!client?.findMany) return 0n;
+    const deductions = await client.findMany({
+      where: {
+        settlementId,
+        entryKind: "deduction"
+      },
+      select: {
+        id: true,
+        amountCents: true
+      }
+    });
+    if (deductions.length === 0) return 0n;
+    const deductionIds = deductions
+      .map((entry) => entry.id)
+      .filter((id): id is string => Boolean(id));
+    const reversals =
+      deductionIds.length > 0
+        ? await client.findMany({
+            where: {
+              reversesEntryId: { in: deductionIds },
+              entryKind: "reversal"
+            },
+            select: {
+              amountCents: true,
+              reversesEntryId: true
+            }
+          })
+        : [];
+    const deducted = deductions.reduce(
+      (total, entry) =>
+        total +
+        dbMoneyToBigInt(
+          entry.amountCents,
+          "历史预付款抵扣金额"
+        ),
+      0n
+    );
+    const reversed = reversals.reduce(
+      (total, entry) =>
+        total +
+        dbMoneyToBigInt(
+          entry.amountCents,
+          "历史预付款反向金额"
+        ),
+      0n
+    );
+    return deducted > reversed ? deducted - reversed : 0n;
   }
 
   private async actorRoleKeys(actorUserId: string | undefined, projectId: string): Promise<RoleKey[]> {

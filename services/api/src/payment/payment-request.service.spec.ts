@@ -552,6 +552,84 @@ describe("PaymentRequestService", () => {
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
+  it("blocks a new payment request while historical abnormal overpayment remains unresolved", async () => {
+    const cashPool = projectCashPoolTables();
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          status: "effective",
+          payableAmountCents: 100_000n,
+          paidAmountCents: 0n
+        })
+      },
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "takeover-1",
+          takeoverStatus: "confirmed",
+          takeoverLevel: "A",
+          historicalBalanceConfirmedAt: new Date(
+            "2026-07-01T00:00:00.000Z"
+          )
+        })
+      },
+      paymentRequest: {
+        findMany: jest.fn(),
+        create: jest.fn()
+      },
+      ...cashPool.tables,
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: "contract-1" }])
+        .mockResolvedValueOnce([{ id: "settlement-1" }])
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const balances = {
+      assertNoAbnormalOverpayForContract: jest
+        .fn()
+        .mockRejectedValue(
+          new BadRequestException(
+            "历史接管存在尚未解除的异常超付，不能发起付款申请"
+          )
+        )
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      audit as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      balances as never
+    );
+
+    await expect(
+      paymentService.create({
+        settlementId: "settlement-1",
+        code: "FK-ABNORMAL-BLOCK-1",
+        requestedAmountCents: "10000"
+      })
+    ).rejects.toThrow(
+      "历史接管存在尚未解除的异常超付，不能发起付款申请"
+    );
+    expect(
+      balances.assertNoAbnormalOverpayForContract
+    ).toHaveBeenCalledWith(
+      tx,
+      "contract-1",
+      "发起付款申请"
+    );
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+  });
+
   it("deducts contract-level allocations from settlement payment request capacity", async () => {
     const cashPool = projectCashPoolTables();
     const tx = {
@@ -5162,6 +5240,93 @@ describe("PaymentRequestService", () => {
 
     expect(tx.paymentExecution.create).not.toHaveBeenCalled();
     expect(tx.settlement.update).not.toHaveBeenCalled();
+  });
+
+  it("rechecks abnormal overpayment inside the execution lock path", async () => {
+    const tx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([
+          paymentExecutionRow({
+            requestedAmountCents: 80_000n,
+            approvedAmountCents: 80_000n,
+            paidAmountCents: 0n
+          })
+        ])
+        .mockResolvedValueOnce([{ id: "settlement-1" }]),
+      paymentRequest: {
+        findFirst: jest.fn(),
+        update: jest.fn()
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          status: "effective",
+          payableAmountCents: 100_000n,
+          paidAmountCents: 0n
+        }),
+        update: jest.fn()
+      },
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "takeover-1",
+          takeoverStatus: "confirmed",
+          takeoverLevel: "A",
+          historicalBalanceConfirmedAt: new Date(
+            "2026-07-01T00:00:00.000Z"
+          )
+        })
+      },
+      paymentExecution: {
+        create: jest.fn()
+      },
+      ...financingUsageUpdates()
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const balances = {
+      assertNoAbnormalOverpayForContract: jest
+        .fn()
+        .mockRejectedValue(
+          new BadRequestException(
+            "历史接管存在尚未解除的异常超付，不能登记实付"
+          )
+        )
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      audit as never,
+      undefined,
+      auth as never,
+      undefined,
+      undefined,
+      undefined,
+      balances as never
+    );
+
+    await expect(
+      paymentService.recordExecution(
+        "FK-2026-012",
+        "cashier-1",
+        {
+          amountCents: "80000",
+          paidAt: "2026-06-22T00:00:00.000Z",
+          voucherFileId: "file-1",
+          confirmationPassword: "current-password"
+        }
+      )
+    ).rejects.toThrow(
+      "历史接管存在尚未解除的异常超付，不能登记实付"
+    );
+    expect(
+      balances.assertNoAbnormalOverpayForContract
+    ).toHaveBeenCalledWith(tx, "contract-1", "登记实付");
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
   });
 
   it("records contract advance execution without touching settlement ledger", async () => {

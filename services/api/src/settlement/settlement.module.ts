@@ -4,6 +4,7 @@ import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
 import { FileModule } from "../file/file.module";
 import { MeModule } from "../me/me.module";
+import { ContractTakeoverModule } from "../contract-takeover/contract-takeover.module";
 import { SettlementController } from "./settlement.controller";
 import { SettlementDraftController } from "./settlement-draft.controller";
 import { SettlementDraftService } from "./settlement-draft.service";
@@ -28,7 +29,14 @@ import { SettlementLineAttachmentService } from "./settlement-line-attachment.se
 import { SettlementRecoveryService } from "./settlement-recovery.service";
 
 @Module({
-  imports: [ApprovalModule, AuditModule, AuthModule, FileModule, MeModule],
+  imports: [
+    ApprovalModule,
+    AuditModule,
+    AuthModule,
+    ContractTakeoverModule,
+    FileModule,
+    MeModule
+  ],
   controllers: [
     SettlementController,
     SettlementDraftController,
