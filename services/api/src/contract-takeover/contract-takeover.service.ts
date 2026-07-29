@@ -339,6 +339,62 @@ type ContractTakeoverHistoricalPaymentVoucherRow = {
   fileId: string;
 };
 
+type ContractTakeoverHistoricalPaymentReadRow = {
+  id: string;
+  takeoverId: string;
+  rowKey: string;
+  sequenceNo: number;
+  amountCents: bigint;
+  paidAt: Date;
+  payerName: string | null;
+  payeeName: string | null;
+  bankReference: string | null;
+  paymentMethod: string | null;
+  note: string | null;
+  status: string;
+};
+
+type ContractTakeoverHistoricalPaymentAllocationReadRow = {
+  id: string;
+  historicalPaymentId: string;
+  allocationType: string;
+  amountCents: bigint;
+  allocationOrder: number;
+};
+
+type ContractTakeoverHistoricalPaymentVoucherReadRow = {
+  historicalPaymentId: string;
+  fileId: string;
+  displayOrder: number;
+};
+
+type ContractTakeoverEvidenceReadRow = {
+  takeoverId: string;
+  fileId: string;
+  displayOrder: number;
+};
+
+type ContractTakeoverBalanceAccountReadRow = {
+  id: string;
+  takeoverId: string;
+  balanceType: string;
+  openingCents: bigint;
+  balanceCents: bigint;
+  revision: number;
+};
+
+type ContractTakeoverBalanceEntryReadRow = {
+  id: string;
+  accountId: string;
+  entryKind: string;
+  amountCents: bigint;
+  settlementId: string | null;
+  historicalPaymentId: string | null;
+  correctionId: string | null;
+  reversesEntryId: string | null;
+  createdAt: Date;
+};
+
 export interface ContractTakeoverBusinessReadModel {
   id: string;
   batchNo: string | null;
@@ -395,6 +451,98 @@ export interface ContractTakeoverBusinessReadModel {
   evidenceChecklist: ContractTakeoverEvidenceChecklistItemReadModel[];
   evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
   corrections: ContractTakeoverCorrectionReadModel[];
+  contractSide: {
+    revision: number;
+    financeBasisRevision: number;
+    signedAt: Date;
+    historicalSettledCents: string;
+    zeroSettlementDeclared: boolean;
+    performanceStatus: string;
+    settlementEvidenceSummary: string | null;
+    settlementEvidenceFileIds: string[];
+    paymentTerms: Prisma.JsonValue;
+    contractFacts: Prisma.JsonValue;
+    confirmedRevision: number | null;
+    confirmedByUserName: string | null;
+    confirmedAt: Date | null;
+    updatedAt: Date;
+  } | null;
+  financeSide: {
+    revision: number;
+    basedOnContractRevision: number;
+    basedOnFinanceBasisRevision: number;
+    zeroPaymentDeclared: boolean;
+    excessTreatment: string | null;
+    excessReason: string | null;
+    excessEvidenceFileIds: string[];
+    payments: Array<{
+      id: string;
+      rowKey: string;
+      sequenceNo: number;
+      amountCents: string;
+      paidAt: Date;
+      payerName: string | null;
+      payeeName: string | null;
+      bankReference: string | null;
+      paymentMethod: string | null;
+      note: string | null;
+      status: string;
+      voucherFileIds: string[];
+      allocations: Array<{
+        id: string;
+        allocationType: string;
+        amountCents: string;
+        allocationOrder: number;
+      }>;
+    }>;
+    balances: Array<{
+      id: string;
+      balanceType: string;
+      openingCents: string;
+      balanceCents: string;
+      revision: number;
+      entries: Array<{
+        id: string;
+        entryKind: string;
+        amountCents: string;
+        settlementId: string | null;
+        historicalPaymentId: string | null;
+        correctionId: string | null;
+        reversesEntryId: string | null;
+        createdAt: Date;
+      }>;
+    }>;
+    confirmedRevision: number | null;
+    confirmedContractRevision: number | null;
+    confirmedFinanceBasisRevision: number | null;
+    confirmedByUserName: string | null;
+    confirmedAt: Date | null;
+    updatedAt: Date;
+  } | null;
+  appliedCorrections: Array<{
+    id: string;
+    schemaVersion: 2;
+    correctionScope: string;
+    correctionOperation: string;
+    status: string;
+    targetRevision: number;
+    targetBalanceRevision: number | null;
+    before: Prisma.JsonValue;
+    delta: Prisma.JsonValue;
+    after: Prisma.JsonValue;
+    reason: string;
+    responsibleUserName: string;
+    submittedByName: string;
+    submittedAt: Date | null;
+    reviewedByName: string | null;
+    reviewedAt: Date | null;
+    reviewComment: string | null;
+    attachmentFileId: string;
+    attachmentFileName: string;
+    targetHistoricalPaymentId: string | null;
+    targetAllocationId: string | null;
+    targetBalanceEntryId: string | null;
+  }>;
   postConfirmationVerification: ContractTakeoverPostConfirmationVerificationReadModel;
   lifecycleKind: "pristine_draft" | "approval_draft" | "formal_record";
   lifecycleBlockers: string[];
@@ -760,6 +908,9 @@ export class ContractTakeoverService {
         paymentStages: this.takeoverDirectStageReadModels(paymentStages),
         evidenceFiles: [],
         corrections: [],
+        contractSide: null,
+        financeSide: null,
+        appliedCorrections: [],
         postConfirmationVerification: postConfirmationVerificationReadModel(
           takeover,
           emptyPostConfirmationVerificationStats()
@@ -912,6 +1063,9 @@ export class ContractTakeoverService {
         paymentStages: this.takeoverDirectStageReadModels(paymentStages),
         evidenceFiles: [],
         corrections: [],
+        contractSide: null,
+        financeSide: null,
+        appliedCorrections: [],
         postConfirmationVerification: postConfirmationVerificationReadModel(
           updated,
           emptyPostConfirmationVerificationStats()
@@ -3083,6 +3237,17 @@ export class ContractTakeoverService {
       contractBill?: ReadClientFindMany<HistoricalContractBillRecord>;
       contractBillRow?: ReadClientFindMany<HistoricalContractBillRowRecord>;
     };
+    const departmentClient = client as unknown as {
+      contractTakeoverContractFacts?: ReadClientFindMany<ContractTakeoverContractFactsRow>;
+      contractTakeoverFinanceFacts?: ReadClientFindMany<ContractTakeoverFinanceFactsRow>;
+      contractTakeoverSettlementEvidence?: ReadClientFindMany<ContractTakeoverEvidenceReadRow>;
+      contractTakeoverExcessEvidence?: ReadClientFindMany<ContractTakeoverEvidenceReadRow>;
+      contractTakeoverHistoricalPayment?: ReadClientFindMany<ContractTakeoverHistoricalPaymentReadRow>;
+      contractTakeoverHistoricalPaymentAllocation?: ReadClientFindMany<ContractTakeoverHistoricalPaymentAllocationReadRow>;
+      contractTakeoverHistoricalPaymentVoucher?: ReadClientFindMany<ContractTakeoverHistoricalPaymentVoucherReadRow>;
+      contractTakeoverBalanceAccount?: ReadClientFindMany<ContractTakeoverBalanceAccountReadRow>;
+      contractTakeoverBalanceEntry?: ReadClientFindMany<ContractTakeoverBalanceEntryReadRow>;
+    };
     const paymentTermsVersionIds = unique(takeovers.map((takeover) => takeover.paymentTermsVersionId));
     const batchIds = unique(
       takeovers
@@ -3198,6 +3363,112 @@ export class ContractTakeoverService {
             }
           })
         : [];
+    const [
+      contractSideRows,
+      financeSideRows,
+      settlementEvidenceRows,
+      excessEvidenceRows,
+      historicalPaymentRows,
+      balanceAccountRows
+    ] = await Promise.all([
+      typeof departmentClient.contractTakeoverContractFacts?.findMany ===
+      "function"
+        ? departmentClient.contractTakeoverContractFacts.findMany({
+            where: { takeoverId: { in: takeoverIds } }
+          })
+        : Promise.resolve([]),
+      typeof departmentClient.contractTakeoverFinanceFacts?.findMany ===
+      "function"
+        ? departmentClient.contractTakeoverFinanceFacts.findMany({
+            where: { takeoverId: { in: takeoverIds } }
+          })
+        : Promise.resolve([]),
+      typeof departmentClient.contractTakeoverSettlementEvidence?.findMany ===
+      "function"
+        ? departmentClient.contractTakeoverSettlementEvidence.findMany({
+            where: { takeoverId: { in: takeoverIds } },
+            orderBy: [
+              { takeoverId: "asc" },
+              { displayOrder: "asc" }
+            ]
+          })
+        : Promise.resolve([]),
+      typeof departmentClient.contractTakeoverExcessEvidence?.findMany ===
+      "function"
+        ? departmentClient.contractTakeoverExcessEvidence.findMany({
+            where: { takeoverId: { in: takeoverIds } },
+            orderBy: [
+              { takeoverId: "asc" },
+              { displayOrder: "asc" }
+            ]
+          })
+        : Promise.resolve([]),
+      typeof departmentClient.contractTakeoverHistoricalPayment?.findMany ===
+      "function"
+        ? departmentClient.contractTakeoverHistoricalPayment.findMany({
+            where: { takeoverId: { in: takeoverIds } },
+            orderBy: [
+              { takeoverId: "asc" },
+              { sequenceNo: "asc" }
+            ]
+          })
+        : Promise.resolve([]),
+      typeof departmentClient.contractTakeoverBalanceAccount?.findMany ===
+      "function"
+        ? departmentClient.contractTakeoverBalanceAccount.findMany({
+            where: { takeoverId: { in: takeoverIds } },
+            orderBy: [
+              { takeoverId: "asc" },
+              { balanceType: "asc" }
+            ]
+          })
+        : Promise.resolve([])
+    ]);
+    const historicalPaymentIds = historicalPaymentRows.map(
+      (payment) => payment.id
+    );
+    const balanceAccountIds = balanceAccountRows.map((account) => account.id);
+    const [
+      historicalPaymentAllocationRows,
+      historicalPaymentVoucherRows,
+      balanceEntryRows
+    ] = await Promise.all([
+      typeof departmentClient.contractTakeoverHistoricalPaymentAllocation
+        ?.findMany === "function" && historicalPaymentIds.length
+        ? departmentClient.contractTakeoverHistoricalPaymentAllocation.findMany({
+            where: {
+              historicalPaymentId: { in: historicalPaymentIds }
+            },
+            orderBy: [
+              { historicalPaymentId: "asc" },
+              { allocationOrder: "asc" }
+            ]
+          })
+        : Promise.resolve([]),
+      typeof departmentClient.contractTakeoverHistoricalPaymentVoucher
+        ?.findMany === "function" && historicalPaymentIds.length
+        ? departmentClient.contractTakeoverHistoricalPaymentVoucher.findMany({
+            where: {
+              historicalPaymentId: { in: historicalPaymentIds }
+            },
+            orderBy: [
+              { historicalPaymentId: "asc" },
+              { displayOrder: "asc" }
+            ]
+          })
+        : Promise.resolve([]),
+      typeof departmentClient.contractTakeoverBalanceEntry?.findMany ===
+      "function" && balanceAccountIds.length
+        ? departmentClient.contractTakeoverBalanceEntry.findMany({
+            where: { accountId: { in: balanceAccountIds } },
+            orderBy: [
+              { accountId: "asc" },
+              { createdAt: "asc" },
+              { id: "asc" }
+            ]
+          })
+        : Promise.resolve([])
+    ]);
     const responsibleUserIds = unique(
       takeovers
         .map((takeover) => takeover.responsibleUserId)
@@ -3261,8 +3532,16 @@ export class ContractTakeoverService {
     const userIds = unique([
       ...files.map((file) => file.uploadedByUserId),
       ...responsibleUserIds,
-      ...correctionUserIds
-    ]);
+      ...correctionUserIds,
+      ...contractSideRows.flatMap((facts) => [
+        facts.confirmedByUserId,
+        facts.updatedByUserId
+      ]),
+      ...financeSideRows.flatMap((facts) => [
+        facts.confirmedByUserId,
+        facts.updatedByUserId
+      ])
+    ].filter((id): id is string => typeof id === "string" && Boolean(id)));
     const users = typeof archiveClient.user?.findMany === "function" && userIds.length
       ? await archiveClient.user.findMany({
           where: { id: { in: userIds } },
@@ -3337,6 +3616,73 @@ export class ContractTakeoverService {
         correction
       ]);
     }
+    const contractSideByTakeoverId = new Map(
+      contractSideRows.map((facts) => [facts.takeoverId, facts])
+    );
+    const financeSideByTakeoverId = new Map(
+      financeSideRows.map((facts) => [facts.takeoverId, facts])
+    );
+    const settlementEvidenceByTakeoverId = new Map<string, string[]>();
+    for (const evidence of settlementEvidenceRows) {
+      settlementEvidenceByTakeoverId.set(evidence.takeoverId, [
+        ...(settlementEvidenceByTakeoverId.get(evidence.takeoverId) ?? []),
+        evidence.fileId
+      ]);
+    }
+    const excessEvidenceByTakeoverId = new Map<string, string[]>();
+    for (const evidence of excessEvidenceRows) {
+      excessEvidenceByTakeoverId.set(evidence.takeoverId, [
+        ...(excessEvidenceByTakeoverId.get(evidence.takeoverId) ?? []),
+        evidence.fileId
+      ]);
+    }
+    const allocationsByPaymentId = new Map<
+      string,
+      ContractTakeoverHistoricalPaymentAllocationReadRow[]
+    >();
+    for (const allocation of historicalPaymentAllocationRows) {
+      allocationsByPaymentId.set(allocation.historicalPaymentId, [
+        ...(allocationsByPaymentId.get(allocation.historicalPaymentId) ?? []),
+        allocation
+      ]);
+    }
+    const vouchersByPaymentId = new Map<string, string[]>();
+    for (const voucher of historicalPaymentVoucherRows) {
+      vouchersByPaymentId.set(voucher.historicalPaymentId, [
+        ...(vouchersByPaymentId.get(voucher.historicalPaymentId) ?? []),
+        voucher.fileId
+      ]);
+    }
+    const paymentsByTakeoverId = new Map<
+      string,
+      ContractTakeoverHistoricalPaymentReadRow[]
+    >();
+    for (const payment of historicalPaymentRows) {
+      paymentsByTakeoverId.set(payment.takeoverId, [
+        ...(paymentsByTakeoverId.get(payment.takeoverId) ?? []),
+        payment
+      ]);
+    }
+    const entriesByAccountId = new Map<
+      string,
+      ContractTakeoverBalanceEntryReadRow[]
+    >();
+    for (const entry of balanceEntryRows) {
+      entriesByAccountId.set(entry.accountId, [
+        ...(entriesByAccountId.get(entry.accountId) ?? []),
+        entry
+      ]);
+    }
+    const balancesByTakeoverId = new Map<
+      string,
+      ContractTakeoverBalanceAccountReadRow[]
+    >();
+    for (const account of balanceAccountRows) {
+      balancesByTakeoverId.set(account.takeoverId, [
+        ...(balancesByTakeoverId.get(account.takeoverId) ?? []),
+        account
+      ]);
+    }
     const postConfirmationVerificationByVersionId = postConfirmationVerificationStatsByVersion(
       postConfirmationSettlements,
       activePostConfirmationPaymentRequests,
@@ -3388,7 +3734,9 @@ export class ContractTakeoverService {
             }
           ];
         }),
-        corrections: (correctionsByTakeoverId.get(takeover.id) ?? []).map((correction) => {
+        corrections: (correctionsByTakeoverId.get(takeover.id) ?? [])
+          .filter((correction) => (correction.schemaVersion ?? 1) === 1)
+          .map((correction) => {
           const attachment = fileById.get(correction.attachmentFileId);
           return {
             id: correction.id,
@@ -3417,6 +3765,148 @@ export class ContractTakeoverService {
             createdAt: correction.createdAt
           };
         }),
+        contractSide: (() => {
+          const facts = contractSideByTakeoverId.get(takeover.id);
+          if (!facts) {
+            return null;
+          }
+          return {
+            revision: facts.revision,
+            financeBasisRevision: facts.financeBasisRevision,
+            signedAt: facts.signedAt,
+            historicalSettledCents: moneyString(
+              facts.historicalSettledCents
+            ),
+            zeroSettlementDeclared: facts.zeroSettlementDeclared,
+            performanceStatus: facts.performanceStatus,
+            settlementEvidenceSummary: facts.settlementEvidenceSummary,
+            settlementEvidenceFileIds:
+              settlementEvidenceByTakeoverId.get(takeover.id) ?? [],
+            paymentTerms: facts.paymentTermsSnapshot,
+            contractFacts: facts.contractFactsSnapshot,
+            confirmedRevision: facts.confirmedRevision,
+            confirmedByUserName: facts.confirmedByUserId
+              ? userNameById.get(facts.confirmedByUserId) ?? "合同确认人未读取"
+              : null,
+            confirmedAt: facts.confirmedAt,
+            updatedAt: facts.updatedAt
+          };
+        })(),
+        financeSide: (() => {
+          const facts = financeSideByTakeoverId.get(takeover.id);
+          if (!facts) {
+            return null;
+          }
+          return {
+            revision: facts.revision,
+            basedOnContractRevision: facts.basedOnContractRevision,
+            basedOnFinanceBasisRevision:
+              facts.basedOnFinanceBasisRevision,
+            zeroPaymentDeclared: facts.zeroPaymentDeclared,
+            excessTreatment: facts.excessTreatment,
+            excessReason: facts.excessReason,
+            excessEvidenceFileIds:
+              excessEvidenceByTakeoverId.get(takeover.id) ?? [],
+            payments: (paymentsByTakeoverId.get(takeover.id) ?? []).map(
+              (payment) => ({
+                id: payment.id,
+                rowKey: payment.rowKey,
+                sequenceNo: payment.sequenceNo,
+                amountCents: moneyString(payment.amountCents),
+                paidAt: payment.paidAt,
+                payerName: payment.payerName,
+                payeeName: payment.payeeName,
+                bankReference: payment.bankReference,
+                paymentMethod: payment.paymentMethod,
+                note: payment.note,
+                status: payment.status,
+                voucherFileIds:
+                  vouchersByPaymentId.get(payment.id) ?? [],
+                allocations: (
+                  allocationsByPaymentId.get(payment.id) ?? []
+                ).map((allocation) => ({
+                  id: allocation.id,
+                  allocationType: allocation.allocationType,
+                  amountCents: moneyString(allocation.amountCents),
+                  allocationOrder: allocation.allocationOrder
+                }))
+              })
+            ),
+            balances: (balancesByTakeoverId.get(takeover.id) ?? []).map(
+              (account) => ({
+                id: account.id,
+                balanceType: account.balanceType,
+                openingCents: moneyString(account.openingCents),
+                balanceCents: moneyString(account.balanceCents),
+                revision: account.revision,
+                entries: (entriesByAccountId.get(account.id) ?? []).map(
+                  (entry) => ({
+                    id: entry.id,
+                    entryKind: entry.entryKind,
+                    amountCents: moneyString(entry.amountCents),
+                    settlementId: entry.settlementId,
+                    historicalPaymentId: entry.historicalPaymentId,
+                    correctionId: entry.correctionId,
+                    reversesEntryId: entry.reversesEntryId,
+                    createdAt: entry.createdAt
+                  })
+                )
+              })
+            ),
+            confirmedRevision: facts.confirmedRevision,
+            confirmedContractRevision:
+              facts.confirmedContractRevision,
+            confirmedFinanceBasisRevision:
+              facts.confirmedFinanceBasisRevision,
+            confirmedByUserName: facts.confirmedByUserId
+              ? userNameById.get(facts.confirmedByUserId) ?? "财务确认人未读取"
+              : null,
+            confirmedAt: facts.confirmedAt,
+            updatedAt: facts.updatedAt
+          };
+        })(),
+        appliedCorrections: (
+          correctionsByTakeoverId.get(takeover.id) ?? []
+        )
+          .filter((correction) => correction.schemaVersion === 2)
+          .map((correction) => {
+            const attachment = fileById.get(correction.attachmentFileId);
+            return {
+              id: correction.id,
+              schemaVersion: 2 as const,
+              correctionScope: correction.correctionScope!,
+              correctionOperation: correction.correctionOperation!,
+              status: correction.status,
+              targetRevision: correction.targetRevision!,
+              targetBalanceRevision: correction.targetBalanceRevision,
+              before: correction.beforeSnapshot,
+              delta: correction.deltaSnapshot!,
+              after: correction.afterSnapshot,
+              reason: correction.reason,
+              responsibleUserName:
+                userNameById.get(correction.responsibleUserId) ??
+                "更正责任人未读取",
+              submittedByName:
+                userNameById.get(
+                  correction.submittedByUserId ??
+                    correction.createdByUserId
+                ) ?? "更正提交人未读取",
+              submittedAt: correction.submittedAt,
+              reviewedByName: correction.reviewedByUserId
+                ? userNameById.get(correction.reviewedByUserId) ??
+                  "更正复核人未读取"
+                : null,
+              reviewedAt: correction.reviewedAt,
+              reviewComment: correction.reviewComment,
+              attachmentFileId: correction.attachmentFileId,
+              attachmentFileName:
+                attachment?.originalName ?? "更正依据附件未读取",
+              targetHistoricalPaymentId:
+                correction.targetHistoricalPaymentId,
+              targetAllocationId: correction.targetAllocationId,
+              targetBalanceEntryId: correction.targetBalanceEntryId
+            };
+          }),
         postConfirmationVerification: postConfirmationVerificationReadModel(
           takeover,
           postConfirmationVerificationByVersionId.get(takeover.contractVersionId) ??
@@ -3453,6 +3943,9 @@ export class ContractTakeoverService {
       responsibleUserName?: string | null;
       evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
       corrections: ContractTakeoverCorrectionReadModel[];
+      contractSide: ContractTakeoverBusinessReadModel["contractSide"];
+      financeSide: ContractTakeoverBusinessReadModel["financeSide"];
+      appliedCorrections: ContractTakeoverBusinessReadModel["appliedCorrections"];
       postConfirmationVerification: ContractTakeoverPostConfirmationVerificationReadModel;
     },
     actorUserId?: string
@@ -3562,6 +4055,9 @@ export class ContractTakeoverService {
       evidenceChecklist,
       evidenceFiles: contract.evidenceFiles,
       corrections: contract.corrections,
+      contractSide: contract.contractSide,
+      financeSide: contract.financeSide,
+      appliedCorrections: contract.appliedCorrections,
       postConfirmationVerification: contract.postConfirmationVerification,
       lifecycleKind,
       lifecycleBlockers,

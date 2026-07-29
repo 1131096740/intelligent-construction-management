@@ -3,6 +3,7 @@ import type { PrimaryTableCol } from "tdesign-vue-next";
 import type {
   ContractInvoiceType,
   ContractLifecycleStatus,
+  ContractTakeoverPerformanceStatus,
   ContractTakeoverCentsValue,
   ContractTakeoverBatchAbandonmentPreviewReadModel,
   ContractTakeoverLevel,
@@ -18,6 +19,74 @@ import type {
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 
 export type ContractTakeoverTone = "default" | "primary" | "warning" | "danger" | "success";
+
+export interface TakeoverDepartmentAccess {
+  canEditContract: boolean;
+  canConfirmContract: boolean;
+  canEditFinance: boolean;
+  canConfirmFinance: boolean;
+}
+
+export function contractTakeoverPerformanceStatus(
+  lifecycleStatus: ContractLifecycleStatus
+): ContractTakeoverPerformanceStatus {
+  if (lifecycleStatus === "signed_not_started") return "not_started";
+  if (lifecycleStatus === "suspended") return "suspended";
+  if (lifecycleStatus === "completed") return "completed";
+  if (lifecycleStatus === "terminated") return "terminated";
+  return "performing";
+}
+
+export function takeoverDepartmentAccess(
+  roleKeys: string[],
+  activated: boolean
+): TakeoverDepartmentAccess {
+  if (activated) {
+    return {
+      canEditContract: false,
+      canConfirmContract: false,
+      canEditFinance: false,
+      canConfirmFinance: false
+    };
+  }
+  return {
+    canEditContract:
+      roleKeys.includes("contract_staff") ||
+      roleKeys.includes("contract_director"),
+    canConfirmContract: roleKeys.includes("contract_director"),
+    canEditFinance:
+      roleKeys.includes("finance_staff") ||
+      roleKeys.includes("finance_director"),
+    canConfirmFinance: roleKeys.includes("finance_director")
+  };
+}
+
+export function takeoverFinanceBasisStatus(
+  contractRevision: number,
+  financeBasisRevision: number,
+  basedOnContractRevision: number,
+  basedOnFinanceBasisRevision: number
+): {
+  status: "current" | "contract_revision_advanced" | "stale";
+  label: string;
+} {
+  if (financeBasisRevision !== basedOnFinanceBasisRevision) {
+    return {
+      status: "stale",
+      label: "财务依据已过期，请重新读取并核对"
+    };
+  }
+  if (contractRevision !== basedOnContractRevision) {
+    return {
+      status: "contract_revision_advanced",
+      label: "非财务字段已更新、确认仍有效"
+    };
+  }
+  return {
+    status: "current",
+    label: "财务依据与合同侧当前口径一致"
+  };
+}
 
 export interface ContractTakeoverOption<T extends string> {
   value: T;

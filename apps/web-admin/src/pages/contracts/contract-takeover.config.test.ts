@@ -15,6 +15,7 @@ import {
   canEditTakeover,
   canSubmitTakeoverReview,
   centsToYuanText,
+  contractTakeoverPerformanceStatus,
   contractTakeoverColumns,
   historicalChangeBaselineView,
   historicalPaymentVoucherUploadDisabledReason,
@@ -44,6 +45,8 @@ import {
   takeoverSuggestedLevelLabel,
   takeoverWorkbenchSteps,
   takeoverPostConfirmationVerificationView,
+  takeoverDepartmentAccess,
+  takeoverFinanceBasisStatus,
   takeoverLevelLabel,
   takeoverStatusLabel,
   takeoverStatusTone,
@@ -54,6 +57,65 @@ import {
 } from "./contract-takeover.config";
 
 describe("contract takeover page configuration", () => {
+  it("maps every legacy lifecycle status into the contract-side performance vocabulary", () => {
+    expect(contractTakeoverPerformanceStatus("signed_not_started")).toBe("not_started");
+    expect(contractTakeoverPerformanceStatus("in_progress")).toBe("performing");
+    expect(contractTakeoverPerformanceStatus("disputed")).toBe("performing");
+    expect(contractTakeoverPerformanceStatus("suspended")).toBe("suspended");
+    expect(contractTakeoverPerformanceStatus("completed")).toBe("completed");
+    expect(contractTakeoverPerformanceStatus("terminated")).toBe("terminated");
+  });
+
+  it("keeps each historical takeover role on its own side and removes editing after activation", () => {
+    expect(takeoverDepartmentAccess(["contract_staff"], false)).toMatchObject({
+      canEditContract: true,
+      canEditFinance: false,
+      canConfirmContract: false
+    });
+    expect(takeoverDepartmentAccess(["contract_director"], false)).toMatchObject({
+      canEditContract: true,
+      canConfirmContract: true,
+      canEditFinance: false
+    });
+    expect(takeoverDepartmentAccess(["finance_staff"], false)).toMatchObject({
+      canEditFinance: true,
+      canEditContract: false,
+      canConfirmFinance: false
+    });
+    expect(takeoverDepartmentAccess(["finance_director"], false)).toMatchObject({
+      canEditFinance: true,
+      canConfirmFinance: true,
+      canEditContract: false
+    });
+    expect(takeoverDepartmentAccess(["super_admin"], false)).toEqual({
+      canEditContract: false,
+      canConfirmContract: false,
+      canEditFinance: false,
+      canConfirmFinance: false
+    });
+    expect(takeoverDepartmentAccess(["contract_director", "finance_director"], true)).toEqual({
+      canEditContract: false,
+      canConfirmContract: false,
+      canEditFinance: false,
+      canConfirmFinance: false
+    });
+  });
+
+  it("distinguishes a harmless full revision advance from a stale finance basis", () => {
+    expect(takeoverFinanceBasisStatus(5, 3, 4, 3)).toEqual({
+      status: "contract_revision_advanced",
+      label: "非财务字段已更新、确认仍有效"
+    });
+    expect(takeoverFinanceBasisStatus(5, 4, 4, 3)).toEqual({
+      status: "stale",
+      label: "财务依据已过期，请重新读取并核对"
+    });
+    expect(takeoverFinanceBasisStatus(5, 4, 5, 4)).toEqual({
+      status: "current",
+      label: "财务依据与合同侧当前口径一致"
+    });
+  });
+
   it("only enables finance payment-voucher supplementation after a supervisor return", () => {
     const base = {
       takeoverStatus: "needs_supplement" as const,
@@ -1103,6 +1165,9 @@ function takeover(): ContractTakeoverReadModel {
     ],
     evidenceFiles: [],
     corrections: [],
+    contractSide: null,
+    financeSide: null,
+    appliedCorrections: [],
     postConfirmationVerification: {
       statusLabel: "未到核验",
       summaryText: "主管确认后，再用接管后的新结算、付款申请、实付凭证和财务入账核验期初账本。",

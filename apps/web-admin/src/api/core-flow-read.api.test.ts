@@ -72,6 +72,8 @@ import {
   createPrivateFileDownloadTicket,
   createSettlementDraft,
   confirmContractTakeover,
+  confirmContractTakeoverContractSide,
+  confirmContractTakeoverFinanceSide,
   returnContractTakeoverForSupplement,
   confirmContractTakeoverChangeBaseline,
   confirmContractArchive,
@@ -121,13 +123,19 @@ import {
   attachContractTakeoverEvidenceFile,
   attachHistoricalPaymentVoucher,
   recordContractTakeoverCorrection,
+  reviewContractTakeoverCorrection,
   reviewContractTakeoverCompanyEntityCorrection,
   fetchApprovalDelegationUserOptions,
   revokeApprovalDelegation,
   submitContractTakeoverReview,
+  submitContractTakeoverCorrection,
   submitContractTakeoverCompanyEntityCorrection,
   reviewContractTakeoverImportBatch,
-  updateContractTakeover
+  updateContractTakeover,
+  saveContractTakeoverContractSide,
+  saveContractTakeoverFinanceSide,
+  withdrawContractTakeoverContractSideConfirmation,
+  withdrawContractTakeoverFinanceSideConfirmation
 } from "./core-flow-read.api";
 
 describe("core flow read API client", () => {
@@ -1273,6 +1281,126 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls[12][1]?.body).toBe(
       JSON.stringify({ confirmationPassword: "current-password" })
     );
+  });
+
+  it("keeps contract and finance takeover writes on independent exact endpoints", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ takeoverId: "takeover-1" })
+    } as Response);
+    const contractPayload = {
+      idempotencyKey: "11111111-1111-4111-8111-111111111111",
+      expectedRevision: 2,
+      signedAt: "2026-01-01",
+      performanceStatus: "performing" as const,
+      historicalSettledCents: "600000",
+      settlementEvidenceSummary: "按历史结算台账核对",
+      settlementEvidenceFileIds: ["settlement-evidence-1"],
+      paymentTerms: { originalText: "按月结算付款", stages: [] },
+      contractFacts: {
+        contractNo: "HT-HIS-001",
+        contractName: "历史材料合同",
+        contractTypeKey: "material_purchase",
+        counterparty: "供应商甲",
+        originalAmountCents: "1000000",
+        settlementCutoffDate: "2026-06-30",
+        zeroSettlementDeclared: false
+      }
+    };
+    const financePayload = {
+      idempotencyKey: "22222222-2222-4222-8222-222222222222",
+      expectedRevision: 3,
+      basedOnContractRevision: 2,
+      basedOnFinanceBasisRevision: 2,
+      zeroPaymentDeclared: false,
+      payments: [{
+        rowKey: "payment-1",
+        amountCents: "400000",
+        paidAt: "2026-05-01",
+        voucherFileIds: ["voucher-1"]
+      }]
+    };
+    const confirmation = {
+      idempotencyKey: "33333333-3333-4333-8333-333333333333",
+      expectedRevision: 3,
+      currentPassword: "current-password"
+    };
+    const withdrawal = {
+      idempotencyKey: "44444444-4444-4444-8444-444444444444",
+      expectedRevision: 3,
+      currentPassword: "current-password",
+      reason: "发现原始台账仍需复核"
+    };
+    const correction = {
+      correctionScope: "historical_payment" as const,
+      correctionOperation: "correction" as const,
+      targetRevision: 3,
+      targetHistoricalPaymentId: "historical-payment-1",
+      targetAllocationId: "allocation-1",
+      deltaCents: "1",
+      reason: "补正一分钱差额",
+      responsibleUserId: "finance-staff-1",
+      attachmentFileId: "correction-file-1",
+      applicationIdempotencyKey: "55555555-5555-4555-8555-555555555555",
+      currentPassword: "current-password"
+    };
+
+    await saveContractTakeoverContractSide("project-1", "takeover-1", contractPayload);
+    await saveContractTakeoverFinanceSide("project-1", "takeover-1", financePayload);
+    await confirmContractTakeoverContractSide("project-1", "takeover-1", {
+      ...confirmation,
+      expectedRevision: 2
+    });
+    await confirmContractTakeoverFinanceSide("project-1", "takeover-1", {
+      ...confirmation,
+      basedOnContractRevision: 2,
+      basedOnFinanceBasisRevision: 2
+    });
+    await withdrawContractTakeoverContractSideConfirmation(
+      "project-1",
+      "takeover-1",
+      withdrawal
+    );
+    await withdrawContractTakeoverFinanceSideConfirmation(
+      "project-1",
+      "takeover-1",
+      withdrawal
+    );
+    await submitContractTakeoverCorrection("project-1", "takeover-1", correction);
+    await reviewContractTakeoverCorrection(
+      "project-1",
+      "takeover-1",
+      "correction-1",
+      {
+        decision: "apply",
+        reviewComment: "原始凭证与台账一致",
+        currentPassword: "current-password"
+      }
+    );
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project-1/contract-takeovers/takeover-1/contract-side",
+      "/api/projects/project-1/contract-takeovers/takeover-1/finance-side",
+      "/api/projects/project-1/contract-takeovers/takeover-1/contract-side/confirmation",
+      "/api/projects/project-1/contract-takeovers/takeover-1/finance-side/confirmation",
+      "/api/projects/project-1/contract-takeovers/takeover-1/contract-side/confirmation-withdrawal",
+      "/api/projects/project-1/contract-takeovers/takeover-1/finance-side/confirmation-withdrawal",
+      "/api/projects/project-1/contract-takeovers/takeover-1/corrections",
+      "/api/projects/project-1/contract-takeovers/takeover-1/corrections/correction-1/review"
+    ]);
+    expect(fetchMock.mock.calls.map((call) => call[1]?.method)).toEqual([
+      "PUT",
+      "PUT",
+      "POST",
+      "POST",
+      "POST",
+      "POST",
+      "POST",
+      "POST"
+    ]);
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(JSON.stringify(contractPayload));
+    expect(fetchMock.mock.calls[1][1]?.body).toBe(JSON.stringify(financePayload));
+    expect(fetchMock.mock.calls[6][1]?.body).toBe(JSON.stringify(correction));
   });
 
   it("previews and applies the historical contract Excel import with the checked file facts", async () => {

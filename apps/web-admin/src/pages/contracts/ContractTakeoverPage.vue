@@ -1041,6 +1041,62 @@
             @go-contract-change="goToContractChange"
           />
 
+          <div class="department-workspace">
+            <ContractTakeoverContractSidePanel
+              :model-value="contractSideState?.model ?? null"
+              :revision="contractSideState?.revision ?? 0"
+              :finance-basis-revision="selectedRow.takeover.contractSide?.financeBasisRevision ?? 0"
+              :confirmed-revision="selectedRow.takeover.contractSide?.confirmedRevision ?? null"
+              :editable="departmentAccess.canEditContract"
+              :saving="Boolean(contractSideState?.saving)"
+              :dirty="Boolean(contractSideState?.dirty)"
+              :status-text="contractSideStatus"
+              @update:model-value="updateContractSideModel"
+              @upload-evidence="uploadContractSideEvidence"
+            />
+            <ContractTakeoverFinanceSidePanel
+              :model-value="financeSideState?.model ?? null"
+              :revision="financeSideState?.revision ?? 0"
+              :based-on-contract-revision="financeSideState?.model.basedOnContractRevision ?? 0"
+              :based-on-finance-basis-revision="financeSideState?.model.basedOnFinanceBasisRevision ?? 0"
+              :basis-label="financeBasisStatus.label"
+              :basis-tone="financeBasisTone"
+              :balances="selectedRow.takeover.financeSide?.balances ?? []"
+              :editable="departmentAccess.canEditFinance && Boolean(contractSideState)"
+              :saving="Boolean(financeSideState?.saving)"
+              :dirty="Boolean(financeSideState?.dirty)"
+              :status-text="financeSideStatus"
+              @update:model-value="updateFinanceSideModel"
+              @upload-voucher="uploadFinancePaymentVoucher"
+              @upload-excess-evidence="uploadFinanceExcessEvidence"
+              @reload-basis="reloadFinanceBasisPreservingInput"
+            />
+          </div>
+
+          <ContractTakeoverDualConfirmationCard
+            :activated="Boolean(selectedRow.takeover.confirmedAt)"
+            :contract-revision="contractSideState?.revision ?? 0"
+            :contract-confirmed-revision="selectedRow.takeover.contractSide?.confirmedRevision ?? null"
+            :contract-confirmed-by="selectedRow.takeover.contractSide?.confirmedByUserName ?? null"
+            :contract-confirmed-at="selectedRow.takeover.contractSide?.confirmedAt ?? null"
+            :finance-revision="financeSideState?.revision ?? 0"
+            :finance-confirmed-revision="selectedRow.takeover.financeSide?.confirmedRevision ?? null"
+            :finance-confirmed-by="selectedRow.takeover.financeSide?.confirmedByUserName ?? null"
+            :finance-confirmed-at="selectedRow.takeover.financeSide?.confirmedAt ?? null"
+            :finance-basis-label="financeBasisStatus.label"
+            :finance-basis-stale="financeBasisStatus.status === 'stale'"
+            :can-confirm-contract="departmentAccess.canConfirmContract
+              && Boolean(selectedRow.takeover.contractSide)
+              && !contractSideState?.dirty
+              && !contractSideState?.saving"
+            :can-confirm-finance="departmentAccess.canConfirmFinance
+              && Boolean(selectedRow.takeover.financeSide)
+              && !financeSideState?.dirty
+              && !financeSideState?.saving"
+            @confirm="openDepartmentAction($event, 'confirm')"
+            @withdraw="openDepartmentAction($event, 'withdraw')"
+          />
+
           <h3 id="takeover-step-review">
             复核确认
           </h3>
@@ -1399,125 +1455,20 @@
                 </div>
               </div>
             </div>
-            <div
-              v-if="selectedCorrectionRows.length"
-              class="correction-history"
-            >
-              <div
-                v-for="item in selectedCorrectionRows"
-                :key="item.id"
-                class="correction-history-item"
-              >
-                <strong>{{ item.title }}</strong>
-                <p>更正原因：{{ item.reason }}</p>
-                <p>{{ item.beforeSummary }}</p>
-                <p>更正后：{{ item.afterSummary }}</p>
-                <p>{{ item.responsibleText }}；{{ item.createdByText }}</p>
-                <p>{{ item.attachmentText }}</p>
-              </div>
-            </div>
-            <div
-              v-else
-              class="empty-hint"
-            >
-              {{ canConfirmTakeovers
-                ? "暂无接管更正记录。已确认金额、付款条款或资料需要调整时，请在下方保存更正原因、责任人和依据附件。"
-                : "暂无接管更正记录。" }}
-            </div>
-            <div
-              v-if="canConfirmTakeovers"
-              class="form-grid two"
-            >
-              <label>
-                <span>更正事项</span>
-                <select v-model="correctionForm.correctionType">
-                  <option
-                    v-for="option in correctionTypeOptions"
-                    :key="option.value"
-                    :value="option.value"
-                  >
-                    {{ option.label }}
-                  </option>
-                </select>
-              </label>
-              <label>
-                <span>更正责任人</span>
-                <t-select
-                  v-model="correctionForm.responsibleUserId"
-                  :options="responsibleUserOptions"
-                  filterable
-                  placeholder="选择负责核实和跟进更正的人员"
-                />
-              </label>
-              <label>
-                <span>更正原因</span>
-                <t-textarea
-                  v-model="correctionForm.reason"
-                  placeholder="说明为什么需要补正，不能只写补资料"
-                  :autosize="{ minRows: 2, maxRows: 4 }"
-                />
-              </label>
-              <label>
-                <span>更正后的事实说明</span>
-                <t-textarea
-                  v-model="correctionForm.afterSummary"
-                  placeholder="说明补正后的金额、资料或付款条款事实"
-                  :autosize="{ minRows: 2, maxRows: 4 }"
-                />
-              </label>
-              <label>
-                <span>更正依据附件</span>
-                <t-upload
-                  v-model="correctionFiles"
-                  :auto-upload="false"
-                  :multiple="false"
-                  :max="1"
-                  accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
-                  theme="file-input"
-                  placeholder="选择更正依据"
-                />
-              </label>
-              <label>
-                <span>当前登录密码</span>
-                <t-input
-                  v-model="correctionForm.currentPassword"
-                  type="password"
-                  placeholder="用于确认本次更正由本人发起"
-                />
-              </label>
-            </div>
-            <div
-              v-if="canConfirmTakeovers"
-              class="form-actions"
-            >
-              <t-tooltip
-                v-if="selectedCorrectionDisabledReason"
-                :content="selectedCorrectionDisabledReason"
-              >
-                <t-button
-                  theme="primary"
-                  variant="outline"
-                  disabled
-                >
-                  保存更正记录
-                </t-button>
-              </t-tooltip>
-              <t-button
-                v-else
-                theme="primary"
-                variant="outline"
-                :loading="correctionSubmitting"
-                @click="submitCorrectionRecord"
-              >
-                保存更正记录
-              </t-button>
-              <t-button
-                variant="outline"
-                @click="resetCorrectionForm"
-              >
-                清空更正内容
-              </t-button>
-            </div>
+            <ContractTakeoverCorrectionPanel
+              :corrections="selectedRow.takeover.appliedCorrections"
+              :payments="selectedRow.takeover.financeSide?.payments ?? []"
+              :balances="selectedRow.takeover.financeSide?.balances ?? []"
+              :contract-revision="selectedRow.takeover.contractSide?.revision ?? 0"
+              :finance-revision="selectedRow.takeover.financeSide?.revision ?? 0"
+              :responsible-options="responsibleUserOptions"
+              :allowed-scopes="allowedCorrectionScopes"
+              :can-submit="canSubmitAppliedCorrections"
+              :can-review="canReviewAppliedCorrections"
+              :submitting="appliedCorrectionSubmitting"
+              @submit="submitAppliedCorrection"
+              @review="openCorrectionReview"
+            />
           </div>
 
           <h3>历史余额</h3>
@@ -1821,9 +1772,37 @@
       @cancel="evidenceDownloadConfirmError = ''"
     />
     <SensitiveActionDialog
+      v-model="departmentActionVisible"
+      :title="departmentActionTitle"
+      :description="departmentActionDescription"
+      :confirm-text="departmentAction?.action === 'withdraw' ? '确认撤回' : '确认当前修订'"
+      :confirm-theme="departmentAction?.action === 'withdraw' ? 'danger' : 'primary'"
+      :require-reason="departmentAction?.action === 'withdraw'"
+      reason-label="撤回原因"
+      require-password
+      :loading="departmentActionLoading"
+      :error="departmentActionError"
+      @confirm="submitDepartmentAction"
+      @cancel="resetDepartmentAction"
+    />
+    <SensitiveActionDialog
+      v-model="correctionReviewVisible"
+      :title="pendingCorrectionReview?.decision === 'apply' ? '复核并应用接管更正' : '驳回接管更正'"
+      description="主管复核会校验目标修订、余额修订与权限；应用只追加流水和审计，不覆盖原事实。"
+      :confirm-text="pendingCorrectionReview?.decision === 'apply' ? '确认应用' : '确认驳回'"
+      :confirm-theme="pendingCorrectionReview?.decision === 'apply' ? 'primary' : 'danger'"
+      require-reason
+      reason-label="复核意见"
+      require-password
+      :loading="appliedCorrectionReviewing"
+      :error="correctionReviewError"
+      @confirm="confirmCorrectionReview"
+      @cancel="resetCorrectionReview"
+    />
+    <SensitiveActionDialog
       v-model="leaveDialogVisible"
       title="放弃未保存的接管修改？"
-      description="继续后会丢弃当前接管表单或税务事实修订中尚未保存的本地修改。"
+      description="继续后会丢弃当前接管表单、税务事实修订或部门侧中尚未保存的本地修改。"
       confirm-text="放弃并离开"
       confirm-theme="danger"
       @confirm="resolveLeaveDecision(true)"
@@ -1834,7 +1813,7 @@
 
 <script setup lang="ts">
 import type { UploadFile } from "tdesign-vue-next";
-import { computed, nextTick, onMounted, reactive, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
   abandonContractTakeover,
@@ -1842,6 +1821,8 @@ import {
   applyContractTakeoverExcelImport,
   attachContractTakeoverEvidenceFile,
   attachHistoricalPaymentVoucher,
+  confirmContractTakeoverContractSide,
+  confirmContractTakeoverFinanceSide,
   confirmContractTakeover,
   confirmContractTakeoverChangeBaseline,
   createPrivateFileDownloadTicket,
@@ -1859,18 +1840,24 @@ import {
   precheckContractTakeoverImport,
   previewContractTakeoverBatchAbandonment,
   previewContractTakeoverExcelImport,
-  recordContractTakeoverCorrection,
+  reviewContractTakeoverCorrection,
   returnContractTakeoverForSupplement,
+  saveContractTakeoverContractSide,
+  saveContractTakeoverFinanceSide,
+  submitContractTakeoverCorrection,
   reviewContractTakeoverCompanyEntityCorrection,
   reviewContractTakeoverImportBatch,
   submitContractTakeoverReview,
   submitContractTakeoverCompanyEntityCorrection,
   updateContractTakeover,
   uploadPrivateFile,
+  withdrawContractTakeoverContractSideConfirmation,
+  withdrawContractTakeoverFinanceSideConfirmation,
   type ContractInvoiceType,
   type ContractTaxFactSource,
   type ContractTaxMode,
-  type ContractTakeoverCorrectionType,
+  type ContractTakeoverCorrectionOperation,
+  type ContractTakeoverCorrectionScope,
   type ContractTakeoverBatchAbandonmentPreviewReadModel,
   type ContractTakeoverExcelPreviewReadModel,
   type ContractTakeoverImportBatchReadModel,
@@ -1880,6 +1867,8 @@ import {
   type ContractLifecycleStatus,
   type ContractTakeoverLevel,
   type ContractTakeoverReadModel,
+  type SaveContractTakeoverContractSidePayload,
+  type SaveContractTakeoverFinanceSidePayload,
   type HistoricalCompanyEntityCandidateReadModel,
   type ProjectOptionReadModel,
   type UserOptionReadModel
@@ -1901,9 +1890,14 @@ import {
   canUploadHistoricalPaymentVoucher
 } from "../business-readonly-access";
 import ContractTaxFactReviewPanel from "./components/ContractTaxFactReviewPanel.vue";
+import ContractTakeoverContractSidePanel from "./components/ContractTakeoverContractSidePanel.vue";
+import ContractTakeoverCorrectionPanel from "./components/ContractTakeoverCorrectionPanel.vue";
+import ContractTakeoverDualConfirmationCard from "./components/ContractTakeoverDualConfirmationCard.vue";
+import ContractTakeoverFinanceSidePanel from "./components/ContractTakeoverFinanceSidePanel.vue";
 import HistoricalCompanyEntityMatchPanel from "./components/HistoricalCompanyEntityMatchPanel.vue";
 import {
   buildImportDraftsMessage,
+  contractTakeoverPerformanceStatus,
   buildImportPrecheckMessage,
   buildTakeoverConfirmationSummary,
   buildTakeoverPostConfirmationChecklist,
@@ -1932,10 +1926,10 @@ import {
   takeoverBatchAbandonmentDisabledReason,
   takeoverConfirmDisabledReason,
   takeoverConfirmationEvidenceBlockReason,
-  takeoverCorrectionDisabledReason,
-  takeoverCorrectionRows,
+  takeoverDepartmentAccess,
   takeoverEvidenceDownloadDisabledReason,
   takeoverEvidenceUploadDisabledReason,
+  takeoverFinanceBasisStatus,
   takeoverLevelAdjustmentDisabledReason,
   takeoverLevelSelectionHint,
   takeoverOperationSections,
@@ -1960,6 +1954,14 @@ import {
   type ContractTakeoverTableRow,
   type ContractTakeoverTone
 } from "./contract-takeover.config";
+import {
+  beginTakeoverSideSave,
+  completeTakeoverSideSave,
+  createTakeoverSideSaveState,
+  failTakeoverSideSave,
+  replaceTakeoverSideModel,
+  type TakeoverSideSaveState
+} from "./contract-takeover-side-save.state";
 
 type MoneyFieldKey =
   | "historicalSettledYuan"
@@ -2008,20 +2010,36 @@ interface ImportBatchFormState {
   acceptanceConclusion: string;
 }
 
-interface CorrectionFormState {
-  correctionType: ContractTakeoverCorrectionType;
-  reason: string;
-  responsibleUserId: string;
-  afterSummary: string;
-  currentPassword: string;
-}
-
 interface CompanyEntityCorrectionFormState {
   targetCompanyEntityId: string;
   reason: string;
   responsibleUserId: string;
   currentPassword: string;
 }
+
+type ContractSideFormModel = Omit<
+  SaveContractTakeoverContractSidePayload,
+  "idempotencyKey" | "expectedRevision"
+>;
+
+type FinanceSidePaymentForm =
+  SaveContractTakeoverFinanceSidePayload["payments"][number] & {
+    allocations?: Array<{
+      id: string;
+      allocationType: string;
+      amountCents: string;
+    }>;
+  };
+
+type FinanceSideFormModel = Omit<
+  SaveContractTakeoverFinanceSidePayload,
+  "idempotencyKey" | "expectedRevision" | "payments"
+> & {
+  payments: FinanceSidePaymentForm[];
+};
+
+type DepartmentSide = "contract" | "finance";
+type DepartmentConfirmationAction = "confirm" | "withdraw";
 
 const moneyFields: Array<{ key: MoneyFieldKey; label: string }> = [
   { key: "historicalSettledYuan", label: "历史累计结算" },
@@ -2094,7 +2112,8 @@ const supplementReturning = ref(false);
 const evidenceUploading = ref(false);
 const historicalPaymentVoucherUploading = ref(false);
 const evidenceDownloading = ref(false);
-const correctionSubmitting = ref(false);
+const appliedCorrectionSubmitting = ref(false);
+const appliedCorrectionReviewing = ref(false);
 const companyEntityCorrectionSubmitting = ref(false);
 const companyEntityCorrectionReviewingId = ref("");
 const companyEntityCorrectionReviewVisible = ref(false);
@@ -2120,6 +2139,19 @@ const correctionAttachmentDownloadFileId = ref("");
 const correctionAttachmentDownloadFileName = ref("");
 const correctionAttachmentDownloadError = ref("");
 const correctionAttachmentDownloading = ref(false);
+const departmentActionVisible = ref(false);
+const departmentActionLoading = ref(false);
+const departmentActionError = ref("");
+const departmentAction = ref<{
+  side: DepartmentSide;
+  action: DepartmentConfirmationAction;
+} | null>(null);
+const correctionReviewVisible = ref(false);
+const correctionReviewError = ref("");
+const pendingCorrectionReview = ref<{
+  correctionId: string;
+  decision: "apply" | "reject";
+} | null>(null);
 const changeBaselineVisible = ref(false);
 const changeBaselineSubmitting = ref(false);
 const changeBaselineError = ref("");
@@ -2143,27 +2175,38 @@ const historicalPaymentVoucherInputRef = ref<HTMLInputElement | null>(null);
 const evidenceDownloadFileId = ref("");
 const evidenceDownloadPassword = ref("");
 const evidenceDownloadReason = ref("");
-const correctionFiles = ref<UploadFile[]>([]);
 const companyEntityCorrectionFiles = ref<UploadFile[]>([]);
 const message = ref("");
 const messageTone = ref<"success" | "danger" | "default">("default");
 const createForm = reactive<CreateFormState>(createEmptyForm());
 const importBatchForm = reactive<ImportBatchFormState>(createEmptyImportBatchForm());
-const correctionForm = reactive<CorrectionFormState>(createEmptyCorrectionForm());
 const companyEntityCorrectionForm = reactive<CompanyEntityCorrectionFormState>(
   createEmptyCompanyEntityCorrectionForm()
 );
+const contractSideState = ref<TakeoverSideSaveState<ContractSideFormModel> | null>(null);
+const financeSideState = ref<TakeoverSideSaveState<FinanceSideFormModel> | null>(null);
+const contractSideStatus = ref("");
+const financeSideStatus = ref("");
+let contractSideSaveTimer: ReturnType<typeof setTimeout> | null = null;
+let financeSideSaveTimer: ReturnType<typeof setTimeout> | null = null;
 const hasUnsavedTakeoverChanges = computed(() =>
   (showCreateForm.value && Boolean(createFormBaseline.value) &&
-    JSON.stringify(createForm) !== createFormBaseline.value) || taxFactDirty.value
+    JSON.stringify(createForm) !== createFormBaseline.value) ||
+  taxFactDirty.value ||
+  Boolean(contractSideState.value?.dirty) ||
+  Boolean(financeSideState.value?.dirty)
 );
 const takeoverLeaveGuard = useUnsavedChangesGuard({
   isDirty: hasUnsavedTakeoverChanges,
-  confirmLeave: () => new Promise<boolean>((resolve) => {
+  confirmLeave: async () => {
+    await flushEditableDepartmentSides();
+    if (!hasUnsavedTakeoverChanges.value) return true;
+    return new Promise<boolean>((resolve) => {
     resolvePendingLeave?.(false);
     resolvePendingLeave = resolve;
     leaveDialogVisible.value = true;
-  })
+    });
+  }
 });
 
 function syncCreateFormBaseline() {
@@ -2182,6 +2225,405 @@ function closeCreateForm() {
   resetCreateForm();
   syncCreateFormBaseline();
   showCreateForm.value = false;
+}
+
+function contractSideModelFromTakeover(
+  takeover: ContractTakeoverReadModel
+): ContractSideFormModel {
+  const side = takeover.contractSide;
+  if (side) {
+    return {
+      signedAt: side.signedAt.slice(0, 10),
+      performanceStatus: side.performanceStatus,
+      historicalSettledCents: side.historicalSettledCents,
+      settlementEvidenceSummary: side.settlementEvidenceSummary ?? "",
+      settlementEvidenceFileIds: [...side.settlementEvidenceFileIds],
+      paymentTerms: {
+        originalText: side.paymentTerms.originalText,
+        stages: side.paymentTerms.stages.map((stage) => ({ ...stage }))
+      },
+      contractFacts: { ...side.contractFacts }
+    };
+  }
+
+  const historicalSettledCents = String(takeover.historicalSettledCents);
+  return {
+    signedAt: takeover.signedAt.slice(0, 10),
+    performanceStatus: contractTakeoverPerformanceStatus(takeover.lifecycleStatus),
+    historicalSettledCents,
+    settlementEvidenceSummary: takeover.evidenceSummary ?? "",
+    settlementEvidenceFileIds: takeover.evidenceFiles
+      .filter((file) => file.purpose === "historical_settlement_ledger")
+      .map((file) => file.fileId),
+    paymentTerms: {
+      originalText: takeover.paymentTermsOriginalText,
+      stages: (takeover.paymentStages ?? []).map((stage) => ({
+        name: stage.name,
+        ...(stage.ratioBps === null ? {} : { ratioBps: stage.ratioBps }),
+        ...(stage.fixedAmountCents === null
+          ? {}
+          : { fixedAmountCents: String(stage.fixedAmountCents) }),
+        dueDays: stage.dueDays,
+        requiresInvoice: stage.requiresInvoice,
+        allowsEarlyPayment: stage.allowsEarlyPayment,
+        allowsInstallments: stage.allowsInstallments
+      }))
+    },
+    contractFacts: {
+      contractNo: takeover.contractNo,
+      contractName: takeover.contractName,
+      contractTypeKey: takeover.contractTypeKey ?? "generic_contract",
+      counterparty: takeover.counterparty,
+      originalAmountCents: String(takeover.amountCents),
+      ...(takeover.takeoverCutoffDate
+        ? { settlementCutoffDate: takeover.takeoverCutoffDate.slice(0, 10) }
+        : {}),
+      zeroSettlementDeclared: historicalSettledCents === "0",
+      ...(historicalSettledCents === "0"
+        ? { zeroSettlementBasis: takeover.balanceSourceSummary ?? "历史台账核对为零" }
+        : {})
+    }
+  };
+}
+
+function financeSideModelFromTakeover(
+  takeover: ContractTakeoverReadModel
+): FinanceSideFormModel | null {
+  const contractSide = takeover.contractSide;
+  if (!contractSide) return null;
+  const side = takeover.financeSide;
+  if (!side) {
+    return {
+      basedOnContractRevision: contractSide.revision,
+      basedOnFinanceBasisRevision: contractSide.financeBasisRevision,
+      zeroPaymentDeclared: true,
+      payments: []
+    };
+  }
+  return {
+    basedOnContractRevision: side.basedOnContractRevision,
+    basedOnFinanceBasisRevision: side.basedOnFinanceBasisRevision,
+    zeroPaymentDeclared: side.zeroPaymentDeclared,
+    ...(side.excessTreatment ? { excessTreatment: side.excessTreatment } : {}),
+    ...(side.excessReason ? { excessReason: side.excessReason } : {}),
+    ...(side.excessEvidenceFileIds.length
+      ? { excessEvidenceFileIds: [...side.excessEvidenceFileIds] }
+      : {}),
+    payments: side.payments.map((payment) => ({
+      rowKey: payment.rowKey,
+      amountCents: payment.amountCents,
+      paidAt: payment.paidAt.slice(0, 10),
+      ...(payment.payerName ? { payerName: payment.payerName } : {}),
+      ...(payment.payeeName ? { payeeName: payment.payeeName } : {}),
+      ...(payment.bankReference ? { bankReference: payment.bankReference } : {}),
+      ...(payment.paymentMethod ? { paymentMethod: payment.paymentMethod } : {}),
+      ...(payment.note ? { note: payment.note } : {}),
+      voucherFileIds: [...payment.voucherFileIds],
+      allocations: payment.allocations.map((allocation) => ({
+        id: allocation.id,
+        allocationType: allocation.allocationType,
+        amountCents: allocation.amountCents
+      }))
+    }))
+  };
+}
+
+function initializeDepartmentStates(takeover: ContractTakeoverReadModel) {
+  clearDepartmentSaveTimers();
+  contractSideState.value = createTakeoverSideSaveState(
+    contractSideModelFromTakeover(takeover),
+    takeover.contractSide?.revision ?? 0
+  );
+  const financeModel = financeSideModelFromTakeover(takeover);
+  financeSideState.value = financeModel
+    ? createTakeoverSideSaveState(financeModel, takeover.financeSide?.revision ?? 0)
+    : null;
+  contractSideStatus.value = takeover.contractSide
+    ? `合同侧已保存于 ${formatTakeoverDate(takeover.contractSide.updatedAt)}`
+    : "等待合同岗首次保存";
+  financeSideStatus.value = takeover.financeSide
+    ? `财务侧已保存于 ${formatTakeoverDate(takeover.financeSide.updatedAt)}`
+    : "等待财务岗首次保存";
+}
+
+function clearDepartmentSaveTimers() {
+  if (contractSideSaveTimer) clearTimeout(contractSideSaveTimer);
+  if (financeSideSaveTimer) clearTimeout(financeSideSaveTimer);
+  contractSideSaveTimer = null;
+  financeSideSaveTimer = null;
+}
+
+function resetDepartmentStates() {
+  clearDepartmentSaveTimers();
+  contractSideState.value = null;
+  financeSideState.value = null;
+  contractSideStatus.value = "";
+  financeSideStatus.value = "";
+}
+
+function updateContractSideModel(model: ContractSideFormModel) {
+  const state = contractSideState.value;
+  if (!state || !departmentAccess.value.canEditContract) return;
+  replaceTakeoverSideModel(state, model);
+  contractSideStatus.value = "合同侧有未保存修改";
+  scheduleContractSideSave();
+}
+
+function updateFinanceSideModel(model: FinanceSideFormModel) {
+  const state = financeSideState.value;
+  const contractSide = selectedRow.value?.takeover.contractSide;
+  if (!state || !contractSide || !departmentAccess.value.canEditFinance) return;
+  const nextModel =
+    financeBasisStatus.value.status === "contract_revision_advanced"
+      ? {
+          ...model,
+          basedOnContractRevision: contractSide.revision,
+          basedOnFinanceBasisRevision: contractSide.financeBasisRevision
+        }
+      : model;
+  replaceTakeoverSideModel(state, nextModel);
+  financeSideStatus.value = "财务侧有未保存修改";
+  scheduleFinanceSideSave();
+}
+
+function scheduleContractSideSave() {
+  if (contractSideSaveTimer) clearTimeout(contractSideSaveTimer);
+  contractSideSaveTimer = setTimeout(() => {
+    contractSideSaveTimer = null;
+    void saveContractSide();
+  }, 2_000);
+}
+
+function scheduleFinanceSideSave() {
+  if (financeSideSaveTimer) clearTimeout(financeSideSaveTimer);
+  financeSideSaveTimer = setTimeout(() => {
+    financeSideSaveTimer = null;
+    void saveFinanceSide();
+  }, 2_000);
+}
+
+function financeSavePayments(payments: FinanceSidePaymentForm[]) {
+  return payments.map((payment) => ({
+    rowKey: payment.rowKey,
+    amountCents: payment.amountCents,
+    paidAt: payment.paidAt,
+    ...(payment.payerName ? { payerName: payment.payerName } : {}),
+    ...(payment.payeeName ? { payeeName: payment.payeeName } : {}),
+    ...(payment.bankReference ? { bankReference: payment.bankReference } : {}),
+    ...(payment.paymentMethod ? { paymentMethod: payment.paymentMethod } : {}),
+    ...(payment.note ? { note: payment.note } : {}),
+    voucherFileIds: [...payment.voucherFileIds]
+  }));
+}
+
+function isRetryableSideSaveError(error: unknown) {
+  if (error instanceof TypeError) return true;
+  const text = error instanceof Error ? error.message : String(error);
+  return /network|fetch|timeout|temporarily unavailable|网络|超时/u.test(text);
+}
+
+async function refreshDepartmentDetail(takeoverId: string) {
+  const projectId = selectedProjectId.value;
+  if (!projectId || selectedTakeoverId.value !== takeoverId) return;
+  const detail = await getContractTakeover(projectId, takeoverId);
+  if (selectedTakeoverId.value !== takeoverId) return;
+  takeovers.value = takeovers.value.map((item) => (item.id === detail.id ? detail : item));
+  resetEvidenceDownloadForm(detail);
+  if (!contractSideState.value?.dirty && !contractSideState.value?.saving) {
+    contractSideState.value = createTakeoverSideSaveState(
+      contractSideModelFromTakeover(detail),
+      detail.contractSide?.revision ?? 0
+    );
+  }
+  if (!financeSideState.value?.dirty && !financeSideState.value?.saving) {
+    const financeModel = financeSideModelFromTakeover(detail);
+    financeSideState.value = financeModel
+      ? createTakeoverSideSaveState(financeModel, detail.financeSide?.revision ?? 0)
+      : null;
+  }
+}
+
+async function saveContractSide(
+  projectId = selectedProjectId.value,
+  takeoverId = selectedTakeoverId.value
+): Promise<boolean> {
+  const state = contractSideState.value;
+  if (!state?.dirty) return true;
+  if (!projectId || !takeoverId || !departmentAccess.value.canEditContract) return false;
+  const attempt = beginTakeoverSideSave(state, () => crypto.randomUUID());
+  contractSideStatus.value = "合同侧保存中…";
+  try {
+    const result = await saveContractTakeoverContractSide(projectId, takeoverId, {
+      idempotencyKey: attempt.idempotencyKey,
+      expectedRevision: attempt.expectedRevision,
+      ...attempt.model
+    });
+    completeTakeoverSideSave(state, attempt, result.revision);
+    contractSideStatus.value = state.dirty
+      ? "合同侧已保存上一版，继续保存新输入"
+      : "合同侧已自动保存";
+    if (selectedProjectId.value === projectId && selectedTakeoverId.value === takeoverId) {
+      await refreshDepartmentDetail(takeoverId);
+    }
+    if (state.dirty) scheduleContractSideSave();
+    return true;
+  } catch (error) {
+    const retryable = isRetryableSideSaveError(error);
+    failTakeoverSideSave(state, attempt, retryable);
+    contractSideStatus.value = error instanceof Error
+      ? `合同侧保存失败：${error.message}`
+      : "合同侧保存失败，已保留当前输入";
+    if (retryable) scheduleContractSideSave();
+    return false;
+  }
+}
+
+async function saveFinanceSide(
+  projectId = selectedProjectId.value,
+  takeoverId = selectedTakeoverId.value
+): Promise<boolean> {
+  const state = financeSideState.value;
+  if (!state?.dirty) return true;
+  if (!projectId || !takeoverId || !departmentAccess.value.canEditFinance) return false;
+  const attempt = beginTakeoverSideSave(state, () => crypto.randomUUID());
+  financeSideStatus.value = "财务侧保存中…";
+  try {
+    const result = await saveContractTakeoverFinanceSide(projectId, takeoverId, {
+      idempotencyKey: attempt.idempotencyKey,
+      expectedRevision: attempt.expectedRevision,
+      ...attempt.model,
+      payments: financeSavePayments(attempt.model.payments)
+    });
+    completeTakeoverSideSave(state, attempt, result.revision);
+    financeSideStatus.value = state.dirty
+      ? "财务侧已保存上一版，继续保存新输入"
+      : "财务侧已自动保存";
+    if (selectedProjectId.value === projectId && selectedTakeoverId.value === takeoverId) {
+      await refreshDepartmentDetail(takeoverId);
+    }
+    if (state.dirty) scheduleFinanceSideSave();
+    return true;
+  } catch (error) {
+    const retryable = isRetryableSideSaveError(error);
+    failTakeoverSideSave(state, attempt, retryable);
+    const errorText = error instanceof Error ? error.message : "财务侧保存失败";
+    financeSideStatus.value =
+      /依据|基线|revision|修订|冲突/u.test(errorText)
+        ? `财务依据已过期；已保留当前财务侧输入。${errorText}`
+        : `${errorText}；已保留当前财务侧输入`;
+    if (retryable) scheduleFinanceSideSave();
+    return false;
+  }
+}
+
+async function flushEditableDepartmentSides(
+  projectId = selectedProjectId.value,
+  takeoverId = selectedTakeoverId.value
+): Promise<boolean> {
+  if (contractSideSaveTimer) {
+    clearTimeout(contractSideSaveTimer);
+    contractSideSaveTimer = null;
+  }
+  if (financeSideSaveTimer) {
+    clearTimeout(financeSideSaveTimer);
+    financeSideSaveTimer = null;
+  }
+  const contractSaved =
+    !contractSideState.value?.dirty ||
+    !departmentAccess.value.canEditContract ||
+    await saveContractSide(projectId, takeoverId);
+  const financeSaved =
+    !financeSideState.value?.dirty ||
+    !departmentAccess.value.canEditFinance ||
+    await saveFinanceSide(projectId, takeoverId);
+  return contractSaved && financeSaved;
+}
+
+async function uploadContractSideEvidence(file: File) {
+  const state = contractSideState.value;
+  if (!state || !departmentAccess.value.canEditContract) return;
+  try {
+    const uploaded = await uploadPrivateFile(file, file.name);
+    updateContractSideModel({
+      ...state.model,
+      settlementEvidenceFileIds: [
+        ...new Set([...state.model.settlementEvidenceFileIds, uploaded.id])
+      ]
+    });
+    setMessage("结算依据已上传，合同侧将在两秒内自动保存", "success");
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : "上传结算依据失败", "danger");
+  }
+}
+
+async function uploadFinancePaymentVoucher(payload: { rowKey: string; file: File }) {
+  const state = financeSideState.value;
+  if (!state || !departmentAccess.value.canEditFinance) return;
+  try {
+    const uploaded = await uploadPrivateFile(payload.file, payload.file.name);
+    updateFinanceSideModel({
+      ...state.model,
+      payments: state.model.payments.map((payment) =>
+        payment.rowKey === payload.rowKey
+          ? {
+              ...payment,
+              voucherFileIds: [...new Set([...payment.voucherFileIds, uploaded.id])]
+            }
+          : payment
+      )
+    });
+    setMessage("付款凭证已上传，财务侧将在两秒内自动保存", "success");
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : "上传付款凭证失败", "danger");
+  }
+}
+
+async function uploadFinanceExcessEvidence(file: File) {
+  const state = financeSideState.value;
+  if (!state || !departmentAccess.value.canEditFinance) return;
+  try {
+    const uploaded = await uploadPrivateFile(file, file.name);
+    updateFinanceSideModel({
+      ...state.model,
+      excessEvidenceFileIds: [
+        ...new Set([...(state.model.excessEvidenceFileIds ?? []), uploaded.id])
+      ]
+    });
+    setMessage("超额分类依据已上传，财务侧将在两秒内自动保存", "success");
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : "上传超额分类依据失败", "danger");
+  }
+}
+
+async function reloadFinanceBasisPreservingInput() {
+  const projectId = selectedProjectId.value;
+  const takeoverId = selectedTakeoverId.value;
+  const state = financeSideState.value;
+  if (!projectId || !takeoverId || !state || !departmentAccess.value.canEditFinance) return;
+  try {
+    const detail = await getContractTakeover(projectId, takeoverId);
+    if (selectedProjectId.value !== projectId || selectedTakeoverId.value !== takeoverId) return;
+    const contractSide = detail.contractSide;
+    if (!contractSide) {
+      throw new Error("合同侧尚未建立独立事实，不能刷新财务依据");
+    }
+    const preservedModel: FinanceSideFormModel = {
+      ...state.model,
+      basedOnContractRevision: contractSide.revision,
+      basedOnFinanceBasisRevision: contractSide.financeBasisRevision
+    };
+    takeovers.value = takeovers.value.map((item) => (item.id === detail.id ? detail : item));
+    financeSideState.value = createTakeoverSideSaveState(
+      preservedModel,
+      detail.financeSide?.revision ?? 0
+    );
+    replaceTakeoverSideModel(financeSideState.value, preservedModel);
+    financeSideStatus.value = "已重新读取财务依据；已保留当前财务侧输入，等待自动保存";
+    scheduleFinanceSideSave();
+  } catch (error) {
+    financeSideStatus.value =
+      error instanceof Error ? error.message : "重新读取财务依据失败，已保留当前输入";
+  }
 }
 const importPrecheckText = ref("");
 const importPrecheckResult = ref<ContractTakeoverImportPrecheckReadModel | null>(null);
@@ -2262,6 +2704,73 @@ const responsibleUserOptions = computed(() =>
 const selectedRow = computed<ContractTakeoverTableRow | null>(
   () => tableRows.value.find((row) => row.id === selectedTakeoverId.value) ?? null
 );
+const departmentAccess = computed(() =>
+  takeoverDepartmentAccess(
+    roleKeys.value,
+    Boolean(selectedRow.value?.takeover.confirmedAt)
+  )
+);
+const financeBasisStatus = computed(() => {
+  const contractSide = selectedRow.value?.takeover.contractSide;
+  const financeModel = financeSideState.value?.model;
+  if (!contractSide || !financeModel) {
+    return {
+      status: "stale" as const,
+      label: "请先保存合同侧，再建立财务侧依据"
+    };
+  }
+  return takeoverFinanceBasisStatus(
+    contractSide.revision,
+    contractSide.financeBasisRevision,
+    financeModel.basedOnContractRevision,
+    financeModel.basedOnFinanceBasisRevision
+  );
+});
+const financeBasisTone = computed<"success" | "warning" | "danger">(() => {
+  if (financeBasisStatus.value.status === "current") return "success";
+  if (financeBasisStatus.value.status === "contract_revision_advanced") return "warning";
+  return "danger";
+});
+const departmentActionTitle = computed(() => {
+  const action = departmentAction.value;
+  if (!action) return "确认部门修订";
+  const sideLabel = action.side === "contract" ? "合同侧" : "财务侧";
+  return action.action === "confirm"
+    ? `确认${sideLabel}当前修订`
+    : `撤回${sideLabel}确认`;
+});
+const departmentActionDescription = computed(() => {
+  const action = departmentAction.value;
+  if (!action) return "";
+  if (action.action === "withdraw") {
+    return "撤回后不会覆盖任何已保存事实；对应部门需重新核对并确认，双侧未齐前接管不会激活。";
+  }
+  return action.side === "finance"
+    ? "财务主管将基于当前合同侧修订与财务基线确认逐笔实付、凭证、分配及余额口径。"
+    : "合同主管将确认当前合同事实、历史结算、履约状态、付款条款和结算依据。";
+});
+const canSubmitAppliedCorrections = computed(() =>
+  Boolean(selectedRow.value?.takeover.confirmedAt) &&
+  roleKeys.value.some((role) =>
+    ["contract_staff", "contract_director", "finance_staff", "finance_director"].includes(role)
+  )
+);
+const canReviewAppliedCorrections = computed(() =>
+  Boolean(selectedRow.value?.takeover.confirmedAt) &&
+  roleKeys.value.some((role) =>
+    ["contract_director", "finance_director"].includes(role)
+  )
+);
+const allowedCorrectionScopes = computed<ContractTakeoverCorrectionScope[]>(() => {
+  const scopes: ContractTakeoverCorrectionScope[] = [];
+  if (roleKeys.value.some((role) => ["contract_staff", "contract_director"].includes(role))) {
+    scopes.push("historical_settlement");
+  }
+  if (roleKeys.value.some((role) => ["finance_staff", "finance_director"].includes(role))) {
+    scopes.push("historical_payment", "historical_advance", "abnormal_overpay");
+  }
+  return scopes;
+});
 const selectedChangeBaselineView = computed(() => {
   const takeover = selectedRow.value?.takeover;
   return takeover
@@ -2373,10 +2882,6 @@ const selectedExcelImportFile = computed(() => {
   const raw = excelImportFiles.value[0]?.raw;
   return raw instanceof File ? raw : null;
 });
-const selectedCorrectionFile = computed(() => {
-  const raw = correctionFiles.value[0]?.raw;
-  return raw instanceof File ? raw : null;
-});
 const selectedCompanyEntityCorrectionFile = computed(() => {
   const raw = companyEntityCorrectionFiles.value[0]?.raw;
   return raw instanceof File ? raw : null;
@@ -2476,12 +2981,6 @@ const evidencePurposeOptions: Array<{ value: ContractTakeoverEvidencePurpose; la
   { value: "historical_settlement_ledger", label: "历史结算台账" },
   { value: "other", label: "其他接管资料" }
 ];
-const correctionTypeOptions: Array<{ value: ContractTakeoverCorrectionType; label: string }> = [
-  { value: "evidence", label: "资料更正" },
-  { value: "amount", label: "金额更正" },
-  { value: "payment_terms", label: "付款条款更正" },
-  { value: "other", label: "其他更正" }
-];
 const selectedEvidenceFiles = computed(() =>
   (selectedRow.value?.takeover.evidenceFiles ?? []).map((file) => ({
     recordId: file.recordId,
@@ -2516,27 +3015,6 @@ const selectedEvidenceDownloadDisabledReason = computed(() =>
     availableFileIds: selectedEvidenceDownloadOptions.value.map((option) => option.value),
     hasFiles: selectedEvidenceFiles.value.length > 0
   })
-);
-const selectedCorrectionDisabledReason = computed(() => {
-  const takeover = selectedRow.value?.takeover;
-  if (!takeover) return "请先选择需要更正的接管合同";
-  return takeoverCorrectionDisabledReason(takeover, {
-    reason: correctionForm.reason,
-    responsibleUserId: correctionForm.responsibleUserId,
-    afterSummary: correctionForm.afterSummary,
-    hasAttachment: Boolean(selectedCorrectionFile.value),
-    currentPassword: correctionForm.currentPassword
-  });
-});
-const selectedCorrectionRows = computed(() =>
-  selectedRow.value
-    ? takeoverCorrectionRows({
-        ...selectedRow.value.takeover,
-        corrections: selectedRow.value.takeover.corrections.filter(
-          (correction) => correction.correctionType !== "company_entity"
-        )
-      })
-    : []
 );
 const selectedCompanyEntityCorrections = computed(() =>
   (selectedRow.value?.takeover.corrections ?? []).filter(
@@ -2664,6 +3142,8 @@ onMounted(async () => {
   ]);
 });
 
+onBeforeUnmount(clearDepartmentSaveTimers);
+
 async function loadProjects() {
   loadingProjects.value = true;
   message.value = "";
@@ -2685,12 +3165,24 @@ async function loadProjects() {
 
 async function changeProject() {
   const nextProjectId = selectedProjectId.value;
+  const previousProjectId = lastValidProjectId.value;
+  if (
+    !(await flushEditableDepartmentSides(
+      previousProjectId,
+      selectedTakeoverId.value
+    ))
+  ) {
+    selectedProjectId.value = previousProjectId;
+    setMessage("部门侧自动保存未完成，已保留当前项目和本地输入", "danger");
+    return;
+  }
   if (!(await takeoverLeaveGuard.requestClose())) {
     selectedProjectId.value = lastValidProjectId.value;
     return;
   }
   closeCreateForm();
   taxFactDirty.value = false;
+  resetDepartmentStates();
   lastValidProjectId.value = nextProjectId;
   await loadTakeovers();
 }
@@ -2713,6 +3205,7 @@ async function loadTakeovers() {
     companyEntityCandidates.value = [];
     importBatches.value = [];
     selectedTakeoverId.value = "";
+    resetDepartmentStates();
     resetEvidenceDownloadForm(null);
     return;
   }
@@ -2733,6 +3226,7 @@ async function loadTakeovers() {
     importBatches.value = nextImportBatches;
     if (!nextTakeovers.some((takeover) => takeover.id === selectedTakeoverId.value)) {
       selectedTakeoverId.value = "";
+      resetDepartmentStates();
       resetEvidenceDownloadForm(null);
     }
     if (candidateError) {
@@ -2747,6 +3241,7 @@ async function loadTakeovers() {
     takeovers.value = [];
     importBatches.value = [];
     selectedTakeoverId.value = "";
+    resetDepartmentStates();
     resetEvidenceDownloadForm(null);
     setMessage(error instanceof Error ? error.message : "加载历史合同接管台账失败", "danger");
   } finally {
@@ -3171,21 +3666,29 @@ async function selectTakeover(takeover: ContractTakeoverReadModel) {
   }
 
   const previousId = selectedTakeoverId.value;
+  if (
+    previousId !== takeover.id &&
+    !(await flushEditableDepartmentSides(selectedProjectId.value, previousId))
+  ) {
+    setMessage("部门侧自动保存未完成，已保留当前记录和本地输入", "danger");
+    return;
+  }
   if (previousId !== takeover.id && !(await takeoverLeaveGuard.requestClose())) return;
   if (previousId !== takeover.id) {
     closeCreateForm();
     taxFactDirty.value = false;
+    resetDepartmentStates();
   }
   selectedTakeoverId.value = takeover.id;
   if (previousId !== takeover.id) {
     invalidateChangeBaselineContext(true);
-    resetCorrectionForm();
     resetCompanyEntityCorrectionForm();
     resetEvidenceDownloadForm(takeover);
   }
   try {
     const detail = await getContractTakeover(projectId, takeover.id);
     takeovers.value = takeovers.value.map((item) => (item.id === detail.id ? detail : item));
+    initializeDepartmentStates(detail);
     resetEvidenceDownloadForm(detail);
   } catch (error) {
     setMessage(error instanceof Error ? error.message : "加载接管详情失败", "danger");
@@ -3492,45 +3995,231 @@ async function submitEvidenceFileDownload() {
   }
 }
 
-async function submitCorrectionRecord() {
-  if (!canConfirmTakeovers.value) {
-    setMessage("当前岗位不能保存历史合同接管更正记录", "danger");
+function openDepartmentAction(
+  side: DepartmentSide,
+  action: DepartmentConfirmationAction
+) {
+  const state = side === "contract" ? contractSideState.value : financeSideState.value;
+  const allowed = side === "contract"
+    ? departmentAccess.value.canConfirmContract
+    : departmentAccess.value.canConfirmFinance;
+  if (!allowed || !state) {
+    setMessage("当前岗位或当前事实状态不能执行该部门确认操作", "danger");
+    return;
+  }
+  if (state.dirty || state.saving) {
+    setMessage("请等待当前部门侧自动保存完成后再确认", "danger");
+    return;
+  }
+  if (side === "finance" && financeBasisStatus.value.status === "stale") {
+    setMessage("财务依据已过期，请重新读取并核对后再确认", "danger");
+    return;
+  }
+  departmentAction.value = { side, action };
+  departmentActionError.value = "";
+  departmentActionVisible.value = true;
+}
+
+function resetDepartmentAction() {
+  if (departmentActionLoading.value) return;
+  departmentActionVisible.value = false;
+  departmentAction.value = null;
+  departmentActionError.value = "";
+}
+
+async function submitDepartmentAction(values: {
+  reason: string;
+  password: string;
+}) {
+  const action = departmentAction.value;
+  const projectId = selectedProjectId.value;
+  const takeover = selectedRow.value?.takeover;
+  const state = action?.side === "contract" ? contractSideState.value : financeSideState.value;
+  if (!action || !projectId || !takeover || !state) {
+    departmentActionError.value = "当前部门修订已变化，请关闭后重试";
+    return;
+  }
+  if (state.dirty || state.saving) {
+    departmentActionError.value = "当前部门侧仍有未保存修改，请等待自动保存后重试";
+    return;
+  }
+  if (action.side === "finance" && financeBasisStatus.value.status === "stale") {
+    departmentActionError.value = "财务依据已过期，请重新读取并核对后再确认";
+    return;
+  }
+
+  departmentActionLoading.value = true;
+  departmentActionError.value = "";
+  try {
+    const idempotencyKey = crypto.randomUUID();
+    if (action.action === "confirm") {
+      if (action.side === "contract") {
+        await confirmContractTakeoverContractSide(projectId, takeover.id, {
+          idempotencyKey,
+          expectedRevision: state.revision,
+          currentPassword: values.password
+        });
+      } else {
+        const financeModel = state.model as FinanceSideFormModel;
+        await confirmContractTakeoverFinanceSide(projectId, takeover.id, {
+          idempotencyKey,
+          expectedRevision: state.revision,
+          currentPassword: values.password,
+          basedOnContractRevision: financeModel.basedOnContractRevision,
+          basedOnFinanceBasisRevision: financeModel.basedOnFinanceBasisRevision
+        });
+      }
+    } else if (action.side === "contract") {
+      await withdrawContractTakeoverContractSideConfirmation(projectId, takeover.id, {
+        idempotencyKey,
+        expectedRevision: state.revision,
+        currentPassword: values.password,
+        reason: values.reason
+      });
+    } else {
+      await withdrawContractTakeoverFinanceSideConfirmation(projectId, takeover.id, {
+        idempotencyKey,
+        expectedRevision: state.revision,
+        currentPassword: values.password,
+        reason: values.reason
+      });
+    }
+    departmentActionVisible.value = false;
+    departmentAction.value = null;
+    await refreshDepartmentDetail(takeover.id);
+    setMessage(
+      action.action === "confirm" ? "部门侧当前修订已确认" : "部门侧确认已撤回",
+      "success"
+    );
+  } catch (error) {
+    departmentActionError.value =
+      error instanceof Error ? error.message : "部门确认操作失败";
+  } finally {
+    departmentActionLoading.value = false;
+  }
+}
+
+async function submitAppliedCorrection(payload: {
+  correctionScope: ContractTakeoverCorrectionScope;
+  correctionOperation: ContractTakeoverCorrectionOperation;
+  targetRevision: number;
+  targetBalanceRevision?: number;
+  deltaCents?: string;
+  targetHistoricalPaymentId?: string;
+  targetAllocationId?: string;
+  targetBalanceEntryId?: string;
+  reclassificationTarget?: "historical_advance" | "abnormal_overpay";
+  reason: string;
+  responsibleUserId: string;
+  currentPassword: string;
+  file: File;
+}) {
+  if (!canSubmitAppliedCorrections.value) {
+    setMessage("当前岗位不能提交该接管更正", "danger");
     return;
   }
   const projectId = selectedProjectId.value;
   const takeover = selectedRow.value?.takeover;
-  const file = selectedCorrectionFile.value;
   if (!projectId || !takeover) {
-    setMessage("请先选择需要更正的接管合同", "danger");
+    setMessage("请先选择已激活的历史合同接管记录", "danger");
     return;
   }
-  if (selectedCorrectionDisabledReason.value) {
-    setMessage(selectedCorrectionDisabledReason.value, "danger");
-    return;
-  }
-  if (!file) {
-    setMessage("请上传更正依据附件", "danger");
-    return;
-  }
-
-  correctionSubmitting.value = true;
-  message.value = "";
+  appliedCorrectionSubmitting.value = true;
   try {
-    const uploaded = await uploadPrivateFile(file, file.name);
-    const result = await recordContractTakeoverCorrection(projectId, takeover.id, {
-      correctionType: correctionForm.correctionType,
-      reason: requiredText(correctionForm.reason, "更正原因"),
-      responsibleUserId: requiredText(correctionForm.responsibleUserId, "更正责任人"),
-      afterSummary: requiredText(correctionForm.afterSummary, "更正后的事实说明"),
+    const uploaded = await uploadPrivateFile(payload.file, payload.file.name);
+    await submitContractTakeoverCorrection(projectId, takeover.id, {
+      correctionScope: payload.correctionScope,
+      correctionOperation: payload.correctionOperation,
+      targetRevision: payload.targetRevision,
+      ...(payload.targetBalanceRevision === undefined
+        ? {}
+        : { targetBalanceRevision: payload.targetBalanceRevision }),
+      ...(payload.deltaCents === undefined ? {} : { deltaCents: payload.deltaCents }),
+      ...(payload.targetHistoricalPaymentId
+        ? { targetHistoricalPaymentId: payload.targetHistoricalPaymentId }
+        : {}),
+      ...(payload.targetAllocationId
+        ? { targetAllocationId: payload.targetAllocationId }
+        : {}),
+      ...(payload.targetBalanceEntryId
+        ? { targetBalanceEntryId: payload.targetBalanceEntryId }
+        : {}),
+      ...(payload.reclassificationTarget
+        ? { reclassificationTarget: payload.reclassificationTarget }
+        : {}),
+      reason: payload.reason,
+      responsibleUserId: payload.responsibleUserId,
       attachmentFileId: uploaded.id,
-      currentPassword: requiredText(correctionForm.currentPassword, "当前登录密码")
+      applicationIdempotencyKey: crypto.randomUUID(),
+      currentPassword: payload.currentPassword
     });
-    resetCorrectionForm();
-    setMessage(result.message, "success");
+    await refreshDepartmentDetail(takeover.id);
+    setMessage("接管更正已提交主管复核，原事实与凭证保持不变", "success");
   } catch (error) {
-    setMessage(error instanceof Error ? error.message : "保存接管更正记录失败", "danger");
+    setMessage(error instanceof Error ? error.message : "提交接管更正失败", "danger");
   } finally {
-    correctionSubmitting.value = false;
+    appliedCorrectionSubmitting.value = false;
+  }
+}
+
+function openCorrectionReview(payload: {
+  correctionId: string;
+  decision: "apply" | "reject";
+}) {
+  if (!canReviewAppliedCorrections.value) {
+    setMessage("当前岗位不能复核该接管更正", "danger");
+    return;
+  }
+  pendingCorrectionReview.value = payload;
+  correctionReviewError.value = "";
+  correctionReviewVisible.value = true;
+}
+
+function resetCorrectionReview() {
+  if (appliedCorrectionReviewing.value) return;
+  correctionReviewVisible.value = false;
+  correctionReviewError.value = "";
+  pendingCorrectionReview.value = null;
+}
+
+async function confirmCorrectionReview(values: {
+  reason: string;
+  password: string;
+}) {
+  const pending = pendingCorrectionReview.value;
+  const projectId = selectedProjectId.value;
+  const takeover = selectedRow.value?.takeover;
+  if (!pending || !projectId || !takeover) {
+    correctionReviewError.value = "更正记录已变化，请关闭后重试";
+    return;
+  }
+  appliedCorrectionReviewing.value = true;
+  correctionReviewError.value = "";
+  try {
+    await reviewContractTakeoverCorrection(
+      projectId,
+      takeover.id,
+      pending.correctionId,
+      {
+        decision: pending.decision,
+        reviewComment: values.reason,
+        currentPassword: values.password
+      }
+    );
+    correctionReviewVisible.value = false;
+    pendingCorrectionReview.value = null;
+    await refreshDepartmentDetail(takeover.id);
+    setMessage(
+      pending.decision === "apply"
+        ? "接管更正已应用并追加审计流水"
+        : "接管更正已驳回，原事实未变化",
+      "success"
+    );
+  } catch (error) {
+    correctionReviewError.value =
+      error instanceof Error ? error.message : "复核接管更正失败";
+  } finally {
+    appliedCorrectionReviewing.value = false;
   }
 }
 
@@ -3902,11 +4591,6 @@ function resetCreateForm() {
   Object.assign(createForm, createEmptyForm());
 }
 
-function resetCorrectionForm() {
-  Object.assign(correctionForm, createEmptyCorrectionForm());
-  correctionFiles.value = [];
-}
-
 function resetCompanyEntityCorrectionForm() {
   Object.assign(companyEntityCorrectionForm, createEmptyCompanyEntityCorrectionForm());
   companyEntityCorrectionFiles.value = [];
@@ -4101,16 +4785,6 @@ function createEmptyImportBatchForm(): ImportBatchFormState {
     responsibleUserId: auth.user?.id ?? "",
     reviewComment: "",
     acceptanceConclusion: ""
-  };
-}
-
-function createEmptyCorrectionForm(): CorrectionFormState {
-  return {
-    correctionType: "evidence",
-    reason: "",
-    responsibleUserId: "",
-    afterSummary: "",
-    currentPassword: ""
   };
 }
 
@@ -4590,6 +5264,12 @@ input[type="date"] {
   gap: 14px;
 }
 
+.department-workspace {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--jg-space-md);
+}
+
 .detail-title {
   display: grid;
   gap: 4px;
@@ -5001,6 +5681,10 @@ input[type="date"] {
 
   .operation-section-nav {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .department-workspace {
+    grid-template-columns: 1fr;
   }
 }
 

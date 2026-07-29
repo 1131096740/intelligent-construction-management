@@ -22,9 +22,12 @@ const takeover = {
   contractNo: "XYLH-2026-劳务-001",
   contractName: "劳务分包合同",
   counterparty: "云南富誉建筑劳务有限公司",
+  companyEntityId: null,
   companyEntityName: "建工智管公司",
+  contractTypeKey: "labor_subcontract",
   amountCents: "3000000",
   paymentTermsOriginalText: "按月结算，归档后付款",
+  paymentStages: [],
   invoiceType: null,
   taxMode: "single_rate",
   defaultTaxRatePercent: null,
@@ -76,8 +79,8 @@ const takeover = {
   reviewComment: null,
   acceptanceConclusion: null,
   submittedAt: null,
-  confirmedAt: null,
-  historicalBalanceConfirmedAt: null,
+  confirmedAt: null as string | null,
+  historicalBalanceConfirmedAt: null as string | null,
   changeBaselineConfirmed: false,
   originalBaseAmountCents: null,
   preTakeoverPositiveIncreaseCents: null,
@@ -93,6 +96,9 @@ const takeover = {
   ],
   evidenceFiles: [],
   corrections: [],
+  contractSide: null as Record<string, unknown> | null,
+  financeSide: null as Record<string, unknown> | null,
+  appliedCorrections: [] as Array<Record<string, unknown>>,
   postConfirmationVerification: {
     statusLabel: "未到核验",
     summaryText: "主管确认后再核验接管后的业务闭环。",
@@ -103,6 +109,87 @@ const takeover = {
   },
   createdAt: "2026-07-13T00:00:00.000Z",
   updatedAt: "2026-07-13T00:00:00.000Z"
+};
+
+const departmentTakeover = {
+  ...takeover,
+  contractTypeKey: "labor_subcontract",
+  contractSide: {
+    revision: 2,
+    financeBasisRevision: 1,
+    signedAt: "2026-07-13T00:00:00.000Z",
+    historicalSettledCents: "2000000",
+    zeroSettlementDeclared: false,
+    performanceStatus: "performing",
+    settlementEvidenceSummary: "历史结算台账已由合同部核对",
+    settlementEvidenceFileIds: ["file-settlement-ledger"],
+    paymentTerms: {
+      originalText: "按月结算，归档后付款",
+      stages: []
+    },
+    contractFacts: {
+      contractNo: "XYLH-2026-劳务-001",
+      contractName: "劳务分包合同",
+      contractTypeKey: "labor_subcontract",
+      counterparty: "云南富誉建筑劳务有限公司",
+      originalAmountCents: "3000000",
+      settlementCutoffDate: "2026-07-13",
+      zeroSettlementDeclared: false
+    },
+    confirmedRevision: null as number | null,
+    confirmedByUserName: null as string | null,
+    confirmedAt: null as string | null,
+    updatedAt: "2026-07-18T08:00:00.000Z"
+  },
+  financeSide: {
+    revision: 3,
+    basedOnContractRevision: 2,
+    basedOnFinanceBasisRevision: 1,
+    zeroPaymentDeclared: false,
+    excessTreatment: null,
+    excessReason: null,
+    excessEvidenceFileIds: [],
+    payments: [
+      {
+        id: "historical-payment-1",
+        rowKey: "payment-row-1",
+        sequenceNo: 1,
+        amountCents: "1500000",
+        paidAt: "2026-07-10T00:00:00.000Z",
+        payerName: "建工智管公司",
+        payeeName: "云南富誉建筑劳务有限公司",
+        bankReference: "BANK-20260710-001",
+        paymentMethod: "银行转账",
+        note: null,
+        status: "draft",
+        voucherFileIds: ["file-payment-voucher-1"],
+        allocations: [
+          {
+            id: "allocation-1",
+            allocationType: "historical_settlement",
+            amountCents: "1500000",
+            allocationOrder: 0
+          }
+        ]
+      }
+    ],
+    balances: [
+      {
+        id: "balance-advance-1",
+        balanceType: "historical_advance",
+        openingCents: "0",
+        balanceCents: "0",
+        revision: 1,
+        entries: []
+      }
+    ],
+    confirmedRevision: null as number | null,
+    confirmedContractRevision: null as number | null,
+    confirmedFinanceBasisRevision: null as number | null,
+    confirmedByUserName: null as string | null,
+    confirmedAt: null as string | null,
+    updatedAt: "2026-07-18T08:30:00.000Z"
+  }
 };
 
 const takeoverWithDownloadableEvidence = {
@@ -309,6 +396,365 @@ test("历史接管未保存表单在站内离开时要求明确确认", async ({
   await expect(page.locator('input[value="尚未保存的接管合同"]')).toBeVisible();
 });
 
+for (const roleCase of [
+  {
+    label: "合同员",
+    roleKeys: ["contract_staff"],
+    contractEditable: true,
+    financeEditable: false,
+    contractConfirm: false,
+    financeConfirm: false
+  },
+  {
+    label: "合同部主管",
+    roleKeys: ["contract_director"],
+    contractEditable: true,
+    financeEditable: false,
+    contractConfirm: true,
+    financeConfirm: false
+  },
+  {
+    label: "财务人员",
+    roleKeys: ["finance_staff"],
+    contractEditable: false,
+    financeEditable: true,
+    contractConfirm: false,
+    financeConfirm: false
+  },
+  {
+    label: "财务主管",
+    roleKeys: ["finance_director"],
+    contractEditable: false,
+    financeEditable: true,
+    contractConfirm: false,
+    financeConfirm: true
+  }
+] as const) {
+  test(`${roleCase.label}只能编辑和确认本部门的历史接管事实`, async ({ page }) => {
+    await loginWithMocks(page, departmentTakeover, {
+      userId: `${roleCase.label}-1`,
+      roleKeys: [...roleCase.roleKeys]
+    });
+    await page.goto("/历史合同接管");
+    await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
+
+    const contractPanel = page.getByTestId("contract-takeover-contract-side");
+    const financePanel = page.getByTestId("contract-takeover-finance-side");
+    const confirmation = page.getByTestId("contract-takeover-dual-confirmation");
+    const contractName = contractPanel
+      .getByText("历史合同名称", { exact: true })
+      .locator("..")
+      .getByRole("textbox");
+    const paymentAmount = financePanel
+      .getByText("实付金额（分）", { exact: true })
+      .locator("..")
+      .getByRole("textbox");
+
+    if (roleCase.contractEditable) {
+      await expect(contractName).toBeEnabled();
+    } else {
+      await expect(contractName).toBeDisabled();
+    }
+    if (roleCase.financeEditable) {
+      await expect(paymentAmount).toBeEnabled();
+    } else {
+      await expect(paymentAmount).toBeDisabled();
+    }
+    await expect(
+      confirmation.getByRole("button", { name: "确认合同侧" })
+    ).toHaveCount(roleCase.contractConfirm ? 1 : 0);
+    await expect(
+      confirmation.getByRole("button", { name: "确认财务侧" })
+    ).toHaveCount(roleCase.financeConfirm ? 1 : 0);
+  });
+}
+
+test("合同侧与财务侧交错自动保存时互不覆盖 model 和 revision", async ({ page }) => {
+  const detail = structuredClone(departmentTakeover);
+  const contractBodies: Array<Record<string, unknown>> = [];
+  const financeBodies: Array<Record<string, unknown>> = [];
+  await loginWithMocks(page, detail, {
+    userId: "dual-editor-1",
+    roleKeys: ["contract_staff", "finance_staff"]
+  });
+  await page.route("**/takeover-responsive/contract-side", async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    contractBodies.push(body);
+    detail.contractSide.revision += 1;
+    detail.contractSide.contractFacts =
+      body.contractFacts as typeof detail.contractSide.contractFacts;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        takeoverId: detail.id,
+        side: "contract",
+        revision: detail.contractSide.revision,
+        confirmedRevision: null,
+        savedAt: new Date().toISOString()
+      })
+    });
+  });
+  await page.route("**/takeover-responsive/finance-side", async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    financeBodies.push(body);
+    detail.financeSide.revision += 1;
+    detail.financeSide.payments =
+      body.payments as typeof detail.financeSide.payments;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        takeoverId: detail.id,
+        side: "finance",
+        revision: detail.financeSide.revision,
+        confirmedRevision: null,
+        savedAt: new Date().toISOString()
+      })
+    });
+  });
+  await page.route(
+    "**/api/projects/project-1/contract-takeovers/takeover-responsive",
+    (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail)
+      })
+  );
+
+  await page.goto("/历史合同接管");
+  await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
+  const contractPanel = page.getByTestId("contract-takeover-contract-side");
+  const financePanel = page.getByTestId("contract-takeover-finance-side");
+  await contractPanel
+    .getByText("历史合同名称", { exact: true })
+    .locator("..")
+    .getByRole("textbox")
+    .fill("交错保存后的合同名称");
+  await financePanel
+    .getByText("收款单位", { exact: true })
+    .locator("..")
+    .getByRole("textbox")
+    .fill("交错保存后的收款单位");
+  await page.getByRole("heading", { name: "历史合同接管" }).click();
+
+  await expect.poll(() => contractBodies.length).toBe(1);
+  await expect.poll(() => financeBodies.length).toBe(1);
+  expect(
+    (contractBodies[0].contractFacts as Record<string, unknown>).contractName
+  ).toBe("交错保存后的合同名称");
+  expect(
+    ((financeBodies[0].payments as Array<Record<string, unknown>>)[0]).payeeName
+  ).toBe("交错保存后的收款单位");
+  expect(contractBodies[0].expectedRevision).toBe(2);
+  expect(financeBodies[0].expectedRevision).toBe(3);
+});
+
+test("财务 basis 失效时保留输入并在明确重新读取后使用新依据保存", async ({ page }) => {
+  const detail = structuredClone(departmentTakeover);
+  detail.contractSide.financeBasisRevision = 2;
+  const financeBodies: Array<Record<string, unknown>> = [];
+  await loginWithMocks(page, detail, {
+    userId: "finance-director-1",
+    roleKeys: ["finance_director"]
+  });
+  await page.route("**/takeover-responsive/finance-side", async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    financeBodies.push(body);
+    detail.financeSide.revision += 1;
+    detail.financeSide.basedOnContractRevision =
+      body.basedOnContractRevision as number;
+    detail.financeSide.basedOnFinanceBasisRevision =
+      body.basedOnFinanceBasisRevision as number;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        takeoverId: detail.id,
+        side: "finance",
+        revision: detail.financeSide.revision,
+        confirmedRevision: null,
+        savedAt: new Date().toISOString()
+      })
+    });
+  });
+  await page.route(
+    "**/api/projects/project-1/contract-takeovers/takeover-responsive",
+    (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail)
+      })
+  );
+
+  await page.goto("/历史合同接管");
+  await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
+  const financePanel = page.getByTestId("contract-takeover-finance-side");
+  await expect(
+    financePanel.getByText("财务依据已过期，请重新读取并核对", { exact: true })
+  ).toBeVisible();
+  await financePanel
+    .getByText("收款单位", { exact: true })
+    .locator("..")
+    .getByRole("textbox")
+    .fill("保留的财务侧输入");
+  await financePanel
+    .getByRole("button", { name: "重新读取依据并保留当前输入" })
+    .click();
+
+  await expect.poll(() => financeBodies.length).toBe(1);
+  expect(financeBodies[0]).toMatchObject({
+    expectedRevision: 3,
+    basedOnContractRevision: 2,
+    basedOnFinanceBasisRevision: 2
+  });
+  expect(
+    ((financeBodies[0].payments as Array<Record<string, unknown>>)[0]).payeeName
+  ).toBe("保留的财务侧输入");
+});
+
+test("双主管基于同一口径确认后才显示历史接管已激活", async ({ page }) => {
+  const detail = structuredClone(departmentTakeover);
+  await loginWithMocks(page, detail, {
+    userId: "dual-director-1",
+    roleKeys: ["contract_director", "finance_director"]
+  });
+  await page.route(
+    "**/api/projects/project-1/contract-takeovers/takeover-responsive",
+    (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail)
+      })
+  );
+  await page.route("**/contract-side/confirmation", (route) => {
+    detail.contractSide.confirmedRevision = detail.contractSide.revision;
+    detail.contractSide.confirmedByUserName = "合同部主管";
+    detail.contractSide.confirmedAt = new Date().toISOString();
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ confirmed: true, activationStatus: "waiting_finance" })
+    });
+  });
+  await page.route("**/finance-side/confirmation", (route) => {
+    detail.financeSide.confirmedRevision = detail.financeSide.revision;
+    detail.financeSide.confirmedContractRevision = detail.contractSide.revision;
+    detail.financeSide.confirmedFinanceBasisRevision =
+      detail.contractSide.financeBasisRevision;
+    detail.financeSide.confirmedByUserName = "财务主管";
+    detail.financeSide.confirmedAt = new Date().toISOString();
+    detail.confirmedAt = new Date().toISOString();
+    detail.takeoverStatus = "confirmed";
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ confirmed: true, activationStatus: "activated" })
+    });
+  });
+
+  await page.goto("/历史合同接管");
+  await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
+  const confirmation = page.getByTestId("contract-takeover-dual-confirmation");
+  await confirmation.getByRole("button", { name: "确认合同侧" }).click();
+  let dialog = page.locator(".t-dialog").filter({ hasText: "确认合同侧当前修订" });
+  await dialog.getByPlaceholder("用于确认当前操作者身份").fill("E2e@2026");
+  await dialog.getByRole("button", { name: "确认当前修订" }).click();
+  await expect(confirmation.getByText("等待双侧确认", { exact: true })).toBeVisible();
+
+  await confirmation.getByRole("button", { name: "确认财务侧" }).click();
+  dialog = page.locator(".t-dialog").filter({ hasText: "确认财务侧当前修订" });
+  await dialog.getByPlaceholder("用于确认当前操作者身份").fill("E2e@2026");
+  await dialog.getByRole("button", { name: "确认当前修订" }).click();
+  await expect(confirmation.getByText("已激活", { exact: true })).toBeVisible();
+  await expect(
+    page.getByTestId("contract-takeover-contract-side")
+      .getByText("历史合同名称", { exact: true })
+      .locator("..")
+      .getByRole("textbox")
+  ).toBeDisabled();
+});
+
+test("激活后更正展示 before delta after 并由主管复核应用", async ({ page }) => {
+  const detail = structuredClone(departmentTakeover);
+  detail.confirmedAt = "2026-07-18T10:00:00.000Z";
+  detail.takeoverStatus = "confirmed";
+  detail.contractSide.confirmedRevision = detail.contractSide.revision;
+  detail.financeSide.confirmedRevision = detail.financeSide.revision;
+  detail.appliedCorrections = [
+    {
+      id: "correction-v2-1",
+      schemaVersion: 2,
+      correctionScope: "historical_settlement",
+      correctionOperation: "correction",
+      status: "submitted",
+      targetRevision: 2,
+      targetBalanceRevision: null,
+      before: { amountCents: "2000000" },
+      delta: { amountCents: "1" },
+      after: { amountCents: "2000001" },
+      reason: "一分差额核对",
+      responsibleUserName: "合同员",
+      submittedByName: "合同员",
+      submittedAt: "2026-07-18T11:00:00.000Z",
+      reviewedByName: null,
+      reviewedAt: null,
+      reviewComment: null,
+      attachmentFileId: "file-correction-1",
+      attachmentFileName: "一分差额依据.pdf",
+      targetHistoricalPaymentId: null,
+      targetAllocationId: null,
+      targetBalanceEntryId: null
+    }
+  ];
+  await loginWithMocks(page, detail, {
+    userId: "contract-director-1",
+    roleKeys: ["contract_director"]
+  });
+  await page.route(
+    "**/api/projects/project-1/contract-takeovers/takeover-responsive",
+    (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail)
+      })
+  );
+  await page.route("**/corrections/correction-v2-1/review", (route) => {
+    detail.appliedCorrections[0].status = "applied";
+    detail.appliedCorrections[0].reviewedByName = "合同部主管";
+    detail.appliedCorrections[0].reviewedAt = new Date().toISOString();
+    detail.appliedCorrections[0].reviewComment =
+      (route.request().postDataJSON() as { reviewComment: string }).reviewComment;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ status: "applied" })
+    });
+  });
+
+  await page.goto("/历史合同接管");
+  await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
+  const panel = page.getByTestId("contract-takeover-correction");
+  await expect(panel.getByText('改前：{"amountCents":"2000000"}', { exact: true })).toBeVisible();
+  await expect(panel.getByText('差额：{"amountCents":"1"}', { exact: true })).toBeVisible();
+  await expect(panel.getByText('改后：{"amountCents":"2000001"}', { exact: true })).toBeVisible();
+  await panel.getByRole("button", { name: "复核并应用" }).click();
+  const dialog = page.locator(".t-dialog").filter({ hasText: "复核并应用接管更正" });
+  await dialog.getByPlaceholder("说明本次操作原因").fill("主管已核对一分差额");
+  await dialog.getByPlaceholder("用于确认当前操作者身份").fill("E2e@2026");
+  await dialog.getByRole("button", { name: "确认应用" }).click();
+  await expect(panel.getByText("已应用", { exact: true })).toBeVisible();
+  await expect(panel.getByText("复核意见：主管已核对一分差额", { exact: true })).toBeVisible();
+});
+
+test("双部门工作区在 375px 视口无页面横向溢出", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await loginWithMocks(page, departmentTakeover, {
+    userId: "finance-staff-1",
+    roleKeys: ["finance_staff"]
+  });
+  await page.goto("/历史合同接管");
+  await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
+  await expect(page.getByTestId("contract-takeover-contract-side")).toBeVisible();
+  await expect(page.getByTestId("contract-takeover-finance-side")).toBeVisible();
+  await expect(page.getByTestId("contract-takeover-dual-confirmation")).toBeVisible();
+  await expectNoDocumentHorizontalOverflow(page);
+});
+
 const confirmedTakeoverWithoutChangeBaseline = {
   ...takeover,
   takeoverStatus: "confirmed",
@@ -494,7 +940,7 @@ test("keeps takeover details and upload controls inside a 1224px desktop viewpor
   expect(Math.abs(detailBox!.x - ledgerBox!.x)).toBeLessThanOrEqual(1);
   expect(detailBox!.y).toBeGreaterThan(ledgerBox!.y + ledgerBox!.height);
 
-  await detail.locator('input[type="file"]').first().setInputFiles({
+  await detail.locator(".evidence-uploader").first().locator('input[type="file"]').setInputFiles({
     name: "建工智管-中文上传验收-20260713.pdf",
     mimeType: "application/pdf",
     buffer: Buffer.from("responsive-uploader-check")
@@ -556,7 +1002,7 @@ test("keeps takeover evidence controls reachable without a 390px page overflow",
   await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
 
   const detail = page.locator(".detail-panel");
-  await detail.locator('input[type="file"]').first().setInputFiles({
+  await detail.locator(".evidence-uploader").first().locator('input[type="file"]').setInputFiles({
     name: "建工智管-中文上传验收-20260713.pdf",
     mimeType: "application/pdf",
     buffer: Buffer.from("mobile-responsive-uploader-check")

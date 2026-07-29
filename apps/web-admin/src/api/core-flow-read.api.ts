@@ -67,6 +67,16 @@ async function patchJson<TResponse>(path: string, body?: unknown): Promise<TResp
   return response.json() as Promise<TResponse>;
 }
 
+async function putJson<TResponse>(path: string, body?: unknown): Promise<TResponse> {
+  const response = await apiFetch(path, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {})
+  });
+  await ensureOk(response, "保存失败");
+  return response.json() as Promise<TResponse>;
+}
+
 async function postForm<TResponse>(path: string, body: FormData): Promise<TResponse> {
   const response = await apiFetch(path, { method: "POST", body });
   await ensureOk(response, "上传失败");
@@ -267,6 +277,135 @@ export interface ContractTakeoverCorrectionReadModel {
   createdAt: string;
 }
 
+export type ContractTakeoverPerformanceStatus =
+  | "not_started"
+  | "performing"
+  | "suspended"
+  | "completed"
+  | "terminated";
+
+export interface ContractTakeoverContractSideReadModel {
+  revision: number;
+  financeBasisRevision: number;
+  signedAt: string;
+  historicalSettledCents: string;
+  zeroSettlementDeclared: boolean;
+  performanceStatus: ContractTakeoverPerformanceStatus;
+  settlementEvidenceSummary: string | null;
+  settlementEvidenceFileIds: string[];
+  paymentTerms: {
+    originalText: string;
+    stages: HistoricalTakeoverDirectPaymentStagePayload[];
+  };
+  contractFacts: {
+    contractNo: string;
+    contractName: string;
+    contractTypeKey: string;
+    counterparty: string;
+    originalAmountCents: string;
+    settlementCutoffDate?: string;
+    zeroSettlementDeclared: boolean;
+    zeroSettlementBasis?: string;
+  };
+  confirmedRevision: number | null;
+  confirmedByUserName: string | null;
+  confirmedAt: string | null;
+  updatedAt: string;
+}
+
+export interface ContractTakeoverHistoricalPaymentReadModel {
+  id: string;
+  rowKey: string;
+  sequenceNo: number;
+  amountCents: string;
+  paidAt: string;
+  payerName: string | null;
+  payeeName: string | null;
+  bankReference: string | null;
+  paymentMethod: string | null;
+  note: string | null;
+  status: string;
+  voucherFileIds: string[];
+  allocations: Array<{
+    id: string;
+    allocationType: string;
+    amountCents: string;
+    allocationOrder: number;
+  }>;
+}
+
+export interface ContractTakeoverBalanceReadModel {
+  id: string;
+  balanceType: "historical_advance" | "abnormal_overpay";
+  openingCents: string;
+  balanceCents: string;
+  revision: number;
+  entries: Array<{
+    id: string;
+    entryKind: string;
+    amountCents: string;
+    settlementId: string | null;
+    historicalPaymentId: string | null;
+    correctionId: string | null;
+    reversesEntryId: string | null;
+    createdAt: string;
+  }>;
+}
+
+export interface ContractTakeoverFinanceSideReadModel {
+  revision: number;
+  basedOnContractRevision: number;
+  basedOnFinanceBasisRevision: number;
+  zeroPaymentDeclared: boolean;
+  excessTreatment: "historical_advance" | "abnormal_overpay" | null;
+  excessReason: string | null;
+  excessEvidenceFileIds: string[];
+  payments: ContractTakeoverHistoricalPaymentReadModel[];
+  balances: ContractTakeoverBalanceReadModel[];
+  confirmedRevision: number | null;
+  confirmedContractRevision: number | null;
+  confirmedFinanceBasisRevision: number | null;
+  confirmedByUserName: string | null;
+  confirmedAt: string | null;
+  updatedAt: string;
+}
+
+export type ContractTakeoverCorrectionScope =
+  | "historical_settlement"
+  | "historical_payment"
+  | "historical_advance"
+  | "abnormal_overpay";
+
+export type ContractTakeoverCorrectionOperation =
+  | "correction"
+  | "reclassification"
+  | "reversal";
+
+export interface ContractTakeoverAppliedCorrectionReadModel {
+  id: string;
+  schemaVersion: 2;
+  correctionScope: ContractTakeoverCorrectionScope;
+  correctionOperation: ContractTakeoverCorrectionOperation;
+  status: "draft" | "submitted" | "applied" | "rejected";
+  targetRevision: number;
+  targetBalanceRevision: number | null;
+  before: unknown;
+  delta: unknown;
+  after: unknown;
+  reason: string;
+  responsibleUserName: string;
+  submittedByName: string;
+  submittedAt: string | null;
+  reviewedByName: string | null;
+  reviewedAt: string | null;
+  reviewComment: string | null;
+  attachmentFileId: string;
+  attachmentFileName: string;
+  targetHistoricalPaymentId: string | null;
+  targetAllocationId: string | null;
+  targetBalanceEntryId: string | null;
+}
+
 export interface HistoricalCompanyEntityCandidateReadModel {
   id: string;
   name: string;
@@ -366,6 +505,9 @@ export interface ContractTakeoverReadModel {
   evidenceChecklist: ContractTakeoverEvidenceChecklistItemReadModel[];
   evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
   corrections: ContractTakeoverCorrectionReadModel[];
+  contractSide: ContractTakeoverContractSideReadModel | null;
+  financeSide: ContractTakeoverFinanceSideReadModel | null;
+  appliedCorrections: ContractTakeoverAppliedCorrectionReadModel[];
   postConfirmationVerification: ContractTakeoverPostConfirmationVerificationReadModel;
   lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";
   lifecycleBlockers?: string[];
@@ -1937,6 +2079,173 @@ export function recordContractTakeoverCorrection(
 ) {
   return postJson<{ id: string; message: string }>(
     `/projects/${projectId}/contract-takeovers/${takeoverId}/corrections`,
+    body
+  );
+}
+
+export interface SaveContractTakeoverContractSidePayload {
+  idempotencyKey: string;
+  expectedRevision: number;
+  signedAt: string;
+  performanceStatus: ContractTakeoverPerformanceStatus;
+  historicalSettledCents: string;
+  settlementEvidenceSummary: string;
+  settlementEvidenceFileIds: string[];
+  paymentTerms: ContractTakeoverContractSideReadModel["paymentTerms"];
+  contractFacts: ContractTakeoverContractSideReadModel["contractFacts"];
+}
+
+export interface SaveContractTakeoverFinanceSidePayload {
+  idempotencyKey: string;
+  expectedRevision: number;
+  basedOnContractRevision: number;
+  basedOnFinanceBasisRevision: number;
+  zeroPaymentDeclared: boolean;
+  excessTreatment?: "historical_advance" | "abnormal_overpay";
+  excessReason?: string;
+  excessEvidenceFileIds?: string[];
+  payments: Array<{
+    rowKey: string;
+    amountCents: string;
+    paidAt: string;
+    payerName?: string;
+    payeeName?: string;
+    bankReference?: string;
+    paymentMethod?: string;
+    note?: string;
+    voucherFileIds: string[];
+  }>;
+}
+
+export interface ContractTakeoverSideSaveReadModel {
+  takeoverId: string;
+  side: "contract" | "finance";
+  revision: number;
+  confirmedRevision: null;
+  savedAt: string;
+}
+
+export interface ConfirmContractTakeoverSidePayload {
+  idempotencyKey: string;
+  expectedRevision: number;
+  currentPassword: string;
+  basedOnContractRevision?: number;
+  basedOnFinanceBasisRevision?: number;
+}
+
+export interface WithdrawContractTakeoverSidePayload {
+  idempotencyKey: string;
+  expectedRevision: number;
+  currentPassword: string;
+  reason: string;
+}
+
+export interface SubmitContractTakeoverCorrectionPayload {
+  correctionScope: ContractTakeoverCorrectionScope;
+  correctionOperation: ContractTakeoverCorrectionOperation;
+  targetRevision: number;
+  targetBalanceRevision?: number;
+  deltaCents?: string;
+  targetHistoricalPaymentId?: string;
+  targetAllocationId?: string;
+  targetBalanceEntryId?: string;
+  reclassificationTarget?: "historical_advance" | "abnormal_overpay";
+  reason: string;
+  responsibleUserId: string;
+  attachmentFileId: string;
+  applicationIdempotencyKey: string;
+  currentPassword: string;
+}
+
+export function saveContractTakeoverContractSide(
+  projectId: string,
+  takeoverId: string,
+  body: SaveContractTakeoverContractSidePayload
+) {
+  return putJson<ContractTakeoverSideSaveReadModel>(
+    `/projects/${projectId}/contract-takeovers/${takeoverId}/contract-side`,
+    body
+  );
+}
+
+export function saveContractTakeoverFinanceSide(
+  projectId: string,
+  takeoverId: string,
+  body: SaveContractTakeoverFinanceSidePayload
+) {
+  return putJson<ContractTakeoverSideSaveReadModel>(
+    `/projects/${projectId}/contract-takeovers/${takeoverId}/finance-side`,
+    body
+  );
+}
+
+export function confirmContractTakeoverContractSide(
+  projectId: string,
+  takeoverId: string,
+  body: ConfirmContractTakeoverSidePayload
+) {
+  return postJson<unknown>(
+    `/projects/${projectId}/contract-takeovers/${takeoverId}/contract-side/confirmation`,
+    body
+  );
+}
+
+export function confirmContractTakeoverFinanceSide(
+  projectId: string,
+  takeoverId: string,
+  body: ConfirmContractTakeoverSidePayload
+) {
+  return postJson<unknown>(
+    `/projects/${projectId}/contract-takeovers/${takeoverId}/finance-side/confirmation`,
+    body
+  );
+}
+
+export function withdrawContractTakeoverContractSideConfirmation(
+  projectId: string,
+  takeoverId: string,
+  body: WithdrawContractTakeoverSidePayload
+) {
+  return postJson<unknown>(
+    `/projects/${projectId}/contract-takeovers/${takeoverId}/contract-side/confirmation-withdrawal`,
+    body
+  );
+}
+
+export function withdrawContractTakeoverFinanceSideConfirmation(
+  projectId: string,
+  takeoverId: string,
+  body: WithdrawContractTakeoverSidePayload
+) {
+  return postJson<unknown>(
+    `/projects/${projectId}/contract-takeovers/${takeoverId}/finance-side/confirmation-withdrawal`,
+    body
+  );
+}
+
+export function submitContractTakeoverCorrection(
+  projectId: string,
+  takeoverId: string,
+  body: SubmitContractTakeoverCorrectionPayload
+) {
+  return postJson<unknown>(
+    `/projects/${projectId}/contract-takeovers/${takeoverId}/corrections`,
+    body
+  );
+}
+
+export function reviewContractTakeoverCorrection(
+  projectId: string,
+  takeoverId: string,
+  correctionId: string,
+  body: {
+    decision: "apply" | "reject";
+    reviewComment: string;
+    currentPassword: string;
+  }
+) {
+  return postJson<unknown>(
+    `/projects/${projectId}/contract-takeovers/${takeoverId}/corrections/${correctionId}/review`,
     body
   );
 }

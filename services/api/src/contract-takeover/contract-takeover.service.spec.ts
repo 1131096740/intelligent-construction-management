@@ -5654,6 +5654,249 @@ describe("ContractTakeoverService", () => {
     });
   });
 
+  it("projects independent department revisions, historical payments, balances and v2 corrections", async () => {
+    const prisma = {
+      contractTakeover: {
+        findMany: jest.fn().mockResolvedValue([
+          takeoverRecord({
+            takeoverStatus: "confirmed",
+            confirmedAt: new Date("2026-07-05T10:00:00.000Z"),
+            activatedAt: new Date("2026-07-05T10:00:00.000Z")
+          })
+        ])
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "contract-1",
+          code: "HT-HIS-001",
+          temporaryCode: null,
+          name: "Historical material contract",
+          counterparty: "Supplier A",
+          contractTypeKey: "material_purchase"
+        }])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-version-1", amountCents: 1_000_000n }
+        ])
+      },
+      contractTakeoverContractFacts: {
+        findMany: jest.fn().mockResolvedValue([{
+          takeoverId: "takeover-1",
+          revision: 5,
+          financeBasisRevision: 3,
+          signedAt: new Date("2026-01-01T00:00:00.000Z"),
+          historicalSettledCents: 600_000n,
+          zeroSettlementDeclared: false,
+          performanceStatus: "performing",
+          settlementEvidenceSummary: "按历史结算台账核对",
+          paymentTermsSnapshot: { originalText: "按月结算付款", stages: [] },
+          contractFactsSnapshot: {
+            contractNo: "HT-HIS-001",
+            contractName: "Historical material contract",
+            contractTypeKey: "material_purchase",
+            counterparty: "Supplier A",
+            originalAmountCents: "1000000",
+            settlementCutoffDate: "2026-06-30",
+            zeroSettlementDeclared: false
+          },
+          confirmedRevision: 5,
+          confirmedByUserId: "contract-director-1",
+          confirmedAt: new Date("2026-07-05T09:00:00.000Z"),
+          updatedByUserId: "contract-staff-1",
+          updatedAt: new Date("2026-07-05T08:00:00.000Z")
+        }])
+      },
+      contractTakeoverFinanceFacts: {
+        findMany: jest.fn().mockResolvedValue([{
+          takeoverId: "takeover-1",
+          revision: 4,
+          basedOnContractRevision: 4,
+          basedOnFinanceBasisRevision: 3,
+          zeroPaymentDeclared: false,
+          excessTreatment: "historical_advance",
+          excessReason: "历史实付超过累计结算",
+          confirmedRevision: 4,
+          confirmedContractRevision: 4,
+          confirmedFinanceBasisRevision: 3,
+          confirmedByUserId: "finance-director-1",
+          confirmedAt: new Date("2026-07-05T10:00:00.000Z"),
+          updatedByUserId: "finance-staff-1",
+          updatedAt: new Date("2026-07-05T09:30:00.000Z")
+        }])
+      },
+      contractTakeoverSettlementEvidence: {
+        findMany: jest.fn().mockResolvedValue([{
+          takeoverId: "takeover-1",
+          fileId: "settlement-evidence-1",
+          displayOrder: 0
+        }])
+      },
+      contractTakeoverExcessEvidence: {
+        findMany: jest.fn().mockResolvedValue([{
+          takeoverId: "takeover-1",
+          fileId: "excess-evidence-1",
+          displayOrder: 0
+        }])
+      },
+      contractTakeoverHistoricalPayment: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "historical-payment-1",
+          takeoverId: "takeover-1",
+          rowKey: "payment-1",
+          sequenceNo: 1,
+          amountCents: 700_000n,
+          paidAt: new Date("2026-05-01T00:00:00.000Z"),
+          payerName: "我方公司",
+          payeeName: "Supplier A",
+          bankReference: "流水-1",
+          paymentMethod: "银行转账",
+          note: null,
+          status: "active"
+        }])
+      },
+      contractTakeoverHistoricalPaymentAllocation: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "allocation-1",
+          historicalPaymentId: "historical-payment-1",
+          allocationType: "settlement",
+          amountCents: 600_000n,
+          allocationOrder: 0
+        }])
+      },
+      contractTakeoverHistoricalPaymentVoucher: {
+        findMany: jest.fn().mockResolvedValue([{
+          historicalPaymentId: "historical-payment-1",
+          fileId: "voucher-1",
+          displayOrder: 0
+        }])
+      },
+      contractTakeoverBalanceAccount: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "balance-1",
+          takeoverId: "takeover-1",
+          balanceType: "historical_advance",
+          openingCents: 100_000n,
+          balanceCents: 80_000n,
+          revision: 2
+        }])
+      },
+      contractTakeoverBalanceEntry: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "entry-1",
+          accountId: "balance-1",
+          entryKind: "deduction",
+          amountCents: 20_000n,
+          settlementId: "settlement-1",
+          historicalPaymentId: null,
+          correctionId: null,
+          reversesEntryId: null,
+          createdAt: new Date("2026-07-06T00:00:00.000Z")
+        }])
+      },
+      contractTakeoverCorrection: {
+        findMany: jest.fn().mockResolvedValue([{
+          ...takeoverCorrectionRecord(),
+          id: "correction-v2-1",
+          schemaVersion: 2,
+          correctionType: "monetary",
+          correctionScope: "historical_payment",
+          correctionOperation: "correction",
+          status: "applied",
+          targetRevision: 4,
+          targetBalanceRevision: null,
+          beforeSnapshot: { amountCents: "699999" },
+          deltaSnapshot: { deltaCents: "1" },
+          afterSnapshot: { amountCents: "700000" },
+          targetHistoricalPaymentId: "historical-payment-1",
+          targetAllocationId: "allocation-1",
+          targetBalanceEntryId: null,
+          attachmentFileId: "correction-file-1",
+          reviewedByUserId: "finance-director-1",
+          appliedByUserId: "finance-director-1",
+          appliedAt: new Date("2026-07-06T10:00:00.000Z")
+        }])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "correction-file-1",
+          originalName: "更正依据.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 1024,
+          uploadedByUserId: "finance-staff-1",
+          createdAt: new Date("2026-07-06T09:00:00.000Z")
+        }])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-director-1", name: "合同主管" },
+          { id: "finance-director-1", name: "财务主管" },
+          { id: "contract-staff-1", name: "合同员" },
+          { id: "finance-staff-1", name: "财务员" },
+          { id: "contract-user", name: "原提交人" }
+        ])
+      }
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never
+    );
+
+    const [row] = await service.list("project-1");
+
+    expect(row.contractSide).toMatchObject({
+      revision: 5,
+      financeBasisRevision: 3,
+      historicalSettledCents: "600000",
+      confirmedRevision: 5,
+      confirmedByUserName: "合同主管",
+      settlementEvidenceFileIds: ["settlement-evidence-1"]
+    });
+    expect(row.financeSide).toMatchObject({
+      revision: 4,
+      basedOnContractRevision: 4,
+      basedOnFinanceBasisRevision: 3,
+      confirmedByUserName: "财务主管",
+      excessEvidenceFileIds: ["excess-evidence-1"],
+      payments: [{
+        id: "historical-payment-1",
+        amountCents: "700000",
+        voucherFileIds: ["voucher-1"],
+        allocations: [{
+          id: "allocation-1",
+          allocationType: "settlement",
+          amountCents: "600000"
+        }]
+      }],
+      balances: [{
+        id: "balance-1",
+        balanceType: "historical_advance",
+        openingCents: "100000",
+        balanceCents: "80000",
+        revision: 2,
+        entries: [{
+          id: "entry-1",
+          entryKind: "deduction",
+          amountCents: "20000"
+        }]
+      }]
+    });
+    expect(row.appliedCorrections).toEqual([
+      expect.objectContaining({
+        id: "correction-v2-1",
+        schemaVersion: 2,
+        correctionScope: "historical_payment",
+        correctionOperation: "correction",
+        status: "applied",
+        before: { amountCents: "699999" },
+        delta: { deltaCents: "1" },
+        after: { amountCents: "700000" },
+        attachmentFileName: "更正依据.pdf"
+      })
+    ]);
+  });
+
   it("lists takeover correction records with business summaries and attachment names", async () => {
     const prisma = {
       contractTakeover: {
