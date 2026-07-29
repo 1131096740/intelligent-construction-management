@@ -1,6 +1,7 @@
-import { IsIn, MaxLength, ValidateIf } from "class-validator";
+import { IsIn, ValidateIf } from "class-validator";
 import {
   IsCanonicalMoneyText,
+  IsMaxUnicodeTextLength,
   IsOptionalNonBlankText,
   IsRequiredText
 } from "../../validation/static-field-validation";
@@ -40,14 +41,20 @@ export class CreatePaymentRequestDto {
     typeMessage: "本次付款事项必须是文字",
     blankMessage: "本次付款事项不能为空白"
   })
-  @MaxLength(500, { message: "本次付款事项不能超过 500 个字" })
+  @IsMaxUnicodeTextLength({
+    max: 500,
+    message: "本次付款事项不能超过 500 个字"
+  })
   paymentMatter?: string;
 
   @IsOptionalNonBlankText({
     typeMessage: "金额计算说明必须是文字",
     blankMessage: "金额计算说明不能为空白"
   })
-  @MaxLength(2000, { message: "金额计算说明不能超过 2000 个字" })
+  @IsMaxUnicodeTextLength({
+    max: 2000,
+    message: "金额计算说明不能超过 2000 个字"
+  })
   amountCalculationExplanation?: string;
 
   @IsRequiredText({

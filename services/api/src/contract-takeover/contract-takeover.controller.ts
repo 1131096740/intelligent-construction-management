@@ -21,6 +21,7 @@ import {
   SaveContractTaxFactRevisionDto
 } from "../contract-tax-facts/dto/contract-tax-fact-revision.dto";
 import { ContractTakeoverService } from "./contract-takeover.service";
+import { ContractTakeoverCorrectionService } from "./contract-takeover-correction.service";
 import { ContractTakeoverExcelService } from "./contract-takeover-excel.service";
 import {
   AttachContractTakeoverEvidenceDto,
@@ -40,7 +41,8 @@ import {
   CreateContractTakeoverImportDraftsDto,
   PrecheckContractTakeoverImportDto
 } from "./dto/precheck-contract-takeover-import.dto";
-import { RecordContractTakeoverCorrectionDto } from "./dto/record-contract-takeover-correction.dto";
+import { SubmitContractTakeoverCorrectionDto } from "./dto/submit-contract-takeover-correction.dto";
+import { ReviewContractTakeoverCorrectionDto } from "./dto/review-contract-takeover-correction.dto";
 import {
   ReviewContractTakeoverCompanyEntityCorrectionDto,
   SubmitContractTakeoverCompanyEntityCorrectionDto
@@ -59,6 +61,7 @@ import { WithdrawContractTakeoverSideConfirmationDto } from "./dto/withdraw-cont
 export class ContractTakeoverController {
   constructor(
     private readonly takeovers: ContractTakeoverService,
+    private readonly corrections: ContractTakeoverCorrectionService,
     @Optional()
     private readonly excel?: ContractTakeoverExcelService,
     private readonly taxFacts?: ContractTaxFactsService
@@ -453,14 +456,37 @@ export class ContractTakeoverController {
   }
 
   @Post(":takeoverId/corrections")
-  @RequireProjectRole("contract.archive.confirm")
+  @RequireProjectRole("contract.takeover.correction.submit")
   recordCorrection(
     @Param("projectId") projectId: string,
     @Param("takeoverId") takeoverId: string,
-    @Body() body: RecordContractTakeoverCorrectionDto,
+    @Body() body: SubmitContractTakeoverCorrectionDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.takeovers.recordCorrection(projectId, takeoverId, body, user.id);
+    return this.corrections.submit(
+      projectId,
+      takeoverId,
+      user.id,
+      body
+    );
+  }
+
+  @Post(":takeoverId/corrections/:correctionId/review")
+  @RequireProjectRole("contract.takeover.correction.review")
+  reviewCorrection(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Param("correctionId") correctionId: string,
+    @Body() body: ReviewContractTakeoverCorrectionDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.corrections.review(
+      projectId,
+      takeoverId,
+      correctionId,
+      user.id,
+      body
+    );
   }
 
   @Post(":takeoverId/company-entity-corrections")

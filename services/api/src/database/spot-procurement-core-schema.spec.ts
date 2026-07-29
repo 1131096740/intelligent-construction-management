@@ -417,10 +417,18 @@ const POST_INVOICE_EVIDENCE_FILE_BINDING_TABLES = new Set([
   "ContractDraftAttachment"
 ]);
 
-const existedAtInvoiceEvidenceGuard = (table: string) =>
+const POST_INVOICE_EVIDENCE_FILE_BINDINGS = new Set([
+  "ContractTakeoverSettlementEvidence.fileId",
+  "ContractTakeoverHistoricalPaymentVoucher.fileId",
+  "ContractTakeoverExcessEvidence.fileId",
+  "ProjectFinancingQuota.terminationSignatureFileId"
+]);
+
+const existedAtInvoiceEvidenceGuard = (table: string, column: string) =>
   !REAL_FORM_FILE_BINDING_TABLES.has(table) &&
   !GOVERNANCE_FILE_BINDING_TABLES.has(table) &&
-  !POST_INVOICE_EVIDENCE_FILE_BINDING_TABLES.has(table);
+  !POST_INVOICE_EVIDENCE_FILE_BINDING_TABLES.has(table) &&
+  !POST_INVOICE_EVIDENCE_FILE_BINDINGS.has(`${table}.${column}`);
 
 const fieldsAtCoreMigration = (table: string, fields: string[]) =>
   fields
@@ -1002,14 +1010,14 @@ describe("spot procurement core schema", () => {
       "SpotProcurementReceiptPhoto.watermarkedFileId"
     ]);
     const expectedBindings = [
-      ...NON_RECEIPT_FILE_BINDINGS.filter(({ table }) =>
-        existedAtInvoiceEvidenceGuard(table)
-      ).flatMap(({ table, columns }) =>
-        columns.map((column) => ({
-          table,
-          column,
-          exclusive: exclusiveBindings.has(`${table}.${column}`)
-        }))
+      ...NON_RECEIPT_FILE_BINDINGS.flatMap(({ table, columns }) =>
+        columns
+          .filter((column) => existedAtInvoiceEvidenceGuard(table, column))
+          .map((column) => ({
+            table,
+            column,
+            exclusive: exclusiveBindings.has(`${table}.${column}`)
+          }))
       ),
       {
         table: "SpotProcurementReceiptPhoto",
@@ -1082,14 +1090,14 @@ describe("spot procurement core schema", () => {
       "SpotProcurementReceiptPhoto.watermarkedFileId"
     ]);
     const expectedBindings = [
-      ...NON_RECEIPT_FILE_BINDINGS.filter(({ table }) =>
-        existedAtInvoiceEvidenceGuard(table)
-      ).flatMap(({ table, columns }) =>
-        columns.map((column) => ({
-          table,
-          column,
-          exclusive: exclusiveBindings.has(`${table}.${column}`)
-        }))
+      ...NON_RECEIPT_FILE_BINDINGS.flatMap(({ table, columns }) =>
+        columns
+          .filter((column) => existedAtInvoiceEvidenceGuard(table, column))
+          .map((column) => ({
+            table,
+            column,
+            exclusive: exclusiveBindings.has(`${table}.${column}`)
+          }))
       ),
       {
         table: "SpotProcurementReceiptPhoto",

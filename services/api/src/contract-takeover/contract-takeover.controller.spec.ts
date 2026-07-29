@@ -27,6 +27,7 @@ const takeoverBodyRoutes = [
   ["attachEvidence", 2],
   ["attachHistoricalPaymentVoucher", 2],
   ["recordCorrection", 2],
+  ["reviewCorrection", 3],
   ["submitCompanyEntityCorrection", 2],
   ["reviewCompanyEntityCorrection", 3],
   ["createTaxFactRevision", 2],
@@ -194,11 +195,25 @@ const validTakeoverRouteBodies = [
     "recordCorrection",
     2,
     {
-      correctionType: "evidence",
-      reason: "补充历史凭证",
-      responsibleUserId: "director-1",
-      afterSummary: "已补齐历史付款凭证",
+      correctionScope: "abnormal_overpay",
+      correctionOperation: "correction",
+      targetRevision: 2,
+      targetBalanceRevision: 1,
+      deltaCents: "-1",
+      reason: "异常超付款项已退回",
+      responsibleUserId: "finance-1",
       attachmentFileId: "file-1",
+      applicationIdempotencyKey:
+        "11111111-1111-4111-8111-111111111111",
+      currentPassword: "current password"
+    }
+  ],
+  [
+    "reviewCorrection",
+    3,
+    {
+      decision: "apply",
+      reviewComment: "退款依据核验无误",
       currentPassword: "current password"
     }
   ],
@@ -552,14 +567,18 @@ describe("ContractTakeoverController", () => {
       "recordCorrection",
       2,
       {
-        correctionType: "unknown",
+        correctionScope: "unknown",
+        correctionOperation: "correction",
+        targetRevision: 2,
+        deltaCents: "-1",
         reason: "更正",
-        responsibleUserId: "director-1",
-        afterSummary: "更正后",
+        responsibleUserId: "finance-1",
         attachmentFileId: "file-1",
+        applicationIdempotencyKey:
+          "11111111-1111-4111-8111-111111111111",
         currentPassword: "password"
       },
-      "更正类型不正确"
+      "历史更正范围不正确"
     ]
   ] as const)("rejects an invalid %s enum", async (method, bodyIndex, value, message) => {
     const response = await getTakeoverValidationResponse(method, bodyIndex, value);
@@ -620,6 +639,7 @@ describe("ContractTakeoverController", () => {
       "applyExcelImport",
       "attachEvidence",
       "recordCorrection",
+      "reviewCorrection",
       "submitCompanyEntityCorrection",
       "reviewCompanyEntityCorrection",
       "createTaxFactRevision",
@@ -655,16 +675,23 @@ describe("ContractTakeoverController", () => {
       "contract.archive.confirm"
     );
     expectProjectAction(
-      ContractTakeoverController.prototype.recordCorrection,
-      "contract.archive.confirm"
-    );
-    expectProjectAction(
       ContractTakeoverController.prototype.reviewCompanyEntityCorrection,
       "contract.archive.confirm"
     );
     expectProjectAction(
       ContractTakeoverController.prototype.confirmChangeBaseline,
       "contract.archive.confirm"
+    );
+  });
+
+  it("protects correction submission and supervisor review with split actions", () => {
+    expectProjectAction(
+      ContractTakeoverController.prototype.recordCorrection,
+      "contract.takeover.correction.submit"
+    );
+    expectProjectAction(
+      ContractTakeoverController.prototype.reviewCorrection,
+      "contract.takeover.correction.review"
     );
   });
 });

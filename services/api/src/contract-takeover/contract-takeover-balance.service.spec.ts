@@ -14,6 +14,7 @@ describe("ContractTakeoverBalanceService", () => {
       $queryRaw: jest.fn().mockResolvedValue([
         {
           id: "account-1",
+          takeoverId: "takeover-1",
           openingCents: 150n,
           balanceCents: 150n,
           revision: 1
@@ -30,6 +31,9 @@ describe("ContractTakeoverBalanceService", () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       settlement: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contractTakeover: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       }
     };
@@ -96,6 +100,7 @@ describe("ContractTakeoverBalanceService", () => {
       $queryRaw: jest.fn().mockResolvedValue([
         {
           id: "account-1",
+          takeoverId: "takeover-1",
           openingCents: 150n,
           balanceCents: 50n,
           revision: 2
@@ -113,6 +118,9 @@ describe("ContractTakeoverBalanceService", () => {
         updateMany: jest.fn()
       },
       settlement: {
+        updateMany: jest.fn()
+      },
+      contractTakeover: {
         updateMany: jest.fn()
       }
     };
@@ -148,6 +156,7 @@ describe("ContractTakeoverBalanceService", () => {
         {
           entryId: "entry-1",
           accountId: "account-1",
+          takeoverId: "takeover-1",
           entryKind: "deduction",
           amountCents: 80n,
           balanceCents: 20n,
@@ -167,6 +176,9 @@ describe("ContractTakeoverBalanceService", () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       settlement: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contractTakeover: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       }
     };

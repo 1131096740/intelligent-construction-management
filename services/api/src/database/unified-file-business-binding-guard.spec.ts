@@ -36,10 +36,17 @@ const expenseClaimPaymentExecutionBindingMigration = readFileSync(
   ),
   "utf8"
 );
-const currentBindingMigration = readFileSync(
+const contractDraftBindingMigration = readFileSync(
   join(
     process.cwd(),
     "prisma/migrations/20260728100000_contract_draft_aggregate_foundation/migration.sql"
+  ),
+  "utf8"
+);
+const currentBindingMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260728132000_contract_takeover_correction_ledger/migration.sql"
   ),
   "utf8"
 );
@@ -78,11 +85,17 @@ function migrationBindings(): Array<{
 describe("unified file business binding migration", () => {
   it("registers every current Prisma FileObject reference exactly once", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(62);
+    expect(registered).toHaveLength(66);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
-    expect(currentBindingMigration).toContain(
+    expect(contractDraftBindingMigration).toContain(
       'BEFORE INSERT OR UPDATE OF "fileId" ON "ContractDraftAttachment"'
+    );
+    expect(currentBindingMigration).toContain(
+      "('ProjectFinancingQuota','terminationSignatureFileId',FALSE)"
+    );
+    expect(currentBindingMigration).toContain(
+      'BEFORE INSERT OR UPDATE OF "terminationSignatureFileId"'
     );
   });
 
@@ -92,6 +105,9 @@ describe("unified file business binding migration", () => {
       .map(({ binding }) => binding)
       .sort();
     expect(exclusive).toEqual([
+      "ContractTakeoverExcessEvidence.fileId",
+      "ContractTakeoverHistoricalPaymentVoucher.fileId",
+      "ContractTakeoverSettlementEvidence.fileId",
       "ExpenseClaimAttachment.fileId",
       "ExpenseClaimPaymentExecution.voucherFileId",
       "InvoiceExceptionConfirmation.proofFileId",
@@ -106,13 +122,13 @@ describe("unified file business binding migration", () => {
       "SpotProcurementReceiptPhoto.watermarkedFileId",
       "SpotProcurementRefund.voucherFileId"
     ]);
-    expect(migration).toContain(
+    expect(currentBindingMigration).toContain(
       `"correctionType" = 'company_entity'`
     );
-    expect(migration).toContain(
-      "current_is_exclusive := NEW.\"correctionType\" = 'company_entity'"
+    expect(currentBindingMigration).toContain(
+      'OR "schemaVersion" = 2'
     );
-    expect(migration).toContain(
+    expect(currentBindingMigration).toContain(
       "previous_is_exclusive BOOLEAN := TG_ARGV[1]::BOOLEAN"
     );
   });

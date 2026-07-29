@@ -2600,10 +2600,14 @@ describe("ContractService", () => {
         findMany: jest.fn().mockResolvedValue([])
       },
       paymentTermsVersion: {
-        findFirst: jest.fn().mockResolvedValue({ id: "terms-1" }),
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-1",
+          originalText: "按实际发生量结算后付款"
+        }),
         update: jest.fn().mockResolvedValue({ id: "terms-1" })
       },
       paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([{ id: "stage-1" }]),
         deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
         createMany: jest.fn().mockResolvedValue({ count: 1 })
       },

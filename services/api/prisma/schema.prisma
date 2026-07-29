@@ -442,8 +442,18 @@ model ContractTakeoverCorrection {
   id                    String    @id @default(uuid())
   projectId             String
   takeoverId            String
+  schemaVersion         Int       @default(1)
   correctionType        String
+  correctionScope       String?
+  correctionOperation   String?
   status                String    @default("confirmed")
+  targetRevision        Int?
+  targetBalanceRevision Int?
+  deltaSnapshot         Json?
+  targetHistoricalPaymentId String?
+  targetAllocationId    String?
+  targetBalanceEntryId  String?
+  applicationIdempotencyKey String? @unique
   targetCompanyEntityId String?
   beforeSnapshot        Json
   afterSnapshot         Json
@@ -456,11 +466,17 @@ model ContractTakeoverCorrection {
   reviewedByUserId      String?
   reviewedAt            DateTime?
   reviewComment         String?
+  appliedByUserId       String?
+  appliedAt             DateTime?
   createdAt             DateTime  @default(now())
 
   @@index([projectId, takeoverId, createdAt])
   @@index([takeoverId])
   @@index([takeoverId, correctionType, status])
+  @@index([takeoverId, schemaVersion, status])
+  @@index([targetHistoricalPaymentId])
+  @@index([targetAllocationId])
+  @@index([targetBalanceEntryId])
 }
 
 model ContractTakeoverContractFacts {

@@ -9,6 +9,7 @@ import { dbMoneyToBigInt } from "../money/decimal-money";
 
 interface LockedAdvanceAccount {
   id: string;
+  takeoverId: string;
   openingCents: bigint;
   balanceCents: bigint;
   revision: number;
@@ -17,6 +18,7 @@ interface LockedAdvanceAccount {
 interface LockedBalanceEntry {
   entryId: string;
   accountId: string;
+  takeoverId: string;
   entryKind: string;
   amountCents: bigint;
   balanceCents: bigint;
@@ -48,6 +50,7 @@ export class ContractTakeoverBalanceService {
       Prisma.sql`
         SELECT
           account."id",
+          account."takeoverId",
           account."openingCents",
           account."balanceCents",
           account."revision"
@@ -170,6 +173,19 @@ export class ContractTakeoverBalanceService {
         "结算可付金额并发变化，历史预付款抵扣已中止"
       );
     }
+    const takeoverUpdated = await tx.contractTakeover.updateMany({
+      where: { id: account.takeoverId },
+      data: {
+        historicalAdvanceDeductedCents: {
+          increment: deductionCents
+        }
+      }
+    });
+    if (takeoverUpdated.count !== 1) {
+      throw new ConflictException(
+        "历史接管预付款累计并发变化，抵扣已中止"
+      );
+    }
 
     await this.audit.record(tx, {
       actorUserId,
@@ -207,13 +223,15 @@ export class ContractTakeoverBalanceService {
     tx: Prisma.TransactionClient,
     entryId: string,
     actorUserId: string,
-    idempotencyKey: string
+    idempotencyKey: string,
+    correctionId?: string
   ) {
     const [original] = await tx.$queryRaw<LockedBalanceEntry[]>(
       Prisma.sql`
         SELECT
           entry."id" AS "entryId",
           entry."accountId",
+          account."takeoverId",
           entry."entryKind",
           entry."amountCents",
           account."balanceCents",
@@ -288,6 +306,7 @@ export class ContractTakeoverBalanceService {
           entryKind: "reversal",
           amountCents: reversedAmountCents,
           reversesEntryId: entryId,
+          ...(correctionId ? { correctionId } : {}),
           idempotencyKey,
           createdByUserId: actorUserId
         },
@@ -327,6 +346,19 @@ export class ContractTakeoverBalanceService {
     if (settlementUpdated.count !== 1) {
       throw new ConflictException(
         "结算可付金额并发变化，余额反向已中止"
+      );
+    }
+    const takeoverUpdated = await tx.contractTakeover.updateMany({
+      where: { id: original.takeoverId },
+      data: {
+        historicalAdvanceDeductedCents: {
+          decrement: reversedAmountCents
+        }
+      }
+    });
+    if (takeoverUpdated.count !== 1) {
+      throw new ConflictException(
+        "历史接管预付款累计并发变化，余额反向已中止"
       );
     }
 

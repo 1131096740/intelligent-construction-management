@@ -6,6 +6,7 @@ import { ContractTaxFactsModule } from "../contract-tax-facts/contract-tax-facts
 import { ContractTakeoverActivationService } from "./contract-takeover-activation.service";
 import { ContractTakeoverBalanceService } from "./contract-takeover-balance.service";
 import { ContractTakeoverController } from "./contract-takeover.controller";
+import { ContractTakeoverCorrectionService } from "./contract-takeover-correction.service";
 import { ContractTakeoverExcelService } from "./contract-takeover-excel.service";
 import { ContractTakeoverService } from "./contract-takeover.service";
 
@@ -16,7 +17,8 @@ import { ContractTakeoverService } from "./contract-takeover.service";
     ContractTakeoverService,
     ContractTakeoverExcelService,
     ContractTakeoverActivationService,
-    ContractTakeoverBalanceService
+    ContractTakeoverBalanceService,
+    ContractTakeoverCorrectionService
   ],
   exports: [ContractTakeoverService, ContractTakeoverBalanceService]
 })
