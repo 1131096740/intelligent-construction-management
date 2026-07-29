@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   contractDraftManualSaveMessage,
+  contractDraftPreviewFeedbackText,
   contractDraftSaveReceiptText,
   contractDraftSaveStatusText,
   createContractDraftManualSaveFeedback,
@@ -8,6 +9,27 @@ import {
 } from "./contract-draft-save-status";
 
 describe("contract draft save status", () => {
+  it("reports preview generation separately from the successful aggregate save", () => {
+    expect(
+      contractDraftPreviewFeedbackText({
+        savedRevision: 7,
+        previewState: "saved"
+      })
+    ).toBe("资料已保存，修订号 7");
+    expect(
+      contractDraftPreviewFeedbackText({
+        savedRevision: 7,
+        previewState: "queueing"
+      })
+    ).toBe("文档预览生成中");
+    expect(
+      contractDraftPreviewFeedbackText({
+        savedRevision: 7,
+        previewState: "failed"
+      })
+    ).toBe("资料已保存，修订号 7；文档预览生成失败，可稍后重试；左侧继续显示上一版");
+  });
+
   it.each([
     ["saving", "保存中"],
     ["failed", "保存失败"],

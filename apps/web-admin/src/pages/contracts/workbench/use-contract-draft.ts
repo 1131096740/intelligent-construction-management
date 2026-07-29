@@ -22,8 +22,10 @@ import {
   createWorkbenchDraft,
   fetchContractDraftWorkbench,
   heartbeatContractDraftEditLease,
+  queueContractDraftPreview,
   releaseContractDraftEditLease,
   saveContractDraftAggregate,
+  submitContractDraft,
   takeOverContractDraftEditLease,
   type ContractDraftAttachmentModel,
   type ContractDraftBillModel,
@@ -31,6 +33,7 @@ import {
   type ContractDraftNegotiationDocumentsModel,
   type ContractDraftPartyModel,
   type ContractDraftPaymentTermsModel,
+  type ContractDraftSubmissionResult,
   type ContractDraftWorkbenchReadModel,
   type SaveContractDraftAggregatePayload
 } from "../../../api/contract-workbench.api";
@@ -292,6 +295,10 @@ export interface UseContractDraft {
   resumeAutosaveAfterLifecycleAction: () => void;
   /** Flushes dirty draft data. Clean state is a successful no-op. */
   saveNow: () => Promise<boolean>;
+  /** Queues document generation for the latest successfully saved revision. */
+  queuePreviewForCurrentRevision: () => Promise<boolean>;
+  /** Flushes the aggregate and submits the exact saved revision once. */
+  submitNow: () => Promise<ContractDraftSubmissionResult | null>;
   takeOverLease: (currentPassword: string) => Promise<boolean>;
   restoreLocalRecovery: () => boolean;
   discardLocalRecovery: () => void;
@@ -931,6 +938,13 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let loadRequestId = 0;
   let activeSave: Promise<boolean> | null = null;
+  let activeSubmission: Promise<ContractDraftSubmissionResult | null> | null = null;
+  let pendingSubmissionRequest: {
+    contractVersionId: string;
+    expectedRevision: number;
+    idempotencyKey: string;
+  } | null = null;
+  const submissionCompleted = ref(false);
   let leaseToken: string | null = null;
   let leaseHeartbeatTimer: ReturnType<typeof setTimeout> | null = null;
   let leaseExpiryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -942,7 +956,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       aggregateSaveState.value.ackedGeneration
   );
 
-  const canEdit = computed(() => contractDraftLeaseCanEdit(lease.value));
+  const canEdit = computed(
+    () => !submissionCompleted.value && contractDraftLeaseCanEdit(lease.value)
+  );
 
   function recoveryIdentity(): ContractDraftRecoveryIdentity | null {
     const storage = getStorage();
@@ -1230,6 +1246,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     pausedRef.value = false;
     conflict.value = null;
     formalSaveCompleted.value = false;
+    submissionCompleted.value = false;
+    activeSubmission = null;
+    pendingSubmissionRequest = null;
     lastSavedAt.value = null;
     saveError.value = "";
     lease.value = { kind: "available", canTakeOver: false };
@@ -1311,6 +1330,11 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     conflict.value = null;
     pausedRef.value = false;
     formalSaveCompleted.value = Boolean(result.contract.code);
+    submissionCompleted.value = !["draft", "approval_rejected"].includes(
+      result.version.status
+    );
+    activeSubmission = null;
+    pendingSubmissionRequest = null;
     lastSavedAt.value = null;
     saveError.value = "";
     assignAggregateModel(aggregateModel, nextAggregate);
@@ -1597,6 +1621,79 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     return true;
   }
 
+  async function queuePreviewForCurrentRevision(): Promise<boolean> {
+    const versionId = contractVersionId.value;
+    if (
+      disposed ||
+      !versionId ||
+      !formalSaveCompleted.value ||
+      dirtyRef.value ||
+      activeSave ||
+      currentRevision.value < 1
+    ) {
+      return false;
+    }
+    await queueContractDraftPreview(versionId, currentRevision.value);
+    return true;
+  }
+
+  async function performSubmission(): Promise<ContractDraftSubmissionResult | null> {
+    const saved = await saveNow();
+    if (!saved || disposed || submissionCompleted.value) return null;
+
+    const versionId = contractVersionId.value;
+    const token = leaseToken;
+    if (
+      !versionId ||
+      !token ||
+      !contractDraftLeaseCanEdit(lease.value)
+    ) {
+      return null;
+    }
+
+    const expectedRevision = currentRevision.value;
+    if (
+      !pendingSubmissionRequest ||
+      pendingSubmissionRequest.contractVersionId !== versionId ||
+      pendingSubmissionRequest.expectedRevision !== expectedRevision
+    ) {
+      pendingSubmissionRequest = {
+        contractVersionId: versionId,
+        expectedRevision,
+        idempotencyKey: crypto.randomUUID()
+      };
+    }
+
+    const request = pendingSubmissionRequest;
+    const result = await submitContractDraft(versionId, token, {
+      expectedRevision: request.expectedRevision,
+      idempotencyKey: request.idempotencyKey
+    });
+    if (contractVersionId.value !== versionId) return null;
+    if (result.contractVersionId !== versionId) {
+      throw new Error(
+        "合同草稿协议错误：提交响应版本与请求版本不一致，未更新当前页面状态"
+      );
+    }
+
+    submissionCompleted.value = true;
+    pausedRef.value = true;
+    cancelScheduledSave();
+    clearBackup();
+    pendingSubmissionRequest = null;
+    releaseCurrentLease();
+    return result;
+  }
+
+  function submitNow(): Promise<ContractDraftSubmissionResult | null> {
+    if (activeSubmission) return activeSubmission;
+    const tracked = performSubmission().finally(() => {
+      if (activeSubmission === tracked) activeSubmission = null;
+    });
+    activeSubmission = tracked;
+    return tracked;
+  }
+
   // -- Conflict handling ------------------------------------------------------
 
   async function enterConflict(conflictingVersionId: string): Promise<void> {
@@ -1847,6 +1944,8 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     suspendAutosaveForLifecycleAction,
     resumeAutosaveAfterLifecycleAction,
     saveNow,
+    queuePreviewForCurrentRevision,
+    submitNow,
     takeOverLease,
     restoreLocalRecovery,
     discardLocalRecovery,

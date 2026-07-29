@@ -389,12 +389,21 @@ export function queueContractDraftPreview(
   );
 }
 
+export interface ContractDraftSubmissionResult {
+  contractVersionId: string;
+  approvalInstanceId: string;
+  status: "in_approval";
+  formalCode: string;
+  draftRevision: number;
+  firstSubmittedAt: string;
+}
+
 export function submitContractDraft(
   contractVersionId: string,
   leaseToken: string,
   payload: { expectedRevision: number; idempotencyKey: string }
 ) {
-  return postJsonWithHeaders<unknown>(
+  return postJsonWithHeaders<ContractDraftSubmissionResult>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/submission`,
     payload,
     { "X-Contract-Draft-Lease": leaseToken }

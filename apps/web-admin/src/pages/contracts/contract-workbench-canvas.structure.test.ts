@@ -193,7 +193,10 @@ describe("contract workbench document canvas structure", () => {
   it("owns the only draft submission entry and navigates legacy detail submission to workbench", () => {
     const detailSource = fs.readFileSync(path.resolve(__dirname, "ContractDetailPage.vue"), "utf8");
     expect(pageSource).toContain("提交审批");
-    expect(pageSource).toContain("submitContractFromWorkbench");
+    expect(pageSource).toContain("submitNow");
+    expect(pageSource).toContain("queuePreviewForCurrentRevision");
+    expect(pageSource).not.toContain("submitContractFromWorkbench");
+    expect(pageSource).toContain("保存草稿");
     expect(detailSource).toContain("前往合同工作台提交");
     expect(detailSource).not.toContain("submitContractApprovalAction");
   });

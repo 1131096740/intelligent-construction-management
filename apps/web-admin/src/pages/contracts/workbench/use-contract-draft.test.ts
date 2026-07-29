@@ -13,8 +13,10 @@ vi.mock("../../../api/contract-workbench.api", () => ({
   createWorkbenchDraft: vi.fn(),
   fetchContractDraftWorkbench: vi.fn(),
   heartbeatContractDraftEditLease: vi.fn(),
+  queueContractDraftPreview: vi.fn(),
   releaseContractDraftEditLease: vi.fn(),
   saveContractDraftAggregate: vi.fn(),
+  submitContractDraft: vi.fn(),
   takeOverContractDraftEditLease: vi.fn()
 }));
 
@@ -23,8 +25,10 @@ import {
   createWorkbenchDraft,
   fetchContractDraftWorkbench,
   heartbeatContractDraftEditLease,
+  queueContractDraftPreview,
   releaseContractDraftEditLease,
   saveContractDraftAggregate,
+  submitContractDraft,
   takeOverContractDraftEditLease
 } from "../../../api/contract-workbench.api";
 import {
@@ -42,8 +46,10 @@ const mockCreateDraft = vi.mocked(createWorkbenchDraft);
 const mockAcquireLease = vi.mocked(acquireContractDraftEditLease);
 const mockFetchWorkbench = vi.mocked(fetchContractDraftWorkbench);
 const mockHeartbeatLease = vi.mocked(heartbeatContractDraftEditLease);
+const mockQueuePreview = vi.mocked(queueContractDraftPreview);
 const mockReleaseLease = vi.mocked(releaseContractDraftEditLease);
 const mockSaveDraft = vi.mocked(saveContractDraftAggregate);
+const mockSubmitDraft = vi.mocked(submitContractDraft);
 const mockTakeOverLease = vi.mocked(takeOverContractDraftEditLease);
 
 function memoryStorage(): Storage {
@@ -202,6 +208,15 @@ beforeEach(() => {
     expiresAt: "2026-07-28T00:02:30.000Z"
   });
   mockReleaseLease.mockResolvedValue({ released: true });
+  mockQueuePreview.mockResolvedValue({ queued: true });
+  mockSubmitDraft.mockResolvedValue({
+    contractVersionId: "cv-1",
+    approvalInstanceId: "approval-1",
+    status: "in_approval",
+    formalCode: "HT-2026-001",
+    draftRevision: 4,
+    firstSubmittedAt: "2026-07-28T00:00:00.000Z"
+  });
   mockTakeOverLease.mockResolvedValue({
     token: "takeover-token",
     leaseRevision: 2,
@@ -260,6 +275,99 @@ afterEach(() => {
 });
 
 describe("useContractDraft", () => {
+  it("queues preview only when the caller explicitly requests it after a successful save", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench());
+    mockSaveDraft.mockResolvedValue(saveResult("cv-1", 4));
+    await draft.load("cv-1");
+
+    draft.model.contractName = "手动保存并生成预览";
+    draft.markDirty();
+    await expect(draft.saveNow()).resolves.toBe(true);
+    expect(mockQueuePreview).not.toHaveBeenCalled();
+
+    await expect(draft.queuePreviewForCurrentRevision()).resolves.toBe(true);
+    expect(mockQueuePreview).toHaveBeenCalledWith("cv-1", 4);
+  });
+
+  it("does not submit when the latest aggregate flush fails or the lease is lost", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench());
+    mockSaveDraft.mockRejectedValueOnce(new Error("保存失败"));
+    await draft.load("cv-1");
+
+    draft.model.contractName = "未保存内容";
+    draft.markDirty();
+    await expect(draft.submitNow()).resolves.toBeNull();
+    expect(mockSubmitDraft).not.toHaveBeenCalled();
+
+    const lost = Object.assign(new Error("租约已被接管"), {
+      code: "EDIT_LEASE_LOST",
+      conflictReason: "lease_taken_over"
+    });
+    mockHeartbeatLease.mockRejectedValueOnce(lost);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await expect(draft.submitNow()).resolves.toBeNull();
+    expect(mockSubmitDraft).not.toHaveBeenCalled();
+  });
+
+  it("reuses one submission request across a lost response and concurrent repeated clicks", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench());
+    await draft.load("cv-1");
+
+    mockSubmitDraft.mockRejectedValueOnce(new Error("提交响应丢失"));
+    await expect(draft.submitNow()).rejects.toThrow("提交响应丢失");
+    const firstPayload = mockSubmitDraft.mock.calls[0]?.[2];
+
+    const pending = deferred<Awaited<ReturnType<typeof submitContractDraft>>>();
+    mockSubmitDraft.mockReturnValueOnce(pending.promise);
+    const firstRetry = draft.submitNow();
+    const repeatedClick = draft.submitNow();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mockSubmitDraft).toHaveBeenCalledTimes(2);
+    expect(mockSubmitDraft.mock.calls[1]?.[2]).toEqual(firstPayload);
+
+    pending.resolve({
+      contractVersionId: "cv-1",
+      approvalInstanceId: "approval-1",
+      status: "in_approval",
+      formalCode: "HT-2026-001",
+      draftRevision: 3,
+      firstSubmittedAt: "2026-07-28T00:00:00.000Z"
+    });
+    await expect(firstRetry).resolves.toMatchObject({ approvalInstanceId: "approval-1" });
+    await expect(repeatedClick).resolves.toMatchObject({ approvalInstanceId: "approval-1" });
+    expect(mockSubmitDraft).toHaveBeenCalledTimes(2);
+  });
+
+  it("turns the submitted draft readonly and clears its local recovery copy", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench());
+    mockSaveDraft.mockResolvedValue(saveResult("cv-1", 4));
+    await draft.load("cv-1");
+    draft.model.contractName = "待提交合同";
+    draft.markDirty();
+    expect(contractDraftRecoveryText()).toContain("待提交合同");
+
+    await expect(draft.submitNow()).resolves.toMatchObject({
+      formalCode: "HT-2026-001",
+      approvalInstanceId: "approval-1"
+    });
+
+    expect(mockSubmitDraft).toHaveBeenCalledWith(
+      "cv-1",
+      "lease-token",
+      expect.objectContaining({
+        expectedRevision: 4,
+        idempotencyKey: expect.any(String)
+      })
+    );
+    expect(draft.canEdit.value).toBe(false);
+    expect(contractDraftRecoveryText()).toBeNull();
+  });
+
   it("holds the raw lease token only in memory and verifies it every 30 seconds", async () => {
     const draft = makeDraft();
     mockFetchWorkbench.mockResolvedValue(makeWorkbench());

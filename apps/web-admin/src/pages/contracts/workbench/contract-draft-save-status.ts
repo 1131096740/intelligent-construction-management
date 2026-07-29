@@ -26,6 +26,17 @@ export function contractDraftManualSaveMessage(input: {
     : "当前没有待保存修改，合同尚未正式保存";
 }
 
+export function contractDraftPreviewFeedbackText(input: {
+  savedRevision: number;
+  previewState: "saved" | "queueing" | "failed";
+}) {
+  if (input.previewState === "queueing") return "文档预览生成中";
+  const saved = `资料已保存，修订号 ${input.savedRevision}`;
+  return input.previewState === "failed"
+    ? `${saved}；文档预览生成失败，可稍后重试；左侧继续显示上一版`
+    : saved;
+}
+
 export function contractDraftSaveReceiptText(input: {
   formalSaveCompleted: boolean;
   savedRevision: number;

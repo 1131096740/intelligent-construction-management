@@ -59,7 +59,7 @@ describe("contract workspace responsive governance", () => {
     );
   });
 
-  it("keeps save feedback accurate without reloading after every manual save", () => {
+  it("keeps aggregate save and preview feedback separate without reloading after every manual save", () => {
     const onSave = workbench.slice(
       workbench.indexOf("async function onSave()"),
       workbench.indexOf("async function prepareGovernanceMutation()")
@@ -74,8 +74,10 @@ describe("contract workspace responsive governance", () => {
     expect(workbench).toContain("lastSavedAt");
     expect(workbench).toContain("saveReceiptText");
     expect(workbench).toContain("manualSaveMessage");
-    expect(onSave).toContain("const hadDirtyContent = isDirty.value");
     expect(onSave).toContain("const wasFormallySaved = formalSaveCompleted.value");
+    expect(onSave).toContain("contractDraftPreviewFeedbackText");
+    expect(onSave).toContain("queuePreviewForCurrentRevision");
+    expect(onSave).toContain('previewState: "failed"');
     expect(onSave).toContain("shouldReloadContractAfterManualSave");
     expect(onSave).not.toContain(
       "if (contractId.value) await loadExpectedWorkbench(contractId.value)"

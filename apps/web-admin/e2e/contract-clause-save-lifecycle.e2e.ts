@@ -10,7 +10,10 @@ const screenshotDir = "/tmp/jgzg-contract-clause-save-e2e";
 type ClauseSnapshot = ReturnType<typeof initialClauses>[number];
 type DraftPatchBody = {
   expectedRevision?: number;
-  clauses?: ClauseSnapshot[];
+  saveKind?: "auto" | "manual";
+  draft?: {
+    clauses?: ClauseSnapshot[];
+  };
 };
 
 test.describe("合同条款保存生命周期", () => {
@@ -91,8 +94,8 @@ test.describe("合同条款保存生命周期", () => {
     expect(mock.patchBodies).toHaveLength(0);
 
     const saveRequestPromise = page.waitForRequest((request) =>
-      request.method() === "PATCH" &&
-      request.url().endsWith(`/api/contract-workbench/${versionId}`)
+      request.method() === "PUT" &&
+      request.url().endsWith(`/api/contract-drafts/${versionId}`)
     );
     const finalParagraphInput = page
       .getByTestId("clause-paragraph-payment-0")
@@ -103,11 +106,11 @@ test.describe("合同条款保存生命周期", () => {
     const workbenchReadsBeforeSave = mock.workbenchReadCalls();
     await page
       .locator(".status-right")
-      .getByRole("button", { name: "保存", exact: true })
+      .getByRole("button", { name: "保存草稿", exact: true })
       .click();
     const saveRequest = await saveRequestPromise;
     const saveBody = saveRequest.postDataJSON() as DraftPatchBody;
-    const savedPaymentClause = saveBody.clauses?.find(
+    const savedPaymentClause = saveBody.draft?.clauses?.find(
       (clause) => clause.key === "payment"
     );
     expect(savedPaymentClause?.title).toBe("未失焦的新付款标题");
@@ -121,10 +124,11 @@ test.describe("合同条款保存生命周期", () => {
       "当前内容已保存"
     );
     await expect(page.getByTestId("contract-draft-manual-save-message")).toHaveText(
-      "已保存当前合同内容"
+      "文档预览生成中"
     );
+    expect(mock.previewGenerationCalls()).toBe(1);
     await expect(page.getByTestId("contract-draft-save-receipt")).toContainText("修订 4");
-    await expect(page.getByText(formalContractCode, { exact: true })).toBeVisible();
+    await expect(page.getByText(formalContractCode, { exact: true }).first()).toBeVisible();
 
     await mkdir(screenshotDir, { recursive: true });
     await page.screenshot({
@@ -238,7 +242,7 @@ test.describe("合同条款保存生命周期", () => {
     expect(pageErrors).toEqual([]);
   });
 
-  test("首次正式保存后约一秒自动保存，失败保留内容且 clean 保存不回读", async ({ page }, testInfo) => {
+  test("首次正式保存后约一秒自动保存，失败保留内容且 clean 保存只重排预览", async ({ page }, testInfo) => {
     const consoleIssues: string[] = [];
     const expectedFailureConsoleIssues: string[] = [];
     const pageErrors: string[] = [];
@@ -267,12 +271,13 @@ test.describe("合同条款保存生命周期", () => {
     await paragraph.pressSequentially("首");
     await page
       .locator(".status-right")
-      .getByRole("button", { name: "保存", exact: true })
+      .getByRole("button", { name: "保存草稿", exact: true })
       .click();
     await expect.poll(() => mock.patchBodies.length).toBe(1);
     await expect.poll(() => mock.workbenchReadCalls()).toBe(2);
-    await expect(page.getByText(formalContractCode, { exact: true })).toBeVisible();
+    await expect(page.getByText(formalContractCode, { exact: true }).first()).toBeVisible();
     expect(mock.patchBodies[0]?.expectedRevision).toBe(3);
+    expect(mock.previewGenerationCalls()).toBe(1);
 
     const readsAfterFirstSave = mock.workbenchReadCalls();
     const patchCountBeforeAutosave = mock.patchBodies.length;
@@ -297,9 +302,12 @@ test.describe("合同条款保存生命周期", () => {
     expect(autosaveDelay).toBeLessThan(2_500);
     expect(mock.patchBodies[1]?.expectedRevision).toBe(4);
     expect(
-      clauseText(mock.patchBodies[1]?.clauses?.find((clause) => clause.key === "payment"))
+      clauseText(
+        mock.patchBodies[1]?.draft?.clauses?.find((clause) => clause.key === "payment")
+      )
     ).toContain("首自");
     await expect(page.getByTestId("contract-draft-save-status")).toHaveText("已保存");
+    expect(mock.previewGenerationCalls()).toBe(1);
     expect(mock.workbenchReadCalls()).toBe(readsAfterFirstSave);
 
     mock.failNextSave();
@@ -316,7 +324,7 @@ test.describe("合同条款保存生命周期", () => {
 
     const saveButton = page
       .locator(".status-right")
-      .getByRole("button", { name: "保存", exact: true });
+      .getByRole("button", { name: "保存草稿", exact: true });
     await saveButton.click();
     await expect.poll(() => mock.patchBodies.length).toBe(4);
     await expect(page.getByTestId("contract-draft-save-status")).toHaveText("已保存");
@@ -325,13 +333,15 @@ test.describe("合同条款保存生命周期", () => {
 
     const patchesBeforeCleanSave = mock.patchBodies.length;
     const readsBeforeCleanSave = mock.workbenchReadCalls();
+    const previewsBeforeCleanSave = mock.previewGenerationCalls();
     await saveButton.click();
     await expect(page.getByTestId("contract-draft-manual-save-message")).toHaveText(
-      "当前内容已保存"
+      "文档预览生成中"
     );
     await page.waitForTimeout(200);
     expect(mock.patchBodies).toHaveLength(patchesBeforeCleanSave);
     expect(mock.workbenchReadCalls()).toBe(readsBeforeCleanSave);
+    expect(mock.previewGenerationCalls()).toBe(previewsBeforeCleanSave + 1);
 
     await mkdir(screenshotDir, { recursive: true });
     await page.screenshot({
@@ -356,6 +366,7 @@ async function installRoutes(page: Page) {
   let currentCode: string | null = null;
   let serverClauses = cloneJson(initialClauses());
   let failNextPatch = false;
+  let previewGenerationCalls = 0;
 
   await page.route("**/api/auth/login", (route) => fulfillJson(route, {
     user: {
@@ -403,8 +414,23 @@ async function installRoutes(page: Page) {
     `**/api/contract-workbench/${versionId}/negotiation-rounds`,
     (route) => fulfillJson(route, [])
   );
-  await page.route(`**/api/contract-workbench/${versionId}`, (route) => {
-    if (route.request().method() !== "PATCH") return route.fallback();
+  await page.route(`**/api/contract-drafts/${versionId}/edit-lease**`, (route) => {
+    if (route.request().method() === "DELETE") {
+      return fulfillJson(route, { released: true });
+    }
+    return fulfillJson(route, {
+      token: "lease-token",
+      leaseRevision: 1,
+      expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+      heartbeatIntervalMs: 60_000
+    });
+  });
+  await page.route(`**/api/contract-drafts/${versionId}/preview-generation`, (route) => {
+    previewGenerationCalls += 1;
+    return fulfillJson(route, { queued: true });
+  });
+  await page.route(`**/api/contract-drafts/${versionId}`, (route) => {
+    if (route.request().method() !== "PUT") return route.fallback();
     const body = route.request().postDataJSON() as DraftPatchBody;
     patchBodies.push(cloneJson(body));
     patchTimes.push(Date.now());
@@ -414,15 +440,27 @@ async function installRoutes(page: Page) {
     }
     currentRevision += 1;
     currentCode ??= formalContractCode;
-    if (Array.isArray(body.clauses)) {
-      serverClauses = cloneJson(body.clauses);
+    if (Array.isArray(body.draft?.clauses)) {
+      serverClauses = cloneJson(body.draft.clauses);
     }
     return fulfillJson(route, {
-      id: versionId,
-      draftRevision: currentRevision
+      contractVersionId: versionId,
+      draftRevision: currentRevision,
+      savedAt: new Date().toISOString(),
+      effectiveChangedSections: ["draft"],
+      amounts: {
+        taxInclusiveAmountCents: "0",
+        taxExclusiveAmountCents: "0",
+        taxAmountCents: "0"
+      },
+      billRevisions: {},
+      issueCounts: {},
+      readiness: { ready: false, blockingMessages: [], warningMessages: [] },
+      documentsOutdated: true,
+      availableActions: []
     });
   });
-  await page.route(`**/api/contract-workbench/${contractId}`, (route) => {
+  await page.route(`**/api/contract-drafts/${versionId}/workbench`, (route) => {
     workbenchReads += 1;
     return fulfillJson(route, workbench({
       code: currentCode,
@@ -435,6 +473,7 @@ async function installRoutes(page: Page) {
     patchBodies,
     patchTimes,
     workbenchReadCalls: () => workbenchReads,
+    previewGenerationCalls: () => previewGenerationCalls,
     failNextSave: () => {
       failNextPatch = true;
     }
@@ -487,6 +526,22 @@ function workbench(input: {
     parties: [],
     bills: [],
     paymentTerms: { originalText: "", stages: [] },
+    draft: {},
+    attachments: [],
+    lease: {
+      state: "available",
+      holderDisplayName: null,
+      expiresAt: null,
+      canTakeOver: false
+    },
+    settlementMode: {
+      value: "settlement_required",
+      source: "contract_director",
+      confirmedAt: "2026-07-25T00:00:00.000Z",
+      confirmedByUserId: "contract-director-1",
+      confirmationRequired: false,
+      canConfirm: false
+    },
     checkpoints: [],
     documents: [],
     readiness: { ready: false, blockingMessages: [], warningMessages: [] }
@@ -550,7 +605,7 @@ async function loginAndOpenWorkbench(page: Page) {
   await page.getByPlaceholder("请输入密码").fill("E2e@2026");
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await expect.poll(() => decodeURIComponent(new URL(page.url()).pathname)).toBe("/首页");
-  await page.goto(`/contracts/${contractId}/workbench`);
+  await page.goto(`/contracts/${contractId}/workbench?versionId=${versionId}`);
   await expect(page.getByRole("heading", { name: "条款即时入模回归合同" })).toBeVisible();
 }
 
@@ -567,10 +622,9 @@ async function expectHealthyWorkbench(page: Page) {
 }
 
 async function openSection(page: Page, label: "条款" | "清单") {
-  await page
-    .locator(".business-tabs")
-    .getByText(label, { exact: true })
-    .click();
+  const sectionId = label === "条款" ? "clauses" : "bill_tax";
+  await page.locator(`[data-section-nav-id="${sectionId}"]`).click();
+  await expect(page.locator(`[data-section-id="${sectionId}"]`)).toBeVisible();
 }
 
 async function selectStandardClause(

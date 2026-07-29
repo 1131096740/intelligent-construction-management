@@ -316,7 +316,7 @@
             :loading="saveState === 'saving'"
             @click="onSave"
           >
-            保存
+            保存草稿
           </t-button>
           <t-button
             v-if="editable"
@@ -923,7 +923,6 @@ import {
   confirmContractSettlementMode,
   listPublishedContractTemplates,
   previewContractTypeChange,
-  submitContractFromWorkbench,
   transferContractDraft,
   type ContractDraftChangedSection,
   type ContractDraftPartyModel,
@@ -998,7 +997,7 @@ import {
   type ContractWorkbenchSectionObservation
 } from "./workbench/contract-workbench-sections";
 import {
-  contractDraftManualSaveMessage,
+  contractDraftPreviewFeedbackText,
   contractDraftSaveReceiptText,
   contractDraftSaveStatusText,
   createContractDraftManualSaveFeedback,
@@ -1057,10 +1056,11 @@ const {
   canEdit,
   pendingLocalRecovery,
   saveNow,
+  queuePreviewForCurrentRevision,
+  submitNow,
   takeOverLease,
   restoreLocalRecovery,
   discardLocalRecovery,
-  clearLocalRecovery,
   retryConflictServerLoad,
   keepLocalAfterConflict,
   loadServerAfterConflict
@@ -2109,7 +2109,6 @@ async function onSave() {
   if (writeLocked.value) return;
   clearManualSaveMessage();
   errorMessage.value = "";
-  const hadDirtyContent = isDirty.value;
   const wasFormallySaved = formalSaveCompleted.value;
   let saved = false;
   try {
@@ -2125,11 +2124,31 @@ async function onSave() {
     return;
   }
   showManualSaveMessage(
-    contractDraftManualSaveMessage({
-      hadDirtyContent,
-      formalSaveCompleted: formalSaveCompleted.value
+    contractDraftPreviewFeedbackText({
+      savedRevision: savedRevision.value,
+      previewState: "saved"
     })
   );
+  await nextTick();
+  try {
+    const queued = await queuePreviewForCurrentRevision();
+    if (!queued) {
+      throw new Error("当前保存修订尚未收敛");
+    }
+    showManualSaveMessage(
+      contractDraftPreviewFeedbackText({
+        savedRevision: savedRevision.value,
+        previewState: "queueing"
+      })
+    );
+  } catch {
+    showManualSaveMessage(
+      contractDraftPreviewFeedbackText({
+        savedRevision: savedRevision.value,
+        previewState: "failed"
+      })
+    );
+  }
   if (
     shouldReloadContractAfterManualSave({
       wasFormalSaveCompleted: wasFormallySaved,
@@ -2258,11 +2277,14 @@ async function confirmSubmission() {
     }
     const latest = workbench.value;
     if (!latest) throw new Error("当前合同版本读取失败，本次未提交。");
-    await submitContractFromWorkbench(latest.version.id);
-    clearLocalRecovery();
+    const submitted = await submitNow();
+    if (!submitted) {
+      throw new Error("合同草稿未能以当前修订提交，请核对保存状态和编辑租约。");
+    }
     submissionConfirmVisible.value = false;
     submissionMessageTone.value = "success";
-    submissionMessage.value = "合同已提交审批。";
+    submissionMessage.value =
+      `合同 ${submitted.formalCode} 已提交审批，审批实例 ${submitted.approvalInstanceId}。`;
     navigationBypass.value = true;
     await router.push(`/contracts/${latest.contract.id}`);
   } catch (error) {
