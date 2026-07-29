@@ -1,6 +1,4 @@
-import { BadRequestException } from "@nestjs/common";
 import type { RecordProjectProxyPaymentDto } from "./dto/record-project-proxy-payment.dto";
-import type { RecordProjectReceiptDto } from "./dto/record-project-receipt.dto";
 import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
 import { projectMoneyToApi, ProjectService } from "./project.service";
 
@@ -63,29 +61,17 @@ describe("project money API boundary", () => {
 });
 
 describe("ProjectService", () => {
-  it.each(["1e3", "0"])(
-    "rejects receipt amount %s as HTTP 400 before opening a transaction",
-    async (amountCents) => {
-      const prisma = { $transaction: jest.fn() };
-      const service = new ProjectService(prisma as never);
+  it("stops every legacy project receipt write before opening a transaction", async () => {
+    const prisma = { $transaction: jest.fn() };
+    const service = new ProjectService(prisma as never);
 
-      const error = await service
-        .recordReceipt("project-1", "finance-1", {
-          receivedAt: "2026-07-02T00:00:00.000Z",
-          amountCents,
-          payerName: "总包单位",
-          sourceType: "general_contractor_payment",
-          voucherFileId: "file-1",
-          confirmationPassword: "current-password"
-        })
-        .catch((caught: unknown) => caught);
-
-      expect(error).toBeInstanceOf(BadRequestException);
-      expect((error as BadRequestException).getStatus()).toBe(400);
-      expect((error as Error).message).toBe("到账金额必须大于零");
-      expect(prisma.$transaction).not.toHaveBeenCalled();
-    }
-  );
+    await expect(
+      service.recordReceipt("project-1", "finance-1", {} as never)
+    ).rejects.toThrow(
+      "旧项目收款入口已停止新增；请分别登记业主付款、挂靠企业向我方拨款、挂靠扣款或待核对到账差额"
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
 
   it.each([
     {
@@ -107,31 +93,6 @@ describe("ProjectService", () => {
         actorUserId: string,
         value: unknown
       ) => Promise<unknown>)("user-1", input)
-    ).rejects.toThrow(message);
-    expect(prisma.$transaction).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    { field: "receivedAt", value: "bad-date", message: "到账日期不正确，请重新选择" },
-    { field: "payerName", value: "", message: "请填写付款方名称" },
-    { field: "sourceType", value: "bad-source", message: "到账来源类型不正确，请重新选择" },
-    { field: "voucherFileId", value: "", message: "请上传到账凭证" },
-    { field: "confirmationPassword", value: "", message: "请输入当前登录密码" }
-  ])("到账 $field 无效时返回中文错误", async ({ field, value, message }) => {
-    const prisma = { $transaction: jest.fn() };
-    const service = new ProjectService(prisma as never);
-    const input = {
-      receivedAt: "2026-07-02T00:00:00.000Z",
-      amountCents: "100",
-      payerName: "总包单位",
-      sourceType: "general_contractor_payment",
-      voucherFileId: "file-1",
-      confirmationPassword: "current-password",
-      [field]: value
-    };
-
-    await expect(
-      service.recordReceipt("project-1", "finance-1", input as never)
     ).rejects.toThrow(message);
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
@@ -759,6 +720,7 @@ describe("ProjectService", () => {
           { amountCents: BigInt(5000000) }
         ])
       },
+      projectUpstreamFundFact: { findMany: jest.fn().mockResolvedValue([]) },
       projectProxyPayment: {
         findMany: jest.fn().mockResolvedValue([
           { amountCents: BigInt(2000000) },
@@ -829,6 +791,8 @@ describe("ProjectService", () => {
       project: { id: "project-1", code: "JG-001", name: "总部综合楼" },
       cash: {
         actualReceiptsCents: "15000000",
+        legacyReceiptsCents: "15000000",
+        affiliateRemittanceCents: "0",
         supplierRefundsCents: "0",
         availableFundsCents: "-800000",
         actualPaidCents: "5500000",
@@ -843,6 +807,15 @@ describe("ProjectService", () => {
         operatingIncomeCents: "30000000",
         operatingCostCents: "8000000",
         grossProfitCents: "22000000"
+      },
+      upstreamFunds: {
+        ownerPaymentCents: "0",
+        affiliateRemittanceCents: "0",
+        affiliateDeductionCents: "0",
+        unreconciledReceiptDifferenceCents: "0",
+        writtenCount: 0,
+        oralCount: 0,
+        rows: []
       },
       counts: { contracts: 2, settlements: 3, payments: 4 },
       dataGaps: []
@@ -892,6 +865,7 @@ describe("ProjectService", () => {
       paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
       financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
       projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
+      projectUpstreamFundFact: { findMany: jest.fn().mockResolvedValue([]) },
       projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
       spotProcurement: {
@@ -951,6 +925,7 @@ describe("ProjectService", () => {
       paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
       financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
       projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
+      projectUpstreamFundFact: { findMany: jest.fn().mockResolvedValue([]) },
       projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamSettlement: {
         findMany: jest.fn().mockResolvedValue([])
@@ -996,6 +971,7 @@ describe("ProjectService", () => {
       paymentExecution: { findMany: jest.fn() },
       financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
       projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
+      projectUpstreamFundFact: { findMany: jest.fn().mockResolvedValue([]) },
       projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
       spotProcurement: { findMany: jest.fn().mockResolvedValue([]) },
@@ -1035,6 +1011,7 @@ describe("ProjectService", () => {
       paymentExecution: { findMany: jest.fn() },
       financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
       projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
+      projectUpstreamFundFact: { findMany: jest.fn().mockResolvedValue([]) },
       projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
       spotProcurement: { findMany: jest.fn().mockResolvedValue([]) },
@@ -1060,98 +1037,6 @@ describe("ProjectService", () => {
     await expect(service.getOperatingFundsOverview("missing")).rejects.toThrow(
       "项目不存在或已停用，请刷新后重试"
     );
-  });
-
-  it("records actual project receipt with voucher and audit log", async () => {
-    const receivedAt = "2026-07-02T00:00:00.000Z";
-    const createdAt = new Date("2026-07-02T01:00:00.000Z");
-    const tx = {
-      project: {
-        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
-      },
-      fileObject: {
-        findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "finance-1" })
-      },
-      projectReceipt: {
-        create: jest.fn().mockResolvedValue({
-          id: "receipt-1",
-          projectId: "project-1",
-          receivedAt: new Date(receivedAt),
-          amountCents: BigInt(2500000),
-          payerName: "总包单位",
-          sourceType: "general_contractor_payment",
-          description: "六月进度款",
-          voucherFileId: "file-1",
-          affiliateAssignmentId: "assignment-legacy-test",
-          affiliateBusinessPartyVersionId: "party-version-legacy-test",
-          affiliateNameSnapshot: "测试挂靠企业",
-          recordedByUserId: "finance-1",
-          voidedAt: null,
-          createdAt
-        })
-      },
-      auditLog: {
-        create: jest.fn()
-      }
-    };
-    const prisma = {
-      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
-    };
-    const auth = {
-      confirmPassword: jest.fn().mockResolvedValue(undefined)
-    };
-    const service = new ProjectService(prisma as never, undefined, auth as never);
-
-    const receipt = await service.recordReceipt("project-1", "finance-1", {
-      receivedAt,
-      amountCents: "2500000",
-      payerName: "总包单位",
-      sourceType: "general_contractor_payment",
-      description: "六月进度款",
-      voucherFileId: "file-1",
-      confirmationPassword: "current-password"
-    } satisfies RecordProjectReceiptDto);
-
-    expect(receipt).toEqual({
-      id: "receipt-1",
-      projectId: "project-1",
-      receivedAt,
-      amountCents: "2500000",
-      payerName: "总包单位",
-      sourceType: "general_contractor_payment",
-      sourceTypeLabel: "总包付款",
-      description: "六月进度款",
-      voucherFileId: "file-1",
-      affiliateAssignmentId: "assignment-legacy-test",
-      affiliateBusinessPartyVersionId: "party-version-legacy-test",
-      affiliateNameSnapshot: "测试挂靠企业",
-      recordedByUserId: "finance-1",
-      createdAt: createdAt.toISOString()
-    });
-    expect(auth.confirmPassword).toHaveBeenCalledWith("finance-1", "current-password");
-    expect(tx.projectReceipt.create).toHaveBeenCalledWith({
-      data: {
-        projectId: "project-1",
-        receivedAt: new Date(receivedAt),
-        amountCents: BigInt(2500000),
-        payerName: "总包单位",
-        sourceType: "general_contractor_payment",
-        description: "六月进度款",
-        voucherFileId: "file-1",
-        affiliateAssignmentId: "assignment-legacy-test",
-        affiliateBusinessPartyVersionId: "party-version-legacy-test",
-        affiliateNameSnapshot: "测试挂靠企业",
-        recordedByUserId: "finance-1"
-      }
-    });
-    expect(tx.auditLog.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        actorUserId: "finance-1",
-        action: "project.receipt.record",
-        businessType: "project_receipt",
-        businessId: "receipt-1"
-      })
-    });
   });
 
   it("records project proxy payment with voucher, settlement linkage, and audit log", async () => {
@@ -3449,55 +3334,4 @@ describe("ProjectService", () => {
     }
   });
 
-  it("rejects actual project receipt without voucher file", async () => {
-    const prisma = {
-      $transaction: jest.fn()
-    };
-    const service = new ProjectService(prisma as never);
-
-    await expect(
-      service.recordReceipt("project-1", "finance-1", {
-        receivedAt: "2026-07-02T00:00:00.000Z",
-        amountCents: "2500000",
-        payerName: "总包单位",
-        sourceType: "general_contractor_payment",
-        voucherFileId: "",
-        confirmationPassword: "current-password"
-      } satisfies RecordProjectReceiptDto)
-    ).rejects.toThrow("请上传到账凭证");
-    expect(prisma.$transaction).not.toHaveBeenCalled();
-  });
-
-  it("rejects receipt voucher uploaded by another user", async () => {
-    const tx = {
-      project: {
-        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
-      },
-      fileObject: {
-        findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "other-user" })
-      },
-      projectReceipt: {
-        create: jest.fn()
-      }
-    };
-    const prisma = {
-      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
-    };
-    const auth = {
-      confirmPassword: jest.fn().mockResolvedValue(undefined)
-    };
-    const service = new ProjectService(prisma as never, undefined, auth as never);
-
-    await expect(
-      service.recordReceipt("project-1", "finance-1", {
-        receivedAt: "2026-07-02T00:00:00.000Z",
-        amountCents: "2500000",
-        payerName: "总包单位",
-        sourceType: "general_contractor_payment",
-        voucherFileId: "file-1",
-        confirmationPassword: "current-password"
-      } satisfies RecordProjectReceiptDto)
-    ).rejects.toThrow("只能使用本人上传的到账凭证");
-    expect(tx.projectReceipt.create).not.toHaveBeenCalled();
-  });
 });

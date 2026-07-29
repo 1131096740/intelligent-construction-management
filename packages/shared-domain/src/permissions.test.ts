@@ -360,6 +360,15 @@ describe("role-specific gates", () => {
     expect(canPerform("project.receipt.record", ["chairman"])).toBe(false);
   });
 
+  it("requires finance roles for upstream fund recording and confirmation", () => {
+    expect(canPerform("project.upstream_fund_fact.record", ["finance_staff"])).toBe(true);
+    expect(canPerform("project.upstream_fund_fact.record", ["finance_director"])).toBe(true);
+    expect(canPerform("project.upstream_fund_fact.confirm", ["finance_staff"])).toBe(true);
+    expect(canPerform("project.upstream_fund_fact.confirm", ["finance_director"])).toBe(true);
+    expect(canPerform("project.upstream_fund_fact.record", ["project_manager"])).toBe(false);
+    expect(canPerform("project.upstream_fund_fact.confirm", ["chairman"])).toBe(false);
+  });
+
   it("requires finance staff or finance director to record project proxy payments", () => {
     expect(canPerform("project.proxy_payment.record", ["finance_staff"])).toBe(true);
     expect(canPerform("project.proxy_payment.record", ["finance_director"])).toBe(true);

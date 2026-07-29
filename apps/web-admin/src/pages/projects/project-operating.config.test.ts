@@ -152,6 +152,8 @@ function projectOverview(overrides: {
     },
     cash: {
       actualReceiptsCents: overrides.actualReceiptsCents,
+      legacyReceiptsCents: "0",
+      affiliateRemittanceCents: overrides.actualReceiptsCents ?? "0",
       supplierRefundsCents: overrides.supplierRefundsCents,
       availableFundsCents: overrides.availableFundsCents,
       actualPaidCents: overrides.actualPaidCents,
@@ -166,6 +168,15 @@ function projectOverview(overrides: {
       operatingIncomeCents: null,
       operatingCostCents: null,
       grossProfitCents: null
+    },
+    upstreamFunds: {
+      ownerPaymentCents: "0",
+      affiliateRemittanceCents: overrides.actualReceiptsCents ?? "0",
+      affiliateDeductionCents: "0",
+      unreconciledReceiptDifferenceCents: "0",
+      writtenCount: 0,
+      oralCount: 0,
+      rows: []
     },
     counts: {
       contracts: 0,

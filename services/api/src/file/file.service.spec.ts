@@ -4510,6 +4510,113 @@ describe("FileService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
+  it("allows project finance users to download upstream fund evidence", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "挂靠拨款依据.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "finance-uploader"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectReceipt: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectProxyPayment: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectUpstreamSettlement: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectUpstreamFundFact: {
+        findFirst: jest.fn().mockResolvedValue({ projectId: "project-1" })
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }])
+      },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.createDownloadTicket("file-1", {
+        actorUserId: "finance-1",
+        downloadReason: "上游资金依据复核"
+      })
+    ).resolves.toMatchObject({
+      downloadUrl: expect.stringContaining("actorUserId=finance-1")
+    });
+    expect(tx.projectUpstreamFundFact.findFirst).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { evidenceFileId: "file-1" },
+          { confirmationSignatureFileId: "file-1" }
+        ]
+      },
+      select: { projectId: true }
+    });
+  });
+
+  it("rejects non-finance project roles from downloading upstream fund evidence", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "挂靠拨款依据.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "finance-uploader"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectReceipt: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectProxyPayment: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectUpstreamSettlement: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectUpstreamFundFact: {
+        findFirst: jest.fn().mockResolvedValue({ projectId: "project-1" })
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "budget_staff" }])
+      },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.createDownloadTicket("file-1", {
+        actorUserId: "budget-1",
+        downloadReason: "上游资金依据复核"
+      })
+    ).rejects.toThrow("当前账号无权下载该上游资金资料");
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("does not grant upstream settlement voucher access through voided records", async () => {
     const tx = {
       fileObject: {
@@ -4552,7 +4659,13 @@ describe("FileService", () => {
       service.createDownloadTicket("file-1", { actorUserId: "budget-1", downloadReason: "资料下载复核" })
     ).rejects.toThrow("当前账号无权下载该资料");
     expect(tx.projectUpstreamSettlement.findFirst).toHaveBeenCalledWith({
-      where: { voucherFileId: "file-1", voidedAt: null },
+      where: {
+        OR: [
+          { voucherFileId: "file-1" },
+          { confirmationSignatureFileId: "file-1" }
+        ],
+        voidedAt: null
+      },
       select: { projectId: true }
     });
     expect(audit.record).not.toHaveBeenCalled();

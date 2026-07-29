@@ -274,17 +274,20 @@
       >
         <template v-if="overview || selectedProjectId">
           <section
-            v-if="canUseFundsOperations"
+            v-if="canRecordUpstreamFunds"
             class="panel receipt-panel"
           >
             <div class="panel-head">
-              <h2>实际收款登记</h2>
+              <div>
+                <h2>上游资金事实</h2>
+                <p>业主付款不进入我方现金；只有已确认的挂靠拨款增加可用资金。</p>
+              </div>
               <button
                 type="button"
                 :disabled="receiptSubmitting"
                 @click="submitReceipt"
               >
-                {{ receiptSubmitting ? "提交中" : "登记收款" }}
+                {{ receiptSubmitting ? "提交中" : "保存待确认" }}
               </button>
             </div>
             <form
@@ -292,15 +295,31 @@
               @submit.prevent="submitReceipt"
             >
               <label>
-                <span>收款日期</span>
+                <span>事实类型</span>
+                <select v-model="receiptForm.factType">
+                  <option value="owner_payment_to_affiliate">业主向挂靠企业付款</option>
+                  <option value="affiliate_remittance_to_company">挂靠企业向我方拨款</option>
+                  <option value="affiliate_deduction">挂靠企业扣款</option>
+                  <option value="unreconciled_receipt_difference">待核对到账差额</option>
+                </select>
+              </label>
+              <label>
+                <span>依据类型</span>
+                <select v-model="receiptForm.basisType">
+                  <option value="written">书面依据</option>
+                  <option value="oral">口头通知</option>
+                </select>
+              </label>
+              <label>
+                <span>发生日期</span>
                 <input
-                  v-model="receiptForm.receivedAt"
+                  v-model="receiptForm.occurredAt"
                   type="date"
                   required
                 >
               </label>
               <label>
-                <span>收款金额(元)</span>
+                <span>金额(元)</span>
                 <input
                   v-model.trim="receiptForm.amountYuan"
                   inputmode="decimal"
@@ -309,41 +328,34 @@
                 >
               </label>
               <label>
-                <span>付款单位</span>
+                <span>交易对方</span>
                 <input
-                  v-model.trim="receiptForm.payerName"
+                  v-model.trim="receiptForm.counterpartyName"
                   required
                 >
               </label>
-              <label>
-                <span>收款来源类型</span>
-                <select v-model="receiptForm.sourceType">
-                  <option value="general_contractor_payment">总包付款</option>
-                  <option value="owner_direct_payment">业主直付</option>
+              <label v-if="receiptForm.factType === 'affiliate_deduction'">
+                <span>扣款类型</span>
+                <select v-model="receiptForm.deductionCategory">
+                  <option value="management_fee">管理费</option>
+                  <option value="tax">税费</option>
+                  <option value="deposit">保证金</option>
+                  <option value="insurance">保险费</option>
                   <option value="other">其他</option>
                 </select>
               </label>
               <label>
-                <span>收款凭证</span>
+                <span>{{ receiptForm.basisType === "written" ? "书面依据" : "补充文件（选填）" }}</span>
                 <input
                   ref="receiptVoucherInput"
                   type="file"
                   accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
-                  required
+                  :required="receiptForm.basisType === 'written'"
                   @change="selectReceiptVoucher"
                 >
               </label>
-              <label>
-                <span>当前登录密码</span>
-                <input
-                  v-model="receiptForm.confirmationPassword"
-                  type="password"
-                  autocomplete="current-password"
-                  required
-                >
-              </label>
               <label class="receipt-description">
-                <span>收款说明</span>
+                <span>事实说明</span>
                 <input v-model.trim="receiptForm.description">
               </label>
             </form>
@@ -354,10 +366,55 @@
             >
               {{ receiptMessage }}
             </div>
+            <div class="expense-table-wrap jg-workspace-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>类型</th>
+                    <th>依据</th>
+                    <th>日期</th>
+                    <th>金额</th>
+                    <th>我方现金影响</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="fact in upstreamFundRows"
+                    :key="fact.id"
+                  >
+                    <td>{{ fact.factTypeLabel }}</td>
+                    <td>{{ fact.basisType === "written" ? "书面依据" : "口头通知" }}</td>
+                    <td>{{ formatDate(fact.occurredAt) }}</td>
+                    <td>{{ formatCents(fact.signedAmountCents) }}</td>
+                    <td>{{ formatCents(fact.cashEffectCents) }}</td>
+                    <td>{{ upstreamFundStatusLabel(fact.status) }}</td>
+                    <td>
+                      <button
+                        v-if="canConfirmUpstreamFundFact(fact)"
+                        type="button"
+                        class="table-action"
+                        :disabled="upstreamFundConfirmationBusy"
+                        @click="openUpstreamFundConfirmation(fact)"
+                      >
+                        {{ fact.basisType === "oral" ? "主管确认口头通知" : "确认书面事实" }}
+                      </button>
+                      <span v-else>—</span>
+                    </td>
+                  </tr>
+                  <tr v-if="upstreamFundRows.length === 0">
+                    <td colspan="7">
+                      暂无上游资金事实
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section
-            v-if="canUseFundsOperations"
+            v-if="canUseProxyPayments"
             class="panel receipt-panel"
           >
             <div class="panel-head">
@@ -908,6 +965,18 @@
     </t-tabs>
 
     <SensitiveActionDialog
+      v-model="upstreamFundConfirmationVisible"
+      title="确认上游资金事实"
+      :description="upstreamFundConfirmationDescription"
+      confirm-text="确认并冻结签名"
+      :require-password="true"
+      :loading="upstreamFundConfirmationBusy"
+      :error="upstreamFundConfirmationError"
+      @confirm="submitUpstreamFundConfirmation"
+      @cancel="closeUpstreamFundConfirmation"
+    />
+
+    <SensitiveActionDialog
       v-model="expenseLeaveDialogVisible"
       title="放弃未提交的项目支出填写？"
       description="当前内容仅保存在本页。继续后会清空未提交的表单，不会创建、删除或修改任何后端业务记录。"
@@ -923,6 +992,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
+  confirmProjectUpstreamFundFact,
   confirmProjectExpenseReceipt,
   createProject,
   createProjectExpenseRequest,
@@ -936,7 +1006,7 @@ import {
   recordProjectExpenseFinance,
   recordProjectExpensePurchaseExecution,
   recordProjectProxyPayment,
-  recordProjectReceipt,
+  recordProjectUpstreamFundFact,
   uploadPrivateFile,
   updateProject,
   type ProjectExpensePaymentMethod,
@@ -944,6 +1014,9 @@ import {
   type ProjectExpenseSubtype,
   type ProjectExpenseType,
   type ProjectOperatingOverviewReadModel,
+  type ProjectUpstreamFundBasisType,
+  type ProjectUpstreamFundFactReadModel,
+  type ProjectUpstreamFundFactType,
   type ProjectOptionReadModel
 } from "../../api/core-flow-read.api";
 import type {
@@ -979,7 +1052,6 @@ import {
 } from "./project-operating.config";
 import { promptSensitiveActionReason } from "../confirm-sensitive-action";
 
-type ReceiptSourceType = "general_contractor_payment" | "owner_direct_payment" | "other";
 type ProxyPaymentType = "material" | "equipment" | "labor" | "professional_subcontract" | "other";
 type ProjectExpenseRow = ProjectExpenseRequestListReadModel["rows"][number];
 
@@ -997,13 +1069,14 @@ const GLOBAL_PROJECT_OVERVIEW_ROLE_KEYS = new Set<RoleKey>([
 ]);
 
 interface ReceiptFormState {
-  receivedAt: string;
+  factType: ProjectUpstreamFundFactType;
+  basisType: ProjectUpstreamFundBasisType;
+  occurredAt: string;
   amountYuan: string;
-  payerName: string;
-  sourceType: ReceiptSourceType;
+  counterpartyName: string;
+  deductionCategory: "management_fee" | "tax" | "deposit" | "insurance" | "other";
   description: string;
   voucherFile: File | null;
-  confirmationPassword: string;
 }
 
 interface ProxyPaymentFormState {
@@ -1082,6 +1155,10 @@ const receiptMessage = ref("");
 const receiptMessageTone = ref<"success" | "danger">("success");
 const receiptForm = ref<ReceiptFormState>(createReceiptForm());
 const receiptVoucherInput = ref<HTMLInputElement | null>(null);
+const selectedUpstreamFundFact = ref<ProjectUpstreamFundFactReadModel | null>(null);
+const upstreamFundConfirmationVisible = ref(false);
+const upstreamFundConfirmationBusy = ref(false);
+const upstreamFundConfirmationError = ref("");
 const proxySubmitting = ref(false);
 const proxyMessage = ref("");
 const proxyMessageTone = ref<"success" | "danger">("success");
@@ -1144,6 +1221,16 @@ const projectBusinessEntries = computed(() =>
 );
 
 const projectExpenseRows = computed<ProjectExpenseRow[]>(() => projectExpenses.value?.rows ?? []);
+const upstreamFundRows = computed<ProjectUpstreamFundFactReadModel[]>(
+  () => overview.value?.upstreamFunds.rows ?? []
+);
+const upstreamFundConfirmationDescription = computed(() => {
+  const fact = selectedUpstreamFundFact.value;
+  if (!fact) return "";
+  return fact.basisType === "oral"
+    ? `该记录只有口头通知。财务主管确认后将冻结本人当前手写签名；${fact.factTypeLabel} ${formatCents(fact.amountCents)}。`
+    : `确认后将冻结本人当前手写签名，且该事实只能通过追加更正或反向处理；${fact.factTypeLabel} ${formatCents(fact.amountCents)}。`;
+});
 
 function projectExpenseViewCount(view: "formal_ledger" | "ended") {
   return projectExpenses.value?.viewCounts?.[view] ?? 0;
@@ -1194,12 +1281,13 @@ const canViewExecutiveOverview = computed(
     auth.user?.globalRoleKeys.some((role) => GLOBAL_PROJECT_OVERVIEW_ROLE_KEYS.has(role)) ?? false
 );
 
-const canUseFundsOperations = computed(
+const canRecordUpstreamFunds = computed(
   () =>
     auth.user?.roleKeys.some((role) =>
-      ["chairman", "general_manager", "project_manager", "finance_director", "finance_staff"].includes(role)
+      ["finance_director", "finance_staff"].includes(role)
     ) ?? false
 );
+const canUseProxyPayments = canRecordUpstreamFunds;
 
 const canReadProjectOverview = computed(
   () =>
@@ -1245,7 +1333,9 @@ const canCreateProjectExpense = computed(
 const cashItems = computed(() => {
   const cash = overview.value?.cash;
   return [
-    { label: "实际收款", value: formatCents(cash?.actualReceiptsCents ?? null) },
+    { label: "我方实际到账", value: formatCents(cash?.actualReceiptsCents ?? null) },
+    { label: "已确认挂靠拨款", value: formatCents(cash?.affiliateRemittanceCents ?? "0") },
+    { label: "历史收款口径", value: formatCents(cash?.legacyReceiptsCents ?? "0") },
     { label: "供应商退款", value: formatCents(cash?.supplierRefundsCents ?? null) },
     { label: "可用资金", value: formatCents(cash?.availableFundsCents ?? null) },
     { label: "已实付", value: formatCents(cash?.actualPaidCents ?? "0") },
@@ -1257,10 +1347,14 @@ const cashItems = computed(() => {
 
 const businessItems = computed(() => {
   const business = overview.value?.business;
+  const upstream = overview.value?.upstreamFunds;
   return [
     { label: "生效合同额", value: formatCents(business?.effectiveContractAmountCents ?? "0") },
     { label: "生效结算额", value: formatCents(business?.effectiveSettlementAmountCents ?? "0") },
     { label: "结算可付额", value: formatCents(business?.payableSettlementAmountCents ?? "0") },
+    { label: "业主向挂靠企业付款", value: formatCents(upstream?.ownerPaymentCents ?? "0") },
+    { label: "挂靠扣款", value: formatCents(upstream?.affiliateDeductionCents ?? "0") },
+    { label: "待核对到账差额", value: formatCents(upstream?.unreconciledReceiptDifferenceCents ?? "0") },
     { label: "经营收入", value: formatCents(business?.operatingIncomeCents ?? null) },
     { label: "经营成本", value: formatCents(business?.operatingCostCents ?? null) },
     { label: "毛利", value: formatCents(business?.grossProfitCents ?? null) }
@@ -1489,7 +1583,7 @@ async function loadOverview() {
             pageSize: expenseLedgerPageSize
           })
         : Promise.resolve(null),
-      canUseFundsOperations.value ? fetchPaymentContractOptions(projectId) : Promise.resolve([]),
+      canUseProxyPayments.value ? fetchPaymentContractOptions(projectId) : Promise.resolve([]),
       canCreateProjectExpense.value
         ? fetchSpotProcurementCapabilities(projectId).catch(() => ({ enabled: false }))
         : Promise.resolve({ enabled: false })
@@ -1648,34 +1742,87 @@ async function submitReceipt() {
   receiptMessage.value = "";
   try {
     const form = receiptForm.value;
-    if (!form.voucherFile) {
-      throw new Error("请上传收款凭证");
+    if (form.basisType === "written" && !form.voucherFile) {
+      throw new Error("书面依据的上游资金事实必须上传依据文件");
     }
-    const receivedAt = requiredText(form.receivedAt, "收款日期");
-    const amountCents = parseYuanToCents(form.amountYuan, "收款金额");
-    const payerName = requiredText(form.payerName, "付款单位");
-    const confirmationPassword = requiredText(form.confirmationPassword, "当前登录密码");
-    const voucher = await uploadPrivateFile(form.voucherFile, form.voucherFile.name);
-    await recordProjectReceipt(projectId, {
-      receivedAt,
+    const occurredAt = requiredText(form.occurredAt, "发生日期");
+    const amountCents = parseYuanToCents(form.amountYuan, "上游资金金额");
+    const counterpartyName = requiredText(form.counterpartyName, "交易对方");
+    const evidence = form.voucherFile
+      ? await uploadPrivateFile(form.voucherFile, form.voucherFile.name)
+      : null;
+    await recordProjectUpstreamFundFact(projectId, {
+      factType: form.factType,
+      basisType: form.basisType,
+      occurredAt,
       amountCents,
-      payerName,
-      sourceType: form.sourceType,
+      counterpartyName,
+      ...(form.factType === "affiliate_deduction"
+        ? { deductionCategory: form.deductionCategory }
+        : {}),
       description: form.description.trim() || undefined,
-      voucherFileId: voucher.id,
-      confirmationPassword
+      evidenceFileId: evidence?.id,
+      idempotencyKey: crypto.randomUUID()
     });
-    receiptForm.value = createReceiptForm(form.sourceType);
+    receiptForm.value = createReceiptForm(form.factType);
     if (receiptVoucherInput.value) {
       receiptVoucherInput.value.value = "";
     }
     await loadOverview();
     receiptMessageTone.value = "success";
-    receiptMessage.value = "实际收款已登记，项目经营数据已刷新。";
+    receiptMessage.value =
+      form.factType === "unreconciled_receipt_difference"
+        ? "到账差额已进入待核对，不会自动生成扣款或成本。"
+        : "上游资金事实已保存待独立确认。";
   } catch (error) {
-    setReceiptError(error instanceof Error ? error.message : "登记收款失败");
+    setReceiptError(error instanceof Error ? error.message : "登记上游资金事实失败");
   } finally {
     receiptSubmitting.value = false;
+  }
+}
+
+function canConfirmUpstreamFundFact(fact: ProjectUpstreamFundFactReadModel) {
+  if (fact.status !== "pending_confirm") return false;
+  const roles = auth.user?.roleKeys ?? [];
+  return fact.basisType === "oral"
+    ? roles.includes("finance_director")
+    : roles.some((role) => role === "finance_staff" || role === "finance_director");
+}
+
+function openUpstreamFundConfirmation(fact: ProjectUpstreamFundFactReadModel) {
+  selectedUpstreamFundFact.value = fact;
+  upstreamFundConfirmationError.value = "";
+  upstreamFundConfirmationVisible.value = true;
+}
+
+function closeUpstreamFundConfirmation() {
+  if (upstreamFundConfirmationBusy.value) return;
+  upstreamFundConfirmationVisible.value = false;
+  selectedUpstreamFundFact.value = null;
+  upstreamFundConfirmationError.value = "";
+}
+
+async function submitUpstreamFundConfirmation(values: { reason: string; password: string }) {
+  const projectId = selectedProjectId.value;
+  const fact = selectedUpstreamFundFact.value;
+  if (!projectId || !fact) return;
+  upstreamFundConfirmationBusy.value = true;
+  upstreamFundConfirmationError.value = "";
+  try {
+    await confirmProjectUpstreamFundFact(projectId, fact.id, {
+      confirmationPassword: values.password,
+      confirmationActionId: crypto.randomUUID()
+    });
+    upstreamFundConfirmationVisible.value = false;
+    selectedUpstreamFundFact.value = null;
+    await loadOverview();
+    receiptMessageTone.value = "success";
+    receiptMessage.value = "上游资金事实已确认，并冻结确认人的手写签名版本。";
+  } catch (error) {
+    upstreamFundConfirmationError.value =
+      error instanceof Error ? error.message : "确认上游资金事实失败";
+  } finally {
+    upstreamFundConfirmationBusy.value = false;
   }
 }
 
@@ -1724,15 +1871,18 @@ async function submitProxyPayment() {
   }
 }
 
-function createReceiptForm(sourceType: ReceiptSourceType = "general_contractor_payment"): ReceiptFormState {
+function createReceiptForm(
+  factType: ProjectUpstreamFundFactType = "affiliate_remittance_to_company"
+): ReceiptFormState {
   return {
-    receivedAt: todayText(),
+    factType,
+    basisType: "written",
+    occurredAt: todayText(),
     amountYuan: "",
-    payerName: "",
-    sourceType,
+    counterpartyName: "",
+    deductionCategory: "management_fee",
     description: "",
-    voucherFile: null,
-    confirmationPassword: ""
+    voucherFile: null
   };
 }
 
@@ -2082,6 +2232,20 @@ function formatCents(value: string | null): string {
 
 function centsToYuanInput(value: string): string {
   return centsTextToYuanText(value).replaceAll(",", "");
+}
+
+function upstreamFundStatusLabel(status: ProjectUpstreamFundFactReadModel["status"]) {
+  if (status === "confirmed") return "已确认";
+  if (status === "pending_reconciliation") return "待核对";
+  return "待确认";
+}
+
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date(value));
 }
 
 function formatDateTime(value: string): string {

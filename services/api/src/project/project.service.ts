@@ -1,6 +1,8 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
+  GoneException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -8,6 +10,7 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { canPerform, resolveEffectiveRoleKeys, type RoleKey } from "@jiangkong/shared-domain";
+import { createHash } from "node:crypto";
 import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
@@ -38,6 +41,7 @@ import { loadSettlementPaymentConfirmationFacts } from "../payment/settlement-co
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 import type { AssignProjectAffiliateDto } from "./dto/assign-project-affiliate.dto";
 import type { ConfirmProjectUpstreamSettlementDto } from "./dto/confirm-project-upstream-settlement.dto";
+import type { ConfirmProjectUpstreamFundFactDto } from "./dto/confirm-project-upstream-fund-fact.dto";
 import type {
   RecordProjectProxyPaymentDto,
   ProjectProxyPaymentType
@@ -45,8 +49,19 @@ import type {
 import type { ConfirmProjectOwnerContractDto } from "./dto/confirm-project-owner-contract.dto";
 import type { CreateProjectDto } from "./dto/create-project.dto";
 import type { RecordProjectOwnerContractDto } from "./dto/record-project-owner-contract.dto";
-import type { RecordProjectReceiptDto, ProjectReceiptSourceType } from "./dto/record-project-receipt.dto";
+import type { RecordProjectReceiptDto } from "./dto/record-project-receipt.dto";
 import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
+import {
+  PROJECT_AFFILIATE_DEDUCTION_CATEGORIES,
+  PROJECT_UPSTREAM_FUND_BASIS_TYPES,
+  PROJECT_UPSTREAM_FUND_ENTRY_KINDS,
+  PROJECT_UPSTREAM_FUND_FACT_TYPES,
+  type ProjectAffiliateDeductionCategory,
+  type ProjectUpstreamFundBasisType,
+  type ProjectUpstreamFundEntryKind,
+  type ProjectUpstreamFundFactType,
+  type RecordProjectUpstreamFundFactDto
+} from "./dto/record-project-upstream-fund-fact.dto";
 import type { RequestProjectFinancingQuotaDto } from "./dto/request-project-financing-quota.dto";
 import type { RequestSettlementExceptionQuotaDto } from "./dto/request-settlement-exception-quota.dto";
 import type { ReviewProjectFinancingQuotaDto } from "./dto/review-project-financing-quota.dto";
@@ -56,7 +71,7 @@ import type { UpdateProjectDto } from "./dto/update-project.dto";
 import { resolveCurrentProjectAffiliate } from "./project-affiliate-subject";
 
 const UPSTREAM_SETTLEMENT_GAP =
-  "缺少对上结算/业主审定台账，当前经营收入和毛利为实际收款与总包代付发生口径。";
+  "缺少已确认上游结算，当前经营收入仅按已确认业主付款事实展示，不把挂靠拨款误作收入。";
 const FINANCING_LIMIT_GAP = "缺少项目垫资额度台账，当前可用资金未包含批准垫资额度。";
 const PROJECT_OPTION_POSITIONS = new Set<RoleKey>([
   ...PROJECT_OVERVIEW_READ_POSITION_KEYS,
@@ -97,10 +112,11 @@ const ROLE_LABELS: Record<RoleKey, string> = {
   employee: "员工",
   super_admin: "系统管理员"
 };
-const RECEIPT_SOURCE_LABELS: Record<ProjectReceiptSourceType, string> = {
-  general_contractor_payment: "总包付款",
-  owner_direct_payment: "甲方直付",
-  other: "其他"
+const UPSTREAM_FUND_FACT_LABELS: Record<ProjectUpstreamFundFactType, string> = {
+  owner_payment_to_affiliate: "业主向挂靠企业付款",
+  affiliate_remittance_to_company: "挂靠企业向我方拨款",
+  affiliate_deduction: "挂靠企业扣款",
+  unreconciled_receipt_difference: "待核对到账差额"
 };
 const PROXY_PAYMENT_TYPE_LABELS: Record<ProjectProxyPaymentType, string> = {
   material: "材料",
@@ -595,6 +611,7 @@ export class ProjectService {
       payments,
       financeRecords,
       projectReceipts,
+      upstreamFundFacts,
       supplierRefundAmountCents,
       projectProxyPayments,
       projectUpstreamSettlements,
@@ -627,6 +644,10 @@ export class ProjectService {
       this.prisma.projectReceipt.findMany({
         where: { projectId, voidedAt: null },
         select: { amountCents: true }
+      }),
+      this.prisma.projectUpstreamFundFact.findMany({
+        where: { projectId },
+        orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }]
       }),
       findProjectSpotProcurementRefundAmounts(
         this.prisma,
@@ -727,10 +748,25 @@ export class ProjectService {
       },
       new Map<string, bigint>()
     );
-    const actualReceiptsCents = sumDbMoneyToBigInt(
+    const legacyReceiptsCents = sumDbMoneyToBigInt(
       projectReceipts.map((receipt) => receipt.amountCents),
-      "项目实收金额"
+      "历史项目实收金额"
     );
+    const ownerPaymentCents = upstreamFundFactNetAmount(
+      upstreamFundFacts,
+      "owner_payment_to_affiliate"
+    );
+    const affiliateRemittanceCents = upstreamFundFactNetAmount(
+      upstreamFundFacts,
+      "affiliate_remittance_to_company"
+    );
+    const affiliateDeductionCents = upstreamFundFactNetAmount(
+      upstreamFundFacts,
+      "affiliate_deduction"
+    );
+    const unreconciledReceiptDifferenceCents =
+      upstreamFundUnreconciledDifference(upstreamFundFacts);
+    const actualReceiptsCents = legacyReceiptsCents + affiliateRemittanceCents;
     const supplierRefundsCents = sumDbMoneyToBigInt(
       supplierRefundAmountCents,
       "供应商退款到账金额"
@@ -762,8 +798,9 @@ export class ProjectService {
     );
     const operatingIncomeCents = projectUpstreamSettlements.length
       ? upstreamSettlementCents
-      : actualReceiptsCents + proxyPaymentCents;
-    const operatingCostCents = actualPaidCents + proxyPaymentCents;
+      : ownerPaymentCents;
+    const operatingCostCents =
+      actualPaidCents + proxyPaymentCents + affiliateDeductionCents;
     const spotCashRequests = spotProcurementPayments.map(
       spotProcurementPaymentToMoneyRequestValue
     );
@@ -802,6 +839,8 @@ export class ProjectService {
       project,
       cash: {
         actualReceiptsCents: projectMoneyToApi(actualReceiptsCents),
+        legacyReceiptsCents: projectMoneyToApi(legacyReceiptsCents),
+        affiliateRemittanceCents: projectMoneyToApi(affiliateRemittanceCents),
         supplierRefundsCents:
           projectMoneyToApi(supplierRefundsCents),
         availableFundsCents: projectMoneyToApi(availableFundsCents),
@@ -838,6 +877,16 @@ export class ProjectService {
         operatingCostCents: projectMoneyToApi(operatingCostCents),
         grossProfitCents: projectMoneyToApi(operatingIncomeCents - operatingCostCents)
       },
+      upstreamFunds: {
+        ownerPaymentCents: projectMoneyToApi(ownerPaymentCents),
+        affiliateRemittanceCents: projectMoneyToApi(affiliateRemittanceCents),
+        affiliateDeductionCents: projectMoneyToApi(affiliateDeductionCents),
+        unreconciledReceiptDifferenceCents:
+          projectMoneyToApi(unreconciledReceiptDifferenceCents),
+        writtenCount: upstreamFundFacts.filter((fact) => fact.basisType === "written").length,
+        oralCount: upstreamFundFacts.filter((fact) => fact.basisType === "oral").length,
+        rows: upstreamFundFacts.map(toUpstreamFundFactReadModel)
+      },
       counts: {
         contracts: contracts.length,
         settlements: settlements.length,
@@ -848,83 +897,377 @@ export class ProjectService {
   }
 
   async recordReceipt(projectId: string, actorUserId: string, input: RecordProjectReceiptDto) {
-    const amountCents = normalizePositiveMoneyCents(input.amountCents, "到账金额必须大于零");
-    const receivedAt = parseReceiptDate(input.receivedAt);
-    const payerName = requiredTrimmed(input.payerName, "请填写付款方名称");
-    const sourceType = normalizeSourceType(input.sourceType);
-    const voucherFileId = requiredTrimmed(input.voucherFileId, "请上传到账凭证");
+    void projectId;
+    void actorUserId;
+    void input;
+    throw new GoneException(
+      "旧项目收款入口已停止新增；请分别登记业主付款、挂靠企业向我方拨款、挂靠扣款或待核对到账差额"
+    );
+  }
+
+  async recordUpstreamFundFact(
+    projectId: string,
+    actorUserId: string,
+    input: RecordProjectUpstreamFundFactDto
+  ) {
+    const factType = normalizeUpstreamFundFactType(input.factType);
+    const basisType = normalizeUpstreamFundBasisType(input.basisType);
+    const entryKind = normalizeUpstreamFundEntryKind(input.entryKind ?? "original");
+    const occurredAt = parseUpstreamFundDate(input.occurredAt);
+    const amountCents = normalizePositiveMoneyCents(
+      input.amountCents,
+      "上游资金金额必须大于零"
+    );
+    const counterpartyName = requiredTrimmed(input.counterpartyName, "请填写交易对方名称");
+    const deductionCategory = normalizeDeductionCategory(
+      factType,
+      input.deductionCategory
+    );
+    const upstreamSettlementId = optionalTrimmed(input.upstreamSettlementId);
+    const evidenceFileId = optionalTrimmed(input.evidenceFileId);
+    const adjustsFactId = optionalTrimmed(input.adjustsFactId);
+    const effectDirection = normalizeUpstreamFundEffectDirection(
+      entryKind,
+      input.effectDirection
+    );
+    const description =
+      typeof input.description === "string" ? input.description.trim() || undefined : undefined;
+    const idempotencyKey = requiredTrimmed(input.idempotencyKey, "请提供上游资金登记幂等键");
+
+    if (basisType === "written" && !evidenceFileId) {
+      throw new BadRequestException("书面依据的上游资金事实必须上传依据文件");
+    }
+    if (entryKind === "original" && adjustsFactId) {
+      throw new BadRequestException("原始上游资金事实不能关联被调整记录");
+    }
+    if (entryKind !== "original" && !adjustsFactId) {
+      throw new BadRequestException("更正、反向或重分类必须关联原上游资金事实");
+    }
+    if (
+      factType === "unreconciled_receipt_difference" &&
+      entryKind !== "original"
+    ) {
+      throw new BadRequestException("待核对到账差额只能追加重分类事实，不能直接覆盖");
+    }
+
+    const requestFingerprint = upstreamFundRequestFingerprint({
+      projectId,
+      actorUserId,
+      factType,
+      basisType,
+      entryKind,
+      adjustsFactId,
+      effectDirection,
+      occurredAt: occurredAt.toISOString(),
+      amountCents: amountCents.toString(),
+      counterpartyName,
+      deductionCategory,
+      upstreamSettlementId,
+      evidenceFileId,
+      description
+    });
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const existing = await tx.projectUpstreamFundFact.findUnique({
+          where: { idempotencyKey }
+        });
+        if (existing) {
+          if (
+            existing.projectId !== projectId ||
+            existing.recordedByUserId !== actorUserId ||
+            existing.requestFingerprint !== requestFingerprint
+          ) {
+            throw new ConflictException("上游资金登记幂等键已用于不同请求");
+          }
+          return toUpstreamFundFactReadModel(existing);
+        }
+
+        const project = await tx.project.findFirst({
+          where: { id: projectId, isActive: true },
+          select: { id: true }
+        });
+        if (!project) {
+          throw new NotFoundException("项目不存在或已停用，请刷新后重试");
+        }
+        const roleKeys = await this.loadActorRoleKeys(tx, actorUserId, projectId);
+        const recordedByRoleKey = roleKeys.includes("finance_director")
+          ? "finance_director"
+          : roleKeys.includes("finance_staff")
+            ? "finance_staff"
+            : null;
+        if (!recordedByRoleKey) {
+          throw new ForbiddenException("只有项目财务人员或财务主管可以登记上游资金事实");
+        }
+
+        const currentAffiliate = await resolveCurrentProjectAffiliate(tx, project.id);
+        if (upstreamSettlementId) {
+          const settlement = await tx.projectUpstreamSettlement.findFirst({
+            where: {
+              id: upstreamSettlementId,
+              projectId,
+              status: "confirmed",
+              voidedAt: null
+            },
+            select: { id: true }
+          });
+          if (!settlement) {
+            throw new BadRequestException("关联上游结算不存在、未确认或不属于当前项目");
+          }
+        }
+
+        if (adjustsFactId) {
+          await tx.$queryRaw(Prisma.sql`
+            SELECT "id"
+            FROM "ProjectUpstreamFundFact"
+            WHERE "id" = ${adjustsFactId}
+              AND "projectId" = ${projectId}
+            FOR UPDATE
+          `);
+          const target = await tx.projectUpstreamFundFact.findFirst({
+            where: { id: adjustsFactId, projectId }
+          });
+          if (!target) {
+            throw new NotFoundException("被调整的上游资金事实不存在");
+          }
+          const existingAdjustments = await tx.projectUpstreamFundFact.findMany({
+            where: {
+              adjustsFactId,
+              status: { in: ["pending_confirm", "confirmed"] }
+            },
+            select: {
+              entryKind: true,
+              effectDirection: true,
+              amountCents: true
+            }
+          });
+          assertUpstreamFundAdjustment(
+            target,
+            existingAdjustments,
+            { factType, entryKind, effectDirection, amountCents }
+          );
+        }
+
+        const evidence = evidenceFileId
+          ? await tx.fileObject.findUnique({
+              where: { id: evidenceFileId },
+              select: {
+                id: true,
+                uploadedByUserId: true,
+                storageStatus: true,
+                contentSha256: true
+              }
+            })
+          : null;
+        if (evidenceFileId && !evidence) {
+          throw new NotFoundException("上游资金依据文件不存在，请重新上传");
+        }
+        if (evidence && evidence.uploadedByUserId !== actorUserId) {
+          throw new BadRequestException("只能使用本人上传的上游资金依据文件");
+        }
+        if (
+          evidence &&
+          (evidence.storageStatus !== "active" ||
+            typeof evidence.contentSha256 !== "string" ||
+            evidence.contentSha256.length !== 64)
+        ) {
+          throw new BadRequestException("上游资金依据文件尚未完成有效性校验");
+        }
+
+        const status =
+          factType === "unreconciled_receipt_difference"
+            ? "pending_reconciliation"
+            : "pending_confirm";
+        const created = await tx.projectUpstreamFundFact.create({
+          data: {
+            projectId,
+            factType,
+            entryKind,
+            adjustsFactId,
+            effectDirection,
+            occurredAt,
+            amountCents,
+            counterpartyName,
+            basisType,
+            deductionCategory,
+            upstreamSettlementId,
+            affiliateAssignmentId: currentAffiliate.assignmentId,
+            affiliateBusinessPartyVersionId:
+              currentAffiliate.businessPartyVersionId,
+            affiliateNameSnapshot: currentAffiliate.name,
+            description,
+            evidenceFileId,
+            documentVersion: 1,
+            fileContentSha256Snapshot: evidence?.contentSha256 ?? null,
+            idempotencyKey,
+            requestFingerprint,
+            recordedByUserId: actorUserId,
+            recordedByRoleKey,
+            status
+          }
+        });
+
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "project.upstream_fund_fact.record",
+          businessType: factType,
+          businessId: created.id,
+          metadata: {
+            projectId,
+            factType,
+            entryKind,
+            adjustsFactId,
+            effectDirection,
+            amountCents: moneyCentsToApi(amountCents),
+            basisType,
+            deductionCategory,
+            upstreamSettlementId,
+            affiliateAssignmentId: currentAffiliate.assignmentId,
+            affiliateBusinessPartyVersionId:
+              currentAffiliate.businessPartyVersionId,
+            evidenceFileId,
+            fileContentSha256Snapshot: evidence?.contentSha256 ?? null,
+            status
+          }
+        });
+        return toUpstreamFundFactReadModel(created);
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        const existing = await this.prisma.projectUpstreamFundFact.findUnique({
+          where: { idempotencyKey }
+        });
+        if (
+          existing?.projectId === projectId &&
+          existing.recordedByUserId === actorUserId &&
+          existing.requestFingerprint === requestFingerprint
+        ) {
+          return toUpstreamFundFactReadModel(existing);
+        }
+        throw new ConflictException("上游资金事实已登记，请刷新台账后核对");
+      }
+      throw error;
+    }
+  }
+
+  async confirmUpstreamFundFact(
+    projectId: string,
+    factId: string,
+    actorUserId: string,
+    input: ConfirmProjectUpstreamFundFactDto,
+    now: Date = new Date()
+  ) {
     const confirmationPassword = requiredTrimmed(
       input.confirmationPassword,
       "请输入当前登录密码"
     );
-    const description =
-      typeof input.description === "string" ? input.description.trim() || undefined : undefined;
-
+    const confirmationActionId = requiredTrimmed(
+      input.confirmationActionId,
+      "请提供上游资金确认幂等键"
+    );
     if (!this.auth) {
-      throw new Error("Auth service is required to confirm project receipt");
+      throw new Error("Auth service is required to confirm upstream fund fact");
     }
-
     await this.auth.confirmPassword(actorUserId, confirmationPassword);
 
     return this.prisma.$transaction(async (tx) => {
-      const project = await tx.project.findFirst({
-        where: { id: projectId, isActive: true },
-        select: { id: true }
+      const replay = await tx.projectUpstreamFundFact.findUnique({
+        where: { confirmationActionId }
       });
-
-      if (!project) {
-        throw new NotFoundException("项目不存在或已停用，请刷新后重试");
+      if (replay) {
+        if (
+          replay.id !== factId ||
+          replay.projectId !== projectId ||
+          replay.confirmedByUserId !== actorUserId
+        ) {
+          throw new ConflictException("上游资金确认幂等键已用于不同动作");
+        }
+        return toUpstreamFundFactReadModel(replay);
       }
-      const currentAffiliate = await resolveCurrentProjectAffiliate(tx, project.id);
 
-      const voucher = await tx.fileObject.findUnique({
-        where: { id: voucherFileId },
-        select: { id: true, uploadedByUserId: true }
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id"
+        FROM "ProjectUpstreamFundFact"
+        WHERE "id" = ${factId}
+          AND "projectId" = ${projectId}
+        FOR UPDATE
+      `);
+      const fact = await tx.projectUpstreamFundFact.findFirst({
+        where: { id: factId, projectId }
       });
-
-      if (!voucher) {
-        throw new NotFoundException("到账凭证不存在，请重新上传");
+      if (!fact) {
+        throw new NotFoundException("上游资金事实不存在");
+      }
+      if (fact.factType === "unreconciled_receipt_difference") {
+        throw new BadRequestException("待核对到账差额不能直接确认成收入或成本");
+      }
+      if (fact.status !== "pending_confirm") {
+        throw new BadRequestException("当前上游资金事实状态不可确认");
       }
 
-      if (voucher.uploadedByUserId !== actorUserId) {
-        throw new BadRequestException("只能使用本人上传的到账凭证");
+      const roleKeys = await this.loadActorRoleKeys(tx, actorUserId, projectId);
+      const canConfirmWritten =
+        roleKeys.includes("finance_staff") || roleKeys.includes("finance_director");
+      const canConfirmOral = roleKeys.includes("finance_director");
+      if (
+        (fact.basisType === "written" && !canConfirmWritten) ||
+        (fact.basisType === "oral" && !canConfirmOral)
+      ) {
+        throw new ForbiddenException(
+          fact.basisType === "oral"
+            ? "口头通知必须由财务主管执行独立确认"
+            : "只有项目财务人员或财务主管可以确认书面依据资金事实"
+        );
       }
 
-      const receipt = await tx.projectReceipt.create({
+      const signature = await snapshotApprovalSignature(tx, actorUserId, {
+        required: true
+      });
+      const updated = await tx.projectUpstreamFundFact.updateMany({
+        where: {
+          id: factId,
+          projectId,
+          status: "pending_confirm",
+          confirmationActionId: null
+        },
         data: {
-          projectId: project.id,
-          receivedAt,
-          amountCents,
-          payerName,
-          sourceType,
-          affiliateAssignmentId: currentAffiliate.assignmentId,
-          affiliateBusinessPartyVersionId: currentAffiliate.businessPartyVersionId,
-          affiliateNameSnapshot: currentAffiliate.name,
-          description,
-          voucherFileId,
-          recordedByUserId: actorUserId
+          status: "confirmed",
+          confirmedByUserId: actorUserId,
+          confirmedAt: now,
+          confirmationActionId,
+          confirmationSignatureVersionId: signature.versionId,
+          confirmationSignatureFileId: signature.fileId,
+          confirmationSignatureSha256: signature.sha256
         }
       });
+      if (updated.count !== 1) {
+        throw new ConflictException("上游资金事实已被其他操作确认，请刷新后核对");
+      }
+      const confirmed = await tx.projectUpstreamFundFact.findUnique({
+        where: { id: factId }
+      });
+      if (!confirmed) {
+        throw new InternalServerErrorException("上游资金确认结果未正确保存，请稍后重试");
+      }
 
       await this.audit.record(tx, {
         actorUserId,
-        action: "project.receipt.record",
-        businessType: "project_receipt",
-        businessId: receipt.id,
+        action: "project.upstream_fund_fact.confirm",
+        businessType: confirmed.factType,
+        businessId: confirmed.id,
         metadata: {
-          projectId: project.id,
-          receiptId: receipt.id,
-          amountCents: moneyCentsToApi(amountCents),
-          sourceType,
-          affiliateAssignmentId: currentAffiliate.assignmentId,
-          affiliateBusinessPartyVersionId: currentAffiliate.businessPartyVersionId,
-          affiliateNameSnapshot: currentAffiliate.name,
-          payerName,
-          voucherFileId
+          projectId,
+          factId,
+          factType: confirmed.factType,
+          entryKind: confirmed.entryKind,
+          amountCents: moneyCentsToApi(confirmed.amountCents),
+          basisType: confirmed.basisType,
+          confirmationActionId,
+          confirmationSignatureVersionId: signature.versionId,
+          confirmedAt: now.toISOString()
         }
       });
-
-      return toReceiptReadModel(receipt);
+      return toUpstreamFundFactReadModel(confirmed);
     });
   }
 
@@ -2472,13 +2815,13 @@ function normalizePositiveMoneyCents(value: unknown, message: string): bigint {
   return cents;
 }
 
-function parseReceiptDate(value: unknown): Date {
-  if (typeof value !== "string") {
-    throw new BadRequestException("到账日期不正确，请重新选择");
+function parseUpstreamFundDate(value: unknown): Date {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new BadRequestException("请填写上游资金发生日期");
   }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
-    throw new BadRequestException("到账日期不正确，请重新选择");
+    throw new BadRequestException("上游资金发生日期不正确，请重新选择");
   }
   return parsed;
 }
@@ -2553,14 +2896,295 @@ function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }
 
-function normalizeSourceType(value: unknown): ProjectReceiptSourceType {
-  if (typeof value !== "string") {
-    throw new BadRequestException("到账来源类型不正确，请重新选择");
+function normalizeUpstreamFundFactType(value: unknown): ProjectUpstreamFundFactType {
+  if (
+    typeof value !== "string" ||
+    !(PROJECT_UPSTREAM_FUND_FACT_TYPES as readonly string[]).includes(value)
+  ) {
+    throw new BadRequestException("上游资金事实类型不正确");
   }
-  if (!Object.prototype.hasOwnProperty.call(RECEIPT_SOURCE_LABELS, value)) {
-    throw new BadRequestException("到账来源类型不正确，请重新选择");
+  return value as ProjectUpstreamFundFactType;
+}
+
+function normalizeUpstreamFundBasisType(value: unknown): ProjectUpstreamFundBasisType {
+  if (
+    typeof value !== "string" ||
+    !(PROJECT_UPSTREAM_FUND_BASIS_TYPES as readonly string[]).includes(value)
+  ) {
+    throw new BadRequestException("上游资金依据类型不正确");
   }
-  return value as ProjectReceiptSourceType;
+  return value as ProjectUpstreamFundBasisType;
+}
+
+function normalizeUpstreamFundEntryKind(value: unknown): ProjectUpstreamFundEntryKind {
+  if (
+    typeof value !== "string" ||
+    !(PROJECT_UPSTREAM_FUND_ENTRY_KINDS as readonly string[]).includes(value)
+  ) {
+    throw new BadRequestException("上游资金追加类型不正确");
+  }
+  return value as ProjectUpstreamFundEntryKind;
+}
+
+function normalizeDeductionCategory(
+  factType: ProjectUpstreamFundFactType,
+  value: unknown
+): ProjectAffiliateDeductionCategory | null {
+  if (factType !== "affiliate_deduction") {
+    if (value !== undefined && value !== null && value !== "") {
+      throw new BadRequestException("非挂靠扣款事实不能填写扣款类型");
+    }
+    return null;
+  }
+  if (
+    typeof value !== "string" ||
+    !(PROJECT_AFFILIATE_DEDUCTION_CATEGORIES as readonly string[]).includes(value)
+  ) {
+    throw new BadRequestException("请选择挂靠扣款类型");
+  }
+  return value as ProjectAffiliateDeductionCategory;
+}
+
+function normalizeUpstreamFundEffectDirection(
+  entryKind: ProjectUpstreamFundEntryKind,
+  value: unknown
+): "increase" | "decrease" {
+  if (entryKind === "original" || entryKind === "reclassification") {
+    if (value !== undefined && value !== "increase") {
+      throw new BadRequestException("原始或重分类事实只能追加正向金额");
+    }
+    return "increase";
+  }
+  if (value !== "increase" && value !== "decrease") {
+    throw new BadRequestException("更正或反向必须明确增加或减少方向");
+  }
+  if (entryKind === "reversal" && value !== "decrease") {
+    throw new BadRequestException("反向记录只能减少原事实金额");
+  }
+  return value;
+}
+
+function assertUpstreamFundAdjustment(
+  target: {
+    factType: string;
+    entryKind: string;
+    status: string;
+    amountCents: bigint;
+  },
+  existingAdjustments: Array<{
+    entryKind: string;
+    effectDirection: string;
+    amountCents: bigint;
+  }>,
+  requested: {
+    factType: ProjectUpstreamFundFactType;
+    entryKind: ProjectUpstreamFundEntryKind;
+    effectDirection: "increase" | "decrease";
+    amountCents: bigint;
+  }
+) {
+  if (target.entryKind !== "original") {
+    throw new BadRequestException("更正、反向或重分类必须直接引用原始资金事实");
+  }
+  if (
+    target.status !== "confirmed" &&
+    !(
+      target.factType === "unreconciled_receipt_difference" &&
+      target.status === "pending_reconciliation"
+    )
+  ) {
+    throw new BadRequestException("只能对已确认资金事实或待核对到账差额追加处理");
+  }
+  if (requested.entryKind === "reclassification") {
+    if (
+      target.factType !== "unreconciled_receipt_difference" ||
+      requested.factType !== "affiliate_deduction" ||
+      requested.effectDirection !== "increase"
+    ) {
+      throw new BadRequestException("只有待核对到账差额可以重分类为挂靠扣款");
+    }
+    const alreadyClassified = existingAdjustments
+      .filter((adjustment) => adjustment.entryKind === "reclassification")
+      .reduce(
+        (total, adjustment) =>
+          total + dbMoneyToBigInt(adjustment.amountCents, "已登记重分类金额"),
+        0n
+      );
+    if (
+      alreadyClassified + requested.amountCents >
+      dbMoneyToBigInt(target.amountCents, "待核对到账差额")
+    ) {
+      throw new BadRequestException("重分类金额不能超过原待核对到账差额");
+    }
+    return;
+  }
+  if (target.factType !== requested.factType) {
+    throw new BadRequestException("更正或反向记录必须与原资金事实类型一致");
+  }
+  if (
+    requested.entryKind === "reversal" &&
+    requested.amountCents !== dbMoneyToBigInt(target.amountCents, "原资金事实金额")
+  ) {
+    throw new BadRequestException("反向记录必须精确冲销被引用资金事实的金额");
+  }
+  if (
+    existingAdjustments.some((adjustment) => adjustment.entryKind === "reversal")
+  ) {
+    throw new BadRequestException("原资金事实已经反向，不能继续追加更正");
+  }
+  if (requested.entryKind === "reversal" && existingAdjustments.length > 0) {
+    throw new BadRequestException("已有更正的资金事实不能直接反向，请追加差额更正");
+  }
+  if (requested.effectDirection === "decrease") {
+    const remainingAmount = existingAdjustments.reduce(
+      (total, adjustment) =>
+        total +
+        (adjustment.effectDirection === "decrease"
+          ? -dbMoneyToBigInt(adjustment.amountCents, "已有减少更正金额")
+          : dbMoneyToBigInt(adjustment.amountCents, "已有增加更正金额")),
+      dbMoneyToBigInt(target.amountCents, "原资金事实金额")
+    );
+    if (requested.amountCents > remainingAmount) {
+      throw new BadRequestException("累计减少金额不能超过原资金事实的当前净额");
+    }
+  }
+}
+
+function upstreamFundRequestFingerprint(value: Record<string, unknown>) {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function upstreamFundFactNetAmount(
+  facts: Array<{
+    factType: string;
+    status: string;
+    effectDirection: string;
+    amountCents: bigint;
+  }>,
+  factType: ProjectUpstreamFundFactType
+) {
+  return facts
+    .filter((fact) => fact.factType === factType && fact.status === "confirmed")
+    .reduce(
+      (total, fact) =>
+        total +
+        (fact.effectDirection === "decrease"
+          ? -dbMoneyToBigInt(fact.amountCents, "上游资金事实金额")
+          : dbMoneyToBigInt(fact.amountCents, "上游资金事实金额")),
+      0n
+    );
+}
+
+function upstreamFundUnreconciledDifference(
+  facts: Array<{
+    factType: string;
+    entryKind: string;
+    status: string;
+    effectDirection: string;
+    amountCents: bigint;
+  }>
+) {
+  const pending = facts
+    .filter(
+      (fact) =>
+        fact.factType === "unreconciled_receipt_difference" &&
+        fact.status === "pending_reconciliation"
+    )
+    .reduce(
+      (total, fact) => total + dbMoneyToBigInt(fact.amountCents, "待核对到账差额"),
+      0n
+    );
+  const reclassified = facts
+    .filter(
+      (fact) =>
+        fact.factType === "affiliate_deduction" &&
+        fact.entryKind === "reclassification" &&
+        fact.status === "confirmed"
+    )
+    .reduce(
+      (total, fact) => total + dbMoneyToBigInt(fact.amountCents, "已重分类到账差额"),
+      0n
+    );
+  return pending > reclassified ? pending - reclassified : 0n;
+}
+
+function toUpstreamFundFactReadModel(fact: {
+  id: string;
+  projectId: string;
+  factType: string;
+  entryKind: string;
+  adjustsFactId: string | null;
+  effectDirection: string;
+  occurredAt: Date;
+  amountCents: bigint;
+  counterpartyName: string;
+  basisType: string;
+  deductionCategory: string | null;
+  upstreamSettlementId: string | null;
+  affiliateAssignmentId: string;
+  affiliateBusinessPartyVersionId: string;
+  affiliateNameSnapshot: string;
+  description: string | null;
+  evidenceFileId: string | null;
+  documentVersion: number;
+  fileContentSha256Snapshot: string | null;
+  idempotencyKey: string;
+  recordedByUserId: string;
+  recordedByRoleKey: string;
+  status: string;
+  confirmedByUserId: string | null;
+  confirmedAt: Date | null;
+  confirmationActionId: string | null;
+  confirmationSignatureVersionId: string | null;
+  confirmationSignatureFileId: string | null;
+  confirmationSignatureSha256: string | null;
+  createdAt: Date;
+}) {
+  const signedAmountCents =
+    fact.effectDirection === "decrease"
+      ? -dbMoneyToBigInt(fact.amountCents, "上游资金事实金额")
+      : dbMoneyToBigInt(fact.amountCents, "上游资金事实金额");
+  const cashEffectCents =
+    fact.status === "confirmed" &&
+    fact.factType === "affiliate_remittance_to_company"
+      ? signedAmountCents
+      : 0n;
+  return {
+    id: fact.id,
+    projectId: fact.projectId,
+    factType: fact.factType,
+    factTypeLabel:
+      UPSTREAM_FUND_FACT_LABELS[fact.factType as ProjectUpstreamFundFactType] ??
+      fact.factType,
+    entryKind: fact.entryKind,
+    adjustsFactId: fact.adjustsFactId,
+    effectDirection: fact.effectDirection,
+    occurredAt: fact.occurredAt.toISOString(),
+    amountCents: moneyCentsToApi(fact.amountCents),
+    signedAmountCents: moneyCentsToApi(signedAmountCents),
+    cashEffectCents: moneyCentsToApi(cashEffectCents),
+    counterpartyName: fact.counterpartyName,
+    basisType: fact.basisType,
+    deductionCategory: fact.deductionCategory,
+    upstreamSettlementId: fact.upstreamSettlementId,
+    affiliateAssignmentId: fact.affiliateAssignmentId,
+    affiliateBusinessPartyVersionId: fact.affiliateBusinessPartyVersionId,
+    affiliateNameSnapshot: fact.affiliateNameSnapshot,
+    description: fact.description,
+    evidenceFileId: fact.evidenceFileId,
+    documentVersion: fact.documentVersion,
+    fileContentSha256Snapshot: fact.fileContentSha256Snapshot,
+    recordedByUserId: fact.recordedByUserId,
+    recordedByRoleKey: fact.recordedByRoleKey,
+    status: fact.status,
+    confirmedByUserId: fact.confirmedByUserId,
+    confirmedAt: fact.confirmedAt?.toISOString() ?? null,
+    confirmationActionId: fact.confirmationActionId,
+    confirmationSignatureVersionId: fact.confirmationSignatureVersionId,
+    confirmationSignatureFileId: fact.confirmationSignatureFileId,
+    confirmationSignatureSha256: fact.confirmationSignatureSha256,
+    createdAt: fact.createdAt.toISOString()
+  };
 }
 
 function normalizeProxyPaymentType(value: unknown): ProjectProxyPaymentType {
@@ -2571,41 +3195,6 @@ function normalizeProxyPaymentType(value: unknown): ProjectProxyPaymentType {
     throw new BadRequestException("总包代付类型不正确，请重新选择");
   }
   return value as ProjectProxyPaymentType;
-}
-
-function toReceiptReadModel(receipt: {
-  id: string;
-  projectId: string;
-  receivedAt: Date;
-  amountCents: bigint;
-  payerName: string;
-  sourceType: string;
-  affiliateAssignmentId?: string | null;
-  affiliateBusinessPartyVersionId?: string | null;
-  affiliateNameSnapshot?: string | null;
-  description?: string | null;
-  voucherFileId: string;
-  recordedByUserId: string;
-  createdAt: Date;
-}) {
-  const sourceType = normalizeSourceType(receipt.sourceType as ProjectReceiptSourceType);
-  return {
-    id: receipt.id,
-    projectId: receipt.projectId,
-    receivedAt: receipt.receivedAt.toISOString(),
-    amountCents: projectMoneyToApi(receipt.amountCents),
-    payerName: receipt.payerName,
-    sourceType,
-    sourceTypeLabel: RECEIPT_SOURCE_LABELS[sourceType],
-    affiliateAssignmentId: receipt.affiliateAssignmentId ?? null,
-    affiliateBusinessPartyVersionId:
-      receipt.affiliateBusinessPartyVersionId ?? null,
-    affiliateNameSnapshot: receipt.affiliateNameSnapshot ?? null,
-    description: receipt.description ?? null,
-    voucherFileId: receipt.voucherFileId,
-    recordedByUserId: receipt.recordedByUserId,
-    createdAt: receipt.createdAt.toISOString()
-  };
 }
 
 function toProxyPaymentReadModel(proxyPayment: {

@@ -7,11 +7,13 @@ import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positio
 import { AssignProjectAffiliateDto } from "./dto/assign-project-affiliate.dto";
 import { ConfirmProjectOwnerContractDto } from "./dto/confirm-project-owner-contract.dto";
 import { ConfirmProjectUpstreamSettlementDto } from "./dto/confirm-project-upstream-settlement.dto";
+import { ConfirmProjectUpstreamFundFactDto } from "./dto/confirm-project-upstream-fund-fact.dto";
 import type { CreateProjectDto } from "./dto/create-project.dto";
 import { RecordProjectOwnerContractDto } from "./dto/record-project-owner-contract.dto";
 import { RecordProjectProxyPaymentDto } from "./dto/record-project-proxy-payment.dto";
 import { RecordProjectReceiptDto } from "./dto/record-project-receipt.dto";
 import { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
+import { RecordProjectUpstreamFundFactDto } from "./dto/record-project-upstream-fund-fact.dto";
 import { RequestProjectFinancingQuotaDto } from "./dto/request-project-financing-quota.dto";
 import { RequestSettlementExceptionQuotaDto } from "./dto/request-settlement-exception-quota.dto";
 import { ReviewProjectFinancingQuotaDto } from "./dto/review-project-financing-quota.dto";
@@ -85,6 +87,27 @@ export class ProjectController {
     @Body() body: RecordProjectReceiptDto
   ) {
     return this.projects.recordReceipt(projectId, user.id, body);
+  }
+
+  @Post(":projectId/upstream-fund-facts")
+  @RequireProjectRole("project.upstream_fund_fact.record")
+  recordUpstreamFundFact(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RecordProjectUpstreamFundFactDto
+  ) {
+    return this.projects.recordUpstreamFundFact(projectId, user.id, body);
+  }
+
+  @Post(":projectId/upstream-fund-facts/:fundFactId/confirmation")
+  @RequireProjectRole("project.upstream_fund_fact.confirm")
+  confirmUpstreamFundFact(
+    @Param("projectId") projectId: string,
+    @Param("fundFactId") fundFactId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ConfirmProjectUpstreamFundFactDto
+  ) {
+    return this.projects.confirmUpstreamFundFact(projectId, fundFactId, user.id, body);
   }
 
   @Post(":projectId/proxy-payments")

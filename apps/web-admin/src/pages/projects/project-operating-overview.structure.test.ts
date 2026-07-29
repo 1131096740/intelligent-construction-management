@@ -18,7 +18,7 @@ describe("project operating overview structure", () => {
   it("separates overview, expense-ledger and expense-create capabilities", () => {
     expect(source).toContain("canReadProjectOverview.value\n        ? fetchProjectOperatingOverview(projectId)");
     expect(source).toContain("canReadProjectExpenseLedger.value\n        ? fetchProjectExpenseRequests(projectId");
-    expect(source).toContain("canUseFundsOperations.value ? fetchPaymentContractOptions(projectId)");
+    expect(source).toContain("canUseProxyPayments.value ? fetchPaymentContractOptions(projectId)");
     expect(source).toContain("const canCreateProjectExpense = computed");
     expect(source).toContain('v-if="canCreateProjectExpense"');
     expect(source).toContain("auth.user?.globalRoleKeys.some");
@@ -28,6 +28,20 @@ describe("project operating overview structure", () => {
     expect(source).toContain("<t-select");
     expect(source).toContain("<t-collapse");
     expect(source).toContain("项目维护");
+  });
+
+  it("separates upstream owner payments, company remittances, deductions, and unresolved differences", () => {
+    expect(source).toContain('value="owner_payment_to_affiliate"');
+    expect(source).toContain('value="affiliate_remittance_to_company"');
+    expect(source).toContain('value="affiliate_deduction"');
+    expect(source).toContain('value="unreconciled_receipt_difference"');
+    expect(source).toContain('value="written"');
+    expect(source).toContain('value="oral"');
+    expect(source).toContain("recordProjectUpstreamFundFact");
+    expect(source).toContain("confirmProjectUpstreamFundFact");
+    expect(source).toContain("<SensitiveActionDialog");
+    expect(source).not.toContain("recordProjectReceipt");
+    expect(source).not.toContain('value="owner_direct_payment"');
   });
 
   it("routes pilot projects away from the legacy spot-purchase create option", () => {

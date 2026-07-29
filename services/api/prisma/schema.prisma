@@ -2251,6 +2251,46 @@ model ProjectReceipt {
   @@index([voucherFileId])
 }
 
+model ProjectUpstreamFundFact {
+  id                               String    @id @default(uuid())
+  projectId                        String
+  factType                         String
+  entryKind                        String    @default("original")
+  adjustsFactId                    String?
+  effectDirection                  String    @default("increase")
+  occurredAt                       DateTime
+  amountCents                      BigInt
+  counterpartyName                 String
+  basisType                        String
+  deductionCategory                String?
+  upstreamSettlementId             String?
+  affiliateAssignmentId            String
+  affiliateBusinessPartyVersionId  String
+  affiliateNameSnapshot            String
+  description                      String?
+  evidenceFileId                   String?
+  documentVersion                  Int       @default(1)
+  fileContentSha256Snapshot        String?
+  idempotencyKey                   String    @unique
+  requestFingerprint               String
+  recordedByUserId                 String
+  recordedByRoleKey                String
+  status                           String    @default("pending_confirm")
+  confirmedByUserId                String?
+  confirmedAt                      DateTime?
+  confirmationActionId             String?   @unique
+  confirmationSignatureVersionId   String?
+  confirmationSignatureFileId      String?
+  confirmationSignatureSha256      String?
+  createdAt                        DateTime  @default(now())
+  updatedAt                        DateTime  @updatedAt
+
+  @@index([projectId, factType, status, occurredAt])
+  @@index([adjustsFactId])
+  @@index([upstreamSettlementId])
+  @@index([evidenceFileId])
+}
+
 model ProjectProxyPayment {
   id                    String    @id @default(uuid())
   projectId             String

@@ -36,8 +36,9 @@ import {
   downloadProjectExpenseApprovalPdf,
   downloadProjectExpenseAttachment,
   confirmProjectOwnerContract,
-  recordProjectReceipt,
   recordProjectOwnerContract,
+  recordProjectUpstreamFundFact,
+  confirmProjectUpstreamFundFact,
   recordProjectProxyPayment,
   recordProjectUpstreamSettlement,
   confirmProjectUpstreamSettlement,
@@ -679,35 +680,48 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls[0][1]?.body).toBe(JSON.stringify({ name: "昆明项目" }));
   });
 
-  it("records project actual receipts through the backend", async () => {
+  it("records and confirms upstream fund facts through encoded backend routes", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => ({ id: "receipt-1" })
+      json: async () => ({ id: "fund-fact-1" })
     } as Response);
 
-    await recordProjectReceipt("project-1", {
-      receivedAt: "2026-07-02",
+    await recordProjectUpstreamFundFact("project/1", {
+      factType: "affiliate_remittance_to_company",
+      basisType: "written",
+      occurredAt: "2026-07-02",
       amountCents: "123456",
-      payerName: "建设单位",
-      sourceType: "owner_direct_payment",
-      description: "业主直付",
-      voucherFileId: "file-receipt-1",
-      confirmationPassword: "current-password"
+      counterpartyName: "挂靠企业",
+      evidenceFileId: "file-receipt-1",
+      idempotencyKey: "9ae0147a-da7b-4dba-b378-e80f87efdc46",
+      description: "挂靠企业向我方拨款"
+    });
+    await confirmProjectUpstreamFundFact("project/1", "fact/1", {
+      confirmationPassword: "current-password",
+      confirmationActionId: "6f9ac3b7-8c5e-4f98-8284-221ce7844a36"
     });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
-      "/api/projects/project-1/receipts"
+      "/api/projects/project%2F1/upstream-fund-facts",
+      "/api/projects/project%2F1/upstream-fund-facts/fact%2F1/confirmation"
     ]);
-    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+    expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
       JSON.stringify({
-        receivedAt: "2026-07-02",
+        factType: "affiliate_remittance_to_company",
+        basisType: "written",
+        occurredAt: "2026-07-02",
         amountCents: "123456",
-        payerName: "建设单位",
-        sourceType: "owner_direct_payment",
-        description: "业主直付",
-        voucherFileId: "file-receipt-1",
-        confirmationPassword: "current-password"
+        counterpartyName: "挂靠企业",
+        evidenceFileId: "file-receipt-1",
+        idempotencyKey: "9ae0147a-da7b-4dba-b378-e80f87efdc46",
+        description: "挂靠企业向我方拨款"
+      })
+    );
+    expect(fetchMock.mock.calls[1][1]?.body).toBe(
+      JSON.stringify({
+        confirmationPassword: "current-password",
+        confirmationActionId: "6f9ac3b7-8c5e-4f98-8284-221ce7844a36"
       })
     );
   });

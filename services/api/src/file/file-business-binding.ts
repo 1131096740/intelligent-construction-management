@@ -88,7 +88,11 @@ export const NON_RECEIPT_FILE_BINDINGS = [
   { table: "ProjectProxyPayment", columns: ["voucherFileId"] },
   {
     table: "ProjectUpstreamSettlement",
-    columns: ["voucherFileId"]
+    columns: ["voucherFileId", "confirmationSignatureFileId"]
+  },
+  {
+    table: "ProjectUpstreamFundFact",
+    columns: ["evidenceFileId", "confirmationSignatureFileId"]
   },
   { table: "ProjectOwnerContract", columns: ["fileId"] },
   {

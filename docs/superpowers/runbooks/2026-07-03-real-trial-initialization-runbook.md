@@ -65,6 +65,22 @@
 | 主合同扫描件 | 是 | `fileId` | 私有文件，禁止公开链接 |
 | 合同部主管确认 | 是 | `POST /api/projects/:projectId/owner-contracts/:ownerContractId/confirmation` | 需要当前密码二次确认 |
 
+### 3.1 上游资金事实
+
+| 事实 | 是否增加我方可用资金 | 登记入口 | 确认规则 |
+| --- | --- | --- | --- |
+| 业主向挂靠企业付款 | 否 | `POST /api/projects/:projectId/upstream-fund-facts` | 书面依据由财务人员或财务主管确认；口头通知由财务主管确认 |
+| 挂靠企业向我方拨款 | 是，仅已确认金额 | 同上 | 可先到账后关联上游结算，确认规则同上 |
+| 挂靠企业扣款 | 否，进入独立经营成本事实 | 同上 | 必须选择管理费、税费、保证金、保险费或其他扣款 |
+| 待核对到账差额 | 否 | 同上 | 保持待核对；确认类型后追加重分类或更正，不覆盖原事实 |
+
+确认入口为
+`POST /api/projects/:projectId/upstream-fund-facts/:fundFactId/confirmation`，
+要求当前密码并冻结确认人的手写签名版本。原
+`POST /api/projects/:projectId/receipts` 只保留历史客户端兼容边界，所有新增
+请求固定返回 `410 Gone`；不得再创建 `owner_direct_payment` 或泛化 `other`
+收款。
+
 ### 4. 约 20 个历史合同清单
 
 先用下面台账收齐，再按 A/B/C 优先录入系统。
@@ -239,7 +255,9 @@ ORDER BY "phone";
 - 历史合同确认接管：`POST /api/projects/:projectId/contract-takeovers/:takeoverId/confirmation`
 - 业主主合同登记：`POST /api/projects/:projectId/owner-contracts`
 - 业主主合同确认：`POST /api/projects/:projectId/owner-contracts/:ownerContractId/confirmation`
-- 对上审定、收款、总代付：`POST /api/projects/:projectId/upstream-settlements`、`/receipts`、`/proxy-payments`
+- 对上审定：`POST /api/projects/:projectId/upstream-settlements`
+- 上游资金事实登记/确认：`POST /api/projects/:projectId/upstream-fund-facts`、`/upstream-fund-facts/:fundFactId/confirmation`
+- 总包代付：`POST /api/projects/:projectId/proxy-payments`
 - 试运行账号脚本：`pnpm --filter @jiangkong/api create:trial-users`
 - 试运行核心链路验证：`pnpm --filter @jiangkong/api verify:trial-run`
 - 生产配置只读检查：`pnpm --filter @jiangkong/api verify:production-readiness`

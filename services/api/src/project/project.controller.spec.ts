@@ -8,6 +8,8 @@ import { ProjectController } from "./project.controller";
 type ProjectMoneyBodyMethod =
   | "assignAffiliate"
   | "recordReceipt"
+  | "recordUpstreamFundFact"
+  | "confirmUpstreamFundFact"
   | "recordProxyPayment"
   | "recordUpstreamSettlement"
   | "confirmUpstreamSettlement"
@@ -22,6 +24,8 @@ type ProjectMoneyBodyMethod =
 const projectMoneyBodyIndex: Record<ProjectMoneyBodyMethod, number> = {
   assignAffiliate: 2,
   recordReceipt: 2,
+  recordUpstreamFundFact: 2,
+  confirmUpstreamFundFact: 3,
   recordProxyPayment: 2,
   recordUpstreamSettlement: 2,
   confirmUpstreamSettlement: 3,
@@ -131,6 +135,25 @@ describe("ProjectController authorization wiring", () => {
       }
     ],
     ["recordReceipt", validProjectReceiptBody],
+    [
+      "recordUpstreamFundFact",
+      {
+        factType: "affiliate_remittance_to_company",
+        basisType: "written",
+        occurredAt: "2026-07-11",
+        amountCents: "10000",
+        counterpartyName: "挂靠企业",
+        evidenceFileId: "file-1",
+        idempotencyKey: "9ae0147a-da7b-4dba-b378-e80f87efdc46"
+      }
+    ],
+    [
+      "confirmUpstreamFundFact",
+      {
+        confirmationPassword: "current-password",
+        confirmationActionId: "6f9ac3b7-8c5e-4f98-8284-221ce7844a36"
+      }
+    ],
     [
       "recordProxyPayment",
       {
@@ -245,6 +268,41 @@ describe("ProjectController authorization wiring", () => {
     });
 
     expect(result).toEqual({ ...validProjectReceiptBody, amountCents: "0" });
+  });
+
+  it("rejects invalid upstream fund enums, money text, and idempotency UUIDs", async () => {
+    const response = await getProjectMoneyValidationResponse(
+      "recordUpstreamFundFact",
+      {
+        factType: "other_receipt",
+        basisType: "phone",
+        occurredAt: "2026-07-11",
+        amountCents: "1.00",
+        counterpartyName: "挂靠企业",
+        idempotencyKey: "not-a-uuid"
+      }
+    );
+
+    expect(response.errors).toEqual(
+      expect.arrayContaining([
+        "上游资金事实类型不正确",
+        "上游资金依据类型不正确",
+        "上游资金金额必须按分填写为 0 或更大的整数",
+        "上游资金登记幂等键必须是 UUID"
+      ])
+    );
+  });
+
+  it("rejects a non-UUID upstream fund confirmation action", async () => {
+    const response = await getProjectMoneyValidationResponse(
+      "confirmUpstreamFundFact",
+      {
+        confirmationPassword: "current-password",
+        confirmationActionId: "not-a-uuid"
+      }
+    );
+
+    expect(response.errors).toContain("上游资金确认幂等键必须是 UUID");
   });
 
   it.each(["general_contractor_payment", "owner_direct_payment", "other"])(
@@ -603,6 +661,21 @@ describe("ProjectController authorization wiring", () => {
     );
   });
 
+  it("guards upstream fund fact recording and confirmation with finance project roles", () => {
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        ProjectController.prototype.recordUpstreamFundFact
+      )
+    ).toBe("project.upstream_fund_fact.record");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        ProjectController.prototype.confirmUpstreamFundFact
+      )
+    ).toBe("project.upstream_fund_fact.confirm");
+  });
+
   it("guards project proxy payment recording with finance project role", () => {
     expect(
       Reflect.getMetadata("requiredProjectAction", ProjectController.prototype.recordProxyPayment)
@@ -730,6 +803,51 @@ describe("ProjectController authorization wiring", () => {
     await controller.recordReceipt("project-1", { id: "finance-1" } as never, body);
 
     expect(projects.recordReceipt).toHaveBeenCalledWith("project-1", "finance-1", body);
+  });
+
+  it("forwards upstream fund fact recording and confirmation with authenticated user id", async () => {
+    const projects = {
+      recordUpstreamFundFact: jest.fn(),
+      confirmUpstreamFundFact: jest.fn()
+    };
+    const controller = new ProjectController(projects as never);
+    const recordBody = {
+      factType: "affiliate_remittance_to_company" as const,
+      basisType: "written" as const,
+      occurredAt: "2026-07-02T00:00:00.000Z",
+      amountCents: "100000",
+      counterpartyName: "挂靠企业",
+      evidenceFileId: "file-1",
+      idempotencyKey: "9ae0147a-da7b-4dba-b378-e80f87efdc46"
+    };
+    const confirmBody = {
+      confirmationPassword: "current-password",
+      confirmationActionId: "6f9ac3b7-8c5e-4f98-8284-221ce7844a36"
+    };
+
+    await controller.recordUpstreamFundFact(
+      "project-1",
+      { id: "finance-1" } as never,
+      recordBody
+    );
+    await controller.confirmUpstreamFundFact(
+      "project-1",
+      "fact-1",
+      { id: "director-1" } as never,
+      confirmBody
+    );
+
+    expect(projects.recordUpstreamFundFact).toHaveBeenCalledWith(
+      "project-1",
+      "finance-1",
+      recordBody
+    );
+    expect(projects.confirmUpstreamFundFact).toHaveBeenCalledWith(
+      "project-1",
+      "fact-1",
+      "director-1",
+      confirmBody
+    );
   });
 
   it("forwards project proxy payment payload with authenticated user id", async () => {

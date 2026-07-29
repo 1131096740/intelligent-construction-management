@@ -1151,7 +1151,8 @@ export class FileService {
         UNION ALL SELECT 1 FROM "ProjectExpenseExecution" WHERE "voucherFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectReceipt" WHERE "voucherFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectProxyPayment" WHERE "voucherFileId" = ${fileId}
-        UNION ALL SELECT 1 FROM "ProjectUpstreamSettlement" WHERE "voucherFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ProjectUpstreamSettlement" WHERE "voucherFileId" = ${fileId} OR "confirmationSignatureFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ProjectUpstreamFundFact" WHERE "evidenceFileId" = ${fileId} OR "confirmationSignatureFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectSettlementExceptionQuota" WHERE "attachmentFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectFinancingQuota" WHERE "attachmentFileId" = ${fileId} OR "terminationSignatureFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ApprovalActionLog" WHERE "signatureFileIdSnapshot" = ${fileId}
@@ -1986,14 +1987,26 @@ export class FileService {
     const projectUpstreamSettlementClient = (tx as unknown as {
       projectUpstreamSettlement?: {
         findFirst: (args: {
-          where: { voucherFileId: string; voidedAt: null };
+          where: {
+            OR: Array<
+              | { voucherFileId: string }
+              | { confirmationSignatureFileId: string }
+            >;
+            voidedAt: null;
+          };
           select: { projectId: true };
         }) => Promise<{ projectId: string } | null>;
       };
     }).projectUpstreamSettlement;
     const projectUpstreamSettlement = projectUpstreamSettlementClient
       ? await projectUpstreamSettlementClient.findFirst({
-          where: { voucherFileId: file.id, voidedAt: null },
+          where: {
+            OR: [
+              { voucherFileId: file.id },
+              { confirmationSignatureFileId: file.id }
+            ],
+            voidedAt: null
+          },
           select: { projectId: true }
         })
       : null;
@@ -2007,6 +2020,44 @@ export class FileService {
       ))
     ) {
       return;
+    }
+
+    const projectUpstreamFundFactClient = (tx as unknown as {
+      projectUpstreamFundFact?: {
+        findFirst: (args: {
+          where: {
+            OR: Array<
+              | { evidenceFileId: string }
+              | { confirmationSignatureFileId: string }
+            >;
+          };
+          select: { projectId: true };
+        }) => Promise<{ projectId: string } | null>;
+      };
+    }).projectUpstreamFundFact;
+    const projectUpstreamFundFact = projectUpstreamFundFactClient
+      ? await projectUpstreamFundFactClient.findFirst({
+          where: {
+            OR: [
+              { evidenceFileId: file.id },
+              { confirmationSignatureFileId: file.id }
+            ]
+          },
+          select: { projectId: true }
+        })
+      : null;
+    if (projectUpstreamFundFact) {
+      if (
+        await this.hasProjectRole(
+          tx,
+          actorUserId,
+          projectUpstreamFundFact.projectId,
+          PAYMENT_FILE_DOWNLOAD_ROLES
+        )
+      ) {
+        return;
+      }
+      throw new ForbiddenException("当前账号无权下载该上游资金资料");
     }
 
     const projectSettlementExceptionQuotaClient = (tx as unknown as {

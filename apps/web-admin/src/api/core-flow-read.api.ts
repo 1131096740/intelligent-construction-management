@@ -1147,6 +1147,8 @@ export interface ProjectOperatingOverviewReadModel {
   project: ProjectOptionReadModel;
   cash: {
     actualReceiptsCents: string | null;
+    legacyReceiptsCents: string;
+    affiliateRemittanceCents: string;
     supplierRefundsCents: string | null;
     availableFundsCents: string | null;
     actualPaidCents: string;
@@ -1162,6 +1164,15 @@ export interface ProjectOperatingOverviewReadModel {
     operatingCostCents: string | null;
     grossProfitCents: string | null;
   };
+  upstreamFunds: {
+    ownerPaymentCents: string;
+    affiliateRemittanceCents: string;
+    affiliateDeductionCents: string;
+    unreconciledReceiptDifferenceCents: string;
+    writtenCount: number;
+    oralCount: number;
+    rows: ProjectUpstreamFundFactReadModel[];
+  };
   counts: {
     contracts: number;
     settlements: number;
@@ -1170,14 +1181,60 @@ export interface ProjectOperatingOverviewReadModel {
   dataGaps: string[];
 }
 
-export interface RecordProjectReceiptPayload {
-  receivedAt: string;
+export type ProjectUpstreamFundFactType =
+  | "owner_payment_to_affiliate"
+  | "affiliate_remittance_to_company"
+  | "affiliate_deduction"
+  | "unreconciled_receipt_difference";
+export type ProjectUpstreamFundBasisType = "written" | "oral";
+
+export interface ProjectUpstreamFundFactReadModel {
+  id: string;
+  projectId: string;
+  factType: ProjectUpstreamFundFactType;
+  factTypeLabel: string;
+  entryKind: "original" | "correction" | "reversal" | "reclassification";
+  adjustsFactId: string | null;
+  effectDirection: "increase" | "decrease";
+  occurredAt: string;
   amountCents: string;
-  payerName: string;
-  sourceType: "general_contractor_payment" | "owner_direct_payment" | "other";
+  signedAmountCents: string;
+  cashEffectCents: string;
+  counterpartyName: string;
+  basisType: ProjectUpstreamFundBasisType;
+  deductionCategory: "management_fee" | "tax" | "deposit" | "insurance" | "other" | null;
+  upstreamSettlementId: string | null;
+  affiliateNameSnapshot: string;
+  description: string | null;
+  evidenceFileId: string | null;
+  status: "pending_confirm" | "confirmed" | "pending_reconciliation";
+  recordedByUserId: string;
+  recordedByRoleKey: "finance_staff" | "finance_director";
+  confirmedByUserId: string | null;
+  confirmedAt: string | null;
+  confirmationSignatureVersionId: string | null;
+  createdAt: string;
+}
+
+export interface RecordProjectUpstreamFundFactPayload {
+  factType: ProjectUpstreamFundFactType;
+  basisType: ProjectUpstreamFundBasisType;
+  occurredAt: string;
+  amountCents: string;
+  counterpartyName: string;
+  deductionCategory?: "management_fee" | "tax" | "deposit" | "insurance" | "other";
+  upstreamSettlementId?: string;
+  evidenceFileId?: string;
+  idempotencyKey: string;
+  entryKind?: "original" | "correction" | "reversal" | "reclassification";
+  adjustsFactId?: string;
+  effectDirection?: "increase" | "decrease";
   description?: string;
-  voucherFileId: string;
+}
+
+export interface ConfirmProjectUpstreamFundFactPayload {
   confirmationPassword: string;
+  confirmationActionId: string;
 }
 
 export interface RecordProjectProxyPaymentPayload {
@@ -1535,8 +1592,25 @@ export function fetchProjectExpenseRequests(
   );
 }
 
-export function recordProjectReceipt(projectId: string, body: RecordProjectReceiptPayload) {
-  return postJson<unknown>(`/projects/${projectId}/receipts`, body);
+export function recordProjectUpstreamFundFact(
+  projectId: string,
+  body: RecordProjectUpstreamFundFactPayload
+) {
+  return postJson<ProjectUpstreamFundFactReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/upstream-fund-facts`,
+    body
+  );
+}
+
+export function confirmProjectUpstreamFundFact(
+  projectId: string,
+  fundFactId: string,
+  body: ConfirmProjectUpstreamFundFactPayload
+) {
+  return postJson<ProjectUpstreamFundFactReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/upstream-fund-facts/${encodeURIComponent(fundFactId)}/confirmation`,
+    body
+  );
 }
 
 export function recordProjectProxyPayment(projectId: string, body: RecordProjectProxyPaymentPayload) {
