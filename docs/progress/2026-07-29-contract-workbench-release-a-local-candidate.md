@@ -6,7 +6,7 @@
 
 - 实施基线：`a0bbfacb5008abbcb255a96c79cb0bd05c76db56`
 - 隔离分支：`codex/whole-site-five-packages`
-- 运行代码候选：`701969cb99a75e9fa27ed1f3cce645558f0d4da1`
+- 运行代码候选：`8ce5dd55b0d59fd923339f486ba648cdbd601a92`
 - 状态：Release A 本地候选；未推送、未合并、未连接或修改生产、未执行生产迁移或部署、未执行物理删除。
 - 本收据提交后的精确 HEAD 由 Git 记录和发布授权回执给出；收据提交只增加文档，不改变上述运行代码。
 
@@ -47,11 +47,14 @@
 | Prisma validate | 使用非生产占位 `DATABASE_URL` 通过 |
 | Prisma generate | 已按用户明确授权重新生成并通过 |
 | 发布脚本安全自测 | 通过；`api-only` 成功、健康失败恢复、未知 scope 失败关闭及默认全量恢复均覆盖 |
+| 合同切换写门禁 | 7/7 目标测试、7 套相关控制器 312/312、API typecheck/lint/build、生产 readiness self-test 通过 |
 | `git diff --check` | 通过 |
 
 本轮浏览器 RED 额外发现聚合读取曾丢弃后端权威不含税单价和派生金额。修复后编辑候选保留这些只读事实，统一保存序列化仍明确剔除 `taxExclusiveUnitPrice`、行金额、税额、精度和初始计价辅助字段；聚合定向单测 65/65 通过。
 
 生产门前 runbook 审计另发现通用部署脚本原先无条件同时构建、快照和替换 API/Web，与 Release A“只发布增量后端、旧前端继续工作”冲突。先用自测复现 Web 被切换的 RED，再新增显式 `DEPLOY_SCOPE=api-only`：只构建、快照和替换 API，健康失败时只恢复 API，Web 运行目录不被读取或写入；未知 scope 在构建、备份、停服和迁移之前失败关闭。默认 `full` 双运行时行为及其恢复测试保持不变。
+
+Task 6/7 执行路径审计继续发现原候选没有可操作的短维护窗口和旧客户端 410 控制。当前候选新增四态门禁：`release-a` 默认保持旧写兼容；`maintenance` 仅冻结合同草稿、清单、文档变更和历史接管写入；`release-b-maintenance` 对旧 PATCH/旧单确认固定返回 410，同时只允许最多 8 个明确用户 ID 使用新写接口做获授权岗位烟测；`release-b` 再开放全部新写。GET、台账导出和合同离线修订预览下载票据不受维护冻结影响。非法 mode、通配 canary、重复/空/超量 canary 均由生产 readiness 与运行时双重失败关闭；readiness 只输出 canary 数量，不输出用户 ID。
 
 ## API、页面与权限矩阵
 
