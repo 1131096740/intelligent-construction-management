@@ -1161,6 +1161,7 @@ export interface ProjectOperatingOverviewReadModel {
     effectiveSettlementAmountCents: string;
     payableSettlementAmountCents: string;
     operatingIncomeCents: string | null;
+    affiliateDownstreamPaymentCents: string;
     operatingCostCents: string | null;
     grossProfitCents: string | null;
   };
@@ -1235,6 +1236,169 @@ export interface RecordProjectUpstreamFundFactPayload {
 export interface ConfirmProjectUpstreamFundFactPayload {
   confirmationPassword: string;
   confirmationActionId: string;
+}
+
+export type ProjectAffiliateBusinessFactType = "contract" | "settlement" | "payment";
+export type ProjectAffiliateBasisType = "written" | "oral";
+export type ProjectAffiliateEntryKind = "original" | "correction" | "reversal";
+export type ProjectAffiliateFactAction =
+  | "confirm"
+  | "supplement_evidence"
+  | "record_correction"
+  | "record_reversal";
+
+export interface ProjectAffiliateBusinessEvidenceReadModel {
+  id: string;
+  projectId: string;
+  businessType: ProjectAffiliateBusinessFactType;
+  businessFactId: string;
+  fileId: string;
+  documentVersion: number;
+  fileContentSha256Snapshot: string;
+  description: string;
+  recordedByUserId: string;
+  recordedByRoleKey: string;
+  createdAt: string;
+}
+
+interface ProjectAffiliateFactReadModelBase {
+  id: string;
+  ledgerId: string;
+  projectId: string;
+  entryKind: ProjectAffiliateEntryKind;
+  adjustsFactId: string | null;
+  effectDirection: "increase" | "decrease";
+  counterpartyName: string;
+  affiliateAssignmentId: string;
+  affiliateBusinessPartyVersionId: string;
+  affiliateNameSnapshot: string;
+  basisType: ProjectAffiliateBasisType;
+  description: string | null;
+  evidenceFileId: string | null;
+  status: "pending_confirm" | "confirmed";
+  recordedByUserId: string;
+  recordedByRoleKey: string;
+  confirmedByUserId: string | null;
+  confirmedAt: string | null;
+  confirmationSignatureVersionId: string | null;
+  createdAt: string;
+  availableActions: ProjectAffiliateFactAction[];
+  supplementalEvidence: ProjectAffiliateBusinessEvidenceReadModel[];
+}
+
+export type ProjectAffiliateContractType =
+  | "material_purchase"
+  | "equipment_rental"
+  | "labor_subcontract"
+  | "professional_subcontract"
+  | "general_settlement"
+  | "general_direct_payment";
+
+export interface ProjectAffiliateContractFactReadModel
+  extends ProjectAffiliateFactReadModelBase {
+  contractType: ProjectAffiliateContractType;
+  externalContractReference: string;
+  signedAt: string;
+  amountNature: "fixed" | "uncapped";
+  amountCents: string | null;
+  advanceAllowed: boolean;
+  advanceLimitCents: string | null;
+  advanceTermsSummary: string | null;
+}
+
+export interface ProjectAffiliateSettlementFactReadModel
+  extends ProjectAffiliateFactReadModelBase {
+  contractLedgerId: string;
+  settledAt: string;
+  periodLabel: string;
+  amountCents: string;
+}
+
+export type ProjectAffiliatePaymentKind =
+  | "normal"
+  | "advance"
+  | "direct_contract";
+
+export interface ProjectAffiliatePaymentFactReadModel
+  extends ProjectAffiliateFactReadModelBase {
+  contractLedgerId: string;
+  settlementLedgerId: string | null;
+  paidAt: string;
+  amountCents: string;
+  paymentKind: ProjectAffiliatePaymentKind;
+  externalPaymentReference: string | null;
+  paymentSubjectType: "affiliate";
+  companyCashExecutionAllowed: false;
+}
+
+export interface ProjectAffiliateBusinessFactsReadModel {
+  availableActions: Array<"record_contract" | "record_settlement" | "record_payment">;
+  contracts: ProjectAffiliateContractFactReadModel[];
+  settlements: ProjectAffiliateSettlementFactReadModel[];
+  payments: ProjectAffiliatePaymentFactReadModel[];
+}
+
+export interface RecordProjectAffiliateContractFactPayload {
+  contractType: ProjectAffiliateContractType;
+  externalContractReference: string;
+  counterpartyName: string;
+  signedAt: string;
+  amountNature: "fixed" | "uncapped";
+  amountCents?: string;
+  basisType: ProjectAffiliateBasisType;
+  evidenceFileId?: string;
+  advanceAllowed: boolean;
+  advanceLimitCents?: string;
+  advanceTermsSummary?: string;
+  idempotencyKey: string;
+  entryKind?: ProjectAffiliateEntryKind;
+  adjustsFactId?: string;
+  effectDirection?: "increase" | "decrease";
+  description?: string;
+}
+
+export interface RecordProjectAffiliateSettlementFactPayload {
+  contractLedgerId: string;
+  counterpartyName: string;
+  settledAt: string;
+  periodLabel: string;
+  amountCents: string;
+  basisType: ProjectAffiliateBasisType;
+  evidenceFileId?: string;
+  idempotencyKey: string;
+  entryKind?: ProjectAffiliateEntryKind;
+  adjustsFactId?: string;
+  effectDirection?: "increase" | "decrease";
+  description?: string;
+}
+
+export interface RecordProjectAffiliatePaymentFactPayload {
+  contractLedgerId: string;
+  settlementLedgerId?: string;
+  counterpartyName: string;
+  paidAt: string;
+  amountCents: string;
+  paymentKind: ProjectAffiliatePaymentKind;
+  externalPaymentReference?: string;
+  basisType: ProjectAffiliateBasisType;
+  evidenceFileId?: string;
+  idempotencyKey: string;
+  entryKind?: ProjectAffiliateEntryKind;
+  adjustsFactId?: string;
+  effectDirection?: "increase" | "decrease";
+  description?: string;
+}
+
+export interface ConfirmProjectAffiliateBusinessFactPayload {
+  confirmationPassword: string;
+  confirmationActionId: string;
+}
+
+export interface SupplementProjectAffiliateBusinessEvidencePayload {
+  businessType: ProjectAffiliateBusinessFactType;
+  fileId: string;
+  idempotencyKey: string;
+  description: string;
 }
 
 export interface RecordProjectProxyPaymentPayload {
@@ -1609,6 +1773,86 @@ export function confirmProjectUpstreamFundFact(
 ) {
   return postJson<ProjectUpstreamFundFactReadModel>(
     `/projects/${encodeURIComponent(projectId)}/upstream-fund-facts/${encodeURIComponent(fundFactId)}/confirmation`,
+    body
+  );
+}
+
+export function fetchProjectAffiliateBusinessFacts(projectId: string) {
+  return readJson<ProjectAffiliateBusinessFactsReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/affiliate-business-facts`
+  );
+}
+
+export function recordProjectAffiliateContractFact(
+  projectId: string,
+  body: RecordProjectAffiliateContractFactPayload
+) {
+  return postJson<ProjectAffiliateContractFactReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/affiliate-contract-facts`,
+    body
+  );
+}
+
+export function confirmProjectAffiliateContractFact(
+  projectId: string,
+  factId: string,
+  body: ConfirmProjectAffiliateBusinessFactPayload
+) {
+  return postJson<ProjectAffiliateContractFactReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/affiliate-contract-facts/${encodeURIComponent(factId)}/confirmation`,
+    body
+  );
+}
+
+export function recordProjectAffiliateSettlementFact(
+  projectId: string,
+  body: RecordProjectAffiliateSettlementFactPayload
+) {
+  return postJson<ProjectAffiliateSettlementFactReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/affiliate-settlement-facts`,
+    body
+  );
+}
+
+export function confirmProjectAffiliateSettlementFact(
+  projectId: string,
+  factId: string,
+  body: ConfirmProjectAffiliateBusinessFactPayload
+) {
+  return postJson<ProjectAffiliateSettlementFactReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/affiliate-settlement-facts/${encodeURIComponent(factId)}/confirmation`,
+    body
+  );
+}
+
+export function recordProjectAffiliatePaymentFact(
+  projectId: string,
+  body: RecordProjectAffiliatePaymentFactPayload
+) {
+  return postJson<ProjectAffiliatePaymentFactReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/affiliate-payment-facts`,
+    body
+  );
+}
+
+export function confirmProjectAffiliatePaymentFact(
+  projectId: string,
+  factId: string,
+  body: ConfirmProjectAffiliateBusinessFactPayload
+) {
+  return postJson<ProjectAffiliatePaymentFactReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/affiliate-payment-facts/${encodeURIComponent(factId)}/confirmation`,
+    body
+  );
+}
+
+export function supplementProjectAffiliateBusinessEvidence(
+  projectId: string,
+  factId: string,
+  body: SupplementProjectAffiliateBusinessEvidencePayload
+) {
+  return postJson<ProjectAffiliateBusinessEvidenceReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/affiliate-business-facts/${encodeURIComponent(factId)}/evidence`,
     body
   );
 }

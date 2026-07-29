@@ -166,6 +166,7 @@ function projectOverview(overrides: {
       effectiveSettlementAmountCents: overrides.settlementAmountCents,
       payableSettlementAmountCents: overrides.payableAmountCents,
       operatingIncomeCents: null,
+      affiliateDownstreamPaymentCents: "0",
       operatingCostCents: null,
       grossProfitCents: null
     },

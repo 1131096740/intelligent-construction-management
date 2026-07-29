@@ -39,6 +39,14 @@ import {
   recordProjectOwnerContract,
   recordProjectUpstreamFundFact,
   confirmProjectUpstreamFundFact,
+  fetchProjectAffiliateBusinessFacts,
+  recordProjectAffiliateContractFact,
+  confirmProjectAffiliateContractFact,
+  recordProjectAffiliateSettlementFact,
+  confirmProjectAffiliateSettlementFact,
+  recordProjectAffiliatePaymentFact,
+  confirmProjectAffiliatePaymentFact,
+  supplementProjectAffiliateBusinessEvidence,
   recordProjectProxyPayment,
   recordProjectUpstreamSettlement,
   confirmProjectUpstreamSettlement,
@@ -758,6 +766,79 @@ describe("core flow read API client", () => {
         voucherFileId: "file-direct-payment-1",
         confirmationPassword: "current-password"
       })
+    );
+  });
+
+  it("uses encoded affiliate downstream fact routes without direct page fetch calls", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "fact-1" })
+    } as Response);
+
+    await fetchProjectAffiliateBusinessFacts("project/1");
+    await recordProjectAffiliateContractFact("project/1", {
+      contractType: "material_purchase",
+      externalContractReference: "GK-HT-2026-001",
+      counterpartyName: "材料供应商",
+      signedAt: "2026-07-20",
+      amountNature: "fixed",
+      amountCents: "100000",
+      basisType: "oral",
+      advanceAllowed: false,
+      idempotencyKey: "2dfca5de-eb12-4b9e-b093-e392653a5cdf"
+    });
+    await confirmProjectAffiliateContractFact("project/1", "contract/1", {
+      confirmationPassword: "current-password",
+      confirmationActionId: "e832035b-e073-4c04-8d43-b72583e99c32"
+    });
+    await recordProjectAffiliateSettlementFact("project/1", {
+      contractLedgerId: "contract-ledger-1",
+      counterpartyName: "材料供应商",
+      settledAt: "2026-07-25",
+      periodLabel: "2026-07",
+      amountCents: "50000",
+      basisType: "oral",
+      idempotencyKey: "e974f2f0-5b2e-4e6a-9d9d-03b81e1868ad"
+    });
+    await confirmProjectAffiliateSettlementFact("project/1", "settlement/1", {
+      confirmationPassword: "current-password",
+      confirmationActionId: "0763bc87-efb9-42dd-830f-e8f60ce3df59"
+    });
+    await recordProjectAffiliatePaymentFact("project/1", {
+      contractLedgerId: "contract-ledger-1",
+      settlementLedgerId: "settlement-ledger-1",
+      counterpartyName: "材料供应商",
+      paidAt: "2026-07-29",
+      amountCents: "5000",
+      paymentKind: "normal",
+      externalPaymentReference: "BANK-20260729-001",
+      basisType: "oral",
+      idempotencyKey: "cdad0cb7-2e78-48db-ae27-86253bf54bbd"
+    });
+    await confirmProjectAffiliatePaymentFact("project/1", "payment/1", {
+      confirmationPassword: "current-password",
+      confirmationActionId: "439f38e7-d374-4275-9066-794a59a1cf0d"
+    });
+    await supplementProjectAffiliateBusinessEvidence("project/1", "contract/1", {
+      businessType: "contract",
+      fileId: "file-1",
+      idempotencyKey: "c22598c5-98ff-4029-98e9-e4920a4b1d5f",
+      description: "补充盖章合同"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project%2F1/affiliate-business-facts",
+      "/api/projects/project%2F1/affiliate-contract-facts",
+      "/api/projects/project%2F1/affiliate-contract-facts/contract%2F1/confirmation",
+      "/api/projects/project%2F1/affiliate-settlement-facts",
+      "/api/projects/project%2F1/affiliate-settlement-facts/settlement%2F1/confirmation",
+      "/api/projects/project%2F1/affiliate-payment-facts",
+      "/api/projects/project%2F1/affiliate-payment-facts/payment%2F1/confirmation",
+      "/api/projects/project%2F1/affiliate-business-facts/contract%2F1/evidence"
+    ]);
+    expect(fetchMock.mock.calls[0][1]?.method).toBeUndefined();
+    expect(fetchMock.mock.calls.slice(1).every((call) => call[1]?.method === "POST")).toBe(
+      true
     );
   });
 

@@ -18,10 +18,17 @@ describe("project operating overview structure", () => {
   it("separates overview, expense-ledger and expense-create capabilities", () => {
     expect(source).toContain("canReadProjectOverview.value\n        ? fetchProjectOperatingOverview(projectId)");
     expect(source).toContain("canReadProjectExpenseLedger.value\n        ? fetchProjectExpenseRequests(projectId");
-    expect(source).toContain("canUseProxyPayments.value ? fetchPaymentContractOptions(projectId)");
     expect(source).toContain("const canCreateProjectExpense = computed");
     expect(source).toContain('v-if="canCreateProjectExpense"');
     expect(source).toContain("auth.user?.globalRoleKeys.some");
+  });
+
+  it("retires the legacy one-step proxy payment form in favor of the governed fact chain", () => {
+    expect(source).toContain('label="挂靠业务接管"');
+    expect(source).toContain("<AffiliateBusinessLedgerPanel");
+    expect(source).not.toContain("recordProjectProxyPayment");
+    expect(source).not.toContain("submitProxyPayment");
+    expect(source).not.toContain("总包代付登记");
   });
 
   it("uses the existing TDesign project selector and maintenance disclosure", () => {

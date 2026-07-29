@@ -96,6 +96,19 @@ export const NON_RECEIPT_FILE_BINDINGS = [
   },
   { table: "ProjectOwnerContract", columns: ["fileId"] },
   {
+    table: "ProjectAffiliateContractFact",
+    columns: ["evidenceFileId", "confirmationSignatureFileId"]
+  },
+  {
+    table: "ProjectAffiliateSettlementFact",
+    columns: ["evidenceFileId", "confirmationSignatureFileId"]
+  },
+  {
+    table: "ProjectAffiliatePaymentFact",
+    columns: ["evidenceFileId", "confirmationSignatureFileId"]
+  },
+  { table: "ProjectAffiliateBusinessEvidence", columns: ["fileId"] },
+  {
     table: "ProjectSettlementExceptionQuota",
     columns: ["attachmentFileId"]
   },

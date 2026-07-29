@@ -10,6 +10,13 @@ type ProjectMoneyBodyMethod =
   | "recordReceipt"
   | "recordUpstreamFundFact"
   | "confirmUpstreamFundFact"
+  | "recordAffiliateContractFact"
+  | "confirmAffiliateContractFact"
+  | "recordAffiliateSettlementFact"
+  | "confirmAffiliateSettlementFact"
+  | "recordAffiliatePaymentFact"
+  | "confirmAffiliatePaymentFact"
+  | "supplementAffiliateBusinessEvidence"
   | "recordProxyPayment"
   | "recordUpstreamSettlement"
   | "confirmUpstreamSettlement"
@@ -26,6 +33,13 @@ const projectMoneyBodyIndex: Record<ProjectMoneyBodyMethod, number> = {
   recordReceipt: 2,
   recordUpstreamFundFact: 2,
   confirmUpstreamFundFact: 3,
+  recordAffiliateContractFact: 2,
+  confirmAffiliateContractFact: 3,
+  recordAffiliateSettlementFact: 2,
+  confirmAffiliateSettlementFact: 3,
+  recordAffiliatePaymentFact: 2,
+  confirmAffiliatePaymentFact: 3,
+  supplementAffiliateBusinessEvidence: 3,
   recordProxyPayment: 2,
   recordUpstreamSettlement: 2,
   confirmUpstreamSettlement: 3,
@@ -152,6 +166,76 @@ describe("ProjectController authorization wiring", () => {
       {
         confirmationPassword: "current-password",
         confirmationActionId: "6f9ac3b7-8c5e-4f98-8284-221ce7844a36"
+      }
+    ],
+    [
+      "recordAffiliateContractFact",
+      {
+        contractType: "material_purchase",
+        externalContractReference: "GK-HT-2026-001",
+        counterpartyName: "材料供应商",
+        signedAt: "2026-07-20",
+        amountNature: "fixed",
+        amountCents: "100000",
+        basisType: "oral",
+        advanceAllowed: false,
+        idempotencyKey: "2dfca5de-eb12-4b9e-b093-e392653a5cdf"
+      }
+    ],
+    [
+      "confirmAffiliateContractFact",
+      {
+        confirmationPassword: "current-password",
+        confirmationActionId: "e832035b-e073-4c04-8d43-b72583e99c32"
+      }
+    ],
+    [
+      "recordAffiliateSettlementFact",
+      {
+        contractLedgerId: "contract-ledger-1",
+        counterpartyName: "材料供应商",
+        settledAt: "2026-07-25",
+        periodLabel: "2026-07",
+        amountCents: "50000",
+        basisType: "oral",
+        idempotencyKey: "e974f2f0-5b2e-4e6a-9d9d-03b81e1868ad"
+      }
+    ],
+    [
+      "confirmAffiliateSettlementFact",
+      {
+        confirmationPassword: "current-password",
+        confirmationActionId: "0763bc87-efb9-42dd-830f-e8f60ce3df59"
+      }
+    ],
+    [
+      "recordAffiliatePaymentFact",
+      {
+        contractLedgerId: "contract-ledger-1",
+        settlementLedgerId: "settlement-ledger-1",
+        counterpartyName: "材料供应商",
+        paidAt: "2026-07-29",
+        amountCents: "5000",
+        paymentKind: "normal",
+        externalPaymentReference: "BANK-20260729-001",
+        basisType: "oral",
+        idempotencyKey: "cdad0cb7-2e78-48db-ae27-86253bf54bbd"
+      }
+    ],
+    [
+      "confirmAffiliatePaymentFact",
+      {
+        confirmationPassword: "current-password",
+        confirmationActionId: "439f38e7-d374-4275-9066-794a59a1cf0d"
+      }
+    ],
+    [
+      "supplementAffiliateBusinessEvidence",
+      {
+        businessType: "contract",
+        fileId: "file-1",
+        idempotencyKey: "c22598c5-98ff-4029-98e9-e4920a4b1d5f",
+        description: "补充外部盖章合同"
       }
     ],
     [
@@ -676,6 +760,51 @@ describe("ProjectController authorization wiring", () => {
     ).toBe("project.upstream_fund_fact.confirm");
   });
 
+  it("guards affiliate downstream facts with their recording and confirmation roles", () => {
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        ProjectController.prototype.recordAffiliateContractFact
+      )
+    ).toBe("project.affiliate_contract_fact.record");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        ProjectController.prototype.confirmAffiliateContractFact
+      )
+    ).toBe("project.affiliate_contract_fact.confirm");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        ProjectController.prototype.recordAffiliateSettlementFact
+      )
+    ).toBe("project.affiliate_settlement_fact.record");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        ProjectController.prototype.confirmAffiliateSettlementFact
+      )
+    ).toBe("project.affiliate_settlement_fact.confirm");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        ProjectController.prototype.recordAffiliatePaymentFact
+      )
+    ).toBe("project.affiliate_payment_fact.record");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        ProjectController.prototype.confirmAffiliatePaymentFact
+      )
+    ).toBe("project.affiliate_payment_fact.confirm");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        ProjectController.prototype.supplementAffiliateBusinessEvidence
+      )
+    ).toBe("project.affiliate_business_fact.evidence_supplement");
+  });
+
   it("guards project proxy payment recording with finance project role", () => {
     expect(
       Reflect.getMetadata("requiredProjectAction", ProjectController.prototype.recordProxyPayment)
@@ -850,7 +979,7 @@ describe("ProjectController authorization wiring", () => {
     );
   });
 
-  it("forwards project proxy payment payload with authenticated user id", async () => {
+  it("retires the legacy one-step proxy payment writer", async () => {
     const projects = { recordProxyPayment: jest.fn() };
     const controller = new ProjectController(projects as never);
     const body = {
@@ -863,13 +992,12 @@ describe("ProjectController authorization wiring", () => {
       confirmationPassword: "current-password"
     };
 
-    await controller.recordProxyPayment("project-1", { id: "finance-1" } as never, body);
-
-    expect(projects.recordProxyPayment).toHaveBeenCalledWith(
-      "project-1",
-      "finance-1",
-      body
+    expect(() =>
+      controller.recordProxyPayment("project-1", { id: "finance-1" } as never, body)
+    ).toThrow(
+      "旧挂靠代付一步式写入口已停用，请使用挂靠业务持续接管的合同、结算、付款事实链"
     );
+    expect(projects.recordProxyPayment).not.toHaveBeenCalled();
   });
 
   it("forwards project upstream settlement payload with authenticated user id", async () => {

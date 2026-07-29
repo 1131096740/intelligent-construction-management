@@ -413,133 +413,6 @@
             </div>
           </section>
 
-          <section
-            v-if="canUseProxyPayments"
-            class="panel receipt-panel"
-          >
-            <div class="panel-head">
-              <h2>总包代付登记</h2>
-              <button
-                type="button"
-                :disabled="proxySubmitting"
-                @click="submitProxyPayment"
-              >
-                {{ proxySubmitting ? "提交中" : "登记代付" }}
-              </button>
-            </div>
-            <form
-              class="receipt-form"
-              @submit.prevent="submitProxyPayment"
-            >
-              <label>
-                <span>代付日期</span>
-                <input
-                  v-model="proxyForm.paidAt"
-                  type="date"
-                  required
-                >
-              </label>
-              <label>
-                <span>代付金额(元)</span>
-                <input
-                  v-model.trim="proxyForm.amountYuan"
-                  inputmode="decimal"
-                  placeholder="0.00"
-                  required
-                >
-              </label>
-              <label>
-                <span>总包单位</span>
-                <input
-                  v-model.trim="proxyForm.generalContractorName"
-                  required
-                >
-              </label>
-              <label>
-                <span>代付对象</span>
-                <input
-                  v-model.trim="proxyForm.paidTargetName"
-                  required
-                >
-              </label>
-              <label>
-                <span>代付类型</span>
-                <select v-model="proxyForm.paymentType">
-                  <option value="material">材料</option>
-                  <option value="equipment">机械</option>
-                  <option value="labor">劳务</option>
-                  <option value="professional_subcontract">专业分包</option>
-                  <option value="other">其他</option>
-                </select>
-              </label>
-              <label>
-                <span>代付凭证</span>
-                <input
-                  ref="proxyVoucherInput"
-                  type="file"
-                  accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
-                  required
-                  @change="selectProxyVoucher"
-                >
-              </label>
-              <label>
-                <span>关联合同</span>
-                <select
-                  v-model="proxyForm.contractOptionValue"
-                  :disabled="proxySubmitting || proxyContractSelectOptions.length === 0"
-                  @change="proxyForm.settlementId = ''"
-                >
-                  <option value="">不关联合同</option>
-                  <option
-                    v-for="option in proxyContractSelectOptions"
-                    :key="option.value"
-                    :value="option.value"
-                    :disabled="option.disabled"
-                  >
-                    {{ option.label }}（{{ option.hint }}）
-                  </option>
-                </select>
-              </label>
-              <label>
-                <span>关联结算</span>
-                <select
-                  v-model="proxyForm.settlementId"
-                  :disabled="proxySubmitting || !selectedProxyContract || proxySettlementSelectOptions.length === 0"
-                >
-                  <option value="">不关联结算</option>
-                  <option
-                    v-for="option in proxySettlementSelectOptions"
-                    :key="option.value"
-                    :value="option.value"
-                    :disabled="option.disabled"
-                  >
-                    {{ option.label }}（{{ option.hint }}）
-                  </option>
-                </select>
-              </label>
-              <label>
-                <span>当前登录密码</span>
-                <input
-                  v-model="proxyForm.confirmationPassword"
-                  type="password"
-                  autocomplete="current-password"
-                  required
-                >
-              </label>
-              <label class="receipt-description">
-                <span>代付说明</span>
-                <input v-model.trim="proxyForm.description">
-              </label>
-            </form>
-            <div
-              v-if="proxyMessage"
-              class="receipt-message"
-              :class="proxyMessageTone"
-            >
-              {{ proxyMessage }}
-            </div>
-          </section>
-
           <section class="panel receipt-panel">
             <div class="panel-head">
               <h2>支出明细</h2>
@@ -962,6 +835,14 @@
           </section>
         </template>
       </t-tab-panel>
+
+      <t-tab-panel
+        v-if="selectedProjectId"
+        value="affiliate-business"
+        label="挂靠业务接管"
+      >
+        <AffiliateBusinessLedgerPanel :project-id="selectedProjectId" />
+      </t-tab-panel>
     </t-tabs>
 
     <SensitiveActionDialog
@@ -998,14 +879,12 @@ import {
   createProjectExpenseRequest,
   downloadProjectExpenseApprovalPdf,
   downloadProjectExpenseAttachment,
-  fetchPaymentContractOptions,
   fetchProjectExpenseRequests,
   fetchProjectOperatingOverview,
   fetchProjects,
   recordProjectExpenseExecution,
   recordProjectExpenseFinance,
   recordProjectExpensePurchaseExecution,
-  recordProjectProxyPayment,
   recordProjectUpstreamFundFact,
   uploadPrivateFile,
   updateProject,
@@ -1019,20 +898,13 @@ import {
   type ProjectUpstreamFundFactType,
   type ProjectOptionReadModel
 } from "../../api/core-flow-read.api";
-import type {
-  ContractBusinessOptionReadModel,
-  DraftLedgerView,
-  RoleKey
-} from "@jiangkong/shared-domain";
+import type { DraftLedgerView, RoleKey } from "@jiangkong/shared-domain";
 import { fetchSpotProcurementCapabilities } from "../../api/spot-procurement.api";
 import { useAuthStore } from "../../auth/auth.store";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
-import {
-  toContractSelectOptions,
-  toSettlementSelectOptions
-} from "../contracts/contract-business-options.config";
+import AffiliateBusinessLedgerPanel from "./components/AffiliateBusinessLedgerPanel.vue";
 import {
   expensePaymentMethodLabel,
   expensePaymentMethodOptions,
@@ -1045,14 +917,10 @@ import {
 import {
   buildExecutiveProjectOverview,
   buildProjectBusinessEntries,
-  buildProxyPaymentLinkPayload,
-  findProjectProxyContract,
-  findProjectProxySettlement,
   type ExecutiveProjectOverview
 } from "./project-operating.config";
 import { promptSensitiveActionReason } from "../confirm-sensitive-action";
 
-type ProxyPaymentType = "material" | "equipment" | "labor" | "professional_subcontract" | "other";
 type ProjectExpenseRow = ProjectExpenseRequestListReadModel["rows"][number];
 
 const GLOBAL_PROJECT_OVERVIEW_ROLE_KEYS = new Set<RoleKey>([
@@ -1077,19 +945,6 @@ interface ReceiptFormState {
   deductionCategory: "management_fee" | "tax" | "deposit" | "insurance" | "other";
   description: string;
   voucherFile: File | null;
-}
-
-interface ProxyPaymentFormState {
-  paidAt: string;
-  amountYuan: string;
-  generalContractorName: string;
-  paidTargetName: string;
-  paymentType: ProxyPaymentType;
-  description: string;
-  voucherFile: File | null;
-  confirmationPassword: string;
-  contractOptionValue: string;
-  settlementId: string;
 }
 
 interface ProjectExpenseFormState {
@@ -1131,7 +986,6 @@ interface ProjectFormState {
 const auth = useAuthStore();
 const router = useRouter();
 const projects = ref<ProjectOptionReadModel[]>([]);
-const proxyContractOptions = ref<ContractBusinessOptionReadModel[]>([]);
 const overview = ref<ProjectOperatingOverviewReadModel | null>(null);
 const executiveOverview = ref<ExecutiveProjectOverview | null>(null);
 const projectExpenses = ref<ProjectExpenseRequestListReadModel | null>(null);
@@ -1159,11 +1013,6 @@ const selectedUpstreamFundFact = ref<ProjectUpstreamFundFactReadModel | null>(nu
 const upstreamFundConfirmationVisible = ref(false);
 const upstreamFundConfirmationBusy = ref(false);
 const upstreamFundConfirmationError = ref("");
-const proxySubmitting = ref(false);
-const proxyMessage = ref("");
-const proxyMessageTone = ref<"success" | "danger">("success");
-const proxyForm = ref<ProxyPaymentFormState>(createProxyForm());
-const proxyVoucherInput = ref<HTMLInputElement | null>(null);
 const expenseSubmitting = ref(false);
 const expenseMessage = ref("");
 const expenseMessageTone = ref<"success" | "danger">("success");
@@ -1263,15 +1112,6 @@ const visibleExpenseTypeOptions = computed(() =>
     : expenseTypeOptions
 );
 
-const proxyContractSelectOptions = computed(() => toContractSelectOptions(proxyContractOptions.value, "payment"));
-const selectedProxyContract = computed(() =>
-  findProjectProxyContract(proxyContractOptions.value, proxyForm.value.contractOptionValue)
-);
-const proxySettlementSelectOptions = computed(() => toSettlementSelectOptions(selectedProxyContract.value));
-const selectedProxySettlement = computed(() =>
-  findProjectProxySettlement(selectedProxyContract.value, proxyForm.value.settlementId)
-);
-
 const canManageProjects = computed(
   () => auth.user?.roleKeys.some((role) => role === "chairman" || role === "general_manager") ?? false
 );
@@ -1287,8 +1127,6 @@ const canRecordUpstreamFunds = computed(
       ["finance_director", "finance_staff"].includes(role)
     ) ?? false
 );
-const canUseProxyPayments = canRecordUpstreamFunds;
-
 const canReadProjectOverview = computed(
   () =>
     auth.user?.roleKeys.some((role) =>
@@ -1356,6 +1194,10 @@ const businessItems = computed(() => {
     { label: "挂靠扣款", value: formatCents(upstream?.affiliateDeductionCents ?? "0") },
     { label: "待核对到账差额", value: formatCents(upstream?.unreconciledReceiptDifferenceCents ?? "0") },
     { label: "经营收入", value: formatCents(business?.operatingIncomeCents ?? null) },
+    {
+      label: "挂靠企业对下付款",
+      value: formatCents(business?.affiliateDownstreamPaymentCents ?? "0")
+    },
     { label: "经营成本", value: formatCents(business?.operatingCostCents ?? null) },
     { label: "毛利", value: formatCents(business?.grossProfitCents ?? null) }
   ];
@@ -1559,20 +1401,18 @@ async function loadOverview() {
   projectExpenses.value = null;
   spotProcurementEnabled.value = false;
   receiptMessage.value = "";
-  proxyMessage.value = "";
   expenseMessage.value = "";
   expenseActionMessage.value = "";
   if (!projectId) {
     overview.value = null;
     selectedExpenseRow.value = null;
-    proxyContractOptions.value = [];
     return;
   }
 
   loadingOverview.value = true;
   message.value = "";
   try {
-    const [nextOverview, nextExpenses, nextProxyContracts, spotCapability] = await Promise.all([
+    const [nextOverview, nextExpenses, spotCapability] = await Promise.all([
       canReadProjectOverview.value
         ? fetchProjectOperatingOverview(projectId)
         : Promise.resolve(null),
@@ -1583,7 +1423,6 @@ async function loadOverview() {
             pageSize: expenseLedgerPageSize
           })
         : Promise.resolve(null),
-      canUseProxyPayments.value ? fetchPaymentContractOptions(projectId) : Promise.resolve([]),
       canCreateProjectExpense.value
         ? fetchSpotProcurementCapabilities(projectId).catch(() => ({ enabled: false }))
         : Promise.resolve({ enabled: false })
@@ -1591,7 +1430,6 @@ async function loadOverview() {
     if (selectedProjectId.value === projectId) {
       overview.value = nextOverview;
       projectExpenses.value = nextExpenses;
-      proxyContractOptions.value = nextProxyContracts;
       spotProcurementEnabled.value = spotCapability.enabled;
       if (
         spotCapability.enabled &&
@@ -1608,7 +1446,6 @@ async function loadOverview() {
   } catch (error) {
     if (selectedProjectId.value === projectId) {
       overview.value = null;
-      proxyContractOptions.value = [];
       selectedExpenseRow.value = null;
       message.value = error instanceof Error ? error.message : "加载项目经营数据失败";
     }
@@ -1826,51 +1663,6 @@ async function submitUpstreamFundConfirmation(values: { reason: string; password
   }
 }
 
-async function submitProxyPayment() {
-  const projectId = selectedProjectId.value;
-  if (!projectId) {
-    setProxyError("请先选择项目");
-    return;
-  }
-
-  proxySubmitting.value = true;
-  proxyMessage.value = "";
-  try {
-    const form = proxyForm.value;
-    if (!form.voucherFile) {
-      throw new Error("请上传代付凭证");
-    }
-    const paidAt = requiredText(form.paidAt, "代付日期");
-    const amountCents = parseYuanToCents(form.amountYuan, "代付金额");
-    const generalContractorName = requiredText(form.generalContractorName, "总包单位");
-    const paidTargetName = requiredText(form.paidTargetName, "代付对象");
-    const confirmationPassword = requiredText(form.confirmationPassword, "当前登录密码");
-    const voucher = await uploadPrivateFile(form.voucherFile, form.voucherFile.name);
-    await recordProjectProxyPayment(projectId, {
-      paidAt,
-      amountCents,
-      generalContractorName,
-      paidTargetName,
-      paymentType: form.paymentType,
-      description: form.description.trim() || undefined,
-      voucherFileId: voucher.id,
-      confirmationPassword,
-      ...buildProxyPaymentLinkPayload(selectedProxyContract.value, selectedProxySettlement.value)
-    });
-    proxyForm.value = createProxyForm(form.paymentType);
-    if (proxyVoucherInput.value) {
-      proxyVoucherInput.value.value = "";
-    }
-    await loadOverview();
-    proxyMessageTone.value = "success";
-    proxyMessage.value = "总包代付已登记，项目经营数据已刷新。";
-  } catch (error) {
-    setProxyError(error instanceof Error ? error.message : "登记总包代付失败");
-  } finally {
-    proxySubmitting.value = false;
-  }
-}
-
 function createReceiptForm(
   factType: ProjectUpstreamFundFactType = "affiliate_remittance_to_company"
 ): ReceiptFormState {
@@ -1883,21 +1675,6 @@ function createReceiptForm(
     deductionCategory: "management_fee",
     description: "",
     voucherFile: null
-  };
-}
-
-function createProxyForm(paymentType: ProxyPaymentType = "material"): ProxyPaymentFormState {
-  return {
-    paidAt: todayText(),
-    amountYuan: "",
-    generalContractorName: "",
-    paidTargetName: "",
-    paymentType,
-    description: "",
-    voucherFile: null,
-    confirmationPassword: "",
-    contractOptionValue: "",
-    settlementId: ""
   };
 }
 
@@ -1970,11 +1747,6 @@ function createProjectExpenseActionForm(row?: ProjectExpenseRow): ProjectExpense
 function selectReceiptVoucher(event: Event) {
   const input = event.target as HTMLInputElement;
   receiptForm.value.voucherFile = input.files?.[0] ?? null;
-}
-
-function selectProxyVoucher(event: Event) {
-  const input = event.target as HTMLInputElement;
-  proxyForm.value.voucherFile = input.files?.[0] ?? null;
 }
 
 function selectExpenseAttachment(event: Event) {
@@ -2080,11 +1852,6 @@ function parseYuanToCents(value: string, label: string): string {
 function setReceiptError(messageText: string) {
   receiptMessageTone.value = "danger";
   receiptMessage.value = messageText;
-}
-
-function setProxyError(messageText: string) {
-  proxyMessageTone.value = "danger";
-  proxyMessage.value = messageText;
 }
 
 function setExpenseError(messageText: string) {

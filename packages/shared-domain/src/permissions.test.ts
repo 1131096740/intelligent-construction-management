@@ -369,6 +369,24 @@ describe("role-specific gates", () => {
     expect(canPerform("project.upstream_fund_fact.confirm", ["chairman"])).toBe(false);
   });
 
+  it("separates affiliate downstream recording and confirmation by business role", () => {
+    expect(canPerform("project.affiliate_contract_fact.record", ["contract_staff"])).toBe(true);
+    expect(canPerform("project.affiliate_contract_fact.confirm", ["contract_director"])).toBe(true);
+    expect(canPerform("project.affiliate_contract_fact.confirm", ["contract_staff"])).toBe(false);
+    expect(canPerform("project.affiliate_settlement_fact.record", ["budget_staff"])).toBe(true);
+    expect(canPerform("project.affiliate_settlement_fact.confirm", ["budget_staff"])).toBe(true);
+    expect(canPerform("project.affiliate_payment_fact.record", ["finance_staff"])).toBe(true);
+    expect(canPerform("project.affiliate_payment_fact.record", ["finance_director"])).toBe(true);
+    expect(canPerform("project.affiliate_payment_fact.confirm", ["finance_staff"])).toBe(true);
+    expect(canPerform("project.affiliate_payment_fact.confirm", ["finance_director"])).toBe(true);
+    expect(
+      canPerform("project.affiliate_business_fact.evidence_supplement", ["budget_staff"])
+    ).toBe(true);
+    expect(
+      canPerform("project.affiliate_business_fact.evidence_supplement", ["project_manager"])
+    ).toBe(false);
+  });
+
   it("requires finance staff or finance director to record project proxy payments", () => {
     expect(canPerform("project.proxy_payment.record", ["finance_staff"])).toBe(true);
     expect(canPerform("project.proxy_payment.record", ["finance_director"])).toBe(true);

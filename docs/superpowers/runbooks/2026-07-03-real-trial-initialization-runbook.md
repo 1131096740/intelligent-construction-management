@@ -137,6 +137,7 @@ A/B/C 最小要求：
 3. 汇总约 20 个历史合同，按 A/B/C 分级；先选出 3-5 个活跃合同。
 4. 对 A 级合同逐份收齐合同扫描件、补充协议、结算单、付款审批单、银行回单、总包代付记录和余额来源摘要。
 5. 标记缺资料项；缺资料允许存在，但必须写清楚是否阻断付款。
+6. 对挂靠企业已经对外完成的业务，另行整理外部合同、外部结算和外部付款三张清单；每笔冻结外部编号、相对方、发生日期、金额、书面文件或“口头通知”标记，不得补造我方审批、用章或付款执行。
 
 ### 2. 账号 / 岗位初始化
 
@@ -170,6 +171,16 @@ A/B/C 最小要求：
 4. 合同部主管用当前密码二次确认接管；系统会将历史合同版本和付款条款置为 effective，并写审计。
 5. 确认后不得静默改关键金额；需要更正时先记录原因、责任人和附件，再进入后续更正切片。
 
+### 5.1 挂靠企业对下业务持续接管
+
+1. 合同岗位在项目经营页「挂靠业务接管」登记外部合同；合同主管独立确认。登记和确认都只形成外部事实，不创建我方合同审批、用章或归档任务。
+2. 项目预算岗位只能基于已确认外部合同登记并确认外部结算；通用直接付款合同不登记结算。
+3. 财务岗位登记外部付款：正常付款必须关联已确认合同和已确认结算；通用直接付款只关联对应合同；结算前预付款必须命中合同已冻结的预付款约定和上限。
+4. 合同、结算和付款必须使用同一挂靠企业快照和相对方；同一外部文件、同一外部付款流水不能跨项目或跨业务重复绑定。
+5. 书面事实上传私有文件；口头通知必须显式标记，且付款口头事实只能由财务主管确认。确认需要当前密码并冻结手写签名版本。
+6. 已确认事实不得覆盖或删除。需要修正时只追加更正 delta 或精确反向；后补文件作为新证据版本追加。
+7. 外部付款只进入经营成本，不增加或减少我方实际现金，也不创建 `PaymentRequest`、`PaymentExecution` 或 `ApprovalInstance`。
+
 ### 6. 付款 / 结算试运行
 
 1. 从 A 级活跃合同中选择 1 个付款案例，发起付款预览，确认历史余额已进入容量扣减。
@@ -185,7 +196,7 @@ A/B/C 最小要求：
 1. seed 通用密码处理完成，且没有活跃 seed 账号可登录。
 2. 生产 `DATABASE_URL`、JWT 密钥、COS 密钥、CORS 和 Web API 地址均为生产值，未提交仓库。
 3. PostgreSQL 不公网暴露，COS 为私有桶，文件下载走后端鉴权和短时效票据。
-4. 敏感动作二次确认可用：接管确认、业主主合同确认、收款、总代付、实付、文件下载。
+4. 敏感动作二次确认可用：接管确认、业主主合同确认、上游资金事实确认、挂靠企业对下事实确认、实付、文件下载。
 5. 审计抽查可追到登录、接管、确认、付款、实付、文件下载和权限变更。
 6. 每日备份与恢复演练有记录；日志轮转和错误告警已配置。
 
@@ -240,6 +251,7 @@ ORDER BY "phone";
 - 约 20 个历史合同清单已完成 A/B/C 分级。
 - 3-5 个活跃合同已补齐付款/结算试运行需要的历史余额来源。
 - A 级合同完成接管确认后，付款容量能扣减历史已付、已批待付、审批中占用、总包代付和其他确认占用。
+- 挂靠企业对下合同、结算和付款可以按岗位持续追加；正常付款、预付款和直接付款分别受已确认结算、冻结预付款条款和合同类型约束，且全链不产生我方审批或资金执行。
 - 至少 1 条真实付款、1 条真实结算和 1 条综合费用能按 Runbook 跑完并留下审计。
 - 项目付款审批表 PDF、结算附件模板下载和上传归档、综合费用凭证下载票据均由真实岗位账号验收。
 - 缺资料和余额未确认的合同不能绕过系统发起付款。
@@ -257,7 +269,12 @@ ORDER BY "phone";
 - 业主主合同确认：`POST /api/projects/:projectId/owner-contracts/:ownerContractId/confirmation`
 - 对上审定：`POST /api/projects/:projectId/upstream-settlements`
 - 上游资金事实登记/确认：`POST /api/projects/:projectId/upstream-fund-facts`、`/upstream-fund-facts/:fundFactId/confirmation`
-- 总包代付：`POST /api/projects/:projectId/proxy-payments`
+- 挂靠企业对下事实读取：`GET /api/projects/:projectId/affiliate-business-facts`
+- 外部合同登记/确认：`POST /api/projects/:projectId/affiliate-contract-facts`、`/affiliate-contract-facts/:factId/confirmation`
+- 外部结算登记/确认：`POST /api/projects/:projectId/affiliate-settlement-facts`、`/affiliate-settlement-facts/:factId/confirmation`
+- 外部付款登记/确认：`POST /api/projects/:projectId/affiliate-payment-facts`、`/affiliate-payment-facts/:factId/confirmation`
+- 外部依据补充：`POST /api/projects/:projectId/affiliate-business-facts/:factId/evidence`
+- 旧总包代付写入口：`POST /api/projects/:projectId/proxy-payments` 固定返回 `410 Gone`，历史记录只读保留。
 - 试运行账号脚本：`pnpm --filter @jiangkong/api create:trial-users`
 - 试运行核心链路验证：`pnpm --filter @jiangkong/api verify:trial-run`
 - 生产配置只读检查：`pnpm --filter @jiangkong/api verify:production-readiness`

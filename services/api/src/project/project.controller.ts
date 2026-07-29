@@ -1,15 +1,28 @@
-import { Body, Controller, Get, GoneException, Param, Patch, Post } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  GoneException,
+  Optional,
+  Param,
+  Patch,
+  Post
+} from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { AssignProjectAffiliateDto } from "./dto/assign-project-affiliate.dto";
+import { ConfirmProjectAffiliateBusinessFactDto } from "./dto/confirm-project-affiliate-business-fact.dto";
 import { ConfirmProjectOwnerContractDto } from "./dto/confirm-project-owner-contract.dto";
 import { ConfirmProjectUpstreamSettlementDto } from "./dto/confirm-project-upstream-settlement.dto";
 import { ConfirmProjectUpstreamFundFactDto } from "./dto/confirm-project-upstream-fund-fact.dto";
 import type { CreateProjectDto } from "./dto/create-project.dto";
 import { RecordProjectOwnerContractDto } from "./dto/record-project-owner-contract.dto";
+import { RecordProjectAffiliateContractFactDto } from "./dto/record-project-affiliate-contract-fact.dto";
+import { RecordProjectAffiliatePaymentFactDto } from "./dto/record-project-affiliate-payment-fact.dto";
+import { RecordProjectAffiliateSettlementFactDto } from "./dto/record-project-affiliate-settlement-fact.dto";
 import { RecordProjectProxyPaymentDto } from "./dto/record-project-proxy-payment.dto";
 import { RecordProjectReceiptDto } from "./dto/record-project-receipt.dto";
 import { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
@@ -19,12 +32,25 @@ import { RequestSettlementExceptionQuotaDto } from "./dto/request-settlement-exc
 import { ReviewProjectFinancingQuotaDto } from "./dto/review-project-financing-quota.dto";
 import { ReviewSettlementExceptionQuotaDto } from "./dto/review-settlement-exception-quota.dto";
 import { TerminateProjectFinancingQuotaDto } from "./dto/terminate-project-financing-quota.dto";
+import { SupplementProjectAffiliateBusinessEvidenceDto } from "./dto/supplement-project-affiliate-business-evidence.dto";
 import type { UpdateProjectDto } from "./dto/update-project.dto";
+import { ProjectAffiliateBusinessService } from "./project-affiliate-business.service";
 import { ProjectService } from "./project.service";
 
 @Controller("projects")
 export class ProjectController {
-  constructor(private readonly projects: ProjectService) {}
+  constructor(
+    private readonly projects: ProjectService,
+    @Optional()
+    private readonly affiliateBusiness?: ProjectAffiliateBusinessService
+  ) {}
+
+  private affiliateBusinessService(): ProjectAffiliateBusinessService {
+    if (!this.affiliateBusiness) {
+      throw new Error("Affiliate business fact service is not available");
+    }
+    return this.affiliateBusiness;
+  }
 
   @Post()
   @RequirePositions("chairman", "general_manager")
@@ -69,6 +95,15 @@ export class ProjectController {
     return this.projects.getOperatingFundsOverview(projectId);
   }
 
+  @Get(":projectId/affiliate-business-facts")
+  @RequirePositions(...PROJECT_OVERVIEW_READ_POSITION_KEYS)
+  affiliateBusinessFacts(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.affiliateBusinessService().listFacts(projectId, user.id);
+  }
+
   @Post(":projectId/affiliate-assignment")
   @RequirePositions("chairman", "general_manager")
   assignAffiliate(
@@ -110,6 +145,100 @@ export class ProjectController {
     return this.projects.confirmUpstreamFundFact(projectId, fundFactId, user.id, body);
   }
 
+  @Post(":projectId/affiliate-contract-facts")
+  @RequireProjectRole("project.affiliate_contract_fact.record")
+  recordAffiliateContractFact(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RecordProjectAffiliateContractFactDto
+  ) {
+    return this.affiliateBusinessService().recordContractFact(projectId, user.id, body);
+  }
+
+  @Post(":projectId/affiliate-contract-facts/:factId/confirmation")
+  @RequireProjectRole("project.affiliate_contract_fact.confirm")
+  confirmAffiliateContractFact(
+    @Param("projectId") projectId: string,
+    @Param("factId") factId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ConfirmProjectAffiliateBusinessFactDto
+  ) {
+    return this.affiliateBusinessService().confirmContractFact(
+      projectId,
+      factId,
+      user.id,
+      body
+    );
+  }
+
+  @Post(":projectId/affiliate-settlement-facts")
+  @RequireProjectRole("project.affiliate_settlement_fact.record")
+  recordAffiliateSettlementFact(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RecordProjectAffiliateSettlementFactDto
+  ) {
+    return this.affiliateBusinessService().recordSettlementFact(projectId, user.id, body);
+  }
+
+  @Post(":projectId/affiliate-settlement-facts/:factId/confirmation")
+  @RequireProjectRole("project.affiliate_settlement_fact.confirm")
+  confirmAffiliateSettlementFact(
+    @Param("projectId") projectId: string,
+    @Param("factId") factId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ConfirmProjectAffiliateBusinessFactDto
+  ) {
+    return this.affiliateBusinessService().confirmSettlementFact(
+      projectId,
+      factId,
+      user.id,
+      body
+    );
+  }
+
+  @Post(":projectId/affiliate-payment-facts")
+  @RequireProjectRole("project.affiliate_payment_fact.record")
+  recordAffiliatePaymentFact(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RecordProjectAffiliatePaymentFactDto
+  ) {
+    return this.affiliateBusinessService().recordPaymentFact(projectId, user.id, body);
+  }
+
+  @Post(":projectId/affiliate-payment-facts/:factId/confirmation")
+  @RequireProjectRole("project.affiliate_payment_fact.confirm")
+  confirmAffiliatePaymentFact(
+    @Param("projectId") projectId: string,
+    @Param("factId") factId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ConfirmProjectAffiliateBusinessFactDto
+  ) {
+    return this.affiliateBusinessService().confirmPaymentFact(
+      projectId,
+      factId,
+      user.id,
+      body
+    );
+  }
+
+  @Post(":projectId/affiliate-business-facts/:factId/evidence")
+  @RequireProjectRole("project.affiliate_business_fact.evidence_supplement")
+  supplementAffiliateBusinessEvidence(
+    @Param("projectId") projectId: string,
+    @Param("factId") factId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: SupplementProjectAffiliateBusinessEvidenceDto
+  ) {
+    return this.affiliateBusinessService().supplementEvidence(
+      projectId,
+      factId,
+      user.id,
+      body
+    );
+  }
+
   @Post(":projectId/proxy-payments")
   @RequireProjectRole("project.proxy_payment.record")
   recordProxyPayment(
@@ -117,7 +246,12 @@ export class ProjectController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: RecordProjectProxyPaymentDto
   ) {
-    return this.projects.recordProxyPayment(projectId, user.id, body);
+    void projectId;
+    void user;
+    void body;
+    throw new GoneException(
+      "旧挂靠代付一步式写入口已停用，请使用挂靠业务持续接管的合同、结算、付款事实链"
+    );
   }
 
   @Post(":projectId/upstream-settlements")

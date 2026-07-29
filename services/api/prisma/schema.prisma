@@ -2291,6 +2291,151 @@ model ProjectUpstreamFundFact {
   @@index([evidenceFileId])
 }
 
+model ProjectAffiliateContractFact {
+  id                               String    @id @default(uuid())
+  ledgerId                         String
+  projectId                        String
+  entryKind                        String    @default("original")
+  adjustsFactId                    String?
+  effectDirection                  String    @default("increase")
+  contractType                     String
+  externalContractReference        String
+  counterpartyName                 String
+  signedAt                         DateTime
+  amountNature                     String
+  amountCents                      BigInt?
+  advanceAllowed                   Boolean   @default(false)
+  advanceLimitCents                BigInt?
+  advanceTermsSummary              String?
+  affiliateAssignmentId            String
+  affiliateBusinessPartyVersionId  String
+  affiliateNameSnapshot            String
+  basisType                        String
+  description                      String?
+  evidenceFileId                   String?
+  documentVersion                  Int       @default(1)
+  fileContentSha256Snapshot        String?
+  idempotencyKey                   String    @unique
+  requestFingerprint               String
+  recordedByUserId                 String
+  recordedByRoleKey                String
+  status                           String    @default("pending_confirm")
+  confirmedByUserId                String?
+  confirmedAt                      DateTime?
+  confirmationActionId             String?   @unique
+  confirmationSignatureVersionId   String?
+  confirmationSignatureFileId      String?
+  confirmationSignatureSha256      String?
+  createdAt                        DateTime  @default(now())
+  updatedAt                        DateTime  @updatedAt
+
+  @@index([projectId, ledgerId, status])
+  @@index([adjustsFactId])
+  @@index([evidenceFileId])
+  @@index([externalContractReference])
+}
+
+model ProjectAffiliateSettlementFact {
+  id                               String    @id @default(uuid())
+  ledgerId                         String
+  projectId                        String
+  contractLedgerId                 String
+  entryKind                        String    @default("original")
+  adjustsFactId                    String?
+  effectDirection                  String    @default("increase")
+  counterpartyName                 String
+  settledAt                        DateTime
+  periodLabel                      String
+  amountCents                      BigInt
+  affiliateAssignmentId            String
+  affiliateBusinessPartyVersionId  String
+  affiliateNameSnapshot            String
+  basisType                        String
+  description                      String?
+  evidenceFileId                   String?
+  documentVersion                  Int       @default(1)
+  fileContentSha256Snapshot        String?
+  idempotencyKey                   String    @unique
+  requestFingerprint               String
+  recordedByUserId                 String
+  recordedByRoleKey                String
+  status                           String    @default("pending_confirm")
+  confirmedByUserId                String?
+  confirmedAt                      DateTime?
+  confirmationActionId             String?   @unique
+  confirmationSignatureVersionId   String?
+  confirmationSignatureFileId      String?
+  confirmationSignatureSha256      String?
+  createdAt                        DateTime  @default(now())
+  updatedAt                        DateTime  @updatedAt
+
+  @@index([projectId, ledgerId, status])
+  @@index([contractLedgerId])
+  @@index([adjustsFactId])
+  @@index([evidenceFileId])
+}
+
+model ProjectAffiliatePaymentFact {
+  id                               String    @id @default(uuid())
+  ledgerId                         String
+  projectId                        String
+  contractLedgerId                 String
+  settlementLedgerId               String?
+  entryKind                        String    @default("original")
+  adjustsFactId                    String?
+  effectDirection                  String    @default("increase")
+  counterpartyName                 String
+  paidAt                           DateTime
+  amountCents                      BigInt
+  paymentKind                      String
+  externalPaymentReference         String?
+  affiliateAssignmentId            String
+  affiliateBusinessPartyVersionId  String
+  affiliateNameSnapshot            String
+  basisType                        String
+  description                      String?
+  evidenceFileId                   String?
+  documentVersion                  Int       @default(1)
+  fileContentSha256Snapshot        String?
+  idempotencyKey                   String    @unique
+  requestFingerprint               String
+  recordedByUserId                 String
+  recordedByRoleKey                String
+  status                           String    @default("pending_confirm")
+  confirmedByUserId                String?
+  confirmedAt                      DateTime?
+  confirmationActionId             String?   @unique
+  confirmationSignatureVersionId   String?
+  confirmationSignatureFileId      String?
+  confirmationSignatureSha256      String?
+  createdAt                        DateTime  @default(now())
+  updatedAt                        DateTime  @updatedAt
+
+  @@index([projectId, ledgerId, status])
+  @@index([contractLedgerId])
+  @@index([settlementLedgerId])
+  @@index([adjustsFactId])
+  @@index([evidenceFileId])
+  @@index([externalPaymentReference])
+}
+
+model ProjectAffiliateBusinessEvidence {
+  id                         String    @id @default(uuid())
+  projectId                  String
+  businessType               String
+  businessFactId             String
+  fileId                     String    @unique
+  documentVersion            Int       @default(1)
+  fileContentSha256Snapshot  String
+  description                String
+  idempotencyKey             String    @unique
+  recordedByUserId           String
+  recordedByRoleKey          String
+  createdAt                  DateTime  @default(now())
+
+  @@index([projectId, businessType, businessFactId])
+}
+
 model ProjectProxyPayment {
   id                    String    @id @default(uuid())
   projectId             String

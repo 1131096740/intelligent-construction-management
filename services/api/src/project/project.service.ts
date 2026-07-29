@@ -614,6 +614,7 @@ export class ProjectService {
       upstreamFundFacts,
       supplierRefundAmountCents,
       projectProxyPayments,
+      projectAffiliatePayments,
       projectUpstreamSettlements,
       projectFinancingQuotas,
       projectExpenseRequests,
@@ -656,6 +657,10 @@ export class ProjectService {
       this.prisma.projectProxyPayment.findMany({
         where: { projectId, voidedAt: null },
         select: { amountCents: true }
+      }),
+      this.prisma.projectAffiliatePaymentFact.findMany({
+        where: { projectId, status: "confirmed" },
+        select: { amountCents: true, effectDirection: true }
       }),
       this.prisma.projectUpstreamSettlement.findMany({
         where: { projectId, status: "confirmed", voidedAt: null },
@@ -775,6 +780,13 @@ export class ProjectService {
       projectProxyPayments.map((payment) => payment.amountCents),
       "项目代付金额"
     );
+    const affiliateDownstreamPaymentCents = projectAffiliatePayments.reduce(
+      (total, payment) =>
+        total +
+        (payment.effectDirection === "decrease" ? -1n : 1n) *
+          dbMoneyToBigInt(payment.amountCents, "挂靠企业对下付款金额"),
+      0n
+    );
     const upstreamSettlementCents = sumDbMoneyToBigInt(
       projectUpstreamSettlements.map((settlement) => settlement.approvedAmountCents),
       "对上结算金额"
@@ -800,7 +812,10 @@ export class ProjectService {
       ? upstreamSettlementCents
       : ownerPaymentCents;
     const operatingCostCents =
-      actualPaidCents + proxyPaymentCents + affiliateDeductionCents;
+      actualPaidCents +
+      proxyPaymentCents +
+      affiliateDownstreamPaymentCents +
+      affiliateDeductionCents;
     const spotCashRequests = spotProcurementPayments.map(
       spotProcurementPaymentToMoneyRequestValue
     );
@@ -874,6 +889,9 @@ export class ProjectService {
           )
         ),
         operatingIncomeCents: projectMoneyToApi(operatingIncomeCents),
+        affiliateDownstreamPaymentCents: projectMoneyToApi(
+          affiliateDownstreamPaymentCents
+        ),
         operatingCostCents: projectMoneyToApi(operatingCostCents),
         grossProfitCents: projectMoneyToApi(operatingIncomeCents - operatingCostCents)
       },

@@ -727,6 +727,12 @@ describe("ProjectService", () => {
           { amountCents: BigInt(500000) }
         ])
       },
+      projectAffiliatePaymentFact: {
+        findMany: jest.fn().mockResolvedValue([
+          { amountCents: 1_000_000n, effectDirection: "increase" },
+          { amountCents: 200_000n, effectDirection: "decrease" }
+        ])
+      },
       projectUpstreamSettlement: {
         findMany: jest.fn().mockResolvedValue([
           { approvedAmountCents: BigInt(30000000) }
@@ -805,8 +811,9 @@ describe("ProjectService", () => {
         effectiveSettlementAmountCents: "20000000",
         payableSettlementAmountCents: "16000000",
         operatingIncomeCents: "30000000",
-        operatingCostCents: "8000000",
-        grossProfitCents: "22000000"
+        affiliateDownstreamPaymentCents: "800000",
+        operatingCostCents: "8800000",
+        grossProfitCents: "21200000"
       },
       upstreamFunds: {
         ownerPaymentCents: "0",
@@ -827,6 +834,10 @@ describe("ProjectService", () => {
     expect(prisma.projectProxyPayment.findMany).toHaveBeenCalledWith({
       where: { projectId: "project-1", voidedAt: null },
       select: { amountCents: true }
+    });
+    expect(prisma.projectAffiliatePaymentFact.findMany).toHaveBeenCalledWith({
+      where: { projectId: "project-1", status: "confirmed" },
+      select: { amountCents: true, effectDirection: true }
     });
     expect(prisma.projectUpstreamSettlement.findMany).toHaveBeenCalledWith({
       where: { projectId: "project-1", status: "confirmed", voidedAt: null },
@@ -867,6 +878,7 @@ describe("ProjectService", () => {
       projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamFundFact: { findMany: jest.fn().mockResolvedValue([]) },
       projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
+      projectAffiliatePaymentFact: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
       spotProcurement: {
         findMany: jest.fn().mockResolvedValue([
@@ -927,6 +939,7 @@ describe("ProjectService", () => {
       projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamFundFact: { findMany: jest.fn().mockResolvedValue([]) },
       projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
+      projectAffiliatePaymentFact: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamSettlement: {
         findMany: jest.fn().mockResolvedValue([])
       },
@@ -973,6 +986,7 @@ describe("ProjectService", () => {
       projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamFundFact: { findMany: jest.fn().mockResolvedValue([]) },
       projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
+      projectAffiliatePaymentFact: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
       spotProcurement: { findMany: jest.fn().mockResolvedValue([]) },
       spotProcurementRefund: { findMany: jest.fn().mockResolvedValue([]) },
@@ -1013,6 +1027,7 @@ describe("ProjectService", () => {
       projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamFundFact: { findMany: jest.fn().mockResolvedValue([]) },
       projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
+      projectAffiliatePaymentFact: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
       spotProcurement: { findMany: jest.fn().mockResolvedValue([]) },
       spotProcurementRefund: { findMany: jest.fn().mockResolvedValue([]) },

@@ -107,6 +107,11 @@ const ARCHIVE_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
 ];
 const PAYMENT_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = ["finance_staff", "finance_director"];
 const UPSTREAM_SETTLEMENT_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = ["budget_staff", "budget_director"];
+const AFFILIATE_CONTRACT_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
+  "contract_staff",
+  "contract_director"
+];
+const AFFILIATE_SETTLEMENT_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = ["budget_staff"];
 const SETTLEMENT_EXCEPTION_QUOTA_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
   "project_manager",
   "contract_director",
@@ -1153,6 +1158,10 @@ export class FileService {
         UNION ALL SELECT 1 FROM "ProjectProxyPayment" WHERE "voucherFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectUpstreamSettlement" WHERE "voucherFileId" = ${fileId} OR "confirmationSignatureFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectUpstreamFundFact" WHERE "evidenceFileId" = ${fileId} OR "confirmationSignatureFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ProjectAffiliateContractFact" WHERE "evidenceFileId" = ${fileId} OR "confirmationSignatureFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ProjectAffiliateSettlementFact" WHERE "evidenceFileId" = ${fileId} OR "confirmationSignatureFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ProjectAffiliatePaymentFact" WHERE "evidenceFileId" = ${fileId} OR "confirmationSignatureFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ProjectAffiliateBusinessEvidence" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectSettlementExceptionQuota" WHERE "attachmentFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectFinancingQuota" WHERE "attachmentFileId" = ${fileId} OR "terminationSignatureFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ApprovalActionLog" WHERE "signatureFileIdSnapshot" = ${fileId}
@@ -1848,6 +1857,100 @@ export class FileService {
     if (expenseAttachmentAccess === true) return;
     if (expenseAttachmentAccess === false) {
       throw new ForbiddenException("当前账号无权下载该费用附件");
+    }
+
+    const affiliateBusinessClients = tx as unknown as {
+      projectAffiliateContractFact?: {
+        findFirst(args: unknown): Promise<{ projectId: string } | null>;
+      };
+      projectAffiliateSettlementFact?: {
+        findFirst(args: unknown): Promise<{ projectId: string } | null>;
+      };
+      projectAffiliatePaymentFact?: {
+        findFirst(args: unknown): Promise<{ projectId: string } | null>;
+      };
+      projectAffiliateBusinessEvidence?: {
+        findFirst(
+          args: unknown
+        ): Promise<{ projectId: string; businessType: string } | null>;
+      };
+    };
+    const [
+      affiliateContractFact,
+      affiliateSettlementFact,
+      affiliatePaymentFact,
+      affiliateSupplementalEvidence
+    ] = await Promise.all([
+      affiliateBusinessClients.projectAffiliateContractFact?.findFirst({
+        where: {
+          OR: [
+            { evidenceFileId: file.id },
+            { confirmationSignatureFileId: file.id }
+          ]
+        },
+        select: { projectId: true }
+      }) ?? null,
+      affiliateBusinessClients.projectAffiliateSettlementFact?.findFirst({
+        where: {
+          OR: [
+            { evidenceFileId: file.id },
+            { confirmationSignatureFileId: file.id }
+          ]
+        },
+        select: { projectId: true }
+      }) ?? null,
+      affiliateBusinessClients.projectAffiliatePaymentFact?.findFirst({
+        where: {
+          OR: [
+            { evidenceFileId: file.id },
+            { confirmationSignatureFileId: file.id }
+          ]
+        },
+        select: { projectId: true }
+      }) ?? null,
+      affiliateBusinessClients.projectAffiliateBusinessEvidence?.findFirst({
+        where: { fileId: file.id },
+        select: { projectId: true, businessType: true }
+      }) ?? null
+    ]);
+    const affiliateFileAccess = affiliateContractFact
+      ? {
+          projectId: affiliateContractFact.projectId,
+          roles: AFFILIATE_CONTRACT_FILE_DOWNLOAD_ROLES
+        }
+      : affiliateSettlementFact
+        ? {
+            projectId: affiliateSettlementFact.projectId,
+            roles: AFFILIATE_SETTLEMENT_FILE_DOWNLOAD_ROLES
+          }
+        : affiliatePaymentFact
+          ? {
+              projectId: affiliatePaymentFact.projectId,
+              roles: PAYMENT_FILE_DOWNLOAD_ROLES
+            }
+          : affiliateSupplementalEvidence
+            ? {
+                projectId: affiliateSupplementalEvidence.projectId,
+                roles:
+                  affiliateSupplementalEvidence.businessType === "contract"
+                    ? AFFILIATE_CONTRACT_FILE_DOWNLOAD_ROLES
+                    : affiliateSupplementalEvidence.businessType === "settlement"
+                      ? AFFILIATE_SETTLEMENT_FILE_DOWNLOAD_ROLES
+                      : PAYMENT_FILE_DOWNLOAD_ROLES
+              }
+            : null;
+    if (affiliateFileAccess) {
+      if (
+        await this.hasProjectRole(
+          tx,
+          actorUserId,
+          affiliateFileAccess.projectId,
+          affiliateFileAccess.roles
+        )
+      ) {
+        return;
+      }
+      throw new ForbiddenException("当前账号无权下载该挂靠外部业务资料");
     }
 
     if (file.uploadedByUserId === actorUserId && !projectOwnerContract) {
