@@ -180,6 +180,24 @@ type ContractAdvancePaymentCapacityCalculator = (input: {
   historicalBalance?: HistoricalContractPaymentBalance;
 }) => ContractDuePaymentCapacity;
 
+type HistoricalTakeoverPaymentAllocator = (input: {
+  payments: readonly { id: string; amountCents: bigint }[];
+  capacityCents: bigint | null;
+  excessTreatment?: "historical_advance" | "abnormal_overpay";
+}) => {
+  payments: Array<{
+    historicalPaymentId: string;
+    allocations: Array<{
+      allocationType: "settlement" | "historical_advance" | "abnormal_overpay";
+      amountCents: bigint;
+      allocationOrder: number;
+    }>;
+  }>;
+  totalPaidCents: bigint;
+  normalAllocatedCents: bigint;
+  excessAllocatedCents: bigint;
+};
+
 const calculateContractDuePaymentCapacity = (
   settlementPaymentCapacity as unknown as {
     calculateContractDuePaymentCapacity?: ContractDuePaymentCapacityCalculator;
@@ -203,6 +221,12 @@ const allocateContractDuePaymentExecution = (
     allocateContractDuePaymentExecution?: ContractDuePaymentExecutionAllocator;
   }
 ).allocateContractDuePaymentExecution;
+
+const allocateHistoricalTakeoverPayments = (
+  settlementPaymentCapacity as unknown as {
+    allocateHistoricalTakeoverPayments?: HistoricalTakeoverPaymentAllocator;
+  }
+).allocateHistoricalTakeoverPayments;
 
 function calculateContractCapacity(
   input: Parameters<ContractDuePaymentCapacityCalculator>[0]
@@ -2387,5 +2411,98 @@ describe("calculateContractAdvancePaymentCapacity", () => {
       occupiedCents: 90_000n,
       remainingCents: 10_000n
     });
+  });
+});
+
+describe("allocateHistoricalTakeoverPayments", () => {
+  it("allocates each payment in stable order and conserves normal plus advance amounts", () => {
+    const result = allocateHistoricalTakeoverPayments?.({
+      payments: [
+        { id: "payment-1", amountCents: 400n },
+        { id: "payment-2", amountCents: 500n }
+      ],
+      capacityCents: 600n,
+      excessTreatment: "historical_advance"
+    });
+
+    expect(result).toEqual({
+      payments: [
+        {
+          historicalPaymentId: "payment-1",
+          allocations: [
+            { allocationType: "settlement", amountCents: 400n, allocationOrder: 1 }
+          ]
+        },
+        {
+          historicalPaymentId: "payment-2",
+          allocations: [
+            { allocationType: "settlement", amountCents: 200n, allocationOrder: 1 },
+            {
+              allocationType: "historical_advance",
+              amountCents: 300n,
+              allocationOrder: 2
+            }
+          ]
+        }
+      ],
+      totalPaidCents: 900n,
+      normalAllocatedCents: 600n,
+      excessAllocatedCents: 300n
+    });
+    expect(
+      result?.payments.flatMap((payment) => payment.allocations).reduce(
+        (total, allocation) => total + allocation.amountCents,
+        0n
+      )
+    ).toBe(result?.totalPaidCents);
+  });
+
+  it("classifies capped direct-contract overflow as abnormal overpayment", () => {
+    expect(
+      allocateHistoricalTakeoverPayments?.({
+        payments: [{ id: "payment-1", amountCents: 700n }],
+        capacityCents: 500n,
+        excessTreatment: "abnormal_overpay"
+      })
+    ).toMatchObject({
+      totalPaidCents: 700n,
+      normalAllocatedCents: 500n,
+      excessAllocatedCents: 200n,
+      payments: [
+        {
+          allocations: [
+            { allocationType: "settlement", amountCents: 500n },
+            { allocationType: "abnormal_overpay", amountCents: 200n }
+          ]
+        }
+      ]
+    });
+  });
+
+  it("does not manufacture overpayment for an unlimited direct contract", () => {
+    expect(
+      allocateHistoricalTakeoverPayments?.({
+        payments: [{ id: "payment-1", amountCents: 700n }],
+        capacityCents: null
+      })
+    ).toMatchObject({
+      totalPaidCents: 700n,
+      normalAllocatedCents: 700n,
+      excessAllocatedCents: 0n,
+      payments: [
+        {
+          allocations: [{ allocationType: "settlement", amountCents: 700n }]
+        }
+      ]
+    });
+  });
+
+  it("fails closed when a positive excess has no approved classification", () => {
+    expect(() =>
+      allocateHistoricalTakeoverPayments?.({
+        payments: [{ id: "payment-1", amountCents: 700n }],
+        capacityCents: 500n
+      })
+    ).toThrow("历史实付超出可承接金额，必须先确认超额款项性质");
   });
 });

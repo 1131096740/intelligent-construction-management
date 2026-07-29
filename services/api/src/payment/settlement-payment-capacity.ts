@@ -187,6 +187,94 @@ export interface ContractDuePaymentExecutionAllocation {
   amountCents: bigint;
 }
 
+export type HistoricalTakeoverExcessTreatment =
+  | "historical_advance"
+  | "abnormal_overpay";
+
+export interface HistoricalTakeoverPaymentAllocation {
+  historicalPaymentId: string;
+  allocations: Array<{
+    allocationType:
+      | "settlement"
+      | HistoricalTakeoverExcessTreatment;
+    amountCents: bigint;
+    allocationOrder: number;
+  }>;
+}
+
+export function allocateHistoricalTakeoverPayments(input: {
+  payments: readonly { id: string; amountCents: bigint }[];
+  capacityCents: bigint | null;
+  excessTreatment?: HistoricalTakeoverExcessTreatment;
+}): {
+  payments: HistoricalTakeoverPaymentAllocation[];
+  totalPaidCents: bigint;
+  normalAllocatedCents: bigint;
+  excessAllocatedCents: bigint;
+} {
+  let remainingCapacity =
+    input.capacityCents === null
+      ? null
+      : dbMoneyToBigInt(input.capacityCents, "历史实付可承接金额");
+  if (remainingCapacity !== null && remainingCapacity < 0n) {
+    throw new Error("历史实付可承接金额不能为负数");
+  }
+
+  let totalPaidCents = 0n;
+  let normalAllocatedCents = 0n;
+  let excessAllocatedCents = 0n;
+  const payments = input.payments.map((payment) => {
+    const amountCents = dbMoneyToBigInt(payment.amountCents, "历史实付金额");
+    if (amountCents <= 0n) {
+      throw new Error("历史实付金额必须大于 0");
+    }
+    totalPaidCents += amountCents;
+    const allocations: HistoricalTakeoverPaymentAllocation["allocations"] = [];
+    const normalAmountCents =
+      remainingCapacity === null
+        ? amountCents
+        : amountCents < remainingCapacity
+          ? amountCents
+          : remainingCapacity;
+    if (normalAmountCents > 0n) {
+      allocations.push({
+        allocationType: "settlement",
+        amountCents: normalAmountCents,
+        allocationOrder: allocations.length + 1
+      });
+      normalAllocatedCents += normalAmountCents;
+      if (remainingCapacity !== null) {
+        remainingCapacity -= normalAmountCents;
+      }
+    }
+
+    const excessAmountCents = amountCents - normalAmountCents;
+    if (excessAmountCents > 0n) {
+      if (!input.excessTreatment) {
+        throw new Error("历史实付超出可承接金额，必须先确认超额款项性质");
+      }
+      allocations.push({
+        allocationType: input.excessTreatment,
+        amountCents: excessAmountCents,
+        allocationOrder: allocations.length + 1
+      });
+      excessAllocatedCents += excessAmountCents;
+    }
+
+    return {
+      historicalPaymentId: payment.id,
+      allocations
+    };
+  });
+
+  return {
+    payments,
+    totalPaidCents,
+    normalAllocatedCents,
+    excessAllocatedCents
+  };
+}
+
 export function calculateSettlementPaymentCapacity(input: {
   payableAmountCents: bigint;
   actualPaidAmountCents: bigint;

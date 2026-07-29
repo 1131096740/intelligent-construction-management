@@ -1439,19 +1439,17 @@ describe("ContractTakeoverService", () => {
         ) => callback(tx)
       )
     };
-    const service = new ContractTakeoverService(
-      prisma as never,
-      audit as never,
-      auth as never,
-      files as never
-    );
     const activate = jest.fn().mockResolvedValue({
       activated: true,
       activationStatus: "activated"
     });
-    (service as unknown as {
-      tryActivateInTransaction: typeof activate;
-    }).tryActivateInTransaction = activate;
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never,
+      { tryActivateInTransaction: activate } as never
+    );
 
     const result = await service.confirmFinanceSide(
       "project-1",
@@ -1480,17 +1478,7 @@ describe("ContractTakeoverService", () => {
     expect(activate).toHaveBeenCalledTimes(1);
     expect(activate).toHaveBeenCalledWith(
       tx,
-      expect.objectContaining({ id: "takeover-1" }),
-      expect.objectContaining({
-        revision: 4,
-        financeBasisRevision: 4,
-        confirmedRevision: 4
-      }),
-      expect.objectContaining({
-        revision: 2,
-        confirmedRevision: 2,
-        confirmedFinanceBasisRevision: 4
-      }),
+      "takeover-1",
       "finance-director",
       "33333333-3333-4333-8333-333333333333"
     );

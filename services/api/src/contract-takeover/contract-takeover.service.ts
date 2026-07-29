@@ -60,6 +60,7 @@ import type {
 } from "./dto/save-contract-takeover-finance-facts.dto";
 import type { ConfirmContractTakeoverSideDto } from "./dto/confirm-contract-takeover-side.dto";
 import type { WithdrawContractTakeoverSideConfirmationDto } from "./dto/withdraw-contract-takeover-side-confirmation.dto";
+import { ContractTakeoverActivationService } from "./contract-takeover-activation.service";
 
 const TAKEOVER_LEVELS = ["A", "B", "C"] as const;
 const LIFECYCLE_STATUSES = [
@@ -570,7 +571,9 @@ export class ContractTakeoverService {
     @Optional()
     private readonly auth?: AuthService,
     @Optional()
-    private readonly files?: FileService
+    private readonly files?: FileService,
+    @Optional()
+    private readonly activation?: ContractTakeoverActivationService
   ) {}
 
   async create(projectId: string, input: CreateContractTakeoverDto, actorUserId: string) {
@@ -4618,12 +4621,12 @@ export class ContractTakeoverService {
   }
 
   private async tryActivateInTransaction(
-    _tx: Prisma.TransactionClient,
-    _takeover: ContractTakeoverRecord,
+    tx: Prisma.TransactionClient,
+    takeover: ContractTakeoverRecord,
     contractFacts: ContractTakeoverContractFactsRow,
     financeFacts: ContractTakeoverFinanceFactsRow | null,
-    _actorUserId: string,
-    _idempotencyKey: string
+    actorUserId: string,
+    idempotencyKey: string
   ): Promise<{
     activated: boolean;
     activationStatus:
@@ -4631,8 +4634,6 @@ export class ContractTakeoverService {
       | "awaiting_finance_confirmation"
       | "activated";
   }> {
-    void _actorUserId;
-    void _idempotencyKey;
     if (contractFacts.confirmedRevision !== contractFacts.revision) {
       return {
         activated: false,
@@ -4656,8 +4657,16 @@ export class ContractTakeoverService {
         "财务确认所依据的合同基线已过期，请重新保存并确认"
       );
     }
-    throw new ConflictException(
-      "双部门确认已齐备，但历史接管激活协调服务尚未就绪"
+    if (!this.activation) {
+      throw new ConflictException(
+        "双部门确认已齐备，但历史接管激活协调服务尚未就绪"
+      );
+    }
+    return this.activation.tryActivateInTransaction(
+      tx,
+      takeover.id,
+      actorUserId,
+      idempotencyKey
     );
   }
 

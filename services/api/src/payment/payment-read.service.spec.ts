@@ -111,6 +111,117 @@ describe("PaymentReadService", () => {
     });
   });
 
+  it("unions activated historical takeover payments into the formal payment ledger", async () => {
+    const prisma = {
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractTakeover: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "takeover-1",
+            projectId: "project-1",
+            contractId: "contract-1",
+            historicalInitialSettlementId: "settlement-opening-1",
+            activatedAt: new Date("2026-07-01T09:00:00.000Z")
+          }
+        ])
+      },
+      contractTakeoverHistoricalPayment: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "historical-payment-1",
+            takeoverId: "takeover-1",
+            rowKey: "row-1",
+            sequenceNo: 1,
+            amountCents: 700_00n,
+            paidAt: new Date("2026-05-20T00:00:00.000Z"),
+            status: "activated",
+            activatedAt: new Date("2026-07-01T09:00:00.000Z"),
+            updatedAt: new Date("2026-07-01T09:00:00.000Z")
+          }
+        ])
+      },
+      contractTakeoverHistoricalPaymentVoucher: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            historicalPaymentId: "historical-payment-1",
+            fileId: "voucher-file-1",
+            displayOrder: 1
+          },
+          {
+            historicalPaymentId: "historical-payment-1",
+            fileId: "voucher-file-2",
+            displayOrder: 2
+          }
+        ])
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "settlement-opening-1",
+            code: "HT-OPEN-takeover-1"
+          }
+        ])
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "project-1", name: "总部综合楼" }
+        ])
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-1", code: "HT-HIS-001", name: "历史采购合同" }
+        ])
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new PaymentReadService(prisma as never);
+
+    const ledger = await service.listLedger(
+      { view: "formal_ledger", page: 1, pageSize: 20 },
+      ["project-1"],
+      "finance-user"
+    );
+
+    expect(
+      prisma.contractTakeover.findMany
+    ).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        projectId: { in: ["project-1"] },
+        activatedAt: { not: null }
+      }
+    }));
+    expect(ledger.rows).toEqual([
+      expect.objectContaining({
+        id: "historical-payment-1",
+        paymentNo: "历史实付-1",
+        contractNo: "HT-HIS-001 · 历史采购合同",
+        settlementNo: "HT-OPEN-takeover-1",
+        project: "总部综合楼",
+        requestedAmountCents: "70000",
+        paidAmountCents: "70000",
+        approvalStatus: "无需审批",
+        paymentStatus: "已付款",
+        sourceType: "historical_takeover",
+        sourceLabel: "历史接管",
+        natureLabel: "已发生实付，不重新审批",
+        voucherFileIds: ["voucher-file-1", "voucher-file-2"],
+        ledgerView: "formal_ledger",
+        availableActions: []
+      })
+    ]);
+    expect(ledger.statistics).toMatchObject({
+      formalRequestedAmountCents: "70000",
+      formalPaidAmountCents: "70000",
+      pendingApproval: 0,
+      pendingPayment: 0,
+      paid: 1
+    });
+  });
+
   it("filters payment ledger by visible projects", async () => {
     const prisma = {
       paymentRequest: {

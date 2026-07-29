@@ -365,6 +365,98 @@ export class PaymentReadService {
       ...(options?.all ? {} : { take }),
       orderBy: { updatedAt: "desc" }
     });
+    const historicalClient = this.prisma as unknown as {
+      contractTakeover?: {
+        findMany(args: unknown): Promise<Array<{
+          id: string;
+          projectId: string;
+          contractId: string;
+          historicalInitialSettlementId: string | null;
+          activatedAt: Date | null;
+        }>>;
+      };
+      contractTakeoverHistoricalPayment?: {
+        findMany(args: unknown): Promise<Array<{
+          id: string;
+          takeoverId: string;
+          rowKey: string;
+          sequenceNo: number;
+          amountCents: bigint;
+          paidAt: Date;
+          status: string;
+          activatedAt: Date | null;
+          updatedAt: Date;
+        }>>;
+      };
+      contractTakeoverHistoricalPaymentVoucher?: {
+        findMany(args: unknown): Promise<Array<{
+          historicalPaymentId: string;
+          fileId: string;
+          displayOrder: number;
+        }>>;
+      };
+    };
+    const canReadHistoricalTakeoverPayments =
+      Boolean(historicalClient.contractTakeover?.findMany) &&
+      Boolean(
+        historicalClient.contractTakeoverHistoricalPayment?.findMany
+      ) &&
+      Boolean(
+        historicalClient.contractTakeoverHistoricalPaymentVoucher?.findMany
+      );
+    const historicalTakeovers = canReadHistoricalTakeoverPayments
+      ? await historicalClient.contractTakeover!.findMany({
+          where: {
+            ...(visibleProjectIds
+              ? { projectId: { in: visibleProjectIds } }
+              : {}),
+            activatedAt: { not: null }
+          },
+          select: {
+            id: true,
+            projectId: true,
+            contractId: true,
+            historicalInitialSettlementId: true,
+            activatedAt: true
+          },
+          orderBy: { activatedAt: "desc" }
+        })
+      : [];
+    const takeoverIds = historicalTakeovers.map(
+      (takeover) => takeover.id
+    );
+    const historicalPayments = takeoverIds.length
+      ? await historicalClient.contractTakeoverHistoricalPayment!.findMany({
+          where: {
+            takeoverId: { in: takeoverIds },
+            status: "activated"
+          },
+          orderBy: [
+            { activatedAt: "desc" },
+            { takeoverId: "asc" },
+            { sequenceNo: "asc" }
+          ]
+        })
+      : [];
+    const historicalPaymentIds = historicalPayments.map(
+      (payment) => payment.id
+    );
+    const historicalVouchers = historicalPaymentIds.length
+      ? await historicalClient.contractTakeoverHistoricalPaymentVoucher!.findMany({
+          where: {
+            historicalPaymentId: { in: historicalPaymentIds }
+          },
+          select: {
+            historicalPaymentId: true,
+            fileId: true,
+            displayOrder: true
+          },
+          orderBy: [
+            { historicalPaymentId: "asc" },
+            { displayOrder: "asc" }
+          ]
+        })
+      : [];
     const paymentIds = payments.map((payment) => payment.id);
     const approvalClient = (this.prisma as unknown as {
       approvalInstance?: {
@@ -383,13 +475,27 @@ export class PaymentReadService {
     });
     const settlementIds = [
       ...new Set(
-        payments
-          .map((payment) => payment.settlementId)
+        [
+          ...payments.map((payment) => payment.settlementId),
+          ...historicalTakeovers.map(
+            (takeover) => takeover.historicalInitialSettlementId
+          )
+        ]
           .filter((settlementId): settlementId is string => typeof settlementId === "string")
       )
     ];
-    const projectIds = [...new Set(payments.map((payment) => payment.projectId))];
-    const contractIds = [...new Set(payments.map((payment) => payment.contractId))];
+    const projectIds = [
+      ...new Set([
+        ...payments.map((payment) => payment.projectId),
+        ...historicalTakeovers.map((takeover) => takeover.projectId)
+      ])
+    ];
+    const contractIds = [
+      ...new Set([
+        ...payments.map((payment) => payment.contractId),
+        ...historicalTakeovers.map((takeover) => takeover.contractId)
+      ])
+    ];
     const [settlements, projects, contracts, executions, approvalInstances] = await Promise.all([
       settlementIds.length
         ? this.prisma.settlement.findMany({ where: { id: { in: settlementIds } } })
@@ -449,8 +555,22 @@ export class PaymentReadService {
         (paidByPaymentId.get(execution.paymentRequestId) ?? 0n) + execution.amountCents
       );
     }
+    const takeoverById = new Map(
+      historicalTakeovers.map((takeover) => [takeover.id, takeover])
+    );
+    const voucherFileIdsByPaymentId = new Map<string, string[]>();
+    for (const voucher of historicalVouchers) {
+      const fileIds =
+        voucherFileIdsByPaymentId.get(voucher.historicalPaymentId) ??
+        [];
+      fileIds.push(voucher.fileId);
+      voucherFileIdsByPaymentId.set(
+        voucher.historicalPaymentId,
+        fileIds
+      );
+    }
 
-    const rows = payments.map((payment) => {
+    const requestRows = payments.map((payment) => {
       const latestApproval = latestApprovalByPaymentId.get(payment.id);
       const returnedForRevision = payment.status === "draft" &&
         latestApproval?.status === "returned_to_applicant" &&
@@ -530,15 +650,73 @@ export class PaymentReadService {
         updatedAt: this.date(payment.updatedAt)
       };
     });
+    const historicalRows = historicalPayments.map((payment) => {
+      const takeover = takeoverById.get(payment.takeoverId);
+      if (!takeover) {
+        throw new Error(
+          `历史实付 ${payment.id} 缺少已激活接管主记录`
+        );
+      }
+      const contract = contractById.get(takeover.contractId);
+      const activatedAt =
+        payment.activatedAt ?? takeover.activatedAt ?? payment.updatedAt;
+      return {
+        id: payment.id,
+        paymentNo: `历史实付-${payment.sequenceNo}`,
+        contractNo: contract
+          ? [contract.code, contract.name].filter(Boolean).join(" · ")
+          : "合同信息未读取",
+        settlementNo: takeover.historicalInitialSettlementId
+          ? (settlementById.get(takeover.historicalInitialSettlementId)
+              ?.code ?? takeover.historicalInitialSettlementId)
+          : "合同期初直接实付",
+        project:
+          projectById.get(takeover.projectId)?.name ??
+          takeover.projectId,
+        requestedAmount: this.formatMoney(payment.amountCents),
+        approvalStatus: "无需审批",
+        approvalTone: "default" as CoreFlowTone,
+        paymentStatus: "已付款",
+        paymentTone: "success" as CoreFlowTone,
+        currentNode: "历史实付已确认",
+        ownerDepartment: "财务",
+        pendingOwner: "-",
+        stalledFor: "-",
+        returnReason: "-",
+        nextAction: "已发生实付，不重新审批",
+        lifecycleKind: "formal_record" as const,
+        ledgerView: "formal_ledger" as const,
+        lifecycleUpdatedAt: activatedAt.toISOString(),
+        requestedAmountCents: moneyCentsToApi(payment.amountCents),
+        paidAmountCents: moneyCentsToApi(payment.amountCents),
+        availableActions: [] as string[],
+        blockedReasons: [] as string[],
+        updatedAt: this.date(activatedAt),
+        sourceType: "historical_takeover",
+        sourceLabel: "历史接管",
+        natureLabel: "已发生实付，不重新审批",
+        voucherFileIds:
+          voucherFileIdsByPaymentId.get(payment.id) ?? []
+      };
+    });
+    const rows = [...requestRows, ...historicalRows];
+    if (historicalRows.length > 0) {
+      rows.sort(
+        (left, right) =>
+          Date.parse(right.lifecycleUpdatedAt) -
+          Date.parse(left.lifecycleUpdatedAt)
+      );
+    }
+    const visibleRows = options?.all ? rows : rows.slice(0, take);
 
     return {
-      rows,
+      rows: visibleRows,
       summary: {
-        total: rows.length,
+        total: visibleRows.length,
         pendingApproval: payments.filter((payment) => payment.status === "approval_pending").length,
         orSign: payments.filter((payment) => payment.status === "approval_pending").length,
         pendingPayment: payments.filter((payment) => payment.status === "approved_pending_payment").length,
-        paid: rows.filter((row) => row.paymentStatus === "已付款").length
+        paid: visibleRows.filter((row) => row.paymentStatus === "已付款").length
       }
     };
   }
