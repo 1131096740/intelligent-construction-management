@@ -19,6 +19,7 @@ type TransitionModule = {
     args: Record<string, unknown>;
     report: Record<string, unknown>;
     currentDatabaseFingerprint: string;
+    now: Date;
   }): void;
   executeTransition(input: {
     store: {
@@ -65,6 +66,8 @@ const readinessPath = resolve(
   __dirname,
   "../../scripts/inspect-contract-draft-aggregate-readiness.cjs"
 );
+const gateNow = new Date("2026-07-29T00:10:00.000Z");
+const actorUserId = "seed-user-contract-director";
 
 function loadTransition(): TransitionModule {
   return requireFromHere(transitionPath) as TransitionModule;
@@ -169,7 +172,7 @@ describe("contract draft aggregate transition", () => {
       "--expected-report-sha256",
       String(report.reportSha256),
       "--actor-user-id",
-      "00000000-0000-4000-8000-000000000099",
+      actorUserId,
       "--confirm",
       "TRANSITION_CONTRACT_DRAFT_AGGREGATE_draft-aggregate-20260729"
     ]);
@@ -178,7 +181,8 @@ describe("contract draft aggregate transition", () => {
       tool.assertApplyGates({
         args,
         report,
-        currentDatabaseFingerprint: fingerprint
+        currentDatabaseFingerprint: fingerprint,
+        now: gateNow
       })
     ).not.toThrow();
     for (const key of [
@@ -193,7 +197,8 @@ describe("contract draft aggregate transition", () => {
         tool.assertApplyGates({
           args: { ...args, [key]: undefined },
           report,
-          currentDatabaseFingerprint: fingerprint
+          currentDatabaseFingerprint: fingerprint,
+          now: gateNow
         })
       ).toThrow();
     }
@@ -209,7 +214,7 @@ describe("contract draft aggregate transition", () => {
       batchId: "batch-1",
       expectedDatabaseFingerprint: fingerprint,
       expectedReportSha256: report.reportSha256,
-      actorUserId: "00000000-0000-4000-8000-000000000099",
+      actorUserId,
       confirmation: "TRANSITION_CONTRACT_DRAFT_AGGREGATE_batch-1"
     };
 
@@ -217,14 +222,16 @@ describe("contract draft aggregate transition", () => {
       tool.assertApplyGates({
         args,
         report,
-        currentDatabaseFingerprint: "b".repeat(64)
+        currentDatabaseFingerprint: "b".repeat(64),
+        now: gateNow
       })
     ).toThrow(/fingerprint/iu);
     expect(() =>
       tool.assertApplyGates({
         args,
         report: { ...report, migrationHead: "changed" },
-        currentDatabaseFingerprint: fingerprint
+        currentDatabaseFingerprint: fingerprint,
+        now: gateNow
       })
     ).toThrow(/SHA-256/iu);
 
@@ -241,9 +248,18 @@ describe("contract draft aggregate transition", () => {
           expectedReportSha256: manual.reportSha256
         },
         report: manual,
-        currentDatabaseFingerprint: fingerprint
+        currentDatabaseFingerprint: fingerprint,
+        now: gateNow
       })
     ).toThrow(/ready/iu);
+    expect(() =>
+      tool.assertApplyGates({
+        args,
+        report,
+        currentDatabaseFingerprint: fingerprint,
+        now: new Date("2026-07-29T00:31:00.000Z")
+      })
+    ).toThrow(/expired|过期/iu);
   });
 
   it("rechecks an exact retained pre-submission formal code disposition under lock", () => {
@@ -317,7 +333,7 @@ describe("contract draft aggregate transition", () => {
       },
       report,
       batchId: "batch-1",
-      actorUserId: "00000000-0000-4000-8000-000000000099",
+      actorUserId,
       now: new Date("2026-07-29T01:00:00.000Z")
     });
 
@@ -371,7 +387,7 @@ describe("contract draft aggregate transition", () => {
         },
         report: createReport([readyRecord()]),
         batchId: "batch-1",
-        actorUserId: "00000000-0000-4000-8000-000000000099",
+        actorUserId,
         now: new Date("2026-07-29T01:00:00.000Z")
       })
     ).rejects.toThrow(error);
@@ -387,7 +403,7 @@ describe("contract draft aggregate transition", () => {
       prisma: { $transaction: transaction },
       report: createReport([readyRecord()]),
       batchId: "batch-1",
-      actorUserId: "00000000-0000-4000-8000-000000000099",
+      actorUserId,
       now: new Date("2026-07-29T01:00:00.000Z"),
       createStore: () => ({
         lockAndRecompute: jest.fn().mockResolvedValue([currentRecord()]),

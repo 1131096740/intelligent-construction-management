@@ -60,7 +60,9 @@ DEPLOY_CONFIRMATION_MODE=immediate \
 3. 将 mode 改为 `maintenance`，canary 清空，重启 API。
 4. 验证合同台账 GET/导出仍可用；合同草稿、清单、文档变更和历史接管写请求固定
    返回 `503 CONTRACT_CUTOVER_MAINTENANCE`。
-5. 使用最新报告 SHA、batch、fingerprint、操作者 UUID 和确认串运行 transition。
+5. 使用 30 分钟内未截断的最新报告 SHA、batch、fingerprint、操作者用户 ID 和
+   确认串运行 transition；UUID 与安全的历史 seed ID 均允许，事务内仍要求操作者
+   存在且 active。
 6. 立即只读核对数量/金额/文件守恒、聚合 GET、旧正式合同不变和二次幂等。
 7. 保持 `maintenance`，不得提前开放写入。
 

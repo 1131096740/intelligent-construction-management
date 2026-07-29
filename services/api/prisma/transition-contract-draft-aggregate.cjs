@@ -10,6 +10,8 @@ const readiness = require("../scripts/inspect-contract-draft-aggregate-readiness
 
 const EDITABLE_STATUSES = new Set(["draft", "returned", "withdrawn"]);
 const ACTION = "contract.draft_aggregate.transition";
+const MAX_REPORT_AGE_MS = 30 * 60 * 1000;
+const ACTOR_USER_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -50,7 +52,12 @@ function expectedConfirmation(batchId) {
   return `TRANSITION_CONTRACT_DRAFT_AGGREGATE_${batchId}`;
 }
 
-function assertApplyGates({ args, report, currentDatabaseFingerprint }) {
+function assertApplyGates({
+  args,
+  report,
+  currentDatabaseFingerprint,
+  now = new Date()
+}) {
   invariant(args.apply === true, "只有显式 --apply 才能执行转换");
   invariant(typeof args.reportPath === "string", "apply 必须提供 --report");
   invariant(
@@ -67,9 +74,7 @@ function assertApplyGates({ args, report, currentDatabaseFingerprint }) {
     "apply 必须提供 64 位 --expected-report-sha256"
   );
   invariant(
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
-      args.actorUserId ?? ""
-    ),
+    ACTOR_USER_ID_PATTERN.test(args.actorUserId ?? ""),
     "apply 必须提供有效 --actor-user-id"
   );
   invariant(
@@ -90,6 +95,18 @@ function assertApplyGates({ args, report, currentDatabaseFingerprint }) {
     "当前数据库 fingerprint 与预期不同"
   );
   invariant(report.mode === "read_only", "报告不是只读预检生成物");
+  invariant(
+    report.page?.truncated === false,
+    "报告已截断，禁止 apply"
+  );
+  const generatedAt = new Date(report.generatedAt);
+  const reportAgeMs = now.getTime() - generatedAt.getTime();
+  invariant(
+    Number.isFinite(generatedAt.getTime()) &&
+      reportAgeMs >= 0 &&
+      reportAgeMs <= MAX_REPORT_AGE_MS,
+    "只读预检报告已过期"
+  );
   invariant(report.status === "ready", "整份报告不是 ready，禁止 apply");
   invariant(
     Array.isArray(report.records) &&
@@ -586,7 +603,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
     process.stdout.write(
-      "用法：node transition-contract-draft-aggregate.cjs --apply --report <file> --batch-id <id> --expected-database-fingerprint <sha256> --expected-report-sha256 <sha256> --actor-user-id <uuid> --confirm TRANSITION_CONTRACT_DRAFT_AGGREGATE_<batch-id>\n"
+      "用法：node transition-contract-draft-aggregate.cjs --apply --report <file> --batch-id <id> --expected-database-fingerprint <sha256> --expected-report-sha256 <sha256> --actor-user-id <user-id> --confirm TRANSITION_CONTRACT_DRAFT_AGGREGATE_<batch-id>\n"
     );
     return;
   }
@@ -596,7 +613,12 @@ async function main() {
   const currentDatabaseFingerprint = readiness.databaseFingerprint(
     process.env.DATABASE_URL
   );
-  assertApplyGates({ args, report, currentDatabaseFingerprint });
+  assertApplyGates({
+    args,
+    report,
+    currentDatabaseFingerprint,
+    now: new Date()
+  });
   const prisma = new PrismaClient();
   try {
     const receipt = await runApplyWithClient({
