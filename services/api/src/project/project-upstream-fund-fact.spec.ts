@@ -537,6 +537,7 @@ describe("ProjectService upstream fund facts", () => {
       spotProcurement: { findMany: jest.fn().mockResolvedValue([]) },
       spotProcurementRefund: { findMany: jest.fn().mockResolvedValue([]) },
       projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
+      projectAffiliatePaymentFact: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
       projectFinancingQuota: { findMany: jest.fn().mockResolvedValue([]) },
       projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
