@@ -170,6 +170,485 @@ describe("ContractTakeoverService", () => {
     };
   }
 
+  function contractSideInput(overrides: Record<string, unknown> = {}) {
+    return {
+      idempotencyKey: "11111111-1111-4111-8111-111111111111",
+      expectedRevision: 3,
+      signedAt: "2026-01-10",
+      performanceStatus: "performing",
+      historicalSettledCents: "700000",
+      settlementEvidenceSummary: "历史结算台账和双方确认资料齐全。",
+      settlementEvidenceFileIds: ["file-2", "file-1"],
+      paymentTerms: {
+        originalText: "按历史累计结算余额继续办理后续付款。",
+        stages: [
+          {
+            name: "历史结算尾款",
+            ratioBps: 10000,
+            dueDays: 0,
+            requiresInvoice: false,
+            allowsEarlyPayment: false,
+            allowsInstallments: true
+          }
+        ]
+      },
+      contractFacts: {
+        contractNo: "HT-LS-001",
+        contractName: "历史材料合同",
+        contractTypeKey: "material_purchase",
+        counterparty: "历史供应商",
+        originalAmountCents: "100000000",
+        settlementCutoffDate: "2026-06-30",
+        zeroSettlementDeclared: false
+      },
+      ...overrides
+    };
+  }
+
+  function contractSideTransaction(options: {
+    contractFacts?: Record<string, unknown> | null;
+    financeFacts?: Record<string, unknown> | null;
+    receipt?: Record<string, unknown> | null;
+    takeover?: Record<string, unknown>;
+    positionKeys?: readonly string[];
+  } = {}) {
+    const contractFacts =
+      options.contractFacts === undefined
+        ? {
+            takeoverId: "takeover-1",
+            revision: 3,
+            financeBasisRevision: 4,
+            signedAt: new Date("2026-01-10T00:00:00.000Z"),
+            historicalSettledCents: 600000n,
+            zeroSettlementDeclared: false,
+            performanceStatus: "performing",
+            settlementEvidenceSummary: "旧结算依据。",
+            paymentTermsSnapshot: {
+              originalText: "旧付款条款。",
+              stages: []
+            },
+            contractFactsSnapshot: {
+              contractNo: "HT-LS-001",
+              contractName: "历史材料合同",
+              contractTypeKey: "material_purchase",
+              counterparty: "历史供应商",
+              originalAmountCents: "100000000",
+              settlementCutoffDate: "2026-06-30",
+              zeroSettlementDeclared: false
+            },
+            confirmedRevision: 3,
+            confirmedByUserId: "contract-director",
+            confirmedAt: new Date("2026-07-28T00:00:00.000Z"),
+            updatedByUserId: "contract-user"
+          }
+        : options.contractFacts;
+    const financeFacts =
+      options.financeFacts === undefined
+        ? {
+            takeoverId: "takeover-1",
+            revision: 2,
+            basedOnContractRevision: 3,
+            basedOnFinanceBasisRevision: 4,
+            zeroPaymentDeclared: false,
+            excessTreatment: null,
+            excessReason: null,
+            confirmedRevision: 2,
+            confirmedContractRevision: 3,
+            confirmedFinanceBasisRevision: 4,
+            confirmedByUserId: "finance-director",
+            confirmedAt: new Date("2026-07-28T00:00:00.000Z"),
+            updatedByUserId: "finance-user"
+          }
+        : options.financeFacts;
+    const lockedRows = [
+      [options.takeover ?? takeoverRecord()],
+      contractFacts ? [contractFacts] : [],
+      financeFacts ? [financeFacts] : []
+    ];
+    const tx = {
+      $queryRaw: jest.fn().mockImplementation(() => Promise.resolve(lockedRows.shift() ?? [])),
+      contractTakeover: {
+        update: jest.fn().mockResolvedValue(takeoverRecord())
+      },
+      contractTakeoverContractFacts: {
+        upsert: jest.fn().mockImplementation(({ create, update }) =>
+          Promise.resolve({
+            ...(contractFacts ?? create),
+            ...update,
+            revision: contractFacts ? Number(contractFacts.revision) + 1 : 1,
+            financeBasisRevision: update.financeBasisRevision ?? create.financeBasisRevision,
+            updatedAt: new Date("2026-07-29T01:00:00.000Z")
+          })
+        )
+      },
+      contractTakeoverFinanceFacts: {
+        updateMany: jest.fn().mockResolvedValue({ count: financeFacts ? 1 : 0 })
+      },
+      contractTakeoverSettlementEvidence: {
+        findMany: jest.fn().mockResolvedValue([
+          { fileId: "file-1" }
+        ]),
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+        createMany: jest.fn().mockResolvedValue({ count: 2 })
+      },
+      contractTakeoverSideSaveRequest: {
+        findUnique: jest.fn().mockResolvedValue(options.receipt ?? null),
+        create: jest.fn().mockImplementation(({ data }) => Promise.resolve(data))
+      },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue(
+          (options.positionKeys ?? ["contract_staff"]).map((key) => ({
+            positionId: `position-${key}`
+          }))
+        )
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue(
+          (options.positionKeys ?? ["contract_staff"]).map((key) => ({ key }))
+        )
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    return tx;
+  }
+
+  it("saves contract-side facts once, invalidates confirmations, and advances finance basis", async () => {
+    const tx = contractSideTransaction();
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    const result = await service.saveContractFacts(
+      "project-1",
+      "takeover-1",
+      contractSideInput() as never,
+      "contract-user"
+    );
+
+    expect(result).toMatchObject({
+      takeoverId: "takeover-1",
+      side: "contract",
+      revision: 4,
+      financeBasisRevision: 5,
+      confirmedRevision: null,
+      financeConfirmationInvalidated: true
+    });
+    expect(tx.contractTakeoverContractFacts.upsert).toHaveBeenCalledTimes(1);
+    expect(tx.contractTakeoverContractFacts.upsert).toHaveBeenCalledWith({
+      where: { takeoverId: "takeover-1" },
+      create: expect.objectContaining({
+        takeoverId: "takeover-1",
+        revision: 1,
+        financeBasisRevision: 1,
+        historicalSettledCents: 700000n,
+        confirmedRevision: null,
+        updatedByUserId: "contract-user"
+      }),
+      update: expect.objectContaining({
+        revision: 4,
+        financeBasisRevision: 5,
+        historicalSettledCents: 700000n,
+        confirmedRevision: null,
+        confirmedByUserId: null,
+        confirmedAt: null
+      })
+    });
+    expect(tx.contractTakeoverFinanceFacts.updateMany).toHaveBeenCalledWith({
+      where: { takeoverId: "takeover-1" },
+      data: {
+        confirmedRevision: null,
+        confirmedContractRevision: null,
+        confirmedFinanceBasisRevision: null,
+        confirmedByUserId: null,
+        confirmedAt: null
+      }
+    });
+    expect(tx.contractTakeoverSettlementEvidence.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({ fileId: "file-2", displayOrder: 0 }),
+        expect.objectContaining({ fileId: "file-1", displayOrder: 1 })
+      ]
+    });
+    expect(files.assertCanDownloadFile).toHaveBeenNthCalledWith(
+      1,
+      tx,
+      "file-1",
+      "contract-user"
+    );
+    expect(files.assertCanDownloadFile).toHaveBeenNthCalledWith(
+      2,
+      tx,
+      "file-2",
+      "contract-user"
+    );
+    expect(files.assertCanAttachUnlinkedFile).toHaveBeenCalledTimes(1);
+    expect(files.assertCanAttachUnlinkedFile).toHaveBeenCalledWith(
+      tx,
+      "file-2",
+      "contract-user"
+    );
+    expect(tx.contractTakeoverSideSaveRequest.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        idempotencyKey: "11111111-1111-4111-8111-111111111111",
+        takeoverId: "takeover-1",
+        side: "contract",
+        expectedRevision: 3,
+        resultRevision: 4,
+        requestSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        expiresAt: expect.any(Date)
+      })
+    });
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("preserves finance confirmation when only non-basis display facts change", async () => {
+    const tx = contractSideTransaction({
+      contractFacts: {
+        takeoverId: "takeover-1",
+        revision: 3,
+        financeBasisRevision: 4,
+        signedAt: new Date("2026-01-10T00:00:00.000Z"),
+        historicalSettledCents: 700000n,
+        zeroSettlementDeclared: false,
+        performanceStatus: "performing",
+        settlementEvidenceSummary: "旧结算依据。",
+        paymentTermsSnapshot: contractSideInput().paymentTerms,
+        contractFactsSnapshot: {
+          ...contractSideInput().contractFacts,
+          contractName: "旧展示名称"
+        },
+        confirmedRevision: 3,
+        confirmedByUserId: "contract-director",
+        confirmedAt: new Date("2026-07-28T00:00:00.000Z"),
+        updatedByUserId: "contract-user"
+      }
+    });
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    const result = await service.saveContractFacts(
+      "project-1",
+      "takeover-1",
+      contractSideInput() as never,
+      "contract-user"
+    );
+
+    expect(result).toMatchObject({
+      revision: 4,
+      financeBasisRevision: 4,
+      financeConfirmationInvalidated: false
+    });
+    expect(tx.contractTakeoverFinanceFacts.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("replays the same contract-side request without increasing revision or writing audit", async () => {
+    const responseSnapshot = {
+      takeoverId: "takeover-1",
+      side: "contract",
+      revision: 4,
+      financeBasisRevision: 5,
+      confirmedRevision: null,
+      financeConfirmationInvalidated: true
+    };
+    const tx = contractSideTransaction({
+      receipt: {
+        idempotencyKey: "11111111-1111-4111-8111-111111111111",
+        takeoverId: "takeover-1",
+        side: "contract",
+        requestSha256: "placeholder",
+        responseSnapshot
+      }
+    });
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+    const input = contractSideInput();
+    const requestSha256 = (service as unknown as {
+      takeoverSideRequestSha256(value: unknown): string;
+    }).takeoverSideRequestSha256(input);
+    tx.contractTakeoverSideSaveRequest.findUnique.mockResolvedValue({
+      idempotencyKey: input.idempotencyKey,
+      takeoverId: "takeover-1",
+      side: "contract",
+      requestSha256,
+      responseSnapshot
+    });
+
+    await expect(
+      service.saveContractFacts(
+        "project-1",
+        "takeover-1",
+        input as never,
+        "contract-user"
+      )
+    ).resolves.toEqual(responseSnapshot);
+    expect(tx.contractTakeoverContractFacts.upsert).not.toHaveBeenCalled();
+    expect(tx.contractTakeoverSettlementEvidence.deleteMany).not.toHaveBeenCalled();
+    expect(tx.contractTakeoverSideSaveRequest.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("fails closed on idempotency-key payload mismatch", async () => {
+    const tx = contractSideTransaction();
+    tx.contractTakeoverSideSaveRequest.findUnique.mockResolvedValue({
+      idempotencyKey: "11111111-1111-4111-8111-111111111111",
+      takeoverId: "takeover-1",
+      side: "contract",
+      requestSha256: "different-request",
+      responseSnapshot: {}
+    });
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(
+      service.saveContractFacts(
+        "project-1",
+        "takeover-1",
+        contractSideInput() as never,
+        "contract-user"
+      )
+    ).rejects.toThrow("保存幂等键已用于其他请求");
+    expect(tx.contractTakeoverContractFacts.upsert).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["stale revision", { expectedRevision: 2 }, {}, "合同侧资料已被其他人更新"],
+    [
+      "activated takeover",
+      {},
+      { takeover: takeoverRecord({ activatedAt: new Date("2026-07-28T00:00:00.000Z") }) },
+      "历史接管已激活"
+    ],
+    [
+      "non-contract role",
+      {},
+      { positionKeys: ["finance_director"] },
+      "当前岗位不能编辑合同侧接管资料"
+    ]
+  ] as const)(
+    "rejects %s before any contract-side write",
+    async (_label, inputOverrides, txOptions, message) => {
+      const tx = contractSideTransaction(txOptions);
+      const prisma = {
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+          callback(tx)
+        )
+      };
+      const service = new ContractTakeoverService(
+        prisma as never,
+        audit as never,
+        auth as never,
+        files as never
+      );
+
+      await expect(
+        service.saveContractFacts(
+          "project-1",
+          "takeover-1",
+          contractSideInput(inputOverrides) as never,
+          "actor-1"
+        )
+      ).rejects.toThrow(message);
+      expect(tx.contractTakeoverContractFacts.upsert).not.toHaveBeenCalled();
+      expect(tx.contractTakeoverSettlementEvidence.deleteMany).not.toHaveBeenCalled();
+      expect(tx.contractTakeoverSideSaveRequest.create).not.toHaveBeenCalled();
+    }
+  );
+
+  it("requires an explicit zero-settlement declaration and basis", async () => {
+    const tx = contractSideTransaction();
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(
+      service.saveContractFacts(
+        "project-1",
+        "takeover-1",
+        contractSideInput({
+          historicalSettledCents: "0",
+          contractFacts: {
+            ...contractSideInput().contractFacts,
+            zeroSettlementDeclared: false
+          }
+        }) as never,
+        "contract-user"
+      )
+    ).rejects.toThrow("历史累计结算为零时必须明确声明并填写依据");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects inaccessible settlement evidence before replacing bindings", async () => {
+    files.assertCanDownloadFile.mockRejectedValueOnce(new Error("forbidden"));
+    const tx = contractSideTransaction();
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(
+      service.saveContractFacts(
+        "project-1",
+        "takeover-1",
+        contractSideInput() as never,
+        "contract-user"
+      )
+    ).rejects.toThrow("结算依据文件不可用、无权访问或已绑定其他业务");
+    expect(tx.contractTakeoverSettlementEvidence.deleteMany).not.toHaveBeenCalled();
+    expect(tx.contractTakeoverContractFacts.upsert).not.toHaveBeenCalled();
+  });
+
   it("lists active, inactive and legacy-incomplete company entities for historical matching", async () => {
     const candidates = [
       {

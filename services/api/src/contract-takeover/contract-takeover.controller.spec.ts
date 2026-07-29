@@ -17,6 +17,7 @@ const takeoverBodyRoutes = [
   ["previewExcelImport", 1],
   ["applyExcelImport", 1],
   ["updateDraft", 2],
+  ["saveContractFacts", 2],
   ["abandonDraft", 2],
   ["attachEvidence", 2],
   ["attachHistoricalPaymentVoucher", 2],
@@ -41,6 +42,38 @@ const validTakeover = {
   signedAt: "2026-01-10",
   takeoverLevel: "C",
   lifecycleStatus: "disputed"
+} as const;
+
+const validContractSideFacts = {
+  idempotencyKey: "11111111-1111-4111-8111-111111111111",
+  expectedRevision: 0,
+  signedAt: "2026-01-10",
+  performanceStatus: "performing",
+  historicalSettledCents: "600000",
+  settlementEvidenceSummary: "历史结算台账和双方确认资料齐全。",
+  settlementEvidenceFileIds: ["file-1"],
+  paymentTerms: {
+    originalText: "按历史累计结算余额继续办理后续付款。",
+    stages: [
+      {
+        name: "历史结算尾款",
+        ratioBps: 10000,
+        dueDays: 0,
+        requiresInvoice: false,
+        allowsEarlyPayment: false,
+        allowsInstallments: true
+      }
+    ]
+  },
+  contractFacts: {
+    contractNo: "HT-LS-001",
+    contractName: "历史材料合同",
+    contractTypeKey: "material_purchase",
+    counterparty: "历史供应商",
+    originalAmountCents: "100000000",
+    settlementCutoffDate: "2026-06-30",
+    zeroSettlementDeclared: false
+  }
 } as const;
 
 const validImportRow = {
@@ -93,6 +126,7 @@ const validTakeoverRouteBodies = [
     }
   ],
   ["updateDraft", 2, validTakeover],
+  ["saveContractFacts", 2, validContractSideFacts],
   ["attachEvidence", 2, { fileId: "file-1", purpose: "historical_contract_scan" }],
   ["attachHistoricalPaymentVoucher", 2, { fileId: "file-1" }],
   [
@@ -252,6 +286,13 @@ describe("ContractTakeoverController", () => {
     expectProjectAction(
       ContractTakeoverController.prototype.attachHistoricalPaymentVoucher,
       "contract.takeover.finance_facts.edit"
+    );
+  });
+
+  it("protects contract-side aggregate save with contract fact editing", () => {
+    expectProjectAction(
+      ContractTakeoverController.prototype.saveContractFacts,
+      "contract.takeover.contract_facts.edit"
     );
   });
 
@@ -482,6 +523,7 @@ describe("ContractTakeoverController", () => {
     for (const method of [
       "create",
       "updateDraft",
+      "saveContractFacts",
       "previewExcelImport",
       "applyExcelImport",
       "attachEvidence",

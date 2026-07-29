@@ -6,7 +6,10 @@ import {
   Optional
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { normalizeTaxRatePercent } from "@jiangkong/shared-domain";
+import {
+  CONTRACT_TAKEOVER_PERFORMANCE_STATUSES,
+  normalizeTaxRatePercent
+} from "@jiangkong/shared-domain";
 import { createHash, randomUUID } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
@@ -49,6 +52,7 @@ import type {
   SubmitContractTakeoverCompanyEntityCorrectionDto
 } from "./dto/contract-takeover-company-entity-correction.dto";
 import type { ReturnContractTakeoverForSupplementDto } from "./dto/return-contract-takeover-for-supplement.dto";
+import type { SaveContractTakeoverContractFactsDto } from "./dto/save-contract-takeover-contract-facts.dto";
 
 const TAKEOVER_LEVELS = ["A", "B", "C"] as const;
 const LIFECYCLE_STATUSES = [
@@ -271,8 +275,35 @@ type ContractTakeoverRecord = {
   submittedAt: Date | null;
   confirmedAt: Date | null;
   historicalBalanceConfirmedAt: Date | null;
+  activationIdempotencyKey?: string | null;
+  activatedAt?: Date | null;
+  activatedByUserId?: string | null;
+  historicalInitialSettlementId?: string | null;
   createdAt: Date;
   updatedAt: Date;
+};
+
+type ContractTakeoverContractFactsRow = {
+  takeoverId: string;
+  revision: number;
+  financeBasisRevision: number;
+  signedAt: Date;
+  historicalSettledCents: bigint;
+  zeroSettlementDeclared: boolean;
+  performanceStatus: string;
+  settlementEvidenceSummary: string | null;
+  paymentTermsSnapshot: Prisma.JsonValue;
+  contractFactsSnapshot: Prisma.JsonValue;
+  confirmedRevision: number | null;
+  confirmedByUserId: string | null;
+  confirmedAt: Date | null;
+  updatedByUserId: string;
+  updatedAt: Date;
+};
+
+type ContractTakeoverFinanceFactsRow = {
+  takeoverId: string;
+  confirmedRevision: number | null;
 };
 
 export interface ContractTakeoverBusinessReadModel {
@@ -851,6 +882,198 @@ export class ContractTakeoverService {
           emptyPostConfirmationVerificationStats()
         )
       });
+    });
+  }
+
+  async saveContractFacts(
+    projectId: string,
+    takeoverId: string,
+    input: SaveContractTakeoverContractFactsDto,
+    actorUserId: string
+  ) {
+    const data = this.normalizeContractSideInput(input);
+    const requestSha256 = this.takeoverSideRequestSha256(input);
+
+    return this.prisma.$transaction(async (tx) => {
+      const takeover = await this.lockProjectTakeover(tx, projectId, takeoverId);
+      if (takeover.activatedAt) {
+        throw new ConflictException("历史接管已激活，合同侧资料只能通过更正流程调整");
+      }
+      await this.assertProjectContractEditor(tx, projectId, actorUserId);
+
+      const receipt = await tx.contractTakeoverSideSaveRequest.findUnique({
+        where: { idempotencyKey: data.idempotencyKey }
+      });
+      if (receipt) {
+        if (
+          receipt.takeoverId !== takeover.id ||
+          receipt.side !== "contract" ||
+          receipt.requestSha256 !== requestSha256
+        ) {
+          throw new ConflictException("合同侧保存幂等键已用于其他请求");
+        }
+        return receipt.responseSnapshot;
+      }
+
+      const [contractFacts] =
+        await tx.$queryRaw<ContractTakeoverContractFactsRow[]>(Prisma.sql`
+          SELECT *
+          FROM "ContractTakeoverContractFacts"
+          WHERE "takeoverId" = ${takeover.id}
+          FOR UPDATE
+        `);
+      const [financeFacts] =
+        await tx.$queryRaw<ContractTakeoverFinanceFactsRow[]>(Prisma.sql`
+          SELECT *
+          FROM "ContractTakeoverFinanceFacts"
+          WHERE "takeoverId" = ${takeover.id}
+          FOR UPDATE
+        `);
+
+      const currentRevision = contractFacts?.revision ?? 0;
+      if (data.expectedRevision !== currentRevision) {
+        throw new ConflictException(
+          `合同侧资料已被其他人更新，当前修订为 ${currentRevision}，请刷新后重试`
+        );
+      }
+
+      const currentFinanceBasisRevision =
+        contractFacts?.financeBasisRevision ?? 0;
+      const financeBasisChanged =
+        !contractFacts ||
+        this.stableJson(this.contractFinanceBasisFromStoredFacts(contractFacts)) !==
+          this.stableJson(this.contractFinanceBasisFromInput(data));
+      const nextRevision = currentRevision + 1;
+      const nextFinanceBasisRevision = financeBasisChanged
+        ? currentFinanceBasisRevision + 1
+        : currentFinanceBasisRevision;
+
+      if (!this.files) {
+        throw new Error("历史接管文件服务暂不可用，请稍后重试");
+      }
+      const currentEvidence = await tx.contractTakeoverSettlementEvidence.findMany({
+        where: { takeoverId: takeover.id },
+        select: { fileId: true }
+      });
+      const currentEvidenceIds = new Set(
+        currentEvidence.map((evidence) => evidence.fileId)
+      );
+      try {
+        for (const fileId of [...data.settlementEvidenceFileIds].sort()) {
+          await this.files.assertCanDownloadFile(tx, fileId, actorUserId);
+          if (!currentEvidenceIds.has(fileId)) {
+            await this.files.assertCanAttachUnlinkedFile(
+              tx,
+              fileId,
+              actorUserId
+            );
+          }
+        }
+      } catch {
+        throw new BadRequestException(
+          "结算依据文件不可用、无权访问或已绑定其他业务，请重新上传专用文件"
+        );
+      }
+
+      await tx.contractTakeover.update({
+        where: { id: takeover.id },
+        data: {
+          signedAt: data.signedAt,
+          lifecycleStatus: this.legacyTakeoverLifecycleStatus(
+            data.performanceStatus
+          ),
+          historicalSettledCents: data.historicalSettledCents
+        }
+      });
+      const savedFacts = await tx.contractTakeoverContractFacts.upsert({
+        where: { takeoverId: takeover.id },
+        create: {
+          takeoverId: takeover.id,
+          revision: 1,
+          financeBasisRevision: 1,
+          signedAt: data.signedAt,
+          historicalSettledCents: data.historicalSettledCents,
+          zeroSettlementDeclared: data.contractFacts.zeroSettlementDeclared,
+          performanceStatus: data.performanceStatus,
+          settlementEvidenceSummary: data.settlementEvidenceSummary,
+          paymentTermsSnapshot: data.paymentTerms as Prisma.InputJsonValue,
+          contractFactsSnapshot: data.contractFacts as Prisma.InputJsonValue,
+          confirmedRevision: null,
+          confirmedByUserId: null,
+          confirmedAt: null,
+          updatedByUserId: actorUserId
+        },
+        update: {
+          revision: nextRevision,
+          financeBasisRevision: nextFinanceBasisRevision,
+          signedAt: data.signedAt,
+          historicalSettledCents: data.historicalSettledCents,
+          zeroSettlementDeclared: data.contractFacts.zeroSettlementDeclared,
+          performanceStatus: data.performanceStatus,
+          settlementEvidenceSummary: data.settlementEvidenceSummary,
+          paymentTermsSnapshot: data.paymentTerms as Prisma.InputJsonValue,
+          contractFactsSnapshot: data.contractFacts as Prisma.InputJsonValue,
+          confirmedRevision: null,
+          confirmedByUserId: null,
+          confirmedAt: null,
+          updatedByUserId: actorUserId
+        }
+      });
+
+      const financeConfirmationInvalidated =
+        financeBasisChanged && financeFacts?.confirmedRevision !== null &&
+        financeFacts?.confirmedRevision !== undefined;
+      if (financeBasisChanged && financeFacts) {
+        await tx.contractTakeoverFinanceFacts.updateMany({
+          where: { takeoverId: takeover.id },
+          data: {
+            confirmedRevision: null,
+            confirmedContractRevision: null,
+            confirmedFinanceBasisRevision: null,
+            confirmedByUserId: null,
+            confirmedAt: null
+          }
+        });
+      }
+
+      await tx.contractTakeoverSettlementEvidence.deleteMany({
+        where: { takeoverId: takeover.id }
+      });
+      await tx.contractTakeoverSettlementEvidence.createMany({
+        data: data.settlementEvidenceFileIds.map((fileId, displayOrder) => ({
+          takeoverId: takeover.id,
+          fileId,
+          displayOrder,
+          createdByUserId: actorUserId
+        }))
+      });
+
+      const responseSnapshot = {
+        takeoverId: takeover.id,
+        side: "contract" as const,
+        revision: savedFacts.revision,
+        financeBasisRevision: savedFacts.financeBasisRevision,
+        confirmedRevision: null,
+        financeConfirmationInvalidated,
+        savedAt: savedFacts.updatedAt.toISOString()
+      };
+      const now = new Date();
+      await tx.contractTakeoverSideSaveRequest.create({
+        data: {
+          idempotencyKey: data.idempotencyKey,
+          takeoverId: takeover.id,
+          side: "contract",
+          expectedRevision: data.expectedRevision,
+          resultRevision: savedFacts.revision,
+          requestSha256,
+          responseSnapshot: responseSnapshot as Prisma.InputJsonValue,
+          createdByUserId: actorUserId,
+          createdAt: now,
+          expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+        }
+      });
+
+      return responseSnapshot;
     });
   }
 
@@ -3084,6 +3307,272 @@ export class ContractTakeoverService {
       status: issues.some((item) => item.level === "error") ? "blocked" : "ready",
       issues
     };
+  }
+
+  private normalizeContractSideInput(
+    input: SaveContractTakeoverContractFactsDto
+  ) {
+    const idempotencyKey = input.idempotencyKey?.trim();
+    if (!idempotencyKey) {
+      throw new BadRequestException("请提供合同侧保存幂等键");
+    }
+    if (
+      !Number.isInteger(input.expectedRevision) ||
+      input.expectedRevision < 0
+    ) {
+      throw new BadRequestException("合同侧修订必须是大于等于 0 的整数");
+    }
+    if (
+      !CONTRACT_TAKEOVER_PERFORMANCE_STATUSES.includes(
+        input.performanceStatus
+      )
+    ) {
+      throw new BadRequestException("历史合同履约状态不在系统支持范围内");
+    }
+    if (!isStrictDateText(input.signedAt)) {
+      throw new BadRequestException(
+        "签订日期必须按 YYYY-MM-DD 填写且日期必须有效"
+      );
+    }
+    const historicalSettledCents = parseMoneyCentsInput(
+      input.historicalSettledCents,
+      "历史累计结算",
+      "历史累计结算必须按分填写为 0 或更大的整数"
+    );
+    if (historicalSettledCents < 0n) {
+      throw new BadRequestException(
+        "历史累计结算必须按分填写为 0 或更大的整数"
+      );
+    }
+
+    const settlementEvidenceSummary =
+      input.settlementEvidenceSummary?.trim();
+    if (!settlementEvidenceSummary) {
+      throw new BadRequestException("请填写历史结算依据说明");
+    }
+    if (
+      !Array.isArray(input.settlementEvidenceFileIds) ||
+      input.settlementEvidenceFileIds.length === 0
+    ) {
+      throw new BadRequestException("请至少上传一份历史结算依据文件");
+    }
+    const settlementEvidenceFileIds = input.settlementEvidenceFileIds.map(
+      (fileId) => fileId?.trim()
+    );
+    if (
+      settlementEvidenceFileIds.some((fileId) => !fileId) ||
+      new Set(settlementEvidenceFileIds).size !==
+        settlementEvidenceFileIds.length
+    ) {
+      throw new BadRequestException(
+        "历史结算依据文件标识不能为空且不能重复"
+      );
+    }
+
+    const paymentTermsOriginalText = input.paymentTerms?.originalText?.trim();
+    if (!paymentTermsOriginalText || !Array.isArray(input.paymentTerms?.stages)) {
+      throw new BadRequestException("请填写完整的历史付款条款");
+    }
+    const paymentTerms = {
+      originalText: paymentTermsOriginalText,
+      stages: input.paymentTerms.stages.map((stage) => ({
+        name: stage.name?.trim(),
+        ...(stage.ratioBps === undefined
+          ? {}
+          : { ratioBps: stage.ratioBps }),
+        ...(stage.fixedAmountCents === undefined
+          ? {}
+          : { fixedAmountCents: stage.fixedAmountCents }),
+        dueDays: stage.dueDays,
+        requiresInvoice: stage.requiresInvoice,
+        allowsEarlyPayment: stage.allowsEarlyPayment,
+        allowsInstallments: stage.allowsInstallments
+      }))
+    };
+    if (paymentTerms.stages.some((stage) => !stage.name)) {
+      throw new BadRequestException("历史付款阶段名称不能为空");
+    }
+
+    const sourceFacts = input.contractFacts;
+    const contractNo = sourceFacts?.contractNo?.trim();
+    const contractName = sourceFacts?.contractName?.trim();
+    const contractTypeKey = sourceFacts?.contractTypeKey?.trim();
+    const counterparty = sourceFacts?.counterparty?.trim();
+    if (!contractNo || !contractName || !contractTypeKey || !counterparty) {
+      throw new BadRequestException("请填写完整的历史合同基本事实");
+    }
+    const originalAmountCents = parseMoneyCentsInput(
+      sourceFacts.originalAmountCents,
+      "历史合同原始金额",
+      "历史合同原始金额必须按分填写为 0 或更大的整数"
+    );
+    if (originalAmountCents < 0n) {
+      throw new BadRequestException(
+        "历史合同原始金额必须按分填写为 0 或更大的整数"
+      );
+    }
+    const settlementCutoffDate = sourceFacts.settlementCutoffDate?.trim();
+    if (settlementCutoffDate && !isStrictDateText(settlementCutoffDate)) {
+      throw new BadRequestException(
+        "历史结算截止日必须按 YYYY-MM-DD 填写且日期必须有效"
+      );
+    }
+    const zeroSettlementBasis = sourceFacts.zeroSettlementBasis?.trim();
+    if (
+      historicalSettledCents === 0n &&
+      (!sourceFacts.zeroSettlementDeclared || !zeroSettlementBasis)
+    ) {
+      throw new BadRequestException(
+        "历史累计结算为零时必须明确声明并填写依据"
+      );
+    }
+    if (
+      historicalSettledCents > 0n &&
+      sourceFacts.zeroSettlementDeclared
+    ) {
+      throw new BadRequestException(
+        "历史累计结算大于零时不能提交零结算声明"
+      );
+    }
+
+    return {
+      idempotencyKey,
+      expectedRevision: input.expectedRevision,
+      signedAt: new Date(input.signedAt),
+      performanceStatus: input.performanceStatus,
+      historicalSettledCents,
+      settlementEvidenceSummary,
+      settlementEvidenceFileIds,
+      paymentTerms,
+      contractFacts: {
+        contractNo,
+        contractName,
+        contractTypeKey,
+        counterparty,
+        originalAmountCents: originalAmountCents.toString(),
+        settlementCutoffDate: settlementCutoffDate || null,
+        zeroSettlementDeclared: sourceFacts.zeroSettlementDeclared,
+        zeroSettlementBasis: zeroSettlementBasis || null
+      }
+    };
+  }
+
+  private contractFinanceBasisFromInput(
+    input: ReturnType<ContractTakeoverService["normalizeContractSideInput"]>
+  ) {
+    return {
+      historicalSettledCents: input.historicalSettledCents.toString(),
+      paymentTerms: input.paymentTerms,
+      contractTypeKey: input.contractFacts.contractTypeKey,
+      originalAmountCents: input.contractFacts.originalAmountCents,
+      settlementCutoffDate: input.contractFacts.settlementCutoffDate,
+      zeroSettlementDeclared: input.contractFacts.zeroSettlementDeclared,
+      zeroSettlementBasis: input.contractFacts.zeroSettlementBasis
+    };
+  }
+
+  private contractFinanceBasisFromStoredFacts(
+    facts: ContractTakeoverContractFactsRow
+  ) {
+    const contractFacts =
+      facts.contractFactsSnapshot &&
+      typeof facts.contractFactsSnapshot === "object" &&
+      !Array.isArray(facts.contractFactsSnapshot)
+        ? (facts.contractFactsSnapshot as Record<string, unknown>)
+        : {};
+    return {
+      historicalSettledCents: facts.historicalSettledCents.toString(),
+      paymentTerms: facts.paymentTermsSnapshot,
+      contractTypeKey: contractFacts["contractTypeKey"] ?? null,
+      originalAmountCents: contractFacts["originalAmountCents"] ?? null,
+      settlementCutoffDate: contractFacts["settlementCutoffDate"] ?? null,
+      zeroSettlementDeclared: facts.zeroSettlementDeclared,
+      zeroSettlementBasis: contractFacts["zeroSettlementBasis"] ?? null
+    };
+  }
+
+  private legacyTakeoverLifecycleStatus(
+    status: SaveContractTakeoverContractFactsDto["performanceStatus"]
+  ) {
+    if (status === "not_started") return "signed_not_started";
+    if (status === "performing") return "in_progress";
+    return status;
+  }
+
+  private takeoverSideRequestSha256(value: unknown) {
+    return createHash("sha256").update(this.stableJson(value)).digest("hex");
+  }
+
+  private stableJson(value: unknown): string {
+    if (Array.isArray(value)) {
+      return `[${value.map((item) => this.stableJson(item)).join(",")}]`;
+    }
+    if (value !== null && typeof value === "object") {
+      const entries = Object.entries(value as Record<string, unknown>)
+        .filter(([, item]) => item !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(
+          ([key, item]) =>
+            `${JSON.stringify(key)}:${this.stableJson(item)}`
+        );
+      return `{${entries.join(",")}}`;
+    }
+    return JSON.stringify(value);
+  }
+
+  private async lockProjectTakeover(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    takeoverId: string
+  ) {
+    const [takeover] = await tx.$queryRaw<ContractTakeoverRecord[]>(Prisma.sql`
+      SELECT *
+      FROM "ContractTakeover"
+      WHERE "id" = ${takeoverId}
+      FOR UPDATE
+    `);
+    if (!takeover || takeover.projectId !== projectId) {
+      throw new BadRequestException("历史接管记录不存在或不属于当前项目");
+    }
+    return takeover;
+  }
+
+  private async assertProjectContractEditor(
+    client: Pick<
+      Prisma.TransactionClient,
+      "userPosition" | "position" | "projectMember"
+    >,
+    projectId: string,
+    actorUserId: string
+  ) {
+    const [assignments, memberships] = await Promise.all([
+      client.userPosition.findMany({
+        where: {
+          userId: actorUserId,
+          OR: [{ projectId: null }, { projectId }]
+        },
+        select: { positionId: true }
+      }),
+      client.projectMember.findMany({
+        where: { projectId, userId: actorUserId },
+        select: { positionKey: true }
+      })
+    ]);
+    const positions = assignments.length
+      ? await client.position.findMany({
+          where: {
+            id: { in: assignments.map((assignment) => assignment.positionId) }
+          },
+          select: { key: true }
+        })
+      : [];
+    const allowed = new Set(["contract_staff", "contract_director"]);
+    const canEdit =
+      positions.some((position) => allowed.has(position.key)) ||
+      memberships.some((membership) => allowed.has(membership.positionKey));
+    if (!canEdit) {
+      throw new ForbiddenException("当前岗位不能编辑合同侧接管资料");
+    }
   }
 
   private normalizeCreateInput(input: CreateContractTakeoverDto) {

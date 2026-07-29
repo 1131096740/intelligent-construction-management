@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Res,
   StreamableFile
 } from "@nestjs/common";
@@ -49,6 +50,7 @@ import { ReturnContractTakeoverForSupplementDto } from "./dto/return-contract-ta
 import { AbandonContractTakeoverDto } from "./dto/abandon-contract-takeover.dto";
 import { AbandonContractTakeoverBatchDto } from "./dto/abandon-contract-takeover-batch.dto";
 import { AbandonContractTaxFactRevisionDto } from "../contract-tax-facts/dto/abandon-contract-tax-fact-revision.dto";
+import { SaveContractTakeoverContractFactsDto } from "./dto/save-contract-takeover-contract-facts.dto";
 
 @Controller("projects/:projectId/contract-takeovers")
 export class ContractTakeoverController {
@@ -326,6 +328,17 @@ export class ContractTakeoverController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.takeovers.updateDraft(projectId, takeoverId, body, user.id);
+  }
+
+  @Put(":takeoverId/contract-side")
+  @RequireProjectRole("contract.takeover.contract_facts.edit")
+  saveContractFacts(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Body() body: SaveContractTakeoverContractFactsDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.takeovers.saveContractFacts(projectId, takeoverId, body, user.id);
   }
 
   @Post(":takeoverId/abandonment")
