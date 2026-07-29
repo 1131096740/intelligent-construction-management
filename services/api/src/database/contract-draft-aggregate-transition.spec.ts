@@ -14,6 +14,7 @@ type ReadinessRecord = {
 
 type TransitionModule = {
   parseArgs(argv: string[]): Record<string, unknown>;
+  normalizeLockedRow(row: Record<string, unknown>): Record<string, unknown>;
   assertApplyGates(input: {
     args: Record<string, unknown>;
     report: Record<string, unknown>;
@@ -243,6 +244,62 @@ describe("contract draft aggregate transition", () => {
         currentDatabaseFingerprint: fingerprint
       })
     ).toThrow(/ready/iu);
+  });
+
+  it("rechecks an exact retained pre-submission formal code disposition under lock", () => {
+    const tool = loadTransition();
+    const readiness = requireFromHere(readinessPath) as {
+      sha256: (value: unknown) => string;
+    };
+    const formalCode = "HT-20260729-001";
+    const formalCodeSha256 = readiness.sha256(formalCode);
+    const normalized = tool.normalizeLockedRow({
+      contractVersionId: "00000000-0000-4000-8000-000000000001",
+      versionStatus: "draft",
+      draftRevision: 11,
+      firstSubmittedAt: null,
+      billCount: "1",
+      missingTaxExclusiveUnitPriceCount: "0",
+      underivableTaxExclusiveUnitPriceCount: "0",
+      partyCount: "1",
+      attachmentCount: "0",
+      latestGeneratedRevision: null,
+      checkpointChangedAfterCreation: false,
+      approvalInstanceCount: "0",
+      earliestApprovalCreatedAt: null,
+      formalCode,
+      formalCodeDispositionDecision: "retain",
+      formalCodeDispositionSha256: formalCodeSha256,
+      abandonedAt: null,
+      takeoverId: null,
+      takeoverActivatedAt: null,
+      takeoverStatus: null,
+      oldContractConfirmedAt: null,
+      oldFinanceConfirmedAt: null,
+      contractFactsCount: "0",
+      financeFactsCount: "0",
+      historicalPaidCents: "0",
+      itemizedHistoricalPaidCents: "0",
+      historicalPaymentCount: "0",
+      historicalVoucherCount: "0",
+      historicalApprovalPendingPaymentCents: "0",
+      historicalApprovedPendingPaymentCents: "0",
+      performanceStatus: null,
+      settlementClosedAt: null,
+      finalSettlementId: null
+    });
+
+    expect(normalized).toMatchObject({
+      status: "ready",
+      facts: {
+        formalCodeAllocatedWhileDraft: true,
+        formalCodeRetentionConfirmed: true,
+        formalCodeSha256
+      }
+    });
+    expect(readFileSync(transitionPath, "utf8")).toContain(
+      "contract.draft.formal_code.disposition"
+    );
   });
 
   it("locks and recomputes readiness before applying exact derivations", async () => {

@@ -29,6 +29,7 @@
     "inspect:contract-settlement-governance-readiness": "node scripts/inspect-contract-settlement-governance-readiness.cjs",
     "inspect:draft-lifecycle-readiness": "node scripts/inspect-draft-lifecycle-readiness.cjs",
     "inspect:contract-draft-aggregate": "node scripts/inspect-contract-draft-aggregate-readiness.cjs",
+    "resolve:contract-draft-formal-code": "node scripts/resolve-contract-draft-formal-code.cjs",
     "inspect:contract-draft-retention": "node scripts/execute-contract-draft-retention.cjs",
     "execute:contract-draft-retention": "node scripts/execute-contract-draft-retention.cjs --apply",
     "transition:contract-draft-aggregate": "node prisma/transition-contract-draft-aggregate.cjs",

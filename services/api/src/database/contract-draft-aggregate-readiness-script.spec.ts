@@ -4,6 +4,8 @@ import ts = require("typescript");
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const readinessTool = require("../../scripts/inspect-contract-draft-aggregate-readiness.cjs") as {
+  sha256(value: unknown): string;
+  classifyRow(row: Record<string, unknown>): Record<string, unknown>;
   createReport(input: {
     databaseFingerprint: string;
     generatedAt: string;
@@ -313,6 +315,74 @@ describe("contract draft aggregate readiness inspection", () => {
     expect(JSON.stringify(report)).not.toMatch(
       /objectKey|phone|password|bankAccount|tokenHash/iu
     );
+  });
+
+  it("accepts only an exact audited retain disposition for a pre-submission formal code", () => {
+    const base = {
+      contractVersionId: "formal-code-draft",
+      versionStatus: "draft",
+      draftRevision: 11,
+      billCount: "1",
+      missingTaxExclusiveUnitPriceCount: "0",
+      underivableTaxExclusiveUnitPriceCount: "0",
+      partyCount: "1",
+      attachmentCount: "0",
+      latestGeneratedRevision: null,
+      checkpointChangedAfterCreation: false,
+      approvalInstanceCount: "0",
+      earliestApprovalCreatedAt: null,
+      firstSubmittedAt: null,
+      formalCode: "HT-20260729-001",
+      abandonedAt: null,
+      takeoverId: null,
+      takeoverActivatedAt: null,
+      takeoverStatus: null,
+      oldContractConfirmedAt: null,
+      oldFinanceConfirmedAt: null,
+      contractFactsCount: "0",
+      financeFactsCount: "0",
+      historicalPaidCents: "0",
+      itemizedHistoricalPaidCents: "0",
+      historicalPaymentCount: "0",
+      historicalVoucherCount: "0",
+      historicalApprovalPendingPaymentCents: "0",
+      historicalApprovedPendingPaymentCents: "0",
+      performanceStatus: null,
+      settlementClosedAt: null,
+      finalSettlementId: null
+    };
+    const formalCodeSha256 = readinessTool.sha256(base.formalCode);
+
+    expect(readinessTool.classifyRow(base)).toMatchObject({
+      status: "blocking",
+      facts: {
+        formalCodeAllocatedWhileDraft: true,
+        formalCodeRetentionConfirmed: false,
+        formalCodeSha256
+      },
+      reasons: ["FORMAL_CODE_ALLOCATED_BEFORE_SUBMISSION"]
+    });
+    expect(readinessTool.classifyRow({
+      ...base,
+      formalCodeDispositionDecision: "retain",
+      formalCodeDispositionSha256: "f".repeat(64)
+    })).toMatchObject({
+      status: "blocking",
+      facts: { formalCodeRetentionConfirmed: false }
+    });
+    expect(readinessTool.classifyRow({
+      ...base,
+      formalCodeDispositionDecision: "retain",
+      formalCodeDispositionSha256: formalCodeSha256
+    })).toMatchObject({
+      status: "ready",
+      facts: {
+        formalCodeAllocatedWhileDraft: true,
+        formalCodeRetentionConfirmed: true,
+        formalCodeSha256
+      },
+      reasons: []
+    });
   });
 
   it("blocks the whole report when pagination is truncated", () => {

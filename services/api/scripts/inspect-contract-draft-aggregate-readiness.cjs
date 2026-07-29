@@ -96,6 +96,20 @@ const checks = Object.freeze({
           AND ai."flowType" = 'contract.approve') AS "earliestApprovalCreatedAt",
       cv."firstSubmittedAt",
       c."code" AS "formalCode",
+      (SELECT a."metadata"->>'decision'
+        FROM "AuditLog" a
+        WHERE a."businessType" = 'contract_version'
+          AND a."businessId" = cv."id"
+          AND a."action" = 'contract.draft.formal_code.disposition'
+        ORDER BY a."createdAt" DESC, a."id" DESC
+        LIMIT 1) AS "formalCodeDispositionDecision",
+      (SELECT a."metadata"->>'formalCodeSha256'
+        FROM "AuditLog" a
+        WHERE a."businessType" = 'contract_version'
+          AND a."businessId" = cv."id"
+          AND a."action" = 'contract.draft.formal_code.disposition'
+        ORDER BY a."createdAt" DESC, a."id" DESC
+        LIMIT 1) AS "formalCodeDispositionSha256",
       cv."abandonedAt",
       t."id" AS "takeoverId",
       t."activatedAt" AS "takeoverActivatedAt",
@@ -209,10 +223,15 @@ function classifyRow(row) {
   );
   const hasPriorSubmissionEvidence =
     row.firstSubmittedAt !== null || approvalInstanceCount !== "0";
+  const formalCodeSha256 = row.formalCode ? sha256(String(row.formalCode)) : null;
   const formalCodeAllocatedWhileDraft =
     EDITABLE_STATUSES.has(String(row.versionStatus)) &&
     Boolean(row.formalCode) &&
     !hasPriorSubmissionEvidence;
+  const formalCodeRetentionConfirmed =
+    formalCodeAllocatedWhileDraft &&
+    row.formalCodeDispositionDecision === "retain" &&
+    row.formalCodeDispositionSha256 === formalCodeSha256;
   const hasActiveRetentionOrPurgeCandidate =
     row.versionStatus === "abandoned" || row.abandonedAt !== null;
   const takeoverUnactivatedDraft =
@@ -248,7 +267,7 @@ function classifyRow(row) {
   if (hasActiveRetentionOrPurgeCandidate) {
     blockingReasons.push("ACTIVE_RETENTION_OR_PURGE_CANDIDATE");
   }
-  if (formalCodeAllocatedWhileDraft) {
+  if (formalCodeAllocatedWhileDraft && !formalCodeRetentionConfirmed) {
     blockingReasons.push("FORMAL_CODE_ALLOCATED_BEFORE_SUBMISSION");
   }
   if (row.checkpointChangedAfterCreation) {
@@ -308,6 +327,8 @@ function classifyRow(row) {
       ),
       hasPriorSubmissionEvidence,
       formalCodeAllocatedWhileDraft,
+      formalCodeRetentionConfirmed,
+      formalCodeSha256,
       hasActiveRetentionOrPurgeCandidate,
       takeoverUnactivatedDraft,
       hasLegacySingleConfirmation,

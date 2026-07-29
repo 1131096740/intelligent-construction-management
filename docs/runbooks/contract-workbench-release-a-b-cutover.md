@@ -64,6 +64,28 @@ DEPLOY_CONFIRMATION_MODE=immediate \
 6. 立即只读核对数量/金额/文件守恒、聚合 GET、旧正式合同不变和二次幂等。
 7. 保持 `maintenance`，不得提前开放写入。
 
+提交前已分配正式编号必须使用受控工具固化合同部决定，不得直接回填
+`firstSubmittedAt`、人工插入审批实例或重置编号序列。先保存 30 分钟内的新只读
+报告，再执行：
+
+```bash
+pnpm --filter @jiangkong/api resolve:contract-draft-formal-code -- \
+  --apply \
+  --report '<最新只读报告>' \
+  --contract-version-id '<精确版本 UUID>' \
+  --decision '<retain 或 void>' \
+  --expected-revision '<报告 revision>' \
+  --expected-database-fingerprint '<报告数据库 fingerprint>' \
+  --expected-report-sha256 '<报告 SHA-256>' \
+  --actor-user-id '<合同部主管 UUID>' \
+  --reason '<合同部确认原因>' \
+  --confirm 'RESOLVE_CONTRACT_DRAFT_FORMAL_CODE_<精确版本 UUID>_<retain 或 void>'
+```
+
+`retain` 只写绑定当前编号 SHA 的审计确认；`void` 清空当前编号、草稿 revision
+加一并写审计，已分配序号永久不回收。两者都是生产业务数据修改，必须按目标版本和
+决定另获明确授权。完成后必须重新运行只读预检；不得把处置前报告用于 transition。
+
 transition 失败时保持维护窗口；数据库只做前向核对/修复，不自动回滚迁移或用
 旧 fingerprint 重试。
 

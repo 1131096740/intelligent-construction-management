@@ -222,6 +222,20 @@ function createSqlStore(tx) {
              AND ai."businessId" = cv."id"
              AND ai."flowType" = 'contract.approve') AS "earliestApprovalCreatedAt",
          c."code" AS "formalCode",
+         (SELECT a."metadata"->>'decision'
+           FROM "AuditLog" a
+           WHERE a."businessType" = 'contract_version'
+             AND a."businessId" = cv."id"
+             AND a."action" = 'contract.draft.formal_code.disposition'
+           ORDER BY a."createdAt" DESC, a."id" DESC
+           LIMIT 1) AS "formalCodeDispositionDecision",
+         (SELECT a."metadata"->>'formalCodeSha256'
+           FROM "AuditLog" a
+           WHERE a."businessType" = 'contract_version'
+             AND a."businessId" = cv."id"
+             AND a."action" = 'contract.draft.formal_code.disposition'
+           ORDER BY a."createdAt" DESC, a."id" DESC
+           LIMIT 1) AS "formalCodeDispositionSha256",
          cv."abandonedAt",
          t."id" AS "takeoverId",
          t."signedAt" AS "takeoverSignedAt",
