@@ -52,6 +52,8 @@ import { AbandonContractTakeoverBatchDto } from "./dto/abandon-contract-takeover
 import { AbandonContractTaxFactRevisionDto } from "../contract-tax-facts/dto/abandon-contract-tax-fact-revision.dto";
 import { SaveContractTakeoverContractFactsDto } from "./dto/save-contract-takeover-contract-facts.dto";
 import { SaveContractTakeoverFinanceFactsDto } from "./dto/save-contract-takeover-finance-facts.dto";
+import { ConfirmContractTakeoverSideDto } from "./dto/confirm-contract-takeover-side.dto";
+import { WithdrawContractTakeoverSideConfirmationDto } from "./dto/withdraw-contract-takeover-side-confirmation.dto";
 
 @Controller("projects/:projectId/contract-takeovers")
 export class ContractTakeoverController {
@@ -351,6 +353,70 @@ export class ContractTakeoverController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.takeovers.saveFinanceFacts(projectId, takeoverId, body, user.id);
+  }
+
+  @Post(":takeoverId/contract-side/confirmation")
+  @RequireProjectRole("contract.takeover.contract_facts.confirm")
+  confirmContractSide(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Body() body: ConfirmContractTakeoverSideDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.takeovers.confirmContractSide(
+      projectId,
+      takeoverId,
+      body,
+      user.id
+    );
+  }
+
+  @Post(":takeoverId/contract-side/confirmation-withdrawal")
+  @RequireProjectRole("contract.takeover.confirmation.withdraw")
+  withdrawContractSideConfirmation(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Body() body: WithdrawContractTakeoverSideConfirmationDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.takeovers.withdrawContractSideConfirmation(
+      projectId,
+      takeoverId,
+      body,
+      user.id
+    );
+  }
+
+  @Post(":takeoverId/finance-side/confirmation")
+  @RequireProjectRole("contract.takeover.finance_facts.confirm")
+  confirmFinanceSide(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Body() body: ConfirmContractTakeoverSideDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.takeovers.confirmFinanceSide(
+      projectId,
+      takeoverId,
+      body,
+      user.id
+    );
+  }
+
+  @Post(":takeoverId/finance-side/confirmation-withdrawal")
+  @RequireProjectRole("contract.takeover.confirmation.withdraw")
+  withdrawFinanceSideConfirmation(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Body() body: WithdrawContractTakeoverSideConfirmationDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.takeovers.withdrawFinanceSideConfirmation(
+      projectId,
+      takeoverId,
+      body,
+      user.id
+    );
   }
 
   @Post(":takeoverId/abandonment")

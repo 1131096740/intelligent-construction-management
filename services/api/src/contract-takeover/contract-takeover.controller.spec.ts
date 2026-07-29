@@ -19,6 +19,10 @@ const takeoverBodyRoutes = [
   ["updateDraft", 2],
   ["saveContractFacts", 2],
   ["saveFinanceFacts", 2],
+  ["confirmContractSide", 2],
+  ["withdrawContractSideConfirmation", 2],
+  ["confirmFinanceSide", 2],
+  ["withdrawFinanceSideConfirmation", 2],
   ["abandonDraft", 2],
   ["attachEvidence", 2],
   ["attachHistoricalPaymentVoucher", 2],
@@ -101,6 +105,25 @@ const validFinanceSideFacts = {
   ]
 } as const;
 
+const validContractSideConfirmation = {
+  idempotencyKey: "33333333-3333-4333-8333-333333333333",
+  expectedRevision: 1,
+  currentPassword: "not-a-real-password"
+} as const;
+
+const validFinanceSideConfirmation = {
+  ...validContractSideConfirmation,
+  basedOnContractRevision: 1,
+  basedOnFinanceBasisRevision: 1
+} as const;
+
+const validSideConfirmationWithdrawal = {
+  idempotencyKey: "44444444-4444-4444-8444-444444444444",
+  expectedRevision: 1,
+  currentPassword: "not-a-real-password",
+  reason: "发现资料仍需核对。"
+} as const;
+
 const validImportRow = {
   rowNo: 1,
   code: "HT-LS-001",
@@ -153,6 +176,18 @@ const validTakeoverRouteBodies = [
   ["updateDraft", 2, validTakeover],
   ["saveContractFacts", 2, validContractSideFacts],
   ["saveFinanceFacts", 2, validFinanceSideFacts],
+  ["confirmContractSide", 2, validContractSideConfirmation],
+  [
+    "withdrawContractSideConfirmation",
+    2,
+    validSideConfirmationWithdrawal
+  ],
+  ["confirmFinanceSide", 2, validFinanceSideConfirmation],
+  [
+    "withdrawFinanceSideConfirmation",
+    2,
+    validSideConfirmationWithdrawal
+  ],
   ["attachEvidence", 2, { fileId: "file-1", purpose: "historical_contract_scan" }],
   ["attachHistoricalPaymentVoucher", 2, { fileId: "file-1" }],
   [
@@ -326,6 +361,25 @@ describe("ContractTakeoverController", () => {
     expectProjectAction(
       ContractTakeoverController.prototype.saveFinanceFacts,
       "contract.takeover.finance_facts.edit"
+    );
+  });
+
+  it("protects side confirmation and withdrawal with split department actions", () => {
+    expectProjectAction(
+      ContractTakeoverController.prototype.confirmContractSide,
+      "contract.takeover.contract_facts.confirm"
+    );
+    expectProjectAction(
+      ContractTakeoverController.prototype.confirmFinanceSide,
+      "contract.takeover.finance_facts.confirm"
+    );
+    expectProjectAction(
+      ContractTakeoverController.prototype.withdrawContractSideConfirmation,
+      "contract.takeover.confirmation.withdraw"
+    );
+    expectProjectAction(
+      ContractTakeoverController.prototype.withdrawFinanceSideConfirmation,
+      "contract.takeover.confirmation.withdraw"
     );
   });
 
@@ -558,6 +612,10 @@ describe("ContractTakeoverController", () => {
       "updateDraft",
       "saveContractFacts",
       "saveFinanceFacts",
+      "confirmContractSide",
+      "withdrawContractSideConfirmation",
+      "confirmFinanceSide",
+      "withdrawFinanceSideConfirmation",
       "previewExcelImport",
       "applyExcelImport",
       "attachEvidence",

@@ -58,6 +58,8 @@ import type {
   ContractTakeoverExcessTreatment,
   SaveContractTakeoverFinanceFactsDto
 } from "./dto/save-contract-takeover-finance-facts.dto";
+import type { ConfirmContractTakeoverSideDto } from "./dto/confirm-contract-takeover-side.dto";
+import type { WithdrawContractTakeoverSideConfirmationDto } from "./dto/withdraw-contract-takeover-side-confirmation.dto";
 
 const TAKEOVER_LEVELS = ["A", "B", "C"] as const;
 const LIFECYCLE_STATUSES = [
@@ -1414,6 +1416,491 @@ export class ContractTakeoverService {
 
       return responseSnapshot;
     });
+  }
+
+  async confirmContractSide(
+    projectId: string,
+    takeoverId: string,
+    input: ConfirmContractTakeoverSideDto,
+    actorUserId: string
+  ) {
+    return this.confirmTakeoverSide(
+      "contract",
+      projectId,
+      takeoverId,
+      input,
+      actorUserId
+    );
+  }
+
+  async confirmFinanceSide(
+    projectId: string,
+    takeoverId: string,
+    input: ConfirmContractTakeoverSideDto,
+    actorUserId: string
+  ) {
+    return this.confirmTakeoverSide(
+      "finance",
+      projectId,
+      takeoverId,
+      input,
+      actorUserId
+    );
+  }
+
+  async withdrawContractSideConfirmation(
+    projectId: string,
+    takeoverId: string,
+    input: WithdrawContractTakeoverSideConfirmationDto,
+    actorUserId: string
+  ) {
+    return this.withdrawTakeoverSideConfirmation(
+      "contract",
+      projectId,
+      takeoverId,
+      input,
+      actorUserId
+    );
+  }
+
+  async withdrawFinanceSideConfirmation(
+    projectId: string,
+    takeoverId: string,
+    input: WithdrawContractTakeoverSideConfirmationDto,
+    actorUserId: string
+  ) {
+    return this.withdrawTakeoverSideConfirmation(
+      "finance",
+      projectId,
+      takeoverId,
+      input,
+      actorUserId
+    );
+  }
+
+  private async confirmTakeoverSide(
+    side: "contract" | "finance",
+    projectId: string,
+    takeoverId: string,
+    input: ConfirmContractTakeoverSideDto,
+    actorUserId: string
+  ) {
+    const idempotencyKey = input.idempotencyKey?.trim();
+    const currentPassword = input.currentPassword;
+    if (!idempotencyKey) {
+      throw new BadRequestException("请提供部门确认幂等键");
+    }
+    if (!Number.isInteger(input.expectedRevision) || input.expectedRevision < 1) {
+      throw new BadRequestException("部门确认修订必须是大于 0 的整数");
+    }
+    if (!currentPassword?.trim()) {
+      throw new BadRequestException("部门确认必须填写当前登录密码");
+    }
+    if (!this.auth) {
+      throw new Error("密码二次确认服务暂不可用，请稍后重试");
+    }
+    if (
+      side === "finance" &&
+      (
+        !Number.isInteger(input.basedOnContractRevision) ||
+        Number(input.basedOnContractRevision) < 1 ||
+        !Number.isInteger(input.basedOnFinanceBasisRevision) ||
+        Number(input.basedOnFinanceBasisRevision) < 1
+      )
+    ) {
+      throw new BadRequestException(
+        "财务确认必须携带已保存的合同侧修订和财务基线修订"
+      );
+    }
+    await this.auth.confirmPassword(actorUserId, currentPassword);
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const aggregate = await this.lockTakeoverConfirmationAggregate(
+          tx,
+          projectId,
+          takeoverId
+        );
+        await this.assertProjectSideDirector(
+          tx,
+          projectId,
+          actorUserId,
+          side
+        );
+        const priorEvent =
+          await tx.contractTakeoverConfirmationEvent.findUnique({
+            where: { idempotencyKey }
+          });
+        if (priorEvent) {
+          const matches =
+            priorEvent.takeoverId === aggregate.takeover.id &&
+            priorEvent.side === side &&
+            priorEvent.action === "confirm" &&
+            priorEvent.actorUserId === actorUserId &&
+            priorEvent.revision === input.expectedRevision &&
+            (
+              side === "contract" ||
+              (
+                priorEvent.observedOtherSideRevision ===
+                  input.basedOnContractRevision &&
+                priorEvent.observedFinanceBasisRevision ===
+                  input.basedOnFinanceBasisRevision
+              )
+            );
+          if (!matches) {
+            throw new ConflictException("部门确认幂等键已用于其他请求");
+          }
+          return priorEvent.responseSnapshot;
+        }
+        if (aggregate.takeover.activatedAt) {
+          throw new ConflictException("历史接管已激活，无需重复确认");
+        }
+
+        const facts =
+          side === "contract"
+            ? aggregate.contractFacts
+            : aggregate.financeFacts;
+        if (!facts) {
+          throw new ConflictException(
+            side === "contract"
+              ? "合同侧资料尚未保存，不能确认"
+              : "财务侧资料尚未保存，不能确认"
+          );
+        }
+        if (facts.revision !== input.expectedRevision) {
+          throw new ConflictException(
+            side === "contract"
+              ? "合同侧确认修订已过期，请刷新后重试"
+              : "财务侧确认修订已过期，请刷新后重试"
+          );
+        }
+        if (facts.confirmedRevision !== null) {
+          throw new ConflictException("本部门当前修订已经确认");
+        }
+
+        if (side === "finance") {
+          const financeFacts = aggregate.financeFacts;
+          if (
+            !financeFacts ||
+            financeFacts.basedOnContractRevision !==
+              input.basedOnContractRevision
+          ) {
+            throw new ConflictException(
+              "财务确认所依据的合同侧完整修订与已保存资料不一致"
+            );
+          }
+          if (
+            financeFacts.basedOnFinanceBasisRevision !==
+              input.basedOnFinanceBasisRevision ||
+            aggregate.contractFacts.financeBasisRevision !==
+              input.basedOnFinanceBasisRevision
+          ) {
+            throw new ConflictException(
+              "财务确认所依据的合同基线已过期，请刷新后重新核对"
+            );
+          }
+        }
+
+        const confirmedAt = new Date();
+        if (side === "contract") {
+          const updated = await tx.contractTakeoverContractFacts.updateMany({
+            where: {
+              takeoverId: aggregate.takeover.id,
+              revision: input.expectedRevision,
+              confirmedRevision: null
+            },
+            data: {
+              confirmedRevision: input.expectedRevision,
+              confirmedByUserId: actorUserId,
+              confirmedAt
+            }
+          });
+          if (updated.count !== 1) {
+            throw new ConflictException(
+              "合同侧确认状态已变化，请刷新后重试"
+            );
+          }
+          aggregate.contractFacts = {
+            ...aggregate.contractFacts,
+            confirmedRevision: input.expectedRevision,
+            confirmedByUserId: actorUserId,
+            confirmedAt
+          };
+        } else {
+          const financeFacts = aggregate.financeFacts;
+          if (!financeFacts) {
+            throw new ConflictException("财务侧资料尚未保存，不能确认");
+          }
+          const updated = await tx.contractTakeoverFinanceFacts.updateMany({
+            where: {
+              takeoverId: aggregate.takeover.id,
+              revision: input.expectedRevision,
+              confirmedRevision: null
+            },
+            data: {
+              confirmedRevision: input.expectedRevision,
+              confirmedContractRevision: financeFacts.basedOnContractRevision,
+              confirmedFinanceBasisRevision:
+                financeFacts.basedOnFinanceBasisRevision,
+              confirmedByUserId: actorUserId,
+              confirmedAt
+            }
+          });
+          if (updated.count !== 1) {
+            throw new ConflictException(
+              "财务侧确认状态已变化，请刷新后重试"
+            );
+          }
+          aggregate.financeFacts = {
+            ...financeFacts,
+            confirmedRevision: input.expectedRevision,
+            confirmedContractRevision: financeFacts.basedOnContractRevision,
+            confirmedFinanceBasisRevision:
+              financeFacts.basedOnFinanceBasisRevision,
+            confirmedByUserId: actorUserId,
+            confirmedAt
+          };
+        }
+
+        const activation = await this.tryActivateInTransaction(
+          tx,
+          aggregate.takeover,
+          aggregate.contractFacts,
+          aggregate.financeFacts,
+          actorUserId,
+          idempotencyKey
+        );
+        const responseSnapshot = {
+          takeoverId: aggregate.takeover.id,
+          side,
+          revision: input.expectedRevision,
+          confirmed: true,
+          confirmedAt: confirmedAt.toISOString(),
+          ...activation
+        };
+        await tx.contractTakeoverConfirmationEvent.create({
+          data: {
+            idempotencyKey,
+            takeoverId: aggregate.takeover.id,
+            side,
+            action: "confirm",
+            revision: input.expectedRevision,
+            observedOtherSideRevision:
+              side === "finance"
+                ? input.basedOnContractRevision
+                : aggregate.financeFacts?.revision ?? null,
+            observedFinanceBasisRevision:
+              side === "finance"
+                ? input.basedOnFinanceBasisRevision
+                : aggregate.contractFacts.financeBasisRevision,
+            reason: null,
+            actorUserId,
+            responseSnapshot: responseSnapshot as Prisma.InputJsonValue
+          }
+        });
+        await this.audit.record(tx, {
+          actorUserId,
+          action: `contract_takeover.${side}_side.confirm`,
+          businessType: "contract_takeover",
+          businessId: aggregate.takeover.id,
+          metadata: {
+            projectId,
+            side,
+            revision: input.expectedRevision,
+            observedContractRevision:
+              side === "finance"
+                ? input.basedOnContractRevision
+                : aggregate.contractFacts.revision,
+            observedFinanceBasisRevision:
+              side === "finance"
+                ? input.basedOnFinanceBasisRevision
+                : aggregate.contractFacts.financeBasisRevision,
+            activationStatus: activation.activationStatus
+          }
+        });
+        return responseSnapshot;
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2034"
+      ) {
+        throw new ConflictException(
+          "部门确认与其他操作并发冲突，请刷新后重试"
+        );
+      }
+      throw error;
+    }
+  }
+
+  private async withdrawTakeoverSideConfirmation(
+    side: "contract" | "finance",
+    projectId: string,
+    takeoverId: string,
+    input: WithdrawContractTakeoverSideConfirmationDto,
+    actorUserId: string
+  ) {
+    const idempotencyKey = input.idempotencyKey?.trim();
+    const currentPassword = input.currentPassword;
+    const reason = input.reason?.trim();
+    if (!idempotencyKey) {
+      throw new BadRequestException("请提供部门确认撤回幂等键");
+    }
+    if (!Number.isInteger(input.expectedRevision) || input.expectedRevision < 1) {
+      throw new BadRequestException("部门确认撤回修订必须是大于 0 的整数");
+    }
+    if (!currentPassword?.trim()) {
+      throw new BadRequestException("部门确认撤回必须填写当前登录密码");
+    }
+    if (!reason) {
+      throw new BadRequestException("请填写部门确认撤回原因");
+    }
+    if (!this.auth) {
+      throw new Error("密码二次确认服务暂不可用，请稍后重试");
+    }
+    await this.auth.confirmPassword(actorUserId, currentPassword);
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const aggregate = await this.lockTakeoverConfirmationAggregate(
+          tx,
+          projectId,
+          takeoverId
+        );
+        await this.assertProjectSideDirector(
+          tx,
+          projectId,
+          actorUserId,
+          side
+        );
+        if (aggregate.takeover.activatedAt) {
+          throw new ConflictException("历史接管已激活，不能撤回部门确认");
+        }
+        const priorEvent =
+          await tx.contractTakeoverConfirmationEvent.findUnique({
+            where: { idempotencyKey }
+          });
+        if (priorEvent) {
+          const matches =
+            priorEvent.takeoverId === aggregate.takeover.id &&
+            priorEvent.side === side &&
+            priorEvent.action === "withdraw" &&
+            priorEvent.actorUserId === actorUserId &&
+            priorEvent.revision === input.expectedRevision &&
+            priorEvent.reason === reason;
+          if (!matches) {
+            throw new ConflictException("部门确认撤回幂等键已用于其他请求");
+          }
+          return priorEvent.responseSnapshot;
+        }
+        const facts =
+          side === "contract"
+            ? aggregate.contractFacts
+            : aggregate.financeFacts;
+        if (!facts || facts.revision !== input.expectedRevision) {
+          throw new ConflictException(
+            "部门确认撤回修订已过期，请刷新后重试"
+          );
+        }
+        if (facts.confirmedRevision !== input.expectedRevision) {
+          throw new ConflictException("本部门当前修订尚未确认或已经撤回");
+        }
+
+        if (side === "contract") {
+          const updated = await tx.contractTakeoverContractFacts.updateMany({
+            where: {
+              takeoverId: aggregate.takeover.id,
+              revision: input.expectedRevision,
+              confirmedRevision: input.expectedRevision
+            },
+            data: {
+              confirmedRevision: null,
+              confirmedByUserId: null,
+              confirmedAt: null
+            }
+          });
+          if (updated.count !== 1) {
+            throw new ConflictException(
+              "合同侧确认状态已变化，请刷新后重试"
+            );
+          }
+        } else {
+          const updated = await tx.contractTakeoverFinanceFacts.updateMany({
+            where: {
+              takeoverId: aggregate.takeover.id,
+              revision: input.expectedRevision,
+              confirmedRevision: input.expectedRevision
+            },
+            data: {
+              confirmedRevision: null,
+              confirmedContractRevision: null,
+              confirmedFinanceBasisRevision: null,
+              confirmedByUserId: null,
+              confirmedAt: null
+            }
+          });
+          if (updated.count !== 1) {
+            throw new ConflictException(
+              "财务侧确认状态已变化，请刷新后重试"
+            );
+          }
+        }
+
+        const responseSnapshot = {
+          takeoverId: aggregate.takeover.id,
+          side,
+          revision: input.expectedRevision,
+          confirmed: false,
+          withdrawnAt: new Date().toISOString(),
+          reason
+        };
+        await tx.contractTakeoverConfirmationEvent.create({
+          data: {
+            idempotencyKey,
+            takeoverId: aggregate.takeover.id,
+            side,
+            action: "withdraw",
+            revision: input.expectedRevision,
+            observedOtherSideRevision:
+              side === "contract"
+                ? aggregate.financeFacts?.revision ?? null
+                : aggregate.contractFacts.revision,
+            observedFinanceBasisRevision:
+              aggregate.contractFacts.financeBasisRevision,
+            reason,
+            actorUserId,
+            responseSnapshot: responseSnapshot as Prisma.InputJsonValue
+          }
+        });
+        await this.audit.record(tx, {
+          actorUserId,
+          action: `contract_takeover.${side}_side.confirmation_withdraw`,
+          businessType: "contract_takeover",
+          businessId: aggregate.takeover.id,
+          metadata: {
+            projectId,
+            side,
+            revision: input.expectedRevision,
+            reason
+          }
+        });
+        return responseSnapshot;
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2034"
+      ) {
+        throw new ConflictException(
+          "确认撤回与其他操作并发冲突，请刷新后重试"
+        );
+      }
+      throw error;
+    }
   }
 
   async attachEvidenceFile(
@@ -4057,6 +4544,165 @@ export class ContractTakeoverService {
       throw new BadRequestException("历史接管记录不存在或不属于当前项目");
     }
     return takeover;
+  }
+
+  private async lockTakeoverConfirmationAggregate(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    takeoverId: string
+  ) {
+    const takeover = await this.lockProjectTakeover(tx, projectId, takeoverId);
+    const [contractFacts] =
+      await tx.$queryRaw<ContractTakeoverContractFactsRow[]>(Prisma.sql`
+        SELECT *
+        FROM "ContractTakeoverContractFacts"
+        WHERE "takeoverId" = ${takeover.id}
+        FOR UPDATE
+      `);
+    if (!contractFacts) {
+      throw new ConflictException("合同侧资料尚未保存，不能办理部门确认");
+    }
+    const [financeFacts] =
+      await tx.$queryRaw<ContractTakeoverFinanceFactsRow[]>(Prisma.sql`
+        SELECT *
+        FROM "ContractTakeoverFinanceFacts"
+        WHERE "takeoverId" = ${takeover.id}
+        FOR UPDATE
+      `);
+    await tx.$queryRaw<ContractTakeoverHistoricalPaymentRow[]>(Prisma.sql`
+      SELECT *
+      FROM "ContractTakeoverHistoricalPayment"
+      WHERE "takeoverId" = ${takeover.id}
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    await tx.$queryRaw<ContractTakeoverHistoricalPaymentVoucherRow[]>(Prisma.sql`
+      SELECT voucher.*
+      FROM "ContractTakeoverHistoricalPaymentVoucher" voucher
+      JOIN "ContractTakeoverHistoricalPayment" payment
+        ON payment."id" = voucher."historicalPaymentId"
+      WHERE payment."takeoverId" = ${takeover.id}
+      ORDER BY voucher."fileId"
+      FOR UPDATE OF voucher
+    `);
+    const [contract] = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id"
+      FROM "Contract"
+      WHERE "id" = ${takeover.contractId}
+      FOR UPDATE
+    `);
+    const [contractVersion] =
+      await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT "id"
+        FROM "ContractVersion"
+        WHERE "id" = ${takeover.contractVersionId}
+        FOR UPDATE
+      `);
+    const [paymentTermsVersion] =
+      await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT "id"
+        FROM "PaymentTermsVersion"
+        WHERE "id" = ${takeover.paymentTermsVersionId}
+        FOR UPDATE
+      `);
+    if (!contract || !contractVersion || !paymentTermsVersion) {
+      throw new ConflictException(
+        "历史接管关联的合同版本资料不完整，暂不能确认"
+      );
+    }
+    return {
+      takeover,
+      contractFacts,
+      financeFacts: financeFacts ?? null
+    };
+  }
+
+  private async tryActivateInTransaction(
+    _tx: Prisma.TransactionClient,
+    _takeover: ContractTakeoverRecord,
+    contractFacts: ContractTakeoverContractFactsRow,
+    financeFacts: ContractTakeoverFinanceFactsRow | null,
+    _actorUserId: string,
+    _idempotencyKey: string
+  ): Promise<{
+    activated: boolean;
+    activationStatus:
+      | "awaiting_contract_confirmation"
+      | "awaiting_finance_confirmation"
+      | "activated";
+  }> {
+    void _actorUserId;
+    void _idempotencyKey;
+    if (contractFacts.confirmedRevision !== contractFacts.revision) {
+      return {
+        activated: false,
+        activationStatus: "awaiting_contract_confirmation"
+      };
+    }
+    if (
+      !financeFacts ||
+      financeFacts.confirmedRevision !== financeFacts.revision
+    ) {
+      return {
+        activated: false,
+        activationStatus: "awaiting_finance_confirmation"
+      };
+    }
+    if (
+      financeFacts.confirmedFinanceBasisRevision !==
+      contractFacts.financeBasisRevision
+    ) {
+      throw new ConflictException(
+        "财务确认所依据的合同基线已过期，请重新保存并确认"
+      );
+    }
+    throw new ConflictException(
+      "双部门确认已齐备，但历史接管激活协调服务尚未就绪"
+    );
+  }
+
+  private async assertProjectSideDirector(
+    client: Pick<
+      Prisma.TransactionClient,
+      "userPosition" | "position" | "projectMember"
+    >,
+    projectId: string,
+    actorUserId: string,
+    side: "contract" | "finance"
+  ) {
+    const [assignments, memberships] = await Promise.all([
+      client.userPosition.findMany({
+        where: {
+          userId: actorUserId,
+          OR: [{ projectId: null }, { projectId }]
+        },
+        select: { positionId: true }
+      }),
+      client.projectMember.findMany({
+        where: { projectId, userId: actorUserId },
+        select: { positionKey: true }
+      })
+    ]);
+    const positions = assignments.length
+      ? await client.position.findMany({
+          where: {
+            id: { in: assignments.map((assignment) => assignment.positionId) }
+          },
+          select: { key: true }
+        })
+      : [];
+    const required =
+      side === "contract" ? "contract_director" : "finance_director";
+    const allowed =
+      positions.some((position) => position.key === required) ||
+      memberships.some((membership) => membership.positionKey === required);
+    if (!allowed) {
+      throw new ForbiddenException(
+        side === "contract"
+          ? "仅合同部主管可以确认合同侧接管资料"
+          : "仅财务主管可以确认财务侧接管资料"
+      );
+    }
   }
 
   private async assertProjectContractEditor(
