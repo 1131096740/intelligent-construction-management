@@ -202,6 +202,8 @@ describe("contract draft aggregate readiness inspection", () => {
           versionStatus: "effective",
           draftRevision: 3,
           billCount: "0",
+          missingTaxExclusiveUnitPriceCount: "1",
+          underivableTaxExclusiveUnitPriceCount: "1",
           partyCount: "2",
           attachmentCount: "0",
           latestGeneratedRevision: null,
@@ -280,7 +282,8 @@ describe("contract draft aggregate readiness inspection", () => {
           status: "manual_review",
           reasons: expect.arrayContaining([
             "PERFORMANCE_STATUS_REQUIRES_CONFIRMATION",
-            "COMPLETED_STATUS_REQUIRES_CONFIRMATION"
+            "COMPLETED_STATUS_REQUIRES_CONFIRMATION",
+            "TAX_EXCLUSIVE_UNIT_PRICE_NOT_EXACTLY_DERIVABLE"
           ])
         },
         {

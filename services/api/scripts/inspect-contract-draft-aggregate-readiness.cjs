@@ -44,6 +44,21 @@ const checks = Object.freeze({
       cv."status" AS "versionStatus",
       cv."draftRevision",
       (SELECT count(*)::text FROM "ContractBill" b WHERE b."contractVersionId" = cv."id") AS "billCount",
+      (SELECT count(*)::text
+        FROM "ContractBillRow" br
+        JOIN "ContractBill" b ON b."id" = br."contractBillId"
+        WHERE b."contractVersionId" = cv."id"
+          AND br."taxExclusiveUnitPrice" IS NULL) AS "missingTaxExclusiveUnitPriceCount",
+      (SELECT count(*)::text
+        FROM "ContractBillRow" br
+        JOIN "ContractBill" b ON b."id" = br."contractBillId"
+        WHERE b."contractVersionId" = cv."id"
+          AND br."taxExclusiveUnitPrice" IS NULL
+          AND (
+            br."taxExclusiveAmountCents" IS NULL
+            OR br."quantity" IS NULL
+            OR br."quantity" = 0
+          )) AS "underivableTaxExclusiveUnitPriceCount",
       (SELECT count(*)::text FROM "ContractPartySnapshot" p WHERE p."contractVersionId" = cv."id") AS "partyCount",
       (SELECT count(*)::text FROM "ContractDraftAttachment" a WHERE a."contractVersionId" = cv."id") AS "attachmentCount",
       (SELECT max(d."sourceRevision") FROM "ContractGeneratedDocument" d
@@ -72,9 +87,13 @@ const checks = Object.freeze({
           )
       ) AS "checkpointChangedAfterCreation",
       (SELECT count(*)::text FROM "ApprovalInstance" ai
-        WHERE ai."businessId" IN (cv."id", c."id")) AS "approvalInstanceCount",
+        WHERE ai."businessType" = 'contract_version'
+          AND ai."businessId" = cv."id"
+          AND ai."flowType" = 'contract.approve') AS "approvalInstanceCount",
       (SELECT min(ai."createdAt") FROM "ApprovalInstance" ai
-        WHERE ai."businessId" IN (cv."id", c."id")) AS "earliestApprovalCreatedAt",
+        WHERE ai."businessType" = 'contract_version'
+          AND ai."businessId" = cv."id"
+          AND ai."flowType" = 'contract.approve') AS "earliestApprovalCreatedAt",
       cv."firstSubmittedAt",
       c."code" AS "formalCode",
       cv."abandonedAt",
@@ -85,6 +104,22 @@ const checks = Object.freeze({
       t."historicalBalanceConfirmedAt" AS "oldFinanceConfirmedAt",
       CASE WHEN cf."takeoverId" IS NULL THEN '0' ELSE '1' END AS "contractFactsCount",
       CASE WHEN ff."takeoverId" IS NULL THEN '0' ELSE '1' END AS "financeFactsCount",
+      CASE
+        WHEN t."id" IS NULL OR cf."takeoverId" IS NOT NULL THEN true
+        ELSE (
+          length(btrim(coalesce(c."code", c."temporaryCode", ''))) > 0
+          AND length(btrim(c."name")) > 0
+          AND length(btrim(coalesce(c."contractTypeKey", ''))) > 0
+          AND length(btrim(c."counterparty")) > 0
+          AND length(btrim(coalesce(t."evidenceSummary", ''))) > 0
+          AND pt."id" IS NOT NULL
+          AND length(btrim(pt."originalText")) > 0
+          AND EXISTS (
+            SELECT 1 FROM "ContractTakeoverSettlementEvidence" se
+            WHERE se."takeoverId" = t."id"
+          )
+        )
+      END AS "takeoverContractFactsSourceComplete",
       coalesce(t."historicalPaidCents", 0)::text AS "historicalPaidCents",
       coalesce((SELECT sum(hp."amountCents") FROM "ContractTakeoverHistoricalPayment" hp
         WHERE hp."takeoverId" = t."id"), 0)::text AS "itemizedHistoricalPaidCents",
@@ -102,6 +137,7 @@ const checks = Object.freeze({
     FROM "ContractVersion" cv
     JOIN "Contract" c ON c."id" = cv."contractId"
     LEFT JOIN "ContractTakeover" t ON t."contractVersionId" = cv."id"
+    LEFT JOIN "PaymentTermsVersion" pt ON pt."id" = t."paymentTermsVersionId"
     LEFT JOIN "ContractTakeoverContractFacts" cf ON cf."takeoverId" = t."id"
     LEFT JOIN "ContractTakeoverFinanceFacts" ff ON ff."takeoverId" = t."id"
     WHERE cv."status" IN ('draft', 'returned', 'withdrawn', 'abandoned', 'effective')
@@ -151,6 +187,12 @@ function centsText(value) {
 function classifyRow(row) {
   const approvalInstanceCount = countText(row.approvalInstanceCount);
   const billCount = countText(row.billCount);
+  const missingTaxExclusiveUnitPriceCount = countText(
+    row.missingTaxExclusiveUnitPriceCount
+  );
+  const underivableTaxExclusiveUnitPriceCount = countText(
+    row.underivableTaxExclusiveUnitPriceCount
+  );
   const partyCount = countText(row.partyCount);
   const attachmentCount = countText(row.attachmentCount);
   const historicalPaidCents = centsText(row.historicalPaidCents);
@@ -187,7 +229,9 @@ function classifyRow(row) {
   const contractFactsInitializableWithoutGuessing =
     row.takeoverId === null ||
     countText(row.contractFactsCount) === "1" ||
-    (takeoverUnactivatedDraft && !hasLegacySingleConfirmation);
+    (takeoverUnactivatedDraft &&
+      !hasLegacySingleConfirmation &&
+      row.takeoverContractFactsSourceComplete === true);
   const financeFactsInitializableWithoutGuessing =
     row.takeoverId === null ||
     countText(row.financeFactsCount) === "1" ||
@@ -225,6 +269,9 @@ function classifyRow(row) {
   if (hasPendingOrApprovedUnpaid) {
     reasons.push("PENDING_UNPAID_CANNOT_BECOME_HISTORICAL_PAYMENT");
   }
+  if (underivableTaxExclusiveUnitPriceCount !== "0") {
+    reasons.push("TAX_EXCLUSIVE_UNIT_PRICE_NOT_EXACTLY_DERIVABLE");
+  }
   if (!contractFactsInitializableWithoutGuessing) {
     reasons.push("CONTRACT_FACTS_REQUIRE_MANUAL_INPUT");
   }
@@ -244,6 +291,12 @@ function classifyRow(row) {
       exactVersionReadable: true,
       draftRevision: Number(row.draftRevision),
       billCount: Number(billCount),
+      missingTaxExclusiveUnitPriceCount: Number(
+        missingTaxExclusiveUnitPriceCount
+      ),
+      underivableTaxExclusiveUnitPriceCount: Number(
+        underivableTaxExclusiveUnitPriceCount
+      ),
       partyCount: Number(partyCount),
       attachmentCount: Number(attachmentCount),
       latestGeneratedRevision:
@@ -259,6 +312,8 @@ function classifyRow(row) {
       takeoverUnactivatedDraft,
       hasLegacySingleConfirmation,
       contractFactsInitializableWithoutGuessing,
+      takeoverContractFactsSourceComplete:
+        row.takeoverContractFactsSourceComplete !== false,
       financeFactsInitializableWithoutGuessing,
       hasPendingOrApprovedUnpaid,
       historicalPaidCents,
