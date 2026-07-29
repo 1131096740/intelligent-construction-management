@@ -1,0 +1,21 @@
+import { IsDateString } from "class-validator";
+import { IsRequiredText } from "../../validation/static-field-validation";
+
+export class AssignProjectAffiliateDto {
+  @IsRequiredText({
+    requiredMessage: "挂靠企业版本不能为空",
+    typeMessage: "挂靠企业版本编号必须是文字",
+    blankMessage: "挂靠企业版本不能为空白"
+  })
+  businessPartyVersionId!: string;
+
+  @IsDateString({ strict: true }, { message: "挂靠关系生效时间格式不正确" })
+  effectiveFrom!: string;
+
+  @IsRequiredText({
+    requiredMessage: "挂靠关系配置或变更原因不能为空",
+    typeMessage: "挂靠关系配置或变更原因必须是文字",
+    blankMessage: "挂靠关系配置或变更原因不能为空白"
+  })
+  changeReason!: string;
+}

@@ -4,6 +4,7 @@ import { RequireProjectRole } from "../auth/decorators/require-project-role.deco
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
+import { AssignProjectAffiliateDto } from "./dto/assign-project-affiliate.dto";
 import { ConfirmProjectOwnerContractDto } from "./dto/confirm-project-owner-contract.dto";
 import type { CreateProjectDto } from "./dto/create-project.dto";
 import { RecordProjectOwnerContractDto } from "./dto/record-project-owner-contract.dto";
@@ -48,6 +49,12 @@ export class ProjectController {
     return this.projects.listContractCreateOptions(user.id);
   }
 
+  @Get("affiliate-mapping-report")
+  @RequirePositions("chairman", "general_manager", "contract_director")
+  affiliateMappingReport() {
+    return this.projects.getAffiliateMappingReport();
+  }
+
   @Get("roster")
   roster(@CurrentUser() user: AuthenticatedUser) {
     return this.projects.listRoster(user.id);
@@ -57,6 +64,16 @@ export class ProjectController {
   @RequirePositions(...PROJECT_OVERVIEW_READ_POSITION_KEYS)
   operatingFundsOverview(@Param("projectId") projectId: string) {
     return this.projects.getOperatingFundsOverview(projectId);
+  }
+
+  @Post(":projectId/affiliate-assignment")
+  @RequirePositions("chairman", "general_manager")
+  assignAffiliate(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: AssignProjectAffiliateDto
+  ) {
+    return this.projects.assignAffiliate(projectId, user.id, body);
   }
 
   @Post(":projectId/receipts")

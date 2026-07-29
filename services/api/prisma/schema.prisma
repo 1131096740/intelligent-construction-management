@@ -146,6 +146,27 @@ model Project {
   updatedAt DateTime @updatedAt
 }
 
+// 项目挂靠企业只通过显式映射生效；变更时结束旧行并新增快照，不覆盖历史事实。
+model ProjectAffiliateAssignment {
+  id                          String    @id @default(uuid())
+  projectId                   String
+  businessPartyId             String
+  businessPartyVersionId      String
+  affiliateNameSnapshot       String
+  affiliateCreditCodeSnapshot String?
+  effectiveFrom               DateTime
+  endedAt                     DateTime?
+  changeReason                String
+  assignedByUserId            String
+  endedByUserId               String?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  @@index([projectId, effectiveFrom])
+  @@index([businessPartyId])
+  @@index([businessPartyVersionId])
+}
+
 model ProjectMember {
   id          String   @id @default(uuid())
   projectId   String
@@ -239,6 +260,11 @@ model ContractVersion {
   companyEntityNameSnapshot              String?
   companyEntityCreditCodeSnapshot        String?
   companyEntityRegisteredAddressSnapshot String?
+  signingSubjectType                     String    @default("our_company")
+  affiliateAssignmentId                  String?
+  affiliateBusinessPartyVersionId        String?
+  affiliateNameSnapshot                  String?
+  affiliateCreditCodeSnapshot            String?
   draftData                              Json
   templateSnapshot                       Json
   clauseSnapshot                         Json
@@ -1129,6 +1155,7 @@ model PaymentRequest {
   paidAmountCents       BigInt             @default(0)
   paymentMatter         String?
   amountCalculationExplanation String?
+  paymentSubjectType    String             @default("our_company")
   dueDate               DateTime?
   abandonedAt           DateTime?
   abandonedByUserId     String?
@@ -1145,6 +1172,7 @@ model PaymentExecution {
   id               String   @id @default(uuid())
   paymentRequestId String
   settlementId     String?
+  paymentSubjectType String @default("our_company")
   amountCents      BigInt
   paidAt           DateTime
   executedByUserId String
@@ -2207,6 +2235,9 @@ model ProjectReceipt {
   amountCents      BigInt
   payerName        String
   sourceType       String
+  affiliateAssignmentId           String?
+  affiliateBusinessPartyVersionId String?
+  affiliateNameSnapshot           String?
   description      String?
   voucherFileId    String
   recordedByUserId String
@@ -2228,6 +2259,10 @@ model ProjectProxyPayment {
   generalContractorName String
   paidTargetName        String
   paymentType           String
+  paymentSubjectType    String    @default("affiliate")
+  affiliateAssignmentId String?
+  affiliateBusinessPartyVersionId String?
+  affiliateNameSnapshot String?
   description           String?
   voucherFileId         String
   recordedByUserId      String
@@ -2254,6 +2289,9 @@ model ProjectUpstreamSettlement {
   approvingPartyName  String
   periodLabel         String
   isFinal             Boolean   @default(false)
+  affiliateAssignmentId           String?
+  affiliateBusinessPartyVersionId String?
+  affiliateNameSnapshot           String?
   description         String?
   voucherFileId       String
   recordedByUserId    String
@@ -2279,6 +2317,10 @@ model ProjectOwnerContract {
   pricingMethod       String
   paymentTermsSummary String
   retentionSummary    String
+  affiliateAssignmentId             String?
+  affiliateBusinessPartyVersionId   String?
+  affiliateNameSnapshot             String?
+  affiliateCreditCodeSnapshot       String?
   fileId              String
   recordedByUserId    String
   confirmedByUserId   String?

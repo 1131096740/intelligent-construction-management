@@ -28,6 +28,8 @@ import {
   fetchProjectOperatingOverview,
   fetchProjects,
   fetchContractCreateProjects,
+  fetchProjectAffiliateMappingReport,
+  assignProjectAffiliate,
   fetchWorkItems,
   createProject,
   updateProject,
@@ -612,12 +614,20 @@ describe("core flow read API client", () => {
 
     await fetchProjects();
     await fetchContractCreateProjects();
+    await fetchProjectAffiliateMappingReport();
+    await assignProjectAffiliate("project/1", {
+      businessPartyVersionId: "party-version-1",
+      effectiveFrom: "2026-07-28T00:00:00.000Z",
+      changeReason: "建立显式挂靠关系"
+    });
     await fetchProjectOperatingOverview("project-1");
     await fetchProjectExpenseRequests("project-1");
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/projects",
       "/api/projects/contract-create-options",
+      "/api/projects/affiliate-mapping-report",
+      "/api/projects/project%2F1/affiliate-assignment",
       "/api/projects/project-1/operating-funds-overview",
       "/api/projects/project-1/expense-requests"
     ]);

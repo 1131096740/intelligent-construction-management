@@ -6,6 +6,7 @@ import { createApiValidationPipe } from "../validation/api-validation";
 import { ProjectController } from "./project.controller";
 
 type ProjectMoneyBodyMethod =
+  | "assignAffiliate"
   | "recordReceipt"
   | "recordProxyPayment"
   | "recordUpstreamSettlement"
@@ -18,6 +19,7 @@ type ProjectMoneyBodyMethod =
   | "terminateProjectFinancingQuota";
 
 const projectMoneyBodyIndex: Record<ProjectMoneyBodyMethod, number> = {
+  assignAffiliate: 2,
   recordReceipt: 2,
   recordProxyPayment: 2,
   recordUpstreamSettlement: 2,
@@ -118,6 +120,14 @@ describe("ProjectController authorization wiring", () => {
   const projectCreatePositions = ["chairman", "general_manager"];
 
   it.each([
+    [
+      "assignAffiliate",
+      {
+        businessPartyVersionId: "party-version-1",
+        effectiveFrom: "2026-07-28T00:00:00.000Z",
+        changeReason: "建立项目唯一挂靠企业映射"
+      }
+    ],
     ["recordReceipt", validProjectReceiptBody],
     [
       "recordProxyPayment",
@@ -570,6 +580,15 @@ describe("ProjectController authorization wiring", () => {
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.update)).toEqual(
       projectCreatePositions
     );
+  });
+
+  it("limits affiliate mapping writes to company decision roles and exposes a read-only review report", () => {
+    expect(
+      Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.assignAffiliate)
+    ).toEqual(projectCreatePositions);
+    expect(
+      Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.affiliateMappingReport)
+    ).toEqual(["chairman", "general_manager", "contract_director"]);
   });
 
   it("guards project overview with the management read policy so global positions can see every project", () => {

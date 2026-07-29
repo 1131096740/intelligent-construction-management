@@ -1120,6 +1120,28 @@ export interface UpdateProjectPayload {
   name: string;
 }
 
+export interface ProjectAffiliateMappingReportReadModel {
+  generatedAt: string;
+  rows: Array<{
+    projectId: string;
+    projectCode: string;
+    projectName: string;
+    status: "ready" | "missing" | "conflict";
+    affiliateName: string | null;
+    affiliateCreditCode: string | null;
+    businessPartyVersionId: string | null;
+    effectiveFrom: string | null;
+    currentAssignmentIds: string[];
+  }>;
+  summary: { ready: number; missing: number; conflict: number };
+}
+
+export interface AssignProjectAffiliatePayload {
+  businessPartyVersionId: string;
+  effectiveFrom: string;
+  changeReason: string;
+}
+
 export interface ProjectOperatingOverviewReadModel {
   project: ProjectOptionReadModel;
   cash: {
@@ -1458,6 +1480,22 @@ export function fetchProjects() {
 
 export function fetchContractCreateProjects() {
   return readJson<ProjectOptionReadModel[]>("/projects/contract-create-options");
+}
+
+export function fetchProjectAffiliateMappingReport() {
+  return readJson<ProjectAffiliateMappingReportReadModel>(
+    "/projects/affiliate-mapping-report"
+  );
+}
+
+export function assignProjectAffiliate(
+  projectId: string,
+  body: AssignProjectAffiliatePayload
+) {
+  return postJson<Record<string, unknown>>(
+    `/projects/${encodeURIComponent(projectId)}/affiliate-assignment`,
+    body
+  );
 }
 
 export function fetchProjectRoster() {

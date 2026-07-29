@@ -134,6 +134,10 @@ export class CreatePaymentTermsStageDto {
 /** Minimal payload to seed a workbench draft from a published business template. */
 export class CreateContractDraftDto {
   @ValidateIf((_object, value) => value !== undefined)
+  @IsIn(["affiliate", "our_company"], { message: "合同签约主体类型不正确" })
+  signingSubjectType?: "affiliate" | "our_company";
+
+  @ValidateIf((_object, value) => value !== undefined)
   @IsIn(["capped", "unlimited"], { message: "合同金额上限类型不正确" })
   amountLimitType?: "capped" | "unlimited";
 

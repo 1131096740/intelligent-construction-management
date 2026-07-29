@@ -170,6 +170,7 @@ type CreateWorkbenchDraftBasePayload = {
   contractTypeKey: string;
   businessTemplateVersionId: string;
   amountLimitType: "capped" | "unlimited";
+  signingSubjectType?: "affiliate" | "our_company";
 };
 
 export type CreateWorkbenchDraftPayload = CreateWorkbenchDraftBasePayload & (

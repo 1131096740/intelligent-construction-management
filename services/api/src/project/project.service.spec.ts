@@ -28,6 +28,34 @@ function addApprovalSignatureQueries<T extends Record<string, unknown>>(
   });
 }
 
+function addAffiliateSubjectTables<T extends Record<string, unknown>>(tx: T): T {
+  const subjectTx = tx as T & {
+    projectAffiliateAssignment?: { findMany?: jest.Mock };
+    contractVersion?: { findFirst?: jest.Mock; findMany?: jest.Mock };
+  };
+  subjectTx.projectAffiliateAssignment ??= {};
+  subjectTx.projectAffiliateAssignment.findMany ??= jest.fn().mockResolvedValue([
+    {
+      id: "assignment-legacy-test",
+      businessPartyId: "party-legacy-test",
+      businessPartyVersionId: "party-version-legacy-test",
+      affiliateNameSnapshot: "测试挂靠企业",
+      affiliateCreditCodeSnapshot: "91310000TEST",
+      effectiveFrom: new Date("2026-01-01T00:00:00.000Z")
+    }
+  ]);
+  subjectTx.contractVersion ??= {};
+  subjectTx.contractVersion.findFirst ??= jest.fn().mockResolvedValue({
+    id: "contract-version-legacy-test",
+    signingSubjectType: "affiliate",
+    affiliateAssignmentId: "assignment-legacy-test",
+    affiliateBusinessPartyVersionId: "party-version-legacy-test",
+    affiliateNameSnapshot: "测试挂靠企业"
+  });
+  subjectTx.contractVersion.findMany ??= jest.fn().mockResolvedValue([]);
+  return tx;
+}
+
 describe("project money API boundary", () => {
   it("returns large bigint values as exact decimal strings", () => {
     expect(projectMoneyToApi(9_007_199_254_740_993n)).toBe("9007199254740993");
@@ -214,7 +242,7 @@ describe("ProjectService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(addAffiliateSubjectTables(tx)))
     };
     const audit = { record: jest.fn().mockResolvedValue({}) };
     const service = new ProjectService(prisma as never, audit as never);
@@ -244,7 +272,7 @@ describe("ProjectService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(addAffiliateSubjectTables(tx)))
     };
     const audit = { record: jest.fn().mockResolvedValue({}) };
     const service = new ProjectService(prisma as never, audit as never);
@@ -1056,6 +1084,9 @@ describe("ProjectService", () => {
           sourceType: "general_contractor_payment",
           description: "六月进度款",
           voucherFileId: "file-1",
+          affiliateAssignmentId: "assignment-legacy-test",
+          affiliateBusinessPartyVersionId: "party-version-legacy-test",
+          affiliateNameSnapshot: "测试挂靠企业",
           recordedByUserId: "finance-1",
           voidedAt: null,
           createdAt
@@ -1066,7 +1097,7 @@ describe("ProjectService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const auth = {
       confirmPassword: jest.fn().mockResolvedValue(undefined)
@@ -1093,6 +1124,9 @@ describe("ProjectService", () => {
       sourceTypeLabel: "总包付款",
       description: "六月进度款",
       voucherFileId: "file-1",
+      affiliateAssignmentId: "assignment-legacy-test",
+      affiliateBusinessPartyVersionId: "party-version-legacy-test",
+      affiliateNameSnapshot: "测试挂靠企业",
       recordedByUserId: "finance-1",
       createdAt: createdAt.toISOString()
     });
@@ -1106,6 +1140,9 @@ describe("ProjectService", () => {
         sourceType: "general_contractor_payment",
         description: "六月进度款",
         voucherFileId: "file-1",
+        affiliateAssignmentId: "assignment-legacy-test",
+        affiliateBusinessPartyVersionId: "party-version-legacy-test",
+        affiliateNameSnapshot: "测试挂靠企业",
         recordedByUserId: "finance-1"
       }
     });
@@ -1190,6 +1227,10 @@ describe("ProjectService", () => {
           generalContractorName: "总包单位",
           paidTargetName: "材料供应商",
           paymentType: "material",
+          paymentSubjectType: "affiliate",
+          affiliateAssignmentId: "assignment-legacy-test",
+          affiliateBusinessPartyVersionId: "party-version-legacy-test",
+          affiliateNameSnapshot: "测试挂靠企业",
           description: "钢材款总包代付",
           voucherFileId: "file-1",
           recordedByUserId: "finance-1",
@@ -1207,7 +1248,7 @@ describe("ProjectService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const auth = {
       confirmPassword: jest.fn().mockResolvedValue(undefined)
@@ -1236,6 +1277,10 @@ describe("ProjectService", () => {
       paidTargetName: "材料供应商",
       paymentType: "material",
       paymentTypeLabel: "材料",
+      paymentSubjectType: "affiliate",
+      affiliateAssignmentId: "assignment-legacy-test",
+      affiliateBusinessPartyVersionId: "party-version-legacy-test",
+      affiliateNameSnapshot: "测试挂靠企业",
       description: "钢材款总包代付",
       voucherFileId: "file-1",
       recordedByUserId: "finance-1",
@@ -1252,6 +1297,10 @@ describe("ProjectService", () => {
         generalContractorName: "总包单位",
         paidTargetName: "材料供应商",
         paymentType: "material",
+        paymentSubjectType: "affiliate",
+        affiliateAssignmentId: "assignment-legacy-test",
+        affiliateBusinessPartyVersionId: "party-version-legacy-test",
+        affiliateNameSnapshot: "测试挂靠企业",
         description: "钢材款总包代付",
         voucherFileId: "file-1",
         recordedByUserId: "finance-1",
@@ -1378,7 +1427,7 @@ describe("ProjectService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const auth = {
       confirmPassword: jest.fn().mockResolvedValue(undefined)
@@ -1423,6 +1472,9 @@ describe("ProjectService", () => {
           isFinal: false,
           description: "六月对上审定",
           voucherFileId: "file-1",
+          affiliateAssignmentId: "assignment-legacy-test",
+          affiliateBusinessPartyVersionId: "party-version-legacy-test",
+          affiliateNameSnapshot: "测试挂靠企业",
           recordedByUserId: "budget-1",
           voidedAt: null,
           createdAt
@@ -1433,7 +1485,7 @@ describe("ProjectService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const auth = {
       confirmPassword: jest.fn().mockResolvedValue(undefined)
@@ -1463,6 +1515,9 @@ describe("ProjectService", () => {
       isFinal: false,
       description: "六月对上审定",
       voucherFileId: "file-1",
+      affiliateAssignmentId: "assignment-legacy-test",
+      affiliateBusinessPartyVersionId: "party-version-legacy-test",
+      affiliateNameSnapshot: "测试挂靠企业",
       recordedByUserId: "budget-1",
       createdAt: createdAt.toISOString()
     });
@@ -1478,6 +1533,9 @@ describe("ProjectService", () => {
         isFinal: false,
         description: "六月对上审定",
         voucherFileId: "file-1",
+        affiliateAssignmentId: "assignment-legacy-test",
+        affiliateBusinessPartyVersionId: "party-version-legacy-test",
+        affiliateNameSnapshot: "测试挂靠企业",
         recordedByUserId: "budget-1"
       }
     });
@@ -1530,7 +1588,7 @@ describe("ProjectService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const service = new ProjectService(prisma as never);
 
@@ -1595,6 +1653,10 @@ describe("ProjectService", () => {
         pricingMethod: "fixed_total",
         paymentTermsSummary: "按进度支付",
         retentionSummary: "3%质保金",
+        affiliateAssignmentId: "assignment-legacy-test",
+        affiliateBusinessPartyVersionId: "party-version-legacy-test",
+        affiliateNameSnapshot: "测试挂靠企业",
+        affiliateCreditCodeSnapshot: "91310000TEST",
         fileId: "file-1",
         recordedByUserId: "contract-staff-1",
         status: "pending_confirm"
@@ -1627,7 +1689,7 @@ describe("ProjectService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const service = new ProjectService(prisma as never);
 
@@ -1687,7 +1749,7 @@ describe("ProjectService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const service = new ProjectService(prisma as never);
 
@@ -1806,7 +1868,7 @@ describe("ProjectService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const auth = {
       confirmPassword: jest.fn().mockResolvedValue(undefined)
@@ -1895,7 +1957,7 @@ describe("ProjectService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const service = new ProjectService(prisma as never);
 
@@ -2012,7 +2074,7 @@ describe("ProjectService", () => {
       auditLog: { create: jest.fn() }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
     const service = new ProjectService(prisma as never, undefined, auth as never);
@@ -2114,7 +2176,7 @@ describe("ProjectService", () => {
       auditLog: { create: jest.fn() }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
     const service = new ProjectService(prisma as never, undefined, auth as never);
@@ -2218,7 +2280,7 @@ describe("ProjectService", () => {
       auditLog: { create: jest.fn() }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
     const service = new ProjectService(prisma as never, undefined, auth as never);
@@ -2277,7 +2339,7 @@ describe("ProjectService", () => {
       auditLog: { create: jest.fn() }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const service = new ProjectService(prisma as never);
 
@@ -2374,7 +2436,7 @@ describe("ProjectService", () => {
       auditLog: { create: jest.fn() }
     });
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
     const service = new ProjectService(prisma as never, undefined, auth as never);
@@ -2466,7 +2528,7 @@ describe("ProjectService", () => {
       auditLog: { create: jest.fn() }
     });
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
     const service = new ProjectService(prisma as never, undefined, auth as never);
@@ -2551,7 +2613,7 @@ describe("ProjectService", () => {
       auditLog: { create: jest.fn() }
     });
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
     const service = new ProjectService(prisma as never, undefined, auth as never);
@@ -2635,7 +2697,7 @@ describe("ProjectService", () => {
       auditLog: { create: jest.fn() }
     });
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
     const funding = { lockFundingContext: jest.fn().mockResolvedValue(undefined) };
@@ -2696,7 +2758,7 @@ describe("ProjectService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const auth = {
       confirmPassword: jest.fn().mockResolvedValue(undefined)
@@ -2731,7 +2793,7 @@ describe("ProjectService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const service = new ProjectService(prisma as never);
 
@@ -2777,7 +2839,7 @@ describe("ProjectService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const auth = {
       confirmPassword: jest.fn().mockResolvedValue(undefined)
@@ -2810,7 +2872,7 @@ describe("ProjectService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const auth = {
       confirmPassword: jest.fn().mockResolvedValue(undefined)
@@ -2852,7 +2914,7 @@ describe("ProjectService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const auth = {
       confirmPassword: jest.fn().mockResolvedValue(undefined)
@@ -2939,7 +3001,7 @@ describe("ProjectService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const auth = {
       confirmPassword: jest.fn().mockResolvedValue(undefined)
@@ -3032,7 +3094,7 @@ describe("ProjectService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const auth = {
       confirmPassword: jest.fn().mockResolvedValue(undefined)
@@ -3150,7 +3212,7 @@ describe("ProjectService", () => {
         }
       };
       const prisma = {
-        $transaction: jest.fn(async (callback) => callback(tx))
+        $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
       };
       const auth = {
         confirmPassword: jest.fn().mockResolvedValue(undefined)
@@ -3302,7 +3364,7 @@ describe("ProjectService", () => {
         }
       };
       const prisma = {
-        $transaction: jest.fn(async (callback) => callback(tx))
+        $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
       };
       const auth = {
         confirmPassword: jest.fn().mockResolvedValue(undefined)
@@ -3369,7 +3431,7 @@ describe("ProjectService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
     };
     const auth = {
       confirmPassword: jest.fn().mockResolvedValue(undefined)

@@ -67,6 +67,10 @@ import { ContractAuthorizationService } from "./contract-authorization.service";
 import { ContractSealService } from "./contract-seal.service";
 import { ContractBillLineageService } from "../contract-bill/contract-bill-lineage.service";
 import { ContractVersionActivationService } from "./contract-version-activation.service";
+import {
+  resolveCurrentProjectAffiliate,
+  type ContractSigningSubjectType
+} from "../project/project-affiliate-subject";
 
 interface ContractApprovalAssignment {
   kind: "transfer" | "delegate";
@@ -134,6 +138,16 @@ const SETTLEMENT_CONTRACT_TYPES = new Set([
   "professional_subcontract"
 ]);
 
+function normalizeContractSigningSubjectType(
+  value: unknown
+): ContractSigningSubjectType {
+  if (value === undefined) return "our_company";
+  if (value !== "affiliate" && value !== "our_company") {
+    throw new BadRequestException("合同签约主体类型不正确");
+  }
+  return value;
+}
+
 @Injectable()
 export class ContractService {
   constructor(
@@ -165,6 +179,7 @@ export class ContractService {
 
   async createDraft(input: CreateContractDraftDto, actorUserId: string) {
     const normalizedPaymentStages = this.normalizePaymentStages(input.paymentStages);
+    const signingSubjectType = normalizeContractSigningSubjectType(input.signingSubjectType);
     if (Boolean(input.businessScenarioId) !== Boolean(input.scenarioTemplateMappingId)) {
       throw new BadRequestException("业务场景与场景模板映射必须同时选择或同时留空");
     }
@@ -177,6 +192,9 @@ export class ContractService {
       if (!project?.isActive) {
         throw new BadRequestException("项目不存在或已停用，不能新建合同草稿");
       }
+      const affiliate = signingSubjectType === "affiliate"
+        ? await resolveCurrentProjectAffiliate(tx, input.projectId)
+        : null;
       const lockedTemplate = await lockBusinessTemplateVersion(
         tx,
         input.businessTemplateVersionId
@@ -307,6 +325,11 @@ export class ContractService {
           status: "draft",
           taxFactStatus: "draft",
           contractGovernanceVersion: 1,
+          signingSubjectType,
+          affiliateAssignmentId: affiliate?.assignmentId ?? null,
+          affiliateBusinessPartyVersionId: affiliate?.businessPartyVersionId ?? null,
+          affiliateNameSnapshot: affiliate?.name ?? null,
+          affiliateCreditCodeSnapshot: affiliate?.unifiedSocialCreditCode ?? null,
           amountCents: 0n,
           amountLimitType: input.amountLimitType ?? "capped",
           settlementMode: suggestedSettlementMode,
@@ -464,6 +487,11 @@ export class ContractService {
           companyEntityNameSnapshot: source.companyEntityNameSnapshot,
           companyEntityCreditCodeSnapshot: source.companyEntityCreditCodeSnapshot,
           companyEntityRegisteredAddressSnapshot: source.companyEntityRegisteredAddressSnapshot,
+          signingSubjectType: source.signingSubjectType,
+          affiliateAssignmentId: source.affiliateAssignmentId,
+          affiliateBusinessPartyVersionId: source.affiliateBusinessPartyVersionId,
+          affiliateNameSnapshot: source.affiliateNameSnapshot,
+          affiliateCreditCodeSnapshot: source.affiliateCreditCodeSnapshot,
           draftData: source.draftData as Prisma.InputJsonValue,
           templateSnapshot: source.templateSnapshot as Prisma.InputJsonValue,
           clauseSnapshot: source.clauseSnapshot as Prisma.InputJsonValue,
@@ -762,6 +790,11 @@ export class ContractService {
           companyEntityCreditCodeSnapshot: latest.companyEntityCreditCodeSnapshot,
           companyEntityRegisteredAddressSnapshot:
             latest.companyEntityRegisteredAddressSnapshot,
+          signingSubjectType: latest.signingSubjectType,
+          affiliateAssignmentId: latest.affiliateAssignmentId,
+          affiliateBusinessPartyVersionId: latest.affiliateBusinessPartyVersionId,
+          affiliateNameSnapshot: latest.affiliateNameSnapshot,
+          affiliateCreditCodeSnapshot: latest.affiliateCreditCodeSnapshot,
           draftData: preparedSource.templateSnapshotSynthesized
             ? { historicalTakeover: true }
             : latest.draftData as Prisma.InputJsonValue,

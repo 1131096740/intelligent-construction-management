@@ -36,6 +36,7 @@ import {
 } from "../payment/settlement-payment-capacity";
 import { loadSettlementPaymentConfirmationFacts } from "../payment/settlement-confirmation-facts";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
+import type { AssignProjectAffiliateDto } from "./dto/assign-project-affiliate.dto";
 import type {
   RecordProjectProxyPaymentDto,
   ProjectProxyPaymentType
@@ -51,6 +52,7 @@ import type { ReviewProjectFinancingQuotaDto } from "./dto/review-project-financ
 import type { ReviewSettlementExceptionQuotaDto } from "./dto/review-settlement-exception-quota.dto";
 import type { TerminateProjectFinancingQuotaDto } from "./dto/terminate-project-financing-quota.dto";
 import type { UpdateProjectDto } from "./dto/update-project.dto";
+import { resolveCurrentProjectAffiliate } from "./project-affiliate-subject";
 
 const UPSTREAM_SETTLEMENT_GAP =
   "缺少对上结算/业主审定台账，当前经营收入和毛利为实际收款与总包代付发生口径。";
@@ -268,6 +270,196 @@ export class ProjectService {
       ];
       return canPerform("contract.create", resolveEffectiveRoleKeys(globalRoleKeys, projectRoleKeys));
     });
+  }
+
+  async getAffiliateMappingReport() {
+    const [projects, assignments] = await Promise.all([
+      this.prisma.project.findMany({
+        where: { isActive: true },
+        select: { id: true, code: true, name: true },
+        orderBy: [{ code: "asc" }, { name: "asc" }]
+      }),
+      this.prisma.projectAffiliateAssignment.findMany({
+        where: { endedAt: null },
+        select: {
+          id: true,
+          projectId: true,
+          businessPartyVersionId: true,
+          affiliateNameSnapshot: true,
+          affiliateCreditCodeSnapshot: true,
+          effectiveFrom: true
+        },
+        orderBy: [{ projectId: "asc" }, { effectiveFrom: "desc" }, { id: "asc" }]
+      })
+    ]);
+    const assignmentsByProject = new Map<string, typeof assignments>();
+    for (const assignment of assignments) {
+      const rows = assignmentsByProject.get(assignment.projectId) ?? [];
+      rows.push(assignment);
+      assignmentsByProject.set(assignment.projectId, rows);
+    }
+
+    const rows = projects.map((project) => {
+      const current = assignmentsByProject.get(project.id) ?? [];
+      const ready = current.length === 1 ? current[0] : null;
+      return {
+        projectId: project.id,
+        projectCode: project.code,
+        projectName: project.name,
+        status: current.length === 0 ? "missing" : current.length === 1 ? "ready" : "conflict",
+        affiliateName: ready?.affiliateNameSnapshot ?? null,
+        affiliateCreditCode: ready?.affiliateCreditCodeSnapshot ?? null,
+        businessPartyVersionId: ready?.businessPartyVersionId ?? null,
+        effectiveFrom: ready?.effectiveFrom.toISOString() ?? null,
+        currentAssignmentIds: current.map((assignment) => assignment.id)
+      };
+    });
+
+    return {
+      generatedAt: new Date().toISOString(),
+      rows,
+      summary: {
+        ready: rows.filter((row) => row.status === "ready").length,
+        missing: rows.filter((row) => row.status === "missing").length,
+        conflict: rows.filter((row) => row.status === "conflict").length
+      }
+    };
+  }
+
+  async assignAffiliate(
+    projectId: string,
+    actorUserId: string,
+    input: AssignProjectAffiliateDto
+  ) {
+    const businessPartyVersionId = requiredTrimmed(
+      input.businessPartyVersionId,
+      "挂靠企业版本不能为空"
+    );
+    const changeReason = requiredTrimmed(
+      input.changeReason,
+      "挂靠关系配置或变更原因不能为空"
+    );
+    const effectiveFrom = new Date(input.effectiveFrom);
+    if (Number.isNaN(effectiveFrom.getTime())) {
+      throw new BadRequestException("挂靠关系生效时间格式不正确");
+    }
+    if (effectiveFrom.getTime() > Date.now()) {
+      throw new BadRequestException("挂靠关系生效时间不能晚于当前时间");
+    }
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const [project] = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>(Prisma.sql`
+          SELECT "id", "isActive"
+          FROM "Project"
+          WHERE "id" = ${projectId}
+          FOR UPDATE
+        `);
+        if (!project?.isActive) {
+          throw new NotFoundException("项目不存在或已停用，不能配置挂靠企业");
+        }
+
+        const currentAssignments = await tx.$queryRaw<
+          Array<{
+            id: string;
+            businessPartyId: string;
+            businessPartyVersionId: string;
+            effectiveFrom?: Date;
+          }>
+        >(Prisma.sql`
+          SELECT "id", "businessPartyId", "businessPartyVersionId", "effectiveFrom"
+          FROM "ProjectAffiliateAssignment"
+          WHERE "projectId" = ${projectId} AND "endedAt" IS NULL
+          ORDER BY "effectiveFrom" DESC, "id" ASC
+          FOR UPDATE
+        `);
+        if (currentAssignments.length > 1) {
+          throw new BadRequestException(
+            "项目存在多个当前挂靠企业，不能直接覆盖；请先按人工清单消除冲突"
+          );
+        }
+        const currentAssignment = currentAssignments[0];
+        if (
+          currentAssignment?.effectiveFrom &&
+          effectiveFrom.getTime() < currentAssignment.effectiveFrom.getTime()
+        ) {
+          throw new BadRequestException("新挂靠关系生效时间不能早于当前挂靠关系生效时间");
+        }
+
+        const version = await tx.businessPartyVersion.findUnique({
+          where: { id: businessPartyVersionId },
+          select: { id: true, businessPartyId: true, snapshot: true }
+        });
+        if (!version) {
+          throw new NotFoundException("所选挂靠企业版本不存在");
+        }
+        const party = await tx.businessParty.findUnique({
+          where: { id: version.businessPartyId },
+          select: { id: true, status: true }
+        });
+        if (!party || party.status !== "active") {
+          throw new BadRequestException("所选挂靠企业已停用，不能建立新的项目映射");
+        }
+        const snapshot = version.snapshot as {
+          name?: unknown;
+          unifiedSocialCreditCode?: unknown;
+        };
+        const affiliateNameSnapshot = requiredTrimmed(
+          snapshot.name,
+          "所选挂靠企业版本缺少企业名称，不能建立项目映射"
+        );
+        const affiliateCreditCodeSnapshot =
+          typeof snapshot.unifiedSocialCreditCode === "string"
+            ? snapshot.unifiedSocialCreditCode.trim() || null
+            : null;
+
+        if (currentAssignment) {
+          await tx.projectAffiliateAssignment.updateMany({
+            where: { projectId, endedAt: null },
+            data: { endedAt: effectiveFrom, endedByUserId: actorUserId }
+          });
+        }
+        const assignment = await tx.projectAffiliateAssignment.create({
+          data: {
+            projectId,
+            businessPartyId: version.businessPartyId,
+            businessPartyVersionId: version.id,
+            affiliateNameSnapshot,
+            affiliateCreditCodeSnapshot,
+            effectiveFrom,
+            changeReason,
+            assignedByUserId: actorUserId
+          }
+        });
+        await this.audit.record(tx, {
+          actorUserId,
+          action: currentAssignment
+            ? "project.affiliate_assignment.change"
+            : "project.affiliate_assignment.create",
+          businessType: "project_affiliate_assignment",
+          businessId: assignment.id,
+          metadata: {
+            projectId,
+            previousAssignmentId: currentAssignment?.id ?? null,
+            previousBusinessPartyVersionId:
+              currentAssignment?.businessPartyVersionId ?? null,
+            businessPartyId: version.businessPartyId,
+            businessPartyVersionId: version.id,
+            affiliateNameSnapshot,
+            effectiveFrom: effectiveFrom.toISOString(),
+            changeReason
+          }
+        });
+        return assignment;
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new BadRequestException(
+          "项目当前挂靠企业已被其他操作更新，请刷新人工映射报告后重试"
+        );
+      }
+      throw error;
+    }
   }
 
   private findActiveProjectOptions(extraWhere: object = {}) {
@@ -682,6 +874,7 @@ export class ProjectService {
       if (!project) {
         throw new NotFoundException("项目不存在或已停用，请刷新后重试");
       }
+      const currentAffiliate = await resolveCurrentProjectAffiliate(tx, project.id);
 
       const voucher = await tx.fileObject.findUnique({
         where: { id: voucherFileId },
@@ -703,6 +896,9 @@ export class ProjectService {
           amountCents,
           payerName,
           sourceType,
+          affiliateAssignmentId: currentAffiliate.assignmentId,
+          affiliateBusinessPartyVersionId: currentAffiliate.businessPartyVersionId,
+          affiliateNameSnapshot: currentAffiliate.name,
           description,
           voucherFileId,
           recordedByUserId: actorUserId
@@ -719,6 +915,9 @@ export class ProjectService {
           receiptId: receipt.id,
           amountCents: moneyCentsToApi(amountCents),
           sourceType,
+          affiliateAssignmentId: currentAffiliate.assignmentId,
+          affiliateBusinessPartyVersionId: currentAffiliate.businessPartyVersionId,
+          affiliateNameSnapshot: currentAffiliate.name,
           payerName,
           voucherFileId
         }
@@ -765,6 +964,7 @@ export class ProjectService {
       if (!project) {
         throw new NotFoundException("项目不存在或已停用，请刷新后重试");
       }
+      const currentAffiliate = await resolveCurrentProjectAffiliate(tx, project.id);
 
       const voucher = await tx.fileObject.findUnique({
         where: { id: voucherFileId },
@@ -782,6 +982,11 @@ export class ProjectService {
       let linkedContractId = requestedContractId ?? null;
       let linkedSettlementId = requestedSettlementId ?? null;
       let contractDueCapacityChecked = false;
+      let affiliatePaymentSubject = {
+        assignmentId: currentAffiliate.assignmentId,
+        businessPartyVersionId: currentAffiliate.businessPartyVersionId,
+        name: currentAffiliate.name
+      };
 
       if (requestedContractId) {
         const contract = await tx.contract.findFirst({
@@ -802,6 +1007,7 @@ export class ProjectService {
         }
 
         linkedContractId = contract.id;
+        affiliatePaymentSubject = await this.loadAffiliateContractSubject(tx, contract.id);
       }
 
       if (requestedSettlementId) {
@@ -831,6 +1037,12 @@ export class ProjectService {
 
         linkedSettlementId = settlement.id;
         linkedContractId = settlement.contractId;
+        if (!requestedContractId) {
+          affiliatePaymentSubject = await this.loadAffiliateContractSubject(
+            tx,
+            settlement.contractId
+          );
+        }
         await this.assertContractDueProxyPaymentCapacity(tx, linkedContractId, amountCents);
         contractDueCapacityChecked = true;
 
@@ -900,6 +1112,11 @@ export class ProjectService {
           generalContractorName,
           paidTargetName,
           paymentType,
+          paymentSubjectType: "affiliate",
+          affiliateAssignmentId: affiliatePaymentSubject.assignmentId,
+          affiliateBusinessPartyVersionId:
+            affiliatePaymentSubject.businessPartyVersionId,
+          affiliateNameSnapshot: affiliatePaymentSubject.name,
           description,
           voucherFileId,
           recordedByUserId: actorUserId,
@@ -918,6 +1135,11 @@ export class ProjectService {
           proxyPaymentId: proxyPayment.id,
           amountCents: moneyCentsToApi(amountCents),
           paymentType,
+          paymentSubjectType: "affiliate",
+          affiliateAssignmentId: affiliatePaymentSubject.assignmentId,
+          affiliateBusinessPartyVersionId:
+            affiliatePaymentSubject.businessPartyVersionId,
+          affiliateNameSnapshot: affiliatePaymentSubject.name,
           generalContractorName,
           paidTargetName,
           voucherFileId,
@@ -928,6 +1150,40 @@ export class ProjectService {
 
       return toProxyPaymentReadModel(proxyPayment);
     });
+  }
+
+  private async loadAffiliateContractSubject(
+    tx: Prisma.TransactionClient,
+    contractId: string
+  ): Promise<{ assignmentId: string; businessPartyVersionId: string; name: string }> {
+    const version = await tx.contractVersion.findFirst({
+      where: { contractId },
+      orderBy: { versionNo: "desc" },
+      select: {
+        signingSubjectType: true,
+        affiliateAssignmentId: true,
+        affiliateBusinessPartyVersionId: true,
+        affiliateNameSnapshot: true
+      }
+    });
+    if (!version) {
+      throw new NotFoundException("关联合同版本不存在，请重新选择");
+    }
+    if (version.signingSubjectType !== "affiliate") {
+      throw new BadRequestException("该合同冻结为我方签约，不能登记挂靠企业付款");
+    }
+    if (
+      !version.affiliateAssignmentId ||
+      !version.affiliateBusinessPartyVersionId ||
+      !version.affiliateNameSnapshot
+    ) {
+      throw new BadRequestException("关联合同缺少冻结的挂靠企业主体快照，不能登记挂靠付款");
+    }
+    return {
+      assignmentId: version.affiliateAssignmentId,
+      businessPartyVersionId: version.affiliateBusinessPartyVersionId,
+      name: version.affiliateNameSnapshot
+    };
   }
 
   private async historicalBalanceForProxyPaymentContract(
@@ -1277,6 +1533,8 @@ export class ProjectService {
         throw new NotFoundException("项目不存在或已停用，请刷新后重试");
       }
 
+      const currentAffiliate = await resolveCurrentProjectAffiliate(tx, project.id);
+
       const voucher = await tx.fileObject.findUnique({
         where: { id: voucherFileId },
         select: { id: true, uploadedByUserId: true }
@@ -1299,6 +1557,9 @@ export class ProjectService {
           approvingPartyName,
           periodLabel,
           isFinal,
+          affiliateAssignmentId: currentAffiliate.assignmentId,
+          affiliateBusinessPartyVersionId: currentAffiliate.businessPartyVersionId,
+          affiliateNameSnapshot: currentAffiliate.name,
           description,
           voucherFileId,
           recordedByUserId: actorUserId
@@ -1318,6 +1579,9 @@ export class ProjectService {
           approvingPartyName,
           periodLabel,
           isFinal,
+          affiliateAssignmentId: currentAffiliate.assignmentId,
+          affiliateBusinessPartyVersionId: currentAffiliate.businessPartyVersionId,
+          affiliateNameSnapshot: currentAffiliate.name,
           voucherFileId
         }
       });
@@ -1365,6 +1629,8 @@ export class ProjectService {
           throw new NotFoundException("项目不存在或已停用，请刷新后重试");
         }
 
+        const affiliate = await resolveCurrentProjectAffiliate(tx, project.id);
+
         const existing = await tx.projectOwnerContract.findFirst({
           where: { projectId: project.id, contractCode, voidedAt: null },
           select: { id: true }
@@ -1408,6 +1674,10 @@ export class ProjectService {
             pricingMethod,
             paymentTermsSummary,
             retentionSummary,
+            affiliateAssignmentId: affiliate.assignmentId,
+            affiliateBusinessPartyVersionId: affiliate.businessPartyVersionId,
+            affiliateNameSnapshot: affiliate.name,
+            affiliateCreditCodeSnapshot: affiliate.unifiedSocialCreditCode,
             fileId,
             recordedByUserId: actorUserId,
             status: "pending_confirm"
@@ -1426,6 +1696,9 @@ export class ProjectService {
             ownerName,
             contractName,
             contractCode,
+            affiliateAssignmentId: affiliate.assignmentId,
+            affiliateBusinessPartyVersionId: affiliate.businessPartyVersionId,
+            affiliateNameSnapshot: affiliate.name,
             fileId
           }
         });
@@ -2211,6 +2484,9 @@ function toReceiptReadModel(receipt: {
   amountCents: bigint;
   payerName: string;
   sourceType: string;
+  affiliateAssignmentId?: string | null;
+  affiliateBusinessPartyVersionId?: string | null;
+  affiliateNameSnapshot?: string | null;
   description?: string | null;
   voucherFileId: string;
   recordedByUserId: string;
@@ -2225,6 +2501,10 @@ function toReceiptReadModel(receipt: {
     payerName: receipt.payerName,
     sourceType,
     sourceTypeLabel: RECEIPT_SOURCE_LABELS[sourceType],
+    affiliateAssignmentId: receipt.affiliateAssignmentId ?? null,
+    affiliateBusinessPartyVersionId:
+      receipt.affiliateBusinessPartyVersionId ?? null,
+    affiliateNameSnapshot: receipt.affiliateNameSnapshot ?? null,
     description: receipt.description ?? null,
     voucherFileId: receipt.voucherFileId,
     recordedByUserId: receipt.recordedByUserId,
@@ -2240,6 +2520,10 @@ function toProxyPaymentReadModel(proxyPayment: {
   generalContractorName: string;
   paidTargetName: string;
   paymentType: string;
+  paymentSubjectType?: string | null;
+  affiliateAssignmentId?: string | null;
+  affiliateBusinessPartyVersionId?: string | null;
+  affiliateNameSnapshot?: string | null;
   description?: string | null;
   voucherFileId: string;
   recordedByUserId: string;
@@ -2257,6 +2541,11 @@ function toProxyPaymentReadModel(proxyPayment: {
     paidTargetName: proxyPayment.paidTargetName,
     paymentType,
     paymentTypeLabel: PROXY_PAYMENT_TYPE_LABELS[paymentType],
+    paymentSubjectType: proxyPayment.paymentSubjectType ?? "affiliate",
+    affiliateAssignmentId: proxyPayment.affiliateAssignmentId ?? null,
+    affiliateBusinessPartyVersionId:
+      proxyPayment.affiliateBusinessPartyVersionId ?? null,
+    affiliateNameSnapshot: proxyPayment.affiliateNameSnapshot ?? null,
     description: proxyPayment.description ?? null,
     voucherFileId: proxyPayment.voucherFileId,
     recordedByUserId: proxyPayment.recordedByUserId,
@@ -2275,6 +2564,9 @@ function toUpstreamSettlementReadModel(upstreamSettlement: {
   approvingPartyName: string;
   periodLabel: string;
   isFinal: boolean;
+  affiliateAssignmentId?: string | null;
+  affiliateBusinessPartyVersionId?: string | null;
+  affiliateNameSnapshot?: string | null;
   description?: string | null;
   voucherFileId: string;
   recordedByUserId: string;
@@ -2289,6 +2581,10 @@ function toUpstreamSettlementReadModel(upstreamSettlement: {
     approvingPartyName: upstreamSettlement.approvingPartyName,
     periodLabel: upstreamSettlement.periodLabel,
     isFinal: upstreamSettlement.isFinal,
+    affiliateAssignmentId: upstreamSettlement.affiliateAssignmentId ?? null,
+    affiliateBusinessPartyVersionId:
+      upstreamSettlement.affiliateBusinessPartyVersionId ?? null,
+    affiliateNameSnapshot: upstreamSettlement.affiliateNameSnapshot ?? null,
     description: upstreamSettlement.description ?? null,
     voucherFileId: upstreamSettlement.voucherFileId,
     recordedByUserId: upstreamSettlement.recordedByUserId,
@@ -2308,6 +2604,10 @@ function toOwnerContractReadModel(ownerContract: {
   pricingMethod: string;
   paymentTermsSummary?: string | null;
   retentionSummary?: string | null;
+  affiliateAssignmentId?: string | null;
+  affiliateBusinessPartyVersionId?: string | null;
+  affiliateNameSnapshot?: string | null;
+  affiliateCreditCodeSnapshot?: string | null;
   fileId: string;
   recordedByUserId: string;
   confirmedByUserId?: string | null;
@@ -2328,6 +2628,11 @@ function toOwnerContractReadModel(ownerContract: {
     pricingMethod: ownerContract.pricingMethod,
     paymentTermsSummary: ownerContract.paymentTermsSummary ?? null,
     retentionSummary: ownerContract.retentionSummary ?? null,
+    affiliateAssignmentId: ownerContract.affiliateAssignmentId ?? null,
+    affiliateBusinessPartyVersionId:
+      ownerContract.affiliateBusinessPartyVersionId ?? null,
+    affiliateNameSnapshot: ownerContract.affiliateNameSnapshot ?? null,
+    affiliateCreditCodeSnapshot: ownerContract.affiliateCreditCodeSnapshot ?? null,
     fileId: ownerContract.fileId,
     recordedByUserId: ownerContract.recordedByUserId,
     confirmedByUserId: ownerContract.confirmedByUserId ?? null,

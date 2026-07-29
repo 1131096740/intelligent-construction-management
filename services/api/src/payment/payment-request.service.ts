@@ -121,6 +121,7 @@ interface PaymentExecutionLockRow {
   paymentTermsStageId?: string | null;
   settlementId: string | null;
   sourceType?: string;
+  signingSubjectType: string;
   status: string;
   requestedAmountCents: bigint;
   approvedAmountCents: bigint | null;
@@ -555,6 +556,7 @@ export class PaymentRequestService {
           projectId: settlement.projectId,
           settlementId: settlement.id,
           sourceType: "settlement",
+          paymentSubjectType: "our_company",
           contractId: settlement.contractId,
           contractVersionId: settlement.contractVersionId,
           paymentTermsVersionId: settlement.paymentTermsVersionId,
@@ -713,6 +715,7 @@ export class PaymentRequestService {
         projectId: contract.projectId,
         settlementId: null,
         sourceType: "contract_due",
+        paymentSubjectType: "our_company",
         contractId: contractVersion.contractId,
         contractVersionId: contractVersion.id,
         paymentTermsVersionId: paymentTermsVersion.id,
@@ -1023,6 +1026,7 @@ export class PaymentRequestService {
         projectId: contract.projectId,
         settlementId: null,
         sourceType: "contract_advance",
+        paymentSubjectType: "our_company",
         contractId: contractVersion.contractId,
         contractVersionId: contractVersion.id,
         paymentTermsVersionId: paymentTermsVersion.id,
@@ -1569,23 +1573,26 @@ export class PaymentRequestService {
   ): Promise<PaymentExecutionLockRow | null> {
     const rows = await tx.$queryRaw<Array<PaymentExecutionLockRow>>(Prisma.sql`
       SELECT
-        "id",
-        "code",
-        "projectId",
-        "contractId",
-        "contractVersionId",
-        "paymentTermsVersionId",
-        "paymentTermsStageId",
-        "settlementId",
-        "sourceType",
-        "status",
-        "requestedAmountCents",
-        "approvedAmountCents",
-        "paidAmountCents"
-      FROM "PaymentRequest"
-      WHERE "id" = ${paymentId} OR "code" = ${paymentId}
+        payment."id",
+        payment."code",
+        payment."projectId",
+        payment."contractId",
+        payment."contractVersionId",
+        payment."paymentTermsVersionId",
+        payment."paymentTermsStageId",
+        payment."settlementId",
+        payment."sourceType",
+        payment."status",
+        payment."requestedAmountCents",
+        payment."approvedAmountCents",
+        payment."paidAmountCents",
+        version."signingSubjectType"
+      FROM "PaymentRequest" payment
+      INNER JOIN "ContractVersion" version
+        ON version."id" = payment."contractVersionId"
+      WHERE payment."id" = ${paymentId} OR payment."code" = ${paymentId}
       LIMIT 1
-      FOR UPDATE
+      FOR UPDATE OF payment, version
     `);
     return rows[0] ?? null;
   }
@@ -1614,7 +1621,6 @@ export class PaymentRequestService {
       if (!payment) {
         throw new Error("未找到付款申请，请刷新付款台账后重试");
       }
-
       if (payment.status !== "approval_pending") {
         throw new Error("当前付款申请已离开审批中，不能撤回");
       }
@@ -2781,6 +2787,14 @@ export class PaymentRequestService {
       ) {
         throw new ConflictException("付款申请的项目资金范围已变化，请刷新后重试");
       }
+      // Persisted rows are non-null and database-constrained. `undefined` is
+      // retained only for pre-migration unit doubles that do not project the
+      // newly added column.
+      if (payment.signingSubjectType === "affiliate") {
+        throw new BadRequestException(
+          "该合同冻结为挂靠企业签约，不能创建或登记我方付款"
+        );
+      }
 
       const existingExecution = this.projectFunding
         ? await tx.paymentExecution.findFirst({
@@ -2916,6 +2930,7 @@ export class PaymentRequestService {
         data: {
           paymentRequestId: payment.id,
           settlementId: payment.settlementId,
+          paymentSubjectType: "our_company",
           amountCents,
           paidAt,
           executedByUserId: actorUserId,
