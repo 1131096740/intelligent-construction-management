@@ -217,10 +217,24 @@
                 <strong>合同审批</strong>
                 <span>审批意见和结果写入完整流程记录</span>
               </div>
+              <t-alert
+                v-if="ownerContractRisk && ownerContractRisk.status !== 'clear'"
+                theme="warning"
+                title="业主主合同风险"
+                :message="ownerContractRisk.message"
+              />
               <div
                 v-if="isContractActionEnabled('submit_approval') || isContractActionEnabled('review_approval')"
                 class="action-fields"
               >
+                <label
+                  v-if="ownerContractRisk?.requiresExplicitConfirmation"
+                  class="action-field action-field--wide"
+                >
+                  <t-checkbox v-model="contractArchiveForm.ownerContractRiskConfirmed">
+                    我已核对业主主合同缺失或超额风险，并确认继续通过本次合同终审
+                  </t-checkbox>
+                </label>
                 <label
                   v-if="isContractActionEnabled('review_approval')"
                   class="action-field action-field--wide"
@@ -1204,6 +1218,7 @@ const contractArchiveForm = reactive({
   downloadFileId: "",
   approvalComment: "",
   selfReviewReason: "",
+  ownerContractRiskConfirmed: false,
 });
 
 const contractDetailMetaView = computed(() => contractDetail.value?.meta ?? contractDetailMeta);
@@ -1326,6 +1341,7 @@ const contractHeaderPrimaryActionLabel = computed(() =>
 const requiresContractSelfReviewConfirmation = computed(
   () => contractActionByKey.value.get("review_approval")?.requiresSelfReviewConfirmation === true
 );
+const ownerContractRisk = computed(() => contractDetail.value?.ownerContractRisk ?? null);
 const showContractApprovalActions = computed(
   () => isContractActionEnabled("submit_approval") ||
     isContractActionEnabled("review_approval") ||
@@ -1842,6 +1858,13 @@ function requestContractReview(decision: ContractReviewDecision) {
   try {
     currentContractVersionId();
     if (decision === "reject") requiredText(contractArchiveForm.approvalComment, "驳回原因");
+    if (
+      decision === "approve" &&
+      ownerContractRisk.value?.requiresExplicitConfirmation &&
+      !contractArchiveForm.ownerContractRiskConfirmed
+    ) {
+      throw new Error("请先确认业主主合同缺失或超额风险");
+    }
     if (requiresContractSelfReviewConfirmation.value) {
       buildApprovalSelfReviewPayload(true, {
         selfReviewReason: contractArchiveForm.selfReviewReason,
@@ -1855,7 +1878,9 @@ function requestContractReview(decision: ContractReviewDecision) {
   openSensitiveAction(decision === "approve" ? "approvalApprove" : "approvalReject", {
     title: decision === "approve" ? "确认通过合同审批？" : "确认驳回合同审批？",
     description: decision === "approve"
-      ? "通过后将推进到下一审批节点或用章、归档环节；审批通过不代表合同已经生效。"
+      ? ownerContractRisk.value?.requiresExplicitConfirmation
+        ? `${ownerContractRisk.value.message} 确认后将推进到用章、归档环节；审批通过不代表合同已经生效。`
+        : "通过后将推进到下一审批节点或用章、归档环节；审批通过不代表合同已经生效。"
       : "驳回后本轮合同审批终止，驳回原因会写入审批记录。",
     confirmText: decision === "approve" ? "确认通过" : "确认驳回",
     confirmTheme: decision === "approve" ? "primary" : "danger",
@@ -2271,12 +2296,16 @@ async function performContractReview(decision: ContractReviewDecision, password:
     {
       decision,
       comment: contractArchiveForm.approvalComment.trim() || undefined,
+      ...(ownerContractRisk.value?.requiresExplicitConfirmation
+        ? { ownerContractRiskConfirmed: contractArchiveForm.ownerContractRiskConfirmed }
+        : {}),
       ...selfReviewPayload
     }
   ));
   if (succeeded) {
     contractArchiveForm.approvalComment = "";
     contractArchiveForm.selfReviewReason = "";
+    contractArchiveForm.ownerContractRiskConfirmed = false;
   }
   return succeeded;
 }

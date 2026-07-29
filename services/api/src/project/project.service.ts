@@ -37,6 +37,7 @@ import {
 import { loadSettlementPaymentConfirmationFacts } from "../payment/settlement-confirmation-facts";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 import type { AssignProjectAffiliateDto } from "./dto/assign-project-affiliate.dto";
+import type { ConfirmProjectUpstreamSettlementDto } from "./dto/confirm-project-upstream-settlement.dto";
 import type {
   RecordProjectProxyPaymentDto,
   ProjectProxyPaymentType
@@ -636,7 +637,7 @@ export class ProjectService {
         select: { amountCents: true }
       }),
       this.prisma.projectUpstreamSettlement.findMany({
-        where: { projectId, voidedAt: null },
+        where: { projectId, status: "confirmed", voidedAt: null },
         select: { approvedAmountCents: true }
       }),
       this.prisma.projectFinancingQuota.findMany({
@@ -1510,18 +1511,8 @@ export class ProjectService {
     const periodLabel = requiredTrimmed(input.periodLabel, "请填写对上结算期间");
     const isFinal = input.isFinal === true;
     const voucherFileId = requiredTrimmed(input.voucherFileId, "请上传对上结算凭证");
-    const confirmationPassword = requiredTrimmed(
-      input.confirmationPassword,
-      "请输入当前登录密码"
-    );
     const description =
       typeof input.description === "string" ? input.description.trim() || undefined : undefined;
-
-    if (!this.auth) {
-      throw new Error("Auth service is required to confirm upstream settlement");
-    }
-
-    await this.auth.confirmPassword(actorUserId, confirmationPassword);
 
     return this.prisma.$transaction(async (tx) => {
       const project = await tx.project.findFirst({
@@ -1537,7 +1528,12 @@ export class ProjectService {
 
       const voucher = await tx.fileObject.findUnique({
         where: { id: voucherFileId },
-        select: { id: true, uploadedByUserId: true }
+        select: {
+          id: true,
+          uploadedByUserId: true,
+          storageStatus: true,
+          contentSha256: true
+        }
       });
 
       if (!voucher) {
@@ -1546,6 +1542,9 @@ export class ProjectService {
 
       if (voucher.uploadedByUserId !== actorUserId) {
         throw new BadRequestException("只能使用本人上传的对上结算凭证");
+      }
+      if (voucher.storageStatus !== "active" || !voucher.contentSha256) {
+        throw new BadRequestException("对上结算正式文件尚未完成摘要校验，不能登记");
       }
 
       const upstreamSettlement = await tx.projectUpstreamSettlement.create({
@@ -1562,7 +1561,10 @@ export class ProjectService {
           affiliateNameSnapshot: currentAffiliate.name,
           description,
           voucherFileId,
-          recordedByUserId: actorUserId
+          documentVersion: 1,
+          fileContentSha256Snapshot: voucher.contentSha256,
+          recordedByUserId: actorUserId,
+          status: "pending_confirm"
         }
       });
 
@@ -1582,11 +1584,84 @@ export class ProjectService {
           affiliateAssignmentId: currentAffiliate.assignmentId,
           affiliateBusinessPartyVersionId: currentAffiliate.businessPartyVersionId,
           affiliateNameSnapshot: currentAffiliate.name,
-          voucherFileId
+          voucherFileId,
+          documentVersion: 1,
+          fileContentSha256Snapshot: voucher.contentSha256,
+          status: "pending_confirm"
         }
       });
 
       return toUpstreamSettlementReadModel(upstreamSettlement);
+    });
+  }
+
+  async confirmUpstreamSettlement(
+    projectId: string,
+    upstreamSettlementId: string,
+    actorUserId: string,
+    input: ConfirmProjectUpstreamSettlementDto,
+    now: Date = new Date()
+  ) {
+    const confirmationPassword = requiredTrimmed(
+      input.confirmationPassword,
+      "请输入当前登录密码"
+    );
+    if (!this.auth) {
+      throw new Error("Auth service is required to confirm upstream settlement");
+    }
+    await this.auth.confirmPassword(actorUserId, confirmationPassword);
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id"
+        FROM "ProjectUpstreamSettlement"
+        WHERE "id" = ${upstreamSettlementId}
+          AND "projectId" = ${projectId}
+        FOR UPDATE
+      `);
+      const signature = await snapshotApprovalSignature(tx, actorUserId, {
+        required: true
+      });
+      const updated = await tx.projectUpstreamSettlement.updateMany({
+        where: {
+          id: upstreamSettlementId,
+          projectId,
+          status: "pending_confirm",
+          voidedAt: null
+        },
+        data: {
+          status: "confirmed",
+          confirmedByUserId: actorUserId,
+          confirmedAt: now,
+          confirmationSignatureVersionId: signature.versionId,
+          confirmationSignatureFileId: signature.fileId,
+          confirmationSignatureSha256: signature.sha256
+        }
+      });
+      if (updated.count !== 1) {
+        throw new BadRequestException("当前上游结算状态不可确认");
+      }
+      const confirmed = await tx.projectUpstreamSettlement.findUnique({
+        where: { id: upstreamSettlementId }
+      });
+      if (!confirmed) {
+        throw new InternalServerErrorException("上游结算确认结果未正确保存，请稍后重试");
+      }
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "project.upstream_settlement.confirm",
+        businessType: "project_upstream_settlement",
+        businessId: confirmed.id,
+        metadata: {
+          projectId,
+          upstreamSettlementId: confirmed.id,
+          documentVersion: confirmed.documentVersion,
+          fileContentSha256Snapshot: confirmed.fileContentSha256Snapshot,
+          confirmationSignatureVersionId: signature.versionId,
+          confirmedAt: now.toISOString()
+        }
+      });
+      return toUpstreamSettlementReadModel(confirmed);
     });
   }
 
@@ -1651,7 +1726,12 @@ export class ProjectService {
 
         const file = await tx.fileObject.findUnique({
           where: { id: fileId },
-          select: { id: true, uploadedByUserId: true }
+          select: {
+            id: true,
+            uploadedByUserId: true,
+            storageStatus: true,
+            contentSha256: true
+          }
         });
 
         if (!file) {
@@ -1660,6 +1740,9 @@ export class ProjectService {
 
         if (file.uploadedByUserId !== actorUserId) {
           throw new BadRequestException("只能使用本人上传的业主主合同文件");
+        }
+        if (file.storageStatus !== "active" || !file.contentSha256) {
+          throw new BadRequestException("业主主合同正式文件尚未完成摘要校验，不能登记");
         }
 
         const ownerContract = await tx.projectOwnerContract.create({
@@ -1679,6 +1762,8 @@ export class ProjectService {
             affiliateNameSnapshot: affiliate.name,
             affiliateCreditCodeSnapshot: affiliate.unifiedSocialCreditCode,
             fileId,
+            documentVersion: 1,
+            fileContentSha256Snapshot: file.contentSha256,
             recordedByUserId: actorUserId,
             status: "pending_confirm"
           }
@@ -1699,7 +1784,9 @@ export class ProjectService {
             affiliateAssignmentId: affiliate.assignmentId,
             affiliateBusinessPartyVersionId: affiliate.businessPartyVersionId,
             affiliateNameSnapshot: affiliate.name,
-            fileId
+            fileId,
+            documentVersion: 1,
+            fileContentSha256Snapshot: file.contentSha256
           }
         });
 
@@ -1732,6 +1819,12 @@ export class ProjectService {
 
     return this.prisma.$transaction(async (tx) => {
       const confirmedAt = new Date();
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id"
+        FROM "Project"
+        WHERE "id" = ${projectId}
+        FOR UPDATE
+      `);
       const updated = await tx.projectOwnerContract.updateMany({
         where: {
           id: ownerContractId,
@@ -1766,6 +1859,9 @@ export class ProjectService {
           projectId,
           ownerContractId: confirmed.id,
           amountCents: projectMoneyToApi(confirmed.amountCents),
+          documentVersion: confirmed.documentVersion,
+          fileContentSha256Snapshot: confirmed.fileContentSha256Snapshot,
+          confirmedByUserId: actorUserId,
           confirmedAt: confirmedAt.toISOString()
         }
       });
@@ -2569,7 +2665,15 @@ function toUpstreamSettlementReadModel(upstreamSettlement: {
   affiliateNameSnapshot?: string | null;
   description?: string | null;
   voucherFileId: string;
+  documentVersion?: number;
+  fileContentSha256Snapshot?: string | null;
   recordedByUserId: string;
+  status?: string;
+  confirmedByUserId?: string | null;
+  confirmedAt?: Date | null;
+  confirmationSignatureVersionId?: string | null;
+  confirmationSignatureFileId?: string | null;
+  confirmationSignatureSha256?: string | null;
   createdAt: Date;
 }) {
   return {
@@ -2587,7 +2691,18 @@ function toUpstreamSettlementReadModel(upstreamSettlement: {
     affiliateNameSnapshot: upstreamSettlement.affiliateNameSnapshot ?? null,
     description: upstreamSettlement.description ?? null,
     voucherFileId: upstreamSettlement.voucherFileId,
+    documentVersion: upstreamSettlement.documentVersion ?? 1,
+    fileContentSha256Snapshot: upstreamSettlement.fileContentSha256Snapshot ?? null,
     recordedByUserId: upstreamSettlement.recordedByUserId,
+    status: upstreamSettlement.status ?? "legacy_recorded",
+    confirmedByUserId: upstreamSettlement.confirmedByUserId ?? null,
+    confirmedAt: upstreamSettlement.confirmedAt?.toISOString() ?? null,
+    confirmationSignatureVersionId:
+      upstreamSettlement.confirmationSignatureVersionId ?? null,
+    confirmationSignatureFileId:
+      upstreamSettlement.confirmationSignatureFileId ?? null,
+    confirmationSignatureSha256:
+      upstreamSettlement.confirmationSignatureSha256 ?? null,
     createdAt: upstreamSettlement.createdAt.toISOString()
   };
 }
@@ -2609,6 +2724,8 @@ function toOwnerContractReadModel(ownerContract: {
   affiliateNameSnapshot?: string | null;
   affiliateCreditCodeSnapshot?: string | null;
   fileId: string;
+  documentVersion?: number;
+  fileContentSha256Snapshot?: string | null;
   recordedByUserId: string;
   confirmedByUserId?: string | null;
   confirmedAt?: Date | null;
@@ -2634,6 +2751,8 @@ function toOwnerContractReadModel(ownerContract: {
     affiliateNameSnapshot: ownerContract.affiliateNameSnapshot ?? null,
     affiliateCreditCodeSnapshot: ownerContract.affiliateCreditCodeSnapshot ?? null,
     fileId: ownerContract.fileId,
+    documentVersion: ownerContract.documentVersion ?? 1,
+    fileContentSha256Snapshot: ownerContract.fileContentSha256Snapshot ?? null,
     recordedByUserId: ownerContract.recordedByUserId,
     confirmedByUserId: ownerContract.confirmedByUserId ?? null,
     confirmedAt: ownerContract.confirmedAt?.toISOString() ?? null,

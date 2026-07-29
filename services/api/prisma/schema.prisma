@@ -2294,7 +2294,15 @@ model ProjectUpstreamSettlement {
   affiliateNameSnapshot           String?
   description         String?
   voucherFileId       String
+  documentVersion                 Int       @default(1)
+  fileContentSha256Snapshot       String?
   recordedByUserId    String
+  status              String    @default("pending_confirm")
+  confirmedByUserId                String?
+  confirmedAt                      DateTime?
+  confirmationSignatureVersionId  String?
+  confirmationSignatureFileId     String?
+  confirmationSignatureSha256     String?
   voidedAt            DateTime?
   voidedByUserId      String?
   voidReason          String?
@@ -2303,6 +2311,7 @@ model ProjectUpstreamSettlement {
 
   @@index([projectId, settledAt])
   @@index([voucherFileId])
+  @@index([projectId, status])
 }
 
 model ProjectOwnerContract {
@@ -2322,6 +2331,8 @@ model ProjectOwnerContract {
   affiliateNameSnapshot             String?
   affiliateCreditCodeSnapshot       String?
   fileId              String
+  documentVersion     Int       @default(1)
+  fileContentSha256Snapshot String?
   recordedByUserId    String
   confirmedByUserId   String?
   confirmedAt         DateTime?

@@ -10,6 +10,7 @@ type ProjectMoneyBodyMethod =
   | "recordReceipt"
   | "recordProxyPayment"
   | "recordUpstreamSettlement"
+  | "confirmUpstreamSettlement"
   | "recordOwnerContract"
   | "confirmOwnerContract"
   | "requestSettlementExceptionQuota"
@@ -23,6 +24,7 @@ const projectMoneyBodyIndex: Record<ProjectMoneyBodyMethod, number> = {
   recordReceipt: 2,
   recordProxyPayment: 2,
   recordUpstreamSettlement: 2,
+  confirmUpstreamSettlement: 3,
   recordOwnerContract: 2,
   confirmOwnerContract: 3,
   requestSettlementExceptionQuota: 2,
@@ -150,10 +152,10 @@ describe("ProjectController authorization wiring", () => {
         approvingPartyName: "总包单位",
         periodLabel: "2026-06",
         isFinal: false,
-        voucherFileId: "file-1",
-        confirmationPassword: "current-password"
+        voucherFileId: "file-1"
       }
     ],
+    ["confirmUpstreamSettlement", { confirmationPassword: "current-password" }],
     [
       "recordOwnerContract",
       {
@@ -312,8 +314,7 @@ describe("ProjectController authorization wiring", () => {
       approvingPartyName: "总包单位",
       periodLabel: "2026-06",
       isFinal: "false",
-      voucherFileId: "file-1",
-      confirmationPassword: "current-password"
+      voucherFileId: "file-1"
     });
 
     expect(response.errors).toContain("最终结算标记必须是布尔值");
@@ -387,8 +388,7 @@ describe("ProjectController authorization wiring", () => {
         approvedAmountCents: "100",
         approvingPartyName: "总包单位",
         periodLabel: "2026-02",
-        voucherFileId: "file-1",
-        confirmationPassword: "pwd"
+        voucherFileId: "file-1"
       },
       "对上结算日期格式不正确"
     ],
@@ -613,6 +613,12 @@ describe("ProjectController authorization wiring", () => {
     expect(
       Reflect.getMetadata("requiredProjectAction", ProjectController.prototype.recordUpstreamSettlement)
     ).toBe("project.upstream_settlement.record");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        ProjectController.prototype.confirmUpstreamSettlement
+      )
+    ).toBe("project.upstream_settlement.confirm");
   });
 
   it("guards project owner contract recording and confirmation with contract project roles", () => {
@@ -758,14 +764,33 @@ describe("ProjectController authorization wiring", () => {
       approvingPartyName: "总包单位",
       periodLabel: "2026-06",
       isFinal: false,
-      voucherFileId: "file-1",
-      confirmationPassword: "current-password"
+      voucherFileId: "file-1"
     };
 
     await controller.recordUpstreamSettlement("project-1", { id: "budget-1" } as never, body);
 
     expect(projects.recordUpstreamSettlement).toHaveBeenCalledWith(
       "project-1",
+      "budget-1",
+      body
+    );
+  });
+
+  it("forwards upstream settlement confirmation metadata and actor", async () => {
+    const projects = { confirmUpstreamSettlement: jest.fn() };
+    const controller = new ProjectController(projects as never);
+    const body = { confirmationPassword: "current-password" };
+
+    await controller.confirmUpstreamSettlement(
+      "project-1",
+      "upstream-1",
+      { id: "budget-1" } as never,
+      body
+    );
+
+    expect(projects.confirmUpstreamSettlement).toHaveBeenCalledWith(
+      "project-1",
+      "upstream-1",
       "budget-1",
       body
     );

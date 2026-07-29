@@ -191,7 +191,9 @@ describe("ProjectService affiliate mapping", () => {
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
-          uploadedByUserId: "contract-staff-1"
+          uploadedByUserId: "contract-staff-1",
+          storageStatus: "active",
+          contentSha256: "c".repeat(64)
         })
       },
       projectOwnerContract: {
@@ -228,7 +230,9 @@ describe("ProjectService affiliate mapping", () => {
         affiliateAssignmentId: "assignment-1",
         affiliateBusinessPartyVersionId: "party-version-4",
         affiliateNameSnapshot: "挂靠建设集团",
-        affiliateCreditCodeSnapshot: "91310000AFFILIATE"
+        affiliateCreditCodeSnapshot: "91310000AFFILIATE",
+        documentVersion: 1,
+        fileContentSha256Snapshot: "c".repeat(64)
       })
     });
   });

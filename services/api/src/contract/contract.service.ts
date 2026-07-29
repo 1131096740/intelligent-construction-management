@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
   Optional
 } from "@nestjs/common";
@@ -71,6 +72,10 @@ import {
   resolveCurrentProjectAffiliate,
   type ContractSigningSubjectType
 } from "../project/project-affiliate-subject";
+import {
+  loadContractOwnerRisk,
+  type ContractOwnerRisk
+} from "./contract-owner-risk";
 
 interface ContractApprovalAssignment {
   kind: "transfer" | "delegate";
@@ -105,14 +110,6 @@ const ENHANCED_CONTRACT_CHANGE_APPROVAL_NODES = [
   { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
 ] satisfies ContractApprovalNode[];
 
-const DOWNSTREAM_CONTRACT_OCCUPANCY_STATUSES = [
-  "in_approval",
-  "approved_pending_seal",
-  "in_seal",
-  "seal_approved_pending_archive",
-  "pending_archive_confirm",
-  "effective"
-] as const;
 const PAYMENT_STAGE_TYPES = new Set(["advance", "progress", "final", "retention", "other"]);
 const PAYMENT_STAGE_BASES = new Set([
   "contract_amount",
@@ -1829,7 +1826,7 @@ export class ContractService {
           readinessSnapshot = readiness as unknown as Prisma.JsonValue;
         }
 
-        await this.assertOwnerContractQuota(tx, contract.projectId, contract.id, version);
+        this.assertContractSubmissionAmount(version);
 
         if (requiresReadiness) {
           const submissionSnapshot = await this.readiness!.freeze(tx, version);
@@ -2119,10 +2116,7 @@ export class ContractService {
     }
   }
 
-  private async assertOwnerContractQuota(
-    tx: Prisma.TransactionClient,
-    projectId: string,
-    currentContractId: string,
+  private assertContractSubmissionAmount(
     version: {
       amountCents: bigint;
       pricingNature: string;
@@ -2136,50 +2130,41 @@ export class ContractService {
     if (requestedAmountCents <= 0n) {
       throw new BadRequestException("合同金额必须大于 0，不能提交零金额或负数合同审批");
     }
+  }
 
-    const ownerContracts = await tx.projectOwnerContract.findMany({
-      where: { projectId, status: "effective", voidedAt: null },
-      select: { amountCents: true }
-    });
-    const ownerQuotaCents = sumBigInt(ownerContracts.map((contract) => contract.amountCents));
-
-    const projectContracts = await tx.contract.findMany({
-      where: {
-        projectId,
-        voidedAt: null
-      },
-      select: { id: true }
-    });
-    const contractIds = projectContracts.map((contract) => contract.id);
-    const occupyingVersions = contractIds.length
-      ? await tx.contractVersion.findMany({
-          where: {
-            contractId: { in: contractIds },
-            status: { in: [...DOWNSTREAM_CONTRACT_OCCUPANCY_STATUSES] }
-          },
-          select: {
-            contractId: true,
-            versionNo: true,
-            amountCents: true
-          }
-        })
-      : [];
-    const contractOccupancies = maxContractOccupancies(occupyingVersions);
-    const hasCurrentOccupancy = contractOccupancies.some(
-      (version) => version.contractId === currentContractId
-    );
-    const occupiedCents =
-      sumBigInt(
-        contractOccupancies.map((version) =>
-          version.contractId === currentContractId
-            ? maxBigInt(version.amountCents, requestedAmountCents)
-            : version.amountCents
-        )
-      ) + (hasCurrentOccupancy ? 0n : requestedAmountCents);
-
-    if (ownerQuotaCents <= 0n || occupiedCents > ownerQuotaCents) {
-      throw new BadRequestException("业主主合同额度不足");
+  private async finalOwnerContractRisk(
+    tx: Prisma.TransactionClient,
+    contractId: string
+  ): Promise<ContractOwnerRisk> {
+    const runtime = tx as unknown as {
+      projectOwnerContract?: { findMany?: unknown };
+      contract?: { findUnique?: unknown; findMany?: unknown };
+      contractVersion?: { findMany?: unknown };
+    };
+    if (
+      typeof runtime.projectOwnerContract?.findMany !== "function" ||
+      typeof runtime.contract?.findUnique !== "function" ||
+      typeof runtime.contract?.findMany !== "function" ||
+      typeof runtime.contractVersion?.findMany !== "function"
+    ) {
+      throw new InternalServerErrorException(
+        "业主主合同风险核对能力不可用，不能完成最终审批"
+      );
     }
+    const contract = await tx.contract.findUnique({
+      where: { id: contractId },
+      select: { projectId: true }
+    });
+    if (!contract) {
+      throw new NotFoundException("未找到合同主信息，无法核对业主主合同风险");
+    }
+    await tx.$queryRaw(Prisma.sql`
+      SELECT "id"
+      FROM "Project"
+      WHERE "id" = ${contract.projectId}
+      FOR UPDATE
+    `);
+    return loadContractOwnerRisk(tx, contract.projectId);
   }
 
   private async lockCompanyEntityForSubmission(
@@ -2568,6 +2553,27 @@ export class ContractService {
 
       const isFinalApproval =
         input.decision === "approve" && instance.currentNodeIndex === nodes.length - 1;
+      const ownerContractRisk = isFinalApproval
+        ? await this.finalOwnerContractRisk(tx, version.contractId)
+        : null;
+      if (
+        ownerContractRisk &&
+        ownerContractRisk.status !== "clear" &&
+        input.ownerContractRiskConfirmed !== true
+      ) {
+        const message = ownerContractRisk.status === "missing_owner_contract"
+          ? "项目尚未登记生效业主主合同，董事长或总经理必须显式确认风险"
+          : `我方对下合同累计金额超过业主主合同有效金额 ${formatMoneyCentsAsYuan(
+              ownerContractRisk.excessAmountCents
+            )} 元，董事长或总经理必须显式确认风险`;
+        throw new BadRequestException({
+          message,
+          ownerContractRisk: contractOwnerRiskToApi(ownerContractRisk)
+        });
+      }
+      const ownerContractRiskMetadata = ownerContractRisk
+        ? { ownerContractRisk: contractOwnerRiskToApi(ownerContractRisk) }
+        : {};
       const nextStatus = input.decision === "approve"
         ? isFinalApproval ? "approved_pending_seal" : "in_approval"
         : "approval_rejected";
@@ -2608,7 +2614,16 @@ export class ContractService {
                 signatureVersionIdSnapshot: signature.versionId
               }
             : {}),
-          ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
+          ...(
+            selfReview.isSelfReview || Object.keys(ownerContractRiskMetadata).length
+              ? {
+                  metadata: {
+                    ...(selfReview.isSelfReview ? selfReview.metadata : {}),
+                    ...ownerContractRiskMetadata
+                  }
+                }
+              : {}
+          )
         }
       });
 
@@ -2639,7 +2654,8 @@ export class ContractService {
           toStatus: nextStatus,
           nodeName: currentNode.name,
           approvedRoleKey,
-          ...selfReview.metadata
+          ...selfReview.metadata,
+          ...ownerContractRiskMetadata
         }
       });
 
@@ -3488,33 +3504,11 @@ function requireApprovalCommentForReturn(decision: ReviewContractApprovalDto["de
   }
 }
 
-function sumBigInt(values: Array<bigint>): bigint {
-  return values.reduce<bigint>(
-    (total, value) => total + dbMoneyToBigInt(value, "合同金额"),
-    0n
-  );
-}
-
-function maxBigInt(left: bigint, right: bigint): bigint {
-  const normalizedLeft = dbMoneyToBigInt(left, "合同金额");
-  const normalizedRight = dbMoneyToBigInt(right, "合同金额");
-  return normalizedLeft > normalizedRight ? normalizedLeft : normalizedRight;
-}
-
-function maxContractOccupancies<T extends { contractId: string; amountCents: bigint }>(
-  versions: T[]
-): T[] {
-  return Array.from(
-    versions.reduce((maxByContract, version) => {
-      const current = maxByContract.get(version.contractId);
-      if (
-        !current ||
-        dbMoneyToBigInt(version.amountCents, "合同金额") >
-          dbMoneyToBigInt(current.amountCents, "合同金额")
-      ) {
-        maxByContract.set(version.contractId, version);
-      }
-      return maxByContract;
-    }, new Map<string, T>()).values()
-  );
+function contractOwnerRiskToApi(risk: ContractOwnerRisk) {
+  return {
+    status: risk.status,
+    ownerContractAmountCents: risk.ownerContractAmountCents.toString(),
+    downstreamContractAmountCents: risk.downstreamContractAmountCents.toString(),
+    excessAmountCents: risk.excessAmountCents.toString()
+  };
 }

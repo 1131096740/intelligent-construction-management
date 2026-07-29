@@ -836,6 +836,7 @@ export interface ReviewContractApprovalPayload {
   comment?: string;
   selfReviewReason?: string;
   confirmationPassword?: string;
+  ownerContractRiskConfirmed?: boolean;
 }
 
 export interface SubmitContractApprovalPayload {
@@ -1201,6 +1202,9 @@ export interface RecordProjectUpstreamSettlementPayload {
   isFinal?: boolean;
   description?: string;
   voucherFileId: string;
+}
+
+export interface ConfirmProjectUpstreamSettlementPayload {
   confirmationPassword: string;
 }
 
@@ -1543,11 +1547,25 @@ export function recordProjectUpstreamSettlement(
   projectId: string,
   body: RecordProjectUpstreamSettlementPayload
 ) {
-  return postJson<unknown>(`/projects/${projectId}/upstream-settlements`, body);
+  return postJson<unknown>(
+    `/projects/${encodeURIComponent(projectId)}/upstream-settlements`,
+    body
+  );
+}
+
+export function confirmProjectUpstreamSettlement(
+  projectId: string,
+  upstreamSettlementId: string,
+  body: ConfirmProjectUpstreamSettlementPayload
+) {
+  return postJson<unknown>(
+    `/projects/${encodeURIComponent(projectId)}/upstream-settlements/${encodeURIComponent(upstreamSettlementId)}/confirmation`,
+    body
+  );
 }
 
 export function recordProjectOwnerContract(projectId: string, body: RecordProjectOwnerContractPayload) {
-  return postJson<unknown>(`/projects/${projectId}/owner-contracts`, body);
+  return postJson<unknown>(`/projects/${encodeURIComponent(projectId)}/owner-contracts`, body);
 }
 
 export function confirmProjectOwnerContract(
@@ -1555,7 +1573,10 @@ export function confirmProjectOwnerContract(
   ownerContractId: string,
   body: ConfirmProjectOwnerContractPayload
 ) {
-  return postJson<unknown>(`/projects/${projectId}/owner-contracts/${ownerContractId}/confirmation`, body);
+  return postJson<unknown>(
+    `/projects/${encodeURIComponent(projectId)}/owner-contracts/${encodeURIComponent(ownerContractId)}/confirmation`,
+    body
+  );
 }
 
 export function requestSettlementExceptionQuota(

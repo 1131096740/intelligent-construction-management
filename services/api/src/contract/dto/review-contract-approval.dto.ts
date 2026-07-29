@@ -1,4 +1,4 @@
-import { IsIn, IsString, ValidateIf } from "class-validator";
+import { IsBoolean, IsIn, IsString, ValidateIf } from "class-validator";
 import { IsMaxUnicodeTextLength } from "../../validation/static-field-validation";
 
 export class ReviewContractApprovalDto {
@@ -20,4 +20,8 @@ export class ReviewContractApprovalDto {
   @IsString({ message: "当前密码必须是文字" })
   @IsMaxUnicodeTextLength({ max: 256, message: "当前密码格式不正确" })
   confirmationPassword?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsBoolean({ message: "业主主合同风险确认必须是布尔值" })
+  ownerContractRiskConfirmed?: boolean;
 }

@@ -46,6 +46,7 @@ import {
 } from "../payment/contract-takeover-balance";
 import type { HistoricalContractPaymentBalance } from "../payment/settlement-payment-capacity";
 import { contractChangeVersionsReadModel } from "./contract-change-read-model";
+import { loadContractOwnerRisk } from "./contract-owner-risk";
 import { settlementContractTypeBlockReason } from "../settlement/contract-settlement-capacity";
 
 function emptyApprovalReviewAccess(): ApprovalReviewAccess {
@@ -809,7 +810,12 @@ export class ContractReadService {
           status: { in: ["approved", "in_progress"] }
         },
         orderBy: { updatedAt: "desc" },
-        select: { businessId: true, frozenNodes: true, status: true }
+        select: {
+          businessId: true,
+          frozenNodes: true,
+          currentNodeIndex: true,
+          status: true
+        }
       }) ?? Promise.resolve([])
     ]);
     const paymentIds = paymentRequests.map((payment) => payment.id);
@@ -844,6 +850,17 @@ export class ContractReadService {
       contract.projectId,
       signingFacts.sealTask
     );
+    const ownerRiskClient = this.prisma as unknown as {
+      projectOwnerContract?: { findMany?: unknown };
+      contract?: { findMany?: unknown };
+      contractVersion?: { findMany?: unknown };
+    };
+    const ownerContractRisk =
+      typeof ownerRiskClient.projectOwnerContract?.findMany === "function" &&
+      typeof ownerRiskClient.contract?.findMany === "function" &&
+      typeof ownerRiskClient.contractVersion?.findMany === "function"
+        ? await loadContractOwnerRisk(this.prisma, contract.projectId)
+        : null;
 
     const status = this.statusView(version.status);
     const availableActions = this.contractActions(
@@ -905,6 +922,37 @@ export class ContractReadService {
 
     const contractCode = contract.code ?? contract.temporaryCode ?? contract.id;
     const latestSettlement = settlements.at(-1);
+    const currentApproval = historicalApprovedInstances.find(
+      (item) => item.businessId === version.id && item.status === "in_progress"
+    );
+    const currentApprovalNodes = Array.isArray(currentApproval?.frozenNodes)
+      ? currentApproval.frozenNodes
+      : [];
+    const ownerContractRiskReadModel = ownerContractRisk
+      ? {
+          status: ownerContractRisk.status,
+          ownerContractAmountCents:
+            ownerContractRisk.ownerContractAmountCents.toString(),
+          downstreamContractAmountCents:
+            ownerContractRisk.downstreamContractAmountCents.toString(),
+          excessAmountCents: ownerContractRisk.excessAmountCents.toString(),
+          message: ownerContractRisk.status === "clear"
+            ? "我方对下合同累计金额未超过业主主合同有效金额。"
+            : ownerContractRisk.status === "missing_owner_contract"
+              ? "项目尚未登记生效业主主合同，本次合同终审必须显式确认风险。"
+              : `我方对下合同累计金额已超过业主主合同有效金额 ${formatMoneyCentsAsYuan(
+                  ownerContractRisk.excessAmountCents
+                )} 元，本次合同终审必须显式确认风险。`,
+          requiresExplicitConfirmation: Boolean(
+            ownerContractRisk.status !== "clear" &&
+            currentApproval &&
+            currentApproval.currentNodeIndex === currentApprovalNodes.length - 1 &&
+            availableActions.some(
+              (action) => action.key === "review_approval" && action.enabled
+            )
+          )
+        } satisfies NonNullable<ContractDetailReadModel["ownerContractRisk"]>
+      : null;
     return {
       id: contractCode,
       contractVersionId: version.id,
@@ -962,6 +1010,9 @@ export class ContractReadService {
       ),
       archiveFiles: contractArchiveFiles,
       formalFiles: signingFacts.formalFiles,
+      ...(ownerContractRiskReadModel
+        ? { ownerContractRisk: ownerContractRiskReadModel }
+        : {}),
       sealTask: signingFacts.sealTask,
       approvalTimeline,
       availableActions,

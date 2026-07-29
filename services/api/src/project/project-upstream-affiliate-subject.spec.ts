@@ -38,8 +38,7 @@ describe("ProjectService upstream affiliate snapshots", () => {
         approvingPartyName: "建设单位",
         periodLabel: "2026-07",
         isFinal: false,
-        voucherFileId: "file-1",
-        confirmationPassword: "current-password"
+        voucherFileId: "file-1"
       })
     ).rejects.toThrow("项目尚未明确配置唯一挂靠企业");
     expect(tx.fileObject.findUnique).not.toHaveBeenCalled();

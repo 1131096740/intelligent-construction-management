@@ -220,6 +220,25 @@ describe("ContractController authorization wiring", () => {
     await expect(validateContractBody(ContractController, "reviewApproval", 2, value)).resolves.toEqual(value);
   });
 
+  it("仅接受显式布尔值作为业主主合同终审风险确认", async () => {
+    await expect(
+      validateContractBody(ContractController, "reviewApproval", 2, {
+        decision: "approve",
+        ownerContractRiskConfirmed: true
+      })
+    ).resolves.toMatchObject({ ownerContractRiskConfirmed: true });
+
+    for (const value of ["true", 1, null]) {
+      const response = await getContractValidationResponse(
+        ContractController,
+        "reviewApproval",
+        2,
+        { decision: "approve", ownerContractRiskConfirmed: value }
+      );
+      expect(response.errors).toContain("业主主合同风险确认必须是布尔值");
+    }
+  });
+
   it("拒绝客户端新建历史补充协议类型", async () => {
     const response = await getContractValidationResponse(
       ContractController,

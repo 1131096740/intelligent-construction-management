@@ -142,8 +142,7 @@ describe("ProjectService", () => {
     { field: "settledAt", value: "bad-date", message: "对上结算日期不正确，请重新选择" },
     { field: "approvingPartyName", value: "", message: "请填写对上结算审定方名称" },
     { field: "periodLabel", value: "", message: "请填写对上结算期间" },
-    { field: "voucherFileId", value: "", message: "请上传对上结算凭证" },
-    { field: "confirmationPassword", value: "", message: "请输入当前登录密码" }
+    { field: "voucherFileId", value: "", message: "请上传对上结算凭证" }
   ])("对上结算 $field 无效时返回中文错误", async ({ field, value, message }) => {
     const prisma = { $transaction: jest.fn() };
     const service = new ProjectService(prisma as never);
@@ -154,7 +153,6 @@ describe("ProjectService", () => {
       approvingPartyName: "建设单位",
       periodLabel: "2026-06",
       voucherFileId: "file-1",
-      confirmationPassword: "current-password",
       [field]: value
     };
 
@@ -858,7 +856,7 @@ describe("ProjectService", () => {
       select: { amountCents: true }
     });
     expect(prisma.projectUpstreamSettlement.findMany).toHaveBeenCalledWith({
-      where: { projectId: "project-1", voidedAt: null },
+      where: { projectId: "project-1", status: "confirmed", voidedAt: null },
       select: { approvedAmountCents: true }
     });
     expect(prisma.projectFinancingQuota.findMany).toHaveBeenCalledWith({
@@ -1458,7 +1456,12 @@ describe("ProjectService", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
       },
       fileObject: {
-        findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "budget-1" })
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          uploadedByUserId: "budget-1",
+          storageStatus: "active",
+          contentSha256: "a".repeat(64)
+        })
       },
       projectUpstreamSettlement: {
         create: jest.fn().mockResolvedValue({
@@ -1472,10 +1475,18 @@ describe("ProjectService", () => {
           isFinal: false,
           description: "六月对上审定",
           voucherFileId: "file-1",
+          documentVersion: 1,
+          fileContentSha256Snapshot: "a".repeat(64),
           affiliateAssignmentId: "assignment-legacy-test",
           affiliateBusinessPartyVersionId: "party-version-legacy-test",
           affiliateNameSnapshot: "测试挂靠企业",
           recordedByUserId: "budget-1",
+          status: "pending_confirm",
+          confirmedByUserId: null,
+          confirmedAt: null,
+          confirmationSignatureVersionId: null,
+          confirmationSignatureFileId: null,
+          confirmationSignatureSha256: null,
           voidedAt: null,
           createdAt
         })
@@ -1500,8 +1511,7 @@ describe("ProjectService", () => {
       periodLabel: "2026-06",
       isFinal: false,
       description: "六月对上审定",
-      voucherFileId: "file-1",
-      confirmationPassword: "current-password"
+      voucherFileId: "file-1"
     } satisfies RecordProjectUpstreamSettlementDto);
 
     expect(result).toEqual({
@@ -1519,9 +1529,17 @@ describe("ProjectService", () => {
       affiliateBusinessPartyVersionId: "party-version-legacy-test",
       affiliateNameSnapshot: "测试挂靠企业",
       recordedByUserId: "budget-1",
+      status: "pending_confirm",
+      documentVersion: 1,
+      fileContentSha256Snapshot: "a".repeat(64),
+      confirmedByUserId: null,
+      confirmedAt: null,
+      confirmationSignatureVersionId: null,
+      confirmationSignatureFileId: null,
+      confirmationSignatureSha256: null,
       createdAt: createdAt.toISOString()
     });
-    expect(auth.confirmPassword).toHaveBeenCalledWith("budget-1", "current-password");
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
     expect(tx.projectUpstreamSettlement.create).toHaveBeenCalledWith({
       data: {
         projectId: "project-1",
@@ -1533,10 +1551,13 @@ describe("ProjectService", () => {
         isFinal: false,
         description: "六月对上审定",
         voucherFileId: "file-1",
+        documentVersion: 1,
+        fileContentSha256Snapshot: "a".repeat(64),
         affiliateAssignmentId: "assignment-legacy-test",
         affiliateBusinessPartyVersionId: "party-version-legacy-test",
         affiliateNameSnapshot: "测试挂靠企业",
-        recordedByUserId: "budget-1"
+        recordedByUserId: "budget-1",
+        status: "pending_confirm"
       }
     });
     expect(tx.auditLog.create).toHaveBeenCalledWith({
@@ -1557,7 +1578,12 @@ describe("ProjectService", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
       },
       fileObject: {
-        findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "contract-staff-1" })
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          uploadedByUserId: "contract-staff-1",
+          storageStatus: "active",
+          contentSha256: "b".repeat(64)
+        })
       },
       projectOwnerContract: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -1574,6 +1600,8 @@ describe("ProjectService", () => {
           paymentTermsSummary: "按进度支付",
           retentionSummary: "3%质保金",
           fileId: "file-1",
+          documentVersion: 1,
+          fileContentSha256Snapshot: "b".repeat(64),
           recordedByUserId: "contract-staff-1",
           confirmedByUserId: null,
           confirmedAt: null,
@@ -1583,6 +1611,8 @@ describe("ProjectService", () => {
           updatedAt: createdAt
         })
       },
+      approvalInstance: { create: jest.fn() },
+      sealTask: { create: jest.fn() },
       auditLog: {
         create: jest.fn()
       }
@@ -1629,6 +1659,8 @@ describe("ProjectService", () => {
       amountCents: "200000000",
       status: "pending_confirm",
       fileId: "file-1",
+      documentVersion: 1,
+      fileContentSha256Snapshot: "b".repeat(64),
       recordedByUserId: "contract-staff-1",
       confirmedByUserId: null,
       confirmedAt: null
@@ -1658,6 +1690,8 @@ describe("ProjectService", () => {
         affiliateNameSnapshot: "测试挂靠企业",
         affiliateCreditCodeSnapshot: "91310000TEST",
         fileId: "file-1",
+        documentVersion: 1,
+        fileContentSha256Snapshot: "b".repeat(64),
         recordedByUserId: "contract-staff-1",
         status: "pending_confirm"
       }
@@ -1670,6 +1704,8 @@ describe("ProjectService", () => {
         businessId: "owner-contract-1"
       })
     });
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+    expect(tx.sealTask.create).not.toHaveBeenCalled();
   });
 
   it("rejects duplicate active project owner contract code before quota can be inflated", async () => {
@@ -1839,6 +1875,7 @@ describe("ProjectService", () => {
     const signedAt = "2026-07-02T00:00:00.000Z";
     const confirmedAt = new Date("2026-07-02T02:00:00.000Z");
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1" }]),
       projectOwnerContract: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findUnique: jest.fn().mockResolvedValue({
@@ -1854,6 +1891,8 @@ describe("ProjectService", () => {
           paymentTermsSummary: "按进度支付",
           retentionSummary: "3%质保金",
           fileId: "file-1",
+          documentVersion: 1,
+          fileContentSha256Snapshot: "b".repeat(64),
           recordedByUserId: "contract-staff-1",
           confirmedByUserId: "contract-director-1",
           confirmedAt,
@@ -1863,6 +1902,8 @@ describe("ProjectService", () => {
           updatedAt: confirmedAt
         })
       },
+      approvalInstance: { create: jest.fn() },
+      sealTask: { create: jest.fn() },
       auditLog: {
         create: jest.fn()
       }
@@ -1893,6 +1934,7 @@ describe("ProjectService", () => {
       confirmedAt: confirmedAt.toISOString()
     });
     expect(auth.confirmPassword).toHaveBeenCalledWith("contract-director-1", "current-password");
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
     expect(tx.projectOwnerContract.updateMany).toHaveBeenCalledWith({
       where: {
         id: "owner-contract-1",
@@ -1914,9 +1956,16 @@ describe("ProjectService", () => {
         actorUserId: "contract-director-1",
         action: "project.owner_contract.confirm",
         businessType: "project_owner_contract",
-        businessId: "owner-contract-1"
+        businessId: "owner-contract-1",
+        metadata: expect.objectContaining({
+          documentVersion: 1,
+          fileContentSha256Snapshot: "b".repeat(64),
+          confirmedByUserId: "contract-director-1"
+        })
       })
     });
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+    expect(tx.sealTask.create).not.toHaveBeenCalled();
   });
 
   it("requests a settlement exception quota with attachment and frozen approval route", async () => {
@@ -2772,8 +2821,7 @@ describe("ProjectService", () => {
         approvedAmountCents: "30000000",
         approvingPartyName: "总包单位",
         periodLabel: "2026-06",
-        voucherFileId: "file-1",
-        confirmationPassword: "current-password"
+        voucherFileId: "file-1"
       } satisfies RecordProjectUpstreamSettlementDto)
     ).rejects.toThrow("只能使用本人上传的对上结算凭证");
     expect(tx.projectUpstreamSettlement.create).not.toHaveBeenCalled();
@@ -2833,6 +2881,7 @@ describe("ProjectService", () => {
 
   it("rejects project owner contract confirmation when it is not pending", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1" }]),
       projectOwnerContract: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         findUnique: jest.fn()
@@ -2863,6 +2912,7 @@ describe("ProjectService", () => {
 
   it("does not audit project owner contract confirmation when the CAS update loses a race", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1" }]),
       projectOwnerContract: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         findUnique: jest.fn()

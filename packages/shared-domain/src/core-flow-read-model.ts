@@ -214,6 +214,14 @@ export interface ContractDetailReadModel {
   settlementPayment: ContractSettlementPaymentReadModel;
   archiveFiles: ContractArchiveFileReadModel[];
   formalFiles?: ContractFormalFileReadModel[];
+  ownerContractRisk?: {
+    status: "clear" | "missing_owner_contract" | "exceeds_owner_contract";
+    ownerContractAmountCents: MoneyCents;
+    downstreamContractAmountCents: MoneyCents;
+    excessAmountCents: MoneyCents;
+    message: string;
+    requiresExplicitConfirmation: boolean;
+  };
   sealTask?: ContractSealTaskReadModel | null;
   approvalTimeline: ApprovalTimelineItemReadModel[];
   availableActions: DetailActionReadModel[];

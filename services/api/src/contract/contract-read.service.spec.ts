@@ -682,7 +682,8 @@ describe("ContractReadService", () => {
           code: "HT-2026-009",
           name: "幕墙分包合同",
           counterparty: "幕墙分包单位"
-        })
+        }),
+        findMany: jest.fn().mockResolvedValue([{ id: "contract-1" }])
       },
       project: {
         findUnique: jest.fn().mockResolvedValue({
@@ -691,45 +692,58 @@ describe("ContractReadService", () => {
         })
       },
       contractVersion: {
-        findMany: jest.fn().mockResolvedValue([
-          {
-            id: "contract-version-2",
-            contractId: "contract-1",
-            versionNo: 2,
-            status: "effective",
-            changeType: "change",
-            baseVersionId: "contract-version-1",
-            supersedesVersionId: "contract-version-1",
-            changeReason: "历史增项",
-            changeDirection: "increase",
-            changeAmountCents: 8650000n,
-            amountCents: 98650000n,
-            amountLimitType: "capped",
-            originalBaseAmountCents: 90000000n,
-            cumulativeIncreaseCents: 8650000n,
-            cumulativeDecreaseCents: 0n,
-            pricingNature: "fixed_total",
-            invoiceType: "vat_special",
-            defaultTaxRatePercent: { toString: () => "13" }
-          },
-          {
-            id: "contract-version-1",
-            contractId: "contract-1",
-            versionNo: 1,
-            status: "superseded",
-            changeType: "original",
-            baseVersionId: null,
-            supersedesVersionId: null,
-            changeReason: null,
-            changeDirection: null,
-            changeAmountCents: null,
-            amountCents: 90000000n,
-            amountLimitType: "capped",
-            originalBaseAmountCents: null,
-            cumulativeIncreaseCents: 0n,
-            cumulativeDecreaseCents: 0n
-          }
-        ])
+        findMany: jest.fn().mockImplementation(async (
+          args?: { where?: { signingSubjectType?: string } }
+        ) =>
+          args?.where?.signingSubjectType === "our_company"
+            ? [{
+                contractId: "contract-1",
+                amountCents: 98650000n,
+                signingSubjectType: "our_company"
+              }]
+            : [
+                {
+                  id: "contract-version-2",
+                  contractId: "contract-1",
+                  versionNo: 2,
+                  status: "effective",
+                  changeType: "change",
+                  baseVersionId: "contract-version-1",
+                  supersedesVersionId: "contract-version-1",
+                  changeReason: "历史增项",
+                  changeDirection: "increase",
+                  changeAmountCents: 8650000n,
+                  amountCents: 98650000n,
+                  amountLimitType: "capped",
+                  originalBaseAmountCents: 90000000n,
+                  cumulativeIncreaseCents: 8650000n,
+                  cumulativeDecreaseCents: 0n,
+                  pricingNature: "fixed_total",
+                  invoiceType: "vat_special",
+                  defaultTaxRatePercent: { toString: () => "13" }
+                },
+                {
+                  id: "contract-version-1",
+                  contractId: "contract-1",
+                  versionNo: 1,
+                  status: "superseded",
+                  changeType: "original",
+                  baseVersionId: null,
+                  supersedesVersionId: null,
+                  changeReason: null,
+                  changeDirection: null,
+                  changeAmountCents: null,
+                  amountCents: 90000000n,
+                  amountLimitType: "capped",
+                  originalBaseAmountCents: null,
+                  cumulativeIncreaseCents: 0n,
+                  cumulativeDecreaseCents: 0n
+                }
+              ]
+        )
+      },
+      projectOwnerContract: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 90000000n }])
       },
       paymentTermsVersion: {
         findFirst: jest.fn().mockResolvedValue({
@@ -829,6 +843,13 @@ describe("ContractReadService", () => {
     expect(detail.title).toBe("HT-2026-009 · 幕墙分包合同");
     expect(detail.baseInfo).toContainEqual({ label: "项目", value: "总部综合楼" });
     expect(detail.baseInfo).toContainEqual({ label: "合同金额", value: "¥986,500.00" });
+    expect(detail.ownerContractRisk).toMatchObject({
+      status: "exceeds_owner_contract",
+      ownerContractAmountCents: "90000000",
+      downstreamContractAmountCents: "98650000",
+      excessAmountCents: "8650000",
+      requiresExplicitConfirmation: false
+    });
     expect(detail.baseInfo).toContainEqual({
       label: "发票类型",
       value: "增值税专用发票"
@@ -962,7 +983,7 @@ describe("ContractReadService", () => {
 
     expect(prisma.approvalInstance.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ status: { in: ["approved", "in_progress"] } }),
-      select: { businessId: true, frozenNodes: true, status: true }
+      select: { businessId: true, frozenNodes: true, status: true, currentNodeIndex: true }
     }));
     expect(detail.changeVersions?.[0]).toMatchObject({
       approvalRouteLabel: "合同变更",

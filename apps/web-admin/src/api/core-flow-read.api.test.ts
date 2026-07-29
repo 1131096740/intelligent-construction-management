@@ -40,6 +40,7 @@ import {
   recordProjectOwnerContract,
   recordProjectProxyPayment,
   recordProjectUpstreamSettlement,
+  confirmProjectUpstreamSettlement,
   requestSettlementExceptionQuota,
   requestProjectFinancingQuota,
   reviewSettlementExceptionQuota,
@@ -760,8 +761,7 @@ describe("core flow read API client", () => {
       periodLabel: "2026-06",
       isFinal: false,
       description: "六月对上审定",
-      voucherFileId: "file-upstream-1",
-      confirmationPassword: "current-password"
+      voucherFileId: "file-upstream-1"
     });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
@@ -777,9 +777,27 @@ describe("core flow read API client", () => {
         periodLabel: "2026-06",
         isFinal: false,
         description: "六月对上审定",
-        voucherFileId: "file-upstream-1",
-        confirmationPassword: "current-password"
+        voucherFileId: "file-upstream-1"
       })
+    );
+  });
+
+  it("confirms project upstream settlements through the backend", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "upstream-1", status: "confirmed" })
+    } as Response);
+
+    await confirmProjectUpstreamSettlement("project/1", "upstream/1", {
+      confirmationPassword: "current-password"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project%2F1/upstream-settlements/upstream%2F1/confirmation"
+    ]);
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({ confirmationPassword: "current-password" })
     );
   });
 
@@ -789,7 +807,7 @@ describe("core flow read API client", () => {
       json: async () => ({ id: "owner-contract-1" })
     } as Response);
 
-    await recordProjectOwnerContract("project-1", {
+    await recordProjectOwnerContract("project/1", {
       ownerName: "建设单位",
       contractName: "一期施工总承包合同",
       contractCode: "YZ-2026-001",
@@ -801,13 +819,13 @@ describe("core flow read API client", () => {
       retentionSummary: "3%质保金",
       fileId: "file-owner-contract-1"
     });
-    await confirmProjectOwnerContract("project-1", "owner-contract-1", {
+    await confirmProjectOwnerContract("project/1", "owner-contract/1", {
       confirmationPassword: "current-password"
     });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
-      "/api/projects/project-1/owner-contracts",
-      "/api/projects/project-1/owner-contracts/owner-contract-1/confirmation"
+      "/api/projects/project%2F1/owner-contracts",
+      "/api/projects/project%2F1/owner-contracts/owner-contract%2F1/confirmation"
     ]);
     expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
@@ -1864,7 +1882,8 @@ describe("core flow read API client", () => {
     await reviewContractApproval("contract-version-1", {
       decision: "approve",
       selfReviewReason: "合同紧急",
-      confirmationPassword: " contract-password "
+      confirmationPassword: " contract-password ",
+      ownerContractRiskConfirmed: true
     });
     await withdrawContractApproval("contract-version-1");
     await remindContractApproval("contract-version-1");
@@ -1915,7 +1934,8 @@ describe("core flow read API client", () => {
       JSON.stringify({
         decision: "approve",
         selfReviewReason: "合同紧急",
-        confirmationPassword: " contract-password "
+        confirmationPassword: " contract-password ",
+        ownerContractRiskConfirmed: true
       })
     );
     expect(fetchMock.mock.calls[8][1]?.body).toBe(

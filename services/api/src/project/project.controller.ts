@@ -6,6 +6,7 @@ import type { AuthenticatedUser } from "../auth/auth.types";
 import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { AssignProjectAffiliateDto } from "./dto/assign-project-affiliate.dto";
 import { ConfirmProjectOwnerContractDto } from "./dto/confirm-project-owner-contract.dto";
+import { ConfirmProjectUpstreamSettlementDto } from "./dto/confirm-project-upstream-settlement.dto";
 import type { CreateProjectDto } from "./dto/create-project.dto";
 import { RecordProjectOwnerContractDto } from "./dto/record-project-owner-contract.dto";
 import { RecordProjectProxyPaymentDto } from "./dto/record-project-proxy-payment.dto";
@@ -104,6 +105,22 @@ export class ProjectController {
     @Body() body: RecordProjectUpstreamSettlementDto
   ) {
     return this.projects.recordUpstreamSettlement(projectId, user.id, body);
+  }
+
+  @Post(":projectId/upstream-settlements/:upstreamSettlementId/confirmation")
+  @RequireProjectRole("project.upstream_settlement.confirm")
+  confirmUpstreamSettlement(
+    @Param("projectId") projectId: string,
+    @Param("upstreamSettlementId") upstreamSettlementId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ConfirmProjectUpstreamSettlementDto
+  ) {
+    return this.projects.confirmUpstreamSettlement(
+      projectId,
+      upstreamSettlementId,
+      user.id,
+      body
+    );
   }
 
   @Post(":projectId/owner-contracts")

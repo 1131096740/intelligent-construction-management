@@ -63,6 +63,9 @@ describe("contract detail page configuration", () => {
     expect(source).toContain("confirm_final_contract");
     expect(source).toContain("formalFilePreview");
     expect(source).toContain('accessMode: "preview"');
+    expect(source).toContain("ownerContractRisk");
+    expect(source).toContain("ownerContractRiskConfirmed");
+    expect(source).toContain("<t-checkbox");
   });
 
   it("organizes contract facts by task instead of an infinite card stack", () => {
