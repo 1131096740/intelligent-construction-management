@@ -18,6 +18,7 @@ const takeoverBodyRoutes = [
   ["applyExcelImport", 1],
   ["updateDraft", 2],
   ["saveContractFacts", 2],
+  ["saveFinanceFacts", 2],
   ["abandonDraft", 2],
   ["attachEvidence", 2],
   ["attachHistoricalPaymentVoucher", 2],
@@ -76,6 +77,30 @@ const validContractSideFacts = {
   }
 } as const;
 
+const validFinanceSideFacts = {
+  idempotencyKey: "22222222-2222-4222-8222-222222222222",
+  expectedRevision: 0,
+  basedOnContractRevision: 1,
+  basedOnFinanceBasisRevision: 1,
+  zeroPaymentDeclared: false,
+  excessTreatment: "historical_advance",
+  excessReason: "经核对属于历史预付款。",
+  excessEvidenceFileIds: ["excess-file-1"],
+  payments: [
+    {
+      rowKey: "row-1",
+      amountCents: "100000",
+      paidAt: "2026-02-01",
+      payerName: "项目公司",
+      payeeName: "历史供应商",
+      bankReference: "BANK-001",
+      paymentMethod: "bank_transfer",
+      note: "历史实付",
+      voucherFileIds: ["voucher-file-1"]
+    }
+  ]
+} as const;
+
 const validImportRow = {
   rowNo: 1,
   code: "HT-LS-001",
@@ -127,6 +152,7 @@ const validTakeoverRouteBodies = [
   ],
   ["updateDraft", 2, validTakeover],
   ["saveContractFacts", 2, validContractSideFacts],
+  ["saveFinanceFacts", 2, validFinanceSideFacts],
   ["attachEvidence", 2, { fileId: "file-1", purpose: "historical_contract_scan" }],
   ["attachHistoricalPaymentVoucher", 2, { fileId: "file-1" }],
   [
@@ -293,6 +319,13 @@ describe("ContractTakeoverController", () => {
     expectProjectAction(
       ContractTakeoverController.prototype.saveContractFacts,
       "contract.takeover.contract_facts.edit"
+    );
+  });
+
+  it("protects finance-side aggregate save with finance fact editing", () => {
+    expectProjectAction(
+      ContractTakeoverController.prototype.saveFinanceFacts,
+      "contract.takeover.finance_facts.edit"
     );
   });
 
@@ -524,6 +557,7 @@ describe("ContractTakeoverController", () => {
       "create",
       "updateDraft",
       "saveContractFacts",
+      "saveFinanceFacts",
       "previewExcelImport",
       "applyExcelImport",
       "attachEvidence",

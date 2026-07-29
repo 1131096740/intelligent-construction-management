@@ -15,6 +15,7 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
+import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
 import {
   calculateBillRow,
   dbMoneyToBigInt,
@@ -53,6 +54,10 @@ import type {
 } from "./dto/contract-takeover-company-entity-correction.dto";
 import type { ReturnContractTakeoverForSupplementDto } from "./dto/return-contract-takeover-for-supplement.dto";
 import type { SaveContractTakeoverContractFactsDto } from "./dto/save-contract-takeover-contract-facts.dto";
+import type {
+  ContractTakeoverExcessTreatment,
+  SaveContractTakeoverFinanceFactsDto
+} from "./dto/save-contract-takeover-finance-facts.dto";
 
 const TAKEOVER_LEVELS = ["A", "B", "C"] as const;
 const LIFECYCLE_STATUSES = [
@@ -303,7 +308,32 @@ type ContractTakeoverContractFactsRow = {
 
 type ContractTakeoverFinanceFactsRow = {
   takeoverId: string;
+  revision: number;
+  basedOnContractRevision: number;
+  basedOnFinanceBasisRevision: number;
+  zeroPaymentDeclared: boolean;
+  excessTreatment: string | null;
+  excessReason: string | null;
   confirmedRevision: number | null;
+  confirmedContractRevision: number | null;
+  confirmedFinanceBasisRevision: number | null;
+  confirmedByUserId: string | null;
+  confirmedAt: Date | null;
+  updatedByUserId: string;
+  updatedAt: Date;
+};
+
+type ContractTakeoverHistoricalPaymentRow = {
+  id: string;
+  takeoverId: string;
+  rowKey: string;
+  status: string;
+};
+
+type ContractTakeoverHistoricalPaymentVoucherRow = {
+  id: string;
+  historicalPaymentId: string;
+  fileId: string;
 };
 
 export interface ContractTakeoverBusinessReadModel {
@@ -1063,6 +1093,315 @@ export class ContractTakeoverService {
           idempotencyKey: data.idempotencyKey,
           takeoverId: takeover.id,
           side: "contract",
+          expectedRevision: data.expectedRevision,
+          resultRevision: savedFacts.revision,
+          requestSha256,
+          responseSnapshot: responseSnapshot as Prisma.InputJsonValue,
+          createdByUserId: actorUserId,
+          createdAt: now,
+          expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+        }
+      });
+
+      return responseSnapshot;
+    });
+  }
+
+  async saveFinanceFacts(
+    projectId: string,
+    takeoverId: string,
+    input: SaveContractTakeoverFinanceFactsDto,
+    actorUserId: string
+  ) {
+    const data = this.normalizeFinanceSideInput(input);
+    const requestSha256 = this.takeoverSideRequestSha256(input);
+
+    return this.prisma.$transaction(async (tx) => {
+      const takeover = await this.lockProjectTakeover(tx, projectId, takeoverId);
+      if (takeover.activatedAt) {
+        throw new ConflictException("历史接管已激活，财务侧资料只能通过更正流程调整");
+      }
+      await this.assertProjectFinanceEditor(tx, projectId, actorUserId);
+
+      const receipt = await tx.contractTakeoverSideSaveRequest.findUnique({
+        where: { idempotencyKey: data.idempotencyKey }
+      });
+      if (receipt) {
+        if (
+          receipt.takeoverId !== takeover.id ||
+          receipt.side !== "finance" ||
+          receipt.requestSha256 !== requestSha256
+        ) {
+          throw new ConflictException("财务侧保存幂等键已用于其他请求");
+        }
+        return receipt.responseSnapshot;
+      }
+
+      const [contractFacts] =
+        await tx.$queryRaw<ContractTakeoverContractFactsRow[]>(Prisma.sql`
+          SELECT *
+          FROM "ContractTakeoverContractFacts"
+          WHERE "takeoverId" = ${takeover.id}
+          FOR UPDATE
+        `);
+      if (!contractFacts) {
+        throw new ConflictException("合同侧资料尚未保存，请刷新后重新核对");
+      }
+      const [financeFacts] =
+        await tx.$queryRaw<ContractTakeoverFinanceFactsRow[]>(Prisma.sql`
+          SELECT *
+          FROM "ContractTakeoverFinanceFacts"
+          WHERE "takeoverId" = ${takeover.id}
+          FOR UPDATE
+        `);
+      const existingPayments =
+        await tx.$queryRaw<ContractTakeoverHistoricalPaymentRow[]>(Prisma.sql`
+          SELECT *
+          FROM "ContractTakeoverHistoricalPayment"
+          WHERE "takeoverId" = ${takeover.id}
+          ORDER BY "id"
+          FOR UPDATE
+        `);
+      const existingPaymentIds = existingPayments.map((payment) => payment.id);
+      const existingVouchers =
+        await tx.$queryRaw<ContractTakeoverHistoricalPaymentVoucherRow[]>(Prisma.sql`
+          SELECT voucher.*
+          FROM "ContractTakeoverHistoricalPaymentVoucher" voucher
+          JOIN "ContractTakeoverHistoricalPayment" payment
+            ON payment."id" = voucher."historicalPaymentId"
+          WHERE payment."takeoverId" = ${takeover.id}
+          ORDER BY voucher."fileId"
+          FOR UPDATE OF voucher
+        `);
+
+      const currentRevision = financeFacts?.revision ?? 0;
+      if (data.expectedRevision !== currentRevision) {
+        throw new ConflictException(
+          `财务侧资料已被其他人更新，当前修订为 ${currentRevision}，请刷新后重试`
+        );
+      }
+      if (data.basedOnContractRevision !== contractFacts.revision) {
+        throw new ConflictException(
+          "合同侧资料已变化，请刷新后重新核对历史付款"
+        );
+      }
+      if (
+        data.basedOnFinanceBasisRevision !==
+        contractFacts.financeBasisRevision
+      ) {
+        throw new ConflictException(
+          "合同侧财务基线已变化，请刷新后重新核对历史付款"
+        );
+      }
+      if (existingPayments.some((payment) => payment.status !== "draft")) {
+        throw new ConflictException("历史实付已激活，不能通过财务侧保存覆盖");
+      }
+
+      const allocationPreview = this.historicalPaymentAllocationPreview(
+        data.payments,
+        contractFacts.historicalSettledCents,
+        data.excessTreatment
+      );
+      if (allocationPreview.excessAllocatedCents > 0n) {
+        if (!data.excessTreatment) {
+          throw new BadRequestException(
+            "历史实付超出累计结算时必须选择超额分类"
+          );
+        }
+        if (!data.excessReason) {
+          throw new BadRequestException(
+            "历史实付超出累计结算时必须填写分类原因"
+          );
+        }
+        if (data.excessEvidenceFileIds.length === 0) {
+          throw new BadRequestException(
+            "历史实付超出累计结算时必须上传独立分类依据"
+          );
+        }
+      }
+      const effectiveExcessEvidenceFileIds =
+        allocationPreview.excessAllocatedCents > 0n
+          ? data.excessEvidenceFileIds
+          : [];
+
+      const voucherFileIds = data.payments.flatMap(
+        (payment) => payment.voucherFileIds
+      );
+      if (
+        effectiveExcessEvidenceFileIds.some((fileId) =>
+          voucherFileIds.includes(fileId)
+        )
+      ) {
+        throw new BadRequestException("超额分类依据不能复用付款凭证");
+      }
+
+      if (!this.files) {
+        throw new Error("历史接管文件服务暂不可用，请稍后重试");
+      }
+      const existingExcessEvidence =
+        await tx.contractTakeoverExcessEvidence.findMany({
+          where: { takeoverId: takeover.id },
+          select: { fileId: true }
+        });
+      const currentFileIds = new Set([
+        ...existingVouchers.map((voucher) => voucher.fileId),
+        ...existingExcessEvidence.map((evidence) => evidence.fileId)
+      ]);
+      try {
+        const requestedFileIds = [
+          ...voucherFileIds,
+          ...effectiveExcessEvidenceFileIds
+        ].sort();
+        for (const fileId of requestedFileIds) {
+          await this.files.assertCanUseHistoricalTakeoverFile(
+            tx,
+            fileId,
+            actorUserId,
+            currentFileIds.has(fileId)
+          );
+        }
+      } catch {
+        throw new BadRequestException(
+          "历史付款凭证或超额依据不可用、无权访问或已绑定其他业务，请重新上传专用文件"
+        );
+      }
+
+      if (existingPaymentIds.length > 0) {
+        await tx.contractTakeoverHistoricalPaymentAllocation.deleteMany({
+          where: { historicalPaymentId: { in: existingPaymentIds } }
+        });
+        await tx.contractTakeoverHistoricalPaymentVoucher.deleteMany({
+          where: { historicalPaymentId: { in: existingPaymentIds } }
+        });
+      }
+      await tx.contractTakeoverHistoricalPayment.deleteMany({
+        where: { takeoverId: takeover.id, status: "draft" }
+      });
+      await tx.contractTakeoverExcessEvidence.deleteMany({
+        where: { takeoverId: takeover.id }
+      });
+
+      const paymentSnapshots = [];
+      for (const payment of allocationPreview.payments) {
+        const created = await tx.contractTakeoverHistoricalPayment.create({
+          data: {
+            takeoverId: takeover.id,
+            rowKey: payment.rowKey,
+            sequenceNo: payment.sequenceNo,
+            amountCents: payment.amountCents,
+            paidAt: payment.paidAt,
+            payerName: payment.payerName,
+            payeeName: payment.payeeName,
+            bankReference: payment.bankReference,
+            paymentMethod: payment.paymentMethod,
+            note: payment.note,
+            status: "draft"
+          }
+        });
+        await tx.contractTakeoverHistoricalPaymentAllocation.createMany({
+          data: payment.allocations.map((allocation, allocationOrder) => ({
+            historicalPaymentId: created.id,
+            allocationType: allocation.type,
+            amountCents: allocation.amountCents,
+            allocationOrder
+          }))
+        });
+        await tx.contractTakeoverHistoricalPaymentVoucher.createMany({
+          data: payment.voucherFileIds.map((fileId, displayOrder) => ({
+            historicalPaymentId: created.id,
+            fileId,
+            displayOrder,
+            uploadedByUserId: actorUserId
+          }))
+        });
+        paymentSnapshots.push({
+          rowKey: payment.rowKey,
+          sequenceNo: payment.sequenceNo,
+          amountCents: payment.amountCents.toString(),
+          allocations: payment.allocations.map((allocation) => ({
+            type: allocation.type,
+            amountCents: allocation.amountCents.toString()
+          }))
+        });
+      }
+      if (effectiveExcessEvidenceFileIds.length > 0) {
+        await tx.contractTakeoverExcessEvidence.createMany({
+          data: effectiveExcessEvidenceFileIds.map((fileId, displayOrder) => ({
+            takeoverId: takeover.id,
+            fileId,
+            displayOrder,
+            createdByUserId: actorUserId
+          }))
+        });
+      }
+
+      const nextRevision = currentRevision + 1;
+      const savedFacts = await tx.contractTakeoverFinanceFacts.upsert({
+        where: { takeoverId: takeover.id },
+        create: {
+          takeoverId: takeover.id,
+          revision: 1,
+          basedOnContractRevision: contractFacts.revision,
+          basedOnFinanceBasisRevision: contractFacts.financeBasisRevision,
+          zeroPaymentDeclared: data.zeroPaymentDeclared,
+          excessTreatment: allocationPreview.excessAllocatedCents > 0n
+            ? data.excessTreatment
+            : null,
+          excessReason: allocationPreview.excessAllocatedCents > 0n
+            ? data.excessReason
+            : null,
+          confirmedRevision: null,
+          confirmedContractRevision: null,
+          confirmedFinanceBasisRevision: null,
+          confirmedByUserId: null,
+          confirmedAt: null,
+          updatedByUserId: actorUserId
+        },
+        update: {
+          revision: nextRevision,
+          basedOnContractRevision: contractFacts.revision,
+          basedOnFinanceBasisRevision: contractFacts.financeBasisRevision,
+          zeroPaymentDeclared: data.zeroPaymentDeclared,
+          excessTreatment: allocationPreview.excessAllocatedCents > 0n
+            ? data.excessTreatment
+            : null,
+          excessReason: allocationPreview.excessAllocatedCents > 0n
+            ? data.excessReason
+            : null,
+          confirmedRevision: null,
+          confirmedContractRevision: null,
+          confirmedFinanceBasisRevision: null,
+          confirmedByUserId: null,
+          confirmedAt: null,
+          updatedByUserId: actorUserId
+        }
+      });
+      await tx.contractTakeover.update({
+        where: { id: takeover.id },
+        data: { historicalPaidCents: allocationPreview.totalPaidCents }
+      });
+
+      const responseSnapshot = {
+        takeoverId: takeover.id,
+        side: "finance" as const,
+        revision: savedFacts.revision,
+        basedOnContractRevision: contractFacts.revision,
+        basedOnFinanceBasisRevision: contractFacts.financeBasisRevision,
+        totalPaidCents: allocationPreview.totalPaidCents.toString(),
+        settlementAllocatedCents:
+          allocationPreview.settlementAllocatedCents.toString(),
+        excessAllocatedCents:
+          allocationPreview.excessAllocatedCents.toString(),
+        confirmedRevision: null,
+        payments: paymentSnapshots,
+        savedAt: savedFacts.updatedAt.toISOString()
+      };
+      const now = new Date();
+      await tx.contractTakeoverSideSaveRequest.create({
+        data: {
+          idempotencyKey: data.idempotencyKey,
+          takeoverId: takeover.id,
+          side: "finance",
           expectedRevision: data.expectedRevision,
           resultRevision: savedFacts.revision,
           requestSha256,
@@ -3309,6 +3648,189 @@ export class ContractTakeoverService {
     };
   }
 
+  private normalizeFinanceSideInput(
+    input: SaveContractTakeoverFinanceFactsDto
+  ) {
+    const idempotencyKey = input.idempotencyKey?.trim();
+    if (!idempotencyKey) {
+      throw new BadRequestException("请提供财务侧保存幂等键");
+    }
+    for (const [value, label] of [
+      [input.expectedRevision, "财务侧修订"],
+      [input.basedOnContractRevision, "合同侧修订"],
+      [input.basedOnFinanceBasisRevision, "财务基线修订"]
+    ] as const) {
+      const minimum = label === "财务侧修订" ? 0 : 1;
+      if (!Number.isInteger(value) || value < minimum) {
+        throw new BadRequestException(`${label}必须是大于等于 ${minimum} 的整数`);
+      }
+    }
+    if (!Array.isArray(input.payments)) {
+      throw new BadRequestException("逐笔历史实付必须是数组");
+    }
+    if (input.payments.length === 0 && !input.zeroPaymentDeclared) {
+      throw new BadRequestException(
+        "没有历史实付时必须明确提交零付款声明"
+      );
+    }
+    if (input.payments.length > 0 && input.zeroPaymentDeclared) {
+      throw new BadRequestException("存在历史实付时不能提交零付款声明");
+    }
+
+    const rowKeys = new Set<string>();
+    const allVoucherIds = new Set<string>();
+    const payments = input.payments.map((payment) => {
+      const rowKey = payment.rowKey?.trim();
+      if (!rowKey || rowKeys.has(rowKey)) {
+        throw new BadRequestException("历史实付行标识不能为空且不能重复");
+      }
+      rowKeys.add(rowKey);
+      const amountCents = parseMoneyCentsInput(
+        payment.amountCents,
+        "历史实付金额",
+        "历史实付金额必须按分填写为大于 0 的整数"
+      );
+      if (amountCents <= 0n) {
+        throw new BadRequestException(
+          "历史实付金额必须按分填写为大于 0 的整数"
+        );
+      }
+      if (!isStrictDateText(payment.paidAt)) {
+        throw new BadRequestException(
+          "历史实付日期必须按 YYYY-MM-DD 填写且日期必须有效"
+        );
+      }
+      if (
+        !Array.isArray(payment.voucherFileIds) ||
+        payment.voucherFileIds.length === 0
+      ) {
+        throw new BadRequestException("每笔历史实付至少需要一份付款凭证");
+      }
+      const voucherFileIds = payment.voucherFileIds.map((fileId) =>
+        fileId?.trim()
+      );
+      for (const fileId of voucherFileIds) {
+        if (!fileId || allVoucherIds.has(fileId)) {
+          throw new BadRequestException(
+            "同一付款凭证不能重复使用或绑定到多笔历史实付"
+          );
+        }
+        allVoucherIds.add(fileId);
+      }
+      const optionalText = (value?: string) => value?.trim() || null;
+      return {
+        rowKey,
+        amountCents,
+        paidAtText: payment.paidAt,
+        paidAt: new Date(`${payment.paidAt}T00:00:00.000Z`),
+        payerName: optionalText(payment.payerName),
+        payeeName: optionalText(payment.payeeName),
+        bankReference: optionalText(payment.bankReference),
+        paymentMethod: optionalText(payment.paymentMethod),
+        note: optionalText(payment.note),
+        voucherFileIds
+      };
+    });
+    payments.sort((left, right) => {
+      if (left.paidAtText !== right.paidAtText) {
+        return left.paidAtText < right.paidAtText ? -1 : 1;
+      }
+      if (left.rowKey === right.rowKey) return 0;
+      return left.rowKey < right.rowKey ? -1 : 1;
+    });
+    const totalPaidCents = payments.reduce(
+      (sum, payment) => sum + payment.amountCents,
+      0n
+    );
+    if (!isWithinPostgresBigIntRange(totalPaidCents)) {
+      throw new BadRequestException("历史实付合计超出系统可保存范围");
+    }
+
+    const excessTreatment = input.excessTreatment;
+    if (
+      excessTreatment !== undefined &&
+      !["historical_advance", "abnormal_overpay"].includes(excessTreatment)
+    ) {
+      throw new BadRequestException("历史实付超额分类不正确");
+    }
+    const excessReason = input.excessReason?.trim() || null;
+    const excessEvidenceFileIds = (input.excessEvidenceFileIds ?? []).map(
+      (fileId) => fileId?.trim()
+    );
+    if (
+      excessEvidenceFileIds.some((fileId) => !fileId) ||
+      new Set(excessEvidenceFileIds).size !== excessEvidenceFileIds.length
+    ) {
+      throw new BadRequestException(
+        "历史实付超额分类依据不能为空且不能重复"
+      );
+    }
+
+    return {
+      idempotencyKey,
+      expectedRevision: input.expectedRevision,
+      basedOnContractRevision: input.basedOnContractRevision,
+      basedOnFinanceBasisRevision: input.basedOnFinanceBasisRevision,
+      zeroPaymentDeclared: input.zeroPaymentDeclared,
+      excessTreatment,
+      excessReason,
+      excessEvidenceFileIds,
+      payments
+    };
+  }
+
+  private historicalPaymentAllocationPreview(
+    payments: ReturnType<
+      ContractTakeoverService["normalizeFinanceSideInput"]
+    >["payments"],
+    historicalSettledCents: bigint,
+    excessTreatment?: ContractTakeoverExcessTreatment
+  ) {
+    let remainingSettlementCents = historicalSettledCents;
+    let settlementAllocatedCents = 0n;
+    let excessAllocatedCents = 0n;
+    const previewPayments = payments.map((payment, index) => {
+      const settlementAmount =
+        payment.amountCents < remainingSettlementCents
+          ? payment.amountCents
+          : remainingSettlementCents;
+      const excessAmount = payment.amountCents - settlementAmount;
+      remainingSettlementCents -= settlementAmount;
+      settlementAllocatedCents += settlementAmount;
+      excessAllocatedCents += excessAmount;
+      const allocations: Array<{
+        type: "settlement" | ContractTakeoverExcessTreatment;
+        amountCents: bigint;
+      }> = [];
+      if (settlementAmount > 0n) {
+        allocations.push({
+          type: "settlement",
+          amountCents: settlementAmount
+        });
+      }
+      if (excessAmount > 0n) {
+        allocations.push({
+          type: excessTreatment ?? "abnormal_overpay",
+          amountCents: excessAmount
+        });
+      }
+      return {
+        ...payment,
+        sequenceNo: index + 1,
+        allocations
+      };
+    });
+    return {
+      payments: previewPayments,
+      totalPaidCents: payments.reduce(
+        (sum, payment) => sum + payment.amountCents,
+        0n
+      ),
+      settlementAllocatedCents,
+      excessAllocatedCents
+    };
+  }
+
   private normalizeContractSideInput(
     input: SaveContractTakeoverContractFactsDto
   ) {
@@ -3572,6 +4094,44 @@ export class ContractTakeoverService {
       memberships.some((membership) => allowed.has(membership.positionKey));
     if (!canEdit) {
       throw new ForbiddenException("当前岗位不能编辑合同侧接管资料");
+    }
+  }
+
+  private async assertProjectFinanceEditor(
+    client: Pick<
+      Prisma.TransactionClient,
+      "userPosition" | "position" | "projectMember"
+    >,
+    projectId: string,
+    actorUserId: string
+  ) {
+    const [assignments, memberships] = await Promise.all([
+      client.userPosition.findMany({
+        where: {
+          userId: actorUserId,
+          OR: [{ projectId: null }, { projectId }]
+        },
+        select: { positionId: true }
+      }),
+      client.projectMember.findMany({
+        where: { projectId, userId: actorUserId },
+        select: { positionKey: true }
+      })
+    ]);
+    const positions = assignments.length
+      ? await client.position.findMany({
+          where: {
+            id: { in: assignments.map((assignment) => assignment.positionId) }
+          },
+          select: { key: true }
+        })
+      : [];
+    const allowed = new Set(["finance_staff", "finance_director"]);
+    const canEdit =
+      positions.some((position) => allowed.has(position.key)) ||
+      memberships.some((membership) => allowed.has(membership.positionKey));
+    if (!canEdit) {
+      throw new ForbiddenException("当前岗位不能编辑财务侧接管资料");
     }
   }
 

@@ -249,6 +249,93 @@ describe("FileService", () => {
     )).rejects.toThrow("该文件已用于其他业务，请重新上传专用的更正依据附件");
   });
 
+  it("locks and accepts an active private historical-takeover file with no binding", async () => {
+    const tx = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ referenced: false }]),
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "takeover-voucher-1",
+          uploadedByUserId: "finance-user",
+          storageStatus: "active"
+        })
+      }
+    };
+    const service = new FileService(
+      {} as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.assertCanUseHistoricalTakeoverFile(
+        tx as never,
+        "takeover-voucher-1",
+        "finance-user",
+        false
+      )
+    ).resolves.toMatchObject({ id: "takeover-voucher-1" });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it("allows a locked historical-takeover file already bound to this draft", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValueOnce([]),
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "existing-takeover-voucher",
+          uploadedByUserId: "finance-user",
+          storageStatus: "active"
+        })
+      }
+    };
+    const service = new FileService(
+      {} as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.assertCanUseHistoricalTakeoverFile(
+        tx as never,
+        "existing-takeover-voucher",
+        "finance-user",
+        true
+      )
+    ).resolves.toMatchObject({ id: "existing-takeover-voucher" });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a historical-takeover file already bound to another business", async () => {
+    const tx = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ referenced: true }]),
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "cross-bound-file",
+          uploadedByUserId: "finance-user",
+          storageStatus: "active"
+        })
+      }
+    };
+    const service = new FileService(
+      {} as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.assertCanUseHistoricalTakeoverFile(
+        tx as never,
+        "cross-bound-file",
+        "finance-user",
+        false
+      )
+    ).rejects.toThrow("该文件已绑定其他业务记录，不能用于历史接管");
+  });
+
   it("discards and deletes a generated file only after the locked reference check stays empty", async () => {
     const tx = {
       $queryRaw: jest.fn()

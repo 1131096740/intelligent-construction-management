@@ -15,6 +15,9 @@ export const NON_RECEIPT_FILE_BINDINGS = [
     table: "ContractTakeoverCorrection",
     columns: ["attachmentFileId"]
   },
+  { table: "ContractTakeoverSettlementEvidence", columns: ["fileId"] },
+  { table: "ContractTakeoverHistoricalPaymentVoucher", columns: ["fileId"] },
+  { table: "ContractTakeoverExcessEvidence", columns: ["fileId"] },
   { table: "ContractArchiveFile", columns: ["fileId"] },
   { table: "ContractFormalFile", columns: ["fileId"] },
   { table: "ContractAuthorization", columns: ["fileId"] },

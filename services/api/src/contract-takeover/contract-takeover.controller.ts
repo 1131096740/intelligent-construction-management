@@ -51,6 +51,7 @@ import { AbandonContractTakeoverDto } from "./dto/abandon-contract-takeover.dto"
 import { AbandonContractTakeoverBatchDto } from "./dto/abandon-contract-takeover-batch.dto";
 import { AbandonContractTaxFactRevisionDto } from "../contract-tax-facts/dto/abandon-contract-tax-fact-revision.dto";
 import { SaveContractTakeoverContractFactsDto } from "./dto/save-contract-takeover-contract-facts.dto";
+import { SaveContractTakeoverFinanceFactsDto } from "./dto/save-contract-takeover-finance-facts.dto";
 
 @Controller("projects/:projectId/contract-takeovers")
 export class ContractTakeoverController {
@@ -339,6 +340,17 @@ export class ContractTakeoverController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.takeovers.saveContractFacts(projectId, takeoverId, body, user.id);
+  }
+
+  @Put(":takeoverId/finance-side")
+  @RequireProjectRole("contract.takeover.finance_facts.edit")
+  saveFinanceFacts(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Body() body: SaveContractTakeoverFinanceFactsDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.takeovers.saveFinanceFacts(projectId, takeoverId, body, user.id);
   }
 
   @Post(":takeoverId/abandonment")

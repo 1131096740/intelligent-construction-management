@@ -1115,6 +1115,9 @@ export class FileService {
         UNION ALL SELECT 1 FROM "ContractVersion" WHERE "taxFactEvidenceFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ContractTaxFactRevision" WHERE "evidenceFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ContractTakeoverCorrection" WHERE "attachmentFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ContractTakeoverSettlementEvidence" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ContractTakeoverHistoricalPaymentVoucher" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ContractTakeoverExcessEvidence" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "Settlement" WHERE "preparerSignatureFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "SettlementSignedDocument" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "SettlementSignedDocumentGenerationClaim" WHERE "uploadedFileId" = ${fileId}
@@ -1498,6 +1501,34 @@ export class FileService {
     }
     if (await this.isFileReferenced(tx, fileId)) {
       throw new BadRequestException("该文件已用于其他业务，请重新上传专用的更正依据附件");
+    }
+    return file;
+  }
+
+  async assertCanUseHistoricalTakeoverFile(
+    tx: Prisma.TransactionClient,
+    fileId: string,
+    actorUserId: string,
+    allowCurrentTakeoverBinding: boolean
+  ) {
+    await tx.$queryRaw(Prisma.sql`
+      SELECT "id" FROM "FileObject" WHERE "id" = ${fileId} FOR UPDATE
+    `);
+    const file = await tx.fileObject.findUnique({
+      where: { id: fileId },
+      select: { id: true, uploadedByUserId: true, storageStatus: true }
+    });
+    if (!file || file.storageStatus !== "active") {
+      throw new BadRequestException("历史接管资料不存在或当前不可用，请重新上传");
+    }
+    if (file.uploadedByUserId !== actorUserId) {
+      throw new ForbiddenException("历史接管资料必须由当前办理人本人上传");
+    }
+    if (
+      !allowCurrentTakeoverBinding &&
+      await this.isFileReferenced(tx, fileId)
+    ) {
+      throw new BadRequestException("该文件已绑定其他业务记录，不能用于历史接管");
     }
     return file;
   }

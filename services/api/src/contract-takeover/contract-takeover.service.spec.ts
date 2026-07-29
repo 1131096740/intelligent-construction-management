@@ -12,7 +12,8 @@ describe("ContractTakeoverService", () => {
   };
   const files = {
     assertCanDownloadFile: jest.fn(),
-    assertCanAttachUnlinkedFile: jest.fn()
+    assertCanAttachUnlinkedFile: jest.fn(),
+    assertCanUseHistoricalTakeoverFile: jest.fn()
   };
 
   beforeEach(() => {
@@ -23,6 +24,8 @@ describe("ContractTakeoverService", () => {
     files.assertCanDownloadFile.mockResolvedValue({ id: "file-1" });
     files.assertCanAttachUnlinkedFile.mockReset();
     files.assertCanAttachUnlinkedFile.mockResolvedValue({ id: "file-1" });
+    files.assertCanUseHistoricalTakeoverFile.mockReset();
+    files.assertCanUseHistoricalTakeoverFile.mockResolvedValue({ id: "file-1" });
   });
 
   it("M58 constrains takeover company entity correction status, target and one pending request", () => {
@@ -647,6 +650,633 @@ describe("ContractTakeoverService", () => {
     ).rejects.toThrow("结算依据文件不可用、无权访问或已绑定其他业务");
     expect(tx.contractTakeoverSettlementEvidence.deleteMany).not.toHaveBeenCalled();
     expect(tx.contractTakeoverContractFacts.upsert).not.toHaveBeenCalled();
+  });
+
+  function financeSideInput(overrides: Record<string, unknown> = {}) {
+    return {
+      idempotencyKey: "22222222-2222-4222-8222-222222222222",
+      expectedRevision: 2,
+      basedOnContractRevision: 3,
+      basedOnFinanceBasisRevision: 4,
+      zeroPaymentDeclared: false,
+      excessTreatment: "historical_advance",
+      excessReason: "超出历史累计结算的部分经核对为历史预付款。",
+      excessEvidenceFileIds: ["excess-file-1"],
+      payments: [
+        {
+          rowKey: "row-b",
+          amountCents: "500000",
+          paidAt: "2026-02-02",
+          payerName: "项目公司",
+          payeeName: "历史供应商",
+          bankReference: "BANK-B",
+          paymentMethod: "bank_transfer",
+          note: "第二笔",
+          voucherFileIds: ["voucher-b-2", "voucher-b-1"]
+        },
+        {
+          rowKey: "row-a",
+          amountCents: "400000",
+          paidAt: "2026-02-01",
+          payerName: "项目公司",
+          payeeName: "历史供应商",
+          bankReference: "BANK-A",
+          paymentMethod: "bank_transfer",
+          note: "第一笔",
+          voucherFileIds: ["voucher-a-1"]
+        }
+      ],
+      ...overrides
+    };
+  }
+
+  function financeSideTransaction(options: {
+    contractFacts?: Record<string, unknown> | null;
+    financeFacts?: Record<string, unknown> | null;
+    receipt?: Record<string, unknown> | null;
+    takeover?: Record<string, unknown>;
+    positionKeys?: readonly string[];
+    existingPayments?: Record<string, unknown>[];
+    existingVouchers?: Record<string, unknown>[];
+    existingExcessEvidence?: Record<string, unknown>[];
+  } = {}) {
+    const contractFacts =
+      options.contractFacts === undefined
+        ? {
+            takeoverId: "takeover-1",
+            revision: 3,
+            financeBasisRevision: 4,
+            historicalSettledCents: 600000n,
+            confirmedRevision: 3
+          }
+        : options.contractFacts;
+    const financeFacts =
+      options.financeFacts === undefined
+        ? {
+            takeoverId: "takeover-1",
+            revision: 2,
+            basedOnContractRevision: 3,
+            basedOnFinanceBasisRevision: 4,
+            zeroPaymentDeclared: false,
+            excessTreatment: null,
+            excessReason: null,
+            confirmedRevision: 2,
+            confirmedContractRevision: 3,
+            confirmedFinanceBasisRevision: 4,
+            confirmedByUserId: "finance-director",
+            confirmedAt: new Date("2026-07-28T00:00:00.000Z")
+          }
+        : options.financeFacts;
+    const existingPayments = options.existingPayments ?? [];
+    const existingVouchers = options.existingVouchers ?? [];
+    const lockedRows = [
+      [options.takeover ?? takeoverRecord()],
+      contractFacts ? [contractFacts] : [],
+      financeFacts ? [financeFacts] : [],
+      existingPayments,
+      existingVouchers
+    ];
+    const tx = {
+      $queryRaw: jest.fn().mockImplementation(() =>
+        Promise.resolve(lockedRows.shift() ?? [])
+      ),
+      contractTakeover: {
+        update: jest.fn().mockResolvedValue(takeoverRecord())
+      },
+      contractTakeoverFinanceFacts: {
+        upsert: jest.fn().mockImplementation(({ create, update }) =>
+          Promise.resolve({
+            ...(financeFacts ?? create),
+            ...update,
+            revision: financeFacts ? Number(financeFacts.revision) + 1 : 1,
+            updatedAt: new Date("2026-07-29T02:00:00.000Z")
+          })
+        )
+      },
+      contractTakeoverHistoricalPaymentAllocation: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        createMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contractTakeoverHistoricalPaymentVoucher: {
+        deleteMany: jest.fn().mockResolvedValue({ count: existingVouchers.length }),
+        createMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contractTakeoverHistoricalPayment: {
+        deleteMany: jest.fn().mockResolvedValue({ count: existingPayments.length }),
+        create: jest.fn().mockImplementation(({ data }) =>
+          Promise.resolve({
+            id: `payment-${data.rowKey}`,
+            ...data
+          })
+        )
+      },
+      contractTakeoverExcessEvidence: {
+        findMany: jest.fn().mockResolvedValue(
+          options.existingExcessEvidence ?? []
+        ),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        createMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contractTakeoverSideSaveRequest: {
+        findUnique: jest.fn().mockResolvedValue(options.receipt ?? null),
+        create: jest.fn().mockImplementation(({ data }) => Promise.resolve(data))
+      },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue(
+          (options.positionKeys ?? ["finance_staff"]).map((key) => ({
+            positionId: `position-${key}`
+          }))
+        )
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue(
+          (options.positionKeys ?? ["finance_staff"]).map((key) => ({ key }))
+        )
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      settlement: {
+        create: jest.fn()
+      },
+      paymentRequest: {
+        create: jest.fn()
+      },
+      paymentExecution: {
+        create: jest.fn()
+      },
+      contractTakeoverBalanceAccount: {
+        create: jest.fn()
+      }
+    };
+    return tx;
+  }
+
+  it("saves finance facts by payment item and derives stable allocation previews", async () => {
+    const tx = financeSideTransaction();
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    const result = await service.saveFinanceFacts(
+      "project-1",
+      "takeover-1",
+      financeSideInput() as never,
+      "finance-user"
+    );
+
+    expect(result).toMatchObject({
+      takeoverId: "takeover-1",
+      side: "finance",
+      revision: 3,
+      basedOnContractRevision: 3,
+      basedOnFinanceBasisRevision: 4,
+      totalPaidCents: "900000",
+      settlementAllocatedCents: "600000",
+      excessAllocatedCents: "300000",
+      confirmedRevision: null
+    });
+    expect(tx.contractTakeoverFinanceFacts.upsert).toHaveBeenCalledWith({
+      where: { takeoverId: "takeover-1" },
+      create: expect.objectContaining({
+        revision: 1,
+        basedOnContractRevision: 3,
+        basedOnFinanceBasisRevision: 4,
+        confirmedRevision: null
+      }),
+      update: expect.objectContaining({
+        revision: 3,
+        basedOnContractRevision: 3,
+        basedOnFinanceBasisRevision: 4,
+        confirmedRevision: null,
+        confirmedContractRevision: null,
+        confirmedFinanceBasisRevision: null
+      })
+    });
+    expect(tx.contractTakeoverHistoricalPayment.create).toHaveBeenNthCalledWith(
+      1,
+      {
+        data: expect.objectContaining({
+          rowKey: "row-a",
+          sequenceNo: 1,
+          amountCents: 400000n
+        })
+      }
+    );
+    expect(tx.contractTakeoverHistoricalPayment.create).toHaveBeenNthCalledWith(
+      2,
+      {
+        data: expect.objectContaining({
+          rowKey: "row-b",
+          sequenceNo: 2,
+          amountCents: 500000n
+        })
+      }
+    );
+    expect(
+      tx.contractTakeoverHistoricalPaymentAllocation.createMany
+    ).toHaveBeenNthCalledWith(1, {
+      data: [
+        {
+          historicalPaymentId: "payment-row-a",
+          allocationType: "settlement",
+          amountCents: 400000n,
+          allocationOrder: 0
+        }
+      ]
+    });
+    expect(
+      tx.contractTakeoverHistoricalPaymentAllocation.createMany
+    ).toHaveBeenNthCalledWith(2, {
+      data: [
+        {
+          historicalPaymentId: "payment-row-b",
+          allocationType: "settlement",
+          amountCents: 200000n,
+          allocationOrder: 0
+        },
+        {
+          historicalPaymentId: "payment-row-b",
+          allocationType: "historical_advance",
+          amountCents: 300000n,
+          allocationOrder: 1
+        }
+      ]
+    });
+    expect(files.assertCanUseHistoricalTakeoverFile.mock.calls.map((call) => call[1]))
+      .toEqual([
+        "excess-file-1",
+        "voucher-a-1",
+        "voucher-b-1",
+        "voucher-b-2"
+      ]);
+    expect(tx.contractTakeover.update).toHaveBeenCalledWith({
+      where: { id: "takeover-1" },
+      data: { historicalPaidCents: 900000n }
+    });
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+    expect(tx.contractTakeoverBalanceAccount.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "full contract revision",
+      { basedOnContractRevision: 2 },
+      "合同侧资料已变化，请刷新后重新核对"
+    ],
+    [
+      "finance basis revision",
+      { basedOnFinanceBasisRevision: 3 },
+      "合同侧财务基线已变化，请刷新后重新核对"
+    ]
+  ] as const)(
+    "rejects stale %s before any finance write",
+    async (_label, inputOverrides, message) => {
+      const tx = financeSideTransaction();
+      const prisma = {
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+          callback(tx)
+        )
+      };
+      const service = new ContractTakeoverService(
+        prisma as never,
+        audit as never,
+        auth as never,
+        files as never
+      );
+
+      await expect(
+        service.saveFinanceFacts(
+          "project-1",
+          "takeover-1",
+          financeSideInput(inputOverrides) as never,
+          "finance-user"
+        )
+      ).rejects.toThrow(message);
+      expect(tx.contractTakeoverFinanceFacts.upsert).not.toHaveBeenCalled();
+      expect(tx.contractTakeoverHistoricalPayment.create).not.toHaveBeenCalled();
+      expect(tx.contractTakeoverSideSaveRequest.create).not.toHaveBeenCalled();
+    }
+  );
+
+  it("rejects one voucher reused across historical payment rows", async () => {
+    const tx = financeSideTransaction();
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+    const payments = financeSideInput().payments.map((payment) => ({
+      ...payment,
+      voucherFileIds: ["shared-voucher"]
+    }));
+
+    await expect(
+      service.saveFinanceFacts(
+        "project-1",
+        "takeover-1",
+        financeSideInput({ payments }) as never,
+        "finance-user"
+      )
+    ).rejects.toThrow("同一付款凭证不能重复使用或绑定到多笔历史实付");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects a historical payment total outside PostgreSQL bigint range", async () => {
+    const tx = financeSideTransaction();
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+    const payments = [
+      {
+        rowKey: "row-a",
+        amountCents: "9223372036854775807",
+        paidAt: "2026-02-01",
+        voucherFileIds: ["voucher-a"]
+      },
+      {
+        rowKey: "row-b",
+        amountCents: "1",
+        paidAt: "2026-02-02",
+        voucherFileIds: ["voucher-b"]
+      }
+    ];
+
+    await expect(
+      service.saveFinanceFacts(
+        "project-1",
+        "takeover-1",
+        financeSideInput({ payments }) as never,
+        "finance-user"
+      )
+    ).rejects.toThrow("历史实付合计超出系统可保存范围");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "blank zero-payment declaration",
+      { payments: [], zeroPaymentDeclared: false },
+      "没有历史实付时必须明确提交零付款声明"
+    ],
+    [
+      "zero declaration with payments",
+      { zeroPaymentDeclared: true },
+      "存在历史实付时不能提交零付款声明"
+    ],
+    [
+      "payment without voucher",
+      {
+        payments: [
+          {
+            rowKey: "row-a",
+            amountCents: "100",
+            paidAt: "2026-02-01",
+            voucherFileIds: []
+          }
+        ],
+        excessTreatment: undefined,
+        excessReason: undefined,
+        excessEvidenceFileIds: []
+      },
+      "每笔历史实付至少需要一份付款凭证"
+    ]
+  ] as const)(
+    "validates %s before opening a transaction",
+    async (_label, inputOverrides, message) => {
+      const tx = financeSideTransaction();
+      const prisma = {
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+          callback(tx)
+        )
+      };
+      const service = new ContractTakeoverService(
+        prisma as never,
+        audit as never,
+        auth as never,
+        files as never
+      );
+
+      await expect(
+        service.saveFinanceFacts(
+          "project-1",
+          "takeover-1",
+          financeSideInput(inputOverrides as Record<string, unknown>) as never,
+          "finance-user"
+        )
+      ).rejects.toThrow(message);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    [
+      { excessTreatment: undefined },
+      "历史实付超出累计结算时必须选择超额分类"
+    ],
+    [
+      { excessReason: " " },
+      "历史实付超出累计结算时必须填写分类原因"
+    ],
+    [
+      { excessEvidenceFileIds: [] },
+      "历史实付超出累计结算时必须上传独立分类依据"
+    ],
+    [
+      { excessEvidenceFileIds: ["voucher-a-1"] },
+      "超额分类依据不能复用付款凭证"
+    ]
+  ] as const)(
+    "requires independent excess classification evidence",
+    async (inputOverrides, message) => {
+      const tx = financeSideTransaction();
+      const prisma = {
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+          callback(tx)
+        )
+      };
+      const service = new ContractTakeoverService(
+        prisma as never,
+        audit as never,
+        auth as never,
+        files as never
+      );
+
+      await expect(
+        service.saveFinanceFacts(
+          "project-1",
+          "takeover-1",
+          financeSideInput(inputOverrides as Record<string, unknown>) as never,
+          "finance-user"
+        )
+      ).rejects.toThrow(message);
+      expect(tx.contractTakeoverFinanceFacts.upsert).not.toHaveBeenCalled();
+    }
+  );
+
+  it("replays the same finance request and rejects the same key with another request", async () => {
+    const responseSnapshot = {
+      takeoverId: "takeover-1",
+      side: "finance",
+      revision: 3,
+      totalPaidCents: "900000"
+    };
+    const tx = financeSideTransaction();
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+    const input = financeSideInput();
+    const requestSha256 = (service as unknown as {
+      takeoverSideRequestSha256(value: unknown): string;
+    }).takeoverSideRequestSha256(input);
+    tx.contractTakeoverSideSaveRequest.findUnique.mockResolvedValue({
+      idempotencyKey: input.idempotencyKey,
+      takeoverId: "takeover-1",
+      side: "finance",
+      requestSha256,
+      responseSnapshot
+    });
+
+    await expect(
+      service.saveFinanceFacts(
+        "project-1",
+        "takeover-1",
+        input as never,
+        "finance-user"
+      )
+    ).resolves.toEqual(responseSnapshot);
+    expect(tx.contractTakeoverFinanceFacts.upsert).not.toHaveBeenCalled();
+
+    tx.contractTakeoverSideSaveRequest.findUnique.mockResolvedValue({
+      idempotencyKey: input.idempotencyKey,
+      takeoverId: "takeover-1",
+      side: "finance",
+      requestSha256: "different-request",
+      responseSnapshot
+    });
+    tx.$queryRaw.mockResolvedValueOnce([takeoverRecord()]);
+    await expect(
+      service.saveFinanceFacts(
+        "project-1",
+        "takeover-1",
+        input as never,
+        "finance-user"
+      )
+    ).rejects.toThrow("保存幂等键已用于其他请求");
+  });
+
+  it.each([
+    [
+      "stale finance revision",
+      { expectedRevision: 1 },
+      {},
+      "财务侧资料已被其他人更新"
+    ],
+    [
+      "activated takeover",
+      {},
+      {
+        takeover: takeoverRecord({
+          activatedAt: new Date("2026-07-28T00:00:00.000Z")
+        })
+      },
+      "历史接管已激活"
+    ],
+    [
+      "non-finance role",
+      {},
+      { positionKeys: ["contract_director"] },
+      "当前岗位不能编辑财务侧接管资料"
+    ]
+  ] as const)(
+    "rejects %s before replacing historical payments",
+    async (_label, inputOverrides, txOptions, message) => {
+      const tx = financeSideTransaction(txOptions);
+      const prisma = {
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+          callback(tx)
+        )
+      };
+      const service = new ContractTakeoverService(
+        prisma as never,
+        audit as never,
+        auth as never,
+        files as never
+      );
+
+      await expect(
+        service.saveFinanceFacts(
+          "project-1",
+          "takeover-1",
+          financeSideInput(inputOverrides) as never,
+          "actor-1"
+        )
+      ).rejects.toThrow(message);
+      expect(tx.contractTakeoverHistoricalPayment.deleteMany).not.toHaveBeenCalled();
+      expect(tx.contractTakeoverFinanceFacts.upsert).not.toHaveBeenCalled();
+    }
+  );
+
+  it("rejects an inaccessible or cross-bound voucher before replacing finance facts", async () => {
+    files.assertCanUseHistoricalTakeoverFile.mockRejectedValueOnce(
+      new Error("bound")
+    );
+    const tx = financeSideTransaction();
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(
+      service.saveFinanceFacts(
+        "project-1",
+        "takeover-1",
+        financeSideInput() as never,
+        "finance-user"
+      )
+    ).rejects.toThrow("历史付款凭证或超额依据不可用、无权访问或已绑定其他业务");
+    expect(tx.contractTakeoverHistoricalPayment.deleteMany).not.toHaveBeenCalled();
+    expect(tx.contractTakeoverFinanceFacts.upsert).not.toHaveBeenCalled();
   });
 
   it("lists active, inactive and legacy-incomplete company entities for historical matching", async () => {
