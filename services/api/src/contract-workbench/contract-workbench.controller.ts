@@ -18,8 +18,13 @@ import type {
   TransferContractDraftDto,
   VoidDraftDto
 } from "./dto/contract-workbench.dto";
+import {
+  ContractCutoverLegacyWrite,
+  ContractCutoverSurface
+} from "../contract-cutover/contract-cutover.decorators";
 import { ContractWorkbenchService } from "./contract-workbench.service";
 
+@ContractCutoverSurface()
 @Controller("contract-workbench")
 export class ContractWorkbenchController {
   constructor(private readonly workbench: ContractWorkbenchService) {}
@@ -38,6 +43,7 @@ export class ContractWorkbenchController {
   }
 
   @Patch(":contractVersionId")
+  @ContractCutoverLegacyWrite()
   save(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,

@@ -14,6 +14,7 @@ import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { ContractService } from "../contract/contract.service";
 import { ContractDocumentService } from "../contract-document/contract-document.service";
+import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
 import { ContractDraftAggregateService } from "./contract-draft-aggregate.service";
 import { ContractDraftEditLeaseService } from "./contract-draft-edit-lease.service";
 import {
@@ -23,6 +24,7 @@ import {
   SubmitContractDraftDto
 } from "./dto/contract-workbench.dto";
 
+@ContractCutoverSurface()
 @Controller("contract-drafts")
 export class ContractDraftController {
   constructor(

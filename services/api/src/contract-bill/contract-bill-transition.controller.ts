@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Put } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
 import { ContractBillTransitionService } from "./contract-bill-transition.service";
 import type {
   ConfirmContractBillTransitionsDto,
@@ -8,6 +9,7 @@ import type {
   SaveContractBillTransitionDto
 } from "./dto/contract-bill-transition.dto";
 
+@ContractCutoverSurface()
 @Controller("contract-versions/:toContractVersionId/bill-transitions")
 export class ContractBillTransitionController {
   constructor(private readonly transitions: ContractBillTransitionService) {}

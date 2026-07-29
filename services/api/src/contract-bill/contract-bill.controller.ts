@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Param, Patch, Post, Put } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
 import { ContractBillService } from "./contract-bill.service";
 import type {
   ReorderBillRowsDto,
@@ -9,6 +10,7 @@ import type {
   CancelBillRowRemainderDto
 } from "./dto/contract-bill.dto";
 
+@ContractCutoverSurface()
 @Controller("contract-bills")
 export class ContractBillController {
   constructor(private readonly bills: ContractBillService) {}

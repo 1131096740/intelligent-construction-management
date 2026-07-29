@@ -11,6 +11,10 @@ import {
   StreamableFile
 } from "@nestjs/common";
 import { HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS } from "@jiangkong/shared-domain";
+import {
+  ContractCutoverLegacyWrite,
+  ContractCutoverSurface
+} from "../contract-cutover/contract-cutover.decorators";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
@@ -57,6 +61,7 @@ import { SaveContractTakeoverFinanceFactsDto } from "./dto/save-contract-takeove
 import { ConfirmContractTakeoverSideDto } from "./dto/confirm-contract-takeover-side.dto";
 import { WithdrawContractTakeoverSideConfirmationDto } from "./dto/withdraw-contract-takeover-side-confirmation.dto";
 
+@ContractCutoverSurface()
 @Controller("projects/:projectId/contract-takeovers")
 export class ContractTakeoverController {
   constructor(
@@ -534,6 +539,7 @@ export class ContractTakeoverController {
   }
 
   @Post(":takeoverId/confirmation")
+  @ContractCutoverLegacyWrite()
   @RequireProjectRole("contract.archive.confirm")
   confirm(
     @Param("projectId") projectId: string,

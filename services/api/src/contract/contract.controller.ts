@@ -27,6 +27,7 @@ import { LEDGER_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { XLSX_MIME } from "../core-flow/ledger-excel";
 import { ContractNumberingService } from "../contract-workbench/contract-numbering.service";
 import { ContractWorkbenchService } from "../contract-workbench/contract-workbench.service";
+import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
 import { ContractReadService } from "./contract-read.service";
 import { ContractService } from "./contract.service";
 import { AssignContractApprovalDto } from "./dto/assign-contract-approval.dto";
@@ -71,6 +72,7 @@ export class ContractController {
 
   // 创建合同草稿：合同员或合同部主管从已发布模板快照初始化工作台草稿。
   @Post()
+  @ContractCutoverSurface()
   @RequireProjectRole("contract.create")
   create(
     @Body() body: CreateContractDraftDto,
@@ -80,6 +82,7 @@ export class ContractController {
   }
 
   @Post(":contractVersionId/change-drafts")
+  @ContractCutoverSurface()
   // 合同变更草稿：合同员或合同部主管作为合同经办人发起。
   @RequireProjectRole("contract.create")
   createChangeDraft(
@@ -91,6 +94,7 @@ export class ContractController {
   }
 
   @Post(":contractVersionId/copies")
+  @ContractCutoverSurface()
   @RequireProjectRole("contract.create")
   copyAbandonedDraft(
     @Param("contractVersionId") contractVersionId: string,
@@ -101,6 +105,7 @@ export class ContractController {
   }
 
   @Post(":contractVersionId/abandonment")
+  @ContractCutoverSurface()
   @RequireProjectRole("contract.create")
   abandonDraft(
     @Param("contractVersionId") contractVersionId: string,
@@ -203,6 +208,7 @@ export class ContractController {
   }
 
   @Post(":contractVersionId/approval-submission")
+  @ContractCutoverSurface()
   @RequireProjectRole("contract.submit")
   submitApproval(
     @Param("contractVersionId") contractVersionId: string,
@@ -233,6 +239,7 @@ export class ContractController {
   }
 
   @Post(":contractVersionId/authorizations")
+  @ContractCutoverSurface()
   @RequireProjectRole("contract.submit")
   setAuthorization(
     @Param("contractVersionId") contractVersionId: string,

@@ -10,6 +10,12 @@ const REQUIRED_SECRETS = [
 const COS_SECRET_ENV = ["COS_SECRET_ID", "COS_SECRET_KEY"];
 const MAX_FILE_UPLOAD_BYTES = 100 * 1024 * 1024;
 const REQUIRED_FONTS = ["方正小标宋简体", "仿宋_GB2312", "楷体_GB2312"];
+const CONTRACT_CUTOVER_MODES = new Set([
+  "release-a",
+  "maintenance",
+  "release-b-maintenance",
+  "release-b"
+]);
 const DEFAULT_MARKERS = new Set([
   "local-access-secret",
   "local-refresh-secret",
@@ -264,6 +270,66 @@ function checkUploadLimit(env, results) {
   }
 }
 
+function checkContractCutover(env, results) {
+  const mode = env.CONTRACT_CUTOVER_MODE?.trim() || "release-a";
+  if (!CONTRACT_CUTOVER_MODES.has(mode)) {
+    add(
+      results,
+      "FAIL",
+      "CONTRACT_CUTOVER_MODE",
+      "invalid; allowed values are release-a, maintenance, release-b-maintenance or release-b"
+    );
+    return;
+  }
+  add(results, "PASS", "CONTRACT_CUTOVER_MODE", mode);
+
+  const rawCanaryUsers = env.CONTRACT_CUTOVER_CANARY_USER_IDS?.trim() ?? "";
+  const canaryUsers = rawCanaryUsers
+    ? rawCanaryUsers.split(",").map((value) => value.trim())
+    : [];
+  const invalidCanaryList =
+    canaryUsers.some(
+      (value) =>
+        !value ||
+        value === "*" ||
+        !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value)
+    ) ||
+    new Set(canaryUsers).size !== canaryUsers.length ||
+    canaryUsers.length > 8;
+
+  if (invalidCanaryList) {
+    add(
+      results,
+      "FAIL",
+      "CONTRACT_CUTOVER_CANARY_USER_IDS",
+      "must contain 1-8 unique explicit user IDs without wildcard values"
+    );
+  } else if (mode === "release-b-maintenance" && canaryUsers.length === 0) {
+    add(
+      results,
+      "FAIL",
+      "CONTRACT_CUTOVER_CANARY_USER_IDS",
+      "release-b-maintenance requires at least one explicitly approved canary user"
+    );
+  } else if (mode !== "release-b-maintenance" && canaryUsers.length > 0) {
+    add(
+      results,
+      "WARN",
+      "CONTRACT_CUTOVER_CANARY_USER_IDS",
+      "configured but ignored outside release-b-maintenance"
+    );
+  } else {
+    add(
+      results,
+      "PASS",
+      "CONTRACT_CUTOVER_CANARY_USER_IDS",
+      mode === "release-b-maintenance"
+        ? `${canaryUsers.length} approved canary users configured`
+        : "not active"
+    );
+  }
+}
+
 function checkConverter(env, results, options) {
   const command = env.DOC_CONVERTER_COMMAND;
   if (!isSet(command)) {
@@ -310,6 +376,7 @@ function checkEnv(env, options = {}) {
   checkDatabaseState(env, results, runtimeOptions);
   checkStorage(env, results);
   checkUploadLimit(env, results);
+  checkContractCutover(env, results);
   checkConverter(env, results, runtimeOptions);
   return results;
 }
@@ -339,6 +406,7 @@ function selfTest() {
     COS_BUCKET: "example-private-1250000000",
     COS_REGION: "ap-chengdu",
     FILE_UPLOAD_MAX_BYTES: "104857600",
+    CONTRACT_CUTOVER_MODE: "release-a",
     DOC_CONVERTER_COMMAND: "soffice",
     DOC_ALLOWED_FONTS: REQUIRED_FONTS.join(",")
   };
@@ -413,6 +481,33 @@ function selfTest() {
   }
   assertFail({ FILE_DOWNLOAD_SECRET: "f".repeat(31) }, "FILE_DOWNLOAD_SECRET");
   assertFail({ INITIAL_USER_TEMPORARY_PASSWORD: "1234567" }, "INITIAL_USER_TEMPORARY_PASSWORD");
+  assertFail({ CONTRACT_CUTOVER_MODE: "release-c" }, "CONTRACT_CUTOVER_MODE");
+  assertFail(
+    {
+      CONTRACT_CUTOVER_MODE: "release-b-maintenance",
+      CONTRACT_CUTOVER_CANARY_USER_IDS: ""
+    },
+    "CONTRACT_CUTOVER_CANARY_USER_IDS"
+  );
+  assertFail(
+    {
+      CONTRACT_CUTOVER_MODE: "release-b-maintenance",
+      CONTRACT_CUTOVER_CANARY_USER_IDS: "*"
+    },
+    "CONTRACT_CUTOVER_CANARY_USER_IDS"
+  );
+  const validCanaryMode = checkEnv(
+    {
+      ...goodEnv,
+      CONTRACT_CUTOVER_MODE: "release-b-maintenance",
+      CONTRACT_CUTOVER_CANARY_USER_IDS: "user-a,user-b"
+    },
+    { checkCommands: false }
+  );
+  assert.equal(
+    validCanaryMode.some((result) => result.status === "FAIL"),
+    false
+  );
   assertFail(
     { FILE_DOWNLOAD_SECRET: "replace-with-long-random-file-download-secret" },
     "FILE_DOWNLOAD_SECRET"

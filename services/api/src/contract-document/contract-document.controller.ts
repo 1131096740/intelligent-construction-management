@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post } from "@nestjs/common";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
 import {
   ContractDocumentService,
   type QueueContractDocumentInput
@@ -21,6 +22,7 @@ export class ContractDocumentController {
   ) {}
 
   @Post("contract-workbench/:contractVersionId/documents")
+  @ContractCutoverSurface()
   queue(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -38,6 +40,7 @@ export class ContractDocumentController {
   }
 
   @Post("contract-workbench/:contractVersionId/offline-revisions")
+  @ContractCutoverSurface()
   uploadOfflineRevision(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -55,6 +58,7 @@ export class ContractDocumentController {
   }
 
   @Post("contract-workbench/:contractVersionId/negotiation-rounds")
+  @ContractCutoverSurface()
   openNegotiationRound(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -72,6 +76,7 @@ export class ContractDocumentController {
   }
 
   @Post("contract-negotiation-rounds/:roundId/close")
+  @ContractCutoverSurface()
   closeNegotiationRound(
     @Param("roundId") roundId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -80,6 +85,7 @@ export class ContractDocumentController {
   }
 
   @Post("contract-document-differences/:differenceId/disposition")
+  @ContractCutoverSurface()
   disposeDifference(
     @Param("differenceId") differenceId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -89,6 +95,7 @@ export class ContractDocumentController {
   }
 
   @Post("contract-offline-revisions/:revisionId/retry")
+  @ContractCutoverSurface()
   retryOfflineRevision(
     @Param("revisionId") revisionId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -106,6 +113,7 @@ export class ContractDocumentController {
   }
 
   @Post("contract-documents/:documentId/retry")
+  @ContractCutoverSurface()
   retry(
     @Param("documentId") documentId: string,
     @CurrentUser() user: AuthenticatedUser

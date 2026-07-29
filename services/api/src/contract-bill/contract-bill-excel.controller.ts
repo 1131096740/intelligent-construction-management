@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
 import {
   ContractBillExcelService,
   type ContractBillExcelImportDto
@@ -16,6 +17,7 @@ import {
 
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
+@ContractCutoverSurface()
 @Controller()
 export class ContractBillExcelController {
   constructor(private readonly excel: ContractBillExcelService) {}
