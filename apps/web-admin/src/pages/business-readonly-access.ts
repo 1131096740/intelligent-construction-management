@@ -18,7 +18,7 @@ export function canExportContractSettlementLedger(roleKeys: readonly RoleKey[]) 
 }
 
 export function canManageHistoricalContractTakeovers(roleKeys: readonly RoleKey[]) {
-  return canPerform("contract.create", roleKeys);
+  return canEditHistoricalContractFacts(roleKeys);
 }
 
 export function canSubmitHistoricalContractTakeovers(roleKeys: readonly RoleKey[]) {
@@ -26,11 +26,67 @@ export function canSubmitHistoricalContractTakeovers(roleKeys: readonly RoleKey[
 }
 
 export function canConfirmHistoricalContractTakeovers(roleKeys: readonly RoleKey[]) {
-  return canPerform("contract.archive.confirm", roleKeys);
+  return canConfirmHistoricalContractFacts(roleKeys);
 }
 
 export function canUploadHistoricalPaymentVoucher(roleKeys: readonly RoleKey[]) {
-  return canPerform("contract.takeover.payment_evidence.upload", roleKeys);
+  return canEditHistoricalFinanceFacts(roleKeys);
+}
+
+export type HistoricalTakeoverSide = "contract" | "finance";
+
+export function canEditHistoricalContractFacts(roleKeys: readonly RoleKey[]) {
+  return canPerform("contract.takeover.contract_facts.edit", roleKeys);
+}
+
+export function canConfirmHistoricalContractFacts(roleKeys: readonly RoleKey[]) {
+  return canPerform("contract.takeover.contract_facts.confirm", roleKeys);
+}
+
+export function canEditHistoricalFinanceFacts(roleKeys: readonly RoleKey[]) {
+  return canPerform("contract.takeover.finance_facts.edit", roleKeys);
+}
+
+export function canConfirmHistoricalFinanceFacts(roleKeys: readonly RoleKey[]) {
+  return canPerform("contract.takeover.finance_facts.confirm", roleKeys);
+}
+
+export function canWithdrawHistoricalTakeoverConfirmation(
+  roleKeys: readonly RoleKey[],
+  side: HistoricalTakeoverSide
+) {
+  if (!canPerform("contract.takeover.confirmation.withdraw", roleKeys)) {
+    return false;
+  }
+  return roleKeys.includes(
+    side === "contract" ? "contract_director" : "finance_director"
+  );
+}
+
+export function canSubmitHistoricalTakeoverCorrection(
+  roleKeys: readonly RoleKey[],
+  side: HistoricalTakeoverSide
+) {
+  if (!canPerform("contract.takeover.correction.submit", roleKeys)) {
+    return false;
+  }
+  const allowed =
+    side === "contract"
+      ? (["contract_staff", "contract_director"] as const)
+      : (["finance_staff", "finance_director"] as const);
+  return hasAnyRole(roleKeys, allowed);
+}
+
+export function canReviewHistoricalTakeoverCorrection(
+  roleKeys: readonly RoleKey[],
+  side: HistoricalTakeoverSide
+) {
+  if (!canPerform("contract.takeover.correction.review", roleKeys)) {
+    return false;
+  }
+  return roleKeys.includes(
+    side === "contract" ? "contract_director" : "finance_director"
+  );
 }
 
 export function canManageContractRecords(roleKeys: readonly RoleKey[]) {

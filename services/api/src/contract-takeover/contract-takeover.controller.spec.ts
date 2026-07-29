@@ -244,10 +244,14 @@ describe("ContractTakeoverController", () => {
     );
   });
 
-  it("protects historical payment-voucher attachment with its finance-only action", () => {
+  it("protects side-specific evidence attachments with their department actions", () => {
+    expectProjectAction(
+      ContractTakeoverController.prototype.attachEvidence,
+      "contract.takeover.contract_facts.edit"
+    );
     expectProjectAction(
       ContractTakeoverController.prototype.attachHistoricalPaymentVoucher,
-      "contract.takeover.payment_evidence.upload"
+      "contract.takeover.finance_facts.edit"
     );
   });
 
@@ -467,7 +471,6 @@ describe("ContractTakeoverController", () => {
     expectProjectAction(ContractTakeoverController.prototype.exportImportTemplate, "contract.create");
     expectProjectAction(ContractTakeoverController.prototype.previewExcelImport, "contract.create");
     expectProjectAction(ContractTakeoverController.prototype.applyExcelImport, "contract.create");
-    expectProjectAction(ContractTakeoverController.prototype.attachEvidence, "contract.create");
     expectProjectAction(
       ContractTakeoverController.prototype.submitCompanyEntityCorrection,
       "contract.create"

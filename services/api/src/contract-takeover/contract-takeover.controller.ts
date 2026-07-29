@@ -340,7 +340,7 @@ export class ContractTakeoverController {
   }
 
   @Post(":takeoverId/evidence-files")
-  @RequireProjectRole("contract.create")
+  @RequireProjectRole("contract.takeover.contract_facts.edit")
   attachEvidence(
     @Param("projectId") projectId: string,
     @Param("takeoverId") takeoverId: string,
@@ -351,7 +351,7 @@ export class ContractTakeoverController {
   }
 
   @Post(":takeoverId/payment-evidence-files")
-  @RequireProjectRole("contract.takeover.payment_evidence.upload")
+  @RequireProjectRole("contract.takeover.finance_facts.edit")
   attachHistoricalPaymentVoucher(
     @Param("projectId") projectId: string,
     @Param("takeoverId") takeoverId: string,

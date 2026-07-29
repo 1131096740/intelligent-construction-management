@@ -14,6 +14,13 @@ export const BUSINESS_ACTIONS = [
   "contract.archive.upload",
   "contract.archive.confirm",
   "contract.takeover.payment_evidence.upload",
+  "contract.takeover.contract_facts.edit",
+  "contract.takeover.contract_facts.confirm",
+  "contract.takeover.finance_facts.edit",
+  "contract.takeover.finance_facts.confirm",
+  "contract.takeover.confirmation.withdraw",
+  "contract.takeover.correction.submit",
+  "contract.takeover.correction.review",
   "contract.tax_fact.supplement",
   "contract.tax_fact.finance_review",
   "contract.tax_fact.confirm",
@@ -116,6 +123,24 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   "contract.archive.upload": ["contract_staff"],
   "contract.archive.confirm": ["contract_director"],
   "contract.takeover.payment_evidence.upload": ["finance_staff", "finance_director"],
+  "contract.takeover.contract_facts.edit": ["contract_staff", "contract_director"],
+  "contract.takeover.contract_facts.confirm": ["contract_director"],
+  "contract.takeover.finance_facts.edit": ["finance_staff", "finance_director"],
+  "contract.takeover.finance_facts.confirm": ["finance_director"],
+  "contract.takeover.confirmation.withdraw": [
+    "contract_director",
+    "finance_director"
+  ],
+  "contract.takeover.correction.submit": [
+    "contract_staff",
+    "contract_director",
+    "finance_staff",
+    "finance_director"
+  ],
+  "contract.takeover.correction.review": [
+    "contract_director",
+    "finance_director"
+  ],
   "contract.tax_fact.supplement": ["contract_staff"],
   "contract.tax_fact.finance_review": ["finance_director"],
   "contract.tax_fact.confirm": ["contract_director"],

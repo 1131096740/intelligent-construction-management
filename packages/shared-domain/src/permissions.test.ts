@@ -227,6 +227,65 @@ describe("role-specific gates", () => {
     expect(canPerform("contract.takeover.payment_evidence.upload", ["super_admin"])).toBe(false);
   });
 
+  it("splits historical takeover contract and finance fact duties by department", () => {
+    expect(ACTION_REQUIRED_ROLES["contract.takeover.contract_facts.edit"]).toEqual([
+      "contract_staff",
+      "contract_director"
+    ]);
+    expect(ACTION_REQUIRED_ROLES["contract.takeover.contract_facts.confirm"]).toEqual([
+      "contract_director"
+    ]);
+    expect(ACTION_REQUIRED_ROLES["contract.takeover.finance_facts.edit"]).toEqual([
+      "finance_staff",
+      "finance_director"
+    ]);
+    expect(ACTION_REQUIRED_ROLES["contract.takeover.finance_facts.confirm"]).toEqual([
+      "finance_director"
+    ]);
+
+    expect(canPerform("contract.takeover.contract_facts.edit", ["finance_director"])).toBe(
+      false
+    );
+    expect(canPerform("contract.takeover.contract_facts.confirm", ["contract_staff"])).toBe(
+      false
+    );
+    expect(canPerform("contract.takeover.finance_facts.edit", ["contract_director"])).toBe(
+      false
+    );
+    expect(canPerform("contract.takeover.finance_facts.confirm", ["finance_staff"])).toBe(
+      false
+    );
+  });
+
+  it("limits takeover confirmation withdrawal and correction review to business directors", () => {
+    expect(ACTION_REQUIRED_ROLES["contract.takeover.confirmation.withdraw"]).toEqual([
+      "contract_director",
+      "finance_director"
+    ]);
+    expect(ACTION_REQUIRED_ROLES["contract.takeover.correction.submit"]).toEqual([
+      "contract_staff",
+      "contract_director",
+      "finance_staff",
+      "finance_director"
+    ]);
+    expect(ACTION_REQUIRED_ROLES["contract.takeover.correction.review"]).toEqual([
+      "contract_director",
+      "finance_director"
+    ]);
+
+    for (const action of [
+      "contract.takeover.contract_facts.edit",
+      "contract.takeover.contract_facts.confirm",
+      "contract.takeover.finance_facts.edit",
+      "contract.takeover.finance_facts.confirm",
+      "contract.takeover.confirmation.withdraw",
+      "contract.takeover.correction.submit",
+      "contract.takeover.correction.review"
+    ] as const) {
+      expect(canPerform(action, ["super_admin"])).toBe(false);
+    }
+  });
+
   it("allows contract staff and directors to create and submit contract drafts", () => {
     expect(canPerform("contract.create", ["contract_staff"])).toBe(true);
     expect(canPerform("contract.submit", ["contract_staff"])).toBe(true);
