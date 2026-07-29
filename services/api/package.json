@@ -28,6 +28,7 @@
     "inspect:contract-tax-facts": "node scripts/inspect-contract-tax-facts-readiness.cjs",
     "inspect:contract-settlement-governance-readiness": "node scripts/inspect-contract-settlement-governance-readiness.cjs",
     "inspect:draft-lifecycle-readiness": "node scripts/inspect-draft-lifecycle-readiness.cjs",
+    "inspect:contract-draft-aggregate": "node scripts/inspect-contract-draft-aggregate-readiness.cjs",
     "precheck:contract-settlement-v2": "node prisma/precheck-contract-settlement-v2.cjs",
     "verify:contract-settlement-v2:local": "node prisma/run-contract-settlement-v2-local.cjs",
     "backfill:contract-settlement-v2": "node prisma/backfill-contract-settlement-v2.cjs",
