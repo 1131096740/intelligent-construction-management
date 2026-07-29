@@ -279,10 +279,19 @@ sudo systemctl daemon-reload
 Release A 的部署入口必须显式写出范围，不能依赖默认值：
 
 ```bash
-DEPLOY_SCOPE=api-only /opt/jiangkong/scripts/ops/deploy-production-server.sh
+CANDIDATE_SHA_CONFIRMATION='<获批的 40 位候选 SHA>' \
+DEPLOY_SCOPE=api-only \
+DEPLOY_CONFIRMATION_MODE=immediate \
+/opt/jiangkong/scripts/ops/deploy-production-server.sh
 ```
 
 API-only 健康检查失败时只从该次 API 快照恢复，Web 运行目录保持不变；数据库迁移仍按前向兼容原则处理，不自动回滚。
+
+脚本在构建和备份前还会要求候选 SHA 与洁净 checkout 完全一致。Release B
+前后端同切必须使用 `DEPLOY_CONFIRMATION_MODE=manual` 保留旧运行时快照，等待真实
+岗位烟测后写入绑定同一 SHA 的 `CONFIRM` 或 `ROLLBACK` 决定；错误决定、陈旧文件
+或超时均恢复旧运行时。完整顺序见
+[`docs/runbooks/contract-workbench-release-a-b-cutover.md`](../../runbooks/contract-workbench-release-a-b-cutover.md)。
 
 ## 7. Go / No-Go 证据
 
