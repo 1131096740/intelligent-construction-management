@@ -40,6 +40,19 @@ const draftSource = fs.readFileSync(
 );
 
 describe("contract workbench document canvas structure", () => {
+  it("keeps both desktop panes mounted and adds a controlled mobile document-data switch", () => {
+    expect(pageSource).toContain('class="mobile-pane-switch"');
+    expect(pageSource).toContain('v-model="mobileWorkbenchPane"');
+    expect(pageSource).toMatch(/<t-radio-button\s+value="document">/u);
+    expect(pageSource).toMatch(/<t-radio-button\s+value="data">/u);
+    expect(pageSource).toContain("'mobile-pane-hidden': mobileWorkbenchPane !== 'document'");
+    expect(pageSource).toContain("'mobile-pane-hidden': mobileWorkbenchPane !== 'data'");
+    expect(pageSource).not.toMatch(/v-if="mobileWorkbenchPane === '(?:document|data)'"/u);
+    expect(pageSource).toMatch(
+      /@container jg-page \(max-width: 840px\)[\s\S]*\.mobile-pane-switch[\s\S]*\.mobile-pane-hidden/u
+    );
+  });
+
   it("uses a central document canvas and one TDesign business sidebar", () => {
     expect(pageSource).toContain("ContractDocumentCanvas");
     expect(pageSource).toContain("ContractNegotiationCanvas");

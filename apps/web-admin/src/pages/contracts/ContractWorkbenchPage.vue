@@ -454,7 +454,27 @@
         v-else-if="!exactVersionError"
         class="shell-body"
       >
-        <main class="document-canvas-slot">
+        <div
+          class="mobile-pane-switch"
+          aria-label="移动端工作台视图"
+        >
+          <t-radio-group
+            v-model="mobileWorkbenchPane"
+            variant="default-filled"
+          >
+            <t-radio-button value="document">
+              文档
+            </t-radio-button>
+            <t-radio-button value="data">
+              资料
+            </t-radio-button>
+          </t-radio-group>
+        </div>
+
+        <main
+          class="document-canvas-slot"
+          :class="{ 'mobile-pane-hidden': mobileWorkbenchPane !== 'document' }"
+        >
           <p
             v-if="!editable && workbench"
             class="readonly-banner"
@@ -478,7 +498,10 @@
           />
         </main>
 
-        <aside class="business-sidebar">
+        <aside
+          class="business-sidebar"
+          :class="{ 'mobile-pane-hidden': mobileWorkbenchPane !== 'data' }"
+        >
           <ContractWorkbenchSectionNav
             :active-id="activeSection"
             @select="selectWorkbenchSection"
@@ -1026,6 +1049,7 @@ const submissionMessageTone = ref<"success" | "error">("success");
 const settlementModeConfirming = ref(false);
 const governanceMutationLocked = ref(false);
 const focusedBillKey = ref("");
+const mobileWorkbenchPane = ref<"document" | "data">("data");
 const billFocusEditorRef = ref<InstanceType<typeof ContractBillFocusEditor> | null>(null);
 
 const draft = useContractDraft({
@@ -2767,6 +2791,10 @@ function initializeDraftFromQuery() {
   margin-top: var(--jg-space-lg);
 }
 
+.mobile-pane-switch {
+  display: none;
+}
+
 .bill-focus-slot {
   box-sizing: border-box;
   width: 100%;
@@ -2802,6 +2830,16 @@ function initializeDraftFromQuery() {
 
 .business-sidebar {
   align-self: start;
+}
+
+.document-canvas-slot,
+.business-sidebar {
+  max-height: calc(
+    100dvh - var(--jg-layout-header-height) - 56px - (2 * var(--jg-space-section))
+  );
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .business-editor {
@@ -2995,6 +3033,32 @@ function initializeDraftFromQuery() {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+}
+
+@container jg-page (max-width: 840px) {
+  .mobile-pane-switch {
+    position: sticky;
+    top: calc(var(--jg-layout-header-height) + var(--jg-space-xs));
+    z-index: 4;
+    display: flex;
+    grid-column: 1 / -1;
+    justify-content: center;
+    padding: var(--jg-space-sm);
+    background: var(--jg-bg-panel);
+    border: var(--jg-border-width-base) solid var(--jg-border);
+    border-radius: var(--jg-radius-sm);
+  }
+
+  .mobile-pane-hidden {
+    display: none;
+  }
+
+  .document-canvas-slot,
+  .business-sidebar {
+    max-height: none;
+    overflow-y: visible;
+    scrollbar-gutter: auto;
+  }
 }
 
 @container jg-page (max-width: 620px) {

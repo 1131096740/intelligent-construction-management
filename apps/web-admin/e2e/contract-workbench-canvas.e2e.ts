@@ -11,7 +11,10 @@ const responsiveViewports = [
   { width: 1280, height: 800 },
   { width: 1180, height: 820 },
   { width: 1024, height: 768 },
-  { width: 900, height: 768 }
+  { width: 900, height: 768 },
+  { width: 768, height: 1024 },
+  { width: 430, height: 932 },
+  { width: 390, height: 844 }
 ] as const;
 
 test.beforeEach(async ({ page }) => {
@@ -223,21 +226,56 @@ test("合同工作台以纵向正文画布展示并可定位资料检查问题",
   expect(desktopCanvas).not.toBeNull();
   expect(desktopSidebar).not.toBeNull();
   expect(desktopCanvas!.x).toBeLessThan(desktopSidebar!.x);
+  await expect(page.locator(".mobile-pane-switch")).toBeHidden();
+  expect(
+    await page.locator(".status-bar").evaluate((element) =>
+      getComputedStyle(element).position
+    )
+  ).toBe("sticky");
+  for (const selector of [".document-canvas-slot", ".business-sidebar"]) {
+    expect(
+      await page.locator(selector).evaluate((element) =>
+        getComputedStyle(element).overflowY
+      )
+    ).toBe("auto");
+  }
   await page.locator('[data-section-nav-id="negotiation_documents"]').click();
   await expect(page.getByRole("heading", { name: "合同文档" })).toBeVisible();
   expect(privateFileCalls).toBe(0);
 
   const screenshotDir = process.env.UI_RESPONSIVE_SCREENSHOT_DIR ?? testInfo.outputDir;
+  let mobileInputPreservationVerified = false;
   for (const viewport of responsiveViewports) {
     await page.setViewportSize(viewport);
-    const canvas = await page.locator(".document-canvas-slot").boundingBox();
-    const sidebar = await page.locator(".business-sidebar").boundingBox();
-    expect(canvas).not.toBeNull();
-    expect(sidebar).not.toBeNull();
-    if (viewport.width >= 1440) {
-      expect(canvas!.x).toBeLessThan(sidebar!.x);
+    const paneSwitch = page.locator(".mobile-pane-switch");
+    if (await paneSwitch.isVisible()) {
+      await expect(page.locator(".business-sidebar")).toBeVisible();
+      await expect(page.locator(".document-canvas-slot")).toBeHidden();
+
+      if (!mobileInputPreservationVerified) {
+        const contractName = page.getByPlaceholder("请输入合同名称");
+        await contractName.fill("移动端切换保留输入");
+        await paneSwitch.getByText("文档", { exact: true }).click();
+        await expect(page.locator(".document-canvas-slot")).toBeVisible();
+        await expect(page.locator(".business-sidebar")).toBeHidden();
+        await expect(
+          page.getByRole("heading", { name: /合同(?:正文画布|文档)/u })
+        ).toBeVisible();
+        await paneSwitch.getByText("资料", { exact: true }).click();
+        await expect(page.locator(".business-sidebar")).toBeVisible();
+        await expect(contractName).toHaveValue("移动端切换保留输入");
+        mobileInputPreservationVerified = true;
+      }
     } else {
-      expect(sidebar!.y).toBeGreaterThan(canvas!.y);
+      const canvas = await page.locator(".document-canvas-slot").boundingBox();
+      const sidebar = await page.locator(".business-sidebar").boundingBox();
+      expect(canvas).not.toBeNull();
+      expect(sidebar).not.toBeNull();
+      if (viewport.width >= 1440) {
+        expect(canvas!.x).toBeLessThan(sidebar!.x);
+      } else {
+        expect(sidebar!.y).toBeGreaterThan(canvas!.y);
+      }
     }
     await expect(page.getByRole("heading", { name: "资料检查" })).toBeVisible();
     await expectNoDocumentHorizontalOverflow(page);
@@ -247,6 +285,7 @@ test("合同工作台以纵向正文画布展示并可定位资料检查问题",
       fullPage: true
     });
   }
+  expect(mobileInputPreservationVerified).toBe(true);
 });
 
 test("合同签前文件工作台保留授权组合、关联重试与唯一提交", async ({ page }) => {
@@ -306,6 +345,9 @@ test("合同签前文件工作台保留授权组合、关联重试与唯一提�
   await page.route("**/api/contract-layout-templates*", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" })
   );
+  await page.route("**/api/standard-clauses*", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
   await page.route("**/api/contract-number-rules", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify([{ id: "rule-1", name: "项目合同编号", pattern: "XM-{SEQ}" }])
@@ -313,8 +355,25 @@ test("合同签前文件工作台保留授权组合、关联重试与唯一提�
   await page.route("**/api/contract-workbench/version-governed/negotiation-rounds", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" })
   );
-  await page.route("**/api/contract-workbench/version-governed", async (route) => {
-    if (route.request().method() !== "PATCH") return route.fallback();
+  await page.route("**/api/contract-drafts/version-governed/edit-lease**", (route) => {
+    if (route.request().method() === "DELETE") {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ released: true })
+      });
+    }
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        token: "lease-token-governed",
+        leaseRevision: 1,
+        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+        heartbeatIntervalMs: 60_000
+      })
+    });
+  });
+  await page.route("**/api/contract-drafts/version-governed", async (route) => {
+    if (route.request().method() !== "PUT") return route.fallback();
     requestOrder.push("save");
     if (holdFirstSave) {
       holdFirstSave = false;
@@ -324,16 +383,37 @@ test("合同签前文件工作台保留授权组合、关联重试与唯一提�
     revision += 1;
     await route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ version: { id: "version-governed", draftRevision: revision } })
+      body: JSON.stringify({
+        contractVersionId: "version-governed",
+        draftRevision: revision,
+        savedAt: new Date().toISOString(),
+        effectiveChangedSections: ["draft"],
+        amounts: {
+          taxInclusiveAmountCents: "1000000",
+          taxExclusiveAmountCents: "884956",
+          taxAmountCents: "115044"
+        },
+        billRevisions: {},
+        issueCounts: {},
+        readiness: { ready: Boolean(formalFile), blockingMessages: [], warningMessages: [] },
+        documentsOutdated: true,
+        availableActions: []
+      })
     });
   });
-  await page.route("**/api/contract-workbench/contract-governed", (route) => route.fulfill({
+  await page.route("**/api/contract-drafts/version-governed/preview-generation", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ queued: true })
+    })
+  );
+  await page.route("**/api/contract-drafts/version-governed/workbench", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
       contract: {
         id: "contract-governed",
         temporaryCode: "草稿-20260717-0001",
-        code: null,
+        code: revision > 3 ? "HT-2026-GOV-001" : null,
         projectId: "project-1",
         contractTypeKey: "material_purchase",
         ownerUserId: "contract-staff-1",
@@ -367,7 +447,22 @@ test("合同签前文件工作台保留授权组合、关联重试与唯一提�
       parties: [],
       bills: [],
       paymentTerms: { originalText: "", stages: [] },
-      checkpoints: [],
+      draft: {},
+      attachments: [],
+      lease: {
+        state: "available",
+        holderDisplayName: null,
+        expiresAt: null,
+        canTakeOver: false
+      },
+      settlementMode: {
+        value: "settlement_required",
+        source: "contract_director",
+        confirmedAt: "2026-07-17T05:00:00.000Z",
+        confirmedByUserId: "contract-director-1",
+        confirmationRequired: false,
+        canConfirm: false
+      },
       documents: [{
         id: "document-current",
         purpose: "draft",
@@ -495,11 +590,21 @@ test("合同签前文件工作台保留授权组合、关联重试与唯一提�
       body: JSON.stringify({ ready: true, blocking: [], warnings: [] })
     });
   });
-  await page.route("**/api/contracts/version-governed/approval-submission", async (route) => {
+  await page.route("**/api/contract-drafts/version-governed/submission", async (route) => {
     requestOrder.push("submit");
     approvalSubmissions += 1;
     await new Promise((resolve) => setTimeout(resolve, 120));
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ status: "approval_pending" }) });
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        contractVersionId: "version-governed",
+        approvalInstanceId: "approval-governed-1",
+        status: "in_approval",
+        formalCode: "HT-2026-GOV-001",
+        draftRevision: revision,
+        firstSubmittedAt: new Date().toISOString()
+      })
+    });
   });
   await page.route("**/api/contracts/contract-governed", (route) => route.fulfill({
     contentType: "application/json",
@@ -510,17 +615,18 @@ test("合同签前文件工作台保留授权组合、关联重试与唯一提�
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("E2e@2026");
   await page.getByRole("button", { name: "登录" }).click();
-  await page.goto("/contracts/contract-governed/workbench");
-  await page.locator(".business-tabs").getByText("信息", { exact: true }).click();
+  await page.goto("/contracts/contract-governed/workbench?versionId=version-governed");
+  await page.locator('[data-section-nav-id="basic"]').click();
   await page.getByPlaceholder("请输入合同名称").fill("建材采购合同（送审稿）");
-  await page.locator(".business-tabs").getByText("文档", { exact: true }).click();
+  await page.locator('[data-section-nav-id="attachments"]').click();
 
   await expect(page.getByText("尚未选择", { exact: true })).toHaveCount(2);
   const units = page.locator(".authorization-unit");
+  await page.getByRole("button", { name: "保存草稿", exact: true }).click();
   await firstSaveStarted;
   await units.nth(0).getByText("不需要授权委托书", { exact: true }).click();
   expect(requestOrder.filter((item) => item === "save")).toHaveLength(1);
-  await expect(page.getByRole("button", { name: "保存", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "保存草稿", exact: true })).toBeDisabled();
   releaseFirstSave();
   await expect(units.nth(0).getByText("已确认不需要", { exact: true })).toBeVisible();
   await units.nth(1).getByText("不需要授权委托书", { exact: true }).click();
@@ -624,11 +730,9 @@ test("合同签前文件工作台保留授权组合、关联重试与唯一提�
 });
 
 test("手工金额可编辑且小型清单可直接新增行", async ({ page }, testInfo) => {
-  let savedDraftBody: Record<string, unknown> | null = null;
-  let addedRowBody: Record<string, unknown> | null = null;
+  const savedDraftBodies: Array<Record<string, unknown>> = [];
+  let draftRevision = 4;
   let billRevision = 1;
-  let billRows: Array<Record<string, unknown>> = [];
-  let workbenchReadCount = 0;
 
   await page.route("**/api/auth/login", (route) =>
     route.fulfill({
@@ -675,49 +779,75 @@ test("手工金额可编辑且小型清单可直接新增行", async ({ page }, 
   await page.route("**/api/contract-layout-templates*", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" })
   );
+  await page.route("**/api/standard-clauses*", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
+  await page.route("**/api/company-entities*", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
   await page.route("**/api/contract-workbench/version-edit/negotiation-rounds", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" })
   );
-  await page.route("**/api/contract-workbench/version-edit", async (route) => {
-    savedDraftBody = route.request().postDataJSON() as Record<string, unknown>;
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ version: { id: "version-edit", draftRevision: 4 } })
-    });
-  });
-  await page.route("**/api/contract-bills/bill-1/rows", async (route) => {
-    addedRowBody = route.request().postDataJSON() as Record<string, unknown>;
-    billRevision += 1;
-    billRows = [
-      {
-        rowKey: "row-1",
-        itemName: addedRowBody.itemName,
-        specification: addedRowBody.specification,
-        unit: addedRowBody.unit,
-        quantity: addedRowBody.quantity,
-        unitPrice: addedRowBody.unitPrice,
-        taxRatePercent: addedRowBody.taxRatePercent,
-        customData: addedRowBody.customData
-      }
-    ];
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ row: billRows[0], billRevision })
-    });
-  });
-  await page.route("**/api/contract-workbench/contract-edit", (route) => {
-    workbenchReadCount += 1;
-    const manualAmountCents =
-      typeof savedDraftBody?.manualAmountCents === "string"
-        ? savedDraftBody.manualAmountCents
-        : "0";
+  await page.route("**/api/contract-drafts/version-edit/edit-lease**", (route) => {
+    if (route.request().method() === "DELETE") {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ released: true })
+      });
+    }
     return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        token: "lease-token-edit",
+        leaseRevision: 1,
+        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+        heartbeatIntervalMs: 60_000
+      })
+    });
+  });
+  await page.route("**/api/contract-drafts/version-edit/preview-generation", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ queued: true })
+    })
+  );
+  await page.route("**/api/contract-drafts/version-edit", async (route) => {
+    if (route.request().method() !== "PUT") return route.fallback();
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    savedDraftBodies.push(body);
+    draftRevision += 1;
+    const billRevisions =
+      Array.isArray(body.bills) && body.bills.length > 0
+        ? { labor: ++billRevision }
+        : {};
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        contractVersionId: "version-edit",
+        draftRevision,
+        savedAt: new Date().toISOString(),
+        effectiveChangedSections: body.changedSections,
+        amounts: {
+          taxInclusiveAmountCents: "12345678",
+          taxExclusiveAmountCents: "11986000",
+          taxAmountCents: "359678"
+        },
+        billRevisions,
+        issueCounts: {},
+        readiness: { ready: false, blockingMessages: [], warningMessages: [] },
+        documentsOutdated: true,
+        availableActions: []
+      })
+    });
+  });
+  await page.route("**/api/contract-drafts/version-edit/workbench", (route) =>
+    route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         contract: {
           id: "contract-edit",
           temporaryCode: "草稿-20260714-0001",
-          code: null,
+          code: "HT-2026-EDIT-001",
           projectId: "project-1",
           contractTypeKey: "labor_subcontract",
           ownerUserId: "contract-staff-1",
@@ -728,11 +858,11 @@ test("手工金额可编辑且小型清单可直接新增行", async ({ page }, 
           versionNo: 1,
           status: "draft",
           changeType: "original",
-          draftRevision: 4,
-          amountCents: manualAmountCents,
+          draftRevision,
+          amountCents: "0",
           pricingNature: "fixed_total",
           amountSource: "manual",
-          manualAmountCents,
+          manualAmountCents: "0",
           taxFacts: {
             invoiceType: "vat_special",
             taxMode: "single_rate",
@@ -769,16 +899,31 @@ test("手工金额可编辑且小型清单可直接新增行", async ({ page }, 
             schemaSnapshot: {
               columns: [{ key: "workContent", label: "工作内容", required: true }]
             },
-            rows: billRows
+            rows: []
           }
         ],
         paymentTerms: { originalText: "", stages: [] },
-        checkpoints: [],
+        draft: {},
+        attachments: [],
+        lease: {
+          state: "available",
+          holderDisplayName: null,
+          expiresAt: null,
+          canTakeOver: false
+        },
+        settlementMode: {
+          value: "settlement_required",
+          source: "contract_director",
+          confirmedAt: "2026-07-28T00:00:00.000Z",
+          confirmedByUserId: "contract-director-1",
+          confirmationRequired: false,
+          canConfirm: false
+        },
         documents: [],
         readiness: { ready: false, blockingMessages: [], warningMessages: [] }
       })
-    });
-  });
+    })
+  );
 
   await page.goto("/login");
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
@@ -786,15 +931,15 @@ test("手工金额可编辑且小型清单可直接新增行", async ({ page }, 
   await page.getByRole("button", { name: "登录" }).click();
 
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/contracts/contract-edit/workbench");
-  await page.locator(".business-tabs").getByText("计价", { exact: true }).click();
+  await page.goto("/contracts/contract-edit/workbench?versionId=version-edit");
+  await page.locator('[data-section-nav-id="bill_tax"]').click();
 
   const manualAmount = page.getByPlaceholder("请输入含税合同总价");
   await manualAmount.fill("123456.78");
   await expect(manualAmount).toHaveValue("123456.78");
-  await page.getByRole("button", { name: "保存", exact: true }).first().click();
-  await expect.poll(() => savedDraftBody?.manualAmountCents).toBe("12345678");
-  expect(savedDraftBody).toMatchObject({
+  await page.getByRole("button", { name: "保存草稿", exact: true }).click();
+  await expect.poll(() => savedDraftBodies.length).toBe(1);
+  expect(savedDraftBodies[0]?.draft).toMatchObject({
     pricingNature: "fixed_total",
     amountSource: "manual",
     manualAmountCents: "12345678"
@@ -817,40 +962,42 @@ test("手工金额可编辑且小型清单可直接新增行", async ({ page }, 
   }
 
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.locator(".business-tabs").getByText("清单", { exact: true }).click();
-  await page.getByRole("button", { name: "新增行", exact: true }).click();
-  expect(addedRowBody).toBeNull();
-  await expect(page.getByText("已新增空白行，请填写后保存", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "放大编辑", exact: true }).click();
+  await page.setViewportSize({ width: 430, height: 932 });
+  await page.getByTestId("bill-add-row").click();
 
-  const newRow = page.locator(".bill-table tbody tr").last();
-  const inputs = newRow.locator("input");
-  await inputs.nth(0).fill("临建围挡");
-  await inputs.nth(1).fill("高2.5米");
-  await inputs.nth(2).fill("米");
-  await inputs.nth(3).fill("120");
-  await inputs.nth(4).fill("85.50");
-  await expect(inputs.nth(5)).toBeDisabled();
-  await expect(inputs.nth(5)).toHaveValue("继承合同税率（3%）");
-  await inputs.nth(6).fill("现场制作安装");
-  await newRow.getByRole("button", { name: "保存", exact: true }).click();
+  const newRow = page.locator(".contract-bill-grid__card").last();
+  await newRow.locator('[data-field="itemName"] input').fill("临建围挡");
+  await newRow.locator('[data-field="specification"] input').fill("高2.5米");
+  await newRow.locator('[data-field="unit"] input').fill("米");
+  await newRow.locator('[data-field="quantity"] input').fill("120");
+  await newRow.locator('[data-field="unitPrice"] input').fill("85.50");
+  await expect(newRow.locator('[data-field="taxRatePercent"] input')).toBeDisabled();
+  await expect(newRow.locator('[data-field="taxRatePercent"] input')).toHaveValue(
+    "继承合同税率（3%）"
+  );
+  await newRow.locator('[data-field="workContent"] input').fill("现场制作安装");
+  await page.getByRole("button", { name: "保存草稿", exact: true }).click();
 
-  await expect.poll(() => addedRowBody).not.toBeNull();
-  expect(addedRowBody).toMatchObject({
-    expectedBillRevision: 1,
-    itemName: "临建围挡",
-    specification: "高2.5米",
-    unit: "米",
-    quantity: "120",
-    unitPrice: "85.50",
-    taxRatePercent: "3",
-    taxRateSource: "version_default",
-    customData: { workContent: "现场制作安装" }
-  });
-  await expect(page.locator(".bill-table tbody tr").last().locator("input").nth(0)).toHaveValue("临建围挡");
-  await expect.poll(() => workbenchReadCount).toBeGreaterThanOrEqual(2);
-  await page.locator(".table-wrap").evaluate((element) => {
-    element.scrollLeft = 0;
-  });
+  await expect.poll(() => savedDraftBodies.length).toBe(2);
+  expect(savedDraftBodies[1]?.bills).toMatchObject([
+    {
+      billKey: "labor",
+      expectedRevision: 2,
+      rows: [
+        {
+          itemName: "临建围挡",
+          specification: "高2.5米",
+          unit: "米",
+          quantity: "120",
+          unitPrice: "85.50",
+          taxRateSource: "version_default",
+          customData: { workContent: "现场制作安装" }
+        }
+      ]
+    }
+  ]);
+  await expect(newRow.locator('[data-field="itemName"] input')).toHaveValue("临建围挡");
   for (const viewport of responsiveViewports) {
     await page.setViewportSize(viewport);
     await expectNoDocumentHorizontalOverflow(page);
@@ -867,6 +1014,7 @@ test("手工金额可编辑且小型清单可直接新增行", async ({ page }, 
 
 test("稳定展示固定总价、多税率和无限额框架计价场景", async ({ page }, testInfo) => {
   test.setTimeout(60_000);
+  const loadedVersionIds: string[] = [];
   const workbenches: Record<string, Record<string, unknown>> = {
     "contract-fixed": scenarioWorkbench({
       id: "contract-fixed",
@@ -898,6 +1046,7 @@ test("稳定展示固定总价、多税率和无限额框架计价场景", async
           rows: [
             {
               rowKey: "row-multi",
+              sortOrder: 1,
               itemName: "安装服务",
               specification: "现场安装",
               unit: "项",
@@ -929,6 +1078,7 @@ test("稳定展示固定总价、多税率和无限额框架计价场景", async
           rows: [
             {
               rowKey: "row-framework",
+              sortOrder: 1,
               itemName: "挖掘机租赁",
               specification: "200 型",
               unit: "台班",
@@ -944,7 +1094,10 @@ test("稳定展示固定总价、多税率和无限额框架计价场景", async
     })
   };
 
-  await page.route("**/api/auth/login", (route) =>
+  await page.context().route("**/api/contract-number-rules", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
+  await page.context().route("**/api/auth/login", (route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -960,7 +1113,7 @@ test("稳定展示固定总价、多税率和无限额框架计价场景", async
       })
     })
   );
-  await page.route("**/api/me/work-items", (route) =>
+  await page.context().route("**/api/me/work-items", (route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -977,24 +1130,49 @@ test("稳定展示固定总价、多税率和无限额框架计价场景", async
       })
     })
   );
-  await page.route("**/api/projects/contract-create-options", (route) =>
+  await page.context().route("**/api/projects/contract-create-options", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" })
   );
-  await page.route("**/api/approval-delegations/user-options", (route) =>
+  await page.context().route("**/api/approval-delegations/user-options", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" })
   );
-  await page.route("**/api/contract-templates*", (route) =>
+  await page.context().route("**/api/contract-templates*", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" })
   );
-  await page.route("**/api/contract-layout-templates*", (route) =>
+  await page.context().route("**/api/contract-layout-templates*", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" })
   );
-  await page.route("**/api/contract-workbench/**", (route) => {
-    const parts = new URL(route.request().url()).pathname.split("/");
-    const key = parts.at(-1) ?? "";
-    if (key === "negotiation-rounds") {
-      return route.fulfill({ contentType: "application/json", body: "[]" });
+  await page.context().route("**/api/standard-clauses*", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
+  await page.context().route("**/api/company-entities*", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
+  await page.context().route("**/api/contract-workbench/**/negotiation-rounds", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
+  await page.context().route("**/api/contract-drafts/*/edit-lease**", (route) => {
+    if (route.request().method() === "DELETE") {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ released: true })
+      });
     }
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        token: "lease-token-scenario",
+        leaseRevision: 1,
+        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+        heartbeatIntervalMs: 60_000
+      })
+    });
+  });
+  await page.context().route("**/api/contract-drafts/*/workbench", (route) => {
+    const parts = new URL(route.request().url()).pathname.split("/");
+    const versionId = parts.at(-2) ?? "";
+    loadedVersionIds.push(versionId);
+    const key = versionId.replace(/^version-/u, "");
     const body = workbenches[key];
     return route.fulfill({
       status: body ? 200 : 404,
@@ -1009,8 +1187,8 @@ test("稳定展示固定总价、多税率和无限额框架计价场景", async
   await page.getByRole("button", { name: "登录" }).click();
   const screenshotDir = process.env.CONTRACT_WORKBENCH_FIX_SCREENSHOT_DIR ?? testInfo.outputDir;
 
-  await page.goto("/contracts/contract-fixed/workbench");
-  await page.locator(".business-tabs").getByText("计价", { exact: true }).click();
+  await page.goto("/contracts/contract-fixed/workbench?versionId=version-contract-fixed");
+  await page.locator('[data-section-nav-id="bill_tax"]').click();
   await expect(page.getByPlaceholder("请输入含税合同总价")).toHaveValue("500000.00");
   await expectNoDocumentHorizontalOverflow(page);
   await page.screenshot({
@@ -1018,28 +1196,59 @@ test("稳定展示固定总价、多税率和无限额框架计价场景", async
     fullPage: true
   });
 
-  await page.goto("/contracts/contract-multi/workbench");
-  await page.locator(".business-tabs").getByText("计价", { exact: true }).click();
-  await expect(page.getByPlaceholder("选择计税模式")).toHaveValue("特殊多税率");
-  await page.locator(".business-tabs").getByText("清单", { exact: true }).click();
-  await expect(page.getByPlaceholder("例外税率%")).toHaveValue("9");
-  await expectNoDocumentHorizontalOverflow(page);
-  await page.screenshot({
-    path: path.join(screenshotDir, "contract-workbench-multiple-rate-1440x900.png"),
+  const multiPage = await page.context().newPage();
+  await multiPage.goto("/login");
+  await multiPage.evaluate(() => localStorage.removeItem("jiangkong-web-admin-auth"));
+  await multiPage.goto("/login");
+  await multiPage.getByPlaceholder("请输入手机号").fill("13900000000");
+  await multiPage.getByPlaceholder("请输入密码").fill("E2e@2026");
+  await multiPage.getByRole("button", { name: "登录" }).click();
+  await multiPage.goto("/contracts/contract-multi/workbench?versionId=version-contract-multi");
+  await expect.poll(() => loadedVersionIds.at(-1)).toBe("version-contract-multi");
+  await expect(multiPage.getByRole("heading", { name: "多税率材料采购合同" })).toBeVisible();
+  await multiPage.locator('[data-section-nav-id="bill_tax"]').click();
+  await expect(multiPage.getByPlaceholder("选择计税模式")).toHaveValue("特殊多税率");
+  await multiPage.getByRole("button", { name: "放大编辑", exact: true }).click();
+  await multiPage.setViewportSize({ width: 430, height: 932 });
+  await expect(
+    multiPage
+      .locator(".contract-bill-grid__card")
+      .first()
+      .locator('[data-field="taxRatePercent"] input')
+  ).toHaveValue("9");
+  await expectNoDocumentHorizontalOverflow(multiPage);
+  await multiPage.screenshot({
+    path: path.join(screenshotDir, "contract-workbench-multiple-rate-430x932.png"),
     fullPage: true
   });
 
-  await page.goto("/contracts/contract-framework/workbench");
-  await page.locator(".business-tabs").getByText("计价", { exact: true }).click();
+  const frameworkPage = await page.context().newPage();
+  await frameworkPage.goto("/login");
+  await frameworkPage.evaluate(() => localStorage.removeItem("jiangkong-web-admin-auth"));
+  await frameworkPage.goto("/login");
+  await frameworkPage.getByPlaceholder("请输入手机号").fill("13900000000");
+  await frameworkPage.getByPlaceholder("请输入密码").fill("E2e@2026");
+  await frameworkPage.getByRole("button", { name: "登录" }).click();
+  await frameworkPage.setViewportSize({ width: 1440, height: 900 });
+  await frameworkPage.goto(
+    "/contracts/contract-framework/workbench?versionId=version-contract-framework"
+  );
+  await frameworkPage.locator('[data-section-nav-id="bill_tax"]').click();
   await expect(
-    page.getByText("不设合同总价；按实际发生量结算", { exact: true })
+    frameworkPage.getByText("不设合同总价；按实际发生量结算", { exact: true })
   ).toBeVisible();
-  await page.locator(".business-tabs").getByText("清单", { exact: true }).click();
-  await expect(page.getByText("预计含税合计", { exact: true })).toBeVisible();
-  await expect(page.locator(".bill-table tbody tr").first().locator("input").nth(3)).toHaveValue("");
-  await expectNoDocumentHorizontalOverflow(page);
-  await page.screenshot({
-    path: path.join(screenshotDir, "contract-workbench-unlimited-framework-1440x900.png"),
+  await frameworkPage.getByRole("button", { name: "放大编辑", exact: true }).click();
+  await frameworkPage.setViewportSize({ width: 430, height: 932 });
+  await expect(frameworkPage.getByText("上次保存含税合计", { exact: false })).toBeVisible();
+  await expect(
+    frameworkPage
+      .locator(".contract-bill-grid__card")
+      .first()
+      .locator('[data-field="quantity"] input')
+  ).toHaveValue("");
+  await expectNoDocumentHorizontalOverflow(frameworkPage);
+  await frameworkPage.screenshot({
+    path: path.join(screenshotDir, "contract-workbench-unlimited-framework-430x932.png"),
     fullPage: true
   });
 });
@@ -1060,7 +1269,7 @@ function scenarioWorkbench(input: {
     contract: {
       id: input.id,
       temporaryCode: `草稿-${input.id}`,
-      code: null,
+      code: `HT-${input.id}`,
       projectId: "project-1",
       contractTypeKey: "general_contract",
       ownerUserId: "contract-staff-1",
@@ -1099,7 +1308,22 @@ function scenarioWorkbench(input: {
     parties: [],
     bills: input.bills,
     paymentTerms: { originalText: "", stages: [] },
-    checkpoints: [],
+    draft: {},
+    attachments: [],
+    lease: {
+      state: "available",
+      holderDisplayName: null,
+      expiresAt: null,
+      canTakeOver: false
+    },
+    settlementMode: {
+      value: "settlement_required",
+      source: "contract_director",
+      confirmedAt: "2026-07-28T00:00:00.000Z",
+      confirmedByUserId: "contract-director-1",
+      confirmationRequired: false,
+      canConfirm: false
+    },
     documents: [],
     readiness: { ready: false, blockingMessages: [], warningMessages: [] }
   };
