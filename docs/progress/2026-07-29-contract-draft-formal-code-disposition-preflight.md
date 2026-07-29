@@ -136,12 +136,16 @@ FORMAL_CODE_ALLOCATED_BEFORE_SUBMISSION
 
 ## 后续授权门
 
-继续 Task 6 至少需要分别明确：
+2026-07-30 用户已明确选择 B/void，并授权推送、`main` fast-forward、生产
+checkout 更新和该单条业务写入；处置已完成，详细收据见
+`docs/progress/2026-07-30-contract-draft-formal-code-void-production-receipt.md`。
 
-1. 合同部选择 A、B 或 C；
-2. 是否允许推送新脚本候选并 fast-forward `main` 与生产 checkout；
-3. 若选 A/B，是否允许对这一个精确版本执行对应处置业务写入；
-4. 处置后重新生成生产只读报告；
-5. 报告变为全量 `ready` 后，另行授权维护窗口与 transition apply。
+以下门已完成：
 
-本文件不构成上述任何授权。
+1. 合同部选择 B/void；
+2. 推送新脚本候选并 fast-forward `main` 与生产 checkout；
+3. 对精确版本执行单条 void 业务写入；
+4. 处置后重新生成生产只读报告并取得全量 `ready`。
+
+尚未完成且仍需独立授权：维护窗口与 transition apply。本次 B/void 授权不构成
+transition、retention、真实合同提交或物理删除授权。
