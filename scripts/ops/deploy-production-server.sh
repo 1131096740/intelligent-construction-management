@@ -5,6 +5,11 @@ REPO_ROOT="${REPO_ROOT_OVERRIDE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && 
 API_RUNTIME_DIR="${API_RUNTIME_DIR:-/srv/jiangkong/apps/api}"
 WEB_RUNTIME_DIR="${WEB_RUNTIME_DIR:-/srv/jiangkong/apps/web-admin}"
 DEPLOY_SCOPE="${DEPLOY_SCOPE:-full}"
+DEPLOY_CONFIRMATION_MODE="${DEPLOY_CONFIRMATION_MODE:-immediate}"
+DEPLOY_CONFIRMATION_DIR="${DEPLOY_CONFIRMATION_DIR:-/run/jiangkong-deploy}"
+DEPLOY_CONFIRMATION_FILE="${DEPLOY_CONFIRMATION_FILE:-}"
+DEPLOY_CONFIRMATION_TIMEOUT_SECONDS="${DEPLOY_CONFIRMATION_TIMEOUT_SECONDS:-1800}"
+CANDIDATE_SHA_CONFIRMATION="${CANDIDATE_SHA_CONFIRMATION:-}"
 API_ENV_FILE="${API_ENV_FILE:-/etc/jiangkong/api.env}"
 API_SERVICE="${API_SERVICE:-jiangkong-api}"
 BACKUP_DIR="${BACKUP_DIR:-/srv/jiangkong-backups/db}"
@@ -41,6 +46,22 @@ case "$DEPLOY_SCOPE" in
     ;;
 esac
 echo "Deployment scope: $DEPLOY_SCOPE"
+
+case "$DEPLOY_CONFIRMATION_MODE" in
+  immediate | manual)
+    ;;
+  *)
+    echo "DEPLOY_CONFIRMATION_MODE must be immediate or manual" >&2
+    exit 1
+    ;;
+esac
+
+if [[ "$DEPLOY_CONFIRMATION_MODE" == manual ]] &&
+  { [[ ! "$DEPLOY_CONFIRMATION_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] ||
+    (( DEPLOY_CONFIRMATION_TIMEOUT_SECONDS > 3600 )); }; then
+  echo "DEPLOY_CONFIRMATION_TIMEOUT_SECONDS must be an integer from 1 to 3600" >&2
+  exit 1
+fi
 
 if [[ -z "${REPO_ROOT_OVERRIDE:-}" ]]; then
   BACKUP_SCRIPT="$REPO_ROOT/scripts/ops/db-backup.sh"
@@ -152,6 +173,56 @@ wait_for_health() {
   return 1
 }
 
+await_deployment_confirmation() {
+  if [[ "$DEPLOY_CONFIRMATION_MODE" == immediate ]]; then
+    return 0
+  fi
+
+  local elapsed=0
+  local interval=2
+  local decision=""
+  echo "Deployment is healthy and awaiting an explicit smoke-test decision."
+  echo "Decision file: $DEPLOY_CONFIRMATION_FILE"
+  echo "Expected content: CONFIRM $CANDIDATE_SHA_CONFIRMATION or ROLLBACK $CANDIDATE_SHA_CONFIRMATION"
+
+  while (( elapsed <= DEPLOY_CONFIRMATION_TIMEOUT_SECONDS )); do
+    if sudo --non-interactive test -f "$DEPLOY_CONFIRMATION_FILE"; then
+      if sudo --non-interactive test -L "$DEPLOY_CONFIRMATION_FILE"; then
+        echo "Deployment decision file must not be a symbolic link" >&2
+        return 1
+      fi
+      decision="$(sudo --non-interactive cat "$DEPLOY_CONFIRMATION_FILE")"
+      sudo --non-interactive rm -f "$DEPLOY_CONFIRMATION_FILE"
+      case "$decision" in
+        "CONFIRM $CANDIDATE_SHA_CONFIRMATION")
+          echo "Deployment confirmed after the smoke-test window."
+          return 0
+          ;;
+        "ROLLBACK $CANDIDATE_SHA_CONFIRMATION")
+          echo "Deployment rollback requested after the smoke-test window." >&2
+          return 1
+          ;;
+        *)
+          echo "Deployment decision content is invalid; starting runtime recovery" >&2
+          return 1
+          ;;
+      esac
+    fi
+
+    if (( elapsed == DEPLOY_CONFIRMATION_TIMEOUT_SECONDS )); then
+      break
+    fi
+    if (( DEPLOY_CONFIRMATION_TIMEOUT_SECONDS - elapsed < interval )); then
+      interval=$((DEPLOY_CONFIRMATION_TIMEOUT_SECONDS - elapsed))
+    fi
+    sleep "$interval"
+    elapsed=$((elapsed + interval))
+  done
+
+  echo "Deployment confirmation timed out; starting runtime recovery" >&2
+  return 1
+}
+
 cleanup() {
   local exit_code=$?
   local recovery_failed=false
@@ -205,6 +276,37 @@ cleanup() {
 trap cleanup EXIT
 
 cd "$REPO_ROOT"
+
+if [[ ! "$CANDIDATE_SHA_CONFIRMATION" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "CANDIDATE_SHA_CONFIRMATION must be the approved 40-character lowercase SHA" >&2
+  exit 1
+fi
+actual_candidate_sha="$(git rev-parse HEAD)"
+if [[ "$actual_candidate_sha" != "$CANDIDATE_SHA_CONFIRMATION" ]]; then
+  echo "CANDIDATE_SHA_CONFIRMATION does not match the checked out HEAD" >&2
+  exit 1
+fi
+if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
+  echo "Candidate worktree must be clean before production deployment" >&2
+  exit 1
+fi
+
+if [[ "$DEPLOY_CONFIRMATION_MODE" == manual ]]; then
+  if [[ "$DEPLOY_CONFIRMATION_DIR" != /* ]] ||
+    [[ -L "$DEPLOY_CONFIRMATION_DIR" ]]; then
+    echo "DEPLOY_CONFIRMATION_DIR must be an absolute non-symbolic-link directory" >&2
+    exit 1
+  fi
+  sudo --non-interactive install -d -m 0750 "$DEPLOY_CONFIRMATION_DIR"
+  DEPLOY_CONFIRMATION_FILE="${DEPLOY_CONFIRMATION_FILE:-$DEPLOY_CONFIRMATION_DIR/$CANDIDATE_SHA_CONFIRMATION.decision}"
+  if [[ "$(dirname -- "$DEPLOY_CONFIRMATION_FILE")" != "$DEPLOY_CONFIRMATION_DIR" ]] ||
+    [[ -e "$DEPLOY_CONFIRMATION_FILE" ]] ||
+    [[ -L "$DEPLOY_CONFIRMATION_FILE" ]] ||
+    sudo --non-interactive test -e "$DEPLOY_CONFIRMATION_FILE"; then
+    echo "Deployment decision file must be absent and inside DEPLOY_CONFIRMATION_DIR" >&2
+    exit 1
+  fi
+fi
 
 if [[ -L "$API_RUNTIME_DIR" ]] || { [[ "$DEPLOY_WEB" == true ]] && [[ -L "$WEB_RUNTIME_DIR" ]]; }; then
   echo "selected production runtime directories must not be symbolic links" >&2
@@ -283,6 +385,10 @@ fi
 
 LOG_SINCE="2 minutes ago" \
   "$RUNTIME_HEALTH_SCRIPT"
+
+if ! await_deployment_confirmation; then
+  exit 1
+fi
 
 install_draft_retention_units
 

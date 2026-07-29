@@ -233,6 +233,14 @@ FAKE
 
 cat > "$FAKE_BIN/sleep" <<'FAKE'
 #!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${FAKE_DEPLOY_CONFIRMATION_FILE:-}" ]] &&
+  [[ ! -e "$FAKE_DEPLOY_CONFIRMATION_FILE" ]]; then
+  printf '%s %s\n' \
+    "${FAKE_DEPLOY_CONFIRMATION_ACTION:-CONFIRM}" \
+    "${CANDIDATE_SHA_CONFIRMATION:?}" \
+    > "$FAKE_DEPLOY_CONFIRMATION_FILE"
+fi
 exit 0
 FAKE
 
@@ -672,8 +680,11 @@ HEALTH
 run_deploy_fixture() {
   local fixture=$1
   shift
+  local candidate_sha=0123456789abcdef0123456789abcdef01234567
   PATH="$FAKE_BIN:$PATH" \
     FAKE_LOG="$FAKE_LOG" \
+    FAKE_GIT_HEAD="$candidate_sha" \
+    CANDIDATE_SHA_CONFIRMATION="$candidate_sha" \
     REPO_ROOT_OVERRIDE="$fixture/repo" \
     API_RUNTIME_DIR="$fixture/runtime/api" \
     WEB_RUNTIME_DIR="$fixture/runtime/web-admin" \
@@ -732,6 +743,17 @@ if [[ -s "$FAKE_LOG" ]]; then
   fail "deployment performed work before rejecting an unknown deployment scope"
 fi
 
+invalid_candidate_fixture="$TEST_ROOT/deploy-invalid-candidate"
+make_deploy_fixture "$invalid_candidate_fixture"
+: > "$FAKE_LOG"
+if run_deploy_fixture "$invalid_candidate_fixture" \
+  env CANDIDATE_SHA_CONFIRMATION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa >/dev/null 2>&1; then
+  fail "deployment must reject a candidate SHA that does not match HEAD"
+fi
+if grep -Eq '^(pnpm|flock|systemctl stop|pg_dump|rsync) ' "$FAKE_LOG"; then
+  fail "deployment performed work before rejecting the candidate SHA"
+fi
+
 api_only_fixture="$TEST_ROOT/deploy-api-only"
 make_deploy_fixture "$api_only_fixture"
 : > "$FAKE_LOG"
@@ -763,6 +785,79 @@ fi
   fail "API-only recovery changed the Web runtime"
 if grep -Fq "$api_only_health_failure_fixture/runtime/web-admin" "$FAKE_LOG"; then
   fail "API-only recovery touched the Web runtime"
+fi
+
+manual_confirmation_fixture="$TEST_ROOT/deploy-manual-confirmation"
+make_deploy_fixture "$manual_confirmation_fixture"
+manual_confirmation_file="$manual_confirmation_fixture/decision"
+: > "$FAKE_LOG"
+run_deploy_fixture "$manual_confirmation_fixture" env \
+  DEPLOY_CONFIRMATION_MODE=manual \
+  DEPLOY_CONFIRMATION_DIR="$manual_confirmation_fixture" \
+  DEPLOY_CONFIRMATION_FILE="$manual_confirmation_file" \
+  DEPLOY_CONFIRMATION_TIMEOUT_SECONDS=2 \
+  FAKE_DEPLOY_CONFIRMATION_FILE="$manual_confirmation_file" \
+  FAKE_DEPLOY_CONFIRMATION_ACTION=CONFIRM \
+  FAKE_RUNTIME_HEALTH_ALLOW_NEW=true >/dev/null 2>&1
+[[ "$(< "$manual_confirmation_fixture/runtime/api/dist/release.txt")" == new-api-release ]] ||
+  fail "manually confirmed deployment did not keep the new API runtime"
+[[ "$(< "$manual_confirmation_fixture/runtime/web-admin/dist/release.txt")" == new-web-release ]] ||
+  fail "manually confirmed deployment did not keep the new Web runtime"
+[[ ! -e "$manual_confirmation_file" ]] ||
+  fail "manual confirmation marker was not removed"
+
+manual_rollback_fixture="$TEST_ROOT/deploy-manual-rollback"
+make_deploy_fixture "$manual_rollback_fixture"
+manual_rollback_file="$manual_rollback_fixture/decision"
+: > "$FAKE_LOG"
+if run_deploy_fixture "$manual_rollback_fixture" env \
+  DEPLOY_CONFIRMATION_MODE=manual \
+  DEPLOY_CONFIRMATION_DIR="$manual_rollback_fixture" \
+  DEPLOY_CONFIRMATION_FILE="$manual_rollback_file" \
+  DEPLOY_CONFIRMATION_TIMEOUT_SECONDS=2 \
+  FAKE_DEPLOY_CONFIRMATION_FILE="$manual_rollback_file" \
+  FAKE_DEPLOY_CONFIRMATION_ACTION=ROLLBACK \
+  FAKE_RUNTIME_HEALTH_ALLOW_NEW=true >/dev/null 2>&1; then
+  fail "manual rollback decision must fail the deployment"
+fi
+[[ "$(< "$manual_rollback_fixture/runtime/api/dist/release.txt")" == old-api ]] ||
+  fail "manual rollback did not restore the API runtime"
+[[ "$(< "$manual_rollback_fixture/runtime/web-admin/dist/release.txt")" == old-web ]] ||
+  fail "manual rollback did not restore the Web runtime"
+[[ ! -e "$manual_rollback_file" ]] ||
+  fail "manual rollback marker was not removed"
+
+manual_timeout_fixture="$TEST_ROOT/deploy-manual-timeout"
+make_deploy_fixture "$manual_timeout_fixture"
+manual_timeout_file="$manual_timeout_fixture/decision"
+: > "$FAKE_LOG"
+if run_deploy_fixture "$manual_timeout_fixture" env \
+  DEPLOY_CONFIRMATION_MODE=manual \
+  DEPLOY_CONFIRMATION_DIR="$manual_timeout_fixture" \
+  DEPLOY_CONFIRMATION_FILE="$manual_timeout_file" \
+  DEPLOY_CONFIRMATION_TIMEOUT_SECONDS=1 \
+  FAKE_RUNTIME_HEALTH_ALLOW_NEW=true >/dev/null 2>&1; then
+  fail "manual confirmation timeout must fail the deployment"
+fi
+[[ "$(< "$manual_timeout_fixture/runtime/api/dist/release.txt")" == old-api ]] ||
+  fail "manual confirmation timeout did not restore the API runtime"
+[[ "$(< "$manual_timeout_fixture/runtime/web-admin/dist/release.txt")" == old-web ]] ||
+  fail "manual confirmation timeout did not restore the Web runtime"
+
+stale_confirmation_fixture="$TEST_ROOT/deploy-stale-confirmation"
+make_deploy_fixture "$stale_confirmation_fixture"
+stale_confirmation_file="$stale_confirmation_fixture/decision"
+printf 'CONFIRM 0123456789abcdef0123456789abcdef01234567\n' \
+  > "$stale_confirmation_file"
+: > "$FAKE_LOG"
+if run_deploy_fixture "$stale_confirmation_fixture" env \
+  DEPLOY_CONFIRMATION_MODE=manual \
+  DEPLOY_CONFIRMATION_DIR="$stale_confirmation_fixture" \
+  DEPLOY_CONFIRMATION_FILE="$stale_confirmation_file" >/dev/null 2>&1; then
+  fail "deployment must reject a stale confirmation marker"
+fi
+if grep -Eq '^(pnpm|flock|systemctl stop|pg_dump|rsync) ' "$FAKE_LOG"; then
+  fail "deployment performed work before rejecting a stale confirmation marker"
 fi
 
 health_failure_fixture="$TEST_ROOT/deploy-health-failure"
