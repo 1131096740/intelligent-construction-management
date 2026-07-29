@@ -393,6 +393,10 @@ model ContractTakeover {
   confirmedAt                           DateTime?
   historicalBalanceConfirmedByUserId    String?
   historicalBalanceConfirmedAt          DateTime?
+  activationIdempotencyKey              String?                @unique
+  activatedAt                           DateTime?
+  activatedByUserId                     String?
+  historicalInitialSettlementId         String?                @unique
   abandonedAt                           DateTime?
   abandonedByUserId                     String?
   abandonReason                         String?
@@ -457,6 +461,183 @@ model ContractTakeoverCorrection {
   @@index([projectId, takeoverId, createdAt])
   @@index([takeoverId])
   @@index([takeoverId, correctionType, status])
+}
+
+model ContractTakeoverContractFacts {
+  takeoverId                String    @id
+  revision                  Int       @default(1)
+  financeBasisRevision      Int       @default(1)
+  signedAt                  DateTime
+  historicalSettledCents    BigInt    @default(0)
+  zeroSettlementDeclared    Boolean   @default(false)
+  performanceStatus         String
+  settlementEvidenceSummary String?
+  paymentTermsSnapshot      Json
+  contractFactsSnapshot     Json
+  confirmedRevision         Int?
+  confirmedByUserId         String?
+  confirmedAt               DateTime?
+  updatedByUserId           String
+  updatedAt                 DateTime  @updatedAt
+}
+
+model ContractTakeoverFinanceFacts {
+  takeoverId                    String    @id
+  revision                      Int       @default(1)
+  basedOnContractRevision       Int
+  basedOnFinanceBasisRevision   Int
+  zeroPaymentDeclared           Boolean   @default(false)
+  excessTreatment               String?
+  excessReason                  String?
+  confirmedRevision             Int?
+  confirmedContractRevision     Int?
+  confirmedFinanceBasisRevision Int?
+  confirmedByUserId             String?
+  confirmedAt                   DateTime?
+  updatedByUserId               String
+  updatedAt                     DateTime  @updatedAt
+}
+
+model ContractTakeoverHistoricalPayment {
+  id            String    @id @default(uuid())
+  takeoverId    String
+  rowKey        String
+  sequenceNo    Int
+  amountCents   BigInt
+  paidAt        DateTime
+  payerName     String?
+  payeeName     String?
+  bankReference String?
+  paymentMethod String?
+  note          String?
+  status        String    @default("draft")
+  activatedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([takeoverId, rowKey])
+  @@unique([takeoverId, sequenceNo])
+  @@index([takeoverId, status])
+}
+
+model ContractTakeoverHistoricalPaymentAllocation {
+  id                  String   @id @default(uuid())
+  historicalPaymentId String
+  allocationType      String
+  amountCents         BigInt
+  allocationOrder     Int
+  createdAt           DateTime @default(now())
+
+  @@unique([historicalPaymentId, allocationOrder])
+  @@index([historicalPaymentId])
+}
+
+model ContractTakeoverHistoricalPaymentVoucher {
+  id                  String   @id @default(uuid())
+  historicalPaymentId String
+  fileId              String   @unique
+  displayOrder        Int
+  uploadedByUserId    String
+  createdAt           DateTime @default(now())
+
+  @@unique([historicalPaymentId, displayOrder])
+  @@index([historicalPaymentId])
+  @@index([uploadedByUserId])
+}
+
+model ContractTakeoverSettlementEvidence {
+  id              String   @id @default(uuid())
+  takeoverId      String
+  fileId          String   @unique
+  displayOrder    Int
+  createdByUserId String
+  createdAt       DateTime @default(now())
+
+  @@unique([takeoverId, displayOrder])
+  @@index([takeoverId])
+  @@index([createdByUserId])
+}
+
+model ContractTakeoverExcessEvidence {
+  id              String   @id @default(uuid())
+  takeoverId      String
+  fileId          String   @unique
+  displayOrder    Int
+  createdByUserId String
+  createdAt       DateTime @default(now())
+
+  @@unique([takeoverId, displayOrder])
+  @@index([takeoverId])
+  @@index([createdByUserId])
+}
+
+model ContractTakeoverSideSaveRequest {
+  idempotencyKey   String   @id
+  takeoverId       String
+  side             String
+  expectedRevision Int
+  resultRevision   Int
+  requestSha256    String
+  responseSnapshot Json
+  createdByUserId  String
+  createdAt        DateTime @default(now())
+  expiresAt        DateTime
+
+  @@index([takeoverId, side, createdAt])
+  @@index([createdByUserId])
+  @@index([expiresAt])
+}
+
+model ContractTakeoverBalanceAccount {
+  id           String   @id @default(uuid())
+  takeoverId   String
+  balanceType  String
+  openingCents BigInt
+  balanceCents BigInt
+  revision     Int      @default(1)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([takeoverId, balanceType])
+  @@index([takeoverId])
+}
+
+model ContractTakeoverBalanceEntry {
+  id                  String   @id @default(uuid())
+  accountId           String
+  entryKind           String
+  amountCents         BigInt
+  settlementId        String?
+  historicalPaymentId String?
+  correctionId        String?
+  reversesEntryId     String?  @unique
+  idempotencyKey      String   @unique
+  createdByUserId     String
+  createdAt           DateTime @default(now())
+
+  @@index([accountId, createdAt])
+  @@index([settlementId])
+  @@index([historicalPaymentId])
+  @@index([correctionId])
+  @@index([createdByUserId])
+}
+
+model ContractTakeoverConfirmationEvent {
+  id                           String   @id @default(uuid())
+  idempotencyKey               String   @unique
+  takeoverId                   String
+  side                         String
+  action                       String
+  revision                     Int
+  observedOtherSideRevision    Int?
+  observedFinanceBasisRevision Int?
+  reason                       String?
+  actorUserId                  String
+  responseSnapshot             Json?
+  createdAt                    DateTime @default(now())
+
+  @@index([takeoverId, side, createdAt])
+  @@index([actorUserId])
 }
 
 model PaymentTermsVersion {
