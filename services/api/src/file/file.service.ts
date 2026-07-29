@@ -1874,12 +1874,16 @@ export class FileService {
           args: unknown
         ): Promise<{ projectId: string; businessType: string } | null>;
       };
+      projectAffiliateCompanyContract?: {
+        findFirst(args: unknown): Promise<{ projectId: string } | null>;
+      };
     };
     const [
       affiliateContractFact,
       affiliateSettlementFact,
       affiliatePaymentFact,
-      affiliateSupplementalEvidence
+      affiliateSupplementalEvidence,
+      affiliateCompanyContract
     ] = await Promise.all([
       affiliateBusinessClients.projectAffiliateContractFact?.findFirst({
         where: {
@@ -1911,9 +1915,20 @@ export class FileService {
       affiliateBusinessClients.projectAffiliateBusinessEvidence?.findFirst({
         where: { fileId: file.id },
         select: { projectId: true, businessType: true }
+      }) ?? null,
+      affiliateBusinessClients.projectAffiliateCompanyContract?.findFirst({
+        where: {
+          OR: [{ fileId: file.id }, { confirmationSignatureFileId: file.id }]
+        },
+        select: { projectId: true }
       }) ?? null
     ]);
-    const affiliateFileAccess = affiliateContractFact
+    const affiliateFileAccess = affiliateCompanyContract
+      ? {
+          projectId: affiliateCompanyContract.projectId,
+          roles: AFFILIATE_CONTRACT_FILE_DOWNLOAD_ROLES
+        }
+      : affiliateContractFact
       ? {
           projectId: affiliateContractFact.projectId,
           roles: AFFILIATE_CONTRACT_FILE_DOWNLOAD_ROLES

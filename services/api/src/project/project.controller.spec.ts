@@ -17,6 +17,8 @@ type ProjectMoneyBodyMethod =
   | "recordAffiliatePaymentFact"
   | "confirmAffiliatePaymentFact"
   | "supplementAffiliateBusinessEvidence"
+  | "recordAffiliateCompanyContract"
+  | "confirmAffiliateCompanyContract"
   | "recordProxyPayment"
   | "recordUpstreamSettlement"
   | "confirmUpstreamSettlement"
@@ -40,6 +42,8 @@ const projectMoneyBodyIndex: Record<ProjectMoneyBodyMethod, number> = {
   recordAffiliatePaymentFact: 2,
   confirmAffiliatePaymentFact: 3,
   supplementAffiliateBusinessEvidence: 3,
+  recordAffiliateCompanyContract: 2,
+  confirmAffiliateCompanyContract: 3,
   recordProxyPayment: 2,
   recordUpstreamSettlement: 2,
   confirmUpstreamSettlement: 3,
@@ -236,6 +240,25 @@ describe("ProjectController authorization wiring", () => {
         fileId: "file-1",
         idempotencyKey: "c22598c5-98ff-4029-98e9-e4920a4b1d5f",
         description: "补充外部盖章合同"
+      }
+    ],
+    [
+      "recordAffiliateCompanyContract",
+      {
+        contractReference: "GL-2026-001",
+        contractName: "项目挂靠管理协议",
+        signedAt: "2026-07-20",
+        rightsObligationsSummary: "双方权利义务摘要",
+        companyEntityId: "company-1",
+        fileId: "file-2",
+        idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4"
+      }
+    ],
+    [
+      "confirmAffiliateCompanyContract",
+      {
+        confirmationPassword: "current-password",
+        confirmationActionId: "6dfbdece-803c-44c5-bf68-edbcf1529ce5"
       }
     ],
     [
@@ -803,6 +826,72 @@ describe("ProjectController authorization wiring", () => {
         ProjectController.prototype.supplementAffiliateBusinessEvidence
       )
     ).toBe("project.affiliate_business_fact.evidence_supplement");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        ProjectController.prototype.recordAffiliateCompanyContract
+      )
+    ).toBe("project.affiliate_company_contract.record");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        ProjectController.prototype.confirmAffiliateCompanyContract
+      )
+    ).toBe("project.affiliate_company_contract.confirm");
+  });
+
+  it("forwards affiliate-company offline contract reads and writes to the dedicated service", async () => {
+    const projects = {};
+    const affiliateBusiness = {};
+    const affiliateCompanyContracts = {
+      list: jest.fn(),
+      record: jest.fn(),
+      confirm: jest.fn()
+    };
+    const controller = new ProjectController(
+      projects as never,
+      affiliateBusiness as never,
+      affiliateCompanyContracts as never
+    );
+    const user = { id: "contract-user-1" } as never;
+    const body = {
+      contractReference: "GL-2026-001",
+      contractName: "项目挂靠管理协议",
+      signedAt: "2026-07-20",
+      rightsObligationsSummary: "双方权利义务摘要",
+      companyEntityId: "company-1",
+      fileId: "file-2",
+      idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4"
+    };
+    const confirmation = {
+      confirmationPassword: "current-password",
+      confirmationActionId: "6dfbdece-803c-44c5-bf68-edbcf1529ce5"
+    };
+
+    await controller.affiliateCompanyContractList("project-1", user);
+    await controller.recordAffiliateCompanyContract("project-1", user, body);
+    await controller.confirmAffiliateCompanyContract(
+      "project-1",
+      "contract-1",
+      user,
+      confirmation
+    );
+
+    expect(affiliateCompanyContracts.list).toHaveBeenCalledWith(
+      "project-1",
+      "contract-user-1"
+    );
+    expect(affiliateCompanyContracts.record).toHaveBeenCalledWith(
+      "project-1",
+      "contract-user-1",
+      body
+    );
+    expect(affiliateCompanyContracts.confirm).toHaveBeenCalledWith(
+      "project-1",
+      "contract-1",
+      "contract-user-1",
+      confirmation
+    );
   });
 
   it("guards project proxy payment recording with finance project role", () => {

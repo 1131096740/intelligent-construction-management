@@ -20,6 +20,7 @@ import { ConfirmProjectUpstreamSettlementDto } from "./dto/confirm-project-upstr
 import { ConfirmProjectUpstreamFundFactDto } from "./dto/confirm-project-upstream-fund-fact.dto";
 import type { CreateProjectDto } from "./dto/create-project.dto";
 import { RecordProjectOwnerContractDto } from "./dto/record-project-owner-contract.dto";
+import { RecordProjectAffiliateCompanyContractDto } from "./dto/record-project-affiliate-company-contract.dto";
 import { RecordProjectAffiliateContractFactDto } from "./dto/record-project-affiliate-contract-fact.dto";
 import { RecordProjectAffiliatePaymentFactDto } from "./dto/record-project-affiliate-payment-fact.dto";
 import { RecordProjectAffiliateSettlementFactDto } from "./dto/record-project-affiliate-settlement-fact.dto";
@@ -35,6 +36,7 @@ import { TerminateProjectFinancingQuotaDto } from "./dto/terminate-project-finan
 import { SupplementProjectAffiliateBusinessEvidenceDto } from "./dto/supplement-project-affiliate-business-evidence.dto";
 import type { UpdateProjectDto } from "./dto/update-project.dto";
 import { ProjectAffiliateBusinessService } from "./project-affiliate-business.service";
+import { ProjectAffiliateCompanyContractService } from "./project-affiliate-company-contract.service";
 import { ProjectService } from "./project.service";
 
 @Controller("projects")
@@ -42,7 +44,9 @@ export class ProjectController {
   constructor(
     private readonly projects: ProjectService,
     @Optional()
-    private readonly affiliateBusiness?: ProjectAffiliateBusinessService
+    private readonly affiliateBusiness?: ProjectAffiliateBusinessService,
+    @Optional()
+    private readonly affiliateCompanyContracts?: ProjectAffiliateCompanyContractService
   ) {}
 
   private affiliateBusinessService(): ProjectAffiliateBusinessService {
@@ -50,6 +54,13 @@ export class ProjectController {
       throw new Error("Affiliate business fact service is not available");
     }
     return this.affiliateBusiness;
+  }
+
+  private affiliateCompanyContractService(): ProjectAffiliateCompanyContractService {
+    if (!this.affiliateCompanyContracts) {
+      throw new Error("Affiliate-company contract service is not available");
+    }
+    return this.affiliateCompanyContracts;
   }
 
   @Post()
@@ -102,6 +113,41 @@ export class ProjectController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.affiliateBusinessService().listFacts(projectId, user.id);
+  }
+
+  @Get(":projectId/affiliate-company-contracts")
+  @RequirePositions(...PROJECT_OVERVIEW_READ_POSITION_KEYS)
+  affiliateCompanyContractList(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.affiliateCompanyContractService().list(projectId, user.id);
+  }
+
+  @Post(":projectId/affiliate-company-contracts")
+  @RequireProjectRole("project.affiliate_company_contract.record")
+  recordAffiliateCompanyContract(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RecordProjectAffiliateCompanyContractDto
+  ) {
+    return this.affiliateCompanyContractService().record(projectId, user.id, body);
+  }
+
+  @Post(":projectId/affiliate-company-contracts/:contractId/confirmation")
+  @RequireProjectRole("project.affiliate_company_contract.confirm")
+  confirmAffiliateCompanyContract(
+    @Param("projectId") projectId: string,
+    @Param("contractId") contractId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ConfirmProjectAffiliateBusinessFactDto
+  ) {
+    return this.affiliateCompanyContractService().confirm(
+      projectId,
+      contractId,
+      user.id,
+      body
+    );
   }
 
   @Post(":projectId/affiliate-assignment")

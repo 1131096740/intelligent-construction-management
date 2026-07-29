@@ -1394,6 +1394,58 @@ export interface ConfirmProjectAffiliateBusinessFactPayload {
   confirmationActionId: string;
 }
 
+export interface ProjectAffiliateCompanyContractReadModel {
+  id: string;
+  projectId: string;
+  contractReference: string;
+  contractName: string;
+  signedAt: string;
+  rightsObligationsSummary: string;
+  affiliateAssignmentId: string;
+  affiliateBusinessPartyVersionId: string;
+  affiliateNameSnapshot: string;
+  affiliateCreditCodeSnapshot: string | null;
+  companyEntityId: string;
+  companyEntityVersionId: string;
+  companyEntityNameSnapshot: string;
+  companyEntityCreditCodeSnapshot: string;
+  companyEntityRegisteredAddressSnapshot: string | null;
+  fileId: string;
+  documentVersion: number;
+  fileContentSha256Snapshot: string;
+  status: "pending_confirm" | "confirmed";
+  recordedByUserId: string;
+  recordedByRoleKey: "contract_staff";
+  confirmedByUserId: string | null;
+  confirmedAt: string | null;
+  confirmationSignatureVersionId: string | null;
+  agreementScope: "affiliate_to_our_company";
+  ownerContractReplacementAllowed: false;
+  ownerReceiptCreated: false;
+  companyApprovalCreated: false;
+  companySealCreated: false;
+  companyPaymentWorkflowCreated: false;
+  affiliateRemittanceRequiresContractSettlement: false;
+  availableActions: Array<"confirm">;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectAffiliateCompanyContractsReadModel {
+  availableActions: Array<"record_affiliate_company_contract">;
+  contracts: ProjectAffiliateCompanyContractReadModel[];
+}
+
+export interface RecordProjectAffiliateCompanyContractPayload {
+  contractReference: string;
+  contractName: string;
+  signedAt: string;
+  rightsObligationsSummary: string;
+  companyEntityId: string;
+  fileId: string;
+  idempotencyKey: string;
+}
+
 export interface SupplementProjectAffiliateBusinessEvidencePayload {
   businessType: ProjectAffiliateBusinessFactType;
   fileId: string;
@@ -1780,6 +1832,33 @@ export function confirmProjectUpstreamFundFact(
 export function fetchProjectAffiliateBusinessFacts(projectId: string) {
   return readJson<ProjectAffiliateBusinessFactsReadModel>(
     `/projects/${encodeURIComponent(projectId)}/affiliate-business-facts`
+  );
+}
+
+export function fetchProjectAffiliateCompanyContracts(projectId: string) {
+  return readJson<ProjectAffiliateCompanyContractsReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/affiliate-company-contracts`
+  );
+}
+
+export function recordProjectAffiliateCompanyContract(
+  projectId: string,
+  body: RecordProjectAffiliateCompanyContractPayload
+) {
+  return postJson<ProjectAffiliateCompanyContractReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/affiliate-company-contracts`,
+    body
+  );
+}
+
+export function confirmProjectAffiliateCompanyContract(
+  projectId: string,
+  contractId: string,
+  body: ConfirmProjectAffiliateBusinessFactPayload
+) {
+  return postJson<ProjectAffiliateCompanyContractReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/affiliate-company-contracts/${encodeURIComponent(contractId)}/confirmation`,
+    body
   );
 }
 

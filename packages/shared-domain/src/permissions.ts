@@ -38,6 +38,8 @@ export const BUSINESS_ACTIONS = [
   "project.affiliate_payment_fact.record",
   "project.affiliate_payment_fact.confirm",
   "project.affiliate_business_fact.evidence_supplement",
+  "project.affiliate_company_contract.record",
+  "project.affiliate_company_contract.confirm",
   "project.proxy_payment.record",
   "project.upstream_settlement.record",
   "project.upstream_settlement.confirm",
@@ -185,6 +187,8 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
     "finance_staff",
     "finance_director"
   ],
+  "project.affiliate_company_contract.record": ["contract_staff"],
+  "project.affiliate_company_contract.confirm": ["contract_director"],
   "project.proxy_payment.record": ["finance_staff", "finance_director"],
   "project.upstream_settlement.record": ["budget_staff"],
   "project.upstream_settlement.confirm": ["budget_staff"],

@@ -385,6 +385,15 @@ describe("role-specific gates", () => {
     expect(
       canPerform("project.affiliate_business_fact.evidence_supplement", ["project_manager"])
     ).toBe(false);
+    expect(
+      canPerform("project.affiliate_company_contract.record", ["contract_staff"])
+    ).toBe(true);
+    expect(
+      canPerform("project.affiliate_company_contract.confirm", ["contract_director"])
+    ).toBe(true);
+    expect(
+      canPerform("project.affiliate_company_contract.confirm", ["contract_staff"])
+    ).toBe(false);
   });
 
   it("requires finance staff or finance director to record project proxy payments", () => {

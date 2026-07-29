@@ -2436,6 +2436,47 @@ model ProjectAffiliateBusinessEvidence {
   @@index([projectId, businessType, businessFactId])
 }
 
+model ProjectAffiliateCompanyContract {
+  id                                     String    @id @default(uuid())
+  projectId                              String
+  contractReference                      String
+  contractName                           String
+  signedAt                               DateTime
+  rightsObligationsSummary               String
+  affiliateAssignmentId                  String
+  affiliateBusinessPartyVersionId        String
+  affiliateNameSnapshot                  String
+  affiliateCreditCodeSnapshot            String?
+  companyEntityId                        String
+  companyEntityVersionId                 String
+  companyEntityNameSnapshot              String
+  companyEntityCreditCodeSnapshot        String
+  companyEntityRegisteredAddressSnapshot String?
+  fileId                                 String    @unique
+  documentVersion                        Int       @default(1)
+  fileContentSha256Snapshot              String
+  idempotencyKey                         String    @unique
+  requestFingerprint                     String
+  recordedByUserId                       String
+  recordedByRoleKey                      String
+  status                                 String    @default("pending_confirm")
+  confirmedByUserId                      String?
+  confirmedAt                            DateTime?
+  confirmationActionId                   String?   @unique
+  confirmationSignatureVersionId         String?
+  confirmationSignatureFileId            String?
+  confirmationSignatureSha256            String?
+  createdAt                              DateTime  @default(now())
+  updatedAt                              DateTime  @updatedAt
+
+  @@unique([projectId, contractReference])
+  @@index([projectId, status, signedAt])
+  @@index([affiliateAssignmentId])
+  @@index([affiliateBusinessPartyVersionId])
+  @@index([companyEntityId])
+  @@index([companyEntityVersionId])
+}
+
 model ProjectProxyPayment {
   id                    String    @id @default(uuid())
   projectId             String

@@ -47,6 +47,9 @@ import {
   recordProjectAffiliatePaymentFact,
   confirmProjectAffiliatePaymentFact,
   supplementProjectAffiliateBusinessEvidence,
+  fetchProjectAffiliateCompanyContracts,
+  recordProjectAffiliateCompanyContract,
+  confirmProjectAffiliateCompanyContract,
   recordProjectProxyPayment,
   recordProjectUpstreamSettlement,
   confirmProjectUpstreamSettlement,
@@ -825,6 +828,24 @@ describe("core flow read API client", () => {
       idempotencyKey: "c22598c5-98ff-4029-98e9-e4920a4b1d5f",
       description: "补充盖章合同"
     });
+    await fetchProjectAffiliateCompanyContracts("project/1");
+    await recordProjectAffiliateCompanyContract("project/1", {
+      contractReference: "GL-2026-001",
+      contractName: "项目挂靠管理协议",
+      signedAt: "2026-07-20",
+      rightsObligationsSummary: "双方权利义务摘要",
+      companyEntityId: "company-1",
+      fileId: "file-2",
+      idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4"
+    });
+    await confirmProjectAffiliateCompanyContract(
+      "project/1",
+      "affiliate-company-contract/1",
+      {
+        confirmationPassword: "current-password",
+        confirmationActionId: "6dfbdece-803c-44c5-bf68-edbcf1529ce5"
+      }
+    );
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/projects/project%2F1/affiliate-business-facts",
@@ -834,12 +855,18 @@ describe("core flow read API client", () => {
       "/api/projects/project%2F1/affiliate-settlement-facts/settlement%2F1/confirmation",
       "/api/projects/project%2F1/affiliate-payment-facts",
       "/api/projects/project%2F1/affiliate-payment-facts/payment%2F1/confirmation",
-      "/api/projects/project%2F1/affiliate-business-facts/contract%2F1/evidence"
+      "/api/projects/project%2F1/affiliate-business-facts/contract%2F1/evidence",
+      "/api/projects/project%2F1/affiliate-company-contracts",
+      "/api/projects/project%2F1/affiliate-company-contracts",
+      "/api/projects/project%2F1/affiliate-company-contracts/affiliate-company-contract%2F1/confirmation"
     ]);
     expect(fetchMock.mock.calls[0][1]?.method).toBeUndefined();
-    expect(fetchMock.mock.calls.slice(1).every((call) => call[1]?.method === "POST")).toBe(
-      true
-    );
+    expect(fetchMock.mock.calls[8][1]?.method).toBeUndefined();
+    expect(
+      fetchMock.mock.calls
+        .filter((_call, index) => index !== 0 && index !== 8)
+        .every((call) => call[1]?.method === "POST")
+    ).toBe(true);
   });
 
   it("records project upstream settlements through the backend", async () => {

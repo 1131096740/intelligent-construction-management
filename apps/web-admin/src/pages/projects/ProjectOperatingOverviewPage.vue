@@ -841,6 +841,7 @@
         value="affiliate-business"
         label="挂靠业务接管"
       >
+        <AffiliateCompanyContractPanel :project-id="selectedProjectId" />
         <AffiliateBusinessLedgerPanel :project-id="selectedProjectId" />
       </t-tab-panel>
     </t-tabs>
@@ -905,6 +906,7 @@ import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import AffiliateBusinessLedgerPanel from "./components/AffiliateBusinessLedgerPanel.vue";
+import AffiliateCompanyContractPanel from "./components/AffiliateCompanyContractPanel.vue";
 import {
   expensePaymentMethodLabel,
   expensePaymentMethodOptions,
