@@ -153,5 +153,54 @@ describe("real contract bill regression inspector", () => {
     });
   });
 
-  it.todo("runs against the de-identified fixture extracted from the real contract department Excel");
+  it("runs against the de-identified fixture extracted from the real project quote", () => {
+    const fixturePath = resolve(
+      __dirname,
+      "fixtures/real-tax-rounding-regression.json"
+    );
+    const result = spawnSync(
+      process.execPath,
+      [SCRIPT, "--fixture", fixturePath],
+      { encoding: "utf8" }
+    );
+    const output = JSON.parse(result.stdout) as {
+      status: string;
+      sourceSha256: string;
+      rows: Array<{
+        quantityFormulaType: string;
+        grossUnitPriceFormulaType: string;
+        taxRateFormulaType: string;
+        normalizedTaxRatePercent: string;
+      }>;
+      totals: Record<string, string>;
+    };
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(output).toMatchObject({
+      status: "matched",
+      sourceSha256:
+        "b6840ba245d77ae6e017b02fb42523f539de0f14b4400a4e13cc82057550293d",
+      totals: {
+        taxInclusiveAmountCents: "165563479",
+        taxExclusiveAmountCents: "151893100",
+        taxAmountCents: "13670379"
+      }
+    });
+    expect(output.rows).toHaveLength(12);
+    expect(
+      output.rows.filter((row) => row.quantityFormulaType === "formula")
+    ).toHaveLength(2);
+    expect(
+      output.rows.filter(
+        (row) => row.grossUnitPriceFormulaType === "formula"
+      )
+    ).toHaveLength(12);
+    expect(
+      output.rows.filter((row) => row.taxRateFormulaType !== "none")
+    ).toHaveLength(0);
+    expect(
+      output.rows.every((row) => row.normalizedTaxRatePercent === "9")
+    ).toBe(true);
+  });
 });

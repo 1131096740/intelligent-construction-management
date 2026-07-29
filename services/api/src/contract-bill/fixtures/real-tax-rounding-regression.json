@@ -1,0 +1,72 @@
+{
+  "sourceSha256": "b6840ba245d77ae6e017b02fb42523f539de0f14b4400a4e13cc82057550293d",
+  "sourceSheetName": "工程量清单-绿化",
+  "taxMode": "single_rate",
+  "defaultTaxRatePercent": "9",
+  "rows": [
+    {
+      "quantityCell": { "value": 66, "numFmt": "General", "formulaType": "none" },
+      "grossUnitPriceCell": { "value": 429.46, "numFmt": "0.00\" \";(0.00)", "formulaType": "formula" },
+      "taxRateCell": { "value": 0.09, "numFmt": "0%", "formulaType": "none" }
+    },
+    {
+      "quantityCell": { "value": 64, "numFmt": "General", "formulaType": "none" },
+      "grossUnitPriceCell": { "value": 354.25, "numFmt": "0.00\" \";(0.00)", "formulaType": "formula" },
+      "taxRateCell": { "value": 0.09, "numFmt": "0%", "formulaType": "none" }
+    },
+    {
+      "quantityCell": { "value": 18, "numFmt": "General", "formulaType": "none" },
+      "grossUnitPriceCell": { "value": 392.4, "numFmt": "0.00\" \";(0.00)", "formulaType": "formula" },
+      "taxRateCell": { "value": 0.09, "numFmt": "0%", "formulaType": "none" }
+    },
+    {
+      "quantityCell": { "value": 2627, "numFmt": "General", "formulaType": "none" },
+      "grossUnitPriceCell": { "value": 53.41, "numFmt": "0.00\" \";(0.00)", "formulaType": "formula" },
+      "taxRateCell": { "value": 0.09, "numFmt": "0%", "formulaType": "none" }
+    },
+    {
+      "quantityCell": { "value": 1785, "numFmt": "General", "formulaType": "none" },
+      "grossUnitPriceCell": { "value": 55.59, "numFmt": "0.00\" \";(0.00)", "formulaType": "formula" },
+      "taxRateCell": { "value": 0.09, "numFmt": "0%", "formulaType": "none" }
+    },
+    {
+      "quantityCell": { "value": 5742, "numFmt": "General", "formulaType": "formula" },
+      "grossUnitPriceCell": { "value": 21.8, "numFmt": "0.00\" \";(0.00)", "formulaType": "formula" },
+      "taxRateCell": { "value": 0.09, "numFmt": "0%", "formulaType": "none" }
+    },
+    {
+      "quantityCell": { "value": 1980, "numFmt": "General", "formulaType": "none" },
+      "grossUnitPriceCell": { "value": 35.97, "numFmt": "0.00\" \";(0.00)", "formulaType": "formula" },
+      "taxRateCell": { "value": 0.09, "numFmt": "0%", "formulaType": "none" }
+    },
+    {
+      "quantityCell": { "value": 1320, "numFmt": "General", "formulaType": "none" },
+      "grossUnitPriceCell": { "value": 21.8, "numFmt": "0.00\" \";(0.00)", "formulaType": "formula" },
+      "taxRateCell": { "value": 0.09, "numFmt": "0%", "formulaType": "none" }
+    },
+    {
+      "quantityCell": { "value": 45, "numFmt": "General", "formulaType": "none" },
+      "grossUnitPriceCell": { "value": 380.41, "numFmt": "0.00\" \";(0.00)", "formulaType": "formula" },
+      "taxRateCell": { "value": 0.09, "numFmt": "0%", "formulaType": "none" }
+    },
+    {
+      "quantityCell": { "value": 1897, "numFmt": "General", "formulaType": "none" },
+      "grossUnitPriceCell": { "value": 59.95, "numFmt": "0.00\" \";(0.00)", "formulaType": "formula" },
+      "taxRateCell": { "value": 0.09, "numFmt": "0%", "formulaType": "none" }
+    },
+    {
+      "quantityCell": { "value": 276, "numFmt": "General", "formulaType": "none" },
+      "grossUnitPriceCell": { "value": 42.51, "numFmt": "0.00\" \";(0.00)", "formulaType": "formula" },
+      "taxRateCell": { "value": 0.09, "numFmt": "0%", "formulaType": "none" }
+    },
+    {
+      "quantityCell": { "value": 13977, "numFmt": "General", "formulaType": "formula" },
+      "grossUnitPriceCell": { "value": 70.85, "numFmt": "0.00\" \";(0.00)", "formulaType": "formula" },
+      "taxRateCell": { "value": 0.09, "numFmt": "0%", "formulaType": "none" }
+    }
+  ],
+  "expected": {
+    "taxInclusiveAmountCents": "165563479",
+    "taxExclusiveAmountCents": "151893100"
+  }
+}
