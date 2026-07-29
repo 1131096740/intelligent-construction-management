@@ -223,6 +223,11 @@ if [[ -f "${API_RUNTIME_DIR:?}/dist/release.txt" ]] &&
   [[ "$(< "${API_RUNTIME_DIR}/dist/release.txt")" == old-api ]]; then
   exit 0
 fi
+if [[ "${FAKE_RUNTIME_HEALTH_ALLOW_NEW:-false}" == true ]] &&
+  [[ -f "${API_RUNTIME_DIR}/dist/release.txt" ]] &&
+  [[ "$(< "${API_RUNTIME_DIR}/dist/release.txt")" == new-api-release ]]; then
+  exit 0
+fi
 exit 1
 FAKE
 
@@ -632,13 +637,19 @@ make_deploy_fixture() {
     "$fixture/repo/services/api/prisma" \
     "$fixture/repo/services/api/node_modules" \
     "$fixture/repo/apps/web-admin/dist" \
+    "$fixture/repo/scripts/ops/systemd" \
     "$fixture/runtime/api/dist" \
     "$fixture/runtime/web-admin/dist" \
     "$fixture/staging-parent" \
     "$fixture/rollback-parent" \
+    "$fixture/systemd" \
     "$fixture/backups"
   printf 'new-api-release\n' > "$fixture/repo/services/api/dist/release.txt"
   printf 'new-web-release\n' > "$fixture/repo/apps/web-admin/dist/release.txt"
+  printf '[Unit]\nDescription=fixture retention service\n' \
+    > "$fixture/repo/scripts/ops/systemd/jiangkong-draft-retention.service"
+  printf '[Unit]\nDescription=fixture retention timer\n' \
+    > "$fixture/repo/scripts/ops/systemd/jiangkong-draft-retention.timer"
   printf 'old-api\n' > "$fixture/runtime/api/dist/release.txt"
   printf 'old-web\n' > "$fixture/runtime/web-admin/dist/release.txt"
   printf 'DATABASE_URL=postgresql://local/jiangkong\n' > "$fixture/api.env"
@@ -674,6 +685,7 @@ run_deploy_fixture() {
     DB_BACKUP_TRANSFER_SCRIPT="$SCRIPT_DIR/cos-backup-transfer.mjs" \
     FAKE_NODE_COUNT_FILE="$fixture/node-count" \
     RUNTIME_HEALTH_SCRIPT="$fixture/health.sh" \
+    SYSTEMD_UNIT_DIR="$fixture/systemd" \
     STAGING_PARENT_DIR="$fixture/staging-parent" \
     ROLLBACK_PARENT_DIR="$fixture/rollback-parent" \
     HEALTH_ATTEMPTS=1 \
@@ -708,6 +720,49 @@ if grep -q '^systemctl stop jiangkong-api$' "$FAKE_LOG"; then
 fi
 if grep -q ' prisma migrate deploy ' "$FAKE_LOG"; then
   fail "deployment migrated the database before the offsite backup was verified"
+fi
+
+invalid_scope_fixture="$TEST_ROOT/deploy-invalid-scope"
+make_deploy_fixture "$invalid_scope_fixture"
+: > "$FAKE_LOG"
+if run_deploy_fixture "$invalid_scope_fixture" env DEPLOY_SCOPE=web-only >/dev/null 2>&1; then
+  fail "deployment must reject an unknown deployment scope"
+fi
+if [[ -s "$FAKE_LOG" ]]; then
+  fail "deployment performed work before rejecting an unknown deployment scope"
+fi
+
+api_only_fixture="$TEST_ROOT/deploy-api-only"
+make_deploy_fixture "$api_only_fixture"
+: > "$FAKE_LOG"
+run_deploy_fixture "$api_only_fixture" \
+  env DEPLOY_SCOPE=api-only FAKE_RUNTIME_HEALTH_ALLOW_NEW=true >/dev/null 2>&1
+[[ "$(< "$api_only_fixture/runtime/api/dist/release.txt")" == new-api-release ]] ||
+  fail "API-only deployment did not switch the API runtime"
+[[ "$(< "$api_only_fixture/runtime/web-admin/dist/release.txt")" == old-web ]] ||
+  fail "API-only deployment changed the Web runtime"
+grep -q '^pnpm --filter @jiangkong/api build$' "$FAKE_LOG" ||
+  fail "API-only deployment did not build the API"
+if grep -q '^pnpm --filter @jiangkong/web-admin build$' "$FAKE_LOG"; then
+  fail "API-only deployment built the Web application"
+fi
+if grep -Fq "$api_only_fixture/runtime/web-admin" "$FAKE_LOG"; then
+  fail "API-only deployment touched the Web runtime"
+fi
+
+api_only_health_failure_fixture="$TEST_ROOT/deploy-api-only-health-failure"
+make_deploy_fixture "$api_only_health_failure_fixture"
+: > "$FAKE_LOG"
+if run_deploy_fixture "$api_only_health_failure_fixture" \
+  env DEPLOY_SCOPE=api-only >/dev/null 2>&1; then
+  fail "API-only deployment must fail when the new runtime health check fails"
+fi
+[[ "$(< "$api_only_health_failure_fixture/runtime/api/dist/release.txt")" == old-api ]] ||
+  fail "API-only recovery did not restore the API runtime"
+[[ "$(< "$api_only_health_failure_fixture/runtime/web-admin/dist/release.txt")" == old-web ]] ||
+  fail "API-only recovery changed the Web runtime"
+if grep -Fq "$api_only_health_failure_fixture/runtime/web-admin" "$FAKE_LOG"; then
+  fail "API-only recovery touched the Web runtime"
 fi
 
 health_failure_fixture="$TEST_ROOT/deploy-health-failure"

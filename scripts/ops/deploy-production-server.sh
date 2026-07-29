@@ -4,6 +4,7 @@ set -euo pipefail
 REPO_ROOT="${REPO_ROOT_OVERRIDE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 API_RUNTIME_DIR="${API_RUNTIME_DIR:-/srv/jiangkong/apps/api}"
 WEB_RUNTIME_DIR="${WEB_RUNTIME_DIR:-/srv/jiangkong/apps/web-admin}"
+DEPLOY_SCOPE="${DEPLOY_SCOPE:-full}"
 API_ENV_FILE="${API_ENV_FILE:-/etc/jiangkong/api.env}"
 API_SERVICE="${API_SERVICE:-jiangkong-api}"
 BACKUP_DIR="${BACKUP_DIR:-/srv/jiangkong-backups/db}"
@@ -26,6 +27,20 @@ STOP_ATTEMPTED=false
 RUNTIME_SNAPSHOT_READY=false
 RUNTIME_REPLACEMENT_STARTED=false
 DEPLOY_SUCCEEDED=false
+DEPLOY_WEB=false
+
+case "$DEPLOY_SCOPE" in
+  full)
+    DEPLOY_WEB=true
+    ;;
+  api-only)
+    ;;
+  *)
+    echo "DEPLOY_SCOPE must be full or api-only" >&2
+    exit 1
+    ;;
+esac
+echo "Deployment scope: $DEPLOY_SCOPE"
 
 if [[ -z "${REPO_ROOT_OVERRIDE:-}" ]]; then
   BACKUP_SCRIPT="$REPO_ROOT/scripts/ops/db-backup.sh"
@@ -146,14 +161,17 @@ cleanup() {
   if [[ "$DEPLOY_SUCCEEDED" != true && "$STOP_ATTEMPTED" == true ]]; then
     echo "Deployment failed after the API stop was attempted; starting runtime recovery" >&2
     if [[ "$RUNTIME_REPLACEMENT_STARTED" == true && "$RUNTIME_SNAPSHOT_READY" == true ]]; then
-      mkdir -p "$API_RUNTIME_DIR" "$WEB_RUNTIME_DIR"
+      mkdir -p "$API_RUNTIME_DIR"
       if ! rsync -a --delete "$ROLLBACK_DIR/api/" "$API_RUNTIME_DIR/"; then
         echo "Failed to restore the previous API runtime snapshot" >&2
         recovery_failed=true
       fi
-      if ! rsync -a --delete "$ROLLBACK_DIR/web-admin/" "$WEB_RUNTIME_DIR/"; then
-        echo "Failed to restore the previous Web runtime snapshot" >&2
-        recovery_failed=true
+      if [[ "$DEPLOY_WEB" == true ]]; then
+        mkdir -p "$WEB_RUNTIME_DIR"
+        if ! rsync -a --delete "$ROLLBACK_DIR/web-admin/" "$WEB_RUNTIME_DIR/"; then
+          echo "Failed to restore the previous Web runtime snapshot" >&2
+          recovery_failed=true
+        fi
       fi
     fi
 
@@ -188,36 +206,46 @@ trap cleanup EXIT
 
 cd "$REPO_ROOT"
 
-if [[ -L "$API_RUNTIME_DIR" || -L "$WEB_RUNTIME_DIR" ]]; then
-  echo "production runtime directories must not be symbolic links" >&2
+if [[ -L "$API_RUNTIME_DIR" ]] || { [[ "$DEPLOY_WEB" == true ]] && [[ -L "$WEB_RUNTIME_DIR" ]]; }; then
+  echo "selected production runtime directories must not be symbolic links" >&2
   exit 1
 fi
-if [[ ! -d "$API_RUNTIME_DIR" || ! -d "$WEB_RUNTIME_DIR" ]]; then
-  echo "production runtime directories must exist before an in-place deployment" >&2
+if [[ ! -d "$API_RUNTIME_DIR" ]] ||
+  { [[ "$DEPLOY_WEB" == true ]] && [[ ! -d "$WEB_RUNTIME_DIR" ]]; }; then
+  echo "selected production runtime directories must exist before an in-place deployment" >&2
   exit 1
 fi
 
-# Build everything before applying database migrations. A build failure must not
-# leave production with a new schema and the previous API process.
+# Build every selected runtime before applying database migrations. A build
+# failure must not leave production with a new schema and the previous API
+# process.
 CI=true pnpm install --frozen-lockfile --prod=false
 pnpm --filter @jiangkong/api exec prisma generate
 pnpm --filter @jiangkong/api build
-pnpm --filter @jiangkong/web-admin build
+if [[ "$DEPLOY_WEB" == true ]]; then
+  pnpm --filter @jiangkong/web-admin build
+fi
 
 STAGING_DIR="$(mktemp -d "$STAGING_PARENT_DIR/.deploy-stage.XXXXXX")"
-mkdir -p "$STAGING_DIR/api" "$STAGING_DIR/web-admin"
+mkdir -p "$STAGING_DIR/api"
 rsync -a --delete "$REPO_ROOT/services/api/dist/" "$STAGING_DIR/api/dist/"
 rsync -a --delete "$REPO_ROOT/services/api/prisma/" "$STAGING_DIR/api/prisma/"
 if [[ -d "$REPO_ROOT/services/api/assets" ]]; then
   rsync -a --delete "$REPO_ROOT/services/api/assets/" "$STAGING_DIR/api/assets/"
 fi
 ln -sfn "$REPO_ROOT/services/api/node_modules" "$STAGING_DIR/api/node_modules"
-rsync -a --delete "$REPO_ROOT/apps/web-admin/dist/" "$STAGING_DIR/web-admin/dist/"
+if [[ "$DEPLOY_WEB" == true ]]; then
+  mkdir -p "$STAGING_DIR/web-admin"
+  rsync -a --delete "$REPO_ROOT/apps/web-admin/dist/" "$STAGING_DIR/web-admin/dist/"
+fi
 
 ROLLBACK_DIR="$(mktemp -d "$ROLLBACK_PARENT_DIR/.deploy-rollback.XXXXXX")"
-mkdir -p "$ROLLBACK_DIR/api" "$ROLLBACK_DIR/web-admin"
+mkdir -p "$ROLLBACK_DIR/api"
 rsync -a --delete "$API_RUNTIME_DIR/" "$ROLLBACK_DIR/api/"
-rsync -a --delete "$WEB_RUNTIME_DIR/" "$ROLLBACK_DIR/web-admin/"
+if [[ "$DEPLOY_WEB" == true ]]; then
+  mkdir -p "$ROLLBACK_DIR/web-admin"
+  rsync -a --delete "$WEB_RUNTIME_DIR/" "$ROLLBACK_DIR/web-admin/"
+fi
 RUNTIME_SNAPSHOT_READY=true
 
 sudo nginx -t
@@ -237,9 +265,12 @@ sudo systemctl stop "$API_SERVICE"
 run_prisma_migrations
 
 RUNTIME_REPLACEMENT_STARTED=true
-mkdir -p "$API_RUNTIME_DIR" "$WEB_RUNTIME_DIR"
+mkdir -p "$API_RUNTIME_DIR"
 rsync -a --delete "$STAGING_DIR/api/" "$API_RUNTIME_DIR/"
-rsync -a --delete "$STAGING_DIR/web-admin/" "$WEB_RUNTIME_DIR/"
+if [[ "$DEPLOY_WEB" == true ]]; then
+  mkdir -p "$WEB_RUNTIME_DIR"
+  rsync -a --delete "$STAGING_DIR/web-admin/" "$WEB_RUNTIME_DIR/"
+fi
 
 sudo systemctl restart "$API_SERVICE"
 sudo nginx -t
