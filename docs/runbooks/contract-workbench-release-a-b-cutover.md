@@ -77,7 +77,7 @@ pnpm --filter @jiangkong/api resolve:contract-draft-formal-code -- \
   --expected-revision '<报告 revision>' \
   --expected-database-fingerprint '<报告数据库 fingerprint>' \
   --expected-report-sha256 '<报告 SHA-256>' \
-  --actor-user-id '<合同部主管 UUID>' \
+  --actor-user-id '<合同部主管用户 ID>' \
   --reason '<合同部确认原因>' \
   --confirm 'RESOLVE_CONTRACT_DRAFT_FORMAL_CODE_<精确版本 UUID>_<retain 或 void>'
 ```

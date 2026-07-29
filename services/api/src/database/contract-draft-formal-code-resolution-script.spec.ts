@@ -62,7 +62,7 @@ function loadTool(): ResolutionModule {
 }
 
 const versionId = "00000000-0000-4000-8000-000000000001";
-const actorUserId = "00000000-0000-4000-8000-000000000099";
+const actorUserId = "seed-user-contract-director";
 const formalCode = "HT-20260729-001";
 const fingerprint = "a".repeat(64);
 

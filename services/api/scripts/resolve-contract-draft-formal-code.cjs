@@ -7,6 +7,7 @@ const ACTION = "contract.draft.formal_code.disposition";
 const MAX_REPORT_AGE_MS = 30 * 60 * 1000;
 const EDITABLE_STATUSES = new Set(["draft", "returned", "withdrawn"]);
 const DECISIONS = new Set(["retain", "void"]);
+const ACTOR_USER_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -98,9 +99,7 @@ function assertApplyGates({
     "apply 必须提供 64 位 --expected-report-sha256"
   );
   invariant(
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
-      args.actorUserId ?? ""
-    ),
+    ACTOR_USER_ID_PATTERN.test(args.actorUserId ?? ""),
     "apply 必须提供合法 --actor-user-id"
   );
   invariant(

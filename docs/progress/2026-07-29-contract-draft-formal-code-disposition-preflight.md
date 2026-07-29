@@ -61,7 +61,7 @@ FORMAL_CODE_ALLOCATED_BEFORE_SUBMISSION
 - 30 分钟内、未截断的生产只读预检报告；
 - 数据库 fingerprint 与报告 SHA-256；
 - 精确 `contractVersionId`、当前 revision 和正式编号 SHA-256；
-- 活跃合同部主管 UUID；
+- 活跃合同部主管用户 ID（兼容 UUID 与安全的历史 seed ID）；
 - `retain` 或 `void` 明确决定；
 - 5–500 字符业务原因；
 - 包含版本 ID 和决定的精确确认串。
@@ -74,6 +74,11 @@ FORMAL_CODE_ALLOCATED_BEFORE_SUBMISSION
 - 合同审批实例仍为 0；
 - 正式编号 SHA-256 仍与报告一致；
 - 操作者仍是该项目可用的合同部主管。
+
+生产首次 `void` 尝试在事务前失败关闭：唯一有效合同部主管使用历史 seed ID，而
+工具最初误把 `actor-user-id` 限定为 UUID。生产复核确认编号、revision、审批和
+审计均零变化。修复只把参数格式扩为 1–128 位安全 ID 字符集；数据库中的活跃用户、
+合同部主管岗位和项目范围校验不变。
 
 两种结果：
 
