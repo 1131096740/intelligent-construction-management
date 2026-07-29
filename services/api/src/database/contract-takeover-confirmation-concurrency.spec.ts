@@ -268,7 +268,13 @@ describe("historical takeover confirmation PostgreSQL concurrency", () => {
         }
       } finally {
         await Promise.allSettled([first.$disconnect(), second.$disconnect()]);
-        await admin.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+        if (
+          process.env.KEEP_CONTRACT_TAKEOVER_CONFIRMATION_SCHEMA !== "1"
+        ) {
+          await admin.$executeRawUnsafe(
+            `DROP SCHEMA IF EXISTS "${schema}" CASCADE`
+          );
+        }
         await admin.$disconnect();
       }
     },

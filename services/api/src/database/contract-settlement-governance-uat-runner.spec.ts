@@ -10,6 +10,10 @@ const localRunner = readFileSync(
   resolve(prismaRoot, "run-contract-settlement-governance-uat-local.cjs"),
   "utf8"
 );
+const trialRunVerifier = readFileSync(
+  resolve(prismaRoot, "verify-trial-run.cjs"),
+  "utf8"
+);
 
 describe("contract settlement governance UAT runners", () => {
   it("keeps the governed runner fail-closed and covers the exact 20 release cases", () => {
@@ -61,5 +65,32 @@ describe("contract settlement governance UAT runners", () => {
     expect(localRunner).toContain("removeContainer");
     expect(localRunner).toContain("removeTemporaryRoot");
     expect(localRunner).toContain("await cleanup()");
+  });
+
+  it("keeps the trial-run verifier read-only by default and requires an isolated write flag", () => {
+    expect(trialRunVerifier).toContain(
+      'const IS_ISOLATED_WRITE_UAT = process.argv.includes("--isolated-write-uat")'
+    );
+    expect(trialRunVerifier).toContain("if (!IS_ISOLATED_WRITE_UAT)");
+    expect(trialRunVerifier).toContain("默认只读检查通过");
+    expect(localRunner).toContain('"--isolated-write-uat"');
+  });
+
+  it("uses the dual-department takeover protocol only inside isolated write UAT", () => {
+    expect(trialRunVerifier).toContain(
+      "`/projects/${PROJECT_ID}/contract-takeovers/${takeover.id}/contract-side`"
+    );
+    expect(trialRunVerifier).toContain(
+      "`/projects/${PROJECT_ID}/contract-takeovers/${takeover.id}/finance-side`"
+    );
+    expect(trialRunVerifier).toContain(
+      "`/projects/${PROJECT_ID}/contract-takeovers/${takeover.id}/contract-side/confirmation`"
+    );
+    expect(trialRunVerifier).toContain(
+      "`/projects/${PROJECT_ID}/contract-takeovers/${takeover.id}/finance-side/confirmation`"
+    );
+    expect(trialRunVerifier).not.toContain(
+      "`/projects/${PROJECT_ID}/contract-takeovers/${takeover.id}/confirmation`"
+    );
   });
 });

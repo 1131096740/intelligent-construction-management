@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { randomUUID } = require("node:crypto");
 const ExcelJS = require("exceljs");
 const { PDFDocument } = require("pdf-lib");
 const { coreFlowSeedData } = require("../dist/database/core-flow-seed-data");
@@ -55,7 +56,7 @@ const CODES = {
   payment: `FK-UAT-${RUN_ID}`,
   overLimitPayment: `FK-UAT-OVER-${RUN_ID}`
 };
-const IS_PREFLIGHT = process.argv.includes("--preflight");
+const IS_ISOLATED_WRITE_UAT = process.argv.includes("--isolated-write-uat");
 const GOVERNANCE_EVIDENCE_ARG = process.argv.find((argument) =>
   argument.startsWith("--governance-evidence=")
 );
@@ -430,6 +431,24 @@ async function postJson(path, body, token, label = path) {
   if (!response.ok) {
     const responseBody = await response.text();
     throw new Error(`${label} 提交失败：HTTP ${response.status} ${responseBody}`);
+  }
+
+  return response.json();
+}
+
+async function putJson(path, body, token, label = path) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(token)
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const responseBody = await response.text();
+    throw new Error(`${label} 保存失败：HTTP ${response.status} ${responseBody}`);
   }
 
   return response.json();
@@ -812,26 +831,149 @@ async function loadTakeoverRecord(takeoverId) {
   return takeover;
 }
 
-async function assertTakeoverConfirmationWrongPasswordBlocked(takeoverId, token) {
+async function assertTakeoverConfirmationWrongPasswordBlocked(
+  takeoverId,
+  contractRevision,
+  token
+) {
   const failed = await postJsonExpectFailure(
-    `/projects/${PROJECT_ID}/contract-takeovers/${takeoverId}/confirmation`,
-    { confirmationPassword: "UAT-WRONG-PASSWORD" },
+    `/projects/${PROJECT_ID}/contract-takeovers/${takeoverId}/contract-side/confirmation`,
+    {
+      idempotencyKey: randomUUID(),
+      expectedRevision: contractRevision,
+      currentPassword: "UAT-WRONG-PASSWORD"
+    },
     token,
-    "错误密码确认历史接管"
+    "错误密码确认合同侧历史接管"
   );
   assert(
     failed.status >= 400,
-    `错误密码确认历史接管 HTTP 状态异常：${failed.status}`
+    `错误密码确认合同侧历史接管 HTTP 状态异常：${failed.status}`
   );
   assert(
     failed.body.includes("当前密码不正确"),
-    `错误密码确认历史接管未返回中文业务提示：${failed.body}`
+    `错误密码确认合同侧历史接管未返回中文业务提示：${failed.body}`
   );
 
   const takeover = await loadTakeoverRecord(takeoverId);
   assertEqual(takeover.takeoverStatus, "pending_review", "错误密码确认后接管状态");
-  assert(!takeover.confirmedAt, "错误密码确认后不应写入接管确认时间");
-  assert(!takeover.historicalBalanceConfirmedAt, "错误密码确认后不应写入历史余额确认时间");
+  assert(!takeover.confirmedAt, "错误密码确认后不应激活接管");
+  assert(!takeover.historicalBalanceConfirmedAt, "错误密码确认后不应确认历史余额");
+}
+
+async function saveAndConfirmDualDepartmentTakeover(takeover, tokens) {
+  const settlementEvidence = await uploadPrivateFile(
+    `${CODES.contract}-settlement-evidence.pdf`,
+    tokens.contractStaff
+  );
+  const contractSide = await putJson(
+    `/projects/${PROJECT_ID}/contract-takeovers/${takeover.id}/contract-side`,
+    {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 0,
+      signedAt: takeover.signedAt.slice(0, 10),
+      performanceStatus: "performing",
+      historicalSettledCents: HISTORICAL_BALANCE.historicalSettledCents,
+      settlementEvidenceSummary: "UAT 脱敏历史结算台账与双方核对依据",
+      settlementEvidenceFileIds: [settlementEvidence.id],
+      paymentTerms: {
+        originalText: takeover.paymentTermsOriginalText,
+        stages: [
+          {
+            name: "当期结算款",
+            ratioBps: 8000,
+            dueDays: 0,
+            requiresInvoice: false,
+            allowsEarlyPayment: false,
+            allowsInstallments: true
+          }
+        ]
+      },
+      contractFacts: {
+        contractNo: takeover.contractNo,
+        contractName: takeover.contractName,
+        contractTypeKey: takeover.contractTypeKey,
+        counterparty: takeover.counterparty,
+        originalAmountCents: takeover.amountCents,
+        settlementCutoffDate: "2026-06-30",
+        zeroSettlementDeclared: false
+      }
+    },
+    tokens.contractStaff,
+    "保存历史接管合同侧事实"
+  );
+  assertEqual(contractSide.revision, 1, "合同侧首次保存修订");
+
+  const paymentVoucher = await uploadPrivateFile(
+    `${CODES.contract}-historical-payment-voucher.pdf`,
+    tokens.financeDirector
+  );
+  const financeSide = await putJson(
+    `/projects/${PROJECT_ID}/contract-takeovers/${takeover.id}/finance-side`,
+    {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 0,
+      basedOnContractRevision: contractSide.revision,
+      basedOnFinanceBasisRevision: contractSide.financeBasisRevision,
+      zeroPaymentDeclared: false,
+      payments: [
+        {
+          rowKey: "uat-historical-payment-1",
+          amountCents: HISTORICAL_BALANCE.historicalPaidCents,
+          paidAt: "2026-06-30",
+          payerName: "P0-5B UAT 脱敏付款单位",
+          payeeName: takeover.counterparty,
+          bankReference: `UAT-${RUN_ID}`,
+          paymentMethod: "银行转账",
+          voucherFileIds: [paymentVoucher.id]
+        }
+      ]
+    },
+    tokens.financeDirector,
+    "保存历史接管财务侧事实"
+  );
+  assertEqual(financeSide.revision, 1, "财务侧首次保存修订");
+
+  await assertTakeoverConfirmationWrongPasswordBlocked(
+    takeover.id,
+    contractSide.revision,
+    tokens.contractDirector
+  );
+  const contractConfirmation = await postJson(
+    `/projects/${PROJECT_ID}/contract-takeovers/${takeover.id}/contract-side/confirmation`,
+    {
+      idempotencyKey: randomUUID(),
+      expectedRevision: contractSide.revision,
+      currentPassword: PASSWORD
+    },
+    tokens.contractDirector,
+    "确认历史接管合同侧"
+  );
+  assertEqual(
+    contractConfirmation.activationStatus,
+    "awaiting_finance_confirmation",
+    "合同侧确认后的激活状态"
+  );
+
+  const financeConfirmation = await postJson(
+    `/projects/${PROJECT_ID}/contract-takeovers/${takeover.id}/finance-side/confirmation`,
+    {
+      idempotencyKey: randomUUID(),
+      expectedRevision: financeSide.revision,
+      currentPassword: PASSWORD,
+      basedOnContractRevision: contractSide.revision,
+      basedOnFinanceBasisRevision: contractSide.financeBasisRevision
+    },
+    tokens.financeDirector,
+    "确认历史接管财务侧"
+  );
+  assertEqual(financeConfirmation.activated, true, "双侧确认后的接管激活结果");
+  assertEqual(
+    financeConfirmation.activationStatus,
+    "activated",
+    "双侧确认后的激活状态"
+  );
+  return financeConfirmation;
 }
 
 async function loadTakeoverReadModel(takeoverId, token) {
@@ -1557,7 +1699,9 @@ async function assertAuditActions(input) {
     "contract_takeover.create",
     "contract_takeover.evidence.attach",
     "contract_takeover.submit_review",
-    "contract_takeover.confirm",
+    "contract_takeover.contract_side.confirm",
+    "contract_takeover.finance_side.confirm",
+    "contract_takeover.activate",
     "file.download.ticket",
     "file.download",
     "payment.contract_takeover.blocked",
@@ -1710,8 +1854,8 @@ async function main() {
   assertLocalRuntimeGuard();
   await assertSeedDataReady();
   await assertApiHealthReady();
-  if (IS_PREFLIGHT) {
-    console.log("P0-5B UAT 预检通过：本地安全边界、seed 数据和 API health 已确认；未写入业务数据。");
+  if (!IS_ISOLATED_WRITE_UAT) {
+    console.log("P0-5B UAT 默认只读检查通过：本地安全边界、seed 数据和 API health 已确认；未登录、未确认或激活接管、未写入业务数据。");
     return;
   }
 
@@ -1769,18 +1913,10 @@ async function main() {
     await verifyPaymentBlockedBeforeConfirmation(takeoverRecord.contractVersionId, tokens.contractStaff);
   });
 
-  await assertTakeoverConfirmationWrongPasswordBlocked(takeover.id, tokens.contractDirector);
-
-  const confirmed = await postJson(
-    `/projects/${PROJECT_ID}/contract-takeovers/${takeover.id}/confirmation`,
-    { confirmationPassword: PASSWORD },
-    tokens.contractDirector,
-    "确认历史接管"
-  );
-  assertEqual(confirmed.takeoverStatus, "confirmed", "历史接管确认状态");
-  assert(confirmed.historicalBalanceConfirmedAt, "历史接管确认后未写入历史余额确认时间");
   await confirmHistoricalTaxFacts(takeover.id, tokens);
+  await saveAndConfirmDualDepartmentTakeover(takeover, tokens);
   takeoverRecord = await loadTakeoverRecord(takeover.id);
+  assertEqual(takeoverRecord.takeoverStatus, "confirmed", "历史接管激活状态");
   assert(takeoverRecord.historicalBalanceConfirmedAt, "数据库历史余额确认时间为空");
   const initialSettlement = await assertHistoricalInitialSettlement(takeoverRecord);
   await assertTakeoverVerification(takeover.id, tokens.contractStaff, {

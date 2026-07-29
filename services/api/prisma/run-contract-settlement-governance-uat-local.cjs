@@ -171,7 +171,10 @@ async function main() {
         forwardOutput: true,
         timeoutMs: 30 * 60 * 1000
       });
-      await command(process.execPath, [path.join(__dirname, "verify-trial-run.cjs")], {
+      await command(process.execPath, [
+        path.join(__dirname, "verify-trial-run.cjs"),
+        "--isolated-write-uat"
+      ], {
         cwd: root,
         env: runtimeEnv,
         forwardOutput: true,
