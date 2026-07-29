@@ -414,14 +414,21 @@ const POST_INVOICE_EVIDENCE_FILE_BINDING_TABLES = new Set([
   "EmployeeProjectLoanEntry",
   "ExpenseClaimAttachment",
   "ExpenseClaimPaymentExecution",
-  "ContractDraftAttachment"
+  "ContractDraftAttachment",
+  "ProjectUpstreamFundFact",
+  "ProjectAffiliateContractFact",
+  "ProjectAffiliateSettlementFact",
+  "ProjectAffiliatePaymentFact",
+  "ProjectAffiliateBusinessEvidence",
+  "ProjectAffiliateCompanyContract"
 ]);
 
 const POST_INVOICE_EVIDENCE_FILE_BINDINGS = new Set([
   "ContractTakeoverSettlementEvidence.fileId",
   "ContractTakeoverHistoricalPaymentVoucher.fileId",
   "ContractTakeoverExcessEvidence.fileId",
-  "ProjectFinancingQuota.terminationSignatureFileId"
+  "ProjectFinancingQuota.terminationSignatureFileId",
+  "ProjectUpstreamSettlement.confirmationSignatureFileId"
 ]);
 
 const existedAtInvoiceEvidenceGuard = (table: string, column: string) =>

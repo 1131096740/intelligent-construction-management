@@ -1,14 +1,5 @@
 import { ProjectService } from "./project.service";
 
-const affiliate = {
-  id: "assignment-1",
-  businessPartyId: "party-1",
-  businessPartyVersionId: "party-version-5",
-  affiliateNameSnapshot: "挂靠建设集团",
-  affiliateCreditCodeSnapshot: "91310000AFFILIATE",
-  effectiveFrom: new Date("2026-07-01T00:00:00.000Z")
-};
-
 function projectTransaction(tx: object) {
   return {
     $transaction: jest.fn(async (callback: (client: object) => unknown) => callback(tx))
@@ -45,20 +36,13 @@ describe("ProjectService upstream affiliate snapshots", () => {
     expect(tx.projectUpstreamSettlement.create).not.toHaveBeenCalled();
   });
 
-  it("freezes the current affiliate version into receipt and upstream-settlement facts", async () => {
-    const createdAt = new Date("2026-07-28T01:00:00.000Z");
+  it("rejects the legacy receipt write before affiliate or file facts can be written", async () => {
     const tx = {
-      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
-      projectAffiliateAssignment: { findMany: jest.fn().mockResolvedValue([affiliate]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "finance-1" })
       },
       projectReceipt: {
-        create: jest.fn().mockImplementation(async ({ data }) => ({
-          id: "receipt-1",
-          ...data,
-          createdAt
-        }))
+        create: jest.fn()
       },
       auditLog: { create: jest.fn() }
     };
@@ -69,21 +53,19 @@ describe("ProjectService upstream affiliate snapshots", () => {
       auth as never
     );
 
-    await service.recordReceipt("project-1", "finance-1", {
-      receivedAt: "2026-07-28T00:00:00.000Z",
-      amountCents: "10000",
-      payerName: "挂靠建设集团",
-      sourceType: "general_contractor_payment",
-      voucherFileId: "file-1",
-      confirmationPassword: "current-password"
-    });
-
-    expect(tx.projectReceipt.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        affiliateAssignmentId: "assignment-1",
-        affiliateBusinessPartyVersionId: "party-version-5",
-        affiliateNameSnapshot: "挂靠建设集团"
+    await expect(
+      service.recordReceipt("project-1", "finance-1", {
+        receivedAt: "2026-07-28T00:00:00.000Z",
+        amountCents: "10000",
+        payerName: "挂靠建设集团",
+        sourceType: "general_contractor_payment",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
       })
-    });
+    ).rejects.toThrow(
+      "旧项目收款入口已停止新增；请分别登记业主付款、挂靠企业向我方拨款、挂靠扣款或待核对到账差额"
+    );
+    expect(tx.fileObject.findUnique).not.toHaveBeenCalled();
+    expect(tx.projectReceipt.create).not.toHaveBeenCalled();
   });
 });

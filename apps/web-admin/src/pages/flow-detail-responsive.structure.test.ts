@@ -30,8 +30,8 @@ describe("responsive forms and detail pages", () => {
     expect(partyEditor).toContain("@container jg-page (max-width: 620px)");
   });
 
-  it("keeps both project data tables as separate shared scroll owners", () => {
-    expect(projectOverview.match(/expense-table-wrap jg-workspace-scroll/g)?.length).toBe(2);
+  it("keeps all three project data tables as separate shared scroll owners", () => {
+    expect(projectOverview.match(/expense-table-wrap jg-workspace-scroll/g)?.length).toBe(3);
     expect(projectOverview).toContain("min-width: var(--jg-layout-ledger-table-wide-min-width)");
     expect(projectOverview).toContain("min-width: var(--jg-layout-ledger-table-min-width)");
     expect(projectOverview).not.toMatch(/min-width\s*:\s*(?:1180|920)px/u);

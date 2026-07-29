@@ -57,6 +57,20 @@ const upstreamFundBindingMigration = readFileSync(
   ),
   "utf8"
 );
+const affiliateBusinessBindingMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260728137000_project_affiliate_business_facts/migration.sql"
+  ),
+  "utf8"
+);
+const affiliateCompanyContractBindingMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260728138000_project_affiliate_company_contract/migration.sql"
+  ),
+  "utf8"
+);
 const schema = readFileSync(
   join(process.cwd(), "prisma/schema.prisma"),
   "utf8"
@@ -81,7 +95,9 @@ function migrationBindings(): Array<{
   exclusive: boolean;
 }> {
   return Array.from(
-    upstreamFundBindingMigration.matchAll(/\('([^']+)'\s*,\s*'([^']+)'\s*,\s*(TRUE|FALSE)\)/gu),
+    `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}`.matchAll(
+      /\('([^']+)'\s*,\s*'([^']+)'\s*,\s*(TRUE|FALSE)\)/gu
+    ),
     (match) => ({
       binding: `${match[1]}.${match[2]}`,
       exclusive: match[3] === "TRUE"
@@ -92,7 +108,7 @@ function migrationBindings(): Array<{
 describe("unified file business binding migration", () => {
   it("registers every current Prisma FileObject reference exactly once", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(69);
+    expect(registered).toHaveLength(78);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
     expect(contractDraftBindingMigration).toContain(
@@ -129,6 +145,11 @@ describe("unified file business binding migration", () => {
       "InvoiceExceptionConfirmation.proofFileId",
       "InvoiceRecord.fileId",
       "NoInvoiceConfirmation.proofFileId",
+      "ProjectAffiliateBusinessEvidence.fileId",
+      "ProjectAffiliateCompanyContract.fileId",
+      "ProjectAffiliateContractFact.evidenceFileId",
+      "ProjectAffiliatePaymentFact.evidenceFileId",
+      "ProjectAffiliateSettlementFact.evidenceFileId",
       "SettlementRecoveryEntry.evidenceFileId",
       "SpotProcurementPaymentAttachment.fileId",
       "SpotProcurementPaymentExecution.voucherFileId",
