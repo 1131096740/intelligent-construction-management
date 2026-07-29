@@ -1,10 +1,9 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 
 const contractId = "contract-bill-focus";
 const versionId = "version-bill-focus";
 const billId = "bill-focus";
-const serverReloadSentinel = "仅工作台重载返回的服务端哨兵材料";
 const screenshotDir = "/tmp/jgzg-contract-bill-focus-e2e";
 const initialRow = {
   rowKey: "initial-row",
@@ -43,8 +42,7 @@ test.describe("合同清单全宽专注编辑", () => {
     await expect(page).toHaveTitle(/建工智管/u);
     await expect(page.locator("#main-content")).not.toBeEmpty();
     await expect(page.locator("vite-error-overlay, #webpack-dev-server-client-overlay")).toHaveCount(0);
-    await expect(page.locator(".business-tabs").getByText("清单", { exact: true })).toBeVisible();
-    await page.locator(".business-tabs").getByText("清单", { exact: true }).click();
+    await openBillSection(page);
 
     // 普通双栏只显示摘要，不把可编辑宽表塞进窄侧栏。
     await expect(page.locator(".bill-summary-card")).toBeVisible();
@@ -55,7 +53,7 @@ test.describe("合同清单全宽专注编辑", () => {
     await expect(page.getByTestId("contract-bill-grid").locator("revo-grid")).toBeVisible();
     await expectWorkbenchRoute(page);
     await expect(page.locator(".focus-summary")).toContainText(
-      "已保存不含税合计 688,073.39 元"
+      "上次保存不含税合计 688,073.39 元"
     );
     await expect(netUnitPriceCell(page, 0)).toContainText("344.04");
     await expect(netUnitPriceCell(page, 0)).toHaveAttribute("title", "344.036695");
@@ -65,7 +63,7 @@ test.describe("合同清单全宽专注编辑", () => {
       await page.getByTestId("bill-add-row").click();
     }
     await expect(page.locator(".focus-summary")).toContainText("候选行数 21");
-    expect(mock.putBodies).toHaveLength(0);
+    expect(mock.saveBodies).toHaveLength(0);
 
     // RevoGrid 已开启 useClipboard：真实聚焦首个单元格并一次粘贴两行 TSV。
     const firstNameCell = page.locator(
@@ -110,7 +108,7 @@ test.describe("合同清单全宽专注编辑", () => {
     await expect(page.locator(".focus-summary")).toContainText("候选行数 22");
     await page.getByTestId("bill-delete-row").click();
     await expect(page.locator(".focus-summary")).toContainText("候选行数 21");
-    expect(mock.putBodies).toHaveLength(0);
+    expect(mock.saveBodies).toHaveLength(0);
 
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "下载标准模板", exact: true }).click();
@@ -119,19 +117,20 @@ test.describe("合同清单全宽专注编辑", () => {
 
     // 101 行新版清单预检：取消保留 21 行手工候选；确认只走服务端原子应用。
     await uploadPreviewFile(page);
-    await expect(page.getByText(/新增\s*101\s*行，\s*删除\s*21\s*行。/u)).toBeVisible();
-    await page.getByRole("button", { name: "取消", exact: true }).click();
+    await expect(
+      page.getByText(/预检得到\s*101\s*行，新增\s*101\s*行，\s*跳过\s*0\s*行。/u)
+    ).toBeVisible();
+    await page.getByTestId("bill-import-cancel").click();
     await expect(page.locator(".focus-summary")).toContainText("候选行数 21");
     await expect(page.getByTestId("contract-bill-grid")).toContainText("粘贴材料甲");
-    expect(mock.putBodies).toHaveLength(0);
+    expect(mock.saveBodies).toHaveLength(0);
 
     await uploadPreviewFile(page);
-    await page.getByTestId("bill-version-import-confirm").click();
-    await expect.poll(() => mock.applyImportCalls()).toBe(1);
+    await page.getByTestId("bill-import-confirm").click();
     await expect(page.locator(".focus-summary")).toContainText("候选行数 101");
     await expect(page.getByTestId("contract-bill-grid")).toContainText("Excel 材料 1");
     await expect(page.getByTestId("contract-bill-grid")).not.toContainText("粘贴材料甲");
-    expect(mock.putBodies).toHaveLength(0);
+    expect(mock.saveBodies).toHaveLength(0);
 
     // 不能只凭候选计数证明虚拟滚动：真实滚到第 101 行并完成一次单元格编辑。
     await page.locator("revo-grid").evaluate(async (grid: HTMLElement & {
@@ -149,13 +148,13 @@ test.describe("合同清单全宽专注编辑", () => {
     await lastNameInput.press("Enter");
     await expect(lastNameCell).toContainText("Excel 材料 101 已编辑");
 
-    const workbenchReadsBeforeSave = mock.workbenchReadCalls();
-    await page.getByTestId("bill-save-all").click();
-    await expect.poll(() => mock.putBodies.length).toBe(1);
-    await expect.poll(() => mock.workbenchReadCalls()).toBe(workbenchReadsBeforeSave + 1);
-    await expect(page.getByText("清单已全部保存", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "保存草稿", exact: true }).click();
+    await expect.poll(() => mock.saveBodies.length).toBe(1);
+    await expect(page.getByTestId("contract-draft-manual-save-message")).toContainText(
+      "文档预览生成中"
+    );
 
-    const body = mock.putBodies[0]!;
+    const body = mock.saveBodies[0]!.bills[0]!;
     expect(body.rows).toHaveLength(101);
     expect(new Set(body.rows.map((row) => row.clientRowKey)).size).toBe(101);
     expect(body.rows.every((row, index) => row.sortOrder === index)).toBe(true);
@@ -166,20 +165,12 @@ test.describe("合同清单全宽专注编辑", () => {
       !("taxAmountCents" in row)
     )).toBe(true);
     expect(body.rows[100]?.itemName).toBe("Excel 材料 101 已编辑");
-    expect(mock.putResponseItemNames()).not.toContain(serverReloadSentinel);
-    await page.locator("revo-grid").evaluate(async (grid: HTMLElement & {
-      scrollToRow: (rowIndex: number) => Promise<void>;
-    }) => {
-      await grid.scrollToRow(0);
-    });
-    await expect(itemNameCell(page, 0)).toContainText(serverReloadSentinel);
-    expect(mock.workbenchReadCalls()).toBe(workbenchReadsBeforeSave + 1);
     await saveSuccessScreenshot(page, testInfo.project.name, "desktop");
 
     // 权威行键整体回读：切到卡片断言 clientRowKey 已由服务端 rowKey 重建。
     await page.setViewportSize({ width: 375, height: 812 });
     await expect(
-      page.locator('[data-client-row-key="server-authoritative-row-1"]')
+      page.locator('[data-client-row-key="import-row-1"]')
     ).not.toHaveCount(0);
     await expect(page.locator(".contract-bill-grid__card")).toHaveCount(101);
     expect(consoleErrors).toEqual([]);
@@ -202,19 +193,22 @@ test.describe("合同清单全宽专注编辑", () => {
       await installContractBillRoutes(page);
       await loginAndOpenWorkbench(page);
       await expectWorkbenchRoute(page);
-      await page.locator(".business-tabs").getByText("清单", { exact: true }).click();
+      await openBillSection(page);
       await page.getByRole("button", { name: "放大编辑", exact: true }).click();
 
       await expectWorkbenchRoute(page);
       await expect(page.locator("vite-error-overlay, #webpack-dev-server-client-overlay")).toHaveCount(0);
       await expect(page.locator(".focus-toolbar")).toBeVisible();
-      await expect(page.getByTestId("bill-save-all")).toBeVisible();
+      await expect(page.getByRole("button", { name: "保存草稿", exact: true })).toBeVisible();
       await expect(page.getByTestId("bill-add-row")).toBeVisible();
       await expect.poll(() => page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth + 0.5
       )).toBe(true);
       await expectElementReachable(page, ".focus-toolbar");
-      await expectElementReachable(page, '[data-testid="bill-save-all"]');
+      await expectLocatorReachable(
+        page.getByRole("button", { name: "保存草稿", exact: true }),
+        page
+      );
 
       if (viewport.mode === "grid") {
         await expect(page.getByTestId("contract-bill-grid").locator("revo-grid")).toBeVisible();
@@ -227,10 +221,10 @@ test.describe("合同清单全宽专注编辑", () => {
         await expect(page.locator(".contract-bill-grid__cards")).toBeVisible();
         await expect(page.locator(".contract-bill-grid__card")).toHaveCount(1);
         await expect(page.locator(
-          '.contract-bill-grid__card [data-field="itemName"][data-client-row-key="server-initial-row"] input'
+          '.contract-bill-grid__card [data-field="itemName"][data-client-row-key="initial-row"] input'
         )).toHaveValue("钢筋");
         const netPrice = page.locator(
-          '.contract-bill-grid__card [data-field="taxExclusiveUnitPrice"][data-client-row-key="server-initial-row"]'
+          '.contract-bill-grid__card [data-field="taxExclusiveUnitPrice"][data-client-row-key="initial-row"]'
         );
         await expect(netPrice).toHaveText("344.04");
         await expect(netPrice).toHaveAttribute("title", "344.036695");
@@ -254,7 +248,7 @@ test.describe("合同清单全宽专注编辑", () => {
     const mock = await installContractBillRoutes(page);
     await loginAndOpenWorkbench(page);
     await expectWorkbenchRoute(page);
-    await page.locator(".business-tabs").getByText("清单", { exact: true }).click();
+    await openBillSection(page);
 
     await expect(page.locator(".bill-summary-card")).toBeVisible();
     await expect(page.locator("revo-grid")).toHaveCount(0);
@@ -265,7 +259,7 @@ test.describe("合同清单全宽专注编辑", () => {
     await expect(page.locator(".contract-bill-grid__card")).toHaveCount(1);
     await expect(page.locator(".focus-summary")).toContainText("候选行数 1");
     const netPrice = page.locator(
-      '.contract-bill-grid__card [data-field="taxExclusiveUnitPrice"][data-client-row-key="server-initial-row"]'
+      '.contract-bill-grid__card [data-field="taxExclusiveUnitPrice"][data-client-row-key="initial-row"]'
     );
     await expect(netPrice).toHaveText("344.04");
     await expect(netPrice).toHaveAttribute("title", "344.036695");
@@ -277,13 +271,13 @@ test.describe("合同清单全宽专注编辑", () => {
     expect(statusMetrics.contentGap).toBeLessThanOrEqual(statusMetrics.designGap + 0.5);
 
     const itemNameInput = page.locator(
-      '.contract-bill-grid__card [data-field="itemName"][data-client-row-key="server-initial-row"] input'
+      '.contract-bill-grid__card [data-field="itemName"][data-client-row-key="initial-row"] input'
     );
     await itemNameInput.fill("");
     await page.evaluate(() => {
       window.scrollTo({ top: 0, behavior: "auto" });
     });
-    const saveButton = page.getByTestId("bill-save-all");
+    const saveButton = page.getByRole("button", { name: "保存草稿", exact: true });
     await expect.poll(() => page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth + 0.5
     )).toBe(true);
@@ -293,12 +287,10 @@ test.describe("合同清单全宽专注编辑", () => {
     expect(saveButtonBox!.x + saveButtonBox!.width).toBeLessThanOrEqual(
       (page.viewportSize()?.width ?? 375) + 0.5
     );
-    await saveButton.click();
     await expect(page.locator(".error-summary")).toContainText("1 处需要修正");
-    await expect(page.locator(".contract-bill-grid__error-list li")).toHaveCount(1);
     await expect(page.locator(".contract-bill-grid__card")).toHaveCount(1);
     await expect(page.locator(".focus-summary")).toContainText("候选行数 1");
-    expect(mock.putBodies).toHaveLength(0);
+    expect(mock.saveBodies).toHaveLength(0);
 
     await itemNameInput.fill("移动端钢筋");
     await expect(itemNameInput).toHaveValue("移动端钢筋");
@@ -309,11 +301,9 @@ test.describe("合同清单全宽专注编辑", () => {
 });
 
 async function installContractBillRoutes(page: Page) {
-  const putBodies: ReplaceRowsBody[] = [];
-  let putResponseItemNames: string[] = [];
+  const saveBodies: AggregateSaveBody[] = [];
   let templateDownloads = 0;
-  let applyImportCalls = 0;
-  let workbenchReads = 0;
+  let draftRevision = 3;
   let revision = 1;
   let rows: Array<Record<string, unknown>> = [{ ...initialRow }];
 
@@ -356,10 +346,28 @@ async function installContractBillRoutes(page: Page) {
   await page.route("**/api/contract-number-rules", (route) => fulfillJson(route, []));
   await page.route("**/api/contract-templates*", (route) => fulfillJson(route, []));
   await page.route("**/api/contract-layout-templates*", (route) => fulfillJson(route, []));
+  await page.route("**/api/company-entities*", (route) => fulfillJson(route, []));
+  await page.route("**/api/standard-clauses*", (route) => fulfillJson(route, []));
   await page.route(`**/api/contract-workbench/${versionId}/negotiation-rounds`, (route) =>
     fulfillJson(route, [])
   );
-  await page.route(`**/api/contract-bills/${billId}/excel-template`, async (route) => {
+  await page.route(`**/api/contract-drafts/${versionId}/edit-lease**`, (route) => {
+    if (route.request().method() === "DELETE") {
+      return fulfillJson(route, { released: true });
+    }
+    return fulfillJson(route, {
+      token: "lease-token",
+      leaseRevision: 1,
+      expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+      heartbeatIntervalMs: 60_000
+    });
+  });
+  await page.route(`**/api/contract-drafts/${versionId}/preview-generation`, (route) =>
+    fulfillJson(route, { queued: true })
+  );
+  await page.route(
+    `**/api/contract-drafts/${versionId}/bills/materials/template`,
+    async (route) => {
     templateDownloads += 1;
     await route.fulfill({
       status: 200,
@@ -369,97 +377,68 @@ async function installContractBillRoutes(page: Page) {
       },
       body: "xlsx-template"
     });
-  });
+    }
+  );
   await page.route("**/api/files", (route) =>
     fulfillJson(route, { id: "uploaded-bill-xlsx" })
   );
-  await page.route(`**/api/contract-bills/${billId}/excel-imports`, (route) =>
+  await page.route(
+    `**/api/contract-drafts/${versionId}/bills/materials/import-preview`,
+    (route) =>
     fulfillJson(route, {
-      importId: "import-bill-focus",
-      mode: "version_replace",
+      billKey: "materials",
+      targetBillRevision: revision,
+      rows: previewRows(101),
       added: 101,
-      updated: 0,
-      removed: 21,
       skipped: 0,
       beforeAmountCents: "10000",
       afterAmountCents: "10100",
-      errors: [],
-      diffs: previewRows(101).map((row) => ({
-        kind: "added",
-        rowKey: row.clientRowKey
-      }))
+      errors: []
     })
   );
-  await page.route("**/api/contract-bill-imports/import-bill-focus/apply", (route) => {
-    applyImportCalls += 1;
-    revision += 1;
-    rows = previewRows(101).map((row, index) => ({
-      rowKey: `import-row-${index + 1}`,
-      itemCode: row.itemCode,
-      itemName: row.itemName,
-      specification: row.specification,
-      unit: row.unit,
-      quantity: row.quantity,
-      unitPrice: row.unitPrice,
-      taxRatePercent: row.taxRatePercent,
-      taxRateSource: row.taxRateSource,
-      pricingFactStatus: "complete",
-      precisionPolicy: "two_decimal",
-      taxExclusiveUnitPrice: "0.884956",
-      taxInclusiveAmountCents: "100",
-      taxExclusiveAmountCents: "88",
-      taxAmountCents: "12",
-      isProvisional: row.isProvisional,
-      settlementBasis: row.settlementBasis,
-      customData: row.customData
-    }));
-    return fulfillJson(route, {});
-  });
-  await page.route(`**/api/contract-bills/${billId}/rows`, async (route) => {
+  await page.route(`**/api/contract-drafts/${versionId}`, async (route) => {
     expect(route.request().method()).toBe("PUT");
-    const body = route.request().postDataJSON() as ReplaceRowsBody;
-    putBodies.push(body);
+    const body = route.request().postDataJSON() as AggregateSaveBody;
+    const savedRows = body.bills[0]?.rows ?? [];
+    if (savedRows.some((row) => !row.itemName.trim())) {
+      return fulfillJson(route, { message: "清单项目名称不能为空" }, 400);
+    }
+    saveBodies.push(body);
+    draftRevision += 1;
     revision += 1;
-    rows = body.rows.map((row, index) => ({
-      rowKey: `authoritative-row-${index + 1}`,
-      itemCode: row.itemCode ?? null,
-      itemName: row.itemName,
-      specification: row.specification ?? null,
-      unit: row.unit,
-      quantity: row.quantity ?? null,
-      unitPrice: row.unitPrice,
-      taxRatePercent: row.taxRatePercent ?? "13",
-      taxRateSource: row.taxRateSource ?? "version_default",
-      pricingFactStatus: "complete",
+    rows = savedRows.map((row) => ({
+      ...row,
+      rowKey: row.rowKey ?? `saved-${row.clientRowKey}`,
       precisionPolicy: "two_decimal",
       taxExclusiveUnitPrice: "0.884956",
       taxInclusiveAmountCents: "100",
       taxExclusiveAmountCents: "88",
-      taxAmountCents: "12",
-      isProvisional: row.isProvisional ?? false,
-      settlementBasis: row.settlementBasis ?? null,
-      customData: row.customData
+      taxAmountCents: "12"
     }));
-    const response = batchSaveReadModel(rows, revision);
-    putResponseItemNames = response.rows.map((row) => String(row.itemName));
-    await fulfillJson(route, response);
+    return fulfillJson(route, {
+      contractVersionId: versionId,
+      draftRevision,
+      savedAt: new Date().toISOString(),
+      effectiveChangedSections: body.changedSections,
+      amounts: {
+        taxInclusiveAmountCents: "10100",
+        taxExclusiveAmountCents: "8938",
+        taxAmountCents: "1162"
+      },
+      billRevisions: { materials: revision },
+      issueCounts: {},
+      readiness: { ready: false, blockingMessages: [], warningMessages: [] },
+      documentsOutdated: true,
+      availableActions: []
+    });
   });
-  await page.route(`**/api/contract-workbench/${contractId}`, (route) => {
-    workbenchReads += 1;
-    const workbenchRows = putBodies.length === 0
-      ? rows
-      : rows.map((row, index) => index === 0
-        ? { ...row, itemName: serverReloadSentinel }
-        : row);
-    return fulfillJson(route, workbenchReadModel(workbenchRows, revision));
+  await page.route(`**/api/contract-drafts/${versionId}/workbench`, (route) => {
+    return fulfillJson(route, workbenchReadModel(rows, revision, draftRevision));
   });
 
   return {
-    putBodies,
-    templateDownloadCalls: () => templateDownloads,
-    applyImportCalls: () => applyImportCalls,
-    workbenchReadCalls: () => workbenchReads,
-    putResponseItemNames: () => putResponseItemNames
+    saveBodies,
+    templateDownloadCalls: () => templateDownloads
   };
 }
 
@@ -470,7 +449,7 @@ async function loginAndOpenWorkbench(page: Page) {
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await expect.poll(() => decodeURIComponent(new URL(page.url()).pathname)).toBe("/首页");
   await page.waitForLoadState("networkidle");
-  await page.goto(`/contracts/${contractId}/workbench`);
+  await page.goto(`/contracts/${contractId}/workbench?versionId=${versionId}`);
   await expect(page.getByRole("heading", { name: "合同清单专注编辑回归合同" })).toBeVisible();
 }
 
@@ -478,6 +457,11 @@ async function expectWorkbenchRoute(page: Page) {
   await expect.poll(() => decodeURIComponent(new URL(page.url()).pathname)).toBe(
     `/合同工作台/${contractId}`
   );
+}
+
+async function openBillSection(page: Page) {
+  await page.locator('[data-section-nav-id="bill_tax"]').click();
+  await expect(page.locator('[data-section-id="bill_tax"]')).toBeVisible();
 }
 
 function itemNameCell(page: Page, rowIndex: number) {
@@ -512,7 +496,10 @@ async function mobileStatusMetrics(page: Page) {
 }
 
 async function expectElementReachable(page: Page, selector: string) {
-  const target = page.locator(selector);
+  await expectLocatorReachable(page.locator(selector), page);
+}
+
+async function expectLocatorReachable(target: Locator, page: Page) {
   await target.scrollIntoViewIfNeeded();
   const box = await target.boundingBox();
   expect(box).not.toBeNull();
@@ -541,7 +528,7 @@ async function saveSuccessScreenshot(
   await mkdir(screenshotDir, { recursive: true });
   const evidenceTarget = viewportLabel === "desktop"
     ? page.getByTestId("contract-bill-grid")
-    : page.getByTestId("bill-save-all");
+    : page.getByRole("button", { name: "保存草稿", exact: true });
   await evidenceTarget.scrollIntoViewIfNeeded();
   await page.screenshot({
     path: `${screenshotDir}/${projectName}-${viewportLabel}-success.png`
@@ -554,7 +541,7 @@ async function uploadPreviewFile(page: Page) {
     mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     buffer: Buffer.from("xlsx-e2e-fixture")
   });
-  await expect(page.getByTestId("bill-version-import-confirm")).toBeVisible();
+  await expect(page.getByTestId("bill-import-confirm")).toBeVisible();
 }
 
 function previewRows(count: number) {
@@ -577,7 +564,8 @@ function previewRows(count: number) {
 
 function workbenchReadModel(
   rows: Array<Record<string, unknown>>,
-  revision: number
+  revision: number,
+  draftRevision = 3
 ) {
   return {
     contract: {
@@ -594,7 +582,7 @@ function workbenchReadModel(
       versionNo: 1,
       status: "draft",
       changeType: "original",
-      draftRevision: 3,
+      draftRevision,
       amountCents: "75000000",
       pricingNature: "unit_price",
       amountSource: "bill_sum",
@@ -635,92 +623,62 @@ function workbenchReadModel(
       taxMode: "single_rate",
       defaultTaxRatePercent: "9",
       schemaSnapshot: { columns: [] },
-      rows
+      rows: rows.map((row, index) => ({ ...row, sortOrder: index }))
     }],
     paymentTerms: { originalText: "", stages: [] },
+    draft: {},
+    attachments: [],
+    lease: {
+      state: "available",
+      holderDisplayName: null,
+      expiresAt: null,
+      canTakeOver: false
+    },
+    settlementMode: {
+      value: "settlement_required",
+      source: "contract_director",
+      confirmedAt: "2026-07-25T00:00:00.000Z",
+      confirmedByUserId: "contract-director-1",
+      confirmationRequired: false,
+      canConfirm: false
+    },
     checkpoints: [],
     documents: [],
     readiness: { ready: false, blockingMessages: [], warningMessages: [] }
   };
 }
 
-function batchSaveReadModel(
-  rows: Array<Record<string, unknown>>,
-  revision: number
-) {
-  const now = "2026-07-25T00:00:00.000Z";
-  return {
-    bill: {
-      id: billId,
-      contractVersionId: versionId,
-      billKey: "materials",
-      name: "合同价格清单",
-      amountRole: "included",
-      pricingMode: "tax_inclusive",
-      quantityScale: 2,
-      unitPriceScale: 2,
-      schemaSnapshot: { columns: [] },
-      sourceExcelFileId: null,
-      revision,
-      taxInclusiveAmountCents: "10100",
-      taxExclusiveAmountCents: "8938",
-      taxAmountCents: "1162",
-      createdAt: now,
-      updatedAt: now
-    },
-    rows: rows.map((row, index) => ({
-      id: `saved-row-${index + 1}`,
-      contractBillId: billId,
-      rowKey: row.rowKey,
-      sortOrder: index,
-      itemCode: row.itemCode,
-      itemName: row.itemName,
-      specification: row.specification,
-      unit: row.unit,
-      quantity: row.quantity,
-      unitPrice: row.unitPrice,
-      taxRate: row.taxRatePercent,
-      taxRateSource: row.taxRateSource,
-      pricingFactStatus: row.pricingFactStatus,
-      precisionPolicy: row.precisionPolicy,
-      taxExclusiveUnitPrice: row.taxExclusiveUnitPrice,
-      taxInclusiveAmountCents: row.taxInclusiveAmountCents,
-      taxExclusiveAmountCents: row.taxExclusiveAmountCents,
-      taxAmountCents: row.taxAmountCents,
-      isProvisional: row.isProvisional,
-      settlementBasis: row.settlementBasis,
-      customData: row.customData,
-      createdAt: now,
-      updatedAt: now
-    }))
-  };
-}
-
-function fulfillJson(route: Route, body: unknown) {
+function fulfillJson(route: Route, body: unknown, status = 200) {
   return route.fulfill({
-    status: 200,
+    status,
     contentType: "application/json",
     body: JSON.stringify(body)
   });
 }
 
-interface ReplaceRowsBody {
-  expectedBillRevision: number;
+interface AggregateSaveBody {
   idempotencyKey: string;
-  rows: Array<{
-    clientRowKey: string;
-    rowKey?: string;
-    sortOrder: number;
-    itemCode?: string;
-    itemName: string;
-    specification?: string;
-    unit: string;
-    quantity?: string;
-    unitPrice: string;
-    taxRatePercent?: string;
-    taxRateSource?: string;
-    isProvisional?: boolean;
-    settlementBasis?: string;
-    customData: Record<string, unknown>;
+  saveKind: "auto" | "manual";
+  expectedRevision: number;
+  changedSections: string[];
+  bills: Array<{
+    billKey: string;
+    expectedRevision: number;
+    rows: Array<{
+      clientRowKey: string;
+      rowKey?: string;
+      sortOrder: number;
+      itemCode?: string;
+      itemName: string;
+      specification?: string;
+      unit: string;
+      quantity?: string;
+      unitPrice: string;
+      taxRatePercent?: string;
+      taxRateSource?: string;
+      isProvisional?: boolean;
+      settlementBasis?: string;
+      customData: Record<string, unknown>;
+    }>;
   }>;
 }

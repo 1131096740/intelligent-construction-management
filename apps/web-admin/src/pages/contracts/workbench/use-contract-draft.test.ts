@@ -571,7 +571,16 @@ describe("useContractDraft", () => {
 
     expect(draft.aggregateModel).toMatchObject({
       parties: [{ roleKey: "counterparty", snapshot: { name: "供应商甲" } }],
-      bills: [{ billKey: "main", expectedRevision: 7 }],
+      bills: [{
+        billKey: "main",
+        expectedRevision: 7,
+        rows: [{
+          taxInclusiveAmountCents: "1130",
+          taxExclusiveAmountCents: "1000",
+          taxAmountCents: "130",
+          taxExclusiveUnitPrice: "500.000000"
+        }]
+      }],
       attachments: [{ slotKey: "supporting", fileId: "file-1" }],
       negotiationDocuments: {
         selectedNegotiationRoundId: "round-1",

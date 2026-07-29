@@ -510,6 +510,38 @@ function draftBillRowFromRead(
     row["taxRateSource"] === "row_override"
       ? { taxRateSource: row["taxRateSource"] }
       : {}),
+    ...(row["precisionPolicy"] === "legacy" ||
+    row["precisionPolicy"] === "two_decimal"
+      ? { precisionPolicy: row["precisionPolicy"] }
+      : {}),
+    initialQuantity:
+      typeof row["initialQuantity"] === "string"
+        ? row["initialQuantity"]
+        : typeof row["quantity"] === "string"
+          ? row["quantity"]
+          : "",
+    initialUnitPrice:
+      typeof row["initialUnitPrice"] === "string"
+        ? row["initialUnitPrice"]
+        : row["unitPrice"],
+    initialTaxRatePercent:
+      typeof row["initialTaxRatePercent"] === "string"
+        ? row["initialTaxRatePercent"]
+        : typeof row["taxRatePercent"] === "string"
+          ? row["taxRatePercent"]
+          : "",
+    ...(typeof row["taxExclusiveUnitPrice"] === "string"
+      ? { taxExclusiveUnitPrice: row["taxExclusiveUnitPrice"] }
+      : {}),
+    ...(typeof row["taxInclusiveAmountCents"] === "string"
+      ? { taxInclusiveAmountCents: row["taxInclusiveAmountCents"] }
+      : {}),
+    ...(typeof row["taxExclusiveAmountCents"] === "string"
+      ? { taxExclusiveAmountCents: row["taxExclusiveAmountCents"] }
+      : {}),
+    ...(typeof row["taxAmountCents"] === "string"
+      ? { taxAmountCents: row["taxAmountCents"] }
+      : {}),
     ...(typeof row["isProvisional"] === "boolean"
       ? { isProvisional: row["isProvisional"] }
       : {}),
@@ -522,6 +554,19 @@ function draftBillRowFromRead(
 
 function templateFieldKeySet(workbench: ContractDraftWorkbenchReadModel): Set<string> {
   return new Set(workbench.version.templateSnapshot.fieldSchema.map((field) => field.key));
+}
+
+function draftBillRowForSave(row: Record<string, unknown>): Record<string, unknown> {
+  const payload = { ...row };
+  delete payload["precisionPolicy"];
+  delete payload["initialQuantity"];
+  delete payload["initialUnitPrice"];
+  delete payload["initialTaxRatePercent"];
+  delete payload["taxExclusiveUnitPrice"];
+  delete payload["taxInclusiveAmountCents"];
+  delete payload["taxExclusiveAmountCents"];
+  delete payload["taxAmountCents"];
+  return payload;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -854,7 +899,7 @@ function savePayloadFromSnapshot(
     })),
     bills: snapshot.bills.map((bill) => ({
       ...bill,
-      rows: bill.rows.map((row) => ({ ...row }))
+      rows: bill.rows.map(draftBillRowForSave)
     })),
     paymentTerms,
     attachments: snapshot.attachments.map((attachment) => ({ ...attachment })),
