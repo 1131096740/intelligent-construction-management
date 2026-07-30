@@ -101,6 +101,7 @@ export interface ContractDraftFieldsModel {
   paymentRatioBps: number | null;
   paymentDueDays: number | null;
   paymentRequiresInvoice: boolean;
+  paymentAllowsEarlyPayment: boolean;
   paymentAllowsInstallments: boolean;
   invoiceType: ContractInvoiceType | null;
   taxMode: ContractTaxMode;
@@ -326,6 +327,7 @@ function emptyModel(): ContractDraftModel {
     paymentRatioBps: null,
     paymentDueDays: null,
     paymentRequiresInvoice: true,
+    paymentAllowsEarlyPayment: false,
     paymentAllowsInstallments: true,
     invoiceType: null,
     taxMode: "single_rate",
@@ -392,6 +394,7 @@ function modelFromWorkbench(workbench: ContractDraftWorkbenchReadModel): Contrac
     paymentRatioBps: paymentStage?.ratioBps ?? null,
     paymentDueDays: paymentStage?.dueDays ?? null,
     paymentRequiresInvoice: paymentStage?.requiresInvoice ?? true,
+    paymentAllowsEarlyPayment: paymentStage?.allowsEarlyPayment ?? false,
     paymentAllowsInstallments: paymentStage?.allowsInstallments ?? true,
     invoiceType: workbench.version.taxFacts.invoiceType,
     taxMode: workbench.version.taxFacts.taxMode,
@@ -438,6 +441,7 @@ function aggregateModelFromWorkbench(
             triggerEvent: stage.triggerEvent,
             dueDays: stage.dueDays,
             requiresInvoice: stage.requiresInvoice,
+            allowsEarlyPayment: stage.allowsEarlyPayment,
             allowsInstallments: stage.allowsInstallments,
             originalText: stage.originalText
           }))
@@ -701,6 +705,7 @@ function assignModel(target: ContractDraftModel, source: ContractDraftModel): vo
   target.paymentRatioBps = source.paymentRatioBps;
   target.paymentDueDays = source.paymentDueDays;
   target.paymentRequiresInvoice = source.paymentRequiresInvoice;
+  target.paymentAllowsEarlyPayment = source.paymentAllowsEarlyPayment;
   target.paymentAllowsInstallments = source.paymentAllowsInstallments;
   target.invoiceType = source.invoiceType ?? null;
   target.taxMode = source.taxMode ?? "single_rate";
@@ -739,6 +744,7 @@ function paymentStagesFromModel(
         : "结算归档确认生效",
       dueDays: model.paymentDueDays,
       requiresInvoice: model.paymentRequiresInvoice,
+      allowsEarlyPayment: model.paymentAllowsEarlyPayment,
       allowsInstallments: model.paymentAllowsInstallments,
       originalText: model.paymentTermsOriginalText || (isDirectPayment
         ? "合同归档确认生效后按约定比例付款。"

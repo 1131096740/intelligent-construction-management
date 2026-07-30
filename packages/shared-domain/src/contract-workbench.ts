@@ -285,6 +285,7 @@ export interface ContractWorkbenchReadModel {
       triggerEvent: string;
       dueDays: number;
       requiresInvoice: boolean;
+      allowsEarlyPayment: boolean;
       allowsInstallments: boolean;
       originalText: string;
     }>;

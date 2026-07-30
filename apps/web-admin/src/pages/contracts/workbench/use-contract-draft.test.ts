@@ -1812,6 +1812,7 @@ describe("useContractDraft", () => {
               triggerEvent: "结算归档确认生效",
               dueDays: 30,
               requiresInvoice: true,
+              allowsEarlyPayment: true,
               allowsInstallments: true,
               originalText: "原合同约定按结算付款。"
             }
@@ -1848,6 +1849,7 @@ describe("useContractDraft", () => {
           triggerEvent: "结算归档确认生效",
           dueDays: 20,
           requiresInvoice: true,
+          allowsEarlyPayment: true,
           allowsInstallments: false,
           originalText: "结算归档后20天内付款85%。"
         }]
@@ -1871,6 +1873,7 @@ describe("useContractDraft", () => {
             triggerEvent: "合同归档确认生效",
             dueDays: 30,
             requiresInvoice: true,
+            allowsEarlyPayment: false,
             allowsInstallments: true,
             originalText: "合同生效后30天内可付款。"
           }

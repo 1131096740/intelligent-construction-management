@@ -269,6 +269,7 @@ export interface ContractDraftPaymentTermsModel {
     triggerEvent: string;
     dueDays: number;
     requiresInvoice: boolean;
+    allowsEarlyPayment: boolean;
     allowsInstallments: boolean;
     originalText: string;
   }>;
@@ -530,6 +531,7 @@ export interface SaveContractDraftPayload {
     triggerEvent: string;
     dueDays: number;
     requiresInvoice: boolean;
+    allowsEarlyPayment: boolean;
     allowsInstallments: boolean;
     originalText: string;
   }>;

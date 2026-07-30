@@ -371,6 +371,7 @@ function contractDraftModel(): ContractDraftModel {
     paymentRatioBps: null,
     paymentDueDays: null,
     paymentRequiresInvoice: true,
+    paymentAllowsEarlyPayment: false,
     paymentAllowsInstallments: true,
     invoiceType: null,
     taxMode: "single_rate",
