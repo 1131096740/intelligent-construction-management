@@ -145,3 +145,33 @@ business_draft: 0
 ```text
 确认将当前 9 条 contract_bill_import_preview 及其 9 个唯一临时文件纳入首次清理，并允许启用每日 04:30（AccuracySec=5min、RandomizedDelaySec=15min、Persistent=true）timer；timer 未来仅自动清理既定 temporary-only 类别：超过 24 小时且重扫无任何业务引用的未绑定文件、超过 7 天的临时导入/预览与七天技术保存回执、满足既定规则的渲染中间件和被更新草稿预览。业务草稿 purge、正式业务记录、AuditLog、checkpoint、旧表旧字段仍禁止物理删除。
 ```
+
+## 21:34+08:00 新授权后的只读漂移复核
+
+用户随后授权“开启 temporary-only retention”，但执行范围仍明确以“先只读核对
+8 个未绑定临时文件”为前置。生产只读重扫证明该对象集合已经不再存在：
+
+- checkout：`5234fd37bc5c320922f73323af77b20317fcf5f7`，clean；
+- API、Nginx、PostgreSQL：active；
+- retention timer：disabled / inactive；
+- retention service：inactive；
+- `/etc/jiangkong/draft-retention.env`：absent；
+- preview 生成时间：`2026-07-30T13:34:50.741Z`；
+- preview 到期时间：`2026-07-30T14:04:50.741Z`；
+- preview SHA-256：
+  `4a404ce8f4b0726bb1cdcde2ffc830c38c2c23e3132646ca7eec2d4f2da3b7c5`；
+- preview：ready、未截断；
+- 当前候选：9 个 `contract_bill_import_preview`、113,955 bytes；
+- `unbound_temporary_file`：0。
+
+这 9 个候选与已消费授权并清理完成的原 8 个未绑定文件不是同一对象集合。每日
+04:30 timer 配置了 `Persistent=true`；在当前时间启用可能立即补跑，并对这 9
+个及未来六类 temporary-only 对象执行物理清理。因此本轮在漂移门停住，没有
+保存 preview、没有 apply、没有创建 retention env、没有 enable/start timer，
+也没有修改业务数据或文件。
+
+继续所需的精确授权仍为：
+
+```text
+确认删除当前 9 个 contract_bill_import_preview，并授权 04:30 timer 未来仅自动清理既定 6 类 temporary-only 对象；业务草稿 purge、正式业务记录、审计、checkpoint、旧表旧字段仍关闭。
+```
