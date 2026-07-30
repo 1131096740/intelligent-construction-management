@@ -175,3 +175,115 @@ business_draft: 0
 ```text
 确认删除当前 9 个 contract_bill_import_preview，并授权 04:30 timer 未来仅自动清理既定 6 类 temporary-only 对象；业务草稿 purge、正式业务记录、审计、checkpoint、旧表旧字段仍关闭。
 ```
+
+## 23:14+08:00 精确授权后的首次全范围清理与 timer 启用
+
+用户随后逐字确认当前 9 条 `contract_bill_import_preview` 及未来既定六类
+temporary-only 自动清理范围。写入前重新执行完整失败关闭门：
+
+- 生产 checkout：`5234fd37bc5c320922f73323af77b20317fcf5f7`，clean；
+- API、Nginx、PostgreSQL：active，公网 health 正常；
+- 既有备份 `jiangkong-20260730-151236.dump`：
+  - 1,005,167 bytes、root:root 600；
+  - checksum OK；
+  - `pg_restore --list` 1,658 项；
+  - 异机回执的对象键、备份 SHA、checksum SHA 和大小与本地工件一致；
+- fresh preview：
+  - generatedAt：`2026-07-30T15:09:11.838Z`；
+  - expiresAt：`2026-07-30T15:39:11.838Z`；
+  - SHA-256：`06d11e49fd84c909f331d54f1e09ac1b41a5c4cc261670dceec03f8206fe2a6e`；
+  - ready、未截断；
+  - 精确 9 条、113,955 bytes；
+  - 唯一类别为 `contract_bill_import_preview`；
+  - 唯一种类为 `contract_bill_import_file_record`；
+- apply 前 9/9 逐条重扫均 `safe=true`，无 truncated、无业务绑定或其他文件引用，
+  且每条精确关联一个唯一临时文件。
+
+固定批次：
+
+```text
+temporary-only-import-preview-first-20260730-5234fd37
+```
+
+返回：
+
+```json
+{
+  "status": "applied",
+  "reportSha256": "06d11e49fd84c909f331d54f1e09ac1b41a5c4cc261670dceec03f8206fe2a6e",
+  "deletedCount": 9,
+  "deletedBytes": "113955",
+  "failedCount": 0,
+  "skippedCount": 0,
+  "businessPurgeSkippedCount": 0,
+  "categoryResults": [
+    {
+      "category": "contract_bill_import_preview",
+      "result": "deleted",
+      "count": 9
+    }
+  ]
+}
+```
+
+删除前后守恒：
+
+| 事实 | 删除前 | 删除后 | 结论 |
+| --- | ---: | ---: | --- |
+| Contract | 2 | 2 | 不变 |
+| ContractVersion | 2 | 2 | 不变 |
+| ContractDraftCheckpoint | 0 | 0 | 不变 |
+| ApprovalInstance | 2 | 2 | 不变 |
+| ContractFormalFile | 0 | 0 | 不变 |
+| ContractArchiveFile | 0 | 0 | 不变 |
+| ContractTakeover | 1 | 1 | 不变 |
+| Settlement | 0 | 0 | 不变 |
+| PaymentRequest | 0 | 0 | 不变 |
+| PaymentExecution | 0 | 0 | 不变 |
+| ContractBill | 1 | 1 | 不变 |
+| ContractBillImport | 11 | 2 | 精确减少 9 条临时导入预览 |
+| ContractDraftSaveRequest | 2 | 2 | 不变 |
+| ContractGeneratedDocument | 0 | 0 | 不变 |
+| SettlementImport | 0 | 0 | 不变 |
+| SettlementTemplatePreviewJob | 0 | 0 | 不变 |
+| ContractLayoutPreviewJob | 4 | 4 | 不变 |
+| FileObject | 26 | 17 | 精确减少 9 个临时文件 |
+| FileObject `deleting` | 0 | 0 | 无残留 |
+| AuditLog | 350 | 351 | 仅新增唯一 retention 批次审计 |
+
+删除后 fresh preview 为 ready、未截断、0 条/0 bytes。唯一批次审计的
+report SHA、deleted/failed/skipped/business purge 和类别计数与 apply receipt
+完全一致。
+
+随后原子创建：
+
+```text
+/etc/jiangkong/draft-retention.env
+```
+
+权限为 root:root 600，内容精确为：
+
+```text
+CONTRACT_DRAFT_TEMP_RETENTION_ENABLED=true
+CONTRACT_DRAFT_BUSINESS_PURGE_ENABLED=false
+```
+
+仓库与 `/etc/systemd/system` 中的 service/timer 字节一致；timer 已
+`enabled/active/waiting`，service 保持 oneshot `inactive/dead`，首次启动未发生
+`Persistent=true` 补跑，下一次为 `2026-07-31 04:30:23 +08:00`。
+
+未来 timer 只覆盖既定六类 temporary-only：
+
+1. `unbound_temporary_file`；
+2. `contract_bill_import_preview`；
+3. `settlement_contract_import_preview`；
+4. `render_intermediate_file`；
+5. `contract_draft_preview_superseded`；
+6. `contract_draft_save_receipt`。
+
+业务草稿 purge、正式业务记录、AuditLog、checkpoint、旧表和旧字段物理删除仍
+保持关闭。生产 root-only 完整证据目录：
+
+```text
+/srv/jiangkong-retention-evidence/5234fd37bc5c320922f73323af77b20317fcf5f7/temporary-only-enable-20260730
+```
