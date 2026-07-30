@@ -176,10 +176,24 @@ Received workbenchReferencesChanged: true
 
 ## 6. 修复验证与下一发布门
 
+- 完整验证树：`9afc82f95a3b769d68b2a139832f2866074d9683`；
 - 精确 RED：1 失败，错误与生产根因一致；
 - GREEN：合同工作台与聚合保存 84/84；
 - API：251 套、4,751/4,751，另有 15 套/38 项条件跳过；
-- API typecheck、lint、build：通过；
+- shared-domain：149/149；
+- Web：139 个文件、1,248/1,248；
+- 整仓 typecheck、lint：通过；
+- Web E2E typecheck、`check:ui`：通过；
+- API/Web build：通过；
+- Prisma generate、validate：通过；
+- 业务错误扫描：396 个生产 TypeScript 文件，55 个既有内部英文哨兵；
+- 能力矩阵：184 个静态控制器路由、138 个 Web API 请求、395 个运行时路由，
+  差异 0；
+- P0 Chromium：2/2，另 2 项按真实环境变量条件跳过；
+- 清单焦点：Chromium/WebKit 桌面及 960/640/375，8/8；
+- 跨版本清单映射与主任确认：1/1；
+- PostgreSQL 16 临时隔离空库顺序应用 109/109 迁移，状态最新；同批
+  transition 首轮 4 写，第二轮 0 写，业务计数守恒，临时容器和目录已清理；
 - `git diff --check`：通过；
 - 本修复不改变 Prisma Schema、迁移树或 Web 运行代码。
 
