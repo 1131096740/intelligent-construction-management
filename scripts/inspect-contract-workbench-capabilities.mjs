@@ -36,7 +36,7 @@ const API_FILES = [
   "apps/web-admin/src/api/core-flow-read.api.ts"
 ];
 
-const DEFAULT_LEGACY_ROUTES = [
+export const DEFAULT_LEGACY_ROUTES = [
   "GET /contract-workbench",
   "GET /contract-workbench/:param",
   "PATCH /contract-workbench/:param",
@@ -52,6 +52,8 @@ const DEFAULT_LEGACY_ROUTES = [
 ];
 
 const DEFAULT_INTERNAL_ROUTES = [];
+const EXPLICIT_ISO_TIMESTAMP =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/;
 
 function posixPath(path) {
   return path.split(sep).join("/");
@@ -75,6 +77,239 @@ function normalizeRouteKey(value) {
   const match = String(value).trim().match(/^([A-Za-z]+)\s+(.+)$/);
   if (!match) return null;
   return `${match[1].toUpperCase()} ${normalizeRoute(match[2])}`;
+}
+
+function capabilityInputError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function failLegacyRoutes() {
+  throw capabilityInputError(
+    "CAPABILITY_LEGACY_ROUTES_INVALID",
+    "Configured legacy routes failed validation"
+  );
+}
+
+function failLegacyHits() {
+  throw capabilityInputError(
+    "CAPABILITY_LEGACY_HITS_INVALID",
+    "Legacy route hit evidence failed validation"
+  );
+}
+
+function normalizeEvidenceRouteKey(value) {
+  if (typeof value !== "string") return null;
+  const match = value.trim().match(/^([A-Za-z]+)\s+(\/\S*)$/);
+  if (!match) return null;
+  const path = match[2];
+  if (
+    path.includes("?") ||
+    path.includes("#") ||
+    path.includes("\\") ||
+    path.includes("//")
+  ) {
+    return null;
+  }
+  const segments = path.split("/").slice(1);
+  if (
+    segments.some(
+      (segment) =>
+        segment === "." ||
+        segment === ".." ||
+        (segment.includes(":") && !/^:[A-Za-z_][A-Za-z0-9_]*$/.test(segment))
+    )
+  ) {
+    return null;
+  }
+  return normalizeRouteKey(value);
+}
+
+function normalizeUniqueLegacyRoutes(routes) {
+  if (!Array.isArray(routes)) failLegacyRoutes();
+  const normalized = new Set();
+  for (const route of routes) {
+    const key = normalizeEvidenceRouteKey(route);
+    if (!key || normalized.has(key)) failLegacyRoutes();
+    normalized.add(key);
+  }
+  return normalized;
+}
+
+function parseExplicitIsoTimestamp(value) {
+  if (typeof value !== "string") return null;
+  const match = value.match(EXPLICIT_ISO_TIMESTAMP);
+  if (!match) return null;
+  const [
+    ,
+    yearText,
+    monthText,
+    dayText,
+    hourText,
+    minuteText,
+    secondText,
+    fraction = "",
+    zone,
+    sign,
+    offsetHourText = "0",
+    offsetMinuteText = "0"
+  ] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const offsetHours = Number(offsetHourText);
+  const offsetMinutes = Number(offsetMinuteText);
+  const daysInMonth =
+    month >= 1 && month <= 12
+      ? new Date(Date.UTC(year, month, 0)).getUTCDate()
+      : 0;
+  if (
+    year < 1970 ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > daysInMonth ||
+    hour < 0 ||
+    hour > 23 ||
+    minute < 0 ||
+    minute > 59 ||
+    second < 0 ||
+    second > 59 ||
+    offsetHours < 0 ||
+    offsetHours > 14 ||
+    offsetMinutes < 0 ||
+    offsetMinutes > 59 ||
+    (offsetHours === 14 && offsetMinutes !== 0)
+  ) {
+    return null;
+  }
+  const signedOffsetMinutes =
+    zone === "Z"
+      ? 0
+      : (sign === "+" ? 1 : -1) * (offsetHours * 60 + offsetMinutes);
+  return (
+    Date.UTC(
+      year,
+      month - 1,
+      day,
+      hour,
+      minute,
+      second,
+      Number(fraction.padEnd(3, "0"))
+    ) -
+    signedOffsetMinutes * 60_000
+  );
+}
+
+function parseHalfOpenWindow(value) {
+  if (typeof value !== "string") return null;
+  const timestamps = value.split("/");
+  if (timestamps.length !== 2) return null;
+  const from = parseExplicitIsoTimestamp(timestamps[0]);
+  const to = parseExplicitIsoTimestamp(timestamps[1]);
+  if (from === null || to === null || from >= to) return null;
+  return { from, to };
+}
+
+function plainRecord(value) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function validateLegacyHits(legacyHits, legacyRoutes) {
+  const structuralCountFields = [
+    "nonEmptyLines",
+    "parsedLines",
+    "beforeWindowLines",
+    "inWindowLines",
+    "atOrAfterWindowLines",
+    "matchedRequests",
+    "unmatchedRequests"
+  ];
+  if (
+    !plainRecord(legacyHits) ||
+    legacyHits.schemaVersion !== 1 ||
+    legacyHits.status !== "ready" ||
+    !plainRecord(legacyHits.evidence) ||
+    legacyHits.evidence.complete !== true ||
+    legacyHits.evidence.coverageBasis !== "operator_attested" ||
+    legacyHits.evidence.apiPrefix !== "/api" ||
+    legacyHits.evidence.parseFailures !== 0 ||
+    !Number.isSafeInteger(legacyHits.evidence.inputSourceCount) ||
+    legacyHits.evidence.inputSourceCount < 1 ||
+    !Number.isSafeInteger(
+      legacyHits.evidence.inWindowApiPrefixedRequests
+    ) ||
+    legacyHits.evidence.inWindowApiPrefixedRequests < 1 ||
+    structuralCountFields.some(
+      (field) =>
+        !Number.isSafeInteger(legacyHits.evidence[field]) ||
+        legacyHits.evidence[field] < 0
+    ) ||
+    legacyHits.evidence.nonEmptyLines < 1 ||
+    legacyHits.evidence.inWindowLines < 1 ||
+    legacyHits.evidence.parsedLines !== legacyHits.evidence.nonEmptyLines ||
+    legacyHits.evidence.beforeWindowLines +
+      legacyHits.evidence.inWindowLines +
+      legacyHits.evidence.atOrAfterWindowLines !==
+      legacyHits.evidence.parsedLines ||
+    legacyHits.evidence.matchedRequests +
+      legacyHits.evidence.unmatchedRequests !==
+      legacyHits.evidence.inWindowLines ||
+    !plainRecord(legacyHits.counts)
+  ) {
+    failLegacyHits();
+  }
+  const observationWindow = parseHalfOpenWindow(legacyHits.observationWindow);
+  const coverageWindow = parseHalfOpenWindow(
+    legacyHits.evidence.coverageWindow
+  );
+  if (
+    observationWindow === null ||
+    coverageWindow === null ||
+    observationWindow.to > Date.now() ||
+    coverageWindow.to > Date.now() ||
+    coverageWindow.from > observationWindow.from ||
+    coverageWindow.to < observationWindow.to
+  ) {
+    failLegacyHits();
+  }
+
+  const counts = {};
+  const seen = new Set();
+  let matchedCountTotal = 0;
+  for (const [rawKey, value] of Object.entries(legacyHits.counts)) {
+    const key = normalizeEvidenceRouteKey(rawKey);
+    if (
+      !key ||
+      seen.has(key) ||
+      !Number.isSafeInteger(value) ||
+      value < 0
+    ) {
+      failLegacyHits();
+    }
+    seen.add(key);
+    counts[key] = value;
+    matchedCountTotal += value;
+  }
+  if (
+    !Number.isSafeInteger(matchedCountTotal) ||
+    matchedCountTotal !== legacyHits.evidence.matchedRequests ||
+    [...legacyRoutes].some((key) => counts[key] === undefined)
+  ) {
+    failLegacyHits();
+  }
+  return {
+    observationWindow: legacyHits.observationWindow,
+    counts
+  };
 }
 
 function joinRoute(prefix, suffix) {
@@ -449,9 +684,7 @@ export async function inspectCapabilityProject({
   const normalizedInternal = new Set(
     internalRoutes.map(normalizeRouteKey).filter(Boolean)
   );
-  const normalizedLegacy = new Set(
-    legacyRoutes.map(normalizeRouteKey).filter(Boolean)
-  );
+  const normalizedLegacy = normalizeUniqueLegacyRoutes(legacyRoutes);
   const normalizedRuntime =
     runtimeRoutes === undefined
       ? undefined
@@ -459,14 +692,7 @@ export async function inspectCapabilityProject({
   const normalizedHits =
     legacyHits === undefined
       ? undefined
-      : {
-          observationWindow: legacyHits.observationWindow ?? "not_declared",
-          counts: Object.fromEntries(
-            Object.entries(legacyHits.counts ?? {})
-              .map(([key, value]) => [normalizeRouteKey(key), value])
-              .filter(([key]) => key)
-          )
-        };
+      : validateLegacyHits(legacyHits, normalizedLegacy);
 
   const controllerFiles = await collectFiles(
     root,
@@ -730,7 +956,23 @@ ${rows}
 }
 
 async function readJson(path) {
-  return JSON.parse(await readFile(path, "utf8"));
+  let source;
+  try {
+    source = await readFile(path, "utf8");
+  } catch {
+    throw capabilityInputError(
+      "CAPABILITY_JSON_UNREADABLE",
+      "Capability evidence JSON could not be read"
+    );
+  }
+  try {
+    return JSON.parse(source);
+  } catch {
+    throw capabilityInputError(
+      "CAPABILITY_JSON_INVALID",
+      "Capability evidence JSON failed validation"
+    );
+  }
 }
 
 function parseArgs(argv) {
@@ -802,8 +1044,19 @@ async function main() {
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   main().catch((error) => {
+    const safeInputError =
+      typeof error?.code === "string" &&
+      error.code.startsWith("CAPABILITY_");
     process.stderr.write(
-      `${JSON.stringify({ status: "blocked", code: "CAPABILITY_INSPECTION_FAILED", message: error.message })}\n`
+      `${JSON.stringify({
+        status: "blocked",
+        code: safeInputError
+          ? error.code
+          : "CAPABILITY_INSPECTION_FAILED",
+        message: safeInputError
+          ? error.message
+          : "Capability inspection failed"
+      })}\n`
     );
     process.exitCode = 1;
   });
