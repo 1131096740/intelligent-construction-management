@@ -1144,6 +1144,70 @@ describe("ContractWorkbenchService", () => {
     expect(tx.paymentTermsStage.createMany).not.toHaveBeenCalled();
   });
 
+  it("accepts aggregate clauses transformed into validated DTO instances", async () => {
+    class ValidatedClauseDto {}
+    const clause = Object.assign(new ValidatedClauseDto(), {
+      key: "clause_1",
+      title: "第一条",
+      numberingMode: "automatic" as const,
+      content: { text: "合同条款" }
+    });
+    const tx = {
+      contractBill: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = makeService(tx as never);
+
+    await expect(
+      service.prepareAggregateDraftFieldsInTransaction(
+        tx as never,
+        {
+          id: "version-1",
+          changeType: "initial",
+          baseVersionId: null,
+          draftData: {},
+          templateSnapshot: {
+            ...TEMPLATE_SNAPSHOT,
+            billSchema: []
+          },
+          clauseSnapshot: [{ ...clause }],
+          amountLimitType: "capped",
+          pricingNature: "fixed_total",
+          amountSource: "manual",
+          amountCents: 1_000_000n,
+          estimatedAmountCents: null,
+          amountAdjustmentReason: null,
+          invoiceType: "vat_special",
+          taxMode: "single_rate",
+          defaultTaxRatePercent: new Prisma.Decimal("13"),
+          taxFactSource: "contract_document",
+          layoutTemplateVersionId: null
+        } as never,
+        {
+          expectedRevision: 4,
+          draft: {
+            draftData: {},
+            clauses: [clause],
+            pricingNature: "fixed_total",
+            amountSource: "manual",
+            manualAmountCents: "1000000",
+            taxFacts: VALID_TAX_FACTS
+          },
+          negotiationDocuments: {
+            referencedGeneratedDocumentIds: []
+          }
+        } as never
+      )
+    ).resolves.toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          clauseSnapshot: [expect.objectContaining({ key: "clause_1" })]
+        })
+      })
+    );
+  });
+
   it("为通用合同保存合同生效后的冻结直接付款阶段", async () => {
     const tx = ownedVersionTx({
       contract: {

@@ -595,6 +595,7 @@ export class ContractWorkbenchService {
     const input = this.parseSaveInput({
       expectedRevision: aggregateInput.expectedRevision,
       ...aggregateInput.draft,
+      clauses: aggregateInput.draft.clauses.map((clause) => ({ ...clause })),
       paymentTermsOriginalText: aggregateInput.paymentTerms?.originalText,
       paymentStages: aggregateInput.paymentTerms?.stages
     });
