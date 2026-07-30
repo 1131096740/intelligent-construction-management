@@ -1144,13 +1144,27 @@ describe("ContractWorkbenchService", () => {
     expect(tx.paymentTermsStage.createMany).not.toHaveBeenCalled();
   });
 
-  it("accepts aggregate clauses transformed into validated DTO instances", async () => {
+  it("accepts aggregate nested values transformed into validated DTO instances", async () => {
     class ValidatedClauseDto {}
+    class ValidatedTaxFactsDto {}
+    class ValidatedPaymentStageDto {}
     const clause = Object.assign(new ValidatedClauseDto(), {
       key: "clause_1",
       title: "第一条",
       numberingMode: "automatic" as const,
       content: { text: "合同条款" }
+    });
+    const taxFacts = Object.assign(new ValidatedTaxFactsDto(), VALID_TAX_FACTS);
+    const paymentStage = Object.assign(new ValidatedPaymentStageDto(), {
+      name: "合同约定付款",
+      basis: "contract_amount" as const,
+      ratioBps: 8000,
+      triggerEvent: "合同归档确认生效",
+      dueDays: 30,
+      requiresInvoice: true,
+      allowsEarlyPayment: false,
+      allowsInstallments: true,
+      originalText: "合同归档确认生效后按约定比例付款。"
     });
     const tx = {
       contractBill: {
@@ -1192,7 +1206,11 @@ describe("ContractWorkbenchService", () => {
             pricingNature: "fixed_total",
             amountSource: "manual",
             manualAmountCents: "1000000",
-            taxFacts: VALID_TAX_FACTS
+            taxFacts
+          },
+          paymentTerms: {
+            originalText: "合同归档确认生效后按约定比例付款。",
+            stages: [paymentStage]
           },
           negotiationDocuments: {
             referencedGeneratedDocumentIds: []

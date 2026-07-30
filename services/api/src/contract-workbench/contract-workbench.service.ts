@@ -596,8 +596,11 @@ export class ContractWorkbenchService {
       expectedRevision: aggregateInput.expectedRevision,
       ...aggregateInput.draft,
       clauses: aggregateInput.draft.clauses.map((clause) => ({ ...clause })),
+      taxFacts: { ...aggregateInput.draft.taxFacts },
       paymentTermsOriginalText: aggregateInput.paymentTerms?.originalText,
-      paymentStages: aggregateInput.paymentTerms?.stages
+      paymentStages: aggregateInput.paymentTerms?.stages.map((stage) => ({
+        ...stage
+      }))
     });
     const template = this.parseTemplateSnapshot(version.templateSnapshot);
     const isChangeVersion =
