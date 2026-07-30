@@ -5,8 +5,10 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   abandonSpotProcurementDraft,
+  confirmSpotProcurementAbnormalTermination,
   createSpotProcurementVersion,
   fetchSpotProcurementDetail,
+  requestSpotProcurementAbnormalTermination,
   reviewSpotProcurement,
   recreateSpotProcurementPaymentDraft,
   submitSpotProcurement,
@@ -51,6 +53,7 @@ type ActionKind =
 
 const route = useRoute();
 const router = useRouter();
+const spotProcurementCapability = ref<SpotProcurementDetailReadModel | null>(null);
 const detail = ref<SpotProcurementDetailReadModel | null>(null);
 const loading = ref(false);
 const actionBusy = ref(false);
@@ -76,6 +79,7 @@ const editForm = reactive({
 const confirmation = reactive({
   visible: false,
   kind: "withdraw" as ActionKind,
+  procurementId: "",
   title: "",
   description: "",
   confirmText: "确认",
@@ -84,6 +88,14 @@ const confirmation = reactive({
   requirePassword: false,
   reasonLabel: "操作原因"
 });
+const abnormalTerminationRequestVisible = ref(false);
+const abnormalTerminationRequestError = ref("");
+const abnormalTerminationRequestProcurementId = ref("");
+const abnormalTerminationConfirmVisible = ref(false);
+const abnormalTerminationConfirmError = ref("");
+const abnormalTerminationConfirmProcurementId = ref("");
+let detailRouteGeneration = 0;
+let detailLoadRequestId = 0;
 
 const quotationSizeLimit = {
   size: SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.limitBytes,
@@ -112,6 +124,28 @@ const operationalActions = computed(() =>
     (action) => !["delete_pristine_draft", "abandon_application"].includes(action.key)
   ) ?? []
 );
+const abnormalTerminationRequestAction = computed(() =>
+  spotProcurementCapability.value?.procurement.id ===
+  abnormalTerminationRequestProcurementId.value
+    ? spotProcurementCapability.value.availableActions.find(
+        (action) => action.key === "request_abnormal_termination"
+      ) ?? null
+    : null
+);
+const abnormalTerminationConfirmAction = computed(() =>
+  spotProcurementCapability.value?.procurement.id ===
+  abnormalTerminationConfirmProcurementId.value
+    ? spotProcurementCapability.value.availableActions.find(
+        (action) => action.key === "confirm_abnormal_termination"
+      ) ?? null
+    : null
+);
+const abnormalTerminationConfirmDescription = computed(() => {
+  const reason = detail.value?.abnormalTermination?.reason;
+  return reason
+    ? `确认后采购将异常终止，已形成事实继续保留。发起原因：${reason}`
+    : "确认后采购将异常终止，已形成的付款、收货与审计事实继续保留。";
+});
 const draftActionSubject = computed(() => ({
   businessCode: detail.value?.procurement.code ?? "—",
   name: detail.value?.currentVersion.reason ?? "零星采购申请",
@@ -198,16 +232,45 @@ function openLinkedPayment() {
 }
 
 async function loadDetail() {
-  if (!procurementId.value) return;
+  const expectedProcurementId = procurementId.value;
+  const generation = detailRouteGeneration;
+  const requestId = ++detailLoadRequestId;
+  if (!expectedProcurementId) return;
+  spotProcurementCapability.value = null;
   loading.value = true;
   loadError.value = "";
   try {
-    detail.value = await fetchSpotProcurementDetail(procurementId.value);
+    const detailRequest = fetchSpotProcurementDetail(expectedProcurementId);
+    const serverDetail = await detailRequest;
+    if (
+      requestId !== detailLoadRequestId ||
+      generation !== detailRouteGeneration ||
+      procurementId.value !== expectedProcurementId
+    ) {
+      return;
+    }
+    const viewDetail = structuredClone(serverDetail);
+    spotProcurementCapability.value = serverDetail;
+    detail.value = viewDetail;
   } catch (error) {
+    if (
+      requestId !== detailLoadRequestId ||
+      generation !== detailRouteGeneration ||
+      procurementId.value !== expectedProcurementId
+    ) {
+      return;
+    }
+    spotProcurementCapability.value = null;
     detail.value = null;
     loadError.value = error instanceof Error ? error.message : "零星采购详情读取失败";
   } finally {
-    loading.value = false;
+    if (
+      requestId === detailLoadRequestId &&
+      generation === detailRouteGeneration &&
+      procurementId.value === expectedProcurementId
+    ) {
+      loading.value = false;
+    }
   }
 }
 
@@ -335,7 +398,12 @@ async function recreatePaymentDraft() {
 }
 
 function openConfirmation(kind: ActionKind) {
-  const configurations: Record<ActionKind, Omit<typeof confirmation, "visible" | "kind">> = {
+  const current = detail.value;
+  if (!current) return;
+  const configurations: Record<
+    ActionKind,
+    Omit<typeof confirmation, "visible" | "kind" | "procurementId">
+  > = {
     review_approve: {
       title: "确认通过采购审批",
       description: "通过后审批流进入下一节点或完成，并冻结本次采购审批单。",
@@ -391,12 +459,24 @@ function openConfirmation(kind: ActionKind) {
       reasonLabel: "下载原因"
     }
   };
-  Object.assign(confirmation, configurations[kind], { visible: true, kind });
+  Object.assign(confirmation, configurations[kind], {
+    visible: true,
+    kind,
+    procurementId: current.procurement.id
+  });
 }
 
 async function confirmAction(values: { reason: string; password: string }) {
   const current = detail.value;
-  if (!current) return;
+  if (
+    !current ||
+    !confirmation.procurementId ||
+    current.procurement.id !== confirmation.procurementId
+  ) {
+    confirmation.visible = false;
+    showError(new Error("采购记录已切换，本次确认未执行"), "操作失败");
+    return;
+  }
   actionBusy.value = true;
   try {
     if (confirmation.kind === "review_approve") {
@@ -428,6 +508,89 @@ async function confirmAction(values: { reason: string; password: string }) {
   } finally {
     actionBusy.value = false;
   }
+}
+
+function openAbnormalTerminationRequest() {
+  const current = detail.value;
+  const action = spotProcurementCapability.value?.availableActions.find(
+    (item) => item.key === "request_abnormal_termination"
+  );
+  if (
+    !current ||
+    current.procurement.id !== spotProcurementCapability.value?.procurement.id ||
+    !action?.enabled
+  ) {
+    return;
+  }
+  abnormalTerminationRequestProcurementId.value = current.procurement.id;
+  abnormalTerminationRequestError.value = "";
+  abnormalTerminationRequestVisible.value = true;
+}
+
+function openAbnormalTerminationConfirm() {
+  const current = detail.value;
+  const action = spotProcurementCapability.value?.availableActions.find(
+    (item) => item.key === "confirm_abnormal_termination"
+  );
+  if (
+    !current ||
+    current.procurement.id !== spotProcurementCapability.value?.procurement.id ||
+    !action?.enabled
+  ) {
+    return;
+  }
+  abnormalTerminationConfirmProcurementId.value = current.procurement.id;
+  abnormalTerminationConfirmError.value = "";
+  abnormalTerminationConfirmVisible.value = true;
+}
+
+function completeAbnormalTerminationRequest() {
+  abnormalTerminationRequestVisible.value = false;
+  showSuccess("异常终止已发起，等待确认。");
+  return loadDetail();
+}
+
+function failAbnormalTerminationRequest(error: unknown) {
+  abnormalTerminationRequestError.value =
+    error instanceof Error ? error.message : "异常终止发起失败";
+}
+
+function completeAbnormalTerminationConfirm() {
+  abnormalTerminationConfirmVisible.value = false;
+  showSuccess("零星采购已异常终止，历史事实继续保留。");
+  return loadDetail();
+}
+
+function failAbnormalTerminationConfirm(error: unknown) {
+  abnormalTerminationConfirmError.value =
+    error instanceof Error ? error.message : "异常终止确认失败";
+}
+
+function finishAbnormalTerminationAction() {
+  actionBusy.value = false;
+}
+
+function requestAbnormalTerminationAction(values: { reason: string }) {
+  actionBusy.value = true;
+  abnormalTerminationRequestError.value = "";
+  return requestSpotProcurementAbnormalTermination(
+    abnormalTerminationRequestProcurementId.value,
+    { reason: values.reason }
+  )
+    .then(completeAbnormalTerminationRequest)
+    .catch(failAbnormalTerminationRequest)
+    .finally(finishAbnormalTerminationAction);
+}
+
+function confirmAbnormalTerminationAction() {
+  actionBusy.value = true;
+  abnormalTerminationConfirmError.value = "";
+  return confirmSpotProcurementAbnormalTermination(
+    abnormalTerminationConfirmProcurementId.value
+  )
+    .then(completeAbnormalTerminationConfirm)
+    .catch(failAbnormalTerminationConfirm)
+    .finally(finishAbnormalTerminationAction);
 }
 
 function runPrimaryAction() {
@@ -471,7 +634,21 @@ function selectedUploadFiles(files: UploadFile[]) {
   return files.flatMap((file) => (file.raw instanceof File ? [file.raw] : []));
 }
 
-watch(procurementId, () => void loadDetail());
+watch(procurementId, () => {
+  detailRouteGeneration += 1;
+  detailLoadRequestId += 1;
+  spotProcurementCapability.value = null;
+  detail.value = null;
+  loading.value = false;
+  loadError.value = "";
+  confirmation.visible = false;
+  confirmation.procurementId = "";
+  abnormalTerminationRequestVisible.value = false;
+  abnormalTerminationRequestProcurementId.value = "";
+  abnormalTerminationConfirmVisible.value = false;
+  abnormalTerminationConfirmProcurementId.value = "";
+  void loadDetail();
+});
 onMounted(() => void loadDetail());
 </script>
 
@@ -701,6 +878,21 @@ onMounted(() => void loadDetail());
           >
             {{ actionLabel("void_procurement") }}
           </t-button>
+          <t-button
+            v-if="actionEnabled('request_abnormal_termination')"
+            theme="danger"
+            variant="outline"
+            @click="openAbnormalTerminationRequest"
+          >
+            {{ actionLabel("request_abnormal_termination") }}
+          </t-button>
+          <t-button
+            v-if="actionEnabled('confirm_abnormal_termination')"
+            theme="danger"
+            @click="openAbnormalTerminationConfirm"
+          >
+            {{ actionLabel("confirm_abnormal_termination") }}
+          </t-button>
         </div>
         <section><h3>采购审批历程</h3><ApprovalTimeline :items="detail.approvalTimeline" /></section>
       </section>
@@ -884,6 +1076,33 @@ onMounted(() => void loadDetail());
       :reason-label="confirmation.reasonLabel"
       :loading="actionBusy"
       @confirm="confirmAction"
+    />
+    <SensitiveActionDialog
+      v-if="abnormalTerminationRequestAction?.enabled"
+      v-model="abnormalTerminationRequestVisible"
+      title="发起异常终止"
+      description="仅在采购已发生实际付款但无法继续履约时使用。提交后等待财务主管确认，所有付款、收货与审计事实继续保留。"
+      confirm-text="确认发起"
+      confirm-theme="danger"
+      :require-reason="true"
+      :require-password="false"
+      reason-label="异常终止原因"
+      :loading="actionBusy"
+      :error="abnormalTerminationRequestError"
+      @confirm="requestAbnormalTerminationAction"
+    />
+    <SensitiveActionDialog
+      v-if="abnormalTerminationConfirmAction?.enabled"
+      v-model="abnormalTerminationConfirmVisible"
+      title="确认异常终止"
+      :description="abnormalTerminationConfirmDescription"
+      confirm-text="确认终止"
+      confirm-theme="danger"
+      :require-reason="false"
+      :require-password="false"
+      :loading="actionBusy"
+      :error="abnormalTerminationConfirmError"
+      @confirm="confirmAbnormalTerminationAction"
     />
   </section>
 </template>

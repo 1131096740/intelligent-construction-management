@@ -31,6 +31,16 @@
         >
           复制为新草稿
         </t-button>
+        <t-button
+          v-if="riskStopCandidateAction"
+          theme="danger"
+          variant="outline"
+          :disabled="!riskStopCandidateAction.enabled || riskStopLoading"
+          :title="riskStopCandidateAction.disabledReason ?? undefined"
+          @click="openRiskStopDialog"
+        >
+          {{ riskStopCandidateAction.label }}
+        </t-button>
       </t-space>
     </header>
 
@@ -215,6 +225,18 @@
       </div>
     </t-card>
     <SensitiveActionDialog
+      v-if="riskStopAction?.enabled"
+      v-model="riskStopDialogVisible"
+      :title="riskStopAction?.label ?? '风险停用'"
+      description="风险停用后，该版式不再用于新合同文件；既有合同和生成文件仍按冻结版本读取。"
+      confirm-text="确认风险停用"
+      confirm-theme="danger"
+      :loading="riskStopLoading"
+      :error="riskStopError"
+      @confirm="stopCurrentVersion"
+      @cancel="riskStopError = ''"
+    />
+    <SensitiveActionDialog
       v-model="leaveDialogVisible"
       title="放弃未保存的版式修改？"
       description="继续后会丢弃尚未上传保存的版式源文件和当前页面填写内容。"
@@ -228,7 +250,7 @@
 
 <script setup lang="ts">
 import type { UploadFile } from "tdesign-vue-next";
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { uploadPrivateFile } from "../../api/core-flow-read.api";
 import { useAuthStore } from "../../auth/auth.store";
@@ -243,6 +265,7 @@ import {
   type LayoutTemplatePreviewReadModel,
   publishLayoutTemplateVersion,
   queueLayoutTemplatePreview,
+  stopLayoutTemplateVersion,
   submitLayoutTemplateVersion,
   updateLayoutTemplateVersion
 } from "../../api/contract-workbench.api";
@@ -261,11 +284,19 @@ import {
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const layoutTemplateRouteId = computed(() =>
+  String(route.params.layoutTemplateId ?? "")
+);
 const form = reactive({ name: "", contractTypeKey: "" });
+const layoutTemplateCapability = ref<LayoutTemplateDetailReadModel | null>(null);
 const detail = ref<LayoutTemplateDetailReadModel | null>(null);
 const selectedVersionId = ref("");
 const sourceFiles = ref<UploadFile[]>([]);
 const saving = ref(false);
+const riskStopLoading = ref(false);
+const riskStopDialogVisible = ref(false);
+const riskStopError = ref("");
+const riskStopVersionId = ref("");
 const publicationSummary = ref("");
 const message = ref("");
 const tone = ref<"success" | "danger">("success");
@@ -275,10 +306,21 @@ const lastValidVersionId = ref("");
 const leaveDialogVisible = ref(false);
 const allowNavigation = ref(false);
 let resolvePendingLeave: ((decision: boolean) => void) | null = null;
-const isCreateMode = computed(() => String(route.params.layoutTemplateId ?? "") === "new");
+let layoutLoadGeneration = 0;
+const isCreateMode = computed(() => layoutTemplateRouteId.value === "new");
 const versions = computed(() => detail.value?.versions ?? []);
 const currentVersion = computed(() =>
   versions.value.find((version) => version.id === selectedVersionId.value) ?? null
+);
+const riskStopCandidateAction = computed(() =>
+  (layoutTemplateCapability.value?.versions
+    .find((version) => version.id === selectedVersionId.value)?.availableActions ?? [])
+    .find((action) => action.key === "risk_stop") ?? null
+);
+const riskStopAction = computed(() =>
+  (layoutTemplateCapability.value?.versions
+    .find((version) => version.id === riskStopVersionId.value)?.availableActions ?? [])
+    .find((action) => action.key === "risk_stop") ?? null
 );
 const canMaintainTemplates = computed(() => canMaintainContractTemplates(auth.user?.roleKeys));
 const canPublishTemplates = computed(() => canPublishContractTemplates(auth.user?.roleKeys));
@@ -509,6 +551,37 @@ function handleDiscardCompleted() {
   showSuccess("版式草稿版本已废弃，已发布版式和正式引用均未改变");
 }
 
+function openRiskStopDialog() {
+  const version = currentVersion.value;
+  if (!version || !riskStopCandidateAction.value?.enabled || riskStopLoading.value) return;
+  riskStopVersionId.value = version.id;
+  riskStopError.value = "";
+  riskStopDialogVisible.value = true;
+}
+
+function completeRiskStop() {
+  riskStopDialogVisible.value = false;
+  showSuccess("版式版本已风险停用，新合同文件不再使用该版本");
+  return refreshDetail(riskStopVersionId.value);
+}
+
+function failRiskStop(error: unknown) {
+  riskStopError.value = error instanceof Error ? error.message : "风险停用失败";
+}
+
+function finishRiskStop() {
+  riskStopLoading.value = false;
+}
+
+function stopCurrentVersion() {
+  riskStopLoading.value = true;
+  riskStopError.value = "";
+  return stopLayoutTemplateVersion(riskStopVersionId.value)
+    .then(completeRiskStop)
+    .catch(failRiskStop)
+    .finally(finishRiskStop);
+}
+
 async function runVersionAction(action: () => Promise<unknown>, success: string, versionId: string) {
   try {
     await action();
@@ -520,20 +593,30 @@ async function runVersionAction(action: () => Promise<unknown>, success: string,
 }
 
 async function refreshDetail(preferredVersionId?: string) {
-  const templateId = String(route.params.layoutTemplateId ?? "");
-  if (!templateId || templateId === "new") return;
-  const result = await getLayoutTemplate(templateId, true);
-  detail.value = result;
-  form.name = result.template.name;
-  form.contractTypeKey = result.template.contractTypeKey;
+  const templateId = layoutTemplateRouteId.value;
+  if (!templateId || templateId === "new") return false;
+  const generation = ++layoutLoadGeneration;
+  const serverDetail = await getLayoutTemplate(templateId, true);
+  if (
+    generation !== layoutLoadGeneration ||
+    layoutTemplateRouteId.value !== templateId
+  ) {
+    return false;
+  }
+  const viewDetail = structuredClone(serverDetail);
+  layoutTemplateCapability.value = serverDetail;
+  detail.value = viewDetail;
+  form.name = viewDetail.template.name;
+  form.contractTypeKey = viewDetail.template.contractTypeKey;
   selectedVersionId.value =
-    result.versions.find((version) => version.id === preferredVersionId)?.id ??
-    result.versions.find((version) => version.status === "draft")?.id ??
-    result.versions.find((version) => version.status === "published")?.id ??
-    result.versions[0]?.id ??
+    viewDetail.versions.find((version) => version.id === preferredVersionId)?.id ??
+    viewDetail.versions.find((version) => version.status === "draft")?.id ??
+    viewDetail.versions.find((version) => version.status === "published")?.id ??
+    viewDetail.versions[0]?.id ??
     "";
   clearTransientState();
   syncEditorBaseline();
+  return true;
 }
 
 function layoutStatusLabel(status: string) {
@@ -554,6 +637,37 @@ function clearTransientState() {
   window.clearInterval(timer.value);
 }
 
+function clearLayoutRouteContext() {
+  layoutLoadGeneration += 1;
+  layoutTemplateCapability.value = null;
+  detail.value = null;
+  selectedVersionId.value = "";
+  lastValidVersionId.value = "";
+  riskStopDialogVisible.value = false;
+  riskStopError.value = "";
+  riskStopVersionId.value = "";
+  message.value = "";
+  editorBaseline.value = "";
+  form.name = "";
+  form.contractTypeKey = "";
+  clearTransientState();
+}
+
+async function loadLayoutRoute() {
+  const expectedTemplateId = layoutTemplateRouteId.value;
+  if (!expectedTemplateId || expectedTemplateId === "new") {
+    syncEditorBaseline();
+    return;
+  }
+  try {
+    await refreshDetail();
+  } catch (error) {
+    if (layoutTemplateRouteId.value === expectedTemplateId) {
+      showError(error instanceof Error ? error.message : "读取版式失败");
+    }
+  }
+}
+
 function startPolling() {
   window.clearInterval(timer.value);
   timer.value = window.setInterval(() => void loadPreview(), 2000);
@@ -569,17 +683,11 @@ function showError(value: string) {
   tone.value = "danger";
 }
 
-onMounted(async () => {
-  if (!isCreateMode.value) {
-    try {
-      await refreshDetail();
-    } catch (error) {
-      showError(error instanceof Error ? error.message : "读取版式失败");
-    }
-  } else {
-    syncEditorBaseline();
-  }
+watch(layoutTemplateRouteId, () => {
+  clearLayoutRouteContext();
+  void loadLayoutRoute();
 });
+onMounted(() => void loadLayoutRoute());
 onBeforeUnmount(() => window.clearInterval(timer.value));
 
 function formatInspectionReport(report: Record<string, unknown> | null) {

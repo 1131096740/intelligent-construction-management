@@ -4,6 +4,7 @@ import {
   appendSpotProcurementPaymentInvoice,
   abandonSpotProcurementDraft,
   abandonSpotProcurementPaymentDraft,
+  confirmSpotProcurementAbnormalTermination,
   createSpotProcurementDiscrepancy,
   createSpotProcurementDraft,
   fetchSpotProcurementCreateProjectOptions,
@@ -20,6 +21,8 @@ import {
   recordSpotProcurementPaymentExecution,
   recordSpotProcurementRefund,
   recreateSpotProcurementPaymentDraft,
+  refreshSpotProcurementReceiptPdf,
+  requestSpotProcurementAbnormalTermination,
   resetSpotProcurementReceiptDraft,
   submitSpotProcurementReceipt,
   reviewSpotProcurement,
@@ -30,6 +33,7 @@ import {
   updateSpotProcurementDraft,
   updateSpotProcurementPaymentDraft,
   updateSpotProcurementPaymentPayer,
+  invalidateSpotProcurementPaymentInvoice,
   voidSpotProcurement,
   voidSpotProcurementPayment,
   withdrawSpotProcurement,
@@ -193,6 +197,32 @@ describe("spot procurement API client", () => {
       }),
       JSON.stringify(refund),
       JSON.stringify({ fileId: "invoice-file-1" })
+    ]);
+  });
+
+  it("connects the four retained zero-procurement actions with encoded ids and exact confirmation bodies", async () => {
+    await invalidateSpotProcurementPaymentInvoice(
+      "payment/1",
+      "invoice/1",
+      { reason: "附件重复上传" }
+    );
+    await requestSpotProcurementAbnormalTermination("procurement/1", {
+      reason: "已付款但商户无法继续履约"
+    });
+    await confirmSpotProcurementAbnormalTermination("procurement/1");
+    await refreshSpotProcurementReceiptPdf("procurement/1");
+
+    expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
+      "/spot-procurement-payments/payment%2F1/invoices/invoice%2F1/invalidation",
+      "/spot-procurements/procurement%2F1/abnormal-termination",
+      "/spot-procurements/procurement%2F1/abnormal-termination/confirmation",
+      "/spot-procurements/procurement%2F1/receipt/pdf-refresh"
+    ]);
+    expect(mockApiFetch.mock.calls.map(([, init]) => init?.body)).toEqual([
+      JSON.stringify({ reason: "附件重复上传" }),
+      JSON.stringify({ reason: "已付款但商户无法继续履约" }),
+      JSON.stringify({ confirmTermination: true }),
+      JSON.stringify({})
     ]);
   });
 

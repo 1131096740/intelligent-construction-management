@@ -34,6 +34,47 @@ describe("layout template revision governance structure", () => {
     expect(page).toContain("getLayoutTemplate(templateId, true)");
   });
 
+  it("renders risk stop only from the server action key and confirms it before calling the wrapper", () => {
+    expect(page).toContain("stopLayoutTemplateVersion");
+    expect(page).toContain('action.key === "risk_stop"');
+    expect(page).toContain('v-if="riskStopCandidateAction"');
+    expect(page).toContain(':disabled="!riskStopCandidateAction.enabled || riskStopLoading"');
+    expect(page).toContain("riskStopCandidateAction.disabledReason");
+    expect(page).toContain("riskStopDialogVisible");
+    expect(page).toContain("stopLayoutTemplateVersion(riskStopVersionId.value)");
+    expect(page).toContain('v-if="riskStopAction?.enabled"');
+    expect(page).toContain(".then(completeRiskStop)");
+    expect(page).not.toMatch(/canRiskStop:\s*.*roleKeys/u);
+    expect(page).not.toMatch(/canRiskStop:\s*.*status/u);
+  });
+
+  it("derives the locked risk-stop capability only from the server GET result", () => {
+    expect(page).toContain(
+      "const layoutTemplateCapability = ref<LayoutTemplateDetailReadModel | null>(null);"
+    );
+    expect(page).toContain(
+      "const serverDetail = await getLayoutTemplate(templateId, true);"
+    );
+    expect(page).toContain("layoutTemplateCapability.value = serverDetail;");
+    expect(
+      [...page.matchAll(/layoutTemplateCapability\.value\s*=\s*([^;\n]+)/gu)]
+        .map((match) => match[1]?.trim())
+        .filter(Boolean)
+    ).toEqual(["serverDetail", "null"]);
+    expect(page).toMatch(
+      /const riskStopAction = computed\(\(\) =>[\s\S]*?layoutTemplateCapability\.value\?\.versions[\s\S]*?version\.id === riskStopVersionId\.value[\s\S]*?action\.key === "risk_stop"/u
+    );
+  });
+
+  it("invalidates stale layout reads and confirmation state when the route id changes", () => {
+    expect(page).toContain("let layoutLoadGeneration = 0");
+    expect(page).toContain("generation !== layoutLoadGeneration");
+    expect(page).toContain("layoutTemplateRouteId.value !== templateId");
+    expect(page).toContain("watch(layoutTemplateRouteId");
+    expect(page).toContain("riskStopDialogVisible.value = false");
+    expect(page).toContain('riskStopVersionId.value = ""');
+  });
+
   it("protects unsaved files and version switching", () => {
     expect(page).toContain("useUnsavedChangesGuard");
     expect(page).toContain("leaveGuard.requestClose()");

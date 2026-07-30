@@ -698,6 +698,42 @@ describe("spot procurement web pages", () => {
     expect(receipt).toContain("recordSpotProcurementRefund");
     expect(receipt).toContain("prepareSpotRefundWithUpload(");
     expect(receipt).toContain("appendSpotProcurementPaymentInvoice");
+    expect(receipt).toContain("invalidateSpotProcurementPaymentInvoice");
+    expect(receipt).toContain("refreshSpotProcurementReceiptPdf");
+    expect(receipt).toContain("const spotPaymentCapability = ref<SpotProcurementPaymentDetailReadModel | null>(null)");
+    expect(receipt).toContain("const spotReceiptCapability = ref<SpotProcurementReceiptDetailReadModel | null>(null)");
+    expect(receipt).toContain("const receiptRequest = fetchSpotProcurementReceipt(context.procurementId)");
+    expect(receipt).toContain(
+      "void procurementDetailRequest.catch(() => undefined)"
+    );
+    expect(receipt).toContain("const receiptResult = await receiptRequest");
+    expect(receipt).toContain(
+      "const procurementDetail = await procurementDetailRequest"
+    );
+    expect(receipt).not.toContain(
+      "await Promise.all([receiptRequest, procurementDetailRequest])"
+    );
+    expect(receipt).toContain("spotReceiptCapability.value = receiptResult");
+    expect(receipt).toContain("const paymentRequest = fetchSpotProcurementPaymentDetail(payment.id)");
+    expect(receipt).toContain("const paymentResult = await paymentRequest");
+    expect(receipt).toContain("spotPaymentCapability.value = paymentResult");
+    expect(receipt).toContain("spotPaymentCapability.value?.invoice?.invoices");
+    expect(receipt).toContain("invoice.id === selectedInvoiceId.value");
+    expect(receipt).toContain("spotReceiptCapability.value?.availableActions?.find");
+    expect(receipt).toContain("receiptPdfRefreshAction?.enabled");
+    expect(receipt).toContain('v-if="selectedInvoiceInvalidationAction?.enabled"');
+    expect(receipt).toContain("selectedInvoicePaymentId.value = spotPaymentCapability.value.payment.id");
+    expect(receipt).toContain("assertInvoiceInvalidationContext()");
+    expect(receipt).toContain("assertReceiptPdfRefreshContext()");
+    expect(receipt).toContain(
+      "capability.payment.procurement.id !== context.procurementId"
+    );
+    expect(receipt).toContain(
+      "spotReceiptCapability.value?.receipt.procurementId !=="
+    );
+    expect(receipt).toContain(".then(completeInvoiceInvalidation)");
+    expect(receipt).toContain("prepareReceiptPdfRefresh");
+    expect(receipt).toContain(".then(completeReceiptPdfRefresh)");
     expect(receipt).toContain("receipt.value?.availableActions?.find");
     expect(receipt).toContain("actionEnabled('review_receipt')");
     expect(receipt).toContain("actionEnabled('record_refund')");
@@ -720,6 +756,55 @@ describe("spot procurement web pages", () => {
     expect(`${workbench}\n${receipt}\n${uploader}`).not.toMatch(/navigator\.geolocation/iu);
     expect(`${workbench}\n${receipt}`).not.toMatch(/createReceiptBatch|fetchReceiptBatches/iu);
     expect(`${workbench}\n${receipt}`).not.toMatch(/supplierBalance|转商户余额/iu);
+    expect(receipt).not.toMatch(/invoice\.status\s*===/u);
+    expect(
+      [...receipt.matchAll(/spotPaymentCapability\.value\s*=\s*([^;\n]+)/gu)]
+        .map((match) => match[1]?.trim())
+        .filter(Boolean)
+    ).toEqual(["null", "null", "paymentResult"]);
+    expect(
+      [...receipt.matchAll(/spotReceiptCapability\.value\s*=\s*([^;\n]+)/gu)]
+        .map((match) => match[1]?.trim())
+        .filter(Boolean)
+    ).toEqual(["null", "null", "receiptResult"]);
+  });
+
+  it("drives abnormal termination only from server action keys and existing confirmation UI", () => {
+    const detail = pageSource("SpotProcurementDetailPage.vue");
+
+    expect(detail).toContain("requestSpotProcurementAbnormalTermination");
+    expect(detail).toContain("confirmSpotProcurementAbnormalTermination");
+    expect(detail).toContain(
+      "const spotProcurementCapability = ref<SpotProcurementDetailReadModel | null>(null)"
+    );
+    expect(detail).toContain(
+      'action.key === "request_abnormal_termination"'
+    );
+    expect(detail).toContain(
+      'action.key === "confirm_abnormal_termination"'
+    );
+    expect(detail).toContain(
+      'v-if="abnormalTerminationRequestAction?.enabled"'
+    );
+    expect(detail).toContain(
+      'v-if="abnormalTerminationConfirmAction?.enabled"'
+    );
+    expect(detail).toContain("let detailRouteGeneration = 0");
+    expect(detail).toContain("let detailLoadRequestId = 0");
+    expect(detail).toContain("requestId !== detailLoadRequestId");
+    expect(detail).toContain("generation !== detailRouteGeneration");
+    expect(detail).toContain("procurementId.value !== expectedProcurementId");
+    expect(detail).toContain("<SensitiveActionDialog");
+    expect(detail).toContain("abnormalTerminationRequestProcurementId.value = current.procurement.id");
+    expect(detail).toContain("abnormalTerminationConfirmProcurementId.value = current.procurement.id");
+    expect(detail).toContain("confirmation.procurementId = \"\"");
+    expect(detail).toContain("@confirm=\"requestAbnormalTerminationAction\"");
+    expect(detail).toContain("@confirm=\"confirmAbnormalTerminationAction\"");
+    expect(detail).toContain(".then(completeAbnormalTerminationRequest)");
+    expect(detail).toContain(".then(completeAbnormalTerminationConfirm)");
+    expect(detail).not.toContain("openConfirmation('abnormal_termination_request')");
+    expect(detail).not.toContain("openConfirmation('abnormal_termination_confirm')");
+    expect(detail).not.toMatch(/roleKeys|finance_staff|finance_director/u);
   });
 
   it("uses the approved shared business components instead of a second UI system", () => {

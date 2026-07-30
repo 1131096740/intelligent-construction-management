@@ -471,6 +471,26 @@ export interface SpotProcurementApprovalPdfReadModel {
   disabledReason: string | null;
 }
 
+export interface SpotProcurementPaymentInvoiceReadModel {
+  id: string;
+  paymentId: string;
+  fileId: string;
+  status: string;
+  uploadedByUserId: string;
+  invalidatedAt: string | null;
+  invalidatedByUserId: string | null;
+  invalidationReason: string | null;
+  createdAt: string;
+  file: {
+    id: string;
+    originalName: string;
+    mimeType: string;
+    sizeBytes: number;
+    storageStatus: string;
+  } | null;
+  availableActions: DetailActionReadModel[];
+}
+
 export interface SpotProcurementDetailReadModel {
   procurement: {
     id: string;
@@ -517,6 +537,16 @@ export interface SpotProcurementDetailReadModel {
   availableActions: DetailActionReadModel[];
   primaryAction: string | null;
   disabledReasons: string[];
+  abnormalTermination?: {
+    id: string;
+    procurementId: string;
+    status: string;
+    reason: string;
+    requestedByUserId: string;
+    requestedAt: string;
+    confirmedByUserId: string | null;
+    confirmedAt: string | null;
+  } | null;
   invoice?: {
     status: string;
     statusLabel: string;
@@ -673,7 +703,7 @@ export interface SpotProcurementPaymentDetailReadModel {
     status: string;
     statusLabel: string;
     activeCount: number;
-    invoices: Array<Record<string, unknown>>;
+    invoices: SpotProcurementPaymentInvoiceReadModel[];
   };
   paymentPdf: SpotProcurementApprovalPdfReadModel;
   currentTask: SpotPaymentCurrentTask;
@@ -1102,6 +1132,40 @@ export function appendSpotProcurementPaymentInvoice(
   return postJson<unknown>(
     `/spot-procurement-payments/${encodeURIComponent(paymentId)}/invoices`,
     { fileId }
+  );
+}
+
+export function invalidateSpotProcurementPaymentInvoice(
+  paymentId: string,
+  invoiceId: string,
+  body: { reason: string }
+) {
+  return postJson<unknown>(
+    `/spot-procurement-payments/${encodeURIComponent(paymentId)}/invoices/${encodeURIComponent(invoiceId)}/invalidation`,
+    body
+  );
+}
+
+export function requestSpotProcurementAbnormalTermination(
+  procurementId: string,
+  body: { reason: string }
+) {
+  return postJson<unknown>(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/abnormal-termination`,
+    body
+  );
+}
+
+export function confirmSpotProcurementAbnormalTermination(procurementId: string) {
+  return postJson<unknown>(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/abnormal-termination/confirmation`,
+    { confirmTermination: true }
+  );
+}
+
+export function refreshSpotProcurementReceiptPdf(procurementId: string) {
+  return postJson<unknown>(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/pdf-refresh`
   );
 }
 

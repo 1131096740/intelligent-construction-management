@@ -11,7 +11,9 @@ import {
   fetchSpotProcurementDetail,
   fetchSpotProcurementPaymentDetail,
   fetchSpotProcurementReceipt,
+  invalidateSpotProcurementPaymentInvoice,
   recordSpotProcurementRefund,
+  refreshSpotProcurementReceiptPdf,
   resetSpotProcurementReceiptDraft,
   reviewSpotProcurementReceipt,
   revokeSpotProcurementReceiptReview,
@@ -19,6 +21,7 @@ import {
   updateSpotProcurementReceiptDraft,
   type SpotProcurementDetailReadModel,
   type SpotProcurementPaymentDetailReadModel,
+  type SpotProcurementPaymentInvoiceReadModel,
   type SpotProcurementReceiptDetailReadModel,
   type SpotProcurementReceiptLineReadModel
 } from "../../api/spot-procurement.api";
@@ -33,6 +36,8 @@ import ReceiptPhotoUploader from "./components/ReceiptPhotoUploader.vue";
 import { prepareSpotRefundWithUpload } from "./spot-procurement-write-validation";
 
 const route = useRoute();
+const spotReceiptCapability = ref<SpotProcurementReceiptDetailReadModel | null>(null);
+const spotPaymentCapability = ref<SpotProcurementPaymentDetailReadModel | null>(null);
 const receipt = ref<SpotProcurementReceiptDetailReadModel | null>(null);
 const detail = ref<SpotProcurementDetailReadModel | null>(null);
 const paymentDetail = ref<SpotProcurementPaymentDetailReadModel | null>(null);
@@ -44,6 +49,15 @@ const paymentNotice = ref("");
 const routeSafetyNotice = ref("");
 const resetVisible = ref(false);
 const resetError = ref("");
+const invoiceInvalidationVisible = ref(false);
+const invoiceInvalidationError = ref("");
+const selectedInvoiceId = ref("");
+const selectedInvoicePaymentId = ref("");
+const selectedInvoiceProcurementId = ref("");
+const selectedInvoiceGeneration = ref(-1);
+const invoiceInvalidationCompleted = ref(false);
+const receiptPdfRefreshProcurementId = ref("");
+const receiptPdfRefreshGeneration = ref(-1);
 const delegateUserId = ref("");
 const invoiceFiles = ref<UploadFile[]>([]);
 const refundFiles = ref<UploadFile[]>([]);
@@ -64,7 +78,17 @@ const canEditReceipt = computed(() => actionEnabled("edit_receipt"));
 const canAppendPhoto = computed(() => actionEnabled("append_receipt_photo"));
 const latestApprovedReview = computed(() => [...(receipt.value?.reviews ?? [])].reverse().find((item) => item.decision === "approved"));
 const hasActualPayment = computed(() => Boolean(paymentDetail.value?.executions.some((execution) => execution.active)));
-const activeInvoices = computed(() => paymentDetail.value?.invoice?.invoices ?? []);
+const invoices = computed(() => paymentDetail.value?.invoice?.invoices ?? []);
+const selectedInvoiceInvalidationAction = computed(() =>
+  (spotPaymentCapability.value?.invoice?.invoices
+    .find((invoice) => invoice.id === selectedInvoiceId.value)?.availableActions ?? [])
+    .find((action) => action.key === "invalidate_invoice") ?? null
+);
+const receiptPdfRefreshAction = computed(() =>
+  spotReceiptCapability.value?.availableActions?.find(
+    (action) => action.key === "refresh_receipt_pdf"
+  ) ?? null
+);
 const discrepancy = computed(() => receipt.value?.discrepancy ?? { status: "none", nextStep: null });
 const receiptWorkflow = computed(() =>
   detail.value?.receipt && !("label" in detail.value.receipt)
@@ -83,6 +107,10 @@ function actionEnabled(key: string) {
   return Boolean(receipt.value?.availableActions?.find((action) => action.key === key)?.enabled);
 }
 
+function invoiceAction(invoice: SpotProcurementPaymentInvoiceReadModel, key: string) {
+  return invoice.availableActions.find((action) => action.key === key);
+}
+
 function captureContext(): ReceiptPageContext {
   return { procurementId: procurementId.value, generation: routeGeneration };
 }
@@ -96,6 +124,8 @@ function assertCurrentContext(context: ReceiptPageContext) {
 }
 
 function clearTransientState() {
+  spotReceiptCapability.value = null;
+  spotPaymentCapability.value = null;
   receipt.value = null;
   detail.value = null;
   paymentDetail.value = null;
@@ -105,6 +135,15 @@ function clearTransientState() {
   delegateUserId.value = "";
   resetVisible.value = false;
   resetError.value = "";
+  invoiceInvalidationVisible.value = false;
+  invoiceInvalidationError.value = "";
+  selectedInvoiceId.value = "";
+  selectedInvoicePaymentId.value = "";
+  selectedInvoiceProcurementId.value = "";
+  selectedInvoiceGeneration.value = -1;
+  invoiceInvalidationCompleted.value = false;
+  receiptPdfRefreshProcurementId.value = "";
+  receiptPdfRefreshGeneration.value = -1;
   discrepancyForm.resolutionType = "replenishment";
   discrepancyForm.note = "";
   refundForm.amountYuan = "";
@@ -132,25 +171,31 @@ function selectedUploadFiles(files: UploadFile[]) {
   return files.map((file) => file.raw).filter((file): file is File => file instanceof File);
 }
 
-function invoiceLabel(invoice: Record<string, unknown>) {
-  const file = invoice.file as { originalName?: string } | null | undefined;
-  return file?.originalName ?? String(invoice.fileId ?? "发票附件");
+function invoiceLabel(invoice: SpotProcurementPaymentInvoiceReadModel) {
+  return invoice.file?.originalName ?? invoice.fileId;
 }
 
 async function load() {
   const context = captureContext();
   const requestId = ++loadRequestId;
   if (!context.procurementId) return;
+  spotReceiptCapability.value = null;
+  spotPaymentCapability.value = null;
   busy.value = true;
   error.value = "";
   paymentNotice.value = "";
   try {
-    const [receiptResult, procurementDetail] = await Promise.all([
-      fetchSpotProcurementReceipt(context.procurementId),
-      fetchSpotProcurementDetail(context.procurementId)
-    ]);
+    const receiptRequest = fetchSpotProcurementReceipt(context.procurementId);
+    const procurementDetailRequest = fetchSpotProcurementDetail(
+      context.procurementId
+    );
+    void procurementDetailRequest.catch(() => undefined);
+    const receiptResult = await receiptRequest;
+    const procurementDetail = await procurementDetailRequest;
     if (requestId !== loadRequestId || !contextIsCurrent(context)) return;
-    const nextLines = receiptResult.lines.map((line) => ({
+    const receiptView = structuredClone(receiptResult);
+    spotReceiptCapability.value = receiptResult;
+    const nextLines = receiptView.lines.map((line) => ({
       ...line,
       qualifiedQuantity: line.qualifiedQuantity ?? line.approvedQuantity,
       unqualifiedQuantity: line.unqualifiedQuantity ?? "0",
@@ -159,11 +204,11 @@ async function load() {
     }));
     let nextRefundAmountYuan = "";
     if (
-      receiptResult.discrepancy.status === "awaiting_refund" &&
-      receiptResult.discrepancy.refundExpectedAmountCents
+      receiptView.discrepancy.status === "awaiting_refund" &&
+      receiptView.discrepancy.refundExpectedAmountCents
     ) {
       nextRefundAmountYuan = centsTextToYuanText(
-        receiptResult.discrepancy.refundExpectedAmountCents
+        receiptView.discrepancy.refundExpectedAmountCents
       );
     }
     const payment = procurementDetail.payments.find((item) => item.form === "real_payment") ?? procurementDetail.payments[0];
@@ -173,13 +218,17 @@ async function load() {
       nextPaymentNotice = "尚未生成付款申请；收货会在付款审批通过并登记首笔实际付款后开放。";
     } else {
       try {
-        nextPaymentDetail = await fetchSpotProcurementPaymentDetail(payment.id);
+        const paymentRequest = fetchSpotProcurementPaymentDetail(payment.id);
+        const paymentResult = await paymentRequest;
+        if (requestId !== loadRequestId || !contextIsCurrent(context)) return;
+        spotPaymentCapability.value = paymentResult;
+        nextPaymentDetail = structuredClone(paymentResult);
       } catch (paymentError) {
         nextPaymentNotice = paymentError instanceof Error ? `付款、发票与归档资料按最小权限展示：${paymentError.message}` : "付款、发票与归档资料按最小权限展示。";
       }
     }
     if (requestId !== loadRequestId || !contextIsCurrent(context)) return;
-    receipt.value = receiptResult;
+    receipt.value = receiptView;
     detail.value = procurementDetail;
     lines.value = nextLines;
     paymentDetail.value = nextPaymentDetail;
@@ -204,12 +253,14 @@ async function act(task: (context: ReceiptPageContext) => Promise<unknown>, succ
     assertCurrentContext(context);
     message.value = success;
     await load();
+    return true;
   } catch (actionError) {
     if (actionError instanceof StaleReceiptContextError) {
       routeSafetyNotice.value = ROUTE_CHANGED_MESSAGE;
     } else if (contextIsCurrent(context)) {
       error.value = actionError instanceof Error ? actionError.message : "操作失败";
     }
+    return false;
   } finally {
     if (contextIsCurrent(context)) busy.value = false;
   }
@@ -344,6 +395,158 @@ async function appendInvoice() {
     assertCurrentContext(context);
     invoiceFiles.value = [];
   }, "发票已关联整张付款申请，并追加生成新的归档版本");
+}
+
+function openInvoiceInvalidation(invoice: SpotProcurementPaymentInvoiceReadModel) {
+  const action = spotPaymentCapability.value?.invoice?.invoices
+    .find((item) => item.id === invoice.id)?.availableActions
+    .find((item) => item.key === "invalidate_invoice");
+  if (!spotPaymentCapability.value || !action?.enabled) return;
+  selectedInvoiceId.value = invoice.id;
+  selectedInvoicePaymentId.value = spotPaymentCapability.value.payment.id;
+  selectedInvoiceProcurementId.value = procurementId.value;
+  selectedInvoiceGeneration.value = routeGeneration;
+  invoiceInvalidationCompleted.value = false;
+  invoiceInvalidationError.value = "";
+  invoiceInvalidationVisible.value = true;
+}
+
+function selectedInvoiceContext(): ReceiptPageContext {
+  return {
+    procurementId: selectedInvoiceProcurementId.value,
+    generation: selectedInvoiceGeneration.value
+  };
+}
+
+function completeInvoiceInvalidation() {
+  const context = selectedInvoiceContext();
+  if (!contextIsCurrent(context)) {
+    routeSafetyNotice.value = ROUTE_CHANGED_MESSAGE;
+    return;
+  }
+  invoiceInvalidationVisible.value = false;
+  invoiceInvalidationCompleted.value = true;
+  message.value = "发票附件已作废，历史附件和审计事实继续保留";
+  return load();
+}
+
+function failInvoiceInvalidation(actionError: unknown) {
+  const context = selectedInvoiceContext();
+  if (!contextIsCurrent(context)) {
+    routeSafetyNotice.value = ROUTE_CHANGED_MESSAGE;
+  } else {
+    invoiceInvalidationError.value =
+      actionError instanceof Error ? actionError.message : "发票附件作废失败";
+  }
+}
+
+function finishInvoiceInvalidation() {
+  if (contextIsCurrent(selectedInvoiceContext())) busy.value = false;
+  if (invoiceInvalidationCompleted.value) {
+    selectedInvoiceId.value = "";
+    selectedInvoicePaymentId.value = "";
+    selectedInvoiceProcurementId.value = "";
+    selectedInvoiceGeneration.value = -1;
+    invoiceInvalidationCompleted.value = false;
+  }
+}
+
+function assertInvoiceInvalidationContext() {
+  const context = selectedInvoiceContext();
+  const capability = spotPaymentCapability.value;
+  const action = capability?.invoice?.invoices
+    .find((invoice) => invoice.id === selectedInvoiceId.value)?.availableActions
+    .find((item) => item.key === "invalidate_invoice");
+  if (
+    !contextIsCurrent(context) ||
+    !selectedInvoicePaymentId.value ||
+    !selectedInvoiceId.value ||
+    capability?.payment.id !== selectedInvoicePaymentId.value ||
+    capability.payment.procurement.id !== context.procurementId ||
+    !action?.enabled
+  ) {
+    invoiceInvalidationError.value = ROUTE_CHANGED_MESSAGE;
+    throw new StaleReceiptContextError(ROUTE_CHANGED_MESSAGE);
+  }
+  return selectedInvoicePaymentId.value;
+}
+
+function invalidateInvoice(values: { reason: string }) {
+  busy.value = true;
+  invoiceInvalidationError.value = "";
+  invoiceInvalidationCompleted.value = false;
+  return invalidateSpotProcurementPaymentInvoice(
+    assertInvoiceInvalidationContext(),
+    selectedInvoiceId.value,
+    { reason: values.reason }
+  )
+    .then(completeInvoiceInvalidation)
+    .catch(failInvoiceInvalidation)
+    .finally(finishInvoiceInvalidation);
+}
+
+function receiptPdfRefreshContext(): ReceiptPageContext {
+  return {
+    procurementId: receiptPdfRefreshProcurementId.value,
+    generation: receiptPdfRefreshGeneration.value
+  };
+}
+
+function prepareReceiptPdfRefresh() {
+  if (!receiptPdfRefreshAction.value?.enabled) return;
+  const context = captureContext();
+  receiptPdfRefreshProcurementId.value = context.procurementId;
+  receiptPdfRefreshGeneration.value = context.generation;
+}
+
+function completeReceiptPdfRefresh() {
+  const context = receiptPdfRefreshContext();
+  if (!contextIsCurrent(context)) {
+    routeSafetyNotice.value = ROUTE_CHANGED_MESSAGE;
+    return;
+  }
+  message.value = "收货确认 PDF 已重新生成，旧版本继续保留";
+  return load();
+}
+
+function failReceiptPdfRefresh(actionError: unknown) {
+  const context = receiptPdfRefreshContext();
+  if (!contextIsCurrent(context)) {
+    routeSafetyNotice.value = ROUTE_CHANGED_MESSAGE;
+  } else {
+    error.value = actionError instanceof Error ? actionError.message : "收货确认 PDF 重新生成失败";
+  }
+}
+
+function finishReceiptPdfRefresh() {
+  if (contextIsCurrent(receiptPdfRefreshContext())) busy.value = false;
+  receiptPdfRefreshProcurementId.value = "";
+  receiptPdfRefreshGeneration.value = -1;
+}
+
+function assertReceiptPdfRefreshContext() {
+  const context = receiptPdfRefreshContext();
+  if (
+    !contextIsCurrent(context) ||
+    spotReceiptCapability.value?.receipt.procurementId !==
+      context.procurementId ||
+    !receiptPdfRefreshAction.value?.enabled
+  ) {
+    error.value = ROUTE_CHANGED_MESSAGE;
+    throw new StaleReceiptContextError(ROUTE_CHANGED_MESSAGE);
+  }
+  return context.procurementId;
+}
+
+function refreshReceiptPdf() {
+  busy.value = true;
+  error.value = "";
+  return refreshSpotProcurementReceiptPdf(
+    assertReceiptPdfRefreshContext()
+  )
+    .then(completeReceiptPdfRefresh)
+    .catch(failReceiptPdfRefresh)
+    .finally(finishReceiptPdfRefresh);
 }
 
 watch(procurementId, () => {
@@ -624,6 +827,23 @@ watch(procurementId, () => {
           :message="hasActualPayment ? '可上传一张发票图片或 PDF，付款后、采购办结后均可追加；不会成为收货或办结条件。' : '请先登记实际付款后再追加发票。'"
         />
         <div
+          v-if="receiptPdfRefreshAction?.enabled"
+          class="actions"
+        >
+          <t-popconfirm
+            content="确认使用当前已复核的最终收货事实重新生成 PDF？历史版本不会被覆盖。"
+            @confirm="refreshReceiptPdf"
+          >
+            <t-button
+              variant="outline"
+              :loading="busy"
+              @click="prepareReceiptPdfRefresh"
+            >
+              {{ receiptPdfRefreshAction.label }}
+            </t-button>
+          </t-popconfirm>
+        </div>
+        <div
           v-if="paymentNotice"
           class="payment-notice"
         >
@@ -631,15 +851,30 @@ watch(procurementId, () => {
         </div>
         <template v-else-if="paymentDetail">
           <div class="invoice-list">
-            <span v-if="!activeInvoices.length">尚未上传发票</span>
-            <t-tag
-              v-for="invoice in activeInvoices"
+            <span v-if="!invoices.length">尚未上传发票</span>
+            <div
+              v-for="invoice in invoices"
               :key="String(invoice.id)"
-              theme="primary"
-              variant="light"
+              class="invoice-item"
             >
-              {{ invoiceLabel(invoice) }}
-            </t-tag>
+              <t-tag
+                theme="primary"
+                variant="light"
+              >
+                {{ invoiceLabel(invoice) }}
+              </t-tag>
+              <t-button
+                v-if="invoiceAction(invoice, 'invalidate_invoice')"
+                theme="danger"
+                variant="text"
+                size="small"
+                :disabled="!invoiceAction(invoice, 'invalidate_invoice')?.enabled"
+                :title="invoiceAction(invoice, 'invalidate_invoice')?.disabledReason ?? undefined"
+                @click="openInvoiceInvalidation(invoice)"
+              >
+                {{ invoiceAction(invoice, "invalidate_invoice")?.label }}
+              </t-button>
+            </div>
           </div>
           <div class="invoice-upload">
             <t-upload
@@ -676,6 +911,21 @@ watch(procurementId, () => {
           </p>
         </template>
       </t-card>
+
+      <SensitiveActionDialog
+        v-if="selectedInvoiceInvalidationAction?.enabled"
+        v-model="invoiceInvalidationVisible"
+        title="作废发票附件"
+        description="作废只停止当前附件继续作为有效发票使用；原文件、归档版本和审计事实继续保留。"
+        confirm-text="确认作废"
+        confirm-theme="danger"
+        :require-reason="true"
+        :require-password="false"
+        reason-label="作废原因"
+        :loading="busy"
+        :error="invoiceInvalidationError"
+        @confirm="invalidateInvoice"
+      />
     </template>
   </section>
 </template>
@@ -684,10 +934,11 @@ watch(procurementId, () => {
 .page { display: grid; gap: var(--jg-space-lg); }
 .people { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--jg-space-md); margin: 0; }
 .people dd { margin: var(--jg-space-xs) 0 0; }
-.delegate, .actions, .invoice-upload { display: flex; gap: var(--jg-space-sm); margin-top: var(--jg-space-md); align-items: end; flex-wrap: wrap; }
+.delegate, .actions, .invoice-upload, .invoice-item { display: flex; gap: var(--jg-space-sm); margin-top: var(--jg-space-md); align-items: center; flex-wrap: wrap; }
 .reviews, .discrepancy-form, .refund-form, .invoice-list { display: grid; gap: var(--jg-space-sm); margin-top: var(--jg-space-md); }
 .discrepancy-form label, .refund-form label { display: grid; gap: var(--jg-space-xs); }
 .discrepancy-note, .payment-notice { margin-top: var(--jg-space-md); padding: var(--jg-space-md); border-radius: var(--jg-radius-md); background: var(--jg-color-bg-secondary); color: var(--jg-color-text-secondary); }
-.invoice-list { grid-template-columns: repeat(auto-fit, minmax(180px, max-content)); align-items: center; }
+.invoice-list { grid-template-columns: repeat(auto-fit, minmax(240px, max-content)); align-items: center; }
+.invoice-item { margin-top: 0; }
 @media (max-width: 720px) { .people { grid-template-columns: 1fr; } }
 </style>

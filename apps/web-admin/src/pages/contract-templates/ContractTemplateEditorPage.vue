@@ -29,6 +29,16 @@
         >
           发布
         </t-button>
+        <t-button
+          v-if="riskStopCandidateAction"
+          theme="danger"
+          variant="outline"
+          :disabled="!riskStopCandidateAction.enabled || submitting"
+          :title="riskStopCandidateAction.disabledReason ?? undefined"
+          @click="openRiskStopDialog"
+        >
+          {{ riskStopCandidateAction.label }}
+        </t-button>
       </t-space>
     </div>
 
@@ -398,6 +408,19 @@
     </p>
 
     <SensitiveActionDialog
+      v-if="riskStopAction?.enabled"
+      v-model="riskStopDialogVisible"
+      :title="riskStopAction?.label ?? '风险停用'"
+      description="风险停用后，该版本不再用于新合同；既有合同仍按冻结版本读取。"
+      confirm-text="确认风险停用"
+      confirm-theme="danger"
+      :loading="submitting"
+      :error="riskStopError"
+      @confirm="stopSelectedVersion"
+      @cancel="riskStopError = ''"
+    />
+
+    <SensitiveActionDialog
       v-model="leaveDialogVisible"
       title="放弃未保存的模板修改？"
       description="继续后会丢弃当前模板版本尚未保存的字段、清单、条款、附件和校验修改。"
@@ -410,13 +433,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import {
   cloneContractTemplateVersion,
   discardContractTemplateVersion,
   getContractTemplate,
   publishContractTemplateVersion,
+  stopContractTemplateVersion,
   submitContractTemplateVersion,
   type ContractTemplateDetailReadModel,
   type ContractTemplateSchemaPayload,
@@ -457,6 +481,8 @@ const tabs: Array<{ key: TabKey; label: string }> = [
 
 const route = useRoute();
 const auth = useAuthStore();
+const templateRouteId = computed(() => String(route.params.templateId ?? ""));
+const contractTemplateCapability = ref<ContractTemplateDetailReadModel | null>(null);
 const template = ref<ContractTemplateDetailReadModel["template"] | null>(null);
 const versions = ref<ContractTemplateVersionReadModel[]>([]);
 const templateName = ref("业务模板编辑器");
@@ -468,12 +494,26 @@ const message = ref("");
 const tone = ref<"success" | "danger">("success");
 const loading = ref(false);
 const submitting = ref(false);
+const riskStopDialogVisible = ref(false);
+const riskStopError = ref("");
+const riskStopVersionId = ref("");
 const editorBaseline = ref("");
 const leaveDialogVisible = ref(false);
 let resolvePendingLeave: ((decision: boolean) => void) | null = null;
+let templateLoadGeneration = 0;
 
 const selectedVersion = computed(() =>
   versions.value.find((version) => version.id === selectedVersionId.value)
+);
+const riskStopCandidateAction = computed(() =>
+  (contractTemplateCapability.value?.versions
+    .find((version) => version.id === selectedVersionId.value)?.availableActions ?? [])
+    .find((action) => action.key === "risk_stop") ?? null
+);
+const riskStopAction = computed(() =>
+  (contractTemplateCapability.value?.versions
+    .find((version) => version.id === riskStopVersionId.value)?.availableActions ?? [])
+    .find((action) => action.key === "risk_stop") ?? null
 );
 const versionOptions = computed(() => contractTemplateVersionOptions(versions.value));
 const canMaintainTemplates = computed(() => canMaintainContractTemplates(auth.user?.roleKeys));
@@ -668,8 +708,18 @@ async function selectVersion(value: unknown) {
 }
 
 async function loadTemplate(preferredVersionId?: string) {
+  const templateId = templateRouteId.value;
+  const generation = ++templateLoadGeneration;
+  const serverDetail = await getContractTemplate(templateId, true);
+  if (
+    generation !== templateLoadGeneration ||
+    templateRouteId.value !== templateId
+  ) {
+    return false;
+  }
+  contractTemplateCapability.value = serverDetail;
   const detail = normalizeContractTemplateDetail(
-    await getContractTemplate(String(route.params.templateId), true)
+    structuredClone(serverDetail)
   );
   const targetId = preferredVersionId ?? detail.defaultVersionId;
   const version = detail.versions.find((item) => item.id === targetId);
@@ -680,6 +730,44 @@ async function loadTemplate(preferredVersionId?: string) {
   versions.value = detail.versions;
   templateName.value = detail.template.businessCode ?? detail.template.name;
   applyVersion(version);
+  return true;
+}
+
+function clearTemplateRouteContext() {
+  templateLoadGeneration += 1;
+  contractTemplateCapability.value = null;
+  template.value = null;
+  versions.value = [];
+  selectedVersionId.value = "";
+  lastValidVersionId.value = "";
+  riskStopDialogVisible.value = false;
+  riskStopError.value = "";
+  riskStopVersionId.value = "";
+  message.value = "";
+  editorBaseline.value = "";
+  changeSummary.value = "";
+  schema.fields = [];
+  schema.bills = [];
+  schema.clauses = [];
+  schema.attachments = [];
+  schema.validations = [];
+}
+
+async function loadTemplateRoute() {
+  const expectedTemplateId = templateRouteId.value;
+  loading.value = true;
+  try {
+    await loadTemplate();
+  } catch (error) {
+    if (templateRouteId.value === expectedTemplateId) {
+      message.value = error instanceof Error ? error.message : "加载模板失败";
+      tone.value = "danger";
+    }
+  } finally {
+    if (templateRouteId.value === expectedTemplateId) {
+      loading.value = false;
+    }
+  }
 }
 
 function formatVersionTime(value?: string) {
@@ -712,6 +800,38 @@ async function discardSelectedVersion(request: BusinessDraftActionRequest) {
 function handleDiscardCompleted() {
   message.value = "草稿版本已废弃，已提交、发布和引用记录均未改变";
   tone.value = "success";
+}
+
+function openRiskStopDialog() {
+  const version = selectedVersion.value;
+  if (!version || !riskStopCandidateAction.value?.enabled || submitting.value) return;
+  riskStopVersionId.value = version.id;
+  riskStopError.value = "";
+  riskStopDialogVisible.value = true;
+}
+
+function completeRiskStop() {
+  riskStopDialogVisible.value = false;
+  message.value = "模板版本已风险停用，新合同不再使用该版本";
+  tone.value = "success";
+  return loadTemplate(riskStopVersionId.value);
+}
+
+function failRiskStop(error: unknown) {
+  riskStopError.value = error instanceof Error ? error.message : "风险停用失败";
+}
+
+function finishRiskStop() {
+  submitting.value = false;
+}
+
+function stopSelectedVersion() {
+  submitting.value = true;
+  riskStopError.value = "";
+  return stopContractTemplateVersion(riskStopVersionId.value)
+    .then(completeRiskStop)
+    .catch(failRiskStop)
+    .finally(finishRiskStop);
 }
 
 function requireVersion(action: keyof Omit<ReturnType<typeof contractTemplateVersionGovernance>, "readOnly">) {
@@ -947,17 +1067,11 @@ async function publishVersion() {
   }
 }
 
-onMounted(async () => {
-  loading.value = true;
-  try {
-    await loadTemplate();
-  } catch (error) {
-    message.value = error instanceof Error ? error.message : "加载模板失败";
-    tone.value = "danger";
-  } finally {
-    loading.value = false;
-  }
+watch(templateRouteId, () => {
+  clearTemplateRouteContext();
+  void loadTemplateRoute();
 });
+onMounted(() => void loadTemplateRoute());
 </script>
 
 <style scoped>
