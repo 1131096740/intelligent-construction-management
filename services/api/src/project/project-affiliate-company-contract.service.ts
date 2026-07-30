@@ -239,92 +239,140 @@ export class ProjectAffiliateCompanyContractService {
     }
     await this.auth.confirmPassword(actorUserId, confirmationPassword);
 
-    return this.prisma.$transaction(async (tx) => {
-      const replay = await tx.projectAffiliateCompanyContract.findUnique({
-        where: { confirmationActionId }
-      });
-      if (replay) {
-        if (
-          replay.id !== contractId ||
-          replay.projectId !== projectId ||
-          replay.confirmedByUserId !== actorUserId
-        ) {
-          throw new ConflictException("线下合同确认幂等键已用于不同动作");
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const replay = await tx.projectAffiliateCompanyContract.findUnique({
+          where: { confirmationActionId }
+        });
+        if (replay) {
+          assertConfirmationReplay(
+            replay,
+            projectId,
+            contractId,
+            actorUserId
+          );
+          return toReadModel(
+            replay,
+            await loadActorRoleKeys(tx, actorUserId, projectId)
+          );
         }
-        return toReadModel(
-          replay,
-          await loadActorRoleKeys(tx, actorUserId, projectId)
-        );
-      }
 
-      await tx.$queryRaw(Prisma.sql`
-        SELECT "id" FROM "ProjectAffiliateCompanyContract"
-        WHERE "id" = ${contractId} AND "projectId" = ${projectId}
-        FOR UPDATE
-      `);
-      const contract = await tx.projectAffiliateCompanyContract.findFirst({
-        where: { id: contractId, projectId }
+        await tx.$queryRaw(Prisma.sql`
+          SELECT "id" FROM "ProjectAffiliateCompanyContract"
+          WHERE "id" = ${contractId} AND "projectId" = ${projectId}
+          FOR UPDATE
+        `);
+        const replayAfterLock =
+          await tx.projectAffiliateCompanyContract.findUnique({
+            where: { confirmationActionId }
+          });
+        if (replayAfterLock) {
+          assertConfirmationReplay(
+            replayAfterLock,
+            projectId,
+            contractId,
+            actorUserId
+          );
+          return toReadModel(
+            replayAfterLock,
+            await loadActorRoleKeys(tx, actorUserId, projectId)
+          );
+        }
+        const contract = await tx.projectAffiliateCompanyContract.findFirst({
+          where: { id: contractId, projectId }
+        });
+        if (!contract) {
+          throw new NotFoundException("待确认的挂靠企业与我方线下合同不存在");
+        }
+        if (contract.status !== "pending_confirm") {
+          throw new BadRequestException("当前线下合同状态不可确认");
+        }
+        const roles = await loadActorRoleKeys(tx, actorUserId, projectId);
+        if (!roles.includes("contract_director")) {
+          throw new ForbiddenException(
+            "只有合同主管可以确认挂靠企业与我方已签线下合同"
+          );
+        }
+        const signature = await snapshotApprovalSignature(tx, actorUserId, {
+          required: true
+        });
+        const updated = await tx.projectAffiliateCompanyContract.updateMany({
+          where: {
+            id: contractId,
+            projectId,
+            status: "pending_confirm",
+            confirmationActionId: null
+          },
+          data: {
+            status: "confirmed",
+            confirmedByUserId: actorUserId,
+            confirmedAt: now,
+            confirmationActionId,
+            confirmationSignatureVersionId: signature.versionId,
+            confirmationSignatureFileId: signature.fileId,
+            confirmationSignatureSha256: signature.sha256
+          }
+        });
+        if (updated.count !== 1) {
+          throw new ConflictException("线下合同已被其他操作确认，请刷新后核对");
+        }
+        const confirmed = await tx.projectAffiliateCompanyContract.findUnique({
+          where: { id: contractId }
+        });
+        if (!confirmed) {
+          throw new InternalServerErrorException("线下合同确认结果未正确保存");
+        }
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "project.affiliate_company_contract.confirm",
+          businessType: "project_affiliate_company_contract",
+          businessId: contractId,
+          metadata: {
+            projectId,
+            contractReference: confirmed.contractReference,
+            confirmationActionId,
+            confirmationSignatureVersionId: signature.versionId,
+            confirmedAt: now.toISOString(),
+            companyApprovalCreated: false,
+            companySealCreated: false,
+            ownerReceiptCreated: false,
+            paymentWorkflowCreated: false
+          }
+        });
+        return toReadModel(confirmed, roles);
       });
-      if (!contract) {
-        throw new NotFoundException("待确认的挂靠企业与我方线下合同不存在");
-      }
-      if (contract.status !== "pending_confirm") {
-        throw new BadRequestException("当前线下合同状态不可确认");
-      }
-      const roles = await loadActorRoleKeys(tx, actorUserId, projectId);
-      if (!roles.includes("contract_director")) {
-        throw new ForbiddenException(
-          "只有合同主管可以确认挂靠企业与我方已签线下合同"
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error;
+      const replay =
+        await this.prisma.projectAffiliateCompanyContract.findUnique({
+          where: { confirmationActionId }
+        });
+      if (replay) {
+        assertConfirmationReplay(
+          replay,
+          projectId,
+          contractId,
+          actorUserId
         );
+        return toReadModel(replay, []);
       }
-      const signature = await snapshotApprovalSignature(tx, actorUserId, {
-        required: true
-      });
-      const updated = await tx.projectAffiliateCompanyContract.updateMany({
-        where: {
-          id: contractId,
-          projectId,
-          status: "pending_confirm",
-          confirmationActionId: null
-        },
-        data: {
-          status: "confirmed",
-          confirmedByUserId: actorUserId,
-          confirmedAt: now,
-          confirmationActionId,
-          confirmationSignatureVersionId: signature.versionId,
-          confirmationSignatureFileId: signature.fileId,
-          confirmationSignatureSha256: signature.sha256
-        }
-      });
-      if (updated.count !== 1) {
-        throw new ConflictException("线下合同已被其他操作确认，请刷新后核对");
-      }
-      const confirmed = await tx.projectAffiliateCompanyContract.findUnique({
-        where: { id: contractId }
-      });
-      if (!confirmed) {
-        throw new InternalServerErrorException("线下合同确认结果未正确保存");
-      }
-      await this.audit.record(tx, {
-        actorUserId,
-        action: "project.affiliate_company_contract.confirm",
-        businessType: "project_affiliate_company_contract",
-        businessId: contractId,
-        metadata: {
-          projectId,
-          contractReference: confirmed.contractReference,
-          confirmationActionId,
-          confirmationSignatureVersionId: signature.versionId,
-          confirmedAt: now.toISOString(),
-          companyApprovalCreated: false,
-          companySealCreated: false,
-          ownerReceiptCreated: false,
-          paymentWorkflowCreated: false
-        }
-      });
-      return toReadModel(confirmed, roles);
-    });
+      throw new ConflictException("线下合同确认幂等键已用于不同动作");
+    }
+  }
+}
+
+function assertConfirmationReplay(
+  replay: AffiliateCompanyContractRow,
+  projectId: string,
+  contractId: string,
+  actorUserId: string
+) {
+  if (
+    replay.id !== contractId ||
+    replay.projectId !== projectId ||
+    replay.confirmedByUserId !== actorUserId
+  ) {
+    throw new ConflictException("线下合同确认幂等键已用于不同动作");
   }
 }
 

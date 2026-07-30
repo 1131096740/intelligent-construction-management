@@ -17,13 +17,13 @@
     "totalVueFileCount": 134,
     "parsedVueFileCount": 134,
     "reachableProductionModuleCount": 229,
-    "templateEventDirectiveCount": 890,
+    "templateEventDirectiveCount": 892,
     "propCallbackDirectiveCount": 12,
-    "coveredProductionMutationConsumerCount": 7,
+    "coveredProductionMutationConsumerCount": 8,
     "candidateProductionMutationConsumerCount": 39,
-    "acceptedProductionMutationConsumerCount": 7,
+    "acceptedProductionMutationConsumerCount": 8,
     "productionMutationConsumerPairCount": 275,
-    "blockerCount": 349
+    "blockerCount": 345
   },
   "evidence": {
     "totalProductionModuleCount": 236,
@@ -43,20 +43,20 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
       "trigger": {
-        "element": "t-link",
-        "event": "click",
-        "handler": "openConfirm",
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "submitConfirm",
         "kind": "event",
-        "sourceLine": 238,
-        "sourceColumn": 12
+        "sourceLine": 730,
+        "sourceColumn": 6
       },
       "semantic": "business_write",
       "capability": {
         "kind": "available_action_string",
-        "source": "row.availableActions",
+        "source": "selectedAffiliateCompanyContractActions",
         "key": "confirm",
-        "serverDerived": false,
-        "dominatesTrigger": false
+        "serverDerived": true,
+        "dominatesTrigger": true
       },
       "bindings": [
         {
@@ -83,11 +83,14 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "openConfirm"
+              "submitConfirm",
+              "confirmProjectAffiliateCompanyContract"
             ]
           },
           "ticketFollowups": []
@@ -109,16 +112,16 @@
         "event": "click",
         "handler": "openRecord",
         "kind": "event",
-        "sourceLine": 192,
+        "sourceLine": 597,
         "sourceColumn": 8
       },
       "semantic": "business_write",
       "capability": {
         "kind": "available_action_string",
-        "source": "data.availableActions",
+        "source": "affiliateCompanyContractRootActions",
         "key": "record_affiliate_company_contract",
         "serverDerived": true,
-        "dominatesTrigger": false
+        "dominatesTrigger": true
       },
       "bindings": [
         {
@@ -2824,13 +2827,6 @@
     "unresolvedWrappers": [
       {
         "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "affiliate-company-contract.confirm",
-        "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmProjectAffiliateCompanyContract"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
         "actionId": "affiliate-company-contract.record",
         "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -3091,18 +3087,6 @@
     ],
     "unresolvedRoutes": [],
     "writeWithoutServerCapability": [
-      {
-        "code": "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED",
-        "actionId": "affiliate-company-contract.confirm",
-        "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
-        "reason": "capability_not_dominating"
-      },
-      {
-        "code": "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED",
-        "actionId": "affiliate-company-contract.record",
-        "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
-        "reason": "capability_not_dominating"
-      },
       {
         "code": "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED",
         "actionId": "contract-draft.abandon-application",
@@ -4986,15 +4970,6 @@
         "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
         "normalizedKeys": [
           "POST /files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmProjectAffiliateCompanyContract",
-        "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/affiliate-company-contracts/:param/confirmation"
         ]
       },
       {

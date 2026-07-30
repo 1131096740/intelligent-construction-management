@@ -5975,7 +5975,9 @@ function referencePathThroughAliases(
       : value.property?.type === "Identifier"
         ? value.property.name
         : null;
-    return property ? `${objectPath}.${property}` : null;
+    return property
+      ? capabilityReferenceChildPath(objectPath, property)
+      : null;
   }
   if (value.type === "CallExpression") {
     const callee = unwrapValueExpression(value.callee);
@@ -6152,12 +6154,124 @@ function capabilityRefProtectedPath(
     : `${root}.value`;
 }
 
+const CAPABILITY_ORIGIN_PROJECTION_PREFIX =
+  "__capability_origin_projection__:";
+
+function encodedCapabilityProjectionPart(value) {
+  return encodeURIComponent(value).replaceAll(".", "%2E");
+}
+
+function capabilityOriginProjectionPath(
+  protectedPath,
+  parts
+) {
+  return `${CAPABILITY_ORIGIN_PROJECTION_PREFIX}${encodedCapabilityProjectionPart(
+    protectedPath
+  )}:${parts
+    .map(encodedCapabilityProjectionPart)
+    .join(",")}`;
+}
+
+function capabilityReferenceChildPath(path, property) {
+  return `${path}.${
+    path.startsWith(CAPABILITY_ORIGIN_PROJECTION_PREFIX)
+      ? encodedCapabilityProjectionPart(property)
+      : property
+  }`;
+}
+
+function parsedCapabilityOriginProjection(path) {
+  if (
+    typeof path !== "string" ||
+    !path.startsWith(CAPABILITY_ORIGIN_PROJECTION_PREFIX)
+  ) {
+    return null;
+  }
+  const separator = path.indexOf(".");
+  const descriptor =
+    separator < 0 ? path : path.slice(0, separator);
+  const traversed =
+    separator < 0
+      ? []
+      : path
+          .slice(separator + 1)
+          .split(".")
+          .map((part) => decodeURIComponent(part));
+  const payload = descriptor.slice(
+    CAPABILITY_ORIGIN_PROJECTION_PREFIX.length
+  );
+  const delimiter = payload.indexOf(":");
+  if (delimiter < 0) return null;
+  try {
+    return {
+      protectedPath: decodeURIComponent(
+        payload.slice(0, delimiter)
+      ),
+      expected: payload
+        .slice(delimiter + 1)
+        .split(",")
+        .filter(Boolean)
+        .map((part) => decodeURIComponent(part)),
+      traversed
+    };
+  } catch {
+    return null;
+  }
+}
+
+function capabilityOriginProjectionDescriptor(
+  expression,
+  scopeBindings
+) {
+  let value = unwrapValueExpression(expression);
+  const parts = [];
+  while (value?.type === "MemberExpression") {
+    const property = value.computed
+      ? literalString(value.property) ??
+        (value.property?.type === "Literal" &&
+        ["bigint", "number"].includes(
+          typeof value.property.value
+        )
+          ? String(value.property.value)
+          : "*")
+      : value.property?.type === "Identifier"
+        ? value.property.name
+        : null;
+    if (!property) return null;
+    parts.unshift(property);
+    value = unwrapValueExpression(value.object);
+  }
+  if (value?.type !== "Identifier" || parts.length === 0) {
+    return null;
+  }
+  const binding = scopeBindings.get(value);
+  return binding ? { binding, parts } : null;
+}
+
 function capabilityRefObjectEscapes(
   path,
   root,
   protectedPath
 ) {
   if (typeof path !== "string") return false;
+  const projection = parsedCapabilityOriginProjection(path);
+  if (projection) {
+    if (projection.protectedPath !== protectedPath) {
+      return false;
+    }
+    const sharedLength = Math.min(
+      projection.expected.length,
+      projection.traversed.length
+    );
+    return Array.from(
+      { length: sharedLength },
+      (_, index) =>
+        projection.expected[index] ===
+          projection.traversed[index] ||
+        projection.expected[index] === "*" ||
+        projection.traversed[index] === "*"
+    ).every(Boolean);
+  }
   if (path === root || path === `${root}.value`) return true;
   const pathParts = path.split(".");
   const protectedParts = protectedPath.split(".");
@@ -6172,10 +6286,7 @@ function capabilityRefObjectEscapes(
       pathParts[index] === "*" ||
       protectedParts[index] === "*"
   ).every(Boolean);
-  return (
-    protectedPath !== `${root}.value` &&
-    overlapsProtectedPath
-  );
+  return overlapsProtectedPath;
 }
 
 function capabilityRefUsageIsSafe(
@@ -6483,6 +6594,13 @@ function capabilityRefUsageIsSafe(
       continue;
     }
     seenOriginExpressions.add(expression);
+    const originProjection =
+      protectedPath === `${root}.value`
+        ? capabilityOriginProjectionDescriptor(
+            expression,
+            scopeBindings
+          )
+        : null;
     walkEstree(expression, (candidate) => {
       if (candidate.type !== "Identifier") return;
       const binding = scopeBindings.get(candidate);
@@ -6498,8 +6616,18 @@ function capabilityRefUsageIsSafe(
         context
       );
       if (sources?.size !== 1) return;
-      aliases.set(binding, protectedPath);
-      templateProtectedOrigins.set(candidate.name, root);
+      const aliasPath =
+        binding === originProjection?.binding
+          ? capabilityOriginProjectionPath(
+              protectedPath,
+              originProjection.parts
+            )
+          : protectedPath;
+      aliases.set(binding, aliasPath);
+      templateProtectedOrigins.set(
+        candidate.name,
+        aliasPath
+      );
       const declaration = uniqueIndexedNode(
         context.symbols.declarationsByBinding,
         binding
@@ -6853,25 +6981,66 @@ function capabilityRefUsageIsSafe(
       }
     });
     walkEstree(ast, (node) => {
-      if (
-        node.type !== "VariableDeclarator" ||
-        node.id?.type !== "Identifier" ||
-        !scopeBindings.has(node.id) ||
-        aliases.has(scopeBindings.get(node.id))
-      ) {
-        return;
+      const rememberAliasPath = (binding, path) => {
+        if (!binding || !path) return;
+        const existing = aliases.get(binding);
+        if (
+          existing &&
+          (existing === path ||
+            capabilityRefObjectEscapes(
+              existing,
+              root,
+              protectedPath
+            ) ||
+            !capabilityRefObjectEscapes(
+              path,
+              root,
+              protectedPath
+            ))
+        ) {
+          return;
+        }
+        aliases.set(binding, path);
+        changed = true;
+      };
+      const target =
+        node.type === "VariableDeclarator"
+          ? node.id
+          : node.type === "AssignmentExpression" &&
+              node.operator === "="
+            ? unwrapValueExpression(node.left)
+            : null;
+      const sourceExpression =
+        node.type === "VariableDeclarator"
+          ? node.init
+          : node.type === "AssignmentExpression"
+            ? node.right
+            : null;
+      const targetBinding =
+        target?.type === "Identifier"
+          ? scopeBindings.get(target)
+          : null;
+      const sourceValue =
+        unwrapValueExpression(sourceExpression);
+      const sourceBinding =
+        sourceValue?.type === "Identifier"
+          ? scopeBindings.get(sourceValue)
+          : null;
+      const targetPath = targetBinding
+        ? aliases.get(targetBinding)
+        : null;
+      if (targetPath && sourceBinding) {
+        rememberAliasPath(sourceBinding, targetPath);
       }
+      if (!targetBinding) return;
       const path = referencePathThroughAliases(
-        node.init,
+        sourceExpression,
         aliases,
         scopeBindings,
         protectedPath,
         callableReturns
       );
-      if (path) {
-        aliases.set(scopeBindings.get(node.id), path);
-        changed = true;
-      }
+      rememberAliasPath(targetBinding, path);
     });
     walkEstree(ast, (node) => {
       if (
@@ -7066,7 +7235,10 @@ function capabilityRefUsageIsSafe(
           : null;
       return property
         ? normalizedTemplateReferencePath(
-            `${objectPath}.${property}`
+            capabilityReferenceChildPath(
+              objectPath,
+              property
+            )
           )
         : null;
     }
@@ -8421,6 +8593,34 @@ function collectionPredicateIsTrusted(
   return requiresKey && requiresEnabled;
 }
 
+function collectionIncludesIsTrusted(
+  node,
+  capability,
+  context,
+  literalBindings
+) {
+  const value = unwrapValueExpression(node);
+  if (
+    value?.type !== "CallExpression" ||
+    value.callee?.type !== "MemberExpression" ||
+    staticMemberProperty(value.callee) !== "includes" ||
+    normalizedExpression(
+      memberExpressionPath(value.callee.object) ?? ""
+    ) !== normalizedExpression(capability.source) ||
+    value.arguments?.length !== 1 ||
+    value.arguments[0]?.type === "SpreadElement"
+  ) {
+    return false;
+  }
+  return (
+    argumentStringValue(
+      value.arguments[0],
+      literalBindings,
+      context.symbols
+    ) === capability.key
+  );
+}
+
 function expressionHasCapability(
   node,
   capability,
@@ -8443,8 +8643,19 @@ function expressionHasCapability(
     value.callee?.type === "MemberExpression" &&
     staticMemberProperty(value.callee) === "some";
   if (
-    (capability.kind === "available_action_string" ||
-      isCollectionPredicate) &&
+    capability.kind === "available_action_string" &&
+    !collectionIncludesIsTrusted(
+      node,
+      capability,
+      context,
+      literalBindings
+    )
+  ) {
+    return false;
+  }
+  if (
+    capability.kind !== "available_action_string" &&
+    isCollectionPredicate &&
     !collectionPredicateIsTrusted(
       node,
       capability,
@@ -8745,7 +8956,9 @@ function capabilityRequired(
     }
     return truthy &&
       callee?.type === "MemberExpression" &&
-      staticMemberProperty(callee) === "some"
+      ["includes", "some"].includes(
+        staticMemberProperty(callee)
+      )
       ? expressionHasCapability(
           node,
           capability,

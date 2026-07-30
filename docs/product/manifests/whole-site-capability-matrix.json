@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "f25e4ae27670eaff786bdb0542480bdc969de0e1d83316c9cb99a3860f296785",
+      "sha256": "386dbae71d145b4577d62f6104f45267a720e6f6ea14fa26f489c43f5275493b",
       "status": "blocked",
       "summary": {
         "registeredActionCount": 42,
@@ -53,13 +53,13 @@
         "totalVueFileCount": 134,
         "parsedVueFileCount": 134,
         "reachableProductionModuleCount": 229,
-        "templateEventDirectiveCount": 890,
+        "templateEventDirectiveCount": 892,
         "propCallbackDirectiveCount": 12,
-        "coveredProductionMutationConsumerCount": 7,
+        "coveredProductionMutationConsumerCount": 8,
         "candidateProductionMutationConsumerCount": 39,
-        "acceptedProductionMutationConsumerCount": 7,
+        "acceptedProductionMutationConsumerCount": 8,
         "productionMutationConsumerPairCount": 275,
-        "blockerCount": 349
+        "blockerCount": 345
       }
     },
     "routeUsage": {
@@ -106,12 +106,12 @@
     "duplicateMutationRouteCount": 4,
     "registeredActionCount": 42,
     "actionBindingCount": 45,
-    "acceptedActionBindingCount": 7,
-    "unresolvedActionBindingCount": 38,
+    "acceptedActionBindingCount": 8,
+    "unresolvedActionBindingCount": 37,
     "productionMutationConsumerPairCount": 275,
-    "coveredProductionMutationConsumerPairCount": 7,
-    "uncoveredProductionMutationConsumerPairCount": 268,
-    "blockerCount": 382
+    "coveredProductionMutationConsumerPairCount": 8,
+    "uncoveredProductionMutationConsumerPairCount": 267,
+    "blockerCount": 380
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -1287,14 +1287,6 @@
         "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "normalizedKeys": [
           "POST /contracts/:param/formal-files/final/confirmation"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmProjectAffiliateCompanyContract",
-        "consumer": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/affiliate-company-contracts/:param/confirmation"
         ]
       },
       {
@@ -2789,20 +2781,6 @@
     ],
     "unresolvedActions": [
       {
-        "actionId": "affiliate-company-contract.confirm",
-        "bindingIndex": 0,
-        "identity": "affiliate-company-contract.confirm\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000confirmProjectAffiliateCompanyContract\u0000POST\u0000POST /projects/:param/affiliate-company-contracts/:param/confirmation\u00000",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmProjectAffiliateCompanyContract",
-        "normalizedKey": "POST /projects/:param/affiliate-company-contracts/:param/confirmation",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
-        ]
-      },
-      {
         "actionId": "affiliate-company-contract.record",
         "bindingIndex": 0,
         "identity": "affiliate-company-contract.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectAffiliateCompanyContract\u0000POST\u0000POST /projects/:param/affiliate-company-contracts\u00000",
@@ -2811,8 +2789,7 @@
         "normalizedKey": "POST /projects/:param/affiliate-company-contracts",
         "reasonCodes": [
           "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_dominating_trigger"
+          "no_accepted_consumer"
         ]
       },
       {
@@ -15045,32 +15022,26 @@
           "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
           "capability": {
             "kind": "available_action_string",
-            "source": "row.availableActions",
+            "source": "selectedAffiliateCompanyContractActions",
             "key": "confirm",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "confirmProjectAffiliateCompanyContract",
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED",
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -15119,10 +15090,10 @@
           "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
           "capability": {
             "kind": "available_action_string",
-            "source": "data.availableActions",
+            "source": "affiliateCompanyContractRootActions",
             "key": "record_affiliate_company_contract",
             "serverDerived": true,
-            "dominatesTrigger": false
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "recordProjectAffiliateCompanyContract",
@@ -15134,8 +15105,7 @@
           "accepted": false,
           "blockerCodes": [
             "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_dominating_trigger"
+            "no_accepted_consumer"
           ]
         }
       ],

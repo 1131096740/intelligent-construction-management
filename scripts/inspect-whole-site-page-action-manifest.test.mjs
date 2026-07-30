@@ -263,6 +263,203 @@ test("joins a server-gated visible action through its wrapper to the Nest route"
   assert.equal(blockerCodes(manifest).size, 0);
 });
 
+test("accepts a selected server string action only through an exact includes gate", async () => {
+  const action = registryAction({
+    trigger: {
+      element: "sensitive-action-dialog",
+      event: "confirm",
+      handler: "submit"
+    },
+    capability: {
+      kind: "available_action_string",
+      source: "selectedActions",
+      key: "confirm"
+    }
+  });
+  const page = `<script setup lang="ts">
+import { shallowRef } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+let rawCapability = null;
+const selectedActions = shallowRef(null);
+let retainedCapability = null;
+const selectedContext = shallowRef(null);
+async function load() {
+  const response = await getExample("example-1");
+  rawCapability = response;
+  selectedActions.value =
+    rawCapability.contracts[0].availableActions;
+  retainedCapability = rawCapability;
+  const selectedCapability = rawCapability.contracts[0];
+  selectedContext.value = {
+    contractId: selectedCapability.id
+  };
+}
+void load();
+void retainedCapability;
+void selectedContext;
+function confirmEnabled(key: string) {
+  return (
+    selectedActions.value !== null &&
+    selectedActions.value.includes(key)
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <sensitive-action-dialog
+    v-if="confirmEnabled('confirm')"
+    @confirm="submit"
+  />
+</template>
+`;
+  const root = await fixture({ actions: [action], page });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(
+    manifest.status,
+    "ready",
+    JSON.stringify({
+      action: manifest.actions[0],
+      blockers: manifest.blockers
+    })
+  );
+  assert.equal(manifest.actions[0].capability.serverDerived, true);
+  assert.equal(manifest.actions[0].capability.dominatesTrigger, true);
+
+  const localRoot = await fixture({
+    actions: [action],
+    page: page.replace(
+      "selectedActions.value =\n    rawCapability.contracts[0].availableActions;",
+      'selectedActions.value = ["confirm"];'
+    )
+  });
+  const localManifest = await inspectWholeSitePageActionManifest({
+    root: localRoot
+  });
+
+  assert.equal(localManifest.status, "blocked");
+  assert.equal(
+    localManifest.actions[0].capability.serverDerived,
+    false
+  );
+  assert.equal(
+    localManifest.actions[0].capability.dominatesTrigger,
+    false
+  );
+
+  const unsafeVariants = [
+    [
+      "wrong action key",
+      page.replace(
+        "selectedActions.value.includes(key)",
+        'selectedActions.value.includes("reject")'
+      ),
+      true
+    ],
+    [
+      "direct mutation",
+      page.replace(
+        "rawCapability.contracts[0].availableActions;",
+        'rawCapability.contracts[0].availableActions;\n  selectedActions.value.push("confirm");'
+      ),
+      false
+    ],
+    [
+      "alias mutation",
+      page.replace(
+        "rawCapability.contracts[0].availableActions;",
+        'rawCapability.contracts[0].availableActions;\n  const selectedAlias = selectedActions.value;\n  selectedAlias[0] = "confirm";'
+      ),
+      false
+    ],
+    [
+      "projected source mutation",
+      page.replace(
+        "rawCapability.contracts[0].availableActions;",
+        'rawCapability.contracts[0].availableActions;\n  rawCapability.contracts[0].availableActions.push("confirm");'
+      ),
+      false
+    ],
+    [
+      "projected source alias mutation",
+      page.replace(
+        "rawCapability.contracts[0].availableActions;",
+        'rawCapability.contracts[0].availableActions;\n  const sourceAlias = rawCapability.contracts[0].availableActions;\n  sourceAlias[0] = "confirm";'
+      ),
+      false
+    ],
+    [
+      "projected source parameter escape",
+      page.replace(
+        "rawCapability.contracts[0].availableActions;",
+        'rawCapability.contracts[0].availableActions;\n  function escape(actions: unknown) { return actions; }\n  escape(rawCapability.contracts[0].availableActions);'
+      ),
+      false
+    ],
+    [
+      "projected source carrier alias mutation",
+      page.replace(
+        "rawCapability.contracts[0].availableActions;",
+        'rawCapability.contracts[0].availableActions;\n  response.contracts[0].availableActions.push("confirm");'
+      ),
+      false
+    ],
+    [
+      "projected source alias later becomes protected",
+      page.replace(
+        "rawCapability.contracts[0].availableActions;",
+        'rawCapability.contracts[0].availableActions;\n  let sourceAlias = rawCapability.contracts[0].displayName;\n  sourceAlias = rawCapability.contracts[0].availableActions;\n  sourceAlias.push("confirm");'
+      ),
+      false
+    ],
+    [
+      "projected source static dotted key mutation",
+      page
+        .replaceAll(
+          "rawCapability.contracts[0]",
+          'rawCapability["contracts.list"][0]'
+        )
+        .replace(
+          'rawCapability["contracts.list"][0].availableActions;',
+          'rawCapability["contracts.list"][0].availableActions;\n  rawCapability["contracts.list"][0].availableActions.push("confirm");'
+        ),
+      false
+    ]
+  ];
+  for (const [
+    label,
+    unsafePage,
+    expectedServerDerived
+  ] of unsafeVariants) {
+    const unsafeRoot = await fixture({
+      actions: [action],
+      page: unsafePage
+    });
+    const unsafeManifest =
+      await inspectWholeSitePageActionManifest({
+        root: unsafeRoot
+      });
+
+    assert.equal(
+      unsafeManifest.status,
+      "blocked",
+      `${label}: ${JSON.stringify(unsafeManifest.actions[0])}`
+    );
+    assert.equal(
+      unsafeManifest.actions[0].capability.serverDerived,
+      expectedServerDerived,
+      label
+    );
+    assert.equal(
+      unsafeManifest.actions[0].capability.dominatesTrigger,
+      false,
+      label
+    );
+  }
+});
+
 test("keeps approve and reject variants distinct while sharing one wrapper and action key", async () => {
   const approve = registryAction({
     id: "example.review.approve",

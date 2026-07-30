@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { onMounted, ref, shallowRef, watch } from "vue";
 import type { PrimaryTableCol, UploadFile } from "tdesign-vue-next";
 import {
   confirmProjectAffiliateCompanyContract,
@@ -17,6 +17,38 @@ import SensitiveActionDialog from "../../../components/SensitiveActionDialog.vue
 
 const props = defineProps<{ projectId: string }>();
 
+type ConfirmContext = {
+  projectId: string;
+  contractId: string;
+  projectGeneration: number;
+  confirmationActionId: string;
+};
+
+type ConfirmOperationContext = ConfirmContext & {
+  operationId: number;
+};
+
+type RecordContext = {
+  projectId: string;
+  projectGeneration: number;
+};
+
+type RecordOperationContext = RecordContext & {
+  operationId: number;
+};
+
+const EMPTY_CONFIRM_CONTEXT: ConfirmContext = {
+  projectId: "",
+  contractId: "",
+  projectGeneration: -1,
+  confirmationActionId: ""
+};
+
+const EMPTY_RECORD_CONTEXT: RecordContext = {
+  projectId: "",
+  projectGeneration: -1
+};
+
 const data = ref<ProjectAffiliateCompanyContractsReadModel | null>(null);
 const companies = ref<CompanyEntityModel[]>([]);
 const loading = ref(false);
@@ -27,10 +59,28 @@ const recordBusy = ref(false);
 const recordError = ref("");
 const signedFiles = ref<UploadFile[]>([]);
 const form = ref(createForm());
+let affiliateCompanyContractCapability: ProjectAffiliateCompanyContractsReadModel | null =
+  null;
+const affiliateCompanyContractRootActions = shallowRef<
+  ProjectAffiliateCompanyContractsReadModel["availableActions"] | null
+>(null);
+const selectedAffiliateCompanyContractActions = shallowRef<
+  Array<"confirm"> | null
+>(null);
+const recordContext = ref<RecordContext>({ ...EMPTY_RECORD_CONTEXT });
+const recordArmed = ref(false);
 const confirmTarget = ref<ProjectAffiliateCompanyContractReadModel | null>(null);
+const confirmContext = ref<ConfirmContext>({ ...EMPTY_CONFIRM_CONTEXT });
+const confirmArmed = ref(false);
 const confirmVisible = ref(false);
 const confirmBusy = ref(false);
 const confirmError = ref("");
+let projectGeneration = 0;
+let loadRequestId = 0;
+let confirmOperationSequence = 0;
+let activeConfirmOperationId = 0;
+let recordOperationSequence = 0;
+let activeRecordOperationId = 0;
 
 const columns: PrimaryTableCol[] = [
   { colKey: "contractReference", title: "线下合同编号", width: 170 },
@@ -47,49 +97,161 @@ onMounted(load);
 watch(
   () => props.projectId,
   () => {
+    projectGeneration += 1;
+    loadRequestId += 1;
+    activeConfirmOperationId = 0;
+    activeRecordOperationId = 0;
+    confirmBusy.value = false;
+    recordBusy.value = false;
+    loading.value = false;
     data.value = null;
+    affiliateCompanyContractCapability = null;
+    affiliateCompanyContractRootActions.value = null;
+    selectedAffiliateCompanyContractActions.value = null;
     companies.value = [];
+    notice.value = "";
+    loadError.value = "";
+    clearRecordSelection();
+    clearConfirmSelection();
     void load();
   }
 );
 
 async function load() {
-  if (!props.projectId) return;
+  const expectedProjectId = props.projectId;
+  if (!expectedProjectId) {
+    loading.value = false;
+    return;
+  }
+  const expectedProjectGeneration = projectGeneration;
+  const requestId = ++loadRequestId;
   loading.value = true;
   loadError.value = "";
+  data.value = null;
+  affiliateCompanyContractCapability = null;
+  affiliateCompanyContractRootActions.value = null;
+  selectedAffiliateCompanyContractActions.value = null;
+  companies.value = [];
+  clearRecordSelection();
+  clearConfirmSelection();
+  let contractsPublished = false;
   try {
-    const contracts = await fetchProjectAffiliateCompanyContracts(props.projectId);
-    data.value = contracts;
-    companies.value = contracts.availableActions.includes(
-      "record_affiliate_company_contract"
-    )
-      ? await fetchActiveCompanyEntities()
-      : [];
+    const contracts =
+      await fetchProjectAffiliateCompanyContracts(expectedProjectId);
+    if (
+      !loadContextIsCurrent(
+        expectedProjectId,
+        expectedProjectGeneration,
+        requestId
+      )
+    ) {
+      return;
+    }
+    affiliateCompanyContractCapability = contracts;
+    affiliateCompanyContractRootActions.value =
+      contracts.availableActions;
+    data.value = structuredClone(contracts);
+    contractsPublished = true;
+    if (
+      !contracts.availableActions.includes(
+        "record_affiliate_company_contract"
+      )
+    ) {
+      return;
+    }
+    const nextCompanies = await fetchActiveCompanyEntities();
+    if (
+      !loadContextIsCurrent(
+        expectedProjectId,
+        expectedProjectGeneration,
+        requestId
+      )
+    ) {
+      return;
+    }
+    companies.value = nextCompanies;
   } catch (error) {
-    loadError.value = errorMessage(error, "挂靠企业与我方线下合同读取失败");
+    if (
+      loadContextIsCurrent(
+        expectedProjectId,
+        expectedProjectGeneration,
+        requestId
+      )
+    ) {
+      loadError.value = errorMessage(
+        error,
+        contractsPublished
+          ? "我方签约主体读取失败，合同确认仍可继续"
+          : "挂靠企业与我方线下合同读取失败"
+      );
+    }
   } finally {
-    loading.value = false;
+    if (
+      loadContextIsCurrent(
+        expectedProjectId,
+        expectedProjectGeneration,
+        requestId
+      )
+    ) {
+      loading.value = false;
+    }
   }
 }
 
+function loadContextIsCurrent(
+  expectedProjectId: string,
+  expectedProjectGeneration: number,
+  requestId: number
+) {
+  return (
+    props.projectId === expectedProjectId &&
+    projectGeneration === expectedProjectGeneration &&
+    loadRequestId === requestId
+  );
+}
+
 function openRecord() {
+  if (
+    recordBusy.value ||
+    !recordActionEnabled("record_affiliate_company_contract")
+  ) {
+    clearRecordSelection();
+    return;
+  }
   form.value = createForm();
   signedFiles.value = [];
   recordError.value = "";
+  recordContext.value = {
+    projectId: props.projectId,
+    projectGeneration
+  };
+  recordArmed.value = true;
   recordVisible.value = true;
 }
 
 async function submitRecord() {
-  recordBusy.value = true;
-  recordError.value = "";
+  const context = captureRecordOperation();
+  let raw: File;
+  let input: {
+    contractReference: string;
+    contractName: string;
+    signedAt: string;
+    rightsObligationsSummary: string;
+    companyEntityId: string;
+    idempotencyKey: string;
+  };
   try {
-    const raw = signedFiles.value[0]?.raw;
-    if (!(raw instanceof File)) {
+    requireCurrentRecordContext(context);
+    const selectedFile = signedFiles.value[0]?.raw;
+    if (!(selectedFile instanceof File)) {
       throw new Error("请上传已由双方线下签署的正式合同文件");
     }
-    const uploaded = await uploadPrivateFile(raw, raw.name);
-    await recordProjectAffiliateCompanyContract(props.projectId, {
-      contractReference: required(form.value.contractReference, "线下合同编号"),
+    raw = selectedFile;
+    input = {
+      contractReference: required(
+        form.value.contractReference,
+        "线下合同编号"
+      ),
       contractName: required(form.value.contractName, "线下合同名称"),
       signedAt: required(form.value.signedAt, "签订日期"),
       rightsObligationsSummary: required(
@@ -97,49 +259,292 @@ async function submitRecord() {
         "双方权利义务摘要"
       ),
       companyEntityId: required(form.value.companyEntityId, "我方签约主体"),
-      fileId: uploaded.id,
       idempotencyKey: crypto.randomUUID()
+    };
+  } catch (error) {
+    if (recordContextIsCurrent(context)) {
+      recordError.value = errorMessage(error, "线下合同登记信息不完整");
+    }
+    return;
+  }
+  recordOperationSequence = context.operationId;
+  activeRecordOperationId = context.operationId;
+  recordBusy.value = true;
+  recordError.value = "";
+  try {
+    const uploaded = await uploadPrivateFile(raw, raw.name);
+    if (!recordResultCanWrite(context)) return;
+    await recordProjectAffiliateCompanyContract(context.projectId, {
+      ...input,
+      fileId: uploaded.id,
     });
-    recordVisible.value = false;
+    if (!recordResultCanWrite(context)) return;
+    clearRecordSelection();
     notice.value =
       "已签线下合同已登记并冻结双方主体与文件摘要；未创建我方审批、用章或业主回款。";
     await load();
   } catch (error) {
-    recordError.value = errorMessage(error, "线下合同登记失败");
+    if (recordResultCanWrite(context)) {
+      recordError.value = errorMessage(error, "线下合同登记失败");
+    }
   } finally {
-    recordBusy.value = false;
+    if (recordOperationIsCurrent(context)) {
+      recordBusy.value = false;
+    }
   }
 }
 
+function recordActionEnabled(
+  key: "record_affiliate_company_contract"
+) {
+  return (
+    affiliateCompanyContractRootActions.value !== null &&
+    affiliateCompanyContractRootActions.value.includes(key)
+  );
+}
+
+function captureRecordOperation(): RecordOperationContext {
+  return {
+    ...recordContext.value,
+    operationId: recordOperationSequence + 1
+  };
+}
+
+function requireCurrentRecordContext(context: RecordContext) {
+  if (
+    recordBusy.value ||
+    !recordContextIsCurrent(context)
+  ) {
+    throw new Error("线下合同登记上下文已失效，请重新读取当前项目");
+  }
+}
+
+function recordContextIsCurrent(context: RecordContext) {
+  const selected = recordContext.value;
+  return Boolean(
+    recordArmed.value &&
+      recordVisible.value &&
+      selected.projectId === context.projectId &&
+      selected.projectGeneration === context.projectGeneration &&
+      props.projectId === context.projectId &&
+      projectGeneration === context.projectGeneration &&
+      recordActionEnabled("record_affiliate_company_contract")
+  );
+}
+
+function recordOperationIsCurrent(context: RecordOperationContext) {
+  return (
+    props.projectId === context.projectId &&
+    projectGeneration === context.projectGeneration &&
+    activeRecordOperationId === context.operationId
+  );
+}
+
+function recordResultCanWrite(context: RecordOperationContext) {
+  return (
+    recordOperationIsCurrent(context) &&
+    recordContextIsCurrent(context)
+  );
+}
+
+function cancelRecord() {
+  if (recordBusy.value) return;
+  activeRecordOperationId = 0;
+  clearRecordSelection();
+}
+
+function clearRecordSelection() {
+  recordVisible.value = false;
+  recordContext.value = { ...EMPTY_RECORD_CONTEXT };
+  recordArmed.value = false;
+  signedFiles.value = [];
+  form.value = createForm();
+  recordError.value = "";
+}
+
+function confirmActionEnabled(
+  contractId: string,
+  key: "confirm"
+) {
+  return (
+    affiliateCompanyContractCapability !== null &&
+    affiliateCompanyContractCapability.contracts.some(
+      (contract) =>
+        contract.id === contractId &&
+        contract.projectId === props.projectId &&
+        contract.status === "pending_confirm" &&
+        contract.availableActions.includes(key)
+    )
+  );
+}
+
+function findConfirmCapabilityIndex(contractId: string) {
+  return (
+    affiliateCompanyContractCapability?.contracts.findIndex(
+      (contract) =>
+        contract.id === contractId &&
+        contract.projectId === props.projectId &&
+        contract.status === "pending_confirm" &&
+        contract.availableActions.includes("confirm")
+    ) ?? -1
+  );
+}
+
 function openConfirm(contract: ProjectAffiliateCompanyContractReadModel) {
-  confirmTarget.value = contract;
+  if (confirmBusy.value) return;
+  const capabilityIndex = findConfirmCapabilityIndex(contract.id);
+  if (
+    capabilityIndex < 0 ||
+    affiliateCompanyContractCapability === null
+  ) {
+    clearConfirmSelection();
+    return;
+  }
+  const capability =
+    affiliateCompanyContractCapability.contracts[capabilityIndex]!;
+  selectedAffiliateCompanyContractActions.value =
+    affiliateCompanyContractCapability.contracts[
+      capabilityIndex
+    ]!.availableActions;
+  activeConfirmOperationId = 0;
+  confirmContext.value = {
+    projectId: props.projectId,
+    contractId: capability.id,
+    projectGeneration,
+    confirmationActionId: crypto.randomUUID()
+  };
+  confirmArmed.value = true;
+  confirmTarget.value = structuredClone(capability);
   confirmError.value = "";
   confirmVisible.value = true;
 }
 
-async function submitConfirm(values: { password: string }) {
-  if (!confirmTarget.value) return;
+function confirmContextIsCurrent(context: ConfirmContext) {
+  const selected = confirmContext.value;
+  return Boolean(
+    confirmArmed.value &&
+      selected.projectId === context.projectId &&
+      selected.contractId === context.contractId &&
+      selected.projectGeneration === context.projectGeneration &&
+      selected.confirmationActionId === context.confirmationActionId &&
+      props.projectId === context.projectId &&
+      projectGeneration === context.projectGeneration &&
+      confirmVisible.value &&
+      confirmActionEnabled(context.contractId, "confirm") &&
+      selectedAffiliateCompanyContractActions.value !== null &&
+      selectedAffiliateCompanyContractActions.value.includes("confirm")
+  );
+}
+
+function requireCurrentConfirmContractId(context: ConfirmContext) {
+  const selected = confirmContext.value;
+  if (
+    confirmBusy.value ||
+    !confirmArmed.value ||
+    selected.projectId !== context.projectId ||
+    selected.contractId !== context.contractId ||
+    selected.projectGeneration !== context.projectGeneration ||
+    selected.confirmationActionId !== context.confirmationActionId ||
+    props.projectId !== context.projectId ||
+    projectGeneration !== context.projectGeneration ||
+    !confirmVisible.value ||
+    !confirmActionEnabled(context.contractId, "confirm") ||
+    selectedAffiliateCompanyContractActions.value === null ||
+    !selectedAffiliateCompanyContractActions.value.includes("confirm")
+  ) {
+    throw new Error("线下合同确认上下文已失效，请重新读取当前合同");
+  }
+  return context.contractId;
+}
+
+function captureConfirmOperation(): ConfirmOperationContext {
+  const selected = confirmContext.value;
+  return {
+    ...selected,
+    operationId: confirmOperationSequence + 1
+  };
+}
+
+function confirmOperationIsCurrent(context: ConfirmOperationContext) {
+  return (
+    props.projectId === context.projectId &&
+    projectGeneration === context.projectGeneration &&
+    activeConfirmOperationId === context.operationId
+  );
+}
+
+function confirmResultCanWrite(context: ConfirmOperationContext) {
+  return (
+    confirmOperationIsCurrent(context) &&
+    confirmContextIsCurrent(context)
+  );
+}
+
+function completeConfirm(context: ConfirmOperationContext) {
+  if (!confirmResultCanWrite(context)) return;
+  clearConfirmSelection();
+  notice.value =
+    "合同主管已确认并冻结当前手写签名版本；该确认不是我方合同审批。";
+  return load();
+}
+
+function failConfirm(error: unknown, context: ConfirmOperationContext) {
+  if (!confirmResultCanWrite(context)) return;
+  confirmError.value = errorMessage(error, "线下合同确认失败");
+}
+
+function finishConfirm(context: ConfirmOperationContext) {
+  if (!confirmOperationIsCurrent(context)) return;
+  confirmBusy.value = false;
+}
+
+function submitConfirm(values: { password: string }) {
+  const context = captureConfirmOperation();
+  const request = confirmProjectAffiliateCompanyContract(
+    context.projectId,
+    requireCurrentConfirmContractId(context),
+    {
+      confirmationPassword: requireConfirmationPassword(values.password),
+      confirmationActionId: context.confirmationActionId
+    }
+  );
+  confirmOperationSequence = context.operationId;
+  activeConfirmOperationId = context.operationId;
   confirmBusy.value = true;
   confirmError.value = "";
-  try {
-    await confirmProjectAffiliateCompanyContract(
-      props.projectId,
-      confirmTarget.value.id,
-      {
-        confirmationPassword: required(values.password, "当前登录密码"),
-        confirmationActionId: crypto.randomUUID()
-      }
-    );
-    confirmVisible.value = false;
-    confirmTarget.value = null;
-    notice.value =
-      "合同主管已确认并冻结当前手写签名版本；该确认不是我方合同审批。";
-    await load();
-  } catch (error) {
-    confirmError.value = errorMessage(error, "线下合同确认失败");
-  } finally {
-    confirmBusy.value = false;
+  return request
+    .then(() => completeConfirm(context))
+    .catch((error) => failConfirm(error, context))
+    .finally(() => finishConfirm(context));
+}
+
+function cancelConfirm() {
+  if (confirmBusy.value) return;
+  activeConfirmOperationId = 0;
+  clearConfirmSelection();
+}
+
+function clearConfirmSelection() {
+  confirmVisible.value = false;
+  confirmTarget.value = null;
+  selectedAffiliateCompanyContractActions.value = null;
+  confirmContext.value = { ...EMPTY_CONFIRM_CONTEXT };
+  confirmArmed.value = false;
+  confirmError.value = "";
+}
+
+function requireConfirmationPassword(value: string) {
+  if (!value) {
+    throw new Error("请填写当前登录密码");
   }
+  return value;
+}
+
+function selectedConfirmActionEnabled(key: "confirm") {
+  return (
+    selectedAffiliateCompanyContractActions.value !== null &&
+    selectedAffiliateCompanyContractActions.value.includes(key)
+  );
 }
 
 function createForm() {
@@ -187,7 +592,7 @@ function errorMessage(error: unknown, fallback: string) {
         </p>
       </div>
       <t-button
-        v-if="data?.availableActions.includes('record_affiliate_company_contract')"
+        v-if="recordActionEnabled('record_affiliate_company_contract')"
         theme="primary"
         @click="openRecord"
       >
@@ -233,7 +638,7 @@ function errorMessage(error: unknown, fallback: string) {
         </template>
         <template #operation="{ row }">
           <t-link
-            v-if="row.availableActions.includes('confirm')"
+            v-if="confirmActionEnabled(row.id, 'confirm')"
             theme="primary"
             @click="openConfirm(row)"
           >
@@ -299,7 +704,7 @@ function errorMessage(error: unknown, fallback: string) {
         <t-button
           variant="outline"
           :disabled="recordBusy"
-          @click="recordVisible = false"
+          @click="cancelRecord"
         >
           取消
         </t-button>
@@ -314,6 +719,7 @@ function errorMessage(error: unknown, fallback: string) {
     </t-drawer>
 
     <SensitiveActionDialog
+      v-if="confirmArmed && selectedConfirmActionEnabled('confirm')"
       v-model="confirmVisible"
       title="确认挂靠企业与我方线下合同"
       description="确认后合同正文、双方主体快照和文件摘要均不可覆盖或删除；此动作不是我方合同审批。"
@@ -322,6 +728,7 @@ function errorMessage(error: unknown, fallback: string) {
       :loading="confirmBusy"
       :error="confirmError"
       @confirm="submitConfirm"
+      @cancel="cancelConfirm"
     />
   </t-card>
 </template>

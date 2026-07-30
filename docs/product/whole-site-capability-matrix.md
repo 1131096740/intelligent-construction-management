@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | nestRoutes | ready | `62580430a97217233e458e2246bf76144c9f2c83e62ab8dce56d6cecc68a3a80` |
 | webApiWrappers | blocked | `560ab05970a24830add6a3fec03292a8cd63a1b6c0ba60f9947f2e55caeb22bf` |
-| webPageActions | blocked | `f25e4ae27670eaff786bdb0542480bdc969de0e1d83316c9cb99a3860f296785` |
+| webPageActions | blocked | `386dbae71d145b4577d62f6104f45267a720e6f6ea14fa26f489c43f5275493b` |
 | routeUsage | blocked | `18889b8b15be66c4fd15822f3fcf64de0ffa8f1e006505c964039bd549dc308d` |
 
 ## 汇总
@@ -28,12 +28,12 @@
 | duplicateMutationRouteCount | 4 |
 | registeredActionCount | 42 |
 | actionBindingCount | 45 |
-| acceptedActionBindingCount | 7 |
-| unresolvedActionBindingCount | 38 |
+| acceptedActionBindingCount | 8 |
+| unresolvedActionBindingCount | 37 |
 | productionMutationConsumerPairCount | 275 |
-| coveredProductionMutationConsumerPairCount | 7 |
-| uncoveredProductionMutationConsumerPairCount | 268 |
-| blockerCount | 382 |
+| coveredProductionMutationConsumerPairCount | 8 |
+| uncoveredProductionMutationConsumerPairCount | 267 |
+| blockerCount | 380 |
 
 ## 路由矩阵
 
@@ -296,7 +296,7 @@
 | POST | /payments | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPaymentRequest | payment-request.create-local-form | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /projects/:projectId/affiliate-assignment | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#assignProjectAffiliate | — | not_applicable | ORPHAN_WRAPPER |
 | POST | /projects/:projectId/affiliate-business-facts/:factId/evidence | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#supplementProjectAffiliateBusinessEvidence | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/affiliate-company-contracts/:contractId/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectAffiliateCompanyContract | affiliate-company-contract.confirm | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
+| POST | /projects/:projectId/affiliate-company-contracts/:contractId/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectAffiliateCompanyContract | affiliate-company-contract.confirm | covered | — |
 | POST | /projects/:projectId/affiliate-company-contracts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateCompanyContract | affiliate-company-contract.record | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /projects/:projectId/affiliate-contract-facts/:factId/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectAffiliateContractFact | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /projects/:projectId/affiliate-contract-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateContractFact | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -573,7 +573,6 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeoverContractSide → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeoverFinanceSide → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#confirmMutuallySignedContract → apps/web-admin/src/pages/contracts/ContractDetailPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectAffiliateCompanyContract → apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectAffiliateContractFact → apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectAffiliatePaymentFact → apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectAffiliateSettlementFact → apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue
@@ -763,8 +762,7 @@
 
 ### 未解决动作绑定
 
-- affiliate-company-contract.confirm#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- affiliate-company-contract.record#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
+- affiliate-company-contract.record#0 — causal_unverified, no_accepted_consumer
 - contract-draft.abandon-application#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-draft.aggregate-autosave#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-draft.delete-pristine#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger

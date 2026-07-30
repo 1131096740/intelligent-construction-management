@@ -1,7 +1,13 @@
-import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  UnauthorizedException
+} from "@nestjs/common";
 import { ProjectAffiliateCompanyContractService } from "./project-affiliate-company-contract.service";
 
 const SHA256 = "a".repeat(64);
+const CONFIRMATION_ACTION_ID = "6dfbdece-803c-44c5-bf68-edbcf1529ce5";
 
 function pendingContract(overrides: Record<string, unknown> = {}) {
   return {
@@ -121,7 +127,141 @@ function recordHarness(roleKey = "contract_staff") {
   };
 }
 
+function confirmedContract(overrides: Record<string, unknown> = {}) {
+  return pendingContract({
+    status: "confirmed",
+    confirmedByUserId: "contract-director-1",
+    confirmedAt: new Date("2026-07-29T12:00:00.000Z"),
+    confirmationActionId: CONFIRMATION_ACTION_ID,
+    confirmationSignatureVersionId: "signature-version-1",
+    confirmationSignatureFileId: "signature-file-1",
+    confirmationSignatureSha256: "c".repeat(64),
+    ...overrides
+  });
+}
+
+function confirmHarness(
+  options: {
+    roleKey?: string;
+    initialReplay?: Record<string, unknown> | null;
+    replayAfterLock?: Record<string, unknown> | null;
+    contract?: Record<string, unknown>;
+    finalConfirmed?: Record<string, unknown>;
+    updateCount?: number;
+    updateError?: unknown;
+    uniqueReplay?: Record<string, unknown> | null;
+    passwordError?: Error;
+    signatureRows?: Array<Record<string, unknown>>;
+  } = {}
+) {
+  const contract = options.contract ?? pendingContract();
+  const finalConfirmed = options.finalConfirmed ?? confirmedContract();
+  const signatureRows = options.signatureRows ?? [
+    {
+      id: "signature-version-1",
+      fileId: "signature-file-1",
+      contentSha256: "c".repeat(64)
+    }
+  ];
+  const tx = {
+    project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+    ...roleTables(options.roleKey ?? "contract_director"),
+    projectAffiliateCompanyContract: {
+      findUnique: jest
+        .fn()
+        .mockResolvedValueOnce(options.initialReplay ?? null)
+        .mockResolvedValueOnce(options.replayAfterLock ?? null)
+        .mockResolvedValueOnce(finalConfirmed),
+      findFirst: jest.fn().mockResolvedValue(contract),
+      updateMany: options.updateError
+        ? jest.fn().mockRejectedValue(options.updateError)
+        : jest.fn().mockResolvedValue({ count: options.updateCount ?? 1 })
+    },
+    $queryRaw: jest
+      .fn()
+      .mockResolvedValueOnce([{ id: contract.id }])
+      .mockResolvedValueOnce([{ id: "contract-director-1", isActive: true }])
+      .mockResolvedValueOnce(signatureRows)
+      .mockResolvedValueOnce([
+        {
+          id: "signature-file-1",
+          contentSha256: "c".repeat(64),
+          storageStatus: "active"
+        }
+      ])
+  };
+  const prisma = {
+    $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(tx)),
+    projectAffiliateCompanyContract: {
+      findUnique: jest.fn().mockResolvedValue(options.uniqueReplay ?? null)
+    }
+  };
+  const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
+  const auth = {
+    confirmPassword: options.passwordError
+      ? jest.fn().mockRejectedValue(options.passwordError)
+      : jest.fn().mockResolvedValue(undefined)
+  };
+  return {
+    service: new ProjectAffiliateCompanyContractService(
+      prisma as never,
+      audit as never,
+      auth as never
+    ),
+    prisma,
+    tx,
+    audit,
+    auth
+  };
+}
+
 describe("ProjectAffiliateCompanyContractService", () => {
+  it.each([
+    [
+      "contract_director",
+      [],
+      [["confirm"], []]
+    ],
+    [
+      "contract_staff",
+      ["record_affiliate_company_contract"],
+      [[], []]
+    ]
+  ])(
+    "derives list capabilities from role and pending status for %s",
+    async (roleKey, expectedRootActions, expectedContractActions) => {
+      const tx = {
+        project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+        ...roleTables(roleKey),
+        projectAffiliateCompanyContract: {
+          findMany: jest.fn().mockResolvedValue([
+            pendingContract(),
+            confirmedContract({
+              id: "affiliate-company-contract-2",
+              confirmationActionId:
+                "f87f5eed-771e-44e1-9463-2612944fc2d1"
+            })
+          ])
+        }
+      };
+      const prisma = {
+        $transaction: jest.fn(
+          async (work: (client: typeof tx) => unknown) => work(tx)
+        )
+      };
+      const service = new ProjectAffiliateCompanyContractService(
+        prisma as never
+      );
+
+      const result = await service.list("project-1", "actor-1");
+
+      expect(result.availableActions).toEqual(expectedRootActions);
+      expect(
+        result.contracts.map((contract) => contract.availableActions)
+      ).toEqual(expectedContractActions);
+    }
+  );
+
   it("records the already-signed contract with both subject snapshots and no company workflow", async () => {
     const { service, tx, audit } = recordHarness();
 
@@ -184,6 +324,7 @@ describe("ProjectAffiliateCompanyContractService", () => {
       projectAffiliateCompanyContract: {
         findUnique: jest
           .fn()
+          .mockResolvedValueOnce(null)
           .mockResolvedValueOnce(null)
           .mockResolvedValueOnce(
             pendingContract({
@@ -263,6 +404,234 @@ describe("ProjectAffiliateCompanyContractService", () => {
         })
       })
     );
+  });
+
+  it("replays the committed result after a same-key retry waited for the target lock", async () => {
+    const confirmedAt = new Date("2026-07-29T12:00:00.000Z");
+    const confirmed = confirmedContract({ confirmedAt });
+    const { service, tx, audit } = confirmHarness({
+      replayAfterLock: confirmed,
+      contract: confirmed
+    });
+
+    await expect(
+      service.confirm(
+        "project-1",
+        confirmed.id,
+        "contract-director-1",
+        {
+          confirmationPassword: "current-password",
+          confirmationActionId: CONFIRMATION_ACTION_ID
+        },
+        confirmedAt
+      )
+    ).resolves.toMatchObject({
+      id: confirmed.id,
+      status: "confirmed",
+      confirmedByUserId: "contract-director-1",
+      confirmationActionId: CONFIRMATION_ACTION_ID
+    });
+    expect(tx.projectAffiliateCompanyContract.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.projectAffiliateCompanyContract.findUnique.mock
+        .invocationCallOrder[1]!
+    );
+  });
+
+  it("replays an already committed same-key confirmation before taking the target lock", async () => {
+    const replay = confirmedContract();
+    const { service, tx, audit, auth } = confirmHarness({
+      initialReplay: replay
+    });
+
+    await expect(
+      service.confirm(
+        "project-1",
+        "affiliate-company-contract-1",
+        "contract-director-1",
+        {
+          confirmationPassword: "current-password",
+          confirmationActionId: CONFIRMATION_ACTION_ID
+        }
+      )
+    ).resolves.toMatchObject({
+      id: "affiliate-company-contract-1",
+      status: "confirmed",
+      confirmationActionId: CONFIRMATION_ACTION_ID
+    });
+    expect(auth.confirmPassword).toHaveBeenCalledTimes(1);
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
+    expect(tx.projectAffiliateCompanyContract.findFirst).not.toHaveBeenCalled();
+    expect(tx.projectAffiliateCompanyContract.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["contract", { id: "affiliate-company-contract-2" }],
+    ["project", { projectId: "project-2" }],
+    ["actor", { confirmedByUserId: "contract-director-2" }]
+  ])(
+    "rejects a same-key post-lock replay for a different %s coordinate",
+    async (_coordinate, replayOverrides) => {
+      const { service, tx, audit } = confirmHarness({
+        replayAfterLock: confirmedContract(replayOverrides)
+      });
+
+      await expect(
+        service.confirm(
+          "project-1",
+          "affiliate-company-contract-1",
+          "contract-director-1",
+          {
+            confirmationPassword: "current-password",
+            confirmationActionId: CONFIRMATION_ACTION_ID
+          }
+        )
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+      expect(tx.projectAffiliateCompanyContract.findFirst).not.toHaveBeenCalled();
+      expect(tx.projectAffiliateCompanyContract.updateMany).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
+
+  it("stops before the confirmation transaction when the current password is wrong", async () => {
+    const { service, prisma, tx, audit } = confirmHarness({
+      passwordError: new UnauthorizedException("当前登录密码不正确")
+    });
+
+    await expect(
+      service.confirm(
+        "project-1",
+        "affiliate-company-contract-1",
+        "contract-director-1",
+        {
+          confirmationPassword: "wrong-password",
+          confirmationActionId: CONFIRMATION_ACTION_ID
+        }
+      )
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.projectAffiliateCompanyContract.findUnique).not.toHaveBeenCalled();
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
+    expect(tx.projectAffiliateCompanyContract.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("requires a frozen signature before changing a pending confirmation", async () => {
+    const { service, tx, audit } = confirmHarness({ signatureRows: [] });
+
+    await expect(
+      service.confirm(
+        "project-1",
+        "affiliate-company-contract-1",
+        "contract-director-1",
+        {
+          confirmationPassword: "current-password",
+          confirmationActionId: CONFIRMATION_ACTION_ID
+        }
+      )
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(3);
+    expect(tx.projectAffiliateCompanyContract.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-pending target when the action key is not a replay", async () => {
+    const { service, tx, audit } = confirmHarness({
+      contract: confirmedContract({
+        confirmationActionId: "f87f5eed-771e-44e1-9463-2612944fc2d1"
+      })
+    });
+
+    await expect(
+      service.confirm(
+        "project-1",
+        "affiliate-company-contract-1",
+        "contract-director-1",
+        {
+          confirmationPassword: "current-password",
+          confirmationActionId: CONFIRMATION_ACTION_ID
+        }
+      )
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.projectAffiliateCompanyContract.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the pending-to-confirmed CAS loses the race", async () => {
+    const { service, tx, audit } = confirmHarness({ updateCount: 0 });
+
+    await expect(
+      service.confirm(
+        "project-1",
+        "affiliate-company-contract-1",
+        "contract-director-1",
+        {
+          confirmationPassword: "current-password",
+          confirmationActionId: CONFIRMATION_ACTION_ID
+        }
+      )
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.projectAffiliateCompanyContract.updateMany).toHaveBeenCalledTimes(1);
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("replays the committed winner after a confirmation-key unique race", async () => {
+    const winner = confirmedContract();
+    const { service, prisma, tx, audit } = confirmHarness({
+      updateError: { code: "P2002" },
+      uniqueReplay: winner
+    });
+
+    await expect(
+      service.confirm(
+        "project-1",
+        "affiliate-company-contract-1",
+        "contract-director-1",
+        {
+          confirmationPassword: "current-password",
+          confirmationActionId: CONFIRMATION_ACTION_ID
+        }
+      )
+    ).resolves.toMatchObject({
+      id: "affiliate-company-contract-1",
+      status: "confirmed",
+      confirmationActionId: CONFIRMATION_ACTION_ID
+    });
+    expect(
+      prisma.projectAffiliateCompanyContract.findUnique
+    ).toHaveBeenCalledWith({
+      where: { confirmationActionId: CONFIRMATION_ACTION_ID }
+    });
+    expect(tx.projectAffiliateCompanyContract.updateMany).toHaveBeenCalledTimes(1);
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("returns a stable conflict when another contract wins the same confirmation key", async () => {
+    const { service, tx, audit } = confirmHarness({
+      updateError: { code: "P2002" },
+      uniqueReplay: confirmedContract({
+        id: "affiliate-company-contract-2"
+      })
+    });
+
+    await expect(
+      service.confirm(
+        "project-1",
+        "affiliate-company-contract-1",
+        "contract-director-1",
+        {
+          confirmationPassword: "current-password",
+          confirmationActionId: CONFIRMATION_ACTION_ID
+        }
+      )
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.projectAffiliateCompanyContract.updateMany).toHaveBeenCalledTimes(1);
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("rejects confirmation by contract staff", async () => {
