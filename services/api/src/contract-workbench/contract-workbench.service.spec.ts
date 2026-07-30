@@ -1144,7 +1144,7 @@ describe("ContractWorkbenchService", () => {
     expect(tx.paymentTermsStage.createMany).not.toHaveBeenCalled();
   });
 
-  it("accepts aggregate nested values transformed into validated DTO instances", async () => {
+  it("accepts validated nested DTO instances and treats absent versus empty negotiation references as identical", async () => {
     class ValidatedClauseDto {}
     class ValidatedTaxFactsDto {}
     class ValidatedPaymentStageDto {}
@@ -1219,6 +1219,7 @@ describe("ContractWorkbenchService", () => {
       )
     ).resolves.toEqual(
       expect.objectContaining({
+        workbenchReferencesChanged: false,
         data: expect.objectContaining({
           clauseSnapshot: [expect.objectContaining({ key: "clause_1" })]
         })

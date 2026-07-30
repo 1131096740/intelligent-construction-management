@@ -728,8 +728,8 @@ export class ContractWorkbenchService {
     const currentDraftFields = this.withoutWorkbenchReferences(version.draftData);
     const nextDraftFields = this.withoutWorkbenchReferences(storedDraftData);
     const workbenchReferencesChanged = !isDeepStrictEqual(
-      this.workbenchReferences(version.draftData),
-      this.workbenchReferences(storedDraftData)
+      this.comparableWorkbenchReferences(version.draftData),
+      this.comparableWorkbenchReferences(storedDraftData)
     );
     const changed =
       !isDeepStrictEqual(currentDraftFields, nextDraftFields) ||
@@ -786,6 +786,26 @@ export class ContractWorkbenchService {
     return this.isPlainObject(value.workbenchReferences)
       ? value.workbenchReferences
       : null;
+  }
+
+  private comparableWorkbenchReferences(value: unknown) {
+    const references = this.workbenchReferences(value);
+    return {
+      selectedNegotiationRoundId:
+        typeof references?.selectedNegotiationRoundId === "string"
+          ? references.selectedNegotiationRoundId
+          : null,
+      selectedOfflineRevisionId:
+        typeof references?.selectedOfflineRevisionId === "string"
+          ? references.selectedOfflineRevisionId
+          : null,
+      referencedGeneratedDocumentIds:
+        Array.isArray(references?.referencedGeneratedDocumentIds)
+          ? references.referencedGeneratedDocumentIds.filter(
+              (item): item is string => typeof item === "string"
+            )
+          : []
+    };
   }
 
   async replacePaymentTermsInTransaction(
