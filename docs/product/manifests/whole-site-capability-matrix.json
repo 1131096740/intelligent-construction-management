@@ -22,19 +22,19 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "1ba5cd46715804454ce6d414273fe273cac8e431eb871278e7c9b76ae95294cb",
+      "sha256": "560ab05970a24830add6a3fec03292a8cd63a1b6c0ba60f9947f2e55caeb22bf",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 14,
-        "exportedFunctionCount": 374,
-        "transportWrapperCount": 371,
+        "exportedFunctionCount": 378,
+        "transportWrapperCount": 375,
         "pureExportCount": 3,
-        "mainRequestBindingCount": 372,
+        "mainRequestBindingCount": 376,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 373,
-        "productionConsumerCount": 327,
-        "orphanWrapperCount": 44,
-        "testOnlyWrapperCount": 42,
+        "requestEdgeCount": 377,
+        "productionConsumerCount": 333,
+        "orphanWrapperCount": 42,
+        "testOnlyWrapperCount": 40,
         "unreferencedWrapperCount": 2,
         "duplicateNormalizedRouteGroupCount": 6,
         "authTransportExceptionCount": 5
@@ -42,76 +42,76 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "d4275841ab9f230f091e92eb1f07e6abf0d80d11cb506dad1e8842467dc8569b",
+      "sha256": "ccf2389af413f123e690499bd02a07e9831a811d161789a0cfec74b2a4f0299c",
       "status": "blocked",
       "summary": {
-        "registeredActionCount": 36,
-        "pageActionCount": 30,
+        "registeredActionCount": 42,
+        "pageActionCount": 36,
         "backgroundActionCount": 6,
         "reachableVueFileCount": 131,
         "routeRootCount": 47,
         "totalVueFileCount": 134,
         "parsedVueFileCount": 134,
         "reachableProductionModuleCount": 229,
-        "templateEventDirectiveCount": 878,
+        "templateEventDirectiveCount": 890,
         "propCallbackDirectiveCount": 12,
-        "coveredProductionMutationConsumerCount": 0,
-        "candidateProductionMutationConsumerCount": 33,
-        "acceptedProductionMutationConsumerCount": 0,
-        "productionMutationConsumerPairCount": 269,
-        "blockerCount": 347
+        "coveredProductionMutationConsumerCount": 6,
+        "candidateProductionMutationConsumerCount": 39,
+        "acceptedProductionMutationConsumerCount": 6,
+        "productionMutationConsumerPairCount": 275,
+        "blockerCount": 352
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "30ef88cefc133300f6ba65e8cefc360f282b949b43ea5f94f5e84818bb38e736",
+      "sha256": "18889b8b15be66c4fd15822f3fcf64de0ffa8f1e006505c964039bd549dc308d",
       "status": "blocked",
       "summary": {
         "routeCount": 395,
         "exactRouteCount": 395,
         "normalizedRouteCount": 395,
-        "classificationOverrideCount": 85,
+        "classificationOverrideCount": 87,
         "consumerSurfaceOverrideCount": 3,
-        "classificationOverrideSha256": "0e5c372a55f6e9edbafe5bf1dee1e41e50fff618731220c24ab7aed8e6e3f537",
+        "classificationOverrideSha256": "35467b26e776951b3a22ae79973c9f3b45d4ac41170f1e7dc4bd96e6a7a2b190",
         "consumerSurfaceOverrideSha256": "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2",
-        "derivedProductionPageCount": 278,
-        "pageRouteCount": 279,
+        "derivedProductionPageCount": 282,
+        "pageRouteCount": 285,
         "externalTakeoverCount": 59,
         "exitCandidateCount": 23,
         "internalTaskCount": 2,
-        "unclassifiedCount": 32,
+        "unclassifiedCount": 26,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 326,
+          "web_api_wrapper": 332,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 1,
           "operator_endpoint": 1,
-          "none": 61
+          "none": 55
         },
-        "blockerCount": 32
+        "blockerCount": 26
       }
     }
   },
   "summary": {
     "routeCount": 395,
-    "pageRouteCount": 279,
+    "pageRouteCount": 285,
     "externalTakeoverRouteCount": 59,
     "exitCandidateRouteCount": 23,
     "internalTaskRouteCount": 2,
-    "unclassifiedRouteCount": 32,
-    "mainRequestBindingCount": 372,
+    "unclassifiedRouteCount": 26,
+    "mainRequestBindingCount": 376,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
-    "orphanWrapperCount": 44,
+    "orphanWrapperCount": 42,
     "duplicateMutationRouteCount": 4,
-    "registeredActionCount": 36,
-    "actionBindingCount": 39,
-    "acceptedActionBindingCount": 0,
+    "registeredActionCount": 42,
+    "actionBindingCount": 45,
+    "acceptedActionBindingCount": 6,
     "unresolvedActionBindingCount": 39,
-    "productionMutationConsumerPairCount": 269,
-    "coveredProductionMutationConsumerPairCount": 0,
+    "productionMutationConsumerPairCount": 275,
+    "coveredProductionMutationConsumerPairCount": 6,
     "uncoveredProductionMutationConsumerPairCount": 269,
-    "blockerCount": 392
+    "blockerCount": 384
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -217,16 +217,6 @@
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "saveContractDraft",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "stopContractTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "stopLayoutTemplateVersion",
         "classification": "test_only"
       },
       {
@@ -498,24 +488,6 @@
       },
       {
         "method": "POST",
-        "path": "/contract-layout-template-versions/:versionId/stop",
-        "normalizedKey": "POST /contract-layout-template-versions/:param/stop",
-        "controller": "ContractTemplateController",
-        "handler": "stopLayout",
-        "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/contract-template-versions/:versionId/stop",
-        "normalizedKey": "POST /contract-template-versions/:param/stop",
-        "controller": "ContractTemplateController",
-        "handler": "stopVersion",
-        "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
         "path": "/contract-workbench/:contractVersionId/parties",
         "normalizedKey": "POST /contract-workbench/:param/parties",
         "controller": "BusinessPartyController",
@@ -597,33 +569,6 @@
       },
       {
         "method": "POST",
-        "path": "/spot-procurement-payments/:paymentId/invoices/:invoiceId/invalidation",
-        "normalizedKey": "POST /spot-procurement-payments/:param/invoices/:param/invalidation",
-        "controller": "SpotProcurementInvoiceController",
-        "handler": "invalidate",
-        "sourceFile": "services/api/src/spot-procurement/spot-procurement-invoice.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/spot-procurements/:procurementId/abnormal-termination",
-        "normalizedKey": "POST /spot-procurements/:param/abnormal-termination",
-        "controller": "SpotProcurementController",
-        "handler": "requestAbnormalTermination",
-        "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/spot-procurements/:procurementId/abnormal-termination/confirmation",
-        "normalizedKey": "POST /spot-procurements/:param/abnormal-termination/confirmation",
-        "controller": "SpotProcurementController",
-        "handler": "confirmAbnormalTermination",
-        "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
         "path": "/spot-procurements/:procurementId/invoice-exceptions",
         "normalizedKey": "POST /spot-procurements/:param/invoice-exceptions",
         "controller": "InvoiceLedgerController",
@@ -665,15 +610,6 @@
         "controller": "InvoiceLedgerController",
         "handler": "reviewNoInvoiceConfirmation",
         "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/spot-procurements/:procurementId/receipt/pdf-refresh",
-        "normalizedKey": "POST /spot-procurements/:param/receipt/pdf-refresh",
-        "controller": "SpotProcurementReceiptController",
-        "handler": "retryFormalPdf",
-        "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
         "consumerSurface": "none"
       },
       {
@@ -2870,6 +2806,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       },
@@ -2896,6 +2833,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       },
@@ -2909,6 +2847,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       },
@@ -2922,6 +2861,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       },
@@ -2935,6 +2875,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       },
@@ -2948,6 +2889,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       },
@@ -2961,6 +2903,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       },
@@ -2974,6 +2917,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       },
@@ -2987,6 +2931,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       },
@@ -3084,6 +3029,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       },
@@ -3097,6 +3043,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       },
@@ -3110,6 +3057,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       },
@@ -3123,6 +3071,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       },
@@ -3206,6 +3155,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       },
@@ -3219,6 +3169,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       },
@@ -3232,6 +3183,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       },
@@ -3245,6 +3197,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       },
@@ -3258,6 +3211,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       },
@@ -3355,6 +3309,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       },
@@ -3368,6 +3323,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       },
@@ -3381,6 +3337,7 @@
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
+          "capability_not_server_derived",
           "capability_not_dominating_trigger"
         ]
       }
@@ -3561,7 +3518,7 @@
           "capability": {
             "kind": "server_lease",
             "source": "leaseToken",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -3575,6 +3532,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         }
@@ -10073,7 +10031,7 @@
           "capability": {
             "kind": "server_lease",
             "source": "result.lease.state",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -10087,6 +10045,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         }
@@ -10146,7 +10105,7 @@
           "capability": {
             "kind": "server_lease",
             "source": "leaseToken",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -10160,6 +10119,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         }
@@ -10263,7 +10223,7 @@
           "capability": {
             "kind": "server_boolean",
             "source": "formalSaveCompleted",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -10277,6 +10237,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         }
@@ -10653,8 +10614,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
-      "consumerSurface": "none",
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -10663,19 +10624,45 @@
           "path": "/contract-layout-template-versions/:param/stop",
           "normalizedKey": "POST /contract-layout-template-versions/:param/stop",
           "bodyKind": "json",
-          "productionConsumers": [],
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER",
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "actions": [
+        {
+          "actionId": "layout-template.risk-stop",
+          "bindingIndex": 0,
+          "identity": "layout-template.risk-stop\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000stopLayoutTemplateVersion\u0000POST\u0000POST /contract-layout-template-versions/:param/stop\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "layoutTemplateCapability.versions",
+            "key": "risk_stop",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "stopLayoutTemplateVersion",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -11184,8 +11171,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
-      "consumerSurface": "none",
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -11194,19 +11181,45 @@
           "path": "/contract-template-versions/:param/stop",
           "normalizedKey": "POST /contract-template-versions/:param/stop",
           "bodyKind": "json",
-          "productionConsumers": [],
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
+          ],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER",
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-template.risk-stop",
+          "bindingIndex": 0,
+          "identity": "contract-template.risk-stop\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000stopContractTemplateVersion\u0000POST\u0000POST /contract-template-versions/:param/stop\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "contractTemplateCapability.versions",
+            "key": "risk_stop",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "stopContractTemplateVersion",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -11928,7 +11941,7 @@
             "kind": "detail_action",
             "source": "contractDraftActions",
             "key": "abandon_application",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -11942,6 +11955,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         },
@@ -11956,7 +11970,7 @@
             "kind": "detail_action",
             "source": "contractDraftActions",
             "key": "delete_pristine_draft",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -11970,6 +11984,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         }
@@ -13724,7 +13739,7 @@
             "kind": "detail_action",
             "source": "detail.availableActions",
             "key": "record_execution",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -13738,6 +13753,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         },
@@ -14587,7 +14603,7 @@
             "kind": "detail_action",
             "source": "detail.availableActions",
             "key": "review_approval",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -14601,6 +14617,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         },
@@ -14615,7 +14632,7 @@
             "kind": "detail_action",
             "source": "detail.availableActions",
             "key": "review_approval",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -14629,6 +14646,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         }
@@ -14688,7 +14706,7 @@
             "kind": "detail_action",
             "source": "detail.availableActions",
             "key": "record_execution",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -14702,6 +14720,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         }
@@ -15050,7 +15069,7 @@
             "kind": "available_action_string",
             "source": "row.availableActions",
             "key": "confirm",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -15064,6 +15083,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         }
@@ -16732,7 +16752,7 @@
             "kind": "detail_action",
             "source": "detail.availableActions",
             "key": "withdraw",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -16746,6 +16766,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         }
@@ -16805,7 +16826,7 @@
             "kind": "server_boolean",
             "source": "detail.reviewAction.enabled",
             "key": "review",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -16819,6 +16840,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         },
@@ -16833,7 +16855,7 @@
             "kind": "server_boolean",
             "source": "detail.reviewAction.enabled",
             "key": "review",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -16847,6 +16869,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         }
@@ -17602,7 +17625,7 @@
             "kind": "detail_action",
             "source": "activeDraft.availableActions",
             "key": "abandon_application",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
@@ -17616,6 +17639,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         },
@@ -17630,7 +17654,7 @@
             "kind": "detail_action",
             "source": "activeDraft.availableActions",
             "key": "delete_pristine_draft",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
@@ -17644,6 +17668,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         }
@@ -19782,15 +19807,55 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
-      "consumerSurface": "none",
-      "wrapperRequests": [],
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "invalidateSpotProcurementPaymentInvoice",
+          "method": "POST",
+          "path": "/spot-procurement-payments/:param/invoices/:param/invalidation",
+          "normalizedKey": "POST /spot-procurement-payments/:param/invoices/:param/invalidation",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/spot-procurement.api.test.ts"
+          ]
+        }
+      ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement.invoice-invalidate",
+          "bindingIndex": 0,
+          "identity": "spot-procurement.invoice-invalidate\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000invalidateSpotProcurementPaymentInvoice\u0000POST\u0000POST /spot-procurement-payments/:param/invoices/:param/invalidation\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "spotPaymentCapability.invoice.invoices",
+            "key": "invalidate_invoice",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "invalidateSpotProcurementPaymentInvoice",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -19982,15 +20047,55 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
-      "consumerSurface": "none",
-      "wrapperRequests": [],
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "confirmSpotProcurementAbnormalTermination",
+          "method": "POST",
+          "path": "/spot-procurements/:param/abnormal-termination/confirmation",
+          "normalizedKey": "POST /spot-procurements/:param/abnormal-termination/confirmation",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/spot-procurement.api.test.ts"
+          ]
+        }
+      ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement.abnormal-termination-confirm",
+          "bindingIndex": 0,
+          "identity": "spot-procurement.abnormal-termination-confirm\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000confirmSpotProcurementAbnormalTermination\u0000POST\u0000POST /spot-procurements/:param/abnormal-termination/confirmation\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "spotProcurementCapability.availableActions",
+            "key": "confirm_abnormal_termination",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "confirmSpotProcurementAbnormalTermination",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -20010,15 +20115,55 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
-      "consumerSurface": "none",
-      "wrapperRequests": [],
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "requestSpotProcurementAbnormalTermination",
+          "method": "POST",
+          "path": "/spot-procurements/:param/abnormal-termination",
+          "normalizedKey": "POST /spot-procurements/:param/abnormal-termination",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/spot-procurement.api.test.ts"
+          ]
+        }
+      ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement.abnormal-termination-request",
+          "bindingIndex": 0,
+          "identity": "spot-procurement.abnormal-termination-request\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000requestSpotProcurementAbnormalTermination\u0000POST\u0000POST /spot-procurements/:param/abnormal-termination\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "spotProcurementCapability.availableActions",
+            "key": "request_abnormal_termination",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "requestSpotProcurementAbnormalTermination",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -20112,7 +20257,7 @@
             "kind": "detail_action",
             "source": "detail.availableActions",
             "key": "review_approval",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
@@ -20126,6 +20271,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         },
@@ -20140,7 +20286,7 @@
             "kind": "detail_action",
             "source": "detail.availableActions",
             "key": "review_approval",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
@@ -20154,6 +20300,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         }
@@ -20492,15 +20639,55 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
-      "consumerSurface": "none",
-      "wrapperRequests": [],
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "refreshSpotProcurementReceiptPdf",
+          "method": "POST",
+          "path": "/spot-procurements/:param/receipt/pdf-refresh",
+          "normalizedKey": "POST /spot-procurements/:param/receipt/pdf-refresh",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/spot-procurement.api.test.ts"
+          ]
+        }
+      ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement.receipt-pdf-refresh",
+          "bindingIndex": 0,
+          "identity": "spot-procurement.receipt-pdf-refresh\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000refreshSpotProcurementReceiptPdf\u0000POST\u0000POST /spot-procurements/:param/receipt/pdf-refresh\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "spotReceiptCapability.availableActions",
+            "key": "refresh_receipt_pdf",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "refreshSpotProcurementReceiptPdf",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -20760,7 +20947,7 @@
             "kind": "detail_action",
             "source": "detail.availableActions",
             "key": "submit_approval",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
@@ -20774,6 +20961,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         }
@@ -21245,7 +21433,7 @@
           "capability": {
             "kind": "server_lease",
             "source": "contractDraftLeaseCanEdit(lease)",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -21259,6 +21447,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         },
@@ -21272,7 +21461,7 @@
           "capability": {
             "kind": "server_lease",
             "source": "canEdit",
-            "serverDerived": true,
+            "serverDerived": false,
             "dominatesTrigger": false
           },
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -21286,6 +21475,7 @@
           "blockerCodes": [
             "causal_unverified",
             "no_accepted_consumer",
+            "capability_not_server_derived",
             "capability_not_dominating_trigger"
           ]
         }

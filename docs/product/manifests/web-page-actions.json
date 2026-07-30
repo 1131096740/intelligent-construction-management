@@ -9,21 +9,21 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 36,
-    "pageActionCount": 30,
+    "registeredActionCount": 42,
+    "pageActionCount": 36,
     "backgroundActionCount": 6,
     "reachableVueFileCount": 131,
     "routeRootCount": 47,
     "totalVueFileCount": 134,
     "parsedVueFileCount": 134,
     "reachableProductionModuleCount": 229,
-    "templateEventDirectiveCount": 878,
+    "templateEventDirectiveCount": 890,
     "propCallbackDirectiveCount": 12,
-    "coveredProductionMutationConsumerCount": 0,
-    "candidateProductionMutationConsumerCount": 33,
-    "acceptedProductionMutationConsumerCount": 0,
-    "productionMutationConsumerPairCount": 269,
-    "blockerCount": 347
+    "coveredProductionMutationConsumerCount": 6,
+    "candidateProductionMutationConsumerCount": 39,
+    "acceptedProductionMutationConsumerCount": 6,
+    "productionMutationConsumerPairCount": 275,
+    "blockerCount": 352
   },
   "evidence": {
     "totalProductionModuleCount": 236,
@@ -55,7 +55,7 @@
         "kind": "available_action_string",
         "source": "row.availableActions",
         "key": "confirm",
-        "serverDerived": true,
+        "serverDerived": false,
         "dominatesTrigger": false
       },
       "bindings": [
@@ -182,7 +182,7 @@
         "kind": "detail_action",
         "source": "contractDraftActions",
         "key": "abandon_application",
-        "serverDerived": true,
+        "serverDerived": false,
         "dominatesTrigger": false
       },
       "bindings": [
@@ -246,7 +246,7 @@
       "capability": {
         "kind": "server_lease",
         "source": "contractDraftLeaseCanEdit(lease)",
-        "serverDerived": true,
+        "serverDerived": false,
         "dominatesTrigger": false
       },
       "bindings": [
@@ -311,7 +311,7 @@
         "kind": "detail_action",
         "source": "contractDraftActions",
         "key": "delete_pristine_draft",
-        "serverDerived": true,
+        "serverDerived": false,
         "dominatesTrigger": false
       },
       "bindings": [
@@ -374,7 +374,7 @@
       "capability": {
         "kind": "server_lease",
         "source": "result.lease.state",
-        "serverDerived": true,
+        "serverDerived": false,
         "dominatesTrigger": false
       },
       "bindings": [
@@ -437,7 +437,7 @@
       "capability": {
         "kind": "server_lease",
         "source": "leaseToken",
-        "serverDerived": true,
+        "serverDerived": false,
         "dominatesTrigger": false
       },
       "bindings": [
@@ -500,7 +500,7 @@
       "capability": {
         "kind": "server_lease",
         "source": "leaseToken",
-        "serverDerived": true,
+        "serverDerived": false,
         "dominatesTrigger": false
       },
       "bindings": [
@@ -563,7 +563,7 @@
       "capability": {
         "kind": "server_lease",
         "source": "canEdit",
-        "serverDerived": true,
+        "serverDerived": false,
         "dominatesTrigger": false
       },
       "bindings": [
@@ -626,7 +626,7 @@
       "capability": {
         "kind": "server_boolean",
         "source": "formalSaveCompleted",
-        "serverDerived": true,
+        "serverDerived": false,
         "dominatesTrigger": false
       },
       "bindings": [
@@ -912,6 +912,73 @@
       ]
     },
     {
+      "id": "contract-template.risk-stop",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同模板库/:templateId"
+      ],
+      "ownerRoutePaths": [
+        "/合同模板库/:templateId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "stopSelectedVersion",
+        "kind": "event",
+        "sourceLine": 419,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "contractTemplateCapability.versions",
+        "key": "risk_stop",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "stopContractTemplateVersion",
+          "method": "POST",
+          "path": "/contract-template-versions/:param/stop",
+          "normalizedKey": "POST /contract-template-versions/:param/stop",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-template-versions/:versionId/stop",
+            "normalizedKey": "POST /contract-template-versions/:param/stop",
+            "controller": "ContractTemplateController",
+            "handler": "stopVersion",
+            "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "stopSelectedVersion",
+              "stopContractTemplateVersion"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "contract-workbench.submit-local-status",
       "usage": "page_action",
       "routePaths": [
@@ -1036,6 +1103,73 @@
       ]
     },
     {
+      "id": "layout-template.risk-stop",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId"
+      ],
+      "ownerRoutePaths": [
+        "/合同模板库/版式/:layoutTemplateId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "stopCurrentVersion",
+        "kind": "event",
+        "sourceLine": 236,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "layoutTemplateCapability.versions",
+        "key": "risk_stop",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "stopLayoutTemplateVersion",
+          "method": "POST",
+          "path": "/contract-layout-template-versions/:param/stop",
+          "normalizedKey": "POST /contract-layout-template-versions/:param/stop",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-layout-template-versions/:versionId/stop",
+            "normalizedKey": "POST /contract-layout-template-versions/:param/stop",
+            "controller": "ContractTemplateController",
+            "handler": "stopLayout",
+            "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "stopCurrentVersion",
+              "stopLayoutTemplateVersion"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "payment-approval.approve",
       "usage": "page_action",
       "routePaths": [
@@ -1059,7 +1193,7 @@
         "kind": "detail_action",
         "source": "detail.availableActions",
         "key": "review_approval",
-        "serverDerived": true,
+        "serverDerived": false,
         "dominatesTrigger": false
       },
       "bindings": [
@@ -1122,7 +1256,7 @@
         "kind": "detail_action",
         "source": "detail.availableActions",
         "key": "review_approval",
-        "serverDerived": true,
+        "serverDerived": false,
         "dominatesTrigger": false
       },
       "bindings": [
@@ -1184,7 +1318,7 @@
         "kind": "detail_action",
         "source": "detail.availableActions",
         "key": "record_execution",
-        "serverDerived": true,
+        "serverDerived": false,
         "dominatesTrigger": false
       },
       "bindings": [
@@ -1585,7 +1719,7 @@
         "kind": "server_boolean",
         "source": "detail.reviewAction.enabled",
         "key": "review",
-        "serverDerived": true,
+        "serverDerived": false,
         "dominatesTrigger": false
       },
       "bindings": [
@@ -1648,7 +1782,7 @@
         "kind": "server_boolean",
         "source": "detail.reviewAction.enabled",
         "key": "review",
-        "serverDerived": true,
+        "serverDerived": false,
         "dominatesTrigger": false
       },
       "bindings": [
@@ -1711,7 +1845,7 @@
         "kind": "detail_action",
         "source": "detail.availableActions",
         "key": "withdraw",
-        "serverDerived": true,
+        "serverDerived": false,
         "dominatesTrigger": false
       },
       "bindings": [
@@ -1774,7 +1908,7 @@
         "kind": "detail_action",
         "source": "activeDraft.availableActions",
         "key": "abandon_application",
-        "serverDerived": true,
+        "serverDerived": false,
         "dominatesTrigger": false
       },
       "bindings": [
@@ -1837,7 +1971,7 @@
         "kind": "detail_action",
         "source": "activeDraft.availableActions",
         "key": "delete_pristine_draft",
-        "serverDerived": true,
+        "serverDerived": false,
         "dominatesTrigger": false
       },
       "bindings": [
@@ -2188,6 +2322,266 @@
       ]
     },
     {
+      "id": "spot-procurement.abnormal-termination-confirm",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmAbnormalTerminationAction",
+        "kind": "event",
+        "sourceLine": 1105,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementCapability.availableActions",
+        "key": "confirm_abnormal_termination",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "confirmSpotProcurementAbnormalTermination",
+          "method": "POST",
+          "path": "/spot-procurements/:param/abnormal-termination/confirmation",
+          "normalizedKey": "POST /spot-procurements/:param/abnormal-termination/confirmation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/abnormal-termination/confirmation",
+            "normalizedKey": "POST /spot-procurements/:param/abnormal-termination/confirmation",
+            "controller": "SpotProcurementController",
+            "handler": "confirmAbnormalTermination",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.abnormal_termination.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmAbnormalTerminationAction",
+              "confirmSpotProcurementAbnormalTermination"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.abnormal-termination-request",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "requestAbnormalTerminationAction",
+        "kind": "event",
+        "sourceLine": 1092,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementCapability.availableActions",
+        "key": "request_abnormal_termination",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "requestSpotProcurementAbnormalTermination",
+          "method": "POST",
+          "path": "/spot-procurements/:param/abnormal-termination",
+          "normalizedKey": "POST /spot-procurements/:param/abnormal-termination",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/abnormal-termination",
+            "normalizedKey": "POST /spot-procurements/:param/abnormal-termination",
+            "controller": "SpotProcurementController",
+            "handler": "requestAbnormalTermination",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.abnormal_termination.request"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "requestAbnormalTerminationAction",
+              "requestSpotProcurementAbnormalTermination"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.invoice-invalidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "invalidateInvoice",
+        "kind": "event",
+        "sourceLine": 927,
+        "sourceColumn": 8
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotPaymentCapability.invoice.invoices",
+        "key": "invalidate_invoice",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "invalidateSpotProcurementPaymentInvoice",
+          "method": "POST",
+          "path": "/spot-procurement-payments/:param/invoices/:param/invalidation",
+          "normalizedKey": "POST /spot-procurement-payments/:param/invoices/:param/invalidation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurement-payments/:paymentId/invoices/:invoiceId/invalidation",
+            "normalizedKey": "POST /spot-procurement-payments/:param/invoices/:param/invalidation",
+            "controller": "SpotProcurementInvoiceController",
+            "handler": "invalidate",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-invoice.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.invoice.append"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "invalidateInvoice",
+              "invalidateSpotProcurementPaymentInvoice"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.receipt-pdf-refresh",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "t-popconfirm",
+        "event": "confirm",
+        "handler": "refreshReceiptPdf",
+        "kind": "event",
+        "sourceLine": 835,
+        "sourceColumn": 12
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotReceiptCapability.availableActions",
+        "key": "refresh_receipt_pdf",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "refreshSpotProcurementReceiptPdf",
+          "method": "POST",
+          "path": "/spot-procurements/:param/receipt/pdf-refresh",
+          "normalizedKey": "POST /spot-procurements/:param/receipt/pdf-refresh",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/receipt/pdf-refresh",
+            "normalizedKey": "POST /spot-procurements/:param/receipt/pdf-refresh",
+            "controller": "SpotProcurementReceiptController",
+            "handler": "retryFormalPdf",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.receipt.review"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "refreshReceiptPdf",
+              "refreshSpotProcurementReceiptPdf"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "spot-procurement.review-approve",
       "usage": "page_action",
       "routePaths": [
@@ -2203,7 +2597,7 @@
         "handler": "openConfirmation",
         "variant": "review_approve",
         "kind": "event",
-        "sourceLine": 657,
+        "sourceLine": 834,
         "sourceColumn": 14
       },
       "semantic": "business_write",
@@ -2211,7 +2605,7 @@
         "kind": "detail_action",
         "source": "detail.availableActions",
         "key": "review_approval",
-        "serverDerived": true,
+        "serverDerived": false,
         "dominatesTrigger": false
       },
       "bindings": [
@@ -2266,7 +2660,7 @@
         "handler": "openConfirmation",
         "variant": "review_reject",
         "kind": "event",
-        "sourceLine": 664,
+        "sourceLine": 841,
         "sourceColumn": 14
       },
       "semantic": "business_write",
@@ -2274,7 +2668,7 @@
         "kind": "detail_action",
         "source": "detail.availableActions",
         "key": "review_approval",
-        "serverDerived": true,
+        "serverDerived": false,
         "dominatesTrigger": false
       },
       "bindings": [
@@ -2328,7 +2722,7 @@
         "event": "click",
         "handler": "runSubmit",
         "kind": "event",
-        "sourceLine": 650,
+        "sourceLine": 827,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -2336,7 +2730,7 @@
         "kind": "detail_action",
         "source": "detail.availableActions",
         "key": "submit_approval",
-        "serverDerived": true,
+        "serverDerived": false,
         "dominatesTrigger": false
       },
       "bindings": [
@@ -2392,7 +2786,38 @@
     "invalidRegistryEntries": [],
     "duplicateRegistryEntries": [],
     "staleRegistryEntries": [],
-    "unresolvedHandlers": [],
+    "unresolvedHandlers": [
+      {
+        "code": "ACTION_HANDLER_UNRESOLVED",
+        "actionId": "contract-draft.aggregate-autosave",
+        "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+        "handler": "performSave"
+      },
+      {
+        "code": "ACTION_HANDLER_UNRESOLVED",
+        "actionId": "contract-draft.lease-acquire",
+        "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+        "handler": "load"
+      },
+      {
+        "code": "ACTION_HANDLER_UNRESOLVED",
+        "actionId": "contract-draft.lease-heartbeat",
+        "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+        "handler": "performLeaseVerification"
+      },
+      {
+        "code": "ACTION_HANDLER_UNRESOLVED",
+        "actionId": "contract-draft.lease-release",
+        "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+        "handler": "releaseCurrentLease"
+      },
+      {
+        "code": "ACTION_HANDLER_UNRESOLVED",
+        "actionId": "contract-draft.preview-queue",
+        "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+        "handler": "queuePreviewForCurrentRevision"
+      }
+    ],
     "unresolvedWrappers": [
       {
         "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",

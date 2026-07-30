@@ -282,6 +282,31 @@
       ]
     },
     {
+      "id": "contract-template.risk-stop",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同模板库/:templateId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "stopSelectedVersion"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "contractTemplateCapability.versions",
+        "key": "risk_stop"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "stopContractTemplateVersion"
+        }
+      ]
+    },
+    {
       "id": "contract-workbench.submit-local-status",
       "usage": "page_action",
       "routePaths": [
@@ -327,6 +352,31 @@
         {
           "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
           "name": "submitExpenseClaim"
+        }
+      ]
+    },
+    {
+      "id": "layout-template.risk-stop",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "stopCurrentVersion"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "layoutTemplateCapability.versions",
+        "key": "risk_stop"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "stopLayoutTemplateVersion"
         }
       ]
     },
@@ -834,6 +884,106 @@
         {
           "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
           "name": "abandonSettlementDraftRecord"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.abnormal-termination-confirm",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmAbnormalTerminationAction"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementCapability.availableActions",
+        "key": "confirm_abnormal_termination"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "confirmSpotProcurementAbnormalTermination"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.abnormal-termination-request",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "requestAbnormalTerminationAction"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementCapability.availableActions",
+        "key": "request_abnormal_termination"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "requestSpotProcurementAbnormalTermination"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.invoice-invalidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "invalidateInvoice"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotPaymentCapability.invoice.invoices",
+        "key": "invalidate_invoice"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "invalidateSpotProcurementPaymentInvoice"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.receipt-pdf-refresh",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "t-popconfirm",
+        "event": "confirm",
+        "handler": "refreshReceiptPdf"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotReceiptCapability.availableActions",
+        "key": "refresh_receipt_pdf"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "refreshSpotProcurementReceiptPdf"
         }
       ]
     },

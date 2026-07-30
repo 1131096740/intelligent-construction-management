@@ -111,6 +111,822 @@ test("follows helper parameters and finite method and path unions", async () => 
   );
 });
 
+test("classifies wrapper return provenance without trusting local projections", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        import { apiFetch } from "./api-fetch";
+        declare function normalizeExternal<T>(value: T): T;
+        declare function formatApiErrorMessage(
+          message: unknown,
+          status: number,
+          fallback: string
+        ): string;
+
+        function identity<T>(value: T): T {
+          const alias = value as T;
+          return alias;
+        }
+
+        async function readJson<T>(path: string): Promise<T> {
+          const response = await apiFetch(path);
+          const responseAlias = response;
+          return responseAlias.json() as Promise<T>;
+        }
+
+        async function ensureOk(
+          response: Response,
+          fallback = "读取失败"
+        ) {
+          if (response.ok) return;
+          let message = fallback + "：" + response.status;
+          try {
+            const data = (await response.clone().json()) as {
+              message?: unknown;
+            };
+            if (typeof data.message === "string") {
+              message = formatApiErrorMessage(
+                data.message,
+                response.status,
+                fallback
+              );
+            } else if (Array.isArray(data.message)) {
+              message = formatApiErrorMessage(
+                data.message.join("；"),
+                response.status,
+                fallback
+              );
+            }
+          } catch {
+            message = formatApiErrorMessage(
+              message,
+              response.status,
+              fallback
+            );
+          }
+          throw new Error(message);
+        }
+
+        export function transparentExample() {
+          return identity(readJson<{ availableActions: string[] }>("/transparent"));
+        }
+
+        export async function validatedTransparentExample() {
+          const response = await apiFetch("/validated-transparent");
+          await ensureOk(response);
+          return response.json();
+        }
+
+        export async function validatedDestructuredMetadataExample() {
+          const response = await apiFetch("/validated-destructured-metadata");
+          const { status } = response;
+          formatApiErrorMessage("", status, "读取失败");
+          return response.json();
+        }
+
+        export async function branchedValidatedTransparentExample(
+          first: boolean,
+          second: boolean
+        ) {
+          if (first) {
+            const firstMarker = first;
+            void firstMarker;
+          }
+          if (second) {
+            const secondMarker = second;
+            void secondMarker;
+          }
+          const response = await apiFetch("/branched-validated-transparent");
+          if (response.ok) return response.json();
+          throw new Error("读取失败");
+        }
+
+        export async function mixedResponseStageExample(
+          returnResponse: boolean
+        ) {
+          const response = await apiFetch("/mixed-response-stage");
+          return returnResponse ? response : response.json();
+        }
+
+        export async function projectedExample() {
+          const values = await readJson<Array<{ enabled: boolean }>>("/projected");
+          return values.map((value) => ({ isEnabled: value.enabled }));
+        }
+
+        export async function fabricatedExample() {
+          await apiFetch("/fabricated");
+          return { availableActions: [] };
+        }
+
+        export async function arrayExample() {
+          const value = await readJson<{ availableActions: string[] }>("/array");
+          return [value];
+        }
+
+        export async function spreadExample() {
+          const value = await readJson<{ availableActions: string[] }>("/spread");
+          return { ...value };
+        }
+
+        export async function unknownHelperExample() {
+          const value = await readJson<{ availableActions: string[] }>("/unknown-helper");
+          return normalizeExternal(value);
+        }
+
+        export async function mixedExample(useServer: boolean) {
+          const response = await apiFetch("/mixed");
+          if (useServer) return response.json();
+          return [];
+        }
+
+        export async function downloadExample() {
+          const response = await apiFetch("/download");
+          const blob = await response.blob();
+          void blob;
+        }
+
+        export async function explicitVoidExample() {
+          await apiFetch("/explicit-void");
+          return;
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          downloadExample,
+          explicitVoidExample,
+          arrayExample,
+          fabricatedExample,
+          mixedExample,
+          projectedExample,
+          spreadExample,
+          transparentExample,
+          validatedTransparentExample,
+          validatedDestructuredMetadataExample,
+          branchedValidatedTransparentExample,
+          mixedResponseStageExample,
+          unknownHelperExample
+        } from "../api/example.api";
+        void arrayExample();
+        void transparentExample();
+        void validatedTransparentExample();
+        void validatedDestructuredMetadataExample();
+        void branchedValidatedTransparentExample(true, true);
+        void mixedResponseStageExample(true);
+        void projectedExample();
+        void fabricatedExample();
+        void spreadExample();
+        void unknownHelperExample();
+        void mixedExample(true);
+        void downloadExample();
+        void explicitVoidExample();
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json": JSON.stringify({
+        schemaVersion: 1,
+        routes: [
+          "/transparent",
+          "/validated-transparent",
+          "/validated-destructured-metadata",
+          "/branched-validated-transparent",
+          "/mixed-response-stage",
+          "/projected",
+          "/fabricated",
+          "/array",
+          "/spread",
+          "/unknown-helper",
+          "/mixed",
+          "/download",
+          "/explicit-void"
+        ].map((path) => ({
+          method: "GET",
+          path,
+          normalizedKey: `GET ${path}`
+        }))
+      })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      assert.deepEqual(
+        Object.fromEntries(
+          manifest.wrappers.map((wrapper) => [
+            wrapper.name,
+            wrapper.returnProvenance
+          ])
+        ),
+        {
+          arrayExample: "unverified",
+          branchedValidatedTransparentExample:
+            "transparent_main_response",
+          downloadExample: "none",
+          explicitVoidExample: "none",
+          fabricatedExample: "unverified",
+          mixedExample: "unverified",
+          mixedResponseStageExample: "unverified",
+          projectedExample: "unverified",
+          spreadExample: "unverified",
+          transparentExample: "transparent_main_response",
+          validatedTransparentExample:
+            "transparent_main_response",
+          validatedDestructuredMetadataExample:
+            "transparent_main_response",
+          unknownHelperExample: "unverified"
+        }
+      );
+      assert.equal(manifest.status, "ready");
+    }
+  );
+});
+
+test("fails return provenance closed for stale aliases and helper cycles", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        import { apiFetch } from "./api-fetch";
+
+        function identity<T>(value: T): T {
+          return value;
+        }
+
+        function fabricate<T>(value: T) {
+          return { value };
+        }
+
+        function recurseLeft<T>(value: T): T {
+          return recurseRight(value);
+        }
+
+        function recurseRight<T>(value: T): T {
+          return recurseLeft(value);
+        }
+
+        export async function freshAliasExample() {
+          let response: unknown = await apiFetch("/fresh-alias");
+          const alias = response as Response;
+          response = {};
+          return identity(await alias.json());
+        }
+
+        export async function staleAliasExample() {
+          let result: unknown = await apiFetch("/stale-alias");
+          result = [];
+          return result;
+        }
+
+        export async function compoundAliasExample() {
+          let result: unknown = await apiFetch("/compound-alias");
+          result ||= {};
+          return result;
+        }
+
+        export async function staleHelperExample() {
+          let helper = identity;
+          helper = fabricate;
+          return helper(await apiFetch("/stale-helper"));
+        }
+
+        export async function cyclicHelperExample() {
+          return recurseLeft(await apiFetch("/cycle"));
+        }
+
+        export async function unreachableProjectionExample() {
+          const response = await apiFetch("/unreachable");
+          return response.json();
+          return { fabricated: true };
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          compoundAliasExample,
+          cyclicHelperExample,
+          freshAliasExample,
+          staleAliasExample,
+          staleHelperExample,
+          unreachableProjectionExample
+        } from "../api/example.api";
+        void compoundAliasExample();
+        void cyclicHelperExample();
+        void freshAliasExample();
+        void staleAliasExample();
+        void staleHelperExample();
+        void unreachableProjectionExample();
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json": JSON.stringify({
+        schemaVersion: 1,
+        routes: [
+          "/fresh-alias",
+          "/stale-alias",
+          "/compound-alias",
+          "/stale-helper",
+          "/cycle",
+          "/unreachable"
+        ].map((path) => ({
+          method: "GET",
+          path,
+          normalizedKey: `GET ${path}`
+        }))
+      })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      const provenance = Object.fromEntries(
+        manifest.wrappers.map((wrapper) => [
+          wrapper.name,
+          wrapper.returnProvenance
+        ])
+      );
+      assert.equal(
+        provenance.freshAliasExample,
+        "transparent_main_response"
+      );
+      assert.equal(provenance.staleAliasExample, "unverified");
+      assert.equal(provenance.compoundAliasExample, "unverified");
+      assert.equal(provenance.staleHelperExample, "unverified");
+      assert.equal(provenance.cyclicHelperExample, "unverified");
+      assert.equal(
+        provenance.unreachableProjectionExample,
+        "transparent_main_response"
+      );
+    }
+  );
+});
+
+test("fails return provenance closed when the main response or a descendant is mutated", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        import { apiFetch } from "./api-fetch";
+        declare function mutateExternal(value: unknown): void;
+
+        export async function nestedPushExample() {
+          const response = await apiFetch("/nested-push");
+          const result = await response.json();
+          result.availableActions.push({ key: "forged_action" });
+          return result;
+        }
+
+        export async function descendantAliasMutationExample() {
+          const response = await apiFetch("/descendant-alias");
+          const result = await response.json();
+          const actions = result.availableActions;
+          Object.assign(actions, { forged: true });
+          return result;
+        }
+
+        export async function deleteExample() {
+          const response = await apiFetch("/delete");
+          const result = await response.json();
+          delete result.availableActions;
+          return result;
+        }
+
+        export async function destructuredDescendantExample() {
+          const response = await apiFetch("/destructured-descendant");
+          const result = await response.json();
+          const { availableActions } = result;
+          availableActions.push({ key: "forged_action" });
+          return result;
+        }
+
+        export async function containerDescendantExample() {
+          const response = await apiFetch("/container-descendant");
+          const result = await response.json();
+          const box = { result };
+          box.result.availableActions.push({
+            key: "forged_action"
+          });
+          return result;
+        }
+
+        export async function dynamicContainerDescendantExample() {
+          const response = await apiFetch("/dynamic-container-descendant");
+          const result = await response.json();
+          const box = { result };
+          const key = "result";
+          const alias = box[key];
+          alias.availableActions.push({
+            key: "forged_action"
+          });
+          return result;
+        }
+
+        export async function computedContainerDescendantExample() {
+          const response = await apiFetch("/computed-container-descendant");
+          const result = await response.json();
+          const key = "result";
+          const box = { [key]: result };
+          box.result.availableActions.push({
+            key: "forged_action"
+          });
+          return result;
+        }
+
+        export async function computedBeforeKnownDescendantExample() {
+          const response = await apiFetch("/computed-before-known");
+          const result = await response.json();
+          const key = "unknown";
+          const box = { [key]: 0, result };
+          box.result.availableActions.push({
+            key: "forged_action"
+          });
+          return result;
+        }
+
+        export async function spreadBeforeKnownDescendantExample() {
+          const response = await apiFetch("/spread-before-known");
+          const result = await response.json();
+          const other = {};
+          const box = { ...other, result };
+          box.result.availableActions.push({
+            key: "forged_action"
+          });
+          return result;
+        }
+
+        export async function getterContainerDescendantExample() {
+          const response = await apiFetch("/getter-container-descendant");
+          const result = await response.json();
+          const box = {
+            get result() {
+              return result;
+            }
+          };
+          box.result.availableActions.push({
+            key: "forged_action"
+          });
+          return result;
+        }
+
+        export async function voidUnknownHelperExample() {
+          const response = await apiFetch("/void-unknown-helper");
+          const result = await response.json();
+          void mutateExternal(result);
+          return result;
+        }
+
+        export async function conditionalAliasMutationExample(
+          flag: boolean
+        ) {
+          const response = await apiFetch("/conditional-alias");
+          const result = await response.json();
+          const alias = flag ? result : result;
+          alias.availableActions.push({
+            key: "forged_action"
+          });
+          return result;
+        }
+
+        export async function logicalContainerMutationExample(
+          flag: boolean
+        ) {
+          const response = await apiFetch("/logical-container");
+          const result = await response.json();
+          const box = flag && { result };
+          if (box) {
+            box.result.availableActions.push({
+              key: "forged_action"
+            });
+          }
+          return result;
+        }
+
+        export async function dynamicObjectBindingMutationExample(
+          key: string
+        ) {
+          const response = await apiFetch("/dynamic-object-binding");
+          const result = await response.json();
+          const box = { result };
+          const { [key]: alias } = box;
+          alias.availableActions.push({
+            key: "forged_action"
+          });
+          return result;
+        }
+
+        export async function dynamicObjectAssignmentMutationExample(
+          key: string
+        ) {
+          const response = await apiFetch("/dynamic-object-assignment");
+          const result = await response.json();
+          const box = { result };
+          let alias;
+          ({ [key]: alias } = box);
+          alias.availableActions.push({
+            key: "forged_action"
+          });
+          return result;
+        }
+
+        export async function staticObjectAssignmentMutationExample() {
+          const response = await apiFetch("/static-object-assignment");
+          const result = await response.json();
+          const box = { result };
+          let alias;
+          ({ result: alias } = box);
+          alias.availableActions.push({
+            key: "forged_action"
+          });
+          return result;
+        }
+
+        export async function arrayAssignmentMutationExample() {
+          const response = await apiFetch("/array-assignment");
+          const result = await response.json();
+          const box = [result];
+          let alias;
+          [alias] = box;
+          alias.availableActions.push({
+            key: "forged_action"
+          });
+          return result;
+        }
+
+        export async function finallyMutationExample() {
+          const response = await apiFetch("/finally-mutation");
+          const result = await response.json();
+          try {
+            return result;
+          } finally {
+            result.availableActions.push({
+              key: "forged_action"
+            });
+          }
+        }
+
+        export async function finallyAssignedMutationExample() {
+          let result;
+          try {
+            const response = await apiFetch("/finally-assigned");
+            result = await response.json();
+            return result;
+          } finally {
+            result.availableActions.push({
+              key: "forged_action"
+            });
+          }
+        }
+
+        function mutateDestructured({
+          availableActions
+        }: {
+          availableActions: Array<{ key: string }>;
+        }) {
+          availableActions.push({ key: "forged_action" });
+        }
+
+        export async function destructuredHelperExample() {
+          const response = await apiFetch("/destructured-helper");
+          const result = await response.json();
+          mutateDestructured(result);
+          return result;
+        }
+
+        export async function nestedClosureExample() {
+          const response = await apiFetch("/nested-closure");
+          const result = await response.json();
+          function mutate() {
+            result.availableActions.push({
+              key: "forged_action"
+            });
+          }
+          mutate();
+          return result;
+        }
+
+        export async function loopReplacementExample() {
+          const response = await apiFetch("/loop-replacement");
+          let result = await response.json();
+          let pending = true;
+          while (pending) {
+            result = { availableActions: [{ key: "forged_action" }] };
+            pending = false;
+          }
+          return result;
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          deleteExample,
+          descendantAliasMutationExample,
+          destructuredDescendantExample,
+          containerDescendantExample,
+          dynamicContainerDescendantExample,
+          computedContainerDescendantExample,
+          computedBeforeKnownDescendantExample,
+          spreadBeforeKnownDescendantExample,
+          getterContainerDescendantExample,
+          voidUnknownHelperExample,
+          conditionalAliasMutationExample,
+          logicalContainerMutationExample,
+          dynamicObjectBindingMutationExample,
+          dynamicObjectAssignmentMutationExample,
+          staticObjectAssignmentMutationExample,
+          arrayAssignmentMutationExample,
+          finallyMutationExample,
+          finallyAssignedMutationExample,
+          destructuredHelperExample,
+          nestedClosureExample,
+          loopReplacementExample,
+          nestedPushExample
+        } from "../api/example.api";
+        void deleteExample();
+        void descendantAliasMutationExample();
+        void destructuredDescendantExample();
+        void containerDescendantExample();
+        void dynamicContainerDescendantExample();
+        void computedContainerDescendantExample();
+        void computedBeforeKnownDescendantExample();
+        void spreadBeforeKnownDescendantExample();
+        void getterContainerDescendantExample();
+        void voidUnknownHelperExample();
+        void conditionalAliasMutationExample(true);
+        void logicalContainerMutationExample(true);
+        void dynamicObjectBindingMutationExample("result");
+        void dynamicObjectAssignmentMutationExample("result");
+        void staticObjectAssignmentMutationExample();
+        void arrayAssignmentMutationExample();
+        void finallyMutationExample();
+        void finallyAssignedMutationExample();
+        void destructuredHelperExample();
+        void nestedClosureExample();
+        void loopReplacementExample();
+        void nestedPushExample();
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json": JSON.stringify({
+        schemaVersion: 1,
+        routes: [
+          "/nested-push",
+          "/descendant-alias",
+          "/delete",
+          "/destructured-descendant",
+          "/container-descendant",
+          "/dynamic-container-descendant",
+          "/computed-container-descendant",
+          "/computed-before-known",
+          "/spread-before-known",
+          "/getter-container-descendant",
+          "/void-unknown-helper",
+          "/conditional-alias",
+          "/logical-container",
+          "/dynamic-object-binding",
+          "/dynamic-object-assignment",
+          "/static-object-assignment",
+          "/array-assignment",
+          "/finally-mutation",
+          "/finally-assigned",
+          "/destructured-helper",
+          "/nested-closure",
+          "/loop-replacement"
+        ].map((path) => ({
+          method: "GET",
+          path,
+          normalizedKey: `GET ${path}`
+        }))
+      })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      const provenance = Object.fromEntries(
+        manifest.wrappers.map((wrapper) => [
+          wrapper.name,
+          wrapper.returnProvenance
+        ])
+      );
+      assert.equal(provenance.nestedPushExample, "unverified");
+      assert.equal(
+        provenance.descendantAliasMutationExample,
+        "unverified"
+      );
+      assert.equal(provenance.deleteExample, "unverified");
+      assert.equal(
+        provenance.destructuredDescendantExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.containerDescendantExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.dynamicContainerDescendantExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.computedContainerDescendantExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.computedBeforeKnownDescendantExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.spreadBeforeKnownDescendantExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.getterContainerDescendantExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.voidUnknownHelperExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.conditionalAliasMutationExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.logicalContainerMutationExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.dynamicObjectBindingMutationExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.dynamicObjectAssignmentMutationExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.staticObjectAssignmentMutationExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.arrayAssignmentMutationExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.finallyMutationExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.finallyAssignedMutationExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.destructuredHelperExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.nestedClosureExample,
+        "unverified"
+      );
+      assert.equal(provenance.loopReplacementExample, "unverified");
+    }
+  );
+});
+
+test("does not bind transparent provenance to multiple main request edges", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        import { apiFetch } from "./api-fetch";
+        export async function loadExample(useFirst: boolean) {
+          const first = await apiFetch("/examples/first");
+          if (useFirst) return first.json();
+          const second = await apiFetch("/examples/second");
+          return second.json();
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import { loadExample } from "../api/example.api";
+        void loadExample(true);
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json": JSON.stringify({
+        schemaVersion: 1,
+        routes: [
+          {
+            method: "GET",
+            path: "/examples/first",
+            normalizedKey: "GET /examples/first"
+          },
+          {
+            method: "GET",
+            path: "/examples/second",
+            normalizedKey: "GET /examples/second"
+          }
+        ]
+      })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      assert.equal(
+        manifest.wrappers[0].returnProvenance,
+        "unverified"
+      );
+    }
+  );
+});
+
 test("rendering is deterministic and omits wall-clock fields", async () => {
   await withFixture(
     {

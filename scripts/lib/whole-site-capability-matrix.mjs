@@ -439,6 +439,10 @@ function validateTicketRequest(request) {
 }
 
 function validateWrapper(wrapper) {
+  const hasReturnProvenance = Object.hasOwn(
+    wrapper,
+    "returnProvenance"
+  );
   assertExactKeys(
     wrapper,
     [
@@ -447,6 +451,7 @@ function validateWrapper(wrapper) {
       "name",
       "productionConsumers",
       "requests",
+      ...(hasReturnProvenance ? ["returnProvenance"] : []),
       "testConsumers",
       "unreachableConsumers"
     ],
@@ -464,6 +469,16 @@ function validateWrapper(wrapper) {
     wrapper.kind === "transport" || wrapper.kind === "pure",
     "CAPABILITY_MATRIX_INVALID_WEB_WRAPPER"
   );
+  if (hasReturnProvenance) {
+    assert(
+      [
+        "transparent_main_response",
+        "none",
+        "unverified"
+      ].includes(wrapper.returnProvenance),
+      "CAPABILITY_MATRIX_INVALID_WEB_WRAPPER_RETURN_PROVENANCE"
+    );
+  }
   uniqueStrings(
     wrapper.productionConsumers,
     "CAPABILITY_MATRIX_INVALID_WEB_WRAPPER"

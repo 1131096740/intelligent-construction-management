@@ -7,33 +7,33 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `62580430a97217233e458e2246bf76144c9f2c83e62ab8dce56d6cecc68a3a80` |
-| webApiWrappers | blocked | `1ba5cd46715804454ce6d414273fe273cac8e431eb871278e7c9b76ae95294cb` |
-| webPageActions | blocked | `d4275841ab9f230f091e92eb1f07e6abf0d80d11cb506dad1e8842467dc8569b` |
-| routeUsage | blocked | `30ef88cefc133300f6ba65e8cefc360f282b949b43ea5f94f5e84818bb38e736` |
+| webApiWrappers | blocked | `560ab05970a24830add6a3fec03292a8cd63a1b6c0ba60f9947f2e55caeb22bf` |
+| webPageActions | blocked | `ccf2389af413f123e690499bd02a07e9831a811d161789a0cfec74b2a4f0299c` |
+| routeUsage | blocked | `18889b8b15be66c4fd15822f3fcf64de0ffa8f1e006505c964039bd549dc308d` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
 | routeCount | 395 |
-| pageRouteCount | 279 |
+| pageRouteCount | 285 |
 | externalTakeoverRouteCount | 59 |
 | exitCandidateRouteCount | 23 |
 | internalTaskRouteCount | 2 |
-| unclassifiedRouteCount | 32 |
-| mainRequestBindingCount | 372 |
+| unclassifiedRouteCount | 26 |
+| mainRequestBindingCount | 376 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
-| orphanWrapperCount | 44 |
+| orphanWrapperCount | 42 |
 | duplicateMutationRouteCount | 4 |
-| registeredActionCount | 36 |
-| actionBindingCount | 39 |
-| acceptedActionBindingCount | 0 |
+| registeredActionCount | 42 |
+| actionBindingCount | 45 |
+| acceptedActionBindingCount | 6 |
 | unresolvedActionBindingCount | 39 |
-| productionMutationConsumerPairCount | 269 |
-| coveredProductionMutationConsumerPairCount | 0 |
+| productionMutationConsumerPairCount | 275 |
+| coveredProductionMutationConsumerPairCount | 6 |
 | uncoveredProductionMutationConsumerPairCount | 269 |
-| blockerCount | 392 |
+| blockerCount | 384 |
 
 ## 路由矩阵
 
@@ -203,7 +203,7 @@
 | POST | /contract-layout-template-versions/:versionId/preview-generation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#queueLayoutTemplatePreview | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-layout-template-versions/:versionId/publication | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#publishLayoutTemplateVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-layout-template-versions/:versionId/revoke | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#revokeLayoutTemplateVersion | — | not_applicable | ORPHAN_WRAPPER |
-| POST | /contract-layout-template-versions/:versionId/stop | unclassified | none | apps/web-admin/src/api/contract-workbench.api.ts#stopLayoutTemplateVersion | — | not_applicable | ORPHAN_WRAPPER<br>ROUTE_USAGE_UNCLASSIFIED |
+| POST | /contract-layout-template-versions/:versionId/stop | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#stopLayoutTemplateVersion | layout-template.risk-stop | covered | — |
 | POST | /contract-layout-template-versions/:versionId/submission | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#submitLayoutTemplateVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-layout-templates | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#createLayoutTemplate | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-negotiation-rounds/:roundId/close | page | web_api_wrapper | apps/web-admin/src/api/contract-negotiation.api.ts#closeContractNegotiationRound | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -215,7 +215,7 @@
 | POST | /contract-template-versions/:versionId/discard | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#discardContractTemplateVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-template-versions/:versionId/publication | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#publishContractTemplateVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-template-versions/:versionId/revoke | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#revokeContractTemplateVersion | — | not_applicable | ORPHAN_WRAPPER |
-| POST | /contract-template-versions/:versionId/stop | unclassified | none | apps/web-admin/src/api/contract-workbench.api.ts#stopContractTemplateVersion | — | not_applicable | ORPHAN_WRAPPER<br>ROUTE_USAGE_UNCLASSIFIED |
+| POST | /contract-template-versions/:versionId/stop | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#stopContractTemplateVersion | contract-template.risk-stop | covered | — |
 | POST | /contract-template-versions/:versionId/submission | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#submitContractTemplateVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-templates | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#createContractTemplate | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-versions/:toContractVersionId/bill-transitions/confirm | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#confirmContractBillTransitions | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -395,13 +395,13 @@
 | POST | /spot-procurement-payments/:paymentId/approval | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#reviewSpotProcurementA5Payment<br>apps/web-admin/src/api/spot-procurement.api.ts#reviewSpotProcurementPayment | — | uncovered | DUPLICATE_MUTATION_ROUTE<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurement-payments/:paymentId/balance-execution | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
 | POST | /spot-procurement-payments/:paymentId/executions | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#recordSpotProcurementPaymentExecution | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /spot-procurement-payments/:paymentId/invoices/:invoiceId/invalidation | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
+| POST | /spot-procurement-payments/:paymentId/invoices/:invoiceId/invalidation | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#invalidateSpotProcurementPaymentInvoice | spot-procurement.invoice-invalidate | covered | — |
 | POST | /spot-procurement-payments/:paymentId/invoices | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#appendSpotProcurementPaymentInvoice | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurement-payments/:paymentId/submission | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#submitSpotProcurementPayment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurement-payments/:paymentId/voiding | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#voidSpotProcurementPayment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurements/:procurementId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#abandonSpotProcurementDraft | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /spot-procurements/:procurementId/abnormal-termination/confirmation | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
-| POST | /spot-procurements/:procurementId/abnormal-termination | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
+| POST | /spot-procurements/:procurementId/abnormal-termination/confirmation | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#confirmSpotProcurementAbnormalTermination | spot-procurement.abnormal-termination-confirm | covered | — |
+| POST | /spot-procurements/:procurementId/abnormal-termination | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#requestSpotProcurementAbnormalTermination | spot-procurement.abnormal-termination-request | covered | — |
 | POST | /spot-procurements/:procurementId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#withdrawSpotProcurement | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurements/:procurementId/approval | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#reviewSpotProcurement | spot-procurement.review-approve<br>spot-procurement.review-reject | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurements/:procurementId/discrepancy | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#createSpotProcurementDiscrepancy | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -413,7 +413,7 @@
 | POST | /spot-procurements/:procurementId/payment-drafts | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#recreateSpotProcurementPaymentDraft | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurements/:procurementId/receipt/delegations | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#createSpotProcurementReceiptDelegation | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurements/:procurementId/receipt/draft-reset | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#resetSpotProcurementReceiptDraft | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /spot-procurements/:procurementId/receipt/pdf-refresh | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
+| POST | /spot-procurements/:procurementId/receipt/pdf-refresh | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#refreshSpotProcurementReceiptPdf | spot-procurement.receipt-pdf-refresh | covered | — |
 | POST | /spot-procurements/:procurementId/receipt/photos | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#attachSpotProcurementReceiptPhoto | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurements/:procurementId/receipt/review-revocation | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#revokeSpotProcurementReceiptReview | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurements/:procurementId/receipt/review | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#reviewSpotProcurementReceipt | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -463,8 +463,6 @@
 - apps/web-admin/src/api/contract-workbench.api.ts#revokeContractTemplateVersion（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#revokeLayoutTemplateVersion（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#saveContractDraft（test_only）
-- apps/web-admin/src/api/contract-workbench.api.ts#stopContractTemplateVersion（test_only）
-- apps/web-admin/src/api/contract-workbench.api.ts#stopLayoutTemplateVersion（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#submitContractFromWorkbench（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#updateBillRow（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#voidContractDraft（test_only）
@@ -766,42 +764,42 @@
 
 ### 未解决动作绑定
 
-- affiliate-company-contract.confirm#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
+- affiliate-company-contract.confirm#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - affiliate-company-contract.record#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
-- contract-draft.abandon-application#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
-- contract-draft.aggregate-autosave#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
-- contract-draft.delete-pristine#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
-- contract-draft.lease-acquire#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
-- contract-draft.lease-heartbeat#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
-- contract-draft.lease-release#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
-- contract-draft.manual-save#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
-- contract-draft.preview-queue#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
+- contract-draft.abandon-application#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- contract-draft.aggregate-autosave#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- contract-draft.delete-pristine#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- contract-draft.lease-acquire#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- contract-draft.lease-heartbeat#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- contract-draft.lease-release#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- contract-draft.manual-save#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- contract-draft.preview-queue#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-draft.transfer-local-gate#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-takeover.create-local-role#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-takeover.submit-review-local-role-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-takeover.update-local-role-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-workbench.submit-local-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - expense-claim.submit-local-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- payment-approval.approve#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
-- payment-approval.reject#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
-- payment-execution.record#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
-- payment-execution.record#1 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
+- payment-approval.approve#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- payment-approval.reject#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- payment-execution.record#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- payment-execution.record#1 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - payment-request.create-local-form#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - project-expense.create-local-role#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - project-expense.execution-local-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - project-expense.finance-local-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - project-expense.receipt-confirm-local-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- project-expense.review-approve#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
-- project-expense.review-reject#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
-- project-expense.withdraw#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
-- settlement-draft.abandon-application#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
-- settlement-draft.delete-pristine#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
+- project-expense.review-approve#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- project-expense.review-reject#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- project-expense.withdraw#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- settlement-draft.abandon-application#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- settlement-draft.delete-pristine#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - settlement-draft.save-local-gate#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - settlement-draft.save-local-gate#1 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - settlement-import.preview-local-gate#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - settlement-import.preview-local-gate#1 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - settlement-preview.background-local-gate#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - settlement-preview.manual-local-gate#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- spot-procurement.review-approve#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
-- spot-procurement.review-reject#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
-- spot-procurement.submit#0 — causal_unverified, no_accepted_consumer, capability_not_dominating_trigger
+- spot-procurement.review-approve#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- spot-procurement.review-reject#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- spot-procurement.submit#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger

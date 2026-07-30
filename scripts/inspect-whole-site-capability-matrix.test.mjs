@@ -1057,6 +1057,34 @@ test("rejects an unknown Web request kind", () => {
   );
 });
 
+test("accepts optional legal Web wrapper return provenance", () => {
+  const values = [
+    undefined,
+    "transparent_main_response",
+    "none",
+    "unverified"
+  ];
+  for (const value of values) {
+    const input = fixture();
+    if (value !== undefined) {
+      input.webManifest.wrappers[0].returnProvenance = value;
+    }
+    assert.equal(build(input).status, "ready", value ?? "missing");
+  }
+});
+
+test("rejects an unknown Web wrapper return provenance", () => {
+  const input = fixture();
+  input.webManifest.wrappers[0].returnProvenance =
+    "fabricated_response";
+  assert.throws(
+    () => build(input),
+    (error) =>
+      error?.code ===
+      "CAPABILITY_MATRIX_INVALID_WEB_WRAPPER_RETURN_PROVENANCE"
+  );
+});
+
 test("rejects duplicate Nest normalized routes", () => {
   const input = fixture();
   input.nestManifest.routes.push(

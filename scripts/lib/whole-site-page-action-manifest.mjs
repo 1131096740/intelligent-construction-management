@@ -15,6 +15,7 @@ const webRequire = createRequire(
 );
 const vueParser = webRequire("vue-eslint-parser");
 const typescriptParser = webRequire("@typescript-eslint/parser");
+const scopeManagersByAst = new WeakMap();
 
 const SCHEMA_VERSION = 1;
 const WEB_SOURCE_ROOT = "apps/web-admin/src";
@@ -42,6 +43,57 @@ const SERVER_CAPABILITY_KINDS = new Set([
   "available_action_string",
   "server_boolean",
   "server_lease"
+]);
+const WEB_RETURN_PROVENANCE = new Set([
+  "transparent_main_response",
+  "none",
+  "unverified"
+]);
+const CAPABILITY_COLLECTION_CALLBACK_METHODS = new Set([
+  "every",
+  "filter",
+  "find",
+  "findIndex",
+  "findLast",
+  "findLastIndex",
+  "flatMap",
+  "forEach",
+  "map",
+  "reduce",
+  "reduceRight",
+  "some"
+]);
+const CAPABILITY_REFERENCE_DERIVING_METHODS = new Set([
+  "at",
+  "concat",
+  "entries",
+  "filter",
+  "find",
+  "findLast",
+  "flat",
+  "flatMap",
+  "map",
+  "next",
+  "reduce",
+  "reduceRight",
+  "slice",
+  "toReversed",
+  "toSorted",
+  "toSpliced",
+  "valueOf",
+  "values",
+  "with"
+]);
+const CAPABILITY_READONLY_METHODS = new Set([
+  ...CAPABILITY_COLLECTION_CALLBACK_METHODS,
+  ...CAPABILITY_REFERENCE_DERIVING_METHODS,
+  "includes",
+  "indexOf",
+  "join",
+  "keys",
+  "lastIndexOf",
+  "toLocaleString",
+  "toString"
 ]);
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const ROUTER_ALLOWED_MEMBER_CALLS = new Set([
@@ -315,16 +367,22 @@ function parserOptions(path) {
 }
 
 function parseSource(path, source) {
+  let parsed;
   if (path.endsWith(".vue")) {
-    return vueParser.parseForESLint(source, {
+    parsed = vueParser.parseForESLint(source, {
       ...parserOptions(path),
       parser: typescriptParser
-    }).ast;
+    });
+  } else {
+    parsed = typescriptParser.parseForESLint(
+      source,
+      parserOptions(path)
+    );
   }
-  return typescriptParser.parseForESLint(
-    source,
-    parserOptions(path)
-  ).ast;
+  if (parsed.scopeManager) {
+    scopeManagersByAst.set(parsed.ast, parsed.scopeManager);
+  }
+  return parsed.ast;
 }
 
 function walkEstree(node, visitor, seen = new Set()) {
@@ -2002,7 +2060,14 @@ function eventHandlerRoots(node) {
 }
 
 function addIndexedNode(index, name, node) {
-  if (!isNonEmptyString(name) || !node) return;
+  if (
+    (typeof name === "string"
+      ? !isNonEmptyString(name)
+      : !name) ||
+    !node
+  ) {
+    return;
+  }
   const values = index.get(name) ?? [];
   values.push(node);
   index.set(name, values);
@@ -2055,6 +2120,15 @@ function buildSymbolContext(ast, sourcePath, sourceFiles) {
   const definitions = new Map();
   const declarations = new Map();
   const imports = new Map();
+  const writes = new Map();
+  const writesByBinding = new Map();
+  const vueRefImports = new Set();
+  const vueComputedImports = new Set();
+  const scopeManager = scopeManagersByAst.get(ast) ?? null;
+  const scopeBindings =
+    scopeBindingsByIdentifier(scopeManager);
+  const scopeReferenceIdentifiers =
+    referenceIdentifiersByScope(scopeManager);
   for (const statement of ast?.body ?? []) {
     if (
       statement.type !== "ImportDeclaration" ||
@@ -2063,6 +2137,27 @@ function buildSymbolContext(ast, sourcePath, sourceFiles) {
       continue;
     }
     const specifierText = literalString(statement.source);
+    if (specifierText === "vue") {
+      for (const specifier of statement.specifiers ?? []) {
+        if (
+          specifier.type !== "ImportSpecifier" ||
+          specifier.importKind === "type" ||
+          !specifier.local?.name
+        ) {
+          continue;
+        }
+        const importedName =
+          specifier.imported?.type === "Identifier"
+            ? specifier.imported.name
+            : literalString(specifier.imported);
+        if (["ref", "shallowRef"].includes(importedName)) {
+          vueRefImports.add(specifier.local.name);
+        }
+        if (importedName === "computed") {
+          vueComputedImports.add(specifier.local.name);
+        }
+      }
+    }
     const resolvedSource = specifierText
       ? resolveModuleSpecifier(
           sourcePath,
@@ -2084,6 +2179,15 @@ function buildSymbolContext(ast, sourcePath, sourceFiles) {
       if (binding) imports.set(binding.localName, binding);
     }
   }
+  const recordWrite = (root, identifier, write) => {
+    if (root) addIndexedNode(writes, root, write);
+    const binding = identifier
+      ? scopeBindings?.get(identifier)
+      : null;
+    if (binding) {
+      addIndexedNode(writesByBinding, binding, write);
+    }
+  };
   walkEstree(ast, (node) => {
     if (node.type === "FunctionDeclaration" && node.id?.name) {
       addIndexedNode(definitions, node.id.name, node);
@@ -2102,9 +2206,233 @@ function buildSymbolContext(ast, sourcePath, sourceFiles) {
       ) {
         addIndexedNode(definitions, node.id.name, node.init);
       }
+      return;
+    }
+    if (node.type === "AssignmentExpression") {
+      const path =
+        node.left?.type === "Identifier"
+          ? node.left.name
+          : memberExpressionWritePath(node.left);
+      const root = path?.split(".")[0];
+      if (root) {
+        recordWrite(
+          root,
+          referenceRootIdentifier(node.left),
+          {
+          kind: "assignment",
+          operator: node.operator,
+          path,
+          value: node.right
+          }
+        );
+      }
+      return;
+    }
+    if (node.type === "UpdateExpression") {
+      const path =
+        node.argument?.type === "Identifier"
+          ? node.argument.name
+          : memberExpressionWritePath(node.argument);
+      const root = path?.split(".")[0];
+      if (root) {
+        recordWrite(
+          root,
+          referenceRootIdentifier(node.argument),
+          {
+          kind: "update",
+          operator: node.operator,
+          path,
+          value: null
+          }
+        );
+      }
+      return;
+    }
+    if (
+      node.type === "UnaryExpression" &&
+      node.operator === "delete"
+    ) {
+      const path =
+        node.argument?.type === "Identifier"
+          ? node.argument.name
+          : memberExpressionWritePath(node.argument);
+      const root = path?.split(".")[0];
+      if (root) {
+        recordWrite(
+          root,
+          referenceRootIdentifier(node.argument),
+          {
+          kind: "delete",
+          operator: "delete",
+          path,
+          value: null
+          }
+        );
+      }
+      return;
+    }
+    if (
+      node.type === "CallExpression" &&
+      node.callee?.type === "MemberExpression"
+    ) {
+      const calleePath = memberExpressionWritePath(node.callee);
+      const mutationMethods = new Set([
+        "copyWithin",
+        "fill",
+        "pop",
+        "push",
+        "reverse",
+        "shift",
+        "sort",
+        "splice",
+        "unshift"
+      ]);
+      const method = calleePath?.split(".").at(-1);
+      if (method && mutationMethods.has(method)) {
+        const targetPath = calleePath
+          ?.split(".")
+          .slice(0, -1)
+          .join(".");
+        const root = targetPath?.split(".")[0];
+        if (root) {
+          recordWrite(
+            root,
+            referenceRootIdentifier(
+              node.callee.object
+            ),
+            {
+              kind: "mutation_call",
+              operator: method,
+              path: targetPath,
+              value: null
+            }
+          );
+        }
+      }
+      if (
+        calleePath === "Object.assign" &&
+        node.arguments?.[0]
+      ) {
+        const targetPath = memberExpressionWritePath(
+          node.arguments[0]
+        );
+        const root = targetPath?.split(".")[0];
+        if (root) {
+          recordWrite(
+            root,
+            referenceRootIdentifier(
+              node.arguments[0]
+            ),
+            {
+              kind: "mutation_call",
+              operator: "Object.assign",
+              path: targetPath,
+              value: null
+            }
+          );
+        }
+      }
     }
   });
-  return { definitions, declarations, imports };
+  const definitionsByBinding = new Map();
+  const declarationsByBinding = new Map();
+  if (scopeBindings) {
+    walkEstree(ast, (node) => {
+      if (
+        node.type === "FunctionDeclaration" &&
+        node.id?.type === "Identifier"
+      ) {
+        const binding = scopeBindings.get(node.id);
+        if (binding) {
+          addIndexedNode(
+            definitionsByBinding,
+            binding,
+            node
+          );
+          addIndexedNode(
+            declarationsByBinding,
+            binding,
+            node
+          );
+        }
+        return;
+      }
+      if (
+        node.type === "VariableDeclarator" &&
+        node.id?.type === "Identifier" &&
+        node.init
+      ) {
+        const binding = scopeBindings.get(node.id);
+        if (!binding) return;
+        addIndexedNode(
+          declarationsByBinding,
+          binding,
+          node.init
+        );
+        if (
+          [
+            "ArrowFunctionExpression",
+            "FunctionExpression"
+          ].includes(node.init.type)
+        ) {
+          addIndexedNode(
+            definitionsByBinding,
+            binding,
+            node.init
+          );
+        }
+      }
+    });
+  }
+  const importVariablesByName = new Map();
+  const importsByBinding = new Map();
+  for (const [localName, imported] of imports) {
+    const bindings = topLevelScopeVariables(
+      scopeManager,
+      localName
+    );
+    if (bindings.length !== 1) continue;
+    const binding = bindings[0];
+    importVariablesByName.set(localName, binding);
+    importsByBinding.set(binding, imported);
+  }
+  const vueRefImportBindings = new Set(
+    Array.from(vueRefImports).flatMap((name) => {
+      const bindings = topLevelScopeVariables(
+        scopeManager,
+        name
+      );
+      return bindings.length === 1 ? bindings : [];
+    })
+  );
+  const vueComputedImportBindings = new Set(
+    Array.from(vueComputedImports).flatMap((name) => {
+      const bindings = topLevelScopeVariables(
+        scopeManager,
+        name
+      );
+      return bindings.length === 1 ? bindings : [];
+    })
+  );
+  return {
+    ast,
+    definitions,
+    definitionsByBinding,
+    declarations,
+    declarationsByBinding,
+    imports,
+    importsByBinding,
+    importVariablesByName,
+    scopeManager,
+    scopeBindings,
+    scopeReferenceIdentifiers,
+    vueRefImports,
+    vueRefImportBindings,
+    vueComputedImports,
+    vueComputedImportBindings,
+    writes,
+    writesByBinding
+  };
 }
 
 function uniqueIndexedNode(index, name) {
@@ -2187,6 +2515,27 @@ function memberExpressionPath(node) {
   return normalizedExpression(`${object}.${property}`);
 }
 
+function memberExpressionWritePath(node) {
+  if (!node) return null;
+  if (node.type === "ChainExpression") {
+    return memberExpressionWritePath(node.expression);
+  }
+  if (node.type === "Identifier") return node.name;
+  if (
+    node.type !== "MemberExpression" ||
+    (node.computed && literalString(node.property) === null)
+  ) {
+    return null;
+  }
+  const object = memberExpressionWritePath(node.object);
+  const property = node.computed
+    ? literalString(node.property)
+    : node.property?.type === "Identifier"
+      ? node.property.name
+      : null;
+  return object && property ? `${object}.${property}` : null;
+}
+
 function canonicalExpression(node) {
   if (!node) return null;
   if (node.type === "ChainExpression") {
@@ -2207,9 +2556,41 @@ function canonicalExpression(node) {
   return null;
 }
 
+function nodeIsInsideVueTemplate(node) {
+  let current = node;
+  while (current) {
+    if (
+      current.type === "VExpressionContainer" ||
+      current.type === "VElement"
+    ) {
+      return true;
+    }
+    if (current.type === "Program") return false;
+    current = current.parent;
+  }
+  return false;
+}
+
+function resolvedReferenceBinding(identifier, symbols) {
+  if (identifier?.type !== "Identifier") return null;
+  if (nodeIsInsideVueTemplate(identifier)) {
+    const bindings = topLevelScopeVariables(
+      symbols.scopeManager,
+      identifier.name
+    );
+    return bindings.length === 1 ? bindings[0] : null;
+  }
+  if (
+    !symbols.scopeReferenceIdentifiers?.has(identifier)
+  ) {
+    return null;
+  }
+  return symbols.scopeBindings?.get(identifier) ?? null;
+}
+
 function capabilityClosure(node, symbols) {
   const nodes = [];
-  const seenNames = new Set();
+  const seenBindings = new Set();
   const seenNodes = new Set();
   const pendingNodes = node ? [node] : [];
   while (pendingNodes.length && seenNodes.size < 128) {
@@ -2217,15 +2598,20 @@ function capabilityClosure(node, symbols) {
     if (!current || seenNodes.has(current)) continue;
     seenNodes.add(current);
     nodes.push(current);
-    for (const name of referencedIdentifiers(current)) {
-      if (seenNames.has(name)) continue;
-      seenNames.add(name);
+    walkEstree(current, (candidate) => {
+      if (candidate.type !== "Identifier") return;
+      const binding = resolvedReferenceBinding(
+        candidate,
+        symbols
+      );
+      if (!binding || seenBindings.has(binding)) return;
+      seenBindings.add(binding);
       const declaration = uniqueIndexedNode(
-        symbols.declarations,
-        name
+        symbols.declarationsByBinding,
+        binding
       );
       if (declaration) pendingNodes.push(declaration);
-    }
+    });
   }
   return nodes;
 }
@@ -2247,11 +2633,25 @@ function closureHasCanonicalExpression(nodes, expected) {
   return found;
 }
 
-function closureHasLiteral(nodes, expected) {
+function closureHasLiteral(
+  nodes,
+  expected,
+  literalBindings = new Map(),
+  symbols = null
+) {
   let found = false;
   for (const node of nodes) {
     walkEstree(node, (candidate) => {
-      if (!found && literalString(candidate) === expected) {
+      const binding =
+        candidate.type === "Identifier"
+          ? symbols?.scopeBindings?.get(candidate)
+          : null;
+      if (
+        !found &&
+        (literalString(candidate) === expected ||
+          (binding &&
+            literalBindings.get(binding) === expected))
+      ) {
         found = true;
       }
     });
@@ -2312,6 +2712,8 @@ function unwrapValueExpression(node) {
       "AwaitExpression",
       "ChainExpression",
       "TSAsExpression",
+      "TSInstantiationExpression",
+      "TSSatisfiesExpression",
       "TSTypeAssertion",
       "TSNonNullExpression"
     ].includes(current.type)
@@ -2321,30 +2723,5226 @@ function unwrapValueExpression(node) {
   return current;
 }
 
-function expressionIsImportedReadResult(node, names) {
+function referenceRootIdentifier(node) {
+  let current = unwrapValueExpression(node);
+  while (current?.type === "MemberExpression") {
+    current = unwrapValueExpression(current.object);
+  }
+  return current?.type === "Identifier" ? current : null;
+}
+
+function importedReadSource(node, sources, symbols) {
+  const value = unwrapValueExpression(node);
+  if (
+    value?.type === "CallExpression" &&
+    value.callee?.type === "Identifier"
+  ) {
+    const binding = symbols.scopeBindings?.get(
+      value.callee
+    );
+    return binding ? sources.get(binding) ?? null : null;
+  }
+  return null;
+}
+
+function expressionIsEmptyCapabilityState(node) {
   const value = unwrapValueExpression(node);
   return (
-    value?.type === "CallExpression" &&
-    value.callee?.type === "Identifier" &&
-    names.has(value.callee.name)
+    !value ||
+    (value.type === "Literal" && value.value === null) ||
+    (value.type === "Identifier" &&
+      value.name === "undefined")
   );
 }
 
-function capabilityHasServerProvenance(capability, context) {
-  const root = capabilitySourceRoot(capability.source);
-  if (!root || context.symbols.imports.has(root)) return false;
-  const declarations =
-    context.symbols.declarations.get(root) ?? [];
+function expressionIsEmptyVueRef(node, symbols) {
+  const value = unwrapValueExpression(node);
+  if (
+    value?.type !== "CallExpression" ||
+    value.callee?.type !== "Identifier"
+  ) {
+    return false;
+  }
+  const binding = symbols.scopeBindings?.get(
+    value.callee
+  );
+  if (
+    !binding ||
+    !symbols.vueRefImportBindings?.has(binding)
+  ) {
+    return false;
+  }
   return (
-    declarations.length === 1 &&
-    expressionIsImportedReadResult(
-      declarations[0],
-      context.serverReadImports
+    (value.arguments ?? []).length === 0 ||
+    (value.arguments ?? []).every((argument) =>
+      expressionIsEmptyCapabilityState(argument)
     )
   );
 }
 
-function expressionHasCapability(node, capability, context) {
+function expressionServerReadSources(
+  node,
+  context,
+  seen = new Set()
+) {
+  const value = unwrapValueExpression(node);
+  if (!value) return null;
+  const importedSource = importedReadSource(
+    value,
+    context.serverReadImports,
+    context.symbols
+  );
+  if (importedSource) return new Set([importedSource]);
+  if (value.type === "MemberExpression") {
+    return expressionServerReadSources(
+      value.object,
+      context,
+      seen
+    );
+  }
+  if (value.type !== "Identifier") {
+    return null;
+  }
+  const binding = context.symbols.scopeBindings?.get(value);
+  if (!binding || seen.has(binding)) return null;
+  const nextSeen = new Set(seen);
+  nextSeen.add(binding);
+  const declaration = uniqueIndexedNode(
+    context.symbols.declarationsByBinding,
+    binding
+  );
+  const writes =
+    context.symbols.writesByBinding.get(binding) ?? [];
+  if (
+    writes.some(
+      (write) =>
+        write.kind !== "assignment" ||
+        write.operator !== "=" ||
+        write.path !== value.name
+    )
+  ) {
+    return null;
+  }
+  const candidates = [
+    ...(declaration &&
+    !expressionIsEmptyCapabilityState(declaration)
+      ? [declaration]
+      : []),
+    ...writes
+      .map((write) => write.value)
+      .filter(
+        (candidate) =>
+          !expressionIsEmptyCapabilityState(candidate)
+      )
+  ];
+  if (candidates.length === 0) return null;
+  const sources = new Set();
+  for (const candidate of candidates) {
+    const candidateSources = expressionServerReadSources(
+      candidate,
+      context,
+      nextSeen
+    );
+    if (!candidateSources) return null;
+    for (const source of candidateSources) sources.add(source);
+  }
+  return sources.size > 0 ? sources : null;
+}
+
+function scopeBindingsByIdentifier(scopeManager) {
+  if (!scopeManager) return null;
+  const bindings = new WeakMap();
+  for (const scope of scopeManager.scopes ?? []) {
+    for (const variable of scope.variables ?? []) {
+      for (const identifier of variable.identifiers ?? []) {
+        bindings.set(identifier, variable);
+      }
+      for (const reference of variable.references ?? []) {
+        if (reference.identifier) {
+          bindings.set(reference.identifier, variable);
+        }
+      }
+    }
+  }
+  return bindings;
+}
+
+function referenceIdentifiersByScope(scopeManager) {
+  const identifiers = new WeakSet();
+  for (const scope of scopeManager?.scopes ?? []) {
+    for (const variable of scope.variables ?? []) {
+      for (const reference of variable.references ?? []) {
+        if (reference.identifier) {
+          identifiers.add(reference.identifier);
+        }
+      }
+    }
+    for (const reference of scope.through ?? []) {
+      if (reference.identifier) {
+        identifiers.add(reference.identifier);
+      }
+    }
+  }
+  return identifiers;
+}
+
+function uniqueScopeVariable(scopeManager, name) {
+  const candidates = (scopeManager?.scopes ?? [])
+    .flatMap((scope) => scope.variables ?? [])
+    .filter(
+      (variable) =>
+        variable.name === name &&
+        (variable.identifiers ?? []).length > 0
+    );
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+function topLevelScopeVariables(scopeManager, name) {
+  const scopes = (scopeManager?.scopes ?? []).filter(
+    (scope) =>
+      scope.type === "module" &&
+      scope.block?.type === "Program"
+  );
+  const candidateScopes =
+    scopes.length > 0
+      ? scopes
+      : (scopeManager?.scopes ?? []).filter(
+          (scope) =>
+            scope.type === "global" &&
+            scope.block?.type === "Program"
+        );
+  return candidateScopes
+    .flatMap((scope) => scope.variables ?? [])
+    .filter(
+      (variable) =>
+        variable.name === name &&
+        (variable.identifiers ?? []).length > 0
+    );
+}
+
+const PROTECTED_RUNTIME_GLOBALS = new Set([
+  "globalThis",
+  "self",
+  "window"
+]);
+const PROTECTED_RUNTIME_CONSTRUCTORS = new Set([
+  "Array",
+  "Boolean",
+  "Date",
+  "Function",
+  "JSON",
+  "Map",
+  "Math",
+  "Number",
+  "Object",
+  "Promise",
+  "Proxy",
+  "Reflect",
+  "RegExp",
+  "Set",
+  "String",
+  "WeakMap",
+  "WeakSet"
+]);
+const RUNTIME_TARGET_MUTATORS = new Set([
+  "assign",
+  "defineProperties",
+  "defineProperty",
+  "deleteProperty",
+  "set",
+  "setPrototypeOf"
+]);
+const RUNTIME_INTRINSIC_CALLBACK_METHODS = new Set([
+  "every",
+  "filter",
+  "find",
+  "findIndex",
+  "flatMap",
+  "forEach",
+  "map",
+  "some"
+]);
+const RUNTIME_INTRINSIC_CALLBACK_CONSTRUCTORS = new Set([
+  "constructor:Boolean",
+  "constructor:Number",
+  "constructor:String"
+]);
+
+function unshadowedRuntimeGlobal(
+  identifier,
+  names,
+  scopeBindings
+) {
+  if (
+    identifier?.type !== "Identifier" ||
+    !names.has(identifier.name)
+  ) {
+    return false;
+  }
+  const binding = scopeBindings?.get(identifier);
+  return (
+    !binding ||
+    (binding.identifiers ?? []).length === 0
+  );
+}
+
+function runtimeIntrinsicIntegrityIssue(
+  ast,
+  {
+    sourcePath = null,
+    sourceFiles = null,
+    asts = null
+  } = {}
+) {
+  const scopeManager = scopeManagersByAst.get(ast) ?? null;
+  const scopeBindings =
+    scopeBindingsByIdentifier(scopeManager);
+  if (!scopeBindings) return ast;
+  const summaries = new Map();
+  const targetSummary = (target) => ({
+    kind: "target",
+    target
+  });
+  const mutatorSummary = (method) => ({
+    kind: "mutator",
+    method
+  });
+  const unknownAuthoritySummary = () => ({
+    kind: "unknown_authority"
+  });
+  const objectSummary = (fields = new Map()) => ({
+    kind: "object",
+    fields
+  });
+  const helperSummary = (indexes) => ({
+    kind: "helper",
+    indexes
+  });
+  const parameterSummary = (indexes) => ({
+    kind: "parameter",
+    indexes
+  });
+  const callableSummary = (descriptor) => ({
+    kind: "callable",
+    descriptor
+  });
+  const summaryHasRuntimeAuthority = (
+    summary,
+    seen = new Set()
+  ) => {
+    if (!summary || seen.has(summary)) return false;
+    if (
+      [
+        "target",
+        "mutator",
+        "helper",
+        "unknown_authority",
+        "parameter"
+      ].includes(
+        summary.kind
+      )
+    ) {
+      return true;
+    }
+    if (summary.kind !== "object") return false;
+    seen.add(summary);
+    return [...summary.fields.values()].some((child) =>
+      summaryHasRuntimeAuthority(child, seen)
+    );
+  };
+  const runtimeProperty = (node) => {
+    const property = staticMemberProperty(node);
+    if (property !== null) return property;
+    const value =
+      node?.computed && node.property?.type === "Literal"
+        ? node.property.value
+        : null;
+    return typeof value === "number" &&
+      Number.isFinite(value)
+      ? String(value)
+      : null;
+  };
+  const summaryField = (summary, property) => {
+    if (!summary) return null;
+    if (property === null) {
+      return summaryHasRuntimeAuthority(summary)
+        ? unknownAuthoritySummary()
+        : null;
+    }
+    if (
+      summary.kind === "target" &&
+      ["constructor:Object", "constructor:Reflect"].includes(
+        summary.target
+      ) &&
+      RUNTIME_TARGET_MUTATORS.has(property)
+    ) {
+      return mutatorSummary(property);
+    }
+    if (
+      summary.kind === "target" &&
+      summary.target === "global" &&
+      PROTECTED_RUNTIME_CONSTRUCTORS.has(property)
+    ) {
+      return targetSummary(`constructor:${property}`);
+    }
+    if (
+      summary.kind === "target" &&
+      summary.target.startsWith("constructor:") &&
+      property === "prototype"
+    ) {
+      return targetSummary("prototype");
+    }
+    if (summary.kind === "parameter") {
+      return summary;
+    }
+    return summary.kind === "object"
+      ? summary.fields.get(property) ?? null
+      : null;
+  };
+  const descriptorContexts = new WeakMap();
+  const descriptorContext = (targetAst) => {
+    if (!targetAst) return null;
+    const cached = descriptorContexts.get(targetAst);
+    if (cached) return cached;
+    const targetScopeManager =
+      scopeManagersByAst.get(targetAst) ?? null;
+    const targetBindings =
+      scopeBindingsByIdentifier(targetScopeManager);
+    const context = {
+      ast: targetAst,
+      bindings: targetBindings,
+      definitionsByBinding: new Map(),
+      initializersByBinding: new Map(),
+      descriptorByDefinition: new WeakMap(),
+      activeDefinitions: new WeakSet()
+    };
+    descriptorContexts.set(targetAst, context);
+    if (!targetBindings) return context;
+    walkEstree(targetAst, (node) => {
+      if (
+        node.type === "FunctionDeclaration" &&
+        node.id?.type === "Identifier"
+      ) {
+        const binding = targetBindings.get(node.id);
+        if (binding) {
+          context.definitionsByBinding.set(binding, node);
+        }
+        return;
+      }
+      if (
+        node.type === "VariableDeclarator" &&
+        node.id?.type === "Identifier" &&
+        node.init
+      ) {
+        const binding = targetBindings.get(node.id);
+        if (!binding) return;
+        context.initializersByBinding.set(
+          binding,
+          node.init
+        );
+        if (
+          [
+            "ArrowFunctionExpression",
+            "FunctionExpression"
+          ].includes(node.init.type)
+        ) {
+          context.definitionsByBinding.set(
+            binding,
+            node.init
+          );
+        }
+      }
+    });
+    return context;
+  };
+  const staticAppRuntimeExtensionKey = (
+    node,
+    targetAst = ast,
+    seenBindings = new Set()
+  ) => {
+    const value = unwrapValueExpression(node);
+    const direct = literalString(value);
+    if (direct !== null) {
+      return /^__JIANGKONG_[A-Z0-9_]+__$/.test(direct)
+        ? direct
+        : null;
+    }
+    if (value?.type !== "Identifier") return null;
+    const context = descriptorContext(targetAst);
+    const binding = context?.bindings?.get(value);
+    if (!binding || seenBindings.has(binding)) return null;
+    const initializer =
+      context.initializersByBinding.get(binding);
+    if (!initializer) return null;
+    const nextSeen = new Set(seenBindings);
+    nextSeen.add(binding);
+    return staticAppRuntimeExtensionKey(
+      initializer,
+      targetAst,
+      nextSeen
+    );
+  };
+  const descriptorParameterIndexes = (
+    summary,
+    seen = new Set()
+  ) => {
+    if (!summary || seen.has(summary)) return new Set();
+    if (summary.kind === "parameter") {
+      return new Set(summary.indexes);
+    }
+    if (summary.kind !== "object") return new Set();
+    seen.add(summary);
+    return new Set(
+      [...summary.fields.values()].flatMap((child) => [
+        ...descriptorParameterIndexes(child, seen)
+      ])
+    );
+  };
+  const descriptorHasFixedRuntimeAuthority = (
+    summary,
+    seen = new Set()
+  ) => {
+    if (!summary || seen.has(summary)) return false;
+    if (
+      [
+        "target",
+        "mutator",
+        "helper",
+        "unknown_authority"
+      ].includes(summary.kind)
+    ) {
+      return true;
+    }
+    if (summary.kind !== "object") return false;
+    seen.add(summary);
+    return [...summary.fields.values()].some((child) =>
+      descriptorHasFixedRuntimeAuthority(child, seen)
+    );
+  };
+  const mergeDescriptorSummaries = (values) => {
+    const summariesToMerge = values.filter(Boolean);
+    if (summariesToMerge.length === 0) return null;
+    if (summariesToMerge.length === 1) {
+      return summariesToMerge[0];
+    }
+    if (
+      summariesToMerge.some((summary) =>
+        descriptorHasFixedRuntimeAuthority(summary)
+      )
+    ) {
+      return unknownAuthoritySummary();
+    }
+    const parameterIndexes = new Set(
+      summariesToMerge.flatMap((summary) => [
+        ...descriptorParameterIndexes(summary)
+      ])
+    );
+    if (parameterIndexes.size > 0) {
+      return parameterSummary(
+        parameterIndexes
+      );
+    }
+    return null;
+  };
+  const substituteDescriptorSummary = (
+    summary,
+    argumentsForCall,
+    evaluateArgument
+  ) => {
+    if (!summary) return null;
+    if (summary.kind === "parameter") {
+      return mergeDescriptorSummaries(
+        [...summary.indexes].map((index) =>
+          evaluateArgument(argumentsForCall?.[index])
+        )
+      );
+    }
+    if (summary.kind === "object") {
+      const fields = new Map();
+      for (const [key, value] of summary.fields) {
+        const substituted = substituteDescriptorSummary(
+          value,
+          argumentsForCall,
+          evaluateArgument
+        );
+        if (substituted) fields.set(key, substituted);
+      }
+      return objectSummary(fields);
+    }
+    return summary;
+  };
+  let descriptorExpressionSummary;
+  const callableDescriptor = (targetAst, definition) => {
+    const context = descriptorContext(targetAst);
+    if (!context || !definition) return null;
+    const cached =
+      context.descriptorByDefinition.get(definition);
+    if (cached) return cached;
+    if (context.activeDefinitions.has(definition)) {
+      return {
+        result: parameterSummary(
+          new Set(
+            (definition.params ?? []).map(
+              (_parameter, index) => index
+            )
+          )
+        )
+      };
+    }
+    context.activeDefinitions.add(definition);
+    const parameterSummaries = new Map();
+    for (
+      let index = 0;
+      index < (definition.params ?? []).length;
+      index += 1
+    ) {
+      const parameter = unwrapValueExpression(
+        definition.params[index]
+      );
+      if (parameter?.type !== "Identifier") continue;
+      const binding = context.bindings?.get(parameter);
+      if (binding) {
+        parameterSummaries.set(
+          binding,
+          parameterSummary(new Set([index]))
+        );
+      }
+    }
+    const returnExpressions =
+      definition.body?.type === "BlockStatement"
+        ? directCallableReturnStatements(definition).map(
+            (statement) => statement.argument
+          )
+        : [definition.body];
+    const descriptor = {
+      result: mergeDescriptorSummaries(
+        returnExpressions.map((expression) =>
+          descriptorExpressionSummary(
+            targetAst,
+            expression,
+            parameterSummaries,
+            new Set()
+          )
+        )
+      )
+    };
+    context.activeDefinitions.delete(definition);
+    context.descriptorByDefinition.set(
+      definition,
+      descriptor
+    );
+    return descriptor;
+  };
+  descriptorExpressionSummary = (
+    targetAst,
+    node,
+    parameterSummaries = new Map(),
+    seenBindings = new Set()
+  ) => {
+    const value = unwrapValueExpression(node);
+    if (!value) return null;
+    const context = descriptorContext(targetAst);
+    const targetBindings = context?.bindings;
+    if (value.type === "Identifier") {
+      const binding = targetBindings?.get(value);
+      if (binding && parameterSummaries.has(binding)) {
+        return parameterSummaries.get(binding);
+      }
+      if (
+        binding &&
+        context.definitionsByBinding.has(binding)
+      ) {
+        return callableSummary(
+          callableDescriptor(
+            targetAst,
+            context.definitionsByBinding.get(binding)
+          )
+        );
+      }
+      if (
+        binding &&
+        context.initializersByBinding.has(binding) &&
+        !seenBindings.has(binding)
+      ) {
+        const nextSeen = new Set(seenBindings);
+        nextSeen.add(binding);
+        return descriptorExpressionSummary(
+          targetAst,
+          context.initializersByBinding.get(binding),
+          parameterSummaries,
+          nextSeen
+        );
+      }
+      if (
+        unshadowedRuntimeGlobal(
+          value,
+          PROTECTED_RUNTIME_GLOBALS,
+          targetBindings
+        )
+      ) {
+        return targetSummary("global");
+      }
+      return unshadowedRuntimeGlobal(
+        value,
+        PROTECTED_RUNTIME_CONSTRUCTORS,
+        targetBindings
+      )
+        ? targetSummary(`constructor:${value.name}`)
+        : null;
+    }
+    if (
+      [
+        "ArrowFunctionExpression",
+        "FunctionExpression"
+      ].includes(value.type)
+    ) {
+      return callableSummary(
+        callableDescriptor(targetAst, value)
+      );
+    }
+    if (value.type === "SequenceExpression") {
+      return descriptorExpressionSummary(
+        targetAst,
+        value.expressions?.at(-1),
+        parameterSummaries,
+        seenBindings
+      );
+    }
+    if (
+      value.type === "ConditionalExpression" ||
+      value.type === "LogicalExpression"
+    ) {
+      const branches =
+        value.type === "ConditionalExpression"
+          ? [value.consequent, value.alternate]
+          : [value.left, value.right];
+      return mergeDescriptorSummaries(
+        branches.map((branch) =>
+          descriptorExpressionSummary(
+            targetAst,
+            branch,
+            parameterSummaries,
+            seenBindings
+          )
+        )
+      );
+    }
+    if (value.type === "MemberExpression") {
+      return summaryField(
+        descriptorExpressionSummary(
+          targetAst,
+          value.object,
+          parameterSummaries,
+          seenBindings
+        ),
+        runtimeProperty(value)
+      );
+    }
+    if (value.type === "ObjectExpression") {
+      const fields = new Map();
+      for (const property of value.properties ?? []) {
+        if (property.type === "SpreadElement") {
+          const spread = descriptorExpressionSummary(
+            targetAst,
+            property.argument,
+            parameterSummaries,
+            seenBindings
+          );
+          if (spread?.kind !== "object") return null;
+          for (const [key, summary] of spread.fields) {
+            fields.set(key, summary);
+          }
+          continue;
+        }
+        if (
+          property.type !== "Property" ||
+          property.kind !== "init"
+        ) {
+          return null;
+        }
+        const key = property.computed
+          ? property.key?.type === "Literal" &&
+              typeof property.key.value === "number"
+            ? String(property.key.value)
+            : literalString(property.key)
+          : property.key?.type === "Identifier"
+            ? property.key.name
+            : literalString(property.key);
+        if (key === null) return null;
+        const summary = descriptorExpressionSummary(
+          targetAst,
+          property.value,
+          parameterSummaries,
+          seenBindings
+        );
+        if (summary) fields.set(key, summary);
+      }
+      return objectSummary(fields);
+    }
+    if (value.type === "ArrayExpression") {
+      const fields = new Map();
+      for (
+        let index = 0;
+        index < (value.elements ?? []).length;
+        index += 1
+      ) {
+        const element = value.elements[index];
+        if (!element || element.type === "SpreadElement") {
+          return null;
+        }
+        const summary = descriptorExpressionSummary(
+          targetAst,
+          element,
+          parameterSummaries,
+          seenBindings
+        );
+        if (summary) fields.set(String(index), summary);
+      }
+      return objectSummary(fields);
+    }
+    if (
+      value.type === "CallExpression" ||
+      value.type === "NewExpression"
+    ) {
+      const constructor = descriptorExpressionSummary(
+        targetAst,
+        value.callee,
+        parameterSummaries,
+        seenBindings
+      );
+      const target = descriptorExpressionSummary(
+        targetAst,
+        value.arguments?.[0],
+        parameterSummaries,
+        seenBindings
+      );
+      if (
+        constructor?.kind === "target" &&
+        constructor.target === "constructor:Proxy" &&
+        summaryHasRuntimeAuthority(target)
+      ) {
+        return target;
+      }
+      if (
+        value.type === "CallExpression" &&
+        value.callee?.type === "MemberExpression"
+      ) {
+        const owner = descriptorExpressionSummary(
+          targetAst,
+          value.callee.object,
+          parameterSummaries,
+          seenBindings
+        );
+        const method = runtimeProperty(value.callee);
+        if (
+          owner?.kind === "target" &&
+          owner.target === "constructor:Proxy" &&
+          method === "revocable"
+        ) {
+          return summaryHasRuntimeAuthority(target)
+            ? objectSummary(
+                new Map([["proxy", target]])
+              )
+            : null;
+        }
+        if (
+          owner?.kind === "target" &&
+          owner.target === "constructor:Reflect" &&
+          method === "construct"
+        ) {
+          const proxyConstructor =
+            descriptorExpressionSummary(
+              targetAst,
+              value.arguments?.[0],
+              parameterSummaries,
+              seenBindings
+            );
+          const argumentsList = unwrapValueExpression(
+            value.arguments?.[1]
+          );
+          const proxiedTarget =
+            argumentsList?.type === "ArrayExpression"
+              ? descriptorExpressionSummary(
+                  targetAst,
+                  argumentsList.elements?.[0],
+                  parameterSummaries,
+                  seenBindings
+                )
+              : null;
+          if (
+            proxyConstructor?.kind === "target" &&
+            proxyConstructor.target ===
+              "constructor:Proxy" &&
+            summaryHasRuntimeAuthority(proxiedTarget)
+          ) {
+            return proxiedTarget;
+          }
+        }
+      }
+      if (constructor?.kind === "callable") {
+        return substituteDescriptorSummary(
+          constructor.descriptor?.result,
+          value.arguments,
+          (argument) =>
+            descriptorExpressionSummary(
+              targetAst,
+              argument,
+              parameterSummaries,
+              seenBindings
+            )
+        );
+      }
+    }
+    return null;
+  };
+  const exportedCallableDefinition = (
+    targetAst,
+    exportedName
+  ) => {
+    const context = descriptorContext(targetAst);
+    if (!context) return null;
+    for (const statement of targetAst.body ?? []) {
+      if (
+        statement.type === "ExportDefaultDeclaration" &&
+        exportedName === "default"
+      ) {
+        const declaration = statement.declaration;
+        if (
+          [
+            "ArrowFunctionExpression",
+            "FunctionDeclaration",
+            "FunctionExpression"
+          ].includes(declaration?.type)
+        ) {
+          return declaration;
+        }
+        if (declaration?.type === "Identifier") {
+          const binding = context.bindings?.get(declaration);
+          return (
+            context.definitionsByBinding.get(binding) ?? null
+          );
+        }
+      }
+      if (statement.type !== "ExportNamedDeclaration") {
+        continue;
+      }
+      const declaration = statement.declaration;
+      if (
+        declaration?.type === "FunctionDeclaration" &&
+        declaration.id?.name === exportedName
+      ) {
+        return declaration;
+      }
+      if (declaration?.type === "VariableDeclaration") {
+        for (const declarator of declaration.declarations ?? []) {
+          if (
+            declarator.id?.type === "Identifier" &&
+            declarator.id.name === exportedName &&
+            [
+              "ArrowFunctionExpression",
+              "FunctionExpression"
+            ].includes(declarator.init?.type)
+          ) {
+            return declarator.init;
+          }
+        }
+      }
+      for (const specifier of statement.specifiers ?? []) {
+        const exported =
+          specifier.exported?.type === "Identifier"
+            ? specifier.exported.name
+            : literalString(specifier.exported);
+        if (
+          exported !== exportedName ||
+          specifier.local?.type !== "Identifier"
+        ) {
+          continue;
+        }
+        const binding = context.bindings?.get(
+          specifier.local
+        );
+        const definition =
+          context.definitionsByBinding.get(binding);
+        if (definition) return definition;
+      }
+    }
+    return null;
+  };
+  const runtimeSymbols =
+    sourcePath && sourceFiles
+      ? buildSymbolContext(ast, sourcePath, sourceFiles)
+      : null;
+  const importedCallableSummary = (node) => {
+    const value = unwrapValueExpression(node);
+    if (!value || !runtimeSymbols || !asts) return null;
+    let imported = null;
+    let exportedName = null;
+    if (value.type === "Identifier") {
+      const binding = scopeBindings.get(value);
+      imported =
+        runtimeSymbols.importsByBinding?.get(binding) ?? null;
+      if (imported && imported.kind !== "namespace") {
+        exportedName = imported.importedName;
+      }
+    } else if (
+      value.type === "MemberExpression" &&
+      value.object?.type === "Identifier"
+    ) {
+      const binding = scopeBindings.get(value.object);
+      imported =
+        runtimeSymbols.importsByBinding?.get(binding) ?? null;
+      if (imported?.kind === "namespace") {
+        exportedName = runtimeProperty(value);
+      }
+    }
+    if (!imported || !exportedName) return null;
+    const targetAst = asts.get(imported.sourceFile);
+    const definition = exportedCallableDefinition(
+      targetAst,
+      exportedName
+    );
+    return definition
+      ? callableSummary(
+          callableDescriptor(targetAst, definition)
+        )
+      : null;
+  };
+  const helperTargetParametersByDefinition = new WeakMap();
+  const summarize = (node, seenBindings = new Set()) => {
+    const value = unwrapValueExpression(node);
+    if (!value) return null;
+    if (value.type === "Identifier") {
+      const binding = scopeBindings.get(value);
+      if (binding && summaries.has(binding)) {
+        return summaries.get(binding);
+      }
+      const imported = importedCallableSummary(value);
+      if (imported) return imported;
+      const definition =
+        descriptorContext(ast)?.definitionsByBinding.get(
+          binding
+        );
+      if (definition) {
+        return callableSummary(
+          callableDescriptor(ast, definition)
+        );
+      }
+      if (
+        unshadowedRuntimeGlobal(
+          value,
+          PROTECTED_RUNTIME_GLOBALS,
+          scopeBindings
+        )
+      ) {
+        return targetSummary("global");
+      }
+      return unshadowedRuntimeGlobal(
+        value,
+        PROTECTED_RUNTIME_CONSTRUCTORS,
+        scopeBindings
+      )
+        ? targetSummary(`constructor:${value.name}`)
+        : null;
+    }
+    if (
+      [
+        "ArrowFunctionExpression",
+        "FunctionExpression"
+      ].includes(value.type)
+    ) {
+      return callableSummary(
+        callableDescriptor(ast, value)
+      );
+    }
+    if (
+      value.type === "SequenceExpression"
+    ) {
+      return summarize(
+        value.expressions?.at(-1),
+        seenBindings
+      );
+    }
+    if (
+      value.type === "ConditionalExpression" ||
+      value.type === "LogicalExpression"
+    ) {
+      const branches =
+        value.type === "ConditionalExpression"
+          ? [value.consequent, value.alternate]
+          : [value.left, value.right];
+      const branchSummaries = branches
+        .map((branch) => summarize(branch, seenBindings))
+        .filter(Boolean);
+      const protectedTarget = branchSummaries.find(
+        (summary) => summary.kind === "target"
+      );
+      if (protectedTarget) return protectedTarget;
+      const first = branchSummaries[0] ?? null;
+      return branchSummaries.length === 2 &&
+        first?.kind === "mutator" &&
+        branchSummaries[1]?.kind === "mutator" &&
+        first.method === branchSummaries[1].method
+        ? first
+        : null;
+    }
+    if (value.type === "MemberExpression") {
+      const imported = importedCallableSummary(value);
+      if (imported) return imported;
+      return summaryField(
+        summarize(value.object, seenBindings),
+        runtimeProperty(value)
+      );
+    }
+    if (
+      value.type === "CallExpression" &&
+      value.callee?.type === "MemberExpression"
+    ) {
+      const owner = summarize(
+        value.callee.object,
+        seenBindings
+      );
+      const method = runtimeProperty(value.callee);
+      if (
+        owner?.kind === "target" &&
+        owner.target === "constructor:Proxy" &&
+        method === "revocable"
+      ) {
+        const target = summarize(
+          value.arguments?.[0],
+          seenBindings
+        );
+        return target?.kind === "target"
+          ? objectSummary(new Map([["proxy", target]]))
+          : null;
+      }
+      if (
+        owner?.kind === "target" &&
+        owner.target === "constructor:Reflect" &&
+        method === "construct"
+      ) {
+        const constructor = summarize(
+          value.arguments?.[0],
+          seenBindings
+        );
+        const argumentsList = unwrapValueExpression(
+          value.arguments?.[1]
+        );
+        const target =
+          argumentsList?.type === "ArrayExpression"
+            ? summarize(
+                argumentsList.elements?.[0],
+                seenBindings
+              )
+            : null;
+        return constructor?.kind === "target" &&
+          constructor.target === "constructor:Proxy" &&
+          target?.kind === "target"
+          ? target
+          : null;
+      }
+    }
+    if (
+      value.type === "CallExpression" &&
+      value.callee?.type === "MemberExpression" &&
+      runtimeProperty(value.callee) === "bind"
+    ) {
+      const bound = summarize(
+        value.callee.object,
+        seenBindings
+      );
+      return bound?.kind === "mutator" ||
+        (bound?.kind === "target" &&
+          bound.target === "constructor:Proxy")
+        ? bound
+        : null;
+    }
+    if (value.type === "CallExpression") {
+      const constructor = summarize(
+        value.callee,
+        seenBindings
+      );
+      const target = summarize(
+        value.arguments?.[0],
+        seenBindings
+      );
+      if (
+        constructor?.kind === "target" &&
+        constructor.target === "constructor:Proxy" &&
+        target?.kind === "target"
+      ) {
+        return target;
+      }
+      if (constructor?.kind === "callable") {
+        return substituteDescriptorSummary(
+          constructor.descriptor?.result,
+          value.arguments,
+          (argument) =>
+            summarize(argument, seenBindings)
+        );
+      }
+    }
+    if (
+      value.type === "NewExpression"
+    ) {
+      const constructor = summarize(
+        value.callee,
+        seenBindings
+      );
+      const target = summarize(
+        value.arguments?.[0],
+        seenBindings
+      );
+      return constructor?.kind === "target" &&
+        constructor.target === "constructor:Proxy" &&
+        target?.kind === "target"
+        ? target
+        : null;
+    }
+    if (value.type === "ObjectExpression") {
+      const fields = new Map();
+      for (const property of value.properties ?? []) {
+        if (property.type === "SpreadElement") {
+          const spread = summarize(
+            property.argument,
+            seenBindings
+          );
+          if (spread?.kind !== "object") return null;
+          for (const [key, summary] of spread.fields) {
+            fields.set(key, summary);
+          }
+          continue;
+        }
+        if (
+          property.type !== "Property" ||
+          property.kind !== "init"
+        ) {
+          return null;
+        }
+        const key = property.computed
+          ? property.key?.type === "Literal" &&
+              typeof property.key.value === "number"
+            ? String(property.key.value)
+            : literalString(property.key)
+          : property.key?.type === "Identifier"
+            ? property.key.name
+            : literalString(property.key);
+        if (key === null) return null;
+        const helperIndexes =
+          helperTargetParametersByDefinition.get(
+            property.value
+          );
+        const summary = helperIndexes
+          ? helperSummary(helperIndexes)
+          : summarize(
+              property.value,
+              seenBindings
+            );
+        if (summary) fields.set(key, summary);
+        else fields.delete(key);
+      }
+      return objectSummary(fields);
+    }
+    if (value.type === "ArrayExpression") {
+      const fields = new Map();
+      for (
+        let index = 0;
+        index < (value.elements ?? []).length;
+        index += 1
+      ) {
+        const element = value.elements[index];
+        if (!element || element.type === "SpreadElement") {
+          return null;
+        }
+        const summary = summarize(element, seenBindings);
+        if (summary) fields.set(String(index), summary);
+      }
+      return objectSummary(fields);
+    }
+    return null;
+  };
+  const location = (node) => {
+    const value = unwrapValueExpression(node);
+    if (value?.type === "Identifier") {
+      const binding = scopeBindings.get(value);
+      return binding
+        ? { binding, properties: [] }
+        : null;
+    }
+    if (value?.type !== "MemberExpression") return null;
+    const owner = location(value.object);
+    const property = runtimeProperty(value);
+    return owner && property !== null
+      ? {
+          binding: owner.binding,
+          properties: [...owner.properties, property]
+        }
+      : null;
+  };
+  const locationSummary = (target) => {
+    const resolved = location(target);
+    if (!resolved) return null;
+    let current = summaries.get(resolved.binding) ?? null;
+    for (const property of resolved.properties) {
+      if (current?.kind !== "object") return null;
+      current = current.fields.get(property) ?? null;
+    }
+    return current;
+  };
+  const setLocationSummary = (
+    target,
+    summary,
+    allowSafeOverwrite = true
+  ) => {
+    const resolved = location(target);
+    if (!resolved) return;
+    if (resolved.properties.length === 0) {
+      const current = summaries.get(resolved.binding);
+      if (
+        !allowSafeOverwrite &&
+        summaryHasRuntimeAuthority(current) &&
+        !summaryHasRuntimeAuthority(summary)
+      ) {
+        return;
+      }
+      if (summary) summaries.set(resolved.binding, summary);
+      else summaries.delete(resolved.binding);
+      return;
+    }
+    const root = summaries.get(resolved.binding);
+    if (root?.kind !== "object") return;
+    let current = root;
+    for (const property of resolved.properties.slice(0, -1)) {
+      const next = current.fields.get(property);
+      if (next?.kind !== "object") return;
+      current = next;
+    }
+    const property = resolved.properties.at(-1);
+    const existing = current.fields.get(property);
+    if (
+      !allowSafeOverwrite &&
+      summaryHasRuntimeAuthority(existing) &&
+      !summaryHasRuntimeAuthority(summary)
+    ) {
+      return;
+    }
+    if (summary) current.fields.set(property, summary);
+    else current.fields.delete(property);
+  };
+  const setPatternSummaries = (
+    pattern,
+    summary,
+    allowSafeOverwrite = true
+  ) => {
+    const target = unwrapValueExpression(pattern);
+    if (!target) return;
+    if (
+      target.type === "Identifier" ||
+      target.type === "MemberExpression"
+    ) {
+      setLocationSummary(
+        target,
+        summary,
+        allowSafeOverwrite
+      );
+      return;
+    }
+    if (target.type === "AssignmentPattern") {
+      setPatternSummaries(
+        target.left,
+        summary,
+        allowSafeOverwrite
+      );
+      return;
+    }
+    if (target.type === "RestElement") {
+      setPatternSummaries(
+        target.argument,
+        summaryHasRuntimeAuthority(summary)
+          ? unknownAuthoritySummary()
+          : null,
+        allowSafeOverwrite
+      );
+      return;
+    }
+    if (target.type === "ObjectPattern") {
+      for (const property of target.properties ?? []) {
+        if (property.type === "RestElement") {
+          setPatternSummaries(
+            property.argument,
+            summaryHasRuntimeAuthority(summary)
+              ? unknownAuthoritySummary()
+              : null,
+            allowSafeOverwrite
+          );
+          continue;
+        }
+        setPatternSummaries(
+          property.value,
+          summaryField(summary, propertyKey(property)),
+          allowSafeOverwrite
+        );
+      }
+      return;
+    }
+    if (target.type === "ArrayPattern") {
+      for (
+        let index = 0;
+        index < (target.elements ?? []).length;
+        index += 1
+      ) {
+        const element = target.elements[index];
+        if (!element) continue;
+        setPatternSummaries(
+          element,
+          summaryField(summary, String(index)),
+          allowSafeOverwrite
+        );
+      }
+    }
+  };
+  const isTopLevelUnconditionalWrite = (node) => {
+    if (node?.type === "AssignmentExpression") {
+      return (
+        node.parent?.type === "ExpressionStatement" &&
+        node.parent.parent?.type === "Program"
+      );
+    }
+    if (node?.type === "VariableDeclarator") {
+      return (
+        node.parent?.type === "VariableDeclaration" &&
+        node.parent.parent?.type === "Program"
+      );
+    }
+    return false;
+  };
+  const helperTargetParameters = new Map();
+  const recordHelper = (definition, identifier = null) => {
+    const binding = identifier
+      ? scopeBindings.get(identifier)
+      : null;
+    if (
+      (identifier && !binding) ||
+      !definition?.body ||
+      !Array.isArray(definition.params)
+    ) {
+      return;
+    }
+    const parameterBindings = new Map();
+    for (
+      let index = 0;
+      index < definition.params.length;
+      index += 1
+    ) {
+      const parameter = definition.params[index];
+      if (parameter?.type !== "Identifier") continue;
+      const parameterBinding = scopeBindings.get(parameter);
+      if (parameterBinding) {
+        parameterBindings.set(parameterBinding, index);
+      }
+    }
+    const parameterOrigins = new Map(
+      [...parameterBindings].map(([binding, index]) => [
+        binding,
+        new Set([index])
+      ])
+    );
+    const indexes = new Set();
+    const visit = (candidate, root = false) => {
+      if (!candidate || typeof candidate.type !== "string") {
+        return;
+      }
+      if (
+        !root &&
+        [
+          "ArrowFunctionExpression",
+          "FunctionDeclaration",
+          "FunctionExpression"
+        ].includes(candidate.type)
+      ) {
+        return;
+      }
+      if (
+        candidate.type === "VariableDeclarator" &&
+        candidate.id?.type === "Identifier"
+      ) {
+        const binding = scopeBindings.get(candidate.id);
+        const source = unwrapValueExpression(candidate.init);
+        const sourceBinding =
+          source?.type === "Identifier"
+            ? scopeBindings.get(source)
+            : null;
+        const origins = parameterOrigins.get(sourceBinding);
+        if (binding && origins) {
+          parameterOrigins.set(binding, new Set(origins));
+        }
+      }
+      if (
+        candidate.type === "AssignmentExpression" &&
+        candidate.operator === "="
+      ) {
+        const target = unwrapValueExpression(candidate.left);
+        const source = unwrapValueExpression(candidate.right);
+        const targetBinding =
+          target?.type === "Identifier"
+            ? scopeBindings.get(target)
+            : null;
+        const sourceBinding =
+          source?.type === "Identifier"
+            ? scopeBindings.get(source)
+            : null;
+        const origins = parameterOrigins.get(sourceBinding);
+        if (targetBinding && origins) {
+          const existing =
+            parameterOrigins.get(targetBinding) ?? new Set();
+          parameterOrigins.set(
+            targetBinding,
+            new Set([...existing, ...origins])
+          );
+        }
+      }
+      if (candidate.type === "CallExpression") {
+        const callee = unwrapValueExpression(candidate.callee);
+        const method =
+          callee?.type === "MemberExpression"
+            ? staticMemberProperty(callee)
+            : null;
+        const receiver =
+          callee?.type === "MemberExpression"
+            ? unwrapValueExpression(callee.object)
+            : null;
+        if (
+          method &&
+          RUNTIME_TARGET_MUTATORS.has(method) &&
+          receiver?.type === "Identifier" &&
+          unshadowedRuntimeGlobal(
+            receiver,
+            new Set(["Object", "Reflect"]),
+            scopeBindings
+          )
+        ) {
+          if (
+            [
+              "defineProperty",
+              "deleteProperty",
+              "set"
+            ].includes(method) &&
+            staticAppRuntimeExtensionKey(
+              candidate.arguments?.[1]
+            )
+          ) {
+            return;
+          }
+          const target = unwrapValueExpression(
+            candidate.arguments?.[0]
+          );
+          const parameterBinding =
+            target?.type === "Identifier"
+              ? scopeBindings.get(target)
+              : null;
+          for (const index of
+            parameterOrigins.get(parameterBinding) ?? []) {
+            indexes.add(index);
+          }
+        }
+      }
+      for (const [key, child] of Object.entries(candidate)) {
+        if (
+          [
+            "comments",
+            "loc",
+            "parent",
+            "range",
+            "tokens"
+          ].includes(key)
+        ) {
+          continue;
+        }
+        if (Array.isArray(child)) {
+          for (const entry of child) {
+            if (entry && typeof entry.type === "string") {
+              visit(entry);
+            }
+          }
+        } else if (child && typeof child.type === "string") {
+          visit(child);
+        }
+      }
+    };
+    visit(definition.body, true);
+    if (indexes.size > 0) {
+      if (binding) {
+        helperTargetParameters.set(binding, indexes);
+      }
+      helperTargetParametersByDefinition.set(
+        definition,
+        indexes
+      );
+    }
+  };
+  walkEstree(ast, (node) => {
+    if (
+      node.type === "FunctionDeclaration" &&
+      node.id?.type === "Identifier"
+    ) {
+      recordHelper(node, node.id);
+      return;
+    }
+    if (
+      node.type === "VariableDeclarator" &&
+      node.id?.type === "Identifier" &&
+      [
+        "ArrowFunctionExpression",
+        "FunctionExpression"
+      ].includes(node.init?.type)
+    ) {
+      recordHelper(node.init, node.id);
+      return;
+    }
+    if (
+      node.type === "Property" &&
+      [
+        "ArrowFunctionExpression",
+        "FunctionExpression"
+      ].includes(node.value?.type)
+    ) {
+      recordHelper(node.value);
+    }
+  });
+  let issue = null;
+  walkEstree(ast, (node) => {
+    if (issue) return;
+    if (
+      ["CallExpression", "NewExpression"].includes(
+        node.type
+      )
+    ) {
+      let dynamicCode = false;
+      walkEstree(node.callee, (candidate) => {
+        if (
+          candidate.type === "Identifier" &&
+          unshadowedRuntimeGlobal(
+            candidate,
+            new Set(["eval", "Function"]),
+            scopeBindings
+          )
+        ) {
+          dynamicCode = true;
+        }
+      });
+      if (dynamicCode) {
+        issue = node;
+        return;
+      }
+    }
+    if (node.type === "VariableDeclarator") {
+      setPatternSummaries(
+        node.id,
+        summarize(node.init)
+      );
+      return;
+    }
+    if (node.type === "AssignmentExpression") {
+      const target = unwrapValueExpression(node.left);
+      if (
+        target?.type === "MemberExpression" &&
+        summaryHasRuntimeAuthority(
+          summarize(target.object)
+        )
+      ) {
+        issue = node;
+        return;
+      }
+      if (node.operator === "=") {
+        setPatternSummaries(
+          node.left,
+          summarize(node.right),
+          isTopLevelUnconditionalWrite(node)
+        );
+      } else if (
+        location(node.left)
+      ) {
+        setLocationSummary(
+          node.left,
+          null,
+          isTopLevelUnconditionalWrite(node)
+        );
+      }
+      return;
+    }
+    if (
+      node.type === "UpdateExpression" ||
+      (node.type === "UnaryExpression" &&
+        node.operator === "delete")
+    ) {
+      const target = unwrapValueExpression(node.argument);
+      if (
+        target?.type === "MemberExpression" &&
+        summaryHasRuntimeAuthority(
+          summarize(target.object)
+        )
+      ) {
+        issue = node;
+      }
+      return;
+    }
+    if (
+      node.type === "NewExpression" &&
+      summarize(node.callee)?.kind ===
+        "unknown_authority"
+    ) {
+      issue = node;
+      return;
+    }
+    if (node.type !== "CallExpression") return;
+    if (node.callee?.type === "MemberExpression") {
+      const receiver = unwrapValueExpression(
+        node.callee.object
+      );
+      const method = staticMemberProperty(node.callee);
+      if (
+        method &&
+        ["__defineGetter__", "__defineSetter__"].includes(
+          method
+        ) &&
+        summaryHasRuntimeAuthority(
+          summarize(receiver)
+        )
+      ) {
+        issue = node;
+        return;
+      }
+    }
+    const callee = unwrapValueExpression(node.callee);
+    const helper = summarize(node.callee);
+    const argumentSummaries = (node.arguments ?? []).map(
+      (argument) => summarize(argument)
+    );
+    const authorityArgumentSummaries =
+      argumentSummaries.filter((summary) =>
+        summaryHasRuntimeAuthority(summary)
+      );
+    const authorityArgument =
+      authorityArgumentSummaries.length > 0;
+    const memberOwner =
+      callee?.type === "MemberExpression"
+        ? summarize(callee.object)
+        : null;
+    const memberMethod =
+      callee?.type === "MemberExpression"
+        ? runtimeProperty(callee)
+        : null;
+    const calleeBindingIdentifier =
+      callee?.type === "Identifier"
+        ? callee
+        : callee?.type === "MemberExpression" &&
+            callee.object?.type === "Identifier"
+          ? callee.object
+          : null;
+    const calleeBinding = calleeBindingIdentifier
+      ? scopeBindings.get(calleeBindingIdentifier)
+      : null;
+    const importedCallee =
+      calleeBinding &&
+      runtimeSymbols?.importsByBinding?.has(calleeBinding);
+    const locallyBoundCallee =
+      calleeBinding && !importedCallee;
+    const knownProxyAuthorityConsumer =
+      (helper?.kind === "target" &&
+        helper.target === "constructor:Proxy") ||
+      (memberOwner?.kind === "target" &&
+        memberOwner.target === "constructor:Proxy" &&
+        memberMethod === "revocable") ||
+      (memberOwner?.kind === "target" &&
+        memberOwner.target === "constructor:Reflect" &&
+        memberMethod === "construct" &&
+        summarize(node.arguments?.[0])?.target ===
+          "constructor:Proxy");
+    const knownIntrinsicCallback =
+      callee?.type === "MemberExpression" &&
+      RUNTIME_INTRINSIC_CALLBACK_METHODS.has(memberMethod) &&
+      authorityArgumentSummaries.every(
+        (summary) =>
+          summary.kind === "target" &&
+          RUNTIME_INTRINSIC_CALLBACK_CONSTRUCTORS.has(
+            summary.target
+          )
+      );
+    if (
+      authorityArgument &&
+      !knownProxyAuthorityConsumer &&
+      !knownIntrinsicCallback &&
+      (importedCallee || !locallyBoundCallee)
+    ) {
+      issue = node;
+      return;
+    }
+    if (helper?.kind === "unknown_authority") {
+      issue = node;
+      return;
+    }
+    if (
+      helper?.kind === "helper" &&
+      [...helper.indexes].some(
+        (index) =>
+          summaryHasRuntimeAuthority(
+            summarize(node.arguments?.[index])
+          )
+      )
+    ) {
+      issue = node;
+      return;
+    }
+    if (callee?.type === "Identifier") {
+      const binding = scopeBindings.get(callee);
+      const parameterIndexes =
+        helperTargetParameters.get(binding);
+      if (
+        parameterIndexes &&
+        [...parameterIndexes].some(
+          (index) =>
+            summaryHasRuntimeAuthority(
+              summarize(node.arguments?.[index])
+            )
+        )
+      ) {
+        issue = node;
+        return;
+      }
+    }
+    let mutator = summarize(node.callee);
+    let target = node.arguments?.[0] ?? null;
+    if (
+      callee?.type === "MemberExpression" &&
+      ["apply", "bind", "call"].includes(
+        runtimeProperty(callee)
+      )
+    ) {
+      const adapter = runtimeProperty(callee);
+      const adapted = summarize(callee.object);
+      if (adapted?.kind === "mutator") {
+        mutator = adapter === "bind" ? null : adapted;
+        if (adapter === "apply") {
+          const values = unwrapValueExpression(
+            node.arguments?.[1]
+          );
+          target =
+            values?.type === "ArrayExpression"
+              ? values.elements?.[0] ?? null
+              : null;
+        } else if (adapter === "call") {
+          target = node.arguments?.[1] ?? null;
+        }
+      }
+    }
+    if (
+      mutator?.kind === "mutator" &&
+      summaryHasRuntimeAuthority(summarize(target))
+    ) {
+      issue = node;
+    }
+  });
+  return issue;
+}
+
+function staticMemberProperty(node) {
+  if (node?.type !== "MemberExpression") return null;
+  return node.computed
+    ? literalString(node.property)
+    : node.property?.type === "Identifier"
+      ? node.property.name
+      : null;
+}
+
+function directCallableReturnStatements(node) {
+  const callable = unwrapValueExpression(node);
+  if (
+    ![
+      "ArrowFunctionExpression",
+      "FunctionDeclaration",
+      "FunctionExpression"
+    ].includes(callable?.type) ||
+    callable.body?.type !== "BlockStatement"
+  ) {
+    return [];
+  }
+  const returns = [];
+  const visit = (candidate, root = false) => {
+    if (!candidate || typeof candidate.type !== "string") return;
+    if (
+      !root &&
+      [
+        "ArrowFunctionExpression",
+        "FunctionDeclaration",
+        "FunctionExpression"
+      ].includes(candidate.type)
+    ) {
+      return;
+    }
+    if (candidate.type === "ReturnStatement") {
+      returns.push(candidate);
+      return;
+    }
+    for (const [key, value] of Object.entries(candidate)) {
+      if (
+        [
+          "comments",
+          "loc",
+          "parent",
+          "range",
+          "tokens"
+        ].includes(key)
+      ) {
+        continue;
+      }
+      if (Array.isArray(value)) {
+        for (const child of value) {
+          if (child && typeof child.type === "string") {
+            visit(child);
+          }
+        }
+      } else if (value && typeof value.type === "string") {
+        visit(value);
+      }
+    }
+  };
+  visit(callable.body, true);
+  return returns;
+}
+
+function singleCallableReturnExpression(node) {
+  const callable = unwrapValueExpression(node);
+  if (
+    ![
+      "ArrowFunctionExpression",
+      "FunctionDeclaration",
+      "FunctionExpression"
+    ].includes(callable?.type)
+  ) {
+    return null;
+  }
+  if (
+    callable.type === "ArrowFunctionExpression" &&
+    callable.expression
+  ) {
+    return callable.body;
+  }
+  if (callable.body?.type !== "BlockStatement") {
+    return null;
+  }
+  const statements = callable.body.body ?? [];
+  const returns = directCallableReturnStatements(callable);
+  const terminal = statements.at(-1);
+  return returns.length === 1 &&
+    terminal?.type === "ReturnStatement" &&
+    terminal.argument
+    ? terminal.argument
+    : null;
+}
+
+function callableSummaryReferencePath(
+  node,
+  scopeBindings,
+  callableReturns
+) {
+  const value = unwrapValueExpression(node);
+  if (value?.type === "Identifier") {
+    const binding = scopeBindings?.get(value);
+    if (!binding) return null;
+    return callableReturns?.functions?.get(binding) ?? null;
+  }
+  if (value?.type === "MemberExpression") {
+    const object = unwrapValueExpression(value.object);
+    const property = staticMemberProperty(value);
+    if (object?.type !== "Identifier" || !property) return null;
+    const binding = scopeBindings?.get(object);
+    const path = binding
+      ? callableReturns?.members
+          ?.get(binding)
+          ?.get(property)
+      : null;
+    return typeof path === "string" ? path : null;
+  }
+  return null;
+}
+
+function callableSummaryTargetIsKnown(
+  node,
+  scopeBindings,
+  callableReturns,
+  expectedPath = null
+) {
+  const value = unwrapValueExpression(node);
+  if (value?.type === "Identifier") {
+    const binding = scopeBindings?.get(value);
+    if (!binding) return false;
+    const functionPath =
+      callableReturns?.functions?.get(binding);
+    const members = callableReturns?.members?.get(binding);
+    if (typeof expectedPath === "string") {
+      return (
+        functionPath === expectedPath ||
+        Array.from(members?.values() ?? []).some(
+          (path) => path === expectedPath
+        )
+      );
+    }
+    return Boolean(functionPath || members);
+  }
+  if (value?.type === "MemberExpression") {
+    const object = unwrapValueExpression(value.object);
+    const property = staticMemberProperty(value);
+    if (object?.type !== "Identifier" || !property) {
+      return false;
+    }
+    const binding = scopeBindings?.get(object);
+    const path = binding
+      ? callableReturns?.members
+          ?.get(binding)
+          ?.get(property)
+      : null;
+    return typeof expectedPath === "string"
+      ? path === expectedPath
+      : path !== undefined;
+  }
+  return false;
+}
+
+const MAX_CALLABLE_SUMMARY_DEPTH = 16;
+const SAFE_CALLABLE_MEMBER = Symbol(
+  "safe_callable_member"
+);
+const SELF_CALLABLE_MEMBER = Symbol(
+  "self_callable_member"
+);
+
+function protectedCallableMemberPath(members) {
+  return Array.from(members?.values() ?? []).find(
+    (path) => typeof path === "string"
+  );
+}
+
+function callableReferencesReceiver(node) {
+  const callable = unwrapValueExpression(node);
+  if (callable?.type !== "FunctionExpression") {
+    return false;
+  }
+  const bodyContainsReceiver = (
+    candidate,
+    root = false
+  ) => {
+    if (!candidate || typeof candidate.type !== "string") {
+      return false;
+    }
+    if (candidate.type === "ThisExpression") return true;
+    if (
+      !root &&
+      [
+        "FunctionDeclaration",
+        "FunctionExpression"
+      ].includes(candidate.type)
+    ) {
+      return false;
+    }
+    return Object.entries(candidate).some(([key, value]) => {
+      if (
+        [
+          "comments",
+          "loc",
+          "parent",
+          "range",
+          "tokens"
+        ].includes(key)
+      ) {
+        return false;
+      }
+      if (Array.isArray(value)) {
+        return value.some((child) =>
+          bodyContainsReceiver(child)
+        );
+      }
+      return bodyContainsReceiver(value);
+    });
+  };
+  return bodyContainsReceiver(callable.body, true);
+}
+
+function callableLexicallyReferencesIdentifier(
+  node,
+  name
+) {
+  const callable = unwrapValueExpression(node);
+  if (
+    ![
+      "ArrowFunctionExpression",
+      "FunctionExpression"
+    ].includes(callable?.type)
+  ) {
+    return false;
+  }
+  const visit = (candidate, root = false) => {
+    if (!candidate || typeof candidate.type !== "string") {
+      return false;
+    }
+    if (
+      candidate.type === "Identifier" &&
+      candidate.name === name
+    ) {
+      return true;
+    }
+    if (
+      !root &&
+      [
+        "FunctionDeclaration",
+        "FunctionExpression"
+      ].includes(candidate.type)
+    ) {
+      return false;
+    }
+    return Object.entries(candidate).some(([key, value]) => {
+      if (
+        [
+          "comments",
+          "loc",
+          "parent",
+          "range",
+          "tokens"
+        ].includes(key)
+      ) {
+        return false;
+      }
+      if (Array.isArray(value)) {
+        return value.some((child) => visit(child));
+      }
+      return visit(value);
+    });
+  };
+  return visit(callable.body, true);
+}
+
+function callableEscapeReferencePath(
+  node,
+  aliases,
+  scopeBindings,
+  protectedPath,
+  callableReturns,
+  seen = new WeakSet(),
+  depth = 0
+) {
+  const value = unwrapValueExpression(node);
+  if (!value) return null;
+  if (depth > MAX_CALLABLE_SUMMARY_DEPTH) {
+    return protectedPath;
+  }
+  if (seen.has(value)) {
+    return protectedPath;
+  }
+  seen.add(value);
+  const summaryPath = callableSummaryReferencePath(
+    value,
+    scopeBindings,
+    callableReturns
+  );
+  if (summaryPath) return summaryPath;
+  if (value.type === "Identifier") {
+    const binding = scopeBindings?.get(value);
+    const members = binding
+      ? callableReturns?.members?.get(binding)
+      : null;
+    const memberPath = Array.from(
+      members?.values() ?? []
+    ).find((path) => typeof path === "string");
+    if (memberPath) return memberPath;
+  }
+  if (value.type === "MemberExpression") {
+    const object = unwrapValueExpression(value.object);
+    const property = staticMemberProperty(value);
+    if (object?.type === "Identifier" && property) {
+      const binding = scopeBindings?.get(object);
+      const members = binding
+        ? callableReturns?.members?.get(binding)
+        : null;
+      if (members?.has(property)) {
+        const path = members.get(property);
+        if (path === SELF_CALLABLE_MEMBER) {
+          return protectedCallableMemberPath(members) ?? null;
+        }
+        return typeof path === "string" ? path : null;
+      }
+    }
+    return callableEscapeReferencePath(
+      value.object,
+      aliases,
+      scopeBindings,
+      protectedPath,
+      callableReturns,
+      seen,
+      depth + 1
+    );
+  }
+  if (
+    value.type === "CallExpression" ||
+    value.type === "NewExpression"
+  ) {
+    const callee = unwrapValueExpression(value.callee);
+    if (value.type === "NewExpression") {
+      const constructedPath = callableSummaryReferencePath(
+        callee,
+        scopeBindings,
+        callableReturns
+      );
+      if (constructedPath) return constructedPath;
+    }
+    const receiver =
+      callee?.type === "MemberExpression"
+        ? unwrapValueExpression(callee.object)
+        : null;
+    if (receiver?.type === "Identifier") {
+      const binding = scopeBindings?.get(receiver);
+      const members = binding
+        ? callableReturns?.members?.get(binding)
+        : null;
+      const method = staticMemberProperty(callee);
+      const functionPath = binding
+        ? callableReturns?.functions?.get(binding)
+        : null;
+      if (
+        typeof functionPath === "string" &&
+        ["apply", "bind", "call"].includes(method)
+      ) {
+        return functionPath;
+      }
+      const protectedMemberPath =
+        protectedCallableMemberPath(members);
+      if (
+        method &&
+        members?.get(method) === SELF_CALLABLE_MEMBER
+      ) {
+        return protectedMemberPath ?? null;
+      }
+      if (
+        protectedMemberPath &&
+        (!method || !members?.has(method))
+      ) {
+        return protectedMemberPath;
+      }
+    }
+    if (receiver && receiver.type !== "Identifier") {
+      return callableEscapeReferencePath(
+        receiver,
+        aliases,
+        scopeBindings,
+        protectedPath,
+        callableReturns,
+        seen,
+        depth + 1
+      );
+    }
+    if (
+      callee &&
+      !["Identifier", "MemberExpression"].includes(
+        callee.type
+      )
+    ) {
+      return callableEscapeReferencePath(
+        callee,
+        aliases,
+        scopeBindings,
+        protectedPath,
+        callableReturns,
+        seen,
+        depth + 1
+      );
+    }
+  }
+  if (
+    [
+      "ArrowFunctionExpression",
+      "FunctionDeclaration",
+      "FunctionExpression"
+    ].includes(value.type)
+  ) {
+    const returnPath = callableReturnReferencePath(
+      value,
+      aliases,
+      scopeBindings,
+      protectedPath,
+      callableReturns
+    );
+    if (returnPath) return returnPath;
+    const returnValues =
+      value.type === "ArrowFunctionExpression" &&
+      value.expression
+        ? [value.body]
+        : directCallableReturnStatements(value)
+            .map((statement) => statement.argument)
+            .filter(Boolean);
+    for (const returnValue of returnValues) {
+      const escapedPath = callableEscapeReferencePath(
+        returnValue,
+        aliases,
+        scopeBindings,
+        protectedPath,
+        callableReturns,
+        seen,
+        depth + 1
+      );
+      if (escapedPath) return escapedPath;
+    }
+    return null;
+  }
+  if (value.type === "ObjectExpression") {
+    const memberPaths = new Map();
+    const unknownPaths = [];
+    for (const property of value.properties ?? []) {
+      if (property.type === "SpreadElement") {
+        const source = unwrapValueExpression(
+          property.argument
+        );
+        const sourceBinding =
+          source?.type === "Identifier"
+            ? scopeBindings?.get(source)
+            : null;
+        const sourceMembers = sourceBinding
+          ? callableReturns?.members?.get(sourceBinding)
+          : null;
+        if (sourceMembers) {
+          for (const [name, path] of sourceMembers) {
+            if (typeof path === "string") {
+              memberPaths.set(name, path);
+            } else {
+              memberPaths.delete(name);
+            }
+          }
+          continue;
+        }
+        const path = callableEscapeReferencePath(
+          property.argument,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns,
+          seen,
+          depth + 1
+        );
+        if (path) unknownPaths.push(path);
+        continue;
+      }
+      if (property.type !== "Property") continue;
+      const name = property.computed
+        ? literalString(property.key)
+        : property.key?.type === "Identifier"
+          ? property.key.name
+          : literalString(property.key);
+      const path = callableEscapeReferencePath(
+        property.value,
+        aliases,
+        scopeBindings,
+        protectedPath,
+        callableReturns,
+        seen,
+        depth + 1
+      );
+      if (!name) {
+        if (path) unknownPaths.push(path);
+      } else if (path) {
+        memberPaths.set(name, path);
+      } else {
+        memberPaths.delete(name);
+      }
+    }
+    return (
+      unknownPaths[0] ??
+      memberPaths.values().next().value ??
+      null
+    );
+  }
+  let candidates = [];
+  if (value.type === "ArrayExpression") {
+    candidates = (value.elements ?? [])
+      .filter(Boolean)
+      .map((element) =>
+        element.type === "SpreadElement"
+          ? element.argument
+          : element
+      );
+  } else if (value.type === "ConditionalExpression") {
+    candidates = [value.consequent, value.alternate];
+  } else if (value.type === "LogicalExpression") {
+    candidates = [value.left, value.right];
+  } else if (value.type === "SequenceExpression") {
+    candidates = value.expressions ?? [];
+  }
+  for (const candidate of candidates) {
+    const candidatePath = callableEscapeReferencePath(
+      candidate,
+      aliases,
+      scopeBindings,
+      protectedPath,
+      callableReturns,
+      seen,
+      depth + 1
+    );
+    if (candidatePath) return candidatePath;
+  }
+  return null;
+}
+
+function objectInitializerCapturesCallableEscapes(
+  node,
+  aliases,
+  scopeBindings,
+  protectedPath,
+  callableReturns
+) {
+  const value = unwrapValueExpression(node);
+  if (value?.type !== "ObjectExpression") return false;
+  let captured = false;
+  for (const property of value.properties ?? []) {
+    if (property.type === "SpreadElement") {
+      const source = unwrapValueExpression(property.argument);
+      const sourceBinding =
+        source?.type === "Identifier"
+          ? scopeBindings?.get(source)
+          : null;
+      const sourceMembers = sourceBinding
+        ? callableReturns?.members?.get(sourceBinding)
+        : null;
+      if (sourceMembers) {
+        captured =
+          captured ||
+          Array.from(sourceMembers.values()).some(
+            (path) => typeof path === "string"
+          );
+        continue;
+      }
+      if (
+        callableEscapeReferencePath(
+          property.argument,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        )
+      ) {
+        return false;
+      }
+      continue;
+    }
+    if (property.type !== "Property") continue;
+    const escapedPath = callableEscapeReferencePath(
+      property.value,
+      aliases,
+      scopeBindings,
+      protectedPath,
+      callableReturns
+    );
+    if (!escapedPath) continue;
+    const directPath = callableReturnReferencePath(
+      property.value,
+      aliases,
+      scopeBindings,
+      protectedPath,
+      callableReturns
+    );
+    if (directPath !== escapedPath) return false;
+    captured = true;
+  }
+  return captured;
+}
+
+function computedGetterReturnReferencePath(
+  node,
+  aliases,
+  scopeBindings,
+  protectedPath,
+  callableReturns,
+  seen = new WeakSet(),
+  depth = 0
+) {
+  const value = unwrapValueExpression(node);
+  if (
+    !value ||
+    depth > MAX_CALLABLE_SUMMARY_DEPTH ||
+    seen.has(value)
+  ) {
+    return null;
+  }
+  seen.add(value);
+  if (value.type === "Identifier") {
+    const binding = scopeBindings?.get(value);
+    const getterPath = binding
+      ? callableReturns?.members?.get(binding)?.get("get")
+      : null;
+    if (typeof getterPath === "string") return getterPath;
+  }
+  if (value.type === "ObjectExpression") {
+    let getterPath = null;
+    for (const property of value.properties ?? []) {
+      if (property.type === "SpreadElement") {
+        const source = unwrapValueExpression(
+          property.argument
+        );
+        const sourceBinding =
+          source?.type === "Identifier"
+            ? scopeBindings?.get(source)
+            : null;
+        const sourceMembers = sourceBinding
+          ? callableReturns?.members?.get(sourceBinding)
+          : null;
+        const sourceGetterPath = sourceBinding
+          ? sourceMembers?.get("get")
+          : computedGetterReturnReferencePath(
+              property.argument,
+              aliases,
+              scopeBindings,
+              protectedPath,
+              callableReturns,
+              seen,
+              depth + 1
+            );
+        if (sourceBinding && sourceMembers?.has("get")) {
+          getterPath =
+            typeof sourceGetterPath === "string"
+              ? sourceGetterPath
+              : null;
+        } else if (typeof sourceGetterPath === "string") {
+          getterPath = sourceGetterPath;
+        }
+        continue;
+      }
+      if (
+        property.type === "Property" &&
+        (property.computed
+          ? literalString(property.key)
+          : property.key?.type === "Identifier"
+            ? property.key.name
+            : literalString(property.key)) === "get"
+      ) {
+        getterPath = callableReturnReferencePath(
+          property.value,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        );
+      }
+    }
+    return getterPath;
+  }
+  let candidates = [];
+  if (value.type === "ConditionalExpression") {
+    candidates = [value.consequent, value.alternate];
+  } else if (value.type === "LogicalExpression") {
+    candidates = [value.left, value.right];
+  } else if (value.type === "SequenceExpression") {
+    candidates = value.expressions ?? [];
+  }
+  if (candidates.length > 0) {
+    for (const candidate of candidates) {
+      const getterPath = computedGetterReturnReferencePath(
+        candidate,
+        aliases,
+        scopeBindings,
+        protectedPath,
+        callableReturns,
+        seen,
+        depth + 1
+      );
+      if (getterPath) return getterPath;
+    }
+    return null;
+  }
+  return callableReturnReferencePath(
+    value,
+    aliases,
+    scopeBindings,
+    protectedPath,
+    callableReturns
+  );
+}
+
+function computedArgumentCallableEscapePath(
+  node,
+  aliases,
+  scopeBindings,
+  protectedPath,
+  callableReturns,
+  seen = new WeakSet(),
+  depth = 0
+) {
+  const value = unwrapValueExpression(node);
+  if (!value) return null;
+  if (depth > MAX_CALLABLE_SUMMARY_DEPTH) {
+    return protectedPath;
+  }
+  if (seen.has(value)) {
+    return protectedPath;
+  }
+  seen.add(value);
+  if (value.type === "Identifier") {
+    const binding = scopeBindings?.get(value);
+    const members = binding
+      ? callableReturns?.members?.get(binding)
+      : null;
+    for (const [name, path] of members ?? []) {
+      if (name !== "get" && typeof path === "string") {
+        return path;
+      }
+    }
+    return null;
+  }
+  if (value.type === "ObjectExpression") {
+    const memberPaths = new Map();
+    const unknownPaths = [];
+    for (const property of value.properties ?? []) {
+      if (property.type === "SpreadElement") {
+        const source = unwrapValueExpression(
+          property.argument
+        );
+        const sourceBinding =
+          source?.type === "Identifier"
+            ? scopeBindings?.get(source)
+            : null;
+        const sourceMembers = sourceBinding
+          ? callableReturns?.members?.get(sourceBinding)
+          : null;
+        if (sourceMembers) {
+          for (const [name, path] of sourceMembers) {
+            if (typeof path === "string") {
+              memberPaths.set(name, path);
+            } else {
+              memberPaths.delete(name);
+            }
+          }
+          continue;
+        }
+        const path = computedArgumentCallableEscapePath(
+          property.argument,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns,
+          seen,
+          depth + 1
+        );
+        if (path) unknownPaths.push(path);
+        continue;
+      }
+      if (property.type !== "Property") continue;
+      const name = property.computed
+        ? literalString(property.key)
+        : property.key?.type === "Identifier"
+          ? property.key.name
+          : literalString(property.key);
+      if (name === "get") {
+        memberPaths.delete("get");
+        continue;
+      }
+      const path = callableEscapeReferencePath(
+        property.value,
+        aliases,
+        scopeBindings,
+        protectedPath,
+        callableReturns,
+        seen,
+        depth + 1
+      );
+      if (!name) {
+        if (path) unknownPaths.push(path);
+      } else if (path) {
+        memberPaths.set(name, path);
+      } else {
+        memberPaths.delete(name);
+      }
+    }
+    memberPaths.delete("get");
+    return (
+      unknownPaths[0] ??
+      memberPaths.values().next().value ??
+      null
+    );
+  }
+  let candidates = [];
+  if (value.type === "ConditionalExpression") {
+    candidates = [value.consequent, value.alternate];
+  } else if (value.type === "LogicalExpression") {
+    candidates = [value.left, value.right];
+  } else if (value.type === "SequenceExpression") {
+    candidates = value.expressions ?? [];
+  }
+  for (const candidate of candidates) {
+    const path = computedArgumentCallableEscapePath(
+      candidate,
+      aliases,
+      scopeBindings,
+      protectedPath,
+      callableReturns,
+      seen,
+      depth + 1
+    );
+    if (path) return path;
+  }
+  return null;
+}
+
+function callableReturnReferencePath(
+  node,
+  aliases,
+  scopeBindings,
+  protectedPath,
+  callableReturns
+) {
+  const callable = unwrapValueExpression(node);
+  const summaryPath = callableSummaryReferencePath(
+    callable,
+    scopeBindings,
+    callableReturns
+  );
+  if (summaryPath) return summaryPath;
+  let candidates = [];
+  if (callable?.type === "ConditionalExpression") {
+    candidates = [callable.consequent, callable.alternate];
+  } else if (callable?.type === "LogicalExpression") {
+    candidates = [callable.left, callable.right];
+  } else if (callable?.type === "SequenceExpression") {
+    candidates = callable.expressions ?? [];
+  }
+  for (const candidate of candidates) {
+    const candidatePath = callableReturnReferencePath(
+      candidate,
+      aliases,
+      scopeBindings,
+      protectedPath,
+      callableReturns
+    );
+    if (candidatePath) return candidatePath;
+  }
+  if (
+    callable?.type === "ArrowFunctionExpression" &&
+    callable.expression
+  ) {
+    return referencePathThroughAliases(
+      callable.body,
+      aliases,
+      scopeBindings,
+      protectedPath,
+      callableReturns
+    );
+  }
+  const returns = directCallableReturnStatements(callable);
+  if (returns.length !== 1 || !returns[0]?.argument) return null;
+  const path = referencePathThroughAliases(
+    returns[0].argument,
+    aliases,
+    scopeBindings,
+    protectedPath,
+    callableReturns
+  );
+  if (path) {
+    callableReturns?.safeReturnStatements?.add(returns[0]);
+  }
+  return path;
+}
+
+function referencePathThroughAliases(
+  node,
+  aliases,
+  scopeBindings,
+  protectedPath,
+  callableReturns
+) {
+  const value = unwrapValueExpression(node);
+  if (!value) return null;
+  if (value.type === "Identifier") {
+    const binding = scopeBindings?.get(value);
+    return binding ? aliases.get(binding) ?? null : null;
+  }
+  if (value.type === "MemberExpression") {
+    const object = unwrapValueExpression(value.object);
+    const summaryProperty = staticMemberProperty(value);
+    if (object?.type === "Identifier" && summaryProperty) {
+      const binding = scopeBindings?.get(object);
+      const members = binding
+        ? callableReturns?.members?.get(binding)
+        : null;
+      if (
+        members?.get(summaryProperty) ===
+        SELF_CALLABLE_MEMBER
+      ) {
+        return protectedCallableMemberPath(members) ?? null;
+      }
+    }
+    const objectPath = referencePathThroughAliases(
+      value.object,
+      aliases,
+      scopeBindings,
+      protectedPath,
+      callableReturns
+    );
+    if (!objectPath) return null;
+    const property = value.computed
+      ? literalString(value.property) ??
+        (value.property?.type === "Literal" &&
+        ["bigint", "number"].includes(
+          typeof value.property.value
+        )
+          ? String(value.property.value)
+          : "*")
+      : value.property?.type === "Identifier"
+        ? value.property.name
+        : null;
+    return property ? `${objectPath}.${property}` : null;
+  }
+  if (value.type === "CallExpression") {
+    const callee = unwrapValueExpression(value.callee);
+    if (
+      [
+        "ArrowFunctionExpression",
+        "FunctionExpression"
+      ].includes(callee?.type)
+    ) {
+      return callableReturnReferencePath(
+        callee,
+        aliases,
+        scopeBindings,
+        protectedPath,
+        callableReturns
+      );
+    }
+    if (callee?.type === "Identifier") {
+      const binding = scopeBindings?.get(callee);
+      if (callableReturns?.computedBindings?.has(binding)) {
+        return computedGetterReturnReferencePath(
+          value.arguments?.[0],
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        );
+      }
+      const returnPath = binding
+        ? callableReturns?.functions?.get(binding)
+        : null;
+      if (returnPath) return returnPath;
+    }
+    if (callee?.type !== "MemberExpression") return null;
+    const method = staticMemberProperty(callee);
+    const object = unwrapValueExpression(callee.object);
+    if (object?.type === "Identifier" && method) {
+      const binding = scopeBindings?.get(object);
+      const members = binding
+        ? callableReturns?.members?.get(binding)
+        : null;
+      const returnPath = members?.get(method);
+      if (typeof returnPath === "string") return returnPath;
+      if (returnPath === SELF_CALLABLE_MEMBER) {
+        return protectedCallableMemberPath(members) ?? null;
+      }
+    }
+    const receiverPath = referencePathThroughAliases(
+      callee.object,
+      aliases,
+      scopeBindings,
+      protectedPath,
+      callableReturns
+    );
+    if (receiverPath && !method) {
+      return `${receiverPath}.*`;
+    }
+    if (receiverPath && method === "valueOf") {
+      return receiverPath;
+    }
+    return receiverPath &&
+      method &&
+      CAPABILITY_REFERENCE_DERIVING_METHODS.has(method)
+      ? `${receiverPath}.*`
+      : null;
+  }
+  if (value.type === "ArrayExpression") {
+    for (const element of value.elements ?? []) {
+      if (!element) continue;
+      const elementPath = referencePathThroughAliases(
+        element.type === "SpreadElement"
+          ? element.argument
+          : element,
+        aliases,
+        scopeBindings,
+        protectedPath,
+        callableReturns
+      );
+      if (elementPath) {
+        return element.type === "SpreadElement"
+          ? `${elementPath}.*`
+          : elementPath;
+      }
+    }
+  }
+  const compositeCandidates = [];
+  if (value.type === "ObjectExpression") {
+    for (const property of value.properties ?? []) {
+      const candidate =
+        property.type === "Property"
+          ? property.value
+          : property.type === "SpreadElement"
+            ? property.argument
+            : null;
+      const candidatePath = referencePathThroughAliases(
+        candidate,
+        aliases,
+        scopeBindings,
+        protectedPath,
+        callableReturns
+      );
+      if (candidatePath) compositeCandidates.push(candidatePath);
+    }
+  } else if (value.type === "ConditionalExpression") {
+    for (const candidate of [
+      value.consequent,
+      value.alternate
+    ]) {
+      const candidatePath = referencePathThroughAliases(
+        candidate,
+        aliases,
+        scopeBindings,
+        protectedPath,
+        callableReturns
+      );
+      if (candidatePath) compositeCandidates.push(candidatePath);
+    }
+  } else if (value.type === "LogicalExpression") {
+    for (const candidate of [value.left, value.right]) {
+      const candidatePath = referencePathThroughAliases(
+        candidate,
+        aliases,
+        scopeBindings,
+        protectedPath,
+        callableReturns
+      );
+      if (candidatePath) compositeCandidates.push(candidatePath);
+    }
+  } else if (value.type === "SequenceExpression") {
+    for (const candidate of value.expressions ?? []) {
+      const candidatePath = referencePathThroughAliases(
+        candidate,
+        aliases,
+        scopeBindings,
+        protectedPath,
+        callableReturns
+      );
+      if (candidatePath) compositeCandidates.push(candidatePath);
+    }
+  }
+  if (compositeCandidates.length > 0) {
+    const root = protectedPath?.split(".")[0];
+    return (
+      (root &&
+        protectedPath &&
+        compositeCandidates.find((candidate) =>
+          capabilityRefObjectEscapes(
+            candidate,
+            root,
+            protectedPath
+          )
+        )) ??
+      compositeCandidates[0]
+    );
+  }
+  return null;
+}
+
+function capabilityRefProtectedPath(
+  root,
+  source,
+  vueRefRoot = true
+) {
+  const normalizedSource = normalizedExpression(source);
+  if (!vueRefRoot) {
+    return normalizedSource === root ||
+      normalizedSource.startsWith(`${root}.`)
+      ? normalizedSource
+      : root;
+  }
+  if (normalizedSource === root) return `${root}.value`;
+  return normalizedSource.startsWith(`${root}.`)
+    ? `${root}.value${normalizedSource.slice(root.length)}`
+    : `${root}.value`;
+}
+
+function capabilityRefObjectEscapes(
+  path,
+  root,
+  protectedPath
+) {
+  if (typeof path !== "string") return false;
+  if (path === root || path === `${root}.value`) return true;
+  const pathParts = path.split(".");
+  const protectedParts = protectedPath.split(".");
+  const sharedLength = Math.min(
+    pathParts.length,
+    protectedParts.length
+  );
+  const overlapsProtectedPath = Array.from(
+    { length: sharedLength },
+    (_, index) =>
+      pathParts[index] === protectedParts[index] ||
+      pathParts[index] === "*" ||
+      protectedParts[index] === "*"
+  ).every(Boolean);
+  return (
+    protectedPath !== `${root}.value` &&
+    overlapsProtectedPath
+  );
+}
+
+function capabilityRefUsageIsSafe(
+  root,
+  source,
+  context,
+  {
+    originExpressions = [],
+    vueRefRoot = true
+  } = {}
+) {
+  const ast = context.symbols.ast;
+  const scopeManager = context.symbols.scopeManager;
+  if (!ast || !scopeManager) return false;
+  const scopeBindings =
+    scopeBindingsByIdentifier(scopeManager);
+  const rootBinding = uniqueScopeVariable(
+    scopeManager,
+    root
+  );
+  if (!scopeBindings || !rootBinding) return false;
+  const parentByNode = new WeakMap();
+  const indexParents = (
+    node,
+    parent = null,
+    seen = new Set()
+  ) => {
+    if (!node || typeof node !== "object" || seen.has(node)) {
+      return;
+    }
+    seen.add(node);
+    if (parent) parentByNode.set(node, parent);
+    for (const [key, value] of Object.entries(node)) {
+      if (
+        [
+          "comments",
+          "loc",
+          "parent",
+          "range",
+          "tokens"
+        ].includes(key)
+      ) {
+        continue;
+      }
+      if (Array.isArray(value)) {
+        for (const child of value) {
+          if (child && typeof child.type === "string") {
+            indexParents(child, node, seen);
+          }
+        }
+      } else if (value && typeof value.type === "string") {
+        indexParents(value, node, seen);
+      }
+    }
+  };
+  indexParents(ast);
+  const memberUses = new Map();
+  walkEstree(ast, (node) => {
+    if (node.type !== "MemberExpression") return;
+    const object = unwrapValueExpression(node.object);
+    const property = staticMemberProperty(node);
+    if (object?.type !== "Identifier" || !property) return;
+    const binding = scopeBindings.get(object);
+    if (!binding) return;
+    const parent = parentByNode.get(node);
+    if (
+      parent?.type === "AssignmentExpression" &&
+      parent.left === node
+    ) {
+      return;
+    }
+    const byProperty = memberUses.get(binding) ?? new Map();
+    const uses = byProperty.get(property) ?? [];
+    uses.push(node);
+    byProperty.set(property, uses);
+    memberUses.set(binding, byProperty);
+  });
+  const bareBindingEscapeUses = new Map();
+  const identifierIsTypeOnly = (identifier) => {
+    let current = identifier;
+    let parent = parentByNode.get(current);
+    while (parent?.type?.startsWith("TS")) {
+      if (
+        [
+          "TSAsExpression",
+          "TSInstantiationExpression",
+          "TSSatisfiesExpression",
+          "TSTypeAssertion",
+          "TSNonNullExpression"
+        ].includes(parent.type) &&
+        (parent.argument === current ||
+          parent.expression === current)
+      ) {
+        current = parent;
+        parent = parentByNode.get(current);
+        continue;
+      }
+      return true;
+    }
+    return false;
+  };
+  const valueUseRoot = (identifier) => {
+    let current = identifier;
+    let parent = parentByNode.get(current);
+    while (
+      parent &&
+      [
+        "AwaitExpression",
+        "ChainExpression",
+        "TSAsExpression",
+        "TSInstantiationExpression",
+        "TSSatisfiesExpression",
+        "TSTypeAssertion",
+        "TSNonNullExpression"
+      ].includes(parent.type) &&
+      (parent.argument === current ||
+        parent.expression === current)
+    ) {
+      current = parent;
+      parent = parentByNode.get(current);
+    }
+    return { current, parent };
+  };
+  const bareBindingUseIsTracked = (identifier) => {
+    if (identifierIsTypeOnly(identifier)) return true;
+    const { current, parent } = valueUseRoot(identifier);
+    if (
+      parent?.type === "MemberExpression" &&
+      parent.object === current
+    ) {
+      const memberParent = parentByNode.get(parent);
+      return Boolean(
+        staticMemberProperty(parent) &&
+          memberParent?.type === "AssignmentExpression" &&
+          memberParent.left === parent
+      );
+    }
+    if (
+      parent?.type === "VariableDeclarator" &&
+      parent.id === current
+    ) {
+      return true;
+    }
+    if (
+      parent?.type === "AssignmentExpression" &&
+      parent.left === current
+    ) {
+      return true;
+    }
+    if (
+      parent?.type === "VariableDeclarator" &&
+      parent.init === current &&
+      parent.id?.type === "Identifier"
+    ) {
+      return true;
+    }
+    if (
+      parent?.type === "AssignmentExpression" &&
+      parent.operator === "=" &&
+      parent.right === current &&
+      unwrapValueExpression(parent.left)?.type ===
+        "Identifier"
+    ) {
+      return true;
+    }
+    if (
+      parent?.type === "UnaryExpression" &&
+      ["typeof", "void"].includes(parent.operator)
+    ) {
+      return true;
+    }
+    return parent?.type === "ExpressionStatement";
+  };
+  for (const scope of scopeManager.scopes ?? []) {
+    for (const binding of scope.variables ?? []) {
+      for (const reference of binding.references ?? []) {
+        const identifier = reference.identifier;
+        if (
+          !identifier ||
+          bareBindingUseIsTracked(identifier)
+        ) {
+          continue;
+        }
+        const uses =
+          bareBindingEscapeUses.get(binding) ?? [];
+        uses.push(identifier);
+        bareBindingEscapeUses.set(binding, uses);
+      }
+    }
+  }
+  const isInsideDeferredCallable = (node) => {
+    let current = parentByNode.get(node);
+    while (current) {
+      if (
+        [
+          "ArrowFunctionExpression",
+          "FunctionDeclaration",
+          "FunctionExpression"
+        ].includes(current.type)
+      ) {
+        return true;
+      }
+      current = parentByNode.get(current);
+    }
+    return false;
+  };
+  const safeMemberAssignmentDominatesUses = (
+    assignment,
+    member
+  ) => {
+    const statement = parentByNode.get(assignment);
+    if (
+      statement?.type !== "ExpressionStatement" ||
+      parentByNode.get(statement)?.type !== "Program"
+    ) {
+      return false;
+    }
+    const object = unwrapValueExpression(member.object);
+    const property = staticMemberProperty(member);
+    const binding =
+      object?.type === "Identifier"
+        ? scopeBindings.get(object)
+        : null;
+    const assignmentEnd = assignment.range?.[1];
+    if (
+      !binding ||
+      !property ||
+      !Number.isInteger(assignmentEnd)
+    ) {
+      return false;
+    }
+    const memberIdentity =
+      callableReturns.members.get(binding);
+    const equivalentBindings = new Set([binding]);
+    if (memberIdentity) {
+      for (const [candidate, members] of
+        callableReturns.members) {
+        if (members === memberIdentity) {
+          equivalentBindings.add(candidate);
+        }
+      }
+    }
+    const uses = Array.from(equivalentBindings).flatMap(
+      (candidate) =>
+        memberUses.get(candidate)?.get(property) ?? []
+    );
+    const escapeUses = Array.from(
+      equivalentBindings
+    ).flatMap(
+      (candidate) =>
+        bareBindingEscapeUses.get(candidate) ?? []
+    );
+    return [...uses, ...escapeUses].every(
+      (use) =>
+        Number.isInteger(use.range?.[0]) &&
+        use.range[0] >= assignmentEnd &&
+        !isInsideDeferredCallable(use)
+    );
+  };
+  const safeBindingAssignmentDominatesUses = (
+    assignment,
+    binding
+  ) => {
+    const statement = parentByNode.get(assignment);
+    const assignmentEnd = assignment.range?.[1];
+    if (
+      statement?.type !== "ExpressionStatement" ||
+      parentByNode.get(statement)?.type !== "Program" ||
+      !binding ||
+      !Number.isInteger(assignmentEnd)
+    ) {
+      return false;
+    }
+    const uses = Array.from(
+      memberUses.get(binding)?.values() ?? []
+    )
+      .flat()
+      .concat(
+        bareBindingEscapeUses.get(binding) ?? []
+      );
+    return uses.every(
+      (use) =>
+        Number.isInteger(use.range?.[0]) &&
+        use.range[0] >= assignmentEnd &&
+        !isInsideDeferredCallable(use)
+    );
+  };
+  const protectedPath = capabilityRefProtectedPath(
+    root,
+    source,
+    vueRefRoot
+  );
+  const aliases = new Map([[rootBinding, root]]);
+  const templateProtectedOrigins = new Map([
+    [root, root]
+  ]);
+  const pendingOriginExpressions = [...originExpressions];
+  const seenOriginExpressions = new Set();
+  while (pendingOriginExpressions.length > 0) {
+    const expression = pendingOriginExpressions.shift();
+    if (
+      !expression ||
+      seenOriginExpressions.has(expression)
+    ) {
+      continue;
+    }
+    seenOriginExpressions.add(expression);
+    walkEstree(expression, (candidate) => {
+      if (candidate.type !== "Identifier") return;
+      const binding = scopeBindings.get(candidate);
+      if (
+        !binding ||
+        binding === rootBinding ||
+        context.symbols.importsByBinding?.has(binding)
+      ) {
+        return;
+      }
+      const sources = expressionServerReadSources(
+        candidate,
+        context
+      );
+      if (sources?.size !== 1) return;
+      aliases.set(binding, protectedPath);
+      templateProtectedOrigins.set(candidate.name, root);
+      const declaration = uniqueIndexedNode(
+        context.symbols.declarationsByBinding,
+        binding
+      );
+      if (
+        declaration &&
+        !seenOriginExpressions.has(declaration)
+      ) {
+        pendingOriginExpressions.push(declaration);
+      }
+    });
+  }
+  const vueComputedBindings = new Set(
+    context.symbols.vueComputedImportBindings ?? []
+  );
+  const callableReturns = {
+    computedBindings: vueComputedBindings,
+    functions: new Map(),
+    members: new Map(),
+    safeReturnStatements: new WeakSet()
+  };
+  let unsafeCallablePatternEscape = false;
+  let unsafeCallbackParameterEscape = false;
+  const mapEntriesEqual = (left, right) =>
+    left.size === right.size &&
+    Array.from(left).every(
+      ([key, value]) => right.get(key) === value
+    );
+  const memberMapsEqual = (left, right) =>
+    left.size === right.size &&
+    Array.from(left).every(([binding, members]) => {
+      const other = right.get(binding);
+      return other && mapEntriesEqual(members, other);
+    });
+  let changed = true;
+  while (changed) {
+    const aliasesBefore = new Map(aliases);
+    const functionsBefore = new Map(
+      callableReturns.functions
+    );
+    const membersBefore = new Map(
+      Array.from(
+        callableReturns.members,
+        ([binding, members]) => [
+          binding,
+          new Map(members)
+        ]
+      )
+    );
+    changed = false;
+    walkEstree(ast, (node) => {
+      const rememberFunctionReturnPath = (identifier, path) => {
+        if (identifier?.type !== "Identifier" || !path) return;
+        const binding = scopeBindings.get(identifier);
+        if (
+          binding &&
+          callableReturns.functions.get(binding) !== path
+        ) {
+          callableReturns.functions.set(binding, path);
+          changed = true;
+        }
+      };
+      const conciseReturnPath = (expression) => {
+        return callableReturnReferencePath(
+          expression,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        );
+      };
+      const extractedMemberReturnPath = (expression) => {
+        const member = unwrapValueExpression(expression);
+        if (member?.type !== "MemberExpression") return null;
+        const object = unwrapValueExpression(member.object);
+        const property = staticMemberProperty(member);
+        if (object?.type !== "Identifier" || !property) return null;
+        const binding = scopeBindings.get(object);
+        const path = binding
+          ? callableReturns.members.get(binding)?.get(property)
+          : null;
+        return typeof path === "string" ? path : null;
+      };
+      const rememberFunctionReturn = (identifier, expression) => {
+        rememberFunctionReturnPath(
+          identifier,
+          conciseReturnPath(expression) ??
+            extractedMemberReturnPath(expression)
+        );
+      };
+      const rememberMemberReturnPath = (
+        objectIdentifier,
+        property,
+        path
+      ) => {
+        if (
+          objectIdentifier?.type !== "Identifier" ||
+          !property
+        ) {
+          return;
+        }
+        const binding = scopeBindings.get(objectIdentifier);
+        if (!binding) return;
+        const members =
+          callableReturns.members.get(binding) ?? new Map();
+        const nextPath =
+          typeof path === "string" ||
+          path === SELF_CALLABLE_MEMBER
+            ? path
+            : SAFE_CALLABLE_MEMBER;
+        if (members.get(property) === nextPath) return;
+        members.set(property, nextPath);
+        callableReturns.members.set(binding, members);
+        changed = true;
+      };
+      const replaceMemberReturns = (
+        objectIdentifier,
+        nextMembers
+      ) => {
+        if (objectIdentifier?.type !== "Identifier") return;
+        const binding = scopeBindings.get(objectIdentifier);
+        if (!binding) return;
+        const current =
+          callableReturns.members.get(binding) ?? new Map();
+        const isEqual =
+          current.size === nextMembers.size &&
+          Array.from(nextMembers).every(
+            ([name, path]) => current.get(name) === path
+          );
+        if (isEqual) return;
+        if (nextMembers.size === 0) {
+          callableReturns.members.delete(binding);
+        } else {
+          callableReturns.members.set(
+            binding,
+            nextMembers
+          );
+        }
+        changed = true;
+      };
+      const copyMemberReturns = (
+        targetExpression,
+        sourceExpression,
+        assignment = null
+      ) => {
+        const targetIdentifier =
+          unwrapValueExpression(targetExpression);
+        const sourceIdentifier =
+          unwrapValueExpression(sourceExpression);
+        if (
+          targetIdentifier?.type !== "Identifier" ||
+          sourceIdentifier?.type !== "Identifier"
+        ) {
+          return;
+        }
+        const targetBinding = scopeBindings.get(targetIdentifier);
+        const sourceBinding = scopeBindings.get(sourceIdentifier);
+        const sourceMembers = sourceBinding
+          ? callableReturns.members.get(sourceBinding)
+          : null;
+        if (!targetBinding || !sourceMembers) return;
+        const currentMembers =
+          callableReturns.members.get(targetBinding);
+        const currentHasProtectedMember =
+          currentMembers &&
+          Array.from(currentMembers.values()).some(
+            (path) => typeof path === "string"
+          );
+        if (
+          assignment &&
+          currentHasProtectedMember &&
+          !safeBindingAssignmentDominatesUses(
+            assignment,
+            targetBinding
+          )
+        ) {
+          const nextMembers = new Map(currentMembers);
+          for (const [property, path] of sourceMembers) {
+            if (typeof path === "string") {
+              nextMembers.set(property, path);
+            }
+          }
+          if (!mapEntriesEqual(currentMembers, nextMembers)) {
+            callableReturns.members.set(
+              targetBinding,
+              nextMembers
+            );
+            changed = true;
+          }
+          return;
+        }
+        if (currentMembers !== sourceMembers) {
+          callableReturns.members.set(
+            targetBinding,
+            sourceMembers
+          );
+          changed = true;
+        }
+      };
+      const rememberDestructuredMemberReturns = (
+        pattern,
+        sourceExpression
+      ) => {
+        if (pattern?.type !== "ObjectPattern") return;
+        const sourceIdentifier =
+          unwrapValueExpression(sourceExpression);
+        if (sourceIdentifier?.type !== "Identifier") return;
+        const sourceBinding = scopeBindings.get(sourceIdentifier);
+        const sourceMembers = sourceBinding
+          ? callableReturns.members.get(sourceBinding)
+          : null;
+        if (!sourceMembers) return;
+        for (const property of pattern.properties ?? []) {
+          if (property.type === "RestElement") {
+            unsafeCallablePatternEscape = true;
+            continue;
+          }
+          if (property.type !== "Property") {
+            unsafeCallablePatternEscape = true;
+            continue;
+          }
+          const propertyName = property.computed
+            ? literalString(property.key)
+            : property.key?.type === "Identifier"
+              ? property.key.name
+              : literalString(property.key);
+          const target =
+            property.value?.type === "AssignmentPattern"
+              ? property.value.left
+              : property.value;
+          const returnPath = propertyName
+            ? sourceMembers.get(propertyName)
+            : null;
+          if (
+            typeof returnPath === "string" &&
+            target?.type === "Identifier"
+          ) {
+            rememberFunctionReturnPath(target, returnPath);
+          } else if (typeof returnPath === "string") {
+            unsafeCallablePatternEscape = true;
+          }
+        }
+      };
+
+      if (node.type === "VariableDeclarator") {
+        rememberFunctionReturn(node.id, node.init);
+        if (
+          node.id?.type === "Identifier" &&
+          node.init?.type === "ObjectExpression"
+        ) {
+          const nextMembers = new Map();
+          let hasUnknownMember = false;
+          for (const property of node.init.properties ?? []) {
+            if (property.type === "SpreadElement") {
+              const sourceIdentifier =
+                unwrapValueExpression(property.argument);
+              const sourceBinding =
+                sourceIdentifier?.type === "Identifier"
+                  ? scopeBindings.get(sourceIdentifier)
+                  : null;
+              const sourceMembers = sourceBinding
+                ? callableReturns.members.get(sourceBinding)
+                : null;
+              if (sourceMembers) {
+                for (const [name, returnPath] of
+                  sourceMembers) {
+                  nextMembers.set(name, returnPath);
+                }
+              } else if (
+                callableEscapeReferencePath(
+                  property.argument,
+                  aliases,
+                  scopeBindings,
+                  protectedPath,
+                  callableReturns
+                )
+              ) {
+                hasUnknownMember = true;
+              }
+              continue;
+            }
+            if (property.type !== "Property") continue;
+            const propertyName = property.computed
+              ? literalString(property.key)
+                : property.key?.type === "Identifier"
+                  ? property.key.name
+                  : literalString(property.key);
+            const returnPath = conciseReturnPath(
+              property.value
+            );
+            const returnsReceiver =
+              callableReferencesReceiver(property.value);
+            if (!propertyName) {
+              if (returnPath || returnsReceiver) {
+                hasUnknownMember = true;
+              }
+            } else if (returnPath) {
+              nextMembers.set(propertyName, returnPath);
+            } else if (returnsReceiver) {
+              nextMembers.set(
+                propertyName,
+                SELF_CALLABLE_MEMBER
+              );
+            } else {
+              nextMembers.set(
+                propertyName,
+                SAFE_CALLABLE_MEMBER
+              );
+            }
+          }
+          replaceMemberReturns(node.id, nextMembers);
+          if (hasUnknownMember) {
+            unsafeCallablePatternEscape = true;
+          }
+        }
+        copyMemberReturns(node.id, node.init);
+        rememberDestructuredMemberReturns(
+          node.id,
+          node.init
+        );
+      }
+      if (
+        node.type === "AssignmentExpression" &&
+        node.operator === "="
+      ) {
+        rememberFunctionReturn(node.left, node.right);
+        copyMemberReturns(node.left, node.right, node);
+        rememberDestructuredMemberReturns(
+          node.left,
+          node.right
+        );
+        const left = unwrapValueExpression(node.left);
+        if (left?.type === "MemberExpression") {
+          const returnPath = conciseReturnPath(node.right);
+          const memberReturn =
+            returnPath ??
+            (callableReferencesReceiver(node.right)
+              ? SELF_CALLABLE_MEMBER
+              : null);
+          if (
+            memberReturn ||
+            safeMemberAssignmentDominatesUses(node, left)
+          ) {
+            rememberMemberReturnPath(
+              unwrapValueExpression(left.object),
+              staticMemberProperty(left),
+              memberReturn
+            );
+          }
+        }
+      }
+    });
+    walkEstree(ast, (node) => {
+      if (
+        node.type !== "VariableDeclarator" ||
+        node.id?.type !== "Identifier" ||
+        !scopeBindings.has(node.id) ||
+        aliases.has(scopeBindings.get(node.id))
+      ) {
+        return;
+      }
+      const path = referencePathThroughAliases(
+        node.init,
+        aliases,
+        scopeBindings,
+        protectedPath,
+        callableReturns
+      );
+      if (path) {
+        aliases.set(scopeBindings.get(node.id), path);
+        changed = true;
+      }
+    });
+    walkEstree(ast, (node) => {
+      if (
+        node.type !== "CallExpression" ||
+        node.callee?.type !== "MemberExpression"
+      ) {
+        return;
+      }
+      const receiverPath = referencePathThroughAliases(
+        node.callee.object,
+        aliases,
+        scopeBindings,
+        protectedPath,
+        callableReturns
+      );
+      const method = node.callee.computed
+        ? literalString(node.callee.property)
+        : node.callee.property?.type === "Identifier"
+          ? node.callee.property.name
+          : null;
+      if (
+        !receiverPath ||
+        !method ||
+        !CAPABILITY_COLLECTION_CALLBACK_METHODS.has(method)
+      ) {
+        return;
+      }
+      const callback = unwrapValueExpression(
+        node.arguments?.[0]
+      );
+      if (
+        ![
+          "ArrowFunctionExpression",
+          "FunctionExpression"
+        ].includes(callback?.type)
+      ) {
+        return;
+      }
+      if (
+        callback.type === "FunctionExpression" &&
+        callableLexicallyReferencesIdentifier(
+          callback,
+          "arguments"
+        )
+      ) {
+        unsafeCallbackParameterEscape = true;
+      }
+      const elementParameter =
+        callback.params?.[
+          ["reduce", "reduceRight"].includes(method) ? 1 : 0
+        ];
+      const derivedParameters = [
+        {
+          parameter: elementParameter,
+          path: `${receiverPath}.*`
+        }
+      ];
+      if (
+        ["reduce", "reduceRight"].includes(method) &&
+        (node.arguments ?? []).length < 2
+      ) {
+        derivedParameters.push({
+          parameter: callback.params?.[0],
+          path: `${receiverPath}.*`
+        });
+      }
+      derivedParameters.push({
+        parameter:
+          callback.params?.[
+            ["reduce", "reduceRight"].includes(method) ? 3 : 2
+          ],
+        path: receiverPath
+      });
+      for (const { parameter, path } of derivedParameters) {
+        if (!parameter) continue;
+        const bindingTarget =
+          parameter.type === "AssignmentPattern"
+            ? parameter.left
+            : parameter.type === "RestElement"
+              ? parameter.argument
+              : parameter;
+        if (bindingTarget?.type !== "Identifier") {
+          unsafeCallbackParameterEscape = true;
+          continue;
+        }
+        const parameterBinding =
+          scopeBindings.get(bindingTarget);
+        if (
+          parameterBinding &&
+          !aliases.has(parameterBinding)
+        ) {
+          aliases.set(
+            parameterBinding,
+            parameter.type === "RestElement"
+              ? `${receiverPath}.*`
+              : path
+          );
+          changed = true;
+        }
+      }
+    });
+    walkEstree(ast, (node) => {
+      if (node.type !== "ForOfStatement") return;
+      const iterablePath =
+        referencePathThroughAliases(
+          node.right,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        ) ??
+        callableEscapeReferencePath(
+          node.right,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        );
+      if (!iterablePath) return;
+      const target =
+        node.left?.type === "VariableDeclaration"
+          ? node.left.declarations?.[0]?.id
+          : node.left;
+      if (target?.type !== "Identifier") return;
+      const targetBinding = scopeBindings.get(target);
+      if (targetBinding && !aliases.has(targetBinding)) {
+        aliases.set(targetBinding, `${iterablePath}.*`);
+        changed = true;
+      }
+    });
+    changed =
+      !mapEntriesEqual(aliasesBefore, aliases) ||
+      !mapEntriesEqual(
+        functionsBefore,
+        callableReturns.functions
+      ) ||
+      !memberMapsEqual(
+        membersBefore,
+        callableReturns.members
+      );
+  }
+  const normalizedProtectedPath =
+    normalizedExpression(protectedPath);
+  const normalizedTemplateReferencePath = (path) =>
+    typeof path === "string"
+      ? normalizedExpression(path).replace(
+          /\.(?:0|[1-9]\d*)(?=\.|$)/g,
+          ".*"
+        )
+      : null;
+  const templateReferencePath = (
+    node,
+    templateAliases = new Map()
+  ) => {
+    const value = unwrapValueExpression(node);
+    if (!value) return null;
+    if (value.type === "Identifier") {
+      if (templateAliases.has(value.name)) {
+        return normalizedTemplateReferencePath(
+          templateAliases.get(value.name)
+        );
+      }
+      const bindings = topLevelScopeVariables(
+        scopeManager,
+        value.name
+      );
+      if (bindings.length > 1) {
+        return normalizedProtectedPath;
+      }
+      const binding = bindings[0] ?? null;
+      return normalizedTemplateReferencePath(
+        (binding ? aliases.get(binding) : null) ??
+          value.name
+      );
+    }
+    if (value.type === "MemberExpression") {
+      const objectPath = templateReferencePath(
+        value.object,
+        templateAliases
+      );
+      if (!objectPath) return null;
+      const property = value.computed
+        ? literalString(value.property) ??
+          (value.property?.type === "Literal" &&
+          ["bigint", "number"].includes(
+            typeof value.property.value
+          )
+            ? "*"
+            : "*")
+        : value.property?.type === "Identifier"
+          ? value.property.name
+          : null;
+      return property
+        ? normalizedTemplateReferencePath(
+            `${objectPath}.${property}`
+          )
+        : null;
+    }
+    if (value.type === "CallExpression") {
+      const callee = unwrapValueExpression(value.callee);
+      if (callee?.type === "Identifier") {
+        const bindings = topLevelScopeVariables(
+          scopeManager,
+          callee.name
+        );
+        if (bindings.length > 1) {
+          return normalizedProtectedPath;
+        }
+        const binding = bindings[0] ?? null;
+        return normalizedTemplateReferencePath(
+          binding
+            ? callableReturns.functions.get(binding)
+            : null
+        );
+      }
+      if (callee?.type !== "MemberExpression") {
+        return null;
+      }
+      const receiverPath = templateReferencePath(
+        callee.object,
+        templateAliases
+      );
+      const method = staticMemberProperty(callee);
+      const receiver =
+        unwrapValueExpression(callee.object);
+      if (receiver?.type === "Identifier" && method) {
+        const bindings = topLevelScopeVariables(
+          scopeManager,
+          receiver.name
+        );
+        if (bindings.length > 1) {
+          return normalizedProtectedPath;
+        }
+        const binding = bindings[0] ?? null;
+        const members = binding
+          ? callableReturns.members.get(binding)
+          : null;
+        const memberPath = members?.get(method);
+        if (typeof memberPath === "string") {
+          return normalizedTemplateReferencePath(memberPath);
+        }
+        if (memberPath === SELF_CALLABLE_MEMBER) {
+          return normalizedTemplateReferencePath(
+            protectedCallableMemberPath(members)
+          );
+        }
+      }
+      return receiverPath &&
+        method &&
+        CAPABILITY_REFERENCE_DERIVING_METHODS.has(method)
+        ? `${receiverPath}.*`
+        : null;
+    }
+    return null;
+  };
+  const templatePathEscapesProtected = (path) =>
+    capabilityRefObjectEscapes(
+      path,
+      root,
+      normalizedProtectedPath
+    );
+  const templatePrimitiveCapabilityFields = new Set([
+    "code",
+    "disabledReason",
+    "enabled",
+    "key",
+    "label",
+    "length",
+    "name",
+    "reason",
+    "variant"
+  ]);
+  const templatePathCarriesProtectedObject = (path) => {
+    if (!templatePathEscapesProtected(path)) return false;
+    const pathParts = path.split(".");
+    const protectedParts =
+      normalizedProtectedPath.split(".");
+    if (pathParts.length <= protectedParts.length) {
+      return true;
+    }
+    const suffix = pathParts.slice(protectedParts.length);
+    if (
+      templatePrimitiveCapabilityFields.has(
+        suffix.at(-1)
+      )
+    ) {
+      return false;
+    }
+    return true;
+  };
+  const templatePatternIdentifiers = (pattern) => {
+    const value = unwrapValueExpression(pattern);
+    if (!value) return [];
+    if (value.type === "Identifier") return [value.name];
+    if (value.type === "RestElement") {
+      return templatePatternIdentifiers(value.argument);
+    }
+    if (value.type === "AssignmentPattern") {
+      return templatePatternIdentifiers(value.left);
+    }
+    if (value.type === "ArrayPattern") {
+      return (value.elements ?? []).flatMap(
+        templatePatternIdentifiers
+      );
+    }
+    if (value.type === "ObjectPattern") {
+      return (value.properties ?? []).flatMap((property) =>
+        property.type === "RestElement"
+          ? templatePatternIdentifiers(property.argument)
+          : property.type === "Property"
+            ? templatePatternIdentifiers(property.value)
+            : []
+      );
+    }
+    return [];
+  };
+  const templateElementAncestors = (node) => {
+    const elements = [];
+    let current = node;
+    while (current) {
+      if (current.type === "VElement") {
+        elements.push(current);
+      }
+      current = current.parent;
+    }
+    return elements.reverse();
+  };
+  const templateAliasesForNode = (node) => {
+    const aliases = new Map(templateProtectedOrigins);
+    for (const element of templateElementAncestors(node)) {
+      const forDirective = elementDirective(element, "for");
+      const forExpression =
+        directiveExpression(forDirective);
+      if (forExpression?.type !== "VForExpression") {
+        continue;
+      }
+      const iterablePath = templateReferencePath(
+        forExpression.right,
+        aliases
+      );
+      if (
+        !iterablePath ||
+        !templatePathEscapesProtected(iterablePath)
+      ) {
+        continue;
+      }
+      for (const name of templatePatternIdentifiers(
+        forExpression.left?.[0]
+      )) {
+        aliases.set(name, `${iterablePath}.*`);
+      }
+    }
+    return aliases;
+  };
+  const templateNodeContainsProtectedReference = (
+    node,
+    aliases,
+    objectOnly = false
+  ) => {
+    let found = false;
+    walkEstree(node, (candidate) => {
+      if (found) return;
+      if (
+        ![
+          "CallExpression",
+          "Identifier",
+          "MemberExpression"
+        ].includes(candidate.type)
+      ) {
+        return;
+      }
+      const parent = candidate.parent;
+      if (
+        candidate.type === "Identifier" &&
+        (parent?.type === "MemberExpression" ||
+          (parent?.type === "Property" &&
+            parent.key === candidate &&
+            parent.value !== candidate &&
+            !parent.computed) ||
+          parent?.type === "VForExpression")
+      ) {
+        return;
+      }
+      if (
+        candidate.type === "MemberExpression" &&
+        ((parent?.type === "MemberExpression" &&
+          parent.object === candidate) ||
+          (parent?.type === "CallExpression" &&
+            parent.callee === candidate))
+      ) {
+        return;
+      }
+      const path = templateReferencePath(
+        candidate,
+        aliases
+      );
+      found = objectOnly
+        ? Boolean(
+            path &&
+              templatePathCarriesProtectedObject(path)
+          )
+        : Boolean(
+            path && templatePathEscapesProtected(path)
+          );
+    });
+    return found;
+  };
+  const templateCapabilityUsageIsSafe = () => {
+    const template = ast.templateBody;
+    if (!template) return true;
+    let safe = true;
+    walkEstree(template, (node) => {
+      if (!safe || node.type !== "VExpressionContainer") {
+        return;
+      }
+      const expression = node.expression;
+      if (!expression) return;
+      const attribute =
+        node.parent?.type === "VAttribute"
+          ? node.parent
+          : null;
+      const element =
+        attribute?.parent?.parent?.type === "VElement"
+          ? attribute.parent.parent
+          : null;
+      const aliases = templateAliasesForNode(node);
+      const directive = directiveName(attribute);
+      const argument = directiveArgument(attribute);
+      const trustedActionCollection =
+        directive === "bind" &&
+        ["actions", "available-actions"].includes(
+          argument ?? ""
+        ) &&
+        normalizedElementName(element) ===
+          "business-draft-action" &&
+        context.businessDraftActionTrusted;
+      if (
+        directive === "model" &&
+        templateNodeContainsProtectedReference(
+          expression,
+          aliases
+        )
+      ) {
+        safe = false;
+        return;
+      }
+      if (
+        directive &&
+        ![
+          "bind",
+          "cloak",
+          "else",
+          "else-if",
+          "for",
+          "html",
+          "if",
+          "memo",
+          "model",
+          "on",
+          "once",
+          "pre",
+          "show",
+          "slot",
+          "text"
+        ].includes(directive) &&
+        templateNodeContainsProtectedReference(
+          expression,
+          aliases,
+          true
+        )
+      ) {
+        safe = false;
+        return;
+      }
+      if (
+        directive === "bind" &&
+        !trustedActionCollection &&
+        templateNodeContainsProtectedReference(
+          expression,
+          aliases,
+          true
+        )
+      ) {
+        safe = false;
+        return;
+      }
+      walkEstree(expression, (candidate) => {
+        if (!safe) return;
+        if (
+          candidate.type === "AssignmentExpression" &&
+          templateNodeContainsProtectedReference(
+            candidate.left,
+            aliases
+          )
+        ) {
+          safe = false;
+          return;
+        }
+        if (
+          (candidate.type === "UpdateExpression" ||
+            (candidate.type === "UnaryExpression" &&
+              candidate.operator === "delete")) &&
+          templateNodeContainsProtectedReference(
+            candidate.argument,
+            aliases
+          )
+        ) {
+          safe = false;
+          return;
+        }
+        if (
+          ![
+            "CallExpression",
+            "NewExpression"
+          ].includes(candidate.type)
+        ) {
+          return;
+        }
+        if (
+          (candidate.arguments ?? []).some((argumentNode) =>
+            templateNodeContainsProtectedReference(
+              argumentNode?.type === "SpreadElement"
+                ? argumentNode.argument
+                : argumentNode,
+              aliases,
+              true
+            )
+          )
+        ) {
+          safe = false;
+          return;
+        }
+        const callee = unwrapValueExpression(
+          candidate.callee
+        );
+        if (callee?.type !== "MemberExpression") return;
+        const receiverPath = templateReferencePath(
+          callee.object,
+          aliases
+        );
+        if (
+          !receiverPath ||
+          !templatePathEscapesProtected(receiverPath)
+        ) {
+          return;
+        }
+        const method = staticMemberProperty(callee);
+        const readonlyMethod =
+          method &&
+          CAPABILITY_READONLY_METHODS.has(method);
+        if (!readonlyMethod) {
+          safe = false;
+          return;
+        }
+        for (const argumentNode of candidate.arguments ?? []) {
+          const callback = unwrapValueExpression(
+            argumentNode?.type === "SpreadElement"
+              ? argumentNode.argument
+              : argumentNode
+          );
+          if (
+            ![
+              "ArrowFunctionExpression",
+              "FunctionExpression"
+            ].includes(callback?.type)
+          ) {
+            continue;
+          }
+          walkEstree(callback.body, (bodyNode) => {
+            if (
+              bodyNode.type === "AssignmentExpression" ||
+              bodyNode.type === "UpdateExpression" ||
+              (bodyNode.type === "UnaryExpression" &&
+                bodyNode.operator === "delete")
+            ) {
+              safe = false;
+            }
+          });
+        }
+      });
+    });
+    return safe;
+  };
+  const templateUsageSafe =
+    templateCapabilityUsageIsSafe();
+  let escaped =
+    unsafeCallablePatternEscape ||
+    unsafeCallbackParameterEscape ||
+    !templateUsageSafe;
+  const assignmentTargetExpressions = (target) => {
+    const value = unwrapValueExpression(target);
+    if (!value) return [];
+    if (value.type === "MemberExpression") return [value];
+    if (value.type === "RestElement") {
+      return assignmentTargetExpressions(value.argument);
+    }
+    if (value.type === "AssignmentPattern") {
+      return assignmentTargetExpressions(value.left);
+    }
+    if (value.type === "ArrayPattern") {
+      return (value.elements ?? []).flatMap((element) =>
+        assignmentTargetExpressions(element)
+      );
+    }
+    if (value.type === "ObjectPattern") {
+      return (value.properties ?? []).flatMap((property) =>
+        property.type === "RestElement"
+          ? assignmentTargetExpressions(property.argument)
+          : property.type === "Property"
+            ? assignmentTargetExpressions(property.value)
+            : []
+      );
+    }
+    return [];
+  };
+  const assignmentTargetMutatesProtectedObject = (
+    target,
+    allowRootPopulation = false
+  ) =>
+    assignmentTargetExpressions(target).some(
+      (assignmentTarget) => {
+        const directlyPopulatesRoot =
+          allowRootPopulation &&
+          assignmentTarget.type === "MemberExpression" &&
+          !assignmentTarget.computed &&
+          assignmentTarget.object?.type === "Identifier" &&
+          scopeBindings.get(assignmentTarget.object) ===
+            rootBinding &&
+          assignmentTarget.property?.type === "Identifier" &&
+          assignmentTarget.property.name === "value";
+        if (directlyPopulatesRoot) return false;
+        return capabilityRefObjectEscapes(
+          referencePathThroughAliases(
+            assignmentTarget,
+            aliases,
+            scopeBindings,
+            protectedPath,
+            callableReturns
+          ) ??
+            callableEscapeReferencePath(
+              assignmentTarget,
+              aliases,
+              scopeBindings,
+              protectedPath,
+              callableReturns
+            ),
+          root,
+          protectedPath
+        );
+      }
+    );
+  walkEstree(ast, (node) => {
+    if (escaped) return;
+    const directCallee =
+      node.type === "CallExpression"
+        ? unwrapValueExpression(node.callee)
+        : null;
+    if (
+      directCallee?.type === "Identifier" &&
+      directCallee.name === "eval"
+    ) {
+      escaped = true;
+      return;
+    }
+    if (
+      ["ForInStatement", "ForOfStatement"].includes(
+        node.type
+      ) &&
+      node.left?.type !== "VariableDeclaration" &&
+      assignmentTargetMutatesProtectedObject(node.left)
+    ) {
+      escaped = true;
+      return;
+    }
+    if (node.type === "ForOfStatement") {
+      const directIterablePath =
+        referencePathThroughAliases(
+          node.right,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        );
+      const callableIterablePath =
+        callableEscapeReferencePath(
+          node.right,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        );
+      const iterablePath =
+        directIterablePath ?? callableIterablePath;
+      const target =
+        node.left?.type === "VariableDeclaration"
+          ? node.left.declarations?.[0]?.id
+          : node.left;
+      if (
+        (target?.type !== "Identifier" ||
+          (!directIterablePath &&
+            Boolean(callableIterablePath))) &&
+        capabilityRefObjectEscapes(
+          iterablePath,
+          root,
+          protectedPath
+        )
+      ) {
+        escaped = true;
+        return;
+      }
+    }
+    if (
+      node.type === "AssignmentExpression" &&
+      assignmentTargetMutatesProtectedObject(
+        node.left,
+        vueRefRoot
+      )
+    ) {
+        escaped = true;
+        return;
+    }
+    if (
+      (node.type === "UpdateExpression" ||
+        (node.type === "UnaryExpression" &&
+          node.operator === "delete")) &&
+      capabilityRefObjectEscapes(
+        referencePathThroughAliases(
+          node.argument,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        ) ??
+          callableEscapeReferencePath(
+            node.argument,
+            aliases,
+            scopeBindings,
+            protectedPath,
+            callableReturns
+          ),
+        root,
+        protectedPath
+      )
+    ) {
+      escaped = true;
+      return;
+    }
+    if (
+      ["ThrowStatement", "YieldExpression"].includes(
+        node.type
+      ) &&
+      capabilityRefObjectEscapes(
+        referencePathThroughAliases(
+          node.argument,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        ) ??
+          callableEscapeReferencePath(
+            node.argument,
+            aliases,
+            scopeBindings,
+            protectedPath,
+            callableReturns
+          ),
+        root,
+        protectedPath
+      )
+    ) {
+      escaped = true;
+      return;
+    }
+    if (
+      node.type === "AssignmentPattern" &&
+      capabilityRefObjectEscapes(
+        referencePathThroughAliases(
+          node.right,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        ) ??
+          callableEscapeReferencePath(
+            node.right,
+            aliases,
+            scopeBindings,
+            protectedPath,
+            callableReturns
+          ),
+        root,
+        protectedPath
+      )
+    ) {
+      escaped = true;
+      return;
+    }
+    if (
+      node.type === "VariableDeclarator" &&
+      node.id?.type !== "Identifier" &&
+      capabilityRefObjectEscapes(
+        referencePathThroughAliases(
+          node.init,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        ) ??
+          callableEscapeReferencePath(
+            node.init,
+            aliases,
+            scopeBindings,
+            protectedPath,
+            callableReturns
+          ),
+        root,
+        protectedPath
+      )
+    ) {
+      escaped = true;
+      return;
+    }
+    if (
+      node.type === "VariableDeclarator" &&
+      node.id?.type === "Identifier"
+    ) {
+      const callablePath = callableEscapeReferencePath(
+        node.init,
+        aliases,
+        scopeBindings,
+        protectedPath,
+        callableReturns
+      );
+      if (
+        capabilityRefObjectEscapes(
+          callablePath,
+          root,
+          protectedPath
+        ) &&
+        !callableSummaryTargetIsKnown(
+          node.id,
+          scopeBindings,
+          callableReturns,
+          callablePath
+        ) &&
+        !callableSummaryTargetIsKnown(
+          node.init,
+          scopeBindings,
+          callableReturns,
+          callablePath
+        ) &&
+        !objectInitializerCapturesCallableEscapes(
+          node.init,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        )
+      ) {
+        escaped = true;
+        return;
+      }
+    }
+    if (
+      node.type === "ArrowFunctionExpression" &&
+      node.expression &&
+      capabilityRefObjectEscapes(
+        callableEscapeReferencePath(
+          node.body,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        ),
+        root,
+        protectedPath
+      )
+    ) {
+      escaped = true;
+      return;
+    }
+    if (
+      [
+        "PropertyDefinition",
+        "ClassProperty",
+        "ClassPrivateProperty",
+        "AccessorProperty",
+        "ClassAccessorProperty"
+      ].includes(node.type) &&
+      capabilityRefObjectEscapes(
+        referencePathThroughAliases(
+          node.value,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        ) ??
+          callableEscapeReferencePath(
+            node.value,
+            aliases,
+            scopeBindings,
+            protectedPath,
+            callableReturns
+          ),
+        root,
+        protectedPath
+      )
+    ) {
+      escaped = true;
+      return;
+    }
+    if (
+      ["ClassDeclaration", "ClassExpression"].includes(
+        node.type
+      ) &&
+      node.superClass &&
+      capabilityRefObjectEscapes(
+        referencePathThroughAliases(
+          node.superClass,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        ) ??
+          callableEscapeReferencePath(
+            node.superClass,
+            aliases,
+            scopeBindings,
+            protectedPath,
+            callableReturns
+          ),
+        root,
+        protectedPath
+      )
+    ) {
+      escaped = true;
+      return;
+    }
+    if (
+      [
+        "ExportDefaultDeclaration",
+        "ExportNamedDeclaration"
+      ].includes(node.type) &&
+      node.exportKind !== "type"
+    ) {
+      const exportedValues = [];
+      if (node.declaration?.type === "VariableDeclaration") {
+        for (const declaration of
+          node.declaration.declarations ?? []) {
+          if (declaration.init) {
+            exportedValues.push(declaration.init);
+          }
+        }
+      } else if (node.declaration) {
+        exportedValues.push(node.declaration);
+      }
+      for (const specifier of node.specifiers ?? []) {
+        if (
+          specifier.exportKind !== "type" &&
+          specifier.local
+        ) {
+          exportedValues.push(specifier.local);
+        }
+      }
+      if (
+        exportedValues.some((value) =>
+          capabilityRefObjectEscapes(
+            referencePathThroughAliases(
+              value,
+              aliases,
+              scopeBindings,
+              protectedPath,
+              callableReturns
+            ) ??
+              callableEscapeReferencePath(
+                value,
+                aliases,
+                scopeBindings,
+                protectedPath,
+                callableReturns
+              ),
+            root,
+            protectedPath
+          )
+        )
+      ) {
+        escaped = true;
+        return;
+      }
+    }
+    const isTrustedComputedCall =
+      node.type === "CallExpression" &&
+      node.callee?.type === "Identifier" &&
+      callableReturns.computedBindings.has(
+        scopeBindings.get(node.callee)
+      );
+    const isTrustedStructuredClone =
+      node.type === "CallExpression" &&
+      node.arguments?.length === 1 &&
+      unwrapValueExpression(node.callee)?.type ===
+        "Identifier" &&
+      unwrapValueExpression(node.callee).name ===
+        "structuredClone" &&
+      !scopeBindings.get(unwrapValueExpression(node.callee));
+    const collectionCallbackMethod =
+      node.type === "CallExpression" &&
+      node.callee?.type === "MemberExpression"
+        ? staticMemberProperty(node.callee)
+        : null;
+    const collectionCallbackReceiverPath =
+      node.type === "CallExpression" &&
+      node.callee?.type === "MemberExpression"
+        ? referencePathThroughAliases(
+            node.callee.object,
+            aliases,
+            scopeBindings,
+            protectedPath,
+            callableReturns
+          )
+        : null;
+    const hasTrustedCollectionCallback =
+      collectionCallbackMethod &&
+      CAPABILITY_COLLECTION_CALLBACK_METHODS.has(
+        collectionCallbackMethod
+      ) &&
+      capabilityRefObjectEscapes(
+        collectionCallbackReceiverPath,
+        root,
+        protectedPath
+      );
+    if (
+      node.type === "TaggedTemplateExpression" &&
+      [node.tag, ...(node.quasi?.expressions ?? [])].some(
+        (value) =>
+          capabilityRefObjectEscapes(
+            referencePathThroughAliases(
+              value,
+              aliases,
+              scopeBindings,
+              protectedPath,
+              callableReturns
+            ) ??
+              callableEscapeReferencePath(
+                value,
+                aliases,
+                scopeBindings,
+                protectedPath,
+                callableReturns
+              ),
+            root,
+            protectedPath
+          )
+      )
+    ) {
+      escaped = true;
+      return;
+    }
+    if (
+      (node.type === "CallExpression" ||
+        node.type === "NewExpression") &&
+      (node.arguments ?? []).some((argument, index) => {
+        if (isTrustedStructuredClone && index === 0) {
+          return false;
+        }
+        const value =
+          argument?.type === "SpreadElement"
+            ? argument.argument
+            : argument;
+        const path = referencePathThroughAliases(
+          value,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        );
+        const computedGetterPath =
+          isTrustedComputedCall && index === 0
+            ? computedGetterReturnReferencePath(
+                value,
+                aliases,
+                scopeBindings,
+                protectedPath,
+                callableReturns
+              )
+            : null;
+        const isTrustedCollectionCallback =
+          hasTrustedCollectionCallback &&
+          index === 0 &&
+          [
+            "ArrowFunctionExpression",
+            "FunctionExpression"
+          ].includes(unwrapValueExpression(value)?.type);
+        const callablePath = isTrustedCollectionCallback
+          ? null
+          : computedGetterPath
+            ? computedArgumentCallableEscapePath(
+                value,
+                aliases,
+                scopeBindings,
+                protectedPath,
+                callableReturns
+              )
+            : callableEscapeReferencePath(
+                value,
+                aliases,
+                scopeBindings,
+                protectedPath,
+                callableReturns
+              );
+        return capabilityRefObjectEscapes(
+          path ?? callablePath,
+          root,
+          protectedPath
+        );
+      })
+    ) {
+      escaped = true;
+      return;
+    }
+    if (
+      node.type === "CallExpression" &&
+      node.callee?.type === "MemberExpression"
+    ) {
+      const receiverPath =
+        referencePathThroughAliases(
+          node.callee.object,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        ) ??
+        callableEscapeReferencePath(
+          node.callee.object,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        );
+      const method = node.callee.computed
+        ? literalString(node.callee.property)
+        : node.callee.property?.type === "Identifier"
+          ? node.callee.property.name
+          : null;
+      if (
+        capabilityRefObjectEscapes(
+          receiverPath,
+          root,
+          protectedPath
+        ) &&
+        (!method ||
+          !CAPABILITY_READONLY_METHODS.has(method))
+      ) {
+        escaped = true;
+        return;
+      }
+      if (
+        method &&
+        CAPABILITY_COLLECTION_CALLBACK_METHODS.has(method) &&
+        capabilityRefObjectEscapes(
+          receiverPath,
+          root,
+          protectedPath
+        )
+      ) {
+        const callback = unwrapValueExpression(
+          node.arguments?.[0]
+        );
+        if (
+          ![
+            "ArrowFunctionExpression",
+            "FunctionExpression"
+          ].includes(callback?.type)
+        ) {
+          escaped = true;
+          return;
+        }
+      }
+    }
+    if (
+      node.type === "ReturnStatement" &&
+      !callableReturns.safeReturnStatements.has(node) &&
+      capabilityRefObjectEscapes(
+        referencePathThroughAliases(
+          node.argument,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        ) ??
+          callableEscapeReferencePath(
+            node.argument,
+            aliases,
+            scopeBindings,
+            protectedPath,
+            callableReturns
+          ),
+        root,
+        protectedPath
+      )
+    ) {
+      escaped = true;
+      return;
+    }
+    if (node.type === "AssignmentExpression") {
+      const assignedCallablePath =
+        referencePathThroughAliases(
+          node.right,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        ) ??
+        callableEscapeReferencePath(
+          node.right,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        );
+      if (
+        capabilityRefObjectEscapes(
+          assignedCallablePath,
+          root,
+          protectedPath
+        ) &&
+        !referencePathThroughAliases(
+          node.left,
+          aliases,
+          scopeBindings,
+          protectedPath,
+          callableReturns
+        ) &&
+        !(
+          unwrapValueExpression(node.left)?.type ===
+            "Identifier" &&
+          callableSummaryTargetIsKnown(
+            node.left,
+            scopeBindings,
+            callableReturns,
+            assignedCallablePath
+          ) &&
+          (callableSummaryTargetIsKnown(
+            node.right,
+            scopeBindings,
+            callableReturns,
+            assignedCallablePath
+          ) ||
+            callableReturnReferencePath(
+              node.right,
+              aliases,
+              scopeBindings,
+              protectedPath,
+              callableReturns
+            ) === assignedCallablePath)
+        )
+      ) {
+        escaped = true;
+      }
+    }
+  });
+  return !escaped;
+}
+
+function capabilityServerProvenanceSources(
+  capability,
+  context
+) {
+  const root = capabilitySourceRoot(capability.source);
+  if (
+    !root ||
+    context.symbols.importVariablesByName?.has(root)
+  ) {
+    return null;
+  }
+  const rootBindings = topLevelScopeVariables(
+    context.symbols.scopeManager,
+    root
+  );
+  if (rootBindings.length !== 1) return null;
+  const rootBinding = rootBindings[0];
+  const declaration = uniqueIndexedNode(
+    context.symbols.declarationsByBinding,
+    rootBinding
+  );
+  if (!declaration) return null;
+  const directSources = expressionServerReadSources(
+    declaration,
+    context
+  );
+  if (directSources?.size === 1) {
+    return capabilityRefUsageIsSafe(
+      root,
+      capability.source,
+      context,
+      {
+        originExpressions: [declaration],
+        vueRefRoot: false
+      }
+    )
+      ? directSources
+      : null;
+  }
+  if (!expressionIsEmptyVueRef(declaration, context.symbols)) {
+    return null;
+  }
+  const writes =
+    context.symbols.writesByBinding.get(rootBinding) ?? [];
+  if (
+    writes.some(
+      (write) =>
+        write.kind !== "assignment" ||
+        write.operator !== "=" ||
+        write.path !== `${root}.value`
+    )
+  ) {
+    return null;
+  }
+  const populated = writes
+    .map((write) => write.value)
+    .filter(
+      (candidate) =>
+        !expressionIsEmptyCapabilityState(candidate)
+    );
+  if (populated.length === 0) return null;
+  if (
+    !capabilityRefUsageIsSafe(
+      root,
+      capability.source,
+      context,
+      { originExpressions: populated }
+    )
+  ) {
+    return null;
+  }
+  const sources = new Set();
+  for (const candidate of populated) {
+    const candidateSources = expressionServerReadSources(
+      candidate,
+      context,
+      new Set([rootBinding])
+    );
+    if (!candidateSources) return null;
+    for (const source of candidateSources) sources.add(source);
+  }
+  return sources.size === 1 ? sources : null;
+}
+
+function capabilityHasServerProvenance(capability, context) {
+  return (
+    capabilityServerProvenanceSources(capability, context)
+      ?.size === 1
+  );
+}
+
+function callbackReturnExpression(node) {
+  const callback = unwrapValueExpression(node);
+  if (
+    ![
+      "ArrowFunctionExpression",
+      "FunctionExpression"
+    ].includes(callback?.type)
+  ) {
+    return null;
+  }
+  return singleCallableReturnExpression(callback);
+}
+
+function bindingMemberIs(
+  node,
+  binding,
+  property,
+  symbols
+) {
+  const value = unwrapValueExpression(node);
+  if (
+    value?.type !== "MemberExpression" ||
+    staticMemberProperty(value) !== property
+  ) {
+    return false;
+  }
+  const object = unwrapValueExpression(value.object);
+  return (
+    object?.type === "Identifier" &&
+    symbols.scopeBindings?.get(object) === binding
+  );
+}
+
+function predicateRequires(
+  node,
+  atom,
+  truthy = true
+) {
+  const value = unwrapValueExpression(node);
+  if (!value) return false;
+  if (
+    value.type === "UnaryExpression" &&
+    value.operator === "!"
+  ) {
+    return predicateRequires(value.argument, atom, !truthy);
+  }
+  if (value.type === "SequenceExpression") {
+    return predicateRequires(
+      value.expressions?.at(-1),
+      atom,
+      truthy
+    );
+  }
+  if (value.type === "LogicalExpression") {
+    if (truthy && value.operator === "&&") {
+      return (
+        predicateRequires(value.left, atom, true) ||
+        predicateRequires(value.right, atom, true)
+      );
+    }
+    if (
+      truthy &&
+      ["||", "??"].includes(value.operator)
+    ) {
+      return (
+        predicateRequires(value.left, atom, true) &&
+        predicateRequires(value.right, atom, true)
+      );
+    }
+    return false;
+  }
+  return atom(value, truthy);
+}
+
+function collectionPredicateIsTrusted(
+  node,
+  capability,
+  context,
+  literalBindings
+) {
+  const value = unwrapValueExpression(node);
+  if (
+    value?.type !== "CallExpression" ||
+    value.callee?.type !== "MemberExpression" ||
+    staticMemberProperty(value.callee) !== "some" ||
+    normalizedExpression(
+      memberExpressionPath(value.callee.object) ?? ""
+    ) !== normalizedExpression(capability.source)
+  ) {
+    return false;
+  }
+  const callback = unwrapValueExpression(value.arguments?.[0]);
+  const predicate = callbackReturnExpression(callback);
+  const parameter =
+    callback?.params?.[0]?.type === "Identifier"
+      ? callback.params[0]
+      : null;
+  const itemBinding = parameter
+    ? context.symbols.scopeBindings?.get(parameter)
+    : null;
+  if (!predicate || !itemBinding) return false;
+  const requiresKey = predicateRequires(
+    predicate,
+    (candidate, truthy) => {
+      if (
+        !truthy ||
+        candidate.type !== "BinaryExpression" ||
+        !["==", "==="].includes(candidate.operator)
+      ) {
+        return false;
+      }
+      const leftIsKey = bindingMemberIs(
+        candidate.left,
+        itemBinding,
+        "key",
+        context.symbols
+      );
+      const rightIsKey = bindingMemberIs(
+        candidate.right,
+        itemBinding,
+        "key",
+        context.symbols
+      );
+      const compared = leftIsKey
+        ? candidate.right
+        : rightIsKey
+          ? candidate.left
+          : null;
+      return (
+        compared !== null &&
+        argumentStringValue(
+          compared,
+          literalBindings,
+          context.symbols
+        ) === capability.key
+      );
+    }
+  );
+  const requiresEnabled = predicateRequires(
+    predicate,
+    (candidate, truthy) => {
+      if (
+        bindingMemberIs(
+          candidate,
+          itemBinding,
+          "enabled",
+          context.symbols
+        )
+      ) {
+        return truthy;
+      }
+      if (
+        candidate.type !== "BinaryExpression" ||
+        !["==", "===", "!=", "!=="].includes(
+          candidate.operator
+        )
+      ) {
+        return false;
+      }
+      const leftIsEnabled = bindingMemberIs(
+        candidate.left,
+        itemBinding,
+        "enabled",
+        context.symbols
+      );
+      const rightIsEnabled = bindingMemberIs(
+        candidate.right,
+        itemBinding,
+        "enabled",
+        context.symbols
+      );
+      const compared = leftIsEnabled
+        ? candidate.right
+        : rightIsEnabled
+          ? candidate.left
+          : null;
+      const comparedValue =
+        unwrapValueExpression(compared);
+      if (
+        comparedValue?.type !== "Literal" ||
+        typeof comparedValue.value !== "boolean"
+      ) {
+        return false;
+      }
+      const equality = ["==", "==="].includes(
+        candidate.operator
+      );
+      const enabledWhenTrue =
+        equality === comparedValue.value;
+      return truthy ? enabledWhenTrue : !enabledWhenTrue;
+    }
+  );
+  return requiresKey && requiresEnabled;
+}
+
+function expressionHasCapability(
+  node,
+  capability,
+  context,
+  literalBindings = new Map()
+) {
   if (!node || !SERVER_CAPABILITY_KINDS.has(capability.kind)) {
     return false;
   }
@@ -2355,9 +7953,31 @@ function expressionHasCapability(node, capability, context) {
   ) {
     return false;
   }
+  const value = unwrapValueExpression(node);
+  const isCollectionPredicate =
+    value?.type === "CallExpression" &&
+    value.callee?.type === "MemberExpression" &&
+    staticMemberProperty(value.callee) === "some";
+  if (
+    (capability.kind === "available_action_string" ||
+      isCollectionPredicate) &&
+    !collectionPredicateIsTrusted(
+      node,
+      capability,
+      context,
+      literalBindings
+    )
+  ) {
+    return false;
+  }
   if (
     capability.key &&
-    !closureHasLiteral(nodes, capability.key)
+    !closureHasLiteral(
+      nodes,
+      capability.key,
+      literalBindings,
+      context.symbols
+    )
   ) {
     return false;
   }
@@ -2365,19 +7985,43 @@ function expressionHasCapability(node, capability, context) {
     return closureHasEnabledCheck(nodes);
   }
   if (capability.kind === "available_action_string") {
-    return closureHasCollectionPredicate(nodes);
+    return true;
   }
   return true;
 }
 
-function capabilityRequired(node, truthy, capability, context) {
+function argumentStringValue(
+  node,
+  literalBindings,
+  symbols
+) {
+  const literal = literalString(node);
+  if (literal !== null) return literal;
+  const value = unwrapValueExpression(node);
+  if (value?.type !== "Identifier") return null;
+  const binding = symbols.scopeBindings?.get(value);
+  return binding
+    ? literalBindings.get(binding) ?? null
+    : null;
+}
+
+function capabilityRequired(
+  node,
+  truthy,
+  capability,
+  context,
+  literalBindings = new Map(),
+  seenBindings = new Set()
+) {
   if (!node) return false;
   if (node.type === "ChainExpression") {
     return capabilityRequired(
       node.expression,
       truthy,
       capability,
-      context
+      context,
+      literalBindings,
+      seenBindings
     );
   }
   if (node.type === "UnaryExpression" && node.operator === "!") {
@@ -2385,32 +8029,103 @@ function capabilityRequired(node, truthy, capability, context) {
       node.argument,
       !truthy,
       capability,
-      context
+      context,
+      literalBindings,
+      seenBindings
     );
+  }
+  if (node.type === "SequenceExpression") {
+    const terminal = node.expressions?.at(-1);
+    return terminal
+      ? capabilityRequired(
+          terminal,
+          truthy,
+          capability,
+          context,
+          literalBindings,
+          seenBindings
+        )
+      : false;
   }
   if (node.type === "LogicalExpression") {
     if (truthy && node.operator === "&&") {
       return (
-        capabilityRequired(node.left, true, capability, context) ||
-        capabilityRequired(node.right, true, capability, context)
+        capabilityRequired(
+          node.left,
+          true,
+          capability,
+          context,
+          literalBindings,
+          seenBindings
+        ) ||
+        capabilityRequired(
+          node.right,
+          true,
+          capability,
+          context,
+          literalBindings,
+          seenBindings
+        )
       );
     }
     if (truthy && (node.operator === "||" || node.operator === "??")) {
       return (
-        capabilityRequired(node.left, true, capability, context) &&
-        capabilityRequired(node.right, true, capability, context)
+        capabilityRequired(
+          node.left,
+          true,
+          capability,
+          context,
+          literalBindings,
+          seenBindings
+        ) &&
+        capabilityRequired(
+          node.right,
+          true,
+          capability,
+          context,
+          literalBindings,
+          seenBindings
+        )
       );
     }
     if (!truthy && (node.operator === "||" || node.operator === "??")) {
       return (
-        capabilityRequired(node.left, false, capability, context) ||
-        capabilityRequired(node.right, false, capability, context)
+        capabilityRequired(
+          node.left,
+          false,
+          capability,
+          context,
+          literalBindings,
+          seenBindings
+        ) ||
+        capabilityRequired(
+          node.right,
+          false,
+          capability,
+          context,
+          literalBindings,
+          seenBindings
+        )
       );
     }
     if (!truthy && node.operator === "&&") {
       return (
-        capabilityRequired(node.left, false, capability, context) &&
-        capabilityRequired(node.right, false, capability, context)
+        capabilityRequired(
+          node.left,
+          false,
+          capability,
+          context,
+          literalBindings,
+          seenBindings
+        ) &&
+        capabilityRequired(
+          node.right,
+          false,
+          capability,
+          context,
+          literalBindings,
+          seenBindings
+        )
       );
     }
   }
@@ -2424,24 +8139,158 @@ function capabilityRequired(node, truthy, capability, context) {
         node.alternate.value === false;
       const consequentProtected =
         consequentImpossible ||
-        capabilityRequired(node.test, true, capability, context) ||
+        capabilityRequired(
+          node.test,
+          true,
+          capability,
+          context,
+          literalBindings,
+          seenBindings
+        ) ||
         capabilityRequired(
           node.consequent,
           true,
           capability,
-          context
+          context,
+          literalBindings,
+          seenBindings
         );
       const alternateProtected =
         alternateImpossible ||
-        capabilityRequired(node.test, false, capability, context) ||
+        capabilityRequired(
+          node.test,
+          false,
+          capability,
+          context,
+          literalBindings,
+          seenBindings
+        ) ||
         capabilityRequired(
           node.alternate,
           true,
           capability,
-          context
+          context,
+          literalBindings,
+          seenBindings
         );
       return consequentProtected && alternateProtected;
     }
+  }
+  if (node.type === "CallExpression") {
+    const callee = unwrapValueExpression(node.callee);
+    if (
+      [
+        "ArrowFunctionExpression",
+        "FunctionExpression"
+      ].includes(callee?.type)
+    ) {
+      const returned = singleCallableReturnExpression(callee);
+      return returned
+        ? capabilityRequired(
+            returned,
+            truthy,
+            capability,
+            context,
+            literalBindings,
+            seenBindings
+          )
+        : false;
+    }
+    if (callee?.type === "Identifier") {
+      const binding = resolvedReferenceBinding(
+        callee,
+        context.symbols
+      );
+      if (
+        ["Boolean"].includes(callee.name) &&
+        (!binding ||
+          (binding.identifiers ?? []).length === 0)
+      ) {
+        return node.arguments?.length === 1
+          ? capabilityRequired(
+              node.arguments[0],
+              truthy,
+              capability,
+              context,
+              literalBindings,
+              seenBindings
+            )
+          : false;
+      }
+      if (!binding || seenBindings.has(binding)) {
+        return false;
+      }
+      const definition = uniqueIndexedNode(
+        context.symbols.definitionsByBinding,
+        binding
+      );
+      const returned = singleCallableReturnExpression(
+        definition
+      );
+      if (!definition || !returned) return false;
+      const nextLiterals = new Map(literalBindings);
+      for (const [index, parameter] of (
+        definition.params ?? []
+      ).entries()) {
+        const target =
+          parameter?.type === "AssignmentPattern"
+            ? parameter.left
+            : parameter;
+        if (target?.type !== "Identifier") continue;
+        const parameterBinding =
+          context.symbols.scopeBindings?.get(target);
+        const value = argumentStringValue(
+          node.arguments?.[index],
+          literalBindings,
+          context.symbols
+        );
+        if (parameterBinding && value !== null) {
+          nextLiterals.set(parameterBinding, value);
+        }
+      }
+      const nextSeen = new Set(seenBindings);
+      nextSeen.add(binding);
+      return capabilityRequired(
+        returned,
+        truthy,
+        capability,
+        context,
+        nextLiterals,
+        nextSeen
+      );
+    }
+    return truthy &&
+      callee?.type === "MemberExpression" &&
+      staticMemberProperty(callee) === "some"
+      ? expressionHasCapability(
+          node,
+          capability,
+          context,
+          literalBindings
+        )
+      : false;
+  }
+  if (node.type === "Identifier") {
+    const binding = resolvedReferenceBinding(
+      node,
+      context.symbols
+    );
+    if (!binding || seenBindings.has(binding)) return false;
+    const declaration = uniqueIndexedNode(
+      context.symbols.declarationsByBinding,
+      binding
+    );
+    if (!declaration) return false;
+    const nextSeen = new Set(seenBindings);
+    nextSeen.add(binding);
+    return capabilityRequired(
+      declaration,
+      truthy,
+      capability,
+      context,
+      literalBindings,
+      nextSeen
+    );
   }
   if (
     node.type === "Literal" &&
@@ -2450,7 +8299,16 @@ function capabilityRequired(node, truthy, capability, context) {
   ) {
     return false;
   }
-  return expressionHasCapability(node, capability, context);
+  return (
+    truthy &&
+    node.type === "MemberExpression" &&
+    expressionHasCapability(
+      node,
+      capability,
+      context,
+      literalBindings
+    )
+  );
 }
 
 function actionCollectionEvidence(element) {
@@ -2502,16 +8360,624 @@ function capabilityDominates(candidate, capability, context) {
   return false;
 }
 
-function businessDraftActionIsTrusted(source) {
-  if (typeof source !== "string") return false;
+function businessDraftActionIsTrusted(source, ast) {
+  if (typeof source !== "string" || !ast) return false;
   const normalized = normalizedExpression(source);
-  return (
-    normalized.includes(
+  if (
+    !normalized.includes(
       "enabledActionItems=computed(()=>actionItems.filter((action)=>action.enabled))"
-    ) &&
-    /v-for\s*=\s*["']action in enabledActionItems["']/.test(source) &&
-    /:disabled\s*=\s*["'][^"']*!action\.enabled/.test(source) &&
-    /props\.execute\s*\(\s*\{\s*action:\s*action\.key/.test(source)
+    )
+  ) {
+    return false;
+  }
+  if (
+    !/v-for\s*=\s*["']action in enabledActionItems["']/.test(source) ||
+    !/:disabled\s*=\s*["'][^"']*!action\.enabled/.test(source)
+  ) {
+    return false;
+  }
+  const scopeManager = scopeManagersByAst.get(ast) ?? null;
+  const scopeBindings =
+    scopeBindingsByIdentifier(scopeManager);
+  const propsBindings = topLevelScopeVariables(
+    scopeManager,
+    "props"
+  );
+  if (
+    !scopeBindings ||
+    propsBindings.length !== 1
+  ) {
+    return false;
+  }
+  const propsBinding = propsBindings[0];
+  const actionItemsBindings = topLevelScopeVariables(
+    scopeManager,
+    "actionItems"
+  );
+  const enabledActionItemsBindings =
+    topLevelScopeVariables(
+      scopeManager,
+      "enabledActionItems"
+    );
+  if (
+    actionItemsBindings.length !== 1 ||
+    enabledActionItemsBindings.length !== 1
+  ) {
+    return false;
+  }
+  const actionItemsBinding = actionItemsBindings[0];
+  const enabledActionItemsBinding =
+    enabledActionItemsBindings[0];
+  const selectActionDefinitions = [];
+  walkEstree(ast, (node) => {
+    if (
+      node.type === "FunctionDeclaration" &&
+      node.id?.name === "selectAction"
+    ) {
+      selectActionDefinitions.push(node);
+    }
+  });
+  const selectionParameter =
+    selectActionDefinitions.length === 1 &&
+    selectActionDefinitions[0].params?.[0]?.type ===
+      "Identifier"
+      ? selectActionDefinitions[0].params[0]
+      : null;
+  const selectionParameterBinding = selectionParameter
+    ? scopeBindings.get(selectionParameter)
+    : null;
+  if (!selectionParameterBinding) return false;
+  const executeCalls = [];
+  walkEstree(ast, (node) => {
+    if (
+      node.type !== "CallExpression" ||
+      node.callee?.type !== "MemberExpression" ||
+      staticMemberProperty(node.callee) !== "execute"
+    ) {
+      return;
+    }
+    const receiver = unwrapValueExpression(
+      node.callee.object
+    );
+    if (
+      receiver?.type === "Identifier" &&
+      (scopeBindings.get(receiver) === propsBinding ||
+        (receiver.name === "props" &&
+          nodeIsInsideVueTemplate(receiver)))
+    ) {
+      executeCalls.push(node);
+    }
+  });
+  if (executeCalls.length !== 1) return false;
+  const call = executeCalls[0];
+  const request = unwrapValueExpression(call.arguments?.[0]);
+  const actionValue = objectProperty(request, "action");
+  const actionMember = unwrapValueExpression(actionValue);
+  const actionIdentifier =
+    actionMember?.type === "MemberExpression" &&
+    staticMemberProperty(actionMember) === "key"
+      ? unwrapValueExpression(actionMember.object)
+      : null;
+  const actionBinding =
+    actionIdentifier?.type === "Identifier"
+      ? scopeBindings.get(actionIdentifier)
+      : null;
+  if (!actionBinding) return false;
+  let callable = call.parent;
+  while (
+    callable &&
+    ![
+      "ArrowFunctionExpression",
+      "FunctionDeclaration",
+      "FunctionExpression"
+    ].includes(callable.type)
+  ) {
+    callable = callable.parent;
+  }
+  if (
+    callable?.type !== "FunctionDeclaration" ||
+    callable.id?.name !== "executeAction"
+  ) {
+    return false;
+  }
+  const branchReturns = (branch) =>
+    branch?.type === "ReturnStatement" ||
+    (branch?.type === "BlockStatement" &&
+      (branch.body ?? []).some(
+        (statement) => statement.type === "ReturnStatement"
+      ));
+  const catchesDisabled = (test, binding) => {
+    const value = unwrapValueExpression(test);
+    if (
+      value?.type === "UnaryExpression" &&
+      value.operator === "!" &&
+      bindingMemberIs(
+        value.argument,
+        binding,
+        "enabled",
+        { scopeBindings }
+      )
+    ) {
+      return true;
+    }
+    if (
+      value?.type === "LogicalExpression" &&
+      value.operator === "||"
+    ) {
+      return (
+        catchesDisabled(value.left, binding) ||
+        catchesDisabled(value.right, binding)
+      );
+    }
+    if (
+      value?.type === "LogicalExpression" &&
+      value.operator === "&&"
+    ) {
+      return (
+        catchesDisabled(value.left, binding) &&
+        catchesDisabled(value.right, binding)
+      );
+    }
+    return false;
+  };
+  const guardedBefore = (
+    owner,
+    binding,
+    beforeRange
+  ) => {
+    if (owner.body?.type !== "BlockStatement") return false;
+    return (owner.body.body ?? []).some(
+      (candidate) =>
+        candidate.type === "IfStatement" &&
+        Number.isInteger(candidate.range?.[0]) &&
+        candidate.range[0] < beforeRange &&
+        branchReturns(candidate.consequent) &&
+        catchesDisabled(candidate.test, binding)
+    );
+  };
+  const callStart = call.range?.[0] ?? -1;
+  if (
+    (callable.params ?? []).some(
+      (parameter) =>
+        parameter?.type === "Identifier" &&
+        scopeBindings.get(parameter) === actionBinding
+    )
+  ) {
+    return guardedBefore(
+      callable,
+      actionBinding,
+      callStart
+    );
+  }
+  const selectedActionBindings = topLevelScopeVariables(
+    scopeManager,
+    "selectedAction"
+  );
+  if (selectedActionBindings.length !== 1) return false;
+  const selectedActionBinding = selectedActionBindings[0];
+  let selectedAliasFound = false;
+  walkEstree(callable.body, (candidate) => {
+    if (
+      selectedAliasFound ||
+      candidate.type !== "VariableDeclarator" ||
+      candidate.id?.type !== "Identifier" ||
+      scopeBindings.get(candidate.id) !== actionBinding
+    ) {
+      return;
+    }
+    const initializer = unwrapValueExpression(candidate.init);
+    if (
+      initializer?.type === "MemberExpression" &&
+      staticMemberProperty(initializer) === "value"
+    ) {
+      const selected = unwrapValueExpression(
+        initializer.object
+      );
+      if (
+        selected?.type === "Identifier" &&
+        scopeBindings.get(selected) === selectedActionBinding
+      ) {
+        selectedAliasFound = true;
+      }
+    }
+  });
+  if (!selectedAliasFound) return false;
+  let populated = 0;
+  let unsafeStateUse = false;
+  const rootBinding = (node) => {
+    const root = referenceRootIdentifier(node);
+    return root?.type === "Identifier"
+      ? scopeBindings.get(root)
+      : null;
+  };
+  const protectedCollection = (node) => {
+    const value = unwrapValueExpression(node);
+    const binding = rootBinding(value);
+    const path = memberExpressionWritePath(value);
+    if (binding === propsBinding && path === "props") {
+      return { kind: "propsRoot", path };
+    }
+    if (
+      binding === propsBinding &&
+      (path === null ||
+        path === "props.actions" ||
+        path?.startsWith("props.actions."))
+    ) {
+      return { kind: "props", path };
+    }
+    if (
+      binding === actionItemsBinding &&
+      (path === "actionItems" ||
+        path?.startsWith("actionItems."))
+    ) {
+      return { kind: "actionItems", path };
+    }
+    if (
+      binding === enabledActionItemsBinding &&
+      (path === "enabledActionItems" ||
+        path?.startsWith("enabledActionItems."))
+    ) {
+      return { kind: "enabledActionItems", path };
+    }
+    return null;
+  };
+  const patternReadsPropsActions = (pattern, source) => {
+    const target = unwrapValueExpression(pattern);
+    return (
+      rootBinding(source) === propsBinding &&
+      target?.type === "ObjectPattern" &&
+      (target.properties ?? []).some((property) => {
+        if (property.type === "RestElement") return true;
+        const key = propertyKey(property);
+        return key === null || key === "actions";
+      })
+    );
+  };
+  const bindingReferenceAllowed = (
+    identifier,
+    binding,
+    {
+      allowTruthy = false,
+      allowedMember = null
+    } = {}
+  ) => {
+    if (scopeBindings.get(identifier) !== binding) return true;
+    const parent = identifier.parent;
+    if (
+      parent?.type === "VariableDeclarator" &&
+      parent.id === identifier
+    ) {
+      return true;
+    }
+    if (
+      parent?.type === "MemberExpression" &&
+      parent.object === identifier &&
+      (allowedMember === null ||
+        staticMemberProperty(parent) === allowedMember)
+    ) {
+      return true;
+    }
+    return (
+      allowTruthy &&
+      parent?.type === "UnaryExpression" &&
+      parent.operator === "!" &&
+      parent.argument === identifier
+    );
+  };
+  walkEstree(ast, (candidate) => {
+    if (
+      candidate.type === "ObjectExpression" &&
+      (candidate.properties ?? []).some((property) =>
+        protectedCollection(
+          property.type === "SpreadElement"
+            ? property.argument
+            : property.value
+        )
+      )
+    ) {
+      unsafeStateUse = true;
+      return;
+    }
+    if (
+      candidate.type === "ArrayExpression" &&
+      (candidate.elements ?? []).some((element) =>
+        element?.type === "SpreadElement"
+          ? protectedCollection(element.argument)
+          : protectedCollection(element)
+      )
+    ) {
+      unsafeStateUse = true;
+      return;
+    }
+    if (
+      candidate.type === "ConditionalExpression" &&
+      (protectedCollection(candidate.consequent) ||
+        protectedCollection(candidate.alternate))
+    ) {
+      unsafeStateUse = true;
+      return;
+    }
+    if (
+      candidate.type === "LogicalExpression" &&
+      (protectedCollection(candidate.left) ||
+        protectedCollection(candidate.right))
+    ) {
+      unsafeStateUse = true;
+      return;
+    }
+    if (
+      candidate.type === "SequenceExpression" &&
+      (candidate.expressions ?? []).some((expression) =>
+        protectedCollection(expression)
+      )
+    ) {
+      unsafeStateUse = true;
+      return;
+    }
+    if (
+      candidate.type === "Identifier" &&
+      scopeBindings.get(candidate) ===
+        selectionParameterBinding
+    ) {
+      const parent = candidate.parent;
+      const isParameterDefinition =
+        selectActionDefinitions[0].params?.includes(
+          candidate
+        );
+      const isEnabledMemberRead =
+        parent?.type === "MemberExpression" &&
+        parent.object === candidate &&
+        staticMemberProperty(parent) === "enabled" &&
+        !(
+          (parent.parent?.type ===
+            "AssignmentExpression" &&
+            parent.parent.left === parent) ||
+          (parent.parent?.type === "UpdateExpression" &&
+            parent.parent.argument === parent) ||
+          (parent.parent?.type === "UnaryExpression" &&
+            parent.parent.operator === "delete") ||
+          (parent.parent?.type === "CallExpression" &&
+            parent.parent.callee === parent)
+        );
+      const isSelectedPopulation =
+        parent?.type === "AssignmentExpression" &&
+        parent.right === candidate &&
+        parent.operator === "=" &&
+        parent.left?.type === "MemberExpression" &&
+        staticMemberProperty(parent.left) === "value" &&
+        rootBinding(parent.left) ===
+          selectedActionBinding;
+      if (
+        !isParameterDefinition &&
+        !isEnabledMemberRead &&
+        !isSelectedPopulation
+      ) {
+        unsafeStateUse = true;
+        return;
+      }
+    }
+    if (
+      candidate.type === "Identifier" &&
+      !bindingReferenceAllowed(
+        candidate,
+        selectedActionBinding,
+        { allowedMember: "value" }
+      )
+    ) {
+      unsafeStateUse = true;
+      return;
+    }
+    if (
+      candidate.type === "Identifier" &&
+      !bindingReferenceAllowed(
+        candidate,
+        actionBinding,
+        { allowTruthy: true }
+      )
+    ) {
+      unsafeStateUse = true;
+      return;
+    }
+    if (
+      candidate.type === "MemberExpression" &&
+      rootBinding(candidate) === selectedActionBinding &&
+      staticMemberProperty(candidate) === "value"
+    ) {
+      const parent = candidate.parent;
+      const isTrustedAlias =
+        parent?.type === "VariableDeclarator" &&
+        parent.init === candidate &&
+        parent.id?.type === "Identifier" &&
+        scopeBindings.get(parent.id) === actionBinding;
+      const isAssignmentTarget =
+        parent?.type === "AssignmentExpression" &&
+        parent.left === candidate;
+      if (!isTrustedAlias && !isAssignmentTarget) {
+        unsafeStateUse = true;
+      }
+    }
+    if (
+      candidate.type === "UpdateExpression" ||
+      (candidate.type === "UnaryExpression" &&
+        candidate.operator === "delete")
+    ) {
+      const target =
+        candidate.type === "UpdateExpression"
+          ? candidate.argument
+          : candidate.argument;
+      if (
+        [selectedActionBinding, actionBinding].includes(
+          rootBinding(target)
+        ) ||
+        protectedCollection(target)
+      ) {
+        unsafeStateUse = true;
+      }
+      return;
+    }
+    if (candidate.type === "CallExpression") {
+      if (
+        [selectedActionBinding, actionBinding].includes(
+          rootBinding(candidate.callee)
+        )
+      ) {
+        unsafeStateUse = true;
+        return;
+      }
+      if (candidate.callee?.type === "MemberExpression") {
+        const receiver = protectedCollection(
+          candidate.callee.object
+        );
+        const method = staticMemberProperty(
+          candidate.callee
+        );
+        const canonicalFilter =
+          receiver?.kind === "actionItems" &&
+          receiver.path === "actionItems.value" &&
+          method === "filter";
+        const canonicalExecute =
+          receiver?.kind === "propsRoot" &&
+          method === "execute";
+        if (
+          receiver &&
+          !canonicalFilter &&
+          !canonicalExecute
+        ) {
+          unsafeStateUse = true;
+          return;
+        }
+      }
+      if (
+        (candidate.arguments ?? []).some(
+          (argument) =>
+            argument?.type === "SpreadElement" ||
+            protectedCollection(argument)
+        )
+      ) {
+        unsafeStateUse = true;
+        return;
+      }
+    }
+    if (
+      candidate.type === "VariableDeclarator" &&
+      (protectedCollection(candidate.init) ||
+        patternReadsPropsActions(
+          candidate.id,
+          candidate.init
+        ))
+    ) {
+      unsafeStateUse = true;
+      return;
+    }
+    if (
+      candidate.type === "ReturnStatement" &&
+      protectedCollection(candidate.argument)
+    ) {
+      unsafeStateUse = true;
+      return;
+    }
+    if (candidate.type !== "AssignmentExpression") return;
+    if (
+      protectedCollection(candidate.left) ||
+      protectedCollection(candidate.right) ||
+      patternReadsPropsActions(
+        candidate.left,
+        candidate.right
+      )
+    ) {
+      unsafeStateUse = true;
+      return;
+    }
+    const targetBinding = rootBinding(candidate.left);
+    if (targetBinding === actionBinding) {
+      unsafeStateUse = true;
+      return;
+    }
+    if (targetBinding !== selectedActionBinding) return;
+    if (
+      candidate.operator !== "=" ||
+      candidate.left?.type !== "MemberExpression" ||
+      staticMemberProperty(candidate.left) !== "value"
+    ) {
+      unsafeStateUse = true;
+      return;
+    }
+    if (expressionIsEmptyCapabilityState(candidate.right)) return;
+    populated += 1;
+    const assigned = unwrapValueExpression(candidate.right);
+    const assignedBinding =
+      assigned?.type === "Identifier"
+        ? scopeBindings.get(assigned)
+        : null;
+    let owner = candidate.parent;
+    while (
+      owner &&
+      ![
+        "ArrowFunctionExpression",
+        "FunctionDeclaration",
+        "FunctionExpression"
+      ].includes(owner.type)
+    ) {
+      owner = owner.parent;
+    }
+    if (
+      !assignedBinding ||
+      !owner ||
+      !(owner.params ?? []).some(
+        (parameter) =>
+          parameter?.type === "Identifier" &&
+          scopeBindings.get(parameter) === assignedBinding
+      ) ||
+      !guardedBefore(
+        owner,
+        assignedBinding,
+        candidate.range?.[0] ?? -1
+      )
+    ) {
+      unsafeStateUse = true;
+    }
+  });
+  const selectActionTemplateCalls = [];
+  walkEstree(ast, (candidate) => {
+    if (
+      candidate.type === "CallExpression" &&
+      candidate.callee?.type === "Identifier" &&
+      candidate.callee.name === "selectAction" &&
+      nodeIsInsideVueTemplate(candidate)
+    ) {
+      selectActionTemplateCalls.push(candidate);
+    }
+  });
+  const selectedArgument = unwrapValueExpression(
+    selectActionTemplateCalls[0]?.arguments?.[0]
+  );
+  let unsafeSelectActionReference = false;
+  walkEstree(ast, (candidate) => {
+    if (
+      unsafeSelectActionReference ||
+      candidate.type !== "Identifier" ||
+      candidate.name !== "selectAction"
+    ) {
+      return;
+    }
+    const isDefinition =
+      candidate.parent?.type === "FunctionDeclaration" &&
+      candidate.parent.id === candidate;
+    const isCanonicalTemplateCall =
+      candidate === selectActionTemplateCalls[0]?.callee;
+    if (!isDefinition && !isCanonicalTemplateCall) {
+      unsafeSelectActionReference = true;
+    }
+  });
+  return (
+    populated === 1 &&
+    !unsafeStateUse &&
+    !unsafeSelectActionReference &&
+    selectActionTemplateCalls.length === 1 &&
+    selectActionTemplateCalls[0].arguments?.length === 1 &&
+    selectedArgument?.type === "Identifier" &&
+    selectedArgument.name === "action" &&
+    /@confirm\s*=\s*["']executeAction["']/.test(source)
   );
 }
 
@@ -3038,7 +9504,9 @@ function directCallTargets(
       if (candidate.callee?.type === "Identifier") {
         calls.push({
           kind: "identifier",
-          localName: candidate.callee.name
+          localName: candidate.callee.name,
+          bindingIdentifier: candidate.callee,
+          callNode: candidate
         });
       } else if (
         candidate.callee?.type === "MemberExpression" &&
@@ -3049,7 +9517,9 @@ function directCallTargets(
         calls.push({
           kind: "member",
           localName: candidate.callee.object.name,
-          memberName: candidate.callee.property.name
+          memberName: candidate.callee.property.name,
+          bindingIdentifier: candidate.callee.object,
+          callNode: candidate
         });
       }
       if (
@@ -3091,7 +9561,14 @@ function directCallTargets(
 }
 
 function importedCallMatchesWrapper(call, wrapper, symbols) {
-  const binding = symbols.imports.get(call.localName);
+  const resolvedBinding =
+    call.resolvedBinding ??
+    (call.bindingIdentifier
+      ? symbols.scopeBindings?.get(call.bindingIdentifier)
+      : null);
+  const binding = resolvedBinding
+    ? symbols.importsByBinding?.get(resolvedBinding)
+    : null;
   if (!binding || binding.sourceFile !== wrapper.apiFile) {
     return false;
   }
@@ -3108,33 +9585,1450 @@ function importedCallMatchesWrapper(call, wrapper, symbols) {
   );
 }
 
-function wrapperCausalProof(handler, wrapper, symbols) {
-  const initialImport = symbols.imports.get(handler);
+const PREFLIGHT_READ_METHODS = new Set([
+  "at",
+  "every",
+  "filter",
+  "find",
+  "findIndex",
+  "includes",
+  "map",
+  "some"
+]);
+
+const PREFLIGHT_PURE_GLOBALS = new Set([
+  "Boolean",
+  "Number",
+  "String"
+]);
+
+function preflightFunctionBody(definition) {
+  if (
+    !definition ||
+    ![
+      "ArrowFunctionExpression",
+      "FunctionDeclaration",
+      "FunctionExpression"
+    ].includes(definition.type) ||
+    definition.async === true ||
+    definition.generator === true
+  ) {
+    return null;
+  }
+  return definition.body ?? null;
+}
+
+function unwrapPreflightExpression(node) {
+  let current = node;
+  while (
+    current &&
+    [
+      "ChainExpression",
+      "TSAsExpression",
+      "TSTypeAssertion",
+      "TSNonNullExpression"
+    ].includes(current.type)
+  ) {
+    current = current.argument ?? current.expression;
+  }
+  return current;
+}
+
+function preflightExpressionIsPure(
+  node,
+  symbols,
+  seen = new Set()
+) {
+  const value = unwrapPreflightExpression(node);
+  if (!value) return false;
+  if (
+    ["Identifier", "Literal"].includes(value.type)
+  ) {
+    return true;
+  }
+  if (value.type === "TemplateLiteral") {
+    return (value.expressions ?? []).every((expression) =>
+      preflightExpressionIsPure(
+        expression,
+        symbols,
+        seen
+      )
+    );
+  }
+  if (
+    [
+      "BinaryExpression",
+      "LogicalExpression"
+    ].includes(value.type)
+  ) {
+    return (
+      preflightExpressionIsPure(
+        value.left,
+        symbols,
+        seen
+      ) &&
+      preflightExpressionIsPure(
+        value.right,
+        symbols,
+        seen
+      )
+    );
+  }
+  if (value.type === "UnaryExpression") {
+    return preflightExpressionIsPure(
+      value.argument,
+      symbols,
+      seen
+    );
+  }
+  if (value.type === "MemberExpression") {
+    return (
+      preflightExpressionIsPure(
+        value.object,
+        symbols,
+        seen
+      ) &&
+      (!value.computed ||
+        preflightExpressionIsPure(
+          value.property,
+          symbols,
+          seen
+        ))
+    );
+  }
+  if (value.type === "ArrayExpression") {
+    return (value.elements ?? []).every(
+      (element) =>
+        element?.type !== "SpreadElement" &&
+        preflightExpressionIsPure(
+          element,
+          symbols,
+          seen
+        )
+    );
+  }
+  if (value.type === "ObjectExpression") {
+    return (value.properties ?? []).every(
+      (property) =>
+        property?.type === "Property" &&
+        property.kind === "init" &&
+        property.method !== true &&
+        (!property.computed ||
+          preflightExpressionIsPure(
+            property.key,
+            symbols,
+            seen
+          )) &&
+        preflightExpressionIsPure(
+          property.value,
+          symbols,
+          seen
+        )
+    );
+  }
+  if (
+    [
+      "ArrowFunctionExpression",
+      "FunctionExpression"
+    ].includes(value.type)
+  ) {
+    if (value.async === true || value.generator === true) {
+      return false;
+    }
+    if (value.body?.type === "BlockStatement") {
+      return (
+        value.body.body?.length === 1 &&
+        value.body.body[0]?.type === "ReturnStatement" &&
+        preflightExpressionIsPure(
+          value.body.body[0].argument,
+          symbols,
+          seen
+        )
+      );
+    }
+    return preflightExpressionIsPure(
+      value.body,
+      symbols,
+      seen
+    );
+  }
+  if (value.type !== "CallExpression") return false;
+  if (value.optional === true) return false;
+  const argumentsArePure = (value.arguments ?? []).every(
+    (argument) =>
+      argument?.type !== "SpreadElement" &&
+      preflightExpressionIsPure(
+        argument,
+        symbols,
+        seen
+      )
+  );
+  if (!argumentsArePure) return false;
+  if (value.callee?.type === "Identifier") {
+    const binding = symbols.scopeBindings?.get(
+      value.callee
+    );
+    if (
+      PREFLIGHT_PURE_GLOBALS.has(value.callee.name) &&
+      (!binding ||
+        (binding.identifiers ?? []).length === 0)
+    ) {
+      return true;
+    }
+    if (!binding || seen.has(binding)) return false;
+    const definition = uniqueIndexedNode(
+      symbols.definitionsByBinding,
+      binding
+    );
+    if (!definition) return false;
+    const nextSeen = new Set(seen);
+    nextSeen.add(binding);
+    return preflightPureHelperIsSafe(
+      definition,
+      symbols,
+      nextSeen
+    );
+  }
+  if (
+    value.callee?.type !== "MemberExpression" ||
+    value.callee.computed
+  ) {
+    return false;
+  }
+  const method =
+    value.callee.property?.type === "Identifier"
+      ? value.callee.property.name
+      : null;
+  return (
+    method !== null &&
+    PREFLIGHT_READ_METHODS.has(method) &&
+    preflightExpressionIsPure(
+      value.callee.object,
+      symbols,
+      seen
+    )
+  );
+}
+
+function preflightPureHelperIsSafe(
+  definition,
+  symbols,
+  seen
+) {
+  const body = preflightFunctionBody(definition);
+  if (!body) return false;
+  if (body.type !== "BlockStatement") {
+    return preflightExpressionIsPure(
+      body,
+      symbols,
+      seen
+    );
+  }
+  const statements = body.body ?? [];
+  if (
+    statements.length === 0 ||
+    statements.at(-1)?.type !== "ReturnStatement"
+  ) {
+    return false;
+  }
+  return (
+    statements
+      .slice(0, -1)
+      .every(
+        (statement) =>
+          statement.type === "VariableDeclaration" &&
+          statement.kind === "const" &&
+          (statement.declarations ?? []).every(
+            (declaration) =>
+              declaration.id?.type === "Identifier" &&
+              declaration.init &&
+              preflightExpressionIsPure(
+                declaration.init,
+                symbols,
+                seen
+              )
+          )
+      ) &&
+    preflightExpressionIsPure(
+      statements.at(-1).argument,
+      symbols,
+      seen
+    )
+  );
+}
+
+function preflightThrowBranchIsSafe(
+  consequent,
+  symbols,
+  seen
+) {
+  const statements =
+    consequent?.type === "BlockStatement"
+      ? consequent.body ?? []
+      : [consequent];
+  if (
+    statements.length === 0 ||
+    statements.at(-1)?.type !== "ThrowStatement"
+  ) {
+    return false;
+  }
+  const terminal = unwrapPreflightExpression(
+    statements.at(-1).argument
+  );
+  if (
+    terminal?.type !== "NewExpression" ||
+    terminal.callee?.type !== "Identifier" ||
+    !terminal.callee.name.endsWith("Error") ||
+    !(terminal.arguments ?? []).every(
+      (argument) =>
+        argument?.type !== "SpreadElement" &&
+        preflightExpressionIsPure(
+          argument,
+          symbols,
+          seen
+        )
+    )
+  ) {
+    return false;
+  }
+  return statements.slice(0, -1).every((statement) => {
+    const expression =
+      statement?.type === "ExpressionStatement"
+        ? statement.expression
+        : null;
+    if (
+      expression?.type !== "AssignmentExpression" ||
+      expression.operator !== "="
+    ) {
+      return false;
+    }
+    const path =
+      expression.left?.type === "Identifier"
+        ? expression.left.name
+        : memberExpressionWritePath(expression.left);
+    return (
+      Boolean(path) &&
+      (expression.left.type === "Identifier" ||
+        path.endsWith(".value")) &&
+      preflightExpressionIsPure(
+        expression.right,
+        symbols,
+        seen
+      )
+    );
+  });
+}
+
+function failClosedPreflightHelperIsSafe(
+  definition,
+  symbols
+) {
+  const body = preflightFunctionBody(definition);
+  if (body?.type !== "BlockStatement") return false;
+  const statements = body.body ?? [];
+  const ifIndexes = statements
+    .map((statement, index) =>
+      statement.type === "IfStatement" ? index : -1
+    )
+    .filter((index) => index >= 0);
+  if (
+    ifIndexes.length !== 1 ||
+    ifIndexes[0] !== statements.length - 2 ||
+    statements.at(-1)?.type !== "ReturnStatement"
+  ) {
+    return false;
+  }
+  const guard = statements[ifIndexes[0]];
+  if (
+    guard.alternate ||
+    staticTruthiness(guard.test).known
+  ) {
+    return false;
+  }
+  const seen = new Set();
+  return (
+    statements
+      .slice(0, ifIndexes[0])
+      .every(
+        (statement) =>
+          statement.type === "VariableDeclaration" &&
+          statement.kind === "const" &&
+          (statement.declarations ?? []).every(
+            (declaration) =>
+              declaration.id?.type === "Identifier" &&
+              declaration.init &&
+              preflightExpressionIsPure(
+                declaration.init,
+                symbols,
+                seen
+              )
+          )
+      ) &&
+    preflightExpressionIsPure(
+      guard.test,
+      symbols,
+      seen
+    ) &&
+    preflightThrowBranchIsSafe(
+      guard.consequent,
+      symbols,
+      seen
+    ) &&
+    preflightExpressionIsPure(
+      statements.at(-1).argument,
+      symbols,
+      seen
+    )
+  );
+}
+
+function callExpressionMatchesWrapper(
+  node,
+  wrapper,
+  symbols
+) {
+  if (node?.type !== "CallExpression") return false;
+  if (node.callee?.type === "Identifier") {
+    return importedCallMatchesWrapper(
+      {
+        kind: "identifier",
+        localName: node.callee.name,
+        bindingIdentifier: node.callee
+      },
+      wrapper,
+      symbols
+    );
+  }
+  if (
+    node.callee?.type === "MemberExpression" &&
+    !node.callee.computed &&
+    node.callee.object?.type === "Identifier" &&
+    node.callee.property?.type === "Identifier"
+  ) {
+    return importedCallMatchesWrapper(
+      {
+        kind: "member",
+        localName: node.callee.object.name,
+        memberName: node.callee.property.name,
+        bindingIdentifier: node.callee.object
+      },
+      wrapper,
+      symbols
+    );
+  }
+  return false;
+}
+
+function collectLocalArgumentCalls(
+  node,
+  symbols,
+  names
+) {
+  const visit = (candidate, isRoot = false) => {
+    if (!candidate || typeof candidate !== "object") return;
+    if (
+      !isRoot &&
+      [
+        "ArrowFunctionExpression",
+        "FunctionDeclaration",
+        "FunctionExpression"
+      ].includes(candidate.type)
+    ) {
+      return;
+    }
+    if (
+      candidate.type === "CallExpression" &&
+      candidate.callee?.type === "Identifier"
+    ) {
+      const binding = symbols.scopeBindings?.get(
+        candidate.callee
+      );
+      if (
+        binding &&
+        uniqueIndexedNode(
+          symbols.definitionsByBinding,
+          binding
+        )
+      ) {
+        names.add(binding);
+      }
+    }
+    for (const [key, value] of Object.entries(candidate)) {
+      if (
+        [
+          "comments",
+          "loc",
+          "parent",
+          "range",
+          "tokens"
+        ].includes(key)
+      ) {
+        continue;
+      }
+      if (Array.isArray(value)) {
+        for (const child of value) {
+          if (child && typeof child.type === "string") {
+            visit(child, false);
+          }
+        }
+      } else if (value && typeof value.type === "string") {
+        visit(value, false);
+      }
+    }
+  };
+  visit(node, true);
+}
+
+function safeWrapperArgumentPreflightHelpers(
+  definition,
+  wrapper,
+  symbols
+) {
+  const names = new Set();
+  const body = preflightFunctionBody(definition);
+  if (!body) return names;
+  const visit = (node, isRoot = false) => {
+    if (!node || typeof node !== "object") return;
+    if (
+      !isRoot &&
+      [
+        "ArrowFunctionExpression",
+        "FunctionDeclaration",
+        "FunctionExpression"
+      ].includes(node.type)
+    ) {
+      return;
+    }
+    if (
+      callExpressionMatchesWrapper(
+        node,
+        wrapper,
+        symbols
+      )
+    ) {
+      for (const argument of node.arguments ?? []) {
+        collectLocalArgumentCalls(
+          argument?.type === "SpreadElement"
+            ? argument.argument
+            : argument,
+          symbols,
+          names
+        );
+      }
+    }
+    for (const [key, value] of Object.entries(node)) {
+      if (
+        [
+          "comments",
+          "loc",
+          "parent",
+          "range",
+          "tokens"
+        ].includes(key)
+      ) {
+        continue;
+      }
+      if (Array.isArray(value)) {
+        for (const child of value) {
+          if (child && typeof child.type === "string") {
+            visit(child, false);
+          }
+        }
+      } else if (value && typeof value.type === "string") {
+        visit(value, false);
+      }
+    }
+  };
+  visit(body, true);
+  return new Set(
+    [...names].filter((binding) =>
+      failClosedPreflightHelperIsSafe(
+        uniqueIndexedNode(
+          symbols.definitionsByBinding,
+          binding
+        ),
+        symbols
+      )
+    )
+  );
+}
+
+function variantEventCall(node, handler) {
+  const expression = unwrapValueExpression(node);
+  if (!expression) return null;
+  if (
+    expression.type === "CallExpression" &&
+    expression.callee?.type === "Identifier" &&
+    expression.callee.name === handler
+  ) {
+    return expression;
+  }
+  if (
+    [
+      "ArrowFunctionExpression",
+      "FunctionExpression"
+    ].includes(expression.type)
+  ) {
+    if (expression.body?.type !== "BlockStatement") {
+      return variantEventCall(expression.body, handler);
+    }
+    const executable = (expression.body.body ?? []).filter(
+      (statement) => statement.type !== "EmptyStatement"
+    );
+    if (executable.length !== 1) return null;
+    const statement = executable[0];
+    if (statement.type === "ExpressionStatement") {
+      return variantEventCall(statement.expression, handler);
+    }
+    if (statement.type === "ReturnStatement") {
+      return variantEventCall(statement.argument, handler);
+    }
+  }
+  if (expression.type === "VOnExpression") {
+    const executable = (expression.body ?? []).filter(
+      (statement) => statement.type !== "EmptyStatement"
+    );
+    if (executable.length !== 1) return null;
+    const statement = executable[0];
+    if (statement.type === "ExpressionStatement") {
+      return variantEventCall(statement.expression, handler);
+    }
+    if (statement.type === "ReturnStatement") {
+      return variantEventCall(statement.argument, handler);
+    }
+  }
+  return null;
+}
+
+function staticPropertyName(node) {
+  if (!node) return null;
+  if (!node.computed && node.property?.type === "Identifier") {
+    return node.property.name;
+  }
+  return literalString(node.property);
+}
+
+function variantSymbolicValue(
+  node,
+  state,
+  symbols,
+  seenBindings = new Set()
+) {
+  const value = unwrapValueExpression(node);
+  if (!value) return null;
+  const literal = literalString(value);
+  if (literal !== null) {
+    return { kind: "scalar", value: literal };
+  }
+  if (value.type === "Identifier") {
+    const binding = symbols.scopeBindings?.get(value);
+    if (!binding) return null;
+    const known = state.get(binding);
+    if (known) return known;
+    if (seenBindings.has(binding)) return null;
+    const declaration = uniqueIndexedNode(
+      symbols.declarationsByBinding,
+      binding
+    );
+    if (!declaration) return null;
+    const nextSeen = new Set(seenBindings);
+    nextSeen.add(binding);
+    return variantSymbolicValue(
+      declaration,
+      state,
+      symbols,
+      nextSeen
+    );
+  }
+  if (value.type === "MemberExpression") {
+    const property = staticPropertyName(value);
+    if (property === null) return null;
+    const receiver = variantSymbolicValue(
+      value.object,
+      state,
+      symbols,
+      seenBindings
+    );
+    if (
+      receiver?.kind !== "object" ||
+      receiver.invalidated === true
+    ) {
+      return null;
+    }
+    return receiver.fields.get(property) ?? null;
+  }
+  if (value.type === "SequenceExpression") {
+    return variantSymbolicValue(
+      value.expressions?.at(-1),
+      state,
+      symbols,
+      seenBindings
+    );
+  }
+  if (value.type === "ConditionalExpression") {
+    const consequent = variantSymbolicValue(
+      value.consequent,
+      state,
+      symbols,
+      seenBindings
+    );
+    const alternate = variantSymbolicValue(
+      value.alternate,
+      state,
+      symbols,
+      seenBindings
+    );
+    return variantSymbolicKey(consequent) ===
+      variantSymbolicKey(alternate)
+      ? consequent
+      : null;
+  }
+  if (value.type === "ArrayExpression") {
+    const fields = new Map();
+    for (let index = 0; index < (value.elements ?? []).length; index += 1) {
+      const element = value.elements[index];
+      if (!element || element.type === "SpreadElement") return null;
+      const symbolic = variantSymbolicValue(
+        element,
+        state,
+        symbols,
+        seenBindings
+      );
+      if (symbolic) fields.set(String(index), symbolic);
+    }
+    return { kind: "object", fields };
+  }
+  if (value.type !== "ObjectExpression") return null;
+  const fields = new Map();
+  for (const property of value.properties ?? []) {
+    if (property.type === "SpreadElement") {
+      const spread = variantSymbolicValue(
+        property.argument,
+        state,
+        symbols,
+        seenBindings
+      );
+      if (spread?.kind !== "object") return null;
+      for (const [key, symbolic] of spread.fields) {
+        fields.set(key, symbolic);
+      }
+      continue;
+    }
+    if (
+      property.type !== "Property" ||
+      property.kind !== "init" ||
+      property.method === true
+    ) {
+      return null;
+    }
+    const key = property.computed
+      ? literalString(property.key)
+      : property.key?.type === "Identifier"
+        ? property.key.name
+        : literalString(property.key);
+    if (key === null) return null;
+    const symbolic = variantSymbolicValue(
+      property.value,
+      state,
+      symbols,
+      seenBindings
+    );
+    if (symbolic) fields.set(key, symbolic);
+    else fields.delete(key);
+  }
+  return { kind: "object", fields };
+}
+
+function variantSymbolicKey(value) {
+  if (!value) return "unknown";
+  if (value.kind === "scalar") {
+    return `scalar:${JSON.stringify(value.value)}`;
+  }
+  if (value.kind !== "object") return "unknown";
+  if (value.invalidated === true) return "object:invalidated";
+  return `object:{${[...value.fields]
+    .sort(([left], [right]) => compareStrings(left, right))
+    .map(
+      ([key, child]) =>
+        `${JSON.stringify(key)}:${variantSymbolicKey(child)}`
+    )
+    .join(",")}}`;
+}
+
+const VARIANT_SEMANTIC_FIELDS = new Set([
+  "action",
+  "decision",
+  "kind",
+  "key",
+  "mode",
+  "variant"
+]);
+const VARIANT_ENVELOPE_FIELDS = new Set([
+  "body",
+  "data",
+  "payload",
+  "request"
+]);
+
+function symbolicVariantEvidence(
+  value,
+  variant,
+  allowDirectScalar = true
+) {
+  if (!value || value.kind === "unknown") {
+    return "none";
+  }
+  if (value.kind === "scalar") {
+    return allowDirectScalar && value.value === variant
+      ? "match"
+      : "none";
+  }
+  if (value.invalidated === true) return "conflict";
+  const semanticValues = [...value.fields].filter(([key]) =>
+    VARIANT_SEMANTIC_FIELDS.has(key)
+  );
+  if (semanticValues.length > 0) {
+    return semanticValues.every(
+      ([, child]) =>
+        child?.kind === "scalar" &&
+        child.value === variant
+    )
+      ? "match"
+      : "conflict";
+  }
+  const envelopeEvidence = [...value.fields]
+    .filter(([key]) => VARIANT_ENVELOPE_FIELDS.has(key))
+    .map(([, child]) =>
+      symbolicVariantEvidence(child, variant, false)
+    );
+  if (envelopeEvidence.includes("conflict")) {
+    return "conflict";
+  }
+  return envelopeEvidence.includes("match")
+    ? "match"
+    : "none";
+}
+
+function callCarriesVariant(callNode, variant, state, symbols) {
+  const evidence = (callNode?.arguments ?? [])
+    .filter((argument) => argument?.type !== "SpreadElement")
+    .map((argument) =>
+      symbolicVariantEvidence(
+        variantSymbolicValue(argument, state, symbols),
+        variant
+      )
+  );
+  return (
+    !evidence.includes("conflict") &&
+    evidence.includes("match")
+  );
+}
+
+function cloneVariantSymbolicValue(value, memo = new Map()) {
+  if (!value || value.kind !== "object") return value;
+  if (memo.has(value)) return memo.get(value);
+  const clone = {
+    kind: "object",
+    fields: new Map(),
+    ...(value.invalidated === true
+      ? { invalidated: true }
+      : {})
+  };
+  memo.set(value, clone);
+  for (const [key, child] of value.fields) {
+    clone.fields.set(
+      key,
+      cloneVariantSymbolicValue(child, memo)
+    );
+  }
+  return clone;
+}
+
+function cloneVariantState(state) {
+  const memo = new Map();
+  return new Map(
+    [...state].map(([binding, value]) => [
+      binding,
+      cloneVariantSymbolicValue(value, memo)
+    ])
+  );
+}
+
+function variantStateNodesBeforeCall(
+  definition,
+  callNode
+) {
+  const output = [];
+  let stopped = false;
+  const visit = (node, isRoot = false) => {
+    if (
+      stopped ||
+      !node ||
+      typeof node !== "object"
+    ) {
+      return;
+    }
+    if (node === callNode) {
+      for (const argument of node.arguments ?? []) {
+        if (argument?.type !== "SpreadElement") {
+          visit(argument, false);
+        }
+      }
+      stopped = true;
+      return;
+    }
+    if (
+      !isRoot &&
+      [
+        "ArrowFunctionExpression",
+        "FunctionDeclaration",
+        "FunctionExpression"
+      ].includes(node.type)
+    ) {
+      return;
+    }
+    if (
+      node.type === "Program" ||
+      node.type === "BlockStatement"
+    ) {
+      for (const statement of node.body ?? []) {
+        visit(statement, false);
+        if (stopped) break;
+      }
+      return;
+    }
+    if (node.type === "IfStatement") {
+      visit(node.test, false);
+      const test = staticTruthiness(node.test);
+      if (test.known) {
+        visit(
+          test.value ? node.consequent : node.alternate,
+          false
+        );
+      } else {
+        output.push({ type: "UnknownVariantControlFlow" });
+      }
+      return;
+    }
+    if (node.type === "ConditionalExpression") {
+      visit(node.test, false);
+      const test = staticTruthiness(node.test);
+      if (test.known) {
+        visit(
+          test.value ? node.consequent : node.alternate,
+          false
+        );
+      } else {
+        output.push({ type: "UnknownVariantControlFlow" });
+      }
+      return;
+    }
+    if (node.type === "LogicalExpression") {
+      visit(node.left, false);
+      const left = staticTruthiness(node.left);
+      if (!left.known) {
+        output.push({ type: "UnknownVariantControlFlow" });
+        return;
+      }
+      if (
+        (node.operator === "&&" && left.value) ||
+        (node.operator === "||" && !left.value)
+      ) {
+        visit(node.right, false);
+      }
+      return;
+    }
+    if (node.type === "WhileStatement") {
+      visit(node.test, false);
+      const test = staticTruthiness(node.test);
+      if (test.known && !test.value) return;
+      output.push({ type: "UnknownVariantControlFlow" });
+      return;
+    }
+    if (
+      [
+        "DoWhileStatement",
+        "ForInStatement",
+        "ForOfStatement",
+        "ForStatement",
+        "SwitchStatement",
+        "TryStatement"
+      ].includes(node.type)
+    ) {
+      output.push({ type: "UnknownVariantControlFlow" });
+      return;
+    }
+    if (node.type === "VariableDeclarator") {
+      visit(node.init, false);
+      output.push(node);
+      return;
+    }
+    if (node.type === "AssignmentExpression") {
+      visit(node.right, false);
+      output.push(node);
+      return;
+    }
+    if (
+      node.type === "UpdateExpression" ||
+      (node.type === "UnaryExpression" &&
+        node.operator === "delete")
+    ) {
+      output.push(node);
+      return;
+    }
+    if (node.type === "CallExpression") {
+      visit(node.callee, false);
+      for (const argument of node.arguments ?? []) {
+        if (argument?.type !== "SpreadElement") {
+          visit(argument, false);
+        }
+      }
+      output.push(node);
+      return;
+    }
+    const children = [];
+    for (const [key, value] of Object.entries(node)) {
+      if (
+        [
+          "comments",
+          "loc",
+          "parent",
+          "range",
+          "tokens"
+        ].includes(key)
+      ) {
+        continue;
+      }
+      if (Array.isArray(value)) {
+        for (const child of value) {
+          if (child && typeof child.type === "string") {
+            children.push(child);
+          }
+        }
+      } else if (value && typeof value.type === "string") {
+        children.push(value);
+      }
+    }
+    children
+      .sort(
+        (left, right) =>
+          (left.range?.[0] ?? 0) -
+          (right.range?.[0] ?? 0)
+      )
+      .forEach((child) => visit(child, false));
+  };
+  visit(definition?.body ?? definition, true);
+  return output;
+}
+
+function setUnknownVariantBinding(state, binding) {
+  if (binding) state.set(binding, { kind: "unknown" });
+}
+
+function invalidateVariantSymbolicValue(
+  value,
+  seen = new Set()
+) {
+  if (
+    !value ||
+    value.kind !== "object" ||
+    seen.has(value)
+  ) {
+    return;
+  }
+  seen.add(value);
+  value.invalidated = true;
+  for (const child of value.fields.values()) {
+    invalidateVariantSymbolicValue(child, seen);
+  }
+}
+
+function invalidateVariantState(state) {
+  const seen = new Set();
+  for (const [binding, value] of state) {
+    if (value?.kind === "object") {
+      invalidateVariantSymbolicValue(value, seen);
+    } else {
+      state.set(binding, { kind: "unknown" });
+    }
+  }
+}
+
+function invalidateVariantAssignmentPattern(
+  pattern,
+  state,
+  symbols
+) {
+  const target = unwrapValueExpression(pattern);
+  if (!target) {
+    invalidateVariantState(state);
+    return;
+  }
+  if (target.type === "Identifier") {
+    setUnknownVariantBinding(
+      state,
+      symbols.scopeBindings?.get(target)
+    );
+    return;
+  }
+  if (target.type === "MemberExpression") {
+    invalidateVariantSymbolicValue(
+      variantSymbolicValue(
+        target.object,
+        state,
+        symbols
+      )
+    );
+    return;
+  }
+  if (target.type === "AssignmentPattern") {
+    invalidateVariantAssignmentPattern(
+      target.left,
+      state,
+      symbols
+    );
+    return;
+  }
+  if (target.type === "RestElement") {
+    invalidateVariantAssignmentPattern(
+      target.argument,
+      state,
+      symbols
+    );
+    return;
+  }
+  if (target.type === "ObjectPattern") {
+    for (const property of target.properties ?? []) {
+      invalidateVariantAssignmentPattern(
+        property.type === "RestElement"
+          ? property.argument
+          : property.value,
+        state,
+        symbols
+      );
+    }
+    return;
+  }
+  if (target.type === "ArrayPattern") {
+    for (const element of target.elements ?? []) {
+      if (element) {
+        invalidateVariantAssignmentPattern(
+          element,
+          state,
+          symbols
+        );
+      }
+    }
+    return;
+  }
+  invalidateVariantState(state);
+}
+
+function applyVariantStateNode(node, state, symbols) {
+  if (node.type === "UnknownVariantControlFlow") {
+    invalidateVariantState(state);
+    return;
+  }
+  if (
+    node.type === "VariableDeclarator" &&
+    node.id?.type === "Identifier"
+  ) {
+    const binding = symbols.scopeBindings?.get(node.id);
+    if (!binding) return;
+    const value = node.init
+      ? variantSymbolicValue(node.init, state, symbols)
+      : null;
+    state.set(binding, value ?? { kind: "unknown" });
+    return;
+  }
+  if (node.type === "UpdateExpression") {
+    const target = unwrapValueExpression(node.argument);
+    if (target?.type === "Identifier") {
+      setUnknownVariantBinding(
+        state,
+        symbols.scopeBindings?.get(target)
+      );
+      return;
+    }
+    if (target?.type === "MemberExpression") {
+      const receiver = variantSymbolicValue(
+        target.object,
+        state,
+        symbols
+      );
+      if (receiver?.kind === "object") {
+        receiver.invalidated = true;
+      }
+    }
+    return;
+  }
+  if (
+    node.type === "UnaryExpression" &&
+    node.operator === "delete"
+  ) {
+    const target = unwrapValueExpression(node.argument);
+    if (target?.type === "Identifier") {
+      setUnknownVariantBinding(
+        state,
+        symbols.scopeBindings?.get(target)
+      );
+      return;
+    }
+    if (target?.type === "MemberExpression") {
+      const receiver = variantSymbolicValue(
+        target.object,
+        state,
+        symbols
+      );
+      if (receiver?.kind === "object") {
+        invalidateVariantSymbolicValue(receiver);
+      }
+    }
+    return;
+  }
+  if (node.type === "CallExpression") {
+    for (const argument of node.arguments ?? []) {
+      if (argument?.type === "SpreadElement") {
+        invalidateVariantState(state);
+        continue;
+      }
+      invalidateVariantSymbolicValue(
+        variantSymbolicValue(
+          argument,
+          state,
+          symbols
+        )
+      );
+    }
+    invalidateVariantState(state);
+    return;
+  }
+  if (node.type !== "AssignmentExpression") return;
+  const target = unwrapValueExpression(node.left);
+  if (
+    ["ArrayPattern", "ObjectPattern"].includes(target?.type)
+  ) {
+    invalidateVariantAssignmentPattern(
+      target,
+      state,
+      symbols
+    );
+    return;
+  }
+  if (target?.type === "Identifier") {
+    const binding = symbols.scopeBindings?.get(target);
+    if (!binding) return;
+    const value =
+      node.operator === "="
+        ? variantSymbolicValue(node.right, state, symbols)
+        : null;
+    state.set(binding, value ?? { kind: "unknown" });
+    return;
+  }
+  if (target?.type !== "MemberExpression") return;
+  const receiver = variantSymbolicValue(
+    target.object,
+    state,
+    symbols
+  );
+  if (receiver?.kind !== "object") return;
+  const property = staticPropertyName(target);
+  if (node.operator !== "=" || property === null) {
+    receiver.invalidated = true;
+    return;
+  }
+  const value = variantSymbolicValue(
+    node.right,
+    state,
+    symbols
+  );
+  receiver.fields.set(
+    property,
+    value ?? { kind: "unknown" }
+  );
+}
+
+function variantStateBeforeCall(
+  definition,
+  callNode,
+  initialState,
+  symbols
+) {
+  const state = cloneVariantState(initialState);
+  for (const node of variantStateNodesBeforeCall(
+    definition,
+    callNode
+  )) {
+    applyVariantStateNode(node, state, symbols);
+  }
+  return state;
+}
+
+function bindVariantArguments(
+  definition,
+  argumentsList,
+  state,
+  symbols
+) {
+  const nextState = new Map();
+  for (let index = 0; index < (definition?.params ?? []).length; index += 1) {
+    const parameter = definition.params[index];
+    const argument = argumentsList?.[index];
+    if (
+      parameter?.type !== "Identifier" ||
+      !argument ||
+      argument.type === "SpreadElement"
+    ) {
+      continue;
+    }
+    const binding = symbols.scopeBindings?.get(parameter);
+    const symbolic = variantSymbolicValue(
+      argument,
+      state,
+      symbols
+    );
+    if (binding && symbolic) nextState.set(binding, symbolic);
+  }
+  return nextState;
+}
+
+function businessDraftVariantState(
+  definition,
+  variant,
+  symbols
+) {
+  const state = new Map();
+  const parameter = definition?.params?.[0];
+  if (parameter?.type !== "Identifier") return state;
+  const binding = symbols.scopeBindings?.get(parameter);
+  if (binding) {
+    state.set(binding, {
+      kind: "object",
+      fields: new Map([
+        ["action", { kind: "scalar", value: variant }]
+      ])
+    });
+  }
+  return state;
+}
+
+function callableVariantStateKey(definition, state, symbols) {
+  return (definition?.params ?? [])
+    .map((parameter) => {
+      if (parameter?.type !== "Identifier") return "unsupported";
+      const binding = symbols.scopeBindings?.get(parameter);
+      return binding
+        ? variantSymbolicKey(state.get(binding))
+        : "unbound";
+    })
+    .join("|");
+}
+
+function wrapperCausalProof(
+  handler,
+  wrapper,
+  symbols,
+  {
+    candidate = null,
+    variant = null,
+    businessDraftActionTrusted = false
+  } = {}
+) {
+  const handlerBindings = topLevelScopeVariables(
+    symbols.scopeManager,
+    handler
+  );
+  if (handlerBindings.length !== 1) {
+    return {
+      verified: false,
+      localCallChain: [handler]
+    };
+  }
+  const handlerBinding = handlerBindings[0];
+  const handlerDefinition = uniqueIndexedNode(
+    symbols.definitionsByBinding,
+    handlerBinding
+  );
+  const eventCall = variantEventCall(
+    candidate?.expression,
+    handler
+  );
+  let initialState = handlerDefinition && eventCall
+    ? bindVariantArguments(
+        handlerDefinition,
+        eventCall.arguments,
+        new Map(),
+        symbols
+      )
+    : new Map();
+  if (
+    variant &&
+    businessDraftActionTrusted &&
+    candidate?.kind === "prop_callback" &&
+    candidate.element === "business-draft-action" &&
+    candidate.event === "execute"
+  ) {
+    initialState = businessDraftVariantState(
+      handlerDefinition,
+      variant,
+      symbols
+    );
+  }
+  const initialImport =
+    symbols.importsByBinding?.get(handlerBinding);
   if (
     initialImport &&
     importedCallMatchesWrapper(
-      { kind: "identifier", localName: handler },
+      {
+        kind: "identifier",
+        localName: handler,
+        resolvedBinding: handlerBinding
+      },
       wrapper,
       symbols
     )
   ) {
     return {
-      verified: true,
+      verified:
+        !variant ||
+        callCarriesVariant(
+          eventCall,
+          variant,
+          initialState,
+          symbols
+        ),
       localCallChain: [handler]
     };
   }
-  const pending = [{ name: handler, chain: [handler] }];
-  const visited = new Set();
+  const pending = [
+    {
+      binding: handlerBinding,
+      name: handler,
+      chain: [handler],
+      state: initialState
+    }
+  ];
+  const visited = new Map();
   let verifiedChain = null;
-  while (pending.length && visited.size < 128) {
+  let inspectedStates = 0;
+  let variantMismatch = false;
+  while (pending.length && inspectedStates < 128) {
     const current = pending.shift();
-    if (visited.has(current.name)) continue;
-    visited.add(current.name);
     const definition = uniqueIndexedNode(
-      symbols.definitions,
-      current.name
+      symbols.definitionsByBinding,
+      current.binding
     );
     if (!definition) continue;
+    const stateKey = callableVariantStateKey(
+      definition,
+      current.state,
+      symbols
+    );
+    const bindingStates = visited.get(current.binding) ?? new Set();
+    if (bindingStates.has(stateKey)) continue;
+    bindingStates.add(stateKey);
+    visited.set(current.binding, bindingStates);
+    inspectedStates += 1;
     const analysis = directCallTargets(
       definition,
       symbols.declarations
@@ -3145,25 +11039,76 @@ function wrapperCausalProof(handler, wrapper, symbols) {
         localCallChain: [handler]
       };
     }
+    const safePreflightHelpers =
+      safeWrapperArgumentPreflightHelpers(
+        definition,
+        wrapper,
+        symbols
+      );
     for (const call of analysis.calls) {
+      const callState = variantStateBeforeCall(
+        definition,
+        call.callNode,
+        current.state,
+        symbols
+      );
+      const callBinding = call.bindingIdentifier
+        ? symbols.scopeBindings?.get(
+            call.bindingIdentifier
+          )
+        : null;
       if (importedCallMatchesWrapper(call, wrapper, symbols)) {
-        verifiedChain ??= [
-            ...current.chain,
-            call.kind === "identifier"
-              ? call.localName
-              : `${call.localName}.${call.memberName}`
-          ];
+        if (
+          variant &&
+          !callCarriesVariant(
+            call.callNode,
+            variant,
+            callState,
+            symbols
+          )
+        ) {
+          variantMismatch = true;
+        } else {
+          verifiedChain ??= [
+              ...current.chain,
+              call.kind === "identifier"
+                ? call.localName
+                : `${call.localName}.${call.memberName}`
+            ];
+        }
       }
       if (
         call.kind === "identifier" &&
+        !callBinding
+      ) {
+        return {
+          verified: false,
+          localCallChain: [handler]
+        };
+      }
+      if (
+        call.kind === "identifier" &&
+        callBinding &&
+        !safePreflightHelpers.has(callBinding) &&
         uniqueIndexedNode(
-          symbols.definitions,
-          call.localName
+          symbols.definitionsByBinding,
+          callBinding
         )
       ) {
+        const nextDefinition = uniqueIndexedNode(
+          symbols.definitionsByBinding,
+          callBinding
+        );
         pending.push({
+          binding: callBinding,
           name: call.localName,
-          chain: [...current.chain, call.localName]
+          chain: [...current.chain, call.localName],
+          state: bindVariantArguments(
+            nextDefinition,
+            call.callNode?.arguments,
+            callState,
+            symbols
+          )
         });
       }
     }
@@ -3174,7 +11119,7 @@ function wrapperCausalProof(handler, wrapper, symbols) {
       localCallChain: [handler]
     };
   }
-  if (verifiedChain) {
+  if (verifiedChain && !variantMismatch) {
     return {
       verified: true,
       localCallChain: verifiedChain
@@ -3187,7 +11132,7 @@ function wrapperCausalProof(handler, wrapper, symbols) {
 }
 
 function serverReadImportNames(symbols, wrapperIndex, sourceFile) {
-  const names = new Set();
+  const bindings = new Map();
   for (const [localName, binding] of symbols.imports) {
     if (binding.kind !== "named") continue;
     const wrapper = wrapperIndex.get(
@@ -3198,6 +11143,8 @@ function serverReadImportNames(symbols, wrapperIndex, sourceFile) {
     );
     if (
       !wrapper ||
+      wrapper.returnProvenance !==
+        "transparent_main_response" ||
       !Array.isArray(wrapper.productionConsumers) ||
       !wrapper.productionConsumers.includes(sourceFile)
     ) {
@@ -3212,10 +11159,20 @@ function serverReadImportNames(symbols, wrapperIndex, sourceFile) {
           ["GET", "HEAD"].includes(request.method.toUpperCase())
       )
     ) {
-      names.add(localName);
+      const importVariable =
+        symbols.importVariablesByName?.get(localName);
+      if (importVariable) {
+        bindings.set(
+          importVariable,
+          wrapperIdentity(
+            binding.sourceFile,
+            binding.importedName
+          )
+        );
+      }
     }
   }
-  return names;
+  return bindings;
 }
 
 function wrapperReferencedFromAction({
@@ -3253,7 +11210,8 @@ function actionBindings({
   blockers,
   graph,
   symbols,
-  candidate
+  candidate,
+  businessDraftActionTrusted
 }) {
   const bindings = [];
   for (const declared of action.wrappers) {
@@ -3291,7 +11249,12 @@ function actionBindings({
             ...wrapper,
             apiFile: posixPath(wrapper.apiFile)
           },
-          symbols
+          symbols,
+          {
+            candidate,
+            variant: action.trigger.variant,
+            businessDraftActionTrusted
+          }
         )
       : {
           verified: false,
@@ -3486,6 +11449,19 @@ function validateUpstreamWebManifest({
       });
       continue;
     }
+    if (
+      wrapper.returnProvenance !== undefined &&
+      !WEB_RETURN_PROVENANCE.has(
+        wrapper.returnProvenance
+      )
+    ) {
+      issues.push({
+        code: "UPSTREAM_WEB_WRAPPER_RETURN_PROVENANCE_INVALID",
+        apiFile: posixPath(wrapper.apiFile),
+        wrapper: wrapper.name,
+        returnProvenance: wrapper.returnProvenance
+      });
+    }
     const identity = wrapperIdentity(
       posixPath(wrapper.apiFile),
       wrapper.name
@@ -3592,6 +11568,311 @@ function validateUpstreamNestManifest(manifest, blockers) {
     normalizedKeys.add(route.normalizedKey);
     identities.add(expected);
   }
+}
+
+function upstreamWebCoverageContextIsTrusted({
+  manifest,
+  sourceFiles,
+  reachable
+}) {
+  if (!isRecord(manifest.blockers)) return false;
+  const blockerGroups = Object.values(manifest.blockers);
+  if (!blockerGroups.every(Array.isArray)) return false;
+  const hasBlockers = blockerGroups.some(
+    (entries) => entries.length > 0
+  );
+  if (
+    (manifest.status === "ready" && hasBlockers) ||
+    (manifest.status === "blocked" && !hasBlockers) ||
+    !["ready", "blocked"].includes(manifest.status)
+  ) {
+    return false;
+  }
+  const expectedScope = {
+    apiRoot: `${WEB_SOURCE_ROOT}/api`,
+    productionEntrypoint: PRODUCTION_ENTRYPOINT,
+    nestRouteManifest: NEST_MANIFEST_PATH
+  };
+  if (
+    !isRecord(manifest.scope) ||
+    Object.entries(expectedScope).some(
+      ([key, value]) => manifest.scope[key] !== value
+    )
+  ) {
+    return false;
+  }
+  return (
+    isRecord(manifest.evidence) &&
+    manifest.evidence.productionModuleCount ===
+      sourceFiles.length &&
+    manifest.evidence.reachableProductionModuleCount ===
+      reachable.size
+  );
+}
+
+function upstreamBlockerReferencesAssociation(
+  value,
+  association
+) {
+  if (Array.isArray(value)) {
+    return value.some((entry) =>
+      upstreamBlockerReferencesAssociation(
+        entry,
+        association
+      )
+    );
+  }
+  if (!isRecord(value)) return false;
+  const blockerApiFile = isNonEmptyString(value.apiFile)
+    ? posixPath(value.apiFile)
+    : null;
+  const blockerWrapper = isNonEmptyString(value.wrapper)
+    ? value.wrapper
+    : isNonEmptyString(value.name)
+      ? value.name
+      : null;
+  if (
+    blockerWrapper === association.wrapper &&
+    (!blockerApiFile ||
+      blockerApiFile === association.apiFile)
+  ) {
+    return true;
+  }
+  const blockerNormalizedKeys = uniqueStrings([
+    ...(isNonEmptyString(value.normalizedKey)
+      ? [value.normalizedKey]
+      : []),
+    ...(Array.isArray(value.normalizedKeys)
+      ? value.normalizedKeys.filter(isNonEmptyString)
+      : [])
+  ]);
+  if (
+    blockerNormalizedKeys.some((normalizedKey) =>
+      association.normalizedKeys.includes(normalizedKey)
+    )
+  ) {
+    return true;
+  }
+  const blockerConsumer = isNonEmptyString(value.consumer)
+    ? posixPath(value.consumer)
+    : isNonEmptyString(value.sourceFile)
+      ? posixPath(value.sourceFile)
+      : null;
+  if (
+    blockerConsumer &&
+    association.productionConsumers.includes(
+      blockerConsumer
+    )
+  ) {
+    return true;
+  }
+  return Object.values(value).some((entry) =>
+    upstreamBlockerReferencesAssociation(
+      entry,
+      association
+    )
+  );
+}
+
+function wrapperRequestsAreSelfConsistent(wrapper) {
+  if (
+    !Array.isArray(wrapper.requests) ||
+    wrapper.requests.length === 0
+  ) {
+    return false;
+  }
+  const mainRequestIdentities = new Set();
+  for (const request of wrapper.requests) {
+    if (request?.kind === "main") {
+      const expected = normalizedRequestIdentity(request);
+      if (
+        !expected ||
+        expected !== request.normalizedKey ||
+        mainRequestIdentities.has(expected)
+      ) {
+        return false;
+      }
+      mainRequestIdentities.add(expected);
+      continue;
+    }
+    if (
+      request?.kind !== "ticket_followup" ||
+      !isNonEmptyString(request.method) ||
+      !["GET", "HEAD"].includes(
+        request.method.toUpperCase()
+      )
+    ) {
+      return false;
+    }
+  }
+  return mainRequestIdentities.size > 0;
+}
+
+function trustedWebWrapperForAssociation({
+  manifest,
+  association
+}) {
+  const matches = manifest.wrappers.filter(
+    (wrapper) =>
+      isNonEmptyString(wrapper?.apiFile) &&
+      isNonEmptyString(wrapper?.name) &&
+      wrapperIdentity(
+        posixPath(wrapper.apiFile),
+        wrapper.name
+      ) ===
+        wrapperIdentity(
+          association.apiFile,
+          association.wrapper
+        )
+  );
+  if (matches.length !== 1) return null;
+  const wrapper = matches[0];
+  if (
+    !Array.isArray(wrapper.productionConsumers) ||
+    !association.productionConsumers.every((consumer) =>
+      wrapper.productionConsumers
+        .map(posixPath)
+        .includes(consumer)
+    ) ||
+    !wrapperRequestsAreSelfConsistent(wrapper) ||
+    Object.values(manifest.blockers).some((group) =>
+      upstreamBlockerReferencesAssociation(
+        group,
+        association
+      )
+    )
+  ) {
+    return null;
+  }
+  return wrapper;
+}
+
+function nestRouteAssociationIsTrusted(
+  manifest,
+  normalizedKey
+) {
+  if (
+    manifest.authorizationScope !==
+      "guard_metadata_only" ||
+    !isNonEmptyString(normalizedKey)
+  ) {
+    return false;
+  }
+  const matches = manifest.routes.filter(
+    (route) => route?.normalizedKey === normalizedKey
+  );
+  if (matches.length !== 1) return false;
+  const route = matches[0];
+  if (
+    !isNonEmptyString(route.method) ||
+    !isNonEmptyString(route.path) ||
+    route.method !== route.method.toUpperCase()
+  ) {
+    return false;
+  }
+  return (
+    `${route.method} ${normalizeRouteIdentityPath(
+      route.path
+    )}` === normalizedKey
+  );
+}
+
+function bindingUpstreamAssociationIsTrusted({
+  binding,
+  webManifest,
+  nestManifest
+}) {
+  if (
+    !isNonEmptyString(binding.normalizedKey) ||
+    binding.productionConsumers.length === 0
+  ) {
+    return false;
+  }
+  const association = {
+    apiFile: posixPath(binding.apiFile),
+    wrapper: binding.wrapper,
+    normalizedKeys: [binding.normalizedKey],
+    productionConsumers:
+      binding.productionConsumers.map(posixPath)
+  };
+  const wrapper = trustedWebWrapperForAssociation({
+    manifest: webManifest,
+    association
+  });
+  if (!wrapper) return false;
+  const matchingRequests = normalizedMainRequests(
+    wrapper
+  ).filter(
+    (request) =>
+      request.normalizedKey === binding.normalizedKey
+  );
+  return (
+    matchingRequests.length === 1 &&
+    matchingRequests[0].method.toUpperCase() ===
+      binding.method &&
+    matchingRequests[0].path === binding.path &&
+    nestRouteAssociationIsTrusted(
+      nestManifest,
+      binding.normalizedKey
+    )
+  );
+}
+
+function capabilitySourceUpstreamAssociationIsTrusted({
+  sourceIdentity,
+  sourceFile,
+  webManifest,
+  nestManifest
+}) {
+  const separator = sourceIdentity.indexOf("\u0000");
+  if (separator < 1) return false;
+  const apiFile = sourceIdentity.slice(0, separator);
+  const wrapperName = sourceIdentity.slice(separator + 1);
+  const candidates = webManifest.wrappers.filter(
+    (wrapper) =>
+      isNonEmptyString(wrapper?.apiFile) &&
+      isNonEmptyString(wrapper?.name) &&
+      wrapperIdentity(
+        posixPath(wrapper.apiFile),
+        wrapper.name
+      ) === sourceIdentity
+  );
+  if (candidates.length !== 1) return false;
+  const mainRequests = normalizedMainRequests(
+    candidates[0]
+  );
+  const normalizedKeys = uniqueStrings(
+    mainRequests
+      .map((request) => request.normalizedKey)
+      .filter(isNonEmptyString)
+  );
+  const association = {
+    apiFile,
+    wrapper: wrapperName,
+    normalizedKeys,
+    productionConsumers: [posixPath(sourceFile)]
+  };
+  const wrapper = trustedWebWrapperForAssociation({
+    manifest: webManifest,
+    association
+  });
+  return (
+    Boolean(wrapper) &&
+    wrapper.returnProvenance ===
+      "transparent_main_response" &&
+    mainRequests.length > 0 &&
+    mainRequests.every(
+      (request) =>
+        isNonEmptyString(request.method) &&
+        ["GET", "HEAD"].includes(
+          request.method.toUpperCase()
+        ) &&
+        nestRouteAssociationIsTrusted(
+          nestManifest,
+          request.normalizedKey
+        )
+    )
+  );
 }
 
 function emptyBlockers() {
@@ -3768,6 +12049,22 @@ export async function inspectWholeSitePageActionManifest({
       )
     ])
   );
+  for (const path of reachable) {
+    const ast = asts.get(path);
+    if (!ast) continue;
+    const issue = runtimeIntrinsicIntegrityIssue(ast, {
+      sourcePath: path,
+      sourceFiles: sourceFileSet,
+      asts
+    });
+    if (issue) {
+      blockers.parseIssues.push({
+        code: "RUNTIME_INTRINSIC_INTEGRITY_UNVERIFIED",
+        sourceFile: path,
+        sourceLine: issue.loc?.start?.line ?? null
+      });
+    }
+  }
   blockers.parseIssues = blockers.parseIssues.filter(
     (issue) =>
       reachable.has(issue.sourceFile) ||
@@ -3789,8 +12086,14 @@ export async function inspectWholeSitePageActionManifest({
     blockers
   });
   validateUpstreamNestManifest(nestManifest, blockers);
-  const upstreamManifestsValid =
-    blockers.upstreamManifestIssues.length === 0;
+  const upstreamCoverageContextTrusted =
+    upstreamWebCoverageContextIsTrusted({
+      manifest: webManifest,
+      sourceFiles,
+      reachable
+    }) &&
+    nestManifest.authorizationScope ===
+      "guard_metadata_only";
 
   let routeRoots = [];
   if (
@@ -3895,6 +12198,9 @@ export async function inspectWholeSitePageActionManifest({
   const businessDraftActionTrusted = businessDraftActionIsTrusted(
     sources.get(
       `${WEB_SOURCE_ROOT}/components/BusinessDraftAction.vue`
+    ),
+    asts.get(
+      `${WEB_SOURCE_ROOT}/components/BusinessDraftAction.vue`
     )
   );
   for (const action of registryActions) {
@@ -3964,14 +12270,34 @@ export async function inspectWholeSitePageActionManifest({
           sourceFileSet
         )
       : {
+          ast: null,
           definitions: new Map(),
+          definitionsByBinding: new Map(),
           declarations: new Map(),
-          imports: new Map()
+          declarationsByBinding: new Map(),
+          imports: new Map(),
+          importsByBinding: new Map(),
+          importVariablesByName: new Map(),
+          scopeManager: null,
+          scopeBindings: null,
+          scopeReferenceIdentifiers: new WeakSet(),
+          vueRefImports: new Set(),
+          vueRefImportBindings: new Set(),
+          vueComputedImports: new Set(),
+          vueComputedImportBindings: new Set(),
+          writes: new Map(),
+          writesByBinding: new Map()
         };
+    const triggerHandlerBindings =
+      candidate && symbols.scopeManager
+        ? topLevelScopeVariables(
+            symbols.scopeManager,
+            action.trigger.handler
+          )
+        : [];
     if (
       candidate &&
-      !symbols.definitions.has(action.trigger.handler) &&
-      !symbols.imports.has(action.trigger.handler)
+      triggerHandlerBindings.length !== 1
     ) {
       blockers.unresolvedHandlers.push({
         code: "ACTION_HANDLER_UNRESOLVED",
@@ -3987,7 +12313,8 @@ export async function inspectWholeSitePageActionManifest({
       blockers,
       graph: ownershipGraph,
       symbols,
-      candidate
+      candidate,
+      businessDraftActionTrusted
     });
     for (const binding of bindings) {
       const boundWrapper = wrapperIndex.get(
@@ -4028,8 +12355,30 @@ export async function inspectWholeSitePageActionManifest({
         action.capability,
         capabilityContext
       );
+    const capabilitySources =
+      capabilityServerProvenanceSources(
+        action.capability,
+        capabilityContext
+      );
+    const capabilityServerDerived =
+      SERVER_CAPABILITY_KINDS.has(
+        action.capability.kind
+      ) &&
+      capabilitySources?.size === 1 &&
+      [...capabilitySources].every((sourceIdentity) =>
+        capabilitySourceUpstreamAssociationIsTrusted({
+          sourceIdentity,
+          sourceFile: action.sourceFile,
+          webManifest,
+          nestManifest
+        })
+      );
+    const capabilityUpstreamAssociationTrusted =
+      !writes || capabilityServerDerived;
     let capabilityAccepted =
-      !writes || dominatesTrigger;
+      !writes ||
+      (dominatesTrigger &&
+        capabilityUpstreamAssociationTrusted);
     if (action.capability.kind === "client_role_or_status") {
       capabilityAccepted = false;
       blockers.clientRoleOrStatusGates.push({
@@ -4061,7 +12410,8 @@ export async function inspectWholeSitePageActionManifest({
       writes &&
       candidate &&
       source &&
-      !dominatesTrigger
+      (!dominatesTrigger ||
+        !capabilityUpstreamAssociationTrusted)
     ) {
       capabilityAccepted = false;
       blockers.writeWithoutServerCapability.push({
@@ -4073,7 +12423,9 @@ export async function inspectWholeSitePageActionManifest({
             : "WRITE_WITHOUT_SERVER_CAPABILITY",
         actionId: action.id,
         sourceFile: action.sourceFile,
-        reason: "capability_not_dominating"
+        reason: dominatesTrigger
+          ? "capability_upstream_association_untrusted"
+          : "capability_not_dominating"
       });
     }
     const routeOwnershipAccepted =
@@ -4094,7 +12446,7 @@ export async function inspectWholeSitePageActionManifest({
       });
     }
     const actionAcceptedForCoverage =
-      upstreamManifestsValid &&
+      upstreamCoverageContextTrusted &&
       Boolean(candidate) &&
       reachable.has(action.sourceFile) &&
       sourceFileSet.has(action.sourceFile) &&
@@ -4106,6 +12458,11 @@ export async function inspectWholeSitePageActionManifest({
           binding.causalVerified &&
           Boolean(binding.nestRoute) &&
           isNonEmptyString(binding.normalizedKey) &&
+          bindingUpstreamAssociationIsTrusted({
+            binding,
+            webManifest,
+            nestManifest
+          }) &&
           binding.ticketFollowups.every((followup) =>
             ["GET", "HEAD"].includes(followup.method)
           )
@@ -4149,9 +12506,7 @@ export async function inspectWholeSitePageActionManifest({
       semantic: action.semantic,
       capability: {
         ...action.capability,
-        serverDerived: SERVER_CAPABILITY_KINDS.has(
-          action.capability.kind
-        ),
+        serverDerived: capabilityServerDerived,
         dominatesTrigger
       },
       bindings

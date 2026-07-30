@@ -4,24 +4,24 @@
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
     "routeCount": 395,
-    "classificationOverrideCount": 85,
-    "derivedProductionPageCount": 278,
-    "classificationOverrideSha256": "0e5c372a55f6e9edbafe5bf1dee1e41e50fff618731220c24ab7aed8e6e3f537",
+    "classificationOverrideCount": 87,
+    "derivedProductionPageCount": 282,
+    "classificationOverrideSha256": "35467b26e776951b3a22ae79973c9f3b45d4ac41170f1e7dc4bd96e6a7a2b190",
     "consumerSurfaceOverrideSha256": "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2",
     "usageCounts": {
-      "page": 279,
+      "page": 285,
       "external_takeover": 59,
       "exit_candidate": 23,
       "internal_task": 2,
-      "unclassified": 32
+      "unclassified": 26
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 326,
+      "web_api_wrapper": 332,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 1,
       "operator_endpoint": 1,
-      "none": 61
+      "none": 55
     }
   },
   "overrides": [
@@ -195,9 +195,21 @@
     },
     {
       "method": "POST",
+      "path": "/contract-layout-template-versions/:versionId/stop",
+      "usage": "page",
+      "reason": "server_available_action_connected_to_retained_template_page"
+    },
+    {
+      "method": "POST",
       "path": "/contract-layout-template-versions/:versionId/revoke",
       "usage": "exit_candidate",
       "reason": "replaced_revoke_route_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-template-versions/:versionId/stop",
+      "usage": "page",
+      "reason": "server_available_action_connected_to_retained_template_page"
     },
     {
       "method": "POST",

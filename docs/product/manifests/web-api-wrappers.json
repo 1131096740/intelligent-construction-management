@@ -8,15 +8,15 @@
   },
   "summary": {
     "apiModuleCount": 14,
-    "exportedFunctionCount": 374,
-    "transportWrapperCount": 371,
+    "exportedFunctionCount": 378,
+    "transportWrapperCount": 375,
     "pureExportCount": 3,
-    "mainRequestBindingCount": 372,
+    "mainRequestBindingCount": 376,
     "ticketFollowupCount": 2,
-    "requestEdgeCount": 373,
-    "productionConsumerCount": 327,
-    "orphanWrapperCount": 44,
-    "testOnlyWrapperCount": 42,
+    "requestEdgeCount": 377,
+    "productionConsumerCount": 333,
+    "orphanWrapperCount": 42,
+    "testOnlyWrapperCount": 40,
     "unreferencedWrapperCount": 2,
     "duplicateNormalizedRouteGroupCount": 6,
     "authTransportExceptionCount": 5
@@ -30,6 +30,7 @@
       "name": "createCompanyEntity",
       "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -53,6 +54,7 @@
       "name": "fetchActiveCompanyEntities",
       "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -76,6 +78,7 @@
       "name": "fetchCompanyEntityHistory",
       "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -99,6 +102,7 @@
       "name": "fetchCompanyEntityManagement",
       "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -122,6 +126,7 @@
       "name": "updateCompanyEntity",
       "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -145,6 +150,7 @@
       "name": "updateCompanyEntityStatus",
       "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -168,6 +174,7 @@
       "name": "closeContractNegotiationRound",
       "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -191,6 +198,7 @@
       "name": "disposeContractDocumentDifference",
       "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -214,6 +222,7 @@
       "name": "listContractNegotiationRounds",
       "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -237,6 +246,7 @@
       "name": "openContractNegotiationRound",
       "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -260,6 +270,7 @@
       "name": "openContractRevisionPreview",
       "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
       "kind": "transport",
+      "returnProvenance": "unverified",
       "requests": [
         {
           "kind": "main",
@@ -290,6 +301,7 @@
       "name": "retryContractOfflineRevision",
       "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -313,6 +325,7 @@
       "name": "uploadContractNegotiationRevision",
       "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -336,6 +349,7 @@
       "name": "createContractBusinessScenario",
       "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -359,6 +373,7 @@
       "name": "createContractScenarioMapping",
       "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -382,6 +397,7 @@
       "name": "listAvailableContractBusinessScenarios",
       "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -405,6 +421,7 @@
       "name": "listContractScenarioGovernance",
       "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -428,6 +445,7 @@
       "name": "recommendContractScenarioTemplates",
       "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -451,6 +469,7 @@
       "name": "updateContractBusinessScenario",
       "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -474,6 +493,7 @@
       "name": "updateContractScenarioMapping",
       "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -497,6 +517,7 @@
       "name": "abandonContractTaxFactRevision",
       "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -520,6 +541,7 @@
       "name": "confirmContractTaxFactRevision",
       "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -543,6 +565,7 @@
       "name": "createContractTaxFactRevision",
       "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -566,6 +589,7 @@
       "name": "fetchContractTaxFactRevisions",
       "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -589,6 +613,7 @@
       "name": "reviewContractTaxFactRevisionByFinance",
       "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -612,6 +637,7 @@
       "name": "submitContractTaxFactRevisionForFinanceReview",
       "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -635,6 +661,7 @@
       "name": "updateContractTaxFactRevision",
       "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -658,6 +685,7 @@
       "name": "abandonContractDraft",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -682,6 +710,7 @@
       "name": "acquireContractDraftEditLease",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -706,6 +735,7 @@
       "name": "addBillRow",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -727,6 +757,7 @@
       "name": "addContractParty",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -748,6 +779,7 @@
       "name": "applyBillExcelImport",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -769,6 +801,7 @@
       "name": "applyContractTypeChange",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -792,6 +825,7 @@
       "name": "checkContractSubmissionReadiness",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -815,6 +849,7 @@
       "name": "cloneContractTemplateVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -838,6 +873,7 @@
       "name": "cloneLayoutTemplateVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -861,6 +897,7 @@
       "name": "confirmContractBillTransitions",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -884,6 +921,7 @@
       "name": "confirmContractSettlementMode",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -907,6 +945,7 @@
       "name": "createBusinessParty",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -930,6 +969,7 @@
       "name": "createBusinessPartyVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -953,6 +993,7 @@
       "name": "createContractNumberRule",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -976,6 +1017,7 @@
       "name": "createContractTemplate",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -999,6 +1041,7 @@
       "name": "createDraftCheckpoint",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1020,6 +1063,7 @@
       "name": "createLayoutTemplate",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1043,6 +1087,7 @@
       "name": "createStandardClause",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1066,6 +1111,7 @@
       "name": "createWorkbenchDraft",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1090,6 +1136,7 @@
       "name": "deleteBillRow",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1111,6 +1158,7 @@
       "name": "deletePristineContractDraft",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1132,6 +1180,7 @@
       "name": "discardContractBillTransitions",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1155,6 +1204,7 @@
       "name": "discardContractTemplateVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1178,6 +1228,7 @@
       "name": "discardLayoutTemplateVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1201,6 +1252,7 @@
       "name": "discardStandardClauseVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1224,6 +1276,7 @@
       "name": "downloadBillExcelTemplate",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "none",
       "requests": [
         {
           "kind": "main",
@@ -1247,6 +1300,7 @@
       "name": "downloadContractDraftBillExcelTemplate",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "none",
       "requests": [
         {
           "kind": "main",
@@ -1270,6 +1324,7 @@
       "name": "fetchContractBillTransitionOptions",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1293,6 +1348,7 @@
       "name": "fetchContractBillTransitions",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1316,6 +1372,7 @@
       "name": "fetchContractDraftWorkbench",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1340,6 +1397,7 @@
       "name": "fetchContractWorkbench",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1361,6 +1419,7 @@
       "name": "getBusinessParty",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1384,6 +1443,7 @@
       "name": "getContractTemplate",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1407,6 +1467,7 @@
       "name": "getLatestLayoutTemplatePreview",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1430,6 +1491,7 @@
       "name": "getLayoutTemplate",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1453,6 +1515,7 @@
       "name": "heartbeatContractDraftEditLease",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1477,6 +1540,7 @@
       "name": "inspectLayoutTemplateVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1500,6 +1564,7 @@
       "name": "listBusinessParties",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1523,6 +1588,7 @@
       "name": "listContractDocuments",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1546,6 +1612,7 @@
       "name": "listContractDrafts",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1567,6 +1634,7 @@
       "name": "listContractNumberRules",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1590,6 +1658,7 @@
       "name": "listPublishedContractTemplates",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1615,6 +1684,7 @@
       "name": "listPublishedLayoutTemplates",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1638,6 +1708,7 @@
       "name": "listPublishedStandardClauses",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1663,6 +1734,7 @@
       "name": "listStandardClauseHistory",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1686,6 +1758,7 @@
       "name": "parseContractBillValidationError",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "pure",
+      "returnProvenance": "unverified",
       "requests": [],
       "productionConsumers": [],
       "testConsumers": [],
@@ -1695,6 +1768,7 @@
       "name": "previewBillExcelImport",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1716,6 +1790,7 @@
       "name": "previewContractDraftBillExcelImport",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1739,6 +1814,7 @@
       "name": "previewContractTypeChange",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1762,6 +1838,7 @@
       "name": "publishContractTemplateVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1785,6 +1862,7 @@
       "name": "publishLayoutTemplateVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1808,6 +1886,7 @@
       "name": "publishStandardClauseVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1831,6 +1910,7 @@
       "name": "queueContractDocument",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1854,6 +1934,7 @@
       "name": "queueContractDraftPreview",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1878,6 +1959,7 @@
       "name": "queueLayoutTemplatePreview",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1901,6 +1983,7 @@
       "name": "releaseContractDraftEditLease",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1925,6 +2008,7 @@
       "name": "reorderBillRows",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1946,6 +2030,7 @@
       "name": "replaceContractBillRows",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1967,6 +2052,7 @@
       "name": "restoreContractDraft",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -1986,6 +2072,7 @@
       "name": "restoreDraftCheckpoint",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2007,6 +2094,7 @@
       "name": "retryContractDocument",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2030,6 +2118,7 @@
       "name": "revokeContractTemplateVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2051,6 +2140,7 @@
       "name": "revokeLayoutTemplateVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2072,6 +2162,7 @@
       "name": "saveContractBillTransitions",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "unverified",
       "requests": [
         {
           "kind": "main",
@@ -2095,6 +2186,7 @@
       "name": "saveContractDraft",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2116,6 +2208,7 @@
       "name": "saveContractDraftAggregate",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2140,6 +2233,7 @@
       "name": "setContractAuthorization",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2163,6 +2257,7 @@
       "name": "stopContractNumberRule",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2186,6 +2281,7 @@
       "name": "stopContractTemplateVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2200,13 +2296,16 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
+      ],
       "unreachableConsumers": []
     },
     {
       "name": "stopLayoutTemplateVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2221,13 +2320,16 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+      ],
       "unreachableConsumers": []
     },
     {
       "name": "submitContractDraft",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2252,6 +2354,7 @@
       "name": "submitContractFromWorkbench",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2273,6 +2376,7 @@
       "name": "submitContractTemplateVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2296,6 +2400,7 @@
       "name": "submitLayoutTemplateVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2319,6 +2424,7 @@
       "name": "submitStandardClauseVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2342,6 +2448,7 @@
       "name": "takeOverContractDraftEditLease",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2366,6 +2473,7 @@
       "name": "transferContractDraft",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2389,6 +2497,7 @@
       "name": "updateBillRow",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2410,6 +2519,7 @@
       "name": "updateContractNumberRule",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2433,6 +2543,7 @@
       "name": "updateContractTemplateVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2456,6 +2567,7 @@
       "name": "updateLayoutTemplateVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2479,6 +2591,7 @@
       "name": "uploadContractFormalApprovalFile",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2502,6 +2615,7 @@
       "name": "voidContractDraft",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2523,6 +2637,7 @@
       "name": "abandonContractTakeover",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2546,6 +2661,7 @@
       "name": "abandonPaymentRequest",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2569,6 +2685,7 @@
       "name": "applyContractTakeoverBatchAbandonment",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2592,6 +2709,7 @@
       "name": "applyContractTakeoverExcelImport",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2615,6 +2733,7 @@
       "name": "approveContractSeal",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2638,6 +2757,7 @@
       "name": "approveGovernedContractSeal",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2661,6 +2781,7 @@
       "name": "assignProjectAffiliate",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2682,6 +2803,7 @@
       "name": "attachContractTakeoverEvidenceFile",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2705,6 +2827,7 @@
       "name": "attachHistoricalPaymentVoucher",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2728,6 +2851,7 @@
       "name": "completeCanvasSignatureHandoff",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2749,6 +2873,7 @@
       "name": "completeContractSeal",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2772,6 +2897,7 @@
       "name": "confirmContractArchive",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2795,6 +2921,7 @@
       "name": "confirmContractTakeover",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2818,6 +2945,7 @@
       "name": "confirmContractTakeoverChangeBaseline",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2841,6 +2969,7 @@
       "name": "confirmContractTakeoverContractSide",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2864,6 +2993,7 @@
       "name": "confirmContractTakeoverFinanceSide",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2887,6 +3017,7 @@
       "name": "confirmMutuallySignedContract",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2910,6 +3041,7 @@
       "name": "confirmProjectAffiliateCompanyContract",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2933,6 +3065,7 @@
       "name": "confirmProjectAffiliateContractFact",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2956,6 +3089,7 @@
       "name": "confirmProjectAffiliatePaymentFact",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -2979,6 +3113,7 @@
       "name": "confirmProjectAffiliateSettlementFact",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3002,6 +3137,7 @@
       "name": "confirmProjectExpenseReceipt",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3025,6 +3161,7 @@
       "name": "confirmProjectOwnerContract",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3046,6 +3183,7 @@
       "name": "confirmProjectUpstreamFundFact",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3069,6 +3207,7 @@
       "name": "confirmProjectUpstreamSettlement",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3090,6 +3229,7 @@
       "name": "confirmSettlementArchive",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3113,6 +3253,7 @@
       "name": "copyAbandonedContractDraft",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3136,6 +3277,7 @@
       "name": "copyAbandonedSettlementDraft",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3159,6 +3301,7 @@
       "name": "createApprovalDelegation",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3182,6 +3325,7 @@
       "name": "createCanvasSignatureHandoff",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3203,6 +3347,7 @@
       "name": "createContractChangeDraft",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3226,6 +3371,7 @@
       "name": "createContractDraft",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3247,6 +3393,7 @@
       "name": "createContractTakeover",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3270,6 +3417,7 @@
       "name": "createContractTakeoverDraftsFromImport",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3293,6 +3441,7 @@
       "name": "createPaymentRequest",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3316,6 +3465,7 @@
       "name": "createPrivateFileDownloadTicket",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3345,6 +3495,7 @@
       "name": "createProject",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3368,6 +3519,7 @@
       "name": "createProjectExpenseRequest",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3391,6 +3543,7 @@
       "name": "createSettlementDraft",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3412,6 +3565,7 @@
       "name": "delegateContractApproval",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3435,6 +3589,7 @@
       "name": "delegatePaymentApproval",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3458,6 +3613,7 @@
       "name": "delegateSettlementApproval",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3481,6 +3637,7 @@
       "name": "downloadApprovalForm",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "none",
       "requests": [
         {
           "kind": "main",
@@ -3505,6 +3662,7 @@
       "name": "downloadContractLedgerExport",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "none",
       "requests": [
         {
           "kind": "main",
@@ -3528,6 +3686,7 @@
       "name": "downloadContractTakeoverDetailExport",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "none",
       "requests": [
         {
           "kind": "main",
@@ -3551,6 +3710,7 @@
       "name": "downloadContractTakeoverImportTemplate",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "none",
       "requests": [
         {
           "kind": "main",
@@ -3574,6 +3734,7 @@
       "name": "downloadContractTakeoverLedgerExport",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "none",
       "requests": [
         {
           "kind": "main",
@@ -3597,6 +3758,7 @@
       "name": "downloadProjectExpenseApprovalPdf",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3620,6 +3782,7 @@
       "name": "downloadProjectExpenseAttachment",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3643,6 +3806,7 @@
       "name": "downloadSettlementAttachmentTemplate",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "none",
       "requests": [
         {
           "kind": "main",
@@ -3666,6 +3830,7 @@
       "name": "downloadSettlementDraftExcel",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "none",
       "requests": [
         {
           "kind": "main",
@@ -3689,6 +3854,7 @@
       "name": "downloadSettlementLatestApprovalPdf",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "none",
       "requests": [
         {
           "kind": "main",
@@ -3712,6 +3878,7 @@
       "name": "downloadSettlementLedgerExport",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "none",
       "requests": [
         {
           "kind": "main",
@@ -3735,6 +3902,7 @@
       "name": "fetchActiveContractNumberRules",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3756,6 +3924,7 @@
       "name": "fetchApprovalDelegationUserOptions",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3784,6 +3953,7 @@
       "name": "fetchArchives",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3808,6 +3978,7 @@
       "name": "fetchAuditLogs",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3831,6 +4002,7 @@
       "name": "fetchContractChangeEligibility",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3854,6 +4026,7 @@
       "name": "fetchContractCreateProjects",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3877,6 +4050,7 @@
       "name": "fetchContractDetail",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3900,6 +4074,7 @@
       "name": "fetchContractLedger",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3923,6 +4098,7 @@
       "name": "fetchContractLifecycleLedger",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3944,6 +4120,7 @@
       "name": "fetchContractPaymentApplication",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3967,6 +4144,7 @@
       "name": "fetchContractWorkbenchLedger",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -3990,6 +4168,7 @@
       "name": "fetchDraftRetentionPreview",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4013,6 +4192,7 @@
       "name": "fetchFileDownloadAudits",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4036,6 +4216,7 @@
       "name": "fetchPaymentContractOptions",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4059,6 +4240,7 @@
       "name": "fetchPaymentDetail",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4082,6 +4264,7 @@
       "name": "fetchPaymentLedger",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4105,6 +4288,7 @@
       "name": "fetchPaymentLifecycleLedger",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4128,6 +4312,7 @@
       "name": "fetchProjectAffiliateBusinessFacts",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4151,6 +4336,7 @@
       "name": "fetchProjectAffiliateCompanyContracts",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4174,6 +4360,7 @@
       "name": "fetchProjectAffiliateMappingReport",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4195,6 +4382,7 @@
       "name": "fetchProjectExpenseApprovalDetail",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4218,6 +4406,7 @@
       "name": "fetchProjectExpenseRequests",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4241,6 +4430,7 @@
       "name": "fetchProjectOperatingOverview",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4264,6 +4454,7 @@
       "name": "fetchProjectRoster",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4285,6 +4476,7 @@
       "name": "fetchProjects",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4312,6 +4504,7 @@
       "name": "fetchSettlementContractOptions",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4335,6 +4528,7 @@
       "name": "fetchSettlementDetail",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4358,6 +4552,7 @@
       "name": "fetchSettlementLedger",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4381,6 +4576,7 @@
       "name": "fetchSettlementLifecycleLedger",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4402,6 +4598,7 @@
       "name": "fetchSettlementWorkbenchLedger",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4425,6 +4622,7 @@
       "name": "fetchWorkItems",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4450,6 +4648,7 @@
       "name": "fetchWorkbenchSummary",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4471,6 +4670,7 @@
       "name": "generateContractPdfArchive",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4494,6 +4694,7 @@
       "name": "generatePaymentPdfArchive",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4517,6 +4718,7 @@
       "name": "generateSettlementPdfArchive",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4540,6 +4742,7 @@
       "name": "getCanvasSignatureHandoff",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4562,6 +4765,7 @@
       "name": "getContractTakeover",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4585,6 +4789,7 @@
       "name": "getSignatureTicket",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4606,6 +4811,7 @@
       "name": "listApprovalDelegations",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4629,6 +4835,7 @@
       "name": "listContractTakeoverImportBatches",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4652,6 +4859,7 @@
       "name": "listContractTakeovers",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4675,6 +4883,7 @@
       "name": "listHistoricalCompanyEntityCandidates",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4698,6 +4907,7 @@
       "name": "precheckContractTakeoverImport",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4721,6 +4931,7 @@
       "name": "previewContractTakeoverBatchAbandonment",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4744,6 +4955,7 @@
       "name": "previewContractTakeoverExcelImport",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4767,6 +4979,7 @@
       "name": "recordContractTakeoverCorrection",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4788,6 +5001,7 @@
       "name": "recordPaymentExecution",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4811,6 +5025,7 @@
       "name": "recordPaymentFinance",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4834,6 +5049,7 @@
       "name": "recordPaymentPdfArchive",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4857,6 +5073,7 @@
       "name": "recordProjectAffiliateCompanyContract",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4880,6 +5097,7 @@
       "name": "recordProjectAffiliateContractFact",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4903,6 +5121,7 @@
       "name": "recordProjectAffiliatePaymentFact",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4926,6 +5145,7 @@
       "name": "recordProjectAffiliateSettlementFact",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4949,6 +5169,7 @@
       "name": "recordProjectExpenseExecution",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4972,6 +5193,7 @@
       "name": "recordProjectExpenseFinance",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -4995,6 +5217,7 @@
       "name": "recordProjectExpensePurchaseExecution",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5018,6 +5241,7 @@
       "name": "recordProjectOwnerContract",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5039,6 +5263,7 @@
       "name": "recordProjectProxyPayment",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5060,6 +5285,7 @@
       "name": "recordProjectUpstreamFundFact",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5083,6 +5309,7 @@
       "name": "recordProjectUpstreamSettlement",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5104,6 +5331,7 @@
       "name": "regenerateSettlementSignedDocument",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5127,6 +5355,7 @@
       "name": "remindContractApproval",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5150,6 +5379,7 @@
       "name": "remindPaymentApproval",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5173,6 +5403,7 @@
       "name": "remindSettlementApproval",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5196,6 +5427,7 @@
       "name": "requestProjectFinancingQuota",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5217,6 +5449,7 @@
       "name": "requestSettlementExceptionQuota",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5238,6 +5471,7 @@
       "name": "retrySettlementSignedDocumentGeneration",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5261,6 +5495,7 @@
       "name": "returnContractTakeoverForSupplement",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5284,6 +5519,7 @@
       "name": "returnMutuallySignedContractForCorrection",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5307,6 +5543,7 @@
       "name": "reviewContractApproval",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5330,6 +5567,7 @@
       "name": "reviewContractTakeoverCompanyEntityCorrection",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5353,6 +5591,7 @@
       "name": "reviewContractTakeoverCorrection",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5376,6 +5615,7 @@
       "name": "reviewContractTakeoverImportBatch",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5399,6 +5639,7 @@
       "name": "reviewPaymentApproval",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5422,6 +5663,7 @@
       "name": "reviewProjectExpenseApproval",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5445,6 +5687,7 @@
       "name": "reviewProjectFinancingQuota",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5466,6 +5709,7 @@
       "name": "reviewSettlementApproval",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5489,6 +5733,7 @@
       "name": "reviewSettlementExceptionQuota",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5510,6 +5755,7 @@
       "name": "revokeApprovalDelegation",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5533,6 +5779,7 @@
       "name": "saveContractTakeoverContractSide",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5556,6 +5803,7 @@
       "name": "saveContractTakeoverFinanceSide",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5579,6 +5827,7 @@
       "name": "submitContractApproval",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5600,6 +5849,7 @@
       "name": "submitContractTakeoverCompanyEntityCorrection",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5623,6 +5873,7 @@
       "name": "submitContractTakeoverCorrection",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5646,6 +5897,7 @@
       "name": "submitContractTakeoverReview",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5669,6 +5921,7 @@
       "name": "supplementProjectAffiliateBusinessEvidence",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5692,6 +5945,7 @@
       "name": "terminateProjectFinancingQuota",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5713,6 +5967,7 @@
       "name": "transferContractApproval",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5736,6 +5991,7 @@
       "name": "transferPaymentApproval",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5759,6 +6015,7 @@
       "name": "transferSettlementApproval",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5782,6 +6039,7 @@
       "name": "updateContractTakeover",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5805,6 +6063,7 @@
       "name": "updateProject",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5828,6 +6087,7 @@
       "name": "uploadCanvasSignature",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5849,6 +6109,7 @@
       "name": "uploadContractArchiveFile",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5872,6 +6133,7 @@
       "name": "uploadMutuallySignedContract",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5895,6 +6157,7 @@
       "name": "uploadPrivateFile",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5942,6 +6205,7 @@
       "name": "uploadSettlementArchiveFile",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5965,6 +6229,7 @@
       "name": "uploadSignature",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -5984,6 +6249,7 @@
       "name": "voidProjectExpenseRequest",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6007,6 +6273,7 @@
       "name": "withdrawContractApproval",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6030,6 +6297,7 @@
       "name": "withdrawContractTakeoverContractSideConfirmation",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6053,6 +6321,7 @@
       "name": "withdrawContractTakeoverFinanceSideConfirmation",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6076,6 +6345,7 @@
       "name": "withdrawPaymentApproval",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6099,6 +6369,7 @@
       "name": "withdrawProjectExpenseApproval",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6122,6 +6393,7 @@
       "name": "withdrawSettlementApproval",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6145,6 +6417,7 @@
       "name": "adjustExpenseClaimPaymentSubject",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6168,6 +6441,7 @@
       "name": "appendExpenseClaimAttachment",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6191,6 +6465,7 @@
       "name": "attachExpenseClaimAttachment",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6214,6 +6489,7 @@
       "name": "confirmExpenseClaimLoanRepayment",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6237,6 +6513,7 @@
       "name": "createExpenseClaim",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6260,6 +6537,7 @@
       "name": "fetchExpenseClaimCreateOptions",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6283,6 +6561,7 @@
       "name": "fetchExpenseClaimDetail",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6306,6 +6585,7 @@
       "name": "fetchExpenseClaims",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6329,6 +6609,7 @@
       "name": "generateExpenseClaimFinalDisbursementPdf",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6352,6 +6633,7 @@
       "name": "generateExpenseClaimFinalPaymentPdf",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6375,6 +6657,7 @@
       "name": "recordExpenseClaimLoanDisbursement",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6398,6 +6681,7 @@
       "name": "recordExpenseClaimLoanRepayment",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6421,6 +6705,7 @@
       "name": "recordExpenseClaimPayment",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6444,6 +6729,7 @@
       "name": "removeExpenseClaimAttachment",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6467,6 +6753,7 @@
       "name": "reverseExpenseClaimLoanRepayment",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6490,6 +6777,7 @@
       "name": "reviewExpenseClaim",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6513,6 +6801,7 @@
       "name": "submitExpenseClaim",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6536,6 +6825,7 @@
       "name": "fetchFundsWorkbench",
       "apiFile": "apps/web-admin/src/api/funds-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6559,6 +6849,7 @@
       "name": "applyOrganizationRoleAddition",
       "apiFile": "apps/web-admin/src/api/organization.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6582,6 +6873,7 @@
       "name": "applyOrganizationRoleRemoval",
       "apiFile": "apps/web-admin/src/api/organization.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6605,6 +6897,7 @@
       "name": "createOrganizationDepartment",
       "apiFile": "apps/web-admin/src/api/organization.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6628,6 +6921,7 @@
       "name": "createOrganizationUser",
       "apiFile": "apps/web-admin/src/api/organization.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6651,6 +6945,7 @@
       "name": "fetchOrganizationDirectory",
       "apiFile": "apps/web-admin/src/api/organization.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6674,6 +6969,7 @@
       "name": "fetchPermissionIntegrity",
       "apiFile": "apps/web-admin/src/api/organization.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6697,6 +6993,7 @@
       "name": "isOrganizationRoleKey",
       "apiFile": "apps/web-admin/src/api/organization.api.ts",
       "kind": "pure",
+      "returnProvenance": "unverified",
       "requests": [],
       "productionConsumers": [
         "apps/web-admin/src/pages/organization/organization.config.ts"
@@ -6708,6 +7005,7 @@
       "name": "previewOrganizationRoleAddition",
       "apiFile": "apps/web-admin/src/api/organization.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6731,6 +7029,7 @@
       "name": "previewOrganizationRoleRemoval",
       "apiFile": "apps/web-admin/src/api/organization.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6754,6 +7053,7 @@
       "name": "previewOrganizationRoleRemovalBatch",
       "apiFile": "apps/web-admin/src/api/organization.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6777,6 +7077,7 @@
       "name": "updateOrganizationDepartment",
       "apiFile": "apps/web-admin/src/api/organization.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6800,6 +7101,7 @@
       "name": "updateOrganizationUser",
       "apiFile": "apps/web-admin/src/api/organization.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6823,6 +7125,7 @@
       "name": "abandonSettlementDraftRecord",
       "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6846,6 +7149,7 @@
       "name": "attachSettlementDraftLineFile",
       "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6869,6 +7173,7 @@
       "name": "createSettlementDraftRecord",
       "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6892,6 +7197,7 @@
       "name": "fetchSettlementDraftRecord",
       "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6915,6 +7221,7 @@
       "name": "fetchSettlementFinalPreparation",
       "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6936,6 +7243,7 @@
       "name": "generateSettlementFrozenDocument",
       "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6959,6 +7267,7 @@
       "name": "invalidateSettlementDraftLineAttachment",
       "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -6982,6 +7291,7 @@
       "name": "linkSettlementCounterpartySignedDocument",
       "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7005,6 +7315,7 @@
       "name": "listSettlementDraftLineAttachments",
       "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7028,6 +7339,7 @@
       "name": "listSettlementDraftRecords",
       "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7051,6 +7363,7 @@
       "name": "submitSettlementDraftRecord",
       "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7074,6 +7387,7 @@
       "name": "updateSettlementDraftRecord",
       "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7097,6 +7411,7 @@
       "name": "fetchSettlementRecovery",
       "apiFile": "apps/web-admin/src/api/settlement-recovery.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7120,6 +7435,7 @@
       "name": "recordSettlementRecovery",
       "apiFile": "apps/web-admin/src/api/settlement-recovery.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7143,6 +7459,7 @@
       "name": "reverseSettlementRecovery",
       "apiFile": "apps/web-admin/src/api/settlement-recovery.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7166,6 +7483,7 @@
       "name": "cloneSettlementTemplateVersion",
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7187,6 +7505,7 @@
       "name": "createSettlementTemplate",
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7208,6 +7527,7 @@
       "name": "discardSettlementTemplateVersion",
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7231,6 +7551,7 @@
       "name": "downloadSettlementTemplatePreview",
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
       "kind": "transport",
+      "returnProvenance": "none",
       "requests": [
         {
           "kind": "main",
@@ -7270,6 +7591,7 @@
       "name": "fetchSettlementTemplateRecommendations",
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7293,6 +7615,7 @@
       "name": "generateSettlementTemplatePreview",
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7314,6 +7637,7 @@
       "name": "getSettlementTemplate",
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7337,6 +7661,7 @@
       "name": "inspectSettlementTemplateVersion",
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7358,6 +7683,7 @@
       "name": "listSettlementTemplates",
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7381,6 +7707,7 @@
       "name": "publishSettlementTemplateVersion",
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7404,6 +7731,7 @@
       "name": "stopSettlementTemplateVersion",
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7425,6 +7753,7 @@
       "name": "submitSettlementTemplateVersion",
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7446,6 +7775,7 @@
       "name": "updateSettlementTemplateVersion",
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7469,6 +7799,7 @@
       "name": "applySettlementImport",
       "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7492,6 +7823,7 @@
       "name": "downloadSettlementImportErrors",
       "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "none",
       "requests": [
         {
           "kind": "main",
@@ -7515,6 +7847,7 @@
       "name": "downloadSettlementImportResult",
       "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "none",
       "requests": [
         {
           "kind": "main",
@@ -7538,6 +7871,7 @@
       "name": "downloadSettlementImportTemplate",
       "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "none",
       "requests": [
         {
           "kind": "main",
@@ -7561,6 +7895,7 @@
       "name": "fetchSettlementParticipantOptions",
       "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7584,6 +7919,7 @@
       "name": "fetchSettlementSourceLines",
       "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7607,6 +7943,7 @@
       "name": "isSettlementFieldReviewerRoleAllowed",
       "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
       "kind": "pure",
+      "returnProvenance": "unverified",
       "requests": [],
       "testConsumers": [
         "apps/web-admin/src/api/settlement-workbench.api.test.ts"
@@ -7618,6 +7955,7 @@
       "name": "previewSettlementImport",
       "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7641,6 +7979,7 @@
       "name": "previewSettlementLines",
       "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -7664,10 +8003,11 @@
       "name": "abandonSpotProcurementDraft",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurements/:param/abandonment",
           "normalizedPath": "/spot-procurements/:param/abandonment",
@@ -7687,10 +8027,11 @@
       "name": "abandonSpotProcurementPaymentDraft",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/abandonment",
           "normalizedPath": "/spot-procurement-payments/:param/abandonment",
@@ -7710,10 +8051,11 @@
       "name": "appendSpotProcurementPaymentInvoice",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/invoices",
           "normalizedPath": "/spot-procurement-payments/:param/invoices",
@@ -7733,10 +8075,11 @@
       "name": "attachSpotProcurementReceiptPhoto",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt/photos",
           "normalizedPath": "/spot-procurements/:param/receipt/photos",
@@ -7751,13 +8094,38 @@
       "unreachableConsumers": []
     },
     {
-      "name": "createSpotProcurementDiscrepancy",
+      "name": "confirmSpotProcurementAbnormalTermination",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
+          "method": "POST",
+          "path": "/spot-procurements/:param/abnormal-termination/confirmation",
+          "normalizedPath": "/spot-procurements/:param/abnormal-termination/confirmation",
+          "normalizedKey": "POST /spot-procurements/:param/abnormal-termination/confirmation",
+          "bodyKind": "json"
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/spot-procurement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createSpotProcurementDiscrepancy",
+      "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurements/:param/discrepancy",
           "normalizedPath": "/spot-procurements/:param/discrepancy",
@@ -7777,10 +8145,11 @@
       "name": "createSpotProcurementDraft",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurements",
           "normalizedPath": "/spot-procurements",
@@ -7800,10 +8169,11 @@
       "name": "createSpotProcurementPaymentDraft",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurements/:param/payments",
           "normalizedPath": "/spot-procurements/:param/payments",
@@ -7821,10 +8191,11 @@
       "name": "createSpotProcurementReceiptDelegation",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt/delegations",
           "normalizedPath": "/spot-procurements/:param/receipt/delegations",
@@ -7842,10 +8213,11 @@
       "name": "createSpotProcurementVersion",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurements/:param/versions",
           "normalizedPath": "/spot-procurements/:param/versions",
@@ -7865,10 +8237,11 @@
       "name": "deleteSpotProcurementReceiptPhoto",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1302,
+          "sourceLine": 1366,
           "method": "DELETE",
           "path": "/spot-procurements/:param/receipt/photos/:param",
           "normalizedPath": "/spot-procurements/:param/receipt/photos/:param",
@@ -7886,10 +8259,11 @@
       "name": "fetchSpotProcurementApplicationTextSuggestions",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1288,
+          "sourceLine": 1352,
           "method": "GET",
           "path": "/spot-procurements/application-text-suggestions?:param",
           "normalizedPath": "/spot-procurements/application-text-suggestions",
@@ -7909,10 +8283,11 @@
       "name": "fetchSpotProcurementCapabilities",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1288,
+          "sourceLine": 1352,
           "method": "GET",
           "path": "/spot-procurements/capabilities?projectId=:param",
           "normalizedPath": "/spot-procurements/capabilities",
@@ -7933,10 +8308,11 @@
       "name": "fetchSpotProcurementCreateProjectOptions",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1288,
+          "sourceLine": 1352,
           "method": "GET",
           "path": "/spot-procurements/create-project-options",
           "normalizedPath": "/spot-procurements/create-project-options",
@@ -7956,10 +8332,11 @@
       "name": "fetchSpotProcurementDetail",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1288,
+          "sourceLine": 1352,
           "method": "GET",
           "path": "/spot-procurements/:param",
           "normalizedPath": "/spot-procurements/:param",
@@ -7980,10 +8357,11 @@
       "name": "fetchSpotProcurementPaymentDetail",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1288,
+          "sourceLine": 1352,
           "method": "GET",
           "path": "/spot-procurement-payments/:param",
           "normalizedPath": "/spot-procurement-payments/:param",
@@ -8004,10 +8382,11 @@
       "name": "fetchSpotProcurementPayments",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1288,
+          "sourceLine": 1352,
           "method": "GET",
           "path": "/spot-procurement-payments",
           "normalizedPath": "/spot-procurement-payments",
@@ -8028,10 +8407,11 @@
       "name": "fetchSpotProcurementReceipt",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1288,
+          "sourceLine": 1352,
           "method": "GET",
           "path": "/spot-procurements/:param/receipt",
           "normalizedPath": "/spot-procurements/:param/receipt",
@@ -8051,10 +8431,11 @@
       "name": "fetchSpotProcurements",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1288,
+          "sourceLine": 1352,
           "method": "GET",
           "path": "/spot-procurements",
           "normalizedPath": "/spot-procurements",
@@ -8075,10 +8456,11 @@
       "name": "fetchVatRateOptions",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "unverified",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1288,
+          "sourceLine": 1352,
           "method": "GET",
           "path": "/vat-rate-options",
           "normalizedPath": "/vat-rate-options",
@@ -8093,13 +8475,38 @@
       "unreachableConsumers": []
     },
     {
-      "name": "recordSpotProcurementPaymentExecution",
+      "name": "invalidateSpotProcurementPaymentInvoice",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
+          "method": "POST",
+          "path": "/spot-procurement-payments/:param/invoices/:param/invalidation",
+          "normalizedPath": "/spot-procurement-payments/:param/invoices/:param/invalidation",
+          "normalizedKey": "POST /spot-procurement-payments/:param/invoices/:param/invalidation",
+          "bodyKind": "json"
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/spot-procurement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "recordSpotProcurementPaymentExecution",
+      "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/executions",
           "normalizedPath": "/spot-procurement-payments/:param/executions",
@@ -8119,10 +8526,11 @@
       "name": "recordSpotProcurementRefund",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurements/:param/refunds",
           "normalizedPath": "/spot-procurements/:param/refunds",
@@ -8142,10 +8550,11 @@
       "name": "recreateSpotProcurementPaymentDraft",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurements/:param/payment-drafts",
           "normalizedPath": "/spot-procurements/:param/payment-drafts",
@@ -8162,13 +8571,62 @@
       "unreachableConsumers": []
     },
     {
-      "name": "resetSpotProcurementReceiptDraft",
+      "name": "refreshSpotProcurementReceiptPdf",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
+          "method": "POST",
+          "path": "/spot-procurements/:param/receipt/pdf-refresh",
+          "normalizedPath": "/spot-procurements/:param/receipt/pdf-refresh",
+          "normalizedKey": "POST /spot-procurements/:param/receipt/pdf-refresh",
+          "bodyKind": "json"
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/spot-procurement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "requestSpotProcurementAbnormalTermination",
+      "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 1376,
+          "method": "POST",
+          "path": "/spot-procurements/:param/abnormal-termination",
+          "normalizedPath": "/spot-procurements/:param/abnormal-termination",
+          "normalizedKey": "POST /spot-procurements/:param/abnormal-termination",
+          "bodyKind": "json"
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/spot-procurement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "resetSpotProcurementReceiptDraft",
+      "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt/draft-reset",
           "normalizedPath": "/spot-procurements/:param/receipt/draft-reset",
@@ -8188,10 +8646,11 @@
       "name": "reviewSpotProcurement",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurements/:param/approval",
           "normalizedPath": "/spot-procurements/:param/approval",
@@ -8211,10 +8670,11 @@
       "name": "reviewSpotProcurementA5Payment",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/approval",
           "normalizedPath": "/spot-procurement-payments/:param/approval",
@@ -8234,10 +8694,11 @@
       "name": "reviewSpotProcurementPayment",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/approval",
           "normalizedPath": "/spot-procurement-payments/:param/approval",
@@ -8257,10 +8718,11 @@
       "name": "reviewSpotProcurementReceipt",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt/review",
           "normalizedPath": "/spot-procurements/:param/receipt/review",
@@ -8278,10 +8740,11 @@
       "name": "revokeSpotProcurementReceiptReview",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt/review-revocation",
           "normalizedPath": "/spot-procurements/:param/receipt/review-revocation",
@@ -8299,10 +8762,11 @@
       "name": "submitSpotProcurement",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurements/:param/submission",
           "normalizedPath": "/spot-procurements/:param/submission",
@@ -8322,10 +8786,11 @@
       "name": "submitSpotProcurementPayment",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/submission",
           "normalizedPath": "/spot-procurement-payments/:param/submission",
@@ -8345,10 +8810,11 @@
       "name": "submitSpotProcurementReceipt",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt/submission",
           "normalizedPath": "/spot-procurements/:param/receipt/submission",
@@ -8368,10 +8834,11 @@
       "name": "updateSpotProcurementDraft",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "PATCH",
           "path": "/spot-procurements/:param/draft",
           "normalizedPath": "/spot-procurements/:param/draft",
@@ -8391,10 +8858,11 @@
       "name": "updateSpotProcurementPaymentDraft",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "PATCH",
           "path": "/spot-procurement-payments/:param/draft",
           "normalizedPath": "/spot-procurement-payments/:param/draft",
@@ -8414,10 +8882,11 @@
       "name": "updateSpotProcurementPaymentPayer",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "PATCH",
           "path": "/spot-procurement-payments/:param/payer",
           "normalizedPath": "/spot-procurement-payments/:param/payer",
@@ -8437,10 +8906,11 @@
       "name": "updateSpotProcurementReceiptDraft",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "PATCH",
           "path": "/spot-procurements/:param/receipt/draft",
           "normalizedPath": "/spot-procurements/:param/receipt/draft",
@@ -8458,10 +8928,11 @@
       "name": "voidSpotProcurement",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurements/:param/voiding",
           "normalizedPath": "/spot-procurements/:param/voiding",
@@ -8481,10 +8952,11 @@
       "name": "voidSpotProcurementPayment",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/voiding",
           "normalizedPath": "/spot-procurement-payments/:param/voiding",
@@ -8504,10 +8976,11 @@
       "name": "withdrawSpotProcurement",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurements/:param/approval-withdrawal",
           "normalizedPath": "/spot-procurements/:param/approval-withdrawal",
@@ -8527,10 +9000,11 @@
       "name": "withdrawSpotProcurementPayment",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1312,
+          "sourceLine": 1376,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/approval-withdrawal",
           "normalizedPath": "/spot-procurement-payments/:param/approval-withdrawal",
@@ -8744,16 +9218,6 @@
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "saveContractDraft",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "stopContractTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "stopLayoutTemplateVersion",
         "classification": "test_only"
       },
       {

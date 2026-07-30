@@ -1086,28 +1086,28 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
     }
   );
   assert.equal(manifest.summary.routeCount, 395);
-  assert.equal(manifest.summary.classificationOverrideCount, 85);
+  assert.equal(manifest.summary.classificationOverrideCount, 87);
   assert.equal(
     manifest.summary.classificationOverrideSha256,
-    "0e5c372a55f6e9edbafe5bf1dee1e41e50fff618731220c24ab7aed8e6e3f537"
+    "35467b26e776951b3a22ae79973c9f3b45d4ac41170f1e7dc4bd96e6a7a2b190"
   );
   assert.equal(
     manifest.summary.consumerSurfaceOverrideSha256,
     "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2"
   );
-  assert.equal(manifest.summary.derivedProductionPageCount, 278);
-  assert.equal(manifest.summary.pageRouteCount, 279);
+  assert.equal(manifest.summary.derivedProductionPageCount, 282);
+  assert.equal(manifest.summary.pageRouteCount, 285);
   assert.equal(manifest.summary.externalTakeoverCount, 59);
   assert.equal(manifest.summary.exitCandidateCount, 23);
   assert.equal(manifest.summary.internalTaskCount, 2);
-  assert.equal(manifest.summary.unclassifiedCount, 32);
+  assert.equal(manifest.summary.unclassifiedCount, 26);
   assert.deepEqual(manifest.summary.consumerSurfaceCounts, {
-    web_api_wrapper: 326,
+    web_api_wrapper: 332,
     auth_store: 5,
     signed_ticket_delivery: 1,
     machine_probe: 1,
     operator_endpoint: 1,
-    none: 61
+    none: 55
   });
   const signedDeliveryRoute = manifest.routes.find(
     (entry) =>
@@ -1129,7 +1129,7 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
     ]
   );
   assert.deepEqual(nonZeroBlockers, {
-    unclassifiedRoutes: 32
+    unclassifiedRoutes: 26
   });
   assert.ok(
     manifest.routes
@@ -1154,8 +1154,6 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
       "POST /contract-bill-imports/:param/apply",
       "POST /contract-bills/:param/excel-imports",
       "POST /contract-bills/:param/rows/:param/remainder-cancellation",
-      "POST /contract-layout-template-versions/:param/stop",
-      "POST /contract-template-versions/:param/stop",
       "POST /contract-workbench/:param/parties",
       "POST /contracts/:param/approval-submission",
       "POST /contracts/:param/signing/material-change",
@@ -1165,15 +1163,11 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
       "POST /projects/:param/financing-quotas/:param/approval",
       "POST /projects/:param/financing-quotas/:param/termination",
       "POST /spot-procurement-payments/:param/balance-execution",
-      "POST /spot-procurement-payments/:param/invoices/:param/invalidation",
-      "POST /spot-procurements/:param/abnormal-termination",
-      "POST /spot-procurements/:param/abnormal-termination/confirmation",
       "POST /spot-procurements/:param/invoice-exceptions",
       "POST /spot-procurements/:param/invoice-exceptions/:param/review",
       "POST /spot-procurements/:param/invoices",
       "POST /spot-procurements/:param/no-invoice-confirmations",
       "POST /spot-procurements/:param/no-invoice-confirmations/:param/review",
-      "POST /spot-procurements/:param/receipt/pdf-refresh",
       "POST /spot-procurements/:param/supplier-balance-credit",
       "POST /vat-rate-options",
       "PUT /contract-bills/:param/rows"

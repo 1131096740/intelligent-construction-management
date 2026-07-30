@@ -44,13 +44,17 @@ function wrapper({
   productionConsumers = [
     "apps/web-admin/src/pages/ExamplePage.vue"
   ],
-  requests
+  requests,
+  returnProvenance
 } = {}) {
   const [method, path] = normalizedKey.split(" ");
   return {
     name,
     apiFile: "apps/web-admin/src/api/example.api.ts",
     kind: "transport",
+    ...(returnProvenance
+      ? { returnProvenance }
+      : {}),
     requests:
       requests ?? [
         {
@@ -72,7 +76,8 @@ function wrapper({
 function capabilityReadWrapper() {
   return wrapper({
     name: "getExample",
-    normalizedKey: "GET /examples/:param"
+    normalizedKey: "GET /examples/:param",
+    returnProvenance: "transparent_main_response"
   });
 }
 
@@ -305,6 +310,262 @@ async function review(decision: "approve" | "reject") { await submitExample(deci
     manifest.actions.map((action) => action.id),
     ["example.review.approve", "example.review.reject"]
   );
+
+  const mismatchedRoot = await fixture({
+    actions: [approve],
+    page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+function actionEnabled(key: string) { return detail.availableActions.some((item) => item.key === key && item.enabled); }
+async function review(decision: "approve" | "reject") {
+  void decision;
+  await submitExample("reject");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('review_approval')" @click="review('approve')">通过</t-button>
+</template>
+`
+  });
+  const mismatched = await inspectWholeSitePageActionManifest({
+    root: mismatchedRoot
+  });
+
+  assert.equal(mismatched.status, "blocked");
+  assert.ok(
+    blockerCodes(mismatched).has(
+      "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED"
+    )
+  );
+  assert.equal(
+    mismatched.actions[0].bindings[0].causalVerified,
+    false
+  );
+
+  for (const [name, reviewBody] of [
+    [
+      "reassigned local payload",
+      `async function review(decision: "approve" | "reject") {
+  let payload = { action: decision };
+  payload = { action: "reject" };
+  await submitExample(payload);
+}`
+    ],
+    [
+      "reassigned member payload",
+      `async function review(decision: "approve" | "reject") {
+  const payload = { action: decision };
+  payload.action = "reject";
+  await submitExample(payload);
+}`
+    ],
+    [
+      "reassigned alias member payload",
+      `async function review(decision: "approve" | "reject") {
+  const payload = { action: decision };
+  const alias = payload;
+  alias.action = "reject";
+  await submitExample(payload);
+}`
+    ],
+    [
+      "variant only in unrelated analytics field",
+      `async function review(decision: "approve" | "reject") {
+  await submitExample({
+    decision: "reject",
+    analytics: { label: decision }
+  });
+}`
+    ],
+    [
+      "dead branch cannot overwrite the live reject payload",
+      `async function review(decision: "approve" | "reject") {
+  let payload = { action: "reject" };
+  if (false) {
+    payload = { action: decision };
+  }
+  await submitExample(payload);
+}`
+    ],
+    [
+      "unknown branch can overwrite a scalar variant",
+      `async function review(decision: "approve" | "reject") {
+  if (Math.random() > 0.5) {
+    decision = "reject";
+  }
+  await submitExample(decision);
+}`
+    ],
+    [
+      "object mutator overwrites the variant",
+      `async function review(decision: "approve" | "reject") {
+  const payload = { action: decision };
+  Object.assign(payload, { action: "reject" });
+  await submitExample(payload);
+}`
+    ],
+    [
+      "delete removes the variant",
+      `async function review(decision: "approve" | "reject") {
+  const payload = { action: decision };
+  delete payload.action;
+  await submitExample(payload);
+}`
+    ],
+    [
+      "local helper mutates the variant",
+      `function mutate(payload: { action: string }) {
+  payload.action = "reject";
+}
+async function review(decision: "approve" | "reject") {
+  const payload = { action: decision };
+  mutate(payload);
+  await submitExample(payload);
+}`
+    ],
+    [
+      "object destructuring overwrites the scalar variant",
+      `async function review(decision: "approve" | "reject") {
+  ({ decision } = { decision: "reject" });
+  await submitExample(decision);
+}`
+    ],
+    [
+      "array destructuring overwrites the scalar variant",
+      `async function review(decision: "approve" | "reject") {
+  [decision] = ["reject"];
+  await submitExample(decision);
+}`
+    ],
+    [
+      "callback array mutates the captured scalar variant",
+      `async function review(decision: "approve" | "reject") {
+  const callbacks = [
+    () => {
+      decision = "reject";
+    }
+  ];
+  callbacks.forEach((callback) => callback());
+  await submitExample(decision);
+}`
+    ],
+    [
+      "local object method mutates the captured scalar variant",
+      `async function review(decision: "approve" | "reject") {
+  const helper = {
+    mutate() {
+      decision = "reject";
+    }
+  };
+  helper.mutate();
+  await submitExample(decision);
+}`
+    ],
+    [
+      "local object alias method mutates the captured scalar variant",
+      `async function review(decision: "approve" | "reject") {
+  const helpers = {
+    mutate() {
+      decision = "reject";
+    }
+  };
+  const alias = helpers;
+  alias.mutate();
+  await submitExample(decision);
+}`
+    ],
+    [
+      "destructured local method mutates the captured scalar variant",
+      `async function review(decision: "approve" | "reject") {
+  const helpers = {
+    mutate() {
+      decision = "reject";
+    }
+  };
+  const { mutate } = helpers;
+  mutate();
+  await submitExample(decision);
+}`
+    ]
+  ]) {
+    const bypassRoot = await fixture({
+      actions: [approve],
+      page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+function actionEnabled(key: string) { return detail.availableActions.some((item) => item.key === key && item.enabled); }
+${reviewBody}
+</script>
+<template>
+  <t-button v-if="actionEnabled('review_approval')" @click="review('approve')">通过</t-button>
+</template>
+`
+    });
+    const bypass = await inspectWholeSitePageActionManifest({
+      root: bypassRoot
+    });
+    assert.equal(
+      bypass.status,
+      "blocked",
+      `${name}: ${JSON.stringify(bypass.blockers)}`
+    );
+    assert.equal(
+      bypass.actions[0].bindings[0].causalVerified,
+      false,
+      name
+    );
+  }
+
+  const importedCallbackRoot = await fixture({
+    actions: [approve],
+    page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+import { runMutation } from "../lib/run-mutation";
+const detail = await getExample("example-1");
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (item) => item.key === key && item.enabled
+  );
+}
+async function review(decision: "approve" | "reject") {
+  runMutation(() => {
+    decision = "reject";
+  });
+  await submitExample(decision);
+}
+</script>
+<template>
+  <t-button
+    v-if="actionEnabled('review_approval')"
+    @click="review('approve')"
+  >
+    通过
+  </t-button>
+</template>
+`,
+    extraFiles: {
+      "apps/web-admin/src/lib/run-mutation.ts":
+        `export function runMutation(callback: () => void) {
+  callback();
+}
+`
+    },
+    webManifestOverrides: {
+      evidence: {
+        productionModuleCount: 6,
+        reachableProductionModuleCount: 6
+      }
+    }
+  });
+  const importedCallback =
+    await inspectWholeSitePageActionManifest({
+      root: importedCallbackRoot
+    });
+  assert.equal(importedCallback.status, "blocked");
+  assert.equal(
+    importedCallback.actions[0].bindings[0].causalVerified,
+    false
+  );
 });
 
 test("fails closed when a business write is gated only by client role or status", async () => {
@@ -469,6 +730,384 @@ async function submit() { await persist(); }
   );
 });
 
+test("requires write calls and template handlers to resolve to their actual bindings", async () => {
+  const shadowedCalls = [
+    {
+      name: "named import",
+      imports:
+        'import { getExample, submitExample } from "../api/example.api";',
+      submit: `async function submit() {
+  function submitExample() {
+    return undefined;
+  }
+  await submitExample();
+}`
+    },
+    {
+      name: "namespace import",
+      imports: `import { getExample } from "../api/example.api";
+import * as api from "../api/example.api";`,
+      submit: `async function submit() {
+  const api = {
+    submitExample() {
+      return undefined;
+    }
+  };
+  await api.submitExample();
+}`
+    }
+  ];
+  for (const candidate of shadowedCalls) {
+    const root = await fixture({
+      page: `<script setup lang="ts">
+${candidate.imports}
+const detail = await getExample("example-1");
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+${candidate.submit}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+    });
+    const manifest =
+      await inspectWholeSitePageActionManifest({ root });
+    assert.equal(
+      manifest.status,
+      "blocked",
+      candidate.name
+    );
+    assert.equal(
+      manifest.actions[0].bindings[0].causalVerified,
+      false,
+      candidate.name
+    );
+    assert.ok(
+      blockerCodes(manifest).has(
+        "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED"
+      ),
+      candidate.name
+    );
+  }
+
+  const nestedOnlyRoot = await fixture({
+    page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+function unrelated() {
+  async function submit() {
+    await submitExample("example-1");
+  }
+  return submit;
+}
+void unrelated;
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+  });
+  const nestedOnly =
+    await inspectWholeSitePageActionManifest({
+      root: nestedOnlyRoot
+    });
+  assert.equal(nestedOnly.status, "blocked");
+  assert.ok(
+    blockerCodes(nestedOnly).has(
+      "ACTION_HANDLER_UNRESOLVED"
+    )
+  );
+
+  const nestedHelperRoot = await fixture({
+    page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await save();
+}
+function unrelated() {
+  async function save() {
+    await submitExample("example-1");
+  }
+  return save;
+}
+void unrelated;
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+  });
+  const nestedHelper =
+    await inspectWholeSitePageActionManifest({
+      root: nestedHelperRoot
+    });
+  assert.equal(nestedHelper.status, "blocked");
+  assert.equal(
+    nestedHelper.actions[0].bindings[0].causalVerified,
+    false
+  );
+  assert.ok(
+    blockerCodes(nestedHelper).has(
+      "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED"
+    )
+  );
+
+  const nestedArgumentHelperRoot = await fixture({
+    page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample(check());
+}
+function unrelated() {
+  function check() {
+    return "example-1";
+  }
+  return check;
+}
+void unrelated;
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+  });
+  const nestedArgumentHelper =
+    await inspectWholeSitePageActionManifest({
+      root: nestedArgumentHelperRoot
+    });
+  assert.equal(nestedArgumentHelper.status, "blocked");
+  assert.equal(
+    nestedArgumentHelper.actions[0].bindings[0]
+      .causalVerified,
+    false
+  );
+  assert.ok(
+    blockerCodes(nestedArgumentHelper).has(
+      "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED"
+    )
+  );
+
+  const topLevelRoot = await fixture({
+    page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+  });
+  const topLevel =
+    await inspectWholeSitePageActionManifest({
+      root: topLevelRoot
+    });
+  assert.equal(
+    topLevel.status,
+    "ready",
+    JSON.stringify(topLevel.blockers)
+  );
+  assert.equal(
+    topLevel.actions[0].bindings[0].causalVerified,
+    true
+  );
+});
+
+test("accepts only a throw-only fail-closed preflight helper used as a direct wrapper argument", async () => {
+  const root = await fixture({
+    page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+const currentId = "example-1";
+let error = "";
+function actionEnabled(key: string) {
+  return detail.availableActions.some((action) => action.key === key && action.enabled);
+}
+function currentContext() {
+  return { id: currentId };
+}
+function contextIsCurrent(context: { id: string }) {
+  return Boolean(context.id) && context.id === currentId;
+}
+function preflightId() {
+  const context = currentContext();
+  const action = detail.availableActions.find(
+    (item) => item.key === "submit_approval"
+  );
+  if (!contextIsCurrent(context) || !action?.enabled) {
+    error = "页面上下文已失效";
+    throw new Error(error);
+  }
+  return context.id;
+}
+function submit() {
+  return submitExample(preflightId());
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">提交审批</t-button>
+</template>
+`
+  });
+  const manifest =
+    await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(
+    manifest.status,
+    "ready",
+    JSON.stringify(manifest.blockers)
+  );
+  assert.equal(
+    manifest.actions[0].bindings[0].causalVerified,
+    true
+  );
+  assert.deepEqual(
+    manifest.actions[0].bindings[0].causalProof
+      .localCallChain,
+    ["submit", "submitExample"]
+  );
+});
+
+test("rejects non-terminating, side-effecting, dual-branch, try, and loop preflight helpers", async () => {
+  const cases = [
+    {
+      name: "return-branch",
+      body: `if (!id) { return "fallback"; }
+  return id;`
+    },
+    {
+      name: "silent-branch",
+      body: `if (!id) { error = "ignored"; }
+  return id;`
+    },
+    {
+      name: "branch-wrapper",
+      body: `if (!id) {
+    submitExample("other-example");
+    throw new Error("stale");
+  }
+  return id;`
+    },
+    {
+      name: "branch-unknown-side-effect",
+      extra: `function mutateUnexpectedly() { error = "mutated"; }`,
+      body: `if (!id) {
+    mutateUnexpectedly();
+    throw new Error("stale");
+  }
+  return id;`
+    },
+    {
+      name: "dynamic-dual-branch",
+      body: `if (!id) {
+    throw new Error("stale");
+  } else {
+    error = "continued";
+  }
+  return id;`
+    },
+    {
+      name: "try-guard",
+      body: `try {
+    if (!id) throw new Error("stale");
+  } finally {
+    error = "";
+  }
+  return id;`
+    },
+    {
+      name: "loop-guard",
+      body: `while (!id) {
+    throw new Error("stale");
+  }
+  return id;`
+    }
+  ];
+
+  for (const entry of cases) {
+    const root = await fixture({
+      page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+const currentId = "example-1";
+let error = "";
+function actionEnabled(key: string) {
+  return detail.availableActions.some((action) => action.key === key && action.enabled);
+}
+${entry.extra ?? ""}
+function preflightId() {
+  const id = currentId;
+  ${entry.body}
+}
+function submit() {
+  return submitExample(preflightId());
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">提交审批</t-button>
+</template>
+`
+    });
+    const manifest =
+      await inspectWholeSitePageActionManifest({ root });
+
+    assert.equal(
+      manifest.status,
+      "blocked",
+      `${entry.name}: ${JSON.stringify(manifest.blockers)}`
+    );
+    assert.equal(
+      manifest.actions[0].bindings[0].causalVerified,
+      false,
+      entry.name
+    );
+    assert.ok(
+      blockerCodes(manifest).has(
+        "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED"
+      ),
+      entry.name
+    );
+  }
+});
+
 test("rejects fake availableActions names, string occurrences, and authenticated-self exceptions", async () => {
   const fakeCollectionRoot = await fixture({
     page: `<script setup lang="ts">
@@ -552,6 +1191,39 @@ test("blocks stale or internally inconsistent upstream manifests", async () => {
   });
   assert.equal(blockedWeb.status, "blocked");
   assert.ok(blockerCodes(blockedWeb).has("UPSTREAM_WEB_MANIFEST_BLOCKED"));
+  assert.deepEqual(
+    blockedWeb.actions[0].bindings[0].acceptedProductionConsumers,
+    []
+  );
+
+  const fakeReadyRoot = await fixture({
+    webManifestOverrides: {
+      status: "ready",
+      blockers: {
+        orphanWrappers: [
+          {
+            apiFile: "apps/web-admin/src/api/example.api.ts",
+            wrapper: "unrelatedUnusedExample"
+          }
+        ]
+      }
+    }
+  });
+  const fakeReady =
+    await inspectWholeSitePageActionManifest({
+      root: fakeReadyRoot
+    });
+  assert.equal(fakeReady.status, "blocked");
+  assert.ok(
+    blockerCodes(fakeReady).has(
+      "UPSTREAM_WEB_MANIFEST_BLOCKED"
+    )
+  );
+  assert.deepEqual(
+    fakeReady.actions[0].bindings[0]
+      .acceptedProductionConsumers,
+    []
+  );
 
   const mismatchedWebRoot = await fixture({
     webManifestOverrides: {
@@ -574,6 +1246,10 @@ test("blocks stale or internally inconsistent upstream manifests", async () => {
   assert.ok(
     blockerCodes(mismatchedWeb).has("UPSTREAM_WEB_MANIFEST_EVIDENCE_MISMATCH")
   );
+  assert.deepEqual(
+    mismatchedWeb.actions[0].bindings[0].acceptedProductionConsumers,
+    []
+  );
 
   const nestScopeRoot = await fixture({
     nestManifestOverrides: {
@@ -586,6 +1262,108 @@ test("blocks stale or internally inconsistent upstream manifests", async () => {
   assert.equal(nestScope.status, "blocked");
   assert.ok(
     blockerCodes(nestScope).has("UPSTREAM_NEST_AUTHORIZATION_SCOPE_INVALID")
+  );
+  assert.deepEqual(
+    nestScope.actions[0].bindings[0].acceptedProductionConsumers,
+    []
+  );
+});
+
+test("accepts a self-consistent binding while preserving unrelated upstream and uncovered blockers", async () => {
+  const sourceFile =
+    "apps/web-admin/src/pages/ExamplePage.vue";
+  const apiFile = "apps/web-admin/src/api/example.api.ts";
+  const root = await fixture({
+    wrappers: [
+      wrapper(),
+      wrapper({
+        name: "archiveExample",
+        normalizedKey:
+          "POST /examples/:param/archive",
+        productionConsumers: [sourceFile]
+      }),
+      wrapper({
+        name: "unusedExample",
+        normalizedKey:
+          "POST /examples/:param/unused",
+        productionConsumers: []
+      })
+    ],
+    routes: [
+      route(),
+      route("POST /examples/:param/archive"),
+      route("POST /examples/:param/unused")
+    ],
+    webManifestOverrides: {
+      status: "blocked",
+      blockers: {
+        orphanWrappers: [
+          {
+            apiFile,
+            wrapper: "unusedExample",
+            classification: "unreferenced"
+          }
+        ]
+      }
+    },
+    extraFiles: {
+      [apiFile]: `export async function getExample() { return { availableActions: [] }; }
+export async function submitExample() { return undefined; }
+export async function archiveExample() { return undefined; }
+export async function unusedExample() { return undefined; }
+`
+    },
+    page: `<script setup lang="ts">
+import { archiveExample, getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+function actionEnabled(key: string) {
+  return detail.availableActions.some((action) => action.key === key && action.enabled);
+}
+async function submit() {
+  await submitExample("example-1");
+}
+async function archiveForLater() {
+  await archiveExample("example-1");
+}
+void archiveForLater;
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">提交审批</t-button>
+</template>
+`
+  });
+  const manifest =
+    await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(manifest.status, "blocked");
+  assert.ok(
+    blockerCodes(manifest).has(
+      "UPSTREAM_WEB_MANIFEST_BLOCKED"
+    )
+  );
+  assert.deepEqual(
+    manifest.actions[0].bindings[0]
+      .acceptedProductionConsumers,
+    [sourceFile]
+  );
+  assert.equal(
+    manifest.summary
+      .acceptedProductionMutationConsumerCount,
+    1
+  );
+  assert.equal(
+    manifest.summary
+      .coveredProductionMutationConsumerCount,
+    1
+  );
+  assert.equal(
+    manifest.summary.productionMutationConsumerPairCount,
+    2
+  );
+  assert.ok(
+    manifest.blockers.uncoveredMutationWrappers.some(
+      (entry) => entry.wrapper === "archiveExample"
+    )
   );
 });
 
@@ -605,6 +1383,35 @@ test("validates request identities, rejects duplicates, and rejects mutating tic
   assert.ok(
     blockerCodes(badWeb).has("UPSTREAM_WEB_REQUEST_IDENTITY_INVALID")
   );
+  assert.deepEqual(
+    badWeb.actions[0].bindings[0].acceptedProductionConsumers,
+    []
+  );
+
+  const staleConsumerRoot = await fixture({
+    wrappers: [
+      wrapper({
+        productionConsumers: [
+          "apps/web-admin/src/pages/RoguePage.vue"
+        ]
+      })
+    ]
+  });
+  const staleConsumer =
+    await inspectWholeSitePageActionManifest({
+      root: staleConsumerRoot
+    });
+  assert.equal(staleConsumer.status, "blocked");
+  assert.ok(
+    blockerCodes(staleConsumer).has(
+      "WRAPPER_NOT_REFERENCED_BY_ACTION_SOURCE"
+    )
+  );
+  assert.deepEqual(
+    staleConsumer.actions[0].bindings[0]
+      .acceptedProductionConsumers,
+    []
+  );
 
   const badNestRoot = await fixture({
     routes: [
@@ -621,6 +1428,10 @@ test("validates request identities, rejects duplicates, and rejects mutating tic
   assert.ok(
     blockerCodes(badNest).has("UPSTREAM_NEST_ROUTE_IDENTITY_INVALID")
   );
+  assert.deepEqual(
+    badNest.actions[0].bindings[0].acceptedProductionConsumers,
+    []
+  );
 
   const duplicateRoot = await fixture({
     wrappers: [wrapper(), wrapper()],
@@ -635,6 +1446,11 @@ test("validates request identities, rejects duplicates, and rejects mutating tic
   );
   assert.ok(
     blockerCodes(duplicates).has("UPSTREAM_NEST_ROUTE_DUPLICATE")
+  );
+  assert.deepEqual(
+    duplicates.actions[0].bindings[0]
+      .acceptedProductionConsumers,
+    []
   );
 
   const mutatingTicketRoot = await fixture({
@@ -788,6 +1604,2664 @@ async function submit() { await submitExample("example-1"); }
     )
   );
   assert.equal(manifest.actions[0].capability.dominatesTrigger, false);
+});
+
+test("requires server reads to resolve to the imported wrapper binding", async () => {
+  const shadowedRoot = await fixture({
+    page: `<script setup lang="ts">
+import { ref } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+const detail = ref(null);
+async function load() {
+  function getExample() {
+    return {
+      availableActions: [
+        { key: "submit_approval", enabled: true }
+      ]
+    };
+  }
+  detail.value = getExample();
+}
+void load();
+function actionEnabled(key: string) {
+  return detail.value?.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+  });
+  const shadowed =
+    await inspectWholeSitePageActionManifest({
+      root: shadowedRoot
+    });
+  assert.equal(shadowed.status, "blocked");
+  assert.ok(
+    blockerCodes(shadowed).has(
+      "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+    )
+  );
+
+  const importedRoot = await fixture({
+    page: `<script setup lang="ts">
+import { ref } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+const detail = ref(null);
+async function load() {
+  detail.value = await getExample("example-1");
+}
+void load();
+function actionEnabled(key: string) {
+  return detail.value?.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+  });
+  const imported =
+    await inspectWholeSitePageActionManifest({
+      root: importedRoot
+    });
+  assert.equal(
+    imported.status,
+    "ready",
+    JSON.stringify(imported.blockers)
+  );
+});
+
+test("requires a Vue capability gate to be exposed by a script top-level binding", async () => {
+  const pages = [
+    `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+function unrelated() {
+  function actionEnabled(key: string) {
+    return detail.availableActions.some(
+      (action) => action.key === key && action.enabled
+    );
+  }
+  return actionEnabled;
+}
+void unrelated;
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`,
+    `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+function actionEnabled(key: string) {
+  return hasAction(key);
+}
+function unrelated() {
+  function hasAction(key: string) {
+    return detail.availableActions.some(
+      (action) => action.key === key && action.enabled
+    );
+  }
+  return hasAction;
+}
+void unrelated;
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+  ];
+  for (const page of pages) {
+    const root = await fixture({ page });
+    const manifest =
+      await inspectWholeSitePageActionManifest({ root });
+    assert.equal(manifest.status, "blocked");
+    assert.equal(
+      manifest.actions[0].capability.dominatesTrigger,
+      false
+    );
+    assert.ok(
+      blockerCodes(manifest).has(
+        "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+      )
+    );
+  }
+});
+
+test("requires capability evidence to control the gate return with positive polarity", async () => {
+  const cases = [
+    {
+      name: "discarded predicate",
+      helper: `function actionEnabled(key: string) {
+  detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+  return true;
+}`,
+      condition: "actionEnabled('submit_approval')"
+    },
+    {
+      name: "negated predicate",
+      helper: `function actionEnabled(key: string) {
+  return !detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}`,
+      condition: "actionEnabled('submit_approval')"
+    },
+    {
+      name: "forged collection",
+      helper: `function actionEnabled(key: string) {
+  void detail.availableActions;
+  const forged = [{ key, enabled: true }];
+  return forged.some(
+    (action) => action.key === key && action.enabled
+  );
+}`,
+      condition: "actionEnabled('submit_approval')"
+    },
+    {
+      name: "sequence forced true",
+      helper: "",
+      condition:
+        "(detail.availableActions.some((action) => action.key === 'submit_approval' && action.enabled), true)"
+    },
+    {
+      name: "predicate forced true",
+      helper: `function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => (void key, void action.enabled, true)
+  );
+}`,
+      condition: "actionEnabled('submit_approval')"
+    },
+    {
+      name: "wrong key polarity",
+      helper: `function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key !== key && action.enabled
+  );
+}`,
+      condition: "actionEnabled('submit_approval')"
+    },
+    {
+      name: "disjunctive predicate",
+      helper: `function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key || action.enabled
+  );
+}`,
+      condition: "actionEnabled('submit_approval')"
+    },
+    {
+      name: "disabled action predicate",
+      helper: `function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && !action.enabled
+  );
+}`,
+      condition: "actionEnabled('submit_approval')"
+    },
+    {
+      name: "wrong collection receiver",
+      helper: `function actionEnabled(key: string) {
+  const forged = [{ key, enabled: true }];
+  return forged.some(
+    (action) => (
+      void detail.availableActions,
+      action.key === key && action.enabled
+    )
+  );
+}`,
+      condition: "actionEnabled('submit_approval')"
+    },
+    {
+      name: "wrong outer call",
+      helper: `function actionEnabled(key: string) {
+  return Math.random(
+    detail.availableActions.some(
+      (action) => action.key === key && action.enabled
+    ),
+    0
+  );
+}`,
+      condition: "actionEnabled('submit_approval')"
+    }
+  ];
+  for (const candidate of cases) {
+    const root = await fixture({
+      page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+${candidate.helper}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="${candidate.condition}" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+    });
+    const manifest =
+      await inspectWholeSitePageActionManifest({ root });
+    assert.equal(
+      manifest.status,
+      "blocked",
+      candidate.name
+    );
+    assert.equal(
+      manifest.actions[0].capability.dominatesTrigger,
+      false,
+      candidate.name
+    );
+    assert.ok(
+      blockerCodes(manifest).has(
+        "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+      ),
+      candidate.name
+    );
+  }
+});
+
+test("rejects direct server result mutation and escape", async () => {
+  const mutations = [
+    `detail.availableActions[0].enabled = true;`,
+    `mutate(detail.availableActions[0]);`
+  ];
+  for (const mutation of mutations) {
+    const root = await fixture({
+      page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+function mutate(action: { enabled: boolean }) {
+  action.enabled = true;
+}
+${mutation}
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+    });
+    const manifest =
+      await inspectWholeSitePageActionManifest({ root });
+    assert.equal(manifest.status, "blocked", mutation);
+    assert.ok(
+      blockerCodes(manifest).has(
+        "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+      ),
+      mutation
+    );
+  }
+
+});
+
+test("rejects mutation through an upstream server-result alias", async () => {
+  const pages = [
+    `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const response = await getExample("example-1");
+const detail = response;
+response.availableActions[0].enabled = true;
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`,
+    `<script setup lang="ts">
+import { ref } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+const detail = ref(null);
+async function load() {
+  const response = await getExample("example-1");
+  detail.value = response;
+  response.availableActions[0].enabled = true;
+}
+void load();
+function actionEnabled(key: string) {
+  return detail.value?.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`,
+    `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const response = await getExample("example-1");
+const detail = response.payload;
+response.payload.availableActions[0].enabled = true;
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`,
+    `<script setup lang="ts">
+import { ref } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+const detail = ref(null);
+async function load() {
+  const response = await getExample("example-1");
+  detail.value = response.payload;
+  response.payload.availableActions[0].enabled = true;
+}
+void load();
+function actionEnabled(key: string) {
+  return detail.value?.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`,
+    `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const response = await getExample("example-1");
+const alias = response;
+const detail = alias;
+response.availableActions[0].enabled = true;
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`,
+    `<script setup lang="ts">
+import { ref } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+const detail = ref(null);
+async function load() {
+  const response = await getExample("example-1");
+  const alias = response;
+  detail.value = alias;
+  response.availableActions[0].enabled = true;
+}
+void load();
+function actionEnabled(key: string) {
+  return detail.value?.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+  ];
+  for (const page of pages) {
+    const root = await fixture({ page });
+    const manifest =
+      await inspectWholeSitePageActionManifest({ root });
+    assert.equal(manifest.status, "blocked");
+    assert.ok(
+      blockerCodes(manifest).has(
+        "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+      )
+    );
+  }
+});
+
+test("accepts only the unshadowed structuredClone alias boundary", async () => {
+  const safeRoot = await fixture({
+    page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+const editable = structuredClone(detail);
+editable.availableActions[0].enabled = true;
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+  });
+  const safeManifest =
+    await inspectWholeSitePageActionManifest({
+      root: safeRoot
+    });
+  assert.equal(
+    safeManifest.status,
+    "ready",
+    JSON.stringify(safeManifest.blockers)
+  );
+
+  const overwrittenAliasRoot = await fixture({
+    page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+let localTarget: any = globalThis;
+localTarget = {};
+localTarget.structuredClone = (value: unknown) => value;
+let localSet: any = Reflect.set;
+localSet = () => false;
+localSet(globalThis, "structuredClone", (value: unknown) => value);
+const detail = await getExample("example-1");
+const editable = structuredClone(detail);
+editable.availableActions[0].enabled = true;
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+  });
+  const overwrittenAliasManifest =
+    await inspectWholeSitePageActionManifest({
+      root: overwrittenAliasRoot
+    });
+  assert.equal(
+    overwrittenAliasManifest.status,
+    "ready",
+    JSON.stringify(overwrittenAliasManifest.blockers)
+  );
+
+  const shadowedRoot = await fixture({
+    page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+function structuredClone<T>(value: T): T {
+  return value;
+}
+const detail = await getExample("example-1");
+const editable = structuredClone(detail);
+editable.availableActions[0].enabled = true;
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+  });
+  const shadowedManifest =
+    await inspectWholeSitePageActionManifest({
+      root: shadowedRoot
+    });
+  assert.equal(shadowedManifest.status, "blocked");
+  assert.ok(
+    blockerCodes(shadowedManifest).has(
+      "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+    )
+  );
+});
+
+test("accepts a runtime-authority alias after an unconditional safe overwrite", async () => {
+  for (const [imports, setup, extraFiles] of [
+    [
+      "",
+      `function createRuntimeProxy() {
+  return new Proxy(globalThis, {});
+}
+let proxy: any = createRuntimeProxy();`,
+      {}
+    ],
+    [
+      `import { createRuntimeProxy } from "../lib/runtime-proxy";`,
+      `let proxy: any = createRuntimeProxy();`,
+      {
+        "apps/web-admin/src/lib/runtime-proxy.ts": `export function createRuntimeProxy() {
+  return new Proxy(globalThis, {});
+}
+`
+      }
+    ]
+  ]) {
+    const root = await fixture({
+      extraFiles,
+      webManifestOverrides: {
+        evidence: {
+          productionModuleCount:
+            5 + Object.keys(extraFiles).length,
+          reachableProductionModuleCount:
+            5 + Object.keys(extraFiles).length
+        }
+      },
+      page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+${imports}
+${setup}
+proxy = {};
+proxy.structuredClone = (value: unknown) => value;
+const detail = await getExample("example-1");
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+    });
+    const manifest =
+      await inspectWholeSitePageActionManifest({ root });
+    assert.equal(
+      manifest.status,
+      "ready",
+      JSON.stringify(manifest.blockers)
+    );
+  }
+});
+
+test("accepts only a static app-owned runtime extension key", async () => {
+  const safeRoot = await fixture({
+    page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const runtimeExtensionKey = "__JIANGKONG_TEST_REGISTRY__";
+function installRuntimeExtension(target: typeof globalThis) {
+  Object.defineProperty(target, runtimeExtensionKey, {
+    configurable: true,
+    value: {}
+  });
+}
+installRuntimeExtension(globalThis);
+const detail = await getExample("example-1");
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+  });
+  const safeManifest =
+    await inspectWholeSitePageActionManifest({
+      root: safeRoot
+    });
+  assert.equal(
+    safeManifest.status,
+    "ready",
+    JSON.stringify(safeManifest.blockers)
+  );
+
+  const dynamicRoot = await fixture({
+    page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const runtimeExtensionKey = Math.random() > 0.5
+  ? "__JIANGKONG_TEST_REGISTRY__"
+  : "structuredClone";
+function installRuntimeExtension(target: typeof globalThis) {
+  Object.defineProperty(target, runtimeExtensionKey, {
+    configurable: true,
+    value: {}
+  });
+}
+installRuntimeExtension(globalThis);
+const detail = await getExample("example-1");
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+  });
+  const dynamicManifest =
+    await inspectWholeSitePageActionManifest({
+      root: dynamicRoot
+    });
+  assert.equal(dynamicManifest.status, "blocked");
+  assert.ok(
+    blockerCodes(dynamicManifest).has(
+      "RUNTIME_INTRINSIC_INTEGRITY_UNVERIFIED"
+    )
+  );
+});
+
+test("rejects reachable runtime intrinsic tampering before capability checks or clones", async () => {
+  const mutations = [
+    `Object.defineProperty(globalThis, "structuredClone", {
+  value: (value: unknown) => value,
+  configurable: true
+});`,
+    `Reflect.set(
+  globalThis,
+  "structuredClone",
+  (value: unknown) => value
+);`,
+    `Object.assign(globalThis, {
+  structuredClone: (value: unknown) => value
+});`,
+    `(0, eval)(
+  "globalThis.structuredClone = (value) => value"
+);`,
+    `Function(
+  "globalThis.structuredClone = (value) => value"
+)();`,
+    `(Array.prototype as any).some = function () {
+  return true;
+};`,
+    `Object.defineProperty(Array.prototype, "some", {
+  value() {
+    return true;
+  }
+});`,
+    `const A = Array;
+A.prototype.some = () => true;`,
+    `globalThis.Array.prototype.some = () => true;`,
+    `const set = Reflect.set;
+set(globalThis, "structuredClone", (value: unknown) => value);`,
+    `const { set } = Reflect;
+set(globalThis, "structuredClone", (value: unknown) => value);`,
+    `Object.defineProperty.call(
+  Object,
+  globalThis,
+  "structuredClone",
+  { value: (value: unknown) => value }
+);`,
+    `Reflect.set.apply(Reflect, [
+  globalThis,
+  "structuredClone",
+  (value: unknown) => value
+]);`,
+    `const set = Reflect.set.bind(Reflect);
+set(globalThis, "structuredClone", (value: unknown) => value);`,
+    `const mutators = {
+  set: Reflect.set
+};
+mutators.set(
+  globalThis,
+  "structuredClone",
+  (value: unknown) => value
+);`,
+    `const mutators = [Reflect.set];
+mutators[0](
+  globalThis,
+  "structuredClone",
+  (value: unknown) => value
+);`,
+    `function replaceRuntimeValue(target: object) {
+  Reflect.set(
+    target,
+    "structuredClone",
+    (value: unknown) => value
+  );
+}
+replaceRuntimeValue(globalThis);`,
+    `Reflect.set(
+  (void 0, globalThis),
+  "structuredClone",
+  (value: unknown) => value
+);`,
+    `Reflect.set(
+  Math.random() > 0.5 ? globalThis : {},
+  "structuredClone",
+  (value: unknown) => value
+);`,
+    `const proxiedGlobal = new Proxy(globalThis, {});
+proxiedGlobal.structuredClone = (value: unknown) => value;`,
+    `const ProxyAlias = Proxy;
+const proxiedGlobal = new ProxyAlias(globalThis, {});
+proxiedGlobal.structuredClone = (value: unknown) => value;`,
+    `const proxiedGlobal = Proxy.revocable(
+  globalThis,
+  {}
+).proxy;
+proxiedGlobal.structuredClone = (value: unknown) => value;`,
+    `const proxiedGlobal = Reflect.construct(
+  Proxy,
+  [globalThis, {}]
+);
+proxiedGlobal.structuredClone = (value: unknown) => value;`,
+    `const ProxyFactory = Proxy.bind(null);
+const proxiedGlobal = new ProxyFactory(globalThis, {});
+proxiedGlobal.structuredClone = (value: unknown) => value;`,
+    `function createRuntimeProxy() {
+  return new Proxy(globalThis, {});
+}
+const proxiedGlobal = createRuntimeProxy();
+proxiedGlobal.structuredClone = (value: unknown) => value;`,
+    `const key = "proxy";
+const { [key]: proxiedGlobal } = Proxy.revocable(
+  globalThis,
+  {}
+);
+proxiedGlobal.structuredClone = (value: unknown) => value;`,
+    `let proxiedGlobal: any;
+({ proxy: proxiedGlobal } = Proxy.revocable(
+  globalThis,
+  {}
+));
+proxiedGlobal.structuredClone = (value: unknown) => value;`,
+    `const key = "proxy";
+const proxiedGlobal = Proxy.revocable(
+  globalThis,
+  {}
+)[key];
+proxiedGlobal.structuredClone = (value: unknown) => value;`,
+    `const key = "runtime";
+const proxies = {
+  runtime: new Proxy(globalThis, {})
+};
+const proxiedGlobal = proxies[key];
+proxiedGlobal.structuredClone = (value: unknown) => value;`,
+    `const key = "set";
+const setRuntime = Reflect[key];
+setRuntime(
+  globalThis,
+  "structuredClone",
+  (value: unknown) => value
+);`,
+    `let setRuntime: any;
+({ set: setRuntime } = Reflect);
+setRuntime(
+  globalThis,
+  "structuredClone",
+  (value: unknown) => value
+);`,
+    `const runtime = {
+  mutators: {
+    replace: Reflect.set
+  }
+};
+const replace = runtime.mutators.replace;
+replace(globalThis, "structuredClone", (value: unknown) => value);`,
+    `const targets = {
+  runtime: globalThis
+};
+function replaceRuntimeValue(target: object) {
+  const targetAlias = target;
+  Reflect.set(
+    targetAlias,
+    "structuredClone",
+    (value: unknown) => value
+  );
+}
+replaceRuntimeValue(targets.runtime);`,
+    `const helpers = {
+  replaceRuntimeValue(target: object) {
+    Reflect.set(
+      target,
+      "structuredClone",
+      (value: unknown) => value
+    );
+  }
+};
+helpers.replaceRuntimeValue(globalThis);`,
+    `const [setRuntimeValue] = [Reflect.set];
+setRuntimeValue(
+  globalThis,
+  "structuredClone",
+  (value: unknown) => value
+);`,
+    `let conditionalTarget: any = globalThis;
+if (Math.random() > 0.5) {
+  conditionalTarget = {};
+}
+conditionalTarget.structuredClone = (value: unknown) => value;`
+  ];
+  for (const mutation of mutations) {
+    const root = await fixture({
+      page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+${mutation}
+const detail = await getExample("example-1");
+const editable = structuredClone(detail);
+editable.availableActions[0].enabled = true;
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+    });
+    const manifest =
+      await inspectWholeSitePageActionManifest({ root });
+    assert.equal(manifest.status, "blocked", mutation);
+    assert.ok(
+      blockerCodes(manifest).has(
+        "RUNTIME_INTRINSIC_INTEGRITY_UNVERIFIED"
+      ),
+      mutation
+    );
+  }
+
+  for (const [modulePath, importedName, invocation, moduleSource] of [
+    [
+      "apps/web-admin/src/lib/mutate-runtime.ts",
+      "mutateRuntime",
+      "mutateRuntime(globalThis);",
+      `export function mutateRuntime(target: typeof globalThis) {
+  target.structuredClone = (value: unknown) => value;
+}
+`
+    ],
+    [
+      "apps/web-admin/src/lib/runtime-factory.ts",
+      "createRuntimeProxy",
+      `const proxiedGlobal = createRuntimeProxy();
+proxiedGlobal.structuredClone = (value: unknown) => value;`,
+      `export function createRuntimeProxy() {
+  return new Proxy(globalThis, {});
+}
+`
+    ]
+  ]) {
+    const importedRuntimeRoot = await fixture({
+      page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+import { ${importedName} } from "../lib/${modulePath
+        .split("/")
+        .at(-1)
+        .replace(/\.ts$/, "")}";
+${invocation}
+const detail = await getExample("example-1");
+const editable = structuredClone(detail);
+editable.availableActions[0].enabled = true;
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`,
+      extraFiles: {
+        [modulePath]: moduleSource
+      },
+      webManifestOverrides: {
+        evidence: {
+          productionModuleCount: 6,
+          reachableProductionModuleCount: 6
+        }
+      }
+    });
+    const importedRuntime =
+      await inspectWholeSitePageActionManifest({
+        root: importedRuntimeRoot
+      });
+    assert.equal(importedRuntime.status, "blocked");
+    assert.ok(
+      blockerCodes(importedRuntime).has(
+        "RUNTIME_INTRINSIC_INTEGRITY_UNVERIFIED"
+      )
+    );
+  }
+});
+
+test("rejects protected capability escapes and writes in Vue templates", async () => {
+  const templates = [
+    `<rogue-child :value="detail?.availableActions[0]" />
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>`,
+    `<rogue-child :value="helpers.pick()" />
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>`,
+    `<rogue-child :value="selectedAction" />
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>`,
+    `<div v-rogue="detail?.availableActions[0]" />
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>`,
+    `<button
+    @click="mutate(detail?.availableActions[0])"
+  >
+    非法改写
+  </button>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>`,
+    `<button
+    @click="detail!.availableActions[0].enabled = true"
+  >
+    非法改写
+  </button>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>`,
+    `<input v-model="detail!.availableActions[0].enabled" />
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>`,
+    `<button
+    v-for="action in detail?.availableActions"
+    :key="action.key"
+    @click="action.enabled = true"
+  >
+    非法改写
+  </button>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>`
+  ];
+  for (const template of templates) {
+    const root = await fixture({
+      page: `<script setup lang="ts">
+import { computed, ref } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+const detail = ref(null);
+async function load() {
+  detail.value = await getExample("example-1");
+}
+void load();
+const helpers = {
+  pick: function () {
+    return detail.value?.availableActions[0];
+  }
+};
+const selectedAction = computed(
+  () => detail.value?.availableActions[0]
+);
+function mutate(action: { enabled: boolean }) {
+  action.enabled = true;
+}
+function actionEnabled(key: string) {
+  return detail.value?.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  ${template}
+</template>
+`
+    });
+    const manifest =
+      await inspectWholeSitePageActionManifest({ root });
+    assert.equal(manifest.status, "blocked", template);
+    assert.ok(
+      blockerCodes(manifest).has(
+        "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+      ),
+      template
+    );
+  }
+});
+
+test("rejects a direct server action alias passed through a Vue prop", async () => {
+  const root = await fixture({
+    page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+const selected = detail.availableActions[0];
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <rogue-child :value="selected" />
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+  });
+  const manifest =
+    await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked");
+  assert.ok(
+    blockerCodes(manifest).has(
+      "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+    )
+  );
+});
+
+test("resolves Vue template aliases against script top-level bindings", async () => {
+  const cases = [
+    {
+      name: "direct alias",
+      setup: `const selected = detail.availableActions[0];
+function unrelated() {
+  const selected = { enabled: false };
+  return selected;
+}`,
+      value: "selected"
+    },
+    {
+      name: "callable alias",
+      setup: `const pick = () => detail.availableActions[0];
+function unrelated() {
+  const pick = () => null;
+  return pick();
+}`,
+      value: "pick()"
+    }
+  ];
+  for (const candidate of cases) {
+    const root = await fixture({
+      page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+${candidate.setup}
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <rogue-child :value="${candidate.value}" />
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+    });
+    const manifest =
+      await inspectWholeSitePageActionManifest({ root });
+    assert.equal(
+      manifest.status,
+      "blocked",
+      candidate.name
+    );
+    assert.ok(
+      blockerCodes(manifest).has(
+        "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+      ),
+      candidate.name
+    );
+  }
+});
+
+test("accepts a Vue ref populated only through a server read result", async () => {
+  const root = await fixture({
+    page: `<script setup lang="ts">
+import { computed, ref } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+const detail = ref(null);
+async function load() {
+  const response = await getExample("example-1");
+  detail.value = response;
+}
+void load();
+const selectedAction = computed(() =>
+  detail.value?.availableActions.find(
+    (action) => action.key === "submit_approval"
+  )
+);
+const selectedActionWithBlock = computed(() => {
+  return detail.value?.availableActions.find(
+    (action) => action.key === "submit_approval"
+  );
+});
+const selectedActionWithOptions = computed({
+  get: () =>
+    detail.value?.availableActions.find(
+      (action) => action.key === "submit_approval"
+    ),
+  set: () => undefined
+});
+const namedGetter = () =>
+  detail.value?.availableActions.find(
+    (action) => action.key === "submit_approval"
+  );
+const emptyGetter = () => null;
+const useNamedGetter = true;
+const selectedActionWithConditional = computed(
+  useNamedGetter ? namedGetter : emptyGetter
+);
+void selectedAction.value?.enabled;
+void selectedActionWithBlock.value?.enabled;
+void selectedActionWithOptions.value?.enabled;
+void selectedActionWithConditional.value?.enabled;
+function actionEnabled(key: string) {
+  return detail.value?.availableActions.some((action) => action.key === key && action.enabled);
+}
+async function submit() { await submitExample("example-1"); }
+</script>
+<template>
+  <rogue-child
+    :disabled="!detail?.availableActions[0]?.enabled"
+  />
+  <span
+    v-for="action in detail?.availableActions"
+    :key="action.key"
+  >
+    {{ action.key }}
+  </span>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">提交审批</t-button>
+</template>
+`
+  });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(
+    manifest.status,
+    "ready",
+    JSON.stringify({
+      action: manifest.actions[0],
+      blockers: manifest.blockers
+    })
+  );
+  assert.equal(manifest.actions[0].capability.dominatesTrigger, true);
+  assert.equal(
+    manifest.summary.acceptedProductionMutationConsumerCount,
+    1
+  );
+});
+
+test("enforces statically ordered safe callable and computed overrides", async () => {
+  const safeBodies = [
+    `const protectedHelpers = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  const overriddenHelpers = {
+    ...protectedHelpers,
+    pick: () => fallbackAction
+  };
+  overriddenHelpers.pick().enabled = true;`,
+    `const assignedHelpers = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  assignedHelpers.pick = () => fallbackAction;
+  assignedHelpers.pick().enabled = true;`,
+    `const assignedHelpers = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  assignedHelpers["pick"] = () => fallbackAction;
+  assignedHelpers.pick().enabled = true;`,
+    `const safeHelpers = {
+    pick: () => fallbackAction
+  };
+  const safelySpreadHelpers = {
+    pick: () => detail.value?.availableActions[0],
+    ...safeHelpers
+  };
+  safelySpreadHelpers.pick().enabled = true;`,
+    `const protectedOptions = {
+    get: () => detail.value?.availableActions[0]
+  };
+  const overriddenOptions = {
+    ...protectedOptions,
+    get: () => fallbackAction,
+    set: () => undefined
+  };
+  const selected = computed(overriddenOptions);
+  selected.value.enabled = true;`,
+    `const safeOptions = {
+    get: () => fallbackAction,
+    set: () => undefined
+  };
+  const safelySpreadOptions = {
+    get: () => detail.value?.availableActions[0],
+    ...safeOptions
+  };
+  const selected = computed(safelySpreadOptions);
+  selected.value.enabled = true;`,
+    `const source = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  const alias = source;
+  source.pick = () => fallbackAction;
+  alias.pick().enabled = true;`,
+    `const unsafe = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  const safe = {
+    pick: () => fallbackAction
+  };
+  let alias = unsafe;
+  alias = safe;
+  alias.pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  source.pick = () => fallbackAction;
+  function mutate(value: typeof source) {
+    value.pick().enabled = true;
+  }
+  mutate(source);`,
+    `const source = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  source.pick = () => fallbackAction;
+  source.valueOf().pick().enabled = true;`,
+    `const unsafe = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  const safe = {
+    pick: () => fallbackAction
+  };
+  let alias = unsafe;
+  alias = safe;
+  function mutate(value: typeof alias) {
+    value.pick().enabled = true;
+  }
+  mutate(alias);`
+  ];
+
+  for (const safeBody of safeBodies) {
+    const root = await fixture({
+      page: `<script setup lang="ts">
+import { computed, ref } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+const detail = ref(null);
+async function load() {
+  detail.value = await getExample("example-1");
+}
+void load();
+const fallbackAction = {
+  key: "fallback",
+  enabled: false
+};
+${safeBody}
+function actionEnabled(key: string) {
+  return detail.value?.availableActions.some((action) => action.key === key && action.enabled);
+}
+async function submit() { await submitExample("example-1"); }
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">提交审批</t-button>
+</template>
+`
+    });
+    const manifest =
+      await inspectWholeSitePageActionManifest({ root });
+    assert.equal(
+      manifest.status,
+      "ready",
+      `${safeBody}\n${JSON.stringify(manifest.blockers)}`
+    );
+  }
+
+  const unsafeBodies = [
+    `const source = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  const alias = source;
+  alias.pick().enabled = true;
+  source.pick = () => fallbackAction;`,
+    `const source = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  const alias = source;
+  source.pick().enabled = true;
+  alias.pick = () => fallbackAction;`,
+    `const unsafe = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  const safe = {
+    pick: () => fallbackAction
+  };
+  let alias = unsafe;
+  alias.pick().enabled = true;
+  alias = safe;`,
+    `const unsafe = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  const safe = {
+    pick: () => fallbackAction
+  };
+  let alias = unsafe;
+  const unknown = Boolean(detail.value);
+  if (unknown) {
+    alias = safe;
+  }
+  alias.pick().enabled = true;`,
+    `const unsafe = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  const safe = {
+    pick: () => fallbackAction
+  };
+  let alias = unsafe;
+  function reset() {
+    alias = safe;
+  }
+  void reset;
+  alias.pick().enabled = true;`,
+    `const unsafe = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  const safe = {
+    pick: () => fallbackAction
+  };
+  let alias = safe;
+  alias = unsafe;
+  alias.pick().enabled = true;`,
+    `const unsafe = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  const safe = {
+    pick: () => fallbackAction
+  };
+  let alias = safe;
+  alias.pick().enabled = true;
+  alias = unsafe;`,
+    `function mutate(value: {
+    pick: () => { enabled: boolean }
+  }) {
+    value.pick().enabled = true;
+  }
+  const source = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  mutate(source);
+  source.pick = () => fallbackAction;`,
+    `const source = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  function expose() {
+    return source;
+  }
+  expose().pick().enabled = true;
+  source.pick = () => fallbackAction;`,
+    `const source = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  const alias = Object.create(source);
+  alias.pick().enabled = true;
+  source.pick = () => fallbackAction;`,
+    `function mutate(value: {
+    pick: () => { enabled: boolean }
+  }) {
+    value.pick().enabled = true;
+  }
+  const unsafe = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  const safe = {
+    pick: () => fallbackAction
+  };
+  let alias = unsafe;
+  mutate(alias);
+  alias = safe;`,
+    `const key: string = "pick";
+  const source = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  source[key]().enabled = true;
+  source.pick = () => fallbackAction;`,
+    `const source = {
+    pick: () => detail.value?.availableActions[0]
+  };
+  source.valueOf().pick().enabled = true;
+  source.pick = () => fallbackAction;`,
+    `const source = {
+    pick: () => detail.value?.availableActions[0],
+    get self() {
+      return this;
+    }
+  };
+  source.self.pick().enabled = true;
+  source.pick = () => fallbackAction;`
+  ];
+
+  for (const unsafeBody of unsafeBodies) {
+    const root = await fixture({
+      page: `<script setup lang="ts">
+import { ref } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+const detail = ref(null);
+async function load() {
+  detail.value = await getExample("example-1");
+}
+void load();
+const fallbackAction = {
+  key: "fallback",
+  enabled: false
+};
+${unsafeBody}
+function actionEnabled(key: string) {
+  return detail.value?.availableActions.some((action) => action.key === key && action.enabled);
+}
+async function submit() { await submitExample("example-1"); }
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">提交审批</t-button>
+</template>
+`
+    });
+    const manifest =
+      await inspectWholeSitePageActionManifest({ root });
+    assert.equal(manifest.status, "blocked", unsafeBody);
+    assert.ok(
+      blockerCodes(manifest).has(
+        "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+      ),
+      unsafeBody
+    );
+  }
+});
+
+test("accepts a shallow capability ref with null resets and same-GET request aliases", async () => {
+  const root = await fixture({
+    page: `<script setup lang="ts">
+import { shallowRef } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+const detail = shallowRef(null);
+let selectedId = "";
+async function load() {
+  const firstRequest = getExample("example-1");
+  const firstResponse = await firstRequest;
+  detail.value = firstResponse;
+  selectedId = detail.value.id;
+  detail.value = null;
+  const secondRequest = getExample("example-1");
+  detail.value = await secondRequest;
+}
+void load();
+void selectedId;
+function actionEnabled(key: string) {
+  return detail.value?.availableActions.some((action) => action.key === key && action.enabled);
+}
+async function submit() { await submitExample("example-1"); }
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">提交审批</t-button>
+</template>
+`
+  });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(
+    manifest.status,
+    "ready",
+    JSON.stringify(manifest.blockers)
+  );
+  assert.equal(manifest.actions[0].capability.dominatesTrigger, true);
+});
+
+test("rejects mixed or non-GET sources for a capability ref", async () => {
+  const secondRead = wrapper({
+    name: "getOtherExample",
+    normalizedKey: "GET /other-examples/:param"
+  });
+  const mixedRoot = await fixture({
+    wrappers: [wrapper(), capabilityReadWrapper(), secondRead],
+    routes: [route(), route("GET /other-examples/:param")],
+    extraFiles: {
+      "apps/web-admin/src/api/example.api.ts": `export async function getExample() { return { availableActions: [] }; }
+export async function getOtherExample() { return { availableActions: [] }; }
+export async function submitExample() { return undefined; }
+`
+    },
+    page: `<script setup lang="ts">
+import { ref } from "vue";
+import { getExample, getOtherExample, submitExample } from "../api/example.api";
+const detail = ref(null);
+async function load(useOther: boolean) {
+  detail.value = await getExample("example-1");
+  if (useOther) {
+    detail.value = await getOtherExample("other-1");
+  }
+}
+void load(false);
+function actionEnabled(key: string) {
+  return detail.value?.availableActions.some((action) => action.key === key && action.enabled);
+}
+async function submit() { await submitExample("example-1"); }
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">提交审批</t-button>
+</template>
+`
+  });
+  const mixed = await inspectWholeSitePageActionManifest({
+    root: mixedRoot
+  });
+  assert.equal(mixed.status, "blocked");
+  assert.ok(
+    blockerCodes(mixed).has("AVAILABLE_ACTION_PROVENANCE_UNVERIFIED")
+  );
+
+  const unsafeRead = wrapper({
+    name: "loadExampleUnsafe",
+    normalizedKey: "POST /examples/:param/load"
+  });
+  const postRoot = await fixture({
+    wrappers: [wrapper(), unsafeRead],
+    routes: [route(), route("POST /examples/:param/load")],
+    extraFiles: {
+      "apps/web-admin/src/api/example.api.ts": `export async function getExample() { return { availableActions: [] }; }
+export async function loadExampleUnsafe() { return { availableActions: [] }; }
+export async function submitExample() { return undefined; }
+`
+    },
+    page: `<script setup lang="ts">
+import { ref } from "vue";
+import { loadExampleUnsafe, submitExample } from "../api/example.api";
+const detail = ref(null);
+async function load() {
+  detail.value = await loadExampleUnsafe("example-1");
+}
+void load();
+function actionEnabled(key: string) {
+  return detail.value?.availableActions.some((action) => action.key === key && action.enabled);
+}
+async function submit() { await submitExample("example-1"); }
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">提交审批</t-button>
+</template>
+`
+  });
+  const post = await inspectWholeSitePageActionManifest({
+    root: postRoot
+  });
+  assert.equal(post.status, "blocked");
+  assert.ok(
+    blockerCodes(post).has("AVAILABLE_ACTION_PROVENANCE_UNVERIFIED")
+  );
+});
+
+test("rejects capability-ref mutation aliases, parameter escapes, and discarded-read fakes", async () => {
+  const deeplyNestedCallback = Array.from(
+    { length: 17 },
+    (_, index) => index
+  ).reduce((value) => `[${value}]`, "pick");
+  const deeplyNestedAccess = Array.from(
+    { length: 17 },
+    () => "[0]"
+  ).join("");
+  const unsafeBodies = [
+    `const alias = detail;
+  alias.value = { availableActions: [{ key: "submit_approval", enabled: true }] };`,
+    `const alias = detail.value;
+  alias.availableActions = [{ key: "submit_approval", enabled: true }];`,
+    `Object.assign(detail.value, {
+    availableActions: [{ key: "submit_approval", enabled: true }]
+  });`,
+    `function escape(value: unknown) { return value; }
+  escape(detail);`,
+    `function escape(value: unknown) { return value; }
+  escape(detail.value);`,
+    `function actions() { return detail.value.availableActions; }
+  actions().push({ key: "submit_approval", enabled: true });`,
+    `function actions() { return detail.value.availableActions; }
+  actions().splice(0, actions().length, {
+    key: "submit_approval",
+    enabled: true
+  });`,
+    `function actions() { return detail.value.availableActions; }
+  Object.assign(actions(), {
+    0: { key: "submit_approval", enabled: true },
+    length: 1
+  });`,
+    `function mutate(actions: unknown[]) {
+    actions.push({ key: "submit_approval", enabled: true });
+  }
+  mutate(detail.value.availableActions);`,
+    `const escaped: { actions?: unknown[] } = {};
+  escaped.actions = detail.value.availableActions;`,
+    `const selected = computed(
+    () => detail.value.availableActions[0]
+  );
+  selected.value.enabled = true;`,
+    `const selected = computed(
+    () => detail.value.availableActions[0]
+  ).value;
+  selected.enabled = true;`,
+    `const getter =
+    () => detail.value.availableActions[0];
+  const selected = computed(getter);
+  selected.value.enabled = true;`,
+    `const pick =
+    () => detail.value.availableActions[0];
+  function mutateWith(callable: () => unknown) {
+    const action = callable();
+    action.enabled = true;
+  }
+  mutateWith(pick);`,
+    `const helpers = {
+    pick: () => detail.value.availableActions[0]
+  };
+  function mutateWith(value: typeof helpers) {
+    const action = value.pick();
+    action.enabled = true;
+  }
+  mutateWith(helpers);`,
+    `const pick =
+    () => detail.value.availableActions[0];
+  function mutateWith(options: { pick: typeof pick }) {
+    options.pick().enabled = true;
+  }
+  mutateWith({ pick });`,
+    `const pick =
+    () => detail.value.availableActions[0];
+  const callbacks = [pick];
+  function mutateWith(values: Array<typeof pick>) {
+    values[0]().enabled = true;
+  }
+  mutateWith(callbacks);`,
+    `const pick =
+    () => detail.value.availableActions[0];
+  const callbacks = ${deeplyNestedCallback};
+  function mutateWith(values: unknown) {
+    const action = values${deeplyNestedAccess}();
+    action.enabled = true;
+  }
+  mutateWith(callbacks);`,
+    `const pick =
+    () => detail.value.availableActions[0];
+  let holder: { pick: typeof pick };
+  holder = { pick };
+  holder.pick().enabled = true;`,
+    `const fallback = { enabled: false };
+  const alias = { pick: () => fallback };
+  alias.pick =
+    () => detail.value.availableActions[0];
+  alias.pick().enabled = true;`,
+    `const fallback = { enabled: false };
+  const alias = {
+    pick: () => detail.value.availableActions[0]
+  };
+  alias.pick().enabled = true;
+  alias.pick = () => fallback;`,
+    `const fallback = { enabled: false };
+  const alias = {
+    pick: () => detail.value.availableActions[0]
+  };
+  if (false) {
+    alias.pick = () => fallback;
+  }
+  alias.pick().enabled = true;`,
+    `const fallback = { enabled: false };
+  const alias = {
+    pick: () => detail.value.availableActions[0]
+  };
+  false && (alias.pick = () => fallback);
+  alias.pick().enabled = true;`,
+    `const fallback = { enabled: false };
+  const alias = {
+    pick: () => detail.value.availableActions[0]
+  };
+  function replacePick() {
+    alias.pick = () => fallback;
+  }
+  void replacePick;
+  alias.pick().enabled = true;`,
+    `const pick =
+    () => detail.value.availableActions[0];
+  function expose() {
+    return { pick };
+  }
+  expose().pick().enabled = true;`,
+    `const pick =
+    () => detail.value.availableActions[0];
+  const expose = () => pick;
+  expose()().enabled = true;`,
+    `const selected = computed({
+    get: () => detail.value.availableActions[0],
+    set: () => undefined
+  });
+  selected.value.enabled = true;`,
+    `const getter =
+    () => detail.value.availableActions[0];
+  const fallbackGetter = () => null;
+  const flag = Boolean(detail.value);
+  const selected = computed(
+    flag ? getter : fallbackGetter
+  );
+  selected.value.enabled = true;`,
+    `const pick =
+    () => detail.value.availableActions[0];
+  const selected = computed({
+    get: () => null,
+    pick
+  });
+  void selected.value;`,
+    `void getExample("discarded-read");
+  detail.value = { availableActions: [{ key: "submit_approval", enabled: true }] };`
+  ];
+
+  for (const unsafeBody of unsafeBodies) {
+    const root = await fixture({
+      page: `<script setup lang="ts">
+import { computed, ref } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+const detail = ref(null);
+async function load() {
+  detail.value = await getExample("example-1");
+  ${unsafeBody}
+}
+void load();
+function actionEnabled(key: string) {
+  return detail.value?.availableActions.some((action) => action.key === key && action.enabled);
+}
+async function submit() { await submitExample("example-1"); }
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">提交审批</t-button>
+</template>
+`
+    });
+    const manifest = await inspectWholeSitePageActionManifest({ root });
+
+    assert.equal(manifest.status, "blocked", unsafeBody);
+    assert.ok(
+      blockerCodes(manifest).has(
+        "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+      ),
+      unsafeBody
+    );
+  }
+});
+
+test("rejects an escape through an ancestor of a nested capability source", async () => {
+  const root = await fixture({
+    actions: [
+      registryAction({
+        capability: {
+          kind: "detail_action",
+          source: "detail.invoice.invoices",
+          key: "submit_approval"
+        }
+      })
+    ],
+    page: `<script setup lang="ts">
+import { ref } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+const detail = ref(null);
+async function load() {
+  detail.value = await getExample("example-1");
+  function invoiceState() {
+    return detail.value.invoice;
+  }
+  invoiceState().invoices[0].availableActions.push({
+    key: "submit_approval",
+    enabled: true
+  });
+}
+void load();
+function actionEnabled(key: string) {
+  return detail.value?.invoice.invoices[0].availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() { await submitExample("example-1"); }
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">提交审批</t-button>
+</template>
+`
+  });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(manifest.status, "blocked");
+  assert.ok(
+    blockerCodes(manifest).has(
+      "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+    )
+  );
+  assert.equal(manifest.actions[0].capability.dominatesTrigger, false);
+});
+
+test("rejects mutation through elements derived from a protected capability collection", async () => {
+  const derivedElements = [
+    "detail.value.availableActions[0]",
+    "detail.value.availableActions[index]",
+    "detail.value.availableActions.at(0)",
+    "detail.value.availableActions.find(() => true)",
+    "detail.value.availableActions.filter(() => true)[0]",
+    "[...detail.value.availableActions][0]"
+  ];
+
+  for (const derivedElement of derivedElements) {
+    const root = await fixture({
+      page: `<script setup lang="ts">
+import { ref } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+const detail = ref(null);
+const index = 0;
+async function load() {
+  detail.value = await getExample("example-1");
+  const action = ${derivedElement};
+  action.key = "submit_approval";
+  action.enabled = true;
+}
+void load();
+function actionEnabled(key: string) {
+  return detail.value?.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() { await submitExample("example-1"); }
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">提交审批</t-button>
+</template>
+`
+    });
+    const manifest = await inspectWholeSitePageActionManifest({ root });
+
+    assert.equal(manifest.status, "blocked", derivedElement);
+    assert.ok(
+      blockerCodes(manifest).has(
+        "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+      ),
+      derivedElement
+    );
+    assert.equal(
+      manifest.actions[0].capability.dominatesTrigger,
+      false,
+      derivedElement
+    );
+  }
+});
+
+test("rejects mutation inside protected collection callbacks and alias methods", async () => {
+  const mutations = [
+    `detail.value.availableActions.forEach((action) => {
+    action.enabled = true;
+  });`,
+    `detail.value.availableActions.forEach((_action, _index, actions) => {
+    actions[0].enabled = true;
+  });`,
+    `detail.value.availableActions.forEach((...args) => {
+    args[0].enabled = true;
+  });`,
+    `detail.value.availableActions.forEach((
+    action = { key: "none", enabled: false }
+  ) => {
+    action.enabled = true;
+  });`,
+    `detail.value.availableActions.find((action) => {
+    action.key = "submit_approval";
+    return true;
+  });`,
+    `const actions = detail.value.availableActions;
+  actions.push({ key: "submit_approval", enabled: true });`
+  ];
+
+  for (const mutation of mutations) {
+    const root = await fixture({
+      page: `<script setup lang="ts">
+import { ref } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+const detail = ref(null);
+async function load() {
+  detail.value = await getExample("example-1");
+  ${mutation}
+}
+void load();
+function actionEnabled(key: string) {
+  return detail.value?.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() { await submitExample("example-1"); }
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">提交审批</t-button>
+</template>
+`
+    });
+    const manifest = await inspectWholeSitePageActionManifest({ root });
+
+    assert.equal(manifest.status, "blocked", mutation);
+    assert.ok(
+      blockerCodes(manifest).has(
+        "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+      ),
+      mutation
+    );
+  }
+});
+
+test("rejects protected elements hidden by containers, branches, iteration, or reducers", async () => {
+  const mutations = [
+    `const pick = () => detail.value.availableActions[0];
+  const action = pick();
+  action.enabled = true;`,
+    `const helpers = {
+    pick: () => detail.value.availableActions[0]
+  };
+  const action = helpers.pick();
+  action.enabled = true;`,
+    `const helpers = {
+    pick: () => detail.value.availableActions[0]
+  };
+  const pick = helpers.pick;
+  const action = pick();
+  action.enabled = true;`,
+    `const helpers = {
+    pick: () => detail.value.availableActions[0]
+  };
+  const { pick } = helpers;
+  const action = pick();
+  action.enabled = true;`,
+    `const helpers = {
+    pick: () => detail.value.availableActions[0]
+  };
+  const { pick: select } = helpers;
+  const action = select();
+  action.enabled = true;`,
+    `const helpers = {
+    pick: () => detail.value.availableActions[0]
+  };
+  const alias = { ...helpers };
+  const action = alias.pick();
+  action.enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  const holder = { nested: source };
+  holder.nested.pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  const alias = (0, source);
+  alias.pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  const alias = source satisfies typeof source;
+  alias.pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  source.pick.call(null).enabled = true;`,
+    `const source = {
+    pick: <T = void>() => detail.value.availableActions[0]
+  };
+  const pick = source.pick<void>;
+  pick().enabled = true;`,
+    `const key: string = "pick";
+  const source = {
+    [key]: () => detail.value.availableActions[0]
+  };
+  source[key]().enabled = true;`,
+    `const key = Symbol("pick");
+  const source = {
+    [key]: () => detail.value.availableActions[0]
+  };
+  source[key]().enabled = true;`,
+    `const key: string = "pick";
+  const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  source[key]().enabled = true;`,
+    `const source = {
+    pick: function () {
+      return detail.value.availableActions[0];
+    }
+  };
+  (new source.pick()).enabled = true;`,
+    `const source = {
+    pick: function () {
+      return detail.value.availableActions[0];
+    }
+  };
+  const Pick = source.pick;
+  (new Pick()).enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  const [alias] = [source];
+  alias.pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  const alias = [source][0];
+  alias.pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  [source][0].pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  const alias = [source].at(0);
+  alias.pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  [source].pop()!.pick().enabled = true;`,
+    `const holder = {
+    nested: {
+      pick: () => detail.value.availableActions[0]
+    }
+  };
+  holder.nested.pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  ({ nested: source }).nested.pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  const holder = { nested: source };
+  const { nested: alias } = holder;
+  alias.pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  const getSource = () => source;
+  getSource().pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  class Holder {
+    nested = source;
+  }
+  new Holder().nested.pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  function mutate(value = source) {
+    value.pick().enabled = true;
+  }
+  mutate();`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  function mutate({ pick } = source) {
+    pick().enabled = true;
+  }
+  mutate();`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  for (const alias of [source]) {
+    alias.pick().enabled = true;
+  }`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  try {
+    throw source;
+  } catch (alias) {
+    alias.pick().enabled = true;
+  }`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  function* expose() {
+    yield source;
+  }
+  expose().next().value.pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  function pass(_strings: TemplateStringsArray, value: typeof source) {
+    return value;
+  }
+  pass\`x\${source}\`.pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  eval("source.pick().enabled = true");`,
+    `detail.value.availableActions.forEach(function () {
+    arguments[0].enabled = true;
+  });`,
+    `detail.value.availableActions.forEach(function () {
+    arguments[2].push({ key: "forged", enabled: true });
+  });`,
+    `detail.value.availableActions
+    .toSpliced()[0].enabled = true;`,
+    `detail.value.availableActions[
+    Symbol.iterator
+  ]().next().value.enabled = true;`,
+    `const iterator =
+    detail.value.availableActions[Symbol.iterator]();
+  iterator.next().value.enabled = true;`,
+    `const Symbol = { iterator: "forged" };
+  detail.value.availableActions[
+    Symbol.iterator
+  ]().next().value.enabled = true;`,
+    `detail.value.availableActions
+    .valueOf()[0].enabled = true;`,
+    `detail.value.availableActions[0]
+    .valueOf().enabled = true;`,
+    `detail.value.availableActions[0]
+    .__defineGetter__("enabled", () => true);`,
+    `detail.value.availableActions
+    .__defineGetter__("0", () => ({
+      key: "forged",
+      enabled: true
+    }));`,
+    `const pick = () => detail.value.availableActions[0];
+  pick.call(null).enabled = true;`,
+    `const pick = () => detail.value.availableActions[0];
+  pick.apply(null, []).enabled = true;`,
+    `const pick = () => detail.value.availableActions[0];
+  const boundPick = pick.bind(null);
+  boundPick().enabled = true;`,
+    `const Base = function () {
+    return detail.value.availableActions[0];
+  } as unknown as new () => any;
+  class Derived extends Base {}
+  new Derived().enabled = true;`,
+    `const Base = function () {
+    return detail.value.availableActions[0];
+  } as unknown as new () => any;
+  const Derived = class extends Base {};
+  new Derived().enabled = true;`,
+    `class Holder {
+    action = detail.value.availableActions[0];
+  }
+  new Holder().action.enabled = true;`,
+    `class Holder {
+    #action = detail.value.availableActions[0];
+    mutate() {
+      this.#action.enabled = true;
+    }
+  }
+  new Holder().mutate();`,
+    `class Holder {
+    static action = detail.value.availableActions[0];
+  }
+  Holder.action.enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  const alias = source.valueOf();
+  alias.pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0],
+    self() {
+      return this;
+    }
+  };
+  source.self().pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0],
+    get self() {
+      return this;
+    }
+  };
+  source.self.pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0],
+    self() {
+      const me = this;
+      return me;
+    }
+  };
+  source.self().pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0],
+    get self() {
+      const me = this;
+      return me;
+    }
+  };
+  source.self.pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0],
+    self() {
+      return (() => this)();
+    }
+  };
+  source.self().pick().enabled = true;`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  ({ enabled: source.pick().enabled } = { enabled: true });`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  [source.pick().enabled] = [true];`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  ({ nested: { enabled: source.pick().enabled } } = {
+    nested: { enabled: true }
+  });`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  for (source.pick().enabled of [true]) {}`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  for (source.pick().enabled in { x: 1 }) {}`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  for ({ enabled: source.pick().enabled } of [{ enabled: true }]) {}`,
+    `const source = {
+    pick: () => detail.value.availableActions[0]
+  };
+  let holder = {
+    direct: () => detail.value.availableActions[0]
+  };
+  holder = (0, { nested: source });
+  holder.nested.pick().enabled = true;`,
+    `const helpers = {
+    pick: () => detail.value.availableActions[0]
+  };
+  let alias;
+  alias = helpers;
+  const action = alias.pick();
+  action.enabled = true;`,
+    `const box = {
+    action: detail.value.availableActions[0]
+  };
+  box.action.enabled = true;`,
+    `const box = {
+    ...{ action: detail.value.availableActions[0] }
+  };
+  box.action.enabled = true;`,
+    `const action = flag
+    ? detail.value.availableActions[0]
+    : fallback;
+  action.enabled = true;`,
+    `const action =
+    detail.value.availableActions[0] || fallback;
+  action.enabled = true;`,
+    `const action = (
+    fallback,
+    detail.value.availableActions[0]
+  );
+  action.enabled = true;`,
+    `for (const action of detail.value.availableActions) {
+    action.enabled = true;
+  }`,
+    `detail.value.availableActions.reduce((accumulator) => {
+    accumulator.enabled = true;
+    return accumulator;
+  });`
+  ];
+
+  for (const mutation of mutations) {
+    const root = await fixture({
+      page: `<script setup lang="ts">
+import { ref } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+const detail = ref(null);
+const flag = true;
+const fallback = { key: "none", enabled: false };
+async function load() {
+  detail.value = await getExample("example-1");
+  ${mutation}
+}
+void load();
+function actionEnabled(key: string) {
+  return detail.value?.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() { await submitExample("example-1"); }
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">提交审批</t-button>
+</template>
+`
+    });
+    const manifest = await inspectWholeSitePageActionManifest({ root });
+
+    assert.equal(manifest.status, "blocked", mutation);
+    assert.ok(
+      blockerCodes(manifest).has(
+        "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+      ),
+      mutation
+    );
+  }
+});
+
+test("rejects exporting a protected getter across a reachable module edge", async () => {
+  const root = await fixture({
+    main: `import { createApp } from "vue";
+import { router } from "./routes";
+import "./mutate-leaked-action";
+const app = createApp({});
+app.use(router);
+`,
+    page: `<script lang="ts">
+import { defineComponent, ref } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+const detail = ref(null);
+async function load() {
+  detail.value = await getExample("example-1");
+}
+void load();
+export const leakAction = () =>
+  detail.value?.availableActions[0];
+function actionEnabled(key: string) {
+  return detail.value?.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+export default defineComponent({
+  setup() {
+    return { actionEnabled, submit };
+  }
+});
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`,
+    extraFiles: {
+      "apps/web-admin/src/mutate-leaked-action.ts": `import { leakAction } from "./pages/ExamplePage.vue";
+leakAction()!.enabled = true;
+`
+    },
+    webManifestOverrides: {
+      evidence: {
+        productionModuleCount: 6,
+        reachableProductionModuleCount: 6
+      }
+    }
+  });
+  const manifest =
+    await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked");
+  assert.ok(
+    blockerCodes(manifest).has(
+      "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+    )
+  );
+});
+
+test("rejects a GET wrapper not attributed to the current production consumer", async () => {
+  const foreignRead = wrapper({
+    name: "getExample",
+    normalizedKey: "GET /examples/:param",
+    productionConsumers: [
+      "apps/web-admin/src/pages/RoguePage.vue"
+    ]
+  });
+  const root = await fixture({
+    wrappers: [wrapper(), foreignRead],
+    page: `<script setup lang="ts">
+import { ref } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+const detail = ref(null);
+async function load() {
+  detail.value = await getExample("example-1");
+}
+void load();
+function actionEnabled(key: string) {
+  return detail.value?.availableActions.some((action) => action.key === key && action.enabled);
+}
+async function submit() { await submitExample("example-1"); }
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">提交审批</t-button>
+</template>
+`
+  });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(manifest.status, "blocked");
+  assert.ok(
+    blockerCodes(manifest).has("AVAILABLE_ACTION_PROVENANCE_UNVERIFIED")
+  );
+});
+
+test("rejects a server-read ref with a forged capability assignment or deeper mutation", async () => {
+  for (const forgedWrite of [
+    `detail.value = { availableActions: [{ key: "submit_approval", enabled: true }] };`,
+    `detail.value.availableActions = [{ key: "submit_approval", enabled: true }];`
+  ]) {
+    const root = await fixture({
+      page: `<script setup lang="ts">
+import { ref } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+const detail = ref(null);
+async function load() {
+  detail.value = await getExample("example-1");
+  ${forgedWrite}
+}
+void load();
+function actionEnabled(key: string) {
+  return detail.value?.availableActions.some((action) => action.key === key && action.enabled);
+}
+async function submit() { await submitExample("example-1"); }
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">提交审批</t-button>
+</template>
+`
+    });
+    const manifest = await inspectWholeSitePageActionManifest({ root });
+
+    assert.equal(manifest.status, "blocked");
+    assert.ok(
+      blockerCodes(manifest).has(
+        "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+      )
+    );
+    assert.equal(manifest.actions[0].capability.dominatesTrigger, false);
+  }
+});
+
+test("rejects capability reads whose GET wrapper lacks transparent return provenance", async () => {
+  for (const returnProvenance of [
+    "unverified",
+    "forged",
+    undefined
+  ]) {
+    const root = await fixture({
+      wrappers: [
+        wrapper(),
+        wrapper({
+          name: "getExample",
+          normalizedKey: "GET /examples/:param",
+          returnProvenance
+        })
+      ]
+    });
+    const manifest = await inspectWholeSitePageActionManifest({
+      root
+    });
+
+    assert.equal(
+      manifest.status,
+      "blocked",
+      `${returnProvenance ?? "missing"}: ${JSON.stringify(manifest.blockers)}`
+    );
+    assert.ok(
+      blockerCodes(manifest).has(
+        "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+      ),
+      returnProvenance ?? "missing"
+    );
+    assert.equal(
+      manifest.actions[0].capability.serverDerived,
+      false
+    );
+    if (returnProvenance === "forged") {
+      assert.ok(
+        manifest.blockers.upstreamManifestIssues.some(
+          (issue) =>
+            issue.code ===
+            "UPSTREAM_WEB_WRAPPER_RETURN_PROVENANCE_INVALID"
+        )
+      );
+    }
+  }
+});
+
+test("does not let a local alias named like an import break reverse provenance", async () => {
+  const root = await fixture({
+    page: `<script setup lang="ts">
+import { ref } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+const detail = ref(null);
+async function load() {
+  const response = await getExample("example-1");
+  const submitExample = response;
+  detail.value = submitExample;
+  response.availableActions[0].enabled = true;
+}
+void load();
+function actionEnabled(key: string) {
+  return detail.value?.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+  });
+  const manifest =
+    await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked");
+  assert.ok(
+    blockerCodes(manifest).has(
+      "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+    )
+  );
 });
 
 test("accepts only actual event roots and rejects wrapper calls after an unconditional return", async () => {
@@ -1472,6 +4946,404 @@ async function submit() {
   assert.equal(manifest.actions[0].trigger.kind, "prop_callback");
   assert.equal(manifest.actions[0].trigger.event, "confirm");
   assert.equal(manifest.actions[0].trigger.handler, "submit");
+});
+
+test("trusts BusinessDraftAction only when every execute path is the guarded action", async () => {
+  const component = ({
+    unsafeScript = "",
+    unsafeTemplate = ""
+  } = {}) => `<script setup lang="ts">
+import { computed, ref } from "vue";
+const props = defineProps<{
+  actions: Array<{ key: string; enabled: boolean }>;
+  execute: (request: {
+    action: string;
+    reason: string;
+    password: string;
+  }) => Promise<void>;
+}>();
+const actionItems = computed(() => props.actions);
+const enabledActionItems = computed(() =>
+  actionItems.value.filter((action) => action.enabled)
+);
+const selectedAction = ref<{
+  key: string;
+  enabled: boolean;
+} | null>(null);
+function selectAction(action: {
+  key: string;
+  enabled: boolean;
+}) {
+  if (!action.enabled) return;
+  selectedAction.value = action;
+}
+async function executeAction() {
+  const action = selectedAction.value;
+  if (!action) return;
+  await props.execute({
+    action: action.key,
+    reason: "",
+    password: ""
+  });
+  selectedAction.value = null;
+}
+${unsafeScript}
+</script>
+<template>
+  <button
+    v-for="action in enabledActionItems"
+    :key="action.key"
+    :disabled="!action.enabled"
+    @click="selectAction(action)"
+  >
+    {{ action.key }}
+  </button>
+  <div @confirm="executeAction" />
+  ${unsafeTemplate}
+</template>
+`;
+  const action = registryAction({
+    trigger: {
+      element: "business-draft-action",
+      event: "execute",
+      handler: "submit",
+      variant: "submit_approval"
+    }
+  });
+  const page = `<script setup lang="ts">
+import BusinessDraftAction from "../components/BusinessDraftAction.vue";
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+async function submit(request: { action: string }) {
+  await submitExample(request.action);
+}
+</script>
+<template>
+  <BusinessDraftAction
+    :actions="detail.availableActions.filter(
+      (action) =>
+        action.key === 'submit_approval' && action.enabled
+    )"
+    :execute="submit"
+  />
+</template>
+`;
+  const inspect = async (source) => {
+    const root = await fixture({
+      actions: [action],
+      page,
+      extraFiles: {
+        "apps/web-admin/src/components/BusinessDraftAction.vue":
+          source
+      },
+      webManifestOverrides: {
+        evidence: {
+          productionModuleCount: 6,
+          reachableProductionModuleCount: 6
+        }
+      }
+    });
+    return inspectWholeSitePageActionManifest({ root });
+  };
+  const safe = await inspect(component());
+  assert.equal(
+    safe.status,
+    "ready",
+    JSON.stringify(safe.blockers)
+  );
+
+  for (const [name, guardedSelection] of [
+    [
+      "guard nested in a dead branch",
+      `if (false) {
+    if (!action.enabled) return;
+  }
+  selectedAction.value = action;`
+    ],
+    [
+      "guard nested in a conditional branch",
+      `if (action.key === "other") {
+    if (!action.enabled) return;
+  }
+  selectedAction.value = action;`
+    ],
+    [
+      "guard nested in a loop",
+      `while (false) {
+    if (!action.enabled) return;
+  }
+  selectedAction.value = action;`
+    ]
+  ]) {
+    const nonDominatingGuard = await inspect(
+      component().replace(
+        `if (!action.enabled) return;
+  selectedAction.value = action;`,
+        guardedSelection
+      )
+    );
+    assert.equal(
+      nonDominatingGuard.status,
+      "blocked",
+      `${name}: ${JSON.stringify(nonDominatingGuard.blockers)}`
+    );
+    assert.ok(
+      blockerCodes(nonDominatingGuard).has(
+        "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+      ),
+      name
+    );
+  }
+
+  for (const [name, source] of [
+    [
+      "selection parameter member mutation",
+      component().replace(
+        `if (!action.enabled) return;
+  selectedAction.value = action;`,
+        `if (!action.enabled) return;
+  action.key = "forged_action";
+  selectedAction.value = action;`
+      )
+    ],
+    [
+      "selection parameter escape",
+      component({
+        unsafeScript: `let leakedAction: {
+  key: string;
+  enabled: boolean;
+} | null = null;
+function mutateLeakedAction() {
+  if (leakedAction) {
+    leakedAction.key = "forged_action";
+  }
+}`,
+        unsafeTemplate:
+          `<button @click="mutateLeakedAction">unsafe mutation</button>`
+      }).replace(
+        `if (!action.enabled) return;
+  selectedAction.value = action;`,
+        `if (!action.enabled) return;
+  leakedAction = action;
+  selectedAction.value = action;`
+      )
+    ]
+  ]) {
+    const unsafeSelectionParameter = await inspect(source);
+    assert.equal(
+      unsafeSelectionParameter.status,
+      "blocked",
+      `${name}: ${JSON.stringify(unsafeSelectionParameter.blockers)}`
+    );
+    assert.ok(
+      blockerCodes(unsafeSelectionParameter).has(
+        "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+      ),
+      name
+    );
+  }
+
+  const forgedSelectCaller = await inspect(
+    component({
+      unsafeTemplate: `<button
+    @click="selectAction({
+      key: 'forged_action',
+      enabled: true
+    })"
+  >
+    unsafe selection
+  </button>`
+    })
+  );
+  assert.equal(
+    forgedSelectCaller.status,
+    "blocked",
+    JSON.stringify(forgedSelectCaller.blockers)
+  );
+  assert.ok(
+    blockerCodes(forgedSelectCaller).has(
+      "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+    )
+  );
+
+  for (const [name, unsafeScript, unsafeTemplate] of [
+    [
+      "indirect script caller",
+      `function forceUnsafe() {
+  selectAction({
+    key: "forged_action",
+    enabled: true
+  });
+}`,
+      `<button @click="forceUnsafe">unsafe selection</button>`
+    ],
+    [
+      "selector function escape",
+      "",
+      `<rogue-child :on-select="selectAction" />`
+    ]
+  ]) {
+    const escapedSelector = await inspect(
+      component({ unsafeScript, unsafeTemplate })
+    );
+    assert.equal(
+      escapedSelector.status,
+      "blocked",
+      `${name}: ${JSON.stringify(escapedSelector.blockers)}`
+    );
+    assert.ok(
+      blockerCodes(escapedSelector).has(
+        "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+      ),
+      name
+    );
+  }
+
+  const unsafe = await inspect(
+    component({ unsafeTemplate: `<button
+    @click="props.execute({
+      action: 'submit_approval',
+      reason: '',
+      password: ''
+    })"
+  >
+    unsafe
+  </button>` })
+  );
+  assert.equal(unsafe.status, "blocked");
+  assert.ok(
+    blockerCodes(unsafe).has(
+      "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+    )
+  );
+
+  const forged = `{
+    key: "submit_approval",
+    enabled: true
+  } as any`;
+  for (const [name, unsafeScript] of [
+    [
+      "logical assignment",
+      `function forceUnsafe() {
+  selectedAction.value ||= ${forged};
+}`
+    ],
+    [
+      "object assign",
+      `function forceUnsafe() {
+  Object.assign(selectedAction, { value: ${forged} });
+}`
+    ],
+    [
+      "reflect set",
+      `function forceUnsafe() {
+  Reflect.set(selectedAction, "value", ${forged});
+}`
+    ],
+    [
+      "ref alias",
+      `const selectedAlias = selectedAction;
+function forceUnsafe() {
+  selectedAlias.value = ${forged};
+}`
+    ],
+    [
+      "selected action mutation",
+      `function forceUnsafe() {
+  if (selectedAction.value) {
+    selectedAction.value.key = "forged";
+  }
+}`
+    ],
+    [
+      "enabled collection mutation",
+      `function forceUnsafe() {
+  enabledActionItems.value.push(${forged});
+}`
+    ],
+    [
+      "computed collection mutation",
+      `function forceUnsafe() {
+  actionItems.value.push(${forged});
+}`
+    ],
+    [
+      "props collection mutation",
+      `function forceUnsafe() {
+  props.actions.push(${forged});
+}`
+    ],
+    [
+      "dynamic props collection mutation",
+      `const actionsKey = "actions";
+function forceUnsafe() {
+  props[actionsKey].push(${forged});
+}`
+    ],
+    [
+      "destructured props collection mutation",
+      `const { actions: mutableActions } = props;
+function forceUnsafe() {
+  mutableActions.push(${forged});
+}`
+    ],
+    [
+      "object-contained props collection mutation",
+      `const actionBox = { actions: props.actions };
+function forceUnsafe() {
+  actionBox.actions.push(${forged});
+}`
+    ],
+    [
+      "array-contained props collection mutation",
+      `const actionBox = [props.actions];
+function forceUnsafe() {
+  actionBox[0].push(${forged});
+}`
+    ],
+    [
+      "conditional props collection mutation",
+      `const mutableActions = Math.random() > 0.5
+  ? props.actions
+  : [];
+function forceUnsafe() {
+  mutableActions.push(${forged});
+}`
+    ],
+    [
+      "whole props alias mutation",
+      `const mutableProps = props;
+function forceUnsafe() {
+  mutableProps.actions.push(${forged});
+}`
+    ],
+    [
+      "whole props container mutation",
+      `const propsBox = { mutableProps: props };
+function forceUnsafe() {
+  propsBox.mutableProps.actions.push(${forged});
+}`
+    ]
+  ]) {
+    const unsafePopulation = await inspect(
+      component({
+        unsafeScript,
+        unsafeTemplate:
+          `<button @click="forceUnsafe">unsafe population</button>`
+      })
+    );
+    assert.equal(
+      unsafePopulation.status,
+      "blocked",
+      `${name}: ${JSON.stringify(unsafePopulation.blockers)}`
+    );
+    assert.ok(
+      blockerCodes(unsafePopulation).has(
+        "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+      ),
+      name
+    );
+  }
 });
 
 test("requires webAdminRoutes to feed the createRouter instance consumed by main", async () => {

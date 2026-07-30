@@ -13,29 +13,29 @@
     "routeCount": 395,
     "exactRouteCount": 395,
     "normalizedRouteCount": 395,
-    "classificationOverrideCount": 85,
+    "classificationOverrideCount": 87,
     "consumerSurfaceOverrideCount": 3,
-    "classificationOverrideSha256": "0e5c372a55f6e9edbafe5bf1dee1e41e50fff618731220c24ab7aed8e6e3f537",
+    "classificationOverrideSha256": "35467b26e776951b3a22ae79973c9f3b45d4ac41170f1e7dc4bd96e6a7a2b190",
     "consumerSurfaceOverrideSha256": "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2",
-    "derivedProductionPageCount": 278,
-    "pageRouteCount": 279,
+    "derivedProductionPageCount": 282,
+    "pageRouteCount": 285,
     "externalTakeoverCount": 59,
     "exitCandidateCount": 23,
     "internalTaskCount": 2,
-    "unclassifiedCount": 32,
+    "unclassifiedCount": 26,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 326,
+      "web_api_wrapper": 332,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 1,
       "operator_endpoint": 1,
-      "none": 61
+      "none": 55
     },
-    "blockerCount": 32
+    "blockerCount": 26
   },
   "evidence": {
     "upstreamWebManifestStatus": "blocked",
-    "productionWrapperRouteCount": 326,
+    "productionWrapperRouteCount": 332,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 2
   },
@@ -6724,12 +6724,23 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
-      "consumerSurface": "none",
+      "usage": "page",
+      "classificationSource": "registry_override",
+      "classificationReason": "server_available_action_connected_to_retained_template_page",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "stopLayoutTemplateVersion",
+            "method": "POST",
+            "normalizedPath": "/contract-layout-template-versions/:param/stop",
+            "normalizedKey": "POST /contract-layout-template-versions/:param/stop",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
@@ -7200,12 +7211,23 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
-      "consumerSurface": "none",
+      "usage": "page",
+      "classificationSource": "registry_override",
+      "classificationReason": "server_available_action_connected_to_retained_template_page",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "stopContractTemplateVersion",
+            "method": "POST",
+            "normalizedPath": "/contract-template-versions/:param/stop",
+            "normalizedKey": "POST /contract-template-versions/:param/stop",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
@@ -14311,12 +14333,23 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
       "classificationReason": null,
-      "consumerSurface": "none",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+            "wrapper": "invalidateSpotProcurementPaymentInvoice",
+            "method": "POST",
+            "normalizedPath": "/spot-procurement-payments/:param/invoices/:param/invalidation",
+            "normalizedKey": "POST /spot-procurement-payments/:param/invoices/:param/invalidation",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
@@ -14500,12 +14533,23 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
       "classificationReason": null,
-      "consumerSurface": "none",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+            "wrapper": "requestSpotProcurementAbnormalTermination",
+            "method": "POST",
+            "normalizedPath": "/spot-procurements/:param/abnormal-termination",
+            "normalizedKey": "POST /spot-procurements/:param/abnormal-termination",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
@@ -14529,12 +14573,23 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
       "classificationReason": null,
-      "consumerSurface": "none",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+            "wrapper": "confirmSpotProcurementAbnormalTermination",
+            "method": "POST",
+            "normalizedPath": "/spot-procurements/:param/abnormal-termination/confirmation",
+            "normalizedKey": "POST /spot-procurements/:param/abnormal-termination/confirmation",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
@@ -14943,12 +14998,23 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
       "classificationReason": null,
-      "consumerSurface": "none",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+            "wrapper": "refreshSpotProcurementReceiptPdf",
+            "method": "POST",
+            "normalizedPath": "/spot-procurements/:param/receipt/pdf-refresh",
+            "normalizedKey": "POST /spot-procurements/:param/receipt/pdf-refresh",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
@@ -15792,24 +15858,6 @@
       },
       {
         "method": "POST",
-        "path": "/contract-layout-template-versions/:versionId/stop",
-        "normalizedKey": "POST /contract-layout-template-versions/:param/stop",
-        "controller": "ContractTemplateController",
-        "handler": "stopLayout",
-        "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/contract-template-versions/:versionId/stop",
-        "normalizedKey": "POST /contract-template-versions/:param/stop",
-        "controller": "ContractTemplateController",
-        "handler": "stopVersion",
-        "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
         "path": "/contract-workbench/:contractVersionId/parties",
         "normalizedKey": "POST /contract-workbench/:param/parties",
         "controller": "BusinessPartyController",
@@ -15891,33 +15939,6 @@
       },
       {
         "method": "POST",
-        "path": "/spot-procurement-payments/:paymentId/invoices/:invoiceId/invalidation",
-        "normalizedKey": "POST /spot-procurement-payments/:param/invoices/:param/invalidation",
-        "controller": "SpotProcurementInvoiceController",
-        "handler": "invalidate",
-        "sourceFile": "services/api/src/spot-procurement/spot-procurement-invoice.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/spot-procurements/:procurementId/abnormal-termination",
-        "normalizedKey": "POST /spot-procurements/:param/abnormal-termination",
-        "controller": "SpotProcurementController",
-        "handler": "requestAbnormalTermination",
-        "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/spot-procurements/:procurementId/abnormal-termination/confirmation",
-        "normalizedKey": "POST /spot-procurements/:param/abnormal-termination/confirmation",
-        "controller": "SpotProcurementController",
-        "handler": "confirmAbnormalTermination",
-        "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
         "path": "/spot-procurements/:procurementId/invoice-exceptions",
         "normalizedKey": "POST /spot-procurements/:param/invoice-exceptions",
         "controller": "InvoiceLedgerController",
@@ -15959,15 +15980,6 @@
         "controller": "InvoiceLedgerController",
         "handler": "reviewNoInvoiceConfirmation",
         "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/spot-procurements/:procurementId/receipt/pdf-refresh",
-        "normalizedKey": "POST /spot-procurements/:param/receipt/pdf-refresh",
-        "controller": "SpotProcurementReceiptController",
-        "handler": "retryFormalPdf",
-        "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
         "consumerSurface": "none"
       },
       {

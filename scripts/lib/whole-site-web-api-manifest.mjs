@@ -663,6 +663,981 @@ function functionReturnExpressions(definition) {
   return output;
 }
 
+const RETURN_PROVENANCE = {
+  transparent: "transparent_main_response",
+  none: "none",
+  unverified: "unverified"
+};
+const NONE_RETURN_VALUE = Object.freeze({ kind: "none" });
+const UNVERIFIED_RETURN_VALUE = Object.freeze({
+  kind: "unverified"
+});
+const TRANSPORT_RETURN_VALUE = Object.freeze({ kind: "transport" });
+
+function transparentReturnValue(stage = "payload", origin = null) {
+  return {
+    kind: "transparent",
+    invalidated: false,
+    origin,
+    stage
+  };
+}
+
+function containerReturnValue(fields = new Map()) {
+  return { kind: "container", fields };
+}
+
+function returnProvenanceOf(value) {
+  if (
+    value?.kind === "transparent" &&
+    value.invalidated === false
+  ) {
+    return RETURN_PROVENANCE.transparent;
+  }
+  if (value?.kind === "none") return RETURN_PROVENANCE.none;
+  return RETURN_PROVENANCE.unverified;
+}
+
+function mergeReturnValues(values) {
+  if (values.length === 0) return NONE_RETURN_VALUE;
+  if (values.every((value) => value === values[0])) {
+    return values[0];
+  }
+  if (
+    values.every(
+      (value) =>
+        value?.kind === "function" &&
+        value.definition === values[0].definition
+    )
+  ) {
+    return values[0];
+  }
+  if (values.every((value) => value?.kind === "transport")) {
+    return TRANSPORT_RETURN_VALUE;
+  }
+  if (
+    values.every(
+      (value) =>
+        returnProvenanceOf(value) ===
+        RETURN_PROVENANCE.transparent
+    ) &&
+    values[0].origin !== null &&
+    values.every(
+      (value) =>
+        value.origin === values[0].origin &&
+        value.stage === values[0].stage
+    )
+  ) {
+    return values[0];
+  }
+  const provenances = new Set(values.map(returnProvenanceOf));
+  if (
+    provenances.size === 1 &&
+    provenances.has(RETURN_PROVENANCE.transparent)
+  ) {
+    for (const value of values) {
+      invalidateTransparentValue(value);
+    }
+    return UNVERIFIED_RETURN_VALUE;
+  }
+  if (
+    provenances.size === 1 &&
+    provenances.has(RETURN_PROVENANCE.none)
+  ) {
+    return NONE_RETURN_VALUE;
+  }
+  for (const value of values) {
+    invalidateTransparentValue(value);
+  }
+  return UNVERIFIED_RETURN_VALUE;
+}
+
+function invalidateTransparentValue(value, seen = new Set()) {
+  if (!value || seen.has(value)) return;
+  seen.add(value);
+  if (value.kind === "transparent") {
+    value.invalidated = true;
+    return;
+  }
+  if (value.kind === "container") {
+    for (const child of value.fields.values()) {
+      invalidateTransparentValue(child, seen);
+    }
+  }
+}
+
+function invalidateTransparentEnvironment(environment) {
+  for (const value of environment.values()) {
+    invalidateTransparentValue(value);
+  }
+}
+
+function provenanceIdentifierValue(
+  name,
+  environment,
+  context,
+  activeFunctions,
+  seenBindings
+) {
+  if (environment.has(name)) return environment.get(name);
+  if (name === "undefined") return NONE_RETURN_VALUE;
+  const definition = context.functions.get(name);
+  if (definition) return { kind: "function", definition };
+  if (context.transportNames.has(name)) {
+    return TRANSPORT_RETURN_VALUE;
+  }
+  const binding = context.topBindings.get(name);
+  if (!binding || seenBindings.has(binding)) {
+    return UNVERIFIED_RETURN_VALUE;
+  }
+  return provenanceExpressionValue(
+    binding.expression,
+    new Map(),
+    context,
+    activeFunctions,
+    new Set(seenBindings).add(binding)
+  );
+}
+
+function provenanceFunctionEnvironment(
+  definition,
+  argumentValues,
+  context,
+  activeFunctions,
+  seenBindings
+) {
+  const environment = new Map();
+  for (let index = 0; index < definition.parameters.length; index += 1) {
+    const parameter = definition.parameters[index];
+    let value = argumentValues[index];
+    if (!value && parameter.initializer) {
+      value = provenanceExpressionValue(
+        parameter.initializer,
+        environment,
+        context,
+        activeFunctions,
+        seenBindings
+      );
+    }
+    bindProvenancePattern(
+      parameter.name,
+      value ?? UNVERIFIED_RETURN_VALUE,
+      environment
+    );
+  }
+  return environment;
+}
+
+function provenanceFunctionValue(
+  definition,
+  argumentValues,
+  context,
+  activeFunctions,
+  seenBindings
+) {
+  if (activeFunctions.has(definition)) {
+    return UNVERIFIED_RETURN_VALUE;
+  }
+  const nextActiveFunctions = new Set(activeFunctions).add(
+    definition
+  );
+  const environment = provenanceFunctionEnvironment(
+    definition,
+    argumentValues,
+    context,
+    nextActiveFunctions,
+    seenBindings
+  );
+  if (!ts.isBlock(definition.body)) {
+    return provenanceExpressionValue(
+      definition.body,
+      environment,
+      context,
+      nextActiveFunctions,
+      seenBindings
+    );
+  }
+  const flow = provenanceStatements(
+    definition.body.statements,
+    [environment],
+    context,
+    nextActiveFunctions,
+    seenBindings
+  );
+  const returns = [
+    ...flow.returns,
+    ...(flow.continuing.length > 0 ? [NONE_RETURN_VALUE] : [])
+  ];
+  return mergeReturnValues(returns);
+}
+
+function provenanceCallValue(
+  call,
+  environment,
+  context,
+  activeFunctions,
+  seenBindings
+) {
+  const target = unwrapExpression(call.expression);
+  if (
+    ts.isPropertyAccessExpression(target) &&
+    target.name.text === "json"
+  ) {
+    const receiver = provenanceExpressionValue(
+      target.expression,
+      environment,
+      context,
+      activeFunctions,
+      seenBindings
+    );
+    return returnProvenanceOf(receiver) ===
+        RETURN_PROVENANCE.transparent &&
+      receiver.stage === "response"
+      ? transparentReturnValue("payload", receiver.origin)
+      : UNVERIFIED_RETURN_VALUE;
+  }
+  if (
+    ts.isPropertyAccessExpression(target) &&
+    target.name.text === "clone"
+  ) {
+    const receiver = provenanceExpressionValue(
+      target.expression,
+      environment,
+      context,
+      activeFunctions,
+      seenBindings
+    );
+    return returnProvenanceOf(receiver) ===
+        RETURN_PROVENANCE.transparent &&
+      receiver.stage === "response"
+      ? transparentReturnValue("response", receiver.origin)
+      : UNVERIFIED_RETURN_VALUE;
+  }
+
+  if (
+    ts.isPropertyAccessExpression(target) ||
+    ts.isElementAccessExpression(target)
+  ) {
+    invalidateTransparentValue(
+      provenanceExpressionValue(
+        target.expression,
+        environment,
+        context,
+        activeFunctions,
+        seenBindings
+      )
+    );
+  }
+
+  const callable = provenanceExpressionValue(
+    target,
+    environment,
+    context,
+    activeFunctions,
+    seenBindings
+  );
+  const argumentValues = call.arguments.map((argument) =>
+    provenanceExpressionValue(
+      argument,
+      environment,
+      context,
+      activeFunctions,
+      seenBindings
+    )
+  );
+  if (callable?.kind === "transport") {
+    return ticketField(call.arguments[0])
+      ? UNVERIFIED_RETURN_VALUE
+      : transparentReturnValue("response", call);
+  }
+  if (callable?.kind === "function") {
+    if (call.arguments.length === 0) {
+      invalidateTransparentEnvironment(environment);
+    }
+    return provenanceFunctionValue(
+      callable.definition,
+      argumentValues,
+      context,
+      activeFunctions,
+      seenBindings
+    );
+  }
+  for (const value of argumentValues) {
+    invalidateTransparentValue(value);
+  }
+  if (
+    call.arguments.length === 0 &&
+    target?.kind === ts.SyntaxKind.Identifier
+  ) {
+    invalidateTransparentEnvironment(environment);
+  }
+  return UNVERIFIED_RETURN_VALUE;
+}
+
+function provenanceExpressionValue(
+  expression,
+  environment,
+  context,
+  activeFunctions,
+  seenBindings = new Set()
+) {
+  const node = unwrapExpression(expression);
+  if (!node) return NONE_RETURN_VALUE;
+  if (ts.isIdentifier(node)) {
+    return provenanceIdentifierValue(
+      node.text,
+      environment,
+      context,
+      activeFunctions,
+      seenBindings
+    );
+  }
+  if (ts.isCallExpression(node)) {
+    return provenanceCallValue(
+      node,
+      environment,
+      context,
+      activeFunctions,
+      seenBindings
+    );
+  }
+  if (
+    ts.isPropertyAccessExpression(node) ||
+    ts.isElementAccessExpression(node)
+  ) {
+    const receiver = provenanceExpressionValue(
+      node.expression,
+      environment,
+      context,
+      activeFunctions,
+      seenBindings
+    );
+    if (
+      returnProvenanceOf(receiver) ===
+      RETURN_PROVENANCE.transparent
+    ) {
+      return receiver.stage === "response"
+        ? UNVERIFIED_RETURN_VALUE
+        : receiver;
+    }
+    if (receiver?.kind === "container") {
+      const property = ts.isPropertyAccessExpression(node)
+        ? node.name.text
+        : node.argumentExpression &&
+            (ts.isStringLiteral(node.argumentExpression) ||
+              ts.isNumericLiteral(node.argumentExpression))
+          ? node.argumentExpression.text
+          : null;
+      if (property === null) {
+        invalidateTransparentValue(receiver);
+        if (
+          ts.isElementAccessExpression(node) &&
+          node.argumentExpression
+        ) {
+          invalidateTransparentValue(
+            provenanceExpressionValue(
+              node.argumentExpression,
+              environment,
+              context,
+              activeFunctions,
+              seenBindings
+            )
+          );
+        }
+        return UNVERIFIED_RETURN_VALUE;
+      }
+      return (
+        receiver.fields.get(property) ??
+        UNVERIFIED_RETURN_VALUE
+      );
+    }
+    return UNVERIFIED_RETURN_VALUE;
+  }
+  if (ts.isDeleteExpression(node)) {
+    const operand = unwrapExpression(node.expression);
+    if (
+      ts.isPropertyAccessExpression(operand) ||
+      ts.isElementAccessExpression(operand)
+    ) {
+      invalidateTransparentValue(
+        provenanceExpressionValue(
+          operand.expression,
+          environment,
+          context,
+          activeFunctions,
+          seenBindings
+        )
+      );
+    } else {
+      invalidateTransparentValue(
+        provenanceExpressionValue(
+          operand,
+          environment,
+          context,
+          activeFunctions,
+          seenBindings
+        )
+      );
+    }
+    return UNVERIFIED_RETURN_VALUE;
+  }
+  if (ts.isConditionalExpression(node)) {
+    return mergeReturnValues([
+      provenanceExpressionValue(
+        node.whenTrue,
+        new Map(environment),
+        context,
+        activeFunctions,
+        seenBindings
+      ),
+      provenanceExpressionValue(
+        node.whenFalse,
+        new Map(environment),
+        context,
+        activeFunctions,
+        seenBindings
+      )
+    ]);
+  }
+  if (
+    ts.isBinaryExpression(node) &&
+    [
+      ts.SyntaxKind.AmpersandAmpersandToken,
+      ts.SyntaxKind.BarBarToken,
+      ts.SyntaxKind.QuestionQuestionToken
+    ].includes(node.operatorToken.kind)
+  ) {
+    return mergeReturnValues([
+      provenanceExpressionValue(
+        node.left,
+        new Map(environment),
+        context,
+        activeFunctions,
+        seenBindings
+      ),
+      provenanceExpressionValue(
+        node.right,
+        new Map(environment),
+        context,
+        activeFunctions,
+        seenBindings
+      )
+    ]);
+  }
+  if (ts.isVoidExpression(node)) {
+    provenanceExpressionValue(
+      node.expression,
+      environment,
+      context,
+      activeFunctions,
+      seenBindings
+    );
+    return NONE_RETURN_VALUE;
+  }
+  if (ts.isObjectLiteralExpression(node)) {
+    const fields = new Map();
+    let unsupportedShape = false;
+    for (const property of node.properties) {
+      if (ts.isSpreadAssignment(property)) {
+        invalidateTransparentValue(
+          provenanceExpressionValue(
+            property.expression,
+            environment,
+            context,
+            activeFunctions,
+            seenBindings
+          )
+        );
+        unsupportedShape = true;
+        continue;
+      }
+      let key = null;
+      let expression = null;
+      if (ts.isPropertyAssignment(property)) {
+        key = ts.isIdentifier(property.name) ||
+          ts.isStringLiteral(property.name) ||
+          ts.isNumericLiteral(property.name)
+          ? property.name.text
+          : null;
+        expression = property.initializer;
+      } else if (ts.isShorthandPropertyAssignment(property)) {
+        key = property.name.text;
+        expression = property.name;
+      }
+      if (!expression) {
+        unsupportedShape = true;
+        invalidateTransparentEnvironment(environment);
+        continue;
+      }
+      const value = provenanceExpressionValue(
+        expression,
+        environment,
+        context,
+        activeFunctions,
+        seenBindings
+      );
+      if (key === null) {
+        invalidateTransparentValue(value);
+        if (
+          ts.isPropertyAssignment(property) &&
+          ts.isComputedPropertyName(property.name)
+        ) {
+          invalidateTransparentValue(
+            provenanceExpressionValue(
+              property.name.expression,
+              environment,
+              context,
+              activeFunctions,
+              seenBindings
+            )
+          );
+        }
+        unsupportedShape = true;
+        continue;
+      }
+      fields.set(
+        key,
+        value
+      );
+    }
+    if (unsupportedShape) {
+      invalidateTransparentValue(containerReturnValue(fields));
+      return UNVERIFIED_RETURN_VALUE;
+    }
+    return containerReturnValue(fields);
+  }
+  if (ts.isArrayLiteralExpression(node)) {
+    const fields = new Map();
+    for (let index = 0; index < node.elements.length; index += 1) {
+      const element = node.elements[index];
+      if (ts.isSpreadElement(element)) {
+        invalidateTransparentValue(
+          provenanceExpressionValue(
+            element.expression,
+            environment,
+            context,
+            activeFunctions,
+            seenBindings
+          )
+        );
+        return UNVERIFIED_RETURN_VALUE;
+      }
+      fields.set(
+        String(index),
+        provenanceExpressionValue(
+          element,
+          environment,
+          context,
+          activeFunctions,
+          seenBindings
+        )
+      );
+    }
+    return containerReturnValue(fields);
+  }
+  return UNVERIFIED_RETURN_VALUE;
+}
+
+function provenancePatternValue(value, property) {
+  if (
+    returnProvenanceOf(value) ===
+    RETURN_PROVENANCE.transparent
+  ) {
+    return value.stage === "response"
+      ? UNVERIFIED_RETURN_VALUE
+      : value;
+  }
+  return value?.kind === "container"
+    ? value.fields.get(property) ?? UNVERIFIED_RETURN_VALUE
+    : UNVERIFIED_RETURN_VALUE;
+}
+
+function bindProvenancePattern(name, value, environment) {
+  if (ts.isIdentifier(name)) {
+    environment.set(name.text, value);
+    return;
+  }
+  if (ts.isObjectBindingPattern(name)) {
+    for (const element of name.elements) {
+      if (element.dotDotDotToken) {
+        invalidateTransparentValue(value);
+        bindProvenancePattern(
+          element.name,
+          UNVERIFIED_RETURN_VALUE,
+          environment
+        );
+        continue;
+      }
+      const propertyNode = element.propertyName ??
+        (ts.isIdentifier(element.name) ? element.name : null);
+      const property =
+        propertyNode &&
+        (ts.isIdentifier(propertyNode) ||
+          ts.isStringLiteral(propertyNode) ||
+          ts.isNumericLiteral(propertyNode))
+          ? propertyNode.text
+          : null;
+      if (property === null) {
+        invalidateTransparentValue(value);
+      }
+      bindProvenancePattern(
+        element.name,
+        property === null
+          ? UNVERIFIED_RETURN_VALUE
+          : provenancePatternValue(value, property),
+        environment
+      );
+    }
+    return;
+  }
+  if (ts.isArrayBindingPattern(name)) {
+    for (let index = 0; index < name.elements.length; index += 1) {
+      const element = name.elements[index];
+      if (ts.isOmittedExpression(element)) continue;
+      if (element.dotDotDotToken) {
+        invalidateTransparentValue(value);
+        bindProvenancePattern(
+          element.name,
+          UNVERIFIED_RETURN_VALUE,
+          environment
+        );
+        continue;
+      }
+      bindProvenancePattern(
+        element.name,
+        provenancePatternValue(value, String(index)),
+        environment
+      );
+    }
+  }
+}
+
+function bindProvenanceAssignmentTarget(
+  target,
+  value,
+  environment
+) {
+  const node = unwrapExpression(target);
+  if (ts.isIdentifier(node)) {
+    environment.set(node.text, value);
+    return true;
+  }
+  if (ts.isObjectLiteralExpression(node)) {
+    for (const property of node.properties) {
+      if (ts.isSpreadAssignment(property)) {
+        invalidateTransparentValue(value);
+        bindProvenanceAssignmentTarget(
+          property.expression,
+          UNVERIFIED_RETURN_VALUE,
+          environment
+        );
+        continue;
+      }
+      let propertyName = null;
+      let assignmentTarget = null;
+      if (ts.isPropertyAssignment(property)) {
+        propertyName =
+          ts.isIdentifier(property.name) ||
+          ts.isStringLiteral(property.name) ||
+          ts.isNumericLiteral(property.name)
+            ? property.name.text
+            : null;
+        assignmentTarget = property.initializer;
+      } else if (ts.isShorthandPropertyAssignment(property)) {
+        propertyName = property.name.text;
+        assignmentTarget = property.name;
+      }
+      if (!assignmentTarget) {
+        invalidateTransparentValue(value);
+        continue;
+      }
+      if (propertyName === null) {
+        invalidateTransparentValue(value);
+      }
+      bindProvenanceAssignmentTarget(
+        assignmentTarget,
+        propertyName === null
+          ? UNVERIFIED_RETURN_VALUE
+          : provenancePatternValue(value, propertyName),
+        environment
+      );
+    }
+    return true;
+  }
+  if (ts.isArrayLiteralExpression(node)) {
+    for (let index = 0; index < node.elements.length; index += 1) {
+      const element = node.elements[index];
+      if (ts.isOmittedExpression(element)) continue;
+      if (ts.isSpreadElement(element)) {
+        invalidateTransparentValue(value);
+        bindProvenanceAssignmentTarget(
+          element.expression,
+          UNVERIFIED_RETURN_VALUE,
+          environment
+        );
+        continue;
+      }
+      bindProvenanceAssignmentTarget(
+        element,
+        provenancePatternValue(value, String(index)),
+        environment
+      );
+    }
+    return true;
+  }
+  invalidateTransparentValue(value);
+  return false;
+}
+
+function provenanceStatement(
+  statement,
+  environment,
+  context,
+  activeFunctions,
+  seenBindings
+) {
+  if (ts.isFunctionDeclaration(statement)) {
+    return { continuing: [environment], returns: [] };
+  }
+  if (ts.isVariableStatement(statement)) {
+    const nextEnvironment = new Map(environment);
+    for (const declaration of statement.declarationList.declarations) {
+      const value = declaration.initializer
+        ? provenanceExpressionValue(
+            declaration.initializer,
+            nextEnvironment,
+            context,
+            activeFunctions,
+            seenBindings
+          )
+        : NONE_RETURN_VALUE;
+      bindProvenancePattern(
+        declaration.name,
+        value,
+        nextEnvironment
+      );
+    }
+    return { continuing: [nextEnvironment], returns: [] };
+  }
+  if (ts.isExpressionStatement(statement)) {
+    const expression = unwrapExpression(statement.expression);
+    const nextEnvironment = new Map(environment);
+    if (
+      ts.isBinaryExpression(expression) &&
+      ts.isAssignmentOperator(expression.operatorToken.kind)
+    ) {
+      const assignedValue = provenanceExpressionValue(
+        expression.right,
+        nextEnvironment,
+        context,
+        activeFunctions,
+        seenBindings
+      );
+      const value =
+        expression.operatorToken.kind === ts.SyntaxKind.EqualsToken
+          ? assignedValue
+          : UNVERIFIED_RETURN_VALUE;
+      if (
+        ts.isPropertyAccessExpression(expression.left) ||
+        ts.isElementAccessExpression(expression.left)
+      ) {
+        invalidateTransparentValue(
+          provenanceExpressionValue(
+            expression.left.expression,
+            nextEnvironment,
+            context,
+            activeFunctions,
+            seenBindings
+          )
+        );
+      } else {
+        bindProvenanceAssignmentTarget(
+          expression.left,
+          value,
+          nextEnvironment
+        );
+      }
+    } else {
+      provenanceExpressionValue(
+        expression,
+        nextEnvironment,
+        context,
+        activeFunctions,
+        seenBindings
+      );
+    }
+    return { continuing: [nextEnvironment], returns: [] };
+  }
+  if (ts.isReturnStatement(statement)) {
+    return {
+      continuing: [],
+      returns: [
+        statement.expression
+          ? provenanceExpressionValue(
+              statement.expression,
+              environment,
+              context,
+              activeFunctions,
+              seenBindings
+            )
+          : NONE_RETURN_VALUE
+      ]
+    };
+  }
+  if (ts.isThrowStatement(statement)) {
+    if (statement.expression) {
+      provenanceExpressionValue(
+        statement.expression,
+        environment,
+        context,
+        activeFunctions,
+        seenBindings
+      );
+    }
+    return { continuing: [], returns: [] };
+  }
+  if (ts.isBlock(statement)) {
+    return provenanceStatements(
+      statement.statements,
+      [new Map(environment)],
+      context,
+      activeFunctions,
+      seenBindings
+    );
+  }
+  if (ts.isIfStatement(statement)) {
+    provenanceExpressionValue(
+      statement.expression,
+      environment,
+      context,
+      activeFunctions,
+      seenBindings
+    );
+    const thenFlow = provenanceStatement(
+      statement.thenStatement,
+      new Map(environment),
+      context,
+      activeFunctions,
+      seenBindings
+    );
+    const elseFlow = statement.elseStatement
+      ? provenanceStatement(
+          statement.elseStatement,
+          new Map(environment),
+          context,
+          activeFunctions,
+          seenBindings
+        )
+      : { continuing: [new Map(environment)], returns: [] };
+    return {
+      continuing: [
+        ...thenFlow.continuing,
+        ...elseFlow.continuing
+      ],
+      returns: [...thenFlow.returns, ...elseFlow.returns]
+    };
+  }
+  if (ts.isTryStatement(statement)) {
+    const tryFlow = provenanceStatement(
+      statement.tryBlock,
+      new Map(environment),
+      context,
+      activeFunctions,
+      seenBindings
+    );
+    const catchFlow = statement.catchClause
+      ? provenanceStatement(
+          statement.catchClause.block,
+          new Map(environment),
+          context,
+          activeFunctions,
+          seenBindings
+        )
+      : { continuing: [], returns: [] };
+    let flow = {
+      continuing: [
+        ...tryFlow.continuing,
+        ...catchFlow.continuing
+      ],
+      returns: [...tryFlow.returns, ...catchFlow.returns]
+    };
+    if (statement.finallyBlock) {
+      for (const returned of flow.returns) {
+        invalidateTransparentValue(returned);
+      }
+      const returnPathFinalFlow =
+        flow.returns.length > 0
+          ? provenanceStatements(
+              statement.finallyBlock.statements,
+              [new Map(environment)],
+              context,
+              activeFunctions,
+              seenBindings
+            )
+          : { continuing: [], returns: [] };
+      const finalFlow = provenanceStatements(
+        statement.finallyBlock.statements,
+        flow.continuing,
+        context,
+        activeFunctions,
+        seenBindings
+      );
+      flow = {
+        continuing: finalFlow.continuing,
+        returns: [
+          ...flow.returns,
+          ...returnPathFinalFlow.returns,
+          ...finalFlow.returns
+        ]
+      };
+    }
+    return flow;
+  }
+  const nextEnvironment = new Map(environment);
+  invalidateTransparentEnvironment(nextEnvironment);
+  return { continuing: [nextEnvironment], returns: [] };
+}
+
+function provenanceStatements(
+  statements,
+  environments,
+  context,
+  activeFunctions,
+  seenBindings
+) {
+  let continuing = environments;
+  const returns = [];
+  for (const statement of statements) {
+    if (continuing.length === 0) break;
+    const next = [];
+    for (const environment of continuing) {
+      const flow = provenanceStatement(
+        statement,
+        environment,
+        context,
+        activeFunctions,
+        seenBindings
+      );
+      next.push(...flow.continuing);
+      returns.push(...flow.returns);
+    }
+    continuing = next;
+  }
+  return { continuing, returns };
+}
+
+function inspectReturnProvenance(definition, context) {
+  return returnProvenanceOf(
+    provenanceFunctionValue(
+      definition,
+      [],
+      context,
+      new Set(),
+      new Set()
+    )
+  );
+}
+
 function resolveObjectExpressions(expression, environment, context, seen = new Set()) {
   const node = unwrapExpression(expression);
   if (!node) return [];
@@ -1245,11 +2220,26 @@ function inspectApiModule(path, source, sourceFiles, sources) {
       requests,
       new Set()
     );
+    const dedupedRequests = dedupeRequests(requests);
+    const mainRequestSourceLines = new Set(
+      dedupedRequests
+        .filter((request) => request.kind === "main")
+        .map((request) => request.sourceLine)
+    );
+    const returnProvenance = inspectReturnProvenance(
+      definition,
+      context
+    );
     return {
       name: definition.name,
       apiFile: path,
       kind: requests.length ? "transport" : "pure",
-      requests: dedupeRequests(requests)
+      returnProvenance:
+        returnProvenance === RETURN_PROVENANCE.transparent &&
+        mainRequestSourceLines.size > 1
+          ? RETURN_PROVENANCE.unverified
+          : returnProvenance,
+      requests: dedupedRequests
     };
   });
 }
