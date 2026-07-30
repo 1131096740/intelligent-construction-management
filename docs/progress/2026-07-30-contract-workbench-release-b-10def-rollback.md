@@ -169,3 +169,83 @@ API、Nginx、PostgreSQL 均为 active；回环 `/health` 和公网
    `release-b`、canary 0。
 
 transition、retention、其他业务写入和任何物理删除继续未授权。
+
+## 8. 同 SHA 第二次人工确认部署（retry2）
+
+用户重新明确授权同一 SHA 的完整人工确认部署、同三个 canary、四账号各新增一次
+120 秒 token 和原烟测范围。旧证据未覆盖，新证据全部写入：
+
+`/srv/jiangkong-release-b-evidence/10def0c7b9dea16602b2575b24748ff94fd1da3d/retry2/`
+
+执行结果：
+
+- `2026-07-30T04:22:52.305Z` 前检通过，目标仍为 draft/revision 12，
+  正式编号空，审批、活跃租约、活跃保存回执和项目接管均为 0；
+- 三个授权 canary 精确配置，非 canary 未进入名单；
+- API/Web、Prisma Client、Nginx 和完整部署通过，109 个迁移无待执行；
+- 新备份 `jiangkong-20260730-122511.dump` 为 1,004,434 bytes、
+  `root:root 600`、checksum OK、`pg_restore --list` 1,658 行，异机回执存在；
+- 签发前载荷 SHA-256 为
+  `8daa7af81e54b2cdcd9d99923dbb106d63df357ea16286e6b750695eb0c9514c`；
+- 四账号各签发且只签发一次新的 120 秒内存 access token；
+- 原读取、503、两条 410、财务读取和 403 权限负向均先通过；
+- 当前经办人取得租约后，唯一一次聚合保存返回 HTTP 400，未重签、未重跑。
+
+本次在失败前保存了根权限脱敏证据 `smoke-failure.json`：
+
+```json
+{
+  "httpStatus": 400,
+  "statusCode": 400,
+  "code": "DRAFT_VALIDATION_FAILED",
+  "message": "清单有 11 处需要修改"
+}
+```
+
+随后立即恢复 `maintenance`、清空 canary 并提交精确
+`ROLLBACK 10def0c7b9dea16602b2575b24748ff94fd1da3d`。部署器恢复旧运行时并通过
+API health。
+
+`2026-07-30T04:31:37.239Z` 的 `retry2/post-failure-rollback.json` 证明：
+
+- 四枚 token 已自然过期；
+- 活跃租约、活跃回执和本次幂等键回执均为 0；
+- revision 仍为 12，正式编号和首次提交时间仍为空；
+- 审批实例和项目接管均为 0；
+- transition 审计仍为 1。
+
+## 9. retry2 根因与本地修复
+
+HTTP 全局 ValidationPipe 会把 `bills[].rows[]` 转换成
+`SaveContractBillRowDto` 实例。聚合保存随后调用
+`ContractBillService.replaceRowsInTransaction`，其内部
+`parseReplaceInput` 只接受 `Object.prototype` 或 null prototype 的 plain
+object。因此已通过 DTO 校验的 11 个实例被逐行判定为非法对象，正好形成
+“清单有 11 处需要修改”。此前纯解析诊断直接使用 JSON plain object，所以没有覆盖
+HTTP 转换后的原型差异。
+
+已先增加失败测试，修复前清单服务 40 项中仅该用例失败并返回“清单有 1 处需要修改”；
+随后只在聚合内部将已验证 DTO 行浅拷贝为 plain object，再进入既有严格解析。该改动
+不修改 raw bill API，不放宽 `isPlainObject`、字段白名单、金额、税率、CAS、权限或
+事务规则。
+
+当前验证：
+
+- 清单服务 Jest：40/40；
+- 聚合服务、聚合 DTO、清单服务联合 Jest：76/76；
+- shared-domain：149/149；
+- Web：139 文件、1,248/1,248；
+- API：251 套、4,750/4,750，另有 15 套/38 项按环境条件跳过；
+- 整仓 typecheck/lint、`check:ui`、API/Web build：通过；
+- Prisma generate/validate：通过；
+- 合同能力矩阵：静态控制器 184、静态 API 138、运行时路由 395，差异 0；
+- `git diff --check`：通过。
+
+候选门禁还发现英文业务错误允许清单落后于既有挂靠业务、挂靠企业线下合同和上游资金
+事实的可选认证依赖保护，并保留一个已删除的旧项目到账条目。该问题不涉及业务响应
+实现；允许清单已按精确文件、固定文字、出现次数和中文理由更新，移除失效项。最终扫描
+396 个生产 TypeScript 文件，精确允许 55 处内部英文哨兵，检查器自测通过。
+
+该修复必须形成新的精确候选并重新完成门禁。用户对 `10def…` 的 push、部署、
+canary 和 token 授权已经消耗，不能自动延伸到新 SHA。transition、retention、
+其他业务写入和物理删除继续关闭。

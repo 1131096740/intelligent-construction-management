@@ -138,7 +138,7 @@ export class ContractBillService {
       {
         expectedBillRevision: input.expectedRevision,
         idempotencyKey: "aggregate-save",
-        rows: input.rows as unknown as Array<Record<string, unknown>>
+        rows: input.rows.map((row) => ({ ...row }))
       },
       bill,
       version,

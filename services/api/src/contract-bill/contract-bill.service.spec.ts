@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
+import { SaveContractBillRowDto } from "./dto/contract-bill.dto";
 import { ContractBillService } from "./contract-bill.service";
 
 describe("ContractBillService", () => {
@@ -729,6 +730,28 @@ describe("ContractBillService", () => {
     expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
     expect(tx.contractBillRow.update).not.toHaveBeenCalled();
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
+  });
+
+  it("accepts aggregate rows transformed into validated DTO instances", async () => {
+    const row = existingRow(0);
+    const { service, tx, bill, version } = fixture({ rows: [row] });
+    const dtoRow = Object.assign(
+      new SaveContractBillRowDto(),
+      batchRow("aggregate-row", "key-0")
+    );
+
+    await expect(
+      service.replaceRowsInTransaction(
+        tx as never,
+        "owner-1",
+        version,
+        bill,
+        {
+          expectedRevision: 2,
+          rows: [dtoRow]
+        }
+      )
+    ).resolves.toMatchObject({ changed: false, revision: 2 });
   });
 
   it("updates an aggregate bill inside the caller transaction without publishing the contract amount", async () => {
