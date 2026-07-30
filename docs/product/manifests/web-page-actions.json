@@ -2336,7 +2336,7 @@
         "event": "confirm",
         "handler": "confirmAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 1105,
+        "sourceLine": 1231,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2401,7 +2401,7 @@
         "event": "confirm",
         "handler": "requestAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 1092,
+        "sourceLine": 1218,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2466,7 +2466,7 @@
         "event": "confirm",
         "handler": "invalidateInvoice",
         "kind": "event",
-        "sourceLine": 927,
+        "sourceLine": 1057,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -2531,7 +2531,7 @@
         "event": "confirm",
         "handler": "refreshReceiptPdf",
         "kind": "event",
-        "sourceLine": 835,
+        "sourceLine": 965,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -2597,7 +2597,7 @@
         "handler": "openConfirmation",
         "variant": "review_approve",
         "kind": "event",
-        "sourceLine": 834,
+        "sourceLine": 960,
         "sourceColumn": 14
       },
       "semantic": "business_write",
@@ -2660,7 +2660,7 @@
         "handler": "openConfirmation",
         "variant": "review_reject",
         "kind": "event",
-        "sourceLine": 841,
+        "sourceLine": 967,
         "sourceColumn": 14
       },
       "semantic": "business_write",
@@ -2722,7 +2722,7 @@
         "event": "click",
         "handler": "runSubmit",
         "kind": "event",
-        "sourceLine": 827,
+        "sourceLine": 953,
         "sourceColumn": 12
       },
       "semantic": "business_write",

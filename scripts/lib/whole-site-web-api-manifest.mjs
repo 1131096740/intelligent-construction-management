@@ -425,17 +425,938 @@ function callName(expression) {
   return null;
 }
 
+const GLOBAL_FETCH_RECEIVERS = new Set([
+  "globalThis",
+  "self",
+  "window"
+]);
+const NETWORK_PRIMITIVE_CONSTRUCTORS = new Set([
+  "EventSource",
+  "WebSocket",
+  "XMLHttpRequest"
+]);
+
+function staticAccessProperties(
+  node,
+  environment,
+  context
+) {
+  if (ts.isPropertyAccessExpression(node)) {
+    return [node.name.text];
+  }
+  if (
+    ts.isElementAccessExpression(node) &&
+    node.argumentExpression
+  ) {
+    const values = finite(
+      stringValues(
+        node.argumentExpression,
+        environment,
+        context,
+        new Set()
+      )
+    );
+    return values.length > 0 &&
+      values.every((value) => value !== ":param")
+      ? values
+      : null;
+  }
+  return [];
+}
+
+function mergeTransportKinds(kinds) {
+  if (kinds.includes("unknown")) return "unknown";
+  if (kinds.includes("unknown_network")) {
+    return "unknown_network";
+  }
+  if (kinds.includes("known")) return "known";
+  return null;
+}
+
+const MISSING_TRANSPORT_BINDING = Object.freeze({
+  missing: true,
+  transportKind: "none"
+});
+const UNKNOWN_TRANSPORT_BINDING = Object.freeze({
+  transportKind: "unknown"
+});
+
+function mergeAlternativeTransportKinds(kinds) {
+  const resolved = kinds.filter(Boolean);
+  if (resolved.length === 0) return null;
+  if (resolved.length !== kinds.length) return "unknown";
+  return resolved.every((kind) => kind === resolved[0])
+    ? resolved[0]
+    : "unknown";
+}
+
+function alternativeTransportBinding(bindings) {
+  const flattened = bindings.flatMap((binding) =>
+    binding?.alternatives
+      ? binding.alternatives
+      : [binding ?? MISSING_TRANSPORT_BINDING]
+  );
+  return flattened.every(
+    (binding) => binding === flattened[0]
+  )
+    ? flattened[0]
+    : { alternatives: flattened };
+}
+
+function transportExpressionBinding(expression, environment) {
+  return {
+    expression,
+    environment: new Map(environment)
+  };
+}
+
+function transportBindingFromExpression(
+  expression,
+  environment,
+  context,
+  seen = new Set()
+) {
+  const node = unwrapExpression(expression);
+  if (!node) return MISSING_TRANSPORT_BINDING;
+  if (ts.isIdentifier(node)) {
+    const binding = identifierBinding(
+      node.text,
+      environment,
+      context
+    );
+    if (binding) return binding;
+    const kind = transportKindFromExpression(
+      node,
+      environment,
+      context,
+      seen
+    );
+    return kind
+      ? { transportKind: kind }
+      : transportExpressionBinding(node, environment);
+  }
+  if (ts.isConditionalExpression(node)) {
+    const candidates = [
+      transportBindingFromExpression(
+        node.whenTrue,
+        environment,
+        context,
+        seen
+      ),
+      transportBindingFromExpression(
+        node.whenFalse,
+        environment,
+        context,
+        seen
+      )
+    ];
+    return candidates.some(
+      (candidate) =>
+        bindingTransportKind(candidate, context) ||
+        bindingMayContainTransportProperties(candidate)
+    )
+      ? alternativeTransportBinding(candidates)
+      : transportExpressionBinding(node, environment);
+  }
+  if (
+    ts.isBinaryExpression(node) &&
+    (node.operatorToken.kind === ts.SyntaxKind.CommaToken ||
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken)
+  ) {
+    return transportBindingFromExpression(
+      node.right,
+      environment,
+      context,
+      seen
+    );
+  }
+  if (
+    ts.isPropertyAccessExpression(node) ||
+    ts.isElementAccessExpression(node)
+  ) {
+    if (
+      isGlobalNavigatorExpression(
+        node,
+        environment,
+        context
+      )
+    ) {
+      return { globalNavigator: true };
+    }
+    const directKind = transportKindFromExpression(
+      node,
+      environment,
+      context,
+      seen
+    );
+    if (directKind) {
+      return { transportKind: directKind };
+    }
+    const properties = staticAccessProperties(
+      node,
+      environment,
+      context
+    );
+    if (properties === null) return UNKNOWN_TRANSPORT_BINDING;
+    const sourceBinding = transportBindingFromExpression(
+      node.expression,
+      environment,
+      context,
+      seen
+    );
+    return alternativeTransportBinding(
+      properties.map((property) =>
+        transportPropertyBindingFromBinding(
+          sourceBinding,
+          property,
+          context,
+          seen
+        )
+      )
+    );
+  }
+  return transportExpressionBinding(node, environment);
+}
+
+function transportPropertyBindingFromExpression(
+  expression,
+  property,
+  environment,
+  context,
+  seen
+) {
+  const node = unwrapExpression(expression);
+  if (!node) return MISSING_TRANSPORT_BINDING;
+  if (
+    property === "sendBeacon" &&
+    isGlobalNavigatorExpression(node, environment, context)
+  ) {
+    return { transportKind: "unknown_network" };
+  }
+  if (ts.isIdentifier(node)) {
+    const binding = identifierBinding(
+      node.text,
+      environment,
+      context
+    );
+    if (binding) {
+      return transportPropertyBindingFromBinding(
+        binding,
+        property,
+        context,
+        seen
+      );
+    }
+    if (GLOBAL_FETCH_RECEIVERS.has(node.text)) {
+      if (property === "fetch") {
+        return { transportKind: "known" };
+      }
+      if (NETWORK_PRIMITIVE_CONSTRUCTORS.has(property)) {
+        return { transportKind: "unknown_network" };
+      }
+    }
+    return MISSING_TRANSPORT_BINDING;
+  }
+  if (ts.isObjectLiteralExpression(node)) {
+    for (let index = node.properties.length - 1; index >= 0; index -= 1) {
+      const candidate = node.properties[index];
+      if (ts.isSpreadAssignment(candidate)) {
+        const spread = transportPropertyBindingFromExpression(
+          candidate.expression,
+          property,
+          environment,
+          context,
+          seen
+        );
+        if (!spread.missing) return spread;
+        continue;
+      }
+      const key =
+        ts.isComputedPropertyName(candidate.name)
+          ? staticAccessProperties(
+              ts.factory.createElementAccessExpression(
+                ts.factory.createIdentifier("_"),
+                candidate.name.expression
+              ),
+              environment,
+              context
+            )
+          : [propertyName(candidate)];
+      if (key === null) return UNKNOWN_TRANSPORT_BINDING;
+      if (!key.includes(property)) continue;
+      if (key.length > 1) return UNKNOWN_TRANSPORT_BINDING;
+      if (ts.isPropertyAssignment(candidate)) {
+        return transportBindingFromExpression(
+          candidate.initializer,
+          environment,
+          context,
+          seen
+        );
+      }
+      if (ts.isShorthandPropertyAssignment(candidate)) {
+        return transportBindingFromExpression(
+          candidate.name,
+          environment,
+          context,
+          seen
+        );
+      }
+      return MISSING_TRANSPORT_BINDING;
+    }
+    return MISSING_TRANSPORT_BINDING;
+  }
+  if (ts.isArrayLiteralExpression(node)) {
+    if (!/^(?:0|[1-9]\d*)$/.test(property)) {
+      return MISSING_TRANSPORT_BINDING;
+    }
+    const element = node.elements[Number(property)];
+    return element && !ts.isOmittedExpression(element)
+      ? transportBindingFromExpression(
+          ts.isSpreadElement(element)
+            ? element.expression
+            : element,
+          environment,
+          context,
+          seen
+        )
+      : MISSING_TRANSPORT_BINDING;
+  }
+  if (ts.isConditionalExpression(node)) {
+    return alternativeTransportBinding([
+      transportPropertyBindingFromExpression(
+        node.whenTrue,
+        property,
+        environment,
+        context,
+        seen
+      ),
+      transportPropertyBindingFromExpression(
+        node.whenFalse,
+        property,
+        environment,
+        context,
+        seen
+      )
+    ]);
+  }
+  if (
+    ts.isPropertyAccessExpression(node) ||
+    ts.isElementAccessExpression(node)
+  ) {
+    const sourceBinding = transportBindingFromExpression(
+      node,
+      environment,
+      context,
+      seen
+    );
+    return transportPropertyBindingFromBinding(
+      sourceBinding,
+      property,
+      context,
+      seen
+    );
+  }
+  return MISSING_TRANSPORT_BINDING;
+}
+
+function transportPropertyBindingFromBinding(
+  binding,
+  property,
+  context,
+  seen = new Set()
+) {
+  if (!binding || seen.has(binding)) {
+    return MISSING_TRANSPORT_BINDING;
+  }
+  const nextSeen = new Set(seen).add(binding);
+  if (binding.alternatives) {
+    return alternativeTransportBinding(
+      binding.alternatives.map((candidate) =>
+        transportPropertyBindingFromBinding(
+          candidate,
+          property,
+          context,
+          nextSeen
+        )
+      )
+    );
+  }
+  if (binding.globalNavigator) {
+    return property === "sendBeacon"
+      ? { transportKind: "unknown_network" }
+      : MISSING_TRANSPORT_BINDING;
+  }
+  if (binding.restSource) {
+    if (binding.excludedProperties?.has(property)) {
+      return MISSING_TRANSPORT_BINDING;
+    }
+    return transportPropertyBindingFromBinding(
+      binding.restSource,
+      property,
+      context,
+      nextSeen
+    );
+  }
+  if (binding.arrayRestSource) {
+    if (!/^(?:0|[1-9]\d*)$/.test(property)) {
+      return MISSING_TRANSPORT_BINDING;
+    }
+    return transportPropertyBindingFromBinding(
+      binding.arrayRestSource,
+      String(Number(property) + binding.arrayRestStart),
+      context,
+      nextSeen
+    );
+  }
+  if (binding.propertyBindings) {
+    if (binding.propertyBindings.has(property)) {
+      return binding.propertyBindings.get(property);
+    }
+    if (binding.dynamicPropertyUnknown) {
+      return UNKNOWN_TRANSPORT_BINDING;
+    }
+    if (binding.baseBinding) {
+      return transportPropertyBindingFromBinding(
+        binding.baseBinding,
+        property,
+        context,
+        nextSeen
+      );
+    }
+    return MISSING_TRANSPORT_BINDING;
+  }
+  if (binding.dynamicPropertyUnknown) {
+    return UNKNOWN_TRANSPORT_BINDING;
+  }
+  if (binding.expression) {
+    return transportPropertyBindingFromExpression(
+      binding.expression,
+      property,
+      binding.environment,
+      context,
+      nextSeen
+    );
+  }
+  if (
+    binding.transportKind &&
+    binding.transportKind !== "none"
+  ) {
+    return binding;
+  }
+  return MISSING_TRANSPORT_BINDING;
+}
+
+function transportPropertyKindFromBinding(
+  binding,
+  property,
+  context,
+  seen
+) {
+  return bindingTransportKind(
+    transportPropertyBindingFromBinding(
+      binding,
+      property,
+      context,
+      seen
+    ),
+    context,
+    seen
+  );
+}
+
+function isUnboundGlobalReceiver(
+  expression,
+  environment,
+  context
+) {
+  const node = unwrapExpression(expression);
+  return (
+    ts.isIdentifier(node) &&
+    GLOBAL_FETCH_RECEIVERS.has(node.text) &&
+    !identifierBinding(node.text, environment, context)
+  );
+}
+
+function isGlobalNavigatorExpression(
+  expression,
+  environment,
+  context
+) {
+  const node = unwrapExpression(expression);
+  if (ts.isIdentifier(node)) {
+    return (
+      node.text === "navigator" &&
+      !identifierBinding(node.text, environment, context)
+    );
+  }
+  if (
+    !(
+      ts.isPropertyAccessExpression(node) ||
+      ts.isElementAccessExpression(node)
+    ) ||
+    !isUnboundGlobalReceiver(
+      node.expression,
+      environment,
+      context
+    )
+  ) {
+    return false;
+  }
+  const properties = staticAccessProperties(
+    node,
+    environment,
+    context
+  );
+  return (
+    properties !== null &&
+    properties.length > 0 &&
+    properties.every((property) => property === "navigator")
+  );
+}
+
+function transportPropertyKind(
+  expression,
+  property,
+  environment,
+  context,
+  seen
+) {
+  const node = unwrapExpression(expression);
+  if (!node || property === null) return null;
+  if (
+    property === "sendBeacon" &&
+    isGlobalNavigatorExpression(node, environment, context)
+  ) {
+    return "unknown_network";
+  }
+  if (ts.isIdentifier(node)) {
+    const binding = identifierBinding(
+      node.text,
+      environment,
+      context
+    );
+    if (binding) {
+      return transportPropertyKindFromBinding(
+        binding,
+        property,
+        context,
+        seen
+      );
+    }
+    if (GLOBAL_FETCH_RECEIVERS.has(node.text)) {
+      if (property === "fetch") return "known";
+      if (NETWORK_PRIMITIVE_CONSTRUCTORS.has(property)) {
+        return "unknown_network";
+      }
+      return null;
+    }
+    return null;
+  }
+  if (ts.isObjectLiteralExpression(node)) {
+    for (let index = node.properties.length - 1; index >= 0; index -= 1) {
+      const candidate = node.properties[index];
+      if (ts.isSpreadAssignment(candidate)) {
+        const kind = transportPropertyKind(
+          candidate.expression,
+          property,
+          environment,
+          context,
+          seen
+        );
+        if (kind) return kind;
+        continue;
+      }
+      const key =
+        ts.isComputedPropertyName(candidate.name) &&
+        (ts.isStringLiteral(candidate.name.expression) ||
+          ts.isNumericLiteral(candidate.name.expression))
+          ? candidate.name.expression.text
+          : propertyName(candidate);
+      if (key !== property) continue;
+      if (ts.isPropertyAssignment(candidate)) {
+        return transportKindFromExpression(
+          candidate.initializer,
+          environment,
+          context,
+          seen
+        );
+      }
+      if (ts.isShorthandPropertyAssignment(candidate)) {
+        return transportKindFromExpression(
+          candidate.name,
+          environment,
+          context,
+          seen
+        );
+      }
+      return null;
+    }
+    return null;
+  }
+  if (ts.isArrayLiteralExpression(node)) {
+    if (!/^(?:0|[1-9]\d*)$/.test(property)) return null;
+    const element = node.elements[Number(property)];
+    return element && !ts.isOmittedExpression(element)
+      ? transportKindFromExpression(
+          element,
+          environment,
+          context,
+          seen
+        )
+      : null;
+  }
+  if (ts.isConditionalExpression(node)) {
+    return mergeAlternativeTransportKinds([
+      transportPropertyKind(
+        node.whenTrue,
+        property,
+        environment,
+        context,
+        seen
+      ),
+      transportPropertyKind(
+        node.whenFalse,
+        property,
+        environment,
+        context,
+        seen
+      )
+    ]);
+  }
+  if (
+    ts.isPropertyAccessExpression(node) ||
+    ts.isElementAccessExpression(node)
+  ) {
+    return transportPropertyKindFromBinding(
+      transportBindingFromExpression(
+        node,
+        environment,
+        context,
+        seen
+      ),
+      property,
+      context,
+      seen
+    );
+  }
+  return null;
+}
+
+function transportKindFromExpression(
+  expression,
+  environment,
+  context,
+  seen = new Set()
+) {
+  const node = unwrapExpression(expression);
+  if (!node) return null;
+  if (ts.isIdentifier(node)) {
+    const binding = identifierBinding(
+      node.text,
+      environment,
+      context
+    );
+    if (binding) {
+      return bindingTransportKind(
+        binding,
+        context,
+        seen
+      );
+    }
+    if (context.functions.has(node.text)) return null;
+    if (NETWORK_PRIMITIVE_CONSTRUCTORS.has(node.text)) {
+      return "unknown_network";
+    }
+    if (
+      context.delegatedTransportNames.has(node.text) ||
+      context.unknownTransportNames.has(node.text)
+    ) {
+      return "unknown";
+    }
+    if (context.transportNames.has(node.text)) return "known";
+    return null;
+  }
+  if (
+    ts.isPropertyAccessExpression(node) ||
+    ts.isElementAccessExpression(node)
+  ) {
+    const properties = staticAccessProperties(
+      node,
+      environment,
+      context
+    );
+    const receiver = unwrapExpression(node.expression);
+    if (
+      receiver &&
+      ts.isIdentifier(receiver) &&
+      context.unknownTransportNamespaces.has(receiver.text)
+    ) {
+      return "unknown";
+    }
+    if (properties === null) {
+      return isUnboundGlobalReceiver(
+        node.expression,
+        environment,
+        context
+      )
+        ? "unknown"
+        : null;
+    }
+    const kinds = properties.map((property) =>
+      transportPropertyKind(
+        node.expression,
+        property,
+        environment,
+        context,
+        seen
+      )
+    );
+    if (
+      isUnboundGlobalReceiver(
+        node.expression,
+        environment,
+        context
+      ) &&
+      kinds.some(Boolean) &&
+      kinds.some((kind) => !kind)
+    ) {
+      return "unknown";
+    }
+    return mergeTransportKinds(kinds);
+  }
+  if (ts.isConditionalExpression(node)) {
+    return mergeAlternativeTransportKinds([
+      transportKindFromExpression(
+        node.whenTrue,
+        environment,
+        context,
+        seen
+      ),
+      transportKindFromExpression(
+        node.whenFalse,
+        environment,
+        context,
+        seen
+      )
+    ]);
+  }
+  if (
+    ts.isBinaryExpression(node) &&
+    ts.isAssignmentOperator(node.operatorToken.kind)
+  ) {
+    return node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      ? transportKindFromExpression(
+          node.right,
+          environment,
+          context,
+          seen
+        )
+      : "unknown";
+  }
+  if (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === ts.SyntaxKind.CommaToken
+  ) {
+    return transportKindFromExpression(
+      node.right,
+      environment,
+      context,
+      seen
+    );
+  }
+  if (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    node.expression.name.text === "bind"
+  ) {
+    return transportKindFromExpression(
+      node.expression.expression,
+      environment,
+      context,
+      seen
+    );
+  }
+  return null;
+}
+
+function staticPatternProperties(node, environment, context) {
+  if (
+    ts.isIdentifier(node) ||
+    ts.isStringLiteral(node) ||
+    ts.isNumericLiteral(node)
+  ) {
+    return [node.text];
+  }
+  if (ts.isComputedPropertyName(node)) {
+    return staticAccessProperties(
+      ts.factory.createElementAccessExpression(
+        ts.factory.createIdentifier("_"),
+        node.expression
+      ),
+      environment,
+      context
+    );
+  }
+  return null;
+}
+
+function transportBindingWithDefault(
+  binding,
+  initializer,
+  environment,
+  context
+) {
+  if (!initializer) return binding;
+  const fallback = transportBindingFromExpression(
+    initializer,
+    environment,
+    context
+  );
+  if (binding?.missing) return fallback;
+  if (binding?.alternatives) {
+    return alternativeTransportBinding(
+      binding.alternatives.map((candidate) =>
+        candidate.missing ? fallback : candidate
+      )
+    );
+  }
+  return binding;
+}
+
+function bindTransportBindingPattern(
+  pattern,
+  sourceBinding,
+  environment,
+  context
+) {
+  if (ts.isIdentifier(pattern)) {
+    environment.set(pattern.text, sourceBinding);
+    return;
+  }
+  if (ts.isObjectBindingPattern(pattern)) {
+    const excludedProperties = new Set();
+    for (const element of pattern.elements) {
+      if (element.dotDotDotToken) {
+        bindTransportBindingPattern(
+          element.name,
+          {
+            restSource: sourceBinding,
+            excludedProperties: new Set(excludedProperties)
+          },
+          environment,
+          context
+        );
+        continue;
+      }
+      const propertyNode =
+        element.propertyName ??
+        (ts.isIdentifier(element.name)
+          ? element.name
+          : null);
+      const properties = propertyNode
+        ? staticPatternProperties(
+            propertyNode,
+            environment,
+            context
+          )
+        : null;
+      let binding;
+      if (!properties || properties.length !== 1) {
+        binding = UNKNOWN_TRANSPORT_BINDING;
+      } else {
+        excludedProperties.add(properties[0]);
+        binding = transportPropertyBindingFromBinding(
+          sourceBinding,
+          properties[0],
+          context
+        );
+      }
+      bindTransportBindingPattern(
+        element.name,
+        transportBindingWithDefault(
+          binding,
+          element.initializer,
+          environment,
+          context
+        ),
+        environment,
+        context
+      );
+    }
+    return;
+  }
+  if (ts.isArrayBindingPattern(pattern)) {
+    for (let index = 0; index < pattern.elements.length; index += 1) {
+      const element = pattern.elements[index];
+      if (ts.isOmittedExpression(element)) continue;
+      const binding = element.dotDotDotToken
+        ? {
+            arrayRestSource: sourceBinding,
+            arrayRestStart: index
+          }
+        : transportPropertyBindingFromBinding(
+            sourceBinding,
+            String(index),
+            context
+          );
+      bindTransportBindingPattern(
+        element.name,
+        transportBindingWithDefault(
+          binding,
+          element.initializer,
+          environment,
+          context
+        ),
+        environment,
+        context
+      );
+    }
+  }
+}
+
+function bindTransportPattern(
+  pattern,
+  source,
+  environment,
+  context
+) {
+  bindTransportBindingPattern(
+    pattern,
+    transportBindingFromExpression(
+      source,
+      environment,
+      context
+    ),
+    environment,
+    context
+  );
+}
+
 function functionArgumentBindings(definition, call, environment, context) {
   const bindings = new Map();
   for (let index = 0; index < definition.parameters.length; index += 1) {
     const parameter = definition.parameters[index];
-    if (!ts.isIdentifier(parameter.name)) continue;
     const argument = call?.arguments?.[index];
-    bindings.set(
-      parameter.name.text,
-      argument
-        ? { expression: argument, environment }
-        : defaultParameterBinding(parameter, context)
+    const sourceBinding = argument
+      ? transportBindingFromExpression(
+          argument,
+          environment,
+          context
+        )
+      : parameter.initializer
+        ? transportBindingFromExpression(
+            parameter.initializer,
+            bindings,
+            context
+          )
+        : ts.isIdentifier(parameter.name)
+          ? defaultParameterBinding(parameter, context)
+          : { dynamicPropertyUnknown: true };
+    bindTransportBindingPattern(
+      parameter.name,
+      sourceBinding,
+      bindings,
+      context
     );
   }
   return bindings;
@@ -673,6 +1594,50 @@ const UNVERIFIED_RETURN_VALUE = Object.freeze({
   kind: "unverified"
 });
 const TRANSPORT_RETURN_VALUE = Object.freeze({ kind: "transport" });
+const CAPTURED_PROVENANCE_BINDINGS = Symbol(
+  "capturedProvenanceBindings"
+);
+
+function provenanceEnvironment(
+  entries = [],
+  capturedNames = []
+) {
+  const environment = new Map(entries);
+  environment[CAPTURED_PROVENANCE_BINDINGS] = new Set(
+    capturedNames
+  );
+  return environment;
+}
+
+function cloneProvenanceEnvironment(environment) {
+  return provenanceEnvironment(
+    environment,
+    environment[CAPTURED_PROVENANCE_BINDINGS] ?? []
+  );
+}
+
+function markProvenancePatternLocal(name, environment) {
+  const captured =
+    environment[CAPTURED_PROVENANCE_BINDINGS];
+  if (!captured) return;
+  if (ts.isIdentifier(name)) {
+    captured.delete(name.text);
+    return;
+  }
+  if (
+    ts.isObjectBindingPattern(name) ||
+    ts.isArrayBindingPattern(name)
+  ) {
+    for (const element of name.elements) {
+      if (!ts.isOmittedExpression(element)) {
+        markProvenancePatternLocal(
+          element.name,
+          environment
+        );
+      }
+    }
+  }
+}
 
 function transparentReturnValue(stage = "payload", origin = null) {
   return {
@@ -685,6 +1650,20 @@ function transparentReturnValue(stage = "payload", origin = null) {
 
 function containerReturnValue(fields = new Map()) {
   return { kind: "container", fields };
+}
+
+function localFunctionReturnValue(node, environment) {
+  return {
+    kind: "function",
+    definition: {
+      name: "<local>",
+      node,
+      body: node.body,
+      parameters: node.parameters
+    },
+    closureEnvironment: new Map(environment),
+    invalidatesCallerEnvironment: true
+  };
 }
 
 function returnProvenanceOf(value) {
@@ -782,7 +1761,19 @@ function provenanceIdentifierValue(
   if (environment.has(name)) return environment.get(name);
   if (name === "undefined") return NONE_RETURN_VALUE;
   const definition = context.functions.get(name);
-  if (definition) return { kind: "function", definition };
+  if (definition) {
+    return {
+      kind: "function",
+      definition,
+      invalidatesCallerEnvironment: false
+    };
+  }
+  if (
+    context.delegatedTransportNames.has(name) ||
+    context.unknownTransportNames.has(name)
+  ) {
+    return UNVERIFIED_RETURN_VALUE;
+  }
   if (context.transportNames.has(name)) {
     return TRANSPORT_RETURN_VALUE;
   }
@@ -804,11 +1795,16 @@ function provenanceFunctionEnvironment(
   argumentValues,
   context,
   activeFunctions,
-  seenBindings
+  seenBindings,
+  closureEnvironment = null
 ) {
-  const environment = new Map();
+  const environment = provenanceEnvironment(
+    closureEnvironment ?? [],
+    closureEnvironment?.keys() ?? []
+  );
   for (let index = 0; index < definition.parameters.length; index += 1) {
     const parameter = definition.parameters[index];
+    markProvenancePatternLocal(parameter.name, environment);
     let value = argumentValues[index];
     if (!value && parameter.initializer) {
       value = provenanceExpressionValue(
@@ -833,7 +1829,8 @@ function provenanceFunctionValue(
   argumentValues,
   context,
   activeFunctions,
-  seenBindings
+  seenBindings,
+  closureEnvironment = null
 ) {
   if (activeFunctions.has(definition)) {
     return UNVERIFIED_RETURN_VALUE;
@@ -846,7 +1843,8 @@ function provenanceFunctionValue(
     argumentValues,
     context,
     nextActiveFunctions,
-    seenBindings
+    seenBindings,
+    closureEnvironment
   );
   if (!ts.isBlock(definition.body)) {
     return provenanceExpressionValue(
@@ -869,6 +1867,46 @@ function provenanceFunctionValue(
     ...(flow.continuing.length > 0 ? [NONE_RETURN_VALUE] : [])
   ];
   return mergeReturnValues(returns);
+}
+
+function invalidateEscapedReturnValue(
+  value,
+  context,
+  activeFunctions,
+  seenBindings,
+  seenValues = new Set()
+) {
+  if (!value || seenValues.has(value)) return;
+  seenValues.add(value);
+  if (
+    value.kind === "function" &&
+    value.invalidatesCallerEnvironment
+  ) {
+    invalidateTransparentValue(
+      provenanceFunctionValue(
+        value.definition,
+        [],
+        context,
+        activeFunctions,
+        seenBindings,
+        value.closureEnvironment
+      )
+    );
+    return;
+  }
+  if (value.kind === "container") {
+    for (const child of value.fields.values()) {
+      invalidateEscapedReturnValue(
+        child,
+        context,
+        activeFunctions,
+        seenBindings,
+        seenValues
+      );
+    }
+    return;
+  }
+  invalidateTransparentValue(value);
 }
 
 function provenanceCallValue(
@@ -951,7 +1989,10 @@ function provenanceCallValue(
       : transparentReturnValue("response", call);
   }
   if (callable?.kind === "function") {
-    if (call.arguments.length === 0) {
+    if (
+      !callable.invalidatesCallerEnvironment &&
+      call.arguments.length === 0
+    ) {
       invalidateTransparentEnvironment(environment);
     }
     return provenanceFunctionValue(
@@ -959,11 +2000,17 @@ function provenanceCallValue(
       argumentValues,
       context,
       activeFunctions,
-      seenBindings
+      seenBindings,
+      callable.closureEnvironment
     );
   }
   for (const value of argumentValues) {
-    invalidateTransparentValue(value);
+    invalidateEscapedReturnValue(
+      value,
+      context,
+      activeFunctions,
+      seenBindings
+    );
   }
   if (
     call.arguments.length === 0 &&
@@ -991,6 +2038,58 @@ function provenanceExpressionValue(
       activeFunctions,
       seenBindings
     );
+  }
+  if (
+    ts.isArrowFunction(node) ||
+    ts.isFunctionExpression(node)
+  ) {
+    return localFunctionReturnValue(node, environment);
+  }
+  if (ts.isNewExpression(node)) {
+    const target = unwrapExpression(node.expression);
+    if (ts.isClassExpression(target)) {
+      const constructor = target.members.find(
+        (member) =>
+          ts.isConstructorDeclaration(member) &&
+          member.body
+      );
+      if (constructor) {
+        provenanceFunctionValue(
+          {
+            name: "<constructor>",
+            node: constructor,
+            body: constructor.body,
+            parameters: constructor.parameters
+          },
+          (node.arguments ?? []).map((argument) =>
+            provenanceExpressionValue(
+              argument,
+              environment,
+              context,
+              activeFunctions,
+              seenBindings
+            )
+          ),
+          context,
+          activeFunctions,
+          seenBindings,
+          new Map(environment)
+        );
+      }
+    } else {
+      for (const argument of node.arguments ?? []) {
+        invalidateTransparentValue(
+          provenanceExpressionValue(
+            argument,
+            environment,
+            context,
+            activeFunctions,
+            seenBindings
+          )
+        );
+      }
+    }
+    return UNVERIFIED_RETURN_VALUE;
   }
   if (ts.isCallExpression(node)) {
     return provenanceCallValue(
@@ -1081,18 +2180,55 @@ function provenanceExpressionValue(
     }
     return UNVERIFIED_RETURN_VALUE;
   }
+  if (
+    ts.isBinaryExpression(node) &&
+    ts.isAssignmentOperator(node.operatorToken.kind)
+  ) {
+    const assignedValue = provenanceExpressionValue(
+      node.right,
+      environment,
+      context,
+      activeFunctions,
+      seenBindings
+    );
+    const value =
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        ? assignedValue
+        : UNVERIFIED_RETURN_VALUE;
+    if (
+      ts.isPropertyAccessExpression(node.left) ||
+      ts.isElementAccessExpression(node.left)
+    ) {
+      invalidateTransparentValue(
+        provenanceExpressionValue(
+          node.left.expression,
+          environment,
+          context,
+          activeFunctions,
+          seenBindings
+        )
+      );
+    } else {
+      bindProvenanceAssignmentTarget(
+        node.left,
+        value,
+        environment
+      );
+    }
+    return value;
+  }
   if (ts.isConditionalExpression(node)) {
     return mergeReturnValues([
       provenanceExpressionValue(
         node.whenTrue,
-        new Map(environment),
+        cloneProvenanceEnvironment(environment),
         context,
         activeFunctions,
         seenBindings
       ),
       provenanceExpressionValue(
         node.whenFalse,
-        new Map(environment),
+        cloneProvenanceEnvironment(environment),
         context,
         activeFunctions,
         seenBindings
@@ -1110,14 +2246,14 @@ function provenanceExpressionValue(
     return mergeReturnValues([
       provenanceExpressionValue(
         node.left,
-        new Map(environment),
+        cloneProvenanceEnvironment(environment),
         context,
         activeFunctions,
         seenBindings
       ),
       provenanceExpressionValue(
         node.right,
-        new Map(environment),
+        cloneProvenanceEnvironment(environment),
         context,
         activeFunctions,
         seenBindings
@@ -1163,6 +2299,22 @@ function provenanceExpressionValue(
       } else if (ts.isShorthandPropertyAssignment(property)) {
         key = property.name.text;
         expression = property.name;
+      } else if (
+        ts.isMethodDeclaration(property) &&
+        property.body
+      ) {
+        key = ts.isIdentifier(property.name) ||
+          ts.isStringLiteral(property.name) ||
+          ts.isNumericLiteral(property.name)
+          ? property.name.text
+          : null;
+        if (key !== null) {
+          fields.set(
+            key,
+            localFunctionReturnValue(property, environment)
+          );
+          continue;
+        }
       }
       if (!expression) {
         unsupportedShape = true;
@@ -1319,6 +2471,13 @@ function bindProvenanceAssignmentTarget(
 ) {
   const node = unwrapExpression(target);
   if (ts.isIdentifier(node)) {
+    if (
+      environment[CAPTURED_PROVENANCE_BINDINGS]?.has(
+        node.text
+      )
+    ) {
+      invalidateTransparentValue(environment.get(node.text));
+    }
     environment.set(node.text, value);
     return true;
   }
@@ -1397,10 +2556,23 @@ function provenanceStatement(
   seenBindings
 ) {
   if (ts.isFunctionDeclaration(statement)) {
-    return { continuing: [environment], returns: [] };
+    const nextEnvironment =
+      cloneProvenanceEnvironment(environment);
+    if (statement.name && statement.body) {
+      markProvenancePatternLocal(
+        statement.name,
+        nextEnvironment
+      );
+      nextEnvironment.set(
+        statement.name.text,
+        localFunctionReturnValue(statement, environment)
+      );
+    }
+    return { continuing: [nextEnvironment], returns: [] };
   }
   if (ts.isVariableStatement(statement)) {
-    const nextEnvironment = new Map(environment);
+    const nextEnvironment =
+      cloneProvenanceEnvironment(environment);
     for (const declaration of statement.declarationList.declarations) {
       const value = declaration.initializer
         ? provenanceExpressionValue(
@@ -1411,6 +2583,10 @@ function provenanceStatement(
             seenBindings
           )
         : NONE_RETURN_VALUE;
+      markProvenancePatternLocal(
+        declaration.name,
+        nextEnvironment
+      );
       bindProvenancePattern(
         declaration.name,
         value,
@@ -1421,7 +2597,8 @@ function provenanceStatement(
   }
   if (ts.isExpressionStatement(statement)) {
     const expression = unwrapExpression(statement.expression);
-    const nextEnvironment = new Map(environment);
+    const nextEnvironment =
+      cloneProvenanceEnvironment(environment);
     if (
       ts.isBinaryExpression(expression) &&
       ts.isAssignmentOperator(expression.operatorToken.kind)
@@ -1499,7 +2676,7 @@ function provenanceStatement(
   if (ts.isBlock(statement)) {
     return provenanceStatements(
       statement.statements,
-      [new Map(environment)],
+      [cloneProvenanceEnvironment(environment)],
       context,
       activeFunctions,
       seenBindings
@@ -1515,7 +2692,7 @@ function provenanceStatement(
     );
     const thenFlow = provenanceStatement(
       statement.thenStatement,
-      new Map(environment),
+      cloneProvenanceEnvironment(environment),
       context,
       activeFunctions,
       seenBindings
@@ -1523,12 +2700,17 @@ function provenanceStatement(
     const elseFlow = statement.elseStatement
       ? provenanceStatement(
           statement.elseStatement,
-          new Map(environment),
+          cloneProvenanceEnvironment(environment),
           context,
           activeFunctions,
           seenBindings
         )
-      : { continuing: [new Map(environment)], returns: [] };
+      : {
+          continuing: [
+            cloneProvenanceEnvironment(environment)
+          ],
+          returns: []
+        };
     return {
       continuing: [
         ...thenFlow.continuing,
@@ -1540,7 +2722,7 @@ function provenanceStatement(
   if (ts.isTryStatement(statement)) {
     const tryFlow = provenanceStatement(
       statement.tryBlock,
-      new Map(environment),
+      cloneProvenanceEnvironment(environment),
       context,
       activeFunctions,
       seenBindings
@@ -1548,7 +2730,7 @@ function provenanceStatement(
     const catchFlow = statement.catchClause
       ? provenanceStatement(
           statement.catchClause.block,
-          new Map(environment),
+          cloneProvenanceEnvironment(environment),
           context,
           activeFunctions,
           seenBindings
@@ -1569,7 +2751,7 @@ function provenanceStatement(
         flow.returns.length > 0
           ? provenanceStatements(
               statement.finallyBlock.statements,
-              [new Map(environment)],
+              [cloneProvenanceEnvironment(environment)],
               context,
               activeFunctions,
               seenBindings
@@ -1593,7 +2775,8 @@ function provenanceStatement(
     }
     return flow;
   }
-  const nextEnvironment = new Map(environment);
+  const nextEnvironment =
+    cloneProvenanceEnvironment(environment);
   invalidateTransparentEnvironment(nextEnvironment);
   return { continuing: [nextEnvironment], returns: [] };
 }
@@ -1852,11 +3035,17 @@ function ticketField(expression) {
   return null;
 }
 
-function addApiFetchRequest(call, environment, context, requests) {
+function addApiFetchRequest(
+  call,
+  environment,
+  context,
+  requests,
+  requestArguments = call.arguments
+) {
   const sourceLine =
     context.ast.getLineAndCharacterOfPosition(call.getStart(context.ast)).line +
     1;
-  const pathExpression = call.arguments[0];
+  const pathExpression = requestArguments[0];
   if (!pathExpression) {
     requests.push({
       kind: "main",
@@ -1885,7 +3074,7 @@ function addApiFetchRequest(call, environment, context, requests) {
     stringValues(pathExpression, environment, context, new Set())
   );
   const { methods, bodyKind } = requestInit(
-    call.arguments[1],
+    requestArguments[1],
     environment,
     context
   );
@@ -1931,29 +3120,597 @@ function addUnknownTransportRequest(node, context, requests, reason) {
   });
 }
 
+function staticArrayElements(
+  expression,
+  environment,
+  context,
+  seen = new Set()
+) {
+  const node = unwrapExpression(expression);
+  if (!node) return null;
+  if (ts.isArrayLiteralExpression(node)) {
+    return node.elements.every(
+      (element) =>
+        !ts.isOmittedExpression(element) &&
+        !ts.isSpreadElement(element)
+    )
+      ? [...node.elements]
+      : null;
+  }
+  if (ts.isIdentifier(node)) {
+    const binding = identifierBinding(
+      node.text,
+      environment,
+      context
+    );
+    if (!binding?.expression || seen.has(binding)) return null;
+    return staticArrayElements(
+      binding.expression,
+      binding.environment,
+      context,
+      new Set(seen).add(binding)
+    );
+  }
+  return null;
+}
+
+function transportAdapter(
+  call,
+  environment,
+  context
+) {
+  const target = unwrapExpression(call.expression);
+  if (
+    ts.isPropertyAccessExpression(target) ||
+    ts.isElementAccessExpression(target)
+  ) {
+    const properties = staticAccessProperties(
+      target,
+      environment,
+      context
+    );
+    const property =
+      properties?.length === 1 ? properties[0] : null;
+    if (property === "call" || property === "apply") {
+      const transportKind = transportKindFromExpression(
+        target.expression,
+        environment,
+        context
+      );
+      if (transportKind) {
+        return {
+          transportKind,
+          targetExpression: target.expression,
+          requestArguments:
+            property === "call"
+              ? call.arguments.slice(1)
+              : staticArrayElements(
+                  call.arguments[1],
+                  environment,
+                  context
+                )
+        };
+      }
+    }
+    if (
+      property === "apply" &&
+      ts.isIdentifier(unwrapExpression(target.expression)) &&
+      unwrapExpression(target.expression).text === "Reflect" &&
+      !identifierBinding("Reflect", environment, context)
+    ) {
+      const transportKind = transportKindFromExpression(
+        call.arguments[0],
+        environment,
+        context
+      );
+      if (transportKind) {
+        return {
+          transportKind,
+          targetExpression: call.arguments[0],
+          requestArguments: staticArrayElements(
+            call.arguments[2],
+            environment,
+            context
+          )
+        };
+      }
+    }
+  }
+  return null;
+}
+
+function containerTransportBindingWithProperty(
+  binding,
+  properties,
+  value
+) {
+  const reusable =
+    binding?.propertyBindings && binding.mutableContainerState;
+  const next = reusable
+    ? {
+        ...binding,
+        propertyBindings: new Map(binding.propertyBindings)
+      }
+    : {
+        mutableContainerState: true,
+        propertyBindings: new Map(),
+        baseBinding: binding
+      };
+  if (!properties || properties.length !== 1) {
+    next.dynamicPropertyUnknown = true;
+    return next;
+  }
+  next.propertyBindings.set(properties[0], value);
+  return next;
+}
+
+function markDynamicTransportContainer(
+  expression,
+  environment,
+  context
+) {
+  const node = unwrapExpression(expression);
+  if (ts.isIdentifier(node)) {
+    const binding = identifierBinding(
+      node.text,
+      environment,
+      context
+    );
+    environment.set(
+      node.text,
+      containerTransportBindingWithProperty(
+        binding,
+        null,
+        UNKNOWN_TRANSPORT_BINDING
+      )
+    );
+    return;
+  }
+  if (
+    ts.isPropertyAccessExpression(node) ||
+    ts.isElementAccessExpression(node)
+  ) {
+    markDynamicTransportContainer(
+      node.expression,
+      environment,
+      context
+    );
+  }
+}
+
+function assignTransportProperty(
+  receiverExpression,
+  properties,
+  value,
+  environment,
+  context
+) {
+  const receiver = unwrapExpression(receiverExpression);
+  if (ts.isIdentifier(receiver)) {
+    const binding = identifierBinding(
+      receiver.text,
+      environment,
+      context
+    );
+    environment.set(
+      receiver.text,
+      containerTransportBindingWithProperty(
+        binding,
+        properties,
+        value
+      )
+    );
+    return;
+  }
+  if (
+    ts.isPropertyAccessExpression(receiver) ||
+    ts.isElementAccessExpression(receiver)
+  ) {
+    const parentProperties = staticAccessProperties(
+      receiver,
+      environment,
+      context
+    );
+    if (!parentProperties || parentProperties.length !== 1) {
+      markDynamicTransportContainer(
+        receiver.expression,
+        environment,
+        context
+      );
+      return;
+    }
+    const parentBinding = transportBindingFromExpression(
+      receiver.expression,
+      environment,
+      context
+    );
+    const childBinding =
+      transportPropertyBindingFromBinding(
+        parentBinding,
+        parentProperties[0],
+        context
+      );
+    assignTransportProperty(
+      receiver.expression,
+      parentProperties,
+      containerTransportBindingWithProperty(
+        childBinding,
+        properties,
+        value
+      ),
+      environment,
+      context
+    );
+    return;
+  }
+  markDynamicTransportContainer(
+    receiverExpression,
+    environment,
+    context
+  );
+}
+
+function bindTransportAssignmentTarget(
+  target,
+  sourceBinding,
+  environment,
+  context
+) {
+  const node = unwrapExpression(target);
+  if (ts.isIdentifier(node)) {
+    environment.set(node.text, sourceBinding);
+    return;
+  }
+  if (
+    ts.isPropertyAccessExpression(node) ||
+    ts.isElementAccessExpression(node)
+  ) {
+    const properties = staticAccessProperties(
+      node,
+      environment,
+      context
+    );
+    assignTransportProperty(
+      node.expression,
+      properties,
+      sourceBinding,
+      environment,
+      context
+    );
+    return;
+  }
+  if (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+  ) {
+    bindTransportAssignmentTarget(
+      node.left,
+      transportBindingWithDefault(
+        sourceBinding,
+        node.right,
+        environment,
+        context
+      ),
+      environment,
+      context
+    );
+    return;
+  }
+  if (ts.isObjectLiteralExpression(node)) {
+    const excludedProperties = new Set();
+    for (const property of node.properties) {
+      if (ts.isSpreadAssignment(property)) {
+        bindTransportAssignmentTarget(
+          property.expression,
+          {
+            restSource: sourceBinding,
+            excludedProperties: new Set(excludedProperties)
+          },
+          environment,
+          context
+        );
+        continue;
+      }
+      const properties = staticPatternProperties(
+        property.name,
+        environment,
+        context
+      );
+      let binding;
+      if (!properties || properties.length !== 1) {
+        binding = UNKNOWN_TRANSPORT_BINDING;
+      } else {
+        excludedProperties.add(properties[0]);
+        binding = transportPropertyBindingFromBinding(
+          sourceBinding,
+          properties[0],
+          context
+        );
+      }
+      if (ts.isPropertyAssignment(property)) {
+        bindTransportAssignmentTarget(
+          property.initializer,
+          binding,
+          environment,
+          context
+        );
+      } else if (ts.isShorthandPropertyAssignment(property)) {
+        bindTransportAssignmentTarget(
+          property.name,
+          transportBindingWithDefault(
+            binding,
+            property.objectAssignmentInitializer,
+            environment,
+            context
+          ),
+          environment,
+          context
+        );
+      }
+    }
+    return;
+  }
+  if (ts.isArrayLiteralExpression(node)) {
+    for (let index = 0; index < node.elements.length; index += 1) {
+      const element = node.elements[index];
+      if (ts.isOmittedExpression(element)) continue;
+      const binding = ts.isSpreadElement(element)
+        ? {
+            arrayRestSource: sourceBinding,
+            arrayRestStart: index
+          }
+        : transportPropertyBindingFromBinding(
+            sourceBinding,
+            String(index),
+            context
+          );
+      bindTransportAssignmentTarget(
+        ts.isSpreadElement(element)
+          ? element.expression
+          : element,
+        binding,
+        environment,
+        context
+      );
+    }
+    return;
+  }
+  invalidateTransportAssignmentShape(
+    node,
+    environment
+  );
+}
+
+function invalidateTransportAssignmentShape(node, environment) {
+  function visit(current) {
+    if (ts.isIdentifier(current) && environment.has(current.text)) {
+      environment.set(
+        current.text,
+        UNKNOWN_TRANSPORT_BINDING
+      );
+      return;
+    }
+    ts.forEachChild(current, visit);
+  }
+  visit(node);
+}
+
+function analyzeTransportTargetPrefixes(
+  expression,
+  environment,
+  context,
+  requests,
+  trace
+) {
+  const node = unwrapExpression(expression);
+  if (
+    !ts.isBinaryExpression(node) ||
+    node.operatorToken.kind !== ts.SyntaxKind.CommaToken
+  ) {
+    if (
+      ts.isConditionalExpression(node) ||
+      (ts.isBinaryExpression(node) &&
+        ts.isAssignmentOperator(node.operatorToken.kind))
+    ) {
+      analyzeExpression(
+        node,
+        environment,
+        context,
+        requests,
+        trace
+      );
+    }
+    return;
+  }
+  analyzeExpression(
+    node.left,
+    environment,
+    context,
+    requests,
+    trace
+  );
+  analyzeTransportTargetPrefixes(
+    node.right,
+    environment,
+    context,
+    requests,
+    trace
+  );
+}
+
 function analyzeExpression(expression, environment, context, requests, trace) {
   const node = unwrapExpression(expression);
   if (!node) return;
+  if (
+    ts.isBinaryExpression(node) &&
+    ts.isAssignmentOperator(node.operatorToken.kind)
+  ) {
+    analyzeExpression(
+      node.right,
+      environment,
+      context,
+      requests,
+      trace
+    );
+    if (ts.isElementAccessExpression(node.left)) {
+      analyzeExpression(
+        node.left.argumentExpression,
+        environment,
+        context,
+        requests,
+        trace
+      );
+    }
+    bindTransportAssignmentTarget(
+      node.left,
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        ? transportBindingFromExpression(
+            node.right,
+            environment,
+            context
+          )
+        : UNKNOWN_TRANSPORT_BINDING,
+      environment,
+      context
+    );
+    return;
+  }
+  if (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === ts.SyntaxKind.CommaToken
+  ) {
+    analyzeExpression(
+      node.left,
+      environment,
+      context,
+      requests,
+      trace
+    );
+    analyzeExpression(
+      node.right,
+      environment,
+      context,
+      requests,
+      trace
+    );
+    return;
+  }
+  if (ts.isConditionalExpression(node)) {
+    analyzeExpression(
+      node.condition,
+      environment,
+      context,
+      requests,
+      trace
+    );
+    const whenTrueEnvironment = new Map(environment);
+    analyzeExpression(
+      node.whenTrue,
+      whenTrueEnvironment,
+      context,
+      requests,
+      trace
+    );
+    const whenFalseEnvironment = new Map(environment);
+    analyzeExpression(
+      node.whenFalse,
+      whenFalseEnvironment,
+      context,
+      requests,
+      trace
+    );
+    mergeTransportEnvironments(
+      environment,
+      [whenTrueEnvironment, whenFalseEnvironment],
+      context
+    );
+    return;
+  }
   if (ts.isCallExpression(node)) {
+    const adapter = transportAdapter(
+      node,
+      environment,
+      context
+    );
+    if (adapter) {
+      analyzeTransportTargetPrefixes(
+        adapter.targetExpression,
+        environment,
+        context,
+        requests,
+        trace
+      );
+      if (
+        adapter.transportKind === "known" &&
+        adapter.requestArguments
+      ) {
+        addApiFetchRequest(
+          node,
+          environment,
+          context,
+          requests,
+          adapter.requestArguments
+        );
+      } else {
+        addUnknownTransportRequest(
+          node,
+          context,
+          requests,
+          adapter.transportKind === "unknown_network"
+            ? "unknown_network_primitive"
+            : adapter.transportKind === "known"
+              ? "unknown_transport_adapter"
+              : "unknown_transport_delegate"
+        );
+      }
+      return;
+    }
     const name = callName(node.expression);
-    if (name && context.transportNames.has(name)) {
+    const transportKind = transportKindFromExpression(
+      node.expression,
+      environment,
+      context
+    );
+    if (transportKind === "known") {
+      analyzeTransportTargetPrefixes(
+        node.expression,
+        environment,
+        context,
+        requests,
+        trace
+      );
       addApiFetchRequest(node, environment, context, requests);
       return;
     }
-    if (
-      (name && context.delegatedTransportNames.has(name)) ||
-      (name && context.unknownTransportNames.has(name)) ||
-      (ts.isPropertyAccessExpression(node.expression) &&
-        ts.isIdentifier(node.expression.expression) &&
-        context.unknownTransportNamespaces.has(
-          node.expression.expression.text
-        ))
-    ) {
+    if (transportKind === "unknown") {
+      analyzeTransportTargetPrefixes(
+        node.expression,
+        environment,
+        context,
+        requests,
+        trace
+      );
       addUnknownTransportRequest(
         node,
         context,
         requests,
         "unknown_transport_delegate"
+      );
+      return;
+    }
+    if (transportKind === "unknown_network") {
+      analyzeTransportTargetPrefixes(
+        node.expression,
+        environment,
+        context,
+        requests,
+        trace
+      );
+      addUnknownTransportRequest(
+        node,
+        context,
+        requests,
+        "unknown_network_primitive"
       );
       return;
     }
@@ -1972,24 +3729,141 @@ function analyzeExpression(expression, environment, context, requests, trace) {
       return;
     }
   }
-  if (
-    ts.isNewExpression(node) &&
-    ts.isIdentifier(node.expression) &&
-    ["EventSource", "WebSocket", "XMLHttpRequest"].includes(
-      node.expression.text
-    )
-  ) {
-    addUnknownTransportRequest(
-      node,
-      context,
-      requests,
-      "unknown_network_primitive"
+  if (ts.isNewExpression(node)) {
+    const transportKind = transportKindFromExpression(
+      node.expression,
+      environment,
+      context
     );
-    return;
+    if (transportKind === "unknown_network") {
+      addUnknownTransportRequest(
+        node,
+        context,
+        requests,
+        "unknown_network_primitive"
+      );
+      return;
+    }
   }
   ts.forEachChild(node, (child) =>
     analyzeExpression(child, environment, context, requests, trace)
   );
+}
+
+function bindingTransportKind(
+  binding,
+  context,
+  seen = new Set()
+) {
+  if (!binding || seen.has(binding)) return null;
+  const nextSeen = new Set(seen).add(binding);
+  if (binding.alternatives) {
+    return mergeAlternativeTransportKinds(
+      binding.alternatives.map((candidate) =>
+        bindingTransportKind(
+          candidate,
+          context,
+          nextSeen
+        )
+      )
+    );
+  }
+  if (binding.transportKind) {
+    return binding.transportKind === "none"
+      ? null
+      : binding.transportKind;
+  }
+  if (!binding.expression) return null;
+  return transportKindFromExpression(
+    binding.expression,
+    binding.environment,
+    context,
+    nextSeen
+  );
+}
+
+function bindingMayContainTransportProperties(binding) {
+  if (!binding) return false;
+  if (
+    binding.alternatives ||
+    binding.propertyBindings ||
+    binding.restSource ||
+    binding.arrayRestSource ||
+    binding.dynamicPropertyUnknown
+  ) {
+    return true;
+  }
+  const node = binding.expression
+    ? unwrapExpression(binding.expression)
+    : null;
+  return (
+    !!node &&
+    (ts.isObjectLiteralExpression(node) ||
+      ts.isArrayLiteralExpression(node))
+  );
+}
+
+function mergeTransportEnvironments(
+  environment,
+  branchEnvironments,
+  context
+) {
+  if (branchEnvironments.length === 0) return;
+  const names = [...environment.keys()];
+  if (branchEnvironments.length === 1) {
+    const branch = branchEnvironments[0];
+    for (const name of names) {
+      if (branch.has(name)) {
+        environment.set(name, branch.get(name));
+      }
+    }
+    return;
+  }
+  for (const name of names) {
+    const bindings = branchEnvironments.map((branch) =>
+      branch.get(name)
+    );
+    if (
+      bindings.every(
+        (binding) => binding === bindings[0]
+      )
+    ) {
+      environment.set(name, bindings[0]);
+      continue;
+    }
+    const kinds = bindings.map((binding) =>
+      bindingTransportKind(binding, context)
+    );
+    const transportKinds = kinds.filter(Boolean);
+    if (transportKinds.length > 0) {
+      const kind =
+        kinds.every((candidate) => candidate === "known")
+          ? "known"
+          : transportKinds.every(
+                (candidate) =>
+                  candidate === "unknown_network"
+              )
+            ? "unknown_network"
+            : "unknown";
+      environment.set(name, { transportKind: kind });
+      continue;
+    }
+    if (bindings.some(bindingMayContainTransportProperties)) {
+      environment.set(
+        name,
+        alternativeTransportBinding(bindings)
+      );
+      continue;
+    }
+    environment.set(
+      name,
+      syntheticBinding(
+        bindings.flatMap((binding) =>
+          bindingStrings(binding, context, new Set())
+        )
+      )
+    );
+  }
 }
 
 function analyzeStatement(statement, environment, context, requests, trace) {
@@ -2006,10 +3880,21 @@ function analyzeStatement(statement, environment, context, requests, trace) {
         );
       }
       if (ts.isIdentifier(declaration.name) && declaration.initializer) {
-        environment.set(declaration.name.text, {
-          expression: declaration.initializer,
-          environment: new Map(environment)
-        });
+        environment.set(
+          declaration.name.text,
+          transportBindingFromExpression(
+            declaration.initializer,
+            environment,
+            context
+          )
+        );
+      } else if (declaration.initializer) {
+        bindTransportPattern(
+          declaration.name,
+          declaration.initializer,
+          environment,
+          context
+        );
       }
     }
     return;
@@ -2017,16 +3902,6 @@ function analyzeStatement(statement, environment, context, requests, trace) {
   if (ts.isExpressionStatement(statement)) {
     const expression = unwrapExpression(statement.expression);
     analyzeExpression(expression, environment, context, requests, trace);
-    if (
-      ts.isBinaryExpression(expression) &&
-      expression.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-      ts.isIdentifier(expression.left)
-    ) {
-      environment.set(expression.left.text, {
-        expression: expression.right,
-        environment: new Map(environment)
-      });
-    }
     return;
   }
   if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) {
@@ -2042,15 +3917,21 @@ function analyzeStatement(statement, environment, context, requests, trace) {
     return;
   }
   if (ts.isBlock(statement)) {
+    const blockEnvironment = new Map(environment);
     for (const child of statement.statements) {
       analyzeStatement(
         child,
-        new Map(environment),
+        blockEnvironment,
         context,
         requests,
         trace
       );
     }
+    mergeTransportEnvironments(
+      environment,
+      [blockEnvironment],
+      context
+    );
     return;
   }
   if (ts.isIfStatement(statement)) {
@@ -2061,48 +3942,79 @@ function analyzeStatement(statement, environment, context, requests, trace) {
       requests,
       trace
     );
+    const thenEnvironment = new Map(environment);
     analyzeStatement(
       statement.thenStatement,
-      new Map(environment),
+      thenEnvironment,
       context,
       requests,
       trace
     );
+    const elseEnvironment = new Map(environment);
     if (statement.elseStatement) {
       analyzeStatement(
         statement.elseStatement,
-        new Map(environment),
+        elseEnvironment,
         context,
         requests,
         trace
       );
     }
+    mergeTransportEnvironments(
+      environment,
+      [thenEnvironment, elseEnvironment],
+      context
+    );
     return;
   }
   if (ts.isTryStatement(statement)) {
+    const tryEnvironment = new Map(environment);
     analyzeStatement(
       statement.tryBlock,
-      new Map(environment),
+      tryEnvironment,
       context,
       requests,
       trace
     );
+    const branchEnvironments = [tryEnvironment];
     if (statement.catchClause) {
+      const catchEnvironment = new Map(environment);
       analyzeStatement(
         statement.catchClause.block,
-        new Map(environment),
+        catchEnvironment,
         context,
         requests,
         trace
       );
+      branchEnvironments.push(catchEnvironment);
     }
+    const continuationEnvironment = new Map(environment);
+    mergeTransportEnvironments(
+      continuationEnvironment,
+      branchEnvironments,
+      context
+    );
     if (statement.finallyBlock) {
+      const finalEnvironment = new Map(
+        continuationEnvironment
+      );
       analyzeStatement(
         statement.finallyBlock,
-        new Map(environment),
+        finalEnvironment,
         context,
         requests,
         trace
+      );
+      mergeTransportEnvironments(
+        environment,
+        [finalEnvironment],
+        context
+      );
+    } else {
+      mergeTransportEnvironments(
+        environment,
+        [continuationEnvironment],
+        context
       );
     }
     return;
@@ -2123,12 +4035,19 @@ function analyzeStatement(statement, environment, context, requests, trace) {
         trace
       );
     }
+    const initialEnvironment = new Map(environment);
+    const bodyEnvironment = new Map(environment);
     analyzeStatement(
       statement.statement,
-      new Map(environment),
+      bodyEnvironment,
       context,
       requests,
       trace
+    );
+    mergeTransportEnvironments(
+      environment,
+      [initialEnvironment, bodyEnvironment],
+      context
     );
     return;
   }

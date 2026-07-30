@@ -2259,7 +2259,7 @@ async function submit() {
   }
 });
 
-test("accepts only a static app-owned runtime extension key", async () => {
+test("rejects runtime extensions even under a static app-owned key", async () => {
   const safeRoot = await fixture({
     page: `<script setup lang="ts">
 import { getExample, submitExample } from "../api/example.api";
@@ -2294,8 +2294,12 @@ async function submit() {
     });
   assert.equal(
     safeManifest.status,
-    "ready",
-    JSON.stringify(safeManifest.blockers)
+    "blocked"
+  );
+  assert.ok(
+    blockerCodes(safeManifest).has(
+      "RUNTIME_INTRINSIC_INTEGRITY_UNVERIFIED"
+    )
   );
 
   const dynamicRoot = await fixture({
@@ -2346,6 +2350,94 @@ test("rejects reachable runtime intrinsic tampering before capability checks or 
   value: (value: unknown) => value,
   configurable: true
 });`,
+    `function installRuntimeExtension(
+  target: typeof globalThis
+) {
+  Object.defineProperty(
+    target,
+    "__JIANGKONG_TEST_REGISTRY__",
+    {
+      get() {
+        target.structuredClone = (value: unknown) => value;
+        return {};
+      }
+    }
+  );
+}
+installRuntimeExtension(globalThis);
+void globalThis.__JIANGKONG_TEST_REGISTRY__;`,
+    `function installRuntimeExtension(
+  target: typeof globalThis
+) {
+  Object.defineProperty(
+    target,
+    "__JIANGKONG_TEST_REGISTRY__",
+    {
+      value: target
+    }
+  );
+}
+installRuntimeExtension(globalThis);
+globalThis.__JIANGKONG_TEST_REGISTRY__.structuredClone =
+  (value: unknown) => value;`,
+    `function installRuntimeExtension(
+  target: typeof globalThis
+) {
+  Object.defineProperty(
+    target,
+    "__JIANGKONG_TEST_REGISTRY__",
+    {
+      value: (() => target)()
+    }
+  );
+}
+installRuntimeExtension(globalThis);
+globalThis.__JIANGKONG_TEST_REGISTRY__.structuredClone =
+  (value: unknown) => value;`,
+    `function installRuntimeExtension(
+  target: typeof globalThis
+) {
+  Reflect.set(
+    target,
+    "__JIANGKONG_TEST_REGISTRY__",
+    target
+  );
+}
+installRuntimeExtension(globalThis);
+globalThis.__JIANGKONG_TEST_REGISTRY__.structuredClone =
+  (value: unknown) => value;`,
+    `function installRuntimeExtension(
+  target: typeof globalThis
+) {
+  Object.defineProperty(
+    target,
+    "__JIANGKONG_TEST_REGISTRY__",
+    {
+      value: {}
+    }
+  );
+}
+installRuntimeExtension(globalThis);
+globalThis.__JIANGKONG_TEST_REGISTRY__.runtime = globalThis;
+globalThis.__JIANGKONG_TEST_REGISTRY__.runtime.structuredClone =
+  (value: unknown) => value;`,
+    `function mutateDescriptorFlag(target: typeof globalThis) {
+  target.structuredClone = (value: unknown) => value;
+  return true;
+}
+function installRuntimeExtension(
+  target: typeof globalThis
+) {
+  Object.defineProperty(
+    target,
+    "__JIANGKONG_TEST_REGISTRY__",
+    {
+      configurable: mutateDescriptorFlag(target),
+      value: {}
+    }
+  );
+}
+installRuntimeExtension(globalThis);`,
     `Reflect.set(
   globalThis,
   "structuredClone",
@@ -2357,9 +2449,114 @@ test("rejects reachable runtime intrinsic tampering before capability checks or 
     `(0, eval)(
   "globalThis.structuredClone = (value) => value"
 );`,
+    `const dynamicEval = globalThis["eval"];
+dynamicEval(
+  "globalThis.structuredClone = (value) => value"
+);`,
+    `const { eval: dynamicEval } = globalThis;
+dynamicEval(
+  "globalThis.structuredClone = (value) => value"
+);`,
+    `const runtime = {
+  execute: globalThis.eval
+};
+runtime.execute(
+  "globalThis.structuredClone = (value) => value"
+);`,
+    `const dynamicEval = Math.random() > 0.5
+  ? globalThis.eval
+  : () => undefined;
+dynamicEval(
+  "globalThis.structuredClone = (value) => value"
+);`,
+    `function resolveDynamicEval() {
+  return globalThis.eval;
+}
+const dynamicEval = resolveDynamicEval();
+dynamicEval(
+  "globalThis.structuredClone = (value) => value"
+);`,
     `Function(
   "globalThis.structuredClone = (value) => value"
 )();`,
+    `const DynamicFunction = globalThis["Function"];
+DynamicFunction(
+  "globalThis.structuredClone = (value) => value"
+)();`,
+    `const DynamicFunction = Function\`
+  globalThis.structuredClone = (value) => value
+\`;
+DynamicFunction();`,
+    `const FunctionAlias = globalThis.Function;
+const DynamicFunction = FunctionAlias\`
+  globalThis.structuredClone = (value) => value
+\`;
+DynamicFunction();`,
+    `const dynamicEval = globalThis.eval.bind(globalThis);
+dynamicEval(
+  "globalThis.structuredClone = (value) => value"
+);`,
+    `const DynamicFunction = (() => {}).constructor;
+DynamicFunction(
+  "globalThis.structuredClone = (value) => value"
+)();`,
+    `setTimeout(
+  "globalThis.structuredClone = (value) => value",
+  0
+);`,
+    `setTimeout(
+  String(
+    "globalThis.structuredClone = (value) => value"
+  ),
+  0
+);`,
+    `window.setInterval(
+  "globalThis.structuredClone = (value) => value",
+  1
+);`,
+    `const scheduleCode = globalThis.setTimeout;
+scheduleCode(
+  "globalThis.structuredClone = (value) => value",
+  0
+);`,
+    `function scheduleCode(code: string) {
+  setTimeout(code, 0);
+}
+scheduleCode(
+  "globalThis.structuredClone = (value) => value"
+);`,
+    `function scheduleCodeA(callback: () => void) {
+  scheduleCodeB(callback);
+  setTimeout(callback, 0);
+}
+function scheduleCodeB(callback: () => void) {
+  scheduleCodeA(callback);
+}
+scheduleCodeA(() => undefined);
+scheduleCodeB(
+  "globalThis.structuredClone = (value) => value" as any
+);`,
+    `function scheduleCodeB(callback: () => void) {
+  scheduleCodeA(callback);
+}
+function scheduleCodeA(callback: () => void) {
+  scheduleCodeB(callback);
+  setTimeout(callback, 0);
+}
+scheduleCodeA(() => undefined);
+scheduleCodeB(
+  "globalThis.structuredClone = (value) => value" as any
+);`,
+    `let callback: () => void;
+callback =
+  "globalThis.structuredClone = (value) => value" as any;
+setTimeout(callback, 0);`,
+    `function callback() {
+  return undefined;
+}
+callback =
+  "globalThis.structuredClone = (value) => value" as any;
+setTimeout(callback, 0);`,
     `(Array.prototype as any).some = function () {
   return true;
 };`,
@@ -2576,6 +2773,26 @@ proxiedGlobal.structuredClone = (value: unknown) => value;`,
   return new Proxy(globalThis, {});
 }
 `
+    ],
+    [
+      "apps/web-admin/src/lib/dynamic-code.ts",
+      "executeDynamicCode",
+      `executeDynamicCode(
+  "globalThis.structuredClone = (value) => value"
+);`,
+      `export const executeDynamicCode = globalThis.eval;
+`
+    ],
+    [
+      "apps/web-admin/src/lib/string-timer.ts",
+      "scheduleCode",
+      `scheduleCode(
+  "globalThis.structuredClone = (value) => value"
+);`,
+      `export function scheduleCode(code: string) {
+  setTimeout(code, 0);
+}
+`
     ]
   ]) {
     const importedRuntimeRoot = await fixture({
@@ -2625,6 +2842,44 @@ async function submit() {
       )
     );
   }
+});
+
+test("keeps harmless mutually recursive callbacks callable", async () => {
+  const root = await fixture({
+    page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+function walkBackward(callback: () => void, depth: number) {
+  if (depth > 0) walkForward(callback, depth - 1);
+}
+function walkForward(callback: () => void, depth: number) {
+  if (depth > 0) walkBackward(callback, depth - 1);
+}
+walkBackward(() => undefined, 2);
+const detail = await getExample("example-1");
+function actionEnabled(key: string) {
+  return detail.availableActions.some(
+    (action) => action.key === key && action.enabled
+  );
+}
+async function submit() {
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">
+    提交审批
+  </t-button>
+</template>
+`
+  });
+  const manifest =
+    await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(
+    manifest.status,
+    "ready",
+    JSON.stringify(manifest.blockers)
+  );
 });
 
 test("rejects protected capability escapes and writes in Vue templates", async () => {

@@ -1,12 +1,67 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { effectScope, nextTick, reactive } from "vue";
 import { describe, expect, it, vi } from "vitest";
+import SpotProcurementDetailPage from "./SpotProcurementDetailPage.vue";
+import SpotProcurementReceiptPage from "./SpotProcurementReceiptPage.vue";
 import {
   prepareSpotExecutionWithUploads,
   prepareSpotPaymentDraftWithUploads,
   prepareSpotRefundWithUpload,
   type SpotPaymentDraftPreparationInput
 } from "./spot-procurement-write-validation";
+
+const spotPageRuntime = vi.hoisted(() => ({
+  route: { params: { procurementId: "procurement-a" } },
+  confirmAbnormalTermination: vi.fn(),
+  fetchDetail: vi.fn(),
+  fetchPaymentDetail: vi.fn(),
+  fetchReceipt: vi.fn(),
+  invalidateInvoice: vi.fn(),
+  refreshReceiptPdf: vi.fn(),
+  requestAbnormalTermination: vi.fn()
+}));
+
+vi.mock("vue", async (importOriginal) => {
+  const original = await importOriginal<typeof import("vue")>();
+  return {
+    ...original,
+    onMounted: () => undefined,
+    useSSRContext: () => ({ modules: new Set<string>() })
+  };
+});
+
+vi.mock("vue-router", async (importOriginal) => {
+  const original = await importOriginal<typeof import("vue-router")>();
+  return {
+    ...original,
+    useRoute: () => spotPageRuntime.route,
+    useRouter: () => ({
+      push: vi.fn()
+    })
+  };
+});
+
+vi.mock("../../api/spot-procurement.api", async (importOriginal) => {
+  const original = await importOriginal<
+    typeof import("../../api/spot-procurement.api")
+  >();
+  return {
+    ...original,
+    confirmSpotProcurementAbnormalTermination:
+      spotPageRuntime.confirmAbnormalTermination,
+    fetchSpotProcurementDetail: spotPageRuntime.fetchDetail,
+    fetchSpotProcurementPaymentDetail: spotPageRuntime.fetchPaymentDetail,
+    fetchSpotProcurementReceipt: spotPageRuntime.fetchReceipt,
+    invalidateSpotProcurementPaymentInvoice:
+      spotPageRuntime.invalidateInvoice,
+    refreshSpotProcurementReceiptPdf: spotPageRuntime.refreshReceiptPdf,
+    requestSpotProcurementAbnormalTermination:
+      spotPageRuntime.requestAbnormalTermination
+  };
+});
+
+spotPageRuntime.route = reactive(spotPageRuntime.route);
 
 function pageSource(name: string) {
   return readFileSync(
@@ -42,6 +97,193 @@ function validPaymentDraft(
       }
     ],
     ...overrides
+  };
+}
+
+function deferred<T = void>() {
+  let resolvePromise!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((accept, decline) => {
+    resolvePromise = accept;
+    reject = decline;
+  });
+  const resolve = (value?: T | PromiseLike<T>) => {
+    resolvePromise(value as T | PromiseLike<T>);
+  };
+  return { promise, reject, resolve };
+}
+
+type MutableValue<T> = { value: T };
+type ReceiptPageBindings = {
+  busy: MutableValue<boolean>;
+  error: MutableValue<string>;
+  invoiceInvalidationError: MutableValue<string>;
+  invoiceInvalidationVisible: MutableValue<boolean>;
+  invalidateInvoice: (values: { reason: string }) => Promise<unknown>;
+  message: MutableValue<string>;
+  openInvoiceInvalidation: (invoice: unknown) => void;
+  paymentDetail: MutableValue<{ payment: { id: string } } | null>;
+  paymentNotice: MutableValue<string>;
+  prepareReceiptPdfRefresh: () => void;
+  receiptPdfRefreshGeneration: MutableValue<number>;
+  receiptPdfRefreshProcurementId: MutableValue<string>;
+  refreshReceiptPdf: () => Promise<unknown>;
+  routeSafetyNotice: MutableValue<string>;
+  selectedInvoiceGeneration: MutableValue<number>;
+  selectedInvoiceId: MutableValue<string>;
+  selectedInvoicePaymentId: MutableValue<string>;
+  selectedInvoiceProcurementId: MutableValue<string>;
+  spotPaymentCapability: MutableValue<unknown>;
+  spotReceiptCapability: MutableValue<unknown>;
+};
+type ProcurementDetailPageBindings = {
+  abnormalTerminationConfirmProcurementId: MutableValue<string>;
+  abnormalTerminationConfirmVisible: MutableValue<boolean>;
+  abnormalTerminationRequestProcurementId: MutableValue<string>;
+  abnormalTerminationRequestVisible: MutableValue<boolean>;
+  actionBusy: MutableValue<boolean>;
+  actionMessage: MutableValue<string>;
+  confirmAbnormalTerminationAction: () => Promise<unknown>;
+  detail: MutableValue<unknown>;
+  openAbnormalTerminationConfirm: () => void;
+  openAbnormalTerminationRequest: () => void;
+  requestAbnormalTerminationAction: (values: {
+    reason: string;
+  }) => Promise<unknown>;
+  spotProcurementCapability: MutableValue<unknown>;
+};
+
+function setupPage<T extends object>(component: unknown) {
+  const scope = effectScope();
+  const bindings = scope.run(() =>
+    (
+      component as {
+        setup: (
+          props: Record<string, never>,
+          context: { expose: () => void }
+        ) => T;
+      }
+    ).setup({}, { expose: () => undefined })
+  );
+  if (!bindings) throw new Error("spot procurement page setup failed");
+  return { bindings, scope };
+}
+
+async function flushPromises() {
+  for (let index = 0; index < 8; index += 1) {
+    await Promise.resolve();
+  }
+}
+
+function receiptReadModel() {
+  return {
+    lines: [],
+    discrepancy: {
+      status: "none",
+      refundExpectedAmountCents: null
+    }
+  };
+}
+
+function paymentDetailReadModel(id: string) {
+  return {
+    payment: {
+      id,
+      procurement: { id: "procurement-a" }
+    },
+    executions: [],
+    invoice: { invoices: [] }
+  };
+}
+
+function invoiceCapability(
+  procurementId: string,
+  paymentId: string,
+  invoiceId: string
+) {
+  return {
+    payment: {
+      id: paymentId,
+      procurement: { id: procurementId }
+    },
+    executions: [],
+    invoice: {
+      invoices: [
+        {
+          id: invoiceId,
+          fileId: `${invoiceId}-file`,
+          file: null,
+          availableActions: [
+            {
+              key: "invalidate_invoice",
+              label: "作废发票附件",
+              enabled: true,
+              disabledReason: null
+            }
+          ]
+        }
+      ]
+    }
+  };
+}
+
+function receiptPdfCapability(procurementId: string) {
+  return {
+    receipt: { procurementId },
+    lines: [],
+    discrepancy: {
+      status: "none",
+      refundExpectedAmountCents: null
+    },
+    availableActions: [
+      {
+        key: "refresh_receipt_pdf",
+        label: "重新生成收货确认 PDF",
+        enabled: true,
+        disabledReason: null
+      }
+    ]
+  };
+}
+
+function prepareReceiptRuntime() {
+  spotPageRuntime.route.params.procurementId = "procurement-a";
+  spotPageRuntime.fetchReceipt.mockReset();
+  spotPageRuntime.fetchReceipt.mockImplementation(async () =>
+    receiptReadModel()
+  );
+  spotPageRuntime.fetchDetail.mockReset();
+  spotPageRuntime.fetchDetail.mockImplementation(
+    async (procurementId: string) => ({
+      procurement: {
+        id: procurementId,
+        payment: { paymentId: null }
+      },
+      payments: []
+    })
+  );
+  spotPageRuntime.fetchPaymentDetail.mockReset();
+  spotPageRuntime.invalidateInvoice.mockReset();
+  spotPageRuntime.refreshReceiptPdf.mockReset();
+}
+
+function terminationDetail() {
+  return {
+    procurement: { id: "procurement-a" },
+    availableActions: [
+      {
+        key: "request_abnormal_termination",
+        label: "发起异常终止",
+        enabled: true,
+        disabledReason: null
+      },
+      {
+        key: "confirm_abnormal_termination",
+        label: "确认异常终止",
+        enabled: true,
+        disabledReason: null
+      }
+    ]
   };
 }
 
@@ -710,6 +952,13 @@ describe("spot procurement web pages", () => {
     expect(receipt).toContain(
       "const procurementDetail = await procurementDetailRequest"
     );
+    expect(receipt).toContain(
+      "procurementDetail.procurement.payment?.paymentId ?? null"
+    );
+    expect(receipt).toContain("item.id === currentPaymentId");
+    expect(receipt).not.toContain(
+      'payments.find((item) => item.form === "real_payment")'
+    );
     expect(receipt).not.toContain(
       "await Promise.all([receiptRequest, procurementDetailRequest])"
     );
@@ -723,17 +972,21 @@ describe("spot procurement web pages", () => {
     expect(receipt).toContain("receiptPdfRefreshAction?.enabled");
     expect(receipt).toContain('v-if="selectedInvoiceInvalidationAction?.enabled"');
     expect(receipt).toContain("selectedInvoicePaymentId.value = spotPaymentCapability.value.payment.id");
-    expect(receipt).toContain("assertInvoiceInvalidationContext()");
-    expect(receipt).toContain("assertReceiptPdfRefreshContext()");
+    expect(receipt).toContain("assertInvoiceInvalidationContext(context)");
+    expect(receipt).toContain("assertReceiptPdfRefreshContext(context)");
     expect(receipt).toContain(
-      "capability.payment.procurement.id !== context.procurementId"
+      "capability.payment.procurement.id === context.procurementId"
     );
     expect(receipt).toContain(
-      "spotReceiptCapability.value?.receipt.procurementId !=="
+      "spotReceiptCapability.value?.receipt.procurementId ==="
     );
-    expect(receipt).toContain(".then(completeInvoiceInvalidation)");
+    expect(receipt).toContain(
+      ".then(() => completeInvoiceInvalidation(context))"
+    );
     expect(receipt).toContain("prepareReceiptPdfRefresh");
-    expect(receipt).toContain(".then(completeReceiptPdfRefresh)");
+    expect(receipt).toContain(
+      ".then(() => completeReceiptPdfRefresh(context))"
+    );
     expect(receipt).toContain("receipt.value?.availableActions?.find");
     expect(receipt).toContain("actionEnabled('review_receipt')");
     expect(receipt).toContain("actionEnabled('record_refund')");
@@ -769,6 +1022,447 @@ describe("spot procurement web pages", () => {
     ).toEqual(["null", "null", "receiptResult"]);
   });
 
+  it("loads invoice capabilities from the server-selected current payment, not retained history", async () => {
+    spotPageRuntime.route.params.procurementId = "procurement-a";
+    spotPageRuntime.fetchReceipt.mockReset();
+    spotPageRuntime.fetchReceipt.mockResolvedValue(receiptReadModel());
+    spotPageRuntime.fetchDetail.mockReset();
+    spotPageRuntime.fetchDetail.mockResolvedValue({
+      procurement: {
+        id: "procurement-a",
+        payment: { paymentId: "payment-current" }
+      },
+      payments: [
+        { id: "payment-invalidated", form: "real_payment", status: "invalidated" },
+        { id: "payment-current", form: "real_payment", status: "draft" }
+      ]
+    });
+    spotPageRuntime.fetchPaymentDetail.mockReset();
+    spotPageRuntime.fetchPaymentDetail.mockResolvedValue(
+      paymentDetailReadModel("payment-current")
+    );
+    const { bindings, scope } = setupPage<ReceiptPageBindings>(
+      SpotProcurementReceiptPage
+    );
+
+    try {
+      await flushPromises();
+
+      expect(spotPageRuntime.fetchPaymentDetail).toHaveBeenCalledTimes(1);
+      expect(spotPageRuntime.fetchPaymentDetail).toHaveBeenCalledWith(
+        "payment-current"
+      );
+      expect(bindings.paymentDetail.value?.payment.id).toBe("payment-current");
+    } finally {
+      scope.stop();
+    }
+  });
+
+  it.each([
+    ["missing", null],
+    ["not visible", "payment-hidden"]
+  ])(
+    "fails closed when the server-selected current payment is %s",
+    async (_label, currentPaymentId) => {
+      spotPageRuntime.route.params.procurementId = "procurement-a";
+      spotPageRuntime.fetchReceipt.mockReset();
+      spotPageRuntime.fetchReceipt.mockResolvedValue(receiptReadModel());
+      spotPageRuntime.fetchDetail.mockReset();
+      spotPageRuntime.fetchDetail.mockResolvedValue({
+        procurement: {
+          id: "procurement-a",
+          payment: { paymentId: currentPaymentId }
+        },
+        payments: [
+          {
+            id: "payment-invalidated",
+            form: "real_payment",
+            status: "invalidated"
+          }
+        ]
+      });
+      spotPageRuntime.fetchPaymentDetail.mockReset();
+      const { bindings, scope } = setupPage<ReceiptPageBindings>(
+        SpotProcurementReceiptPage
+      );
+
+      try {
+        await flushPromises();
+
+        expect(spotPageRuntime.fetchPaymentDetail).not.toHaveBeenCalled();
+        expect(bindings.paymentDetail.value).toBeNull();
+        expect(bindings.paymentNotice.value).not.toBe("");
+      } finally {
+        scope.stop();
+      }
+    }
+  );
+
+  it("fails closed when the server-selected payment id only matches a non-real-payment row", async () => {
+    spotPageRuntime.route.params.procurementId = "procurement-a";
+    spotPageRuntime.fetchReceipt.mockReset();
+    spotPageRuntime.fetchReceipt.mockResolvedValue(receiptReadModel());
+    spotPageRuntime.fetchDetail.mockReset();
+    spotPageRuntime.fetchDetail.mockResolvedValue({
+      procurement: {
+        id: "procurement-a",
+        payment: { paymentId: "payment-current" }
+      },
+      payments: [
+        {
+          id: "payment-current",
+          form: "prepayment",
+          status: "draft"
+        }
+      ]
+    });
+    spotPageRuntime.fetchPaymentDetail.mockReset();
+    const { bindings, scope } = setupPage<ReceiptPageBindings>(
+      SpotProcurementReceiptPage
+    );
+
+    try {
+      await flushPromises();
+
+      expect(spotPageRuntime.fetchPaymentDetail).not.toHaveBeenCalled();
+      expect(bindings.paymentDetail.value).toBeNull();
+      expect(bindings.spotPaymentCapability.value).toBeNull();
+      expect(bindings.paymentNotice.value).not.toBe("");
+    } finally {
+      scope.stop();
+    }
+  });
+
+  it.each([
+    ["payment id", "payment-other", "procurement-a"],
+    ["procurement id", "payment-current", "procurement-other"]
+  ])(
+    "fails closed when the payment detail response has a mismatched %s",
+    async (_coordinate, responsePaymentId, responseProcurementId) => {
+      spotPageRuntime.route.params.procurementId = "procurement-a";
+      spotPageRuntime.fetchReceipt.mockReset();
+      spotPageRuntime.fetchReceipt.mockResolvedValue(receiptReadModel());
+      spotPageRuntime.fetchDetail.mockReset();
+      spotPageRuntime.fetchDetail.mockResolvedValue({
+        procurement: {
+          id: "procurement-a",
+          payment: { paymentId: "payment-current" }
+        },
+        payments: [
+          {
+            id: "payment-current",
+            form: "real_payment",
+            status: "draft"
+          }
+        ]
+      });
+      spotPageRuntime.fetchPaymentDetail.mockReset();
+      const paymentResponse = paymentDetailReadModel(responsePaymentId);
+      paymentResponse.payment.procurement.id = responseProcurementId;
+      spotPageRuntime.fetchPaymentDetail.mockResolvedValue(paymentResponse);
+      const { bindings, scope } = setupPage<ReceiptPageBindings>(
+        SpotProcurementReceiptPage
+      );
+
+      try {
+        await flushPromises();
+
+        expect(spotPageRuntime.fetchPaymentDetail).toHaveBeenCalledWith(
+          "payment-current"
+        );
+        expect(bindings.paymentDetail.value).toBeNull();
+        expect(bindings.spotPaymentCapability.value).toBeNull();
+        expect(bindings.paymentNotice.value).not.toBe("");
+      } finally {
+        scope.stop();
+      }
+    }
+  );
+
+  it.each(["resolve", "reject"] as const)(
+    "does not let an invoice invalidation %s from procurement A mutate procurement B",
+    async (settlement) => {
+      prepareReceiptRuntime();
+      const pending = deferred();
+      spotPageRuntime.invalidateInvoice.mockReturnValue(pending.promise);
+      const { bindings, scope } = setupPage<ReceiptPageBindings>(
+        SpotProcurementReceiptPage
+      );
+
+      try {
+        await flushPromises();
+        const capabilityA = invoiceCapability(
+          "procurement-a",
+          "payment-a",
+          "invoice-a"
+        );
+        bindings.spotPaymentCapability.value = capabilityA;
+        bindings.openInvoiceInvalidation(
+          capabilityA.invoice.invoices[0]!
+        );
+        const action = bindings.invalidateInvoice({ reason: "A 发票错误" });
+
+        expect(spotPageRuntime.invalidateInvoice).toHaveBeenCalledWith(
+          "payment-a",
+          "invoice-a",
+          { reason: "A 发票错误" }
+        );
+
+        spotPageRuntime.route.params.procurementId = "procurement-b";
+        await nextTick();
+        await flushPromises();
+        const capabilityB = invoiceCapability(
+          "procurement-b",
+          "payment-b",
+          "invoice-b"
+        );
+        bindings.spotPaymentCapability.value = capabilityB;
+        bindings.openInvoiceInvalidation(
+          capabilityB.invoice.invoices[0]!
+        );
+        bindings.message.value = "采购 B 已准备";
+        bindings.error.value = "采购 B 页面提示";
+        bindings.invoiceInvalidationError.value = "采购 B 表单提示";
+        bindings.busy.value = true;
+        const generationB = bindings.selectedInvoiceGeneration.value;
+        const loadCountBeforeSettlement =
+          spotPageRuntime.fetchReceipt.mock.calls.length;
+
+        if (settlement === "resolve") {
+          pending.resolve();
+        } else {
+          pending.reject(new Error("采购 A 作废失败"));
+        }
+        await action;
+        await flushPromises();
+
+        expect(spotPageRuntime.fetchReceipt).toHaveBeenCalledTimes(
+          loadCountBeforeSettlement
+        );
+        expect(bindings.message.value).toBe("采购 B 已准备");
+        expect(bindings.error.value).toBe("采购 B 页面提示");
+        expect(bindings.invoiceInvalidationError.value).toBe(
+          "采购 B 表单提示"
+        );
+        expect(bindings.busy.value).toBe(true);
+        expect(bindings.invoiceInvalidationVisible.value).toBe(true);
+        expect(bindings.selectedInvoiceId.value).toBe("invoice-b");
+        expect(bindings.selectedInvoicePaymentId.value).toBe("payment-b");
+        expect(bindings.selectedInvoiceProcurementId.value).toBe(
+          "procurement-b"
+        );
+        expect(bindings.selectedInvoiceGeneration.value).toBe(generationB);
+        expect(bindings.routeSafetyNotice.value).toBe("");
+      } finally {
+        scope.stop();
+      }
+    }
+  );
+
+  it.each(["resolve", "reject"] as const)(
+    "does not let a receipt PDF refresh %s from procurement A mutate procurement B",
+    async (settlement) => {
+      prepareReceiptRuntime();
+      const pending = deferred();
+      spotPageRuntime.refreshReceiptPdf.mockReturnValue(pending.promise);
+      const { bindings, scope } = setupPage<ReceiptPageBindings>(
+        SpotProcurementReceiptPage
+      );
+
+      try {
+        await flushPromises();
+        bindings.spotReceiptCapability.value =
+          receiptPdfCapability("procurement-a");
+        bindings.prepareReceiptPdfRefresh();
+        const action = bindings.refreshReceiptPdf();
+
+        expect(spotPageRuntime.refreshReceiptPdf).toHaveBeenCalledWith(
+          "procurement-a"
+        );
+
+        spotPageRuntime.route.params.procurementId = "procurement-b";
+        await nextTick();
+        await flushPromises();
+        bindings.spotReceiptCapability.value =
+          receiptPdfCapability("procurement-b");
+        bindings.prepareReceiptPdfRefresh();
+        bindings.message.value = "采购 B 已准备";
+        bindings.error.value = "采购 B 页面提示";
+        bindings.busy.value = true;
+        const generationB = bindings.receiptPdfRefreshGeneration.value;
+        const loadCountBeforeSettlement =
+          spotPageRuntime.fetchReceipt.mock.calls.length;
+
+        if (settlement === "resolve") {
+          pending.resolve();
+        } else {
+          pending.reject(new Error("采购 A PDF 生成失败"));
+        }
+        await action;
+        await flushPromises();
+
+        expect(spotPageRuntime.fetchReceipt).toHaveBeenCalledTimes(
+          loadCountBeforeSettlement
+        );
+        expect(bindings.message.value).toBe("采购 B 已准备");
+        expect(bindings.error.value).toBe("采购 B 页面提示");
+        expect(bindings.busy.value).toBe(true);
+        expect(bindings.receiptPdfRefreshProcurementId.value).toBe(
+          "procurement-b"
+        );
+        expect(bindings.receiptPdfRefreshGeneration.value).toBe(generationB);
+        expect(bindings.routeSafetyNotice.value).toBe("");
+      } finally {
+        scope.stop();
+      }
+    }
+  );
+
+  it("keeps busy false and skips the invoice wrapper when preflight coordinates are stale", async () => {
+    prepareReceiptRuntime();
+    const { bindings, scope } = setupPage<ReceiptPageBindings>(
+      SpotProcurementReceiptPage
+    );
+
+    try {
+      await flushPromises();
+      const capability = invoiceCapability(
+        "procurement-a",
+        "payment-a",
+        "invoice-a"
+      );
+      bindings.spotPaymentCapability.value = capability;
+      bindings.openInvoiceInvalidation(capability.invoice.invoices[0]!);
+      bindings.selectedInvoiceProcurementId.value = "procurement-stale";
+
+      expect(() =>
+        bindings.invalidateInvoice({ reason: "坐标失效" })
+      ).toThrow();
+      expect(spotPageRuntime.invalidateInvoice).not.toHaveBeenCalled();
+      expect(bindings.busy.value).toBe(false);
+    } finally {
+      scope.stop();
+    }
+  });
+
+  it("keeps busy false and skips the receipt PDF wrapper when preflight coordinates are stale", async () => {
+    prepareReceiptRuntime();
+    const { bindings, scope } = setupPage<ReceiptPageBindings>(
+      SpotProcurementReceiptPage
+    );
+
+    try {
+      await flushPromises();
+      bindings.spotReceiptCapability.value =
+        receiptPdfCapability("procurement-a");
+      bindings.prepareReceiptPdfRefresh();
+      bindings.receiptPdfRefreshProcurementId.value = "procurement-stale";
+
+      expect(() => bindings.refreshReceiptPdf()).toThrow();
+      expect(spotPageRuntime.refreshReceiptPdf).not.toHaveBeenCalled();
+      expect(bindings.busy.value).toBe(false);
+    } finally {
+      scope.stop();
+    }
+  });
+
+  it.each(["invoice", "receipt PDF"] as const)(
+    "keeps busy false when the %s wrapper throws before returning a promise",
+    async (actionType) => {
+      prepareReceiptRuntime();
+      const { bindings, scope } = setupPage<ReceiptPageBindings>(
+        SpotProcurementReceiptPage
+      );
+
+      try {
+        await flushPromises();
+        if (actionType === "invoice") {
+          const capability = invoiceCapability(
+            "procurement-a",
+            "payment-a",
+            "invoice-a"
+          );
+          bindings.spotPaymentCapability.value = capability;
+          bindings.openInvoiceInvalidation(
+            capability.invoice.invoices[0]!
+          );
+          spotPageRuntime.invalidateInvoice.mockImplementationOnce(() => {
+            throw new Error("同步创建请求失败");
+          });
+
+          expect(() =>
+            bindings.invalidateInvoice({ reason: "附件错误" })
+          ).toThrow("同步创建请求失败");
+        } else {
+          bindings.spotReceiptCapability.value =
+            receiptPdfCapability("procurement-a");
+          bindings.prepareReceiptPdfRefresh();
+          spotPageRuntime.refreshReceiptPdf.mockImplementationOnce(() => {
+            throw new Error("同步创建请求失败");
+          });
+
+          expect(() => bindings.refreshReceiptPdf()).toThrow(
+            "同步创建请求失败"
+          );
+        }
+        expect(bindings.busy.value).toBe(false);
+      } finally {
+        scope.stop();
+      }
+    }
+  );
+
+  it("lets an old invoice operation release its busy ownership after a same-route selection change without polluting the new selection", async () => {
+    prepareReceiptRuntime();
+    const pending = deferred();
+    spotPageRuntime.invalidateInvoice.mockReturnValue(pending.promise);
+    const { bindings, scope } = setupPage<ReceiptPageBindings>(
+      SpotProcurementReceiptPage
+    );
+
+    try {
+      await flushPromises();
+      const capability = invoiceCapability(
+        "procurement-a",
+        "payment-a",
+        "invoice-a"
+      );
+      const invoiceB = {
+        ...capability.invoice.invoices[0]!,
+        id: "invoice-b",
+        fileId: "invoice-b-file"
+      };
+      capability.invoice.invoices.push(invoiceB);
+      bindings.spotPaymentCapability.value = capability;
+      bindings.openInvoiceInvalidation(capability.invoice.invoices[0]!);
+      const action = bindings.invalidateInvoice({ reason: "A 发票错误" });
+
+      bindings.openInvoiceInvalidation(invoiceB);
+      bindings.message.value = "发票 B 已准备";
+      const generation = bindings.selectedInvoiceGeneration.value;
+      const loadCountBeforeSettlement =
+        spotPageRuntime.fetchReceipt.mock.calls.length;
+      pending.resolve();
+      await action;
+      await flushPromises();
+
+      expect(bindings.busy.value).toBe(false);
+      expect(bindings.message.value).toBe("发票 B 已准备");
+      expect(bindings.invoiceInvalidationVisible.value).toBe(true);
+      expect(bindings.selectedInvoiceId.value).toBe("invoice-b");
+      expect(bindings.selectedInvoicePaymentId.value).toBe("payment-a");
+      expect(bindings.selectedInvoiceProcurementId.value).toBe(
+        "procurement-a"
+      );
+      expect(bindings.selectedInvoiceGeneration.value).toBe(generation);
+      expect(spotPageRuntime.fetchReceipt).toHaveBeenCalledTimes(
+        loadCountBeforeSettlement
+      );
+    } finally {
+      scope.stop();
+    }
+  });
+
   it("drives abnormal termination only from server action keys and existing confirmation UI", () => {
     const detail = pageSource("SpotProcurementDetailPage.vue");
 
@@ -794,18 +1488,161 @@ describe("spot procurement web pages", () => {
     expect(detail).toContain("requestId !== detailLoadRequestId");
     expect(detail).toContain("generation !== detailRouteGeneration");
     expect(detail).toContain("procurementId.value !== expectedProcurementId");
+    expect(detail).toContain("function clearDetailRouteContext()");
+    expect(detail).toContain(
+      "context.routeGeneration === detailRouteGeneration"
+    );
+    expect(detail).toContain(
+      "function requireCurrentAbnormalTerminationRequestProcurementId("
+    );
+    expect(detail).toContain(
+      "function requireCurrentAbnormalTerminationConfirmProcurementId("
+    );
+    expect(detail).toContain(
+      "const request = requestSpotProcurementAbnormalTermination("
+    );
+    expect(detail).toContain(
+      "requireCurrentAbnormalTerminationRequestProcurementId(context)"
+    );
+    expect(detail).toContain(
+      "const request = confirmSpotProcurementAbnormalTermination("
+    );
+    expect(detail).toContain(
+      "requireCurrentAbnormalTerminationConfirmProcurementId(context)"
+    );
     expect(detail).toContain("<SensitiveActionDialog");
     expect(detail).toContain("abnormalTerminationRequestProcurementId.value = current.procurement.id");
     expect(detail).toContain("abnormalTerminationConfirmProcurementId.value = current.procurement.id");
     expect(detail).toContain("confirmation.procurementId = \"\"");
     expect(detail).toContain("@confirm=\"requestAbnormalTerminationAction\"");
     expect(detail).toContain("@confirm=\"confirmAbnormalTerminationAction\"");
-    expect(detail).toContain(".then(completeAbnormalTerminationRequest)");
-    expect(detail).toContain(".then(completeAbnormalTerminationConfirm)");
+    expect(detail).toContain(
+      ".then(() => completeAbnormalTerminationRequest(context))"
+    );
+    expect(detail).toContain(
+      ".then(() => completeAbnormalTerminationConfirm(context))"
+    );
     expect(detail).not.toContain("openConfirmation('abnormal_termination_request')");
     expect(detail).not.toContain("openConfirmation('abnormal_termination_confirm')");
     expect(detail).not.toMatch(/roleKeys|finance_staff|finance_director/u);
   });
+
+  it.each(["request", "confirm"] as const)(
+    "does not let a completed abnormal-termination %s refresh, clear or message a later route",
+    async (kind) => {
+      const pending = deferred();
+      spotPageRuntime.route.params.procurementId = "procurement-a";
+      spotPageRuntime.fetchDetail.mockReset();
+      spotPageRuntime.fetchDetail
+        .mockReturnValueOnce(new Promise(() => undefined))
+        .mockRejectedValue(new Error("stale refresh must not run"));
+      spotPageRuntime.requestAbnormalTermination.mockReset();
+      spotPageRuntime.confirmAbnormalTermination.mockReset();
+      const mutation =
+        kind === "request"
+          ? spotPageRuntime.requestAbnormalTermination
+          : spotPageRuntime.confirmAbnormalTermination;
+      mutation.mockReturnValueOnce(pending.promise);
+      const { bindings, scope } = setupPage<ProcurementDetailPageBindings>(
+        SpotProcurementDetailPage
+      );
+      const detail = terminationDetail();
+      bindings.spotProcurementCapability.value = detail;
+      bindings.detail.value = detail;
+
+      try {
+        let action: Promise<unknown>;
+        if (kind === "request") {
+          bindings.openAbnormalTerminationRequest();
+          action = bindings.requestAbnormalTerminationAction({
+            reason: "付款后发现供应商无法履约"
+          });
+        } else {
+          bindings.openAbnormalTerminationConfirm();
+          action = bindings.confirmAbnormalTerminationAction();
+        }
+
+        spotPageRuntime.route.params.procurementId = "procurement-b";
+        await nextTick();
+        expect(spotPageRuntime.fetchDetail).toHaveBeenCalledTimes(1);
+        bindings.actionMessage.value = "采购 B 已加载";
+        bindings.actionBusy.value = true;
+        if (kind === "request") {
+          bindings.abnormalTerminationRequestVisible.value = true;
+          bindings.abnormalTerminationRequestProcurementId.value =
+            "procurement-b";
+        } else {
+          bindings.abnormalTerminationConfirmVisible.value = true;
+          bindings.abnormalTerminationConfirmProcurementId.value =
+            "procurement-b";
+        }
+
+        pending.resolve();
+        await action;
+
+        expect(mutation).toHaveBeenCalledWith(
+          "procurement-a",
+          ...(kind === "request"
+            ? [{ reason: "付款后发现供应商无法履约" }]
+            : [])
+        );
+        expect(spotPageRuntime.fetchDetail).toHaveBeenCalledTimes(1);
+        expect(bindings.actionMessage.value).toBe("采购 B 已加载");
+        expect(bindings.actionBusy.value).toBe(true);
+        if (kind === "request") {
+          expect(bindings.abnormalTerminationRequestVisible.value).toBe(true);
+          expect(
+            bindings.abnormalTerminationRequestProcurementId.value
+          ).toBe("procurement-b");
+        } else {
+          expect(bindings.abnormalTerminationConfirmVisible.value).toBe(true);
+          expect(
+            bindings.abnormalTerminationConfirmProcurementId.value
+          ).toBe("procurement-b");
+        }
+      } finally {
+        scope.stop();
+      }
+    }
+  );
+
+  it.each(["request", "confirm"] as const)(
+    "rejects a stale abnormal-termination %s preflight before calling the wrapper or setting busy",
+    (kind) => {
+      spotPageRuntime.route.params.procurementId = "procurement-a";
+      spotPageRuntime.requestAbnormalTermination.mockReset();
+      spotPageRuntime.confirmAbnormalTermination.mockReset();
+      const mutation =
+        kind === "request"
+          ? spotPageRuntime.requestAbnormalTermination
+          : spotPageRuntime.confirmAbnormalTermination;
+      const { bindings, scope } = setupPage<ProcurementDetailPageBindings>(
+        SpotProcurementDetailPage
+      );
+      bindings.actionBusy.value = false;
+      if (kind === "request") {
+        bindings.abnormalTerminationRequestProcurementId.value =
+          "procurement-stale";
+      } else {
+        bindings.abnormalTerminationConfirmProcurementId.value =
+          "procurement-stale";
+      }
+
+      try {
+        expect(() =>
+          kind === "request"
+            ? bindings.requestAbnormalTerminationAction({
+                reason: "付款后发现供应商无法履约"
+              })
+            : bindings.confirmAbnormalTerminationAction()
+        ).toThrow("异常终止操作上下文已失效");
+        expect(mutation).not.toHaveBeenCalled();
+        expect(bindings.actionBusy.value).toBe(false);
+      } finally {
+        scope.stop();
+      }
+    }
+  );
 
   it("uses the approved shared business components instead of a second UI system", () => {
     const sources = [

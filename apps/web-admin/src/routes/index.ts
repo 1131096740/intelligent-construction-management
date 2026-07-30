@@ -104,40 +104,60 @@ export function resolveRouteScrollPosition(
   return { left: 0, top: 0 };
 }
 
-const browserScrollRegistryKey =
-  "__JIANGKONG_BROWSER_HISTORY_SCROLL_POSITION_REGISTRY__";
+export function createBrowserHistoryScrollPositionRegistryInstaller() {
+  const installations = new Map<
+    Window,
+    {
+      registry: BrowserHistoryScrollPositionRegistry;
+      popStateHandler: (event: PopStateEvent) => void;
+    }
+  >();
 
-type RegistryWindow = Window & {
-  [browserScrollRegistryKey]?: BrowserHistoryScrollPositionRegistry;
-};
+  return {
+    install(windowRef: Window) {
+      const installed = installations.get(windowRef);
+      if (installed) {
+        return installed.registry;
+      }
 
-function installBrowserHistoryScrollPositionRegistry(
-  windowRef: Window
-): BrowserHistoryScrollPositionRegistry {
-  const registryWindow = windowRef as RegistryWindow;
-  const installed = registryWindow[browserScrollRegistryKey];
-  if (installed) {
-    return installed;
+      const registry = new BrowserHistoryScrollPositionRegistry(
+        windowRef.history.state
+      );
+      const popStateHandler = (event: PopStateEvent) => {
+        registry.capturePopState(
+          event.state,
+          {
+            left: windowRef.scrollX,
+            top: windowRef.scrollY
+          },
+          currentWindowRouteIdentity(windowRef.location)
+        );
+      };
+      windowRef.addEventListener("popstate", popStateHandler);
+      installations.set(windowRef, { registry, popStateHandler });
+      return registry;
+    },
+    dispose() {
+      for (const [windowRef, installation] of installations) {
+        windowRef.removeEventListener(
+          "popstate",
+          installation.popStateHandler
+        );
+      }
+      installations.clear();
+    }
+  };
+}
+
+const browserScrollRegistryInstaller =
+  createBrowserHistoryScrollPositionRegistryInstaller();
+const hotModule = (
+  import.meta as ImportMeta & {
+    hot?: { dispose(callback: () => void): void };
   }
-
-  const registry = new BrowserHistoryScrollPositionRegistry(
-    windowRef.history.state
-  );
-  windowRef.addEventListener("popstate", (event) => {
-    registry.capturePopState(
-      event.state,
-      {
-        left: windowRef.scrollX,
-        top: windowRef.scrollY
-      },
-      currentWindowRouteIdentity(windowRef.location)
-    );
-  });
-  Object.defineProperty(registryWindow, browserScrollRegistryKey, {
-    configurable: true,
-    value: registry
-  });
-  return registry;
+).hot;
+if (hotModule) {
+  hotModule.dispose(() => browserScrollRegistryInstaller.dispose());
 }
 
 function readHistoryPosition(state: unknown): number | null {
@@ -202,7 +222,7 @@ function canonicalizeRouteIdentity(routeIdentity: string): string | null {
 const browserHistoryScrollRegistry =
   typeof window === "undefined"
     ? null
-    : installBrowserHistoryScrollPositionRegistry(window);
+    : browserScrollRegistryInstaller.install(window);
 const routerHistory =
   typeof window === "undefined" ? createMemoryHistory() : createWebHistory();
 

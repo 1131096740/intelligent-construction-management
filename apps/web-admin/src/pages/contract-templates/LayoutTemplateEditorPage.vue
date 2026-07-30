@@ -307,6 +307,15 @@ const leaveDialogVisible = ref(false);
 const allowNavigation = ref(false);
 let resolvePendingLeave: ((decision: boolean) => void) | null = null;
 let layoutLoadGeneration = 0;
+let layoutRouteGeneration = 0;
+let riskStopOperationId = 0;
+
+type RiskStopContext = {
+  templateId: string;
+  versionId: string;
+  routeGeneration: number;
+  operationId: number;
+};
 const isCreateMode = computed(() => layoutTemplateRouteId.value === "new");
 const versions = computed(() => detail.value?.versions ?? []);
 const currentVersion = computed(() =>
@@ -559,27 +568,70 @@ function openRiskStopDialog() {
   riskStopDialogVisible.value = true;
 }
 
-function completeRiskStop() {
-  riskStopDialogVisible.value = false;
-  showSuccess("版式版本已风险停用，新合同文件不再使用该版本");
-  return refreshDetail(riskStopVersionId.value);
+function captureRiskStopContext(): RiskStopContext {
+  return {
+    templateId: layoutTemplateRouteId.value,
+    versionId: riskStopVersionId.value,
+    routeGeneration: layoutRouteGeneration,
+    operationId: riskStopOperationId + 1
+  };
 }
 
-function failRiskStop(error: unknown) {
+function riskStopContextIsCurrent(context: RiskStopContext) {
+  return Boolean(context.templateId && context.versionId) &&
+    context.templateId === layoutTemplateRouteId.value &&
+    context.versionId === riskStopVersionId.value &&
+    context.versionId === selectedVersionId.value &&
+    context.routeGeneration === layoutRouteGeneration;
+}
+
+function requireCurrentRiskStopVersionId(context: RiskStopContext) {
+  if (!riskStopContextIsCurrent(context)) {
+    throw new Error("版式版本操作上下文已失效，请重新打开风险停用确认");
+  }
+  return context.versionId;
+}
+
+function riskStopOperationIsCurrent(context: RiskStopContext) {
+  return context.templateId === layoutTemplateRouteId.value &&
+    context.routeGeneration === layoutRouteGeneration &&
+    context.operationId === riskStopOperationId;
+}
+
+function riskStopResultCanWrite(context: RiskStopContext) {
+  return riskStopContextIsCurrent(context) &&
+    riskStopOperationIsCurrent(context);
+}
+
+function completeRiskStop(context: RiskStopContext) {
+  if (!riskStopResultCanWrite(context)) return;
+  riskStopDialogVisible.value = false;
+  showSuccess("版式版本已风险停用，新合同文件不再使用该版本");
+  return refreshDetail(context.versionId);
+}
+
+function failRiskStop(error: unknown, context: RiskStopContext) {
+  if (!riskStopResultCanWrite(context)) return;
   riskStopError.value = error instanceof Error ? error.message : "风险停用失败";
 }
 
-function finishRiskStop() {
+function finishRiskStop(context: RiskStopContext) {
+  if (!riskStopOperationIsCurrent(context)) return;
   riskStopLoading.value = false;
 }
 
 function stopCurrentVersion() {
+  const context = captureRiskStopContext();
+  const request = stopLayoutTemplateVersion(
+    requireCurrentRiskStopVersionId(context)
+  );
+  riskStopOperationId = context.operationId;
   riskStopLoading.value = true;
   riskStopError.value = "";
-  return stopLayoutTemplateVersion(riskStopVersionId.value)
-    .then(completeRiskStop)
-    .catch(failRiskStop)
-    .finally(finishRiskStop);
+  return request
+    .then(() => completeRiskStop(context))
+    .catch((error) => failRiskStop(error, context))
+    .finally(() => finishRiskStop(context));
 }
 
 async function runVersionAction(action: () => Promise<unknown>, success: string, versionId: string) {
@@ -638,7 +690,9 @@ function clearTransientState() {
 }
 
 function clearLayoutRouteContext() {
+  layoutRouteGeneration += 1;
   layoutLoadGeneration += 1;
+  riskStopOperationId += 1;
   layoutTemplateCapability.value = null;
   detail.value = null;
   selectedVersionId.value = "";
@@ -646,6 +700,7 @@ function clearLayoutRouteContext() {
   riskStopDialogVisible.value = false;
   riskStopError.value = "";
   riskStopVersionId.value = "";
+  riskStopLoading.value = false;
   message.value = "";
   editorBaseline.value = "";
   form.name = "";

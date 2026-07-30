@@ -461,6 +461,9 @@ test("fails return provenance closed when the main response or a descendant is m
       "apps/web-admin/src/api/example.api.ts": `
         import { apiFetch } from "./api-fetch";
         declare function mutateExternal(value: unknown): void;
+        declare function scheduleExternal(
+          callback: () => void
+        ): void;
 
         export async function nestedPushExample() {
           const response = await apiFetch("/nested-push");
@@ -697,6 +700,169 @@ test("fails return provenance closed when the main response or a descendant is m
           return result;
         }
 
+        export async function objectClosureMutationExample() {
+          const result = await (
+            await apiFetch("/object-closure-mutation")
+          ).json();
+          const mutator = {
+            run: () => {
+              result.availableActions.push({
+                key: "forged_action"
+              });
+            }
+          };
+          mutator.run();
+          return result;
+        }
+
+        export async function objectClosureArgumentMutationExample() {
+          const result = await (
+            await apiFetch("/object-closure-argument-mutation")
+          ).json();
+          const mutator = {
+            run: (_reason: string) => {
+              result.availableActions.push({
+                key: "forged_action"
+              });
+            }
+          };
+          mutator.run("forged");
+          return result;
+        }
+
+        export async function aliasedClosureMutationExample() {
+          const result = await (
+            await apiFetch("/aliased-closure-mutation")
+          ).json();
+          const mutate = (_reason: string) => {
+            result.availableActions.push({
+              key: "forged_action"
+            });
+          };
+          const run = mutate;
+          run("forged");
+          return result;
+        }
+
+        export async function queuedClosureMutationExample() {
+          const result = await (
+            await apiFetch("/queued-closure-mutation")
+          ).json();
+          queueMicrotask(() => {
+            result.availableActions.push({
+              key: "forged_action"
+            });
+          });
+          return result;
+        }
+
+        export async function timerClosureMutationExample() {
+          const result = await (
+            await apiFetch("/timer-closure-mutation")
+          ).json();
+          setTimeout(() => {
+            result.availableActions.push({
+              key: "forged_action"
+            });
+          }, 0);
+          return result;
+        }
+
+        export async function promiseClosureMutationExample() {
+          const result = await (
+            await apiFetch("/promise-closure-mutation")
+          ).json();
+          Promise.resolve().then(() => {
+            result.availableActions.push({
+              key: "forged_action"
+            });
+          });
+          return result;
+        }
+
+        export async function unknownClosureMutationExample() {
+          const result = await (
+            await apiFetch("/unknown-closure-mutation")
+          ).json();
+          scheduleExternal(() => {
+            result.availableActions.push({
+              key: "forged_action"
+            });
+          });
+          return result;
+        }
+
+        export async function objectCallbackEscapeExample() {
+          const result = await (
+            await apiFetch("/object-callback-escape")
+          ).json();
+          scheduleExternal({
+            run: () => {
+              result.availableActions.push({
+                key: "forged_action"
+              });
+            }
+          });
+          return result;
+        }
+
+        export async function arrayCallbackEscapeExample() {
+          const result = await (
+            await apiFetch("/array-callback-escape")
+          ).json();
+          scheduleExternal([
+            [
+              () => {
+                result.availableActions.push({
+                  key: "forged_action"
+                });
+              }
+            ]
+          ]);
+          return result;
+        }
+
+        export async function classConstructorMutationExample() {
+          const result = await (
+            await apiFetch("/class-constructor-mutation")
+          ).json();
+          new class {
+            constructor() {
+              result.availableActions.push({
+                key: "forged_action"
+              });
+            }
+          }();
+          return result;
+        }
+
+        export async function closureRebindingExample() {
+          let result = await (
+            await apiFetch("/closure-rebinding")
+          ).json();
+          const replace = () => {
+            result = {
+              availableActions: [{ key: "forged_action" }]
+            };
+          };
+          replace();
+          return result;
+        }
+
+        export async function classConstructorRebindingExample() {
+          let result = await (
+            await apiFetch("/class-constructor-rebinding")
+          ).json();
+          new class {
+            constructor() {
+              result = {
+                availableActions: [{ key: "forged_action" }]
+              };
+            }
+          }();
+          return result;
+        }
+
         export async function loopReplacementExample() {
           const response = await apiFetch("/loop-replacement");
           let result = await response.json();
@@ -731,6 +897,18 @@ test("fails return provenance closed when the main response or a descendant is m
           finallyAssignedMutationExample,
           destructuredHelperExample,
           nestedClosureExample,
+          objectClosureMutationExample,
+          objectClosureArgumentMutationExample,
+          aliasedClosureMutationExample,
+          queuedClosureMutationExample,
+          timerClosureMutationExample,
+          promiseClosureMutationExample,
+          unknownClosureMutationExample,
+          objectCallbackEscapeExample,
+          arrayCallbackEscapeExample,
+          classConstructorMutationExample,
+          closureRebindingExample,
+          classConstructorRebindingExample,
           loopReplacementExample,
           nestedPushExample
         } from "../api/example.api";
@@ -754,6 +932,18 @@ test("fails return provenance closed when the main response or a descendant is m
         void finallyAssignedMutationExample();
         void destructuredHelperExample();
         void nestedClosureExample();
+        void objectClosureMutationExample();
+        void objectClosureArgumentMutationExample();
+        void aliasedClosureMutationExample();
+        void queuedClosureMutationExample();
+        void timerClosureMutationExample();
+        void promiseClosureMutationExample();
+        void unknownClosureMutationExample();
+        void objectCallbackEscapeExample();
+        void arrayCallbackEscapeExample();
+        void classConstructorMutationExample();
+        void closureRebindingExample();
+        void classConstructorRebindingExample();
         void loopReplacementExample();
         void nestedPushExample();
         </script>
@@ -783,6 +973,18 @@ test("fails return provenance closed when the main response or a descendant is m
           "/finally-assigned",
           "/destructured-helper",
           "/nested-closure",
+          "/object-closure-mutation",
+          "/object-closure-argument-mutation",
+          "/aliased-closure-mutation",
+          "/queued-closure-mutation",
+          "/timer-closure-mutation",
+          "/promise-closure-mutation",
+          "/unknown-closure-mutation",
+          "/object-callback-escape",
+          "/array-callback-escape",
+          "/class-constructor-mutation",
+          "/closure-rebinding",
+          "/class-constructor-rebinding",
           "/loop-replacement"
         ].map((path) => ({
           method: "GET",
@@ -877,7 +1079,159 @@ test("fails return provenance closed when the main response or a descendant is m
         provenance.nestedClosureExample,
         "unverified"
       );
+      assert.equal(
+        provenance.objectClosureMutationExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.objectClosureArgumentMutationExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.aliasedClosureMutationExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.queuedClosureMutationExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.timerClosureMutationExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.promiseClosureMutationExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.unknownClosureMutationExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.objectCallbackEscapeExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.arrayCallbackEscapeExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.classConstructorMutationExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.closureRebindingExample,
+        "unverified"
+      );
+      assert.equal(
+        provenance.classConstructorRebindingExample,
+        "unverified"
+      );
       assert.equal(provenance.loopReplacementExample, "unverified");
+    }
+  );
+});
+
+test("preserves transparent provenance for harmless callbacks and constructors", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        import { apiFetch } from "./api-fetch";
+        declare function scheduleExternal(value: unknown): void;
+
+        export async function noCaptureCallbackExample() {
+          const result = await (
+            await apiFetch("/no-capture-callback")
+          ).json();
+          queueMicrotask(() => {
+            void "done";
+          });
+          return result;
+        }
+
+        export async function readonlyCallbackExample() {
+          const result = await (
+            await apiFetch("/readonly-callback")
+          ).json();
+          queueMicrotask(() => {
+            void result.availableActions.length;
+          });
+          return result;
+        }
+
+        export async function readonlyNestedCallbackExample() {
+          const result = await (
+            await apiFetch("/readonly-nested-callback")
+          ).json();
+          scheduleExternal({
+            run: () => {
+              void result.availableActions.length;
+            }
+          });
+          return result;
+        }
+
+        export async function harmlessConstructorExample() {
+          const result = await (
+            await apiFetch("/harmless-constructor")
+          ).json();
+          void new class {
+            readonly kind = "local";
+          }();
+          return result;
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          noCaptureCallbackExample,
+          readonlyCallbackExample,
+          readonlyNestedCallbackExample,
+          harmlessConstructorExample
+        } from "../api/example.api";
+        void noCaptureCallbackExample();
+        void readonlyCallbackExample();
+        void readonlyNestedCallbackExample();
+        void harmlessConstructorExample();
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json": JSON.stringify({
+        schemaVersion: 1,
+        routes: [
+          "/no-capture-callback",
+          "/readonly-callback",
+          "/readonly-nested-callback",
+          "/harmless-constructor"
+        ].map((path) => ({
+          method: "GET",
+          path,
+          normalizedKey: `GET ${path}`
+        }))
+      })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      for (const name of [
+        "noCaptureCallbackExample",
+        "readonlyCallbackExample",
+        "readonlyNestedCallbackExample",
+        "harmlessConstructorExample"
+      ]) {
+        const wrapper = manifest.wrappers.find(
+          (candidate) => candidate.name === name
+        );
+        assert.equal(
+          wrapper.returnProvenance,
+          "transparent_main_response",
+          name
+        );
+      }
+      assert.equal(
+        manifest.status,
+        "ready",
+        JSON.stringify(manifest.blockers)
+      );
     }
   );
 });
@@ -1313,6 +1667,1175 @@ test("resolves apiFetch aliases and blocks unknown transport delegates", async (
         delegated.requests[0].unresolvedReason,
         "unknown_transport_delegate"
       );
+      assert.equal(manifest.status, "blocked");
+    }
+  );
+});
+
+test("tracks global fetch aliases through containers, destructuring, and rebinding", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        export function globalAliasExample() {
+          const send = globalThis.fetch;
+          return send("/api/examples/global", {
+            method: "POST",
+            body: "{}"
+          });
+        }
+
+        export function windowContainerExample() {
+          const transports = {
+            run: window.fetch
+          };
+          return transports.run("/api/examples/window", {
+            method: "POST",
+            body: "{}"
+          });
+        }
+
+        export function selfDestructuredExample() {
+          const { fetch: send } = self;
+          return send("/api/examples/self", {
+            method: "POST",
+            body: "{}"
+          });
+        }
+
+        export function reboundGlobalExample() {
+          let send = (_path: string) => ({ local: true });
+          send = globalThis.fetch;
+          return send("/api/examples/rebound", {
+            method: "POST",
+            body: "{}"
+          });
+        }
+
+        export function overwrittenLocalExample() {
+          let send = globalThis.fetch;
+          send = (_path: string) => ({ local: true });
+          return send("/api/examples/local");
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          globalAliasExample,
+          windowContainerExample,
+          selfDestructuredExample,
+          reboundGlobalExample,
+          overwrittenLocalExample
+        } from "../api/example.api";
+        void globalAliasExample();
+        void windowContainerExample();
+        void selfDestructuredExample();
+        void reboundGlobalExample();
+        void overwrittenLocalExample();
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json": JSON.stringify({
+        schemaVersion: 1,
+        routes: ["global", "window", "self", "rebound"].map(
+          (name) => ({
+            method: "POST",
+            path: `/examples/${name}`,
+            normalizedKey: `POST /examples/${name}`
+          })
+        )
+      })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      const wrappers = new Map(
+        manifest.wrappers.map((wrapper) => [
+          wrapper.name,
+          wrapper
+        ])
+      );
+      for (const name of [
+        "globalAliasExample",
+        "windowContainerExample",
+        "selfDestructuredExample",
+        "reboundGlobalExample"
+      ]) {
+        assert.equal(wrappers.get(name).kind, "transport", name);
+        assert.equal(wrappers.get(name).requests.length, 1, name);
+      }
+      assert.equal(
+        wrappers.get("globalAliasExample").requests[0].normalizedKey,
+        "POST /examples/global"
+      );
+      assert.equal(
+        wrappers.get("windowContainerExample").requests[0]
+          .normalizedKey,
+        "POST /examples/window"
+      );
+      assert.equal(
+        wrappers.get("selfDestructuredExample").requests[0]
+          .normalizedKey,
+        "POST /examples/self"
+      );
+      assert.equal(
+        wrappers.get("reboundGlobalExample").requests[0]
+          .normalizedKey,
+        "POST /examples/rebound"
+      );
+      assert.equal(
+        wrappers.get("overwrittenLocalExample").kind,
+        "pure"
+      );
+      assert.deepEqual(
+        wrappers.get("overwrittenLocalExample").requests,
+        []
+      );
+      assert.equal(
+        manifest.status,
+        "ready",
+        JSON.stringify(manifest.blockers)
+      );
+    }
+  );
+});
+
+test("lets imports shadow intrinsic fetch in transport and provenance analysis", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/helper.ts": `
+        export const fetch = (_path: string) => ({
+          local: true
+        });
+        export default fetch;
+      `,
+      "apps/web-admin/src/api/example.api.ts": `
+        import defaultFetch from "./helper";
+        import { fetch } from "./helper";
+        import * as helper from "./helper";
+
+        export function namedShadowExample() {
+          return fetch("/api/examples/named-shadow");
+        }
+
+        export function defaultShadowExample() {
+          return defaultFetch("/api/examples/default-shadow");
+        }
+
+        export function namespaceShadowExample() {
+          return helper.fetch("/api/examples/namespace-shadow");
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          namedShadowExample,
+          defaultShadowExample,
+          namespaceShadowExample
+        } from "../api/example.api";
+        void namedShadowExample();
+        void defaultShadowExample();
+        void namespaceShadowExample();
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json":
+        JSON.stringify({ schemaVersion: 1, routes: [] })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      const wrappers = new Map(
+        manifest.wrappers.map((wrapper) => [
+          wrapper.name,
+          wrapper
+        ])
+      );
+      for (const name of [
+        "namedShadowExample",
+        "defaultShadowExample",
+        "namespaceShadowExample"
+      ]) {
+        assert.equal(wrappers.get(name).kind, "transport", name);
+        assert.equal(
+          wrappers.get(name).requests[0].unresolvedReason,
+          "unknown_transport_delegate",
+          name
+        );
+        assert.equal(
+          wrappers.get(name).returnProvenance,
+          "unverified",
+          name
+        );
+      }
+      assert.equal(manifest.status, "blocked");
+    }
+  );
+});
+
+test("tracks computed global fetch keys and fails closed for unresolved keys", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        export function binaryKeyExample() {
+          const send = globalThis["f" + "etch"];
+          return send("/api/examples/binary-key");
+        }
+
+        export function constKeyExample() {
+          const key = "fetch";
+          const send = window[key];
+          return send("/api/examples/const-key");
+        }
+
+        export function templateKeyExample() {
+          const send = self[\`fetch\`];
+          return send("/api/examples/template-key");
+        }
+
+        export function conditionalKeyExample(enabled: boolean) {
+          const key = enabled ? "fetch" : "fetch";
+          return globalThis[key](
+            "/api/examples/conditional-key"
+          );
+        }
+
+        export function unresolvedKeyExample(key: string) {
+          const send = globalThis[key];
+          return send("/api/examples/unresolved-key");
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          binaryKeyExample,
+          constKeyExample,
+          templateKeyExample,
+          conditionalKeyExample,
+          unresolvedKeyExample
+        } from "../api/example.api";
+        void binaryKeyExample();
+        void constKeyExample();
+        void templateKeyExample();
+        void conditionalKeyExample(true);
+        void unresolvedKeyExample("customFetch");
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json": JSON.stringify({
+        schemaVersion: 1,
+        routes: [
+          "binary-key",
+          "const-key",
+          "template-key",
+          "conditional-key"
+        ].map((name) => ({
+          method: "GET",
+          path: `/examples/${name}`,
+          normalizedKey: `GET /examples/${name}`
+        }))
+      })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      const wrappers = new Map(
+        manifest.wrappers.map((wrapper) => [
+          wrapper.name,
+          wrapper
+        ])
+      );
+      for (const name of [
+        "binaryKeyExample",
+        "constKeyExample",
+        "templateKeyExample",
+        "conditionalKeyExample"
+      ]) {
+        assert.equal(wrappers.get(name).kind, "transport", name);
+        assert.equal(wrappers.get(name).requests.length, 1, name);
+      }
+      assert.equal(
+        wrappers.get("binaryKeyExample").requests[0].normalizedKey,
+        "GET /examples/binary-key"
+      );
+      assert.equal(
+        wrappers.get("constKeyExample").requests[0].normalizedKey,
+        "GET /examples/const-key"
+      );
+      assert.equal(
+        wrappers.get("templateKeyExample").requests[0].normalizedKey,
+        "GET /examples/template-key"
+      );
+      assert.equal(
+        wrappers.get("conditionalKeyExample").requests[0]
+          .normalizedKey,
+        "GET /examples/conditional-key"
+      );
+      assert.equal(
+        wrappers.get("unresolvedKeyExample").kind,
+        "transport"
+      );
+      assert.equal(
+        wrappers.get("unresolvedKeyExample").requests[0]
+          .unresolvedReason,
+        "unknown_transport_delegate"
+      );
+      assert.equal(manifest.status, "blocked");
+    }
+  );
+});
+
+test("tracks comma-expression transports and scans prefix side effects", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        export function commaAliasExample() {
+          const send = (0, globalThis.fetch);
+          return send("/api/examples/comma-alias", {
+            method: "POST"
+          });
+        }
+
+        export function directCommaExample() {
+          return (0, fetch)("/api/examples/direct-comma", {
+            method: "POST"
+          });
+        }
+
+        export function commaPrefixExample() {
+          return (
+            globalThis.fetch("/api/examples/comma-prefix"),
+            fetch
+          )("/api/examples/comma-final");
+        }
+
+        export function dynamicCommaExample(key: string) {
+          return (0, globalThis[key])(
+            "/api/examples/dynamic-comma"
+          );
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          commaAliasExample,
+          directCommaExample,
+          commaPrefixExample,
+          dynamicCommaExample
+        } from "../api/example.api";
+        void commaAliasExample();
+        void directCommaExample();
+        void commaPrefixExample();
+        void dynamicCommaExample("customFetch");
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json": JSON.stringify({
+        schemaVersion: 1,
+        routes: [
+          "comma-alias",
+          "direct-comma",
+          "comma-prefix",
+          "comma-final"
+        ].map((name) => ({
+          method: ["comma-alias", "direct-comma"].includes(name)
+            ? "POST"
+            : "GET",
+          path: `/examples/${name}`,
+          normalizedKey: `${
+            ["comma-alias", "direct-comma"].includes(name)
+              ? "POST"
+              : "GET"
+          } /examples/${name}`
+        }))
+      })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      const wrappers = new Map(
+        manifest.wrappers.map((wrapper) => [
+          wrapper.name,
+          wrapper
+        ])
+      );
+      assert.equal(
+        wrappers.get("commaAliasExample").requests[0].normalizedKey,
+        "POST /examples/comma-alias"
+      );
+      assert.equal(
+        wrappers.get("directCommaExample").requests[0]
+          .normalizedKey,
+        "POST /examples/direct-comma"
+      );
+      assert.deepEqual(
+        wrappers
+          .get("commaPrefixExample")
+          .requests.map((request) => request.normalizedKey)
+          .sort(),
+        [
+          "GET /examples/comma-final",
+          "GET /examples/comma-prefix"
+        ]
+      );
+      assert.equal(
+        wrappers.get("dynamicCommaExample").requests[0]
+          .unresolvedReason,
+        "unknown_transport_delegate"
+      );
+      assert.equal(manifest.status, "blocked");
+    }
+  );
+});
+
+test("merges transport bindings across branches, exceptions, and loops", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        const local = (_path: string) => ({ local: true });
+
+        export function ifMixedExample(enabled: boolean) {
+          let send = local;
+          if (enabled) {
+            send = globalThis.fetch;
+          }
+          return send("/api/examples/if-mixed");
+        }
+
+        export function ifBothTransportExample(enabled: boolean) {
+          let send = local;
+          if (enabled) {
+            send = globalThis.fetch;
+          } else {
+            send = window.fetch;
+          }
+          return send("/api/examples/if-both-transport", {
+            method: "POST"
+          });
+        }
+
+        export function blockSequentialExample(enabled: boolean) {
+          let send = local;
+          if (enabled) {
+            send = globalThis.fetch;
+            send("/api/examples/block-sequential");
+          }
+          return false;
+        }
+
+        export function tryCatchMixedExample(enabled: boolean) {
+          let send = local;
+          try {
+            if (enabled) throw new Error("retry");
+            send = globalThis.fetch;
+          } catch {
+            send = local;
+          }
+          return send("/api/examples/try-catch-mixed");
+        }
+
+        export function finallyMixedExample(enabled: boolean) {
+          let send = local;
+          try {
+            void enabled;
+          } finally {
+            if (enabled) {
+              send = globalThis.fetch;
+            }
+          }
+          return send("/api/examples/finally-mixed");
+        }
+
+        export function loopMixedExample(enabled: boolean) {
+          let send = local;
+          while (enabled) {
+            send = globalThis.fetch;
+            enabled = false;
+          }
+          return send("/api/examples/loop-mixed");
+        }
+
+        export function deterministicSafeFinallyExample() {
+          let send = globalThis.fetch;
+          try {
+            void "work";
+          } finally {
+            send = local;
+          }
+          return send("/local");
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          ifMixedExample,
+          ifBothTransportExample,
+          blockSequentialExample,
+          tryCatchMixedExample,
+          finallyMixedExample,
+          loopMixedExample,
+          deterministicSafeFinallyExample
+        } from "../api/example.api";
+        void ifMixedExample(true);
+        void ifBothTransportExample(true);
+        void blockSequentialExample(true);
+        void tryCatchMixedExample(true);
+        void finallyMixedExample(true);
+        void loopMixedExample(true);
+        void deterministicSafeFinallyExample();
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json": JSON.stringify({
+        schemaVersion: 1,
+        routes: [
+          {
+            method: "POST",
+            path: "/examples/if-both-transport",
+            normalizedKey: "POST /examples/if-both-transport"
+          },
+          {
+            method: "GET",
+            path: "/examples/block-sequential",
+            normalizedKey: "GET /examples/block-sequential"
+          }
+        ]
+      })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      const wrappers = new Map(
+        manifest.wrappers.map((wrapper) => [
+          wrapper.name,
+          wrapper
+        ])
+      );
+      for (const name of [
+        "ifMixedExample",
+        "tryCatchMixedExample",
+        "finallyMixedExample",
+        "loopMixedExample"
+      ]) {
+        assert.equal(wrappers.get(name).kind, "transport", name);
+        assert.equal(
+          wrappers.get(name).requests[0].unresolvedReason,
+          "unknown_transport_delegate",
+          name
+        );
+      }
+      assert.equal(
+        wrappers.get("ifBothTransportExample").requests[0]
+          .normalizedKey,
+        "POST /examples/if-both-transport"
+      );
+      assert.equal(
+        wrappers.get("blockSequentialExample").requests[0]
+          .normalizedKey,
+        "GET /examples/block-sequential"
+      );
+      assert.equal(
+        wrappers.get("deterministicSafeFinallyExample").kind,
+        "pure"
+      );
+      assert.deepEqual(
+        wrappers.get("deterministicSafeFinallyExample").requests,
+        []
+      );
+      assert.equal(manifest.status, "blocked");
+    }
+  );
+});
+
+test("tracks transport state through expression and container assignments", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        const local = (_path: string) => ({ local: true });
+
+        export function immediateAssignmentExample() {
+          let send = local;
+          return (send = globalThis.fetch)(
+            "/api/examples/immediate-assignment",
+            { method: "POST" }
+          );
+        }
+
+        export function commaAssignmentExample() {
+          let send = local;
+          (0, send = globalThis.fetch);
+          return send("/api/examples/comma-assignment", {
+            method: "POST"
+          });
+        }
+
+        export function conditionalAssignmentExample(
+          enabled: boolean
+        ) {
+          let send = local;
+          enabled
+            ? (send = globalThis.fetch)
+            : (send = local);
+          return send("/api/examples/conditional-assignment");
+        }
+
+        export function containerAssignmentExample() {
+          const network = { send: local };
+          network.send = globalThis.fetch;
+          return network.send(
+            "/api/examples/container-assignment",
+            { method: "POST" }
+          );
+        }
+
+        export function safeContainerOverrideExample() {
+          const network = { send: local };
+          network.send = globalThis.fetch;
+          network.send = local;
+          return network.send("/local");
+        }
+
+        export function dynamicContainerAssignmentExample(
+          key: string
+        ) {
+          const network = { send: local };
+          network[key] = globalThis.fetch;
+          return network.send(
+            "/api/examples/dynamic-container-assignment"
+          );
+        }
+
+        export function objectAssignmentExample() {
+          let send = local;
+          ({ send } = { send: globalThis.fetch });
+          return send("/api/examples/object-assignment", {
+            method: "POST"
+          });
+        }
+
+        export function arrayAssignmentExample() {
+          let send = local;
+          [send] = [globalThis.fetch];
+          return send("/api/examples/array-assignment", {
+            method: "POST"
+          });
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          immediateAssignmentExample,
+          commaAssignmentExample,
+          conditionalAssignmentExample,
+          containerAssignmentExample,
+          safeContainerOverrideExample,
+          dynamicContainerAssignmentExample,
+          objectAssignmentExample,
+          arrayAssignmentExample
+        } from "../api/example.api";
+        void immediateAssignmentExample();
+        void commaAssignmentExample();
+        void conditionalAssignmentExample(true);
+        void containerAssignmentExample();
+        void safeContainerOverrideExample();
+        void dynamicContainerAssignmentExample("send");
+        void objectAssignmentExample();
+        void arrayAssignmentExample();
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json": JSON.stringify({
+        schemaVersion: 1,
+        routes: [
+          "immediate-assignment",
+          "comma-assignment",
+          "container-assignment",
+          "object-assignment",
+          "array-assignment"
+        ].map((name) => ({
+          method: "POST",
+          path: `/examples/${name}`,
+          normalizedKey: `POST /examples/${name}`
+        }))
+      })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      const wrappers = new Map(
+        manifest.wrappers.map((wrapper) => [
+          wrapper.name,
+          wrapper
+        ])
+      );
+      for (const [name, path] of [
+        ["immediateAssignmentExample", "immediate-assignment"],
+        ["commaAssignmentExample", "comma-assignment"],
+        ["containerAssignmentExample", "container-assignment"],
+        ["objectAssignmentExample", "object-assignment"],
+        ["arrayAssignmentExample", "array-assignment"]
+      ]) {
+        assert.equal(
+          wrappers.get(name).requests[0].normalizedKey,
+          `POST /examples/${path}`,
+          name
+        );
+      }
+      for (const name of [
+        "conditionalAssignmentExample",
+        "dynamicContainerAssignmentExample"
+      ]) {
+        assert.equal(wrappers.get(name).kind, "transport", name);
+        assert.equal(
+          wrappers.get(name).requests[0].unresolvedReason,
+          "unknown_transport_delegate",
+          name
+        );
+      }
+      assert.equal(
+        wrappers.get("safeContainerOverrideExample").kind,
+        "pure"
+      );
+      assert.deepEqual(
+        wrappers.get("safeContainerOverrideExample").requests,
+        []
+      );
+      assert.equal(manifest.status, "blocked");
+    }
+  );
+});
+
+test("binds nested default and rest destructuring for declarations assignments and parameters", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        const local = (_path: string) => ({ local: true });
+
+        function invokeObject({
+          nested: { send = local },
+          ...rest
+        }: {
+          nested: { send?: typeof globalThis.fetch };
+          extra?: unknown;
+        }) {
+          void rest;
+          return send("/api/examples/object-parameter");
+        }
+
+        function invokeArray([
+          send = local,
+          ...rest
+        ]: Array<typeof globalThis.fetch | typeof local>) {
+          void rest;
+          return send("/api/examples/array-parameter");
+        }
+
+        export function nestedDeclarationExample() {
+          const {
+            nested: { send }
+          } = {
+            nested: { send: globalThis.fetch }
+          };
+          return send("/api/examples/nested-declaration");
+        }
+
+        export function defaultDeclarationExample() {
+          const {
+            send = globalThis.fetch
+          } = {};
+          return send("/api/examples/default-declaration");
+        }
+
+        export function restDeclarationExample() {
+          const {
+            safe,
+            ...network
+          } = {
+            safe: local,
+            send: globalThis.fetch
+          };
+          void safe;
+          return network.send("/api/examples/rest-declaration");
+        }
+
+        export function nestedAssignmentExample() {
+          let send = local;
+          ({
+            nested: { send }
+          } = {
+            nested: { send: globalThis.fetch }
+          });
+          return send("/api/examples/nested-assignment");
+        }
+
+        export function defaultAssignmentExample() {
+          let send = local;
+          ({
+            missing: send = globalThis.fetch
+          } = {});
+          return send("/api/examples/default-assignment");
+        }
+
+        export function restAssignmentExample() {
+          let safe = local;
+          let network = { send: local };
+          ({
+            safe,
+            ...network
+          } = {
+            safe: local,
+            send: globalThis.fetch
+          });
+          return network.send("/api/examples/rest-assignment");
+        }
+
+        export function objectParameterExample() {
+          return invokeObject({
+            nested: { send: globalThis.fetch }
+          });
+        }
+
+        export function arrayParameterExample() {
+          return invokeArray([globalThis.fetch]);
+        }
+
+        export function dynamicShapeExample(key: string) {
+          const {
+            [key]: send
+          } = { send: globalThis.fetch };
+          return send("/api/examples/dynamic-shape");
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          nestedDeclarationExample,
+          defaultDeclarationExample,
+          restDeclarationExample,
+          nestedAssignmentExample,
+          defaultAssignmentExample,
+          restAssignmentExample,
+          objectParameterExample,
+          arrayParameterExample,
+          dynamicShapeExample
+        } from "../api/example.api";
+        void nestedDeclarationExample();
+        void defaultDeclarationExample();
+        void restDeclarationExample();
+        void nestedAssignmentExample();
+        void defaultAssignmentExample();
+        void restAssignmentExample();
+        void objectParameterExample();
+        void arrayParameterExample();
+        void dynamicShapeExample("send");
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json": JSON.stringify({
+        schemaVersion: 1,
+        routes: [
+          "nested-declaration",
+          "default-declaration",
+          "rest-declaration",
+          "nested-assignment",
+          "default-assignment",
+          "rest-assignment",
+          "object-parameter",
+          "array-parameter"
+        ].map((name) => ({
+          method: "GET",
+          path: `/examples/${name}`,
+          normalizedKey: `GET /examples/${name}`
+        }))
+      })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      const wrappers = new Map(
+        manifest.wrappers.map((wrapper) => [
+          wrapper.name,
+          wrapper
+        ])
+      );
+      for (const [name, path] of [
+        ["nestedDeclarationExample", "nested-declaration"],
+        ["defaultDeclarationExample", "default-declaration"],
+        ["restDeclarationExample", "rest-declaration"],
+        ["nestedAssignmentExample", "nested-assignment"],
+        ["defaultAssignmentExample", "default-assignment"],
+        ["restAssignmentExample", "rest-assignment"],
+        ["objectParameterExample", "object-parameter"],
+        ["arrayParameterExample", "array-parameter"]
+      ]) {
+        assert.equal(
+          wrappers.get(name).requests[0].normalizedKey,
+          `GET /examples/${path}`,
+          name
+        );
+      }
+      assert.equal(
+        wrappers.get("dynamicShapeExample").kind,
+        "transport"
+      );
+      assert.equal(
+        wrappers.get("dynamicShapeExample").requests[0]
+          .unresolvedReason,
+        "unknown_transport_delegate"
+      );
+      assert.equal(manifest.status, "blocked");
+    }
+  );
+});
+
+test("tracks fetch call and apply adapters and rejects dynamic argument shapes", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        export function callAdapterExample() {
+          return globalThis.fetch.call(
+            globalThis,
+            "/api/examples/call-adapter",
+            { method: "POST", body: "{}" }
+          );
+        }
+
+        export function applyAdapterExample() {
+          const send = window.fetch;
+          return send.apply(window, [
+            "/api/examples/apply-adapter",
+            { method: "POST", body: "{}" }
+          ]);
+        }
+
+        export function reflectApplyAdapterExample() {
+          return Reflect.apply(fetch, globalThis, [
+            "/api/examples/reflect-apply-adapter",
+            { method: "POST", body: "{}" }
+          ]);
+        }
+
+        export function dynamicApplyAdapterExample(
+          args: unknown[]
+        ) {
+          return globalThis.fetch.apply(globalThis, args);
+        }
+
+        export function localCallAdapterExample() {
+          const fetch = (_path: string) => ({ local: true });
+          return fetch.call(null, "/local");
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          callAdapterExample,
+          applyAdapterExample,
+          reflectApplyAdapterExample,
+          dynamicApplyAdapterExample,
+          localCallAdapterExample
+        } from "../api/example.api";
+        void callAdapterExample();
+        void applyAdapterExample();
+        void reflectApplyAdapterExample();
+        void dynamicApplyAdapterExample([]);
+        void localCallAdapterExample();
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json": JSON.stringify({
+        schemaVersion: 1,
+        routes: [
+          "/examples/call-adapter",
+          "/examples/apply-adapter",
+          "/examples/reflect-apply-adapter"
+        ].map((path) => ({
+          method: "POST",
+          path,
+          normalizedKey: `POST ${path}`
+        }))
+      })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      const wrappers = new Map(
+        manifest.wrappers.map((wrapper) => [
+          wrapper.name,
+          wrapper
+        ])
+      );
+      assert.equal(
+        wrappers.get("callAdapterExample").requests[0].normalizedKey,
+        "POST /examples/call-adapter"
+      );
+      assert.equal(
+        wrappers.get("applyAdapterExample").requests[0].normalizedKey,
+        "POST /examples/apply-adapter"
+      );
+      assert.equal(
+        wrappers.get("reflectApplyAdapterExample").requests[0]
+          .normalizedKey,
+        "POST /examples/reflect-apply-adapter"
+      );
+      assert.equal(
+        wrappers.get("dynamicApplyAdapterExample").kind,
+        "transport"
+      );
+      assert.equal(
+        wrappers.get("dynamicApplyAdapterExample").requests[0]
+          .unresolvedReason,
+        "unknown_transport_adapter"
+      );
+      assert.equal(
+        wrappers.get("localCallAdapterExample").kind,
+        "pure"
+      );
+      assert.deepEqual(
+        wrappers.get("localCallAdapterExample").requests,
+        []
+      );
+      assert.equal(manifest.status, "blocked");
+    }
+  );
+});
+
+test("fails closed for aliased browser network primitives and sendBeacon", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        export function xhrAliasExample() {
+          const Xhr = XMLHttpRequest;
+          const request = new Xhr();
+          request.open("POST", "/api/examples/xhr");
+          request.send("{}");
+          return request;
+        }
+
+        export function globalSocketAliasExample() {
+          const Socket = globalThis.WebSocket;
+          return new Socket("wss://example.test/socket");
+        }
+
+        export function eventSourceContainerExample() {
+          const network = { Source: window.EventSource };
+          return new network.Source("/api/examples/events");
+        }
+
+        export function xhrDestructuredExample() {
+          const { XMLHttpRequest: Xhr } = self;
+          return new Xhr();
+        }
+
+        export function reboundSocketExample() {
+          let Socket = class LocalSocket {};
+          Socket = window.WebSocket;
+          return new Socket("wss://example.test/rebound");
+        }
+
+        export function directBeaconExample() {
+          return navigator.sendBeacon(
+            "/api/examples/beacon",
+            "{}"
+          );
+        }
+
+        export function globalBeaconAliasExample() {
+          const send = globalThis.navigator.sendBeacon;
+          return send("/api/examples/global-beacon", "{}");
+        }
+
+        export function beaconContainerExample() {
+          const network = {
+            send: window.navigator.sendBeacon
+          };
+          return network.send(
+            "/api/examples/container-beacon",
+            "{}"
+          );
+        }
+
+        export function beaconDestructuredExample() {
+          const { sendBeacon: send } = self.navigator;
+          return send(
+            "/api/examples/destructured-beacon",
+            "{}"
+          );
+        }
+
+        export function overwrittenLocalNetworkExample() {
+          let Xhr = globalThis.XMLHttpRequest;
+          Xhr = class LocalRequest {};
+          return new Xhr();
+        }
+
+        export function shadowedNetworkExample() {
+          const XMLHttpRequest = class LocalRequest {};
+          const navigator = {
+            sendBeacon: () => true
+          };
+          const request = new XMLHttpRequest();
+          navigator.sendBeacon("/local", "{}");
+          return request;
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          xhrAliasExample,
+          globalSocketAliasExample,
+          eventSourceContainerExample,
+          xhrDestructuredExample,
+          reboundSocketExample,
+          directBeaconExample,
+          globalBeaconAliasExample,
+          beaconContainerExample,
+          beaconDestructuredExample,
+          overwrittenLocalNetworkExample,
+          shadowedNetworkExample
+        } from "../api/example.api";
+        void xhrAliasExample();
+        void globalSocketAliasExample();
+        void eventSourceContainerExample();
+        void xhrDestructuredExample();
+        void reboundSocketExample();
+        void directBeaconExample();
+        void globalBeaconAliasExample();
+        void beaconContainerExample();
+        void beaconDestructuredExample();
+        void overwrittenLocalNetworkExample();
+        void shadowedNetworkExample();
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json":
+        JSON.stringify({ schemaVersion: 1, routes: [] })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      const wrappers = new Map(
+        manifest.wrappers.map((wrapper) => [
+          wrapper.name,
+          wrapper
+        ])
+      );
+      for (const name of [
+        "xhrAliasExample",
+        "globalSocketAliasExample",
+        "eventSourceContainerExample",
+        "xhrDestructuredExample",
+        "reboundSocketExample",
+        "directBeaconExample",
+        "globalBeaconAliasExample",
+        "beaconContainerExample",
+        "beaconDestructuredExample"
+      ]) {
+        assert.equal(wrappers.get(name).kind, "transport", name);
+        assert.equal(wrappers.get(name).requests.length, 1, name);
+        assert.equal(
+          wrappers.get(name).requests[0].unresolvedReason,
+          "unknown_network_primitive",
+          name
+        );
+      }
+      for (const name of [
+        "overwrittenLocalNetworkExample",
+        "shadowedNetworkExample"
+      ]) {
+        assert.equal(wrappers.get(name).kind, "pure", name);
+        assert.deepEqual(wrappers.get(name).requests, [], name);
+      }
       assert.equal(manifest.status, "blocked");
     }
   );

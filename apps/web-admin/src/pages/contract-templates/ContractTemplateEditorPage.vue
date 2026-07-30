@@ -501,6 +501,15 @@ const editorBaseline = ref("");
 const leaveDialogVisible = ref(false);
 let resolvePendingLeave: ((decision: boolean) => void) | null = null;
 let templateLoadGeneration = 0;
+let templateRouteGeneration = 0;
+let riskStopOperationId = 0;
+
+type RiskStopContext = {
+  templateId: string;
+  versionId: string;
+  routeGeneration: number;
+  operationId: number;
+};
 
 const selectedVersion = computed(() =>
   versions.value.find((version) => version.id === selectedVersionId.value)
@@ -734,7 +743,9 @@ async function loadTemplate(preferredVersionId?: string) {
 }
 
 function clearTemplateRouteContext() {
+  templateRouteGeneration += 1;
   templateLoadGeneration += 1;
+  riskStopOperationId += 1;
   contractTemplateCapability.value = null;
   template.value = null;
   versions.value = [];
@@ -743,6 +754,7 @@ function clearTemplateRouteContext() {
   riskStopDialogVisible.value = false;
   riskStopError.value = "";
   riskStopVersionId.value = "";
+  submitting.value = false;
   message.value = "";
   editorBaseline.value = "";
   changeSummary.value = "";
@@ -810,28 +822,71 @@ function openRiskStopDialog() {
   riskStopDialogVisible.value = true;
 }
 
-function completeRiskStop() {
+function captureRiskStopContext(): RiskStopContext {
+  return {
+    templateId: templateRouteId.value,
+    versionId: riskStopVersionId.value,
+    routeGeneration: templateRouteGeneration,
+    operationId: riskStopOperationId + 1
+  };
+}
+
+function riskStopContextIsCurrent(context: RiskStopContext) {
+  return Boolean(context.templateId && context.versionId) &&
+    context.templateId === templateRouteId.value &&
+    context.versionId === riskStopVersionId.value &&
+    context.versionId === selectedVersionId.value &&
+    context.routeGeneration === templateRouteGeneration;
+}
+
+function requireCurrentRiskStopVersionId(context: RiskStopContext) {
+  if (!riskStopContextIsCurrent(context)) {
+    throw new Error("模板版本操作上下文已失效，请重新打开风险停用确认");
+  }
+  return context.versionId;
+}
+
+function riskStopOperationIsCurrent(context: RiskStopContext) {
+  return context.templateId === templateRouteId.value &&
+    context.routeGeneration === templateRouteGeneration &&
+    context.operationId === riskStopOperationId;
+}
+
+function riskStopResultCanWrite(context: RiskStopContext) {
+  return riskStopContextIsCurrent(context) &&
+    riskStopOperationIsCurrent(context);
+}
+
+function completeRiskStop(context: RiskStopContext) {
+  if (!riskStopResultCanWrite(context)) return;
   riskStopDialogVisible.value = false;
   message.value = "模板版本已风险停用，新合同不再使用该版本";
   tone.value = "success";
-  return loadTemplate(riskStopVersionId.value);
+  return loadTemplate(context.versionId);
 }
 
-function failRiskStop(error: unknown) {
+function failRiskStop(error: unknown, context: RiskStopContext) {
+  if (!riskStopResultCanWrite(context)) return;
   riskStopError.value = error instanceof Error ? error.message : "风险停用失败";
 }
 
-function finishRiskStop() {
+function finishRiskStop(context: RiskStopContext) {
+  if (!riskStopOperationIsCurrent(context)) return;
   submitting.value = false;
 }
 
 function stopSelectedVersion() {
+  const context = captureRiskStopContext();
+  const request = stopContractTemplateVersion(
+    requireCurrentRiskStopVersionId(context)
+  );
+  riskStopOperationId = context.operationId;
   submitting.value = true;
   riskStopError.value = "";
-  return stopContractTemplateVersion(riskStopVersionId.value)
-    .then(completeRiskStop)
-    .catch(failRiskStop)
-    .finally(finishRiskStop);
+  return request
+    .then(() => completeRiskStop(context))
+    .catch((error) => failRiskStop(error, context))
+    .finally(() => finishRiskStop(context));
 }
 
 function requireVersion(action: keyof Omit<ReturnType<typeof contractTemplateVersionGovernance>, "readOnly">) {

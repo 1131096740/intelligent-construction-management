@@ -4,6 +4,7 @@ import {
   BrowserHistoryScrollPositionRegistry,
   buildEncodedRouteRedirect,
   buildRouteDocumentTitle,
+  createBrowserHistoryScrollPositionRegistryInstaller,
   focusMainContent,
   resolveRouteAccess,
   resolveRouteNavigation,
@@ -26,6 +27,27 @@ import {
 } from "./route-records";
 
 describe("web admin routes", () => {
+  function browserWindowStub(position: number) {
+    const addEventListener = vi.fn();
+    const removeEventListener = vi.fn();
+    return {
+      windowRef: {
+        addEventListener,
+        removeEventListener,
+        history: { state: { position } },
+        location: {
+          pathname: "/首页",
+          search: "",
+          hash: ""
+        },
+        scrollX: 0,
+        scrollY: 0
+      } as unknown as Window,
+      addEventListener,
+      removeEventListener
+    };
+  }
+
   function childRoute(path: string) {
     return webAdminRoutes.find((route) => route.path === "/")?.children?.find((route) => route.path === path);
   }
@@ -190,6 +212,37 @@ describe("web admin routes", () => {
         { left: 0, top: 350 }
       )
     ).toEqual({ left: 0, top: 640 });
+  });
+
+  it("installs one scroll registry per window and removes listeners before reinstall", () => {
+    const installer =
+      createBrowserHistoryScrollPositionRegistryInstaller();
+    const firstWindow = browserWindowStub(1);
+    const secondWindow = browserWindowStub(2);
+
+    const firstRegistry = installer.install(firstWindow.windowRef);
+    expect(installer.install(firstWindow.windowRef)).toBe(firstRegistry);
+    expect(firstWindow.addEventListener).toHaveBeenCalledTimes(1);
+
+    const secondRegistry = installer.install(secondWindow.windowRef);
+    expect(secondRegistry).not.toBe(firstRegistry);
+    expect(secondWindow.addEventListener).toHaveBeenCalledTimes(1);
+
+    const firstHandler = firstWindow.addEventListener.mock.calls[0]?.[1];
+    const secondHandler = secondWindow.addEventListener.mock.calls[0]?.[1];
+    installer.dispose();
+    expect(firstWindow.removeEventListener).toHaveBeenCalledWith(
+      "popstate",
+      firstHandler
+    );
+    expect(secondWindow.removeEventListener).toHaveBeenCalledWith(
+      "popstate",
+      secondHandler
+    );
+
+    const reinstalled = installer.install(firstWindow.windowRef);
+    expect(reinstalled).not.toBe(firstRegistry);
+    expect(firstWindow.addEventListener).toHaveBeenCalledTimes(2);
   });
 
   it("restores a back target from its frozen history scroll when the map has no target", () => {

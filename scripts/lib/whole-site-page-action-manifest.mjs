@@ -3026,6 +3026,14 @@ function runtimeIntrinsicIntegrityIssue(
     kind: "callable",
     descriptor
   });
+  const dynamicCodeSummary = (source) => ({
+    kind: "dynamic_code",
+    source
+  });
+  const stringCodeSchedulerSummary = (source) => ({
+    kind: "string_code_scheduler",
+    source
+  });
   const summaryHasRuntimeAuthority = (
     summary,
     seen = new Set()
@@ -3036,6 +3044,8 @@ function runtimeIntrinsicIntegrityIssue(
         "target",
         "mutator",
         "helper",
+        "dynamic_code",
+        "string_code_scheduler",
         "unknown_authority",
         "parameter"
       ].includes(
@@ -3081,9 +3091,40 @@ function runtimeIntrinsicIntegrityIssue(
     if (
       summary.kind === "target" &&
       summary.target === "global" &&
+      ["eval", "Function"].includes(property)
+    ) {
+      return dynamicCodeSummary(property);
+    }
+    if (
+      summary.kind === "target" &&
+      summary.target === "global" &&
+      ["setInterval", "setTimeout"].includes(property)
+    ) {
+      return stringCodeSchedulerSummary(property);
+    }
+    if (
+      summary.kind === "target" &&
+      summary.target === "global" &&
       PROTECTED_RUNTIME_CONSTRUCTORS.has(property)
     ) {
       return targetSummary(`constructor:${property}`);
+    }
+    if (
+      summary.kind === "dynamic_code" &&
+      ["apply", "bind", "call", "constructor"].includes(
+        property
+      )
+    ) {
+      return summary;
+    }
+    if (
+      summary.kind === "string_code_scheduler" &&
+      ["apply", "bind", "call"].includes(property)
+    ) {
+      return summary;
+    }
+    if (property === "constructor") {
+      return dynamicCodeSummary("constructor");
     }
     if (
       summary.kind === "target" &&
@@ -3114,7 +3155,8 @@ function runtimeIntrinsicIntegrityIssue(
       definitionsByBinding: new Map(),
       initializersByBinding: new Map(),
       descriptorByDefinition: new WeakMap(),
-      activeDefinitions: new WeakSet()
+      activeDefinitions: new WeakSet(),
+      activeDescriptorByDefinition: new WeakMap()
     };
     descriptorContexts.set(targetAst, context);
     if (!targetBindings) return context;
@@ -3155,33 +3197,6 @@ function runtimeIntrinsicIntegrityIssue(
     });
     return context;
   };
-  const staticAppRuntimeExtensionKey = (
-    node,
-    targetAst = ast,
-    seenBindings = new Set()
-  ) => {
-    const value = unwrapValueExpression(node);
-    const direct = literalString(value);
-    if (direct !== null) {
-      return /^__JIANGKONG_[A-Z0-9_]+__$/.test(direct)
-        ? direct
-        : null;
-    }
-    if (value?.type !== "Identifier") return null;
-    const context = descriptorContext(targetAst);
-    const binding = context?.bindings?.get(value);
-    if (!binding || seenBindings.has(binding)) return null;
-    const initializer =
-      context.initializersByBinding.get(binding);
-    if (!initializer) return null;
-    const nextSeen = new Set(seenBindings);
-    nextSeen.add(binding);
-    return staticAppRuntimeExtensionKey(
-      initializer,
-      targetAst,
-      nextSeen
-    );
-  };
   const descriptorParameterIndexes = (
     summary,
     seen = new Set()
@@ -3208,6 +3223,8 @@ function runtimeIntrinsicIntegrityIssue(
         "target",
         "mutator",
         "helper",
+        "dynamic_code",
+        "string_code_scheduler",
         "unknown_authority"
       ].includes(summary.kind)
     ) {
@@ -3272,6 +3289,38 @@ function runtimeIntrinsicIntegrityIssue(
     return summary;
   };
   let descriptorExpressionSummary;
+  const callableDescriptors = new Set();
+  const propagateStringCodeParameters = () => {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const descriptor of callableDescriptors) {
+        for (const dependency of
+          descriptor.stringCodeDependencies ?? []) {
+          for (const calleeIndex of
+            dependency.calleeDescriptor
+              ?.stringCodeParameterIndexes ?? []) {
+            for (const callerIndex of
+              dependency.argumentParameterIndexes[
+                calleeIndex
+              ] ?? []) {
+              if (
+                descriptor.stringCodeParameterIndexes.has(
+                  callerIndex
+                )
+              ) {
+                continue;
+              }
+              descriptor.stringCodeParameterIndexes.add(
+                callerIndex
+              );
+              changed = true;
+            }
+          }
+        }
+      }
+    }
+  };
   const callableDescriptor = (targetAst, definition) => {
     const context = descriptorContext(targetAst);
     if (!context || !definition) return null;
@@ -3279,6 +3328,10 @@ function runtimeIntrinsicIntegrityIssue(
       context.descriptorByDefinition.get(definition);
     if (cached) return cached;
     if (context.activeDefinitions.has(definition)) {
+      const activeDescriptor =
+        context.activeDescriptorByDefinition.get(
+          definition
+        );
       return {
         result: parameterSummary(
           new Set(
@@ -3286,10 +3339,23 @@ function runtimeIntrinsicIntegrityIssue(
               (_parameter, index) => index
             )
           )
-        )
+        ),
+        stringCodeParameterIndexes:
+          activeDescriptor?.stringCodeParameterIndexes ??
+          new Set()
       };
     }
     context.activeDefinitions.add(definition);
+    const descriptor = {
+      result: null,
+      stringCodeParameterIndexes: new Set(),
+      stringCodeDependencies: []
+    };
+    callableDescriptors.add(descriptor);
+    context.activeDescriptorByDefinition.set(
+      definition,
+      descriptor
+    );
     const parameterSummaries = new Map();
     for (
       let index = 0;
@@ -3308,29 +3374,149 @@ function runtimeIntrinsicIntegrityIssue(
         );
       }
     }
+    const stringCodeParameterIndexes =
+      descriptor.stringCodeParameterIndexes;
+    const rememberStringCodeParameters = (summary) => {
+      for (const index of descriptorParameterIndexes(summary)) {
+        stringCodeParameterIndexes.add(index);
+      }
+    };
+    const visitStringCodeCalls = (
+      candidate,
+      root = false
+    ) => {
+      if (!candidate || typeof candidate.type !== "string") {
+        return;
+      }
+      if (
+        !root &&
+        [
+          "ArrowFunctionExpression",
+          "FunctionDeclaration",
+          "FunctionExpression"
+        ].includes(candidate.type)
+      ) {
+        return;
+      }
+      if (candidate.type === "CallExpression") {
+        const calleeSummary = descriptorExpressionSummary(
+          targetAst,
+          candidate.callee,
+          parameterSummaries,
+          new Set()
+        );
+        if (
+          calleeSummary?.kind === "string_code_scheduler"
+        ) {
+          const callee = unwrapValueExpression(
+            candidate.callee
+          );
+          const adapter =
+            callee?.type === "MemberExpression"
+              ? runtimeProperty(callee)
+              : null;
+          let callback = candidate.arguments?.[0] ?? null;
+          if (adapter === "call" || adapter === "bind") {
+            callback = candidate.arguments?.[1] ?? null;
+          } else if (adapter === "apply") {
+            const applied = unwrapValueExpression(
+              candidate.arguments?.[1]
+            );
+            callback =
+              applied?.type === "ArrayExpression"
+                ? applied.elements?.[0] ?? null
+                : null;
+          }
+          rememberStringCodeParameters(
+            descriptorExpressionSummary(
+              targetAst,
+              callback,
+              parameterSummaries,
+              new Set()
+            )
+          );
+        } else if (calleeSummary?.kind === "callable") {
+          descriptor.stringCodeDependencies.push({
+            calleeDescriptor: calleeSummary.descriptor,
+            argumentParameterIndexes: (
+              candidate.arguments ?? []
+            ).map(
+              (argument) =>
+                new Set(
+                  descriptorParameterIndexes(
+                    descriptorExpressionSummary(
+                      targetAst,
+                      argument,
+                      parameterSummaries,
+                      new Set()
+                    )
+                  )
+                )
+            )
+          });
+          for (const index of
+            calleeSummary.descriptor
+              ?.stringCodeParameterIndexes ?? []) {
+            rememberStringCodeParameters(
+              descriptorExpressionSummary(
+                targetAst,
+                candidate.arguments?.[index],
+                parameterSummaries,
+                new Set()
+              )
+            );
+          }
+        }
+      }
+      for (const [key, child] of Object.entries(candidate)) {
+        if (
+          [
+            "comments",
+            "loc",
+            "parent",
+            "range",
+            "tokens"
+          ].includes(key)
+        ) {
+          continue;
+        }
+        if (Array.isArray(child)) {
+          for (const entry of child) {
+            if (entry && typeof entry.type === "string") {
+              visitStringCodeCalls(entry);
+            }
+          }
+        } else if (child && typeof child.type === "string") {
+          visitStringCodeCalls(child);
+        }
+      }
+    };
+    visitStringCodeCalls(definition.body, true);
     const returnExpressions =
       definition.body?.type === "BlockStatement"
         ? directCallableReturnStatements(definition).map(
             (statement) => statement.argument
           )
         : [definition.body];
-    const descriptor = {
-      result: mergeDescriptorSummaries(
-        returnExpressions.map((expression) =>
-          descriptorExpressionSummary(
-            targetAst,
-            expression,
-            parameterSummaries,
-            new Set()
-          )
+    descriptor.result = mergeDescriptorSummaries(
+      returnExpressions.map((expression) =>
+        descriptorExpressionSummary(
+          targetAst,
+          expression,
+          parameterSummaries,
+          new Set()
         )
       )
-    };
+    );
     context.activeDefinitions.delete(definition);
+    context.activeDescriptorByDefinition.delete(
+      definition
+    );
     context.descriptorByDefinition.set(
       definition,
       descriptor
     );
+    propagateStringCodeParameters();
     return descriptor;
   };
   descriptorExpressionSummary = (
@@ -3382,6 +3568,24 @@ function runtimeIntrinsicIntegrityIssue(
       ) {
         return targetSummary("global");
       }
+      if (
+        unshadowedRuntimeGlobal(
+          value,
+          new Set(["eval", "Function"]),
+          targetBindings
+        )
+      ) {
+        return dynamicCodeSummary(value.name);
+      }
+      if (
+        unshadowedRuntimeGlobal(
+          value,
+          new Set(["setInterval", "setTimeout"]),
+          targetBindings
+        )
+      ) {
+        return stringCodeSchedulerSummary(value.name);
+      }
       return unshadowedRuntimeGlobal(
         value,
         PROTECTED_RUNTIME_CONSTRUCTORS,
@@ -3428,6 +3632,9 @@ function runtimeIntrinsicIntegrityIssue(
       );
     }
     if (value.type === "MemberExpression") {
+      if (runtimeProperty(value) === "constructor") {
+        return dynamicCodeSummary("constructor");
+      }
       return summaryField(
         descriptorExpressionSummary(
           targetAst,
@@ -3499,6 +3706,15 @@ function runtimeIntrinsicIntegrityIssue(
         if (summary) fields.set(String(index), summary);
       }
       return objectSummary(fields);
+    }
+    if (value.type === "TaggedTemplateExpression") {
+      const tag = descriptorExpressionSummary(
+        targetAst,
+        value.tag,
+        parameterSummaries,
+        seenBindings
+      );
+      return tag?.kind === "dynamic_code" ? tag : null;
     }
     if (
       value.type === "CallExpression" ||
@@ -3579,6 +3795,9 @@ function runtimeIntrinsicIntegrityIssue(
           }
         }
       }
+      if (constructor?.kind === "dynamic_code") {
+        return constructor;
+      }
       if (constructor?.kind === "callable") {
         return substituteDescriptorSummary(
           constructor.descriptor?.result,
@@ -3594,6 +3813,136 @@ function runtimeIntrinsicIntegrityIssue(
       }
     }
     return null;
+  };
+  const typeAnnotationProvesCallable = (identifier) => {
+    let annotation =
+      identifier?.typeAnnotation?.typeAnnotation ?? null;
+    while (annotation?.type === "TSParenthesizedType") {
+      annotation = annotation.typeAnnotation;
+    }
+    return annotation?.type === "TSFunctionType";
+  };
+  const bindingIsPromiseExecutorParameter = (
+    binding,
+    targetBindings
+  ) =>
+    (binding?.identifiers ?? []).some((identifier) => {
+      const callable = identifier.parent;
+      if (
+        ![
+          "ArrowFunctionExpression",
+          "FunctionExpression"
+        ].includes(callable?.type)
+      ) {
+        return false;
+      }
+      const parameterIndex = (callable.params ?? []).findIndex(
+        (parameter) =>
+          unwrapValueExpression(parameter) === identifier
+      );
+      if (parameterIndex < 0 || parameterIndex > 1) {
+        return false;
+      }
+      const invocation = callable.parent;
+      return (
+        invocation?.type === "NewExpression" &&
+        invocation.arguments?.[0] === callable &&
+        unshadowedRuntimeGlobal(
+          unwrapValueExpression(invocation.callee),
+          new Set(["Promise"]),
+          targetBindings
+        )
+      );
+    });
+  const bindingHasPostInitializationWrite = (binding) =>
+    (binding?.references ?? []).some(
+      (reference) =>
+        typeof reference.isWrite === "function" &&
+        reference.isWrite() &&
+        reference.init !== true
+    );
+  const staticallyProvenCallable = (
+    node,
+    targetAst = ast,
+    seenBindings = new Set()
+  ) => {
+    const value = unwrapValueExpression(node);
+    if (!value) return false;
+    if (
+      [
+        "ArrowFunctionExpression",
+        "FunctionDeclaration",
+        "FunctionExpression"
+      ].includes(value.type)
+    ) {
+      return true;
+    }
+    if (value.type === "SequenceExpression") {
+      return staticallyProvenCallable(
+        value.expressions?.at(-1),
+        targetAst,
+        seenBindings
+      );
+    }
+    if (
+      value.type === "ConditionalExpression" ||
+      value.type === "LogicalExpression"
+    ) {
+      const branches =
+        value.type === "ConditionalExpression"
+          ? [value.consequent, value.alternate]
+          : [value.left, value.right];
+      return branches.every((branch) =>
+        staticallyProvenCallable(
+          branch,
+          targetAst,
+          seenBindings
+        )
+      );
+    }
+    const context = descriptorContext(targetAst);
+    if (value.type === "Identifier") {
+      const binding = context?.bindings?.get(value);
+      if (bindingHasPostInitializationWrite(binding)) {
+        return false;
+      }
+      if (
+        typeAnnotationProvesCallable(value) ||
+        (binding?.identifiers ?? []).some(
+          typeAnnotationProvesCallable
+        ) ||
+        bindingIsPromiseExecutorParameter(
+          binding,
+          context?.bindings
+        )
+      ) {
+        return true;
+      }
+      if (!binding || seenBindings.has(binding)) {
+        return false;
+      }
+      if (context.definitionsByBinding.has(binding)) {
+        return true;
+      }
+      const initializer =
+        context.initializersByBinding.get(binding);
+      if (!initializer) return false;
+      const nextSeen = new Set(seenBindings);
+      nextSeen.add(binding);
+      return staticallyProvenCallable(
+        initializer,
+        targetAst,
+        nextSeen
+      );
+    }
+    return (
+      descriptorExpressionSummary(
+        targetAst,
+        value,
+        new Map(),
+        seenBindings
+      )?.kind === "callable"
+    );
   };
   const exportedCallableDefinition = (
     targetAst,
@@ -3668,6 +4017,63 @@ function runtimeIntrinsicIntegrityIssue(
     }
     return null;
   };
+  const exportedValueExpression = (
+    targetAst,
+    exportedName
+  ) => {
+    const context = descriptorContext(targetAst);
+    if (!context) return null;
+    for (const statement of targetAst.body ?? []) {
+      if (
+        statement.type === "ExportDefaultDeclaration" &&
+        exportedName === "default"
+      ) {
+        const declaration = statement.declaration;
+        if (declaration?.type !== "Identifier") {
+          return declaration ?? null;
+        }
+        const binding = context.bindings?.get(declaration);
+        return (
+          context.initializersByBinding.get(binding) ??
+          declaration
+        );
+      }
+      if (statement.type !== "ExportNamedDeclaration") {
+        continue;
+      }
+      const declaration = statement.declaration;
+      if (declaration?.type === "VariableDeclaration") {
+        for (const declarator of declaration.declarations ?? []) {
+          if (
+            declarator.id?.type === "Identifier" &&
+            declarator.id.name === exportedName
+          ) {
+            return declarator.init ?? null;
+          }
+        }
+      }
+      for (const specifier of statement.specifiers ?? []) {
+        const exported =
+          specifier.exported?.type === "Identifier"
+            ? specifier.exported.name
+            : literalString(specifier.exported);
+        if (
+          exported !== exportedName ||
+          specifier.local?.type !== "Identifier"
+        ) {
+          continue;
+        }
+        const binding = context.bindings?.get(
+          specifier.local
+        );
+        return (
+          context.initializersByBinding.get(binding) ??
+          specifier.local
+        );
+      }
+    }
+    return null;
+  };
   const runtimeSymbols =
     sourcePath && sourceFiles
       ? buildSymbolContext(ast, sourcePath, sourceFiles)
@@ -3701,10 +4107,17 @@ function runtimeIntrinsicIntegrityIssue(
       targetAst,
       exportedName
     );
-    return definition
-      ? callableSummary(
-          callableDescriptor(targetAst, definition)
-        )
+    if (definition) {
+      return callableSummary(
+        callableDescriptor(targetAst, definition)
+      );
+    }
+    const expression = exportedValueExpression(
+      targetAst,
+      exportedName
+    );
+    return expression
+      ? descriptorExpressionSummary(targetAst, expression)
       : null;
   };
   const helperTargetParametersByDefinition = new WeakMap();
@@ -3735,6 +4148,24 @@ function runtimeIntrinsicIntegrityIssue(
         )
       ) {
         return targetSummary("global");
+      }
+      if (
+        unshadowedRuntimeGlobal(
+          value,
+          new Set(["eval", "Function"]),
+          scopeBindings
+        )
+      ) {
+        return dynamicCodeSummary(value.name);
+      }
+      if (
+        unshadowedRuntimeGlobal(
+          value,
+          new Set(["setInterval", "setTimeout"]),
+          scopeBindings
+        )
+      ) {
+        return stringCodeSchedulerSummary(value.name);
       }
       return unshadowedRuntimeGlobal(
         value,
@@ -3777,6 +4208,17 @@ function runtimeIntrinsicIntegrityIssue(
         (summary) => summary.kind === "target"
       );
       if (protectedTarget) return protectedTarget;
+      const dynamicCode = branchSummaries.find(
+        (summary) => summary.kind === "dynamic_code"
+      );
+      if (dynamicCode) return dynamicCode;
+      const stringCodeScheduler = branchSummaries.find(
+        (summary) =>
+          summary.kind === "string_code_scheduler"
+      );
+      if (stringCodeScheduler) {
+        return stringCodeScheduler;
+      }
       const first = branchSummaries[0] ?? null;
       return branchSummaries.length === 2 &&
         first?.kind === "mutator" &&
@@ -3788,6 +4230,9 @@ function runtimeIntrinsicIntegrityIssue(
     if (value.type === "MemberExpression") {
       const imported = importedCallableSummary(value);
       if (imported) return imported;
+      if (runtimeProperty(value) === "constructor") {
+        return dynamicCodeSummary("constructor");
+      }
       return summaryField(
         summarize(value.object, seenBindings),
         runtimeProperty(value)
@@ -3851,6 +4296,8 @@ function runtimeIntrinsicIntegrityIssue(
         seenBindings
       );
       return bound?.kind === "mutator" ||
+        bound?.kind === "dynamic_code" ||
+        bound?.kind === "string_code_scheduler" ||
         (bound?.kind === "target" &&
           bound.target === "constructor:Proxy")
         ? bound
@@ -3871,6 +4318,9 @@ function runtimeIntrinsicIntegrityIssue(
         target?.kind === "target"
       ) {
         return target;
+      }
+      if (constructor?.kind === "dynamic_code") {
+        return constructor;
       }
       if (constructor?.kind === "callable") {
         return substituteDescriptorSummary(
@@ -3896,6 +4346,8 @@ function runtimeIntrinsicIntegrityIssue(
         constructor.target === "constructor:Proxy" &&
         target?.kind === "target"
         ? target
+        : constructor?.kind === "dynamic_code"
+          ? constructor
         : null;
     }
     if (value.type === "ObjectExpression") {
@@ -3957,6 +4409,10 @@ function runtimeIntrinsicIntegrityIssue(
         if (summary) fields.set(String(index), summary);
       }
       return objectSummary(fields);
+    }
+    if (value.type === "TaggedTemplateExpression") {
+      const tag = summarize(value.tag, seenBindings);
+      return tag?.kind === "dynamic_code" ? tag : null;
     }
     return null;
   };
@@ -4220,18 +4676,6 @@ function runtimeIntrinsicIntegrityIssue(
             scopeBindings
           )
         ) {
-          if (
-            [
-              "defineProperty",
-              "deleteProperty",
-              "set"
-            ].includes(method) &&
-            staticAppRuntimeExtensionKey(
-              candidate.arguments?.[1]
-            )
-          ) {
-            return;
-          }
           const target = unwrapValueExpression(
             candidate.arguments?.[0]
           );
@@ -4387,8 +4831,9 @@ function runtimeIntrinsicIntegrityIssue(
     }
     if (
       node.type === "NewExpression" &&
-      summarize(node.callee)?.kind ===
-        "unknown_authority"
+      ["dynamic_code", "unknown_authority"].includes(
+        summarize(node.callee)?.kind
+      )
     ) {
       issue = node;
       return;
@@ -4414,6 +4859,45 @@ function runtimeIntrinsicIntegrityIssue(
     }
     const callee = unwrapValueExpression(node.callee);
     const helper = summarize(node.callee);
+    if (helper?.kind === "dynamic_code") {
+      issue = node;
+      return;
+    }
+    if (helper?.kind === "string_code_scheduler") {
+      const adapter =
+        callee?.type === "MemberExpression"
+          ? runtimeProperty(callee)
+          : null;
+      let callback = node.arguments?.[0] ?? null;
+      if (adapter === "call" || adapter === "bind") {
+        callback = node.arguments?.[1] ?? null;
+      } else if (adapter === "apply") {
+        const applied = unwrapValueExpression(
+          node.arguments?.[1]
+        );
+        callback =
+          applied?.type === "ArrayExpression"
+            ? applied.elements?.[0] ?? null
+            : null;
+      }
+      if (!staticallyProvenCallable(callback)) {
+        issue = node;
+        return;
+      }
+    }
+    if (
+      helper?.kind === "callable" &&
+      [...(helper.descriptor
+        ?.stringCodeParameterIndexes ?? [])].some(
+        (index) =>
+          !staticallyProvenCallable(
+            node.arguments?.[index]
+          )
+      )
+    ) {
+      issue = node;
+      return;
+    }
     const argumentSummaries = (node.arguments ?? []).map(
       (argument) => summarize(argument)
     );

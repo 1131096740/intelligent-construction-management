@@ -97,6 +97,11 @@ const abnormalTerminationConfirmProcurementId = ref("");
 let detailRouteGeneration = 0;
 let detailLoadRequestId = 0;
 
+type AbnormalTerminationActionContext = {
+  procurementId: string;
+  routeGeneration: number;
+};
+
 const quotationSizeLimit = {
   size: SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.limitBytes,
   unit: "B" as const,
@@ -544,53 +549,166 @@ function openAbnormalTerminationConfirm() {
   abnormalTerminationConfirmVisible.value = true;
 }
 
-function completeAbnormalTerminationRequest() {
+function captureAbnormalTerminationContext(
+  procurementIdValue: string
+): AbnormalTerminationActionContext {
+  return {
+    procurementId: procurementIdValue,
+    routeGeneration: detailRouteGeneration
+  };
+}
+
+function abnormalTerminationContextIsCurrent(
+  context: AbnormalTerminationActionContext,
+  selectedProcurementId: string
+) {
+  return Boolean(context.procurementId) &&
+    context.procurementId === procurementId.value &&
+    context.procurementId === selectedProcurementId &&
+    context.routeGeneration === detailRouteGeneration;
+}
+
+function requireCurrentAbnormalTerminationRequestProcurementId(
+  context: AbnormalTerminationActionContext
+) {
+  if (
+    !abnormalTerminationContextIsCurrent(
+      context,
+      abnormalTerminationRequestProcurementId.value
+    )
+  ) {
+    throw new Error("异常终止操作上下文已失效，请重新打开发起确认");
+  }
+  return context.procurementId;
+}
+
+function requireCurrentAbnormalTerminationConfirmProcurementId(
+  context: AbnormalTerminationActionContext
+) {
+  if (
+    !abnormalTerminationContextIsCurrent(
+      context,
+      abnormalTerminationConfirmProcurementId.value
+    )
+  ) {
+    throw new Error("异常终止操作上下文已失效，请重新打开终止确认");
+  }
+  return context.procurementId;
+}
+
+function completeAbnormalTerminationRequest(
+  context: AbnormalTerminationActionContext
+) {
+  if (
+    !abnormalTerminationContextIsCurrent(
+      context,
+      abnormalTerminationRequestProcurementId.value
+    )
+  ) {
+    return;
+  }
   abnormalTerminationRequestVisible.value = false;
   showSuccess("异常终止已发起，等待确认。");
   return loadDetail();
 }
 
-function failAbnormalTerminationRequest(error: unknown) {
+function failAbnormalTerminationRequest(
+  error: unknown,
+  context: AbnormalTerminationActionContext
+) {
+  if (
+    !abnormalTerminationContextIsCurrent(
+      context,
+      abnormalTerminationRequestProcurementId.value
+    )
+  ) {
+    return;
+  }
   abnormalTerminationRequestError.value =
     error instanceof Error ? error.message : "异常终止发起失败";
 }
 
-function completeAbnormalTerminationConfirm() {
+function completeAbnormalTerminationConfirm(
+  context: AbnormalTerminationActionContext
+) {
+  if (
+    !abnormalTerminationContextIsCurrent(
+      context,
+      abnormalTerminationConfirmProcurementId.value
+    )
+  ) {
+    return;
+  }
   abnormalTerminationConfirmVisible.value = false;
   showSuccess("零星采购已异常终止，历史事实继续保留。");
   return loadDetail();
 }
 
-function failAbnormalTerminationConfirm(error: unknown) {
+function failAbnormalTerminationConfirm(
+  error: unknown,
+  context: AbnormalTerminationActionContext
+) {
+  if (
+    !abnormalTerminationContextIsCurrent(
+      context,
+      abnormalTerminationConfirmProcurementId.value
+    )
+  ) {
+    return;
+  }
   abnormalTerminationConfirmError.value =
     error instanceof Error ? error.message : "异常终止确认失败";
 }
 
-function finishAbnormalTerminationAction() {
+function finishAbnormalTerminationAction(
+  context: AbnormalTerminationActionContext,
+  selectedProcurementId: string
+) {
+  if (!abnormalTerminationContextIsCurrent(context, selectedProcurementId)) {
+    return;
+  }
   actionBusy.value = false;
 }
 
 function requestAbnormalTerminationAction(values: { reason: string }) {
+  const context = captureAbnormalTerminationContext(
+    abnormalTerminationRequestProcurementId.value
+  );
+  const request = requestSpotProcurementAbnormalTermination(
+    requireCurrentAbnormalTerminationRequestProcurementId(context),
+    { reason: values.reason }
+  );
   actionBusy.value = true;
   abnormalTerminationRequestError.value = "";
-  return requestSpotProcurementAbnormalTermination(
-    abnormalTerminationRequestProcurementId.value,
-    { reason: values.reason }
-  )
-    .then(completeAbnormalTerminationRequest)
-    .catch(failAbnormalTerminationRequest)
-    .finally(finishAbnormalTerminationAction);
+  return request
+    .then(() => completeAbnormalTerminationRequest(context))
+    .catch((error) => failAbnormalTerminationRequest(error, context))
+    .finally(() =>
+      finishAbnormalTerminationAction(
+        context,
+        abnormalTerminationRequestProcurementId.value
+      )
+    );
 }
 
 function confirmAbnormalTerminationAction() {
+  const context = captureAbnormalTerminationContext(
+    abnormalTerminationConfirmProcurementId.value
+  );
+  const request = confirmSpotProcurementAbnormalTermination(
+    requireCurrentAbnormalTerminationConfirmProcurementId(context)
+  );
   actionBusy.value = true;
   abnormalTerminationConfirmError.value = "";
-  return confirmSpotProcurementAbnormalTermination(
-    abnormalTerminationConfirmProcurementId.value
-  )
-    .then(completeAbnormalTerminationConfirm)
-    .catch(failAbnormalTerminationConfirm)
-    .finally(finishAbnormalTerminationAction);
+  return request
+    .then(() => completeAbnormalTerminationConfirm(context))
+    .catch((error) => failAbnormalTerminationConfirm(error, context))
+    .finally(() =>
+      finishAbnormalTerminationAction(
+        context,
+        abnormalTerminationConfirmProcurementId.value
+      )
+    );
 }
 
 function runPrimaryAction() {
@@ -634,19 +752,27 @@ function selectedUploadFiles(files: UploadFile[]) {
   return files.flatMap((file) => (file.raw instanceof File ? [file.raw] : []));
 }
 
-watch(procurementId, () => {
+function clearDetailRouteContext() {
   detailRouteGeneration += 1;
   detailLoadRequestId += 1;
   spotProcurementCapability.value = null;
   detail.value = null;
   loading.value = false;
+  actionBusy.value = false;
   loadError.value = "";
+  actionMessage.value = "";
   confirmation.visible = false;
   confirmation.procurementId = "";
   abnormalTerminationRequestVisible.value = false;
+  abnormalTerminationRequestError.value = "";
   abnormalTerminationRequestProcurementId.value = "";
   abnormalTerminationConfirmVisible.value = false;
+  abnormalTerminationConfirmError.value = "";
   abnormalTerminationConfirmProcurementId.value = "";
+}
+
+watch(procurementId, () => {
+  clearDetailRouteContext();
   void loadDetail();
 });
 onMounted(() => void loadDetail());

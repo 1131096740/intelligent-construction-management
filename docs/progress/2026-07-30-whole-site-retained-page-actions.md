@@ -65,8 +65,10 @@ Task 12 或五包总门禁标记为完成：
   `Proxy(globalThis)` 建立有执行顺序的 runtime intrinsic 完整性检查；覆盖
   `Proxy.revocable`、`Reflect.construct(Proxy, ...)`、bound Proxy、local/
   imported factory、递归/对象方法返回和动态解构，权限来源只有经 Program 顶层
-  无条件覆盖为普通值后才可安全清除；固定 `__JIANGKONG_*__` 项目运行时扩展键
-  允许受控注册，动态键仍失败关闭；
+  无条件覆盖为普通值后才可安全清除；不再豁免任何固定或动态
+  `__JIANGKONG_*__` 运行时扩展键，写入全局对象一律失败关闭。原浏览器历史滚动
+  注册已改为模块内逐 Window installer，并在 HMR dispose 时移除具名
+  `popstate` listener，不需要修改 Window；
   `.call` / `.apply` / `.bind`、动态 `eval` / `Function`、原型或全局改写均
   失败关闭，已明确覆盖被安全值支配覆盖的陈旧 alias；
 - 混合 GET、POST、本地伪对象、深层写、`Object.assign`、父容器/元素/别名/
@@ -77,7 +79,20 @@ Web wrapper 生成器同时新增 GET/HEAD 返回来源证明：只把所有返�
 spread、`map`、未知 helper、循环、陈旧 alias、compound assignment 或多条不同
 主请求边均保守标为 `unverified`。当前 100 个 GET/HEAD wrapper 中 87 个透明、
 12 个下载型 `none`、1 个投影型 `unverified`（`fetchVatRateOptions`）；页面动作
-分析器只信任 87 个透明 wrapper，缺失或非法枚举不会建立服务端来源。
+分析器只信任 87 个透明 wrapper，缺失或非法枚举不会建立服务端来源。transport
+绑定另覆盖 expression/comma/conditional assignment、对象属性后写与安全覆盖、
+object/array assignment，以及声明、赋值、函数参数中的 nested/default/rest
+解构；import/local shadow、分支/异常/循环合并、`call`/`apply`/`Reflect.apply`
+与浏览器网络原语 alias 均失败关闭。实时总计保持 375 个 transport wrapper、
+3 个 pure wrapper、376 个主请求绑定，返回来源为 357 transparent、6 unverified、
+15 none，无新增 unresolved。
+
+六项页面调用同时锁定不可变实体和 operation owner：模板停用锁定模板/版本，
+异常终止锁定采购，发票作废锁定采购/付款/发票，PDF 刷新锁定采购；同路由切换
+版本、跨路由 A→B、同实体重叠请求、stale preflight 和 wrapper 同步抛错均有
+运行时回归。旧 Promise 不能关闭新对话框、覆盖消息/错误、触发刷新或清除新操作
+的 busy。收货页只读取服务端指定的当前 `real_payment`，不回退历史付款；付款
+详情的 payment/procurement 坐标不一致时不发布 capability。
 
 六项生成结果均为：
 
@@ -97,11 +112,11 @@ spread、`map`、未知 helper、循环、陈旧 alias、compound assignment 或
 - `web-page-actions.registry.json` SHA-256：
   `1ad898cd2d6838477db9999231f06668739d2d38e6bd7388e092a0523dd4615e`
 - `web-page-actions.json` SHA-256：
-  `ccf2389af413f123e690499bd02a07e9831a811d161789a0cfec74b2a4f0299c`
+  `6fe8ee6f8fa649c6d48f41ec0989fd43c32eb64ed41165e29bc9a590e8a98764`
 - `whole-site-capability-matrix.json` SHA-256：
-  `f059625470c2fd707d486ec330e5f36b809f61f52bad7bae41e4c7838974fb69`
+  `22626d5c7f392abddb0e7bd050db01f14a33088baddfcd0eb80eb17c06e21cd4`
 - `whole-site-capability-matrix.md` SHA-256：
-  `01979ed3d237f0a7d3d6944c164cd636bb8ad3f299f53407d2cf0c1f73714e98`
+  `37fa4b9a8bcb5641f316d811c2f1573b7c5e6090539132da34d6c64a5f966b23`
 
 路由用途由 32 条未分类收窄为 26 条；Web orphan wrapper 由 44 条收窄为
 42 条。新增六个正式 mutation consumer 后，全局 pair 总数由 269 增至 275。
@@ -131,10 +146,10 @@ blocker，失败后再以第三事务取得同一模板、版本、场景和映�
 ## 验证
 
 - API 模板、版式、场景及零采读取/收货目标：182/182；
-- Web API、模板页、版式页和零采页面目标：75/75；
-- page-action analyzer 主测试 55/55、CLI 3/3（合计 58/58）；
-- 六份 manifest 测试合计：161/161，其中四份下游清单 analyzer 为
-  142/142；
+- 模板页、版式页、零采页面和路由目标：135/135；
+- Web API analyzer：24/24；
+- page-action analyzer 主测试 56/56、CLI 3/3（合计 59/59）；
+- 六份 manifest 测试合计：172/172；
 - PostgreSQL 16 模板停用 × 场景映射真实并发：7/7（其中活体交错 4/4）；
 - 四份生成器 `--check`：均按真实 blocker 返回 blocked，产物一致性通过；
 - Nest 运行时路由对照：395 条；
