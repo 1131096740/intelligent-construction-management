@@ -1802,6 +1802,7 @@ describe("ContractWorkbenchService", () => {
             triggerEvent: "结算归档确认生效",
             dueDays: 30,
             requiresInvoice: true,
+            allowsEarlyPayment: true,
             allowsInstallments: true,
             originalText: "结算归档后30天内付款80%。"
           }
@@ -1833,10 +1834,18 @@ describe("ContractWorkbenchService", () => {
           basis: "current_settlement",
           ratioBps: 8000,
           dueDays: 30,
-          requiresInvoice: true
+          requiresInvoice: true,
+          allowsEarlyPayment: true
         })
       ]
     });
+    expect(prisma.paymentTermsStage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          allowsEarlyPayment: true
+        })
+      })
+    );
     const row = result.bills[0]?.rows[0] as Record<string, unknown> | undefined;
     expect(row?.unitPrice).toBe("4938.123456");
     expect(row?.taxRatePercent).toBe("13");

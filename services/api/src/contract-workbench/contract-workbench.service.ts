@@ -258,6 +258,7 @@ export class ContractWorkbenchService {
             triggerEvent: true,
             dueDays: true,
             requiresInvoice: true,
+            allowsEarlyPayment: true,
             allowsInstallments: true,
             originalText: true
           }
