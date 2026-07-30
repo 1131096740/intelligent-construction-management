@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "6fe8ee6f8fa649c6d48f41ec0989fd43c32eb64ed41165e29bc9a590e8a98764",
+      "sha256": "f25e4ae27670eaff786bdb0542480bdc969de0e1d83316c9cb99a3860f296785",
       "status": "blocked",
       "summary": {
         "registeredActionCount": 42,
@@ -55,11 +55,11 @@
         "reachableProductionModuleCount": 229,
         "templateEventDirectiveCount": 890,
         "propCallbackDirectiveCount": 12,
-        "coveredProductionMutationConsumerCount": 6,
+        "coveredProductionMutationConsumerCount": 7,
         "candidateProductionMutationConsumerCount": 39,
-        "acceptedProductionMutationConsumerCount": 6,
+        "acceptedProductionMutationConsumerCount": 7,
         "productionMutationConsumerPairCount": 275,
-        "blockerCount": 352
+        "blockerCount": 349
       }
     },
     "routeUsage": {
@@ -106,12 +106,12 @@
     "duplicateMutationRouteCount": 4,
     "registeredActionCount": 42,
     "actionBindingCount": 45,
-    "acceptedActionBindingCount": 6,
-    "unresolvedActionBindingCount": 39,
+    "acceptedActionBindingCount": 7,
+    "unresolvedActionBindingCount": 38,
     "productionMutationConsumerPairCount": 275,
-    "coveredProductionMutationConsumerPairCount": 6,
-    "uncoveredProductionMutationConsumerPairCount": 269,
-    "blockerCount": 384
+    "coveredProductionMutationConsumerPairCount": 7,
+    "uncoveredProductionMutationConsumerPairCount": 268,
+    "blockerCount": 382
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -2708,14 +2708,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "submitSpotProcurement",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/submission"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
         "wrapper": "submitSpotProcurementPayment",
         "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
         "normalizedKeys": [
@@ -3320,20 +3312,6 @@
         "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
         "wrapper": "reviewSpotProcurement",
         "normalizedKey": "POST /spot-procurements/:param/approval",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
-        ]
-      },
-      {
-        "actionId": "spot-procurement.submit",
-        "bindingIndex": 0,
-        "identity": "spot-procurement.submit\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000submitSpotProcurement\u0000POST\u0000POST /spot-procurements/:param/submission\u00000",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "submitSpotProcurement",
-        "normalizedKey": "POST /spot-procurements/:param/submission",
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
@@ -20945,32 +20923,26 @@
           "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
           "capability": {
             "kind": "detail_action",
-            "source": "detail.availableActions",
+            "source": "spotProcurementCapability.availableActions",
             "key": "submit_approval",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
           "wrapper": "submitSpotProcurement",
           "productionConsumers": [
             "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED",
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {

@@ -19,7 +19,8 @@ const spotPageRuntime = vi.hoisted(() => ({
   fetchReceipt: vi.fn(),
   invalidateInvoice: vi.fn(),
   refreshReceiptPdf: vi.fn(),
-  requestAbnormalTermination: vi.fn()
+  requestAbnormalTermination: vi.fn(),
+  submitProcurement: vi.fn()
 }));
 
 vi.mock("vue", async (importOriginal) => {
@@ -57,7 +58,8 @@ vi.mock("../../api/spot-procurement.api", async (importOriginal) => {
       spotPageRuntime.invalidateInvoice,
     refreshSpotProcurementReceiptPdf: spotPageRuntime.refreshReceiptPdf,
     requestSpotProcurementAbnormalTermination:
-      spotPageRuntime.requestAbnormalTermination
+      spotPageRuntime.requestAbnormalTermination,
+    submitSpotProcurement: spotPageRuntime.submitProcurement
   };
 });
 
@@ -69,6 +71,23 @@ function pageSource(name: string) {
     "utf8"
   );
 }
+
+const pageActionRegistry = JSON.parse(
+  readFileSync(
+    fileURLToPath(
+      new URL(
+        "../../../../../docs/product/manifests/web-page-actions.registry.json",
+        import.meta.url
+      )
+    ),
+    "utf8"
+  )
+) as {
+  actions: Array<{
+    id: string;
+    capability: { source: string; key: string };
+  }>;
+};
 
 function validPaymentDraft(
   overrides: Partial<SpotPaymentDraftPreparationInput> = {}
@@ -150,6 +169,7 @@ type ProcurementDetailPageBindings = {
   requestAbnormalTerminationAction: (values: {
     reason: string;
   }) => Promise<unknown>;
+  runSubmit: () => Promise<unknown>;
   spotProcurementCapability: MutableValue<unknown>;
 };
 
@@ -280,6 +300,20 @@ function terminationDetail() {
       {
         key: "confirm_abnormal_termination",
         label: "确认异常终止",
+        enabled: true,
+        disabledReason: null
+      }
+    ]
+  };
+}
+
+function submissionDetail(procurementId: string) {
+  return {
+    procurement: { id: procurementId },
+    availableActions: [
+      {
+        key: "submit_approval",
+        label: "提交审批",
         enabled: true,
         disabledReason: null
       }
@@ -1458,6 +1492,164 @@ describe("spot procurement web pages", () => {
       expect(spotPageRuntime.fetchReceipt).toHaveBeenCalledTimes(
         loadCountBeforeSettlement
       );
+    } finally {
+      scope.stop();
+    }
+  });
+
+  it("binds procurement submission to the immutable server capability and direct causal wrapper chain", () => {
+    const detail = pageSource("SpotProcurementDetailPage.vue");
+    const registration = pageActionRegistry.actions.find(
+      (action) => action.id === "spot-procurement.submit"
+    );
+
+    expect(registration?.capability).toMatchObject({
+      source: "spotProcurementCapability.availableActions",
+      key: "submit_approval"
+    });
+    expect(detail).toContain(
+      "const submitApprovalAction = computed(() =>"
+    );
+    expect(detail).toContain(
+      "spotProcurementCapability.value.availableActions.find("
+    );
+    expect(detail).toContain(
+      "const request = submitSpotProcurement("
+    );
+    expect(detail).toContain(
+      "requireCurrentSubmitProcurementId(context)"
+    );
+    expect(detail).toContain(
+      ".then(() => completeSubmit(context))"
+    );
+    expect(detail).toContain(
+      'v-if="submitApprovalAction?.enabled"'
+    );
+    expect(detail).toContain("{{ submitApprovalAction.label }}");
+    expect(detail).not.toContain(
+      'v-if="actionEnabled(\'submit_approval\')"'
+    );
+  });
+
+  it("rejects a forged submit gate before calling the wrapper or setting busy", () => {
+    spotPageRuntime.route.params.procurementId = "procurement-a";
+    spotPageRuntime.submitProcurement.mockReset();
+    const { bindings, scope } = setupPage<ProcurementDetailPageBindings>(
+      SpotProcurementDetailPage
+    );
+    bindings.detail.value = submissionDetail("procurement-a");
+    bindings.spotProcurementCapability.value =
+      submissionDetail("procurement-stale");
+    bindings.actionBusy.value = false;
+
+    try {
+      expect(() => bindings.runSubmit()).toThrow(
+        "采购提交操作上下文已失效"
+      );
+      expect(spotPageRuntime.submitProcurement).not.toHaveBeenCalled();
+      expect(bindings.actionBusy.value).toBe(false);
+    } finally {
+      scope.stop();
+    }
+  });
+
+  it("does not let a completed procurement submission refresh, message or clear busy on a later route", async () => {
+    const pending = deferred();
+    spotPageRuntime.route.params.procurementId = "procurement-a";
+    spotPageRuntime.fetchDetail.mockReset();
+    spotPageRuntime.fetchDetail
+      .mockReturnValueOnce(new Promise(() => undefined))
+      .mockRejectedValue(new Error("stale refresh must not run"));
+    spotPageRuntime.submitProcurement.mockReset();
+    spotPageRuntime.submitProcurement.mockReturnValueOnce(pending.promise);
+    const { bindings, scope } = setupPage<ProcurementDetailPageBindings>(
+      SpotProcurementDetailPage
+    );
+    const detailA = submissionDetail("procurement-a");
+    bindings.detail.value = detailA;
+    bindings.spotProcurementCapability.value = detailA;
+
+    const action = bindings.runSubmit();
+    spotPageRuntime.route.params.procurementId = "procurement-b";
+    await nextTick();
+    expect(spotPageRuntime.fetchDetail).toHaveBeenCalledTimes(1);
+    bindings.detail.value = submissionDetail("procurement-b");
+    bindings.spotProcurementCapability.value =
+      submissionDetail("procurement-b");
+    bindings.actionMessage.value = "采购 B 已加载";
+    bindings.actionBusy.value = true;
+
+    try {
+      pending.resolve();
+      await action;
+
+      expect(spotPageRuntime.submitProcurement).toHaveBeenCalledTimes(1);
+      expect(spotPageRuntime.submitProcurement).toHaveBeenCalledWith(
+        "procurement-a"
+      );
+      expect(spotPageRuntime.fetchDetail).toHaveBeenCalledTimes(1);
+      expect(bindings.actionMessage.value).toBe("采购 B 已加载");
+      expect(bindings.actionBusy.value).toBe(true);
+    } finally {
+      scope.stop();
+    }
+  });
+
+  it("keeps busy false when the procurement submission wrapper throws before returning a promise", () => {
+    spotPageRuntime.route.params.procurementId = "procurement-a";
+    spotPageRuntime.submitProcurement.mockReset();
+    spotPageRuntime.submitProcurement.mockImplementationOnce(() => {
+      throw new Error("同步创建请求失败");
+    });
+    const { bindings, scope } = setupPage<ProcurementDetailPageBindings>(
+      SpotProcurementDetailPage
+    );
+    const detail = submissionDetail("procurement-a");
+    bindings.detail.value = detail;
+    bindings.spotProcurementCapability.value = detail;
+    bindings.actionBusy.value = false;
+
+    try {
+      expect(() => bindings.runSubmit()).toThrow("同步创建请求失败");
+      expect(bindings.actionBusy.value).toBe(false);
+    } finally {
+      scope.stop();
+    }
+  });
+
+  it("does not let an older same-procurement submission overwrite the latest result", async () => {
+    const older = deferred();
+    const latest = deferred();
+    spotPageRuntime.route.params.procurementId = "procurement-a";
+    spotPageRuntime.fetchDetail.mockReset();
+    spotPageRuntime.fetchDetail.mockRejectedValue(
+      new Error("旧请求不应刷新")
+    );
+    spotPageRuntime.submitProcurement.mockReset();
+    spotPageRuntime.submitProcurement
+      .mockReturnValueOnce(older.promise)
+      .mockReturnValueOnce(latest.promise);
+    const { bindings, scope } = setupPage<ProcurementDetailPageBindings>(
+      SpotProcurementDetailPage
+    );
+    const detail = submissionDetail("procurement-a");
+    bindings.detail.value = detail;
+    bindings.spotProcurementCapability.value = detail;
+
+    const olderAction = bindings.runSubmit();
+    const latestAction = bindings.runSubmit();
+
+    try {
+      latest.reject(new Error("最新请求失败"));
+      await latestAction;
+      expect(bindings.actionMessage.value).toBe("最新请求失败");
+
+      older.resolve();
+      await olderAction;
+
+      expect(spotPageRuntime.fetchDetail).not.toHaveBeenCalled();
+      expect(bindings.actionMessage.value).toBe("最新请求失败");
+      expect(bindings.actionBusy.value).toBe(false);
     } finally {
       scope.stop();
     }

@@ -96,10 +96,16 @@ const abnormalTerminationConfirmError = ref("");
 const abnormalTerminationConfirmProcurementId = ref("");
 let detailRouteGeneration = 0;
 let detailLoadRequestId = 0;
+let submitOperationId = 0;
 
 type AbnormalTerminationActionContext = {
   procurementId: string;
   routeGeneration: number;
+};
+type SubmitActionContext = {
+  procurementId: string;
+  routeGeneration: number;
+  operationId: number;
 };
 
 const quotationSizeLimit = {
@@ -113,6 +119,13 @@ const procurementId = computed(() =>
 );
 const primaryAction = computed(() =>
   detail.value?.availableActions.find((action) => action.key === detail.value?.primaryAction)
+);
+const submitApprovalAction = computed(() =>
+  spotProcurementCapability.value?.procurement.id === procurementId.value
+    ? spotProcurementCapability.value.availableActions.find(
+        (action) => action.key === "submit_approval"
+      ) ?? null
+    : null
 );
 const linkedPayment = computed(() => {
   const paymentId = detail.value?.procurement.payment?.paymentId;
@@ -361,19 +374,68 @@ async function saveDraft() {
   }
 }
 
-async function runSubmit() {
-  const current = detail.value;
-  if (!current) return;
-  actionBusy.value = true;
-  try {
-    await submitSpotProcurement(current.procurement.id);
-    showSuccess("零星材料采购申请已提交审批。");
-    await loadDetail();
-  } catch (error) {
-    showError(error, "提交失败");
-  } finally {
-    actionBusy.value = false;
+function captureSubmitContext(): SubmitActionContext {
+  return {
+    procurementId: procurementId.value,
+    routeGeneration: detailRouteGeneration,
+    operationId: submitOperationId + 1
+  };
+}
+
+function submitContextIsCurrent(context: SubmitActionContext) {
+  return Boolean(context.procurementId) &&
+    context.procurementId === procurementId.value &&
+    context.routeGeneration === detailRouteGeneration &&
+    spotProcurementCapability.value?.procurement.id ===
+      context.procurementId &&
+    submitApprovalAction.value?.enabled === true;
+}
+
+function requireCurrentSubmitProcurementId(context: SubmitActionContext) {
+  if (!submitContextIsCurrent(context)) {
+    throw new Error("采购提交操作上下文已失效，请重新读取当前采购");
   }
+  return context.procurementId;
+}
+
+function submitOperationIsCurrent(context: SubmitActionContext) {
+  return context.procurementId === procurementId.value &&
+    context.routeGeneration === detailRouteGeneration &&
+    context.operationId === submitOperationId;
+}
+
+function submitResultCanWrite(context: SubmitActionContext) {
+  return submitContextIsCurrent(context) &&
+    submitOperationIsCurrent(context);
+}
+
+function completeSubmit(context: SubmitActionContext) {
+  if (!submitResultCanWrite(context)) return;
+  showSuccess("零星材料采购申请已提交审批。");
+  return loadDetail();
+}
+
+function failSubmit(error: unknown, context: SubmitActionContext) {
+  if (!submitResultCanWrite(context)) return;
+  showError(error, "提交失败");
+}
+
+function finishSubmit(context: SubmitActionContext) {
+  if (!submitOperationIsCurrent(context)) return;
+  actionBusy.value = false;
+}
+
+function runSubmit() {
+  const context = captureSubmitContext();
+  const request = submitSpotProcurement(
+    requireCurrentSubmitProcurementId(context)
+  );
+  submitOperationId = context.operationId;
+  actionBusy.value = true;
+  return request
+    .then(() => completeSubmit(context))
+    .catch((error) => failSubmit(error, context))
+    .finally(() => finishSubmit(context));
 }
 
 async function executeDraftAction(request: BusinessDraftActionRequest) {
@@ -755,6 +817,7 @@ function selectedUploadFiles(files: UploadFile[]) {
 function clearDetailRouteContext() {
   detailRouteGeneration += 1;
   detailLoadRequestId += 1;
+  submitOperationId += 1;
   spotProcurementCapability.value = null;
   detail.value = null;
   loading.value = false;
@@ -947,12 +1010,12 @@ onMounted(() => void loadDetail());
             {{ actionLabel("edit_draft") }}
           </t-button>
           <t-button
-            v-if="actionEnabled('submit_approval')"
+            v-if="submitApprovalAction?.enabled"
             theme="primary"
             :loading="actionBusy"
             @click="runSubmit"
           >
-            {{ actionLabel("submit_approval") }}
+            {{ submitApprovalAction.label }}
           </t-button>
           <template v-if="actionEnabled('review_approval')">
             <t-button

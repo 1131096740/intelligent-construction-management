@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | nestRoutes | ready | `62580430a97217233e458e2246bf76144c9f2c83e62ab8dce56d6cecc68a3a80` |
 | webApiWrappers | blocked | `560ab05970a24830add6a3fec03292a8cd63a1b6c0ba60f9947f2e55caeb22bf` |
-| webPageActions | blocked | `6fe8ee6f8fa649c6d48f41ec0989fd43c32eb64ed41165e29bc9a590e8a98764` |
+| webPageActions | blocked | `f25e4ae27670eaff786bdb0542480bdc969de0e1d83316c9cb99a3860f296785` |
 | routeUsage | blocked | `18889b8b15be66c4fd15822f3fcf64de0ffa8f1e006505c964039bd549dc308d` |
 
 ## 汇总
@@ -28,12 +28,12 @@
 | duplicateMutationRouteCount | 4 |
 | registeredActionCount | 42 |
 | actionBindingCount | 45 |
-| acceptedActionBindingCount | 6 |
-| unresolvedActionBindingCount | 39 |
+| acceptedActionBindingCount | 7 |
+| unresolvedActionBindingCount | 38 |
 | productionMutationConsumerPairCount | 275 |
-| coveredProductionMutationConsumerPairCount | 6 |
-| uncoveredProductionMutationConsumerPairCount | 269 |
-| blockerCount | 384 |
+| coveredProductionMutationConsumerPairCount | 7 |
+| uncoveredProductionMutationConsumerPairCount | 268 |
+| blockerCount | 382 |
 
 ## 路由矩阵
 
@@ -419,7 +419,7 @@
 | POST | /spot-procurements/:procurementId/receipt/review | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#reviewSpotProcurementReceipt | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurements/:procurementId/receipt/submission | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#submitSpotProcurementReceipt | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurements/:procurementId/refunds | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#recordSpotProcurementRefund | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /spot-procurements/:procurementId/submission | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#submitSpotProcurement | spot-procurement.submit | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
+| POST | /spot-procurements/:procurementId/submission | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#submitSpotProcurement | spot-procurement.submit | covered | — |
 | POST | /spot-procurements/:procurementId/supplier-balance-credit | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
 | POST | /spot-procurements/:procurementId/versions | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#createSpotProcurementVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurements/:procurementId/voiding | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#voidSpotProcurement | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -750,7 +750,6 @@
 - apps/web-admin/src/api/spot-procurement.api.ts#reviewSpotProcurementPayment → apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#reviewSpotProcurementReceipt → apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#revokeSpotProcurementReceiptReview → apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue
-- apps/web-admin/src/api/spot-procurement.api.ts#submitSpotProcurement → apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#submitSpotProcurementPayment → apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#submitSpotProcurementReceipt → apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementDraft → apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue
@@ -802,4 +801,3 @@
 - settlement-preview.manual-local-gate#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - spot-procurement.review-approve#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - spot-procurement.review-reject#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- spot-procurement.submit#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
