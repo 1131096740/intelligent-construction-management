@@ -311,6 +311,7 @@ test("opens the workbench shell and historical takeover entry", async ({ page })
     evidenceChecklist: [],
     evidenceFiles: [],
     corrections: [],
+    appliedCorrections: [],
     postConfirmationVerification: {
       statusLabel: "未到核验",
       summaryText: "主管确认后再核验接管后的业务闭环。",
