@@ -17,6 +17,9 @@
     "inspect:whole-site-page-actions": "node scripts/inspect-whole-site-page-action-manifest.mjs --check",
     "preinspect:whole-site-page-actions:ready": "pnpm run inspect:whole-site-web-api:ready",
     "inspect:whole-site-page-actions:ready": "node scripts/inspect-whole-site-page-action-manifest.mjs --check --require-ready",
+    "inspect:whole-site-route-usage": "node scripts/inspect-whole-site-route-usage-manifest.mjs --check",
+    "preinspect:whole-site-route-usage:ready": "pnpm run inspect:whole-site-web-api:ready",
+    "inspect:whole-site-route-usage:ready": "node scripts/inspect-whole-site-route-usage-manifest.mjs --check --require-ready",
     "verify:trial-run:preflight": "node services/api/prisma/verify-trial-run.cjs --preflight",
     "verify:money-bigint:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:money-bigint:local",
     "verify:spot-procurement-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:spot-procurement-concurrency:local"

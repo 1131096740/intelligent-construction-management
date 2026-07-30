@@ -1,0 +1,573 @@
+{
+  "schemaVersion": 1,
+  "authorizationScope": "route_usage_classification_only",
+  "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
+  "expectations": {
+    "routeCount": 395,
+    "classificationOverrideCount": 85,
+    "derivedProductionPageCount": 278,
+    "classificationOverrideSha256": "0e5c372a55f6e9edbafe5bf1dee1e41e50fff618731220c24ab7aed8e6e3f537",
+    "consumerSurfaceOverrideSha256": "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2",
+    "usageCounts": {
+      "page": 279,
+      "external_takeover": 59,
+      "exit_candidate": 23,
+      "internal_task": 2,
+      "unclassified": 32
+    },
+    "consumerSurfaceCounts": {
+      "web_api_wrapper": 326,
+      "auth_store": 5,
+      "signed_ticket_delivery": 1,
+      "machine_probe": 1,
+      "operator_endpoint": 1,
+      "none": 61
+    }
+  },
+  "overrides": [
+    {
+      "method": "DELETE",
+      "path": "/contract-bills/:billId/rows/:rowKey",
+      "usage": "exit_candidate",
+      "reason": "contract_workbench_task_12_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "DELETE",
+      "path": "/contract-drafts/:contractVersionId",
+      "usage": "exit_candidate",
+      "reason": "contract_workbench_task_12_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "GET",
+      "path": "/contract-workbench",
+      "usage": "exit_candidate",
+      "reason": "contract_workbench_task_12_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "GET",
+      "path": "/contract-workbench/:contractId",
+      "usage": "exit_candidate",
+      "reason": "contract_workbench_task_12_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "GET",
+      "path": "/contracts/lifecycle-ledger",
+      "usage": "exit_candidate",
+      "reason": "legacy_lifecycle_ledger_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "GET",
+      "path": "/files/:fileId/download",
+      "usage": "page",
+      "reason": "signed_ticket_delivery"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "usage": "internal_task",
+      "reason": "service_health_probe"
+    },
+    {
+      "method": "GET",
+      "path": "/me/workbench-summary",
+      "usage": "exit_candidate",
+      "reason": "legacy_workbench_summary_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/affiliate-business-facts",
+      "usage": "external_takeover",
+      "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/affiliate-company-contracts",
+      "usage": "external_takeover",
+      "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/contract-takeovers",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/detail-export",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/contract-takeovers/company-entity-candidates",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/contract-takeovers/import-batches",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/contract-takeovers/import-template",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/contract-takeovers/ledger-export",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/affiliate-mapping-report",
+      "usage": "external_takeover",
+      "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "GET",
+      "path": "/settlements/lifecycle-ledger",
+      "usage": "exit_candidate",
+      "reason": "legacy_lifecycle_ledger_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "PATCH",
+      "path": "/contract-bills/:billId/rows/:rowKey",
+      "usage": "exit_candidate",
+      "reason": "contract_workbench_task_12_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "PATCH",
+      "path": "/contract-workbench/:contractVersionId",
+      "usage": "exit_candidate",
+      "reason": "contract_workbench_task_12_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "PATCH",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "PATCH",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "PATCH",
+      "path": "/projects/:projectId/contract-takeovers/import-batches/:batchId/review-result",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/wx-login",
+      "usage": "exit_candidate",
+      "reason": "native_miniprogram_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-bills/:billId/rows",
+      "usage": "exit_candidate",
+      "reason": "contract_workbench_task_12_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-bills/:billId/rows/reorder",
+      "usage": "exit_candidate",
+      "reason": "contract_workbench_task_12_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-layout-template-versions/:versionId/revoke",
+      "usage": "exit_candidate",
+      "reason": "replaced_revoke_route_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-template-versions/:versionId/revoke",
+      "usage": "exit_candidate",
+      "reason": "replaced_revoke_route_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-workbench/:contractId/restore",
+      "usage": "exit_candidate",
+      "reason": "contract_workbench_task_12_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-workbench/:contractId/void",
+      "usage": "exit_candidate",
+      "reason": "contract_workbench_task_12_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-workbench/:contractVersionId/checkpoints",
+      "usage": "exit_candidate",
+      "reason": "contract_workbench_task_12_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-workbench/:contractVersionId/checkpoints/:checkpointId/restore",
+      "usage": "exit_candidate",
+      "reason": "contract_workbench_task_12_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/draft-retention/controlled-entry",
+      "usage": "internal_task",
+      "reason": "super_admin_operator_preview_only"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/affiliate-assignment",
+      "usage": "external_takeover",
+      "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/affiliate-business-facts/:factId/evidence",
+      "usage": "external_takeover",
+      "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/affiliate-company-contracts",
+      "usage": "external_takeover",
+      "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/affiliate-company-contracts/:contractId/confirmation",
+      "usage": "external_takeover",
+      "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/affiliate-contract-facts",
+      "usage": "external_takeover",
+      "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/affiliate-contract-facts/:factId/confirmation",
+      "usage": "external_takeover",
+      "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/affiliate-payment-facts",
+      "usage": "external_takeover",
+      "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/affiliate-payment-facts/:factId/confirmation",
+      "usage": "external_takeover",
+      "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/affiliate-settlement-facts",
+      "usage": "external_takeover",
+      "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/affiliate-settlement-facts/:factId/confirmation",
+      "usage": "external_takeover",
+      "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/abandonment",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/change-baseline-confirmation",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/company-entity-corrections",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/company-entity-corrections/:correctionId/review",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/confirmation",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/contract-side/confirmation",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/contract-side/confirmation-withdrawal",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/corrections",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/corrections/:correctionId/review",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/evidence-files",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/finance-side/confirmation",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/finance-side/confirmation-withdrawal",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/payment-evidence-files",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/review-submission",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/supplement-return",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/abandonment",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/contract-confirmation",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/finance-review",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/finance-review-submission",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/import-batches/:batchId/draft-abandonment-apply",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/import-batches/:batchId/draft-abandonment-preview",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/import-drafts",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/import-precheck",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/imports/apply",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/imports/preview",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/owner-contracts",
+      "usage": "external_takeover",
+      "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/owner-contracts/:ownerContractId/confirmation",
+      "usage": "external_takeover",
+      "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/proxy-payments",
+      "usage": "exit_candidate",
+      "reason": "project_legacy_fund_entry_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/receipts",
+      "usage": "exit_candidate",
+      "reason": "project_legacy_fund_entry_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-exception-quotas",
+      "usage": "exit_candidate",
+      "reason": "settlement_exception_quota_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-exception-quotas/:quotaId/approval",
+      "usage": "exit_candidate",
+      "reason": "settlement_exception_quota_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/upstream-fund-facts",
+      "usage": "external_takeover",
+      "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/upstream-fund-facts/:fundFactId/confirmation",
+      "usage": "external_takeover",
+      "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/upstream-settlements",
+      "usage": "external_takeover",
+      "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/upstream-settlements/:upstreamSettlementId/confirmation",
+      "usage": "external_takeover",
+      "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "POST",
+      "path": "/settlements",
+      "usage": "exit_candidate",
+      "reason": "legacy_direct_settlement_create_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "PUT",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/contract-side",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "PUT",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/finance-side",
+      "usage": "external_takeover",
+      "reason": "historical_contract_takeover_external_workbench"
+    }
+  ],
+  "consumerSurfaceOverrides": [
+    {
+      "method": "GET",
+      "path": "/files/:fileId/download",
+      "consumerSurface": "signed_ticket_delivery",
+      "reason": "backend_authorized_short_lived_download_ticket_delivery",
+      "ticketFollowups": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
+          "wrapper": "openContractRevisionPreview",
+          "method": "GET",
+          "ticketField": "downloadPath"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+          "wrapper": "downloadSettlementTemplatePreview",
+          "method": "GET",
+          "ticketField": "downloadUrl"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "consumerSurface": "machine_probe",
+      "reason": "service_and_public_health_monitoring"
+    },
+    {
+      "method": "POST",
+      "path": "/draft-retention/controlled-entry",
+      "consumerSurface": "operator_endpoint",
+      "reason": "super_admin_controlled_preview_entry_execute_forbidden"
+    }
+  ]
+}
