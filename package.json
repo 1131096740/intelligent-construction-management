@@ -9,6 +9,8 @@
     "test": "node scripts/pnpm-workspace.mjs -r test",
     "typecheck": "node scripts/pnpm-workspace.mjs -r typecheck",
     "inspect:contract-workbench-capabilities": "node scripts/inspect-contract-workbench-capabilities.mjs --check docs/product/contract-workbench-capability-matrix.md",
+    "preinspect:whole-site-capabilities": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
+    "inspect:whole-site-capabilities": "node scripts/inspect-whole-site-capabilities.mjs --check",
     "verify:trial-run:preflight": "node services/api/prisma/verify-trial-run.cjs --preflight",
     "verify:money-bigint:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:money-bigint:local",
     "verify:spot-procurement-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:spot-procurement-concurrency:local"
