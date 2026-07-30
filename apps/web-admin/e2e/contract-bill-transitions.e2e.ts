@@ -7,7 +7,7 @@ test("合同变更清单在页面保存映射后由主任确认", async ({ page 
   const mock = await installRoutes(page);
   await loginAndOpenWorkbench(page);
 
-  await page.locator(".business-tabs").getByText("清单", { exact: true }).click();
+  await page.locator('[data-section-nav-id="bill_tax"]').click();
   await expect(page.getByText("旧版结算承接映射", { exact: true })).toBeVisible();
 
   await page.getByPlaceholder("旧版已结算行").click();
@@ -73,6 +73,17 @@ async function installRoutes(page: Page) {
   await page.route("**/api/contract-templates*", (route) => fulfillJson(route, []));
   await page.route("**/api/contract-layout-templates*", (route) => fulfillJson(route, []));
   await page.route(`**/api/contract-workbench/${versionId}/negotiation-rounds`, (route) => fulfillJson(route, []));
+  await page.route(`**/api/contract-drafts/${versionId}/edit-lease**`, (route) => {
+    if (route.request().method() === "DELETE") {
+      return fulfillJson(route, { released: true });
+    }
+    return fulfillJson(route, {
+      token: "transition-e2e-lease",
+      leaseRevision: 1,
+      expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+      heartbeatIntervalMs: 60_000
+    });
+  });
   await page.route(`**/api/contract-versions/${versionId}/bill-transitions/options`, (route) => fulfillJson(route, {
     fromContractVersionId: "version-source-e2e",
     canConfirm: true,
@@ -101,7 +112,7 @@ async function installRoutes(page: Page) {
     }));
     return fulfillJson(route, mappings);
   });
-  await page.route(`**/api/contract-workbench/${contractId}`, (route) => {
+  await page.route(`**/api/contract-drafts/${versionId}/workbench`, (route) => {
     workbenchRevisions.push(revision);
     return fulfillJson(route, workbench(revision));
   });
@@ -129,6 +140,7 @@ function workbench(revision: number) {
       amountCents: "10000",
       pricingNature: "unit_price",
       amountSource: "bill_sum",
+      manualAmountCents: null,
       amountLimitType: "capped",
       taxFacts: { invoiceType: "vat_special", taxMode: "single_rate", defaultTaxRatePercent: "13", status: "draft", source: "contract_document", revision: 0, frozenAt: null },
       draftData: {},
@@ -139,6 +151,22 @@ function workbench(revision: number) {
     parties: [],
     bills: [],
     paymentTerms: { originalText: "", stages: [] },
+    draft: {},
+    attachments: [],
+    lease: {
+      state: "available",
+      holderDisplayName: null,
+      expiresAt: null,
+      canTakeOver: false
+    },
+    settlementMode: {
+      value: "settlement_required",
+      source: "contract_director",
+      confirmedAt: "2026-07-25T00:00:00.000Z",
+      confirmedByUserId: "seed-user-contract-director",
+      confirmationRequired: false,
+      canConfirm: false
+    },
     checkpoints: [],
     documents: [],
     readiness: { ready: false, blockingMessages: [], warningMessages: [] }

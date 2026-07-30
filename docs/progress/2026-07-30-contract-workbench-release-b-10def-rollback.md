@@ -249,3 +249,17 @@ HTTP 转换后的原型差异。
 该修复必须形成新的精确候选并重新完成门禁。用户对 `10def…` 的 push、部署、
 canary 和 token 授权已经消耗，不能自动延伸到新 SHA。transition、retention、
 其他业务写入和物理删除继续关闭。
+
+## 10. 浏览器门禁补齐
+
+本地根因修复后的浏览器证据：
+
+- P0 Chromium：2/2 通过，另 2 项仅在配置真实环境账号后运行；
+- 清单焦点编辑器：Chromium + WebKit，桌面及 960/640/375 四档响应式，8/8 通过；
+- 跨版本清单映射：1/1 通过，验证旧版已结行选择、目标行选择、映射保存和合同部主任
+  确认，工作台 revision 依次为 4、5、6。
+
+跨版本用例原夹具仍使用已下线的 `/contract-workbench/:contractId` 读接口和旧页签定位，
+并缺少当前聚合工作台要求的 `draft`、`attachments`、`lease`、`settlementMode` 等读模型
+字段。夹具已同步为 `/contract-drafts/:versionId/workbench`、章节导航和显式编辑租约；
+这是测试基础设施同步，不改生产页面、API、权限或业务状态规则。
