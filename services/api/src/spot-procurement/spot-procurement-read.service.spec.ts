@@ -220,6 +220,7 @@ function buildFixture() {
       )
     },
     spotProcurementPaymentExecution: {
+      findFirst: jest.fn().mockResolvedValue({ id: "execution-1" }),
       findMany: jest.fn().mockResolvedValue([
         {
           id: "execution-1",
@@ -254,6 +255,9 @@ function buildFixture() {
     },
     spotProcurementPaymentInvoice: {
       findMany: jest.fn().mockResolvedValue([])
+    },
+    spotProcurementAbnormalTermination: {
+      findUnique: jest.fn().mockResolvedValue(null)
     },
     spotProcurementPaymentArchive: {
       findMany: jest.fn().mockResolvedValue([])
@@ -697,6 +701,85 @@ describe("SpotProcurementReadService", () => {
     });
   });
 
+  it("advertises abnormal termination request and confirmation from server-owned payment and role facts", async () => {
+    const fixture = buildFixture();
+    fixture.visibility.effectiveRoleKeys.mockResolvedValue(["finance_staff"]);
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const requestable = await service.getProcurement(
+      "procurement-1",
+      "finance-1"
+    );
+    expect(
+      requestable.availableActions.find(
+        (action) => action.key === "request_abnormal_termination"
+      )
+    ).toMatchObject({
+      enabled: true,
+      requiredAction: "spot_procurement.abnormal_termination.request",
+      requiresComment: true
+    });
+    expect(
+      requestable.availableActions.find(
+        (action) => action.key === "confirm_abnormal_termination"
+      )
+    ).toMatchObject({ enabled: false });
+
+    fixture.visibility.effectiveRoleKeys.mockResolvedValue(["employee"]);
+    const handlerWithoutRequiredRole = await service.getProcurement(
+      "procurement-1",
+      "handler-1"
+    );
+    expect(
+      handlerWithoutRequiredRole.availableActions.find(
+        (action) => action.key === "request_abnormal_termination"
+      )
+    ).toMatchObject({
+      enabled: false,
+      disabledReason: "当前岗位无权执行此动作"
+    });
+
+    fixture.prisma.spotProcurementAbnormalTermination.findUnique.mockResolvedValue({
+      id: "termination-1",
+      procurementId: "procurement-1",
+      status: "requested",
+      reason: "已付款但商户无法继续履约",
+      requestedByUserId: "finance-1",
+      requestedAt: now,
+      confirmedByUserId: null,
+      confirmedAt: null
+    });
+    fixture.visibility.effectiveRoleKeys.mockResolvedValue(["finance_director"]);
+
+    const confirmable = await service.getProcurement(
+      "procurement-1",
+      "finance-director-1"
+    );
+    expect(confirmable.abnormalTermination).toMatchObject({
+      id: "termination-1",
+      status: "requested",
+      reason: "已付款但商户无法继续履约"
+    });
+    expect(
+      confirmable.availableActions.find(
+        (action) => action.key === "request_abnormal_termination"
+      )
+    ).toMatchObject({ enabled: false });
+    expect(
+      confirmable.availableActions.find(
+        (action) => action.key === "confirm_abnormal_termination"
+      )
+    ).toMatchObject({
+      enabled: true,
+      requiredAction: "spot_procurement.abnormal_termination.confirm"
+    });
+  });
+
   it("projects the shared ticket coverage into procurement and payment reads without double-counting payment attribution", async () => {
     const fixture = buildFixture();
     const procurementCoverage = {
@@ -867,7 +950,13 @@ describe("SpotProcurementReadService", () => {
         status: "uploaded",
         statusLabel: "已上传发票",
         activeCount: 1,
-        invoices: [{ id: "spot-invoice-1", fileId: "invoice-file-1" }]
+        invoices: [
+          {
+            id: "spot-invoice-1",
+            fileId: "invoice-file-1",
+            status: "active"
+          }
+        ]
       })
     };
     const service = new SpotProcurementReadService(
@@ -885,7 +974,44 @@ describe("SpotProcurementReadService", () => {
       status: "uploaded",
       statusLabel: "已上传发票",
       activeCount: 1,
-      invoices: [{ id: "spot-invoice-1", fileId: "invoice-file-1" }]
+      invoices: [
+        {
+          id: "spot-invoice-1",
+          fileId: "invoice-file-1",
+          status: "active",
+          availableActions: [
+            expect.objectContaining({
+              key: "invalidate_invoice",
+              enabled: true,
+              requiredAction: "spot_procurement.invoice.append",
+              requiresComment: true
+            })
+          ]
+        }
+      ]
+    });
+
+    fixture.visibility.effectiveRoleKeys.mockResolvedValue(["employee"]);
+    const handlerWithoutRequiredRole = await service.getPayment(
+      "payment-1",
+      "handler-1"
+    );
+    const handlerInvoice = (
+      handlerWithoutRequiredRole as {
+        invoice: {
+          invoices: Array<{
+            availableActions: Array<{ key: string; enabled: boolean; disabledReason: string | null }>;
+          }>;
+        };
+      }
+    ).invoice;
+    expect(
+      handlerInvoice.invoices[0]?.availableActions.find(
+        (action) => action.key === "invalidate_invoice"
+      )
+    ).toMatchObject({
+      enabled: false,
+      disabledReason: "当前岗位无权执行此动作"
     });
     expect(invoiceLedger.coverageForPaymentIds).not.toHaveBeenCalled();
     expect(invoiceLedger.detailForPayment).not.toHaveBeenCalled();

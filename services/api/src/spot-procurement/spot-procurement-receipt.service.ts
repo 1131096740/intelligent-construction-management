@@ -745,10 +745,32 @@ export class SpotProcurementReceiptService {
     actorScope: ReceiptActionScope;
     procurement: { id: string; projectId: string; handlerUserId: string; currentVersionId: string | null; status: string };
     version: { id: string; status: string; handlerUserId: string };
-    receipt: { id: string; handlerUserId: string; procurementVersionId: string; status: string; lockedAt: Date | null };
-    revision: { procurementVersionId: string; submittedAt: Date | null };
+    receipt: {
+      id: string;
+      handlerUserId: string;
+      procurementVersionId: string;
+      status: string;
+      currentRevisionNo: number;
+      firstSubmittedAt: Date | null;
+      submittedAt: Date | null;
+      submittedByUserId: string | null;
+      submissionDelegationId: string | null;
+      lockedAt: Date | null;
+    };
+    revision: {
+      procurementVersionId: string;
+      submittedAt: Date | null;
+      submittedByUserId: string | null;
+      submissionDelegationId: string | null;
+    };
     delegation: { delegatorUserId: string; delegateUserId: string; scope: string; revokedAt: Date | null } | null;
-    latestReview: { id: string; decision: string } | undefined;
+    latestReview: {
+      id: string;
+      decision: string;
+      receiptRevisionNo: number;
+      procurementId: string;
+      procurementVersionId: string;
+    } | undefined;
     discrepancy: { status: string } | null;
     firstActualPayment: { id: string; paymentId: string; paidAt: Date } | null;
   }): DetailActionReadModel[] {
@@ -757,13 +779,15 @@ export class SpotProcurementReceiptService {
       label: string,
       kind: DetailActionReadModel["kind"],
       enabled: boolean,
-      disabledReason: string
+      disabledReason: string,
+      requiredAction?: DetailActionReadModel["requiredAction"]
     ): DetailActionReadModel => ({
       key,
       label,
       kind,
       enabled,
-      disabledReason: enabled ? null : disabledReason
+      disabledReason: enabled ? null : disabledReason,
+      requiredAction
     });
     const { actorScope } = input;
     const businessOpen =
@@ -817,6 +841,33 @@ export class SpotProcurementReceiptService {
       (isHandler ||
         actorScope.effectiveRoleKeys.includes("finance_staff") ||
         actorScope.effectiveRoleKeys.includes("finance_director"));
+    const hasSubmissionCoordinates =
+      Boolean(input.receipt.firstSubmittedAt) &&
+      Boolean(input.receipt.submittedAt) &&
+      Boolean(input.receipt.submittedByUserId) &&
+      Boolean(input.revision.submittedAt) &&
+      Boolean(input.revision.submittedByUserId) &&
+      input.receipt.submittedAt?.getTime() ===
+        input.revision.submittedAt?.getTime() &&
+      input.receipt.submittedByUserId ===
+        input.revision.submittedByUserId &&
+      input.receipt.submissionDelegationId ===
+        input.revision.submissionDelegationId;
+    const hasCurrentApprovedReview =
+      input.latestReview?.decision === "approved" &&
+      input.latestReview.receiptRevisionNo ===
+        input.receipt.currentRevisionNo &&
+      input.latestReview.procurementId === input.procurement.id &&
+      input.latestReview.procurementVersionId === input.version.id;
+    const canRefreshReceiptPdf =
+      this.pilot.isEnabled(input.procurement.projectId) &&
+      isMaterialDirector &&
+      (input.receipt.status === "reviewed" ||
+        input.receipt.status === "locked") &&
+      input.receipt.procurementVersionId === input.version.id &&
+      input.revision.procurementVersionId === input.version.id &&
+      hasSubmissionCoordinates &&
+      hasCurrentApprovedReview;
 
     return [
       action("delegate_receipt", "委托收货办理", "normal", editable && isHandler, "仅当前采购经办人可在收货草稿阶段委托"),
@@ -828,7 +879,8 @@ export class SpotProcurementReceiptService {
       action("initiate_discrepancy", "发起少货处理", "primary", businessOpen && isCurrentHandler && input.receipt.status === "reviewed" && !input.discrepancy, "仅当前采购经办人可对已复核收货发起少货处理"),
       action("confirm_discrepancy", "确认少货事实", "primary", businessOpen && isMaterialDirector && input.discrepancy?.status === "pending_resolution", "仅本项目物资主管可确认待处理少货事实"),
       action("record_refund", "登记退款", "primary", businessOpen && isProjectFinanceStaff && input.discrepancy?.status === "awaiting_refund", "仅本项目财务人员可登记待退款事实"),
-      action("append_invoice", "追加整单发票", "normal", canAppendInvoice, "仅采购经办人或财务人员可在实际付款后追加发票")
+      action("append_invoice", "追加整单发票", "normal", canAppendInvoice, "仅采购经办人或财务人员可在实际付款后追加发票"),
+      action("refresh_receipt_pdf", "重新生成收货 PDF", "normal", canRefreshReceiptPdf, "仅本项目物资主管可对坐标一致且已复核通过的当前收货确认重新生成正式 PDF", "spot_procurement.receipt.review")
     ];
   }
 

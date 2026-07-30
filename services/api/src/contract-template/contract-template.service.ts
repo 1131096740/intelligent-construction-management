@@ -96,7 +96,7 @@ export class ContractTemplateService {
       position: { findMany: (args: { where: Record<string, unknown> }) => Promise<Array<{ key: string }>> };
     },
     actorUserId: string
-  ): Promise<void> {
+  ): Promise<string[]> {
     const positions = await tx.userPosition.findMany({
       where: { userId: actorUserId, projectId: null }
     });
@@ -107,6 +107,7 @@ export class ContractTemplateService {
     if (!positionRows.some((p: { key: string }) => p.key === "contract_staff" || p.key === "contract_director")) {
       throw new ForbiddenException("只有合同经办人或合同主管可以执行该模板操作");
     }
+    return positionRows.map((position) => position.key);
   }
 
   private roleErrorMessage(roleKey: string) {
@@ -144,6 +145,47 @@ export class ContractTemplateService {
         requiresComment: true
       }],
       blockedReasons
+    };
+  }
+
+  private versionActionReadModel(
+    version: {
+      status: string;
+      submittedByUserId?: string | null;
+      publishedAt?: Date | null;
+      stoppedAt?: Date | null;
+      revokedAt?: Date | null;
+    },
+    referenceReason: string | null,
+    canMaintain: boolean,
+    canRiskStop: boolean,
+    hasActiveMapping: boolean
+  ): { availableActions: DetailActionReadModel[]; blockedReasons: string[] } {
+    const discard = this.discardReadModel(version, referenceReason, canMaintain);
+    const riskStopBlockedReasons: string[] = [];
+    if (!canRiskStop) {
+      riskStopBlockedReasons.push("只有合同主管可以风险停用已发布模板版本");
+    }
+    if (version.status !== "published") {
+      riskStopBlockedReasons.push("只有已发布的业务模板版本可以风险停用");
+    }
+    if (hasActiveMapping) {
+      riskStopBlockedReasons.push("该模板版本仍有启用的业务场景映射，请先停用映射");
+    }
+    return {
+      availableActions: [
+        ...discard.availableActions,
+        {
+          key: "risk_stop",
+          label: "风险停用",
+          kind: "danger",
+          enabled: riskStopBlockedReasons.length === 0,
+          disabledReason: riskStopBlockedReasons.length
+            ? riskStopBlockedReasons.join("；")
+            : null
+        }
+      ],
+      blockedReasons: discard.blockedReasons
     };
   }
 
@@ -468,7 +510,7 @@ export class ContractTemplateService {
 
   async getTemplate(templateId: string, actorUserId: string, includeHistory = false) {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertTemplateMaintenanceRole(tx, actorUserId);
+      const roleKeys = await this.assertTemplateMaintenanceRole(tx, actorUserId);
       const template = await tx.contractBusinessTemplate.findUnique({ where: { id: templateId } });
       if (!template || (!includeHistory && template.status === "discarded")) {
         throw new NotFoundException("业务模板不存在");
@@ -478,9 +520,13 @@ export class ContractTemplateService {
         orderBy: { versionNo: "desc" }
       });
       const actions = await Promise.all(versions.map(async (version) => {
-        const [mapping, contract] = await Promise.all([
+        const [mapping, activeMapping, contract] = await Promise.all([
           tx.contractScenarioTemplateMapping.findFirst({
             where: { businessTemplateVersionId: version.id },
+            select: { id: true }
+          }),
+          tx.contractScenarioTemplateMapping.findFirst({
+            where: { businessTemplateVersionId: version.id, active: true },
             select: { id: true }
           }),
           tx.contractVersion.findFirst({
@@ -488,10 +534,12 @@ export class ContractTemplateService {
             select: { id: true }
           })
         ]);
-        return this.discardReadModel(
+        return this.versionActionReadModel(
           version,
           mapping || contract ? "该版本已被场景映射或合同引用" : null,
-          true
+          true,
+          roleKeys.includes("contract_director"),
+          Boolean(activeMapping)
         );
       }));
       return {
@@ -839,19 +887,29 @@ export class ContractTemplateService {
       });
 
       return updated;
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted
     });
   }
 
   async revokeVersion(versionId: string, actorUserId: string) {
-    return this.prisma.$transaction(async (tx: ContractTemplateTx) => {
+    return this.prisma.$transaction(async (tx) => {
       await this.assertGlobalRole(tx as never, actorUserId, "contract_director");
 
-      const version = await tx.contractBusinessTemplateVersion.findUnique({
-        where: { id: versionId }
-      });
-      if (!version) throw new NotFoundException("未找到业务模板版本，请刷新后重试");
+      const lockedTemplate = await lockBusinessTemplateVersion(tx, versionId);
+      const version = lockedTemplate?.version;
+      if (!version || !lockedTemplate.template) {
+        throw new NotFoundException("未找到业务模板版本，请刷新后重试");
+      }
       if (version.status !== "published") {
         throw new BadRequestException("只有已发布的业务模板版本可以撤回");
+      }
+      const activeMapping = await tx.contractScenarioTemplateMapping.findFirst({
+        where: { businessTemplateVersionId: version.id, active: true },
+        select: { id: true }
+      });
+      if (activeMapping) {
+        throw new BadRequestException("该模板版本仍有启用的业务场景映射，请先停用映射");
       }
 
       const updated = await tx.contractBusinessTemplateVersion.update({
@@ -870,6 +928,8 @@ export class ContractTemplateService {
       });
 
       return updated;
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted
     });
   }
 

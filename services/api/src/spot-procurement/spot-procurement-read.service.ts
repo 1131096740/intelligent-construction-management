@@ -538,7 +538,8 @@ export class SpotProcurementReadService {
       currentPdf,
       receipt,
       discrepancy,
-      refunds
+      refunds,
+      abnormalTermination
     ] = await Promise.all([
       this.prisma.project.findFirst({
         where: { id: procurement.projectId },
@@ -597,6 +598,9 @@ export class SpotProcurementReadService {
       this.prisma.spotProcurementRefund.findMany({
         where: { procurementId: procurement.id },
         orderBy: [{ receivedAt: "asc" }, { id: "asc" }]
+      }),
+      this.prisma.spotProcurementAbnormalTermination.findUnique({
+        where: { procurementId: procurement.id }
       })
     ]);
     if (!project) {
@@ -608,6 +612,15 @@ export class SpotProcurementReadService {
     if (!currentVersion) {
       throw new ConflictException("零星采购当前版本不存在，请联系管理员核对");
     }
+    const actualPayment = allPayments.length
+      ? await this.prisma.spotProcurementPaymentExecution.findFirst({
+          where: {
+            paymentId: { in: allPayments.map((payment) => payment.id) },
+            voidedAt: null
+          },
+          select: { id: true }
+        })
+      : null;
 
     const receiptWorkflowFacts = receipt
       ? await this.receiptWorkflowFacts(
@@ -733,7 +746,10 @@ export class SpotProcurementReadService {
       discrepancy,
       refunds,
       reservations,
-      paymentArchives
+      paymentArchives,
+      abnormalTermination,
+      hasActualPayment: Boolean(actualPayment),
+      pilotEnabled: this.pilot.isEnabled(procurement.projectId)
     });
     const invoiceCoverageByProcurementId =
       !usesRealProcurementForm && this.invoiceLedger
@@ -841,6 +857,18 @@ export class SpotProcurementReadService {
               accessiblePayments.length !== allPayments.length
           },
       receipt: realReceipt,
+      abnormalTermination: abnormalTermination
+        ? {
+            id: abnormalTermination.id,
+            procurementId: abnormalTermination.procurementId,
+            status: abnormalTermination.status,
+            reason: abnormalTermination.reason,
+            requestedByUserId: abnormalTermination.requestedByUserId,
+            requestedAt: abnormalTermination.requestedAt.toISOString(),
+            confirmedByUserId: abnormalTermination.confirmedByUserId,
+            confirmedAt: isoOrNull(abnormalTermination.confirmedAt)
+          }
+        : null,
       ...(usesRealProcurementForm
         ? {
             discrepancy: discrepancyReadSummary(discrepancy, accessibleRefunds),
@@ -1385,10 +1413,26 @@ export class SpotProcurementReadService {
       !usesRealPaymentForm && this.invoiceLedger
         ? await this.invoiceLedger.detailForPayment(payment.id)
         : invoiceLedgerDetailUnavailable();
-    const paymentInvoice =
+    const paymentInvoiceSummary =
       usesRealPaymentForm && this.paymentInvoices
         ? await this.paymentInvoices.summary(payment.id)
         : null;
+    const paymentInvoice = paymentInvoiceSummary
+      ? {
+          ...paymentInvoiceSummary,
+          invoices: paymentInvoiceSummary.invoices.map((invoice) => ({
+            ...invoice,
+            availableActions: this.paymentInvoiceActions({
+              procurement,
+              payment,
+              invoice,
+              actorUserId,
+              roleKeys,
+              pilotEnabled: this.pilot.isEnabled(payment.projectId)
+            })
+          }))
+        }
+      : null;
     const materialIds = paymentLines.map((line) => line.procurementLineId);
     const materials = materialIds.length
       ? await this.prisma.spotProcurementLine.findMany({
@@ -2553,6 +2597,17 @@ export class SpotProcurementReadService {
     refunds: SpotProcurementRefund[];
     reservations: Array<{ status: string }>;
     paymentArchives: SpotProcurementPaymentArchive[];
+    abnormalTermination: {
+      id: string;
+      status: string;
+      reason: string;
+      requestedByUserId: string;
+      requestedAt: Date;
+      confirmedByUserId: string | null;
+      confirmedAt: Date | null;
+    } | null;
+    hasActualPayment: boolean;
+    pilotEnabled: boolean;
   }): DetailActionReadModel[] {
     const isOwner =
       input.actorUserId === input.procurement.applicantUserId ||
@@ -2620,6 +2675,19 @@ export class SpotProcurementReadService {
       input.actorUserId === input.procurement.handlerUserId &&
       canCreate &&
       formalBlocker === null;
+    const abnormalTerminationBaseReady =
+      input.pilotEnabled &&
+      input.procurement.status === "approved_in_progress" &&
+      input.hasActualPayment;
+    const canRequestAbnormalTermination =
+      abnormalTerminationBaseReady &&
+      input.abnormalTermination === null &&
+      (input.actorUserId === input.procurement.handlerUserId ||
+        input.roleKeys.includes("finance_staff"));
+    const canConfirmAbnormalTermination =
+      abnormalTerminationBaseReady &&
+      input.abnormalTermination?.status === "requested" &&
+      input.roleKeys.includes("finance_director");
 
     return [
       detailAction({
@@ -2713,6 +2781,33 @@ export class SpotProcurementReadService {
         enabled: canVoid,
         disabledReason: "办结、已付款或仍有活动付款时不能撤销",
         requiresComment: true
+      }),
+      detailAction({
+        key: "request_abnormal_termination",
+        label: "发起异常终止",
+        kind: "danger",
+        roleKeys: input.roleKeys,
+        requiredAction: "spot_procurement.abnormal_termination.request",
+        enabled: canRequestAbnormalTermination,
+        disabledReason:
+          input.abnormalTermination !== null
+            ? "当前采购已存在异常终止处理事实"
+            : !input.hasActualPayment
+              ? "采购尚未发生真实付款，不能异常终止"
+              : "只有办理中的采购可由当前经办人或本项目财务人员发起异常终止",
+        requiresComment: true
+      }),
+      detailAction({
+        key: "confirm_abnormal_termination",
+        label: "确认异常终止",
+        kind: "danger",
+        roleKeys: input.roleKeys,
+        requiredAction: "spot_procurement.abnormal_termination.confirm",
+        enabled: canConfirmAbnormalTermination,
+        disabledReason:
+          input.abnormalTermination?.status === "requested"
+            ? "只有本项目财务主管可以确认异常终止"
+            : "当前采购不存在待确认的异常终止申请"
       }),
       detailAction({
         key: "download_application_pdf",
@@ -2851,6 +2946,54 @@ export class SpotProcurementReadService {
         enabled: input.approval?.status === "approved",
         disabledReason: "付款审批完成后才可下载正式审批单",
         requiresPassword: true
+      })
+    ];
+  }
+
+  private paymentInvoiceActions(input: {
+    procurement: Pick<SpotProcurement, "status">;
+    payment: Pick<
+      SpotProcurementPayment,
+      | "status"
+      | "invalidatedAt"
+      | "paymentType"
+      | "factsFrozenAt"
+      | "handlerUserId"
+    >;
+    invoice: { status: string };
+    actorUserId: string;
+    roleKeys: RoleKey[];
+    pilotEnabled: boolean;
+  }): DetailActionReadModel[] {
+    const actorCanAppend =
+      input.actorUserId === input.payment.handlerUserId ||
+      input.roleKeys.includes("finance_staff") ||
+      input.roleKeys.includes("finance_director");
+    const canInvalidate =
+      input.pilotEnabled &&
+      input.procurement.status === "approved_in_progress" &&
+      input.payment.status !== "invalidated" &&
+      input.payment.invalidatedAt === null &&
+      Boolean(input.payment.paymentType) &&
+      Boolean(input.payment.factsFrozenAt) &&
+      actorCanAppend &&
+      input.invoice.status === "active";
+
+    return [
+      detailAction({
+        key: "invalidate_invoice",
+        label: "作废发票附件",
+        kind: "danger",
+        roleKeys: input.roleKeys,
+        requiredAction: "spot_procurement.invoice.append",
+        enabled: canInvalidate,
+        disabledReason:
+          input.invoice.status !== "active"
+            ? "该付款发票附件已经作废"
+            : input.procurement.status !== "approved_in_progress"
+              ? "采购办结或异常终止后不能作废既有附件"
+              : "只有采购经办人或本项目财务人员可作废已冻结付款的发票附件",
+        requiresComment: true
       })
     ];
   }

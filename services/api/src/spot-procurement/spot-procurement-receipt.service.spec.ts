@@ -754,7 +754,10 @@ describe("SpotProcurementReceiptService workflow", () => {
             operation(tx)
         )
     };
-    const pilot = { assertEnabled: jest.fn() };
+    const pilot = {
+      assertEnabled: jest.fn(),
+      isEnabled: jest.fn().mockReturnValue(true)
+    };
     const files = {
       getOwnedVerifiedFileBuffer: jest.fn().mockResolvedValue({
         file: {
@@ -1017,6 +1020,47 @@ describe("SpotProcurementReceiptService workflow", () => {
     expect(enabledFinanceActions).toContain("record_refund");
     expect(enabledFinanceActions).not.toContain("review_receipt");
     expect(enabledFinanceActions).not.toContain("edit_receipt");
+  });
+
+  it("advertises manual receipt PDF refresh only for the current approved review and material director", async () => {
+    const submittedAt = new Date("2026-07-17T08:30:00.000Z");
+    const harness = createHarness({
+      receiptStatus: "reviewed",
+      revisionSubmittedAt: submittedAt,
+      firstSubmittedAt: submittedAt,
+      materialDirector: true,
+      actionProjectRoleKeys: ["material_director"],
+      latestReview: {
+        id: "review-approved",
+        receiptId: "receipt-1",
+        receiptRevisionNo: 1,
+        procurementId: "procurement-1",
+        procurementVersionId: "version-1",
+        sequenceNo: 1,
+        decision: "approved",
+        comment: null,
+        reviewedByUserId: "material-director-1",
+        reviewedByNameSnapshot: "物资主管",
+        submissionDelegationId: null,
+        targetReviewId: null,
+        createdAt: submittedAt
+      }
+    });
+
+    const detail = await harness.service.getReceipt(
+      "procurement-1",
+      "material-director-1"
+    );
+
+    expect(
+      detail.availableActions.find(
+        (action) => action.key === "refresh_receipt_pdf"
+      )
+    ).toMatchObject({
+      enabled: true,
+      label: "重新生成收货 PDF",
+      requiredAction: "spot_procurement.receipt.review"
+    });
   });
 
   it("allows the handler to record receipt facts before any actual payment", async () => {

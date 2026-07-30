@@ -664,13 +664,161 @@ describe("LayoutTemplateService", () => {
     expect(result.versions[0]?.availableActions).toContainEqual(
       expect.objectContaining({ key: "discard_version", enabled: true })
     );
+    expect(result.versions[0]?.availableActions).toContainEqual(
+      expect.objectContaining({
+        key: "risk_stop",
+        enabled: false,
+        disabledReason: expect.stringContaining("只有已发布的合同版式版本可以风险停用")
+      })
+    );
     expect(result.versions[1]?.availableActions).toContainEqual(
       expect.objectContaining({ key: "discard_version", enabled: false })
+    );
+    expect(result.versions[1]?.availableActions).toContainEqual(
+      expect.objectContaining({
+        key: "risk_stop",
+        enabled: false,
+        disabledReason: "只有合同主管可以风险停用已发布版式版本"
+      })
     );
     expect(tx.contractLayoutTemplateVersion.findMany).toHaveBeenCalledWith({
       where: { layoutTemplateId: "template-1", status: { not: "discarded" } },
       orderBy: { versionNo: "desc" }
     });
+  });
+
+  it("enables the server risk-stop action for a director viewing a published layout", async () => {
+    const tx = {
+      ...roleTx("contract_director"),
+      contractLayoutTemplate: {
+        findUnique: jest.fn().mockResolvedValue({ id: "template-1", name: "采购合同" })
+      },
+      contractLayoutTemplateVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "version-1", versionNo: 1, status: "published", draftRevision: 1 }
+        ])
+      },
+      contractVersion: { findFirst: jest.fn().mockResolvedValue(null) },
+      contractGeneratedDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      contractLayoutPreviewJob: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const service = new LayoutTemplateService(
+      { $transaction: jest.fn(async (callback) => callback(tx)) } as never,
+      audit as never,
+      files as never
+    );
+
+    const result = await service.getLayoutTemplate("template-1", "director-1");
+
+    expect(result.versions[0]?.availableActions).toContainEqual(
+      expect.objectContaining({
+        key: "risk_stop",
+        label: "风险停用",
+        kind: "danger",
+        enabled: true,
+        disabledReason: null
+      })
+    );
+  });
+
+  it("stops a published layout only for a director and records the immutable version audit", async () => {
+    const version = {
+      id: "version-1",
+      status: "published",
+      stoppedAt: null,
+      revokedAt: null
+    };
+    const tx = {
+      ...roleTx("contract_director"),
+      contractLayoutTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue(version),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    };
+    const service = new LayoutTemplateService(
+      { $transaction: jest.fn(async (callback) => callback(tx)) } as never,
+      audit as never,
+      files as never
+    );
+
+    const result = await service.stopVersion("version-1", "director-1");
+
+    expect(result).toMatchObject({ id: "version-1", status: "stopped" });
+    expect(tx.contractLayoutTemplateVersion.updateMany).toHaveBeenCalledWith({
+      where: { id: "version-1", status: "published" },
+      data: {
+        status: "stopped",
+        stoppedAt: expect.any(Date)
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        actorUserId: "director-1",
+        action: "contract_layout.stopped",
+        businessType: "contract_layout_template_version",
+        businessId: "version-1"
+      })
+    );
+  });
+
+  it("rejects layout risk-stop for non-directors, non-published versions, and a lost status CAS", async () => {
+    const staffTx = {
+      ...roleTx("contract_staff"),
+      contractLayoutTemplateVersion: {
+        findUnique: jest.fn(),
+        updateMany: jest.fn()
+      }
+    };
+    const staffService = new LayoutTemplateService(
+      { $transaction: jest.fn(async (callback) => callback(staffTx)) } as never,
+      audit as never,
+      files as never
+    );
+    await expect(
+      staffService.stopVersion("version-1", "staff-1")
+    ).rejects.toThrow("只有合同主管可以执行该版式操作");
+    expect(staffTx.contractLayoutTemplateVersion.findUnique).not.toHaveBeenCalled();
+
+    const draftTx = {
+      ...roleTx("contract_director"),
+      contractLayoutTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          status: "draft"
+        }),
+        updateMany: jest.fn()
+      }
+    };
+    const draftService = new LayoutTemplateService(
+      { $transaction: jest.fn(async (callback) => callback(draftTx)) } as never,
+      audit as never,
+      files as never
+    );
+    await expect(
+      draftService.stopVersion("version-1", "director-1")
+    ).rejects.toThrow("只有已发布的合同版式可以停用或撤回");
+    expect(draftTx.contractLayoutTemplateVersion.updateMany).not.toHaveBeenCalled();
+
+    const staleTx = {
+      ...roleTx("contract_director"),
+      contractLayoutTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          status: "published"
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 })
+      }
+    };
+    const staleService = new LayoutTemplateService(
+      { $transaction: jest.fn(async (callback) => callback(staleTx)) } as never,
+      audit as never,
+      files as never
+    );
+    await expect(
+      staleService.stopVersion("version-1", "director-1")
+    ).rejects.toThrow("合同版式状态已变化，请刷新后重试");
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("updates only the expected draft revision and invalidates old inspection and preview", async () => {
