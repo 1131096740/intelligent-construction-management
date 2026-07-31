@@ -14,7 +14,7 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "77494c39bf8081c3d1f68cfc611842095672689acdc402238f7a600fd7cfd30f",
+      "sha256": "159b19c1737a577a2def4147ca101cd20901195e12d0560d64d7e19eb59c27d2",
       "status": "ready",
       "summary": {
         "routeCount": 395
@@ -22,17 +22,17 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "c6ca732376930184dff22b0a568562220149b14c2c9758a9930976fec3c07aac",
+      "sha256": "548c28d8f61331eaf717227d710484532aecdc42dc66a069eec2ac2d20d4dd35",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 14,
-        "exportedFunctionCount": 384,
-        "transportWrapperCount": 380,
+        "exportedFunctionCount": 385,
+        "transportWrapperCount": 381,
         "pureExportCount": 4,
-        "mainRequestBindingCount": 384,
+        "mainRequestBindingCount": 385,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 384,
-        "productionConsumerCount": 335,
+        "requestEdgeCount": 385,
+        "productionConsumerCount": 336,
         "orphanWrapperCount": 45,
         "testOnlyWrapperCount": 43,
         "unreferencedWrapperCount": 2,
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "ce7035fbf646ecc7ca50086adf47d8ad86711e79ff2a70e2562869918d034075",
+      "sha256": "dbab3d2cdc72afc0df7a4185b236c8b8efb9b42ccdae6fae36312eea26478f28",
       "status": "blocked",
       "summary": {
         "registeredActionCount": 42,
@@ -53,18 +53,18 @@
         "totalVueFileCount": 134,
         "parsedVueFileCount": 134,
         "reachableProductionModuleCount": 229,
-        "templateEventDirectiveCount": 900,
+        "templateEventDirectiveCount": 904,
         "propCallbackDirectiveCount": 10,
-        "coveredProductionMutationConsumerCount": 12,
+        "coveredProductionMutationConsumerCount": 13,
         "candidateProductionMutationConsumerCount": 39,
-        "acceptedProductionMutationConsumerCount": 12,
+        "acceptedProductionMutationConsumerCount": 13,
         "productionMutationConsumerPairCount": 274,
-        "blockerCount": 327
+        "blockerCount": 322
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "d840fcd6464c826f8d715780ac90ecb04d28133e6963d712d7169ec24ebafb9d",
+      "sha256": "9f503a5d0d5ad7c051585b73586161fddacc2947416cfc334533a3a0e7c28f36",
       "status": "blocked",
       "summary": {
         "routeCount": 395,
@@ -99,19 +99,19 @@
     "exitCandidateRouteCount": 23,
     "internalTaskRouteCount": 2,
     "unclassifiedRouteCount": 26,
-    "mainRequestBindingCount": 384,
+    "mainRequestBindingCount": 385,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 45,
     "duplicateMutationRouteCount": 4,
     "registeredActionCount": 42,
     "actionBindingCount": 50,
-    "acceptedActionBindingCount": 16,
-    "unresolvedActionBindingCount": 34,
+    "acceptedActionBindingCount": 18,
+    "unresolvedActionBindingCount": 32,
     "productionMutationConsumerPairCount": 274,
-    "coveredProductionMutationConsumerPairCount": 12,
-    "uncoveredProductionMutationConsumerPairCount": 262,
-    "blockerCount": 375
+    "coveredProductionMutationConsumerPairCount": 13,
+    "uncoveredProductionMutationConsumerPairCount": 261,
+    "blockerCount": 372
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -1770,14 +1770,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "reviewPaymentApproval",
-        "consumer": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /payments/:param/approval"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "reviewProjectExpenseApproval",
         "consumer": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
         "normalizedKeys": [
@@ -2938,34 +2930,6 @@
         "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
         "wrapper": "submitExpenseClaim",
         "normalizedKey": "POST /expense-claims/:param/submission",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
-        ]
-      },
-      {
-        "actionId": "payment-approval.approve",
-        "bindingIndex": 0,
-        "identity": "payment-approval.approve\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000reviewPaymentApproval\u0000POST\u0000POST /payments/:param/approval\u00000",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "reviewPaymentApproval",
-        "normalizedKey": "POST /payments/:param/approval",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
-        ]
-      },
-      {
-        "actionId": "payment-approval.reject",
-        "bindingIndex": 0,
-        "identity": "payment-approval.reject\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000reviewPaymentApproval\u0000POST\u0000POST /payments/:param/approval\u00000",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "reviewPaymentApproval",
-        "normalizedKey": "POST /payments/:param/approval",
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
@@ -5768,23 +5732,9 @@
         "sourceFile": "services/api/src/payment/payment.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "positions",
+        "guardAuthorization": "authenticated_only",
         "isPublic": false,
-        "requiredPositions": [
-          "budget_director",
-          "budget_staff",
-          "chairman",
-          "comprehensive_director",
-          "contract_director",
-          "contract_staff",
-          "engineering_department_director",
-          "finance_director",
-          "finance_staff",
-          "general_manager",
-          "material_director",
-          "project_manager",
-          "super_admin"
-        ],
+        "requiredPositions": [],
         "requiredProjectAction": null,
         "authorizationCombination": null,
         "contractCutoverSurface": false,
@@ -5796,6 +5746,20 @@
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "fetchPaymentDetail",
+          "method": "GET",
+          "path": "/payments/:param",
+          "normalizedKey": "GET /payments/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "preparePaymentApprovalReviewAction",
           "method": "GET",
           "path": "/payments/:param",
           "normalizedKey": "GET /payments/:param",
@@ -14660,7 +14624,7 @@
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "reviewPaymentApproval",
+          "wrapper": "executePaymentApprovalReviewAction",
           "method": "POST",
           "path": "/payments/:param/approval",
           "normalizedKey": "POST /payments/:param/approval",
@@ -14678,67 +14642,58 @@
         {
           "actionId": "payment-approval.approve",
           "bindingIndex": 0,
-          "identity": "payment-approval.approve\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000reviewPaymentApproval\u0000POST\u0000POST /payments/:param/approval\u00000",
+          "identity": "payment-approval.approve\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000executePaymentApprovalReviewAction\u0000POST\u0000POST /payments/:param/approval\u00000",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
           "capability": {
             "kind": "detail_action",
-            "source": "detail.availableActions",
+            "source": "paymentApprovalCapability.availableActions",
             "key": "review_approval",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "reviewPaymentApproval",
+          "wrapper": "executePaymentApprovalReviewAction",
           "productionConsumers": [
             "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         },
         {
           "actionId": "payment-approval.reject",
           "bindingIndex": 0,
-          "identity": "payment-approval.reject\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000reviewPaymentApproval\u0000POST\u0000POST /payments/:param/approval\u00000",
+          "identity": "payment-approval.reject\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000executePaymentApprovalReviewAction\u0000POST\u0000POST /payments/:param/approval\u00000",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
           "capability": {
             "kind": "detail_action",
-            "source": "detail.availableActions",
+            "source": "paymentApprovalCapability.availableActions",
             "key": "review_approval",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "reviewPaymentApproval",
+          "wrapper": "executePaymentApprovalReviewAction",
           "productionConsumers": [
             "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED",
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {

@@ -867,7 +867,7 @@ describe("PaymentReadService", () => {
     expect(detail.disabledReasons).toEqual([]);
   });
 
-  it("does not expose payment detail outside visible projects", async () => {
+  it("does not expose a missing payment while preserving the exact id/code lookup", async () => {
     const prisma = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue(null)
@@ -880,8 +880,7 @@ describe("PaymentReadService", () => {
     );
     expect(prisma.paymentRequest.findFirst).toHaveBeenCalledWith({
       where: {
-        OR: [{ id: "FK-2026-011" }, { code: "FK-2026-011" }],
-        projectId: { in: ["project-1"] }
+        OR: [{ id: "FK-2026-011" }, { code: "FK-2026-011" }]
       }
     });
   });
@@ -1511,7 +1510,40 @@ describe("PaymentReadService", () => {
     );
   });
 
-  it("enables approval review for a standing delegation recipient", async () => {
+  it.each([
+    {
+      accessKind: "frozen assignment",
+      assignments: [{
+        kind: "transfer",
+        fromUserId: "finance-director-1",
+        fromRoleKey: "finance_director",
+        toUserId: "delegatee-1"
+      }],
+      delegatorRows: [],
+      activeUsers: []
+    },
+    {
+      accessKind: "standing delegation",
+      assignments: [],
+      delegatorRows: [{ fromUserId: "finance-director-1" }],
+      activeUsers: [
+        { id: "finance-director-1", isActive: true },
+        { id: "delegatee-1", isActive: true }
+      ]
+    }
+  ])("enables approval review outside the ledger scope for a $accessKind recipient", async ({
+    assignments,
+    delegatorRows,
+    activeUsers
+  }) => {
+    const frozenNode = {
+      roleKeys: ["finance_director"],
+      candidateUserIdsByRole: {
+        finance_director: ["finance-director-1"]
+      },
+      candidateUserIds: ["finance-director-1"],
+      ...(assignments.length ? { assignments } : {})
+    };
     const prisma = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
@@ -1524,7 +1556,8 @@ describe("PaymentReadService", () => {
           status: "approval_pending",
           requestedAmountCents: 5000000n,
           approvedAmountCents: null,
-          paidAmountCents: 0n
+          paidAmountCents: 0n,
+          updatedAt: new Date("2026-07-31T01:00:00.000Z")
         })
       },
       settlement: {
@@ -1555,23 +1588,26 @@ describe("PaymentReadService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          status: "in_progress",
           applicantUserId: "applicant-1",
-          frozenNodes: [{
-            roleKeys: ["finance_director"],
-            candidateUserIdsByRole: { finance_director: ["finance-director-1"] },
-            candidateUserIds: ["finance-director-1"]
-          }],
-          currentNodeIndex: 0
-        })
+          frozenNodes: [frozenNode],
+          currentNodeIndex: 0,
+          updatedAt: new Date("2026-07-31T01:01:00.000Z")
+        }),
+        findMany: jest.fn().mockResolvedValue([{
+          id: "approval-instance-1",
+          applicantUserId: "applicant-1",
+          frozenNodes: [frozenNode],
+          currentNodeIndex: 0,
+          updatedAt: new Date("2026-07-31T01:01:00.000Z")
+        }])
       },
       approvalDelegation: {
-        findMany: jest.fn().mockResolvedValue([{ fromUserId: "finance-director-1" }])
+        findMany: jest.fn().mockResolvedValue(delegatorRows)
       },
       user: {
-        findMany: jest.fn().mockResolvedValue([
-          { id: "finance-director-1", isActive: true },
-          { id: "delegatee-1", isActive: true }
-        ])
+        findMany: jest.fn().mockResolvedValue(activeUsers)
       }
     };
     const projectVisibility = {
@@ -1582,14 +1618,37 @@ describe("PaymentReadService", () => {
     };
     const service = new PaymentReadService(prisma as never, projectVisibility as never);
 
-    const detail = await service.getDetail("FK-2026-015", undefined, "delegatee-1");
+    const detail = await service.getDetail("FK-2026-015", [], "delegatee-1");
 
-    expect(prisma.approvalInstance.findFirst).toHaveBeenCalledWith({
-      where: { businessType: "payment_request", businessId: "payment-1", status: "in_progress" },
-      orderBy: { createdAt: "desc" },
-      select: { applicantUserId: true, frozenNodes: true, currentNodeIndex: true }
+    expect(prisma.paymentRequest.findFirst).toHaveBeenCalledWith({
+      where: {
+        OR: [{ id: "FK-2026-015" }, { code: "FK-2026-015" }]
+      }
+    });
+    expect(prisma.approvalInstance.findMany).toHaveBeenCalledWith({
+      where: {
+        businessType: "payment_request",
+        businessId: "payment-1",
+        flowType: "payment.approve",
+        status: "in_progress"
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 2,
+      select: {
+        id: true,
+        applicantUserId: true,
+        frozenNodes: true,
+        currentNodeIndex: true,
+        updatedAt: true
+      }
     });
     expect(detail.primaryAction).toBe("review_approval");
+    expect(detail.reviewApprovalContext).toEqual({
+      expectedPaymentUpdatedAt: "2026-07-31T01:00:00.000Z",
+      expectedApprovalInstanceId: "approval-instance-1",
+      expectedNodeIndex: 0,
+      expectedApprovalUpdatedAt: "2026-07-31T01:01:00.000Z"
+    });
     expect(detail.availableActions).toContainEqual(
       expect.objectContaining({
         key: "review_approval",
@@ -1599,10 +1658,149 @@ describe("PaymentReadService", () => {
     );
   });
 
-  it("enables governed approval review for a frozen assignment recipient", async () => {
+  it("hides a payment outside the ledger scope from an unrelated authenticated user", async () => {
+    const settlementFindUnique = jest.fn();
+    const contractVersionFindUnique = jest.fn();
+    const paymentTermsVersionFindUnique = jest.fn();
+    const prisma = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          projectId: "project-1",
+          code: "FK-2026-016",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      settlement: { findUnique: settlementFindUnique },
+      contractVersion: { findUnique: contractVersionFindUnique },
+      paymentTermsVersion: { findUnique: paymentTermsVersionFindUnique }
+    };
+    const projectVisibility = {
+      effectiveRoleKeys: jest.fn().mockResolvedValue([])
+    };
+    const service = new PaymentReadService(prisma as never, projectVisibility as never);
+
+    await expect(
+      service.getDetail("FK-2026-016", [], "unrelated-user")
+    ).rejects.toThrow("未找到付款申请，请刷新付款台账后重试");
+    expect(settlementFindUnique).not.toHaveBeenCalled();
+    expect(contractVersionFindUnique).not.toHaveBeenCalled();
+    expect(paymentTermsVersionFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("hides a stale approval assignment after the payment leaves approval pending", async () => {
+    const contractFindUnique = jest.fn();
+    const prisma = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          code: "FK-2026-017",
+          status: "paid"
+        })
+      },
+      approvalInstance: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "approval-instance-1",
+          applicantUserId: "applicant-1",
+          frozenNodes: [{
+            roleKeys: ["finance_director"],
+            candidateUserIdsByRole: {
+              finance_director: ["finance-director-1"]
+            },
+            candidateUserIds: ["finance-director-1"],
+            assignments: [{
+              kind: "transfer",
+              fromUserId: "finance-director-1",
+              fromRoleKey: "finance_director",
+              toUserId: "assigned-1"
+            }]
+          }],
+          currentNodeIndex: 0,
+          updatedAt: new Date("2026-07-31T01:01:00.000Z")
+        }])
+      },
+      contract: { findUnique: contractFindUnique }
+    };
+    const projectVisibility = {
+      effectiveRoleKeys: jest.fn().mockResolvedValue([])
+    };
+    const service = new PaymentReadService(prisma as never, projectVisibility as never);
+
+    await expect(
+      service.getDetail("FK-2026-017", [], "assigned-1")
+    ).rejects.toThrow("未找到付款申请，请刷新付款台账后重试");
+    expect(contractFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when more than one payment approval instance is in progress", async () => {
     const prisma = {
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          applicantUserId: "applicant-1",
+          frozenNodes: [{ roleKeys: ["finance_director"] }],
+          currentNodeIndex: 0
+        }),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "approval-instance-1",
+            applicantUserId: "applicant-1",
+            frozenNodes: [{ roleKeys: ["finance_director"] }],
+            currentNodeIndex: 0,
+            updatedAt: new Date("2026-07-31T01:01:00.000Z")
+          },
+          {
+            id: "approval-instance-2",
+            applicantUserId: "applicant-1",
+            frozenNodes: [{ roleKeys: ["finance_director"] }],
+            currentNodeIndex: 0,
+            updatedAt: new Date("2026-07-31T01:02:00.000Z")
+          }
+        ])
+      }
+    };
+    const service = new PaymentReadService(prisma as never, {} as never) as unknown as {
+      canReviewCurrentApproval(
+        businessType: string,
+        businessId: string,
+        projectId: string,
+        roleKeys: string[],
+        actorUserId: string
+      ): Promise<{
+        access: {
+          canAct: boolean;
+          canReview: boolean;
+          requiresSelfReviewConfirmation: boolean;
+        };
+        approval: unknown;
+      }>;
+    };
+
+    await expect(service.canReviewCurrentApproval(
+      "payment_request",
+      "payment-1",
+      "project-1",
+      ["finance_director"],
+      "finance-director-1"
+    )).resolves.toEqual({
+      access: {
+        canAct: false,
+        canReview: false,
+        requiresSelfReviewConfirmation: false
+      },
+      approval: null
+    });
+  });
+
+  it("enables governed approval review for a frozen assignment recipient", async () => {
+    const prisma = {
+      approvalInstance: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "approval-instance-1",
           applicantUserId: "applicant-1",
           frozenNodes: [{
             roleKeys: ["finance_director"],
@@ -1615,8 +1813,9 @@ describe("PaymentReadService", () => {
               toUserId: "assigned-1"
             }]
           }],
-          currentNodeIndex: 0
-        })
+          currentNodeIndex: 0,
+          updatedAt: new Date("2026-07-31T01:01:00.000Z")
+        }])
       },
       approvalDelegation: { findMany: jest.fn() }
     };
@@ -1627,7 +1826,10 @@ describe("PaymentReadService", () => {
         projectId: string,
         roleKeys: string[],
         actorUserId: string
-      ): Promise<{ canAct: boolean; canReview: boolean }>;
+      ): Promise<{
+        access: { canAct: boolean; canReview: boolean };
+        approval: unknown;
+      }>;
     };
 
     await expect(service.canReviewCurrentApproval(
@@ -1636,18 +1838,22 @@ describe("PaymentReadService", () => {
       "project-1",
       [],
       "assigned-1"
-    )).resolves.toMatchObject({ canAct: true, canReview: true });
+    )).resolves.toMatchObject({
+      access: { canAct: true, canReview: true }
+    });
     expect(prisma.approvalDelegation.findMany).not.toHaveBeenCalled();
   });
 
   it("does not enable standing delegation review when the delegator is inactive", async () => {
     const prisma = {
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
+          id: "approval-instance-1",
           applicantUserId: "applicant-1",
           frozenNodes: [{ roleKeys: ["finance_director"] }],
-          currentNodeIndex: 0
-        })
+          currentNodeIndex: 0,
+          updatedAt: new Date("2026-07-31T01:01:00.000Z")
+        }])
       },
       approvalDelegation: {
         findMany: jest.fn().mockResolvedValue([{ fromUserId: "finance-director-1" }])
@@ -1671,10 +1877,13 @@ describe("PaymentReadService", () => {
         projectId: string,
         roleKeys: string[],
         actorUserId: string
-      ): Promise<{ canReview: boolean }>;
+      ): Promise<{
+        access: { canReview: boolean };
+        approval: unknown;
+      }>;
     };
 
-    const access = await service.canReviewCurrentApproval(
+    const review = await service.canReviewCurrentApproval(
       "payment_request",
       "payment-1",
       "project-1",
@@ -1682,17 +1891,19 @@ describe("PaymentReadService", () => {
       "delegatee-1"
     );
 
-    expect(access.canReview).toBe(false);
+    expect(review.access.canReview).toBe(false);
   });
 
   it("为本人发起的总经理付款终审节点返回自审确认标记", async () => {
     const prisma = {
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
+          id: "approval-instance-1",
           applicantUserId: "leader-1",
           frozenNodes: [{ roleKeys: ["chairman", "general_manager"] }],
-          currentNodeIndex: 0
-        })
+          currentNodeIndex: 0,
+          updatedAt: new Date("2026-07-31T01:01:00.000Z")
+        }])
       }
     };
     const service = new PaymentReadService(prisma as never) as unknown as {
@@ -1702,7 +1913,14 @@ describe("PaymentReadService", () => {
         projectId: string,
         roleKeys: string[],
         actorUserId: string
-      ): Promise<unknown>;
+      ): Promise<{
+        access: {
+          canAct: boolean;
+          canReview: boolean;
+          requiresSelfReviewConfirmation: boolean;
+        };
+        approval: unknown;
+      }>;
       paymentActions(
         status: string,
         roleKeys: never[],
@@ -1714,14 +1932,14 @@ describe("PaymentReadService", () => {
       ): Array<Record<string, unknown>>;
     };
 
-    const access = await service.canReviewCurrentApproval(
+    const review = await service.canReviewCurrentApproval(
       "payment_request",
       "payment-1",
       "project-1",
       ["general_manager"],
       "leader-1"
     );
-    expect(access).toEqual({
+    expect(review.access).toEqual({
       canAct: true,
       canReview: true,
       requiresSelfReviewConfirmation: true
@@ -1730,7 +1948,7 @@ describe("PaymentReadService", () => {
       service.paymentActions(
         "approval_pending",
         ["general_manager"] as never[],
-        access,
+        review.access,
         false,
         0n,
         0n,
@@ -2567,15 +2785,17 @@ describe("PaymentReadService", () => {
   ] as const)("受治理付款节点%s保持冻结人员口径", async (_label, actorUserId, roleKeys, expected) => {
     const prisma = {
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
+          id: "approval-instance-1",
           applicantUserId: "applicant-1",
           frozenNodes: [{
             roleKeys: ["finance_director"],
             candidateUserIdsByRole: { finance_director: ["finance-director-1"] },
             candidateUserIds: ["finance-director-1"]
           }],
-          currentNodeIndex: 0
-        })
+          currentNodeIndex: 0,
+          updatedAt: new Date("2026-07-31T01:01:00.000Z")
+        }])
       },
       approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
       user: { findMany: jest.fn().mockResolvedValue([]) }
@@ -2589,10 +2809,13 @@ describe("PaymentReadService", () => {
         projectId: string,
         roleKeys: string[],
         actorUserId: string
-      ): Promise<{ canAct: boolean; canReview: boolean }>;
+      ): Promise<{
+        access: { canAct: boolean; canReview: boolean };
+        approval: unknown;
+      }>;
     };
 
-    const access = await service.canReviewCurrentApproval(
+    const review = await service.canReviewCurrentApproval(
       "payment_request",
       "payment-1",
       "project-1",
@@ -2600,7 +2823,7 @@ describe("PaymentReadService", () => {
       actorUserId
     );
 
-    expect(access.canAct).toBe(expected);
-    expect(access.canReview).toBe(expected);
+    expect(review.access.canAct).toBe(expected);
+    expect(review.access.canReview).toBe(expected);
   });
 });

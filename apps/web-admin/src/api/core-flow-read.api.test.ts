@@ -124,7 +124,9 @@ import {
   recordPaymentExecution,
   recordPaymentFinance,
   recordPaymentPdfArchive,
-  reviewPaymentApproval,
+  executePaymentApprovalReviewAction,
+  preparePaymentApprovalReviewAction,
+  type PreparePaymentApprovalReviewActionInput,
   withdrawContractApproval,
   withdrawPaymentApproval,
   abandonPaymentRequest,
@@ -1771,12 +1773,6 @@ describe("core flow read API client", () => {
       json: async () => ({ id: "ok" })
     } as Response);
 
-    await reviewPaymentApproval("FK-2026-006", {
-      decision: "approve",
-      approvedAmountCents: "5000000",
-      selfReviewReason: "业务紧急",
-      confirmationPassword: " current-password "
-    });
     await withdrawPaymentApproval("FK-2026-006");
     await remindPaymentApproval("FK-2026-006");
     await transferPaymentApproval("FK-2026-006", {
@@ -1802,7 +1798,6 @@ describe("core flow read API client", () => {
     await generatePaymentPdfArchive("FK-2026-006");
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
-      "/api/payments/FK-2026-006/approval",
       "/api/payments/FK-2026-006/approval-withdrawal",
       "/api/payments/FK-2026-006/approval-reminder",
       "/api/payments/FK-2026-006/approval-transfer",
@@ -1813,21 +1808,162 @@ describe("core flow read API client", () => {
       "/api/payments/FK-2026-006/pdf-generation"
     ]);
     expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
-    expect(fetchMock.mock.calls[0][1]?.body).toBe(
-      JSON.stringify({
-        decision: "approve",
-        approvedAmountCents: "5000000",
-        selfReviewReason: "业务紧急",
-        confirmationPassword: " current-password "
-      })
-    );
-    expect(fetchMock.mock.calls[6][1]?.body).toBe(
+    expect(fetchMock.mock.calls[5][1]?.body).toBe(
       JSON.stringify({
         amountCents: "5000000",
         occurredAt: "2026-06-22T01:00:00.000Z",
         confirmationPassword: "current-password"
       })
     );
+  });
+
+  it.each([
+    ["missing action", paymentReviewDetail({ availableActions: [] })],
+    [
+      "disabled action",
+      paymentReviewDetail({
+        availableActions: [
+          {
+            key: "review_approval",
+            label: "办理付款审批",
+            kind: "primary",
+            enabled: false,
+            disabledReason: "当前不可审批",
+            requiredRoles: []
+          }
+        ]
+      })
+    ],
+    ["payment drift", paymentReviewDetail({ expectedPaymentUpdatedAt: "2026-07-31T01:00:00.000Z" })],
+    ["approval drift", paymentReviewDetail({ expectedApprovalInstanceId: "approval-b" })],
+    ["node drift", paymentReviewDetail({ expectedNodeIndex: 2 })],
+    ["approval timestamp drift", paymentReviewDetail({ expectedApprovalUpdatedAt: "2026-07-31T01:00:00.000Z" })],
+    ["missing coordinates", paymentReviewDetail({ reviewApprovalContext: null })]
+  ])(
+    "refuses a %s payment review preflight before the approval POST",
+    async (_label, preflight) => {
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(preflight));
+
+      await expect(
+        preparePaymentApprovalReviewAction(paymentReviewActionInput())
+      ).rejects.toThrow("付款审批资格或审批坐标已变化");
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/payments/payment%2Fa",
+        {}
+      );
+    }
+  );
+
+  it("freezes approve fields and performs one encoded POST after the fresh GET", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse(
+          paymentReviewDetail({
+            requiresSelfReviewConfirmation: true
+          })
+        )
+      )
+      .mockResolvedValueOnce(jsonResponse({ id: "approved" }));
+    const input = paymentReviewActionInput({
+      decision: "approve",
+      approvedAmountCents: "5000000",
+      comment: "  同意按核定金额付款  ",
+      requiresSelfReviewConfirmation: true,
+      selfReviewReason: "  本人发起，已独立复核  ",
+      confirmationPassword: " current-password "
+    });
+    const prepared = await preparePaymentApprovalReviewAction(input);
+    input.comment = "随后篡改";
+    input.approvedAmountCents = "1";
+
+    const complete = vi.fn();
+    const fail = vi.fn();
+    const finish = vi.fn();
+    await expect(
+      executePaymentApprovalReviewAction({
+        decision: "approve",
+        capture: () => prepared.context,
+        preflight: async () => prepared,
+        current: () => true,
+        complete,
+        fail,
+        finish
+      })
+    ).resolves.toEqual(expect.objectContaining({ status: "completed" }));
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/payments/payment%2Fa",
+      "/api/payments/payment%2Fa/approval"
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe("POST");
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(
+      JSON.stringify({
+        decision: "approve",
+        approvedAmountCents: "5000000",
+        comment: "同意按核定金额付款",
+        selfReviewReason: "本人发起，已独立复核",
+        confirmationPassword: " current-password ",
+        expectedPaymentUpdatedAt: "2026-07-31T00:00:00.000Z",
+        expectedApprovalInstanceId: "approval-a",
+        expectedNodeIndex: 1,
+        expectedApprovalUpdatedAt: "2026-07-31T00:05:00.000Z"
+      })
+    );
+    expect(complete).toHaveBeenCalledOnce();
+    expect(fail).not.toHaveBeenCalled();
+    expect(finish).toHaveBeenCalledOnce();
+  });
+
+  it("keeps reject fixed, drops approved amount and stops stale work before POST", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(paymentReviewDetail()))
+      .mockResolvedValueOnce(jsonResponse({ id: "rejected" }));
+    const prepared = await preparePaymentApprovalReviewAction(
+      paymentReviewActionInput({
+        decision: "reject",
+        approvedAmountCents: "5000000",
+        comment: "  付款依据不足  "
+      })
+    );
+
+    await executePaymentApprovalReviewAction({
+      decision: "reject",
+      capture: () => prepared.context,
+      preflight: async () => prepared,
+      current: () => true,
+      complete: vi.fn(),
+      fail: vi.fn(),
+      finish: vi.fn()
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+      decision: "reject",
+      comment: "付款依据不足",
+      expectedPaymentUpdatedAt: "2026-07-31T00:00:00.000Z",
+      expectedApprovalInstanceId: "approval-a",
+      expectedNodeIndex: 1,
+      expectedApprovalUpdatedAt: "2026-07-31T00:05:00.000Z"
+    });
+
+    fetchMock.mockClear();
+    const stalePrepared = {
+      status: "stale" as const,
+      context: prepared.context
+    };
+    await expect(
+      executePaymentApprovalReviewAction({
+        decision: "reject",
+        capture: () => prepared.context,
+        preflight: async () => stalePrepared,
+        current: () => false,
+        complete: vi.fn(),
+        fail: vi.fn(),
+        finish: vi.fn()
+      })
+    ).resolves.toEqual(expect.objectContaining({ status: "stale" }));
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("posts contract and settlement archive actions to the backend", async () => {
@@ -2556,3 +2692,77 @@ describe("core flow read API client", () => {
     );
   });
 });
+
+function paymentReviewDetail(
+  overrides: {
+    paymentId?: string;
+    expectedPaymentUpdatedAt?: string;
+    expectedApprovalInstanceId?: string;
+    expectedNodeIndex?: number;
+    expectedApprovalUpdatedAt?: string;
+    reviewApprovalContext?: null;
+    availableActions?: Array<Record<string, unknown>>;
+    requiresSelfReviewConfirmation?: boolean;
+  } = {}
+) {
+  const expectedPaymentUpdatedAt =
+    overrides.expectedPaymentUpdatedAt ?? "2026-07-31T00:00:00.000Z";
+  return {
+    id: overrides.paymentId ?? "payment/a",
+    lifecycleUpdatedAt: expectedPaymentUpdatedAt,
+    reviewApprovalContext:
+      overrides.reviewApprovalContext === null
+        ? null
+        : {
+            expectedPaymentUpdatedAt,
+            expectedApprovalInstanceId:
+              overrides.expectedApprovalInstanceId ?? "approval-a",
+            expectedNodeIndex: overrides.expectedNodeIndex ?? 1,
+            expectedApprovalUpdatedAt:
+              overrides.expectedApprovalUpdatedAt ??
+              "2026-07-31T00:05:00.000Z"
+          },
+    availableActions:
+      overrides.availableActions ??
+      [
+        {
+          key: "review_approval",
+          label: "办理付款审批",
+          kind: "primary",
+          enabled: true,
+          disabledReason: null,
+          requiredRoles: [],
+          requiresSelfReviewConfirmation:
+            overrides.requiresSelfReviewConfirmation ?? false
+        }
+      ]
+  };
+}
+
+function paymentReviewActionInput(
+  overrides: Partial<PreparePaymentApprovalReviewActionInput> = {}
+): PreparePaymentApprovalReviewActionInput {
+  return {
+    ownerScope: "payment-page-a",
+    routeGeneration: 2,
+    detailEpoch: 3,
+    dialogGeneration: 4,
+    operationId: 5,
+    paymentId: "payment/a",
+    expectedPaymentUpdatedAt: "2026-07-31T00:00:00.000Z",
+    expectedApprovalInstanceId: "approval-a",
+    expectedNodeIndex: 1,
+    expectedApprovalUpdatedAt: "2026-07-31T00:05:00.000Z",
+    decision: "approve" as const,
+    requiresSelfReviewConfirmation: false,
+    isCurrent: () => true,
+    ...overrides
+  };
+}
+
+function jsonResponse(body: unknown): Response {
+  return {
+    ok: true,
+    json: async () => body
+  } as Response;
+}

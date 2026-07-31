@@ -50,9 +50,26 @@ type PaymentDetailLifecycleProjection = {
   returnReason: string;
   lifecycleUpdatedAt: string | null;
   blockedReasons: string[];
+  reviewApprovalContext: PaymentApprovalReviewContext | null;
 };
 
 type PaymentLedgerView = "formal_ledger" | "my_drafts" | "returned_for_revision" | "ended";
+
+type PaymentApprovalReviewContext = {
+  expectedPaymentUpdatedAt: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+  expectedApprovalUpdatedAt: string;
+};
+
+type CurrentPaymentApprovalReview = {
+  access: ApprovalReviewAccess;
+  approval: {
+    id: string;
+    currentNodeIndex: number;
+    updatedAt: Date;
+  } | null;
+};
 
 interface PaymentLedgerQuery {
   view?: PaymentLedgerView;
@@ -62,6 +79,10 @@ interface PaymentLedgerQuery {
 
 function emptyApprovalReviewAccess(): ApprovalReviewAccess {
   return { canAct: false, canReview: false, requiresSelfReviewConfirmation: false };
+}
+
+function emptyCurrentPaymentApprovalReview(): CurrentPaymentApprovalReview {
+  return { access: emptyApprovalReviewAccess(), approval: null };
 }
 
 function directPaymentSummary(
@@ -789,12 +810,28 @@ export class PaymentReadService {
 
     const payment = await this.prisma.paymentRequest.findFirst({
       where: {
-        OR: [{ id: paymentId }, { code: paymentId }],
-        ...(visibleProjectIds ? { projectId: { in: visibleProjectIds } } : {})
+        OR: [{ id: paymentId }, { code: paymentId }]
       }
     });
 
     if (!payment) {
+      throw new NotFoundException("未找到付款申请，请刷新付款台账后重试");
+    }
+    const roleKeys = await this.actorRoleKeys(actorUserId, payment.projectId);
+    const currentApprovalReview = await this.canReviewCurrentApproval(
+      "payment_request",
+      payment.id,
+      payment.projectId,
+      roleKeys,
+      actorUserId
+    );
+    const ledgerVisible =
+      visibleProjectIds === undefined ||
+      visibleProjectIds.includes(payment.projectId);
+    const currentApprovalActor =
+      payment.status === "approval_pending" &&
+      currentApprovalReview.access.canAct;
+    if (!ledgerVisible && !currentApprovalActor) {
       throw new NotFoundException("未找到付款申请，请刷新付款台账后重试");
     }
 
@@ -958,14 +995,20 @@ export class PaymentReadService {
       returnedForRevision ? "returned_for_revision" : payment.status
     );
     const execution = this.executionStatusView(payment.status, paidAmountCents, payableAmountCents);
-    const roleKeys = await this.actorRoleKeys(actorUserId, payment.projectId);
-    const approvalReviewAccess = await this.canReviewCurrentApproval(
-      "payment_request",
-      payment.id,
-      payment.projectId,
-      roleKeys,
-      actorUserId
-    );
+    const reviewApprovalContext =
+      currentApprovalReview.access.canReview &&
+      payment.updatedAt instanceof Date &&
+      currentApprovalReview.approval?.updatedAt instanceof Date
+        ? {
+            expectedPaymentUpdatedAt: payment.updatedAt.toISOString(),
+            expectedApprovalInstanceId: currentApprovalReview.approval.id,
+            expectedNodeIndex: currentApprovalReview.approval.currentNodeIndex,
+            expectedApprovalUpdatedAt: currentApprovalReview.approval.updatedAt.toISOString()
+          }
+        : null;
+    const approvalReviewAccess = reviewApprovalContext
+      ? currentApprovalReview.access
+      : { ...currentApprovalReview.access, canReview: false };
     const availableActions = this.paymentActions(
       payment.status,
       roleKeys,
@@ -1142,6 +1185,7 @@ export class PaymentReadService {
       evidenceFiles,
       approvalTimeline,
       availableActions,
+      reviewApprovalContext,
       lifecycleKind,
       ledgerView,
       nextStep,
@@ -1808,6 +1852,7 @@ export class PaymentReadService {
       evidenceFiles: [],
       approvalTimeline: [],
       availableActions: [],
+      reviewApprovalContext: null,
       lifecycleKind: "formal_record",
       ledgerView: "formal_ledger",
       nextStep: "出纳付款登记",
@@ -1847,37 +1892,64 @@ export class PaymentReadService {
     projectId: string,
     roleKeys: RoleKey[],
     actorUserId?: string
-  ): Promise<ApprovalReviewAccess> {
+  ): Promise<CurrentPaymentApprovalReview> {
     if (!actorUserId) {
-      return emptyApprovalReviewAccess();
+      return emptyCurrentPaymentApprovalReview();
     }
 
     const approvalClient = (this.prisma as unknown as {
       approvalInstance?: {
-        findFirst(args: {
-          where: { businessType: string; businessId: string; status: string };
-          orderBy: { createdAt: "desc" };
-          select: { applicantUserId: true; frozenNodes: true; currentNodeIndex: true };
-        }): Promise<{
+        findMany(args: {
+          where: {
+            businessType: string;
+            businessId: string;
+            flowType: "payment.approve";
+            status: "in_progress";
+          };
+          orderBy: Array<{ createdAt: "desc" } | { id: "desc" }>;
+          take: 2;
+          select: {
+            id: true;
+            applicantUserId: true;
+            frozenNodes: true;
+            currentNodeIndex: true;
+            updatedAt: true;
+          };
+        }): Promise<Array<{
+          id: string;
           applicantUserId: string;
           frozenNodes: unknown;
           currentNodeIndex: number;
-        } | null>;
+          updatedAt: Date;
+        }>>;
       };
     }).approvalInstance;
-    if (!approvalClient) {
-      return emptyApprovalReviewAccess();
+    if (!approvalClient?.findMany) {
+      return emptyCurrentPaymentApprovalReview();
     }
 
-    const instance = await approvalClient.findFirst({
-      where: { businessType, businessId, status: "in_progress" },
-      orderBy: { createdAt: "desc" },
-      select: { applicantUserId: true, frozenNodes: true, currentNodeIndex: true }
+    const instances = await approvalClient.findMany({
+      where: {
+        businessType,
+        businessId,
+        flowType: "payment.approve",
+        status: "in_progress"
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 2,
+      select: {
+        id: true,
+        applicantUserId: true,
+        frozenNodes: true,
+        currentNodeIndex: true,
+        updatedAt: true
+      }
     });
 
-    if (!instance) {
-      return emptyApprovalReviewAccess();
+    if (instances.length !== 1) {
+      return emptyCurrentPaymentApprovalReview();
     }
+    const instance = instances[0];
 
     const directOrAssignedAccess = approvalReviewAccessOnFrozenNode(
       instance.frozenNodes,
@@ -1888,14 +1960,21 @@ export class PaymentReadService {
       false
     );
     if (directOrAssignedAccess.canAct) {
-      return directOrAssignedAccess;
+      return {
+        access: directOrAssignedAccess,
+        approval: {
+          id: instance.id,
+          currentNodeIndex: instance.currentNodeIndex,
+          updatedAt: instance.updatedAt
+        }
+      };
     }
 
     const activeDelegators = await this.activeDelegatedApprovalIdentities(
       actorUserId,
       projectId
     );
-    return approvalReviewAccessOnFrozenNode(
+    const delegatedAccess = approvalReviewAccessOnFrozenNode(
       instance.frozenNodes,
       instance.currentNodeIndex,
       roleKeys,
@@ -1903,6 +1982,16 @@ export class PaymentReadService {
       instance.applicantUserId,
       activeDelegators
     );
+    return {
+      access: delegatedAccess,
+      approval: delegatedAccess.canAct
+        ? {
+            id: instance.id,
+            currentNodeIndex: instance.currentNodeIndex,
+            updatedAt: instance.updatedAt
+          }
+        : null
+    };
   }
 
   private async activeDelegatedApprovalIdentities(

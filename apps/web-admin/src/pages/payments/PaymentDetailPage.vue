@@ -203,7 +203,7 @@
                 <span>董事长/总经理或签</span>
               </div>
               <div
-                v-if="isPaymentActionEnabled('review_approval')"
+                v-if="paymentReviewEnabled"
                 class="action-fields"
               >
                 <MoneyInput
@@ -239,7 +239,7 @@
               </div>
               <div class="action-buttons">
                 <t-button
-                  v-if="isPaymentActionEnabled('review_approval')"
+                  v-if="paymentReviewEnabled"
                   :theme="buttonTheme('review_approval')"
                   :variant="buttonVariant('review_approval')"
                   :loading="actionBusy === 'approval'"
@@ -248,7 +248,7 @@
                   通过
                 </t-button>
                 <t-button
-                  v-if="isPaymentActionEnabled('review_approval')"
+                  v-if="paymentReviewEnabled"
                   theme="danger"
                   variant="outline"
                   :loading="actionBusy === 'approval'"
@@ -645,6 +645,37 @@
     </template>
 
     <SensitiveActionDialog
+      v-if="paymentReviewActionEnabled('review_approval') && sensitiveAction.kind === 'approvalApprove'"
+      v-model="sensitiveAction.visible"
+      :title="sensitiveAction.title"
+      :description="sensitiveAction.description"
+      :confirm-text="sensitiveAction.confirmText"
+      :confirm-theme="sensitiveAction.confirmTheme"
+      :require-reason="sensitiveAction.requireReason"
+      :require-password="sensitiveAction.requirePassword"
+      :reason-label="sensitiveAction.reasonLabel"
+      :loading="actionBusy === 'approval'"
+      :error="sensitiveAction.error"
+      @confirm="confirmPaymentApprovalApprove"
+      @cancel="cancelPaymentApprovalReview"
+    />
+    <SensitiveActionDialog
+      v-if="paymentReviewActionEnabled('review_approval') && sensitiveAction.kind === 'approvalReject'"
+      v-model="sensitiveAction.visible"
+      :title="sensitiveAction.title"
+      :description="sensitiveAction.description"
+      :confirm-text="sensitiveAction.confirmText"
+      :confirm-theme="sensitiveAction.confirmTheme"
+      :require-reason="sensitiveAction.requireReason"
+      :require-password="sensitiveAction.requirePassword"
+      :reason-label="sensitiveAction.reasonLabel"
+      :loading="actionBusy === 'approval'"
+      :error="sensitiveAction.error"
+      @confirm="confirmPaymentApprovalReject"
+      @cancel="cancelPaymentApprovalReview"
+    />
+    <SensitiveActionDialog
+      v-if="sensitiveAction.kind !== 'approvalApprove' && sensitiveAction.kind !== 'approvalReject'"
       v-model="sensitiveAction.visible"
       :title="sensitiveAction.title"
       :description="sensitiveAction.description"
@@ -664,25 +695,36 @@
 <script setup lang="ts">
 import type { CoreFlowTone } from "@jiangkong/shared-domain";
 import type { UploadFile } from "tdesign-vue-next";
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch
+} from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   createPrivateFileDownloadTicket,
   abandonPaymentRequest,
   delegatePaymentApproval,
   downloadApprovalForm as downloadApprovalFormRequest,
+  executePaymentApprovalReviewAction,
   fetchApprovalDelegationUserOptions,
   fetchPaymentDetail,
   generatePaymentPdfArchive,
+  preparePaymentApprovalReviewAction,
   recordPaymentExecution,
   recordPaymentFinance,
   recordPaymentPdfArchive,
   remindPaymentApproval,
-  reviewPaymentApproval,
   transferPaymentApproval,
   uploadPrivateFile,
   withdrawPaymentApproval,
-  type PaymentLifecycleDetailReadModel
+  type PaymentApprovalReviewActionContext,
+  type PaymentApprovalReviewActionDecision,
+  type PaymentLifecycleDetailReadModel,
+  type PreparePaymentApprovalReviewActionResult
 } from "../../api/core-flow-read.api";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
@@ -740,9 +782,21 @@ interface SensitiveActionState {
   error: string;
 }
 
+interface PaymentReviewConfirmationState {
+  dialogGeneration: number;
+  paymentId: string;
+  expectedPaymentUpdatedAt: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+  expectedApprovalUpdatedAt: string;
+  requiresSelfReviewConfirmation: boolean;
+}
+
 const route = useRoute();
 const router = useRouter();
 const paymentDetail = ref<PaymentLifecycleDetailReadModel | null>(null);
+const paymentApprovalCapability =
+  ref<PaymentLifecycleDetailReadModel | null>(null);
 const detailLoading = ref(false);
 const paymentDetailLoadError = ref("");
 const activeTab = ref("overview");
@@ -753,6 +807,13 @@ const actionMessageTone = ref<"success" | "danger">("success");
 const paymentVoucherFiles = ref<UploadFile[]>([]);
 const paymentPdfArchiveFiles = ref<UploadFile[]>([]);
 let paymentDetailRequestId = 0;
+let paymentDetailRouteGeneration = 0;
+let paymentDetailEpoch = 0;
+let paymentReviewDialogGeneration = 0;
+let paymentReviewOperationSequence = 0;
+let paymentReviewBusyOwnerId = 0;
+let paymentReviewComponentActive = true;
+const paymentReviewOwnerScope = globalThis.crypto.randomUUID();
 const sensitiveAction = reactive<SensitiveActionState>({
   visible: false,
   kind: null,
@@ -765,6 +826,16 @@ const sensitiveAction = reactive<SensitiveActionState>({
   reasonLabel: "操作原因",
   error: ""
 });
+const paymentReviewConfirmation =
+  reactive<PaymentReviewConfirmationState>({
+    dialogGeneration: -1,
+    paymentId: "",
+    expectedPaymentUpdatedAt: "",
+    expectedApprovalInstanceId: "",
+    expectedNodeIndex: -1,
+    expectedApprovalUpdatedAt: "",
+    requiresSelfReviewConfirmation: false
+  });
 const paymentActionForm = reactive({
   approvedAmountYuan: "",
   approvalComment: "",
@@ -901,11 +972,37 @@ const paymentHeaderPrimaryActionLabel = computed(() => {
     ? "前往实付登记"
     : paymentHeaderPrimaryAction.value.label;
 });
+function paymentReviewActionEnabled(key: "review_approval") {
+  return Boolean(
+    paymentApprovalCapability.value?.availableActions.some(
+      (action) => action.key === key && action.enabled
+    )
+  );
+}
+const paymentReviewEnabled = computed(() => {
+  const coordinates = paymentApprovalCapability.value?.reviewApprovalContext;
+  return (
+    paymentDetail.value?.id === paymentApprovalCapability.value?.id &&
+    Boolean(paymentApprovalCapability.value?.lifecycleUpdatedAt) &&
+    paymentApprovalCapability.value?.lifecycleUpdatedAt ===
+      coordinates?.expectedPaymentUpdatedAt &&
+    Boolean(coordinates?.expectedApprovalInstanceId) &&
+    Number.isInteger(coordinates?.expectedNodeIndex) &&
+    (coordinates?.expectedNodeIndex ?? -1) >= 0 &&
+    Boolean(coordinates?.expectedApprovalUpdatedAt) &&
+    paymentReviewActionEnabled("review_approval")
+  );
+});
 const requiresPaymentSelfReviewConfirmation = computed(
-  () => paymentActionByKey.value.get("review_approval")?.requiresSelfReviewConfirmation === true
+  () =>
+    paymentApprovalCapability.value?.availableActions.find(
+      (action) => action.key === "review_approval" && action.enabled
+    )?.requiresSelfReviewConfirmation === true
 );
 const showPaymentApprovalActions = computed(
-  () => isPaymentActionEnabled("review_approval") || isPaymentActionEnabled("download_approval_form")
+  () =>
+    paymentReviewEnabled.value ||
+    isPaymentActionEnabled("download_approval_form")
 );
 const showPaymentAssistanceActions = computed(
   () =>
@@ -973,7 +1070,11 @@ function openPrimaryAction() {
 
 async function reloadPaymentDetail() {
   const requestId = ++paymentDetailRequestId;
+  const routeGeneration = paymentDetailRouteGeneration;
   const paymentId = routePaymentId();
+  paymentDetailEpoch += 1;
+  invalidatePaymentReviewDialog(true);
+  paymentApprovalCapability.value = null;
   if (!paymentId) {
     paymentDetail.value = null;
     paymentDetailLoadError.value = "缺少付款编号，无法定位单据。请返回付款台账重新进入。";
@@ -984,22 +1085,46 @@ async function reloadPaymentDetail() {
   detailLoading.value = true;
   try {
     paymentDetailLoadError.value = "";
-    const detail = await fetchPaymentDetail(paymentId);
-    if (requestId !== paymentDetailRequestId || paymentId !== routePaymentId()) return false;
-    paymentDetail.value = detail;
-    const evidenceFileIds = detail.evidenceFiles.map((file) => file.fileId);
+    const detailRequest = fetchPaymentDetail(paymentId);
+    const serverDetail = await detailRequest;
+    if (
+      requestId !== paymentDetailRequestId ||
+      routeGeneration !== paymentDetailRouteGeneration ||
+      paymentId !== routePaymentId()
+    ) {
+      return false;
+    }
+    const viewDetail = structuredClone(serverDetail);
+    const evidenceFileIds = viewDetail.evidenceFiles.map(
+      (file) => file.fileId
+    );
+    paymentApprovalCapability.value = serverDetail;
+    paymentDetail.value = viewDetail;
     if (!evidenceFileIds.includes(paymentActionForm.downloadFileId)) {
       paymentActionForm.downloadFileId = evidenceFileIds[0] ?? "";
     }
     return true;
   } catch (error) {
-    if (requestId !== paymentDetailRequestId || paymentId !== routePaymentId()) return false;
+    if (
+      requestId !== paymentDetailRequestId ||
+      routeGeneration !== paymentDetailRouteGeneration ||
+      paymentId !== routePaymentId()
+    ) {
+      return false;
+    }
+    paymentApprovalCapability.value = null;
     paymentDetail.value = null;
     const reason = error instanceof Error ? error.message : "未知错误";
     paymentDetailLoadError.value = `未能读取付款详情：${reason}。请确认账号权限和网络状态后重试。`;
     return false;
   } finally {
-    if (requestId === paymentDetailRequestId) detailLoading.value = false;
+    if (
+      requestId === paymentDetailRequestId &&
+      routeGeneration === paymentDetailRouteGeneration &&
+      paymentId === routePaymentId()
+    ) {
+      detailLoading.value = false;
+    }
   }
 }
 
@@ -1018,9 +1143,43 @@ function routePaymentId() {
   return typeof value === "string" ? value.trim() : Array.isArray(value) ? String(value[0] ?? "").trim() : "";
 }
 
+function isPaymentReviewKind(
+  kind: SensitiveActionKind | null
+): kind is "approvalApprove" | "approvalReject" {
+  return kind === "approvalApprove" || kind === "approvalReject";
+}
+
+function clearPaymentReviewConfirmation() {
+  paymentReviewConfirmation.dialogGeneration = -1;
+  paymentReviewConfirmation.paymentId = "";
+  paymentReviewConfirmation.expectedPaymentUpdatedAt = "";
+  paymentReviewConfirmation.expectedApprovalInstanceId = "";
+  paymentReviewConfirmation.expectedNodeIndex = -1;
+  paymentReviewConfirmation.expectedApprovalUpdatedAt = "";
+  paymentReviewConfirmation.requiresSelfReviewConfirmation = false;
+}
+
+function invalidatePaymentReviewDialog(close: boolean) {
+  paymentReviewDialogGeneration += 1;
+  clearPaymentReviewConfirmation();
+  if (close && isPaymentReviewKind(sensitiveAction.kind)) {
+    sensitiveAction.visible = false;
+    sensitiveAction.kind = null;
+    sensitiveAction.error = "";
+  }
+}
+
 function clearPaymentDetailTransientState() {
+  const reviewOwnedBusy =
+    paymentReviewBusyOwnerId !== 0 && actionBusy.value === "approval";
+  paymentDetailRouteGeneration += 1;
   paymentDetailRequestId += 1;
+  paymentDetailEpoch += 1;
+  invalidatePaymentReviewDialog(true);
+  paymentReviewBusyOwnerId = 0;
+  paymentApprovalCapability.value = null;
   paymentDetail.value = null;
+  detailLoading.value = false;
   paymentDetailLoadError.value = "";
   activeTab.value = "overview";
   actionMessage.value = "";
@@ -1038,6 +1197,7 @@ function clearPaymentDetailTransientState() {
   paymentActionForm.occurredAt = toDatetimePickerValue(new Date());
   paymentActionForm.assignmentUserId = "";
   paymentActionForm.downloadFileId = "";
+  if (reviewOwnedBusy) actionBusy.value = "";
 }
 
 function toDatetimePickerValue(date: Date) {
@@ -1102,6 +1262,7 @@ function openSensitiveAction(
   config: Pick<SensitiveActionState, "title" | "description"> &
     Partial<Pick<SensitiveActionState, "confirmText" | "confirmTheme" | "requireReason" | "requirePassword" | "reasonLabel">>
 ) {
+  if (!isPaymentReviewKind(kind)) invalidatePaymentReviewDialog(false);
   Object.assign(sensitiveAction, {
     visible: true,
     kind,
@@ -1117,8 +1278,20 @@ function openSensitiveAction(
 }
 
 function requestApproval(decision: "approve" | "reject") {
+  const paymentId = paymentApprovalCapability.value?.id;
+  const coordinates = paymentApprovalCapability.value?.reviewApprovalContext;
   try {
-    currentPaymentId();
+    if (
+      !paymentReviewEnabled.value ||
+      !paymentId ||
+      !coordinates ||
+      routePaymentId() !== paymentId
+    ) {
+      throw new Error("付款审批资格或审批坐标未读取，请刷新详情后重试");
+    }
+    if (actionBusy.value || paymentReviewBusyOwnerId !== 0) {
+      throw new Error("当前审批正在提交，请等待本次操作完成");
+    }
     if (decision === "approve") {
       optionalYuanAmount(paymentActionForm.approvedAmountYuan, "审批金额");
     } else {
@@ -1135,6 +1308,17 @@ function requestApproval(decision: "approve" | "reject") {
     return;
   }
 
+  paymentReviewDialogGeneration += 1;
+  Object.assign(paymentReviewConfirmation, {
+    dialogGeneration: paymentReviewDialogGeneration,
+    paymentId,
+    expectedPaymentUpdatedAt: coordinates.expectedPaymentUpdatedAt,
+    expectedApprovalInstanceId: coordinates.expectedApprovalInstanceId,
+    expectedNodeIndex: coordinates.expectedNodeIndex,
+    expectedApprovalUpdatedAt: coordinates.expectedApprovalUpdatedAt,
+    requiresSelfReviewConfirmation:
+      requiresPaymentSelfReviewConfirmation.value
+  });
   openSensitiveAction(decision === "approve" ? "approvalApprove" : "approvalReject", {
     title: decision === "approve" ? "确认通过付款审批？" : "确认驳回付款审批？",
     description: decision === "approve"
@@ -1144,6 +1328,278 @@ function requestApproval(decision: "approve" | "reject") {
     confirmTheme: decision === "approve" ? "primary" : "danger",
     requirePassword: requiresPaymentSelfReviewConfirmation.value
   });
+}
+
+function paymentReviewCapabilityMatches(
+  context: PaymentApprovalReviewActionContext
+) {
+  const coordinates = paymentApprovalCapability.value?.reviewApprovalContext;
+  const reviewAction = paymentApprovalCapability.value?.availableActions.find(
+    (action) => action.key === "review_approval" && action.enabled
+  );
+  return (
+    paymentDetail.value?.id === context.paymentId &&
+    paymentApprovalCapability.value?.id === context.paymentId &&
+    paymentApprovalCapability.value?.lifecycleUpdatedAt ===
+      context.expectedPaymentUpdatedAt &&
+    reviewAction?.requiresSelfReviewConfirmation ===
+      context.requiresSelfReviewConfirmation &&
+    coordinates?.expectedPaymentUpdatedAt ===
+      context.expectedPaymentUpdatedAt &&
+    coordinates?.expectedApprovalInstanceId ===
+      context.expectedApprovalInstanceId &&
+    coordinates?.expectedNodeIndex === context.expectedNodeIndex &&
+    coordinates?.expectedApprovalUpdatedAt ===
+      context.expectedApprovalUpdatedAt
+  );
+}
+
+function paymentReviewSelectionMatches(
+  context: PaymentApprovalReviewActionContext
+) {
+  const expectedKind =
+    context.decision === "approve" ? "approvalApprove" : "approvalReject";
+  return (
+    sensitiveAction.visible &&
+    sensitiveAction.kind === expectedKind &&
+    paymentReviewConfirmation.dialogGeneration ===
+      context.dialogGeneration &&
+    paymentReviewConfirmation.paymentId === context.paymentId &&
+    paymentReviewConfirmation.expectedPaymentUpdatedAt ===
+      context.expectedPaymentUpdatedAt &&
+    paymentReviewConfirmation.expectedApprovalInstanceId ===
+      context.expectedApprovalInstanceId &&
+    paymentReviewConfirmation.expectedNodeIndex ===
+      context.expectedNodeIndex &&
+    paymentReviewConfirmation.expectedApprovalUpdatedAt ===
+      context.expectedApprovalUpdatedAt &&
+    paymentReviewConfirmation.requiresSelfReviewConfirmation ===
+      context.requiresSelfReviewConfirmation
+  );
+}
+
+function paymentReviewContextIsCurrent(
+  context: PaymentApprovalReviewActionContext
+) {
+  return (
+    paymentReviewComponentActive &&
+    context.ownerScope === paymentReviewOwnerScope &&
+    context.routeGeneration === paymentDetailRouteGeneration &&
+    context.detailEpoch === paymentDetailEpoch &&
+    context.dialogGeneration === paymentReviewDialogGeneration &&
+    context.paymentId === routePaymentId() &&
+    paymentReviewBusyOwnerId === context.operationId &&
+    paymentReviewSelectionMatches(context) &&
+    paymentReviewCapabilityMatches(context)
+  );
+}
+
+function capturePaymentReviewContext(
+  decision: PaymentApprovalReviewActionDecision,
+  password: string
+): PaymentApprovalReviewActionContext | null {
+  const expectedKind =
+    decision === "approve" ? "approvalApprove" : "approvalReject";
+  const coordinates = paymentReviewConfirmation;
+  if (
+    sensitiveAction.kind !== expectedKind ||
+    !sensitiveAction.visible ||
+    coordinates.dialogGeneration !== paymentReviewDialogGeneration ||
+    !coordinates.paymentId ||
+    !coordinates.expectedPaymentUpdatedAt ||
+    !coordinates.expectedApprovalInstanceId ||
+    !Number.isInteger(coordinates.expectedNodeIndex) ||
+    coordinates.expectedNodeIndex < 0 ||
+    !coordinates.expectedApprovalUpdatedAt
+  ) {
+    sensitiveAction.error =
+      "审批上下文已失效，请重新打开付款审批确认";
+    return null;
+  }
+  if (actionBusy.value || paymentReviewBusyOwnerId !== 0) {
+    sensitiveAction.error = "当前审批正在提交，请等待本次操作完成";
+    return null;
+  }
+
+  try {
+    const approvedAmountCents =
+      decision === "approve"
+        ? optionalYuanAmount(
+            paymentActionForm.approvedAmountYuan,
+            "审批金额"
+          )
+        : undefined;
+    const comment = paymentActionForm.approvalComment.trim() || undefined;
+    if (decision === "reject" && !comment) {
+      throw new Error("驳回原因不能为空");
+    }
+    const selfReviewPayload = buildApprovalSelfReviewPayload(
+      coordinates.requiresSelfReviewConfirmation,
+      {
+        selfReviewReason: paymentActionForm.selfReviewReason,
+        confirmationPassword: password
+      }
+    );
+    const context = Object.freeze({
+      ownerScope: paymentReviewOwnerScope,
+      routeGeneration: paymentDetailRouteGeneration,
+      detailEpoch: paymentDetailEpoch,
+      dialogGeneration: coordinates.dialogGeneration,
+      operationId: ++paymentReviewOperationSequence,
+      paymentId: coordinates.paymentId,
+      expectedPaymentUpdatedAt:
+        coordinates.expectedPaymentUpdatedAt,
+      expectedApprovalInstanceId:
+        coordinates.expectedApprovalInstanceId,
+      expectedNodeIndex: coordinates.expectedNodeIndex,
+      expectedApprovalUpdatedAt:
+        coordinates.expectedApprovalUpdatedAt,
+      decision,
+      requiresSelfReviewConfirmation:
+        coordinates.requiresSelfReviewConfirmation,
+      ...(approvedAmountCents ? { approvedAmountCents } : {}),
+      ...(comment ? { comment } : {}),
+      ...selfReviewPayload
+    });
+    paymentReviewBusyOwnerId = context.operationId;
+    actionBusy.value = "approval";
+    actionMessage.value = "";
+    sensitiveAction.error = "";
+    return context;
+  } catch (error) {
+    sensitiveAction.error =
+      error instanceof Error
+        ? error.message
+        : "付款审批信息不完整，请修正后重试";
+    return null;
+  }
+}
+
+function samePaymentReviewContext(
+  left: PaymentApprovalReviewActionContext,
+  right: PaymentApprovalReviewActionContext
+) {
+  return (
+    left.ownerScope === right.ownerScope &&
+    left.routeGeneration === right.routeGeneration &&
+    left.detailEpoch === right.detailEpoch &&
+    left.dialogGeneration === right.dialogGeneration &&
+    left.operationId === right.operationId &&
+    left.paymentId === right.paymentId &&
+    left.expectedPaymentUpdatedAt === right.expectedPaymentUpdatedAt &&
+    left.expectedApprovalInstanceId ===
+      right.expectedApprovalInstanceId &&
+    left.expectedNodeIndex === right.expectedNodeIndex &&
+    left.expectedApprovalUpdatedAt ===
+      right.expectedApprovalUpdatedAt &&
+    left.decision === right.decision &&
+    left.requiresSelfReviewConfirmation ===
+      right.requiresSelfReviewConfirmation &&
+    left.approvedAmountCents === right.approvedAmountCents &&
+    left.comment === right.comment &&
+    left.selfReviewReason === right.selfReviewReason &&
+    left.confirmationPassword === right.confirmationPassword
+  );
+}
+
+function preparedPaymentReviewIsCurrent(
+  context: PaymentApprovalReviewActionContext,
+  result: PreparePaymentApprovalReviewActionResult
+) {
+  return (
+    result.status === "ready" &&
+    samePaymentReviewContext(context, result.context) &&
+    paymentReviewContextIsCurrent(context)
+  );
+}
+
+async function completePaymentReview(
+  context: PaymentApprovalReviewActionContext
+) {
+  if (!paymentReviewContextIsCurrent(context)) return;
+  sensitiveAction.visible = false;
+  sensitiveAction.kind = null;
+  sensitiveAction.error = "";
+  paymentActionForm.selfReviewReason = "";
+  actionMessageTone.value = "success";
+  actionMessage.value =
+    context.decision === "approve"
+      ? "付款审批已通过，当前仅进入已批待付。"
+      : "付款审批已驳回。";
+  await reloadPaymentDetail();
+}
+
+function failPaymentReview(
+  context: PaymentApprovalReviewActionContext,
+  error: unknown
+) {
+  if (!paymentReviewContextIsCurrent(context)) return;
+  const reason =
+    error instanceof Error ? error.message : "付款审批操作失败";
+  actionMessageTone.value = "danger";
+  actionMessage.value =
+    `操作未完成：${reason}。已保留当前输入，请核对后重试。`;
+  sensitiveAction.error = reason;
+}
+
+function finishPaymentReview(
+  context: PaymentApprovalReviewActionContext
+) {
+  if (paymentReviewBusyOwnerId !== context.operationId) return;
+  paymentReviewBusyOwnerId = 0;
+  if (actionBusy.value === "approval") actionBusy.value = "";
+}
+
+function confirmPaymentApprovalApprove(values: {
+  reason: string;
+  password: string;
+}) {
+  return executePaymentApprovalReviewAction({
+    decision: "approve",
+    capture: () =>
+      capturePaymentReviewContext("approve", values.password),
+    preflight: (context) =>
+      preparePaymentApprovalReviewAction({
+        ...context,
+        decision: "approve",
+        isCurrent: paymentReviewContextIsCurrent
+      }),
+    current: preparedPaymentReviewIsCurrent,
+    complete: completePaymentReview,
+    fail: failPaymentReview,
+    finish: finishPaymentReview
+  });
+}
+
+function confirmPaymentApprovalReject(values: {
+  reason: string;
+  password: string;
+}) {
+  return executePaymentApprovalReviewAction({
+    decision: "reject",
+    capture: () =>
+      capturePaymentReviewContext("reject", values.password),
+    preflight: (context) =>
+      preparePaymentApprovalReviewAction({
+        ...context,
+        decision: "reject",
+        isCurrent: paymentReviewContextIsCurrent
+      }),
+    current: preparedPaymentReviewIsCurrent,
+    complete: completePaymentReview,
+    fail: failPaymentReview,
+    finish: finishPaymentReview
+  });
+}
+
+function cancelPaymentApprovalReview() {
+  if (paymentReviewBusyOwnerId !== 0) {
+    sensitiveAction.visible = true;
+    sensitiveAction.error =
+      "当前审批正在提交，请等待本次操作完成";
+    return;
+  }
+  invalidatePaymentReviewDialog(true);
 }
 
 function requestApprovalFormDownload() {
@@ -1265,12 +1721,6 @@ async function executeSensitiveAction(values: { reason: string; password: string
   let succeeded = false;
   try {
     switch (sensitiveAction.kind) {
-      case "approvalApprove":
-        succeeded = await performApproval("approve", values.password);
-        break;
-      case "approvalReject":
-        succeeded = await performApproval("reject", values.password);
-        break;
       case "approvalFormDownload":
         succeeded = await performApprovalFormDownload(values);
         break;
@@ -1332,28 +1782,6 @@ async function runPaymentAction(key: string, action: () => Promise<unknown>) {
   } finally {
     actionBusy.value = "";
   }
-}
-
-async function performApproval(decision: "approve" | "reject", password: string) {
-  const selfReviewPayload = buildApprovalSelfReviewPayload(
-    requiresPaymentSelfReviewConfirmation.value,
-    {
-      selfReviewReason: paymentActionForm.selfReviewReason,
-      confirmationPassword: password
-    }
-  );
-  const succeeded = await runPaymentAction("approval", () =>
-    reviewPaymentApproval(currentPaymentId(), {
-      decision,
-      approvedAmountCents: decision === "approve"
-        ? optionalYuanAmount(paymentActionForm.approvedAmountYuan, "审批金额")
-        : undefined,
-      comment: paymentActionForm.approvalComment.trim() || undefined,
-      ...selfReviewPayload
-    })
-  );
-  if (succeeded) paymentActionForm.selfReviewReason = "";
-  return succeeded;
 }
 
 function performApprovalFormDownload(values: { reason: string; password: string }) {
@@ -1436,6 +1864,10 @@ onMounted(async () => {
     fetchApprovalDelegationUserOptions().catch(() => [])
   ]);
   assignmentUsers.value = users;
+});
+onBeforeUnmount(() => {
+  paymentReviewComponentActive = false;
+  clearPaymentDetailTransientState();
 });
 </script>
 

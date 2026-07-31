@@ -1,4 +1,8 @@
-import { BadRequestException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException
+} from "@nestjs/common";
 import { PaymentAmountService } from "./payment-amount.service";
 import { PaymentRequestService } from "./payment-request.service";
 
@@ -23,6 +27,18 @@ describe("PaymentRequestService", () => {
     { name: "财务", mode: "any", roleKeys: ["finance_director"] },
     { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
   ];
+  const paymentReviewCoordinates = {
+    expectedPaymentUpdatedAt: "2026-07-31T01:00:00.000Z",
+    expectedApprovalInstanceId: "approval-instance-1",
+    expectedNodeIndex: 0,
+    expectedApprovalUpdatedAt: "2026-07-31T01:01:00.000Z"
+  };
+  const paymentReviewPaymentVersion = {
+    updatedAt: new Date(paymentReviewCoordinates.expectedPaymentUpdatedAt)
+  };
+  const paymentReviewApprovalVersion = {
+    updatedAt: new Date(paymentReviewCoordinates.expectedApprovalUpdatedAt)
+  };
 
   beforeEach(() => {
     auth.confirmPassword.mockReset();
@@ -3061,6 +3077,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3076,6 +3093,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: governedPaymentApprovalNodes
@@ -3102,6 +3120,7 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     const approved = await paymentService.reviewApproval("FK-2026-012", "pm-1", {
+      ...paymentReviewCoordinates,
       decision: "approve"
     });
 
@@ -3181,6 +3200,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "comprehensive-director-1", {
+        ...paymentReviewCoordinates,
         decision: "approve"
       })
     ).rejects.toThrow("申请人不能审批自己发起的业务，请由其他有权限的审批人处理");
@@ -3194,6 +3214,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3210,6 +3231,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [
@@ -3246,7 +3268,10 @@ describe("PaymentRequestService", () => {
   ] as const)("付款领导自审缺少确认事实时零写入", async (input, message) => {
     const { service, tx } = paymentLeaderSelfReviewFixture();
 
-    await expect(service.reviewApproval("payment-1", "leader-1", input)).rejects.toThrow(message);
+    await expect(service.reviewApproval("payment-1", "leader-1", {
+      ...paymentReviewCoordinates,
+      ...input
+    })).rejects.toThrow(message);
     expect(auth.confirmPassword).not.toHaveBeenCalled();
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
     expect(tx.approvalInstance.update).not.toHaveBeenCalled();
@@ -3260,6 +3285,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       service.reviewApproval("payment-1", "leader-1", {
+        ...paymentReviewCoordinates,
         decision: "approve",
         selfReviewReason: "业务紧急",
         confirmationPassword: "wrong-password"
@@ -3275,6 +3301,7 @@ describe("PaymentRequestService", () => {
     const { service, tx } = paymentLeaderSelfReviewFixture();
 
     await service.reviewApproval("payment-1", "leader-1", {
+      ...paymentReviewCoordinates,
       decision: "approve",
       selfReviewReason: "  业务紧急且由本人发起  ",
       confirmationPassword: "top-secret"
@@ -3298,6 +3325,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3308,6 +3336,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: paymentApprovalNodes
@@ -3329,6 +3358,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "pm-1", {
+        ...paymentReviewCoordinates,
         decision: "approve",
         approvedAmountCents: "45000"
       })
@@ -3341,6 +3371,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "pm-1", {
+        ...paymentReviewCoordinates,
         decision: "approve"
       })
     ).rejects.toThrow("付款审批服务暂不可用，请稍后重试或联系管理员");
@@ -3356,6 +3387,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3371,6 +3403,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 3,
           frozenNodes
@@ -3392,6 +3425,8 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     const approved = await paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+      ...paymentReviewCoordinates,
+      expectedNodeIndex: 3,
       decision: "approve",
       approvedAmountCents: "45000"
     });
@@ -3437,6 +3472,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3447,6 +3483,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 3,
           frozenNodes
@@ -3468,6 +3505,8 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
+        expectedNodeIndex: 3,
         decision: "approve",
         approvedAmountCents
       })
@@ -3479,6 +3518,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3494,6 +3534,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [
@@ -3513,6 +3554,7 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     await paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+      ...paymentReviewCoordinates,
       decision: "approve",
       comment: "  同意付款  "
     });
@@ -3533,6 +3575,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3548,6 +3591,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [
@@ -3614,6 +3658,7 @@ describe("PaymentRequestService", () => {
     );
 
     const approved = await paymentService.reviewApproval("FK-2026-012", "delegate-user-1", {
+      ...paymentReviewCoordinates,
       decision: "approve",
       approvedAmountCents: "45000"
     });
@@ -3642,6 +3687,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3657,6 +3703,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [
@@ -3684,6 +3731,7 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     const rejected = await paymentService.reviewApproval("FK-2026-012", "general-manager-1", {
+      ...paymentReviewCoordinates,
       decision: "reject",
       comment: "付款条件尚未满足"
     });
@@ -3724,6 +3772,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
         decision: "invalid"
       } as never)
     ).rejects.toThrow("不支持的付款审批处理方式");
@@ -3738,6 +3787,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
         decision: "reject_previous",
         comment: "   "
       })
@@ -3763,6 +3813,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3777,6 +3828,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 1,
           frozenNodes
@@ -3797,6 +3849,8 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     const result = await paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+      ...paymentReviewCoordinates,
+      expectedNodeIndex: 1,
       decision: "reject_previous",
       comment: "请上一节点复核付款金额"
     });
@@ -3847,6 +3901,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3857,6 +3912,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [
@@ -3881,6 +3937,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
         decision: "reject_previous",
         comment: "无法退回上一节点"
       })
@@ -3893,6 +3950,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3907,6 +3965,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [
@@ -3934,6 +3993,7 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     const result = await paymentService.reviewApproval("FK-2026-012", "general-manager-1", {
+      ...paymentReviewCoordinates,
       decision: "return_to_applicant",
       comment: "退回申请人补充付款依据"
     });
@@ -4056,6 +4116,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -4069,6 +4130,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [
@@ -4115,6 +4177,7 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     const result = await paymentService.reviewApproval("FK-2026-012", "transfer-user-1", {
+      ...paymentReviewCoordinates,
       decision: "approve"
     });
 
@@ -4400,11 +4463,16 @@ describe("PaymentRequestService", () => {
     };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
-    await expect(
-      paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+    const error = await paymentService
+      .reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
         decision: "approve"
       })
-    ).rejects.toThrow("当前付款申请已离开审批中，不能处理审批");
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ConflictException);
+    expect((error as ConflictException).getStatus()).toBe(409);
+    expect((error as Error).message).toBe("当前付款申请已离开审批中，不能处理审批");
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
   });
 
@@ -4425,6 +4493,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
         decision: "approve"
       })
     ).rejects.toThrow("未找到付款申请，请刷新付款台账后重试");
@@ -4443,20 +4512,31 @@ describe("PaymentRequestService", () => {
         update: jest.fn()
       },
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue(null)
-      }
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn() },
+      auditLog: { create: jest.fn() }
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
-    await expect(
-      paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+    const error = await paymentService
+      .reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
         decision: "approve"
       })
-    ).rejects.toThrow("未找到进行中的付款审批，请刷新后重试");
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ConflictException);
+    expect((error as ConflictException).getStatus()).toBe(409);
+    expect((error as Error).message).toBe("未找到进行中的付款审批，请刷新后重试");
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
   it("rejects approval review when the current approval node cannot be found", async () => {
@@ -4491,6 +4571,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
         decision: "approve"
       })
     ).rejects.toThrow("当前付款审批节点异常，请刷新后重试");
@@ -4524,8 +4605,12 @@ describe("PaymentRequestService", () => {
               candidateUserIds: ["chairman-1"]
             }
           ]
-        })
+        }),
+        update: jest.fn()
       },
+      approvalActionLog: { create: jest.fn() },
+      auditLog: { create: jest.fn() },
+      ...financingUsageUpdates(),
       ...approvalRoleTables("employee")
     };
     const prisma = {
@@ -4533,18 +4618,155 @@ describe("PaymentRequestService", () => {
     };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
-    await expect(
-      paymentService.reviewApproval("FK-2026-012", "employee-1", {
+    const error = await paymentService
+      .reviewApproval("FK-2026-012", "employee-1", {
+        ...paymentReviewCoordinates,
+        expectedApprovalInstanceId: "forged-instance",
+        expectedNodeIndex: 99,
         decision: "approve"
       })
-    ).rejects.toThrow("当前账号不能处理“董事长/总经理”付款审批节点");
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ForbiddenException);
+    expect((error as ForbiddenException).getStatus()).toBe(403);
+    expect((error as Error).message).toBe("当前账号不能处理“董事长/总经理”付款审批节点");
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+    expect(tx.projectFinancingQuotaUsage.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["payment version", { expectedPaymentUpdatedAt: "2026-07-31T01:00:01.000Z" }],
+    ["approval instance", { expectedApprovalInstanceId: "approval-instance-stale" }],
+    ["approval node", { expectedNodeIndex: 1 }],
+    ["approval version", { expectedApprovalUpdatedAt: "2026-07-31T01:01:01.000Z" }]
+  ] as const)("rejects a stale %s coordinate before approval writes", async (_label, override) => {
+    const paymentUpdatedAt = new Date(paymentReviewCoordinates.expectedPaymentUpdatedAt);
+    const approvalUpdatedAt = new Date(paymentReviewCoordinates.expectedApprovalUpdatedAt);
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending",
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: null,
+          updatedAt: paymentUpdatedAt
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+          ],
+          applicantUserId: "applicant-1",
+          updatedAt: approvalUpdatedAt
+        }),
+        findMany: jest.fn().mockResolvedValue([{
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+          ],
+          applicantUserId: "applicant-1",
+          updatedAt: approvalUpdatedAt
+        }]),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn() },
+      auditLog: { create: jest.fn() },
+      ...approvalRoleTables("chairman"),
+      ...financingUsageUpdates()
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    const error = await paymentService
+      .reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
+        ...override,
+        decision: "approve"
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ConflictException);
+    expect((error as ConflictException).getStatus()).toBe(409);
+    expect((error as Error).message).toBe("付款审批坐标已变化，请刷新页面后重试");
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+    expect(tx.projectFinancingQuotaUsage.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate in-progress payment approval instances before approval writes", async () => {
+    const paymentUpdatedAt = new Date(paymentReviewCoordinates.expectedPaymentUpdatedAt);
+    const approvalUpdatedAt = new Date(paymentReviewCoordinates.expectedApprovalUpdatedAt);
+    const approval = {
+      id: "approval-instance-1",
+      currentNodeIndex: 0,
+      frozenNodes: [
+        { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+      ],
+      applicantUserId: "applicant-1",
+      updatedAt: approvalUpdatedAt
+    };
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending",
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: null,
+          updatedAt: paymentUpdatedAt
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue(approval),
+        findMany: jest.fn().mockResolvedValue([
+          approval,
+          { ...approval, id: "approval-instance-2" }
+        ]),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn() },
+      auditLog: { create: jest.fn() },
+      ...approvalRoleTables("chairman"),
+      ...financingUsageUpdates()
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    const error = await paymentService
+      .reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
+        decision: "approve"
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ConflictException);
+    expect((error as ConflictException).getStatus()).toBe(409);
+    expect((error as Error).message).toBe("付款审批实例异常，请刷新页面后重试");
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
   it("rejects approved amount above requested amount", async () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -4555,6 +4777,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [
@@ -4575,6 +4798,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
         decision: "approve",
         approvedAmountCents: "50001"
       })

@@ -1955,6 +1955,14 @@ export class PaymentRequestService {
       throw new Error("不支持的付款审批处理方式");
     }
     requireApprovalCommentForReturn(input.decision, input.comment);
+    const expectedPaymentUpdatedAt = new Date(input.expectedPaymentUpdatedAt);
+    const expectedApprovalUpdatedAt = new Date(input.expectedApprovalUpdatedAt);
+    if (Number.isNaN(expectedPaymentUpdatedAt.getTime())) {
+      throw new BadRequestException("预期付款申请版本格式不正确");
+    }
+    if (Number.isNaN(expectedApprovalUpdatedAt.getTime())) {
+      throw new BadRequestException("预期审批版本格式不正确");
+    }
 
     let completedInstanceId: string | undefined;
     const result = await this.prisma.$transaction(async (tx) => {
@@ -1968,7 +1976,7 @@ export class PaymentRequestService {
       }
 
       if (payment.status !== "approval_pending") {
-        throw new Error("当前付款申请已离开审批中，不能处理审批");
+        throw new ConflictException("当前付款申请已离开审批中，不能处理审批");
       }
 
       await lockApprovalReviewRow(tx, Prisma.sql`
@@ -1980,18 +1988,32 @@ export class PaymentRequestService {
         FOR UPDATE
       `);
 
-      const instance = await tx.approvalInstance.findFirst({
-        where: {
-          businessType: "payment_request",
-          businessId: payment.id,
-          flowType: "payment.approve",
-          status: "in_progress"
-        }
-      });
+      const approvalWhere = {
+        businessType: "payment_request",
+        businessId: payment.id,
+        flowType: "payment.approve",
+        status: "in_progress"
+      } as const;
+      const approvalClient = tx.approvalInstance as typeof tx.approvalInstance & {
+        findMany?: typeof tx.approvalInstance.findMany;
+      };
+      const instances = approvalClient.findMany
+        ? await approvalClient.findMany({
+            where: approvalWhere,
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: 2
+          })
+        : [await tx.approvalInstance.findFirst({ where: approvalWhere })].filter(
+            (item): item is NonNullable<typeof item> => item !== null
+          );
 
-      if (!instance) {
-        throw new Error("未找到进行中的付款审批，请刷新后重试");
+      if (instances.length === 0) {
+        throw new ConflictException("未找到进行中的付款审批，请刷新后重试");
       }
+      if (instances.length !== 1) {
+        throw new ConflictException("付款审批实例异常，请刷新页面后重试");
+      }
+      const instance = instances[0];
 
       const nodes = instance.frozenNodes as unknown as PaymentApprovalNode[];
       const currentNode = nodes[instance.currentNodeIndex];
@@ -2023,9 +2045,6 @@ export class PaymentRequestService {
         throw new ForbiddenException(`当前账号不能处理“${currentNode.name}”付款审批节点`);
       }
       const approvedRoleKey = identity.approvedRoleKey;
-      const signature = await snapshotApprovalSignature(tx, actorUserId, {
-        required: input.decision === "approve" && isGovernedFrozenApprovalNode(currentNode)
-      });
 
       const selfReview = await confirmApprovalSelfReview({
         applicantUserId: instance.applicantUserId,
@@ -2042,6 +2061,21 @@ export class PaymentRequestService {
         confirmPassword: this.auth
           ? (password) => this.auth!.confirmPassword(actorUserId, password)
           : undefined
+      });
+
+      if (
+        !(payment.updatedAt instanceof Date) ||
+        payment.updatedAt.getTime() !== expectedPaymentUpdatedAt.getTime() ||
+        input.expectedApprovalInstanceId !== instance.id ||
+        input.expectedNodeIndex !== instance.currentNodeIndex ||
+        !(instance.updatedAt instanceof Date) ||
+        instance.updatedAt.getTime() !== expectedApprovalUpdatedAt.getTime()
+      ) {
+        throw new ConflictException("付款审批坐标已变化，请刷新页面后重试");
+      }
+
+      const signature = await snapshotApprovalSignature(tx, actorUserId, {
+        required: input.decision === "approve" && isGovernedFrozenApprovalNode(currentNode)
       });
 
       if (input.decision === "reject_previous") {

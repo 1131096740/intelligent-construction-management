@@ -388,21 +388,20 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
       "trigger": {
-        "element": "t-button",
-        "event": "click",
-        "handler": "requestApproval",
-        "variant": "approve"
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmPaymentApprovalApprove"
       },
       "semantic": "business_write",
       "capability": {
         "kind": "detail_action",
-        "source": "detail.availableActions",
+        "source": "paymentApprovalCapability.availableActions",
         "key": "review_approval"
       },
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "name": "reviewPaymentApproval"
+          "name": "executePaymentApprovalReviewAction"
         }
       ]
     },
@@ -414,21 +413,20 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
       "trigger": {
-        "element": "t-button",
-        "event": "click",
-        "handler": "requestApproval",
-        "variant": "reject"
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmPaymentApprovalReject"
       },
       "semantic": "business_write",
       "capability": {
         "kind": "detail_action",
-        "source": "detail.availableActions",
+        "source": "paymentApprovalCapability.availableActions",
         "key": "review_approval"
       },
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "name": "reviewPaymentApproval"
+          "name": "executePaymentApprovalReviewAction"
         }
       ]
     },

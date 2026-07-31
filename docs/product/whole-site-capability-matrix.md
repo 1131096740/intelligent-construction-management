@@ -6,10 +6,10 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `77494c39bf8081c3d1f68cfc611842095672689acdc402238f7a600fd7cfd30f` |
-| webApiWrappers | blocked | `c6ca732376930184dff22b0a568562220149b14c2c9758a9930976fec3c07aac` |
-| webPageActions | blocked | `ce7035fbf646ecc7ca50086adf47d8ad86711e79ff2a70e2562869918d034075` |
-| routeUsage | blocked | `d840fcd6464c826f8d715780ac90ecb04d28133e6963d712d7169ec24ebafb9d` |
+| nestRoutes | ready | `159b19c1737a577a2def4147ca101cd20901195e12d0560d64d7e19eb59c27d2` |
+| webApiWrappers | blocked | `548c28d8f61331eaf717227d710484532aecdc42dc66a069eec2ac2d20d4dd35` |
+| webPageActions | blocked | `dbab3d2cdc72afc0df7a4185b236c8b8efb9b42ccdae6fae36312eea26478f28` |
+| routeUsage | blocked | `9f503a5d0d5ad7c051585b73586161fddacc2947416cfc334533a3a0e7c28f36` |
 
 ## 汇总
 
@@ -21,19 +21,19 @@
 | exitCandidateRouteCount | 23 |
 | internalTaskRouteCount | 2 |
 | unclassifiedRouteCount | 26 |
-| mainRequestBindingCount | 384 |
+| mainRequestBindingCount | 385 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 45 |
 | duplicateMutationRouteCount | 4 |
 | registeredActionCount | 42 |
 | actionBindingCount | 50 |
-| acceptedActionBindingCount | 16 |
-| unresolvedActionBindingCount | 34 |
+| acceptedActionBindingCount | 18 |
+| unresolvedActionBindingCount | 32 |
 | productionMutationConsumerPairCount | 274 |
-| coveredProductionMutationConsumerPairCount | 12 |
-| uncoveredProductionMutationConsumerPairCount | 262 |
-| blockerCount | 375 |
+| coveredProductionMutationConsumerPairCount | 13 |
+| uncoveredProductionMutationConsumerPairCount | 261 |
+| blockerCount | 372 |
 
 ## 路由矩阵
 
@@ -97,7 +97,7 @@
 | GET | /me/workbench-summary | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchWorkbenchSummary | — | not_applicable | ORPHAN_WRAPPER |
 | GET | /organization/directory | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchOrganizationDirectory | — | not_applicable | — |
 | GET | /organization/permission-integrity | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchPermissionIntegrity | — | not_applicable | — |
-| GET | /payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentDetail | — | not_applicable | — |
+| GET | /payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#preparePaymentApprovalReviewAction | — | not_applicable | — |
 | GET | /payments/contract-application | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractPaymentApplication | — | not_applicable | — |
 | GET | /payments | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentLedger<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentLifecycleLedger | — | not_applicable | — |
 | GET | /projects/:projectId/affiliate-business-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectAffiliateBusinessFacts | — | not_applicable | — |
@@ -288,7 +288,7 @@
 | POST | /payments/:paymentId/approval-reminder | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#remindPaymentApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /payments/:paymentId/approval-transfer | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#transferPaymentApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /payments/:paymentId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#withdrawPaymentApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /payments/:paymentId/approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewPaymentApproval | payment-approval.approve<br>payment-approval.reject | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
+| POST | /payments/:paymentId/approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executePaymentApprovalReviewAction | payment-approval.approve<br>payment-approval.reject | covered | — |
 | POST | /payments/:paymentId/executions | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecution | payment-execution.record | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /payments/:paymentId/finance-records | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentFinance | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /payments/:paymentId/pdf-archive | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentPdfArchive | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -634,7 +634,6 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverCompanyEntityCorrection → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverCorrection → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverImportBatch → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#reviewPaymentApproval → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#reviewProjectExpenseApproval → apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#reviewSettlementApproval → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#revokeApprovalDelegation → apps/web-admin/src/pages/delegations/DelegationListPage.vue
@@ -774,8 +773,6 @@
 - contract-takeover.update-local-role-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-workbench.submit-local-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - expense-claim.submit-local-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- payment-approval.approve#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- payment-approval.reject#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - payment-execution.record#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - payment-execution.record#1 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - payment-request.create-local-form#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger

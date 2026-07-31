@@ -152,10 +152,18 @@ export function fetchPaymentDetail(paymentId: string) {
   return readJson<PaymentLifecycleDetailReadModel>(`/payments/${encodeURIComponent(paymentId)}`);
 }
 
+export interface PaymentReviewApprovalContext {
+  expectedPaymentUpdatedAt: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+  expectedApprovalUpdatedAt: string;
+}
+
 export type PaymentLifecycleDetailReadModel = PaymentDetailReadModel & {
   lifecycleKind: "approval_draft" | "formal_record";
   ledgerView: DraftLedgerView;
   lifecycleUpdatedAt: string | null;
+  reviewApprovalContext: PaymentReviewApprovalContext | null;
   blockedReasons: string[];
 };
 
@@ -829,7 +837,84 @@ export interface ReviewPaymentApprovalPayload {
   comment?: string;
   selfReviewReason?: string;
   confirmationPassword?: string;
+  expectedPaymentUpdatedAt: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+  expectedApprovalUpdatedAt: string;
 }
+
+export type PaymentApprovalReviewActionDecision = "approve" | "reject";
+
+export interface PaymentApprovalReviewActionContext
+  extends PaymentReviewApprovalContext {
+  ownerScope: string;
+  routeGeneration: number;
+  detailEpoch: number;
+  dialogGeneration: number;
+  operationId: number;
+  paymentId: string;
+  decision: PaymentApprovalReviewActionDecision;
+  requiresSelfReviewConfirmation: boolean;
+  approvedAmountCents?: string;
+  comment?: string;
+  selfReviewReason?: string;
+  confirmationPassword?: string;
+}
+
+export interface PreparePaymentApprovalReviewActionInput
+  extends PaymentApprovalReviewActionContext {
+  isCurrent: (context: PaymentApprovalReviewActionContext) => boolean;
+}
+
+export type PreparePaymentApprovalReviewActionResult =
+  | {
+      status: "ready";
+      context: PaymentApprovalReviewActionContext;
+      preflight: PaymentLifecycleDetailReadModel;
+    }
+  | {
+      status: "stale";
+      context: PaymentApprovalReviewActionContext;
+    };
+
+export interface ExecutePaymentApprovalReviewActionInput {
+  decision: PaymentApprovalReviewActionDecision;
+  capture: (
+    decision: PaymentApprovalReviewActionDecision
+  ) => PaymentApprovalReviewActionContext | null;
+  preflight: (
+    context: PaymentApprovalReviewActionContext
+  ) => Promise<PreparePaymentApprovalReviewActionResult>;
+  current: (
+    context: PaymentApprovalReviewActionContext,
+    prepared: PreparePaymentApprovalReviewActionResult
+  ) => boolean;
+  complete: (
+    context: PaymentApprovalReviewActionContext,
+    response: unknown
+  ) => void | Promise<void>;
+  fail: (
+    context: PaymentApprovalReviewActionContext,
+    error: unknown
+  ) => void | Promise<void>;
+  finish: (context: PaymentApprovalReviewActionContext) => void;
+}
+
+export type ExecutePaymentApprovalReviewActionResult =
+  | { status: "not_started" }
+  | {
+      status: "stale";
+      context: PaymentApprovalReviewActionContext;
+    }
+  | {
+      status: "completed";
+      context: PaymentApprovalReviewActionContext;
+      response: unknown;
+    }
+  | {
+      status: "failed";
+      context: PaymentApprovalReviewActionContext;
+    };
 
 export interface ReviewContractApprovalPayload {
   decision: "approve" | "reject";
@@ -3182,8 +3267,178 @@ export function delegateSettlementApproval(
   return postJson<unknown>(`/settlements/${settlementId}/approval-delegation`, body);
 }
 
-export function reviewPaymentApproval(paymentId: string, body: ReviewPaymentApprovalPayload) {
-  return postJson<unknown>(`/payments/${paymentId}/approval`, body);
+export async function preparePaymentApprovalReviewAction(
+  input: PreparePaymentApprovalReviewActionInput
+): Promise<PreparePaymentApprovalReviewActionResult> {
+  const context = normalizePaymentApprovalReviewAction(input);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  const preflight = await fetchPaymentDetail(context.paymentId);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+  assertPaymentApprovalReviewPreflight(context, preflight);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  return { status: "ready", context, preflight };
+}
+
+export async function executePaymentApprovalReviewAction(
+  input: ExecutePaymentApprovalReviewActionInput
+): Promise<ExecutePaymentApprovalReviewActionResult> {
+  const context = input.capture(input.decision);
+  if (!context) return { status: "not_started" };
+
+  try {
+    const prepared = await input.preflight(context);
+    if (!input.current(context, prepared)) {
+      return { status: "stale", context };
+    }
+    const response = await postJson<unknown>(
+      `/payments/${encodeURIComponent(context.paymentId)}/approval`,
+      paymentApprovalReviewActionPayload(context, input.decision)
+    );
+    await input.complete(context, response);
+    return { status: "completed", context, response };
+  } catch (error) {
+    await input.fail(context, error);
+    return { status: "failed", context };
+  } finally {
+    input.finish(context);
+  }
+}
+
+function paymentApprovalReviewActionPayload(
+  context: PaymentApprovalReviewActionContext,
+  decision: PaymentApprovalReviewActionDecision
+): ReviewPaymentApprovalPayload {
+  if (
+    context.decision !== decision ||
+    (decision === "reject" && !context.comment) ||
+    (context.requiresSelfReviewConfirmation &&
+      (!context.selfReviewReason || !context.confirmationPassword?.trim()))
+  ) {
+    throw new Error("付款审批上下文无效，请重新读取当前付款后再操作");
+  }
+
+  return {
+    decision,
+    ...(decision === "approve" && context.approvedAmountCents
+      ? { approvedAmountCents: context.approvedAmountCents }
+      : {}),
+    ...(context.comment ? { comment: context.comment } : {}),
+    ...(context.requiresSelfReviewConfirmation
+      ? {
+          selfReviewReason: context.selfReviewReason,
+          confirmationPassword: context.confirmationPassword
+        }
+      : {}),
+    expectedPaymentUpdatedAt: context.expectedPaymentUpdatedAt,
+    expectedApprovalInstanceId: context.expectedApprovalInstanceId,
+    expectedNodeIndex: context.expectedNodeIndex,
+    expectedApprovalUpdatedAt: context.expectedApprovalUpdatedAt
+  };
+}
+
+function normalizePaymentApprovalReviewAction(
+  input: PreparePaymentApprovalReviewActionInput
+): PaymentApprovalReviewActionContext {
+  const ownerScope = input.ownerScope.trim();
+  const paymentId = input.paymentId.trim();
+  const expectedPaymentUpdatedAt = input.expectedPaymentUpdatedAt.trim();
+  const expectedApprovalInstanceId =
+    input.expectedApprovalInstanceId.trim();
+  const expectedApprovalUpdatedAt =
+    input.expectedApprovalUpdatedAt.trim();
+  const approvedAmountCents =
+    input.decision === "approve"
+      ? input.approvedAmountCents?.trim() || undefined
+      : undefined;
+  const comment = input.comment?.trim() || undefined;
+  const selfReviewReason = input.requiresSelfReviewConfirmation
+    ? input.selfReviewReason?.trim() || undefined
+    : undefined;
+  const confirmationPassword = input.requiresSelfReviewConfirmation
+    ? input.confirmationPassword
+    : undefined;
+  if (
+    !ownerScope ||
+    !paymentId ||
+    !expectedPaymentUpdatedAt ||
+    !expectedApprovalInstanceId ||
+    !expectedApprovalUpdatedAt ||
+    !Number.isInteger(input.routeGeneration) ||
+    input.routeGeneration < 0 ||
+    !Number.isInteger(input.detailEpoch) ||
+    input.detailEpoch < 0 ||
+    !Number.isInteger(input.dialogGeneration) ||
+    input.dialogGeneration < 0 ||
+    !Number.isInteger(input.operationId) ||
+    input.operationId < 1 ||
+    !Number.isInteger(input.expectedNodeIndex) ||
+    input.expectedNodeIndex < 0 ||
+    (input.decision !== "approve" && input.decision !== "reject") ||
+    (approvedAmountCents !== undefined &&
+      !/^(?:0|[1-9]\d*)$/.test(approvedAmountCents)) ||
+    (input.decision === "reject" && !comment) ||
+    (input.requiresSelfReviewConfirmation &&
+      (!selfReviewReason || !confirmationPassword?.trim()))
+  ) {
+    throw new Error("付款审批上下文无效，请重新读取当前付款后再操作");
+  }
+
+  return Object.freeze({
+    ownerScope,
+    routeGeneration: input.routeGeneration,
+    detailEpoch: input.detailEpoch,
+    dialogGeneration: input.dialogGeneration,
+    operationId: input.operationId,
+    paymentId,
+    expectedPaymentUpdatedAt,
+    expectedApprovalInstanceId,
+    expectedNodeIndex: input.expectedNodeIndex,
+    expectedApprovalUpdatedAt,
+    decision: input.decision,
+    requiresSelfReviewConfirmation:
+      input.requiresSelfReviewConfirmation,
+    ...(approvedAmountCents ? { approvedAmountCents } : {}),
+    ...(comment ? { comment } : {}),
+    ...(selfReviewReason ? { selfReviewReason } : {}),
+    ...(confirmationPassword ? { confirmationPassword } : {})
+  });
+}
+
+function assertPaymentApprovalReviewPreflight(
+  context: PaymentApprovalReviewActionContext,
+  preflight: PaymentLifecycleDetailReadModel
+) {
+  const enabledReviewActions = preflight.availableActions.filter(
+    (action) => action.key === "review_approval" && action.enabled
+  );
+  const reviewAction = enabledReviewActions[0];
+  const coordinates = preflight.reviewApprovalContext;
+  if (
+    preflight.id !== context.paymentId ||
+    preflight.lifecycleUpdatedAt !== context.expectedPaymentUpdatedAt ||
+    enabledReviewActions.length !== 1 ||
+    reviewAction?.requiresSelfReviewConfirmation !==
+      context.requiresSelfReviewConfirmation ||
+    coordinates?.expectedPaymentUpdatedAt !==
+      context.expectedPaymentUpdatedAt ||
+    coordinates.expectedApprovalInstanceId !==
+      context.expectedApprovalInstanceId ||
+    coordinates.expectedNodeIndex !== context.expectedNodeIndex ||
+    coordinates.expectedApprovalUpdatedAt !==
+      context.expectedApprovalUpdatedAt
+  ) {
+    throw new Error(
+      "付款审批资格或审批坐标已变化，请重新读取当前付款"
+    );
+  }
 }
 
 export function withdrawPaymentApproval(paymentId: string) {

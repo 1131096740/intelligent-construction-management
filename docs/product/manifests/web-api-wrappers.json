@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 14,
-    "exportedFunctionCount": 384,
-    "transportWrapperCount": 380,
+    "exportedFunctionCount": 385,
+    "transportWrapperCount": 381,
     "pureExportCount": 4,
-    "mainRequestBindingCount": 384,
+    "mainRequestBindingCount": 385,
     "ticketFollowupCount": 2,
-    "requestEdgeCount": 384,
-    "productionConsumerCount": 335,
+    "requestEdgeCount": 385,
+    "productionConsumerCount": 336,
     "orphanWrapperCount": 45,
     "testOnlyWrapperCount": 43,
     "unreferencedWrapperCount": 2,
@@ -4617,7 +4617,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3247,
+          "sourceLine": 3502,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -4647,7 +4647,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3231,
+          "sourceLine": 3486,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -4677,7 +4677,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3231,
+          "sourceLine": 3486,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -4707,7 +4707,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2585,
+          "sourceLine": 2670,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -4736,7 +4736,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3231,
+          "sourceLine": 3486,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -4826,7 +4826,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3274,
+          "sourceLine": 3529,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -4855,7 +4855,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3261,
+          "sourceLine": 3516,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -4884,7 +4884,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3289,
+          "sourceLine": 3544,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -4913,7 +4913,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3231,
+          "sourceLine": 3486,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -4932,6 +4932,36 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementListPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "executePaymentApprovalReviewAction",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 51,
+          "method": "POST",
+          "path": "/payments/:param/approval",
+          "normalizedPath": "/payments/:param/approval",
+          "normalizedKey": "POST /payments/:param/approval",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "executePaymentApprovalReviewAction",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
       ],
       "unreachableConsumers": []
     },
@@ -6223,6 +6253,37 @@
       "unreachableConsumers": []
     },
     {
+      "name": "preparePaymentApprovalReviewAction",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 45,
+          "method": "GET",
+          "path": "/payments/:param",
+          "normalizedPath": "/payments/:param",
+          "normalizedKey": "GET /payments/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "preparePaymentApprovalReviewAction",
+              "fetchPaymentDetail",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "previewContractTakeoverBatchAbandonment",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -7154,36 +7215,6 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
-      ],
-      "unreachableConsumers": []
-    },
-    {
-      "name": "reviewPaymentApproval",
-      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 51,
-          "method": "POST",
-          "path": "/payments/:param/approval",
-          "normalizedPath": "/payments/:param/approval",
-          "normalizedKey": "POST /payments/:param/approval",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "reviewPaymentApproval",
-              "postJson"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/core-flow-read.api.test.ts"
-      ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
       ],
       "unreachableConsumers": []
     },

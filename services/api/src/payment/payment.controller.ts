@@ -149,7 +149,6 @@ export class PaymentController {
   }
 
   @Get(":paymentId")
-  @RequirePositions(...LEDGER_READ_POSITION_KEYS)
   async detail(@Param("paymentId") paymentId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.paymentRead.getDetail(
       paymentId,

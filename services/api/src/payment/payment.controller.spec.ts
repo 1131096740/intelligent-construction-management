@@ -63,10 +63,17 @@ const validPaymentCreateBody = {
   code: "FK-2026-001",
   requestedAmountCents: "10000"
 };
+const validPaymentReviewCoordinates = {
+  expectedPaymentUpdatedAt: "2026-07-31T01:00:00.000Z",
+  expectedApprovalInstanceId: "approval-instance-1",
+  expectedNodeIndex: 0,
+  expectedApprovalUpdatedAt: "2026-07-31T01:01:00.000Z"
+};
 
 describe("PaymentController authorization wiring", () => {
   it("保留付款领导自审原因和当前密码", async () => {
     const value = {
+      ...validPaymentReviewCoordinates,
       decision: "approve",
       selfReviewReason: "项目紧急且由本人发起",
       confirmationPassword: "current-password"
@@ -79,6 +86,7 @@ describe("PaymentController authorization wiring", () => {
     const boundary = "❤️".repeat(250);
     await expect(
       validatePaymentBody("reviewApproval", 2, {
+        ...validPaymentReviewCoordinates,
         decision: "approve",
         selfReviewReason: boundary,
         confirmationPassword: "❤️".repeat(128)
@@ -86,12 +94,14 @@ describe("PaymentController authorization wiring", () => {
     ).resolves.toBeDefined();
 
     const reasonResponse = await getPaymentValidationResponse("reviewApproval", 2, {
+      ...validPaymentReviewCoordinates,
       decision: "approve",
       selfReviewReason: `${boundary}原`
     });
     expect(reasonResponse.errors).toContain("自审原因不能超过 500 个字符");
 
     const passwordResponse = await getPaymentValidationResponse("reviewApproval", 2, {
+      ...validPaymentReviewCoordinates,
       decision: "approve",
       confirmationPassword: `${"❤️".repeat(128)}密`
     });
@@ -111,6 +121,7 @@ describe("PaymentController authorization wiring", () => {
     ["confirmationPassword", "密".repeat(257), "当前密码格式不正确"]
   ] as const)("拒绝付款自审字段 %s 的非法值", async (field, value, message) => {
     const response = await getPaymentValidationResponse("reviewApproval", 2, {
+      ...validPaymentReviewCoordinates,
       decision: "approve",
       [field]: value
     });
@@ -120,6 +131,7 @@ describe("PaymentController authorization wiring", () => {
 
   it("拒绝付款审批未知字段且不回显当前密码", async () => {
     const response = await getPaymentValidationResponse("reviewApproval", 2, {
+      ...validPaymentReviewCoordinates,
       decision: "approve",
       selfReviewReason: "业务紧急",
       confirmationPassword: "current-password",
@@ -155,13 +167,40 @@ describe("PaymentController authorization wiring", () => {
   it.each(["approve", "reject", "reject_previous", "return_to_applicant"] as const)(
     "accepts the %s approval decision through the controller runtime DTO",
     async (decision) => {
-      const value = { decision, approvedAmountCents: "0", comment: "审批意见" };
+      const value = {
+        ...validPaymentReviewCoordinates,
+        decision,
+        approvedAmountCents: "0",
+        comment: "审批意见"
+      };
       const result = await validatePaymentBody("reviewApproval", 2, value);
 
       expect(result).toEqual(value);
       expect(result).toBeInstanceOf(paymentBodyMetatype("reviewApproval", 2));
     }
   );
+
+  it.each([
+    ["expectedPaymentUpdatedAt", undefined, "缺少预期付款申请版本"],
+    ["expectedPaymentUpdatedAt", "not-a-date", "预期付款申请版本格式不正确"],
+    ["expectedApprovalInstanceId", undefined, "缺少预期审批实例"],
+    ["expectedApprovalInstanceId", "   ", "预期审批实例不能为空白"],
+    ["expectedNodeIndex", undefined, "预期审批节点必须是整数"],
+    ["expectedNodeIndex", -1, "预期审批节点不能小于 0"],
+    ["expectedApprovalUpdatedAt", undefined, "缺少预期审批版本"],
+    ["expectedApprovalUpdatedAt", "not-a-date", "预期审批版本格式不正确"]
+  ] as const)("付款审批拒绝非法坐标 %s=%p", async (field, value, message) => {
+    const body: Record<string, unknown> = {
+      ...validPaymentReviewCoordinates,
+      decision: "approve",
+      [field]: value
+    };
+    if (value === undefined) delete body[field];
+
+    const response = await getPaymentValidationResponse("reviewApproval", 2, body);
+
+    expect(response.errors).toContain(message);
+  });
 
   it.each([
     [
@@ -302,6 +341,7 @@ describe("PaymentController authorization wiring", () => {
       sourceType: "invoice"
     });
     const decisionResponse = await getPaymentValidationResponse("reviewApproval", 2, {
+      ...validPaymentReviewCoordinates,
       decision: "skip"
     });
 
@@ -441,19 +481,13 @@ describe("PaymentController authorization wiring", () => {
     }
   );
 
-  it("guards payment list and detail with the shared ledger read policy", () => {
+  it("guards the payment list with the shared ledger policy and lets detail enforce ledger-or-review access", () => {
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, PaymentController.prototype.list)).toEqual(
       LEDGER_READ_POSITION_KEYS
     );
-    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, PaymentController.prototype.detail)).toEqual(
-      LEDGER_READ_POSITION_KEYS
-    );
-  });
-
-  it("lets the comprehensive director open payment details", () => {
     expect(
       Reflect.getMetadata(REQUIRED_POSITIONS_KEY, PaymentController.prototype.detail)
-    ).toContain("comprehensive_director");
+    ).toBeUndefined();
   });
 
   it("forwards contract application preview requests to the payment read service", async () => {

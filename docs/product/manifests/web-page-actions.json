@@ -17,13 +17,13 @@
     "totalVueFileCount": 134,
     "parsedVueFileCount": 134,
     "reachableProductionModuleCount": 229,
-    "templateEventDirectiveCount": 900,
+    "templateEventDirectiveCount": 904,
     "propCallbackDirectiveCount": 10,
-    "coveredProductionMutationConsumerCount": 12,
+    "coveredProductionMutationConsumerCount": 13,
     "candidateProductionMutationConsumerCount": 39,
-    "acceptedProductionMutationConsumerCount": 12,
+    "acceptedProductionMutationConsumerCount": 13,
     "productionMutationConsumerPairCount": 274,
-    "blockerCount": 327
+    "blockerCount": 322
   },
   "evidence": {
     "totalProductionModuleCount": 236,
@@ -1302,26 +1302,25 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
       "trigger": {
-        "element": "t-button",
-        "event": "click",
-        "handler": "requestApproval",
-        "variant": "approve",
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmPaymentApprovalApprove",
         "kind": "event",
-        "sourceLine": 246,
-        "sourceColumn": 18
+        "sourceLine": 659,
+        "sourceColumn": 6
       },
       "semantic": "business_write",
       "capability": {
         "kind": "detail_action",
-        "source": "detail.availableActions",
+        "source": "paymentApprovalCapability.availableActions",
         "key": "review_approval",
-        "serverDerived": false,
-        "dominatesTrigger": false
+        "serverDerived": true,
+        "dominatesTrigger": true
       },
       "bindings": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "reviewPaymentApproval",
+          "wrapper": "executePaymentApprovalReviewAction",
           "method": "POST",
           "path": "/payments/:param/approval",
           "normalizedKey": "POST /payments/:param/approval",
@@ -1343,11 +1342,14 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "requestApproval"
+              "confirmPaymentApprovalApprove",
+              "executePaymentApprovalReviewAction"
             ]
           },
           "ticketFollowups": []
@@ -1365,26 +1367,25 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
       "trigger": {
-        "element": "t-button",
-        "event": "click",
-        "handler": "requestApproval",
-        "variant": "reject",
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmPaymentApprovalReject",
         "kind": "event",
-        "sourceLine": 255,
-        "sourceColumn": 18
+        "sourceLine": 674,
+        "sourceColumn": 6
       },
       "semantic": "business_write",
       "capability": {
         "kind": "detail_action",
-        "source": "detail.availableActions",
+        "source": "paymentApprovalCapability.availableActions",
         "key": "review_approval",
-        "serverDerived": false,
-        "dominatesTrigger": false
+        "serverDerived": true,
+        "dominatesTrigger": true
       },
       "bindings": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "reviewPaymentApproval",
+          "wrapper": "executePaymentApprovalReviewAction",
           "method": "POST",
           "path": "/payments/:param/approval",
           "normalizedKey": "POST /payments/:param/approval",
@@ -1406,11 +1407,14 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "requestApproval"
+              "confirmPaymentApprovalReject",
+              "executePaymentApprovalReviewAction"
             ]
           },
           "ticketFollowups": []
@@ -3116,20 +3120,6 @@
       },
       {
         "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "payment-approval.approve",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "reviewPaymentApproval"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "payment-approval.reject",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "reviewPaymentApproval"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
         "actionId": "payment-execution.record",
         "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -3277,18 +3267,6 @@
         "code": "WRITE_WITHOUT_SERVER_CAPABILITY",
         "actionId": "contract-draft.preview-queue",
         "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
-        "reason": "capability_not_dominating"
-      },
-      {
-        "code": "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED",
-        "actionId": "payment-approval.approve",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "reason": "capability_not_dominating"
-      },
-      {
-        "code": "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED",
-        "actionId": "payment-approval.reject",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
         "reason": "capability_not_dominating"
       },
       {
@@ -4820,15 +4798,6 @@
         "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
         "normalizedKeys": [
           "POST /payments/:param/approval-reminder"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "reviewPaymentApproval",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /payments/:param/approval"
         ]
       },
       {
