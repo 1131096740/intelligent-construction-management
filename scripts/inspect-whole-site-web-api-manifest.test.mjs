@@ -1410,6 +1410,544 @@ test("fails closed for unreachable wrappers, duplicate bindings, and dangling ro
   );
 });
 
+test("does not treat delegated wrappers sharing one transport call as duplicate writes", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        import { apiFetch } from "./api-fetch";
+        async function postJson(path: string, body: unknown) {
+          return apiFetch(path, {
+            method: "POST",
+            body: JSON.stringify(body)
+          });
+        }
+        export function createExample(body: unknown) {
+          return postJson("/examples", body);
+        }
+        function executeCreate(body: unknown) {
+          return createExample(body);
+        }
+        export function createExampleWithPreparation(body: unknown) {
+          return executeCreate(body);
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          createExample,
+          createExampleWithPreparation
+        } from "../api/example.api";
+        void createExample({});
+        void createExampleWithPreparation({});
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json": JSON.stringify({
+        schemaVersion: 1,
+        routes: [
+          {
+            method: "POST",
+            path: "/examples",
+            normalizedKey: "POST /examples"
+          }
+        ]
+      })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      assert.equal(
+        manifest.summary.duplicateNormalizedRouteGroupCount,
+        0
+      );
+      assert.deepEqual(manifest.blockers.duplicateWriteWrappers, []);
+      assert.equal(manifest.status, "ready");
+      assert.deepEqual(
+        manifest.wrappers.find(
+          (wrapper) =>
+            wrapper.name === "createExampleWithPreparation"
+        ).requests[0].localCallChains,
+        [
+          [
+            "createExampleWithPreparation",
+            "executeCreate",
+            "createExample",
+            "postJson"
+          ]
+        ]
+      );
+    }
+  );
+});
+
+test("keeps transitive exported delegation on one canonical transport owner", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        import { apiFetch } from "./api-fetch";
+        export function createInner(body: unknown) {
+          return apiFetch("/examples", {
+            method: "POST",
+            body: JSON.stringify(body)
+          });
+        }
+        export function createMiddle(body: unknown) {
+          return createInner(body);
+        }
+        export function createOuter(body: unknown) {
+          return createMiddle(body);
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          createInner,
+          createMiddle,
+          createOuter
+        } from "../api/example.api";
+        void createInner({});
+        void createMiddle({});
+        void createOuter({});
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json": JSON.stringify({
+        schemaVersion: 1,
+        routes: [
+          {
+            method: "POST",
+            path: "/examples",
+            normalizedKey: "POST /examples"
+          }
+        ]
+      })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      assert.equal(
+        manifest.summary.duplicateNormalizedRouteGroupCount,
+        0
+      );
+      assert.deepEqual(manifest.blockers.duplicateWriteWrappers, []);
+      assert.equal(manifest.status, "ready");
+    }
+  );
+});
+
+test("does not treat local branches inside one exported composite as shared parents", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        import { apiFetch } from "./api-fetch";
+        export function createInner(body: unknown) {
+          return apiFetch("/examples", {
+            method: "POST",
+            body: JSON.stringify(body)
+          });
+        }
+        function createLeft(body: unknown) {
+          return createInner(body);
+        }
+        function createRight(body: unknown) {
+          return createInner(body);
+        }
+        export function createComposite(
+          body: unknown,
+          useLeft: boolean
+        ) {
+          return useLeft
+            ? createLeft(body)
+            : createRight(body);
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          createComposite,
+          createInner
+        } from "../api/example.api";
+        void createComposite({}, true);
+        void createInner({});
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json": JSON.stringify({
+        schemaVersion: 1,
+        routes: [
+          {
+            method: "POST",
+            path: "/examples",
+            normalizedKey: "POST /examples"
+          }
+        ]
+      })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      assert.deepEqual(
+        manifest.wrappers.find(
+          (wrapper) => wrapper.name === "createComposite"
+        ).requests[0].localCallChains,
+        [
+          ["createComposite", "createLeft", "createInner"],
+          ["createComposite", "createRight", "createInner"]
+        ]
+      );
+      assert.equal(
+        manifest.summary.duplicateNormalizedRouteGroupCount,
+        0
+      );
+      assert.equal(manifest.status, "ready");
+    }
+  );
+});
+
+test("does not canonicalize sibling wrappers through descendants of a shared boundary", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        import { apiFetch } from "./api-fetch";
+        export function createInner(body: unknown) {
+          return apiFetch("/examples", {
+            method: "POST",
+            body: JSON.stringify(body)
+          });
+        }
+        export function createMiddle(body: unknown) {
+          return createInner(body);
+        }
+        export function createOuterA(body: unknown) {
+          return createMiddle(body);
+        }
+        export function createOuterB(body: unknown) {
+          return createMiddle(body);
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          createInner,
+          createMiddle,
+          createOuterA,
+          createOuterB
+        } from "../api/example.api";
+        void createInner({});
+        void createMiddle({});
+        void createOuterA({});
+        void createOuterB({});
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json": JSON.stringify({
+        schemaVersion: 1,
+        routes: [
+          {
+            method: "POST",
+            path: "/examples",
+            normalizedKey: "POST /examples"
+          }
+        ]
+      })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      assert.equal(
+        manifest.summary.duplicateNormalizedRouteGroupCount,
+        1
+      );
+      const duplicateWrappers =
+        manifest.blockers.duplicateWriteWrappers[0].wrappers.map(
+          (entry) => entry.wrapper
+        );
+      assert.ok(duplicateWrappers.includes("createOuterA"));
+      assert.ok(duplicateWrappers.includes("createOuterB"));
+      assert.equal(manifest.status, "blocked");
+    }
+  );
+});
+
+test("keeps independent sibling wrappers sharing postJson as duplicate writes", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        import { apiFetch } from "./api-fetch";
+        export async function postJson(path: string, body: unknown) {
+          return apiFetch(path, {
+            method: "POST",
+            body: JSON.stringify(body)
+          });
+        }
+        export function createExample(body: unknown) {
+          return postJson("/examples", body);
+        }
+        export function createExampleAgain(body: unknown) {
+          return postJson("/examples", body);
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          createExample,
+          createExampleAgain
+        } from "../api/example.api";
+        void createExample({});
+        void createExampleAgain({});
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json": JSON.stringify({
+        schemaVersion: 1,
+        routes: [
+          {
+            method: "POST",
+            path: "/examples",
+            normalizedKey: "POST /examples"
+          }
+        ]
+      })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      assert.equal(
+        manifest.summary.duplicateNormalizedRouteGroupCount,
+        1
+      );
+      assert.deepEqual(
+        manifest.blockers.duplicateWriteWrappers,
+        [
+          {
+            normalizedKey: "POST /examples",
+            wrappers: [
+              {
+                apiFile: "apps/web-admin/src/api/example.api.ts",
+                wrapper: "createExample"
+              },
+              {
+                apiFile: "apps/web-admin/src/api/example.api.ts",
+                wrapper: "createExampleAgain"
+              }
+            ]
+          }
+        ]
+      );
+      assert.equal(manifest.status, "blocked");
+    }
+  );
+});
+
+test("does not accept a shadowed local call name as delegation proof", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        import { apiFetch } from "./api-fetch";
+        async function postJson(path: string, body: unknown) {
+          return apiFetch(path, {
+            method: "POST",
+            body: JSON.stringify(body)
+          });
+        }
+        export function createExample(body: unknown) {
+          return postJson("/examples", body);
+        }
+        export function createExampleWithCallback(
+          createExample: (body: unknown) => unknown,
+          body: unknown
+        ) {
+          return createExample(body);
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          createExample,
+          createExampleWithCallback
+        } from "../api/example.api";
+        void createExample({});
+        void createExampleWithCallback(() => undefined, {});
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json": JSON.stringify({
+        schemaVersion: 1,
+        routes: [
+          {
+            method: "POST",
+            path: "/examples",
+            normalizedKey: "POST /examples"
+          }
+        ]
+      })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      const callbackWrapper = manifest.wrappers.find(
+        (wrapper) => wrapper.name === "createExampleWithCallback"
+      );
+      assert.deepEqual(
+        callbackWrapper.requests[0].localCallChains,
+        []
+      );
+      assert.equal(
+        manifest.summary.duplicateNormalizedRouteGroupCount,
+        1
+      );
+      assert.equal(manifest.status, "blocked");
+    }
+  );
+});
+
+test("fails closed for nested callback, function, and method bindings that shadow wrapper names", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        import { apiFetch } from "./api-fetch";
+        async function postJson(path: string, body: unknown) {
+          return apiFetch(path, {
+            method: "POST",
+            body: JSON.stringify(body)
+          });
+        }
+        export function createExample(body: unknown) {
+          return postJson("/examples", body);
+        }
+        export function createWithNestedCallback(body: unknown) {
+          const invoke = (
+            createExample: (value: unknown) => unknown
+          ) => createExample(body);
+          return invoke(() => undefined);
+        }
+        export function createWithNamedFunction(body: unknown) {
+          const invoke = function createExample() {
+            return createExample(body);
+          };
+          return invoke();
+        }
+        export function createWithMethod(body: unknown) {
+          const invoke = {
+            run(createExample: (value: unknown) => unknown) {
+              return createExample(body);
+            }
+          };
+          return invoke.run(() => undefined);
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          createExample,
+          createWithMethod,
+          createWithNamedFunction,
+          createWithNestedCallback
+        } from "../api/example.api";
+        void createExample({});
+        void createWithMethod({});
+        void createWithNamedFunction({});
+        void createWithNestedCallback({});
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json": JSON.stringify({
+        schemaVersion: 1,
+        routes: [
+          {
+            method: "POST",
+            path: "/examples",
+            normalizedKey: "POST /examples"
+          }
+        ]
+      })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      for (const name of [
+        "createWithMethod",
+        "createWithNamedFunction",
+        "createWithNestedCallback"
+      ]) {
+        assert.deepEqual(
+          manifest.wrappers.find(
+            (wrapper) => wrapper.name === name
+          ).requests[0].localCallChains,
+          []
+        );
+      }
+      assert.equal(
+        manifest.summary.duplicateNormalizedRouteGroupCount,
+        1
+      );
+      assert.deepEqual(
+        manifest.blockers.duplicateWriteWrappers[0].wrappers.map(
+          (entry) => entry.wrapper
+        ),
+        [
+          "createExample",
+          "createWithMethod",
+          "createWithNamedFunction",
+          "createWithNestedCallback"
+        ]
+      );
+      assert.equal(manifest.status, "blocked");
+    }
+  );
+});
+
+test("does not let an unrelated nested lexical binding taint an outer local call", async () => {
+  await withFixture(
+    {
+      "apps/web-admin/src/api/example.api.ts": `
+        import { apiFetch } from "./api-fetch";
+        export function createInner(body: unknown) {
+          return apiFetch("/examples", {
+            method: "POST",
+            body: JSON.stringify(body)
+          });
+        }
+        export function createOuter(body: unknown) {
+          const identity = (
+            createInner: (value: unknown) => unknown
+          ) => createInner;
+          void identity(() => undefined);
+          return createInner(body);
+        }
+      `,
+      "apps/web-admin/src/pages/FixturePage.vue": `
+        <script setup lang="ts">
+        import {
+          createInner,
+          createOuter
+        } from "../api/example.api";
+        void createInner({});
+        void createOuter({});
+        </script>
+        <template><main>fixture</main></template>
+      `,
+      "docs/product/manifests/nest-business-routes.json": JSON.stringify({
+        schemaVersion: 1,
+        routes: [
+          {
+            method: "POST",
+            path: "/examples",
+            normalizedKey: "POST /examples"
+          }
+        ]
+      })
+    },
+    async (root) => {
+      const manifest = await inspectWholeSiteWebApiManifest({ root });
+      assert.deepEqual(
+        manifest.wrappers.find(
+          (wrapper) => wrapper.name === "createOuter"
+        ).requests[0].localCallChains,
+        [["createOuter", "createInner"]]
+      );
+      assert.equal(
+        manifest.summary.duplicateNormalizedRouteGroupCount,
+        0
+      );
+      assert.equal(manifest.status, "ready");
+    }
+  );
+});
+
 test("write and check preserve blocked evidence while require-ready fails", async () => {
   await withFixture(
     {

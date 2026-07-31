@@ -118,6 +118,126 @@ function functionName(node) {
   return node.name && ts.isIdentifier(node.name) ? node.name.text : null;
 }
 
+function bindingNames(node, names) {
+  if (!node) return;
+  if (ts.isIdentifier(node)) {
+    names.add(node.text);
+    return;
+  }
+  if (ts.isObjectBindingPattern(node) || ts.isArrayBindingPattern(node)) {
+    for (const element of node.elements) {
+      if (ts.isBindingElement(element)) {
+        bindingNames(element.name, names);
+      }
+    }
+  }
+}
+
+function bindingHasName(node, name) {
+  const names = new Set();
+  bindingNames(node, names);
+  return names.has(name);
+}
+
+function isFunctionLikeNode(node) {
+  return (
+    ts.isFunctionDeclaration(node) ||
+    ts.isFunctionExpression(node) ||
+    ts.isArrowFunction(node) ||
+    ts.isMethodDeclaration(node) ||
+    ts.isGetAccessorDeclaration(node) ||
+    ts.isSetAccessorDeclaration(node) ||
+    ts.isConstructorDeclaration(node)
+  );
+}
+
+function functionScopedVarBindsName(node, name) {
+  let found = false;
+  function visit(node) {
+    if (found) return;
+    if (isFunctionLikeNode(node)) return;
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isVariableDeclarationList(node.parent) &&
+      !(node.parent.flags & ts.NodeFlags.BlockScoped) &&
+      bindingHasName(node.name, name)
+    ) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  }
+  if (node.body) {
+    ts.forEachChild(node.body, visit);
+  }
+  return found;
+}
+
+function directBlockBindsName(block, name) {
+  const statements = ts.isCaseBlock(block)
+    ? block.clauses.flatMap((clause) => [...clause.statements])
+    : [...block.statements];
+  return statements.some((statement) => {
+    if (ts.isVariableStatement(statement)) {
+      return statement.declarationList.declarations.some(
+        (declaration) => bindingHasName(declaration.name, name)
+      );
+    }
+    return (
+      (ts.isFunctionDeclaration(statement) ||
+        ts.isClassDeclaration(statement)) &&
+      statement.name?.text === name
+    );
+  });
+}
+
+function lexicalBindingShadowsIdentifier(identifier, definition) {
+  const name = identifier.text;
+  for (
+    let current = identifier.parent;
+    current;
+    current = current.parent
+  ) {
+    if (isFunctionLikeNode(current)) {
+      if (
+        current.parameters.some((parameter) =>
+          bindingHasName(parameter.name, name)
+        ) ||
+        ((ts.isFunctionDeclaration(current) ||
+          ts.isFunctionExpression(current)) &&
+          current.name?.text === name) ||
+        functionScopedVarBindsName(current, name)
+      ) {
+        return true;
+      }
+    } else if (
+      (ts.isBlock(current) || ts.isCaseBlock(current)) &&
+      directBlockBindsName(current, name)
+    ) {
+      return true;
+    } else if (
+      ts.isCatchClause(current) &&
+      current.variableDeclaration &&
+      bindingHasName(current.variableDeclaration.name, name)
+    ) {
+      return true;
+    } else if (
+      (ts.isForStatement(current) ||
+        ts.isForInStatement(current) ||
+        ts.isForOfStatement(current)) &&
+      current.initializer &&
+      ts.isVariableDeclarationList(current.initializer) &&
+      current.initializer.declarations.some((declaration) =>
+        bindingHasName(declaration.name, name)
+      )
+    ) {
+      return true;
+    }
+    if (current === definition.node) return false;
+  }
+  return true;
+}
+
 function moduleFunctions(ast) {
   const functions = new Map();
   const exports = [];
@@ -3040,16 +3160,19 @@ function addApiFetchRequest(
   environment,
   context,
   requests,
+  trace,
   requestArguments = call.arguments
 ) {
   const sourceLine =
     context.ast.getLineAndCharacterOfPosition(call.getStart(context.ast)).line +
     1;
+  const localCallChain = trustedRequestLocalCallChain(trace);
   const pathExpression = requestArguments[0];
   if (!pathExpression) {
     requests.push({
       kind: "main",
       sourceLine,
+      localCallChain,
       method: "GET",
       path: null,
       normalizedPath: null,
@@ -3064,6 +3187,7 @@ function addApiFetchRequest(
     requests.push({
       kind: "ticket_followup",
       sourceLine,
+      localCallChain,
       method: "GET",
       ticketField: followupField,
       bodyKind: "none"
@@ -3087,6 +3211,7 @@ function addApiFetchRequest(
       requests.push({
         kind: "main",
         sourceLine,
+        localCallChain,
         method,
         path: unresolved ? null : path,
         normalizedPath,
@@ -3104,13 +3229,44 @@ function addApiFetchRequest(
   }
 }
 
-function addUnknownTransportRequest(node, context, requests, reason) {
+const UNTRUSTED_LOCAL_CALL_EDGE =
+  "request:__untrusted_local_call_edge__";
+
+// Duplicate suppression may only use calls proven to resolve to unshadowed
+// module-local functions. Unknown/property/shadowed calls still contribute
+// requests, but an empty chain keeps duplicate classification fail-closed.
+function trustedRequestLocalCallChain(trace) {
+  if (
+    !(trace instanceof Set) ||
+    trace.has(UNTRUSTED_LOCAL_CALL_EDGE)
+  ) {
+    return null;
+  }
+  const chain = [...trace]
+    .filter(
+      (entry) =>
+        typeof entry === "string" &&
+        entry.startsWith("request:") &&
+        entry !== UNTRUSTED_LOCAL_CALL_EDGE
+    )
+    .map((entry) => entry.slice("request:".length));
+  return chain.length > 0 ? chain : null;
+}
+
+function addUnknownTransportRequest(
+  node,
+  context,
+  requests,
+  reason,
+  trace
+) {
   const sourceLine =
     context.ast.getLineAndCharacterOfPosition(node.getStart(context.ast)).line +
     1;
   requests.push({
     kind: "main",
     sourceLine,
+    localCallChain: trustedRequestLocalCallChain(trace),
     method: "UNKNOWN",
     path: null,
     normalizedPath: null,
@@ -3649,6 +3805,7 @@ function analyzeExpression(expression, environment, context, requests, trace) {
           environment,
           context,
           requests,
+          trace,
           adapter.requestArguments
         );
       } else {
@@ -3660,7 +3817,8 @@ function analyzeExpression(expression, environment, context, requests, trace) {
             ? "unknown_network_primitive"
             : adapter.transportKind === "known"
               ? "unknown_transport_adapter"
-              : "unknown_transport_delegate"
+              : "unknown_transport_delegate",
+          trace
         );
       }
       return;
@@ -3679,7 +3837,13 @@ function analyzeExpression(expression, environment, context, requests, trace) {
         requests,
         trace
       );
-      addApiFetchRequest(node, environment, context, requests);
+      addApiFetchRequest(
+        node,
+        environment,
+        context,
+        requests,
+        trace
+      );
       return;
     }
     if (transportKind === "unknown") {
@@ -3694,7 +3858,8 @@ function analyzeExpression(expression, environment, context, requests, trace) {
         node,
         context,
         requests,
-        "unknown_transport_delegate"
+        "unknown_transport_delegate",
+        trace
       );
       return;
     }
@@ -3710,7 +3875,8 @@ function analyzeExpression(expression, environment, context, requests, trace) {
         node,
         context,
         requests,
-        "unknown_network_primitive"
+        "unknown_network_primitive",
+        trace
       );
       return;
     }
@@ -3725,7 +3891,37 @@ function analyzeExpression(expression, environment, context, requests, trace) {
           trace
         );
       }
-      analyzeFunction(definition, node, environment, context, requests, trace);
+      const target = unwrapExpression(node.expression);
+      const currentFunctionName = [...trace]
+        .filter(
+          (entry) =>
+            typeof entry === "string" &&
+            entry.startsWith("request:") &&
+            entry !== UNTRUSTED_LOCAL_CALL_EDGE
+        )
+        .at(-1)
+        ?.slice("request:".length);
+      const currentDefinition = currentFunctionName
+        ? context.functions.get(currentFunctionName)
+        : null;
+      const provenLocalCall =
+        ts.isIdentifier(target) &&
+        !identifierBinding(target.text, environment, context) &&
+        currentDefinition &&
+        !lexicalBindingShadowsIdentifier(
+          target,
+          currentDefinition
+        );
+      analyzeFunction(
+        definition,
+        node,
+        environment,
+        context,
+        requests,
+        provenLocalCall
+          ? trace
+          : new Set(trace).add(UNTRUSTED_LOCAL_CALL_EDGE)
+      );
       return;
     }
   }
@@ -3740,7 +3936,8 @@ function analyzeExpression(expression, environment, context, requests, trace) {
         node,
         context,
         requests,
-        "unknown_network_primitive"
+        "unknown_network_primitive",
+        trace
       );
       return;
     }
@@ -4105,9 +4302,34 @@ function dedupeRequests(requests) {
       request.kind === "ticket_followup"
         ? `ticket\0${request.ticketField}`
         : `main\0${request.method}\0${request.normalizedPath ?? request.unresolvedReason}\0${request.bodyKind}`;
-    if (!byKey.has(key)) byKey.set(key, request);
+    const group = byKey.get(key) ?? {
+      request,
+      trusted: true,
+      localCallChains: new Map()
+    };
+    if (!Array.isArray(request.localCallChain)) {
+      group.trusted = false;
+    } else {
+      group.localCallChains.set(
+        request.localCallChain.join("\0"),
+        request.localCallChain
+      );
+    }
+    byKey.set(key, group);
   }
-  return [...byKey.values()].sort((left, right) => {
+  return [...byKey.values()]
+    .map(({ request, trusted, localCallChains }) => {
+      const { localCallChain: _localCallChain, ...rest } = request;
+      return {
+        ...rest,
+        localCallChains: trusted
+          ? [...localCallChains.values()].sort((left, right) =>
+              compareStrings(left.join("\0"), right.join("\0"))
+            )
+          : []
+      };
+    })
+    .sort((left, right) => {
     const leftKey =
       left.kind === "ticket_followup"
         ? `1 ${left.ticketField}`
@@ -4117,7 +4339,7 @@ function dedupeRequests(requests) {
         ? `1 ${right.ticketField}`
         : `0 ${right.method} ${right.normalizedPath ?? ""}`;
     return compareStrings(leftKey, rightKey);
-  });
+    });
 }
 
 function inspectApiModule(path, source, sourceFiles, sources) {
@@ -4430,32 +4652,202 @@ function consumerImports(path, source, ast, sourceFiles) {
   return imports;
 }
 
-function duplicateGroups(wrappers) {
+function requestDelegationIdentity(request) {
+  return [
+    request.method,
+    request.normalizedKey,
+    request.bodyKind,
+    request.sourceLine
+  ].join("\0");
+}
+
+function arraysEqual(left, right) {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
+}
+
+function canonicalOwnersForRequest(
+  wrapper,
+  request,
+  wrappersByIdentity,
+  sharedDelegateIdentities
+) {
+  const ownIdentity = `${wrapper.apiFile}\0${wrapper.name}`;
+  const fallback = new Map([[ownIdentity, wrapper]]);
+  if (
+    !Array.isArray(request.localCallChains) ||
+    request.localCallChains.length === 0
+  ) {
+    return fallback;
+  }
+  const owners = new Map();
+  for (const chain of request.localCallChains) {
+    if (
+      !Array.isArray(chain) ||
+      chain.length === 0 ||
+      chain[0] !== wrapper.name
+    ) {
+      return fallback;
+    }
+    let owner = wrapper;
+    const sharedBoundaryIndex = chain.findIndex(
+      (name, index) =>
+        index > 0 &&
+        sharedDelegateIdentities.has(
+          `${wrapper.apiFile}\0${name}`
+        )
+    );
+    // Once independent callers converge at a shared delegate, neither that
+    // node nor any deeper descendant can prove the callers are aliases.
+    const deepestCandidateIndex =
+      sharedBoundaryIndex === -1
+        ? chain.length - 1
+        : sharedBoundaryIndex - 1;
+    for (
+      let index = deepestCandidateIndex;
+      index > 0;
+      index -= 1
+    ) {
+      const candidate = wrappersByIdentity.get(
+        `${wrapper.apiFile}\0${chain[index]}`
+      );
+      if (!candidate || candidate.kind !== "transport") continue;
+      const suffix = chain.slice(index);
+      // A delegated wrapper owns this request only when its independently
+      // analyzed chain is the exact suffix and reaches the same transport site.
+      const delegatedRequest = candidate.requests.some(
+        (candidateRequest) =>
+          candidateRequest.kind === "main" &&
+          requestDelegationIdentity(candidateRequest) ===
+            requestDelegationIdentity(request) &&
+          Array.isArray(candidateRequest.localCallChains) &&
+          candidateRequest.localCallChains.some(
+            (candidateChain) =>
+              Array.isArray(candidateChain) &&
+              arraysEqual(candidateChain, suffix)
+          )
+      );
+      if (delegatedRequest) {
+        owner = candidate;
+        break;
+      }
+    }
+    owners.set(`${owner.apiFile}\0${owner.name}`, owner);
+  }
+  return owners.size > 0 ? owners : fallback;
+}
+
+export function deriveDuplicateWebApiRoutes(wrappers) {
+  const wrappersByIdentity = new Map(
+    wrappers.map((wrapper) => [
+      `${wrapper.apiFile}\0${wrapper.name}`,
+      wrapper
+    ])
+  );
+  const delegateParents = new Map();
+  for (const wrapper of wrappers) {
+    const parentIdentity = `${wrapper.apiFile}\0${wrapper.name}`;
+    for (const request of wrapper.requests) {
+      if (
+        request.kind !== "main" ||
+        !request.normalizedKey ||
+        !Array.isArray(request.localCallChains)
+      ) {
+        continue;
+      }
+      for (const chain of request.localCallChains) {
+        if (
+          !Array.isArray(chain) ||
+          chain.length === 0 ||
+          chain[0] !== wrapper.name
+        ) {
+          continue;
+        }
+        for (let index = 1; index < chain.length; index += 1) {
+          const candidateIdentity =
+            `${wrapper.apiFile}\0${chain[index]}`;
+          if (candidateIdentity === parentIdentity) continue;
+          const candidate = wrappersByIdentity.get(candidateIdentity);
+          if (!candidate || candidate.kind !== "transport") continue;
+          const suffix = chain.slice(index);
+          const delegatedRequest = candidate.requests.some(
+            (candidateRequest) =>
+              candidateRequest.kind === "main" &&
+              requestDelegationIdentity(candidateRequest) ===
+                requestDelegationIdentity(request) &&
+              Array.isArray(candidateRequest.localCallChains) &&
+              candidateRequest.localCallChains.some(
+                (candidateChain) =>
+                  Array.isArray(candidateChain) &&
+                  arraysEqual(candidateChain, suffix)
+              )
+          );
+          if (!delegatedRequest) continue;
+          const routeDelegateIdentity =
+            `${request.normalizedKey}\0${candidateIdentity}`;
+          const parents =
+            delegateParents.get(routeDelegateIdentity) ?? new Set();
+          let exportedParentIdentity = parentIdentity;
+          for (
+            let parentIndex = index - 1;
+            parentIndex >= 0;
+            parentIndex -= 1
+          ) {
+            const candidateParentIdentity =
+              `${wrapper.apiFile}\0${chain[parentIndex]}`;
+            if (
+              wrappersByIdentity.get(candidateParentIdentity)
+                ?.kind === "transport"
+            ) {
+              exportedParentIdentity =
+                candidateParentIdentity;
+              break;
+            }
+          }
+          parents.add(exportedParentIdentity);
+          delegateParents.set(routeDelegateIdentity, parents);
+        }
+      }
+    }
+  }
+  const sharedDelegatesByRoute = new Map();
+  for (const [identity, parents] of delegateParents) {
+    if (parents.size < 2) continue;
+    const separator = identity.indexOf("\0");
+    const normalizedKey = identity.slice(0, separator);
+    const candidateIdentity = identity.slice(separator + 1);
+    const values =
+      sharedDelegatesByRoute.get(normalizedKey) ?? new Set();
+    values.add(candidateIdentity);
+    sharedDelegatesByRoute.set(normalizedKey, values);
+  }
   const groups = new Map();
   for (const wrapper of wrappers) {
     for (const request of wrapper.requests) {
       if (request.kind !== "main" || !request.normalizedKey) continue;
-      const item = {
-        apiFile: wrapper.apiFile,
-        wrapper: wrapper.name
-      };
-      const values = groups.get(request.normalizedKey) ?? [];
-      if (
-        !values.some(
-          (value) =>
-            value.apiFile === item.apiFile && value.wrapper === item.wrapper
-        )
-      ) {
-        values.push(item);
+      const group = groups.get(request.normalizedKey) ?? new Map();
+      for (const [identity, owner] of canonicalOwnersForRequest(
+        wrapper,
+        request,
+        wrappersByIdentity,
+        sharedDelegatesByRoute.get(request.normalizedKey) ??
+          new Set()
+      )) {
+        group.set(identity, {
+          apiFile: owner.apiFile,
+          wrapper: owner.name
+        });
       }
-      groups.set(request.normalizedKey, values);
+      groups.set(request.normalizedKey, group);
     }
   }
   return [...groups.entries()]
-    .filter(([, values]) => values.length > 1)
-    .map(([normalizedKey, values]) => ({
+    .filter(([, group]) => group.size > 1)
+    .map(([normalizedKey, group]) => ({
       normalizedKey,
-      wrappers: values.sort(
+      wrappers: [...group.values()].sort(
         (left, right) =>
           compareStrings(left.apiFile, right.apiFile) ||
           compareStrings(left.wrapper, right.wrapper)
@@ -4722,7 +5114,8 @@ export async function inspectWholeSiteWebApiManifest({ root }) {
       .map((route) => route?.normalizedKey)
       .filter((key) => typeof key === "string")
   );
-  const duplicateNormalizedRoutes = duplicateGroups(wrappers);
+  const duplicateNormalizedRoutes =
+    deriveDuplicateWebApiRoutes(wrappers);
   const blockers = classifyBlockers({
     wrappers,
     duplicateNormalizedRoutes,

@@ -145,8 +145,26 @@ export class ProjectAffiliateCompanyContractService {
           );
         }
         const affiliate = await resolveCurrentProjectAffiliate(tx, projectId);
+        await acquireFileBusinessBindingTransactionLock(tx);
+        const replayAfterFileBindingLock =
+          await tx.projectAffiliateCompanyContract.findUnique({
+            where: { idempotencyKey }
+          });
+        if (replayAfterFileBindingLock) {
+          assertReplay(
+            replayAfterFileBindingLock,
+            projectId,
+            actorUserId,
+            requestFingerprint
+          );
+          return toReadModel(replayAfterFileBindingLock, roles);
+        }
         const company = await lockAndLoadCompanyEntity(tx, companyEntityId);
-        const file = await lockAndValidateSignedFile(tx, actorUserId, fileId);
+        const file = await validateSignedFileAfterBindingLock(
+          tx,
+          actorUserId,
+          fileId
+        );
         const created = await tx.projectAffiliateCompanyContract.create({
           data: {
             projectId,
@@ -202,7 +220,10 @@ export class ProjectAffiliateCompanyContractService {
       });
       if (replay) {
         assertReplay(replay, projectId, actorUserId, requestFingerprint);
-        return toReadModel(replay, []);
+        return toReadModel(
+          replay,
+          await loadActorRoleKeys(this.prisma, actorUserId, projectId)
+        );
       }
       throw new ConflictException(
         "该线下合同编号或正式文件已登记，不能跨项目或跨业务重复绑定"
@@ -438,27 +459,31 @@ async function lockAndLoadCompanyEntity(
   };
 }
 
-async function lockAndValidateSignedFile(
+async function validateSignedFileAfterBindingLock(
   tx: Prisma.TransactionClient,
   actorUserId: string,
   fileId: string
 ) {
-  await acquireFileBusinessBindingTransactionLock(tx);
+  const rows = await tx.$queryRaw<
+    Array<{
+      id: string;
+      uploadedByUserId: string;
+      storageStatus: string;
+      contentSha256: string | null;
+    }>
+  >(Prisma.sql`
+    SELECT "id", "uploadedByUserId", "storageStatus", "contentSha256"
+    FROM "FileObject"
+    WHERE "id" = ${fileId}
+    FOR UPDATE
+  `);
+  const file = rows[0];
+  if (!file) throw new NotFoundException("已签线下合同文件不存在，请重新上传");
   if (await hasNonReceiptBusinessFileBinding(tx, [fileId])) {
     throw new ConflictException(
       "已签线下合同文件已绑定其他项目或业务事实，不能重复使用"
     );
   }
-  const file = await tx.fileObject.findUnique({
-    where: { id: fileId },
-    select: {
-      id: true,
-      uploadedByUserId: true,
-      storageStatus: true,
-      contentSha256: true
-    }
-  });
-  if (!file) throw new NotFoundException("已签线下合同文件不存在，请重新上传");
   if (file.uploadedByUserId !== actorUserId) {
     throw new BadRequestException("只能使用本人上传的已签线下合同文件");
   }

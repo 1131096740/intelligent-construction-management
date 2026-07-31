@@ -8,7 +8,11 @@ import { dirname, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
 import { normalizeRoutePath } from "./whole-site-route-manifest.mjs";
-import { normalizeWebApiPath } from "./whole-site-web-api-manifest.mjs";
+import {
+  deriveDuplicateWebApiRoutes,
+  inspectWholeSiteWebApiManifest,
+  normalizeWebApiPath
+} from "./whole-site-web-api-manifest.mjs";
 
 export const CAPABILITY_MATRIX_PATH =
   "docs/product/manifests/whole-site-capability-matrix.json";
@@ -108,6 +112,7 @@ const MUTATION_METHODS = new Set([
   "POST",
   "PUT"
 ]);
+const LIVE_WEB_MANIFESTS = new WeakSet();
 const ACTION_USAGES = new Set(["page_action", "background"]);
 const ACTION_SEMANTICS = new Set([
   "business_write",
@@ -359,16 +364,19 @@ function validateNestManifest(manifest) {
 }
 
 function validateMainRequest(request) {
+  const unresolved = Object.hasOwn(request, "unresolvedReason");
   assertExactKeys(
     request,
     [
       "bodyKind",
       "kind",
+      "localCallChains",
       "method",
       "normalizedKey",
       "normalizedPath",
       "path",
-      "sourceLine"
+      "sourceLine",
+      ...(unresolved ? ["unresolvedReason"] : [])
     ],
     "CAPABILITY_MATRIX_INVALID_WEB_REQUEST"
   );
@@ -384,16 +392,33 @@ function validateMainRequest(request) {
     request.method === request.method.toUpperCase(),
     "CAPABILITY_MATRIX_INVALID_WEB_REQUEST"
   );
-  assertString(request.path, "CAPABILITY_MATRIX_INVALID_WEB_REQUEST");
-  assert(
-    request.normalizedPath === normalizeWebApiPath(request.path),
-    "CAPABILITY_MATRIX_INVALID_WEB_REQUEST"
-  );
-  assert(
-    request.normalizedKey ===
-      `${request.method} ${request.normalizedPath}`,
-    "CAPABILITY_MATRIX_INVALID_WEB_REQUEST"
-  );
+  if (unresolved) {
+    assert(
+      (request.path === null ||
+        typeof request.path === "string") &&
+        request.normalizedPath === null &&
+        request.normalizedKey === null,
+      "CAPABILITY_MATRIX_INVALID_WEB_REQUEST"
+    );
+    assertString(
+      request.unresolvedReason,
+      "CAPABILITY_MATRIX_INVALID_WEB_REQUEST"
+    );
+  } else {
+    assertString(
+      request.path,
+      "CAPABILITY_MATRIX_INVALID_WEB_REQUEST"
+    );
+    assert(
+      request.normalizedPath === normalizeWebApiPath(request.path),
+      "CAPABILITY_MATRIX_INVALID_WEB_REQUEST"
+    );
+    assert(
+      request.normalizedKey ===
+        `${request.method} ${request.normalizedPath}`,
+      "CAPABILITY_MATRIX_INVALID_WEB_REQUEST"
+    );
+  }
   assertInteger(
     request.sourceLine,
     "CAPABILITY_MATRIX_INVALID_WEB_REQUEST"
@@ -410,6 +435,7 @@ function validateTicketRequest(request) {
     [
       "bodyKind",
       "kind",
+      "localCallChains",
       "method",
       "sourceLine",
       "ticketField"
@@ -436,6 +462,38 @@ function validateTicketRequest(request) {
     request.bodyKind,
     "CAPABILITY_MATRIX_INVALID_WEB_REQUEST"
   );
+}
+
+function validateRequestLocalCallChains(request, wrapper) {
+  assertArray(
+    request.localCallChains,
+    "CAPABILITY_MATRIX_INVALID_WEB_REQUEST_CALL_CHAINS"
+  );
+  const identities = new Set();
+  for (const chain of request.localCallChains) {
+    assertArray(
+      chain,
+      "CAPABILITY_MATRIX_INVALID_WEB_REQUEST_CALL_CHAINS"
+    );
+    assert(
+      chain.length > 0 &&
+        chain[0] === wrapper.name &&
+        new Set(chain).size === chain.length,
+      "CAPABILITY_MATRIX_INVALID_WEB_REQUEST_CALL_CHAINS"
+    );
+    for (const name of chain) {
+      assertString(
+        name,
+        "CAPABILITY_MATRIX_INVALID_WEB_REQUEST_CALL_CHAINS"
+      );
+    }
+    const identity = chain.join("\u0000");
+    assert(
+      !identities.has(identity),
+      "CAPABILITY_MATRIX_INVALID_WEB_REQUEST_CALL_CHAINS"
+    );
+    identities.add(identity);
+  }
 }
 
 function validateWrapper(wrapper) {
@@ -506,6 +564,7 @@ function validateWrapper(wrapper) {
         "CAPABILITY_MATRIX_INVALID_WEB_REQUEST_KIND"
       );
     }
+    validateRequestLocalCallChains(request, wrapper);
   }
   if (wrapper.kind === "pure") {
     assert(
@@ -531,32 +590,42 @@ function classifyOrphan(wrapper) {
   };
 }
 
-function deriveDuplicateRoutes(wrappers) {
-  const groups = new Map();
-  for (const wrapper of wrappers) {
-    if (wrapper.kind !== "transport") continue;
-    for (const request of wrapper.requests) {
-      if (request.kind !== "main") continue;
-      const entries = groups.get(request.normalizedKey) ?? [];
-      entries.push({
-        apiFile: wrapper.apiFile,
-        wrapper: wrapper.name
-      });
-      groups.set(request.normalizedKey, entries);
-    }
-  }
-  return [...groups.entries()]
-    .filter(([, entries]) => entries.length > 1)
-    .map(([normalizedKey, entries]) => ({
-      normalizedKey,
-      wrappers: sortBy(
-        entries,
-        (entry) => wrapperKey(entry.apiFile, entry.wrapper)
-      )
+function deriveUnresolvedRequests(wrappers) {
+  return sortBy(
+    wrappers.flatMap((wrapper) =>
+      wrapper.requests
+        .filter(
+          (request) =>
+            request.kind === "main" &&
+            Object.hasOwn(request, "unresolvedReason")
+        )
+        .map((request) => ({
+          apiFile: wrapper.apiFile,
+          wrapper: wrapper.name,
+          reason: request.unresolvedReason
+        }))
+    ),
+    (entry) =>
+      `${entry.apiFile}\u0000${entry.wrapper}\u0000${entry.reason}`
+  );
+}
+
+function deriveConservativeDuplicateRoutes(wrappers) {
+  return deriveDuplicateWebApiRoutes(
+    wrappers.map((wrapper) => ({
+      ...wrapper,
+      requests: wrapper.requests.map((request) => ({
+        ...request,
+        localCallChains: []
+      }))
     }))
-    .sort((left, right) =>
-      stableCompare(left.normalizedKey, right.normalizedKey)
-    );
+  );
+}
+
+function deriveDuplicateRoutes(wrappers, delegationEvidenceTrusted) {
+  return delegationEvidenceTrusted
+    ? deriveDuplicateWebApiRoutes(wrappers)
+    : deriveConservativeDuplicateRoutes(wrappers);
 }
 
 function validateAuthException(entry) {
@@ -740,6 +809,20 @@ function validateWebManifest(manifest) {
     );
     identities.add(identity);
   }
+  const expectedUnresolvedRequests = deriveUnresolvedRequests(
+    manifest.wrappers
+  );
+  assert(
+    isDeepStrictEqual(
+      sortBy(
+        manifest.blockers.unresolvedRequests,
+        (entry) =>
+          `${entry?.apiFile}\u0000${entry?.wrapper}\u0000${entry?.reason}`
+      ),
+      expectedUnresolvedRequests
+    ),
+    "CAPABILITY_MATRIX_WEB_UNRESOLVED_BLOCKER_DRIFT"
+  );
   assertArray(
     manifest.authTransportExceptions,
     "CAPABILITY_MATRIX_INVALID_WEB_MANIFEST"
@@ -758,7 +841,8 @@ function validateWebManifest(manifest) {
     "CAPABILITY_MATRIX_INVALID_WEB_MANIFEST"
   );
   const expectedDuplicates = deriveDuplicateRoutes(
-    manifest.wrappers
+    manifest.wrappers,
+    LIVE_WEB_MANIFESTS.has(manifest)
   );
   assert(
     isDeepStrictEqual(
@@ -1470,7 +1554,8 @@ function mutationConsumersFor(wrappers) {
     const mutationRequests = wrapper.requests.filter(
       (request) =>
         request.kind === "main" &&
-        MUTATION_METHODS.has(request.method)
+        MUTATION_METHODS.has(request.method) &&
+        typeof request.normalizedKey === "string"
     );
     if (mutationRequests.length === 0) continue;
     const normalizedKeys = [
@@ -1885,6 +1970,7 @@ export function buildWholeSiteCapabilityMatrix({
     for (const request of wrapper.requests) {
       if (
         request.kind === "main" &&
+        typeof request.normalizedKey === "string" &&
         !nestByNormalizedKey.has(request.normalizedKey)
       ) {
         webRequestsWithoutNest.push({
@@ -1955,7 +2041,11 @@ export function buildWholeSiteCapabilityMatrix({
       wrapper.kind === "transport" &&
       wrapper.productionConsumers.length > 0
         ? wrapper.requests
-            .filter((request) => request.kind === "main")
+            .filter(
+              (request) =>
+                request.kind === "main" &&
+                typeof request.normalizedKey === "string"
+            )
             .map((request) => request.normalizedKey)
         : []
     )
@@ -2321,9 +2411,17 @@ export async function inspectWholeSiteCapabilityMatrix({
       "CAPABILITY_MATRIX_USAGE_INPUT_UNREADABLE"
     )
   ]);
+  const liveWebManifest = await inspectWholeSiteWebApiManifest({
+    root: resolvedRoot
+  });
+  assert(
+    isDeepStrictEqual(webInput.manifest, liveWebManifest),
+    "CAPABILITY_MATRIX_WEB_SOURCE_DRIFT"
+  );
+  LIVE_WEB_MANIFESTS.add(liveWebManifest);
   return buildWholeSiteCapabilityMatrix({
     nestManifest: nestInput.manifest,
-    webManifest: webInput.manifest,
+    webManifest: liveWebManifest,
     pageManifest: pageInput.manifest,
     usageManifest: usageInput.manifest,
     inputHashes: {

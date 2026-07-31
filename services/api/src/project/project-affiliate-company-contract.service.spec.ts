@@ -4,10 +4,40 @@ import {
   ForbiddenException,
   UnauthorizedException
 } from "@nestjs/common";
+import { createHash } from "node:crypto";
 import { ProjectAffiliateCompanyContractService } from "./project-affiliate-company-contract.service";
 
 const SHA256 = "a".repeat(64);
 const CONFIRMATION_ACTION_ID = "6dfbdece-803c-44c5-bf68-edbcf1529ce5";
+const RECORD_INPUT = {
+  contractReference: "GL-2026-001",
+  contractName: "项目挂靠管理协议",
+  signedAt: "2026-07-20",
+  rightsObligationsSummary: "挂靠企业负责上游收款，我方按约承担项目管理义务。",
+  companyEntityId: "company-1",
+  fileId: "offline-contract-file-1",
+  idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4"
+};
+
+function recordRequestFingerprint(
+  projectId = "project-1",
+  actorUserId = "contract-staff-1"
+) {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        projectId,
+        actorUserId,
+        contractReference: RECORD_INPUT.contractReference,
+        contractName: RECORD_INPUT.contractName,
+        signedAt: "2026-07-20T00:00:00.000Z",
+        rightsObligationsSummary: RECORD_INPUT.rightsObligationsSummary,
+        companyEntityId: RECORD_INPUT.companyEntityId,
+        fileId: RECORD_INPUT.fileId
+      })
+    )
+    .digest("hex");
+}
 
 function pendingContract(overrides: Record<string, unknown> = {}) {
   return {
@@ -45,17 +75,37 @@ function pendingContract(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function roleTables(roleKey: string) {
+function roleTables(roleKey: string | readonly string[]) {
+  const roleKeys = Array.isArray(roleKey) ? roleKey : [roleKey];
   return {
     userPosition: { findMany: jest.fn().mockResolvedValue([]) },
     projectMember: {
-      findMany: jest.fn().mockResolvedValue([{ positionKey: roleKey }])
+      findMany: jest
+        .fn()
+        .mockResolvedValue(roleKeys.map((positionKey) => ({ positionKey })))
     },
     position: { findMany: jest.fn().mockResolvedValue([]) }
   };
 }
 
-function recordHarness(roleKey = "contract_staff") {
+function recordHarness(
+  roleKey: string | readonly string[] = "contract_staff",
+  options: {
+    replayAfterLock?: Record<string, unknown> | null;
+    createError?: unknown;
+    uniqueReplay?: Record<string, unknown> | null;
+    lockedFile?: Record<string, unknown> | null;
+  } = {}
+) {
+  const lockedFile =
+    options.lockedFile === undefined
+      ? {
+          id: "offline-contract-file-1",
+          uploadedByUserId: "contract-staff-1",
+          storageStatus: "active",
+          contentSha256: SHA256
+        }
+      : options.lockedFile;
   const tx = {
     project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
     ...roleTables(roleKey),
@@ -97,20 +147,40 @@ function recordHarness(roleKey = "contract_staff") {
       })
     },
     projectAffiliateCompanyContract: {
-      findUnique: jest.fn().mockResolvedValue(null),
-      create: jest.fn().mockImplementation(async ({ data }) => pendingContract(data))
+      findUnique: jest
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(options.replayAfterLock ?? null)
+        .mockResolvedValue(null),
+      create: options.createError
+        ? jest.fn().mockRejectedValue(options.createError)
+        : jest.fn().mockImplementation(async ({ data }) => pendingContract(data))
     },
     approvalInstance: { create: jest.fn() },
     contract: { create: jest.fn() },
     projectOwnerContract: { create: jest.fn() },
     projectUpstreamFundFact: { create: jest.fn() },
     paymentRequest: { create: jest.fn() },
-    $queryRaw: jest.fn().mockResolvedValue([])
+    $queryRaw: jest.fn().mockImplementation(async (query: unknown) => {
+      const text =
+        typeof query === "object" &&
+        query !== null &&
+        "strings" in query &&
+        Array.isArray(query.strings)
+          ? query.strings.join(" ")
+          : String(query);
+      return text.includes('FROM "FileObject"') && text.includes("FOR UPDATE")
+        ? lockedFile
+          ? [lockedFile]
+          : []
+        : [];
+    })
   };
   const prisma = {
     $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(tx)),
+    ...roleTables(roleKey),
     projectAffiliateCompanyContract: {
-      findUnique: jest.fn().mockResolvedValue(null)
+      findUnique: jest.fn().mockResolvedValue(options.uniqueReplay ?? null)
     }
   };
   const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
@@ -121,10 +191,20 @@ function recordHarness(roleKey = "contract_staff") {
       audit as never,
       auth as never
     ),
+    prisma,
     tx,
     audit,
     auth
   };
+}
+
+function rawQueryText(query: unknown) {
+  return typeof query === "object" &&
+    query !== null &&
+    "strings" in query &&
+    Array.isArray(query.strings)
+    ? query.strings.join(" ")
+    : String(query);
 }
 
 function confirmedContract(overrides: Record<string, unknown> = {}) {
@@ -265,15 +345,11 @@ describe("ProjectAffiliateCompanyContractService", () => {
   it("records the already-signed contract with both subject snapshots and no company workflow", async () => {
     const { service, tx, audit } = recordHarness();
 
-    const result = await service.record("project-1", "contract-staff-1", {
-      contractReference: "GL-2026-001",
-      contractName: "项目挂靠管理协议",
-      signedAt: "2026-07-20",
-      rightsObligationsSummary: "挂靠企业负责上游收款，我方按约承担项目管理义务。",
-      companyEntityId: "company-1",
-      fileId: "offline-contract-file-1",
-      idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4"
-    });
+    const result = await service.record(
+      "project-1",
+      "contract-staff-1",
+      RECORD_INPUT
+    );
 
     expect(result).toMatchObject({
       status: "pending_confirm",
@@ -298,6 +374,179 @@ describe("ProjectAffiliateCompanyContractService", () => {
       })
     );
   });
+
+  it("takes the file-binding advisory lock before the company row and locked FileObject row", async () => {
+    const { service, tx } = recordHarness();
+
+    await service.record("project-1", "contract-staff-1", RECORD_INPUT);
+
+    const queryTexts = tx.$queryRaw.mock.calls.map(([query]) =>
+      rawQueryText(query)
+    );
+    expect(queryTexts[0]).toContain("pg_advisory_xact_lock");
+    expect(queryTexts[1]).toContain('FROM "CompanyEntity"');
+    expect(queryTexts[1]).toContain("FOR UPDATE");
+    expect(queryTexts[2]).toContain('FROM "FileObject"');
+    expect(queryTexts[2]).toContain("FOR UPDATE");
+    expect(tx.fileObject.findUnique).not.toHaveBeenCalled();
+    expect(
+      tx.projectAffiliateCompanyContract.findUnique.mock.invocationCallOrder[1]
+    ).toBeLessThan(tx.companyEntity.findUnique.mock.invocationCallOrder[0]!);
+  });
+
+  it("validates active storage state and hash from the locked FileObject row", async () => {
+    const { service, tx } = recordHarness("contract_staff", {
+      lockedFile: {
+        id: "offline-contract-file-1",
+        uploadedByUserId: "contract-staff-1",
+        storageStatus: "discarded",
+        contentSha256: SHA256
+      }
+    });
+
+    await expect(
+      service.record("project-1", "contract-staff-1", RECORD_INPUT)
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(
+      tx.$queryRaw.mock.calls
+        .map(([query]) => rawQueryText(query))
+        .some(
+          (text) =>
+            text.includes('FROM "FileObject"') && text.includes("FOR UPDATE")
+        )
+    ).toBe(true);
+    expect(tx.fileObject.findUnique).not.toHaveBeenCalled();
+    expect(tx.projectAffiliateCompanyContract.create).not.toHaveBeenCalled();
+  });
+
+  it("replays a same-coordinate record immediately after waiting for the file-binding lock", async () => {
+    const winner = pendingContract({
+      requestFingerprint: recordRequestFingerprint()
+    });
+    const { service, tx, audit } = recordHarness("contract_staff", {
+      replayAfterLock: winner
+    });
+
+    await expect(
+      service.record("project-1", "contract-staff-1", RECORD_INPUT)
+    ).resolves.toMatchObject({
+      id: winner.id,
+      projectId: "project-1",
+      recordedByUserId: "contract-staff-1",
+      requestFingerprint: winner.requestFingerprint
+    });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(rawQueryText(tx.$queryRaw.mock.calls[0]?.[0])).toContain(
+      "pg_advisory_xact_lock"
+    );
+    expect(tx.projectAffiliateCompanyContract.findUnique).toHaveBeenCalledTimes(2);
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.projectAffiliateCompanyContract.findUnique.mock.invocationCallOrder[1]!
+    );
+    expect(tx.companyEntity.findUnique).not.toHaveBeenCalled();
+    expect(tx.fileObject.findUnique).not.toHaveBeenCalled();
+    expect(tx.projectAffiliateCompanyContract.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["project", { projectId: "project-2" }],
+    ["actor", { recordedByUserId: "contract-staff-2" }],
+    ["fingerprint", { requestFingerprint: "c".repeat(64) }]
+  ])(
+    "rejects a same-key post-file-lock record replay for a different %s coordinate",
+    async (_coordinate, winnerOverrides) => {
+      const { service, tx, audit } = recordHarness("contract_staff", {
+        replayAfterLock: pendingContract({
+          requestFingerprint: recordRequestFingerprint(),
+          ...winnerOverrides
+        })
+      });
+
+      await expect(
+        service.record("project-1", "contract-staff-1", RECORD_INPUT)
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+      expect(rawQueryText(tx.$queryRaw.mock.calls[0]?.[0])).toContain(
+        "pg_advisory_xact_lock"
+      );
+      expect(tx.companyEntity.findUnique).not.toHaveBeenCalled();
+      expect(tx.fileObject.findUnique).not.toHaveBeenCalled();
+      expect(tx.projectAffiliateCompanyContract.create).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
+
+  it("replays the same-coordinate committed winner after a record unique race", async () => {
+    const winner = pendingContract({
+      requestFingerprint: recordRequestFingerprint()
+    });
+    const { service, prisma, tx, audit } = recordHarness("contract_staff", {
+      createError: { code: "P2002" },
+      uniqueReplay: winner
+    });
+
+    await expect(
+      service.record("project-1", "contract-staff-1", RECORD_INPUT)
+    ).resolves.toMatchObject({
+      id: winner.id,
+      projectId: "project-1",
+      recordedByUserId: "contract-staff-1",
+      requestFingerprint: winner.requestFingerprint
+    });
+    expect(prisma.projectAffiliateCompanyContract.findUnique).toHaveBeenCalledWith({
+      where: { idempotencyKey: RECORD_INPUT.idempotencyKey }
+    });
+    expect(tx.projectAffiliateCompanyContract.create).toHaveBeenCalledTimes(1);
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("reloads actor roles for a record unique-race replay so dual-role capabilities stay identical", async () => {
+    const winner = pendingContract({
+      requestFingerprint: recordRequestFingerprint()
+    });
+    const { service, prisma } = recordHarness(
+      ["contract_staff", "contract_director"],
+      {
+        createError: { code: "P2002" },
+        uniqueReplay: winner
+      }
+    );
+
+    await expect(
+      service.record("project-1", "contract-staff-1", RECORD_INPUT)
+    ).resolves.toMatchObject({
+      id: winner.id,
+      status: "pending_confirm",
+      availableActions: ["confirm"]
+    });
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+      where: { userId: "contract-staff-1", projectId: "project-1" }
+    });
+  });
+
+  it.each([
+    ["project", { projectId: "project-2" }],
+    ["actor", { recordedByUserId: "contract-staff-2" }],
+    ["fingerprint", { requestFingerprint: "c".repeat(64) }]
+  ])(
+    "rejects a record unique-race winner with a different %s coordinate",
+    async (_coordinate, winnerOverrides) => {
+      const { service, tx, audit } = recordHarness("contract_staff", {
+        createError: { code: "P2002" },
+        uniqueReplay: pendingContract({
+          requestFingerprint: recordRequestFingerprint(),
+          ...winnerOverrides
+        })
+      });
+
+      await expect(
+        service.record("project-1", "contract-staff-1", RECORD_INPUT)
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(tx.projectAffiliateCompanyContract.create).toHaveBeenCalledTimes(1);
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
 
   it("requires the signed contract file before opening a transaction", async () => {
     const { service } = recordHarness();

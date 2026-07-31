@@ -1,11 +1,18 @@
 <script setup lang="ts">
-import { onMounted, ref, shallowRef, watch } from "vue";
+import {
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  shallowRef,
+  watch
+} from "vue";
 import type { PrimaryTableCol, UploadFile } from "tdesign-vue-next";
 import {
   confirmProjectAffiliateCompanyContract,
+  createProjectAffiliateCompanyContractRecordAttemptState,
   fetchProjectAffiliateCompanyContracts,
-  recordProjectAffiliateCompanyContract,
-  uploadPrivateFile,
+  recordProjectAffiliateCompanyContractWithUpload,
+  type ProjectAffiliateCompanyContractRecordAttemptState,
   type ProjectAffiliateCompanyContractReadModel,
   type ProjectAffiliateCompanyContractsReadModel
 } from "../../../api/core-flow-read.api";
@@ -31,6 +38,7 @@ type ConfirmOperationContext = ConfirmContext & {
 type RecordContext = {
   projectId: string;
   projectGeneration: number;
+  idempotencyKey: string;
 };
 
 type RecordOperationContext = RecordContext & {
@@ -46,7 +54,8 @@ const EMPTY_CONFIRM_CONTEXT: ConfirmContext = {
 
 const EMPTY_RECORD_CONTEXT: RecordContext = {
   projectId: "",
-  projectGeneration: -1
+  projectGeneration: -1,
+  idempotencyKey: ""
 };
 
 const data = ref<ProjectAffiliateCompanyContractsReadModel | null>(null);
@@ -69,6 +78,7 @@ const selectedAffiliateCompanyContractActions = shallowRef<
 >(null);
 const recordContext = ref<RecordContext>({ ...EMPTY_RECORD_CONTEXT });
 const recordArmed = ref(false);
+const recordAttempted = ref(false);
 const confirmTarget = ref<ProjectAffiliateCompanyContractReadModel | null>(null);
 const confirmContext = ref<ConfirmContext>({ ...EMPTY_CONFIRM_CONTEXT });
 const confirmArmed = ref(false);
@@ -81,6 +91,9 @@ let confirmOperationSequence = 0;
 let activeConfirmOperationId = 0;
 let recordOperationSequence = 0;
 let activeRecordOperationId = 0;
+let recordAttemptState: ProjectAffiliateCompanyContractRecordAttemptState =
+  createProjectAffiliateCompanyContractRecordAttemptState();
+let componentAlive = true;
 
 const columns: PrimaryTableCol[] = [
   { colKey: "contractReference", title: "线下合同编号", width: 170 },
@@ -94,6 +107,13 @@ const columns: PrimaryTableCol[] = [
 ];
 
 onMounted(load);
+onBeforeUnmount(() => {
+  componentAlive = false;
+  projectGeneration += 1;
+  loadRequestId += 1;
+  activeConfirmOperationId = 0;
+  activeRecordOperationId = 0;
+});
 watch(
   () => props.projectId,
   () => {
@@ -204,6 +224,7 @@ function loadContextIsCurrent(
   requestId: number
 ) {
   return (
+    componentAlive &&
     props.projectId === expectedProjectId &&
     projectGeneration === expectedProjectGeneration &&
     loadRequestId === requestId
@@ -223,75 +244,38 @@ function openRecord() {
   recordError.value = "";
   recordContext.value = {
     projectId: props.projectId,
-    projectGeneration
+    projectGeneration,
+    idempotencyKey: crypto.randomUUID()
   };
+  recordAttemptState =
+    createProjectAffiliateCompanyContractRecordAttemptState();
+  recordAttempted.value = false;
   recordArmed.value = true;
   recordVisible.value = true;
 }
 
-async function submitRecord() {
+function submitRecord() {
   const context = captureRecordOperation();
-  let raw: File;
-  let input: {
-    contractReference: string;
-    contractName: string;
-    signedAt: string;
-    rightsObligationsSummary: string;
-    companyEntityId: string;
-    idempotencyKey: string;
-  };
-  try {
-    requireCurrentRecordContext(context);
-    const selectedFile = signedFiles.value[0]?.raw;
-    if (!(selectedFile instanceof File)) {
-      throw new Error("请上传已由双方线下签署的正式合同文件");
-    }
-    raw = selectedFile;
-    input = {
-      contractReference: required(
-        form.value.contractReference,
-        "线下合同编号"
-      ),
-      contractName: required(form.value.contractName, "线下合同名称"),
-      signedAt: required(form.value.signedAt, "签订日期"),
-      rightsObligationsSummary: required(
-        form.value.rightsObligationsSummary,
-        "双方权利义务摘要"
-      ),
-      companyEntityId: required(form.value.companyEntityId, "我方签约主体"),
-      idempotencyKey: crypto.randomUUID()
-    };
-  } catch (error) {
-    if (recordContextIsCurrent(context)) {
-      recordError.value = errorMessage(error, "线下合同登记信息不完整");
-    }
-    return;
-  }
+  const request = recordProjectAffiliateCompanyContractWithUpload(
+    context.projectId,
+    {
+      form: form.value,
+      files: signedFiles.value,
+      idempotencyKey: context.idempotencyKey,
+      context,
+      isCurrent: recordContextIsCurrent
+    },
+    recordAttemptState
+  );
   recordOperationSequence = context.operationId;
   activeRecordOperationId = context.operationId;
+  recordAttempted.value = recordAttemptState.submission !== null;
   recordBusy.value = true;
   recordError.value = "";
-  try {
-    const uploaded = await uploadPrivateFile(raw, raw.name);
-    if (!recordResultCanWrite(context)) return;
-    await recordProjectAffiliateCompanyContract(context.projectId, {
-      ...input,
-      fileId: uploaded.id,
-    });
-    if (!recordResultCanWrite(context)) return;
-    clearRecordSelection();
-    notice.value =
-      "已签线下合同已登记并冻结双方主体与文件摘要；未创建我方审批、用章或业主回款。";
-    await load();
-  } catch (error) {
-    if (recordResultCanWrite(context)) {
-      recordError.value = errorMessage(error, "线下合同登记失败");
-    }
-  } finally {
-    if (recordOperationIsCurrent(context)) {
-      recordBusy.value = false;
-    }
-  }
+  return request
+    .then(() => completeRecord(context))
+    .catch((error) => failRecord(error, context))
+    .finally(() => finishRecord(context));
 }
 
 function recordActionEnabled(
@@ -310,19 +294,11 @@ function captureRecordOperation(): RecordOperationContext {
   };
 }
 
-function requireCurrentRecordContext(context: RecordContext) {
-  if (
-    recordBusy.value ||
-    !recordContextIsCurrent(context)
-  ) {
-    throw new Error("线下合同登记上下文已失效，请重新读取当前项目");
-  }
-}
-
 function recordContextIsCurrent(context: RecordContext) {
   const selected = recordContext.value;
   return Boolean(
-    recordArmed.value &&
+    componentAlive &&
+      recordArmed.value &&
       recordVisible.value &&
       selected.projectId === context.projectId &&
       selected.projectGeneration === context.projectGeneration &&
@@ -334,6 +310,7 @@ function recordContextIsCurrent(context: RecordContext) {
 
 function recordOperationIsCurrent(context: RecordOperationContext) {
   return (
+    componentAlive &&
     props.projectId === context.projectId &&
     projectGeneration === context.projectGeneration &&
     activeRecordOperationId === context.operationId
@@ -347,16 +324,42 @@ function recordResultCanWrite(context: RecordOperationContext) {
   );
 }
 
+function completeRecord(context: RecordOperationContext) {
+  if (!recordResultCanWrite(context)) return;
+  clearRecordSelection();
+  notice.value =
+    "已签线下合同已登记并冻结双方主体与文件摘要；未创建我方审批、用章或业主回款。";
+  return load();
+}
+
+function failRecord(error: unknown, context: RecordOperationContext) {
+  if (!recordResultCanWrite(context)) return;
+  recordError.value = errorMessage(error, "线下合同登记失败");
+}
+
+function finishRecord(context: RecordOperationContext) {
+  if (activeRecordOperationId !== context.operationId) return;
+  recordBusy.value = false;
+}
+
 function cancelRecord() {
   if (recordBusy.value) return;
   activeRecordOperationId = 0;
   clearRecordSelection();
 }
 
+function handleRecordVisibleChange(visible: boolean) {
+  if (visible || recordBusy.value) return;
+  cancelRecord();
+}
+
 function clearRecordSelection() {
   recordVisible.value = false;
   recordContext.value = { ...EMPTY_RECORD_CONTEXT };
   recordArmed.value = false;
+  recordAttemptState =
+    createProjectAffiliateCompanyContractRecordAttemptState();
+  recordAttempted.value = false;
   signedFiles.value = [];
   form.value = createForm();
   recordError.value = "";
@@ -557,12 +560,6 @@ function createForm() {
   };
 }
 
-function required(value: string, label: string) {
-  const normalized = value.trim();
-  if (!normalized) throw new Error(`请填写${label}`);
-  return normalized;
-}
-
 function todayText() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
@@ -649,10 +646,13 @@ function errorMessage(error: unknown, fallback: string) {
     </t-loading>
 
     <t-drawer
-      v-model:visible="recordVisible"
+      :visible="recordVisible"
       header="登记挂靠企业与我方已签线下合同"
       size="min(680px, 100vw)"
+      :close-btn="!recordBusy"
+      :close-on-esc-keydown="!recordBusy"
       :close-on-overlay-click="false"
+      @update:visible="handleRecordVisibleChange"
     >
       <div class="affiliate-company-contract__form">
         <t-alert
@@ -662,19 +662,23 @@ function errorMessage(error: unknown, fallback: string) {
         <t-input
           v-model="form.contractReference"
           label="线下合同编号"
+          :disabled="recordAttempted"
         />
         <t-input
           v-model="form.contractName"
           label="线下合同名称"
+          :disabled="recordAttempted"
         />
         <t-date-picker
           v-model="form.signedAt"
           label="签订日期"
           value-type="YYYY-MM-DD"
+          :disabled="recordAttempted"
         />
         <t-select
           v-model="form.companyEntityId"
           label="我方签约主体"
+          :disabled="recordAttempted"
           :options="companies.map((company) => ({
             label: `${company.name} · ${company.unifiedSocialCreditCode ?? '信用代码待治理'}`,
             value: company.id
@@ -685,6 +689,7 @@ function errorMessage(error: unknown, fallback: string) {
           label="双方权利义务摘要"
           :autosize="{ minRows: 4, maxRows: 8 }"
           maxlength="2000"
+          :disabled="recordAttempted"
         />
         <t-upload
           v-model="signedFiles"
@@ -692,6 +697,7 @@ function errorMessage(error: unknown, fallback: string) {
           :auto-upload="false"
           :multiple="false"
           :max="1"
+          :disabled="recordAttempted"
           accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
         />
         <t-alert
@@ -709,6 +715,7 @@ function errorMessage(error: unknown, fallback: string) {
           取消
         </t-button>
         <t-button
+          v-if="recordArmed && recordActionEnabled('record_affiliate_company_contract')"
           theme="primary"
           :loading="recordBusy"
           @click="submitRecord"

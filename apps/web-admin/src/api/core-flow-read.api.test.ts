@@ -49,6 +49,8 @@ import {
   supplementProjectAffiliateBusinessEvidence,
   fetchProjectAffiliateCompanyContracts,
   recordProjectAffiliateCompanyContract,
+  createProjectAffiliateCompanyContractRecordAttemptState,
+  recordProjectAffiliateCompanyContractWithUpload,
   confirmProjectAffiliateCompanyContract,
   recordProjectProxyPayment,
   recordProjectUpstreamSettlement,
@@ -2080,6 +2082,376 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(["/api/files"]);
     expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
     expect(fetchMock.mock.calls[0][1]?.body).toBeInstanceOf(FormData);
+  });
+
+  it("reuses the same private-upload idempotency key after an ambiguous response", async () => {
+    const uploadIdempotencyKey =
+      "a43073f9-9731-4d71-9498-b9727344dbd4";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValueOnce(new TypeError("upload response lost"))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: uploadIdempotencyKey }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "affiliate-contract-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const state =
+      createProjectAffiliateCompanyContractRecordAttemptState();
+    const input = {
+      form: {
+        contractReference: "GL-2026-001",
+        contractName: "项目挂靠管理协议",
+        signedAt: "2026-07-20",
+        rightsObligationsSummary: "双方权利义务摘要",
+        companyEntityId: "company-1"
+      },
+      idempotencyKey: uploadIdempotencyKey,
+      files: [
+        {
+          raw: Object.assign(new Blob(["signed"]), {
+            name: "signed.pdf"
+          })
+        }
+      ],
+      context: "project-1",
+      isCurrent: () => true
+    };
+
+    await expect(
+      recordProjectAffiliateCompanyContractWithUpload(
+        "project-1",
+        input,
+        state
+      )
+    ).rejects.toThrow("网络请求失败");
+    await recordProjectAffiliateCompanyContractWithUpload(
+      "project-1",
+      input,
+      state
+    );
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/files",
+      "/api/files",
+      "/api/projects/project-1/affiliate-company-contracts"
+    ]);
+    const firstUpload = fetchMock.mock.calls[0]?.[1]?.body;
+    const secondUpload = fetchMock.mock.calls[1]?.[1]?.body;
+    expect(firstUpload).toBeInstanceOf(FormData);
+    expect(secondUpload).toBeInstanceOf(FormData);
+    expect((firstUpload as FormData).get("idempotencyKey")).toBe(
+      uploadIdempotencyKey
+    );
+    expect((secondUpload as FormData).get("idempotencyKey")).toBe(
+      uploadIdempotencyKey
+    );
+  });
+
+  it("rejects an affiliate-company upload response that does not echo its idempotency key", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "legacy-random-file-id" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const state =
+      createProjectAffiliateCompanyContractRecordAttemptState();
+
+    await expect(
+      recordProjectAffiliateCompanyContractWithUpload(
+        "project-1",
+        {
+          form: {
+            contractReference: "GL-2026-001",
+            contractName: "项目挂靠管理协议",
+            signedAt: "2026-07-20",
+            rightsObligationsSummary: "双方权利义务摘要",
+            companyEntityId: "company-1"
+          },
+          idempotencyKey:
+            "a43073f9-9731-4d71-9498-b9727344dbd4",
+          files: [
+            {
+              raw: Object.assign(new Blob(["signed"]), {
+                name: "signed.pdf"
+              })
+            }
+          ],
+          context: "project-1",
+          isCurrent: () => true
+        },
+        state
+      )
+    ).rejects.toThrow("文件上传幂等响应不一致");
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/files"
+    ]);
+    expect(state.uploadedFileId).toBeNull();
+  });
+
+  it("reuses one uploaded affiliate-company contract file and frozen payload after a record retry", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "a43073f9-9731-4d71-9498-b9727344dbd4"
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "登记响应超时" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "affiliate-contract-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const state =
+      createProjectAffiliateCompanyContractRecordAttemptState();
+    const input = {
+      form: {
+        contractReference: " GL-2026-001 ",
+        contractName: " 项目挂靠管理协议 ",
+        signedAt: " 2026-07-20 ",
+        rightsObligationsSummary: " 双方权利义务摘要 ",
+        companyEntityId: " company-1 "
+      },
+      idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4",
+      files: [
+        {
+          raw: Object.assign(new Blob(["signed"]), {
+            name: "signed.pdf"
+          })
+        }
+      ],
+      context: "project-1",
+      isCurrent: () => true
+    };
+
+    await expect(
+      recordProjectAffiliateCompanyContractWithUpload(
+        "project/1",
+        input,
+        state
+      )
+    ).rejects.toThrow("登记响应超时");
+    input.form.contractName = "不得进入重试请求的改名";
+    await recordProjectAffiliateCompanyContractWithUpload(
+      "project/1",
+      input,
+      state
+    );
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/files",
+      "/api/projects/project%2F1/affiliate-company-contracts",
+      "/api/projects/project%2F1/affiliate-company-contracts"
+    ]);
+    const firstRecordBody = fetchMock.mock.calls[1]?.[1]?.body;
+    expect(fetchMock.mock.calls[2]?.[1]?.body).toBe(firstRecordBody);
+    expect(JSON.parse(String(firstRecordBody))).toEqual({
+      contractReference: "GL-2026-001",
+      contractName: "项目挂靠管理协议",
+      signedAt: "2026-07-20",
+      rightsObligationsSummary: "双方权利义务摘要",
+      companyEntityId: "company-1",
+      idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4",
+      fileId: "a43073f9-9731-4d71-9498-b9727344dbd4"
+    });
+  });
+
+  it("rejects reuse of an affiliate-company contract record attempt for another project", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "a43073f9-9731-4d71-9498-b9727344dbd4"
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "登记响应超时" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const state =
+      createProjectAffiliateCompanyContractRecordAttemptState();
+    const input = {
+      form: {
+        contractReference: "GL-2026-001",
+        contractName: "项目挂靠管理协议",
+        signedAt: "2026-07-20",
+        rightsObligationsSummary: "双方权利义务摘要",
+        companyEntityId: "company-1"
+      },
+      idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4",
+      files: [
+        {
+          raw: Object.assign(new Blob(["signed"]), {
+            name: "signed.pdf"
+          })
+        }
+      ],
+      context: "project-1",
+      isCurrent: () => true
+    };
+
+    await expect(
+      recordProjectAffiliateCompanyContractWithUpload(
+        "project-1",
+        input,
+        state
+      )
+    ).rejects.toThrow("登记响应超时");
+    await expect(
+      recordProjectAffiliateCompanyContractWithUpload(
+        "project-2",
+        input,
+        state
+      )
+    ).rejects.toThrow("登记重试项目已变化");
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/files",
+      "/api/projects/project-1/affiliate-company-contracts"
+    ]);
+  });
+
+  it("coalesces concurrent affiliate-company contract submissions into one upload and record", async () => {
+    let releaseUpload!: (response: Response) => void;
+    const uploadResponse = new Promise<Response>((resolve) => {
+      releaseUpload = resolve;
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockReturnValueOnce(uploadResponse)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "affiliate-contract-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const state =
+      createProjectAffiliateCompanyContractRecordAttemptState();
+    const input = {
+      form: {
+        contractReference: "GL-2026-001",
+        contractName: "项目挂靠管理协议",
+        signedAt: "2026-07-20",
+        rightsObligationsSummary: "双方权利义务摘要",
+        companyEntityId: "company-1"
+      },
+      idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4",
+      files: [
+        {
+          raw: Object.assign(new Blob(["signed"]), {
+            name: "signed.pdf"
+          })
+        }
+      ],
+      context: "project-1",
+      isCurrent: () => true
+    };
+
+    const first = recordProjectAffiliateCompanyContractWithUpload(
+      "project-1",
+      input,
+      state
+    );
+    const second = recordProjectAffiliateCompanyContractWithUpload(
+      "project-1",
+      input,
+      state
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    releaseUpload(
+      new Response(
+        JSON.stringify({
+          id: "a43073f9-9731-4d71-9498-b9727344dbd4"
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }
+      )
+    );
+    await Promise.all([first, second]);
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/files",
+      "/api/projects/project-1/affiliate-company-contracts"
+    ]);
+  });
+
+  it("stops an affiliate-company contract record after upload when its page context expires", async () => {
+    let current = true;
+    const isCurrent = vi.fn(() => current);
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true,
+      json: async () => {
+        current = false;
+        return {
+          id: "a43073f9-9731-4d71-9498-b9727344dbd4"
+        };
+      }
+    } as Response);
+    const state =
+      createProjectAffiliateCompanyContractRecordAttemptState();
+
+    await expect(
+      recordProjectAffiliateCompanyContractWithUpload(
+        "project-1",
+        {
+          form: {
+            contractReference: "GL-2026-001",
+            contractName: "项目挂靠管理协议",
+            signedAt: "2026-07-20",
+            rightsObligationsSummary: "双方权利义务摘要",
+            companyEntityId: "company-1"
+          },
+          idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4",
+          files: [
+            {
+              raw: Object.assign(new Blob(["signed"]), {
+                name: "signed.pdf"
+              })
+            }
+          ],
+          context: "project-1",
+          isCurrent
+        },
+        state
+      )
+    ).rejects.toThrow("线下合同登记上下文已失效");
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/files"
+    ]);
   });
 
   it("requests private file download tickets through the backend", async () => {

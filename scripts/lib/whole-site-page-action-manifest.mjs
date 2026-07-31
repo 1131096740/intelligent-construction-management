@@ -28,6 +28,8 @@ const WEB_MANIFEST_PATH =
   "docs/product/manifests/web-api-wrappers.json";
 const NEST_MANIFEST_PATH =
   "docs/product/manifests/nest-business-routes.json";
+const PERMISSIONS_SOURCE_PATH =
+  "packages/shared-domain/src/permissions.ts";
 const ACTION_USAGES = new Set(["page_action", "background"]);
 const CAPABILITY_KINDS = new Set([
   "detail_action",
@@ -12572,6 +12574,340 @@ function capabilitySourceUpstreamAssociationIsTrusted({
   );
 }
 
+function staticStringArray(
+  expression,
+  declarations,
+  seen = new Set()
+) {
+  const node = unwrapValueExpression(expression);
+  if (!node) return null;
+  if (node.type === "Identifier") {
+    if (seen.has(node.name)) return null;
+    const declaration = declarations.get(node.name);
+    return declaration
+      ? staticStringArray(
+          declaration,
+          declarations,
+          new Set(seen).add(node.name)
+        )
+      : null;
+  }
+  if (node.type !== "ArrayExpression") return null;
+  const values = [];
+  for (const element of node.elements ?? []) {
+    if (!element) return null;
+    if (element.type === "SpreadElement") {
+      const spread = staticStringArray(
+        element.argument,
+        declarations,
+        seen
+      );
+      if (!spread) return null;
+      values.push(...spread);
+      continue;
+    }
+    const value = literalString(unwrapValueExpression(element));
+    if (!isNonEmptyString(value)) return null;
+    values.push(value);
+  }
+  return uniqueStrings(values);
+}
+
+function permissionPolicyIsStatic(ast) {
+  const aliases = new Set(["ACTION_REQUIRED_ROLES"]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    walkEstree(ast, (node) => {
+      if (
+        node.type !== "VariableDeclarator" ||
+        node.id?.type !== "Identifier" ||
+        !node.init
+      ) {
+        return;
+      }
+      const root = referenceRootIdentifier(node.init)?.name;
+      if (
+        root &&
+        aliases.has(root) &&
+        !aliases.has(node.id.name)
+      ) {
+        aliases.add(node.id.name);
+        changed = true;
+      }
+    });
+  }
+  const mutationMethods = new Set([
+    "clear",
+    "copyWithin",
+    "delete",
+    "fill",
+    "pop",
+    "push",
+    "reverse",
+    "set",
+    "shift",
+    "sort",
+    "splice",
+    "unshift"
+  ]);
+  let safe = true;
+  walkEstree(ast, (node) => {
+    if (!safe) return;
+    if (
+      node.type === "AssignmentExpression" ||
+      node.type === "UpdateExpression" ||
+      (node.type === "UnaryExpression" &&
+        node.operator === "delete")
+    ) {
+      const target =
+        node.type === "AssignmentExpression"
+          ? node.left
+          : node.argument;
+      if (aliases.has(referenceRootIdentifier(target)?.name)) {
+        safe = false;
+      }
+      return;
+    }
+    if (node.type !== "CallExpression") return;
+    const callee = unwrapValueExpression(node.callee);
+    if (callee?.type === "MemberExpression") {
+      const method = callee.computed
+        ? literalString(callee.property)
+        : callee.property?.type === "Identifier"
+          ? callee.property.name
+          : null;
+      if (
+        method &&
+        mutationMethods.has(method) &&
+        aliases.has(
+          referenceRootIdentifier(callee.object)?.name
+        )
+      ) {
+        safe = false;
+        return;
+      }
+      if (
+        memberExpressionPath(callee) === "Object.assign" &&
+        aliases.has(
+          referenceRootIdentifier(node.arguments?.[0])?.name
+        )
+      ) {
+        safe = false;
+        return;
+      }
+    }
+    if (
+      node.arguments?.some((argument) =>
+        aliases.has(referenceRootIdentifier(argument)?.name)
+      )
+    ) {
+      safe = false;
+    }
+  });
+  return safe;
+}
+
+function actionRequiredRolesFromSource(source) {
+  if (typeof source !== "string") return null;
+  let ast;
+  try {
+    ast = parseSource(PERMISSIONS_SOURCE_PATH, source);
+  } catch {
+    return null;
+  }
+  if (!permissionPolicyIsStatic(ast)) return null;
+  const declarations = new Map();
+  for (const statement of ast.body ?? []) {
+    if (
+      statement.type !== "ExportNamedDeclaration" &&
+      statement.type !== "VariableDeclaration"
+    ) {
+      continue;
+    }
+    const declaration =
+      statement.type === "ExportNamedDeclaration"
+        ? statement.declaration
+        : statement;
+    if (declaration?.type !== "VariableDeclaration") continue;
+    for (const item of declaration.declarations ?? []) {
+      if (
+        item.id?.type === "Identifier" &&
+        item.init
+      ) {
+        declarations.set(item.id.name, item.init);
+      }
+    }
+  }
+  const policy = unwrapValueExpression(
+    declarations.get("ACTION_REQUIRED_ROLES")
+  );
+  if (policy?.type !== "ObjectExpression") return null;
+  const rolesByAction = new Map();
+  for (const property of policy.properties ?? []) {
+    if (
+      property.type !== "Property" ||
+      property.kind !== "init" ||
+      property.computed
+    ) {
+      return null;
+    }
+    const action = propertyKey(property);
+    const roles = staticStringArray(
+      property.value,
+      declarations
+    );
+    if (
+      !isNonEmptyString(action) ||
+      !roles ||
+      roles.length === 0 ||
+      rolesByAction.has(action)
+    ) {
+      return null;
+    }
+    rolesByAction.set(action, roles);
+  }
+  return rolesByAction.size > 0 ? rolesByAction : null;
+}
+
+const UNRESTRICTED_ACTOR_POSITIONS = Symbol(
+  "unrestricted_actor_positions"
+);
+
+function actorPositionsForRoute(route, rolesByAction) {
+  if (!isRecord(route)) return null;
+  const requiredPositions = Array.isArray(route.requiredPositions)
+    ? uniqueStrings(
+        route.requiredPositions.filter(isNonEmptyString)
+      )
+    : null;
+  if (
+    !requiredPositions ||
+    requiredPositions.length !==
+      (route.requiredPositions?.length ?? 0)
+  ) {
+    return null;
+  }
+  const actionPositions =
+    route.requiredProjectAction === null
+      ? null
+      : isNonEmptyString(route.requiredProjectAction)
+        ? rolesByAction?.get(route.requiredProjectAction) ?? null
+        : null;
+  if (
+    route.requiredProjectAction !== null &&
+    !actionPositions
+  ) {
+    return null;
+  }
+  if (requiredPositions.length > 0 && actionPositions) {
+    if (route.authorizationCombination === "AND") {
+      const actionSet = new Set(actionPositions);
+      return new Set(
+        requiredPositions.filter((role) => actionSet.has(role))
+      );
+    }
+    if (route.authorizationCombination === "OR") {
+      return new Set([...requiredPositions, ...actionPositions]);
+    }
+    return null;
+  }
+  if (requiredPositions.length > 0) {
+    return new Set(requiredPositions);
+  }
+  if (actionPositions) return new Set(actionPositions);
+  return route.isPublic === true ||
+    route.authentication === "authenticated"
+    ? UNRESTRICTED_ACTOR_POSITIONS
+    : null;
+}
+
+function intersectActorPositions(left, right) {
+  if (left === UNRESTRICTED_ACTOR_POSITIONS) return right;
+  if (right === UNRESTRICTED_ACTOR_POSITIONS) return left;
+  return new Set(
+    [...left].filter((position) => right.has(position))
+  );
+}
+
+function effectiveMutationActorPositions({
+  mutationBindings,
+  nestManifest,
+  rolesByAction
+}) {
+  if (
+    !rolesByAction ||
+    !Array.isArray(mutationBindings) ||
+    mutationBindings.length === 0
+  ) {
+    return null;
+  }
+  let effective = UNRESTRICTED_ACTOR_POSITIONS;
+  for (const binding of mutationBindings) {
+    if (!isNonEmptyString(binding?.normalizedKey)) return null;
+    const routes = nestManifest.routes.filter(
+      (route) => route?.normalizedKey === binding.normalizedKey
+    );
+    if (routes.length !== 1) return null;
+    const positions = actorPositionsForRoute(
+      routes[0],
+      rolesByAction
+    );
+    if (!positions) return null;
+    effective = intersectActorPositions(effective, positions);
+    if (
+      effective !== UNRESTRICTED_ACTOR_POSITIONS &&
+      effective.size === 0
+    ) {
+      return null;
+    }
+  }
+  return effective;
+}
+
+function actorPositionsCover(required, available) {
+  if (!required || !available) return false;
+  if (available === UNRESTRICTED_ACTOR_POSITIONS) return true;
+  if (required === UNRESTRICTED_ACTOR_POSITIONS) return false;
+  return [...required].every((position) =>
+    available.has(position)
+  );
+}
+
+function capabilitySourceAuthorizationIsCompatible({
+  sourceIdentity,
+  webManifest,
+  nestManifest,
+  effectiveMutationActors,
+  rolesByAction
+}) {
+  if (!effectiveMutationActors || !rolesByAction) return false;
+  const candidates = webManifest.wrappers.filter(
+    (wrapper) =>
+      wrapperIdentity(
+        posixPath(wrapper?.apiFile ?? ""),
+        wrapper?.name ?? ""
+      ) === sourceIdentity
+  );
+  if (candidates.length !== 1) return false;
+  const requests = normalizedMainRequests(candidates[0]);
+  if (requests.length === 0) return false;
+  return requests.every((request) => {
+    const routes = nestManifest.routes.filter(
+      (route) => route?.normalizedKey === request.normalizedKey
+    );
+    if (routes.length !== 1) return false;
+    const actorPositions = actorPositionsForRoute(
+      routes[0],
+      rolesByAction
+    );
+    return actorPositionsCover(
+      effectiveMutationActors,
+      actorPositions
+    );
+  });
+}
+
 function emptyBlockers() {
   return {
     upstreamManifestIssues: [],
@@ -12675,6 +13011,19 @@ export async function inspectWholeSitePageActionManifest({
     invalidRegistryEntries
   } = normalizeRegistry(registryJson);
   const blockers = emptyBlockers();
+  let actionRequiredRoles = null;
+  try {
+    // Read source directly so a stale shared-domain build cannot bless a
+    // capability GET with an outdated action-to-position policy.
+    actionRequiredRoles = actionRequiredRolesFromSource(
+      await readFile(
+        join(resolvedRoot, PERMISSIONS_SOURCE_PATH),
+        "utf8"
+      )
+    );
+  } catch {
+    actionRequiredRoles = null;
+  }
   blockers.invalidRegistryEntries.push(
     ...invalidRegistryEntries.map((entry) => ({
       code: "REGISTRY_ENTRY_INVALID",
@@ -12769,6 +13118,12 @@ export async function inspectWholeSitePageActionManifest({
         (action) => action.sourceFile === issue.sourceFile
       )
   );
+  if (!actionRequiredRoles) {
+    blockers.parseIssues.push({
+      code: "ACTION_ROLE_POLICY_UNRESOLVED",
+      sourceFile: PERMISSIONS_SOURCE_PATH
+    });
+  }
   if (!sourceFileSet.has(PRODUCTION_ENTRYPOINT)) {
     blockers.parseIssues.push({
       code: "PRODUCTION_ENTRYPOINT_MISSING",
@@ -13057,7 +13412,7 @@ export async function inspectWholeSitePageActionManifest({
         action.capability,
         capabilityContext
       );
-    const capabilityServerDerived =
+    const capabilityProvenanceTrusted =
       SERVER_CAPABILITY_KINDS.has(
         action.capability.kind
       ) &&
@@ -13070,6 +13425,29 @@ export async function inspectWholeSitePageActionManifest({
           nestManifest
         })
       );
+    const mutationBindings = bindings.filter(isMutationRequest);
+    const effectiveMutationActors =
+      effectiveMutationActorPositions({
+        mutationBindings,
+        nestManifest,
+        rolesByAction: actionRequiredRoles
+      });
+    const capabilityAuthorizationCompatible =
+      !writes ||
+      (Boolean(effectiveMutationActors) &&
+        capabilityProvenanceTrusted &&
+        [...capabilitySources].every((sourceIdentity) =>
+          capabilitySourceAuthorizationIsCompatible({
+            sourceIdentity,
+            webManifest,
+            nestManifest,
+            effectiveMutationActors,
+            rolesByAction: actionRequiredRoles
+          })
+        ));
+    const capabilityServerDerived =
+      capabilityProvenanceTrusted &&
+      capabilityAuthorizationCompatible;
     const capabilityUpstreamAssociationTrusted =
       !writes || capabilityServerDerived;
     let capabilityAccepted =
@@ -13121,7 +13499,10 @@ export async function inspectWholeSitePageActionManifest({
         actionId: action.id,
         sourceFile: action.sourceFile,
         reason: dominatesTrigger
-          ? "capability_upstream_association_untrusted"
+          ? capabilityProvenanceTrusted &&
+            !capabilityAuthorizationCompatible
+            ? "capability_get_authorization_incompatible"
+            : "capability_upstream_association_untrusted"
           : "capability_not_dominating"
       });
     }

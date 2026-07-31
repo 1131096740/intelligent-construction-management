@@ -2637,6 +2637,7 @@
         "chairman",
         "comprehensive_director",
         "contract_director",
+        "contract_staff",
         "engineering_department_director",
         "finance_director",
         "finance_staff",
@@ -9304,6 +9305,16 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "recordProjectAffiliateCompanyContractWithUpload",
+            "method": "POST",
+            "normalizedPath": "/files",
+            "normalizedKey": "POST /files",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
+            ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
             "wrapper": "uploadPrivateFile",
             "method": "POST",
             "normalizedPath": "/files",
@@ -9324,7 +9335,6 @@
               "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
               "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
               "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
-              "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
               "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
               "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
               "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
@@ -10481,7 +10491,7 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "recordProjectAffiliateCompanyContract",
+            "wrapper": "recordProjectAffiliateCompanyContractWithUpload",
             "method": "POST",
             "normalizedPath": "/projects/:param/affiliate-company-contracts",
             "normalizedKey": "POST /projects/:param/affiliate-company-contracts",

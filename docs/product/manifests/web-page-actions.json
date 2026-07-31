@@ -17,13 +17,13 @@
     "totalVueFileCount": 134,
     "parsedVueFileCount": 134,
     "reachableProductionModuleCount": 229,
-    "templateEventDirectiveCount": 892,
+    "templateEventDirectiveCount": 893,
     "propCallbackDirectiveCount": 12,
-    "coveredProductionMutationConsumerCount": 8,
+    "coveredProductionMutationConsumerCount": 9,
     "candidateProductionMutationConsumerCount": 39,
-    "acceptedProductionMutationConsumerCount": 8,
-    "productionMutationConsumerPairCount": 275,
-    "blockerCount": 345
+    "acceptedProductionMutationConsumerCount": 9,
+    "productionMutationConsumerPairCount": 274,
+    "blockerCount": 342
   },
   "evidence": {
     "totalProductionModuleCount": 236,
@@ -47,7 +47,7 @@
         "event": "confirm",
         "handler": "submitConfirm",
         "kind": "event",
-        "sourceLine": 730,
+        "sourceLine": 737,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -110,10 +110,10 @@
       "trigger": {
         "element": "t-button",
         "event": "click",
-        "handler": "openRecord",
+        "handler": "submitRecord",
         "kind": "event",
-        "sourceLine": 597,
-        "sourceColumn": 8
+        "sourceLine": 721,
+        "sourceColumn": 10
       },
       "semantic": "business_write",
       "capability": {
@@ -126,7 +126,43 @@
       "bindings": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "recordProjectAffiliateCompanyContract",
+          "wrapper": "recordProjectAffiliateCompanyContractWithUpload",
+          "method": "POST",
+          "path": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files",
+            "normalizedKey": "POST /files",
+            "controller": "FileController",
+            "handler": "upload",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitRecord",
+              "recordProjectAffiliateCompanyContractWithUpload"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectAffiliateCompanyContractWithUpload",
           "method": "POST",
           "path": "/projects/:param/affiliate-company-contracts",
           "normalizedKey": "POST /projects/:param/affiliate-company-contracts",
@@ -148,11 +184,14 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "openRecord"
+              "submitRecord",
+              "recordProjectAffiliateCompanyContractWithUpload"
             ]
           },
           "ticketFollowups": []
@@ -2827,13 +2866,6 @@
     "unresolvedWrappers": [
       {
         "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "affiliate-company-contract.record",
-        "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectAffiliateCompanyContract"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
         "actionId": "contract-draft.abandon-application",
         "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -4968,24 +5000,6 @@
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "uploadPrivateFile",
         "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectAffiliateCompanyContract",
-        "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/affiliate-company-contracts"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
         "normalizedKeys": [
           "POST /files"
         ]

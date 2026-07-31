@@ -6,10 +6,10 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `62580430a97217233e458e2246bf76144c9f2c83e62ab8dce56d6cecc68a3a80` |
-| webApiWrappers | blocked | `560ab05970a24830add6a3fec03292a8cd63a1b6c0ba60f9947f2e55caeb22bf` |
-| webPageActions | blocked | `386dbae71d145b4577d62f6104f45267a720e6f6ea14fa26f489c43f5275493b` |
-| routeUsage | blocked | `18889b8b15be66c4fd15822f3fcf64de0ffa8f1e006505c964039bd549dc308d` |
+| nestRoutes | ready | `e91721f541271a4d6f07885e965ca21179b1f7848c5736038df262a73af618db` |
+| webApiWrappers | blocked | `b570994094defc1a16ac70b12a645913e8b3feb8c6c91a44ab7dc5e97e636c9c` |
+| webPageActions | blocked | `9b39f8210de09e746c34c957c599b2a881a6db0389b3de0d032ff15d8ac51126` |
+| routeUsage | blocked | `5e2b092056a415e189fe1051f7892247ba86b4f51f4653987b9af1a3499eeea2` |
 
 ## 汇总
 
@@ -21,19 +21,19 @@
 | exitCandidateRouteCount | 23 |
 | internalTaskRouteCount | 2 |
 | unclassifiedRouteCount | 26 |
-| mainRequestBindingCount | 376 |
+| mainRequestBindingCount | 378 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
-| orphanWrapperCount | 42 |
+| orphanWrapperCount | 43 |
 | duplicateMutationRouteCount | 4 |
 | registeredActionCount | 42 |
-| actionBindingCount | 45 |
-| acceptedActionBindingCount | 8 |
-| unresolvedActionBindingCount | 37 |
-| productionMutationConsumerPairCount | 275 |
-| coveredProductionMutationConsumerPairCount | 8 |
-| uncoveredProductionMutationConsumerPairCount | 267 |
-| blockerCount | 380 |
+| actionBindingCount | 46 |
+| acceptedActionBindingCount | 10 |
+| unresolvedActionBindingCount | 36 |
+| productionMutationConsumerPairCount | 274 |
+| coveredProductionMutationConsumerPairCount | 9 |
+| uncoveredProductionMutationConsumerPairCount | 265 |
+| blockerCount | 378 |
 
 ## 路由矩阵
 
@@ -270,7 +270,7 @@
 | POST | /expense-claims/:claimId/submission | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim | expense-claim.submit-local-status | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | payment-execution.record<br>settlement-import.preview-local-gate | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
+| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateCompanyContractWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | affiliate-company-contract.record<br>payment-execution.record<br>settlement-import.preview-local-gate | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /invoice-allocations/:allocationId/reversal | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
 | POST | /me/signature/canvas-handoffs/:token/complete | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#completeCanvasSignatureHandoff | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /me/signature/canvas-handoffs | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createCanvasSignatureHandoff | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -297,7 +297,7 @@
 | POST | /projects/:projectId/affiliate-assignment | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#assignProjectAffiliate | — | not_applicable | ORPHAN_WRAPPER |
 | POST | /projects/:projectId/affiliate-business-facts/:factId/evidence | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#supplementProjectAffiliateBusinessEvidence | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /projects/:projectId/affiliate-company-contracts/:contractId/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectAffiliateCompanyContract | affiliate-company-contract.confirm | covered | — |
-| POST | /projects/:projectId/affiliate-company-contracts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateCompanyContract | affiliate-company-contract.record | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
+| POST | /projects/:projectId/affiliate-company-contracts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateCompanyContract<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateCompanyContractWithUpload | affiliate-company-contract.record | covered | ORPHAN_WRAPPER |
 | POST | /projects/:projectId/affiliate-contract-facts/:factId/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectAffiliateContractFact | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /projects/:projectId/affiliate-contract-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateContractFact | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /projects/:projectId/affiliate-payment-facts/:factId/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectAffiliatePaymentFact | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -477,6 +477,7 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementLifecycleLedger（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#fetchWorkbenchSummary（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#recordContractTakeoverCorrection（test_only）
+- apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateCompanyContract（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#recordProjectOwnerContract（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#recordProjectProxyPayment（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#recordProjectUpstreamSettlement（test_only）
@@ -615,7 +616,6 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecution → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentFinance → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentPdfArchive → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateCompanyContract → apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateContractFact → apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliatePaymentFact → apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateSettlementFact → apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue
@@ -666,7 +666,6 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue
@@ -762,7 +761,6 @@
 
 ### 未解决动作绑定
 
-- affiliate-company-contract.record#0 — causal_unverified, no_accepted_consumer
 - contract-draft.abandon-application#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-draft.aggregate-autosave#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-draft.delete-pristine#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger

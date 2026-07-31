@@ -116,7 +116,7 @@ export class ProjectController {
   }
 
   @Get(":projectId/affiliate-company-contracts")
-  @RequirePositions(...PROJECT_OVERVIEW_READ_POSITION_KEYS)
+  @RequirePositions(...PROJECT_OVERVIEW_READ_POSITION_KEYS, "contract_staff")
   affiliateCompanyContractList(
     @Param("projectId") projectId: string,
     @CurrentUser() user: AuthenticatedUser

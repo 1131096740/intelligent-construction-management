@@ -5,17 +5,18 @@ import { describe, expect, it, vi } from "vitest";
 import AffiliateCompanyContractPanel from "./AffiliateCompanyContractPanel.vue";
 
 const affiliateContractRuntime = vi.hoisted(() => ({
+  beforeUnmount: vi.fn(),
   confirm: vi.fn(),
   fetchCompanies: vi.fn(),
   fetchContracts: vi.fn(),
-  record: vi.fn(),
-  upload: vi.fn()
+  record: vi.fn()
 }));
 
 vi.mock("vue", async (importOriginal) => {
   const original = await importOriginal<typeof import("vue")>();
   return {
     ...original,
+    onBeforeUnmount: affiliateContractRuntime.beforeUnmount,
     onMounted: () => undefined,
     useSSRContext: () => ({ modules: new Set<string>() })
   };
@@ -30,8 +31,8 @@ vi.mock("../../../api/core-flow-read.api", async (importOriginal) => {
     confirmProjectAffiliateCompanyContract: affiliateContractRuntime.confirm,
     fetchProjectAffiliateCompanyContracts:
       affiliateContractRuntime.fetchContracts,
-    recordProjectAffiliateCompanyContract: affiliateContractRuntime.record,
-    uploadPrivateFile: affiliateContractRuntime.upload
+    recordProjectAffiliateCompanyContractWithUpload:
+      affiliateContractRuntime.record
   };
 });
 
@@ -70,6 +71,10 @@ const pageActionRegistry = JSON.parse(
       source: string;
       key: string;
     };
+    wrappers: Array<{
+      apiFile: string;
+      name: string;
+    }>;
   }>;
 };
 
@@ -86,6 +91,7 @@ type AffiliateContractsReadModel = {
 };
 type PanelBindings = {
   cancelConfirm: () => void;
+  cancelRecord: () => void;
   confirmBusy: MutableValue<boolean>;
   confirmError: MutableValue<string>;
   confirmTarget: MutableValue<AffiliateContractReadModel | null>;
@@ -98,6 +104,7 @@ type PanelBindings = {
     rightsObligationsSummary: string;
     companyEntityId: string;
   }>;
+  handleRecordVisibleChange: (visible: boolean) => void;
   load: () => Promise<void>;
   loading: MutableValue<boolean>;
   notice: MutableValue<string>;
@@ -108,7 +115,7 @@ type PanelBindings = {
   recordVisible: MutableValue<boolean>;
   signedFiles: MutableValue<Array<{ raw?: File }>>;
   submitConfirm: (values: { password: string }) => Promise<unknown> | undefined;
-  submitRecord: () => Promise<void>;
+  submitRecord: () => Promise<unknown>;
 };
 
 function contractReadModel(
@@ -152,6 +159,7 @@ function deferred<T = void>() {
 }
 
 function setupPanel(projectId = "project-a") {
+  affiliateContractRuntime.beforeUnmount.mockReset();
   const props = reactive({ projectId });
   const scope = effectScope();
   const bindings = scope.run(() =>
@@ -165,7 +173,14 @@ function setupPanel(projectId = "project-a") {
     ).setup(props, { expose: () => undefined })
   );
   if (!bindings) throw new Error("affiliate company contract panel setup failed");
-  return { bindings, props, scope };
+  const invokeBeforeUnmount = () => {
+    const callback = affiliateContractRuntime.beforeUnmount.mock.calls.at(-1)?.[0];
+    if (typeof callback !== "function") {
+      throw new Error("affiliate company contract panel unmount hook missing");
+    }
+    callback();
+  };
+  return { bindings, invokeBeforeUnmount, props, scope };
 }
 
 async function flushPromises() {
@@ -177,9 +192,10 @@ async function flushPromises() {
 describe("affiliate-company offline contract panel", () => {
   it("uses the governed API surface and never calls fetch directly", () => {
     expect(source).toContain("fetchProjectAffiliateCompanyContracts");
-    expect(source).toContain("recordProjectAffiliateCompanyContract");
+    expect(source).toContain(
+      "recordProjectAffiliateCompanyContractWithUpload"
+    );
     expect(source).toContain("confirmProjectAffiliateCompanyContract");
-    expect(source).toContain("uploadPrivateFile");
     expect(source).not.toMatch(/\bfetch\s*\(/u);
   });
 
@@ -195,6 +211,14 @@ describe("affiliate-company offline contract panel", () => {
     expect(source).toContain("<t-table");
     expect(source).toContain("<t-upload");
     expect(source).toContain("<SensitiveActionDialog");
+    expect(source).toContain(':visible="recordVisible"');
+    expect(source).toContain(':close-btn="!recordBusy"');
+    expect(source).toContain(':close-on-esc-keydown="!recordBusy"');
+    expect(source).toContain(':close-on-overlay-click="false"');
+    expect(source).toContain(
+      '@update:visible="handleRecordVisibleChange"'
+    );
+    expect(source).not.toContain('v-model:visible="recordVisible"');
     expect(source).not.toMatch(/<button\b/u);
   });
 
@@ -239,11 +263,25 @@ describe("affiliate-company offline contract panel", () => {
     const recordRegistration = pageActionRegistry.actions.find(
       (action) => action.id === "affiliate-company-contract.record"
     );
+    expect(recordRegistration?.trigger).toEqual({
+      element: "t-button",
+      event: "click",
+      handler: "submitRecord"
+    });
     expect(recordRegistration?.capability).toEqual({
       kind: "available_action_string",
       source: "affiliateCompanyContractRootActions",
       key: "record_affiliate_company_contract"
     });
+    expect(recordRegistration?.wrappers).toEqual([
+      {
+        apiFile: "apps/web-admin/src/api/core-flow-read.api.ts",
+        name: "recordProjectAffiliateCompanyContractWithUpload"
+      }
+    ]);
+    expect(source).toContain(
+      'v-if="recordArmed && recordActionEnabled(\'record_affiliate_company_contract\')"'
+    );
   });
 
   it("does not let an older project read overwrite the current project", async () => {
@@ -331,8 +369,17 @@ describe("affiliate-company offline contract panel", () => {
       );
     affiliateContractRuntime.fetchCompanies.mockReset();
     affiliateContractRuntime.fetchCompanies.mockResolvedValue([]);
-    affiliateContractRuntime.upload.mockReset();
     affiliateContractRuntime.record.mockReset();
+    affiliateContractRuntime.record.mockImplementation(
+      (_projectId, input) =>
+        input.isCurrent(input.context)
+          ? Promise.resolve({})
+          : Promise.reject(
+              new Error(
+                "线下合同登记上下文已失效，请重新读取当前项目"
+              )
+            )
+    );
     const { bindings, props, scope } = setupPanel();
 
     try {
@@ -346,8 +393,12 @@ describe("affiliate-company offline contract panel", () => {
 
       expect(bindings.recordVisible.value).toBe(false);
       await bindings.submitRecord();
-      expect(affiliateContractRuntime.upload).not.toHaveBeenCalled();
-      expect(affiliateContractRuntime.record).not.toHaveBeenCalled();
+      expect(affiliateContractRuntime.record).toHaveBeenCalledTimes(1);
+      expect(
+        affiliateContractRuntime.record.mock.calls[0]![1].isCurrent(
+          affiliateContractRuntime.record.mock.calls[0]![1].context
+        )
+      ).toBe(false);
       expect(bindings.recordBusy.value).toBe(false);
     } finally {
       scope.stop();
@@ -366,8 +417,20 @@ describe("affiliate-company offline contract panel", () => {
     );
     affiliateContractRuntime.fetchCompanies.mockReset();
     affiliateContractRuntime.fetchCompanies.mockResolvedValue([]);
-    affiliateContractRuntime.upload.mockReset();
     affiliateContractRuntime.record.mockReset();
+    affiliateContractRuntime.record.mockImplementation(
+      (_projectId, input) => {
+        if (!(input.files[0]?.raw instanceof File)) {
+          return Promise.reject(
+            new Error("请上传已由双方线下签署的正式合同文件")
+          );
+        }
+        if (!input.form.contractReference.trim()) {
+          return Promise.reject(new Error("请填写线下合同编号"));
+        }
+        return Promise.resolve({});
+      }
+    );
     const { bindings, scope } = setupPanel();
 
     try {
@@ -379,7 +442,7 @@ describe("affiliate-company offline contract panel", () => {
         "请上传已由双方线下签署的正式合同文件"
       );
       expect(bindings.recordBusy.value).toBe(false);
-      expect(affiliateContractRuntime.upload).not.toHaveBeenCalled();
+      expect(affiliateContractRuntime.record).toHaveBeenCalledTimes(1);
 
       bindings.signedFiles.value = [
         {
@@ -391,8 +454,7 @@ describe("affiliate-company offline contract panel", () => {
       await bindings.submitRecord();
       expect(bindings.recordError.value).toBe("请填写线下合同编号");
       expect(bindings.recordBusy.value).toBe(false);
-      expect(affiliateContractRuntime.upload).not.toHaveBeenCalled();
-      expect(affiliateContractRuntime.record).not.toHaveBeenCalled();
+      expect(affiliateContractRuntime.record).toHaveBeenCalledTimes(2);
     } finally {
       scope.stop();
     }
@@ -415,9 +477,8 @@ describe("affiliate-company offline contract panel", () => {
       );
     affiliateContractRuntime.fetchCompanies.mockReset();
     affiliateContractRuntime.fetchCompanies.mockResolvedValue([]);
-    affiliateContractRuntime.upload.mockReset();
-    affiliateContractRuntime.upload.mockReturnValueOnce(upload.promise);
     affiliateContractRuntime.record.mockReset();
+    affiliateContractRuntime.record.mockReturnValueOnce(upload.promise);
     const { bindings, props, scope } = setupPanel();
 
     try {
@@ -439,7 +500,7 @@ describe("affiliate-company offline contract panel", () => {
       ];
 
       const submission = bindings.submitRecord();
-      expect(affiliateContractRuntime.upload).toHaveBeenCalledTimes(1);
+      expect(affiliateContractRuntime.record).toHaveBeenCalledTimes(1);
 
       props.projectId = "project-b";
       await nextTick();
@@ -447,7 +508,7 @@ describe("affiliate-company offline contract panel", () => {
       upload.resolve({ id: "temporary-file-a" });
       await submission;
 
-      expect(affiliateContractRuntime.record).not.toHaveBeenCalled();
+      expect(bindings.notice.value).toBe("");
       expect(bindings.recordBusy.value).toBe(false);
       expect(bindings.data.value?.contracts[0]?.id).toBe("contract-b");
     } finally {
@@ -472,9 +533,8 @@ describe("affiliate-company offline contract panel", () => {
       );
     affiliateContractRuntime.fetchCompanies.mockReset();
     affiliateContractRuntime.fetchCompanies.mockResolvedValue([]);
-    affiliateContractRuntime.upload.mockReset();
-    affiliateContractRuntime.upload.mockReturnValueOnce(upload.promise);
     affiliateContractRuntime.record.mockReset();
+    affiliateContractRuntime.record.mockReturnValueOnce(upload.promise);
     const { bindings, props, scope } = setupPanel();
 
     try {
@@ -504,7 +564,7 @@ describe("affiliate-company offline contract panel", () => {
       upload.reject(new Error("项目 A 上传失败"));
       await submission;
 
-      expect(affiliateContractRuntime.record).not.toHaveBeenCalled();
+      expect(affiliateContractRuntime.record).toHaveBeenCalledTimes(1);
       expect(bindings.recordError.value).toBe("项目 B 当前错误");
       expect(bindings.recordBusy.value).toBe(true);
       expect(bindings.data.value?.contracts[0]?.id).toBe("contract-b");
@@ -529,10 +589,6 @@ describe("affiliate-company offline contract panel", () => {
       );
     affiliateContractRuntime.fetchCompanies.mockReset();
     affiliateContractRuntime.fetchCompanies.mockResolvedValue([]);
-    affiliateContractRuntime.upload.mockReset();
-    affiliateContractRuntime.upload.mockResolvedValueOnce({
-      id: "signed-file-a"
-    });
     affiliateContractRuntime.record.mockReset();
     affiliateContractRuntime.record.mockResolvedValueOnce({});
     const { bindings, scope } = setupPanel();
@@ -554,26 +610,259 @@ describe("affiliate-company offline contract panel", () => {
 
       await bindings.submitRecord();
 
-      expect(affiliateContractRuntime.upload).toHaveBeenCalledWith(
-        raw,
-        "signed.pdf"
-      );
       expect(affiliateContractRuntime.record).toHaveBeenCalledWith(
         "project-a",
         expect.objectContaining({
-          contractReference: "HT-A-001",
-          contractName: "项目 A 线下合同",
-          signedAt: "2026-07-30",
-          rightsObligationsSummary: "项目 A 已签文件",
-          companyEntityId: "company-a",
-          fileId: "signed-file-a",
+          form: {
+            contractReference: " HT-A-001 ",
+            contractName: " 项目 A 线下合同 ",
+            signedAt: "2026-07-30",
+            rightsObligationsSummary: " 项目 A 已签文件 ",
+            companyEntityId: " company-a "
+          },
+          files: [{ raw }],
           idempotencyKey: expect.any(String)
+        }),
+        expect.objectContaining({
+          submission: null,
+          uploadedFileId: null
         })
       );
       expect(bindings.recordVisible.value).toBe(false);
       expect(bindings.recordBusy.value).toBe(false);
       expect(bindings.notice.value).toContain("已签线下合同已登记");
       expect(affiliateContractRuntime.fetchContracts).toHaveBeenCalledTimes(2);
+    } finally {
+      scope.stop();
+    }
+  });
+
+  it("reuses one attempt state and idempotency key across a failed registration retry", async () => {
+    affiliateContractRuntime.fetchContracts.mockReset();
+    affiliateContractRuntime.fetchContracts.mockResolvedValue(
+      contractsReadModel(
+        "project-a",
+        "contract-a",
+        ["confirm"],
+        ["record_affiliate_company_contract"]
+      )
+    );
+    affiliateContractRuntime.fetchCompanies.mockReset();
+    affiliateContractRuntime.fetchCompanies.mockResolvedValue([]);
+    affiliateContractRuntime.record.mockReset();
+    affiliateContractRuntime.record
+      .mockRejectedValueOnce(new Error("登记响应超时"))
+      .mockRejectedValueOnce(new Error("登记响应仍超时"));
+    const { bindings, scope } = setupPanel();
+
+    try {
+      await bindings.load();
+      bindings.openRecord();
+      bindings.form.value = {
+        contractReference: "HT-A-001",
+        contractName: "项目 A 线下合同",
+        signedAt: "2026-07-30",
+        rightsObligationsSummary: "项目 A 已签文件",
+        companyEntityId: "company-a"
+      };
+      bindings.signedFiles.value = [
+        {
+          raw: new File(["signed"], "signed.pdf", {
+            type: "application/pdf"
+          })
+        }
+      ];
+
+      await bindings.submitRecord();
+      await bindings.submitRecord();
+
+      expect(affiliateContractRuntime.record).toHaveBeenCalledTimes(2);
+      const first = affiliateContractRuntime.record.mock.calls[0]!;
+      const second = affiliateContractRuntime.record.mock.calls[1]!;
+      expect(first[0]).toBe("project-a");
+      expect(second[0]).toBe("project-a");
+      expect(second[1]).toMatchObject({
+        form: {
+          contractName: "项目 A 线下合同"
+        },
+        idempotencyKey: expect.any(String)
+      });
+      expect(second[1].idempotencyKey).toBe(first[1].idempotencyKey);
+      expect(second[1].files[0]?.raw).toBe(first[1].files[0]?.raw);
+      expect(second[2]).toBe(first[2]);
+      expect(bindings.recordVisible.value).toBe(true);
+      expect(bindings.recordBusy.value).toBe(false);
+    } finally {
+      scope.stop();
+    }
+  });
+
+  it("ignores a second registration submit while the current upload is pending", async () => {
+    const upload = deferred<{ id: string }>();
+    affiliateContractRuntime.fetchContracts.mockReset();
+    affiliateContractRuntime.fetchContracts
+      .mockResolvedValueOnce(
+        contractsReadModel(
+          "project-a",
+          "contract-a",
+          ["confirm"],
+          ["record_affiliate_company_contract"]
+        )
+      )
+      .mockResolvedValueOnce(
+        contractsReadModel("project-a", "contract-a")
+      );
+    affiliateContractRuntime.fetchCompanies.mockReset();
+    affiliateContractRuntime.fetchCompanies.mockResolvedValue([]);
+    affiliateContractRuntime.record.mockReset();
+    affiliateContractRuntime.record.mockReturnValue(upload.promise);
+    const { bindings, scope } = setupPanel();
+
+    try {
+      await bindings.load();
+      bindings.openRecord();
+      bindings.form.value = {
+        contractReference: "HT-A-001",
+        contractName: "项目 A 线下合同",
+        signedAt: "2026-07-30",
+        rightsObligationsSummary: "项目 A 已签文件",
+        companyEntityId: "company-a"
+      };
+      bindings.signedFiles.value = [
+        {
+          raw: new File(["signed"], "signed.pdf", {
+            type: "application/pdf"
+          })
+        }
+      ];
+
+      const first = bindings.submitRecord();
+      const second = bindings.submitRecord();
+
+      expect(affiliateContractRuntime.record).toHaveBeenCalledTimes(2);
+      expect(bindings.recordBusy.value).toBe(true);
+      expect(bindings.recordError.value).toBe("");
+
+      upload.resolve({ id: "signed-file-a" });
+      await Promise.all([first, second]);
+
+      expect(bindings.recordBusy.value).toBe(false);
+    } finally {
+      scope.stop();
+    }
+  });
+
+  it("keeps the registration drawer armed when a busy close path races the successful response", async () => {
+    const pending = deferred();
+    affiliateContractRuntime.fetchContracts.mockReset();
+    affiliateContractRuntime.fetchContracts
+      .mockResolvedValueOnce(
+        contractsReadModel(
+          "project-a",
+          "contract-a",
+          ["confirm"],
+          ["record_affiliate_company_contract"]
+        )
+      )
+      .mockResolvedValueOnce(
+        contractsReadModel("project-a", "contract-a")
+      );
+    affiliateContractRuntime.fetchCompanies.mockReset();
+    affiliateContractRuntime.fetchCompanies.mockResolvedValue([]);
+    affiliateContractRuntime.record.mockReset();
+    affiliateContractRuntime.record.mockReturnValueOnce(pending.promise);
+    const { bindings, scope } = setupPanel();
+
+    try {
+      await bindings.load();
+      bindings.openRecord();
+      bindings.form.value = {
+        contractReference: "HT-A-001",
+        contractName: "项目 A 线下合同",
+        signedAt: "2026-07-30",
+        rightsObligationsSummary: "项目 A 已签文件",
+        companyEntityId: "company-a"
+      };
+      bindings.signedFiles.value = [
+        {
+          raw: new File(["signed"], "signed.pdf", {
+            type: "application/pdf"
+          })
+        }
+      ];
+
+      const submission = bindings.submitRecord();
+      const recordInput = affiliateContractRuntime.record.mock.calls[0]![1];
+      expect(bindings.recordBusy.value).toBe(true);
+      expect(recordInput.isCurrent(recordInput.context)).toBe(true);
+
+      bindings.handleRecordVisibleChange(false);
+
+      expect(bindings.recordVisible.value).toBe(true);
+      expect(recordInput.isCurrent(recordInput.context)).toBe(true);
+
+      pending.resolve();
+      await submission;
+      await flushPromises();
+
+      expect(bindings.recordVisible.value).toBe(false);
+      expect(bindings.notice.value).toContain("已签线下合同已登记");
+      expect(affiliateContractRuntime.fetchContracts).toHaveBeenCalledTimes(2);
+    } finally {
+      scope.stop();
+    }
+  });
+
+  it("invalidates the composite upload context before unmount and ignores its old completion", async () => {
+    const pending = deferred();
+    affiliateContractRuntime.fetchContracts.mockReset();
+    affiliateContractRuntime.fetchContracts.mockResolvedValue(
+      contractsReadModel(
+        "project-a",
+        "contract-a",
+        ["confirm"],
+        ["record_affiliate_company_contract"]
+      )
+    );
+    affiliateContractRuntime.fetchCompanies.mockReset();
+    affiliateContractRuntime.fetchCompanies.mockResolvedValue([]);
+    affiliateContractRuntime.record.mockReset();
+    affiliateContractRuntime.record.mockReturnValueOnce(pending.promise);
+    const { bindings, invokeBeforeUnmount, scope } = setupPanel();
+
+    try {
+      await bindings.load();
+      bindings.openRecord();
+      bindings.form.value = {
+        contractReference: "HT-A-001",
+        contractName: "项目 A 线下合同",
+        signedAt: "2026-07-30",
+        rightsObligationsSummary: "项目 A 已签文件",
+        companyEntityId: "company-a"
+      };
+      bindings.signedFiles.value = [
+        {
+          raw: new File(["signed"], "signed.pdf", {
+            type: "application/pdf"
+          })
+        }
+      ];
+
+      const submission = bindings.submitRecord();
+      const recordInput = affiliateContractRuntime.record.mock.calls[0]![1];
+      expect(recordInput.isCurrent(recordInput.context)).toBe(true);
+
+      invokeBeforeUnmount();
+
+      expect(recordInput.isCurrent(recordInput.context)).toBe(false);
+      pending.resolve();
+      await submission;
+      await flushPromises();
+
+      expect(bindings.notice.value).toBe("");
+      expect(bindings.recordVisible.value).toBe(true);
+      expect(bindings.recordBusy.value).toBe(true);
+      expect(affiliateContractRuntime.fetchContracts).toHaveBeenCalledTimes(1);
     } finally {
       scope.stop();
     }

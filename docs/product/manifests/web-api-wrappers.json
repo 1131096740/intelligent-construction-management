@@ -8,15 +8,15 @@
   },
   "summary": {
     "apiModuleCount": 14,
-    "exportedFunctionCount": 378,
-    "transportWrapperCount": 375,
-    "pureExportCount": 3,
-    "mainRequestBindingCount": 376,
+    "exportedFunctionCount": 380,
+    "transportWrapperCount": 376,
+    "pureExportCount": 4,
+    "mainRequestBindingCount": 378,
     "ticketFollowupCount": 2,
-    "requestEdgeCount": 377,
+    "requestEdgeCount": 379,
     "productionConsumerCount": 333,
-    "orphanWrapperCount": 42,
-    "testOnlyWrapperCount": 40,
+    "orphanWrapperCount": 43,
+    "testOnlyWrapperCount": 41,
     "unreferencedWrapperCount": 2,
     "duplicateNormalizedRouteGroupCount": 6,
     "authTransportExceptionCount": 5
@@ -39,7 +39,13 @@
           "path": "/company-entities",
           "normalizedPath": "/company-entities",
           "normalizedKey": "POST /company-entities",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createCompanyEntity",
+              "sendJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -63,7 +69,13 @@
           "path": "/company-entities",
           "normalizedPath": "/company-entities",
           "normalizedKey": "GET /company-entities",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchActiveCompanyEntities",
+              "readJson"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -87,7 +99,13 @@
           "path": "/company-entities/:param/history",
           "normalizedPath": "/company-entities/:param/history",
           "normalizedKey": "GET /company-entities/:param/history",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchCompanyEntityHistory",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -111,7 +129,13 @@
           "path": "/company-entities/management",
           "normalizedPath": "/company-entities/management",
           "normalizedKey": "GET /company-entities/management",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchCompanyEntityManagement",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -135,7 +159,13 @@
           "path": "/company-entities/:param",
           "normalizedPath": "/company-entities/:param",
           "normalizedKey": "PATCH /company-entities/:param",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateCompanyEntity",
+              "sendJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -159,7 +189,13 @@
           "path": "/company-entities/:param/status",
           "normalizedPath": "/company-entities/:param/status",
           "normalizedKey": "POST /company-entities/:param/status",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateCompanyEntityStatus",
+              "sendJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -183,7 +219,13 @@
           "path": "/contract-negotiation-rounds/:param/close",
           "normalizedPath": "/contract-negotiation-rounds/:param/close",
           "normalizedKey": "POST /contract-negotiation-rounds/:param/close",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "closeContractNegotiationRound",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -207,7 +249,13 @@
           "path": "/contract-document-differences/:param/disposition",
           "normalizedPath": "/contract-document-differences/:param/disposition",
           "normalizedKey": "POST /contract-document-differences/:param/disposition",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "disposeContractDocumentDifference",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -231,7 +279,13 @@
           "path": "/contract-workbench/:param/negotiation-rounds",
           "normalizedPath": "/contract-workbench/:param/negotiation-rounds",
           "normalizedKey": "GET /contract-workbench/:param/negotiation-rounds",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listContractNegotiationRounds",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -255,7 +309,13 @@
           "path": "/contract-workbench/:param/negotiation-rounds",
           "normalizedPath": "/contract-workbench/:param/negotiation-rounds",
           "normalizedKey": "POST /contract-workbench/:param/negotiation-rounds",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "openContractNegotiationRound",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -279,14 +339,25 @@
           "path": "/contract-offline-revisions/:param/preview-download-ticket",
           "normalizedPath": "/contract-offline-revisions/:param/preview-download-ticket",
           "normalizedKey": "POST /contract-offline-revisions/:param/preview-download-ticket",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "openContractRevisionPreview",
+              "postJson"
+            ]
+          ]
         },
         {
           "kind": "ticket_followup",
           "sourceLine": 143,
           "method": "GET",
           "ticketField": "downloadPath",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "openContractRevisionPreview"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -310,7 +381,13 @@
           "path": "/contract-offline-revisions/:param/retry",
           "normalizedPath": "/contract-offline-revisions/:param/retry",
           "normalizedKey": "POST /contract-offline-revisions/:param/retry",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryContractOfflineRevision",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -334,7 +411,13 @@
           "path": "/contract-workbench/:param/offline-revisions",
           "normalizedPath": "/contract-workbench/:param/offline-revisions",
           "normalizedKey": "POST /contract-workbench/:param/offline-revisions",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "uploadContractNegotiationRevision",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -358,7 +441,14 @@
           "path": "/contract-business-scenarios",
           "normalizedPath": "/contract-business-scenarios",
           "normalizedKey": "POST /contract-business-scenarios",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createContractBusinessScenario",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -382,7 +472,14 @@
           "path": "/contract-business-scenarios/:param/template-mappings",
           "normalizedPath": "/contract-business-scenarios/:param/template-mappings",
           "normalizedKey": "POST /contract-business-scenarios/:param/template-mappings",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createContractScenarioMapping",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -406,7 +503,13 @@
           "path": "/contract-business-scenarios/available?projectId=:param",
           "normalizedPath": "/contract-business-scenarios/available",
           "normalizedKey": "GET /contract-business-scenarios/available",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listAvailableContractBusinessScenarios",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -430,7 +533,13 @@
           "path": "/contract-business-scenarios",
           "normalizedPath": "/contract-business-scenarios",
           "normalizedKey": "GET /contract-business-scenarios",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listContractScenarioGovernance",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -454,7 +563,13 @@
           "path": "/contract-business-scenarios/recommendations?:param",
           "normalizedPath": "/contract-business-scenarios/recommendations",
           "normalizedKey": "GET /contract-business-scenarios/recommendations",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "recommendContractScenarioTemplates",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -478,7 +593,14 @@
           "path": "/contract-business-scenarios/:param",
           "normalizedPath": "/contract-business-scenarios/:param",
           "normalizedKey": "PATCH /contract-business-scenarios/:param",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateContractBusinessScenario",
+              "patchJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -502,7 +624,14 @@
           "path": "/contract-scenario-template-mappings/:param",
           "normalizedPath": "/contract-scenario-template-mappings/:param",
           "normalizedKey": "PATCH /contract-scenario-template-mappings/:param",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateContractScenarioMapping",
+              "patchJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -526,7 +655,13 @@
           "path": "/projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/abandonment",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/abandonment",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/abandonment",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "abandonContractTaxFactRevision",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -550,7 +685,13 @@
           "path": "/projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/contract-confirmation",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/contract-confirmation",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/contract-confirmation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmContractTaxFactRevision",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -574,7 +715,13 @@
           "path": "/projects/:param/contract-takeovers/:param/tax-fact-revisions",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/tax-fact-revisions",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createContractTaxFactRevision",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -598,7 +745,13 @@
           "path": "/projects/:param/contract-takeovers/:param/tax-fact-revisions",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/tax-fact-revisions",
           "normalizedKey": "GET /projects/:param/contract-takeovers/:param/tax-fact-revisions",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractTaxFactRevisions",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -622,7 +775,13 @@
           "path": "/projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/finance-review",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/finance-review",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/finance-review",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reviewContractTaxFactRevisionByFinance",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -646,7 +805,13 @@
           "path": "/projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/finance-review-submission",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/finance-review-submission",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/finance-review-submission",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitContractTaxFactRevisionForFinanceReview",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -670,7 +835,13 @@
           "path": "/projects/:param/contract-takeovers/:param/tax-fact-revisions/:param",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/tax-fact-revisions/:param",
           "normalizedKey": "PATCH /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateContractTaxFactRevision",
+              "patchJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -694,7 +865,13 @@
           "path": "/contracts/:param/abandonment",
           "normalizedPath": "/contracts/:param/abandonment",
           "normalizedKey": "POST /contracts/:param/abandonment",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "abandonContractDraft",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -719,7 +896,13 @@
           "path": "/contract-drafts/:param/edit-lease",
           "normalizedPath": "/contract-drafts/:param/edit-lease",
           "normalizedKey": "POST /contract-drafts/:param/edit-lease",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "acquireContractDraftEditLease",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -744,7 +927,13 @@
           "path": "/contract-bills/:param/rows",
           "normalizedPath": "/contract-bills/:param/rows",
           "normalizedKey": "POST /contract-bills/:param/rows",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "addBillRow",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -766,7 +955,13 @@
           "path": "/contract-workbench/:param/parties",
           "normalizedPath": "/contract-workbench/:param/parties",
           "normalizedKey": "POST /contract-workbench/:param/parties",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "addContractParty",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -788,7 +983,13 @@
           "path": "/contract-bill-imports/:param/apply",
           "normalizedPath": "/contract-bill-imports/:param/apply",
           "normalizedKey": "POST /contract-bill-imports/:param/apply",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "applyBillExcelImport",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -810,7 +1011,13 @@
           "path": "/contract-workbench/:param/type-change",
           "normalizedPath": "/contract-workbench/:param/type-change",
           "normalizedKey": "POST /contract-workbench/:param/type-change",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "applyContractTypeChange",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -834,7 +1041,13 @@
           "path": "/contracts/:param/readiness",
           "normalizedPath": "/contracts/:param/readiness",
           "normalizedKey": "POST /contracts/:param/readiness",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "checkContractSubmissionReadiness",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -858,7 +1071,13 @@
           "path": "/contract-template-versions/:param/clone",
           "normalizedPath": "/contract-template-versions/:param/clone",
           "normalizedKey": "POST /contract-template-versions/:param/clone",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "cloneContractTemplateVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -882,7 +1101,13 @@
           "path": "/contract-layout-template-versions/:param/clone",
           "normalizedPath": "/contract-layout-template-versions/:param/clone",
           "normalizedKey": "POST /contract-layout-template-versions/:param/clone",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "cloneLayoutTemplateVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -906,7 +1131,13 @@
           "path": "/contract-versions/:param/bill-transitions/confirm",
           "normalizedPath": "/contract-versions/:param/bill-transitions/confirm",
           "normalizedKey": "POST /contract-versions/:param/bill-transitions/confirm",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmContractBillTransitions",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -930,7 +1161,13 @@
           "path": "/contract-workbench/:param/settlement-mode/confirm",
           "normalizedPath": "/contract-workbench/:param/settlement-mode/confirm",
           "normalizedKey": "POST /contract-workbench/:param/settlement-mode/confirm",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmContractSettlementMode",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -954,7 +1191,13 @@
           "path": "/business-parties",
           "normalizedPath": "/business-parties",
           "normalizedKey": "POST /business-parties",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createBusinessParty",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -978,7 +1221,13 @@
           "path": "/business-parties/:param/versions",
           "normalizedPath": "/business-parties/:param/versions",
           "normalizedKey": "POST /business-parties/:param/versions",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createBusinessPartyVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1002,7 +1251,13 @@
           "path": "/contract-number-rules",
           "normalizedPath": "/contract-number-rules",
           "normalizedKey": "POST /contract-number-rules",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createContractNumberRule",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1026,7 +1281,13 @@
           "path": "/contract-templates",
           "normalizedPath": "/contract-templates",
           "normalizedKey": "POST /contract-templates",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createContractTemplate",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1050,7 +1311,13 @@
           "path": "/contract-workbench/:param/checkpoints",
           "normalizedPath": "/contract-workbench/:param/checkpoints",
           "normalizedKey": "POST /contract-workbench/:param/checkpoints",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createDraftCheckpoint",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1072,7 +1339,13 @@
           "path": "/contract-layout-templates",
           "normalizedPath": "/contract-layout-templates",
           "normalizedKey": "POST /contract-layout-templates",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createLayoutTemplate",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1096,7 +1369,13 @@
           "path": "/standard-clauses",
           "normalizedPath": "/standard-clauses",
           "normalizedKey": "POST /standard-clauses",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createStandardClause",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1120,7 +1399,13 @@
           "path": "/contracts",
           "normalizedPath": "/contracts",
           "normalizedKey": "POST /contracts",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createWorkbenchDraft",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1145,7 +1430,13 @@
           "path": "/contract-bills/:param/rows/:param",
           "normalizedPath": "/contract-bills/:param/rows/:param",
           "normalizedKey": "DELETE /contract-bills/:param/rows/:param",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "deleteBillRow",
+              "deleteJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1167,7 +1458,13 @@
           "path": "/contract-drafts/:param",
           "normalizedPath": "/contract-drafts/:param",
           "normalizedKey": "DELETE /contract-drafts/:param",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "deletePristineContractDraft",
+              "deleteJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1189,7 +1486,13 @@
           "path": "/contract-versions/:param/bill-transitions",
           "normalizedPath": "/contract-versions/:param/bill-transitions",
           "normalizedKey": "DELETE /contract-versions/:param/bill-transitions",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "discardContractBillTransitions",
+              "deleteJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1213,7 +1516,13 @@
           "path": "/contract-template-versions/:param/discard",
           "normalizedPath": "/contract-template-versions/:param/discard",
           "normalizedKey": "POST /contract-template-versions/:param/discard",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "discardContractTemplateVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1237,7 +1546,13 @@
           "path": "/contract-layout-template-versions/:param/discard",
           "normalizedPath": "/contract-layout-template-versions/:param/discard",
           "normalizedKey": "POST /contract-layout-template-versions/:param/discard",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "discardLayoutTemplateVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1261,7 +1576,13 @@
           "path": "/standard-clause-versions/:param/discard",
           "normalizedPath": "/standard-clause-versions/:param/discard",
           "normalizedKey": "POST /standard-clause-versions/:param/discard",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "discardStandardClauseVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1285,7 +1606,13 @@
           "path": "/contract-bills/:param/excel-template",
           "normalizedPath": "/contract-bills/:param/excel-template",
           "normalizedKey": "GET /contract-bills/:param/excel-template",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadBillExcelTemplate",
+              "downloadBillExcelTemplateFromPath"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1309,7 +1636,13 @@
           "path": "/contract-drafts/:param/bills/:param/template",
           "normalizedPath": "/contract-drafts/:param/bills/:param/template",
           "normalizedKey": "GET /contract-drafts/:param/bills/:param/template",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadContractDraftBillExcelTemplate",
+              "downloadBillExcelTemplateFromPath"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1333,7 +1666,13 @@
           "path": "/contract-versions/:param/bill-transitions/options",
           "normalizedPath": "/contract-versions/:param/bill-transitions/options",
           "normalizedKey": "GET /contract-versions/:param/bill-transitions/options",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractBillTransitionOptions",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1357,7 +1696,13 @@
           "path": "/contract-versions/:param/bill-transitions",
           "normalizedPath": "/contract-versions/:param/bill-transitions",
           "normalizedKey": "GET /contract-versions/:param/bill-transitions",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractBillTransitions",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1381,7 +1726,13 @@
           "path": "/contract-drafts/:param/workbench",
           "normalizedPath": "/contract-drafts/:param/workbench",
           "normalizedKey": "GET /contract-drafts/:param/workbench",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractDraftWorkbench",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1406,7 +1757,13 @@
           "path": "/contract-workbench/:param",
           "normalizedPath": "/contract-workbench/:param",
           "normalizedKey": "GET /contract-workbench/:param",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractWorkbench",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1428,7 +1785,13 @@
           "path": "/business-parties/:param",
           "normalizedPath": "/business-parties/:param",
           "normalizedKey": "GET /business-parties/:param",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "getBusinessParty",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1452,7 +1815,13 @@
           "path": "/contract-templates/:param",
           "normalizedPath": "/contract-templates/:param",
           "normalizedKey": "GET /contract-templates/:param",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "getContractTemplate",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1476,7 +1845,13 @@
           "path": "/contract-layout-template-versions/:param/preview-generation",
           "normalizedPath": "/contract-layout-template-versions/:param/preview-generation",
           "normalizedKey": "GET /contract-layout-template-versions/:param/preview-generation",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "getLatestLayoutTemplatePreview",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1500,7 +1875,13 @@
           "path": "/contract-layout-templates/:param",
           "normalizedPath": "/contract-layout-templates/:param",
           "normalizedKey": "GET /contract-layout-templates/:param",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "getLayoutTemplate",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1524,7 +1905,13 @@
           "path": "/contract-drafts/:param/edit-lease/heartbeat",
           "normalizedPath": "/contract-drafts/:param/edit-lease/heartbeat",
           "normalizedKey": "POST /contract-drafts/:param/edit-lease/heartbeat",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "heartbeatContractDraftEditLease",
+              "postJsonWithHeaders"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1549,7 +1936,13 @@
           "path": "/contract-layout-template-versions/:param/inspection",
           "normalizedPath": "/contract-layout-template-versions/:param/inspection",
           "normalizedKey": "POST /contract-layout-template-versions/:param/inspection",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "inspectLayoutTemplateVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1573,7 +1966,13 @@
           "path": "/business-parties",
           "normalizedPath": "/business-parties",
           "normalizedKey": "GET /business-parties",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listBusinessParties",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1597,7 +1996,13 @@
           "path": "/contract-workbench/:param/documents",
           "normalizedPath": "/contract-workbench/:param/documents",
           "normalizedKey": "GET /contract-workbench/:param/documents",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listContractDocuments",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1621,7 +2026,13 @@
           "path": "/contract-workbench?scope=my",
           "normalizedPath": "/contract-workbench",
           "normalizedKey": "GET /contract-workbench",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listContractDrafts",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1643,7 +2054,13 @@
           "path": "/contract-number-rules",
           "normalizedPath": "/contract-number-rules",
           "normalizedKey": "GET /contract-number-rules",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listContractNumberRules",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1667,7 +2084,13 @@
           "path": "/contract-templates",
           "normalizedPath": "/contract-templates",
           "normalizedKey": "GET /contract-templates",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listPublishedContractTemplates",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1693,7 +2116,13 @@
           "path": "/contract-layout-templates",
           "normalizedPath": "/contract-layout-templates",
           "normalizedKey": "GET /contract-layout-templates",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listPublishedLayoutTemplates",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1717,7 +2146,13 @@
           "path": "/standard-clauses",
           "normalizedPath": "/standard-clauses",
           "normalizedKey": "GET /standard-clauses",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listPublishedStandardClauses",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1743,7 +2178,13 @@
           "path": "/standard-clauses/history",
           "normalizedPath": "/standard-clauses/history",
           "normalizedKey": "GET /standard-clauses/history",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listStandardClauseHistory",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1777,7 +2218,13 @@
           "path": "/contract-bills/:param/excel-imports",
           "normalizedPath": "/contract-bills/:param/excel-imports",
           "normalizedKey": "POST /contract-bills/:param/excel-imports",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "previewBillExcelImport",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1799,7 +2246,13 @@
           "path": "/contract-drafts/:param/bills/:param/import-preview",
           "normalizedPath": "/contract-drafts/:param/bills/:param/import-preview",
           "normalizedKey": "POST /contract-drafts/:param/bills/:param/import-preview",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "previewContractDraftBillExcelImport",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1823,7 +2276,13 @@
           "path": "/contract-workbench/:param/type-change-preview",
           "normalizedPath": "/contract-workbench/:param/type-change-preview",
           "normalizedKey": "POST /contract-workbench/:param/type-change-preview",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "previewContractTypeChange",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1847,7 +2306,13 @@
           "path": "/contract-template-versions/:param/publication",
           "normalizedPath": "/contract-template-versions/:param/publication",
           "normalizedKey": "POST /contract-template-versions/:param/publication",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "publishContractTemplateVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1871,7 +2336,13 @@
           "path": "/contract-layout-template-versions/:param/publication",
           "normalizedPath": "/contract-layout-template-versions/:param/publication",
           "normalizedKey": "POST /contract-layout-template-versions/:param/publication",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "publishLayoutTemplateVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1895,7 +2366,13 @@
           "path": "/standard-clause-versions/:param/publication",
           "normalizedPath": "/standard-clause-versions/:param/publication",
           "normalizedKey": "POST /standard-clause-versions/:param/publication",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "publishStandardClauseVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1919,7 +2396,13 @@
           "path": "/contract-workbench/:param/documents",
           "normalizedPath": "/contract-workbench/:param/documents",
           "normalizedKey": "POST /contract-workbench/:param/documents",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "queueContractDocument",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1943,7 +2426,13 @@
           "path": "/contract-drafts/:param/preview-generation",
           "normalizedPath": "/contract-drafts/:param/preview-generation",
           "normalizedKey": "POST /contract-drafts/:param/preview-generation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "queueContractDraftPreview",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1968,7 +2457,13 @@
           "path": "/contract-layout-template-versions/:param/preview-generation",
           "normalizedPath": "/contract-layout-template-versions/:param/preview-generation",
           "normalizedKey": "POST /contract-layout-template-versions/:param/preview-generation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "queueLayoutTemplatePreview",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -1992,7 +2487,13 @@
           "path": "/contract-drafts/:param/edit-lease",
           "normalizedPath": "/contract-drafts/:param/edit-lease",
           "normalizedKey": "DELETE /contract-drafts/:param/edit-lease",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "releaseContractDraftEditLease",
+              "deleteJsonWithHeaders"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2017,7 +2518,13 @@
           "path": "/contract-bills/:param/rows/reorder",
           "normalizedPath": "/contract-bills/:param/rows/reorder",
           "normalizedKey": "POST /contract-bills/:param/rows/reorder",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reorderBillRows",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2039,7 +2546,13 @@
           "path": "/contract-bills/:param/rows",
           "normalizedPath": "/contract-bills/:param/rows",
           "normalizedKey": "PUT /contract-bills/:param/rows",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "replaceContractBillRows",
+              "putJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2061,7 +2574,13 @@
           "path": "/contract-workbench/:param/restore",
           "normalizedPath": "/contract-workbench/:param/restore",
           "normalizedKey": "POST /contract-workbench/:param/restore",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "restoreContractDraft",
+              "postJson"
+            ]
+          ]
         }
       ],
       "productionConsumers": [],
@@ -2081,7 +2600,13 @@
           "path": "/contract-workbench/:param/checkpoints/:param/restore",
           "normalizedPath": "/contract-workbench/:param/checkpoints/:param/restore",
           "normalizedKey": "POST /contract-workbench/:param/checkpoints/:param/restore",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "restoreDraftCheckpoint",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2103,7 +2628,13 @@
           "path": "/contract-documents/:param/retry",
           "normalizedPath": "/contract-documents/:param/retry",
           "normalizedKey": "POST /contract-documents/:param/retry",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryContractDocument",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2127,7 +2658,13 @@
           "path": "/contract-template-versions/:param/revoke",
           "normalizedPath": "/contract-template-versions/:param/revoke",
           "normalizedKey": "POST /contract-template-versions/:param/revoke",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "revokeContractTemplateVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2149,7 +2686,13 @@
           "path": "/contract-layout-template-versions/:param/revoke",
           "normalizedPath": "/contract-layout-template-versions/:param/revoke",
           "normalizedKey": "POST /contract-layout-template-versions/:param/revoke",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "revokeLayoutTemplateVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2171,7 +2714,13 @@
           "path": "/contract-versions/:param/bill-transitions",
           "normalizedPath": "/contract-versions/:param/bill-transitions",
           "normalizedKey": "PUT /contract-versions/:param/bill-transitions",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "saveContractBillTransitions",
+              "putJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2195,7 +2744,13 @@
           "path": "/contract-workbench/:param",
           "normalizedPath": "/contract-workbench/:param",
           "normalizedKey": "PATCH /contract-workbench/:param",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "saveContractDraft",
+              "patchJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2217,7 +2772,13 @@
           "path": "/contract-drafts/:param",
           "normalizedPath": "/contract-drafts/:param",
           "normalizedKey": "PUT /contract-drafts/:param",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "saveContractDraftAggregate",
+              "putJsonWithHeaders"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2242,7 +2803,13 @@
           "path": "/contracts/:param/authorizations",
           "normalizedPath": "/contracts/:param/authorizations",
           "normalizedKey": "POST /contracts/:param/authorizations",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "setContractAuthorization",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2266,7 +2833,13 @@
           "path": "/contract-number-rules/:param/stop",
           "normalizedPath": "/contract-number-rules/:param/stop",
           "normalizedKey": "POST /contract-number-rules/:param/stop",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "stopContractNumberRule",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2290,7 +2863,13 @@
           "path": "/contract-template-versions/:param/stop",
           "normalizedPath": "/contract-template-versions/:param/stop",
           "normalizedKey": "POST /contract-template-versions/:param/stop",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "stopContractTemplateVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2314,7 +2893,13 @@
           "path": "/contract-layout-template-versions/:param/stop",
           "normalizedPath": "/contract-layout-template-versions/:param/stop",
           "normalizedKey": "POST /contract-layout-template-versions/:param/stop",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "stopLayoutTemplateVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2338,7 +2923,13 @@
           "path": "/contract-drafts/:param/submission",
           "normalizedPath": "/contract-drafts/:param/submission",
           "normalizedKey": "POST /contract-drafts/:param/submission",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitContractDraft",
+              "postJsonWithHeaders"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2363,7 +2954,13 @@
           "path": "/contracts/:param/approval-submission",
           "normalizedPath": "/contracts/:param/approval-submission",
           "normalizedKey": "POST /contracts/:param/approval-submission",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitContractFromWorkbench",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2385,7 +2982,13 @@
           "path": "/contract-template-versions/:param/submission",
           "normalizedPath": "/contract-template-versions/:param/submission",
           "normalizedKey": "POST /contract-template-versions/:param/submission",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitContractTemplateVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2409,7 +3012,13 @@
           "path": "/contract-layout-template-versions/:param/submission",
           "normalizedPath": "/contract-layout-template-versions/:param/submission",
           "normalizedKey": "POST /contract-layout-template-versions/:param/submission",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitLayoutTemplateVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2433,7 +3042,13 @@
           "path": "/standard-clause-versions/:param/submission",
           "normalizedPath": "/standard-clause-versions/:param/submission",
           "normalizedKey": "POST /standard-clause-versions/:param/submission",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitStandardClauseVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2457,7 +3072,13 @@
           "path": "/contract-drafts/:param/edit-lease/takeover",
           "normalizedPath": "/contract-drafts/:param/edit-lease/takeover",
           "normalizedKey": "POST /contract-drafts/:param/edit-lease/takeover",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "takeOverContractDraftEditLease",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2482,7 +3103,13 @@
           "path": "/contract-workbench/:param/transfer",
           "normalizedPath": "/contract-workbench/:param/transfer",
           "normalizedKey": "POST /contract-workbench/:param/transfer",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "transferContractDraft",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2506,7 +3133,13 @@
           "path": "/contract-bills/:param/rows/:param",
           "normalizedPath": "/contract-bills/:param/rows/:param",
           "normalizedKey": "PATCH /contract-bills/:param/rows/:param",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateBillRow",
+              "patchJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2528,7 +3161,13 @@
           "path": "/contract-number-rules/:param",
           "normalizedPath": "/contract-number-rules/:param",
           "normalizedKey": "PATCH /contract-number-rules/:param",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateContractNumberRule",
+              "patchJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2552,7 +3191,13 @@
           "path": "/contract-template-versions/:param",
           "normalizedPath": "/contract-template-versions/:param",
           "normalizedKey": "PATCH /contract-template-versions/:param",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateContractTemplateVersion",
+              "patchJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2576,7 +3221,13 @@
           "path": "/contract-layout-template-versions/:param",
           "normalizedPath": "/contract-layout-template-versions/:param",
           "normalizedKey": "PATCH /contract-layout-template-versions/:param",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateLayoutTemplateVersion",
+              "patchJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2600,7 +3251,13 @@
           "path": "/contracts/:param/formal-files/approval",
           "normalizedPath": "/contracts/:param/formal-files/approval",
           "normalizedKey": "POST /contracts/:param/formal-files/approval",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "uploadContractFormalApprovalFile",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2624,7 +3281,13 @@
           "path": "/contract-workbench/:param/void",
           "normalizedPath": "/contract-workbench/:param/void",
           "normalizedKey": "POST /contract-workbench/:param/void",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "voidContractDraft",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2646,7 +3309,13 @@
           "path": "/projects/:param/contract-takeovers/:param/abandonment",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/abandonment",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/abandonment",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "abandonContractTakeover",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2670,7 +3339,13 @@
           "path": "/payments/:param/abandonment",
           "normalizedPath": "/payments/:param/abandonment",
           "normalizedKey": "POST /payments/:param/abandonment",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "abandonPaymentRequest",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2694,7 +3369,13 @@
           "path": "/projects/:param/contract-takeovers/import-batches/:param/draft-abandonment-apply",
           "normalizedPath": "/projects/:param/contract-takeovers/import-batches/:param/draft-abandonment-apply",
           "normalizedKey": "POST /projects/:param/contract-takeovers/import-batches/:param/draft-abandonment-apply",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "applyContractTakeoverBatchAbandonment",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2718,7 +3399,13 @@
           "path": "/projects/:param/contract-takeovers/imports/apply",
           "normalizedPath": "/projects/:param/contract-takeovers/imports/apply",
           "normalizedKey": "POST /projects/:param/contract-takeovers/imports/apply",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "applyContractTakeoverExcelImport",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2742,7 +3429,13 @@
           "path": "/contracts/:param/seal-approval",
           "normalizedPath": "/contracts/:param/seal-approval",
           "normalizedKey": "POST /contracts/:param/seal-approval",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "approveContractSeal",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2766,7 +3459,13 @@
           "path": "/contracts/:param/seal/approve",
           "normalizedPath": "/contracts/:param/seal/approve",
           "normalizedKey": "POST /contracts/:param/seal/approve",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "approveGovernedContractSeal",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2790,7 +3489,13 @@
           "path": "/projects/:param/affiliate-assignment",
           "normalizedPath": "/projects/:param/affiliate-assignment",
           "normalizedKey": "POST /projects/:param/affiliate-assignment",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "assignProjectAffiliate",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2812,7 +3517,13 @@
           "path": "/projects/:param/contract-takeovers/:param/evidence-files",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/evidence-files",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/evidence-files",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "attachContractTakeoverEvidenceFile",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2836,7 +3547,13 @@
           "path": "/projects/:param/contract-takeovers/:param/payment-evidence-files",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/payment-evidence-files",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/payment-evidence-files",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "attachHistoricalPaymentVoucher",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2860,7 +3577,13 @@
           "path": "/me/signature/canvas-handoffs/:param/complete",
           "normalizedPath": "/me/signature/canvas-handoffs/:param/complete",
           "normalizedKey": "POST /me/signature/canvas-handoffs/:param/complete",
-          "bodyKind": "form_data"
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "completeCanvasSignatureHandoff",
+              "postForm"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -2882,7 +3605,13 @@
           "path": "/contracts/:param/seal/complete",
           "normalizedPath": "/contracts/:param/seal/complete",
           "normalizedKey": "POST /contracts/:param/seal/complete",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "completeContractSeal",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2906,7 +3635,13 @@
           "path": "/contracts/:param/archive-confirmation",
           "normalizedPath": "/contracts/:param/archive-confirmation",
           "normalizedKey": "POST /contracts/:param/archive-confirmation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmContractArchive",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2930,7 +3665,13 @@
           "path": "/projects/:param/contract-takeovers/:param/confirmation",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/confirmation",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/confirmation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmContractTakeover",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2954,7 +3695,13 @@
           "path": "/projects/:param/contract-takeovers/:param/change-baseline-confirmation",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/change-baseline-confirmation",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/change-baseline-confirmation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmContractTakeoverChangeBaseline",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -2978,7 +3725,13 @@
           "path": "/projects/:param/contract-takeovers/:param/contract-side/confirmation",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/contract-side/confirmation",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/contract-side/confirmation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmContractTakeoverContractSide",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3002,7 +3755,13 @@
           "path": "/projects/:param/contract-takeovers/:param/finance-side/confirmation",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/finance-side/confirmation",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/finance-side/confirmation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmContractTakeoverFinanceSide",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3026,7 +3785,13 @@
           "path": "/contracts/:param/formal-files/final/confirmation",
           "normalizedPath": "/contracts/:param/formal-files/final/confirmation",
           "normalizedKey": "POST /contracts/:param/formal-files/final/confirmation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmMutuallySignedContract",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3050,7 +3815,13 @@
           "path": "/projects/:param/affiliate-company-contracts/:param/confirmation",
           "normalizedPath": "/projects/:param/affiliate-company-contracts/:param/confirmation",
           "normalizedKey": "POST /projects/:param/affiliate-company-contracts/:param/confirmation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmProjectAffiliateCompanyContract",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3074,7 +3845,13 @@
           "path": "/projects/:param/affiliate-contract-facts/:param/confirmation",
           "normalizedPath": "/projects/:param/affiliate-contract-facts/:param/confirmation",
           "normalizedKey": "POST /projects/:param/affiliate-contract-facts/:param/confirmation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmProjectAffiliateContractFact",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3098,7 +3875,13 @@
           "path": "/projects/:param/affiliate-payment-facts/:param/confirmation",
           "normalizedPath": "/projects/:param/affiliate-payment-facts/:param/confirmation",
           "normalizedKey": "POST /projects/:param/affiliate-payment-facts/:param/confirmation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmProjectAffiliatePaymentFact",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3122,7 +3905,13 @@
           "path": "/projects/:param/affiliate-settlement-facts/:param/confirmation",
           "normalizedPath": "/projects/:param/affiliate-settlement-facts/:param/confirmation",
           "normalizedKey": "POST /projects/:param/affiliate-settlement-facts/:param/confirmation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmProjectAffiliateSettlementFact",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3146,7 +3935,13 @@
           "path": "/projects/:param/expense-requests/:param/receipt-confirmation",
           "normalizedPath": "/projects/:param/expense-requests/:param/receipt-confirmation",
           "normalizedKey": "POST /projects/:param/expense-requests/:param/receipt-confirmation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmProjectExpenseReceipt",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3170,7 +3965,13 @@
           "path": "/projects/:param/owner-contracts/:param/confirmation",
           "normalizedPath": "/projects/:param/owner-contracts/:param/confirmation",
           "normalizedKey": "POST /projects/:param/owner-contracts/:param/confirmation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmProjectOwnerContract",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3192,7 +3993,13 @@
           "path": "/projects/:param/upstream-fund-facts/:param/confirmation",
           "normalizedPath": "/projects/:param/upstream-fund-facts/:param/confirmation",
           "normalizedKey": "POST /projects/:param/upstream-fund-facts/:param/confirmation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmProjectUpstreamFundFact",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3216,7 +4023,13 @@
           "path": "/projects/:param/upstream-settlements/:param/confirmation",
           "normalizedPath": "/projects/:param/upstream-settlements/:param/confirmation",
           "normalizedKey": "POST /projects/:param/upstream-settlements/:param/confirmation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmProjectUpstreamSettlement",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3238,7 +4051,13 @@
           "path": "/settlements/:param/archive-confirmation",
           "normalizedPath": "/settlements/:param/archive-confirmation",
           "normalizedKey": "POST /settlements/:param/archive-confirmation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmSettlementArchive",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3262,7 +4081,13 @@
           "path": "/contracts/:param/copies",
           "normalizedPath": "/contracts/:param/copies",
           "normalizedKey": "POST /contracts/:param/copies",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "copyAbandonedContractDraft",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3286,7 +4111,13 @@
           "path": "/projects/:param/settlement-drafts/:param/copies",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/copies",
           "normalizedKey": "POST /projects/:param/settlement-drafts/:param/copies",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "copyAbandonedSettlementDraft",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3310,7 +4141,13 @@
           "path": "/approval-delegations",
           "normalizedPath": "/approval-delegations",
           "normalizedKey": "POST /approval-delegations",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createApprovalDelegation",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3334,7 +4171,13 @@
           "path": "/me/signature/canvas-handoffs",
           "normalizedPath": "/me/signature/canvas-handoffs",
           "normalizedKey": "POST /me/signature/canvas-handoffs",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createCanvasSignatureHandoff",
+              "postJson"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -3356,7 +4199,13 @@
           "path": "/contracts/:param/change-drafts",
           "normalizedPath": "/contracts/:param/change-drafts",
           "normalizedKey": "POST /contracts/:param/change-drafts",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createContractChangeDraft",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3380,7 +4229,13 @@
           "path": "/contracts",
           "normalizedPath": "/contracts",
           "normalizedKey": "POST /contracts",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createContractDraft",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3402,7 +4257,13 @@
           "path": "/projects/:param/contract-takeovers",
           "normalizedPath": "/projects/:param/contract-takeovers",
           "normalizedKey": "POST /projects/:param/contract-takeovers",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createContractTakeover",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3426,7 +4287,13 @@
           "path": "/projects/:param/contract-takeovers/import-drafts",
           "normalizedPath": "/projects/:param/contract-takeovers/import-drafts",
           "normalizedKey": "POST /projects/:param/contract-takeovers/import-drafts",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createContractTakeoverDraftsFromImport",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3450,7 +4317,13 @@
           "path": "/payments",
           "normalizedPath": "/payments",
           "normalizedKey": "POST /payments",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createPaymentRequest",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3474,7 +4347,13 @@
           "path": "/files/:param/download-ticket",
           "normalizedPath": "/files/:param/download-ticket",
           "normalizedKey": "POST /files/:param/download-ticket",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createPrivateFileDownloadTicket",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3504,7 +4383,13 @@
           "path": "/projects",
           "normalizedPath": "/projects",
           "normalizedKey": "POST /projects",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createProject",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3512,6 +4397,20 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createProjectAffiliateCompanyContractRecordAttemptState",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "pure",
+      "returnProvenance": "unverified",
+      "requests": [],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
       ],
       "unreachableConsumers": []
     },
@@ -3528,7 +4427,13 @@
           "path": "/projects/:param/expense-requests",
           "normalizedPath": "/projects/:param/expense-requests",
           "normalizedKey": "POST /projects/:param/expense-requests",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createProjectExpenseRequest",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3552,7 +4457,13 @@
           "path": "/settlements",
           "normalizedPath": "/settlements",
           "normalizedKey": "POST /settlements",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createSettlementDraft",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3574,7 +4485,13 @@
           "path": "/contracts/:param/approval-delegation",
           "normalizedPath": "/contracts/:param/approval-delegation",
           "normalizedKey": "POST /contracts/:param/approval-delegation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "delegateContractApproval",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3598,7 +4515,13 @@
           "path": "/payments/:param/approval-delegation",
           "normalizedPath": "/payments/:param/approval-delegation",
           "normalizedKey": "POST /payments/:param/approval-delegation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "delegatePaymentApproval",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3622,7 +4545,13 @@
           "path": "/settlements/:param/approval-delegation",
           "normalizedPath": "/settlements/:param/approval-delegation",
           "normalizedKey": "POST /settlements/:param/approval-delegation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "delegateSettlementApproval",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3641,12 +4570,17 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3053,
+          "sourceLine": 3246,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
           "normalizedKey": "POST /approval-forms/:param/:param/download",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "downloadApprovalForm"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -3666,12 +4600,18 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3037,
+          "sourceLine": 3230,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
           "normalizedKey": "GET /contracts/ledger-export",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadContractLedgerExport",
+              "downloadWorkbook"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3690,12 +4630,18 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3037,
+          "sourceLine": 3230,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedKey": "GET /projects/:param/contract-takeovers/:param/detail-export",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadContractTakeoverDetailExport",
+              "downloadWorkbook"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3714,12 +4660,17 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2391,
+          "sourceLine": 2584,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
           "normalizedKey": "GET /projects/:param/contract-takeovers/import-template",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadContractTakeoverImportTemplate"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3738,12 +4689,18 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3037,
+          "sourceLine": 3230,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedKey": "GET /projects/:param/contract-takeovers/ledger-export",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadContractTakeoverLedgerExport",
+              "downloadWorkbook"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3767,7 +4724,13 @@
           "path": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
           "normalizedPath": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
           "normalizedKey": "POST /projects/:param/expense-requests/:param/approval-pdf-download-ticket",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "downloadProjectExpenseApprovalPdf",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3791,7 +4754,13 @@
           "path": "/projects/:param/expense-requests/:param/attachment-download-ticket",
           "normalizedPath": "/projects/:param/expense-requests/:param/attachment-download-ticket",
           "normalizedKey": "POST /projects/:param/expense-requests/:param/attachment-download-ticket",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "downloadProjectExpenseAttachment",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3810,12 +4779,17 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3080,
+          "sourceLine": 3273,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
           "normalizedKey": "GET /settlements/:param/attachment-templates/:param/download",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadSettlementAttachmentTemplate"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3834,12 +4808,17 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3067,
+          "sourceLine": 3260,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
           "normalizedKey": "GET /settlements/:param/draft-excel",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadSettlementDraftExcel"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3858,12 +4837,17 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3095,
+          "sourceLine": 3288,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
           "normalizedKey": "POST /settlements/:param/approval-pdf/latest",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "downloadSettlementLatestApprovalPdf"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3882,12 +4866,18 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3037,
+          "sourceLine": 3230,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
           "normalizedKey": "GET /settlements/ledger-export",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadSettlementLedgerExport",
+              "downloadWorkbook"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3911,7 +4901,13 @@
           "path": "/contract-number-rules",
           "normalizedPath": "/contract-number-rules",
           "normalizedKey": "GET /contract-number-rules",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchActiveContractNumberRules",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3933,7 +4929,13 @@
           "path": "/approval-delegations/user-options",
           "normalizedPath": "/approval-delegations/user-options",
           "normalizedKey": "GET /approval-delegations/user-options",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchApprovalDelegationUserOptions",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3962,7 +4964,13 @@
           "path": "/archives",
           "normalizedPath": "/archives",
           "normalizedKey": "GET /archives",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchArchives",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -3987,7 +4995,13 @@
           "path": "/audit-logs",
           "normalizedPath": "/audit-logs",
           "normalizedKey": "GET /audit-logs",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchAuditLogs",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4011,7 +5025,13 @@
           "path": "/contracts/:param/change-eligibility",
           "normalizedPath": "/contracts/:param/change-eligibility",
           "normalizedKey": "GET /contracts/:param/change-eligibility",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractChangeEligibility",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4035,7 +5055,13 @@
           "path": "/projects/contract-create-options",
           "normalizedPath": "/projects/contract-create-options",
           "normalizedKey": "GET /projects/contract-create-options",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractCreateProjects",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4059,7 +5085,13 @@
           "path": "/contracts/:param",
           "normalizedPath": "/contracts/:param",
           "normalizedKey": "GET /contracts/:param",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractDetail",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4083,7 +5115,13 @@
           "path": "/contracts",
           "normalizedPath": "/contracts",
           "normalizedKey": "GET /contracts",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractLedger",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4107,7 +5145,13 @@
           "path": "/contracts/lifecycle-ledger?:param",
           "normalizedPath": "/contracts/lifecycle-ledger",
           "normalizedKey": "GET /contracts/lifecycle-ledger",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractLifecycleLedger",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4129,7 +5173,13 @@
           "path": "/payments/contract-application?contractVersionId=:param",
           "normalizedPath": "/payments/contract-application",
           "normalizedKey": "GET /payments/contract-application",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractPaymentApplication",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4153,7 +5203,13 @@
           "path": "/contracts/workbench?:param",
           "normalizedPath": "/contracts/workbench",
           "normalizedKey": "GET /contracts/workbench",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractWorkbenchLedger",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4177,7 +5233,13 @@
           "path": "/draft-retention/preview",
           "normalizedPath": "/draft-retention/preview",
           "normalizedKey": "GET /draft-retention/preview",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchDraftRetentionPreview",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4201,7 +5263,13 @@
           "path": "/audit-logs/file-downloads",
           "normalizedPath": "/audit-logs/file-downloads",
           "normalizedKey": "GET /audit-logs/file-downloads",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchFileDownloadAudits",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4225,7 +5293,13 @@
           "path": "/contracts/payment-create-options?projectId=:param",
           "normalizedPath": "/contracts/payment-create-options",
           "normalizedKey": "GET /contracts/payment-create-options",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchPaymentContractOptions",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4249,7 +5323,13 @@
           "path": "/payments/:param",
           "normalizedPath": "/payments/:param",
           "normalizedKey": "GET /payments/:param",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchPaymentDetail",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4273,7 +5353,13 @@
           "path": "/payments",
           "normalizedPath": "/payments",
           "normalizedKey": "GET /payments",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchPaymentLedger",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4297,7 +5383,13 @@
           "path": "/payments?:param",
           "normalizedPath": "/payments",
           "normalizedKey": "GET /payments",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchPaymentLifecycleLedger",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4321,7 +5413,13 @@
           "path": "/projects/:param/affiliate-business-facts",
           "normalizedPath": "/projects/:param/affiliate-business-facts",
           "normalizedKey": "GET /projects/:param/affiliate-business-facts",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectAffiliateBusinessFacts",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4345,7 +5443,13 @@
           "path": "/projects/:param/affiliate-company-contracts",
           "normalizedPath": "/projects/:param/affiliate-company-contracts",
           "normalizedKey": "GET /projects/:param/affiliate-company-contracts",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectAffiliateCompanyContracts",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4369,7 +5473,13 @@
           "path": "/projects/affiliate-mapping-report",
           "normalizedPath": "/projects/affiliate-mapping-report",
           "normalizedKey": "GET /projects/affiliate-mapping-report",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectAffiliateMappingReport",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4391,7 +5501,13 @@
           "path": "/projects/:param/expense-requests/:param/approval-detail",
           "normalizedPath": "/projects/:param/expense-requests/:param/approval-detail",
           "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectExpenseApprovalDetail",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4415,7 +5531,13 @@
           "path": "/projects/:param/expense-requests",
           "normalizedPath": "/projects/:param/expense-requests",
           "normalizedKey": "GET /projects/:param/expense-requests",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectExpenseRequests",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4439,7 +5561,13 @@
           "path": "/projects/:param/operating-funds-overview",
           "normalizedPath": "/projects/:param/operating-funds-overview",
           "normalizedKey": "GET /projects/:param/operating-funds-overview",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectOperatingOverview",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4463,7 +5591,13 @@
           "path": "/projects/roster",
           "normalizedPath": "/projects/roster",
           "normalizedKey": "GET /projects/roster",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectRoster",
+              "readJson"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -4485,7 +5619,13 @@
           "path": "/projects",
           "normalizedPath": "/projects",
           "normalizedKey": "GET /projects",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjects",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4513,7 +5653,13 @@
           "path": "/contracts/settlement-create-options?projectId=:param",
           "normalizedPath": "/contracts/settlement-create-options",
           "normalizedKey": "GET /contracts/settlement-create-options",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSettlementContractOptions",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4537,7 +5683,13 @@
           "path": "/settlements/:param",
           "normalizedPath": "/settlements/:param",
           "normalizedKey": "GET /settlements/:param",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSettlementDetail",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4561,7 +5713,13 @@
           "path": "/settlements",
           "normalizedPath": "/settlements",
           "normalizedKey": "GET /settlements",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSettlementLedger",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4585,7 +5743,13 @@
           "path": "/settlements/lifecycle-ledger?:param",
           "normalizedPath": "/settlements/lifecycle-ledger",
           "normalizedKey": "GET /settlements/lifecycle-ledger",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSettlementLifecycleLedger",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4607,7 +5771,13 @@
           "path": "/settlements/workbench?:param",
           "normalizedPath": "/settlements/workbench",
           "normalizedKey": "GET /settlements/workbench",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSettlementWorkbenchLedger",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4631,7 +5801,13 @@
           "path": "/me/work-items",
           "normalizedPath": "/me/work-items",
           "normalizedKey": "GET /me/work-items",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchWorkItems",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4657,7 +5833,13 @@
           "path": "/me/workbench-summary",
           "normalizedPath": "/me/workbench-summary",
           "normalizedKey": "GET /me/workbench-summary",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchWorkbenchSummary",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4679,7 +5861,13 @@
           "path": "/contracts/:param/pdf-generation",
           "normalizedPath": "/contracts/:param/pdf-generation",
           "normalizedKey": "POST /contracts/:param/pdf-generation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "generateContractPdfArchive",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4703,7 +5891,13 @@
           "path": "/payments/:param/pdf-generation",
           "normalizedPath": "/payments/:param/pdf-generation",
           "normalizedKey": "POST /payments/:param/pdf-generation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "generatePaymentPdfArchive",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4727,7 +5921,13 @@
           "path": "/settlements/:param/pdf-generation",
           "normalizedPath": "/settlements/:param/pdf-generation",
           "normalizedKey": "POST /settlements/:param/pdf-generation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "generateSettlementPdfArchive",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4751,7 +5951,13 @@
           "path": "/me/signature/canvas-handoffs/:param",
           "normalizedPath": "/me/signature/canvas-handoffs/:param",
           "normalizedKey": "GET /me/signature/canvas-handoffs/:param",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "getCanvasSignatureHandoff",
+              "readJson"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -4774,7 +5980,13 @@
           "path": "/projects/:param/contract-takeovers/:param",
           "normalizedPath": "/projects/:param/contract-takeovers/:param",
           "normalizedKey": "GET /projects/:param/contract-takeovers/:param",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "getContractTakeover",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4798,7 +6010,13 @@
           "path": "/me/signature/ticket",
           "normalizedPath": "/me/signature/ticket",
           "normalizedKey": "GET /me/signature/ticket",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "getSignatureTicket",
+              "readJson"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -4820,7 +6038,13 @@
           "path": "/approval-delegations",
           "normalizedPath": "/approval-delegations",
           "normalizedKey": "GET /approval-delegations",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listApprovalDelegations",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4844,7 +6068,13 @@
           "path": "/projects/:param/contract-takeovers/import-batches",
           "normalizedPath": "/projects/:param/contract-takeovers/import-batches",
           "normalizedKey": "GET /projects/:param/contract-takeovers/import-batches",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listContractTakeoverImportBatches",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4868,7 +6098,13 @@
           "path": "/projects/:param/contract-takeovers",
           "normalizedPath": "/projects/:param/contract-takeovers",
           "normalizedKey": "GET /projects/:param/contract-takeovers",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listContractTakeovers",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4892,7 +6128,13 @@
           "path": "/projects/:param/contract-takeovers/company-entity-candidates",
           "normalizedPath": "/projects/:param/contract-takeovers/company-entity-candidates",
           "normalizedKey": "GET /projects/:param/contract-takeovers/company-entity-candidates",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listHistoricalCompanyEntityCandidates",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4916,7 +6158,13 @@
           "path": "/projects/:param/contract-takeovers/import-precheck",
           "normalizedPath": "/projects/:param/contract-takeovers/import-precheck",
           "normalizedKey": "POST /projects/:param/contract-takeovers/import-precheck",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "precheckContractTakeoverImport",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4940,7 +6188,13 @@
           "path": "/projects/:param/contract-takeovers/import-batches/:param/draft-abandonment-preview",
           "normalizedPath": "/projects/:param/contract-takeovers/import-batches/:param/draft-abandonment-preview",
           "normalizedKey": "POST /projects/:param/contract-takeovers/import-batches/:param/draft-abandonment-preview",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "previewContractTakeoverBatchAbandonment",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4964,7 +6218,13 @@
           "path": "/projects/:param/contract-takeovers/imports/preview",
           "normalizedPath": "/projects/:param/contract-takeovers/imports/preview",
           "normalizedKey": "POST /projects/:param/contract-takeovers/imports/preview",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "previewContractTakeoverExcelImport",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -4988,7 +6248,13 @@
           "path": "/projects/:param/contract-takeovers/:param/corrections",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/corrections",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/corrections",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordContractTakeoverCorrection",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5010,7 +6276,13 @@
           "path": "/payments/:param/executions",
           "normalizedPath": "/payments/:param/executions",
           "normalizedKey": "POST /payments/:param/executions",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordPaymentExecution",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5034,7 +6306,13 @@
           "path": "/payments/:param/finance-records",
           "normalizedPath": "/payments/:param/finance-records",
           "normalizedKey": "POST /payments/:param/finance-records",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordPaymentFinance",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5058,7 +6336,13 @@
           "path": "/payments/:param/pdf-archive",
           "normalizedPath": "/payments/:param/pdf-archive",
           "normalizedKey": "POST /payments/:param/pdf-archive",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordPaymentPdfArchive",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5082,7 +6366,60 @@
           "path": "/projects/:param/affiliate-company-contracts",
           "normalizedPath": "/projects/:param/affiliate-company-contracts",
           "normalizedKey": "POST /projects/:param/affiliate-company-contracts",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordProjectAffiliateCompanyContract",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "recordProjectAffiliateCompanyContractWithUpload",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 81,
+          "method": "POST",
+          "path": "/files",
+          "normalizedPath": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "recordProjectAffiliateCompanyContractWithUpload",
+              "executeAffiliateCompanyContractRecord",
+              "uploadPrivateFile",
+              "postForm"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 51,
+          "method": "POST",
+          "path": "/projects/:param/affiliate-company-contracts",
+          "normalizedPath": "/projects/:param/affiliate-company-contracts",
+          "normalizedKey": "POST /projects/:param/affiliate-company-contracts",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordProjectAffiliateCompanyContractWithUpload",
+              "executeAffiliateCompanyContractRecord",
+              "recordProjectAffiliateCompanyContract",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5106,7 +6443,13 @@
           "path": "/projects/:param/affiliate-contract-facts",
           "normalizedPath": "/projects/:param/affiliate-contract-facts",
           "normalizedKey": "POST /projects/:param/affiliate-contract-facts",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordProjectAffiliateContractFact",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5130,7 +6473,13 @@
           "path": "/projects/:param/affiliate-payment-facts",
           "normalizedPath": "/projects/:param/affiliate-payment-facts",
           "normalizedKey": "POST /projects/:param/affiliate-payment-facts",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordProjectAffiliatePaymentFact",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5154,7 +6503,13 @@
           "path": "/projects/:param/affiliate-settlement-facts",
           "normalizedPath": "/projects/:param/affiliate-settlement-facts",
           "normalizedKey": "POST /projects/:param/affiliate-settlement-facts",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordProjectAffiliateSettlementFact",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5178,7 +6533,13 @@
           "path": "/projects/:param/expense-requests/:param/executions",
           "normalizedPath": "/projects/:param/expense-requests/:param/executions",
           "normalizedKey": "POST /projects/:param/expense-requests/:param/executions",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordProjectExpenseExecution",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5202,7 +6563,13 @@
           "path": "/projects/:param/expense-requests/:param/finance-records",
           "normalizedPath": "/projects/:param/expense-requests/:param/finance-records",
           "normalizedKey": "POST /projects/:param/expense-requests/:param/finance-records",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordProjectExpenseFinance",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5226,7 +6593,13 @@
           "path": "/projects/:param/expense-requests/:param/purchase-execution",
           "normalizedPath": "/projects/:param/expense-requests/:param/purchase-execution",
           "normalizedKey": "POST /projects/:param/expense-requests/:param/purchase-execution",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordProjectExpensePurchaseExecution",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5250,7 +6623,13 @@
           "path": "/projects/:param/owner-contracts",
           "normalizedPath": "/projects/:param/owner-contracts",
           "normalizedKey": "POST /projects/:param/owner-contracts",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordProjectOwnerContract",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5272,7 +6651,13 @@
           "path": "/projects/:param/proxy-payments",
           "normalizedPath": "/projects/:param/proxy-payments",
           "normalizedKey": "POST /projects/:param/proxy-payments",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordProjectProxyPayment",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5294,7 +6679,13 @@
           "path": "/projects/:param/upstream-fund-facts",
           "normalizedPath": "/projects/:param/upstream-fund-facts",
           "normalizedKey": "POST /projects/:param/upstream-fund-facts",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordProjectUpstreamFundFact",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5318,7 +6709,13 @@
           "path": "/projects/:param/upstream-settlements",
           "normalizedPath": "/projects/:param/upstream-settlements",
           "normalizedKey": "POST /projects/:param/upstream-settlements",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordProjectUpstreamSettlement",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5340,7 +6737,13 @@
           "path": "/settlements/:param/signed-document-regeneration",
           "normalizedPath": "/settlements/:param/signed-document-regeneration",
           "normalizedKey": "POST /settlements/:param/signed-document-regeneration",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "regenerateSettlementSignedDocument",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5364,7 +6767,13 @@
           "path": "/contracts/:param/approval-reminder",
           "normalizedPath": "/contracts/:param/approval-reminder",
           "normalizedKey": "POST /contracts/:param/approval-reminder",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "remindContractApproval",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5388,7 +6797,13 @@
           "path": "/payments/:param/approval-reminder",
           "normalizedPath": "/payments/:param/approval-reminder",
           "normalizedKey": "POST /payments/:param/approval-reminder",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "remindPaymentApproval",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5412,7 +6827,13 @@
           "path": "/settlements/:param/approval-reminder",
           "normalizedPath": "/settlements/:param/approval-reminder",
           "normalizedKey": "POST /settlements/:param/approval-reminder",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "remindSettlementApproval",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5436,7 +6857,13 @@
           "path": "/projects/:param/financing-quotas",
           "normalizedPath": "/projects/:param/financing-quotas",
           "normalizedKey": "POST /projects/:param/financing-quotas",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "requestProjectFinancingQuota",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5458,7 +6885,13 @@
           "path": "/projects/:param/settlement-exception-quotas",
           "normalizedPath": "/projects/:param/settlement-exception-quotas",
           "normalizedKey": "POST /projects/:param/settlement-exception-quotas",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "requestSettlementExceptionQuota",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5480,7 +6913,13 @@
           "path": "/settlements/:param/signed-document-generation-retry",
           "normalizedPath": "/settlements/:param/signed-document-generation-retry",
           "normalizedKey": "POST /settlements/:param/signed-document-generation-retry",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retrySettlementSignedDocumentGeneration",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5504,7 +6943,13 @@
           "path": "/projects/:param/contract-takeovers/:param/supplement-return",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/supplement-return",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/supplement-return",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "returnContractTakeoverForSupplement",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5528,7 +6973,13 @@
           "path": "/contracts/:param/formal-files/final/return",
           "normalizedPath": "/contracts/:param/formal-files/final/return",
           "normalizedKey": "POST /contracts/:param/formal-files/final/return",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "returnMutuallySignedContractForCorrection",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5552,7 +7003,13 @@
           "path": "/contracts/:param/approval",
           "normalizedPath": "/contracts/:param/approval",
           "normalizedKey": "POST /contracts/:param/approval",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reviewContractApproval",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5576,7 +7033,13 @@
           "path": "/projects/:param/contract-takeovers/:param/company-entity-corrections/:param/review",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/company-entity-corrections/:param/review",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/company-entity-corrections/:param/review",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reviewContractTakeoverCompanyEntityCorrection",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5600,7 +7063,13 @@
           "path": "/projects/:param/contract-takeovers/:param/corrections/:param/review",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/corrections/:param/review",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/corrections/:param/review",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reviewContractTakeoverCorrection",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5624,7 +7093,13 @@
           "path": "/projects/:param/contract-takeovers/import-batches/:param/review-result",
           "normalizedPath": "/projects/:param/contract-takeovers/import-batches/:param/review-result",
           "normalizedKey": "PATCH /projects/:param/contract-takeovers/import-batches/:param/review-result",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reviewContractTakeoverImportBatch",
+              "patchJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5648,7 +7123,13 @@
           "path": "/payments/:param/approval",
           "normalizedPath": "/payments/:param/approval",
           "normalizedKey": "POST /payments/:param/approval",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reviewPaymentApproval",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5672,7 +7153,13 @@
           "path": "/projects/:param/expense-requests/:param/approval",
           "normalizedPath": "/projects/:param/expense-requests/:param/approval",
           "normalizedKey": "POST /projects/:param/expense-requests/:param/approval",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reviewProjectExpenseApproval",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5696,7 +7183,13 @@
           "path": "/projects/:param/financing-quotas/:param/approval",
           "normalizedPath": "/projects/:param/financing-quotas/:param/approval",
           "normalizedKey": "POST /projects/:param/financing-quotas/:param/approval",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reviewProjectFinancingQuota",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5718,7 +7211,13 @@
           "path": "/settlements/:param/approval",
           "normalizedPath": "/settlements/:param/approval",
           "normalizedKey": "POST /settlements/:param/approval",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reviewSettlementApproval",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5742,7 +7241,13 @@
           "path": "/projects/:param/settlement-exception-quotas/:param/approval",
           "normalizedPath": "/projects/:param/settlement-exception-quotas/:param/approval",
           "normalizedKey": "POST /projects/:param/settlement-exception-quotas/:param/approval",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reviewSettlementExceptionQuota",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5764,7 +7269,13 @@
           "path": "/approval-delegations/:param",
           "normalizedPath": "/approval-delegations/:param",
           "normalizedKey": "DELETE /approval-delegations/:param",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "revokeApprovalDelegation",
+              "deleteJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5788,7 +7299,13 @@
           "path": "/projects/:param/contract-takeovers/:param/contract-side",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/contract-side",
           "normalizedKey": "PUT /projects/:param/contract-takeovers/:param/contract-side",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "saveContractTakeoverContractSide",
+              "putJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5812,7 +7329,13 @@
           "path": "/projects/:param/contract-takeovers/:param/finance-side",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/finance-side",
           "normalizedKey": "PUT /projects/:param/contract-takeovers/:param/finance-side",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "saveContractTakeoverFinanceSide",
+              "putJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5836,7 +7359,13 @@
           "path": "/contracts/:param/approval-submission",
           "normalizedPath": "/contracts/:param/approval-submission",
           "normalizedKey": "POST /contracts/:param/approval-submission",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitContractApproval",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5858,7 +7387,13 @@
           "path": "/projects/:param/contract-takeovers/:param/company-entity-corrections",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/company-entity-corrections",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/company-entity-corrections",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitContractTakeoverCompanyEntityCorrection",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5882,7 +7417,13 @@
           "path": "/projects/:param/contract-takeovers/:param/corrections",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/corrections",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/corrections",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitContractTakeoverCorrection",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5906,7 +7447,13 @@
           "path": "/projects/:param/contract-takeovers/:param/review-submission",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/review-submission",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/review-submission",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitContractTakeoverReview",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5930,7 +7477,13 @@
           "path": "/projects/:param/affiliate-business-facts/:param/evidence",
           "normalizedPath": "/projects/:param/affiliate-business-facts/:param/evidence",
           "normalizedKey": "POST /projects/:param/affiliate-business-facts/:param/evidence",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "supplementProjectAffiliateBusinessEvidence",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5954,7 +7507,13 @@
           "path": "/projects/:param/financing-quotas/:param/termination",
           "normalizedPath": "/projects/:param/financing-quotas/:param/termination",
           "normalizedKey": "POST /projects/:param/financing-quotas/:param/termination",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "terminateProjectFinancingQuota",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -5976,7 +7535,13 @@
           "path": "/contracts/:param/approval-transfer",
           "normalizedPath": "/contracts/:param/approval-transfer",
           "normalizedKey": "POST /contracts/:param/approval-transfer",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "transferContractApproval",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6000,7 +7565,13 @@
           "path": "/payments/:param/approval-transfer",
           "normalizedPath": "/payments/:param/approval-transfer",
           "normalizedKey": "POST /payments/:param/approval-transfer",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "transferPaymentApproval",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6024,7 +7595,13 @@
           "path": "/settlements/:param/approval-transfer",
           "normalizedPath": "/settlements/:param/approval-transfer",
           "normalizedKey": "POST /settlements/:param/approval-transfer",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "transferSettlementApproval",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6048,7 +7625,13 @@
           "path": "/projects/:param/contract-takeovers/:param",
           "normalizedPath": "/projects/:param/contract-takeovers/:param",
           "normalizedKey": "PATCH /projects/:param/contract-takeovers/:param",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateContractTakeover",
+              "patchJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6072,7 +7655,13 @@
           "path": "/projects/:param",
           "normalizedPath": "/projects/:param",
           "normalizedKey": "PATCH /projects/:param",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateProject",
+              "patchJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6096,7 +7685,13 @@
           "path": "/me/signature/canvas",
           "normalizedPath": "/me/signature/canvas",
           "normalizedKey": "POST /me/signature/canvas",
-          "bodyKind": "form_data"
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "uploadCanvasSignature",
+              "postForm"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -6118,7 +7713,13 @@
           "path": "/contracts/:param/archive-files",
           "normalizedPath": "/contracts/:param/archive-files",
           "normalizedKey": "POST /contracts/:param/archive-files",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "uploadContractArchiveFile",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6142,7 +7743,13 @@
           "path": "/contracts/:param/formal-files/final",
           "normalizedPath": "/contracts/:param/formal-files/final",
           "normalizedKey": "POST /contracts/:param/formal-files/final",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "uploadMutuallySignedContract",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6166,7 +7773,13 @@
           "path": "/files",
           "normalizedPath": "/files",
           "normalizedKey": "POST /files",
-          "bodyKind": "form_data"
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "uploadPrivateFile",
+              "postForm"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6188,7 +7801,6 @@
         "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
         "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
-        "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
         "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
@@ -6214,7 +7826,13 @@
           "path": "/settlements/:param/archive-files",
           "normalizedPath": "/settlements/:param/archive-files",
           "normalizedKey": "POST /settlements/:param/archive-files",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "uploadSettlementArchiveFile",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6238,7 +7856,13 @@
           "path": "/me/signature",
           "normalizedPath": "/me/signature",
           "normalizedKey": "POST /me/signature",
-          "bodyKind": "form_data"
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "uploadSignature",
+              "postForm"
+            ]
+          ]
         }
       ],
       "productionConsumers": [],
@@ -6258,7 +7882,13 @@
           "path": "/projects/:param/expense-requests/:param/voiding",
           "normalizedPath": "/projects/:param/expense-requests/:param/voiding",
           "normalizedKey": "POST /projects/:param/expense-requests/:param/voiding",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "voidProjectExpenseRequest",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6282,7 +7912,13 @@
           "path": "/contracts/:param/approval-withdrawal",
           "normalizedPath": "/contracts/:param/approval-withdrawal",
           "normalizedKey": "POST /contracts/:param/approval-withdrawal",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "withdrawContractApproval",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6306,7 +7942,13 @@
           "path": "/projects/:param/contract-takeovers/:param/contract-side/confirmation-withdrawal",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/contract-side/confirmation-withdrawal",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/contract-side/confirmation-withdrawal",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "withdrawContractTakeoverContractSideConfirmation",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6330,7 +7972,13 @@
           "path": "/projects/:param/contract-takeovers/:param/finance-side/confirmation-withdrawal",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/finance-side/confirmation-withdrawal",
           "normalizedKey": "POST /projects/:param/contract-takeovers/:param/finance-side/confirmation-withdrawal",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "withdrawContractTakeoverFinanceSideConfirmation",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6354,7 +8002,13 @@
           "path": "/payments/:param/approval-withdrawal",
           "normalizedPath": "/payments/:param/approval-withdrawal",
           "normalizedKey": "POST /payments/:param/approval-withdrawal",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "withdrawPaymentApproval",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6378,7 +8032,13 @@
           "path": "/projects/:param/expense-requests/:param/approval-withdrawal",
           "normalizedPath": "/projects/:param/expense-requests/:param/approval-withdrawal",
           "normalizedKey": "POST /projects/:param/expense-requests/:param/approval-withdrawal",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "withdrawProjectExpenseApproval",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6402,7 +8062,13 @@
           "path": "/settlements/:param/approval-withdrawal",
           "normalizedPath": "/settlements/:param/approval-withdrawal",
           "normalizedKey": "POST /settlements/:param/approval-withdrawal",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "withdrawSettlementApproval",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6426,7 +8092,12 @@
           "path": "/expense-claims/:param/payment-subject",
           "normalizedPath": "/expense-claims/:param/payment-subject",
           "normalizedKey": "POST /expense-claims/:param/payment-subject",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "adjustExpenseClaimPaymentSubject"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6450,7 +8121,12 @@
           "path": "/expense-claims/:param/attachments/append",
           "normalizedPath": "/expense-claims/:param/attachments/append",
           "normalizedKey": "POST /expense-claims/:param/attachments/append",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "appendExpenseClaimAttachment"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6474,7 +8150,12 @@
           "path": "/expense-claims/:param/attachments",
           "normalizedPath": "/expense-claims/:param/attachments",
           "normalizedKey": "POST /expense-claims/:param/attachments",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "attachExpenseClaimAttachment"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6498,7 +8179,12 @@
           "path": "/expense-claims/:param/repayments/:param/confirmation",
           "normalizedPath": "/expense-claims/:param/repayments/:param/confirmation",
           "normalizedKey": "POST /expense-claims/:param/repayments/:param/confirmation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmExpenseClaimLoanRepayment"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6522,7 +8208,12 @@
           "path": "/expense-claims",
           "normalizedPath": "/expense-claims",
           "normalizedKey": "POST /expense-claims",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createExpenseClaim"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6546,7 +8237,12 @@
           "path": "/expense-claims/create-options",
           "normalizedPath": "/expense-claims/create-options",
           "normalizedKey": "GET /expense-claims/create-options",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchExpenseClaimCreateOptions"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6570,7 +8266,12 @@
           "path": "/expense-claims/:param",
           "normalizedPath": "/expense-claims/:param",
           "normalizedKey": "GET /expense-claims/:param",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchExpenseClaimDetail"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6594,7 +8295,12 @@
           "path": "/expense-claims",
           "normalizedPath": "/expense-claims",
           "normalizedKey": "GET /expense-claims",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchExpenseClaims"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6618,7 +8324,12 @@
           "path": "/expense-claims/:param/final-disbursement-pdf",
           "normalizedPath": "/expense-claims/:param/final-disbursement-pdf",
           "normalizedKey": "POST /expense-claims/:param/final-disbursement-pdf",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "generateExpenseClaimFinalDisbursementPdf"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6642,7 +8353,12 @@
           "path": "/expense-claims/:param/final-payment-pdf",
           "normalizedPath": "/expense-claims/:param/final-payment-pdf",
           "normalizedKey": "POST /expense-claims/:param/final-payment-pdf",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "generateExpenseClaimFinalPaymentPdf"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6666,7 +8382,12 @@
           "path": "/expense-claims/:param/disbursements",
           "normalizedPath": "/expense-claims/:param/disbursements",
           "normalizedKey": "POST /expense-claims/:param/disbursements",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordExpenseClaimLoanDisbursement"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6690,7 +8411,12 @@
           "path": "/expense-claims/:param/repayments",
           "normalizedPath": "/expense-claims/:param/repayments",
           "normalizedKey": "POST /expense-claims/:param/repayments",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordExpenseClaimLoanRepayment"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6714,7 +8440,12 @@
           "path": "/expense-claims/:param/payments",
           "normalizedPath": "/expense-claims/:param/payments",
           "normalizedKey": "POST /expense-claims/:param/payments",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordExpenseClaimPayment"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6738,7 +8469,12 @@
           "path": "/expense-claims/:param/attachments/:param/removal",
           "normalizedPath": "/expense-claims/:param/attachments/:param/removal",
           "normalizedKey": "POST /expense-claims/:param/attachments/:param/removal",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "removeExpenseClaimAttachment"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6762,7 +8498,12 @@
           "path": "/expense-claims/:param/repayments/:param/reversal",
           "normalizedPath": "/expense-claims/:param/repayments/:param/reversal",
           "normalizedKey": "POST /expense-claims/:param/repayments/:param/reversal",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reverseExpenseClaimLoanRepayment"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6786,7 +8527,12 @@
           "path": "/expense-claims/:param/approval",
           "normalizedPath": "/expense-claims/:param/approval",
           "normalizedKey": "POST /expense-claims/:param/approval",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reviewExpenseClaim"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6810,7 +8556,12 @@
           "path": "/expense-claims/:param/submission",
           "normalizedPath": "/expense-claims/:param/submission",
           "normalizedKey": "POST /expense-claims/:param/submission",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "submitExpenseClaim"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6834,7 +8585,12 @@
           "path": "/funds-workbench",
           "normalizedPath": "/funds-workbench",
           "normalizedKey": "GET /funds-workbench",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchFundsWorkbench"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6858,7 +8614,13 @@
           "path": "/organization/role-additions/apply",
           "normalizedPath": "/organization/role-additions/apply",
           "normalizedKey": "POST /organization/role-additions/apply",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "applyOrganizationRoleAddition",
+              "sendJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6882,7 +8644,13 @@
           "path": "/organization/role-changes/apply",
           "normalizedPath": "/organization/role-changes/apply",
           "normalizedKey": "POST /organization/role-changes/apply",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "applyOrganizationRoleRemoval",
+              "sendJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6906,7 +8674,13 @@
           "path": "/organization/departments",
           "normalizedPath": "/organization/departments",
           "normalizedKey": "POST /organization/departments",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createOrganizationDepartment",
+              "sendJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6930,7 +8704,13 @@
           "path": "/organization/users",
           "normalizedPath": "/organization/users",
           "normalizedKey": "POST /organization/users",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createOrganizationUser",
+              "sendJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6954,7 +8734,13 @@
           "path": "/organization/directory",
           "normalizedPath": "/organization/directory",
           "normalizedKey": "GET /organization/directory",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchOrganizationDirectory",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -6978,7 +8764,13 @@
           "path": "/organization/permission-integrity",
           "normalizedPath": "/organization/permission-integrity",
           "normalizedKey": "GET /organization/permission-integrity",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchPermissionIntegrity",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7014,7 +8806,13 @@
           "path": "/organization/role-additions/preview",
           "normalizedPath": "/organization/role-additions/preview",
           "normalizedKey": "POST /organization/role-additions/preview",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "previewOrganizationRoleAddition",
+              "sendJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7038,7 +8836,13 @@
           "path": "/organization/role-changes/preview",
           "normalizedPath": "/organization/role-changes/preview",
           "normalizedKey": "POST /organization/role-changes/preview",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "previewOrganizationRoleRemoval",
+              "sendJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7062,7 +8866,13 @@
           "path": "/organization/role-changes/batch-preview",
           "normalizedPath": "/organization/role-changes/batch-preview",
           "normalizedKey": "POST /organization/role-changes/batch-preview",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "previewOrganizationRoleRemovalBatch",
+              "sendJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7086,7 +8896,13 @@
           "path": "/organization/departments/:param",
           "normalizedPath": "/organization/departments/:param",
           "normalizedKey": "PATCH /organization/departments/:param",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateOrganizationDepartment",
+              "sendJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7110,7 +8926,13 @@
           "path": "/organization/users/:param",
           "normalizedPath": "/organization/users/:param",
           "normalizedKey": "PATCH /organization/users/:param",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateOrganizationUser",
+              "sendJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7134,7 +8956,13 @@
           "path": "/projects/:param/settlement-drafts/:param/abandonment",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/abandonment",
           "normalizedKey": "POST /projects/:param/settlement-drafts/:param/abandonment",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "abandonSettlementDraftRecord",
+              "requestDraft"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7158,7 +8986,13 @@
           "path": "/projects/:param/settlement-drafts/:param/lines/:param/attachments",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/lines/:param/attachments",
           "normalizedKey": "POST /projects/:param/settlement-drafts/:param/lines/:param/attachments",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "attachSettlementDraftLineFile",
+              "requestDraft"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7182,7 +9016,13 @@
           "path": "/projects/:param/settlement-drafts",
           "normalizedPath": "/projects/:param/settlement-drafts",
           "normalizedKey": "POST /projects/:param/settlement-drafts",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createSettlementDraftRecord",
+              "requestDraft"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7206,7 +9046,13 @@
           "path": "/projects/:param/settlement-drafts/:param",
           "normalizedPath": "/projects/:param/settlement-drafts/:param",
           "normalizedKey": "GET /projects/:param/settlement-drafts/:param",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSettlementDraftRecord",
+              "requestDraft"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7230,7 +9076,13 @@
           "path": "/projects/:param/settlement-drafts/:param/final-preparation",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/final-preparation",
           "normalizedKey": "GET /projects/:param/settlement-drafts/:param/final-preparation",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSettlementFinalPreparation",
+              "requestDraft"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -7252,7 +9104,13 @@
           "path": "/projects/:param/settlement-drafts/:param/frozen-document",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/frozen-document",
           "normalizedKey": "POST /projects/:param/settlement-drafts/:param/frozen-document",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "generateSettlementFrozenDocument",
+              "requestDraft"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7276,7 +9134,13 @@
           "path": "/projects/:param/settlement-drafts/:param/line-attachments/:param/invalidation",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/line-attachments/:param/invalidation",
           "normalizedKey": "POST /projects/:param/settlement-drafts/:param/line-attachments/:param/invalidation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "invalidateSettlementDraftLineAttachment",
+              "requestDraft"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7300,7 +9164,13 @@
           "path": "/projects/:param/settlement-drafts/:param/counterparty-signed-documents",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/counterparty-signed-documents",
           "normalizedKey": "POST /projects/:param/settlement-drafts/:param/counterparty-signed-documents",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "linkSettlementCounterpartySignedDocument",
+              "requestDraft"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7324,7 +9194,13 @@
           "path": "/projects/:param/settlement-drafts/:param/line-attachments",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/line-attachments",
           "normalizedKey": "GET /projects/:param/settlement-drafts/:param/line-attachments",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listSettlementDraftLineAttachments",
+              "requestDraft"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7348,7 +9224,13 @@
           "path": "/projects/:param/settlement-drafts",
           "normalizedPath": "/projects/:param/settlement-drafts",
           "normalizedKey": "GET /projects/:param/settlement-drafts",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listSettlementDraftRecords",
+              "requestDraft"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7372,7 +9254,13 @@
           "path": "/projects/:param/settlement-drafts/:param/approval-submission",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/approval-submission",
           "normalizedKey": "POST /projects/:param/settlement-drafts/:param/approval-submission",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitSettlementDraftRecord",
+              "requestDraft"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7396,7 +9284,13 @@
           "path": "/projects/:param/settlement-drafts/:param",
           "normalizedPath": "/projects/:param/settlement-drafts/:param",
           "normalizedKey": "PATCH /projects/:param/settlement-drafts/:param",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateSettlementDraftRecord",
+              "requestDraft"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7420,7 +9314,13 @@
           "path": "/settlements/:param/recovery",
           "normalizedPath": "/settlements/:param/recovery",
           "normalizedKey": "GET /settlements/:param/recovery",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSettlementRecovery",
+              "request"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7444,7 +9344,13 @@
           "path": "/settlements/:param/recovery-entries",
           "normalizedPath": "/settlements/:param/recovery-entries",
           "normalizedKey": "POST /settlements/:param/recovery-entries",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordSettlementRecovery",
+              "request"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7468,7 +9374,13 @@
           "path": "/settlements/:param/recovery-entries/:param/reversal",
           "normalizedPath": "/settlements/:param/recovery-entries/:param/reversal",
           "normalizedKey": "POST /settlements/:param/recovery-entries/:param/reversal",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reverseSettlementRecovery",
+              "request"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7492,7 +9404,13 @@
           "path": "/settlement-template-versions/:param/clone",
           "normalizedPath": "/settlement-template-versions/:param/clone",
           "normalizedKey": "POST /settlement-template-versions/:param/clone",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "cloneSettlementTemplateVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -7514,7 +9432,13 @@
           "path": "/settlement-templates",
           "normalizedPath": "/settlement-templates",
           "normalizedKey": "POST /settlement-templates",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createSettlementTemplate",
+              "postJson"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -7536,7 +9460,13 @@
           "path": "/settlement-template-versions/:param/discard",
           "normalizedPath": "/settlement-template-versions/:param/discard",
           "normalizedKey": "POST /settlement-template-versions/:param/discard",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "discardSettlementTemplateVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7560,7 +9490,13 @@
           "path": "/settlement-template-versions/:param/preview-pdf/download-ticket",
           "normalizedPath": "/settlement-template-versions/:param/preview-pdf/download-ticket",
           "normalizedKey": "POST /settlement-template-versions/:param/preview-pdf/download-ticket",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "downloadSettlementTemplatePreview",
+              "postJson"
+            ]
+          ]
         },
         {
           "kind": "main",
@@ -7569,14 +9505,25 @@
           "path": "/settlement-template-versions/:param/preview-xlsx/download-ticket",
           "normalizedPath": "/settlement-template-versions/:param/preview-xlsx/download-ticket",
           "normalizedKey": "POST /settlement-template-versions/:param/preview-xlsx/download-ticket",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "downloadSettlementTemplatePreview",
+              "postJson"
+            ]
+          ]
         },
         {
           "kind": "ticket_followup",
           "sourceLine": 223,
           "method": "GET",
           "ticketField": "downloadUrl",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadSettlementTemplatePreview"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7600,7 +9547,13 @@
           "path": "/settlement-workbench/projects/:param/contract-versions/:param/template-recommendations",
           "normalizedPath": "/settlement-workbench/projects/:param/contract-versions/:param/template-recommendations",
           "normalizedKey": "GET /settlement-workbench/projects/:param/contract-versions/:param/template-recommendations",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSettlementTemplateRecommendations",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7624,7 +9577,13 @@
           "path": "/settlement-template-versions/:param/preview-generation",
           "normalizedPath": "/settlement-template-versions/:param/preview-generation",
           "normalizedKey": "POST /settlement-template-versions/:param/preview-generation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "generateSettlementTemplatePreview",
+              "postJson"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -7646,7 +9605,13 @@
           "path": "/settlement-templates/:param",
           "normalizedPath": "/settlement-templates/:param",
           "normalizedKey": "GET /settlement-templates/:param",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "getSettlementTemplate",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7670,7 +9635,13 @@
           "path": "/settlement-template-versions/:param/inspection",
           "normalizedPath": "/settlement-template-versions/:param/inspection",
           "normalizedKey": "POST /settlement-template-versions/:param/inspection",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "inspectSettlementTemplateVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -7692,7 +9663,13 @@
           "path": "/settlement-templates",
           "normalizedPath": "/settlement-templates",
           "normalizedKey": "GET /settlement-templates",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listSettlementTemplates",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7716,7 +9693,13 @@
           "path": "/settlement-template-versions/:param/publication",
           "normalizedPath": "/settlement-template-versions/:param/publication",
           "normalizedKey": "POST /settlement-template-versions/:param/publication",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "publishSettlementTemplateVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7740,7 +9723,13 @@
           "path": "/settlement-template-versions/:param/stop",
           "normalizedPath": "/settlement-template-versions/:param/stop",
           "normalizedKey": "POST /settlement-template-versions/:param/stop",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "stopSettlementTemplateVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -7762,7 +9751,13 @@
           "path": "/settlement-template-versions/:param/submission",
           "normalizedPath": "/settlement-template-versions/:param/submission",
           "normalizedKey": "POST /settlement-template-versions/:param/submission",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitSettlementTemplateVersion",
+              "postJson"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -7784,7 +9779,13 @@
           "path": "/settlement-template-versions/:param",
           "normalizedPath": "/settlement-template-versions/:param",
           "normalizedKey": "PATCH /settlement-template-versions/:param",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateSettlementTemplateVersion",
+              "patchJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7808,7 +9809,12 @@
           "path": "/settlement-workbench/projects/:param/imports/:param/apply",
           "normalizedPath": "/settlement-workbench/projects/:param/imports/:param/apply",
           "normalizedKey": "POST /settlement-workbench/projects/:param/imports/:param/apply",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "applySettlementImport"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7832,7 +9838,13 @@
           "path": "/settlement-workbench/projects/:param/imports/:param/errors.xlsx",
           "normalizedPath": "/settlement-workbench/projects/:param/imports/:param/errors.xlsx",
           "normalizedKey": "GET /settlement-workbench/projects/:param/imports/:param/errors.xlsx",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadSettlementImportErrors",
+              "downloadWorkbook"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7856,7 +9868,13 @@
           "path": "/settlement-workbench/projects/:param/imports/:param/result.xlsx",
           "normalizedPath": "/settlement-workbench/projects/:param/imports/:param/result.xlsx",
           "normalizedKey": "GET /settlement-workbench/projects/:param/imports/:param/result.xlsx",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadSettlementImportResult",
+              "downloadWorkbook"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7880,7 +9898,13 @@
           "path": "/settlement-workbench/contract-versions/:param/import-template",
           "normalizedPath": "/settlement-workbench/contract-versions/:param/import-template",
           "normalizedKey": "GET /settlement-workbench/contract-versions/:param/import-template",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadSettlementImportTemplate",
+              "downloadWorkbook"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7904,7 +9928,12 @@
           "path": "/settlement-workbench/contract-versions/:param/participant-options",
           "normalizedPath": "/settlement-workbench/contract-versions/:param/participant-options",
           "normalizedKey": "GET /settlement-workbench/contract-versions/:param/participant-options",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSettlementParticipantOptions"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7928,7 +9957,12 @@
           "path": "/settlement-workbench/contract-versions/:param/source-lines",
           "normalizedPath": "/settlement-workbench/contract-versions/:param/source-lines",
           "normalizedKey": "GET /settlement-workbench/contract-versions/:param/source-lines",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSettlementSourceLines"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7964,7 +9998,12 @@
           "path": "/settlement-workbench/contract-versions/:param/imports/preview",
           "normalizedPath": "/settlement-workbench/contract-versions/:param/imports/preview",
           "normalizedKey": "POST /settlement-workbench/contract-versions/:param/imports/preview",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "previewSettlementImport"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -7988,7 +10027,12 @@
           "path": "/settlement-workbench/contract-versions/:param/preview",
           "normalizedPath": "/settlement-workbench/contract-versions/:param/preview",
           "normalizedKey": "POST /settlement-workbench/contract-versions/:param/preview",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "previewSettlementLines"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8012,7 +10056,14 @@
           "path": "/spot-procurements/:param/abandonment",
           "normalizedPath": "/spot-procurements/:param/abandonment",
           "normalizedKey": "POST /spot-procurements/:param/abandonment",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "abandonSpotProcurementDraft",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8036,7 +10087,14 @@
           "path": "/spot-procurement-payments/:param/abandonment",
           "normalizedPath": "/spot-procurement-payments/:param/abandonment",
           "normalizedKey": "POST /spot-procurement-payments/:param/abandonment",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "abandonSpotProcurementPaymentDraft",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8060,7 +10118,14 @@
           "path": "/spot-procurement-payments/:param/invoices",
           "normalizedPath": "/spot-procurement-payments/:param/invoices",
           "normalizedKey": "POST /spot-procurement-payments/:param/invoices",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "appendSpotProcurementPaymentInvoice",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8084,7 +10149,14 @@
           "path": "/spot-procurements/:param/receipt/photos",
           "normalizedPath": "/spot-procurements/:param/receipt/photos",
           "normalizedKey": "POST /spot-procurements/:param/receipt/photos",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "attachSpotProcurementReceiptPhoto",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -8106,7 +10178,14 @@
           "path": "/spot-procurements/:param/abnormal-termination/confirmation",
           "normalizedPath": "/spot-procurements/:param/abnormal-termination/confirmation",
           "normalizedKey": "POST /spot-procurements/:param/abnormal-termination/confirmation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmSpotProcurementAbnormalTermination",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8130,7 +10209,14 @@
           "path": "/spot-procurements/:param/discrepancy",
           "normalizedPath": "/spot-procurements/:param/discrepancy",
           "normalizedKey": "POST /spot-procurements/:param/discrepancy",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createSpotProcurementDiscrepancy",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8154,7 +10240,14 @@
           "path": "/spot-procurements",
           "normalizedPath": "/spot-procurements",
           "normalizedKey": "POST /spot-procurements",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createSpotProcurementDraft",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8178,7 +10271,14 @@
           "path": "/spot-procurements/:param/payments",
           "normalizedPath": "/spot-procurements/:param/payments",
           "normalizedKey": "POST /spot-procurements/:param/payments",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createSpotProcurementPaymentDraft",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8200,7 +10300,14 @@
           "path": "/spot-procurements/:param/receipt/delegations",
           "normalizedPath": "/spot-procurements/:param/receipt/delegations",
           "normalizedKey": "POST /spot-procurements/:param/receipt/delegations",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createSpotProcurementReceiptDelegation",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -8222,7 +10329,14 @@
           "path": "/spot-procurements/:param/versions",
           "normalizedPath": "/spot-procurements/:param/versions",
           "normalizedKey": "POST /spot-procurements/:param/versions",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createSpotProcurementVersion",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8246,7 +10360,13 @@
           "path": "/spot-procurements/:param/receipt/photos/:param",
           "normalizedPath": "/spot-procurements/:param/receipt/photos/:param",
           "normalizedKey": "DELETE /spot-procurements/:param/receipt/photos/:param",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "deleteSpotProcurementReceiptPhoto",
+              "deleteJson"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -8268,7 +10388,13 @@
           "path": "/spot-procurements/application-text-suggestions?:param",
           "normalizedPath": "/spot-procurements/application-text-suggestions",
           "normalizedKey": "GET /spot-procurements/application-text-suggestions",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSpotProcurementApplicationTextSuggestions",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8292,7 +10418,13 @@
           "path": "/spot-procurements/capabilities?projectId=:param",
           "normalizedPath": "/spot-procurements/capabilities",
           "normalizedKey": "GET /spot-procurements/capabilities",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSpotProcurementCapabilities",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8317,7 +10449,13 @@
           "path": "/spot-procurements/create-project-options",
           "normalizedPath": "/spot-procurements/create-project-options",
           "normalizedKey": "GET /spot-procurements/create-project-options",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSpotProcurementCreateProjectOptions",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8341,7 +10479,13 @@
           "path": "/spot-procurements/:param",
           "normalizedPath": "/spot-procurements/:param",
           "normalizedKey": "GET /spot-procurements/:param",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSpotProcurementDetail",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8366,7 +10510,13 @@
           "path": "/spot-procurement-payments/:param",
           "normalizedPath": "/spot-procurement-payments/:param",
           "normalizedKey": "GET /spot-procurement-payments/:param",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSpotProcurementPaymentDetail",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8391,7 +10541,13 @@
           "path": "/spot-procurement-payments",
           "normalizedPath": "/spot-procurement-payments",
           "normalizedKey": "GET /spot-procurement-payments",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSpotProcurementPayments",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8416,7 +10572,13 @@
           "path": "/spot-procurements/:param/receipt",
           "normalizedPath": "/spot-procurements/:param/receipt",
           "normalizedKey": "GET /spot-procurements/:param/receipt",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSpotProcurementReceipt",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8440,7 +10602,13 @@
           "path": "/spot-procurements",
           "normalizedPath": "/spot-procurements",
           "normalizedKey": "GET /spot-procurements",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSpotProcurements",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8465,7 +10633,13 @@
           "path": "/vat-rate-options",
           "normalizedPath": "/vat-rate-options",
           "normalizedKey": "GET /vat-rate-options",
-          "bodyKind": "none"
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchVatRateOptions",
+              "readJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8487,7 +10661,14 @@
           "path": "/spot-procurement-payments/:param/invoices/:param/invalidation",
           "normalizedPath": "/spot-procurement-payments/:param/invoices/:param/invalidation",
           "normalizedKey": "POST /spot-procurement-payments/:param/invoices/:param/invalidation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "invalidateSpotProcurementPaymentInvoice",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8511,7 +10692,14 @@
           "path": "/spot-procurement-payments/:param/executions",
           "normalizedPath": "/spot-procurement-payments/:param/executions",
           "normalizedKey": "POST /spot-procurement-payments/:param/executions",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordSpotProcurementPaymentExecution",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8535,7 +10723,14 @@
           "path": "/spot-procurements/:param/refunds",
           "normalizedPath": "/spot-procurements/:param/refunds",
           "normalizedKey": "POST /spot-procurements/:param/refunds",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordSpotProcurementRefund",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8559,7 +10754,14 @@
           "path": "/spot-procurements/:param/payment-drafts",
           "normalizedPath": "/spot-procurements/:param/payment-drafts",
           "normalizedKey": "POST /spot-procurements/:param/payment-drafts",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recreateSpotProcurementPaymentDraft",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8583,7 +10785,14 @@
           "path": "/spot-procurements/:param/receipt/pdf-refresh",
           "normalizedPath": "/spot-procurements/:param/receipt/pdf-refresh",
           "normalizedKey": "POST /spot-procurements/:param/receipt/pdf-refresh",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "refreshSpotProcurementReceiptPdf",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8607,7 +10816,14 @@
           "path": "/spot-procurements/:param/abnormal-termination",
           "normalizedPath": "/spot-procurements/:param/abnormal-termination",
           "normalizedKey": "POST /spot-procurements/:param/abnormal-termination",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "requestSpotProcurementAbnormalTermination",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8631,7 +10847,14 @@
           "path": "/spot-procurements/:param/receipt/draft-reset",
           "normalizedPath": "/spot-procurements/:param/receipt/draft-reset",
           "normalizedKey": "POST /spot-procurements/:param/receipt/draft-reset",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "resetSpotProcurementReceiptDraft",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8655,7 +10878,14 @@
           "path": "/spot-procurements/:param/approval",
           "normalizedPath": "/spot-procurements/:param/approval",
           "normalizedKey": "POST /spot-procurements/:param/approval",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reviewSpotProcurement",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8679,7 +10909,14 @@
           "path": "/spot-procurement-payments/:param/approval",
           "normalizedPath": "/spot-procurement-payments/:param/approval",
           "normalizedKey": "POST /spot-procurement-payments/:param/approval",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reviewSpotProcurementA5Payment",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8703,7 +10940,14 @@
           "path": "/spot-procurement-payments/:param/approval",
           "normalizedPath": "/spot-procurement-payments/:param/approval",
           "normalizedKey": "POST /spot-procurement-payments/:param/approval",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reviewSpotProcurementPayment",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8727,7 +10971,14 @@
           "path": "/spot-procurements/:param/receipt/review",
           "normalizedPath": "/spot-procurements/:param/receipt/review",
           "normalizedKey": "POST /spot-procurements/:param/receipt/review",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reviewSpotProcurementReceipt",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -8749,7 +11000,14 @@
           "path": "/spot-procurements/:param/receipt/review-revocation",
           "normalizedPath": "/spot-procurements/:param/receipt/review-revocation",
           "normalizedKey": "POST /spot-procurements/:param/receipt/review-revocation",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "revokeSpotProcurementReceiptReview",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -8771,7 +11029,14 @@
           "path": "/spot-procurements/:param/submission",
           "normalizedPath": "/spot-procurements/:param/submission",
           "normalizedKey": "POST /spot-procurements/:param/submission",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitSpotProcurement",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8795,7 +11060,14 @@
           "path": "/spot-procurement-payments/:param/submission",
           "normalizedPath": "/spot-procurement-payments/:param/submission",
           "normalizedKey": "POST /spot-procurement-payments/:param/submission",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitSpotProcurementPayment",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8819,7 +11091,14 @@
           "path": "/spot-procurements/:param/receipt/submission",
           "normalizedPath": "/spot-procurements/:param/receipt/submission",
           "normalizedKey": "POST /spot-procurements/:param/receipt/submission",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitSpotProcurementReceipt",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8843,7 +11122,14 @@
           "path": "/spot-procurements/:param/draft",
           "normalizedPath": "/spot-procurements/:param/draft",
           "normalizedKey": "PATCH /spot-procurements/:param/draft",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateSpotProcurementDraft",
+              "patchJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8867,7 +11153,14 @@
           "path": "/spot-procurement-payments/:param/draft",
           "normalizedPath": "/spot-procurement-payments/:param/draft",
           "normalizedKey": "PATCH /spot-procurement-payments/:param/draft",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateSpotProcurementPaymentDraft",
+              "patchJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8891,7 +11184,14 @@
           "path": "/spot-procurement-payments/:param/payer",
           "normalizedPath": "/spot-procurement-payments/:param/payer",
           "normalizedKey": "PATCH /spot-procurement-payments/:param/payer",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateSpotProcurementPaymentPayer",
+              "patchJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8915,7 +11215,14 @@
           "path": "/spot-procurements/:param/receipt/draft",
           "normalizedPath": "/spot-procurements/:param/receipt/draft",
           "normalizedKey": "PATCH /spot-procurements/:param/receipt/draft",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateSpotProcurementReceiptDraft",
+              "patchJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "productionConsumers": [
@@ -8937,7 +11244,14 @@
           "path": "/spot-procurements/:param/voiding",
           "normalizedPath": "/spot-procurements/:param/voiding",
           "normalizedKey": "POST /spot-procurements/:param/voiding",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "voidSpotProcurement",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8961,7 +11275,14 @@
           "path": "/spot-procurement-payments/:param/voiding",
           "normalizedPath": "/spot-procurement-payments/:param/voiding",
           "normalizedKey": "POST /spot-procurement-payments/:param/voiding",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "voidSpotProcurementPayment",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -8985,7 +11306,14 @@
           "path": "/spot-procurements/:param/approval-withdrawal",
           "normalizedPath": "/spot-procurements/:param/approval-withdrawal",
           "normalizedKey": "POST /spot-procurements/:param/approval-withdrawal",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "withdrawSpotProcurement",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -9009,7 +11337,14 @@
           "path": "/spot-procurement-payments/:param/approval-withdrawal",
           "normalizedPath": "/spot-procurement-payments/:param/approval-withdrawal",
           "normalizedKey": "POST /spot-procurement-payments/:param/approval-withdrawal",
-          "bodyKind": "json"
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "withdrawSpotProcurementPayment",
+              "postJson",
+              "writeJson"
+            ]
+          ]
         }
       ],
       "testConsumers": [
@@ -9288,6 +11623,11 @@
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "recordContractTakeoverCorrection",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "recordProjectAffiliateCompanyContract",
         "classification": "test_only"
       },
       {

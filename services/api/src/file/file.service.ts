@@ -32,6 +32,7 @@ export interface UploadPrivateFileInput {
   sizeBytes: number;
   uploadedByUserId: string;
   buffer: Buffer;
+  idempotencyKey?: string;
   approvalFormGenerationClaim?: {
     approvalInstanceId: string;
     claimToken: string;
@@ -147,6 +148,10 @@ const ALLOWED_EXTENSIONS = new Set([
   ".jpeg"
 ]);
 const INVALID_PRIVATE_FILE_PATH_MESSAGE = "私有文件路径无效，系统已阻止本次文件读取。";
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const UPLOAD_IDEMPOTENCY_CONFLICT_MESSAGE =
+  "该文件上传请求已用于其他内容，请重新发起登记";
 
 class InvalidPrivateFilePathError extends Error {
   constructor() {
@@ -684,23 +689,95 @@ export class FileService {
       throw new Error("文件格式不支持，请上传 PDF、Word、Excel 或图片资料");
     }
 
+    const idempotencyKey = input.idempotencyKey;
+    if (
+      idempotencyKey !== undefined &&
+      (typeof idempotencyKey !== "string" ||
+        !UUID_V4_PATTERN.test(idempotencyKey))
+    ) {
+      throw new BadRequestException("文件上传幂等键无效，请重新发起上传");
+    }
+    if (
+      idempotencyKey &&
+      (input.approvalFormGenerationClaim ||
+        input.settlementSignedDocumentGenerationClaim)
+    ) {
+      throw new BadRequestException(
+        "文件上传幂等键不能用于系统生成文件，请重新发起上传"
+      );
+    }
+
     const settlementClaimToken = input.settlementSignedDocumentGenerationClaim?.claimToken;
-    if (settlementClaimToken && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(settlementClaimToken)) {
+    if (settlementClaimToken && !UUID_V4_PATTERN.test(settlementClaimToken)) {
       throw new BadRequestException("结算签名合成任务令牌无效，请重新发起生成");
     }
+    const contentSha256 = createHash("sha256").update(input.buffer).digest("hex");
     const objectKey = settlementClaimToken
       ? `uploads/settlement-signed-generation/${settlementClaimToken}.pdf`
-      : `uploads/${randomUUID()}-${this.safeFileName(input.originalName)}`;
-    const fileId = randomUUID();
-    const contentSha256 = createHash("sha256").update(input.buffer).digest("hex");
-    await this.storage.write(objectKey, input.buffer);
+      : idempotencyKey
+        ? `uploads/idempotent/${idempotencyKey}/${randomUUID()}-${contentSha256}-${this.safeFileName(input.originalName)}`
+        : `uploads/${randomUUID()}-${this.safeFileName(input.originalName)}`;
+    const fileId = idempotencyKey ?? randomUUID();
+    const bucket = this.storage.bucketName();
+    const attemptOwnsObjectKey = !settlementClaimToken;
+    const matchesExpectedUploadFingerprint = (file: FileObject) =>
+      file.id === fileId &&
+      file.bucket === bucket &&
+      file.originalName === input.originalName &&
+      file.mimeType === input.mimeType &&
+      file.sizeBytes === input.sizeBytes &&
+      file.uploadedByUserId === input.uploadedByUserId &&
+      file.contentSha256 === contentSha256 &&
+      file.storageStatus === "active" &&
+      file.supersedesFileObjectId === null;
 
+    if (idempotencyKey) {
+      const existing = await this.prisma.fileObject.findUnique({
+        where: { id: fileId }
+      });
+      if (existing) {
+        if (matchesExpectedUploadFingerprint(existing)) return existing;
+        throw new ConflictException(UPLOAD_IDEMPOTENCY_CONFLICT_MESSAGE);
+      }
+    }
+
+    const cleanupWrittenObject = async (
+      sourceError: unknown,
+      sourceStage = "database_transaction"
+    ) => {
+      try {
+        await this.storage.delete(objectKey);
+      } catch (cleanupError) {
+        this.logger.error({
+          event: "private_file_registration_cleanup_failed",
+          objectKeyFingerprint: this.objectKeyFingerprint(objectKey),
+          transactionError: safeErrorSummary(
+            sourceError,
+            sourceStage
+          ),
+          cleanupError: safeErrorSummary(cleanupError, "orphan_cleanup")
+        });
+        throw new InternalServerErrorException(
+          "文件登记失败且存储清理未完成"
+        );
+      }
+    };
+    try {
+      await this.storage.write(objectKey, input.buffer);
+    } catch (storageError) {
+      if (attemptOwnsObjectKey) {
+        await cleanupWrittenObject(storageError, "storage_write");
+      }
+      throw storageError;
+    }
+
+    let transactionCallbackCompleted = false;
     try {
       return await this.prisma.$transaction(async (tx) => {
         const file = await tx.fileObject.create({
           data: {
             id: fileId,
-            bucket: this.storage.bucketName(),
+            bucket,
             objectKey,
             originalName: input.originalName,
             mimeType: input.mimeType,
@@ -760,18 +837,29 @@ export class FileService {
           }
         }
 
+        transactionCallbackCompleted = true;
         return file;
       });
     } catch (transactionError) {
       let committedFile: FileObject | null;
       try {
         committedFile = await this.prisma.fileObject.findUnique({ where: { id: fileId } });
-        if (committedFile) {
-          const fileMatches =
-            committedFile.objectKey === objectKey &&
-            committedFile.contentSha256 === contentSha256 &&
-            committedFile.uploadedByUserId === input.uploadedByUserId &&
-            committedFile.storageStatus === "active";
+      } catch (verificationError) {
+        this.logger.error({
+          event: "private_file_registration_verification_failed",
+          fileId,
+          objectKeyFingerprint: this.objectKeyFingerprint(objectKey),
+          transactionError: safeErrorSummary(transactionError, "database_transaction"),
+          verificationError: safeErrorSummary(verificationError, "commit_verification")
+        });
+        if (!transactionCallbackCompleted) {
+          await cleanupWrittenObject(transactionError);
+        }
+        throw new InternalServerErrorException("文件登记结果暂时无法确认，请稍后刷新重试");
+      }
+      if (committedFile) {
+        let claimMatches = true;
+        try {
           const [approvalClaim, settlementClaim] = await Promise.all([
             input.approvalFormGenerationClaim
               ? this.prisma.approvalFormGenerationClaim.findFirst({
@@ -794,37 +882,64 @@ export class FileService {
                 })
               : Promise.resolve({ settlementId: "not-required" })
           ]);
-          if (fileMatches && approvalClaim && settlementClaim) return committedFile;
+          claimMatches = Boolean(approvalClaim && settlementClaim);
+        } catch (verificationError) {
           this.logger.error({
-            event: "private_file_registration_commit_ambiguous",
+            event: "private_file_registration_verification_failed",
             fileId,
             objectKeyFingerprint: this.objectKeyFingerprint(objectKey),
-            transactionError: safeErrorSummary(transactionError, "database_transaction")
+            transactionError: safeErrorSummary(transactionError, "database_transaction"),
+            verificationError: safeErrorSummary(verificationError, "commit_verification")
           });
-          throw new InternalServerErrorException("文件登记结果暂时无法确认，请稍后刷新重试");
+          throw new InternalServerErrorException(
+            "文件登记结果暂时无法确认，请稍后刷新重试"
+          );
         }
-      } catch (verificationError) {
-        if (verificationError instanceof InternalServerErrorException) throw verificationError;
+        const fingerprintMatches =
+          matchesExpectedUploadFingerprint(committedFile);
+        const physicalObjectMatches =
+          committedFile.objectKey === objectKey;
+        if (
+          fingerprintMatches &&
+          claimMatches &&
+          (idempotencyKey || physicalObjectMatches)
+        ) {
+          if (idempotencyKey && !physicalObjectMatches) {
+            await cleanupWrittenObject(transactionError);
+          }
+          return committedFile;
+        }
+        if (idempotencyKey) {
+          if (!physicalObjectMatches) {
+            await cleanupWrittenObject(transactionError);
+          }
+          throw new ConflictException(UPLOAD_IDEMPOTENCY_CONFLICT_MESSAGE);
+        }
         this.logger.error({
-          event: "private_file_registration_verification_failed",
+          event: "private_file_registration_commit_ambiguous",
           fileId,
           objectKeyFingerprint: this.objectKeyFingerprint(objectKey),
-          transactionError: safeErrorSummary(transactionError, "database_transaction"),
-          verificationError: safeErrorSummary(verificationError, "commit_verification")
+          transactionError: safeErrorSummary(transactionError, "database_transaction")
         });
-        throw new InternalServerErrorException("文件登记结果暂时无法确认，请稍后刷新重试");
+        throw new InternalServerErrorException(
+          "文件登记结果暂时无法确认，请稍后刷新重试"
+        );
       }
-      try {
-        await this.storage.delete(objectKey);
-      } catch (cleanupError) {
+      if (transactionCallbackCompleted) {
         this.logger.error({
-          event: "private_file_registration_cleanup_failed",
+          event: "private_file_registration_commit_ambiguous",
+          fileId,
           objectKeyFingerprint: this.objectKeyFingerprint(objectKey),
-          transactionError: safeErrorSummary(transactionError, "database_transaction"),
-          cleanupError: safeErrorSummary(cleanupError, "orphan_cleanup")
+          transactionError: safeErrorSummary(
+            transactionError,
+            "database_transaction"
+          )
         });
-        throw new InternalServerErrorException("文件登记失败且存储清理未完成");
+        throw new InternalServerErrorException(
+          "文件登记结果暂时无法确认，请稍后刷新重试"
+        );
       }
+      await cleanupWrittenObject(transactionError);
       throw transactionError;
     }
   }

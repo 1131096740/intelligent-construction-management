@@ -1446,6 +1446,42 @@ export interface RecordProjectAffiliateCompanyContractPayload {
   idempotencyKey: string;
 }
 
+export interface RecordProjectAffiliateCompanyContractWithUploadInput<TContext> {
+  form: {
+    contractReference: string;
+    contractName: string;
+    signedAt: string;
+    rightsObligationsSummary: string;
+    companyEntityId: string;
+  };
+  files: Array<{
+    raw?: Blob & { name?: string };
+  }>;
+  idempotencyKey: string;
+  context: TContext;
+  isCurrent: (context: TContext) => boolean;
+}
+
+export interface ProjectAffiliateCompanyContractRecordSubmission {
+  projectId: string;
+  contractReference: string;
+  contractName: string;
+  signedAt: string;
+  rightsObligationsSummary: string;
+  companyEntityId: string;
+  idempotencyKey: string;
+  file: Blob;
+  fileName: string;
+  isCurrent: () => boolean;
+}
+
+export interface ProjectAffiliateCompanyContractRecordAttemptState {
+  submission: ProjectAffiliateCompanyContractRecordSubmission | null;
+  uploadedFileId: string | null;
+  uploadPromise: Promise<PrivateFileReadModel> | null;
+  requestPromise: Promise<ProjectAffiliateCompanyContractReadModel> | null;
+}
+
 export interface SupplementProjectAffiliateBusinessEvidencePayload {
   businessType: ProjectAffiliateBusinessFactType;
   fileId: string;
@@ -2330,11 +2366,168 @@ export function fetchArchives() {
   return readJson<ArchiveListReadModel>("/archives");
 }
 
-export function uploadPrivateFile(file: Blob, fileName: string) {
+export function uploadPrivateFile(
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
   const form = new FormData();
   form.append("file", file, fileName);
+  if (idempotencyKey !== undefined) {
+    form.append("idempotencyKey", idempotencyKey);
+  }
 
   return postForm<PrivateFileReadModel>("/files", form);
+}
+
+export function createProjectAffiliateCompanyContractRecordAttemptState(): ProjectAffiliateCompanyContractRecordAttemptState {
+  return {
+    submission: null,
+    uploadedFileId: null,
+    uploadPromise: null,
+    requestPromise: null
+  };
+}
+
+export function recordProjectAffiliateCompanyContractWithUpload<TContext>(
+  projectId: string,
+  input: RecordProjectAffiliateCompanyContractWithUploadInput<TContext>,
+  state: ProjectAffiliateCompanyContractRecordAttemptState
+) {
+  if (state.requestPromise) return state.requestPromise;
+  let submission: ProjectAffiliateCompanyContractRecordSubmission;
+  try {
+    submission =
+      state.submission ??
+      normalizeAffiliateCompanyContractRecord(projectId, input);
+    if (submission.projectId !== projectId) {
+      throw new Error(
+        "线下合同登记重试项目已变化，请重新打开登记窗口"
+      );
+    }
+    state.submission = submission;
+  } catch (error) {
+    return Promise.reject(error);
+  }
+  const request = executeAffiliateCompanyContractRecord(
+    projectId,
+    submission,
+    state
+  );
+  state.requestPromise = request;
+  void request.catch(() => {
+    if (state.requestPromise === request) {
+      state.requestPromise = null;
+    }
+  });
+  return request;
+}
+
+function normalizeAffiliateCompanyContractRecord<TContext>(
+  projectId: string,
+  input: RecordProjectAffiliateCompanyContractWithUploadInput<TContext>
+): ProjectAffiliateCompanyContractRecordSubmission {
+  if (!input.isCurrent(input.context)) {
+    throw new Error("线下合同登记上下文已失效，请重新读取当前项目");
+  }
+  const file = input.files[0]?.raw;
+  if (!(file instanceof Blob)) {
+    throw new Error("请上传已由双方线下签署的正式合同文件");
+  }
+  return {
+    projectId: requiredAffiliateCompanyContractRecordText(
+      projectId,
+      "当前项目"
+    ),
+    contractReference: requiredAffiliateCompanyContractRecordText(
+      input.form.contractReference,
+      "线下合同编号"
+    ),
+    contractName: requiredAffiliateCompanyContractRecordText(
+      input.form.contractName,
+      "线下合同名称"
+    ),
+    signedAt: requiredAffiliateCompanyContractRecordText(
+      input.form.signedAt,
+      "签订日期"
+    ),
+    rightsObligationsSummary:
+      requiredAffiliateCompanyContractRecordText(
+        input.form.rightsObligationsSummary,
+        "双方权利义务摘要"
+      ),
+    companyEntityId: requiredAffiliateCompanyContractRecordText(
+      input.form.companyEntityId,
+      "我方签约主体"
+    ),
+    idempotencyKey: requiredAffiliateCompanyContractRecordText(
+      input.idempotencyKey,
+      "线下合同登记幂等键"
+    ),
+    file,
+    fileName: requiredAffiliateCompanyContractRecordText(
+      file.name ?? "",
+      "已签合同文件名"
+    ),
+    isCurrent: () => input.isCurrent(input.context)
+  };
+}
+
+async function executeAffiliateCompanyContractRecord(
+  projectId: string,
+  submission: ProjectAffiliateCompanyContractRecordSubmission,
+  state: ProjectAffiliateCompanyContractRecordAttemptState
+) {
+  if (!submission.isCurrent()) {
+    throw new Error("线下合同登记上下文已失效，请重新读取当前项目");
+  }
+  let fileId = state.uploadedFileId;
+  if (fileId === null) {
+    const upload =
+      state.uploadPromise ??
+      uploadPrivateFile(
+        submission.file,
+        submission.fileName,
+        submission.idempotencyKey
+      );
+    state.uploadPromise = upload;
+    try {
+      const uploaded = await upload;
+      if (uploaded.id !== submission.idempotencyKey) {
+        throw new Error(
+          "文件上传幂等响应不一致，请刷新页面后重新登记"
+        );
+      }
+      fileId = uploaded.id;
+      state.uploadedFileId = uploaded.id;
+    } catch (error) {
+      if (state.uploadPromise === upload) {
+        state.uploadPromise = null;
+      }
+      throw error;
+    }
+  }
+  if (!submission.isCurrent()) {
+    throw new Error("线下合同登记上下文已失效，请重新读取当前项目");
+  }
+  return recordProjectAffiliateCompanyContract(projectId, {
+    contractReference: submission.contractReference,
+    contractName: submission.contractName,
+    signedAt: submission.signedAt,
+    rightsObligationsSummary: submission.rightsObligationsSummary,
+    companyEntityId: submission.companyEntityId,
+    idempotencyKey: submission.idempotencyKey,
+    fileId
+  });
+}
+
+function requiredAffiliateCompanyContractRecordText(
+  value: string,
+  label: string
+) {
+  const normalized = value.trim();
+  if (!normalized) throw new Error(`请填写${label}`);
+  return normalized;
 }
 
 export interface CreatePrivateFileDownloadTicketPayload {

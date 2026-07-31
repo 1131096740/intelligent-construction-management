@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   InternalServerErrorException,
   Logger
@@ -1958,6 +1959,462 @@ describe("FileService", () => {
     expect(storage.delete).not.toHaveBeenCalled();
   });
 
+  it("returns an exact idempotent upload replay before touching storage", async () => {
+    const idempotencyKey = "a43073f9-9731-4d71-9498-b9727344dbd4";
+    const buffer = Buffer.from("private-file");
+    const contentSha256 = createHash("sha256").update(buffer).digest("hex");
+    const existing = {
+      id: idempotencyKey,
+      bucket: "private-local",
+      objectKey: `uploads/idempotent/${idempotencyKey}/existing-object.pdf`,
+      originalName: "合同附件.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 12,
+      uploadedByUserId: "contract-staff-1",
+      contentSha256,
+      storageStatus: "active",
+      supersedesFileObjectId: null,
+      createdAt: new Date()
+    };
+    const prisma = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue(existing)
+      },
+      $transaction: jest.fn()
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.uploadPrivateFile({
+        originalName: "合同附件.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 12,
+        uploadedByUserId: "contract-staff-1",
+        buffer,
+        idempotencyKey
+      })
+    ).resolves.toBe(existing);
+
+    expect(storage.write).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("uses the upload idempotency key as the file id and a unique content-bound object key", async () => {
+    const idempotencyKey = "a43073f9-9731-4d71-9498-b9727344dbd4";
+    const buffer = Buffer.from("private-file");
+    const contentSha256 = createHash("sha256").update(buffer).digest("hex");
+    const tx = {
+      fileObject: {
+        create: jest.fn(
+          async ({ data }: { data: Record<string, unknown> }) => ({
+            ...data,
+            createdAt: new Date()
+          })
+        )
+      }
+    };
+    const prisma = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      $transaction: jest.fn(
+        async (callback: (transaction: typeof tx) => unknown) =>
+          callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    const result = await service.uploadPrivateFile({
+      originalName: "合同附件.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 12,
+      uploadedByUserId: "contract-staff-1",
+      buffer,
+      idempotencyKey
+    });
+
+    expect(result.id).toBe(idempotencyKey);
+    const objectKey = storage.write.mock.calls[0]?.[0] as string;
+    expect(objectKey).toMatch(
+      new RegExp(
+        `^uploads/idempotent/${idempotencyKey}/[a-f0-9-]+-${contentSha256}-合同附件\\.pdf$`,
+        "u"
+      )
+    );
+    expect(storage.write).toHaveBeenCalledWith(objectKey, buffer);
+    expect(tx.fileObject.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        id: idempotencyKey,
+        contentSha256
+      })
+    });
+  });
+
+  it("rejects a malformed upload idempotency key before touching storage", async () => {
+    const prisma = {
+      fileObject: { findUnique: jest.fn() },
+      $transaction: jest.fn()
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.uploadPrivateFile({
+        originalName: "合同附件.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 12,
+        uploadedByUserId: "contract-staff-1",
+        buffer: Buffer.from("private-file"),
+        idempotencyKey: "not-a-uuid"
+      })
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(storage.write).not.toHaveBeenCalled();
+    expect(prisma.fileObject.findUnique).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects reuse of an upload idempotency key for different content", async () => {
+    const idempotencyKey = "a43073f9-9731-4d71-9498-b9727344dbd4";
+    const prisma = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: idempotencyKey,
+          bucket: "private-local",
+          objectKey: `uploads/idempotent/${idempotencyKey}-winner-合同附件.pdf`,
+          originalName: "合同附件.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 6,
+          uploadedByUserId: "contract-staff-1",
+          contentSha256: createHash("sha256")
+            .update(Buffer.from("winner"))
+            .digest("hex"),
+          storageStatus: "active",
+          supersedesFileObjectId: null,
+          createdAt: new Date()
+        })
+      },
+      $transaction: jest.fn()
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.uploadPrivateFile({
+        originalName: "合同附件.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 12,
+        uploadedByUserId: "contract-staff-1",
+        buffer: Buffer.from("private-file"),
+        idempotencyKey
+      })
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(storage.write).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("replays the committed winner after a concurrent idempotent upload conflict", async () => {
+    const idempotencyKey = "a43073f9-9731-4d71-9498-b9727344dbd4";
+    const buffer = Buffer.from("private-file");
+    const contentSha256 = createHash("sha256").update(buffer).digest("hex");
+    const winner = {
+      id: idempotencyKey,
+      bucket: "private-local",
+      objectKey: `uploads/idempotent/${idempotencyKey}/winner.pdf`,
+      originalName: "合同附件.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 12,
+      uploadedByUserId: "contract-staff-1",
+      contentSha256,
+      storageStatus: "active",
+      supersedesFileObjectId: null,
+      createdAt: new Date()
+    };
+    const conflict = Object.assign(new Error("unique conflict"), {
+      name: "PrismaClientKnownRequestError",
+      code: "P2002"
+    });
+    const prisma = {
+      fileObject: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(winner)
+      },
+      $transaction: jest.fn().mockRejectedValue(conflict)
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.uploadPrivateFile({
+        originalName: "合同附件.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 12,
+        uploadedByUserId: "contract-staff-1",
+        buffer,
+        idempotencyKey
+      })
+    ).resolves.toBe(winner);
+
+    const losingObjectKey = storage.write.mock.calls[0]?.[0] as string;
+    expect(losingObjectKey).not.toBe(winner.objectKey);
+    expect(storage.delete).toHaveBeenCalledWith(losingObjectKey);
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("deletes only its unique losing object after a concurrent idempotency conflict", async () => {
+    const idempotencyKey = "a43073f9-9731-4d71-9498-b9727344dbd4";
+    const buffer = Buffer.from("private-file");
+    const contentSha256 = createHash("sha256").update(buffer).digest("hex");
+    const winner = {
+      id: idempotencyKey,
+      bucket: "private-local",
+      objectKey: `uploads/idempotent/${idempotencyKey}/winner.pdf`,
+      originalName: "合同附件.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 12,
+      uploadedByUserId: "another-contract-staff",
+      contentSha256,
+      storageStatus: "active",
+      supersedesFileObjectId: null,
+      createdAt: new Date()
+    };
+    const conflict = Object.assign(new Error("unique conflict"), {
+      name: "PrismaClientKnownRequestError",
+      code: "P2002"
+    });
+    const prisma = {
+      fileObject: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(winner)
+      },
+      $transaction: jest.fn().mockRejectedValue(conflict)
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.uploadPrivateFile({
+        originalName: "合同附件.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 12,
+        uploadedByUserId: "contract-staff-1",
+        buffer,
+        idempotencyKey
+      })
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    const losingObjectKey = storage.write.mock.calls[0]?.[0] as string;
+    expect(losingObjectKey).not.toBe(winner.objectKey);
+    expect(storage.delete).toHaveBeenCalledTimes(1);
+    expect(storage.delete).toHaveBeenCalledWith(losingObjectKey);
+    expect(storage.delete).not.toHaveBeenCalledWith(winner.objectKey);
+  });
+
+  it("keeps another in-flight upload object when one same-key transaction fails before registration", async () => {
+    const deferred = <T,>() => {
+      let resolve!: (value: T | PromiseLike<T>) => void;
+      const promise = new Promise<T>((next) => {
+        resolve = next;
+      });
+      return { promise, resolve };
+    };
+    const idempotencyKey = "a43073f9-9731-4d71-9498-b9727344dbd4";
+    const buffer = Buffer.from("private-file");
+    const firstEntered = deferred<void>();
+    const secondEntered = deferred<void>();
+    const releaseFirst = deferred<void>();
+    const releaseSecond = deferred<void>();
+    const firstFailure = new Error("transaction connection failed");
+    let transactionCall = 0;
+    const tx = {
+      fileObject: {
+        create: jest.fn(
+          async ({ data }: { data: Record<string, unknown> }) => ({
+            ...data,
+            createdAt: new Date()
+          })
+        )
+      }
+    };
+    const prisma = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      $transaction: jest.fn(
+        async (callback: (transaction: typeof tx) => unknown) => {
+          transactionCall += 1;
+          if (transactionCall === 1) {
+            firstEntered.resolve();
+            await releaseFirst.promise;
+            throw firstFailure;
+          }
+          secondEntered.resolve();
+          await releaseSecond.promise;
+          return callback(tx);
+        }
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    const input = {
+      originalName: "合同附件.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 12,
+      uploadedByUserId: "contract-staff-1",
+      buffer,
+      idempotencyKey
+    };
+
+    const first = service.uploadPrivateFile(input);
+    const firstFailureExpectation = expect(first).rejects.toBe(firstFailure);
+    await firstEntered.promise;
+    const second = service.uploadPrivateFile(input);
+    await secondEntered.promise;
+    const firstObjectKey = storage.write.mock.calls[0]?.[0] as string;
+    const secondObjectKey = storage.write.mock.calls[1]?.[0] as string;
+    expect(firstObjectKey).not.toBe(secondObjectKey);
+
+    releaseFirst.resolve();
+    await firstFailureExpectation;
+    expect(storage.delete).toHaveBeenCalledWith(firstObjectKey);
+    expect(storage.delete).not.toHaveBeenCalledWith(secondObjectKey);
+
+    releaseSecond.resolve();
+    await expect(second).resolves.toMatchObject({
+      id: idempotencyKey,
+      objectKey: secondObjectKey
+    });
+    expect(storage.delete).not.toHaveBeenCalledWith(secondObjectKey);
+  });
+
+  it("returns its own idempotent upload after transaction acknowledgement loss", async () => {
+    const idempotencyKey = "a43073f9-9731-4d71-9498-b9727344dbd4";
+    let persisted: Record<string, unknown> | null = null;
+    const tx = {
+      fileObject: {
+        create: jest.fn(
+          async ({ data }: { data: Record<string, unknown> }) => {
+            persisted = { ...data, createdAt: new Date() };
+            return persisted;
+          }
+        )
+      }
+    };
+    const prisma = {
+      fileObject: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockImplementation(async () => persisted)
+      },
+      $transaction: jest.fn(
+        async (callback: (transaction: typeof tx) => unknown) => {
+          await callback(tx);
+          throw new Error("transaction acknowledgement lost");
+        }
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    const result = await service.uploadPrivateFile({
+      originalName: "合同附件.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 12,
+      uploadedByUserId: "contract-staff-1",
+      buffer: Buffer.from("private-file"),
+      idempotencyKey
+    });
+
+    expect(result).toBe(persisted);
+    expect(storage.delete).not.toHaveBeenCalled();
+  });
+
+  it("does not delete an idempotent object when commit acknowledgement is lost before the row becomes visible", async () => {
+    const idempotencyKey = "a43073f9-9731-4d71-9498-b9727344dbd4";
+    const acknowledgementError = new Error(
+      "transaction acknowledgement lost before visibility"
+    );
+    const tx = {
+      fileObject: {
+        create: jest.fn(
+          async ({ data }: { data: Record<string, unknown> }) => ({
+            ...data,
+            createdAt: new Date()
+          })
+        )
+      }
+    };
+    const prisma = {
+      fileObject: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(null)
+      },
+      $transaction: jest.fn(
+        async (callback: (transaction: typeof tx) => unknown) => {
+          await callback(tx);
+          throw acknowledgementError;
+        }
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.uploadPrivateFile({
+        originalName: "合同附件.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 12,
+        uploadedByUserId: "contract-staff-1",
+        buffer: Buffer.from("private-file"),
+        idempotencyKey
+      })
+    ).rejects.toThrow("文件登记结果暂时无法确认");
+
+    const attemptedObjectKey = storage.write.mock.calls[0]?.[0] as string;
+    expect(attemptedObjectKey).toContain(
+      `uploads/idempotent/${idempotencyKey}/`
+    );
+    expect(storage.delete).not.toHaveBeenCalled();
+  });
+
   it("审批单生成文件在登记事务中同时 CAS 绑定持久 claim", async () => {
     const tx = {
       fileObject: { create: jest.fn().mockResolvedValue({
@@ -2093,10 +2550,25 @@ describe("FileService", () => {
     expect(storage.delete).not.toHaveBeenCalled();
   });
 
-  it("does not delete storage when commit verification itself fails", async () => {
+  it("does not delete storage when commit verification itself fails after the transaction callback completed", async () => {
     const transactionError = new Error("transaction acknowledgement lost");
+    const tx = {
+      fileObject: {
+        create: jest.fn(
+          async ({ data }: { data: Record<string, unknown> }) => ({
+            ...data,
+            createdAt: new Date()
+          })
+        )
+      }
+    };
     const prisma = {
-      $transaction: jest.fn().mockRejectedValue(transactionError),
+      $transaction: jest.fn(
+        async (callback: (transaction: typeof tx) => unknown) => {
+          await callback(tx);
+          throw transactionError;
+        }
+      ),
       fileObject: { findUnique: jest.fn().mockRejectedValue(new Error("database unavailable")) }
     };
     const service = new FileService(
@@ -2111,6 +2583,41 @@ describe("FileService", () => {
     })).rejects.toThrow("文件登记结果暂时无法确认");
 
     expect(storage.delete).not.toHaveBeenCalled();
+  });
+
+  it("cleans its unique object when an idempotent transaction fails before callback completion and winner verification is unavailable", async () => {
+    const idempotencyKey = "a43073f9-9731-4d71-9498-b9727344dbd4";
+    const transactionError = new Error("transaction unavailable");
+    const prisma = {
+      $transaction: jest.fn().mockRejectedValue(transactionError),
+      fileObject: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockRejectedValueOnce(new Error("winner verification unavailable"))
+      }
+    };
+    const service = new FileService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.uploadPrivateFile({
+        originalName: "合同附件.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 12,
+        uploadedByUserId: "contract-staff-1",
+        buffer: Buffer.from("private-file"),
+        idempotencyKey
+      })
+    ).rejects.toThrow("文件登记结果暂时无法确认");
+
+    expect(storage.delete).toHaveBeenCalledTimes(1);
+    expect(storage.delete).toHaveBeenCalledWith(
+      storage.write.mock.calls[0]?.[0]
+    );
   });
 
   it("claim CAS 丢失时回滚文件登记并清理已写入 COS，不留孤儿", async () => {
@@ -2297,7 +2804,7 @@ describe("FileService", () => {
     }
   });
 
-  it("does not delete an object when the storage write itself fails", async () => {
+  it("deletes its unique attempted object when the storage write response fails", async () => {
     const storageError = new Error("storage write failed");
     storage.write.mockRejectedValue(storageError);
     const prisma = {
@@ -2319,6 +2826,108 @@ describe("FileService", () => {
       })
     ).rejects.toBe(storageError);
 
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(storage.delete).toHaveBeenCalledTimes(1);
+    expect(storage.delete).toHaveBeenCalledWith(
+      storage.write.mock.calls[0]?.[0]
+    );
+  });
+
+  it("returns a fixed error and logs only safe facts when storage-write compensation cannot be confirmed", async () => {
+    const storageError = Object.assign(
+      new Error("COS PUT lost Authorization=Bearer put-secret"),
+      {
+        name: "CosPutError",
+        code: "COS_PUT_FAILED",
+        secret: "put-secret"
+      }
+    );
+    const cleanupError = Object.assign(
+      new Error("COS DELETE lost Authorization=Bearer delete-secret"),
+      {
+        name: "CosDeleteError",
+        code: "COS_DELETE_FAILED",
+        secret: "delete-secret"
+      }
+    );
+    storage.write.mockRejectedValue(storageError);
+    storage.delete.mockRejectedValue(cleanupError);
+    const prisma = {
+      $transaction: jest.fn()
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    const loggerError = jest
+      .spyOn(Logger.prototype, "error")
+      .mockImplementation();
+
+    const thrown = await service
+      .uploadPrivateFile({
+        originalName: "敏感合同附件.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 12,
+        uploadedByUserId: "contract-staff-1",
+        buffer: Buffer.from("private-file")
+      })
+      .catch((error) => error);
+
+    const objectKey = storage.write.mock.calls[0]?.[0] as string;
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(storage.delete).toHaveBeenCalledTimes(1);
+    expect(storage.delete).toHaveBeenCalledWith(objectKey);
+    expect(loggerError).toHaveBeenCalledTimes(1);
+    const logged = JSON.stringify(loggerError.mock.calls);
+    expect(logged).toContain("storage_write");
+    expect(logged).toContain("orphan_cleanup");
+    expect(logged).toContain("CosPutError");
+    expect(logged).toContain("COS_PUT_FAILED");
+    expect(logged).toContain("CosDeleteError");
+    expect(logged).toContain("COS_DELETE_FAILED");
+    expect(logged).not.toContain(objectKey);
+    expect(logged).not.toContain("敏感合同附件.pdf");
+    expect(logged).not.toContain("put-secret");
+    expect(logged).not.toContain("delete-secret");
+    expect(logged).not.toContain("Authorization");
+    expect(thrown).toBeInstanceOf(InternalServerErrorException);
+    expect((thrown as InternalServerErrorException).message).toBe(
+      "文件登记失败且存储清理未完成"
+    );
+  });
+
+  it("does not delete a shared settlement-generation key when its storage write response fails", async () => {
+    const storageError = new Error("storage write failed");
+    const claimToken = "123e4567-e89b-42d3-a456-426614174000";
+    storage.write.mockRejectedValue(storageError);
+    const prisma = {
+      $transaction: jest.fn()
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.uploadPrivateFile({
+        originalName: "结算签名合成件.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 12,
+        uploadedByUserId: "contract-director-1",
+        buffer: Buffer.from("private-file"),
+        settlementSignedDocumentGenerationClaim: {
+          settlementId: "settlement-1",
+          claimToken
+        }
+      })
+    ).rejects.toBe(storageError);
+
+    expect(storage.write).toHaveBeenCalledWith(
+      `uploads/settlement-signed-generation/${claimToken}.pdf`,
+      Buffer.from("private-file")
+    );
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(storage.delete).not.toHaveBeenCalled();
   });

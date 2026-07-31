@@ -14,7 +14,7 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "62580430a97217233e458e2246bf76144c9f2c83e62ab8dce56d6cecc68a3a80",
+      "sha256": "e91721f541271a4d6f07885e965ca21179b1f7848c5736038df262a73af618db",
       "status": "ready",
       "summary": {
         "routeCount": 395
@@ -22,19 +22,19 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "560ab05970a24830add6a3fec03292a8cd63a1b6c0ba60f9947f2e55caeb22bf",
+      "sha256": "b570994094defc1a16ac70b12a645913e8b3feb8c6c91a44ab7dc5e97e636c9c",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 14,
-        "exportedFunctionCount": 378,
-        "transportWrapperCount": 375,
-        "pureExportCount": 3,
-        "mainRequestBindingCount": 376,
+        "exportedFunctionCount": 380,
+        "transportWrapperCount": 376,
+        "pureExportCount": 4,
+        "mainRequestBindingCount": 378,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 377,
+        "requestEdgeCount": 379,
         "productionConsumerCount": 333,
-        "orphanWrapperCount": 42,
-        "testOnlyWrapperCount": 40,
+        "orphanWrapperCount": 43,
+        "testOnlyWrapperCount": 41,
         "unreferencedWrapperCount": 2,
         "duplicateNormalizedRouteGroupCount": 6,
         "authTransportExceptionCount": 5
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "386dbae71d145b4577d62f6104f45267a720e6f6ea14fa26f489c43f5275493b",
+      "sha256": "9b39f8210de09e746c34c957c599b2a881a6db0389b3de0d032ff15d8ac51126",
       "status": "blocked",
       "summary": {
         "registeredActionCount": 42,
@@ -53,18 +53,18 @@
         "totalVueFileCount": 134,
         "parsedVueFileCount": 134,
         "reachableProductionModuleCount": 229,
-        "templateEventDirectiveCount": 892,
+        "templateEventDirectiveCount": 893,
         "propCallbackDirectiveCount": 12,
-        "coveredProductionMutationConsumerCount": 8,
+        "coveredProductionMutationConsumerCount": 9,
         "candidateProductionMutationConsumerCount": 39,
-        "acceptedProductionMutationConsumerCount": 8,
-        "productionMutationConsumerPairCount": 275,
-        "blockerCount": 345
+        "acceptedProductionMutationConsumerCount": 9,
+        "productionMutationConsumerPairCount": 274,
+        "blockerCount": 342
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "18889b8b15be66c4fd15822f3fcf64de0ffa8f1e006505c964039bd549dc308d",
+      "sha256": "5e2b092056a415e189fe1051f7892247ba86b4f51f4653987b9af1a3499eeea2",
       "status": "blocked",
       "summary": {
         "routeCount": 395,
@@ -99,19 +99,19 @@
     "exitCandidateRouteCount": 23,
     "internalTaskRouteCount": 2,
     "unclassifiedRouteCount": 26,
-    "mainRequestBindingCount": 376,
+    "mainRequestBindingCount": 378,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
-    "orphanWrapperCount": 42,
+    "orphanWrapperCount": 43,
     "duplicateMutationRouteCount": 4,
     "registeredActionCount": 42,
-    "actionBindingCount": 45,
-    "acceptedActionBindingCount": 8,
-    "unresolvedActionBindingCount": 37,
-    "productionMutationConsumerPairCount": 275,
-    "coveredProductionMutationConsumerPairCount": 8,
-    "uncoveredProductionMutationConsumerPairCount": 267,
-    "blockerCount": 380
+    "actionBindingCount": 46,
+    "acceptedActionBindingCount": 10,
+    "unresolvedActionBindingCount": 36,
+    "productionMutationConsumerPairCount": 274,
+    "coveredProductionMutationConsumerPairCount": 9,
+    "uncoveredProductionMutationConsumerPairCount": 265,
+    "blockerCount": 378
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -287,6 +287,11 @@
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "recordContractTakeoverCorrection",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "recordProjectAffiliateCompanyContract",
         "classification": "test_only"
       },
       {
@@ -1627,14 +1632,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectAffiliateCompanyContract",
-        "consumer": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/affiliate-company-contracts"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "recordProjectAffiliateContractFact",
         "consumer": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
         "normalizedKeys": [
@@ -2029,14 +2026,6 @@
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "uploadPrivateFile",
         "consumer": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "consumer": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
         "normalizedKeys": [
           "POST /files"
         ]
@@ -2780,18 +2769,6 @@
       }
     ],
     "unresolvedActions": [
-      {
-        "actionId": "affiliate-company-contract.record",
-        "bindingIndex": 0,
-        "identity": "affiliate-company-contract.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectAffiliateCompanyContract\u0000POST\u0000POST /projects/:param/affiliate-company-contracts\u00000",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectAffiliateCompanyContract",
-        "normalizedKey": "POST /projects/:param/affiliate-company-contracts",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer"
-        ]
-      },
       {
         "actionId": "contract-draft.abandon-application",
         "bindingIndex": 0,
@@ -5996,6 +5973,7 @@
           "chairman",
           "comprehensive_director",
           "contract_director",
+          "contract_staff",
           "engineering_department_director",
           "finance_director",
           "finance_staff",
@@ -13644,6 +13622,20 @@
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectAffiliateCompanyContractWithUpload",
+          "method": "POST",
+          "path": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "uploadPrivateFile",
           "method": "POST",
           "path": "/files",
@@ -13665,7 +13657,6 @@
             "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
             "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
-            "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
             "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
             "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
             "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
@@ -13683,6 +13674,32 @@
       ],
       "authTransports": [],
       "actions": [
+        {
+          "actionId": "affiliate-company-contract.record",
+          "bindingIndex": 0,
+          "identity": "affiliate-company-contract.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectAffiliateCompanyContractWithUpload\u0000POST\u0000POST /files\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "affiliateCompanyContractRootActions",
+            "key": "record_affiliate_company_contract",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectAffiliateCompanyContractWithUpload",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
         {
           "actionId": "payment-execution.record",
           "bindingIndex": 1,
@@ -15071,6 +15088,18 @@
           "path": "/projects/:param/affiliate-company-contracts",
           "normalizedKey": "POST /projects/:param/affiliate-company-contracts",
           "bodyKind": "json",
+          "productionConsumers": [],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectAffiliateCompanyContractWithUpload",
+          "method": "POST",
+          "path": "/projects/:param/affiliate-company-contracts",
+          "normalizedKey": "POST /projects/:param/affiliate-company-contracts",
+          "bodyKind": "json",
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
           ],
@@ -15083,8 +15112,8 @@
       "actions": [
         {
           "actionId": "affiliate-company-contract.record",
-          "bindingIndex": 0,
-          "identity": "affiliate-company-contract.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectAffiliateCompanyContract\u0000POST\u0000POST /projects/:param/affiliate-company-contracts\u00000",
+          "bindingIndex": 1,
+          "identity": "affiliate-company-contract.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectAffiliateCompanyContractWithUpload\u0000POST\u0000POST /projects/:param/affiliate-company-contracts\u00001",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
@@ -15096,23 +15125,21 @@
             "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "recordProjectAffiliateCompanyContract",
+          "wrapper": "recordProjectAffiliateCompanyContractWithUpload",
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "covered",
       "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED",
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {

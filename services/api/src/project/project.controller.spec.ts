@@ -762,6 +762,27 @@ describe("ProjectController authorization wiring", () => {
     );
   });
 
+  it("adds contract staff only to the affiliate-company contract read route", () => {
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_POSITIONS_KEY,
+        ProjectController.prototype.affiliateCompanyContractList
+      )
+    ).toEqual([...PROJECT_OVERVIEW_READ_POSITION_KEYS, "contract_staff"]);
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_POSITIONS_KEY,
+        ProjectController.prototype.operatingFundsOverview
+      )
+    ).toEqual(PROJECT_OVERVIEW_READ_POSITION_KEYS);
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_POSITIONS_KEY,
+        ProjectController.prototype.affiliateBusinessFacts
+      )
+    ).toEqual(PROJECT_OVERVIEW_READ_POSITION_KEYS);
+  });
+
   it("guards project receipt recording with finance project role", () => {
     expect(Reflect.getMetadata("requiredProjectAction", ProjectController.prototype.recordReceipt)).toBe(
       "project.receipt.record"

@@ -21,6 +21,7 @@ import {
   runWholeSiteCapabilityMatrixCli,
   verifyWholeSiteCapabilityMatrixReadyInputs
 } from "./inspect-whole-site-capability-matrix.mjs";
+import { deriveDuplicateWebApiRoutes } from "./lib/whole-site-web-api-manifest.mjs";
 
 const EMPTY_WEB_BLOCKERS = {
   orphanWrappers: [],
@@ -122,7 +123,9 @@ function wrapper(
     productionConsumers = [
       "apps/web-admin/src/pages/FixturePage.vue"
     ],
-    testConsumers = []
+    testConsumers = [],
+    sourceLine = 10,
+    localCallChains = [[name]]
   } = {}
 ) {
   const normalizedPath = normalize(path);
@@ -133,7 +136,8 @@ function wrapper(
     requests: [
       {
         kind: "main",
-        sourceLine: 10,
+        sourceLine,
+        localCallChains,
         method,
         path,
         normalizedPath,
@@ -148,32 +152,7 @@ function wrapper(
 }
 
 function duplicateRoutes(wrappers) {
-  const groups = new Map();
-  for (const item of wrappers) {
-    for (const request of item.requests) {
-      if (request.kind !== "main") continue;
-      const entries = groups.get(request.normalizedKey) ?? [];
-      entries.push({
-        apiFile: item.apiFile,
-        wrapper: item.name
-      });
-      groups.set(request.normalizedKey, entries);
-    }
-  }
-  return [...groups]
-    .filter(([, entries]) => entries.length > 1)
-    .map(([normalizedKey, entries]) => ({
-      normalizedKey,
-      wrappers: entries.sort((left, right) =>
-        `${left.apiFile}\u0000${left.wrapper}`.localeCompare(
-          `${right.apiFile}\u0000${right.wrapper}`,
-          "en"
-        )
-      )
-    }))
-    .sort((left, right) =>
-      left.normalizedKey.localeCompare(right.normalizedKey, "en")
-    );
+  return deriveDuplicateWebApiRoutes(wrappers);
 }
 
 function webManifest(
@@ -610,7 +589,11 @@ function usageManifest(nestRoutes, web, routeOptions = []) {
         web.wrappers.flatMap((item) =>
           item.productionConsumers.length > 0
             ? item.requests
-                .filter((request) => request.kind === "main")
+                .filter(
+                  (request) =>
+                    request.kind === "main" &&
+                    typeof request.normalizedKey === "string"
+                )
                 .map((request) => request.normalizedKey)
             : []
         )
@@ -715,6 +698,7 @@ test("rejects GET action coverage for a mutation on the same wrapper", () => {
   mixed.requests.push({
     kind: "main",
     sourceLine: 11,
+    localCallChains: [["mixedFixture"]],
     method: "POST",
     path: "/fixtures",
     normalizedPath: "/fixtures",
@@ -911,7 +895,8 @@ test("blocks duplicate mutation wrappers", () => {
     wrapper("POST", "/fixtures", {
       name: "saveFixtureAgain",
       productionConsumers: [],
-      testConsumers: ["apps/web-admin/src/api/fixture.api.test.ts"]
+      testConsumers: ["apps/web-admin/src/api/fixture.api.test.ts"],
+      sourceLine: 11
     })
   ]);
   input.pageManifest = pageManifest(
@@ -924,6 +909,121 @@ test("blocks duplicate mutation wrappers", () => {
   );
   const matrix = build(input);
   assert.equal(matrix.summary.duplicateMutationRouteCount, 1);
+});
+
+test("refuses delegated-route suppression without live analyzer evidence", () => {
+  const input = fixture();
+  input.webManifest = webManifest([
+    ...input.webManifest.wrappers,
+    wrapper("GET", "/fixtures/:param", {
+      name: "fetchFixtureWithPreparation",
+      localCallChains: [
+        [
+          "fetchFixtureWithPreparation",
+          "prepareFixtureRequest",
+          "fetchFixture"
+        ]
+      ]
+    })
+  ]);
+  input.pageManifest = pageManifest(input.webManifest, []);
+  input.usageManifest = usageManifest(
+    input.nestManifest.routes,
+    input.webManifest
+  );
+
+  assert.throws(
+    () => build(input),
+    (error) =>
+      error?.code ===
+      "CAPABILITY_MATRIX_WEB_DUPLICATE_ROUTE_DRIFT"
+  );
+});
+
+test("blocks independent sibling wrappers that merely share one transport site", () => {
+  const input = fixture({ mutation: "accepted" });
+  input.webManifest = webManifest([
+    ...input.webManifest.wrappers,
+    wrapper("POST", "/fixtures", {
+      name: "saveFixtureAgain"
+    })
+  ]);
+  input.pageManifest = pageManifest(
+    input.webManifest,
+    input.pageManifest.actions
+  );
+  input.usageManifest = usageManifest(
+    input.nestManifest.routes,
+    input.webManifest
+  );
+
+  const matrix = build(input);
+  assert.equal(matrix.summary.duplicateMutationRouteCount, 1);
+  assert.equal(matrix.status, "blocked");
+});
+
+test("rejects call-chain evidence that is not rooted at its wrapper", () => {
+  const input = fixture();
+  input.webManifest.wrappers[0].requests[0].localCallChains = [
+    ["forgedFixtureRequest"]
+  ];
+
+  assert.throws(
+    () => build(input),
+    (error) =>
+      error?.code ===
+      "CAPABILITY_MATRIX_INVALID_WEB_REQUEST_CALL_CHAINS"
+  );
+});
+
+test("rederives duplicate routes instead of trusting forged suppression output", () => {
+  const input = fixture({ mutation: "accepted" });
+  input.webManifest = webManifest([
+    ...input.webManifest.wrappers,
+    wrapper("POST", "/fixtures", {
+      name: "saveFixtureAgain"
+    })
+  ]);
+  input.webManifest.duplicateNormalizedRoutes = [];
+  input.webManifest.blockers.duplicateWriteWrappers = [];
+  input.webManifest.summary.duplicateNormalizedRouteGroupCount = 0;
+  input.webManifest.status = "ready";
+
+  assert.throws(
+    () => build(input),
+    (error) =>
+      error?.code ===
+      "CAPABILITY_MATRIX_WEB_DUPLICATE_ROUTE_DRIFT"
+  );
+});
+
+test("rejects coherent forged call-chain suppression without live source evidence", () => {
+  const input = fixture();
+  input.webManifest = webManifest([
+    ...input.webManifest.wrappers,
+    wrapper("GET", "/fixtures/:param", {
+      name: "fetchFixtureForged",
+      localCallChains: [
+        ["fetchFixtureForged", "fetchFixture"]
+      ]
+    })
+  ]);
+  input.pageManifest = pageManifest(input.webManifest, []);
+  input.usageManifest = usageManifest(
+    input.nestManifest.routes,
+    input.webManifest
+  );
+  assert.deepEqual(
+    input.webManifest.duplicateNormalizedRoutes,
+    []
+  );
+
+  assert.throws(
+    () => build(input),
+    (error) =>
+      error?.code ===
+      "CAPABILITY_MATRIX_WEB_DUPLICATE_ROUTE_DRIFT"
+  );
 });
 
 test("blocks an uncovered production mutation consumer", () => {
@@ -1043,6 +1143,60 @@ test("rejects a blocked status with no blockers", () => {
     (error) =>
       error?.code ===
       "CAPABILITY_MATRIX_PAGE_STATUS_CONTRADICTION"
+  );
+});
+
+test("preserves unresolved Web request evidence as a blocked matrix input", () => {
+  const input = fixture();
+  const request = input.webManifest.wrappers[0].requests[0];
+  Object.assign(request, {
+    path: null,
+    normalizedPath: null,
+    normalizedKey: null,
+    unresolvedReason: "dynamic_path"
+  });
+  input.webManifest.blockers.unresolvedRequests = [
+    {
+      apiFile: input.webManifest.wrappers[0].apiFile,
+      wrapper: input.webManifest.wrappers[0].name,
+      reason: "dynamic_path"
+    }
+  ];
+  input.webManifest.status = "blocked";
+  input.pageManifest = pageManifest(input.webManifest, []);
+  input.usageManifest = usageManifest(
+    input.nestManifest.routes,
+    input.webManifest
+  );
+
+  const matrix = build(input);
+  assert.equal(matrix.status, "blocked");
+  assert.equal(
+    matrix.inputManifests.webApiWrappers.status,
+    "blocked"
+  );
+});
+
+test("rederives unresolved Web request blockers instead of trusting ready input", () => {
+  const input = fixture();
+  const request = input.webManifest.wrappers[0].requests[0];
+  Object.assign(request, {
+    path: null,
+    normalizedPath: null,
+    normalizedKey: null,
+    unresolvedReason: "dynamic_path"
+  });
+  input.pageManifest = pageManifest(input.webManifest, []);
+  input.usageManifest = usageManifest(
+    input.nestManifest.routes,
+    input.webManifest
+  );
+
+  assert.throws(
+    () => build(input),
+    (error) =>
+      error?.code ===
+      "CAPABILITY_MATRIX_WEB_UNRESOLVED_BLOCKER_DRIFT"
   );
 });
 

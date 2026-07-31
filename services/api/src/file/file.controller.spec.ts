@@ -274,6 +274,36 @@ describe("FileController authorization wiring", () => {
     });
   });
 
+  it("forwards an optional multipart upload idempotency key", async () => {
+    const files = {
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" })
+    };
+    const controller = new FileController(
+      files as never,
+      { confirmPassword: jest.fn() } as never
+    );
+
+    await controller.upload(
+      {
+        originalname: "合同附件.pdf",
+        mimetype: "application/pdf",
+        size: 12,
+        buffer: Buffer.from("private-file")
+      },
+      { id: "user-1", name: "张三", phone: "13800000000" },
+      "a43073f9-9731-4d71-9498-b9727344dbd4"
+    );
+
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith({
+      originalName: "合同附件.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 12,
+      uploadedByUserId: "user-1",
+      buffer: Buffer.from("private-file"),
+      idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4"
+    });
+  });
+
   it("confirms password before issuing a private file download ticket", async () => {
     const files = {
       createDownloadTicket: jest.fn().mockResolvedValue({ downloadUrl: "/files/file-1/download" })

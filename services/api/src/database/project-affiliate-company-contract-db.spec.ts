@@ -1,13 +1,58 @@
+import { BadRequestException } from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
+import { ProjectAffiliateCompanyContractService } from "../project/project-affiliate-company-contract.service";
 
-const describeDatabase =
-  process.env.RUN_PROJECT_AFFILIATE_COMPANY_CONTRACT_DB_TESTS === "1"
-    ? describe
-    : describe.skip;
+const TEST_DATABASE = "jiangkong_project_affiliate_company_contract_test";
+const LIVE_TEST_ENABLED =
+  process.env.RUN_PROJECT_AFFILIATE_COMPANY_CONTRACT_DB_TESTS === "1";
+
+export function projectAffiliateCompanyContractDatabaseUrl(
+  value: string | undefined
+) {
+  if (!value || process.env.NODE_ENV === "production") {
+    throw new Error(
+      "挂靠公司合同并发测试必须连接非生产专用数据库"
+    );
+  }
+  const url = new URL(value);
+  if (
+    !["postgresql:", "postgres:"].includes(url.protocol) ||
+    !["127.0.0.1", "localhost", "::1"].includes(url.hostname) ||
+    url.pathname !== `/${TEST_DATABASE}`
+  ) {
+    throw new Error("挂靠公司合同并发测试拒绝非本机专用数据库");
+  }
+  return url.toString();
+}
+
+describe("project affiliate-company contract database target guard", () => {
+  it("rejects a production or non-local database target", () => {
+    expect(() =>
+      projectAffiliateCompanyContractDatabaseUrl(
+        "postgresql://user:pass@example.com/production"
+      )
+    ).toThrow("挂靠公司合同并发测试拒绝非本机专用数据库");
+  });
+});
+
+const databaseUrl = LIVE_TEST_ENABLED
+  ? projectAffiliateCompanyContractDatabaseUrl(
+      process.env.PROJECT_AFFILIATE_COMPANY_CONTRACT_DATABASE_URL
+    )
+  : undefined;
+const describeDatabase = LIVE_TEST_ENABLED ? describe : describe.skip;
 
 describeDatabase("project affiliate-company contract PostgreSQL constraints", () => {
-  const prisma = new PrismaClient();
+  const createTestClient = () =>
+    databaseUrl
+      ? new PrismaClient({
+          datasources: { db: { url: databaseUrl } }
+        })
+      : new PrismaClient();
+  const prisma = createTestClient();
+
+  jest.setTimeout(15_000);
 
   afterAll(async () => {
     await prisma.$disconnect();
@@ -118,7 +163,201 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
       })
     ).rejects.toMatchObject({ code: "P2002" });
   });
+
+  it("serializes advisory-to-company lock order without a deadlock", async () => {
+    const fixture = await createFixture(prisma);
+    const first = createTestClient();
+    const second = createTestClient();
+    const firstHasAdvisory = deferred<number>();
+    const releaseFirst = deferred<void>();
+
+    const firstTransaction = first.$transaction(async (tx) => {
+      const [{ pid }] = await tx.$queryRaw<Array<{ pid: number }>>(
+        Prisma.sql`SELECT pg_backend_pid()::int AS "pid"`
+      );
+      await setLocalConcurrencyTimeouts(tx);
+      await acquireTestFileBindingLock(tx);
+      firstHasAdvisory.resolve(pid);
+      await releaseFirst.promise;
+      await lockTestCompany(tx, fixture.companyId);
+      return "first";
+    });
+
+    const firstPid = await firstHasAdvisory.promise;
+    const secondStarted = deferred<number>();
+    const secondTransaction = second.$transaction(async (tx) => {
+      const [{ pid }] = await tx.$queryRaw<Array<{ pid: number }>>(
+        Prisma.sql`SELECT pg_backend_pid()::int AS "pid"`
+      );
+      await setLocalConcurrencyTimeouts(tx);
+      secondStarted.resolve(pid);
+      await acquireTestFileBindingLock(tx);
+      await lockTestCompany(tx, fixture.companyId);
+      return "second";
+    });
+
+    try {
+      const secondPid = await secondStarted.promise;
+      await expectDirectBlocker(prisma, secondPid, firstPid);
+    } finally {
+      releaseFirst.resolve();
+    }
+
+    await expect(
+      Promise.all([firstTransaction, secondTransaction])
+    ).resolves.toEqual(["first", "second"]);
+    await Promise.all([first.$disconnect(), second.$disconnect()]);
+  });
+
+  it("waits for an in-flight FileObject discard and refuses to bind the discarded row", async () => {
+    const fixture = await createFixture(prisma);
+    const discarder = createTestClient();
+    const binder = createTestClient();
+    const discardHasFileRow = deferred<number>();
+    const releaseDiscard = deferred<void>();
+
+    const discardTransaction = discarder.$transaction(async (tx) => {
+      const [{ pid }] = await tx.$queryRaw<Array<{ pid: number }>>(
+        Prisma.sql`SELECT pg_backend_pid()::int AS "pid"`
+      );
+      await setLocalConcurrencyTimeouts(tx);
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id"
+        FROM "FileObject"
+        WHERE "id" = ${fixture.contractFileId}
+        FOR UPDATE
+      `);
+      await tx.fileObject.update({
+        where: { id: fixture.contractFileId },
+        data: { storageStatus: "discarded" }
+      });
+      discardHasFileRow.resolve(pid);
+      await releaseDiscard.promise;
+    });
+
+    const discardPid = await discardHasFileRow.promise;
+    const binderStarted = deferred<number>();
+    const servicePrisma = withTransactionPidProbe(binder, (pid) =>
+      binderStarted.resolve(pid)
+    );
+    const service = new ProjectAffiliateCompanyContractService(
+      servicePrisma as never,
+      { record: jest.fn() } as never
+    );
+    const bindOutcome = service
+      .record(fixture.projectId, fixture.recorderId, {
+        contractReference: `GL-CONCURRENCY-${randomUUID()}`,
+        contractName: "项目挂靠管理协议",
+        signedAt: "2026-07-20",
+        rightsObligationsSummary:
+          "双方已线下约定项目管理、资金核对与责任边界。",
+        companyEntityId: fixture.companyId,
+        fileId: fixture.contractFileId,
+        idempotencyKey: randomUUID()
+      })
+      .then(
+        (value) => ({ status: "resolved" as const, value }),
+        (error: unknown) => ({ status: "rejected" as const, error })
+      );
+
+    try {
+      const binderPid = await binderStarted.promise;
+      await expectDirectBlocker(prisma, binderPid, discardPid);
+    } finally {
+      releaseDiscard.resolve();
+    }
+
+    await discardTransaction;
+    const outcome = await bindOutcome;
+    expect(outcome.status).toBe("rejected");
+    if (outcome.status !== "rejected") {
+      throw new Error("discarded FileObject was unexpectedly bound");
+    }
+    expect(outcome.error).toBeInstanceOf(BadRequestException);
+    await expect(
+      prisma.projectAffiliateCompanyContract.count({
+        where: { fileId: fixture.contractFileId }
+      })
+    ).resolves.toBe(0);
+    await Promise.all([discarder.$disconnect(), binder.$disconnect()]);
+  });
 });
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
+function withTransactionPidProbe(
+  client: PrismaClient,
+  onTransactionPid: (pid: number) => void
+) {
+  return new Proxy(client, {
+    get(target, property) {
+      if (property === "$transaction") {
+        return (
+          work: (tx: Prisma.TransactionClient) => Promise<unknown>
+        ) =>
+          target.$transaction(async (tx) => {
+            const [{ pid }] = await tx.$queryRaw<Array<{ pid: number }>>(
+              Prisma.sql`SELECT pg_backend_pid()::int AS "pid"`
+            );
+            await setLocalConcurrencyTimeouts(tx);
+            onTransactionPid(pid);
+            return work(tx);
+          });
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
+}
+
+async function setLocalConcurrencyTimeouts(tx: Prisma.TransactionClient) {
+  await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '5s'");
+  await tx.$executeRawUnsafe("SET LOCAL statement_timeout = '8s'");
+}
+
+function acquireTestFileBindingLock(tx: Prisma.TransactionClient) {
+  return tx.$queryRaw(Prisma.sql`
+    SELECT pg_advisory_xact_lock(190731::int, 13::int)::text AS "lockResult"
+  `);
+}
+
+function lockTestCompany(
+  tx: Prisma.TransactionClient,
+  companyEntityId: string
+) {
+  return tx.$queryRaw(Prisma.sql`
+    SELECT "id"
+    FROM "CompanyEntity"
+    WHERE "id" = ${companyEntityId}
+    FOR UPDATE
+  `);
+}
+
+async function expectDirectBlocker(
+  monitor: PrismaClient,
+  blockedPid: number,
+  expectedBlockerPid: number
+) {
+  const deadline = Date.now() + 3_000;
+  while (Date.now() < deadline) {
+    const [row] = await monitor.$queryRaw<Array<{ blockerPids: number[] }>>(
+      Prisma.sql`
+        SELECT pg_blocking_pids(${blockedPid}::int)::int[] AS "blockerPids"
+      `
+    );
+    if (row?.blockerPids.includes(expectedBlockerPid)) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(
+    `backend ${blockedPid} was not directly blocked by ${expectedBlockerPid}`
+  );
+}
 
 async function createFixture(prisma: PrismaClient) {
   const suffix = randomUUID();
@@ -144,6 +383,13 @@ async function createFixture(prisma: PrismaClient) {
   });
   await prisma.project.create({
     data: { id: projectId, code: `P-${suffix}`, name: "隔离迁移测试项目" }
+  });
+  await prisma.projectMember.create({
+    data: {
+      projectId,
+      userId: recorderId,
+      positionKey: "contract_staff"
+    }
   });
   await prisma.businessParty.create({
     data: {

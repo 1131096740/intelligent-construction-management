@@ -225,6 +225,14 @@ export async function submitExample() { return undefined; }\n`
     "docs/product/manifests/web-page-actions.registry.json",
     `${JSON.stringify({ schemaVersion: 1, actions }, null, 2)}\n`
   );
+  await write(
+    root,
+    "packages/shared-domain/src/permissions.ts",
+    `export const ACTION_REQUIRED_ROLES = {
+  "contract.create": ["contract_staff", "contract_director"],
+  "project.affiliate_company_contract.confirm": ["contract_director"]
+} as const;\n`
+  );
   for (const [path, contents] of Object.entries(extraFiles)) {
     await write(root, path, contents);
   }
@@ -261,6 +269,237 @@ test("joins a server-gated visible action through its wrapper to the Nest route"
   assert.equal(manifest.actions[0].bindings[0].normalizedKey, "POST /examples/:param/submission");
   assert.equal(manifest.actions[0].bindings[0].nestRoute.handler, "submit");
   assert.equal(blockerCodes(manifest).size, 0);
+});
+
+test("rejects a capability GET whose actor positions cannot perform the mutation action", async () => {
+  const mutationRoute = {
+    ...route(),
+    requiredProjectAction:
+      "project.affiliate_company_contract.confirm"
+  };
+  const capabilityRoute = {
+    ...route("GET /examples/:param"),
+    handler: "get",
+    guardAuthorization: "positions",
+    requiredPositions: ["contract_staff"],
+    requiredProjectAction: null
+  };
+  const root = await fixture({
+    routes: [mutationRoute, capabilityRoute]
+  });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(manifest.status, "blocked");
+  assert.equal(
+    manifest.actions[0].capability.serverDerived,
+    false
+  );
+  assert.equal(
+    manifest.summary.acceptedProductionMutationConsumerCount,
+    0
+  );
+  assert.ok(
+    blockerCodes(manifest).has(
+      "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED"
+    )
+  );
+  assert.equal(
+    manifest.blockers.writeWithoutServerCapability[0]?.reason,
+    "capability_get_authorization_incompatible"
+  );
+});
+
+test("rejects partial GET actor overlap with an OR-role mutation action", async () => {
+  const capabilityRoute = {
+    ...route("GET /examples/:param"),
+    handler: "get",
+    guardAuthorization: "positions",
+    requiredPositions: ["contract_director"],
+    requiredProjectAction: null
+  };
+  const root = await fixture({
+    routes: [route(), capabilityRoute]
+  });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(manifest.status, "blocked");
+  assert.equal(
+    manifest.actions[0].capability.serverDerived,
+    false
+  );
+  assert.equal(
+    manifest.blockers.writeWithoutServerCapability[0]?.reason,
+    "capability_get_authorization_incompatible"
+  );
+});
+
+test("checks position-only mutation actors without requiring a project action", async () => {
+  const mutationRoute = {
+    ...route(),
+    guardAuthorization: "positions",
+    requiredPositions: ["contract_staff", "contract_director"],
+    requiredProjectAction: null
+  };
+  const capabilityRoute = {
+    ...route("GET /examples/:param"),
+    handler: "get",
+    guardAuthorization: "positions",
+    requiredPositions: ["contract_director"],
+    requiredProjectAction: null
+  };
+  const root = await fixture({
+    routes: [mutationRoute, capabilityRoute]
+  });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(manifest.status, "blocked");
+  assert.equal(
+    manifest.blockers.writeWithoutServerCapability[0]?.reason,
+    "capability_get_authorization_incompatible"
+  );
+});
+
+test("intersects every sequential mutation route actor set", async () => {
+  const fileRoute = {
+    ...route("POST /files"),
+    handler: "upload",
+    guardAuthorization: "authenticated_only",
+    requiredProjectAction: null
+  };
+  const restrictedRoute = route();
+  const requests = [
+    {
+      kind: "main",
+      sourceLine: 1,
+      method: "POST",
+      path: "/files",
+      normalizedPath: "/files",
+      normalizedKey: "POST /files",
+      bodyKind: "form_data"
+    },
+    {
+      kind: "main",
+      sourceLine: 2,
+      method: "POST",
+      path: "/examples/:param/submission",
+      normalizedPath: "/examples/:param/submission",
+      normalizedKey: "POST /examples/:param/submission",
+      bodyKind: "json"
+    }
+  ];
+  const root = await fixture({
+    wrappers: [wrapper({ requests })],
+    routes: [fileRoute, restrictedRoute]
+  });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(
+    manifest.status,
+    "ready",
+    JSON.stringify(manifest.blockers)
+  );
+  assert.equal(
+    manifest.actions[0].capability.serverDerived,
+    true
+  );
+  assert.equal(
+    manifest.summary.acceptedProductionMutationConsumerCount,
+    1
+  );
+});
+
+test("fails closed when sequential mutation actor sets have an empty intersection", async () => {
+  const requests = [
+    {
+      kind: "main",
+      sourceLine: 1,
+      method: "POST",
+      path: "/examples/:param/submission",
+      normalizedPath: "/examples/:param/submission",
+      normalizedKey: "POST /examples/:param/submission",
+      bodyKind: "json"
+    },
+    {
+      kind: "main",
+      sourceLine: 2,
+      method: "POST",
+      path: "/examples/:param/confirmation",
+      normalizedPath: "/examples/:param/confirmation",
+      normalizedKey: "POST /examples/:param/confirmation",
+      bodyKind: "json"
+    }
+  ];
+  const firstRoute = {
+    ...route(),
+    guardAuthorization: "positions",
+    requiredPositions: ["contract_staff"],
+    requiredProjectAction: null
+  };
+  const secondRoute = {
+    ...route("POST /examples/:param/confirmation"),
+    handler: "confirm",
+    guardAuthorization: "positions",
+    requiredPositions: ["contract_director"],
+    requiredProjectAction: null
+  };
+  const root = await fixture({
+    wrappers: [wrapper({ requests })],
+    routes: [firstRoute, secondRoute]
+  });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(manifest.status, "blocked");
+  assert.equal(
+    manifest.actions[0].capability.serverDerived,
+    false
+  );
+  assert.equal(
+    manifest.blockers.writeWithoutServerCapability[0]?.reason,
+    "capability_get_authorization_incompatible"
+  );
+});
+
+test("fails closed when the shared action-role policy cannot be resolved", async () => {
+  const root = await fixture({
+    extraFiles: {
+      "packages/shared-domain/src/permissions.ts":
+        "export const ACTION_REQUIRED_ROLES = makePolicy();\n"
+    }
+  });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(manifest.status, "blocked");
+  assert.equal(
+    manifest.summary.acceptedProductionMutationConsumerCount,
+    0
+  );
+  assert.ok(
+    blockerCodes(manifest).has("ACTION_ROLE_POLICY_UNRESOLVED")
+  );
+});
+
+test("fails closed when an alias mutates the shared action-role policy", async () => {
+  const root = await fixture({
+    extraFiles: {
+      "packages/shared-domain/src/permissions.ts": `
+        export const ACTION_REQUIRED_ROLES = {
+          "contract.create": ["contract_staff", "contract_director"]
+        } as const;
+        const contractRoles = ACTION_REQUIRED_ROLES["contract.create"];
+        contractRoles.push("contract_director");
+      `
+    }
+  });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(manifest.status, "blocked");
+  assert.equal(
+    manifest.summary.acceptedProductionMutationConsumerCount,
+    0
+  );
+  assert.ok(
+    blockerCodes(manifest).has("ACTION_ROLE_POLICY_UNRESOLVED")
+  );
 });
 
 test("accepts a selected server string action only through an exact includes gate", async () => {
