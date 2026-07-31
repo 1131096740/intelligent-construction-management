@@ -287,3 +287,41 @@ CONTRACT_DRAFT_BUSINESS_PURGE_ENABLED=false
 ```text
 /srv/jiangkong-retention-evidence/5234fd37bc5c320922f73323af77b20317fcf5f7/temporary-only-enable-20260730
 ```
+
+## 2026-07-31 08:05+08:00 首次自然 timer 只读验收
+
+每日 timer 已在未人工触发的情况下完成首次自然运行：
+
+- 生产 checkout 仍为洁净
+  `5234fd37bc5c320922f73323af77b20317fcf5f7`；
+- API、Nginx、PostgreSQL 与公网 health 均正常；
+- timer 为 `enabled / active / waiting`；
+- 首次自然触发：`2026-07-31 04:30:23 +08:00`；
+- service 于 `04:30:24` 正常退出，`Result=success`、
+  `ExecMainStatus=0`；
+- 下一次计划时间：`2026-08-01 04:33:15 +08:00`；
+- 专用配置仍精确为
+  `CONTRACT_DRAFT_TEMP_RETENTION_ENABLED=true`、
+  `CONTRACT_DRAFT_BUSINESS_PURGE_ENABLED=false`；
+- 仓库与 `/etc/systemd/system` 的 service/timer SHA-256 逐一一致。
+
+自然运行回执：
+
+```json
+{
+  "status": "applied",
+  "reportSha256": "4788f9a3bd44ffa3bac3aa1122bb483ac8ba4d5813572c1fcb30b8f708f31e1c",
+  "deletedCount": 0,
+  "deletedBytes": "0",
+  "failedCount": 0,
+  "skippedCount": 0,
+  "businessPurgeSkippedCount": 0,
+  "categoryResults": []
+}
+```
+
+随后生成的只读 preview（`2026-07-31T00:05:13.499Z`）为 ready、未截断，
+SHA-256 为
+`2a9449a5db70d6ddcf47a7baf3e16a0cd7ba4ebb7f471130fff49a004397a8a7`，
+候选仍为 0 条/0 bytes。由此确认首次删除没有重复执行，timer 没有越界到业务
+草稿或其他关闭范围。
