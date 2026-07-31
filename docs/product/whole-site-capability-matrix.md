@@ -7,9 +7,9 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `77494c39bf8081c3d1f68cfc611842095672689acdc402238f7a600fd7cfd30f` |
-| webApiWrappers | blocked | `0d048f05112ae97aa086ad8764642b21d30437521eed6b3ab75d6e07319a72c7` |
-| webPageActions | blocked | `5b9c1161a63845edeeb198878abe909d9d1cfe30c1bc6990e601016f0dd460ab` |
-| routeUsage | blocked | `52306ff8730d52bd2c984516e52c7fc4215897beeb709d19c7715c284387a268` |
+| webApiWrappers | blocked | `5117a90cd380dd25feb5d0b826b58157bb3b6f488f8fe530d2a7d5711204b7e3` |
+| webPageActions | blocked | `0ad5fd19020aefa23f667b9cc76dccc1043ce91b4a3822e250bf96e8cbcc8b29` |
+| routeUsage | blocked | `2cfcb5308241e6da2e2be89591f77c46d6374c7ce86ca74e310e3661824935d3` |
 
 ## 汇总
 
@@ -21,18 +21,18 @@
 | exitCandidateRouteCount | 23 |
 | internalTaskRouteCount | 2 |
 | unclassifiedRouteCount | 26 |
-| mainRequestBindingCount | 380 |
+| mainRequestBindingCount | 382 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
-| orphanWrapperCount | 44 |
+| orphanWrapperCount | 45 |
 | duplicateMutationRouteCount | 4 |
 | registeredActionCount | 42 |
-| actionBindingCount | 48 |
-| acceptedActionBindingCount | 12 |
+| actionBindingCount | 50 |
+| acceptedActionBindingCount | 14 |
 | unresolvedActionBindingCount | 36 |
 | productionMutationConsumerPairCount | 273 |
-| coveredProductionMutationConsumerPairCount | 10 |
-| uncoveredProductionMutationConsumerPairCount | 263 |
+| coveredProductionMutationConsumerPairCount | 11 |
+| uncoveredProductionMutationConsumerPairCount | 262 |
 | blockerCount | 377 |
 
 ## 路由矩阵
@@ -115,7 +115,7 @@
 | GET | /projects/:projectId/operating-funds-overview | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectOperatingOverview | — | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts/:draftId/final-preparation | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementFinalPreparation | — | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts/:draftId/line-attachments | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#listSettlementDraftLineAttachments | — | not_applicable | — |
-| GET | /projects/:projectId/settlement-drafts/:draftId | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementDraftRecord | — | not_applicable | — |
+| GET | /projects/:projectId/settlement-drafts/:draftId | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#executeSettlementDraftLifecycleAction<br>apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementDraftRecord | settlement-draft.abandon-application<br>settlement-draft.delete-pristine | not_applicable | ACTION_BINDING_UNRESOLVED |
 | GET | /projects/:projectId/settlement-drafts | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#listSettlementDraftRecords | — | not_applicable | — |
 | GET | /projects/affiliate-mapping-report | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectAffiliateMappingReport | — | not_applicable | ORPHAN_WRAPPER |
 | GET | /projects/contract-create-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractCreateProjects | — | not_applicable | — |
@@ -348,7 +348,7 @@
 | POST | /projects/:projectId/owner-contracts | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectOwnerContract | — | not_applicable | ORPHAN_WRAPPER |
 | POST | /projects/:projectId/proxy-payments | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectProxyPayment | — | not_applicable | ORPHAN_WRAPPER |
 | POST | /projects/:projectId/receipts | exit_candidate | none | — | — | not_applicable | — |
-| POST | /projects/:projectId/settlement-drafts/:draftId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#abandonSettlementDraftRecord | settlement-draft.abandon-application<br>settlement-draft.delete-pristine | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
+| POST | /projects/:projectId/settlement-drafts/:draftId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#abandonSettlementDraftRecord<br>apps/web-admin/src/api/settlement-drafts.api.ts#executeSettlementDraftLifecycleAction | settlement-draft.abandon-application<br>settlement-draft.delete-pristine | covered | ORPHAN_WRAPPER |
 | POST | /projects/:projectId/settlement-drafts/:draftId/approval-submission | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#submitSettlementDraftRecord | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /projects/:projectId/settlement-drafts/:draftId/copies | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedSettlementDraft | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /projects/:projectId/settlement-drafts/:draftId/counterparty-signed-documents | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#linkSettlementCounterpartySignedDocument | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -489,6 +489,7 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#submitContractApproval（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#terminateProjectFinancingQuota（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadSignature（unreferenced）
+- apps/web-admin/src/api/settlement-drafts.api.ts#abandonSettlementDraftRecord（test_only）
 - apps/web-admin/src/api/spot-procurement.api.ts#createSpotProcurementPaymentDraft（test_only）
 - apps/web-admin/src/api/spot-procurement.api.ts#fetchVatRateOptions（test_only）
 
@@ -706,7 +707,6 @@
 - apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleRemovalBatch → apps/web-admin/src/pages/organization/components/OrganizationBatchRoleRemovalDrawer.vue
 - apps/web-admin/src/api/organization.api.ts#updateOrganizationDepartment → apps/web-admin/src/pages/organization/OrganizationManagementPage.vue
 - apps/web-admin/src/api/organization.api.ts#updateOrganizationUser → apps/web-admin/src/pages/organization/OrganizationManagementPage.vue
-- apps/web-admin/src/api/settlement-drafts.api.ts#abandonSettlementDraftRecord → apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue
 - apps/web-admin/src/api/settlement-drafts.api.ts#attachSettlementDraftLineFile → apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue
 - apps/web-admin/src/api/settlement-drafts.api.ts#createSettlementDraftRecord → apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue
 - apps/web-admin/src/api/settlement-drafts.api.ts#generateSettlementFrozenDocument → apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue
@@ -786,8 +786,8 @@
 - project-expense.review-approve#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - project-expense.review-reject#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - project-expense.withdraw#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- settlement-draft.abandon-application#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- settlement-draft.delete-pristine#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- settlement-draft.abandon-application#0 — binding_not_mutation
+- settlement-draft.delete-pristine#0 — binding_not_mutation
 - settlement-draft.save-local-gate#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - settlement-draft.save-local-gate#1 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - settlement-import.preview-local-gate#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger

@@ -3239,6 +3239,16 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+            "wrapper": "executeSettlementDraftLifecycleAction",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/settlement-drafts/:param",
+            "normalizedKey": "GET /projects/:param/settlement-drafts/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+            ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
             "wrapper": "fetchSettlementDraftRecord",
             "method": "GET",
             "normalizedPath": "/projects/:param/settlement-drafts/:param",
@@ -12544,7 +12554,7 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-            "wrapper": "abandonSettlementDraftRecord",
+            "wrapper": "executeSettlementDraftLifecycleAction",
             "method": "POST",
             "normalizedPath": "/projects/:param/settlement-drafts/:param/abandonment",
             "normalizedKey": "POST /projects/:param/settlement-drafts/:param/abandonment",

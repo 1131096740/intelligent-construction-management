@@ -1,4 +1,10 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException
+} from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
@@ -6,6 +12,7 @@ import type {
   CreateSettlementLineAttachmentDto,
   InvalidateSettlementLineAttachmentDto
 } from "./dto/settlement-line-attachment.dto";
+import { lockSettlementDraftMutationBoundary } from "./settlement-draft-lifecycle";
 
 @Injectable()
 export class SettlementLineAttachmentService {
@@ -160,11 +167,15 @@ export class SettlementLineAttachmentService {
   }
 
   private async lockEditableDraft(tx: Prisma.TransactionClient, projectId: string, draftId: string, actorUserId: string, expectedRevision: number) {
-    const [draft] = await tx.$queryRaw<Array<{ id: string; revision: number; projectId: string; ownerUserId: string; status: string }>>(Prisma.sql`
-      SELECT "id", "revision", "projectId", "ownerUserId", "status" FROM "SettlementDraft" WHERE "id" = ${draftId} FOR UPDATE
-    `);
+    const boundary = await lockSettlementDraftMutationBoundary(tx, draftId);
+    const draft = boundary?.draft;
     if (!draft || draft.projectId !== projectId) throw new NotFoundException("未找到当前项目的结算草稿，请刷新后重试");
     if (draft.ownerUserId !== actorUserId) throw new ForbiddenException("只能维护本人创建的结算草稿附件");
+    if (boundary.lifecycle.lifecycleKind === "formal_record") {
+      throw new ConflictException(
+        `该结算草稿已形成正式结算，不能再修改附件：${boundary.lifecycle.blockers.join("、")}`
+      );
+    }
     if (draft.status !== "draft") throw new BadRequestException("结算草稿已提交，不能再修改附件");
     if (draft.revision !== expectedRevision) throw new BadRequestException("结算草稿已更新，请刷新后重试");
     return draft;

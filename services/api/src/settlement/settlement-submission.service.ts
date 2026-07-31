@@ -18,6 +18,10 @@ import { SettlementFrozenDocumentService } from "./settlement-frozen-document.se
 import { ContractSettlementProcessService } from "./contract-settlement-process.service";
 import { settlementSourceSnapshotToken } from "./settlement-line-occupancy";
 import { SettlementLineAttachmentService } from "./settlement-line-attachment.service";
+import {
+  isSettlementDraftSerializationConflict,
+  lockSettlementDraftMutationBoundary
+} from "./settlement-draft-lifecycle";
 
 @Injectable()
 export class SettlementSubmissionService {
@@ -48,29 +52,36 @@ export class SettlementSubmissionService {
     try {
       settlement = await this.prisma.$transaction(
         async (tx) => {
-          const lockedDraft = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-            SELECT "id"
-            FROM "SettlementDraft"
-            WHERE "id" = ${draftId}
-            FOR UPDATE
-          `);
-          if (lockedDraft.length !== 1) {
+          const boundary = await lockSettlementDraftMutationBoundary(tx, draftId);
+          if (!boundary) {
             throw new NotFoundException("未找到结算草稿，请刷新后重试");
           }
-          const draft = await tx.settlementDraft.findUnique({
-            where: { id: draftId }
-          });
-          if (!draft || draft.projectId !== projectId) {
+          const { draft, lifecycle } = boundary;
+          if (draft.projectId !== projectId) {
             throw new NotFoundException("未找到结算草稿，请刷新后重试");
           }
           if (draft.ownerUserId !== applicantUserId) {
             throw new ForbiddenException("只能提交本人创建的结算草稿");
           }
+          if (lifecycle.lifecycleKind === "formal_record") {
+            throw new ConflictException(
+              `该结算草稿已经提交或形成正式结算，不能重复提交：${lifecycle.blockers.join("、")}`
+            );
+          }
           if (draft.status !== "draft") {
-            throw new BadRequestException("结算草稿已经提交，不能重复发起审批");
+            throw new ConflictException("结算草稿已经提交或结束，不能重复发起审批");
           }
           if (draft.revision !== expectedRevision) {
-            throw new BadRequestException("结算草稿已被更新，请刷新后重新确认提交");
+            throw new ConflictException("结算草稿已被更新，请刷新后重新确认提交");
+          }
+          const occupiedCode = await tx.settlement.findUnique({
+            where: { code: draft.code },
+            select: { id: true }
+          });
+          if (occupiedCode) {
+            throw new ConflictException(
+              `结算编号 ${draft.code} 已由正式结算占用，请更换编号后重新提交`
+            );
           }
           if (draft.governanceVersion !== 1) {
             throw new BadRequestException(
@@ -171,6 +182,11 @@ export class SettlementSubmissionService {
         { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
       );
     } catch (error) {
+      if (isSettlementDraftSerializationConflict(error)) {
+        throw new ConflictException(
+          "结算草稿正在被其他操作处理，请刷新后重试"
+        );
+      }
       await this.settlements.persistContractCapacityDenial?.(error, applicantUserId);
       await this.settlements.persistGovernanceDenial?.(error, applicantUserId, draftId);
       await this.counterpartyDocuments?.persistDenial(draftId, applicantUserId, error);

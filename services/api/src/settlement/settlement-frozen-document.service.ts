@@ -15,6 +15,7 @@ import {
 } from "./settlement-document-renderer";
 import { SettlementService } from "./settlement.service";
 import type { CreateSettlementLineDto } from "./dto/create-settlement.dto";
+import { lockSettlementDraftMutationBoundary } from "./settlement-draft-lifecycle";
 
 type DraftDocumentFacts = Awaited<
   ReturnType<SettlementService["prepareDraftDocumentFacts"]>
@@ -221,16 +222,17 @@ export class SettlementFrozenDocumentService {
     expectedRevision: number,
     alreadyLockedDraft?: LockedDraft
   ): Promise<PreparedFrozenDocument> {
-    if (!alreadyLockedDraft) {
-      await tx.$queryRaw(Prisma.sql`
-        SELECT "id" FROM "SettlementDraft" WHERE "id" = ${draftId} FOR UPDATE
-      `);
-    }
-    const draft =
-      alreadyLockedDraft ??
-      (await tx.settlementDraft.findUnique({ where: { id: draftId } }));
+    const boundary = alreadyLockedDraft
+      ? null
+      : await lockSettlementDraftMutationBoundary(tx, draftId);
+    const draft = alreadyLockedDraft ?? boundary?.draft;
     if (!draft || draft.projectId !== projectId) {
       throw new BadRequestException("未找到当前项目的结算草稿，请刷新后重试");
+    }
+    if (boundary?.lifecycle.lifecycleKind === "formal_record") {
+      throw new BadRequestException(
+        `该结算草稿已形成正式结算，不能生成冻结版：${boundary.lifecycle.blockers.join("、")}`
+      );
     }
     if (draft.ownerUserId !== actorUserId) {
       throw new BadRequestException("只能由结算草稿经办人生成冻结版结算单");

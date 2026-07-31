@@ -1211,9 +1211,12 @@ describe("SettlementReadService", () => {
       paymentTermsVersion: { findMany: jest.fn().mockResolvedValue([{ id: "terms-1", versionNo: 1 }]) },
       project: { findMany: jest.fn().mockResolvedValue([{ id: "p1", name: "项目一" }]) },
       settlementSignedDocument: { findMany: jest.fn().mockResolvedValue([
-        { settlementDraftId: "d1", purpose: "counterparty_signed_original", status: "active" },
+        { settlementDraftId: "d1", purpose: "counterparty_signed_original", status: "invalidated" },
         { settlementDraftId: "d2", purpose: "counterparty_signed_original", status: "invalidated" }
-      ]) }
+      ]) },
+      contractSettlementProcess: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const service = new SettlementReadService(prisma as never);
     const result = await service.lifecycleLedger("my_drafts", 1, 20, ["p1"], "u1");
@@ -1233,6 +1236,84 @@ describe("SettlementReadService", () => {
     ]));
     const formal = await service.lifecycleLedger("formal_ledger", 1, 20, ["p1"], "u1");
     expect(formal.rows[0]).toEqual(expect.objectContaining({ projectId: "p1" }));
+  });
+
+  it("does not expose a marker-drift draft after an exact formal settlement shadows it", async () => {
+    const now = new Date("2026-07-20T01:00:00.000Z");
+    const prisma = {
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "settlement-1",
+          code: "JS-2026-031",
+          processId: "process-1",
+          contractId: "c1",
+          contractVersionId: "v1",
+          projectId: "p1",
+          periodLabel: "2026-07",
+          status: "approval_pending",
+          amountCents: 100n,
+          paymentTermsVersionId: "terms-1",
+          preparedByUserId: "u1",
+          updatedAt: now
+        }])
+      },
+      settlementDraft: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "draft-shadow",
+          code: "JS-2026-031",
+          processId: "process-1",
+          contractId: "c1",
+          contractVersionId: "v1",
+          projectId: "p1",
+          periodLabel: "2026-07",
+          status: "draft",
+          ownerUserId: "u1",
+          revision: 3,
+          submittedSettlementId: null,
+          submittedAt: null,
+          updatedAt: now,
+          abandonedAt: null,
+          abandonReason: null
+        }])
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "c1", code: "HT-1", temporaryCode: null }
+        ])
+      },
+      paymentTermsVersion: {
+        findMany: jest.fn().mockResolvedValue([{ id: "terms-1", versionNo: 1 }])
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([{ id: "p1", name: "项目一" }])
+      },
+      settlementSignedDocument: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractSettlementProcess: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "process-1", settlementId: "settlement-1" }
+        ])
+      },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const service = new SettlementReadService(prisma as never);
+
+    const result = await service.lifecycleLedger("my_drafts", 1, 20, ["p1"], "u1");
+
+    expect(result.rows).toEqual([]);
+    expect(result.summary.my_drafts).toBe(0);
+
+    const workbench = await service.workbenchLedger(
+      "my_drafts",
+      1,
+      20,
+      ["p1"],
+      "u1"
+    );
+    expect(workbench.rows).toEqual([]);
+    expect(workbench.summary.my_drafts).toBe(0);
   });
 
   it("projects settlement root workbench views from authoritative pending work and preserves owned drafts", async () => {
@@ -1259,7 +1340,11 @@ describe("SettlementReadService", () => {
       ]) },
       project: { findMany: jest.fn().mockResolvedValue([{ id: "p1", name: "项目一" }]) },
       contract: { findMany: jest.fn().mockResolvedValue([{ id: "c1", code: "HT-1", temporaryCode: null }]) },
-      paymentTermsVersion: { findMany: jest.fn().mockResolvedValue([{ id: "terms-1", versionNo: 1 }]) }
+      paymentTermsVersion: { findMany: jest.fn().mockResolvedValue([{ id: "terms-1", versionNo: 1 }]) },
+      settlementSignedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+      contractSettlementProcess: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const me = {
       getSettlementPendingWorkItems: jest.fn().mockResolvedValue([

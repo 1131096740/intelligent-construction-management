@@ -22,19 +22,19 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "0d048f05112ae97aa086ad8764642b21d30437521eed6b3ab75d6e07319a72c7",
+      "sha256": "5117a90cd380dd25feb5d0b826b58157bb3b6f488f8fe530d2a7d5711204b7e3",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 14,
-        "exportedFunctionCount": 381,
-        "transportWrapperCount": 377,
+        "exportedFunctionCount": 382,
+        "transportWrapperCount": 378,
         "pureExportCount": 4,
-        "mainRequestBindingCount": 380,
+        "mainRequestBindingCount": 382,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 381,
+        "requestEdgeCount": 382,
         "productionConsumerCount": 333,
-        "orphanWrapperCount": 44,
-        "testOnlyWrapperCount": 42,
+        "orphanWrapperCount": 45,
+        "testOnlyWrapperCount": 43,
         "unreferencedWrapperCount": 2,
         "duplicateNormalizedRouteGroupCount": 6,
         "authTransportExceptionCount": 5
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "5b9c1161a63845edeeb198878abe909d9d1cfe30c1bc6990e601016f0dd460ab",
+      "sha256": "0ad5fd19020aefa23f667b9cc76dccc1043ce91b4a3822e250bf96e8cbcc8b29",
       "status": "blocked",
       "summary": {
         "registeredActionCount": 42,
@@ -53,18 +53,18 @@
         "totalVueFileCount": 134,
         "parsedVueFileCount": 134,
         "reachableProductionModuleCount": 229,
-        "templateEventDirectiveCount": 894,
-        "propCallbackDirectiveCount": 11,
-        "coveredProductionMutationConsumerCount": 10,
+        "templateEventDirectiveCount": 898,
+        "propCallbackDirectiveCount": 10,
+        "coveredProductionMutationConsumerCount": 11,
         "candidateProductionMutationConsumerCount": 39,
-        "acceptedProductionMutationConsumerCount": 10,
+        "acceptedProductionMutationConsumerCount": 11,
         "productionMutationConsumerPairCount": 273,
-        "blockerCount": 336
+        "blockerCount": 331
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "52306ff8730d52bd2c984516e52c7fc4215897beeb709d19c7715c284387a268",
+      "sha256": "2cfcb5308241e6da2e2be89591f77c46d6374c7ce86ca74e310e3661824935d3",
       "status": "blocked",
       "summary": {
         "routeCount": 395,
@@ -99,18 +99,18 @@
     "exitCandidateRouteCount": 23,
     "internalTaskRouteCount": 2,
     "unclassifiedRouteCount": 26,
-    "mainRequestBindingCount": 380,
+    "mainRequestBindingCount": 382,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
-    "orphanWrapperCount": 44,
+    "orphanWrapperCount": 45,
     "duplicateMutationRouteCount": 4,
     "registeredActionCount": 42,
-    "actionBindingCount": 48,
-    "acceptedActionBindingCount": 12,
+    "actionBindingCount": 50,
+    "acceptedActionBindingCount": 14,
     "unresolvedActionBindingCount": 36,
     "productionMutationConsumerPairCount": 273,
-    "coveredProductionMutationConsumerPairCount": 10,
-    "uncoveredProductionMutationConsumerPairCount": 263,
+    "coveredProductionMutationConsumerPairCount": 11,
+    "uncoveredProductionMutationConsumerPairCount": 262,
     "blockerCount": 377
   },
   "blockers": {
@@ -348,6 +348,11 @@
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "uploadSignature",
         "classification": "unreferenced"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+        "wrapper": "abandonSettlementDraftRecord",
+        "classification": "test_only"
       },
       {
         "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
@@ -2349,14 +2354,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-        "wrapper": "abandonSettlementDraftRecord",
-        "consumer": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/settlement-drafts/:param/abandonment"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
         "wrapper": "attachSettlementDraftLineFile",
         "consumer": "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue",
         "normalizedKeys": [
@@ -3119,29 +3116,23 @@
       {
         "actionId": "settlement-draft.abandon-application",
         "bindingIndex": 0,
-        "identity": "settlement-draft.abandon-application\u0000apps/web-admin/src/api/settlement-drafts.api.ts\u0000abandonSettlementDraftRecord\u0000POST\u0000POST /projects/:param/settlement-drafts/:param/abandonment\u00000",
+        "identity": "settlement-draft.abandon-application\u0000apps/web-admin/src/api/settlement-drafts.api.ts\u0000executeSettlementDraftLifecycleAction\u0000GET\u0000GET /projects/:param/settlement-drafts/:param\u00000",
         "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-        "wrapper": "abandonSettlementDraftRecord",
-        "normalizedKey": "POST /projects/:param/settlement-drafts/:param/abandonment",
+        "wrapper": "executeSettlementDraftLifecycleAction",
+        "normalizedKey": "GET /projects/:param/settlement-drafts/:param",
         "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
+          "binding_not_mutation"
         ]
       },
       {
         "actionId": "settlement-draft.delete-pristine",
         "bindingIndex": 0,
-        "identity": "settlement-draft.delete-pristine\u0000apps/web-admin/src/api/settlement-drafts.api.ts\u0000abandonSettlementDraftRecord\u0000POST\u0000POST /projects/:param/settlement-drafts/:param/abandonment\u00000",
+        "identity": "settlement-draft.delete-pristine\u0000apps/web-admin/src/api/settlement-drafts.api.ts\u0000executeSettlementDraftLifecycleAction\u0000GET\u0000GET /projects/:param/settlement-drafts/:param\u00000",
         "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-        "wrapper": "abandonSettlementDraftRecord",
-        "normalizedKey": "POST /projects/:param/settlement-drafts/:param/abandonment",
+        "wrapper": "executeSettlementDraftLifecycleAction",
+        "normalizedKey": "GET /projects/:param/settlement-drafts/:param",
         "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
+          "binding_not_mutation"
         ]
       },
       {
@@ -6671,6 +6662,20 @@
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+          "wrapper": "executeSettlementDraftLifecycleAction",
+          "method": "GET",
+          "path": "/projects/:param/settlement-drafts/:param",
+          "normalizedKey": "GET /projects/:param/settlement-drafts/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/settlement-drafts.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
           "wrapper": "fetchSettlementDraftRecord",
           "method": "GET",
           "path": "/projects/:param/settlement-drafts/:param",
@@ -6685,9 +6690,68 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
+      "actions": [
+        {
+          "actionId": "settlement-draft.abandon-application",
+          "bindingIndex": 0,
+          "identity": "settlement-draft.abandon-application\u0000apps/web-admin/src/api/settlement-drafts.api.ts\u0000executeSettlementDraftLifecycleAction\u0000GET\u0000GET /projects/:param/settlement-drafts/:param\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "settlementDraftAvailableActions",
+            "key": "abandon_application",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+          "wrapper": "executeSettlementDraftLifecycleAction",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": false,
+          "blockerCodes": [
+            "binding_not_mutation"
+          ]
+        },
+        {
+          "actionId": "settlement-draft.delete-pristine",
+          "bindingIndex": 0,
+          "identity": "settlement-draft.delete-pristine\u0000apps/web-admin/src/api/settlement-drafts.api.ts\u0000executeSettlementDraftLifecycleAction\u0000GET\u0000GET /projects/:param/settlement-drafts/:param\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "settlementDraftAvailableActions",
+            "key": "delete_pristine_draft",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+          "wrapper": "executeSettlementDraftLifecycleAction",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": false,
+          "blockerCodes": [
+            "binding_not_mutation"
+          ]
+        }
+      ],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": []
+      "blockerCodes": [
+        "ACTION_BINDING_UNRESOLVED"
+      ]
     },
     {
       "route": {
@@ -17640,6 +17704,18 @@
           "path": "/projects/:param/settlement-drafts/:param/abandonment",
           "normalizedKey": "POST /projects/:param/settlement-drafts/:param/abandonment",
           "bodyKind": "json",
+          "productionConsumers": [],
+          "testConsumers": [
+            "apps/web-admin/src/api/settlement-drafts.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+          "wrapper": "executeSettlementDraftLifecycleAction",
+          "method": "POST",
+          "path": "/projects/:param/settlement-drafts/:param/abandonment",
+          "normalizedKey": "POST /projects/:param/settlement-drafts/:param/abandonment",
+          "bodyKind": "json",
           "productionConsumers": [
             "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
           ],
@@ -17652,67 +17728,60 @@
       "actions": [
         {
           "actionId": "settlement-draft.abandon-application",
-          "bindingIndex": 0,
-          "identity": "settlement-draft.abandon-application\u0000apps/web-admin/src/api/settlement-drafts.api.ts\u0000abandonSettlementDraftRecord\u0000POST\u0000POST /projects/:param/settlement-drafts/:param/abandonment\u00000",
+          "bindingIndex": 1,
+          "identity": "settlement-draft.abandon-application\u0000apps/web-admin/src/api/settlement-drafts.api.ts\u0000executeSettlementDraftLifecycleAction\u0000POST\u0000POST /projects/:param/settlement-drafts/:param/abandonment\u00001",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
           "capability": {
             "kind": "detail_action",
-            "source": "activeDraft.availableActions",
+            "source": "settlementDraftAvailableActions",
             "key": "abandon_application",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-          "wrapper": "abandonSettlementDraftRecord",
+          "wrapper": "executeSettlementDraftLifecycleAction",
           "productionConsumers": [
             "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         },
         {
           "actionId": "settlement-draft.delete-pristine",
-          "bindingIndex": 0,
-          "identity": "settlement-draft.delete-pristine\u0000apps/web-admin/src/api/settlement-drafts.api.ts\u0000abandonSettlementDraftRecord\u0000POST\u0000POST /projects/:param/settlement-drafts/:param/abandonment\u00000",
+          "bindingIndex": 1,
+          "identity": "settlement-draft.delete-pristine\u0000apps/web-admin/src/api/settlement-drafts.api.ts\u0000executeSettlementDraftLifecycleAction\u0000POST\u0000POST /projects/:param/settlement-drafts/:param/abandonment\u00001",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
           "capability": {
             "kind": "detail_action",
-            "source": "activeDraft.availableActions",
+            "source": "settlementDraftAvailableActions",
             "key": "delete_pristine_draft",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-          "wrapper": "abandonSettlementDraftRecord",
+          "wrapper": "executeSettlementDraftLifecycleAction",
           "productionConsumers": [
             "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "covered",
       "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED",
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {

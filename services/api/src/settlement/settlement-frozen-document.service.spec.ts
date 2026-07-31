@@ -51,6 +51,8 @@ function context(preparedFacts: ReturnType<typeof facts>[] = [facts(), facts()])
     lines: [],
     revision: 3,
     status: "draft",
+    processId: null,
+    abandonReason: null,
     ownerUserId: "owner-1",
     governanceVersion: 1,
     fieldReviewerUserId: "material-1",
@@ -83,6 +85,7 @@ function context(preparedFacts: ReturnType<typeof facts>[] = [facts(), facts()])
       defaultTaxRatePercent: { toString: () => "13" }, taxFactRevision: 4
     }) },
     settlementSignedDocument: {
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockImplementation(() => Promise.resolve(active)),
       update: jest.fn().mockImplementation(({ data }) => {
         active = active ? { ...active, ...data } : null;
@@ -92,7 +95,11 @@ function context(preparedFacts: ReturnType<typeof facts>[] = [facts(), facts()])
         active = { id: "frozen-1", ...data };
         return Promise.resolve(active);
       })
-    }
+    },
+    contractSettlementProcess: { findMany: jest.fn().mockResolvedValue([]) },
+    settlement: { findMany: jest.fn().mockResolvedValue([]) },
+    paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+    approvalInstance: { findMany: jest.fn().mockResolvedValue([]) }
   };
   const prisma = {
     $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
@@ -274,6 +281,30 @@ describe("SettlementFrozenDocumentService", () => {
         .rejects.toBeInstanceOf(BadRequestException);
       expect(current.files.uploadPrivateFile).not.toHaveBeenCalled();
     }
+  });
+
+  it("fails closed before rendering a marker-drift formal draft", async () => {
+    const current = context([facts()]);
+    current.tx.contractSettlementProcess.findMany.mockResolvedValueOnce([{
+      id: "process-1",
+      settlementDraftId: "draft-1",
+      settlementId: "settlement-1"
+    }]);
+    current.tx.settlement.findMany.mockResolvedValueOnce([{
+      id: "settlement-1",
+      projectId: "project-1",
+      contractId: "contract-1",
+      contractVersionId: "version-1",
+      code: "JS-001",
+      processId: "process-1"
+    }]);
+
+    await expect(
+      current.service.generate("project-1", "draft-1", "owner-1", 3)
+    ).rejects.toThrow("已形成正式结算");
+
+    expect(current.files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(current.settlements.prepareDraftDocumentFacts).not.toHaveBeenCalled();
   });
 
   it("rejects missing tax facts and a mismatched field-review route before upload", async () => {

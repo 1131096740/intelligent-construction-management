@@ -32,6 +32,7 @@ describe("SettlementSubmissionService", () => {
     const draft = {
       id: "draft-1",
       projectId: "project-1",
+      contractId: "contract-1",
       contractVersionId: "version-1",
       settlementTemplateVersionId: "template-1",
       code: "JS-DRAFT-001",
@@ -47,6 +48,10 @@ describe("SettlementSubmissionService", () => {
       ],
       revision: 3,
       status: "draft",
+      processId: null,
+      submittedSettlementId: null,
+      submittedAt: null,
+      abandonReason: null,
       ownerUserId: "owner-1",
       governanceVersion: 1,
       fieldReviewerUserId: "reviewer-1",
@@ -68,6 +73,22 @@ describe("SettlementSubmissionService", () => {
           .mockResolvedValueOnce({ count: 1 })
       },
       settlementDraftLine: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractSettlementProcess: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      settlementSignedDocument: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      approvalInstance: {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
@@ -99,6 +120,7 @@ describe("SettlementSubmissionService", () => {
     return {
       draft,
       tx,
+      prisma,
       settlements,
       service: new SettlementSubmissionService(
         prisma as never,
@@ -155,6 +177,23 @@ describe("SettlementSubmissionService", () => {
     expect(frozenDocuments.assertCurrentFacts.mock.invocationCallOrder[0]).toBeLessThan(
       counterpartyDocuments.assertReadyForSubmission.mock.invocationCallOrder[0]!
     );
+  });
+
+  it("rejects a formal-code collision before claiming the draft", async () => {
+    const current = context();
+    current.tx.settlement.findUnique.mockResolvedValue({
+      id: "settlement-existing"
+    });
+
+    await expect(current.service.submitDraft(
+      "project-1",
+      "draft-1",
+      "owner-1",
+      3
+    )).rejects.toThrow("已由正式结算占用");
+
+    expect(current.tx.settlementDraft.updateMany).not.toHaveBeenCalled();
+    expect(current.settlements.submitInTransaction).not.toHaveBeenCalled();
   });
 
   it("uses structured draft lines over stale compatibility JSON when submitting", async () => {
@@ -226,6 +265,7 @@ describe("SettlementSubmissionService", () => {
         findMany: jest.fn().mockResolvedValue([{ id: "row-1", lineageId: null }])
       },
       settlement: {
+        findUnique: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([])
       },
       settlementLine: {
@@ -283,6 +323,52 @@ describe("SettlementSubmissionService", () => {
         3
       )
     ).rejects.toThrow("已经提交");
+  });
+
+  it("fails closed before claiming a marker-drift draft with formal facts", async () => {
+    const current = context({ processId: "process-1" });
+    current.tx.contractSettlementProcess.findMany.mockResolvedValueOnce([
+      { id: "process-1", settlementId: "settlement-1" }
+    ]);
+    current.tx.settlement.findMany.mockResolvedValueOnce([{
+      id: "settlement-1",
+      projectId: "project-1",
+      contractId: "contract-1",
+      contractVersionId: "version-1",
+      code: "JS-DRAFT-001",
+      processId: "process-1"
+    }]);
+    current.tx.paymentRequest.findMany.mockResolvedValueOnce([{
+      id: "payment-1",
+      settlementId: "settlement-1"
+    }]);
+    current.tx.approvalInstance.findMany.mockResolvedValueOnce([{
+      id: "approval-1",
+      businessType: "settlement",
+      businessId: "settlement-1"
+    }]);
+
+    await expect(
+      current.service.submitDraft("project-1", "draft-1", "owner-1", 3)
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(current.tx.settlementDraft.updateMany).not.toHaveBeenCalled();
+    expect(current.frozenDocuments.assertCurrentFacts).not.toHaveBeenCalled();
+    expect(current.settlements.submitInTransaction).not.toHaveBeenCalled();
+  });
+
+  it("maps a submission serialization failure to the stable draft conflict", async () => {
+    const current = context();
+    current.prisma.$transaction.mockRejectedValueOnce(
+      Object.assign(new Error("serialization conflict"), { code: "P2034" })
+    );
+
+    await expect(
+      current.service.submitDraft("project-1", "draft-1", "owner-1", 3)
+    ).rejects.toMatchObject({
+      status: 409,
+      message: "结算草稿正在被其他操作处理，请刷新后重试"
+    });
   });
 
   it("requires an old unsubmitted draft to be re-saved into the governed flow", async () => {
