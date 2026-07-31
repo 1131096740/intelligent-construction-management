@@ -209,7 +209,9 @@ describe("ProjectExpenseService withdrawal authority", () => {
         }
       })
     );
-    expect(detail.availableActions).toEqual([
+    expect(
+      detail.availableActions.filter((action) => action.key === "withdraw")
+    ).toEqual([
       expect.objectContaining({ key: "withdraw", enabled: true })
     ]);
     expect(detail).toHaveProperty("withdrawalContext", {
@@ -244,7 +246,9 @@ describe("ProjectExpenseService withdrawal authority", () => {
         "applicant-1"
       );
 
-      expect(detail.availableActions).toEqual([]);
+      expect(
+        detail.availableActions.filter((action) => action.key === "withdraw")
+      ).toEqual([]);
       expect(detail).toHaveProperty("withdrawalContext", null);
     }
   );
@@ -261,7 +265,9 @@ describe("ProjectExpenseService withdrawal authority", () => {
       "applicant-1"
     );
 
-    expect(detail.availableActions).toEqual([]);
+    expect(
+      detail.availableActions.filter((action) => action.key === "withdraw")
+    ).toEqual([]);
     expect(detail).toHaveProperty("withdrawalContext", null);
   });
 
@@ -278,7 +284,9 @@ describe("ProjectExpenseService withdrawal authority", () => {
       "applicant-1"
     );
 
-    expect(detail.availableActions).toEqual([]);
+    expect(
+      detail.availableActions.filter((action) => action.key === "withdraw")
+    ).toEqual([]);
     expect(detail).toHaveProperty("withdrawalContext", null);
     expect(detail.blockedReasons).toContain(
       "已有实付资金占用的项目支出不能撤回"

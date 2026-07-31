@@ -603,6 +603,326 @@ test("P0 项目支出撤回以 fresh GET 四坐标提交且双击只产生一次
   expect(pageErrors).toEqual([]);
 });
 
+test("P0 项目支出审批在 Chromium 桌面通过并在 WebKit 390 驳回", async ({
+  browserName,
+  page
+}, testInfo) => {
+  await installSession(page);
+  const approve = browserName === "chromium";
+  await page.setViewportSize(
+    approve
+      ? { width: 1366, height: 768 }
+      : { width: 390, height: 844 }
+  );
+  const browserErrors: string[] = [];
+  const pageErrors: string[] = [];
+  const requestOrder: string[] = [];
+  const reviewBodies: Record<string, unknown>[] = [];
+  let reviewed = false;
+  let releaseReviewPost!: () => void;
+  const reviewPostGate = new Promise<void>((resolve) => {
+    releaseReviewPost = resolve;
+  });
+  page.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => {
+    pageErrors.push(error.message);
+  });
+  const detail = () => ({
+    id: "expense-review",
+    projectId: "project-1",
+    code: "ZC-REVIEW-001",
+    title: "ZC-REVIEW-001 · 项目支出审批",
+    status: reviewed ? (approve ? "approval_pending" : "rejected") : "approval_pending",
+    statusLabel: reviewed ? (approve ? "已通过当前节点" : "已驳回") : "审批中",
+    expenseTypeLabel: "报销",
+    expenseSubtypeLabel: "差旅费",
+    paymentSubject: "项目差旅支出",
+    reason: "现场协调差旅",
+    requestedAmountCents: "100000",
+    approvedAmountCents: reviewed && approve ? "80000" : null,
+    currentNodeName: reviewed ? null : "财务审核",
+    lifecycleKind: "formal_record",
+    ledgerView: reviewed && !approve ? "ended" : "formal_ledger",
+    lifecycleUpdatedAt: "2026-07-31T10:00:00.000Z",
+    hasPersistentDraft: false,
+    reviewApprovalContext: reviewed
+      ? null
+      : {
+          expectedExpenseUpdatedAt: "2026-07-31T10:00:00.000Z",
+          expectedApprovalInstanceId: "approval-expense-review",
+          expectedNodeIndex: 2,
+          expectedApprovalUpdatedAt: "2026-07-31T10:00:01.000Z"
+        },
+    withdrawalContext: null,
+    availableActions: reviewed
+      ? []
+      : [{
+          key: "review_approval",
+          label: "审批项目支出",
+          kind: "primary",
+          enabled: true,
+          disabledReason: null,
+          requiresSelfReviewConfirmation: false
+        }],
+    blockedReasons: reviewed ? ["当前审批节点已办理"] : [],
+    canSetApprovedAmount: approve,
+    reviewAction: {
+      key: "review",
+      label: "审批项目支出",
+      kind: "primary",
+      enabled: !reviewed,
+      disabledReason: reviewed ? "当前审批节点已办理" : null,
+      requiresSelfReviewConfirmation: false
+    },
+    approvalTimeline: []
+  });
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-review/approval-detail",
+    (route) => {
+      requestOrder.push("GET");
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail())
+      });
+    }
+  );
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-review/approval",
+    async (route) => {
+      requestOrder.push("POST");
+      reviewBodies.push(
+        route.request().postDataJSON() as Record<string, unknown>
+      );
+      await reviewPostGate;
+      reviewed = true;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ id: "expense-review" })
+      });
+    }
+  );
+
+  await login(page);
+  await page.goto("/项目支出/project-1/expense-review");
+  await expect(
+    page.getByRole("heading", { name: "项目支出审批详情" })
+  ).toBeVisible();
+  const comment = approve ? "同意按核定金额支付" : "资料不足，请补充凭证";
+  await page
+    .getByPlaceholder("审批意见；驳回时必填")
+    .fill(comment);
+  if (approve) {
+    await page
+      .getByPlaceholder("终审批准金额（元，不填则按申请金额）")
+      .fill("800.00");
+  }
+  await page
+    .getByRole("button", { name: approve ? "审批通过" : "审批驳回" })
+    .click();
+  const dialog = page.locator(".t-dialog").filter({
+    hasText: approve ? "确认通过项目支出审批" : "确认驳回项目支出审批"
+  });
+  await expect(dialog).toBeVisible();
+  await page.screenshot({
+    path: path.join(
+      testInfo.outputDir,
+      `project-expense-review-${approve ? "approve-chromium-1366x768" : "reject-webkit-390x844"}.png`
+    ),
+    fullPage: false
+  });
+  const confirm = dialog.getByRole("button", {
+    name: approve ? "确认通过" : "确认驳回",
+    exact: true
+  });
+  await confirm.evaluate((element) => {
+    (element as HTMLButtonElement).click();
+    (element as HTMLButtonElement).click();
+  });
+  await expect.poll(() => reviewBodies).toHaveLength(1);
+  await expect(confirm).toBeDisabled();
+  await expect(
+    dialog.getByRole("button", { name: "取消", exact: true })
+  ).toBeDisabled();
+  await expect(dialog.locator(".t-dialog__close")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  releaseReviewPost();
+
+  await expect(
+    page.getByText(
+      approve
+        ? "项目支出审批已通过，详情已刷新。"
+        : "项目支出审批已驳回，详情已刷新。",
+      { exact: true }
+    )
+  ).toBeVisible();
+  await expect(
+    page.getByText(approve ? "已通过当前节点" : "已驳回", { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "审批通过" })
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "审批驳回" })
+  ).toHaveCount(0);
+  await expect.poll(() => requestOrder).toEqual([
+    "GET",
+    "GET",
+    "POST",
+    "GET"
+  ]);
+  expect(reviewBodies).toEqual([{
+    decision: approve ? "approve" : "reject",
+    ...(approve ? { approvedAmountCents: "80000" } : {}),
+    comment,
+    expectedExpenseUpdatedAt: "2026-07-31T10:00:00.000Z",
+    expectedApprovalInstanceId: "approval-expense-review",
+    expectedNodeIndex: 2,
+    expectedApprovalUpdatedAt: "2026-07-31T10:00:01.000Z"
+  }]);
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalScrollers(page);
+  if (!approve) {
+    expect(
+      await page.evaluate(() => ({
+        height: window.innerHeight,
+        userAgent: navigator.userAgent,
+        width: window.innerWidth
+      }))
+    ).toEqual(expect.objectContaining({
+      height: 844,
+      width: 390,
+      userAgent: expect.not.stringContaining("Chrome/")
+    }));
+  }
+  expect(browserErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
+test("P0 项目支出审批 A 的迟到 preflight 不得在 B 路由发出 POST", async ({
+  browserName,
+  page
+}) => {
+  test.skip(browserName !== "chromium");
+  await installSession(page);
+  let expenseAGetCount = 0;
+  let reviewPostCount = 0;
+  let releaseExpenseAPreflight!: () => void;
+  const expenseAPreflightGate = new Promise<void>((resolve) => {
+    releaseExpenseAPreflight = resolve;
+  });
+  let markExpenseAPreflightStarted!: () => void;
+  const expenseAPreflightStarted = new Promise<void>((resolve) => {
+    markExpenseAPreflightStarted = resolve;
+  });
+  const detail = (id: "expense-review-A" | "expense-review-B") => ({
+    id,
+    projectId: "project-1",
+    code: id === "expense-review-A" ? "ZC-REVIEW-A" : "ZC-REVIEW-B",
+    title: id === "expense-review-A" ? "ZC-REVIEW-A · 待审批" : "ZC-REVIEW-B · 当前详情",
+    status: "approval_pending",
+    statusLabel: "审批中",
+    expenseTypeLabel: "报销",
+    expenseSubtypeLabel: "差旅费",
+    paymentSubject: id === "expense-review-A" ? "A 支出" : "B 支出",
+    reason: "审批路由归属验收",
+    requestedAmountCents: "100000",
+    approvedAmountCents: null,
+    currentNodeName: "财务审核",
+    lifecycleKind: "formal_record",
+    ledgerView: "formal_ledger",
+    lifecycleUpdatedAt: "2026-07-31T10:10:00.000Z",
+    hasPersistentDraft: false,
+    reviewApprovalContext: id === "expense-review-A"
+      ? {
+          expectedExpenseUpdatedAt: "2026-07-31T10:10:00.000Z",
+          expectedApprovalInstanceId: "approval-expense-review-A",
+          expectedNodeIndex: 1,
+          expectedApprovalUpdatedAt: "2026-07-31T10:10:01.000Z"
+        }
+      : null,
+    withdrawalContext: null,
+    availableActions: id === "expense-review-A"
+      ? [{
+          key: "review_approval",
+          label: "审批项目支出",
+          kind: "primary",
+          enabled: true,
+          disabledReason: null,
+          requiresSelfReviewConfirmation: false
+        }]
+      : [],
+    blockedReasons: id === "expense-review-B" ? ["当前账号无此审批权限"] : [],
+    canSetApprovedAmount: false,
+    reviewAction: {
+      key: "review",
+      label: "审批项目支出",
+      kind: "primary",
+      enabled: id === "expense-review-A",
+      disabledReason: id === "expense-review-B" ? "当前账号无此审批权限" : null,
+      requiresSelfReviewConfirmation: false
+    },
+    approvalTimeline: []
+  });
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-review-A/approval-detail",
+    async (route) => {
+      expenseAGetCount += 1;
+      if (expenseAGetCount > 1) {
+        markExpenseAPreflightStarted();
+        await expenseAPreflightGate;
+      }
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail("expense-review-A"))
+      });
+    }
+  );
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-review-B/approval-detail",
+    (route) => route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(detail("expense-review-B"))
+    })
+  );
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-review-A/approval",
+    (route) => {
+      reviewPostCount += 1;
+      return route.fulfill({ contentType: "application/json", body: "{}" });
+    }
+  );
+
+  await login(page);
+  await page.goto("/项目支出/project-1/expense-review-A");
+  await page.getByRole("button", { name: "审批通过" }).click();
+  const dialog = page.locator(".t-dialog").filter({
+    hasText: "确认通过项目支出审批"
+  });
+  await dialog.getByRole("button", { name: "确认通过", exact: true }).click();
+  await expenseAPreflightStarted;
+  await page.evaluate(() => {
+    window.history.pushState(
+      {},
+      "",
+      "/项目支出/project-1/expense-review-B"
+    );
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(page.getByText("ZC-REVIEW-B", { exact: true })).toBeVisible();
+  releaseExpenseAPreflight();
+  await page.waitForTimeout(100);
+
+  expect(reviewPostCount).toBe(0);
+  await expect(page.getByText("ZC-REVIEW-B", { exact: true })).toBeVisible();
+  await expect(page.getByText("ZC-REVIEW-A", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "审批通过" })
+  ).toHaveCount(0);
+});
+
 test("P0 项目支出 A 路由迟到响应不能覆盖 B 详情", async ({
   browserName,
   page

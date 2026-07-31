@@ -14,7 +14,13 @@ import {
   type ProjectExpenseApprovalDetailReadModel,
   type RoleKey
 } from "@jiangkong/shared-domain";
+import {
+  isGovernedFrozenApprovalNode,
+  resolveApprovalReviewIdentity,
+  type FrozenApprovalNode
+} from "../approval/approval-review-identity";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
+import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -39,11 +45,18 @@ import type { RecordProjectExpensePurchaseExecutionDto } from "./dto/record-proj
 import type { ReviewProjectExpenseApprovalDto } from "./dto/review-project-expense-approval.dto";
 import type { WithdrawProjectExpenseApprovalDto } from "./dto/withdraw-project-expense-approval.dto";
 
-interface ProjectExpenseApprovalNode {
+interface ProjectExpenseApprovalNode extends FrozenApprovalNode {
   name: string;
   mode: "any";
   roleKeys: RoleKey[];
+  candidateUserIds?: string[];
+  candidateUserIdsByRole?: Partial<Record<RoleKey, string[]>>;
   approvedRoleKeys?: RoleKey[];
+}
+
+interface ProjectExpenseApprovalCandidateRow {
+  userId: string;
+  roleKey: RoleKey;
 }
 
 type ProjectExpenseLedgerView = "formal_ledger" | "my_drafts" | "returned_for_revision" | "ended";
@@ -56,9 +69,17 @@ type ProjectExpenseApprovalLifecycleReadModel = ProjectExpenseApprovalDetailRead
   availableActions: DetailActionReadModel[];
   blockedReasons: string[];
   withdrawalContext: ProjectExpenseWithdrawalContext | null;
+  reviewApprovalContext: ProjectExpenseReviewApprovalContext | null;
 };
 
 export interface ProjectExpenseWithdrawalContext {
+  expectedExpenseUpdatedAt: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+  expectedApprovalUpdatedAt: string;
+}
+
+export interface ProjectExpenseReviewApprovalContext {
   expectedExpenseUpdatedAt: string;
   expectedApprovalInstanceId: string;
   expectedNodeIndex: number;
@@ -405,14 +426,10 @@ export class ProjectExpenseService {
       throw new NotFoundException("项目支出申请不存在");
     }
 
-    const actorRoleKeys = await this.loadActorRoleKeys(this.prisma, actorUserId, projectId);
-    const isExpenseApplicant = expense.applicantUserId === actorUserId;
-    if (!isExpenseApplicant && !canPerform("project_expense.approve", actorRoleKeys)) {
-      throw new ForbiddenException("无权查看该项目支出审批详情");
-    }
-
-    const instances = expense.status === "approval_pending"
-      ? await this.prisma.approvalInstance.findMany({
+    const [actorRoleKeys, instances] = await Promise.all([
+      this.loadActorRoleKeys(this.prisma, actorUserId, projectId),
+      expense.status === "approval_pending"
+        ? this.prisma.approvalInstance.findMany({
           where: {
             businessType: "project_expense_request",
             businessId: expense.id,
@@ -430,8 +447,22 @@ export class ProjectExpenseService {
             updatedAt: true
           }
         })
-      : [];
+        : Promise.resolve([])
+    ]);
     const instance = instances.length === 1 ? instances[0]! : null;
+    const nodes = (instance?.frozenNodes ?? []) as unknown as ProjectExpenseApprovalNode[];
+    const currentNode = instance ? nodes[instance.currentNodeIndex] ?? null : null;
+    const reviewIdentity = currentNode
+      ? this.resolveProjectExpenseReviewIdentity(currentNode, actorUserId, actorRoleKeys)
+      : null;
+    const isExpenseApplicant = expense.applicantUserId === actorUserId;
+    if (
+      !isExpenseApplicant &&
+      !canPerform("project_expense.approve", actorRoleKeys) &&
+      !reviewIdentity
+    ) {
+      throw new ForbiddenException("无权查看该项目支出审批详情");
+    }
     const usedFinancingUsage =
       expense.status === "approval_pending" && isExpenseApplicant
         ? await this.prisma.projectExpenseFinancingQuotaUsage.findFirst({
@@ -442,23 +473,38 @@ export class ProjectExpenseService {
             select: { id: true }
           })
         : null;
-    const nodes = (instance?.frozenNodes ?? []) as unknown as ProjectExpenseApprovalNode[];
-    const currentNode = instance ? nodes[instance.currentNodeIndex] ?? null : null;
-    const approvedRoleKey = currentNode?.roleKeys.find((role) => actorRoleKeys.includes(role)) ?? null;
+    const approvedRoleKey = reviewIdentity?.approvedRoleKey ?? null;
     const isApprovalApplicant = instance?.applicantUserId === actorUserId;
     const isLeaderSelfReview =
-      isApprovalApplicant && (approvedRoleKey === "chairman" || approvedRoleKey === "general_manager");
+      isApprovalApplicant &&
+      reviewIdentity?.representedUserId === actorUserId &&
+      reviewIdentity.viaAssignment !== true &&
+      (approvedRoleKey === "chairman" || approvedRoleKey === "general_manager");
     const canReview = expense.status === "approval_pending" && Boolean(currentNode && approvedRoleKey);
     const disabledReason = expense.status !== "approval_pending"
       ? "当前项目支出状态不可审批"
-      : !currentNode
+      : instances.length !== 1
+        ? "项目支出审批实例异常，请联系管理员处理"
+        : !currentNode
         ? "项目支出当前审批节点不存在"
         : !approvedRoleKey
-          ? "当前岗位无权审批此节点"
+          ? "当前账号不是本审批节点处理人"
           : isApprovalApplicant && !isLeaderSelfReview
             ? "申请人不能审批自己发起的业务"
             : undefined;
     const reviewEnabled = canReview && (!isApprovalApplicant || isLeaderSelfReview);
+    const reviewApprovalContext =
+      reviewEnabled &&
+      instance &&
+      expense.updatedAt instanceof Date &&
+      instance.updatedAt instanceof Date
+        ? {
+            expectedExpenseUpdatedAt: expense.updatedAt.toISOString(),
+            expectedApprovalInstanceId: instance.id,
+            expectedNodeIndex: instance.currentNodeIndex,
+            expectedApprovalUpdatedAt: instance.updatedAt.toISOString()
+          }
+        : null;
     const paidAmountCents = expense.paidAmountCents ?? 0n;
     const ended = ["withdrawn", "rejected", "voided"].includes(expense.status);
     const availableActions: DetailActionReadModel[] = [];
@@ -479,6 +525,19 @@ export class ProjectExpenseService {
               instance.updatedAt.toISOString()
           }
         : null;
+    if (expense.status === "approval_pending") {
+      availableActions.push(detailAction({
+        key: "review_approval",
+        label: "审批项目支出",
+        kind: "primary",
+        roleKeys: actorRoleKeys,
+        requiredAction: "project_expense.approve",
+        skipRoleCheck: true,
+        enabled: reviewApprovalContext !== null,
+        disabledReason,
+        requiresSelfReviewConfirmation: isLeaderSelfReview
+      }));
+    }
     if (ended) {
       blockedReasons.push("项目支出申请已结束，只能查看历史记录");
     } else if (paidAmountCents > 0n || ["partially_paid", "paid"].includes(expense.status)) {
@@ -509,7 +568,7 @@ export class ProjectExpenseService {
           requiresComment: true
         }));
       }
-      if (availableActions.length === 0) {
+      if (!availableActions.some((action) => action.enabled)) {
         blockedReasons.push("只有申请人可以撤回，或由具备作废权限的岗位结束审批中的项目支出申请");
       }
     } else if (expense.status === "approved_pending_payment") {
@@ -544,7 +603,10 @@ export class ProjectExpenseService {
         expense.approvedAmountCents === null ? null : moneyCentsToApi(expense.approvedAmountCents),
       currentNodeName: currentNode?.name ?? null,
       canSetApprovedAmount: Boolean(
-        instance && currentNode && instance.currentNodeIndex === nodes.length - 1
+        reviewApprovalContext &&
+        instance &&
+        currentNode &&
+        instance.currentNodeIndex === nodes.length - 1
       ),
       reviewAction: detailAction({
         key: "review",
@@ -567,7 +629,8 @@ export class ProjectExpenseService {
       hasPersistentDraft: false,
       availableActions,
       blockedReasons,
-      withdrawalContext
+      withdrawalContext,
+      reviewApprovalContext
     };
   }
 
@@ -700,6 +763,12 @@ export class ProjectExpenseService {
       if (attachmentFile && attachmentFile.uploadedByUserId !== actorUserId) {
         throw new BadRequestException("项目支出附件必须由申请人本人上传");
       }
+      const frozenNodes = await this.freezeApprovalNodes(
+        tx,
+        project.id,
+        expenseType,
+        actorUserId
+      );
       const request = await tx.projectExpenseRequest.create({
         data: {
           projectId: project.id,
@@ -730,7 +799,7 @@ export class ProjectExpenseService {
           businessId: request.id,
           status: "in_progress",
           currentNodeIndex: 0,
-          frozenNodes: getProjectExpenseApprovalNodes(expenseType) as unknown as Prisma.InputJsonValue,
+          frozenNodes: frozenNodes as unknown as Prisma.InputJsonValue,
           applicantUserId: actorUserId
         }
       });
@@ -764,42 +833,95 @@ export class ProjectExpenseService {
     if (input.decision !== "approve" && input.decision !== "reject") {
       throw new BadRequestException("项目支出审批动作无效");
     }
+    if (input.decision === "reject" && !input.comment?.trim()) {
+      throw new BadRequestException("驳回项目支出时必须填写审批意见");
+    }
+    const expectedExpenseUpdatedAt = new Date(input.expectedExpenseUpdatedAt);
+    const expectedApprovalUpdatedAt = new Date(input.expectedApprovalUpdatedAt);
+    const expectedApprovalInstanceId = input.expectedApprovalInstanceId?.trim();
+    if (Number.isNaN(expectedExpenseUpdatedAt.getTime())) {
+      throw new BadRequestException("预期项目支出版本格式不正确");
+    }
+    if (Number.isNaN(expectedApprovalUpdatedAt.getTime())) {
+      throw new BadRequestException("预期审批版本格式不正确");
+    }
+    if (!expectedApprovalInstanceId) {
+      throw new BadRequestException("预期审批实例不能空白");
+    }
+    if (!Number.isInteger(input.expectedNodeIndex) || input.expectedNodeIndex < 0) {
+      throw new BadRequestException("预期审批节点格式不正确");
+    }
 
     const reviewed = await this.prisma.$transaction(async (tx) => {
-      const request = await this.lockExpenseRequest(tx, projectId, expenseRequestId);
+      const request = await this.lockExpenseRequestById(tx, projectId, expenseRequestId);
       if (!request) {
         throw new NotFoundException("项目支出申请不存在");
       }
       if (request.status !== "approval_pending") {
-        throw new BadRequestException("当前项目支出状态不可审批");
+        throw new ConflictException("当前项目支出已离开审批中，请刷新后重试");
       }
 
-      const instance = await this.lockApprovalInstance(tx, request.id);
-      if (!instance) {
-        throw new BadRequestException("项目支出审批实例不存在");
+      const instances = await this.lockApprovalInstances(tx, request.id);
+      if (instances.length === 0) {
+        throw new ConflictException("项目支出审批实例不存在，请刷新后重试");
       }
+      if (instances.length !== 1) {
+        throw new ConflictException("项目支出审批实例异常，请联系管理员处理");
+      }
+      const instance = instances[0]!;
       const nodes = instance.frozenNodes as unknown as ProjectExpenseApprovalNode[];
       const currentNode = nodes[instance.currentNodeIndex];
       if (!currentNode) {
         throw new BadRequestException("项目支出当前审批节点不存在");
       }
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, projectId);
-      const approvedRoleKey = currentNode.roleKeys.find((role) => actorRoleKeys.includes(role));
-      if (!approvedRoleKey) {
-        throw new BadRequestException(`当前用户不能审批项目支出节点：${currentNode.name}`);
+      const identityNode = input.decision === "approve"
+        ? currentNode
+        : { ...currentNode, approvedRoleKeys: [] };
+      const identity = this.resolveProjectExpenseReviewIdentity(
+        identityNode,
+        actorUserId,
+        actorRoleKeys
+      );
+      if (!identity) {
+        throw new ForbiddenException(`当前账号不能处理“${currentNode.name}”项目支出审批节点`);
       }
+      const approvedRoleKey = identity.approvedRoleKey;
 
       const selfReview = await confirmApprovalSelfReview({
         applicantUserId: instance.applicantUserId,
         actorUserId,
-        actorRoleKeys,
+        actorRoleKeys:
+          identity.representedUserId === actorUserId && !identity.viaAssignment
+            ? Array.from(new Set([...actorRoleKeys, approvedRoleKey]))
+            : actorRoleKeys,
         approvedRoleKey,
+        representedUserId: identity.representedUserId,
+        viaAssignment: identity.viaAssignment,
         selfReviewReason: input.selfReviewReason,
         confirmationPassword: input.confirmationPassword,
         confirmPassword: this.auth
           ? (password) => this.auth!.confirmPassword(actorUserId, password)
           : undefined
       });
+
+      if (
+        !(request.updatedAt instanceof Date) ||
+        request.updatedAt.getTime() !== expectedExpenseUpdatedAt.getTime() ||
+        expectedApprovalInstanceId !== instance.id ||
+        input.expectedNodeIndex !== instance.currentNodeIndex ||
+        !(instance.updatedAt instanceof Date) ||
+        instance.updatedAt.getTime() !== expectedApprovalUpdatedAt.getTime()
+      ) {
+        throw new ConflictException("项目支出审批坐标已变化，请刷新页面后重试");
+      }
+
+      const auditCoordinates = {
+        expectedExpenseUpdatedAt: expectedExpenseUpdatedAt.toISOString(),
+        expectedApprovalInstanceId,
+        expectedNodeIndex: input.expectedNodeIndex,
+        expectedApprovalUpdatedAt: expectedApprovalUpdatedAt.toISOString()
+      };
 
       if (input.decision === "reject") {
         const rejected = await tx.projectExpenseRequest.update({
@@ -816,6 +938,8 @@ export class ProjectExpenseService {
             action: "reject",
             actorUserId,
             comment: input.comment?.trim() || undefined,
+            approvedRoleKey,
+            representedUserId: identity.representedUserId,
             ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
           }
         });
@@ -832,13 +956,23 @@ export class ProjectExpenseService {
           businessId: request.id,
           metadata: {
             projectId,
+            code: request.code,
+            fromStatus: request.status,
+            toStatus: "rejected",
+            fromNodeIndex: instance.currentNodeIndex,
+            toNodeIndex: null,
             nodeName: currentNode.name,
             approvedRoleKey,
+            ...auditCoordinates,
             ...selfReview.metadata
           }
         });
         return rejected;
       }
+
+      const signature = await snapshotApprovalSignature(tx, actorUserId, {
+        required: isGovernedFrozenApprovalNode(currentNode)
+      });
 
       const approvedAmountCents = input.approvedAmountCents === undefined
         ? request.requestedAmountCents
@@ -857,6 +991,13 @@ export class ProjectExpenseService {
       const flowCompleted = nextNodeIndex >= nextNodes.length;
       if (!flowCompleted && input.approvedAmountCents !== undefined) {
         throw new BadRequestException("批准金额只能在最终审批节点填写");
+      }
+      if (
+        flowCompleted &&
+        approvedAmountCents <
+          dbMoneyToBigInt(request.paidAmountCents, "项目支出已实付金额")
+      ) {
+        throw new BadRequestException("批准金额不能低于已实付金额");
       }
 
       const updated = await tx.projectExpenseRequest.update({
@@ -879,6 +1020,15 @@ export class ProjectExpenseService {
           action: "approve",
           actorUserId,
           comment: input.comment?.trim() || undefined,
+          approvedRoleKey,
+          representedUserId: identity.representedUserId,
+          ...(isGovernedFrozenApprovalNode(currentNode)
+            ? {
+                signatureFileIdSnapshot: signature.fileId,
+                signatureSha256Snapshot: signature.sha256,
+                signatureVersionIdSnapshot: signature.versionId
+              }
+            : {}),
           ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
         }
       });
@@ -897,10 +1047,16 @@ export class ProjectExpenseService {
         businessId: request.id,
         metadata: {
           projectId,
+          code: request.code,
+          fromStatus: request.status,
+          toStatus: flowCompleted ? "approved_pending_payment" : "approval_pending",
+          fromNodeIndex: instance.currentNodeIndex,
+          toNodeIndex: nextNodeIndex,
           nodeName: currentNode.name,
           approvedRoleKey,
           flowCompleted,
           approvedAmountCents: flowCompleted ? moneyCentsToApi(approvedAmountCents) : undefined,
+          ...auditCoordinates,
           ...selfReview.metadata
         }
       });
@@ -1589,6 +1745,99 @@ export class ProjectExpenseService {
     }
   }
 
+  private async freezeApprovalNodes(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    expenseType: (typeof EXPENSE_TYPES)[number],
+    applicantUserId: string
+  ): Promise<ProjectExpenseApprovalNode[]> {
+    const definitions = getProjectExpenseApprovalNodes(expenseType);
+    const requiredRoles: RoleKey[] = Array.from(
+      new Set<RoleKey>(definitions.flatMap((node) => node.roleKeys))
+    );
+    const projectCandidates = await tx.$queryRaw<ProjectExpenseApprovalCandidateRow[]>(Prisma.sql`
+      SELECT pm."userId", pm."positionKey" AS "roleKey"
+      FROM "ProjectMember" pm
+      INNER JOIN "User" u ON u."id" = pm."userId"
+      WHERE pm."projectId" = ${projectId}
+        AND pm."positionKey" IN (${Prisma.join(requiredRoles)})
+        AND u."isActive" = TRUE
+      FOR SHARE OF pm, u
+    `);
+    const positionedCandidates = await tx.$queryRaw<ProjectExpenseApprovalCandidateRow[]>(Prisma.sql`
+      SELECT up."userId", p."key" AS "roleKey"
+      FROM "UserPosition" up
+      INNER JOIN "Position" p ON p."id" = up."positionId"
+      INNER JOIN "User" u ON u."id" = up."userId"
+      WHERE (up."projectId" IS NULL OR up."projectId" = ${projectId})
+        AND p."key" IN (${Prisma.join(requiredRoles)})
+        AND u."isActive" = TRUE
+      FOR SHARE OF up, p, u
+    `);
+    const candidatesByRole = new Map<RoleKey, Set<string>>();
+    for (const candidate of [...projectCandidates, ...positionedCandidates]) {
+      if (!requiredRoles.includes(candidate.roleKey)) continue;
+      const candidates = candidatesByRole.get(candidate.roleKey) ?? new Set<string>();
+      candidates.add(candidate.userId);
+      candidatesByRole.set(candidate.roleKey, candidates);
+    }
+
+    return definitions.map((definition) => {
+      const permitsApplicantSelfReview = definition.roleKeys.every(
+        (role) => role === "chairman" || role === "general_manager"
+      );
+      const rawCandidatesByRole = Object.fromEntries(
+        definition.roleKeys.map((role) => [
+          role,
+          Array.from(candidatesByRole.get(role) ?? [])
+            .filter((userId) => permitsApplicantSelfReview || userId !== applicantUserId)
+            .sort()
+        ])
+      ) as Partial<Record<RoleKey, string[]>>;
+      const roleMatchCount = new Map<string, number>();
+      for (const role of definition.roleKeys) {
+        for (const userId of rawCandidatesByRole[role] ?? []) {
+          roleMatchCount.set(userId, (roleMatchCount.get(userId) ?? 0) + 1);
+        }
+      }
+      const candidateUserIdsByRole = Object.fromEntries(
+        definition.roleKeys.map((role) => [
+          role,
+          (rawCandidatesByRole[role] ?? []).filter(
+            (userId) => roleMatchCount.get(userId) === 1
+          )
+        ])
+      ) as Partial<Record<RoleKey, string[]>>;
+      const candidateUserIds = Array.from(
+        new Set(definition.roleKeys.flatMap((role) => candidateUserIdsByRole[role] ?? []))
+      ).sort();
+      if (!candidateUserIds.length) {
+        throw new BadRequestException(
+          `${definition.name}缺少当前有效且可审批的人员，请先完成组织配置`
+        );
+      }
+      return {
+        name: definition.name,
+        mode: "any",
+        roleKeys: [...definition.roleKeys],
+        candidateUserIds,
+        candidateUserIdsByRole
+      };
+    });
+  }
+
+  private resolveProjectExpenseReviewIdentity(
+    node: ProjectExpenseApprovalNode,
+    actorUserId: string,
+    actorRoleKeys: RoleKey[]
+  ) {
+    return resolveApprovalReviewIdentity({
+      node: { ...node, assignments: [] },
+      actorUserId,
+      actorRoleKeys
+    });
+  }
+
   private async shrinkFinancingQuotaUsageToApprovedAmount(
     tx: Prisma.TransactionClient,
     request: { id: string; requestedAmountCents: bigint; approvedAmountCents: bigint | null },
@@ -1604,9 +1853,14 @@ export class ProjectExpenseService {
       dbMoneyToBigInt(approvedAmountCents, "项目支出批准金额") > cashAllocatedCents
         ? dbMoneyToBigInt(approvedAmountCents, "项目支出批准金额") - cashAllocatedCents
         : 0n;
-    const activeFinancingCents = usageTotals.occupied + usageTotals.used;
+    if (usageTotals.used > targetFinancingCents) {
+      throw new BadRequestException("批准金额不能低于已使用融资额度与现金部分之和");
+    }
+    const targetOccupiedCents = targetFinancingCents - usageTotals.used;
     const amountToRelease =
-      activeFinancingCents > targetFinancingCents ? activeFinancingCents - targetFinancingCents : 0n;
+      usageTotals.occupied > targetOccupiedCents
+        ? usageTotals.occupied - targetOccupiedCents
+        : 0n;
     if (amountToRelease === 0n) {
       return;
     }
@@ -1616,6 +1870,9 @@ export class ProjectExpenseService {
       amountToRelease,
       "released"
     );
+    if (releasedAmountCents !== amountToRelease) {
+      throw new ConflictException("项目支出融资额度占用已变化，请刷新后重试");
+    }
     if (releasedAmountCents > 0n) {
       await this.audit.record(tx, {
         actorUserId,

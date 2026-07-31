@@ -583,21 +583,20 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
       "trigger": {
-        "element": "t-button",
-        "event": "click",
-        "handler": "submitReview",
-        "variant": "approve"
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmProjectExpenseReviewApprove"
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "server_boolean",
-        "source": "detail.reviewAction.enabled",
-        "key": "review"
+        "kind": "detail_action",
+        "source": "projectExpenseWithdrawalCapability.availableActions",
+        "key": "review_approval"
       },
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "name": "reviewProjectExpenseApproval"
+          "name": "executeProjectExpenseApprovalReviewAction"
         }
       ]
     },
@@ -609,21 +608,20 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
       "trigger": {
-        "element": "t-button",
-        "event": "click",
-        "handler": "submitReview",
-        "variant": "reject"
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmProjectExpenseReviewReject"
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "server_boolean",
-        "source": "detail.reviewAction.enabled",
-        "key": "review"
+        "kind": "detail_action",
+        "source": "projectExpenseWithdrawalCapability.availableActions",
+        "key": "review_approval"
       },
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "name": "reviewProjectExpenseApproval"
+          "name": "executeProjectExpenseApprovalReviewAction"
         }
       ]
     },

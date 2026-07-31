@@ -100,7 +100,8 @@ export class PermissionGuard implements CanActivate {
       if (!canPerform(requiredAction, effectiveRoleKeys)) {
         const delegatedApprovalAllowed =
           governedApprovalAccess === true ||
-          (projectId &&
+          (requiredAction !== "project_expense.approve" &&
+            projectId &&
             this.isDelegatedApprovalAction(requiredAction) &&
             (await this.hasDelegatedProjectActionRole(request.user.id, projectId, requiredAction)));
         if (!delegatedApprovalAllowed) {
@@ -186,7 +187,13 @@ export class PermissionGuard implements CanActivate {
   }
 
   private isDelegatedApprovalAction(action: BusinessAction) {
-    return action === "contract.approve" || action === "settlement.approve" || action === "payment.approve" || action === "expense_claim.approve";
+    return (
+      action === "contract.approve" ||
+      action === "settlement.approve" ||
+      action === "payment.approve" ||
+      action === "project_expense.approve" ||
+      action === "expense_claim.approve"
+    );
   }
 
   private async governedApprovalAccess(
@@ -195,12 +202,22 @@ export class PermissionGuard implements CanActivate {
     roleKeys: RoleKey[],
     projectId?: string
   ): Promise<boolean | null> {
-    const target = request.params?.contractVersionId
+    const target: {
+      businessType: string;
+      businessId: string;
+      flowType?: string;
+    } | null = request.params?.contractVersionId
       ? { businessType: "contract_version", businessId: request.params.contractVersionId }
       : request.params?.settlementId
         ? { businessType: "settlement", businessId: request.params.settlementId }
       : request.params?.paymentId
         ? await this.resolvePaymentApprovalTarget(request.params.paymentId)
+        : request.params?.expenseRequestId
+          ? {
+              businessType: "project_expense_request",
+              businessId: request.params.expenseRequestId,
+              flowType: "project_expense.approve"
+            }
         : request.params?.claimId
           ? { businessType: "expense_claim", businessId: request.params.claimId }
           : null;
@@ -218,6 +235,7 @@ export class PermissionGuard implements CanActivate {
       where: {
         businessType: target.businessType,
         businessId: target.businessId,
+        ...(target.flowType ? { flowType: target.flowType } : {}),
         status: "in_progress"
       },
       orderBy: { createdAt: "desc" },
@@ -226,6 +244,14 @@ export class PermissionGuard implements CanActivate {
     if (!instance || !Array.isArray(instance.frozenNodes)) return null;
     const node = instance.frozenNodes[instance.currentNodeIndex] as FrozenApprovalNode | undefined;
     if (!node || !isGovernedFrozenApprovalNode(node)) return null;
+
+    if (target.businessType === "project_expense_request") {
+      return Boolean(resolveApprovalReviewIdentity({
+        node: { ...node, assignments: [] },
+        actorUserId: userId,
+        actorRoleKeys: roleKeys
+      }));
+    }
 
     const delegationClient = this.prisma as Partial<ActiveApprovalDelegationClient>;
     const delegatorIds = delegationClient.approvalDelegation && delegationClient.user

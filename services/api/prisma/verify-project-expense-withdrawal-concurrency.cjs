@@ -225,6 +225,18 @@ function withdrawalInput(fixture) {
   };
 }
 
+function reviewInput(fixture) {
+  return {
+    decision: "approve",
+    expectedExpenseUpdatedAt: fixture.expectedExpenseUpdatedAt,
+    expectedApprovalInstanceId:
+      fixture.expectedApprovalInstanceId,
+    expectedNodeIndex: fixture.expectedNodeIndex,
+    expectedApprovalUpdatedAt:
+      fixture.expectedApprovalUpdatedAt
+  };
+}
+
 function createServicePrisma(client, backendPid) {
   return {
     $transaction: (operation, options) =>
@@ -613,7 +625,7 @@ async function verifyNodeAdvanceWins() {
         PROJECT_ID,
         fixture.expenseId,
         APPROVER_USER_ID,
-        { decision: "approve" }
+        reviewInput(fixture)
       ),
     secondOperation: (service) =>
       service.withdrawApproval(
@@ -678,7 +690,7 @@ async function verifyWithdrawalWinsBeforeNodeAdvance() {
         PROJECT_ID,
         fixture.expenseId,
         APPROVER_USER_ID,
-        { decision: "approve" }
+        reviewInput(fixture)
       )
   });
   assert(
@@ -686,12 +698,12 @@ async function verifyWithdrawalWinsBeforeNodeAdvance() {
       results[1].status === "rejected",
     "撤回 winner 与节点推进 loser 的胜负必须确定"
   );
+  assertConflict(
+    results[1].reason,
+    "撤回 winner 后的节点推进 loser"
+  );
   assert(
-    typeof results[1].reason?.getStatus === "function" &&
-      results[1].reason.getStatus() === 400 &&
-      errorText(results[1].reason).includes(
-        "当前项目支出状态不可审批"
-      ),
+    errorText(results[1].reason).includes("已离开审批中"),
     `节点推进 loser 必须因 winner 已撤回的权威状态失败，实际 ${errorText(
       results[1].reason
     )}`

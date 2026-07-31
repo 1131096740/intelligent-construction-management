@@ -90,11 +90,11 @@
         title="审批办理"
         :bordered="true"
       >
-        <BusinessActionPanel :actions="[detail.reviewAction]" />
+        <BusinessActionPanel :actions="reviewActionView ? [reviewActionView] : []" />
         <t-alert
-          v-if="!detail.reviewAction.enabled"
+          v-if="!projectExpenseReviewEnabled"
           theme="info"
-          :message="detail.reviewAction.disabledReason ?? '当前账号暂无审批动作'"
+          :message="reviewActionView?.disabledReason ?? '当前账号暂无审批动作'"
         />
         <div
           v-else
@@ -109,26 +109,35 @@
             v-model="form.approvedAmountYuan"
             placeholder="终审批准金额（元，不填则按申请金额）"
           />
-          <ApprovalSelfReviewFields
-            v-model:self-review-reason="form.selfReviewReason"
-            v-model:confirmation-password="form.confirmationPassword"
-            :required="detail.reviewAction.requiresSelfReviewConfirmation === true"
-          />
+          <div
+            v-if="requiresProjectExpenseSelfReviewConfirmation"
+            class="approval-self-review-fields"
+          >
+            <t-alert
+              theme="warning"
+              title="领导自审二次确认"
+              message="当前单据由您本人发起，请说明独立复核依据；当前密码将在确认对话框中输入。"
+            />
+            <t-textarea
+              v-model="form.selfReviewReason"
+              placeholder="请填写独立的自审原因"
+            />
+          </div>
           <div class="review-buttons">
             <t-button
               theme="primary"
-              :disabled="busy !== ''"
-              :loading="busy === 'approve'"
-              @click="submitReview('approve')"
+              :disabled="reviewSubmitting"
+              :loading="reviewSubmitting && reviewConfirmation.kind === 'approve'"
+              @click="requestProjectExpenseReview('approve')"
             >
               审批通过
             </t-button>
             <t-button
               theme="danger"
               variant="outline"
-              :disabled="busy !== ''"
-              :loading="busy === 'reject'"
-              @click="submitReview('reject')"
+              :disabled="reviewSubmitting"
+              :loading="reviewSubmitting && reviewConfirmation.kind === 'reject'"
+              @click="requestProjectExpenseReview('reject')"
             >
               审批驳回
             </t-button>
@@ -140,6 +149,35 @@
           :message="actionMessage"
         />
       </t-card>
+
+      <SensitiveActionDialog
+        v-if="projectExpenseReviewActionEnabled('review_approval') && reviewConfirmation.kind === 'approve'"
+        :key="`project-expense-review-approve-${reviewConfirmation.dialogGeneration}`"
+        v-model="reviewConfirmation.visible"
+        title="确认通过项目支出审批？"
+        description="通过后将推进当前审批流程；只有终审通过后才进入已批待付。"
+        confirm-text="确认通过"
+        confirm-theme="primary"
+        :require-password="reviewConfirmation.requiresSelfReviewConfirmation"
+        :loading="reviewSubmitting"
+        :error="reviewConfirmation.error"
+        @confirm="confirmProjectExpenseReviewApprove"
+        @cancel="cancelProjectExpenseReview"
+      />
+      <SensitiveActionDialog
+        v-if="projectExpenseReviewActionEnabled('review_approval') && reviewConfirmation.kind === 'reject'"
+        :key="`project-expense-review-reject-${reviewConfirmation.dialogGeneration}`"
+        v-model="reviewConfirmation.visible"
+        title="确认驳回项目支出审批？"
+        description="驳回后本轮审批将结束，驳回意见和审批坐标将写入历史。"
+        confirm-text="确认驳回"
+        confirm-theme="danger"
+        :require-password="reviewConfirmation.requiresSelfReviewConfirmation"
+        :loading="reviewSubmitting"
+        :error="reviewConfirmation.error"
+        @confirm="confirmProjectExpenseReviewReject"
+        @cancel="cancelProjectExpenseReview"
+      />
 
       <t-card
         class="section-card"
@@ -163,7 +201,6 @@ import {
   watch
 } from "vue";
 import { useRoute } from "vue-router";
-import ApprovalSelfReviewFields from "../../components/ApprovalSelfReviewFields.vue";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import BusinessDraftAction, {
@@ -172,22 +209,21 @@ import BusinessDraftAction, {
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
 import {
+  executeProjectExpenseApprovalReviewAction,
   executeProjectExpenseWithdrawalAction,
   fetchProjectExpenseApprovalDetail,
+  prepareProjectExpenseApprovalReviewAction,
   prepareProjectExpenseWithdrawalAction,
-  reviewProjectExpenseApproval,
   voidProjectExpenseRequest,
+  type PrepareProjectExpenseApprovalReviewActionResult,
   type PrepareProjectExpenseWithdrawalActionResult,
+  type ProjectExpenseApprovalReviewActionContext,
+  type ProjectExpenseApprovalReviewActionDecision,
   type ProjectExpenseApprovalLifecycleDetailReadModel,
   type ProjectExpenseWithdrawalActionContext
 } from "../../api/core-flow-read.api";
 import { centsTextToYuanText } from "../../lib/money";
-import { confirmSensitiveAction } from "../confirm-sensitive-action";
-import {
-  canBeginProjectExpenseReview,
-  projectExpenseApprovedAmountCents,
-  submitConfirmedProjectExpenseReview
-} from "./project-expense-approval.config";
+import { projectExpenseApprovedAmountCents } from "./project-expense-approval.config";
 
 const route = useRoute();
 const detail = ref<ProjectExpenseApprovalLifecycleDetailReadModel | null>(null);
@@ -195,9 +231,27 @@ const projectExpenseWithdrawalCapability =
   shallowRef<ProjectExpenseApprovalLifecycleDetailReadModel | null>(null);
 const loading = ref(false);
 const errorMessage = ref("");
-const busy = ref<"" | "approve" | "reject">("");
 const actionMessage = ref("");
 const actionTone = ref<"success" | "error">("success");
+let reviewDialogGeneration = 0;
+let reviewOperationSequence = 0;
+let reviewBusyOwnerId = 0;
+let reviewComponentActive = true;
+const reviewOwnerScope = globalThis.crypto.randomUUID();
+const reviewSubmitting = ref(false);
+const reviewConfirmation = reactive({
+  visible: false,
+  kind: null as ProjectExpenseApprovalReviewActionDecision | null,
+  error: "",
+  dialogGeneration: -1,
+  projectId: "",
+  expenseRequestId: "",
+  expectedExpenseUpdatedAt: "",
+  expectedApprovalInstanceId: "",
+  expectedNodeIndex: -1,
+  expectedApprovalUpdatedAt: "",
+  requiresSelfReviewConfirmation: false
+});
 const withdrawalDialogGeneration = ref(0);
 let detailRouteGeneration = 0;
 let detailLoadRequestId = 0;
@@ -221,8 +275,7 @@ const withdrawalConfirmation = reactive({
 const form = reactive({
   comment: "",
   approvedAmountYuan: "",
-  selfReviewReason: "",
-  confirmationPassword: ""
+  selfReviewReason: ""
 });
 
 const expenseActionSubject = computed(() => ({
@@ -231,6 +284,62 @@ const expenseActionSubject = computed(() => ({
   lastSavedAt: formatDateTime(detail.value?.lifecycleUpdatedAt),
   impactScope: "撤回或作废后保留审批、金额与审计历史，不会删除业务记录。"
 }));
+
+function projectExpenseReviewActionEnabled(key: "review_approval") {
+  return Boolean(
+    projectExpenseWithdrawalCapability.value?.availableActions.some(
+      (action) => action.key === key && action.enabled
+    )
+  );
+}
+
+const reviewActionView = computed(() =>
+  detail.value?.availableActions.find(
+    (action) => action.key === "review_approval"
+  ) ?? detail.value?.reviewAction ?? null
+);
+
+const requiresProjectExpenseSelfReviewConfirmation = computed(
+  () =>
+    projectExpenseWithdrawalCapability.value?.availableActions.some(
+      (action) =>
+        action.key === "review_approval" &&
+        action.enabled &&
+        action.requiresSelfReviewConfirmation === true
+    ) === true
+);
+
+const projectExpenseReviewEnabled = computed(() => {
+  const capability = projectExpenseWithdrawalCapability.value;
+  const coordinates = capability?.reviewApprovalContext;
+  const currentDetail = detail.value;
+  const { projectId, expenseRequestId } = routeIds();
+  const enabledActionCount =
+    capability?.availableActions.filter(
+      (action) => action.key === "review_approval" && action.enabled
+    ).length ?? 0;
+  if (
+    !capability ||
+    !coordinates ||
+    capability.projectId !== projectId ||
+    capability.id !== expenseRequestId ||
+    currentDetail?.projectId !== capability.projectId ||
+    currentDetail.id !== capability.id ||
+    typeof capability.lifecycleUpdatedAt !== "string" ||
+    !capability.lifecycleUpdatedAt ||
+    coordinates.expectedExpenseUpdatedAt !== capability.lifecycleUpdatedAt ||
+    !coordinates.expectedApprovalInstanceId ||
+    !Number.isInteger(coordinates.expectedNodeIndex) ||
+    coordinates.expectedNodeIndex < 0 ||
+    !coordinates.expectedApprovalUpdatedAt
+  ) {
+    return false;
+  }
+  return (
+    enabledActionCount === 1 &&
+    projectExpenseReviewActionEnabled("review_approval")
+  );
+});
 
 function projectExpenseWithdrawalActionEnabled(key: "withdraw") {
   return Boolean(
@@ -273,7 +382,9 @@ const withdrawalEnabled = computed(() => {
 });
 
 const nonWithdrawalLifecycleActions = computed(() =>
-  detail.value?.availableActions.filter((action) => action.key !== "withdraw") ?? []
+  detail.value?.availableActions.filter(
+    (action) => action.key !== "withdraw" && action.key !== "review_approval"
+  ) ?? []
 );
 
 function routeIds() {
@@ -296,6 +407,7 @@ async function loadDetail(): Promise<boolean> {
   const routeGeneration = detailRouteGeneration;
   const requestId = ++detailLoadRequestId;
   detailEpoch += 1;
+  invalidateProjectExpenseReviewDialog(true);
   invalidateProjectExpenseWithdrawalDialog(true);
   projectExpenseWithdrawalCapability.value = null;
   if (!projectId || !expenseRequestId) {
@@ -364,6 +476,7 @@ function detailLoadIsCurrent(
   const currentRoute = routeIds();
   return (
     withdrawalComponentActive &&
+    reviewComponentActive &&
     requestId === detailLoadRequestId &&
     routeGeneration === detailRouteGeneration &&
     currentRoute.projectId === projectId &&
@@ -375,15 +488,41 @@ function clearProjectExpenseRouteContext() {
   detailRouteGeneration += 1;
   detailLoadRequestId += 1;
   detailEpoch += 1;
+  reviewBusyOwnerId = 0;
+  reviewSubmitting.value = false;
+  invalidateProjectExpenseReviewDialog(true);
   withdrawalBusyOwnerId = 0;
   withdrawalSubmitting.value = false;
   invalidateProjectExpenseWithdrawalDialog(true);
   projectExpenseWithdrawalCapability.value = null;
   detail.value = null;
   loading.value = false;
-  busy.value = "";
   errorMessage.value = "";
   actionMessage.value = "";
+  form.comment = "";
+  form.approvedAmountYuan = "";
+  form.selfReviewReason = "";
+}
+
+function clearProjectExpenseReviewConfirmation() {
+  Object.assign(reviewConfirmation, {
+    kind: null,
+    error: "",
+    dialogGeneration: -1,
+    projectId: "",
+    expenseRequestId: "",
+    expectedExpenseUpdatedAt: "",
+    expectedApprovalInstanceId: "",
+    expectedNodeIndex: -1,
+    expectedApprovalUpdatedAt: "",
+    requiresSelfReviewConfirmation: false
+  });
+}
+
+function invalidateProjectExpenseReviewDialog(close: boolean) {
+  reviewDialogGeneration += 1;
+  clearProjectExpenseReviewConfirmation();
+  if (close) reviewConfirmation.visible = false;
 }
 
 function clearProjectExpenseWithdrawalConfirmation() {
@@ -410,10 +549,345 @@ function scheduleRouteDetailLoad() {
   void Promise.resolve().then(() => {
     if (
       withdrawalComponentActive &&
+      reviewComponentActive &&
       expectedGeneration === detailRouteGeneration
     ) {
       void loadDetail();
     }
+  });
+}
+
+function requestProjectExpenseReview(
+  decision: ProjectExpenseApprovalReviewActionDecision
+) {
+  const capability = projectExpenseWithdrawalCapability.value;
+  const coordinates = capability?.reviewApprovalContext;
+  const { projectId, expenseRequestId } = routeIds();
+  try {
+    if (
+      !projectExpenseReviewEnabled.value ||
+      !capability ||
+      !coordinates ||
+      capability.projectId !== projectId ||
+      capability.id !== expenseRequestId
+    ) {
+      throw new Error(
+        "项目支出审批资格或坐标未读取，请刷新详情后重试"
+      );
+    }
+    if (reviewBusyOwnerId !== 0 || reviewSubmitting.value) {
+      throw new Error("当前审批正在提交，请等待本次操作完成");
+    }
+    const comment = form.comment.trim();
+    if (decision === "reject" && !comment) {
+      throw new Error("审批驳回时请填写审批意见");
+    }
+    projectExpenseApprovedAmountCents(
+      capability.canSetApprovedAmount,
+      decision,
+      form.approvedAmountYuan
+    );
+    if (requiresProjectExpenseSelfReviewConfirmation.value) {
+      buildApprovalSelfReviewPayload(true, {
+        selfReviewReason: form.selfReviewReason,
+        confirmationPassword: "validation"
+      });
+    }
+  } catch (error) {
+    actionTone.value = "error";
+    actionMessage.value =
+      error instanceof Error ? error.message : "项目支出审批信息不完整";
+    return;
+  }
+
+  reviewDialogGeneration += 1;
+  Object.assign(reviewConfirmation, {
+    visible: true,
+    kind: decision,
+    error: "",
+    dialogGeneration: reviewDialogGeneration,
+    projectId,
+    expenseRequestId,
+    expectedExpenseUpdatedAt: coordinates.expectedExpenseUpdatedAt,
+    expectedApprovalInstanceId: coordinates.expectedApprovalInstanceId,
+    expectedNodeIndex: coordinates.expectedNodeIndex,
+    expectedApprovalUpdatedAt: coordinates.expectedApprovalUpdatedAt,
+    requiresSelfReviewConfirmation:
+      requiresProjectExpenseSelfReviewConfirmation.value
+  });
+  actionMessage.value = "";
+}
+
+function cancelProjectExpenseReview() {
+  if (reviewBusyOwnerId !== 0) return;
+  invalidateProjectExpenseReviewDialog(true);
+}
+
+function projectExpenseReviewCapabilityMatches(
+  context: ProjectExpenseApprovalReviewActionContext
+) {
+  const capability = projectExpenseWithdrawalCapability.value;
+  const coordinates = capability?.reviewApprovalContext;
+  const currentDetail = detail.value;
+  const enabledActions = capability?.availableActions.filter(
+    (action) => action.key === "review_approval" && action.enabled
+  );
+  return (
+    capability?.projectId === context.projectId &&
+    capability.id === context.expenseRequestId &&
+    currentDetail?.projectId === context.projectId &&
+    currentDetail.id === context.expenseRequestId &&
+    capability.lifecycleUpdatedAt === context.expectedExpenseUpdatedAt &&
+    enabledActions?.length === 1 &&
+    capability.availableActions.some(
+      (action) =>
+        action.key === "review_approval" &&
+        action.enabled &&
+        action.requiresSelfReviewConfirmation ===
+          context.requiresSelfReviewConfirmation
+    ) &&
+    coordinates?.expectedExpenseUpdatedAt ===
+      context.expectedExpenseUpdatedAt &&
+    coordinates.expectedApprovalInstanceId ===
+      context.expectedApprovalInstanceId &&
+    coordinates.expectedNodeIndex === context.expectedNodeIndex &&
+    coordinates.expectedApprovalUpdatedAt ===
+      context.expectedApprovalUpdatedAt
+  );
+}
+
+function projectExpenseReviewSelectionMatches(
+  context: ProjectExpenseApprovalReviewActionContext
+) {
+  return (
+    reviewConfirmation.visible &&
+    reviewConfirmation.kind === context.decision &&
+    reviewConfirmation.dialogGeneration === context.dialogGeneration &&
+    reviewConfirmation.projectId === context.projectId &&
+    reviewConfirmation.expenseRequestId === context.expenseRequestId &&
+    reviewConfirmation.expectedExpenseUpdatedAt ===
+      context.expectedExpenseUpdatedAt &&
+    reviewConfirmation.expectedApprovalInstanceId ===
+      context.expectedApprovalInstanceId &&
+    reviewConfirmation.expectedNodeIndex === context.expectedNodeIndex &&
+    reviewConfirmation.expectedApprovalUpdatedAt ===
+      context.expectedApprovalUpdatedAt &&
+    reviewConfirmation.requiresSelfReviewConfirmation ===
+      context.requiresSelfReviewConfirmation
+  );
+}
+
+function projectExpenseReviewContextIsCurrent(
+  context: ProjectExpenseApprovalReviewActionContext
+) {
+  const currentRoute = routeIds();
+  return (
+    reviewComponentActive &&
+    context.ownerScope === reviewOwnerScope &&
+    context.routeGeneration === detailRouteGeneration &&
+    context.detailEpoch === detailEpoch &&
+    context.dialogGeneration === reviewDialogGeneration &&
+    context.operationId === reviewBusyOwnerId &&
+    context.projectId === currentRoute.projectId &&
+    context.expenseRequestId === currentRoute.expenseRequestId &&
+    projectExpenseReviewSelectionMatches(context) &&
+    projectExpenseReviewCapabilityMatches(context)
+  );
+}
+
+function captureProjectExpenseReviewContext(
+  decision: ProjectExpenseApprovalReviewActionDecision,
+  password: string
+): ProjectExpenseApprovalReviewActionContext | null {
+  const coordinates = reviewConfirmation;
+  const capability = projectExpenseWithdrawalCapability.value;
+  const { projectId, expenseRequestId } = routeIds();
+  if (
+    reviewBusyOwnerId !== 0 ||
+    reviewSubmitting.value ||
+    !reviewConfirmation.visible ||
+    reviewConfirmation.kind !== decision ||
+    coordinates.dialogGeneration !== reviewDialogGeneration ||
+    !projectExpenseReviewEnabled.value ||
+    !capability ||
+    coordinates.projectId !== projectId ||
+    coordinates.expenseRequestId !== expenseRequestId ||
+    !coordinates.expectedExpenseUpdatedAt ||
+    !coordinates.expectedApprovalInstanceId ||
+    !Number.isInteger(coordinates.expectedNodeIndex) ||
+    coordinates.expectedNodeIndex < 0 ||
+    !coordinates.expectedApprovalUpdatedAt
+  ) {
+    reviewConfirmation.error =
+      "审批上下文已失效，请重新打开确认。";
+    return null;
+  }
+
+  try {
+    const comment = form.comment.trim() || undefined;
+    if (decision === "reject" && !comment) {
+      throw new Error("审批驳回时请填写审批意见");
+    }
+    const approvedAmountCents = projectExpenseApprovedAmountCents(
+      capability.canSetApprovedAmount,
+      decision,
+      form.approvedAmountYuan
+    );
+    const selfReview = buildApprovalSelfReviewPayload(
+      coordinates.requiresSelfReviewConfirmation,
+      {
+        selfReviewReason: form.selfReviewReason,
+        confirmationPassword: password
+      }
+    );
+    const context = Object.freeze({
+      ownerScope: reviewOwnerScope,
+      routeGeneration: detailRouteGeneration,
+      detailEpoch,
+      dialogGeneration: coordinates.dialogGeneration,
+      operationId: ++reviewOperationSequence,
+      projectId,
+      expenseRequestId,
+      expectedExpenseUpdatedAt: coordinates.expectedExpenseUpdatedAt,
+      expectedApprovalInstanceId: coordinates.expectedApprovalInstanceId,
+      expectedNodeIndex: coordinates.expectedNodeIndex,
+      expectedApprovalUpdatedAt: coordinates.expectedApprovalUpdatedAt,
+      decision,
+      requiresSelfReviewConfirmation:
+        coordinates.requiresSelfReviewConfirmation,
+      ...(approvedAmountCents ? { approvedAmountCents } : {}),
+      ...(comment ? { comment } : {}),
+      ...selfReview
+    });
+    reviewBusyOwnerId = context.operationId;
+    reviewSubmitting.value = true;
+    reviewConfirmation.error = "";
+    actionMessage.value = "";
+    return context;
+  } catch (error) {
+    reviewConfirmation.error =
+      error instanceof Error ? error.message : "项目支出审批信息不完整";
+    return null;
+  }
+}
+
+function sameProjectExpenseReviewContext(
+  left: ProjectExpenseApprovalReviewActionContext,
+  right: ProjectExpenseApprovalReviewActionContext
+) {
+  return (
+    left.ownerScope === right.ownerScope &&
+    left.routeGeneration === right.routeGeneration &&
+    left.detailEpoch === right.detailEpoch &&
+    left.dialogGeneration === right.dialogGeneration &&
+    left.operationId === right.operationId &&
+    left.projectId === right.projectId &&
+    left.expenseRequestId === right.expenseRequestId &&
+    left.expectedExpenseUpdatedAt === right.expectedExpenseUpdatedAt &&
+    left.expectedApprovalInstanceId === right.expectedApprovalInstanceId &&
+    left.expectedNodeIndex === right.expectedNodeIndex &&
+    left.expectedApprovalUpdatedAt === right.expectedApprovalUpdatedAt &&
+    left.decision === right.decision &&
+    left.requiresSelfReviewConfirmation ===
+      right.requiresSelfReviewConfirmation &&
+    left.approvedAmountCents === right.approvedAmountCents &&
+    left.comment === right.comment &&
+    left.selfReviewReason === right.selfReviewReason &&
+    left.confirmationPassword === right.confirmationPassword
+  );
+}
+
+function preparedProjectExpenseReviewIsCurrent(
+  context: ProjectExpenseApprovalReviewActionContext,
+  prepared: PrepareProjectExpenseApprovalReviewActionResult
+) {
+  return (
+    prepared.status === "ready" &&
+    sameProjectExpenseReviewContext(context, prepared.context) &&
+    projectExpenseReviewContextIsCurrent(context)
+  );
+}
+
+async function completeProjectExpenseReview(
+  context: ProjectExpenseApprovalReviewActionContext
+) {
+  if (!projectExpenseReviewContextIsCurrent(context)) return;
+  reviewConfirmation.visible = false;
+  reviewConfirmation.error = "";
+  form.comment = "";
+  form.approvedAmountYuan = "";
+  form.selfReviewReason = "";
+  actionTone.value = "success";
+  actionMessage.value =
+    context.decision === "approve"
+      ? "项目支出审批已通过，详情已刷新。"
+      : "项目支出审批已驳回，详情已刷新。";
+  await loadDetail();
+}
+
+function failProjectExpenseReview(
+  context: ProjectExpenseApprovalReviewActionContext,
+  error: unknown
+) {
+  if (!projectExpenseReviewContextIsCurrent(context)) return;
+  const reason =
+    error instanceof Error ? error.message : "项目支出审批操作失败";
+  actionTone.value = "error";
+  actionMessage.value = reason;
+  reviewConfirmation.error = reason;
+}
+
+function finishProjectExpenseReview(
+  context: ProjectExpenseApprovalReviewActionContext
+) {
+  if (
+    context.ownerScope === reviewOwnerScope &&
+    context.operationId === reviewBusyOwnerId
+  ) {
+    reviewBusyOwnerId = 0;
+    reviewSubmitting.value = false;
+  }
+}
+
+function confirmProjectExpenseReviewApprove(values: {
+  reason: string;
+  password: string;
+}) {
+  return executeProjectExpenseApprovalReviewAction({
+    decision: "approve",
+    capture: () =>
+      captureProjectExpenseReviewContext("approve", values.password),
+    preflight: (context) =>
+      prepareProjectExpenseApprovalReviewAction({
+        ...context,
+        decision: "approve",
+        isCurrent: projectExpenseReviewContextIsCurrent
+      }),
+    current: preparedProjectExpenseReviewIsCurrent,
+    complete: completeProjectExpenseReview,
+    fail: failProjectExpenseReview,
+    finish: finishProjectExpenseReview
+  });
+}
+
+function confirmProjectExpenseReviewReject(values: {
+  reason: string;
+  password: string;
+}) {
+  return executeProjectExpenseApprovalReviewAction({
+    decision: "reject",
+    capture: () =>
+      captureProjectExpenseReviewContext("reject", values.password),
+    preflight: (context) =>
+      prepareProjectExpenseApprovalReviewAction({
+        ...context,
+        decision: "reject",
+        isCurrent: projectExpenseReviewContextIsCurrent
+      }),
+    current: preparedProjectExpenseReviewIsCurrent,
+    complete: completeProjectExpenseReview,
+    fail: failProjectExpenseReview,
+    finish: finishProjectExpenseReview
   });
 }
 
@@ -661,58 +1135,6 @@ function formatDateTime(value: string | null | undefined) {
   }).format(new Date(value));
 }
 
-async function submitReview(decision: "approve" | "reject") {
-  if (!canBeginProjectExpenseReview(busy.value)) return;
-  if (!detail.value?.reviewAction.enabled) return;
-  const comment = form.comment.trim();
-  if (decision === "reject" && !comment) {
-    actionTone.value = "error";
-    actionMessage.value = "审批驳回时请填写审批意见";
-    return;
-  }
-
-  busy.value = decision;
-  actionMessage.value = "";
-  try {
-    const selfReview = buildApprovalSelfReviewPayload(
-      detail.value.reviewAction.requiresSelfReviewConfirmation === true,
-      form
-    );
-    const approvedAmountYuan = form.approvedAmountYuan.trim();
-    const approvedAmountCents = projectExpenseApprovedAmountCents(
-      detail.value.canSetApprovedAmount,
-      decision,
-      approvedAmountYuan
-    );
-    const { projectId, expenseRequestId } = routeIds();
-    const submitted = await submitConfirmedProjectExpenseReview({
-      decision,
-      confirm: (message) => confirmSensitiveAction(message),
-      submit: async () => {
-        await reviewProjectExpenseApproval(projectId, expenseRequestId, {
-          decision,
-          comment: comment || undefined,
-          approvedAmountCents,
-          ...selfReview
-        });
-      }
-    });
-    if (!submitted) return;
-    form.selfReviewReason = "";
-    form.confirmationPassword = "";
-    form.comment = "";
-    form.approvedAmountYuan = "";
-    actionTone.value = "success";
-    actionMessage.value = decision === "approve" ? "审批通过，详情已刷新。" : "审批驳回，详情已刷新。";
-    await loadDetail();
-  } catch (error) {
-    actionTone.value = "error";
-    actionMessage.value = error instanceof Error ? error.message : "项目支出审批失败";
-  } finally {
-    busy.value = "";
-  }
-}
-
 watch(
   () => [routeIds().projectId, routeIds().expenseRequestId] as const,
   () => {
@@ -727,6 +1149,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  reviewComponentActive = false;
   withdrawalComponentActive = false;
   clearProjectExpenseRouteContext();
 });
@@ -734,7 +1157,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .project-expense-approval-detail-page,
-.review-form {
+.review-form,
+.approval-self-review-fields {
   display: grid;
   min-width: 0;
   gap: var(--jg-space-lg);

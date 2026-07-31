@@ -61,9 +61,10 @@ import {
   reviewProjectFinancingQuota,
   terminateProjectFinancingQuota,
   createProjectExpenseRequest,
+  executeProjectExpenseApprovalReviewAction,
   executeProjectExpenseWithdrawalAction,
+  prepareProjectExpenseApprovalReviewAction,
   prepareProjectExpenseWithdrawalAction,
-  reviewProjectExpenseApproval,
   voidProjectExpenseRequest,
   confirmProjectExpenseReceipt,
   recordProjectExpenseExecution,
@@ -129,6 +130,7 @@ import {
   recordPaymentPdfArchive,
   executePaymentApprovalReviewAction,
   preparePaymentApprovalReviewAction,
+  type PrepareProjectExpenseApprovalReviewActionInput,
   type PreparePaymentApprovalReviewActionInput,
   withdrawContractApproval,
   withdrawPaymentApproval,
@@ -1090,11 +1092,6 @@ describe("core flow read API client", () => {
       handlerUserId: "handler-1",
       attachmentFileId: "file-expense-1"
     });
-    await reviewProjectExpenseApproval("project-1", "expense-1", {
-      decision: "approve",
-      approvedAmountCents: "80000",
-      comment: "同意"
-    });
     await voidProjectExpenseRequest("project-1", "expense-1", {
       reason: "重复提交"
     });
@@ -1129,7 +1126,6 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/projects/project-1/expense-requests",
-      "/api/projects/project-1/expense-requests/expense-1/approval",
       "/api/projects/project-1/expense-requests/expense-1/voiding",
       "/api/projects/project-1/expense-requests/expense-1/executions",
       "/api/projects/project-1/expense-requests/expense-1/purchase-execution",
@@ -1156,15 +1152,8 @@ describe("core flow read API client", () => {
         attachmentFileId: "file-expense-1"
       })
     );
-    expect(fetchMock.mock.calls[1][1]?.body).toBe(
-      JSON.stringify({
-        decision: "approve",
-        approvedAmountCents: "80000",
-        comment: "同意"
-      })
-    );
-    expect(fetchMock.mock.calls[2][1]?.body).toBe(JSON.stringify({ reason: "重复提交" }));
-    expect(fetchMock.mock.calls[3][1]?.body).toBe(
+    expect(fetchMock.mock.calls[1][1]?.body).toBe(JSON.stringify({ reason: "重复提交" }));
+    expect(fetchMock.mock.calls[2][1]?.body).toBe(
       JSON.stringify({
         amountCents: "80000",
         paidAt: "2026-07-02T10:00:00.000Z",
@@ -1172,33 +1161,33 @@ describe("core flow read API client", () => {
         confirmationPassword: "current-password"
       })
     );
-    expect(fetchMock.mock.calls[4][1]?.body).toBe(
+    expect(fetchMock.mock.calls[3][1]?.body).toBe(
       JSON.stringify({
         executedAt: "2026-07-02T09:00:00.000Z",
         note: "已采购",
         confirmationPassword: "current-password"
       })
     );
-    expect(fetchMock.mock.calls[5][1]?.body).toBe(
+    expect(fetchMock.mock.calls[4][1]?.body).toBe(
       JSON.stringify({
         amountCents: "80000",
         occurredAt: "2026-07-02T11:00:00.000Z",
         confirmationPassword: "current-password"
       })
     );
-    expect(fetchMock.mock.calls[6][1]?.body).toBe(
+    expect(fetchMock.mock.calls[5][1]?.body).toBe(
       JSON.stringify({
         confirmationPassword: "current-password",
         note: "数量无误"
       })
     );
-    expect(fetchMock.mock.calls[7][1]?.body).toBe(
+    expect(fetchMock.mock.calls[6][1]?.body).toBe(
       JSON.stringify({
         confirmationPassword: "current-password",
         downloadReason: "报销附件复核"
       })
     );
-    expect(fetchMock.mock.calls[8][1]?.body).toBe(
+    expect(fetchMock.mock.calls[7][1]?.body).toBe(
       JSON.stringify({
         confirmationPassword: "current-password",
         downloadReason: "审批单复核"
@@ -1206,7 +1195,7 @@ describe("core flow read API client", () => {
     );
   });
 
-  it("reads project expense approval detail and preserves self-review password exactly", async () => {
+  it("reads project expense approval detail from the encoded route", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -1223,12 +1212,6 @@ describe("core flow read API client", () => {
     } as Response);
 
     const detail = await fetchProjectExpenseApprovalDetail("project-1", "expense-1");
-    await reviewProjectExpenseApproval("project-1", "expense-1", {
-      decision: "approve",
-      selfReviewReason: "业务紧急",
-      confirmationPassword: " current-password "
-    });
-
     expect(fetchMock.mock.calls[0][0]).toBe(
       "/api/projects/project-1/expense-requests/expense-1/approval-detail"
     );
@@ -1238,13 +1221,174 @@ describe("core flow read API client", () => {
       kind: "danger",
       enabled: true
     });
-    expect(fetchMock.mock.calls[1][1]?.body).toBe(
+  });
+
+  it.each([
+    ["missing action", projectExpenseReviewDetail({ availableActions: [] })],
+    [
+      "disabled action",
+      projectExpenseReviewDetail({
+        availableActions: [projectExpenseReviewAction({ enabled: false })]
+      })
+    ],
+    [
+      "duplicate action",
+      projectExpenseReviewDetail({
+        availableActions: [projectExpenseReviewAction(), projectExpenseReviewAction()]
+      })
+    ],
+    ["project drift", projectExpenseReviewDetail({ projectId: "project-b" })],
+    ["expense drift", projectExpenseReviewDetail({ expenseRequestId: "expense-b" })],
+    [
+      "expense version drift",
+      projectExpenseReviewDetail({ expectedExpenseUpdatedAt: "2026-07-31T09:00:00.000Z" })
+    ],
+    [
+      "approval instance drift",
+      projectExpenseReviewDetail({ expectedApprovalInstanceId: "approval-expense-b" })
+    ],
+    ["node drift", projectExpenseReviewDetail({ expectedNodeIndex: 2 })],
+    [
+      "approval version drift",
+      projectExpenseReviewDetail({ expectedApprovalUpdatedAt: "2026-07-31T09:05:00.000Z" })
+    ],
+    ["missing context", projectExpenseReviewDetail({ reviewApprovalContext: null })]
+  ])("refuses a %s project expense review preflight before POST", async (_label, detail) => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(detail));
+
+    await expect(
+      prepareProjectExpenseApprovalReviewAction(projectExpenseReviewActionInput())
+    ).rejects.toThrow("项目支出审批资格或坐标已变化");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("freezes project expense approve fields behind a fresh GET and one encoded POST", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse(projectExpenseReviewDetail({ requiresSelfReviewConfirmation: true }))
+      )
+      .mockResolvedValueOnce(jsonResponse({ id: "expense/a", status: "approval_pending" }));
+    const input = projectExpenseReviewActionInput({
+      decision: "approve",
+      approvedAmountCents: "80000",
+      comment: "  同意按核定金额支付  ",
+      requiresSelfReviewConfirmation: true,
+      selfReviewReason: "  本人发起，已独立复核  ",
+      confirmationPassword: " current-password "
+    });
+    const prepared = await prepareProjectExpenseApprovalReviewAction(input);
+    input.comment = "随后篡改";
+    input.approvedAmountCents = "1";
+
+    await expect(
+      executeProjectExpenseApprovalReviewAction({
+        decision: "approve",
+        capture: () => prepared.context,
+        preflight: async () => prepared,
+        current: () => true,
+        complete: vi.fn(),
+        fail: vi.fn(),
+        finish: vi.fn()
+      })
+    ).resolves.toEqual(expect.objectContaining({ status: "completed" }));
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project%2Fa/expense-requests/expense%2Fa/approval-detail",
+      "/api/projects/project%2Fa/expense-requests/expense%2Fa/approval"
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(
       JSON.stringify({
         decision: "approve",
-        selfReviewReason: "业务紧急",
-        confirmationPassword: " current-password "
+        approvedAmountCents: "80000",
+        comment: "同意按核定金额支付",
+        selfReviewReason: "本人发起，已独立复核",
+        confirmationPassword: " current-password ",
+        expectedExpenseUpdatedAt: "2026-07-31T00:00:00.000Z",
+        expectedApprovalInstanceId: "approval-expense-a",
+        expectedNodeIndex: 1,
+        expectedApprovalUpdatedAt: "2026-07-31T00:05:00.000Z"
       })
     );
+  });
+
+  it("keeps project expense reject fixed, drops amount and stops stale work before POST", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(projectExpenseReviewDetail()))
+      .mockResolvedValueOnce(jsonResponse({ id: "expense/a", status: "rejected" }));
+    const prepared = await prepareProjectExpenseApprovalReviewAction(
+      projectExpenseReviewActionInput({
+        decision: "reject",
+        approvedAmountCents: "80000",
+        comment: "  支出依据不足  "
+      })
+    );
+
+    await executeProjectExpenseApprovalReviewAction({
+      decision: "reject",
+      capture: () => prepared.context,
+      preflight: async () => prepared,
+      current: () => true,
+      complete: vi.fn(),
+      fail: vi.fn(),
+      finish: vi.fn()
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+      decision: "reject",
+      comment: "支出依据不足",
+      expectedExpenseUpdatedAt: "2026-07-31T00:00:00.000Z",
+      expectedApprovalInstanceId: "approval-expense-a",
+      expectedNodeIndex: 1,
+      expectedApprovalUpdatedAt: "2026-07-31T00:05:00.000Z"
+    });
+
+    fetchMock.mockClear();
+    await expect(
+      executeProjectExpenseApprovalReviewAction({
+        decision: "reject",
+        capture: () => prepared.context,
+        preflight: async () => ({ status: "stale", context: prepared.context }),
+        current: () => false,
+        complete: vi.fn(),
+        fail: vi.fn(),
+        finish: vi.fn()
+      })
+    ).resolves.toEqual(expect.objectContaining({ status: "stale" }));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not complete a project expense review after its owner becomes stale during POST", async () => {
+    const post = deferred<Response>();
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(projectExpenseReviewDetail()))
+      .mockReturnValueOnce(post.promise);
+    let current = true;
+    const prepared = await prepareProjectExpenseApprovalReviewAction(
+      projectExpenseReviewActionInput({ isCurrent: () => current })
+    );
+    if (prepared.status !== "ready") {
+      throw new Error("项目支出审批预检未就绪");
+    }
+    const complete = vi.fn();
+    const request = executeProjectExpenseApprovalReviewAction({
+      decision: "approve",
+      capture: () => prepared.context,
+      preflight: async () => prepared,
+      current: () => current,
+      complete,
+      fail: vi.fn(),
+      finish: vi.fn()
+    });
+
+    await Promise.resolve();
+    current = false;
+    post.resolve(jsonResponse({ id: "expense/a" }));
+
+    await expect(request).resolves.toEqual(
+      expect.objectContaining({ status: "stale" })
+    );
+    expect(complete).not.toHaveBeenCalled();
   });
 
   it("freezes project expense withdrawal coordinates behind a fresh GET and one encoded POST", async () => {
@@ -3357,6 +3501,85 @@ function projectExpenseWithdrawalActionInput(
     expectedApprovalInstanceId: "approval-expense-a",
     expectedNodeIndex: 1,
     expectedApprovalUpdatedAt: "2026-07-31T00:05:00.000Z",
+    isCurrent: () => true,
+    ...overrides
+  };
+}
+
+function projectExpenseReviewAction(
+  overrides: { enabled?: boolean; requiresSelfReviewConfirmation?: boolean } = {}
+) {
+  return {
+    key: "review_approval",
+    label: "办理项目支出审批",
+    kind: "primary",
+    enabled: overrides.enabled ?? true,
+    disabledReason: overrides.enabled === false ? "当前不可审批" : null,
+    requiredRoles: [],
+    requiresSelfReviewConfirmation:
+      overrides.requiresSelfReviewConfirmation ?? false
+  };
+}
+
+function projectExpenseReviewDetail(
+  overrides: {
+    projectId?: string;
+    expenseRequestId?: string;
+    expectedExpenseUpdatedAt?: string;
+    expectedApprovalInstanceId?: string;
+    expectedNodeIndex?: number;
+    expectedApprovalUpdatedAt?: string;
+    reviewApprovalContext?: null;
+    availableActions?: Array<Record<string, unknown>>;
+    requiresSelfReviewConfirmation?: boolean;
+  } = {}
+) {
+  const expectedExpenseUpdatedAt =
+    overrides.expectedExpenseUpdatedAt ?? "2026-07-31T00:00:00.000Z";
+  return {
+    id: overrides.expenseRequestId ?? "expense/a",
+    projectId: overrides.projectId ?? "project/a",
+    lifecycleUpdatedAt: expectedExpenseUpdatedAt,
+    reviewApprovalContext:
+      overrides.reviewApprovalContext === null
+        ? null
+        : {
+            expectedExpenseUpdatedAt,
+            expectedApprovalInstanceId:
+              overrides.expectedApprovalInstanceId ?? "approval-expense-a",
+            expectedNodeIndex: overrides.expectedNodeIndex ?? 1,
+            expectedApprovalUpdatedAt:
+              overrides.expectedApprovalUpdatedAt ??
+              "2026-07-31T00:05:00.000Z"
+          },
+    availableActions:
+      overrides.availableActions ??
+      [
+        projectExpenseReviewAction({
+          requiresSelfReviewConfirmation:
+            overrides.requiresSelfReviewConfirmation
+        })
+      ]
+  };
+}
+
+function projectExpenseReviewActionInput(
+  overrides: Partial<PrepareProjectExpenseApprovalReviewActionInput> = {}
+): PrepareProjectExpenseApprovalReviewActionInput {
+  return {
+    ownerScope: "project-expense-review-owner",
+    routeGeneration: 2,
+    detailEpoch: 3,
+    dialogGeneration: 4,
+    operationId: 5,
+    projectId: "project/a",
+    expenseRequestId: "expense/a",
+    expectedExpenseUpdatedAt: "2026-07-31T00:00:00.000Z",
+    expectedApprovalInstanceId: "approval-expense-a",
+    expectedNodeIndex: 1,
+    expectedApprovalUpdatedAt: "2026-07-31T00:05:00.000Z",
+    decision: "approve",
+    requiresSelfReviewConfirmation: false,
     isCurrent: () => true,
     ...overrides
   };

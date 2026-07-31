@@ -51,6 +51,83 @@ describe("PermissionGuard", () => {
     };
   }
 
+  function buildProjectExpenseApprovalPrisma(options: {
+    actorRoleKey?: string;
+    candidateUserId?: string;
+    assignmentRecipientUserId?: string;
+    approvalBusinessId?: string;
+  }) {
+    const candidateUserId = options.candidateUserId ?? "frozen-reviewer-1";
+    const approvalBusinessId = options.approvalBusinessId ?? "expense-1";
+    return {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue(
+          options.actorRoleKey
+            ? [{ positionKey: options.actorRoleKey }]
+            : []
+        )
+      },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: {
+        findFirst: jest.fn().mockImplementation(
+          ({ where }: { where: { businessType: string; businessId: string } }) =>
+            Promise.resolve(
+              where.businessType === "project_expense_request" &&
+                where.businessId === approvalBusinessId
+                ? {
+                    currentNodeIndex: 0,
+                    frozenNodes: [
+                      {
+                        roleKeys: ["finance_director"],
+                        candidateUserIdsByRole: {
+                          finance_director: [candidateUserId]
+                        },
+                        candidateUserIds: [candidateUserId],
+                        ...(options.assignmentRecipientUserId
+                          ? {
+                              assignments: [
+                                {
+                                  kind: "transfer",
+                                  fromUserId: candidateUserId,
+                                  fromRoleKey: "finance_director",
+                                  toUserId: options.assignmentRecipientUserId
+                                }
+                              ]
+                            }
+                          : {})
+                      }
+                    ]
+                  }
+                : null
+            )
+        )
+      }
+    };
+  }
+
+  function projectExpenseApproveGuard(prisma: unknown) {
+    return new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("project_expense.approve")
+      } as never,
+      prisma as never
+    );
+  }
+
+  function projectExpenseApprovalContext(userId: string) {
+    return contextWithRequest({
+      user: { id: userId },
+      params: {
+        projectId: "project-1",
+        expenseRequestId: "expense-1"
+      }
+    });
+  }
+
   it.each([
     ["contract.tax_fact.supplement", "contract_staff"],
     ["contract.tax_fact.finance_review", "finance_director"],
@@ -214,6 +291,133 @@ describe("PermissionGuard", () => {
       user: { id: "former-finance-1" },
       params: { paymentId: "payment-1" }
     }))).resolves.toBe(true);
+  });
+
+  it("allows a governed project expense candidate after the frozen candidate loses the approval role", async () => {
+    const prisma = buildProjectExpenseApprovalPrisma({
+      candidateUserId: "former-finance-1"
+    });
+
+    await expect(
+      projectExpenseApproveGuard(prisma).canActivate(
+        projectExpenseApprovalContext("former-finance-1")
+      )
+    ).resolves.toBe(true);
+  });
+
+  it("rejects a governed project expense assignment recipient without the current approval role", async () => {
+    const prisma = buildProjectExpenseApprovalPrisma({
+      candidateUserId: "finance-1",
+      assignmentRecipientUserId: "assigned-1"
+    });
+
+    await expect(
+      projectExpenseApproveGuard(prisma).canActivate(
+        projectExpenseApprovalContext("assigned-1")
+      )
+    ).rejects.toThrow("当前账号不是该审批节点冻结的处理人");
+  });
+
+  it("rejects an active delegation recipient for a governed project expense candidate", async () => {
+    const prisma = {
+      ...buildProjectExpenseApprovalPrisma({
+        candidateUserId: "former-finance-1"
+      }),
+      approvalDelegation: {
+        findMany: jest.fn().mockResolvedValue([
+          { fromUserId: "former-finance-1" }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "former-finance-1", isActive: true },
+          { id: "delegate-1", isActive: true }
+        ])
+      }
+    };
+
+    await expect(
+      projectExpenseApproveGuard(prisma).canActivate(
+        projectExpenseApprovalContext("delegate-1")
+      )
+    ).rejects.toThrow("当前账号不是该审批节点冻结的处理人");
+    expect(prisma.approvalDelegation.findMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects a standing delegation recipient for a legacy project expense role-only node", async () => {
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockImplementation(
+          ({ where }: { where: { userId: string } }) =>
+            Promise.resolve(
+              where.userId === "former-finance-1"
+                ? [{ positionKey: "finance_director" }]
+                : []
+            )
+        )
+      },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          currentNodeIndex: 0,
+          frozenNodes: [{ roleKeys: ["finance_director"] }]
+        })
+      },
+      approvalDelegation: {
+        findMany: jest.fn().mockResolvedValue([
+          { fromUserId: "former-finance-1" }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "delegate-1", isActive: true },
+          { id: "former-finance-1", isActive: true }
+        ])
+      }
+    };
+
+    await expect(
+      projectExpenseApproveGuard(prisma).canActivate(
+        projectExpenseApprovalContext("delegate-1")
+      )
+    ).rejects.toThrow("当前账号缺少执行该项目操作所需的岗位权限");
+    expect(prisma.approvalDelegation.findMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects a current project expense approval role that is not the governed frozen candidate", async () => {
+    const prisma = buildProjectExpenseApprovalPrisma({
+      actorRoleKey: "finance_director",
+      candidateUserId: "finance-1"
+    });
+
+    await expect(
+      projectExpenseApproveGuard(prisma).canActivate(
+        projectExpenseApprovalContext("finance-2")
+      )
+    ).rejects.toThrow("当前账号不是该审批节点冻结的处理人");
+  });
+
+  it("does not grant project expense approval access from a different business instance", async () => {
+    const prisma = buildProjectExpenseApprovalPrisma({
+      candidateUserId: "frozen-reviewer-1",
+      approvalBusinessId: "other-expense"
+    });
+
+    await expect(
+      projectExpenseApproveGuard(prisma).canActivate(
+        projectExpenseApprovalContext("frozen-reviewer-1")
+      )
+    ).rejects.toThrow("当前账号缺少执行该项目操作所需的岗位权限");
+    expect(prisma.approvalInstance.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          businessType: "project_expense_request",
+          businessId: "expense-1",
+          flowType: "project_expense.approve"
+        })
+      })
+    );
   });
 
   it("rejects a current same-role user who is not the governed frozen candidate", async () => {

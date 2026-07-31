@@ -2,6 +2,14 @@ import { BadRequestException } from "@nestjs/common";
 import { ProjectExpenseService } from "./project-expense.service";
 
 describe("ProjectExpenseService", () => {
+  const reviewExpenseUpdatedAt = new Date("2026-07-31T01:00:00.000Z");
+  const reviewApprovalUpdatedAt = new Date("2026-07-31T01:00:01.000Z");
+  const reviewCoordinates = (expectedNodeIndex: number) => ({
+    expectedExpenseUpdatedAt: reviewExpenseUpdatedAt.toISOString(),
+    expectedApprovalInstanceId: "approval-instance-1",
+    expectedNodeIndex,
+    expectedApprovalUpdatedAt: reviewApprovalUpdatedAt.toISOString()
+  });
   const audit = { record: jest.fn() };
   const auth = { confirmPassword: jest.fn() };
   const projectFunding = {
@@ -58,6 +66,27 @@ describe("ProjectExpenseService", () => {
       position: {
         findMany: jest.fn().mockResolvedValue([])
       }
+    };
+  }
+
+  function governedApprovalCandidateTables({
+    projectCandidates = [
+      { userId: "project-manager-1", roleKey: "project_manager" }
+    ],
+    positionedCandidates = [
+      { userId: "comprehensive-1", roleKey: "comprehensive_director" },
+      { userId: "finance-1", roleKey: "finance_director" },
+      { userId: "chairman-1", roleKey: "chairman" },
+      { userId: "general-manager-1", roleKey: "general_manager" }
+    ]
+  }: {
+    projectCandidates?: Array<{ userId: string; roleKey: string }>;
+    positionedCandidates?: Array<{ userId: string; roleKey: string }>;
+  } = {}) {
+    return {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce(projectCandidates)
+        .mockResolvedValueOnce(positionedCandidates)
     };
   }
 
@@ -199,6 +228,11 @@ describe("ProjectExpenseService", () => {
     );
     expect(detail.availableActions).toEqual([
       expect.objectContaining({
+        key: "review_approval",
+        enabled: false,
+        requiresSelfReviewConfirmation: false
+      }),
+      expect.objectContaining({
         key: "withdraw",
         enabled: true,
         requiresComment: undefined
@@ -217,13 +251,15 @@ describe("ProjectExpenseService", () => {
 
     const detail = await service.getApprovalDetail("project-1", "expense-1", "comprehensive-1");
 
-    expect(detail.availableActions).toEqual([]);
+    expect(detail.availableActions).toEqual([
+      expect.objectContaining({ key: "review_approval", enabled: false })
+    ]);
     expect(detail.blockedReasons).toEqual([
       "只有申请人可以撤回，或由具备作废权限的岗位结束审批中的项目支出申请"
     ]);
   });
 
-  it("审批中申请人同时具备作废权限时服务端返回两个独立动作", async () => {
+  it("审批中申请人同时具备作废权限时服务端保留独立审批、撤回和作废动作", async () => {
     const { service } = approvalDetailFixture({
       actorRoleKeys: ["project_manager"],
       applicantUserId: "manager-1",
@@ -235,6 +271,7 @@ describe("ProjectExpenseService", () => {
     const detail = await service.getApprovalDetail("project-1", "expense-1", "manager-1");
 
     expect(detail.availableActions).toEqual([
+      expect.objectContaining({ key: "review_approval", enabled: false }),
       expect.objectContaining({ key: "withdraw", enabled: true, requiresComment: undefined }),
       expect.objectContaining({ key: "void", enabled: true, requiresComment: true })
     ]);
@@ -980,6 +1017,7 @@ describe("ProjectExpenseService", () => {
     const cashPool = cashPoolTables({ receiptAmountCents: 100_000n });
     const tx = {
       ...cashPool,
+      ...governedApprovalCandidateTables(),
       project: {
         findFirst: jest.fn().mockResolvedValue({ id: "project-1" })
       },
@@ -1025,6 +1063,7 @@ describe("ProjectExpenseService", () => {
     const cashPool = cashPoolTables({ receiptAmountCents: 100_000n });
     const tx = {
       ...cashPool,
+      ...governedApprovalCandidateTables(),
       project: {
         findFirst: jest.fn().mockResolvedValue({ id: "project-1" })
       },
@@ -1067,13 +1106,165 @@ describe("ProjectExpenseService", () => {
     expect(tx.approvalInstance.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         frozenNodes: [
-          { name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"] },
-          { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
-          { name: "财务总监", mode: "any", roleKeys: ["finance_director"] },
-          { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+          {
+            name: "综合部主管",
+            mode: "any",
+            roleKeys: ["comprehensive_director"],
+            candidateUserIds: ["comprehensive-1"],
+            candidateUserIdsByRole: { comprehensive_director: ["comprehensive-1"] }
+          },
+          {
+            name: "项目经理",
+            mode: "any",
+            roleKeys: ["project_manager"],
+            candidateUserIds: ["project-manager-1"],
+            candidateUserIdsByRole: { project_manager: ["project-manager-1"] }
+          },
+          {
+            name: "财务总监",
+            mode: "any",
+            roleKeys: ["finance_director"],
+            candidateUserIds: ["finance-1"],
+            candidateUserIdsByRole: { finance_director: ["finance-1"] }
+          },
+          {
+            name: "董事长/总经理",
+            mode: "any",
+            roleKeys: ["chairman", "general_manager"],
+            candidateUserIds: ["chairman-1", "general-manager-1"],
+            candidateUserIdsByRole: {
+              chairman: ["chairman-1"],
+              general_manager: ["general-manager-1"]
+            }
+          }
         ]
       })
     });
+  });
+
+  it("fails create when an ordinary applicant is the only candidate for a required node", async () => {
+    const cashPool = cashPoolTables({ receiptAmountCents: 100_000n });
+    const tx = {
+      ...cashPool,
+      ...governedApprovalCandidateTables({
+        positionedCandidates: [
+          { userId: "handler-1", roleKey: "comprehensive_director" },
+          { userId: "finance-1", roleKey: "finance_director" },
+          { userId: "chairman-1", roleKey: "chairman" }
+        ]
+      }),
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      projectExpenseRequest: {
+        ...cashPool.projectExpenseRequest,
+        create: jest.fn()
+      },
+      approvalInstance: { create: jest.fn() }
+    };
+    const service = new ProjectExpenseService(
+      { $transaction: jest.fn(async (callback) => callback(tx)) } as never,
+      audit as never,
+      auth as never
+    );
+
+    await expect(service.create("project-1", "handler-1", {
+      code: "BX-2026-SELF-ONLY",
+      expenseType: "reimbursement",
+      expenseSubtype: "reimbursement",
+      paymentSubject: "日常报销",
+      reason: "申请人不能成为普通节点唯一审批人",
+      requestedAmountCents: "30000",
+      paymentMethod: "bank_transfer"
+    })).rejects.toThrow("综合部主管缺少当前有效且可审批的人员");
+
+    expect(tx.projectExpenseRequest.create).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+  });
+
+  it("fails create when one user ambiguously matches both roles of the same approval node", async () => {
+    const cashPool = cashPoolTables({ receiptAmountCents: 100_000n });
+    const tx = {
+      ...cashPool,
+      ...governedApprovalCandidateTables({
+        positionedCandidates: [
+          { userId: "comprehensive-1", roleKey: "comprehensive_director" },
+          { userId: "finance-1", roleKey: "finance_director" },
+          { userId: "ambiguous-leader-1", roleKey: "chairman" },
+          { userId: "ambiguous-leader-1", roleKey: "general_manager" }
+        ]
+      }),
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      projectExpenseRequest: {
+        ...cashPool.projectExpenseRequest,
+        create: jest.fn()
+      },
+      approvalInstance: { create: jest.fn() }
+    };
+    const service = new ProjectExpenseService(
+      { $transaction: jest.fn(async (callback) => callback(tx)) } as never,
+      audit as never,
+      auth as never
+    );
+
+    await expect(service.create("project-1", "handler-1", {
+      code: "BX-2026-AMBIGUOUS-LEADER",
+      expenseType: "reimbursement",
+      expenseSubtype: "reimbursement",
+      paymentSubject: "日常报销",
+      reason: "同一人员不能以两个角色形成歧义审批身份",
+      requestedAmountCents: "30000",
+      paymentMethod: "bank_transfer"
+    })).rejects.toThrow("董事长/总经理缺少当前有效且可审批的人员");
+
+    expect(tx.projectExpenseRequest.create).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+  });
+
+  it("keeps a chairman applicant as a governed final-node candidate", async () => {
+    const cashPool = cashPoolTables({ receiptAmountCents: 100_000n });
+    const tx = {
+      ...cashPool,
+      ...governedApprovalCandidateTables({
+        positionedCandidates: [
+          { userId: "comprehensive-1", roleKey: "comprehensive_director" },
+          { userId: "finance-1", roleKey: "finance_director" },
+          { userId: "chairman-applicant-1", roleKey: "chairman" }
+        ]
+      }),
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      projectExpenseRequest: {
+        ...cashPool.projectExpenseRequest,
+        create: jest.fn().mockResolvedValue({
+          id: "expense-chairman-self",
+          code: "BX-2026-CHAIRMAN-SELF",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: { create: jest.fn() }
+    };
+    const service = new ProjectExpenseService(
+      { $transaction: jest.fn(async (callback) => callback(tx)) } as never,
+      audit as never,
+      auth as never
+    );
+
+    await service.create("project-1", "chairman-applicant-1", {
+      code: "BX-2026-CHAIRMAN-SELF",
+      expenseType: "reimbursement",
+      expenseSubtype: "reimbursement",
+      paymentSubject: "日常报销",
+      reason: "董事长申请人领导自审路由",
+      requestedAmountCents: "30000",
+      paymentMethod: "bank_transfer"
+    });
+
+    const frozenNodes = tx.approvalInstance.create.mock.calls[0]?.[0].data.frozenNodes;
+    expect(frozenNodes.at(-1)).toEqual(expect.objectContaining({
+      candidateUserIds: ["chairman-applicant-1"],
+      candidateUserIdsByRole: {
+        chairman: ["chairman-applicant-1"],
+        general_manager: []
+      }
+    }));
   });
 
   it("fails closed when a caller tries to create spot procurement in the legacy expense table", async () => {
@@ -1176,6 +1367,7 @@ describe("ProjectExpenseService", () => {
     const cashPool = cashPoolTables({ receiptAmountCents: 3_000_000_000n });
     const tx = {
       ...cashPool,
+      ...governedApprovalCandidateTables(),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       projectExpenseRequest: {
         ...cashPool.projectExpenseRequest,
@@ -1255,7 +1447,9 @@ describe("ProjectExpenseService", () => {
             status: "approval_pending",
             requestedAmountCents: 50_000n,
             approvedAmountCents: null,
-            paidAmountCents: 0n
+            paidAmountCents: 0n,
+            applicantUserId: "handler-1",
+            updatedAt: reviewExpenseUpdatedAt
           }
         ])
         .mockResolvedValueOnce([
@@ -1269,7 +1463,8 @@ describe("ProjectExpenseService", () => {
               { name: "财务部", mode: "any", roleKeys: ["finance_director"], approvedRoleKeys: ["finance_director"] },
               { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
             ],
-            applicantUserId: "handler-1"
+            applicantUserId: "handler-1",
+            updatedAt: reviewApprovalUpdatedAt
           }
         ]),
       projectExpenseRequest: {
@@ -1292,6 +1487,7 @@ describe("ProjectExpenseService", () => {
 
     const approved = await service.reviewApproval("project-1", "expense-1", "chairman-1", {
       decision: "approve",
+      ...reviewCoordinates(3),
       approvedAmountCents: "45000"
     });
 
@@ -1318,7 +1514,8 @@ describe("ProjectExpenseService", () => {
             paidAmountCents: 0n,
             applicantUserId: "comprehensive-director-1",
             purchaseExecutedAt: null,
-            receiptConfirmedAt: null
+            receiptConfirmedAt: null,
+            updatedAt: reviewExpenseUpdatedAt
           }
         ])
         .mockResolvedValueOnce([
@@ -1340,7 +1537,8 @@ describe("ProjectExpenseService", () => {
                 roleKeys: ["chairman", "general_manager"]
               }
             ],
-            applicantUserId: "comprehensive-director-1"
+            applicantUserId: "comprehensive-director-1",
+            updatedAt: reviewApprovalUpdatedAt
           }
         ]),
       projectExpenseRequest: {
@@ -1359,7 +1557,8 @@ describe("ProjectExpenseService", () => {
 
     await expect(
       service.reviewApproval("project-1", "expense-1", "comprehensive-director-1", {
-        decision: "approve"
+        decision: "approve",
+        ...reviewCoordinates(0)
       })
     ).rejects.toThrow("申请人不能审批自己发起的业务，请由其他有权限的审批人处理");
     expect(tx.projectExpenseRequest.update).not.toHaveBeenCalled();
@@ -1384,7 +1583,8 @@ describe("ProjectExpenseService", () => {
             paidAmountCents: 0n,
             applicantUserId: "leader-1",
             purchaseExecutedAt: null,
-            receiptConfirmedAt: null
+            receiptConfirmedAt: null,
+            updatedAt: reviewExpenseUpdatedAt
           }
         ])
         .mockResolvedValueOnce([
@@ -1395,7 +1595,8 @@ describe("ProjectExpenseService", () => {
             frozenNodes: [
               { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
             ],
-            applicantUserId: "leader-1"
+            applicantUserId: "leader-1",
+            updatedAt: reviewApprovalUpdatedAt
           }
         ]),
       projectExpenseRequest: {
@@ -1428,7 +1629,10 @@ describe("ProjectExpenseService", () => {
     const { service, tx } = expenseLeaderSelfReviewFixture();
 
     await expect(
-      service.reviewApproval("project-1", "expense-1", "leader-1", input)
+      service.reviewApproval("project-1", "expense-1", "leader-1", {
+        ...input,
+        ...reviewCoordinates(0)
+      })
     ).rejects.toThrow(message);
     expect(auth.confirmPassword).not.toHaveBeenCalled();
     expect(tx.projectExpenseRequest.update).not.toHaveBeenCalled();
@@ -1444,6 +1648,7 @@ describe("ProjectExpenseService", () => {
     await expect(
       service.reviewApproval("project-1", "expense-1", "leader-1", {
         decision: "approve",
+        ...reviewCoordinates(0),
         selfReviewReason: "业务紧急",
         confirmationPassword: "wrong-password"
       })
@@ -1459,6 +1664,7 @@ describe("ProjectExpenseService", () => {
 
     await service.reviewApproval("project-1", "expense-1", "leader-1", {
       decision: "approve",
+      ...reviewCoordinates(0),
       selfReviewReason: "  业务紧急且由本人发起  ",
       confirmationPassword: "top-secret"
     });
@@ -1489,7 +1695,9 @@ describe("ProjectExpenseService", () => {
             status: "approval_pending",
             requestedAmountCents: 50_000n,
             approvedAmountCents: null,
-            paidAmountCents: 0n
+            paidAmountCents: 0n,
+            applicantUserId: "handler-1",
+            updatedAt: reviewExpenseUpdatedAt
           }
         ])
         .mockResolvedValueOnce([
@@ -1503,7 +1711,8 @@ describe("ProjectExpenseService", () => {
               { name: "财务总监", mode: "any", roleKeys: ["finance_director"], approvedRoleKeys: ["finance_director"] },
               { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
             ],
-            applicantUserId: "handler-1"
+            applicantUserId: "handler-1",
+            updatedAt: reviewApprovalUpdatedAt
           }
         ]),
       projectExpenseRequest: {
@@ -1577,6 +1786,7 @@ describe("ProjectExpenseService", () => {
 
     await service.reviewApproval("project-1", "expense-1", "chairman-1", {
       decision: "approve",
+      ...reviewCoordinates(3),
       approvedAmountCents: "45000"
     });
 
@@ -1623,7 +1833,9 @@ describe("ProjectExpenseService", () => {
             status: "approval_pending",
             requestedAmountCents: 50_000n,
             approvedAmountCents: null,
-            paidAmountCents: 0n
+            paidAmountCents: 0n,
+            applicantUserId: "handler-1",
+            updatedAt: reviewExpenseUpdatedAt
           }
         ])
         .mockResolvedValueOnce([
@@ -1637,7 +1849,8 @@ describe("ProjectExpenseService", () => {
               { name: "财务总监", mode: "any", roleKeys: ["finance_director"], approvedRoleKeys: ["finance_director"] },
               { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
             ],
-            applicantUserId: "handler-1"
+            applicantUserId: "handler-1",
+            updatedAt: reviewApprovalUpdatedAt
           }
         ]),
       projectExpenseRequest: {
@@ -1684,6 +1897,7 @@ describe("ProjectExpenseService", () => {
 
     const approved = await service.reviewApproval("project-1", "expense-1", "chairman-1", {
       decision: "approve",
+      ...reviewCoordinates(3),
       approvedAmountCents: "45000"
     });
 

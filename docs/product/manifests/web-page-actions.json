@@ -17,13 +17,13 @@
     "totalVueFileCount": 134,
     "parsedVueFileCount": 134,
     "reachableProductionModuleCount": 229,
-    "templateEventDirectiveCount": 909,
+    "templateEventDirectiveCount": 913,
     "propCallbackDirectiveCount": 10,
-    "coveredProductionMutationConsumerCount": 15,
+    "coveredProductionMutationConsumerCount": 16,
     "candidateProductionMutationConsumerCount": 38,
-    "acceptedProductionMutationConsumerCount": 15,
+    "acceptedProductionMutationConsumerCount": 16,
     "productionMutationConsumerPairCount": 274,
-    "blockerCount": 315
+    "blockerCount": 310
   },
   "evidence": {
     "totalProductionModuleCount": 236,
@@ -1874,26 +1874,25 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
       "trigger": {
-        "element": "t-button",
-        "event": "click",
-        "handler": "submitReview",
-        "variant": "approve",
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmProjectExpenseReviewApprove",
         "kind": "event",
-        "sourceLine": 122,
-        "sourceColumn": 14
+        "sourceLine": 164,
+        "sourceColumn": 8
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "server_boolean",
-        "source": "detail.reviewAction.enabled",
-        "key": "review",
-        "serverDerived": false,
-        "dominatesTrigger": false
+        "kind": "detail_action",
+        "source": "projectExpenseWithdrawalCapability.availableActions",
+        "key": "review_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
       },
       "bindings": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "reviewProjectExpenseApproval",
+          "wrapper": "executeProjectExpenseApprovalReviewAction",
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/approval",
           "normalizedKey": "POST /projects/:param/expense-requests/:param/approval",
@@ -1915,11 +1914,14 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "submitReview"
+              "confirmProjectExpenseReviewApprove",
+              "executeProjectExpenseApprovalReviewAction"
             ]
           },
           "ticketFollowups": []
@@ -1937,26 +1939,25 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
       "trigger": {
-        "element": "t-button",
-        "event": "click",
-        "handler": "submitReview",
-        "variant": "reject",
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmProjectExpenseReviewReject",
         "kind": "event",
-        "sourceLine": 131,
-        "sourceColumn": 14
+        "sourceLine": 178,
+        "sourceColumn": 8
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "server_boolean",
-        "source": "detail.reviewAction.enabled",
-        "key": "review",
-        "serverDerived": false,
-        "dominatesTrigger": false
+        "kind": "detail_action",
+        "source": "projectExpenseWithdrawalCapability.availableActions",
+        "key": "review_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
       },
       "bindings": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "reviewProjectExpenseApproval",
+          "wrapper": "executeProjectExpenseApprovalReviewAction",
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/approval",
           "normalizedKey": "POST /projects/:param/expense-requests/:param/approval",
@@ -1978,11 +1979,14 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "submitReview"
+              "confirmProjectExpenseReviewReject",
+              "executeProjectExpenseApprovalReviewAction"
             ]
           },
           "ticketFollowups": []
@@ -3199,20 +3203,6 @@
       },
       {
         "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "project-expense.review-approve",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "reviewProjectExpenseApproval"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "project-expense.review-reject",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "reviewProjectExpenseApproval"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
         "actionId": "settlement-draft.save-local-gate",
         "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
         "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
@@ -3297,18 +3287,6 @@
         "actionId": "payment-request.create-local-form",
         "sourceFile": "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
         "reason": "capability_none"
-      },
-      {
-        "code": "WRITE_WITHOUT_SERVER_CAPABILITY",
-        "actionId": "project-expense.review-approve",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
-        "reason": "capability_not_dominating"
-      },
-      {
-        "code": "WRITE_WITHOUT_SERVER_CAPABILITY",
-        "actionId": "project-expense.review-reject",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
-        "reason": "capability_not_dominating"
       },
       {
         "code": "WRITE_WITHOUT_SERVER_CAPABILITY",
@@ -4836,15 +4814,6 @@
         "sourceFile": "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
         "normalizedKeys": [
           "POST /payments"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "reviewProjectExpenseApproval",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/expense-requests/:param/approval"
         ]
       },
       {

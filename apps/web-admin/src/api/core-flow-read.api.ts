@@ -1746,6 +1746,10 @@ export interface ReviewProjectExpenseApprovalPayload {
   comment?: string;
   selfReviewReason?: string;
   confirmationPassword?: string;
+  expectedExpenseUpdatedAt: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+  expectedApprovalUpdatedAt: string;
 }
 
 export interface VoidProjectExpenseRequestPayload {
@@ -2204,8 +2208,93 @@ export type ProjectExpenseApprovalLifecycleDetailReadModel =
     hasPersistentDraft: false;
     availableActions: DetailActionReadModel[];
     blockedReasons: string[];
+    reviewApprovalContext: ProjectExpenseReviewApprovalCoordinates | null;
     withdrawalContext: ProjectExpenseWithdrawalCoordinates | null;
   };
+
+export interface ProjectExpenseReviewApprovalCoordinates {
+  expectedExpenseUpdatedAt: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+  expectedApprovalUpdatedAt: string;
+}
+
+export type ProjectExpenseApprovalReviewActionDecision = "approve" | "reject";
+
+export interface ProjectExpenseApprovalReviewActionContext
+  extends ProjectExpenseReviewApprovalCoordinates {
+  ownerScope: string;
+  routeGeneration: number;
+  detailEpoch: number;
+  dialogGeneration: number;
+  operationId: number;
+  projectId: string;
+  expenseRequestId: string;
+  decision: ProjectExpenseApprovalReviewActionDecision;
+  requiresSelfReviewConfirmation: boolean;
+  approvedAmountCents?: string;
+  comment?: string;
+  selfReviewReason?: string;
+  confirmationPassword?: string;
+}
+
+export interface PrepareProjectExpenseApprovalReviewActionInput
+  extends ProjectExpenseApprovalReviewActionContext {
+  isCurrent: (
+    context: ProjectExpenseApprovalReviewActionContext
+  ) => boolean;
+}
+
+export type PrepareProjectExpenseApprovalReviewActionResult =
+  | {
+      status: "ready";
+      context: ProjectExpenseApprovalReviewActionContext;
+      preflight: ProjectExpenseApprovalLifecycleDetailReadModel;
+    }
+  | {
+      status: "stale";
+      context: ProjectExpenseApprovalReviewActionContext;
+    };
+
+export interface ExecuteProjectExpenseApprovalReviewActionInput {
+  decision: ProjectExpenseApprovalReviewActionDecision;
+  capture: (
+    decision: ProjectExpenseApprovalReviewActionDecision
+  ) => ProjectExpenseApprovalReviewActionContext | null;
+  preflight: (
+    context: ProjectExpenseApprovalReviewActionContext
+  ) => Promise<PrepareProjectExpenseApprovalReviewActionResult>;
+  current: (
+    context: ProjectExpenseApprovalReviewActionContext,
+    prepared: PrepareProjectExpenseApprovalReviewActionResult
+  ) => boolean;
+  complete: (
+    context: ProjectExpenseApprovalReviewActionContext,
+    response: unknown
+  ) => void | Promise<void>;
+  fail: (
+    context: ProjectExpenseApprovalReviewActionContext,
+    error: unknown
+  ) => void | Promise<void>;
+  finish: (context: ProjectExpenseApprovalReviewActionContext) => void;
+}
+
+export type ExecuteProjectExpenseApprovalReviewActionResult =
+  | { status: "not_started" }
+  | {
+      status: "stale";
+      context: ProjectExpenseApprovalReviewActionContext;
+    }
+  | {
+      status: "completed";
+      context: ProjectExpenseApprovalReviewActionContext;
+      response: unknown;
+    }
+  | {
+      status: "failed";
+      context: ProjectExpenseApprovalReviewActionContext;
+      error: unknown;
+    };
 
 export interface ProjectExpenseWithdrawalCoordinates {
   expectedExpenseUpdatedAt: string;
@@ -2282,15 +2371,192 @@ export type ExecuteProjectExpenseWithdrawalActionResult =
       error: unknown;
     };
 
-export function reviewProjectExpenseApproval(
-  projectId: string,
-  expenseRequestId: string,
-  body: ReviewProjectExpenseApprovalPayload
-) {
-  return postJson<unknown>(
-    `/projects/${projectId}/expense-requests/${expenseRequestId}/approval`,
-    body
+export async function prepareProjectExpenseApprovalReviewAction(
+  input: PrepareProjectExpenseApprovalReviewActionInput
+): Promise<PrepareProjectExpenseApprovalReviewActionResult> {
+  const context = normalizeProjectExpenseApprovalReviewAction(input);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  const preflight = await fetchProjectExpenseApprovalDetail(
+    context.projectId,
+    context.expenseRequestId
   );
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+  assertProjectExpenseApprovalReviewPreflight(context, preflight);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  return { status: "ready", context, preflight };
+}
+
+export async function executeProjectExpenseApprovalReviewAction(
+  input: ExecuteProjectExpenseApprovalReviewActionInput
+): Promise<ExecuteProjectExpenseApprovalReviewActionResult> {
+  const context = input.capture(input.decision);
+  if (!context) return { status: "not_started" };
+
+  try {
+    const prepared = await input.preflight(context);
+    if (!input.current(context, prepared)) {
+      return { status: "stale", context };
+    }
+    const response = await postJson<unknown>(
+      `/projects/${encodeURIComponent(context.projectId)}/expense-requests/${encodeURIComponent(context.expenseRequestId)}/approval`,
+      projectExpenseApprovalReviewActionPayload(context, input.decision)
+    );
+    if (!input.current(context, prepared)) {
+      return { status: "stale", context };
+    }
+    await input.complete(context, response);
+    return { status: "completed", context, response };
+  } catch (error) {
+    await input.fail(context, error);
+    return { status: "failed", context, error };
+  } finally {
+    input.finish(context);
+  }
+}
+
+function projectExpenseApprovalReviewActionPayload(
+  context: ProjectExpenseApprovalReviewActionContext,
+  decision: ProjectExpenseApprovalReviewActionDecision
+): ReviewProjectExpenseApprovalPayload {
+  if (
+    context.decision !== decision ||
+    (decision === "reject" && !context.comment) ||
+    (context.requiresSelfReviewConfirmation &&
+      (!context.selfReviewReason || !context.confirmationPassword?.trim()))
+  ) {
+    throw new Error(
+      "项目支出审批上下文无效，请重新读取当前申请后再操作"
+    );
+  }
+
+  return {
+    decision,
+    ...(decision === "approve" && context.approvedAmountCents
+      ? { approvedAmountCents: context.approvedAmountCents }
+      : {}),
+    ...(context.comment ? { comment: context.comment } : {}),
+    ...(context.requiresSelfReviewConfirmation
+      ? {
+          selfReviewReason: context.selfReviewReason,
+          confirmationPassword: context.confirmationPassword
+        }
+      : {}),
+    expectedExpenseUpdatedAt: context.expectedExpenseUpdatedAt,
+    expectedApprovalInstanceId: context.expectedApprovalInstanceId,
+    expectedNodeIndex: context.expectedNodeIndex,
+    expectedApprovalUpdatedAt: context.expectedApprovalUpdatedAt
+  };
+}
+
+function normalizeProjectExpenseApprovalReviewAction(
+  input: PrepareProjectExpenseApprovalReviewActionInput
+): ProjectExpenseApprovalReviewActionContext {
+  const ownerScope = input.ownerScope.trim();
+  const projectId = input.projectId.trim();
+  const expenseRequestId = input.expenseRequestId.trim();
+  const expectedExpenseUpdatedAt = input.expectedExpenseUpdatedAt.trim();
+  const expectedApprovalInstanceId =
+    input.expectedApprovalInstanceId.trim();
+  const expectedApprovalUpdatedAt =
+    input.expectedApprovalUpdatedAt.trim();
+  const approvedAmountCents =
+    input.decision === "approve"
+      ? input.approvedAmountCents?.trim() || undefined
+      : undefined;
+  const comment = input.comment?.trim() || undefined;
+  const selfReviewReason = input.requiresSelfReviewConfirmation
+    ? input.selfReviewReason?.trim() || undefined
+    : undefined;
+  const confirmationPassword = input.requiresSelfReviewConfirmation
+    ? input.confirmationPassword
+    : undefined;
+  if (
+    !ownerScope ||
+    !projectId ||
+    !expenseRequestId ||
+    !expectedExpenseUpdatedAt ||
+    !expectedApprovalInstanceId ||
+    !expectedApprovalUpdatedAt ||
+    !Number.isInteger(input.routeGeneration) ||
+    input.routeGeneration < 0 ||
+    !Number.isInteger(input.detailEpoch) ||
+    input.detailEpoch < 0 ||
+    !Number.isInteger(input.dialogGeneration) ||
+    input.dialogGeneration < 0 ||
+    !Number.isInteger(input.operationId) ||
+    input.operationId < 1 ||
+    !Number.isInteger(input.expectedNodeIndex) ||
+    input.expectedNodeIndex < 0 ||
+    (input.decision !== "approve" && input.decision !== "reject") ||
+    (approvedAmountCents !== undefined &&
+      !/^(?:0|[1-9]\d*)$/.test(approvedAmountCents)) ||
+    (input.decision === "reject" && !comment) ||
+    (input.requiresSelfReviewConfirmation &&
+      (!selfReviewReason || !confirmationPassword?.trim()))
+  ) {
+    throw new Error(
+      "项目支出审批上下文无效，请重新读取当前申请后再操作"
+    );
+  }
+
+  return Object.freeze({
+    ownerScope,
+    routeGeneration: input.routeGeneration,
+    detailEpoch: input.detailEpoch,
+    dialogGeneration: input.dialogGeneration,
+    operationId: input.operationId,
+    projectId,
+    expenseRequestId,
+    expectedExpenseUpdatedAt,
+    expectedApprovalInstanceId,
+    expectedNodeIndex: input.expectedNodeIndex,
+    expectedApprovalUpdatedAt,
+    decision: input.decision,
+    requiresSelfReviewConfirmation:
+      input.requiresSelfReviewConfirmation,
+    ...(approvedAmountCents ? { approvedAmountCents } : {}),
+    ...(comment ? { comment } : {}),
+    ...(selfReviewReason ? { selfReviewReason } : {}),
+    ...(confirmationPassword ? { confirmationPassword } : {})
+  });
+}
+
+function assertProjectExpenseApprovalReviewPreflight(
+  context: ProjectExpenseApprovalReviewActionContext,
+  preflight: ProjectExpenseApprovalLifecycleDetailReadModel
+) {
+  const enabledReviewActions = preflight.availableActions.filter(
+    (action) => action.key === "review_approval" && action.enabled
+  );
+  const reviewAction = enabledReviewActions[0];
+  const coordinates = preflight.reviewApprovalContext;
+  if (
+    preflight.projectId !== context.projectId ||
+    preflight.id !== context.expenseRequestId ||
+    preflight.lifecycleUpdatedAt !== context.expectedExpenseUpdatedAt ||
+    enabledReviewActions.length !== 1 ||
+    reviewAction?.requiresSelfReviewConfirmation !==
+      context.requiresSelfReviewConfirmation ||
+    coordinates?.expectedExpenseUpdatedAt !==
+      context.expectedExpenseUpdatedAt ||
+    coordinates.expectedApprovalInstanceId !==
+      context.expectedApprovalInstanceId ||
+    coordinates.expectedNodeIndex !== context.expectedNodeIndex ||
+    coordinates.expectedApprovalUpdatedAt !==
+      context.expectedApprovalUpdatedAt
+  ) {
+    throw new Error(
+      "项目支出审批资格或坐标已变化，请重新读取当前申请"
+    );
+  }
 }
 
 export async function prepareProjectExpenseWithdrawalAction(
