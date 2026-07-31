@@ -405,6 +405,99 @@ describe("SpotProcurementApplicationService real-form application", () => {
     expect(result).toMatchObject({ status: "approved_in_progress" });
   });
 
+  it("returns the frozen approval to a new draft revision without creating payment or receipt facts", async () => {
+    const { service, tx, audit } = context("project_manager");
+    tx.$queryRaw
+      .mockResolvedValueOnce([procurement("approval_pending")])
+      .mockResolvedValueOnce([version("approval_pending")])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "项目经理审批",
+              mode: "any",
+              roleKeys: ["project_manager"]
+            }
+          ],
+          applicantUserId: "material-1"
+        }
+      ]);
+    tx.spotProcurementVersion.create.mockResolvedValueOnce({
+      ...version("draft"),
+      id: "version-2",
+      versionNo: 2,
+      changeReason: "请补充报价依据",
+      createdByUserId: "manager-1"
+    });
+
+    await expect(
+      service.review("procurement-1", "manager-1", {
+        decision: "return_to_applicant",
+        comment: "  请补充报价依据  ",
+        expectedVersionId: "version-1",
+        expectedApprovalInstanceId: "approval-1",
+        expectedNodeIndex: 0
+      })
+    ).resolves.toMatchObject({
+      status: "draft",
+      currentVersionId: "version-2",
+      versionNo: 2,
+      versionStatus: "draft"
+    });
+
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        approvalInstanceId: "approval-1",
+        action: "return_to_applicant",
+        actorUserId: "manager-1",
+        comment: "请补充报价依据",
+        metadata: { reviewRoleKey: "project_manager" }
+      })
+    });
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-1" },
+      data: { status: "returned_to_applicant" }
+    });
+    expect(tx.spotProcurementVersion.update).toHaveBeenCalledWith({
+      where: { id: "version-1" },
+      data: { status: "returned" }
+    });
+    expect(tx.spotProcurementVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        procurementId: "procurement-1",
+        versionNo: 2,
+        status: "draft",
+        changeReason: "请补充报价依据",
+        createdByUserId: "manager-1"
+      })
+    });
+    expect(tx.spotProcurement.update).toHaveBeenCalledWith({
+      where: { id: "procurement-1" },
+      data: expect.objectContaining({
+        currentVersionId: "version-2",
+        status: "draft"
+      })
+    });
+    expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurementReceipt.create).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: "spot_procurement.approval.return_to_applicant",
+        businessId: "version-1",
+        metadata: expect.objectContaining({
+          procurementId: "procurement-1",
+          sourceVersionId: "version-1",
+          newVersionId: "version-2",
+          reviewRoleKey: "project_manager"
+        })
+      })
+    );
+  });
+
   it("rejects a row-lock-serialized duplicate review before it crosses into the actor's next role", async () => {
     const { service, tx, audit } = context();
     tx.projectMember.findMany.mockResolvedValue([

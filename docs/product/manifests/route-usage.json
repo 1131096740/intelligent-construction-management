@@ -14744,16 +14744,6 @@
             "productionConsumers": [
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
             ]
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-            "wrapper": "reviewSpotProcurement",
-            "method": "POST",
-            "normalizedPath": "/spot-procurements/:param/approval",
-            "normalizedKey": "POST /spot-procurements/:param/approval",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
-            ]
           }
         ],
         "authStore": [],

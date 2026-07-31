@@ -1057,6 +1057,32 @@
           "variant": "reject"
         }
       ]
+    },
+    {
+      "id": "spot-procurement.review-return-to-applicant",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmReviewReturn"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementCapability.availableActions",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "executeSpotProcurementReviewAction",
+          "variant": "return_to_applicant"
+        }
+      ]
     }
   ]
 }

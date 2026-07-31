@@ -18,7 +18,6 @@ import {
   fetchSpotProcurementDetail,
   prepareSpotProcurementReviewAction,
   requestSpotProcurementAbnormalTermination,
-  reviewSpotProcurement,
   recreateSpotProcurementPaymentDraft,
   submitSpotProcurement,
   updateSpotProcurementDraft,
@@ -668,7 +667,11 @@ function reviewSelectionMatches(
   context: SpotProcurementReviewActionContext
 ) {
   const expectedKind =
-    context.decision === "approve" ? "review_approve" : "review_reject";
+    context.decision === "approve"
+      ? "review_approve"
+      : context.decision === "reject"
+        ? "review_reject"
+        : "review_return";
   return (
     confirmation.visible &&
     confirmation.kind === expectedKind &&
@@ -704,8 +707,12 @@ function captureReviewContext(
 ): SpotProcurementReviewActionContext | null {
   const coordinates = reviewConfirmation;
   const expectedKind =
-    decision === "approve" ? "review_approve" : "review_reject";
-  const comment = decision === "reject" ? reason.trim() : undefined;
+    decision === "approve"
+      ? "review_approve"
+      : decision === "reject"
+        ? "review_reject"
+        : "review_return";
+  const comment = decision !== "approve" ? reason.trim() : undefined;
   if (
     confirmation.kind !== expectedKind ||
     !confirmation.visible ||
@@ -715,11 +722,13 @@ function captureReviewContext(
     !coordinates.expectedApprovalInstanceId ||
     !Number.isInteger(coordinates.expectedNodeIndex) ||
     coordinates.expectedNodeIndex < 0 ||
-    (decision === "reject" && !comment)
+    (decision !== "approve" && !comment)
   ) {
     confirmation.error =
-      decision === "reject" && !comment
-        ? "请填写驳回原因"
+      decision !== "approve" && !comment
+        ? decision === "reject"
+          ? "请填写驳回原因"
+          : "请填写退回原因"
         : "审批上下文已失效，请重新打开审批确认";
     return null;
   }
@@ -739,7 +748,7 @@ function captureReviewContext(
       coordinates.expectedApprovalInstanceId,
     expectedNodeIndex: coordinates.expectedNodeIndex,
     decision,
-    ...(decision === "reject" ? { comment } : {})
+    ...(decision !== "approve" ? { comment } : {})
   });
   reviewBusyOwnerId = context.operationId;
   actionBusy.value = true;
@@ -785,7 +794,9 @@ function completeReview(context: SpotProcurementReviewActionContext) {
   showSuccess(
     context.decision === "approve"
       ? "采购审批已通过。"
-      : "采购申请已驳回。"
+      : context.decision === "reject"
+        ? "采购申请已驳回。"
+        : "采购申请已退回，并已生成新的修改草稿。"
   );
   return loadDetail();
 }
@@ -845,6 +856,27 @@ function confirmReviewReject(values: {
   });
 }
 
+function confirmReviewReturn(values: {
+  reason: string;
+  password: string;
+}) {
+  return executeSpotProcurementReviewAction({
+    decision: "return_to_applicant",
+    capture: () =>
+      captureReviewContext("return_to_applicant", values.reason),
+    preflight: (context) =>
+      prepareSpotProcurementReviewAction({
+        ...context,
+        decision: "return_to_applicant",
+        isCurrent: reviewContextIsCurrent
+      }),
+    current: preparedReviewIsCurrent,
+    complete: completeReview,
+    fail: failReview,
+    finish: finishReview
+  });
+}
+
 async function confirmAction(values: { reason: string; password: string }) {
   const current = detail.value;
   if (
@@ -858,25 +890,7 @@ async function confirmAction(values: { reason: string; password: string }) {
   }
   actionBusy.value = true;
   try {
-    if (confirmation.kind === "review_return") {
-      const comment = values.reason.trim();
-      if (
-        !comment ||
-        reviewConfirmation.procurementId !== current.procurement.id ||
-        reviewConfirmation.dialogGeneration !== reviewDialogGeneration
-      ) {
-        throw new Error("审批上下文已失效，请重新打开审批确认");
-      }
-      await reviewSpotProcurement(current.procurement.id, {
-        decision: "return_to_applicant",
-        comment,
-        expectedVersionId: reviewConfirmation.expectedVersionId,
-        expectedApprovalInstanceId:
-          reviewConfirmation.expectedApprovalInstanceId,
-        expectedNodeIndex: reviewConfirmation.expectedNodeIndex
-      });
-      showSuccess("采购申请已退回，并已生成新的修改草稿。");
-    } else if (confirmation.kind === "withdraw") {
+    if (confirmation.kind === "withdraw") {
       await withdrawSpotProcurement(current.procurement.id);
       showSuccess("采购审批已撤回。");
     } else if (confirmation.kind === "void") {
@@ -1612,7 +1626,21 @@ onBeforeUnmount(() => {
       @confirm="confirmReviewReject"
     />
     <SensitiveActionDialog
-      v-if="confirmation.kind !== 'review_approve' && confirmation.kind !== 'review_reject'"
+      v-if="reviewApprovalActionEnabled('review_approval') && confirmation.kind === 'review_return'"
+      v-model="confirmation.visible"
+      :title="confirmation.title"
+      :description="confirmation.description"
+      :confirm-text="confirmation.confirmText"
+      :confirm-theme="confirmation.confirmTheme"
+      :require-reason="confirmation.requireReason"
+      :require-password="confirmation.requirePassword"
+      :reason-label="confirmation.reasonLabel"
+      :loading="actionBusy"
+      :error="confirmation.error"
+      @confirm="confirmReviewReturn"
+    />
+    <SensitiveActionDialog
+      v-if="confirmation.kind !== 'review_approve' && confirmation.kind !== 'review_reject' && confirmation.kind !== 'review_return'"
       v-model="confirmation.visible"
       :title="confirmation.title"
       :description="confirmation.description"

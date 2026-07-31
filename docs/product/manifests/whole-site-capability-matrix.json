@@ -22,17 +22,17 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "af305574215b5cbc59f631c02d04e1900e5b03772409b017bbd644036047a0eb",
+      "sha256": "23a0f2e35cd7d87bff41f116d5a140615f295f71e01e1d3ba8201a51860cc84f",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 14,
-        "exportedFunctionCount": 398,
-        "transportWrapperCount": 386,
+        "exportedFunctionCount": 397,
+        "transportWrapperCount": 385,
         "pureExportCount": 12,
-        "mainRequestBindingCount": 396,
+        "mainRequestBindingCount": 395,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 396,
-        "productionConsumerCount": 338,
+        "requestEdgeCount": 395,
+        "productionConsumerCount": 337,
         "orphanWrapperCount": 48,
         "testOnlyWrapperCount": 46,
         "unreferencedWrapperCount": 2,
@@ -42,29 +42,29 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "2fb2b2ffae1e81837fa21a80a47d3cfdb45a569a9c0b026df390b56d03062278",
+      "sha256": "9255d7a587184687f4b105377bab017a728b3663659a36a5d9c6af087b40c186",
       "status": "blocked",
       "summary": {
-        "registeredActionCount": 42,
-        "pageActionCount": 36,
+        "registeredActionCount": 43,
+        "pageActionCount": 37,
         "backgroundActionCount": 6,
         "reachableVueFileCount": 131,
         "routeRootCount": 47,
         "totalVueFileCount": 134,
         "parsedVueFileCount": 134,
         "reachableProductionModuleCount": 229,
-        "templateEventDirectiveCount": 918,
+        "templateEventDirectiveCount": 919,
         "propCallbackDirectiveCount": 10,
         "coveredProductionMutationConsumerCount": 19,
         "candidateProductionMutationConsumerCount": 38,
         "acceptedProductionMutationConsumerCount": 19,
-        "productionMutationConsumerPairCount": 274,
-        "blockerCount": 301
+        "productionMutationConsumerPairCount": 273,
+        "blockerCount": 300
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "51627284a66652574b8268633f10a87c3721c2df39172725617d0232acff9cb1",
+      "sha256": "7d516954f3f0b5701f31924d1f4379d46fc28fced77f5f0af24c336849661e0c",
       "status": "blocked",
       "summary": {
         "routeCount": 395,
@@ -99,19 +99,19 @@
     "exitCandidateRouteCount": 23,
     "internalTaskRouteCount": 2,
     "unclassifiedRouteCount": 26,
-    "mainRequestBindingCount": 396,
+    "mainRequestBindingCount": 395,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 48,
     "duplicateMutationRouteCount": 5,
-    "registeredActionCount": 42,
-    "actionBindingCount": 55,
-    "acceptedActionBindingCount": 27,
+    "registeredActionCount": 43,
+    "actionBindingCount": 56,
+    "acceptedActionBindingCount": 28,
     "unresolvedActionBindingCount": 28,
-    "productionMutationConsumerPairCount": 274,
+    "productionMutationConsumerPairCount": 273,
     "coveredProductionMutationConsumerPairCount": 19,
-    "uncoveredProductionMutationConsumerPairCount": 255,
-    "blockerCount": 366
+    "uncoveredProductionMutationConsumerPairCount": 254,
+    "blockerCount": 365
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -2619,14 +2619,6 @@
         "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
         "normalizedKeys": [
           "POST /spot-procurement-payments/:param/approval"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "reviewSpotProcurement",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/approval"
         ]
       },
       {
@@ -20468,20 +20460,6 @@
           "testConsumers": [
             "apps/web-admin/src/api/spot-procurement.api.test.ts"
           ]
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "reviewSpotProcurement",
-          "method": "POST",
-          "path": "/spot-procurements/:param/approval",
-          "normalizedKey": "POST /spot-procurements/:param/approval",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/spot-procurement.api.test.ts"
-          ]
         }
       ],
       "authTransports": [],
@@ -20537,12 +20515,36 @@
           "causalVerified": true,
           "accepted": true,
           "blockerCodes": []
+        },
+        {
+          "actionId": "spot-procurement.review-return-to-applicant",
+          "bindingIndex": 0,
+          "identity": "spot-procurement.review-return-to-applicant\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000executeSpotProcurementReviewAction\u0000POST\u0000POST /spot-procurements/:param/approval\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "spotProcurementCapability.availableActions",
+            "key": "review_approval",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "executeSpotProcurementReviewAction",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {

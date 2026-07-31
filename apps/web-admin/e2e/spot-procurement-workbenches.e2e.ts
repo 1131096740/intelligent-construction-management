@@ -2020,6 +2020,7 @@ test("posts frozen spot procurement review coordinates after a fresh preflight",
     method: string;
     body?: unknown;
   }> = [];
+  const returnedProcurements = new Set<string>();
 
   await page.route("**/api/spot-procurements/procurement-review-**", async (route) => {
     const request = route.request();
@@ -2028,19 +2029,36 @@ test("posts frozen spot procurement review coordinates after a fresh preflight",
     const procurementId = segments.at(-1) === "approval"
       ? segments.at(-2) ?? ""
       : segments.at(-1) ?? "";
+    const body = request.method() === "POST"
+      ? request.postDataJSON()
+      : undefined;
     requests.push({
       procurementId,
       method: request.method(),
-      ...(request.method() === "POST" ? { body: request.postDataJSON() } : {})
+      ...(body === undefined ? {} : { body })
     });
     if (request.method() === "POST") {
+      if (
+        body &&
+        typeof body === "object" &&
+        "decision" in body &&
+        body.decision === "return_to_applicant"
+      ) {
+        returnedProcurements.add(procurementId);
+      }
       return route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify({ id: procurementId, status: "approval_pending" })
+        body: JSON.stringify({
+          id: procurementId,
+          status: returnedProcurements.has(procurementId)
+            ? "draft"
+            : "approval_pending"
+        })
       });
     }
 
     const base = procurementDetail();
+    const returned = returnedProcurements.has(procurementId);
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -2050,35 +2068,50 @@ test("posts frozen spot procurement review coordinates after a fresh preflight",
           id: procurementId,
           code: procurementId.endsWith("reject")
             ? "LXCG-REVIEW-REJECT"
-            : "LXCG-REVIEW-APPROVE",
-          status: "approval_pending",
-          statusLabel: "审批中"
+            : procurementId.endsWith("return")
+              ? "LXCG-REVIEW-RETURN"
+              : "LXCG-REVIEW-APPROVE",
+          status: returned ? "draft" : "approval_pending",
+          statusLabel: returned ? "草稿" : "审批中"
         },
         currentVersion: {
           ...base.currentVersion,
-          id: `version-${procurementId}`,
-          status: "approval_pending",
-          statusLabel: "审批中"
+          id: returned
+            ? `version-${procurementId}-draft`
+            : `version-${procurementId}`,
+          versionNo: returned ? 2 : 1,
+          status: returned ? "draft" : "approval_pending",
+          statusLabel: returned ? "草稿" : "审批中"
         },
         approval: {
-          status: "approval_pending",
-          statusLabel: "审批中",
-          currentNodeName: "物资部主管审批",
-          currentRoleKeys: ["material_director"]
+          status: returned ? "returned_to_applicant" : "approval_pending",
+          statusLabel: returned ? "已退回申请人" : "审批中",
+          currentNodeName: returned ? null : "物资部主管审批",
+          currentRoleKeys: returned ? [] : ["material_director"]
         },
-        availableActions: [{
-          key: "review_approval",
-          label: "办理审批",
-          kind: "primary",
-          enabled: true,
-          disabledReason: null
-        }],
-        reviewApprovalContext: {
-          expectedVersionId: `version-${procurementId}`,
-          expectedApprovalInstanceId: `approval-${procurementId}`,
-          expectedNodeIndex: 0
-        },
-        primaryAction: "review_approval"
+        availableActions: returned
+          ? [{
+              key: "edit_draft",
+              label: "编辑草稿",
+              kind: "primary",
+              enabled: true,
+              disabledReason: null
+            }]
+          : [{
+              key: "review_approval",
+              label: "办理审批",
+              kind: "primary",
+              enabled: true,
+              disabledReason: null
+            }],
+        reviewApprovalContext: returned
+          ? null
+          : {
+              expectedVersionId: `version-${procurementId}`,
+              expectedApprovalInstanceId: `approval-${procurementId}`,
+              expectedNodeIndex: 0
+            },
+        primaryAction: returned ? "edit_draft" : "review_approval"
       })
     });
   });
@@ -2151,6 +2184,40 @@ test("posts frozen spot procurement review coordinates after a fresh preflight",
     comment: "预算依据需要补充",
     expectedVersionId: "version-procurement-review-reject",
     expectedApprovalInstanceId: "approval-procurement-review-reject",
+    expectedNodeIndex: 0
+  });
+
+  await page.goto("/零星采购/procurement-review-return");
+  expect(decodeURIComponent(new URL(page.url()).pathname)).toBe(
+    "/零星采购/procurement-review-return"
+  );
+  await expect(page.locator("#main-content")).not.toBeEmpty();
+  await page.getByText("审批与动作", { exact: true }).click();
+  await page.getByRole("button", { name: "退回申请人", exact: true }).click();
+  const returnDialog = page.locator(".t-dialog").filter({ hasText: "退回采购申请人" });
+  await expect(returnDialog).toBeVisible();
+  await returnDialog.getByPlaceholder("说明本次操作原因").fill("请补充报价依据");
+  await page.screenshot({
+    path: path.join(testInfo.outputDir, "spot-procurement-review-return-390x844.png"),
+    fullPage: true
+  });
+  await returnDialog.getByRole("button", { name: "确认退回", exact: true }).click();
+  await expect(
+    page.getByText("采购申请已退回，并已生成新的修改草稿。", { exact: true })
+  ).toBeVisible();
+  await expect(page.getByText("草稿", { exact: true }).first()).toBeVisible();
+  await expect.poll(() => requests
+    .filter((request) => request.procurementId === "procurement-review-return")
+    .map((request) => request.method)
+  ).toEqual(["GET", "GET", "POST", "GET"]);
+  expect(requests.find((request) =>
+    request.procurementId === "procurement-review-return" &&
+    request.method === "POST"
+  )?.body).toEqual({
+    decision: "return_to_applicant",
+    comment: "请补充报价依据",
+    expectedVersionId: "version-procurement-review-return",
+    expectedApprovalInstanceId: "approval-procurement-review-return",
     expectedNodeIndex: 0
   });
   await expectNoDocumentHorizontalOverflow(page);

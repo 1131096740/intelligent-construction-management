@@ -9,21 +9,21 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 42,
-    "pageActionCount": 36,
+    "registeredActionCount": 43,
+    "pageActionCount": 37,
     "backgroundActionCount": 6,
     "reachableVueFileCount": 131,
     "routeRootCount": 47,
     "totalVueFileCount": 134,
     "parsedVueFileCount": 134,
     "reachableProductionModuleCount": 229,
-    "templateEventDirectiveCount": 918,
+    "templateEventDirectiveCount": 919,
     "propCallbackDirectiveCount": 10,
     "coveredProductionMutationConsumerCount": 19,
     "candidateProductionMutationConsumerCount": 38,
     "acceptedProductionMutationConsumerCount": 19,
-    "productionMutationConsumerPairCount": 274,
-    "blockerCount": 301
+    "productionMutationConsumerPairCount": 273,
+    "blockerCount": 300
   },
   "evidence": {
     "totalProductionModuleCount": 236,
@@ -2746,7 +2746,7 @@
         "event": "confirm",
         "handler": "confirmAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 1653,
+        "sourceLine": 1681,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2811,7 +2811,7 @@
         "event": "confirm",
         "handler": "requestAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 1640,
+        "sourceLine": 1668,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -3006,7 +3006,7 @@
         "event": "confirm",
         "handler": "confirmReviewApprove",
         "kind": "event",
-        "sourceLine": 1598,
+        "sourceLine": 1612,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -3072,7 +3072,7 @@
         "event": "confirm",
         "handler": "confirmReviewReject",
         "kind": "event",
-        "sourceLine": 1612,
+        "sourceLine": 1626,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -3124,6 +3124,72 @@
       ]
     },
     {
+      "id": "spot-procurement.review-return-to-applicant",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmReviewReturn",
+        "kind": "event",
+        "sourceLine": 1640,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementCapability.availableActions",
+        "key": "review_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "executeSpotProcurementReviewAction",
+          "method": "POST",
+          "path": "/spot-procurements/:param/approval",
+          "normalizedKey": "POST /spot-procurements/:param/approval",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/approval",
+            "normalizedKey": "POST /spot-procurements/:param/approval",
+            "controller": "SpotProcurementController",
+            "handler": "review",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.approve"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmReviewReturn",
+              "executeSpotProcurementReviewAction"
+            ],
+            "variant": "return_to_applicant"
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "spot-procurement.submit",
       "usage": "page_action",
       "routePaths": [
@@ -3138,7 +3204,7 @@
         "event": "click",
         "handler": "runSubmit",
         "kind": "event",
-        "sourceLine": 1345,
+        "sourceLine": 1359,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -5526,15 +5592,6 @@
         "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
         "normalizedKeys": [
           "POST /spot-procurements/:param/payment-drafts"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "reviewSpotProcurement",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/approval"
         ]
       },
       {

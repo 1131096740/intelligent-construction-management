@@ -833,7 +833,10 @@ export interface ReviewSpotProcurementPayload
   expectedNodeIndex: number;
 }
 
-export type SpotProcurementReviewActionDecision = "approve" | "reject";
+export type SpotProcurementReviewActionDecision =
+  | "approve"
+  | "reject"
+  | "return_to_applicant";
 
 export interface SpotProcurementReviewActionContext {
   ownerScope: string;
@@ -1307,7 +1310,7 @@ export function submitSpotProcurement(procurementId: string) {
   );
 }
 
-export function reviewSpotProcurement(
+function reviewSpotProcurement(
   procurementId: string,
   body: ReviewSpotProcurementPayload
 ) {
@@ -1368,7 +1371,7 @@ function reviewSpotProcurementActionPayload(
 ): ReviewSpotProcurementPayload {
   if (
     context.decision !== decision ||
-    (decision === "reject" && !context.comment)
+    (decision !== "approve" && !context.comment)
   ) {
     throw new Error(
       "零星采购审批上下文无效，请重新读取当前采购后再操作"
@@ -1376,7 +1379,7 @@ function reviewSpotProcurementActionPayload(
   }
   return {
     decision,
-    ...(decision === "reject" ? { comment: context.comment } : {}),
+    ...(decision !== "approve" ? { comment: context.comment } : {}),
     expectedVersionId: context.expectedVersionId,
     expectedApprovalInstanceId: context.expectedApprovalInstanceId,
     expectedNodeIndex: context.expectedNodeIndex
@@ -1392,7 +1395,7 @@ function normalizeSpotProcurementReviewAction(
   const expectedApprovalInstanceId =
     input.expectedApprovalInstanceId.trim();
   const comment =
-    input.decision === "reject" ? input.comment?.trim() ?? "" : undefined;
+    input.decision !== "approve" ? input.comment?.trim() ?? "" : undefined;
   if (
     !ownerScope ||
     !procurementId ||
@@ -1408,8 +1411,8 @@ function normalizeSpotProcurementReviewAction(
     input.operationId < 1 ||
     !Number.isInteger(input.expectedNodeIndex) ||
     input.expectedNodeIndex < 0 ||
-    (input.decision !== "approve" && input.decision !== "reject") ||
-    (input.decision === "reject" && !comment)
+    !["approve", "reject", "return_to_applicant"].includes(input.decision) ||
+    (input.decision !== "approve" && !comment)
   ) {
     throw new Error(
       "零星采购审批上下文无效，请重新读取当前采购后再操作"
@@ -1426,7 +1429,7 @@ function normalizeSpotProcurementReviewAction(
     expectedApprovalInstanceId,
     expectedNodeIndex: input.expectedNodeIndex,
     decision: input.decision,
-    ...(input.decision === "reject" ? { comment } : {})
+    ...(input.decision !== "approve" ? { comment } : {})
   });
 }
 

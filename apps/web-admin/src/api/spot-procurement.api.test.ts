@@ -27,7 +27,6 @@ import {
   requestSpotProcurementAbnormalTermination,
   resetSpotProcurementReceiptDraft,
   submitSpotProcurementReceipt,
-  reviewSpotProcurement,
   reviewSpotProcurementA5Payment,
   reviewSpotProcurementPayment,
   submitSpotProcurement,
@@ -265,13 +264,6 @@ describe("spot procurement API client", () => {
       changeReason: "修改使用部位"
     });
     await submitSpotProcurement("procurement/1");
-    await reviewSpotProcurement("procurement/1", {
-      decision: "approve",
-      comment: "同意",
-      expectedVersionId: "version-1",
-      expectedApprovalInstanceId: "approval-1",
-      expectedNodeIndex: 0
-    });
     await withdrawSpotProcurement("procurement/1");
     await voidSpotProcurement("procurement/1", { reason: "现场取消需求" });
     await createSpotProcurementPaymentDraft("procurement/1");
@@ -281,7 +273,6 @@ describe("spot procurement API client", () => {
       "/spot-procurements/procurement%2F1/draft",
       "/spot-procurements/procurement%2F1/versions",
       "/spot-procurements/procurement%2F1/submission",
-      "/spot-procurements/procurement%2F1/approval",
       "/spot-procurements/procurement%2F1/approval-withdrawal",
       "/spot-procurements/procurement%2F1/voiding",
       "/spot-procurements/procurement%2F1/payments"
@@ -289,7 +280,6 @@ describe("spot procurement API client", () => {
     expect(mockApiFetch.mock.calls.map(([, init]) => init?.method)).toEqual([
       "POST",
       "PATCH",
-      "POST",
       "POST",
       "POST",
       "POST",
@@ -308,22 +298,9 @@ describe("spot procurement API client", () => {
         body: JSON.stringify({ ...draft, changeReason: "修改使用部位" })
       })
     );
-    expect(mockApiFetch).toHaveBeenNthCalledWith(
-      5,
-      "/spot-procurements/procurement%2F1/approval",
-      expect.objectContaining({
-        body: JSON.stringify({
-          decision: "approve",
-          comment: "同意",
-          expectedVersionId: "version-1",
-          expectedApprovalInstanceId: "approval-1",
-          expectedNodeIndex: 0
-        })
-      })
-    );
     expect(mockApiFetch.mock.calls[3]?.[1]?.body).toBe("{}");
-    expect(mockApiFetch.mock.calls[5]?.[1]?.body).toBe("{}");
-    expect(mockApiFetch.mock.calls[7]?.[1]?.body).toBe("{}");
+    expect(mockApiFetch.mock.calls[4]?.[1]?.body).toBe("{}");
+    expect(mockApiFetch.mock.calls[6]?.[1]?.body).toBe("{}");
   });
 
   it.each([
@@ -408,6 +385,57 @@ describe("spot procurement API client", () => {
     expect(mockApiFetch).toHaveBeenCalledTimes(1);
     expect(mockApiFetch).toHaveBeenCalledWith(
       "/spot-procurements/procurement-a"
+    );
+  });
+
+  it("freezes and submits return-to-applicant through the same fresh-preflight owner", async () => {
+    mockApiFetch.mockResolvedValueOnce(jsonResponse(reviewDetail()));
+    const input = reviewActionInput({
+      decision: "return_to_applicant",
+      comment: "  请补充报价依据  "
+    });
+
+    const prepared = await prepareSpotProcurementReviewAction(input);
+    expect(prepared).toEqual(
+      expect.objectContaining({
+        status: "ready",
+        context: expect.objectContaining({
+          decision: "return_to_applicant",
+          comment: "请补充报价依据",
+          expectedVersionId: "version-a",
+          expectedApprovalInstanceId: "approval-a",
+          expectedNodeIndex: 1
+        })
+      })
+    );
+
+    if (prepared.status !== "ready") {
+      throw new Error("return-to-applicant preflight did not become ready");
+    }
+    mockApiFetch.mockClear();
+    await executeSpotProcurementReviewAction({
+      decision: "return_to_applicant",
+      capture: () => prepared.context,
+      preflight: async () => prepared,
+      current: () => true,
+      complete: vi.fn(),
+      fail: vi.fn(),
+      finish: vi.fn()
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/spot-procurements/procurement-a/approval",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          decision: "return_to_applicant",
+          comment: "请补充报价依据",
+          expectedVersionId: "version-a",
+          expectedApprovalInstanceId: "approval-a",
+          expectedNodeIndex: 1
+        })
+      })
     );
   });
 

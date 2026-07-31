@@ -48,7 +48,7 @@ vi.mock("../../api/spot-procurement.api", async (importOriginal) => {
 reviewRuntime.route = reactive(reviewRuntime.route);
 
 type MutableValue<T> = { value: T };
-type ReviewDecision = "approve" | "reject";
+type ReviewDecision = "approve" | "reject" | "return_to_applicant";
 type ReviewOperationContext = {
   ownerScope: string;
   routeGeneration: number;
@@ -110,6 +110,10 @@ type ProcurementDetailPageBindings = {
     reason: string;
     password: string;
   }) => Promise<unknown>;
+  confirmReviewReturn: (values: {
+    reason: string;
+    password: string;
+  }) => Promise<unknown>;
   confirmAction: (values: {
     reason: string;
     password: string;
@@ -153,7 +157,7 @@ describe("spot procurement approve/reject page ownership", () => {
             context.procurementId,
             {
               decision: input.decision,
-              ...(input.decision === "reject"
+              ...(input.decision !== "approve"
                 ? { comment: context.comment }
                 : {}),
               expectedVersionId: context.expectedVersionId,
@@ -288,16 +292,37 @@ describe("spot procurement approve/reject page ownership", () => {
     }
   });
 
-  it("keeps return-to-applicant compatible with the frozen required coordinates", async () => {
+  it("freezes return-to-applicant coordinates and uses the owned fresh-preflight executor", async () => {
+    const pending = deferred<unknown>();
+    reviewRuntime.prepareReview.mockReturnValueOnce(pending.promise);
     const { bindings, scope } = setupReviewPage();
-    reviewRuntime.fetchDetail.mockResolvedValueOnce(reviewDetail());
+    const values = { reason: "  请补充报价依据  ", password: "" };
 
     try {
       bindings.openConfirmation("review_return");
-      await bindings.confirmAction({
-        reason: "  请补充报价依据  ",
-        password: ""
+      const request = bindings.confirmReviewReturn(values);
+      values.reason = "随后篡改";
+      const input = reviewRuntime.prepareReview.mock
+        .calls[0]?.[0] as ReviewOperationInput;
+
+      expect(input).toEqual(
+        expect.objectContaining({
+          procurementId: "procurement-a",
+          expectedVersionId: "version-a",
+          expectedApprovalInstanceId: "approval-a",
+          expectedNodeIndex: 1,
+          decision: "return_to_applicant",
+          comment: "请补充报价依据"
+        })
+      );
+      expect(bindings.actionBusy.value).toBe(true);
+
+      pending.resolve({
+        status: "ready",
+        context: reviewContext(input),
+        preflight: reviewDetail()
       });
+      await request;
 
       expect(reviewRuntime.reviewDirect).toHaveBeenCalledWith(
         "procurement-a",
@@ -309,6 +334,8 @@ describe("spot procurement approve/reject page ownership", () => {
           expectedNodeIndex: 1
         }
       );
+      expect(reviewRuntime.fetchDetail).toHaveBeenCalledTimes(1);
+      expect(bindings.actionBusy.value).toBe(false);
     } finally {
       scope.stop();
     }
@@ -636,7 +663,7 @@ function reviewContext(input: ReviewOperationInput): ReviewOperationContext {
     expectedApprovalInstanceId: input.expectedApprovalInstanceId,
     expectedNodeIndex: input.expectedNodeIndex,
     decision: input.decision,
-    ...(input.decision === "reject" ? { comment: input.comment } : {})
+    ...(input.decision !== "approve" ? { comment: input.comment } : {})
   });
 }
 
