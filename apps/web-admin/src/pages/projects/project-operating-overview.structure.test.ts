@@ -95,8 +95,19 @@ describe("project operating overview structure", () => {
     expect(source).toContain('@current-change="changeExpenseLedgerPage"');
     expect(source).toContain("projectExpenses.value?.statistics");
     expect(source).toContain("正式支出单");
-    expect(source).toContain("['approval_pending', 'approved_pending_payment'].includes");
+    expect(source).toContain(
+      "['approval_pending', 'approved_pending_payment', 'partially_paid'].includes"
+    );
     expect(source).not.toContain('value="my_drafts"');
     expect(source).not.toContain('value="returned_for_revision"');
+  });
+
+  it("routes actual project-expense payment to governed detail instead of keeping a local execution form", () => {
+    expect(source).toContain("openExpenseApprovalDetail(selectedExpenseRow)");
+    expect(source).not.toContain("canRecordExpenseExecution");
+    expect(source).not.toContain("submitExpenseExecution");
+    expect(source).not.toContain("recordProjectExpenseExecution");
+    expect(source).not.toContain("executionVoucherFile");
+    expect(source).not.toContain("expenseExecutionVoucherInput");
   });
 });

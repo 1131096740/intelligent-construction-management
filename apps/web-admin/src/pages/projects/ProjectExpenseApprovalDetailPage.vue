@@ -8,6 +8,7 @@
       <t-button
         variant="outline"
         :loading="loading"
+        :disabled="executionSubmitting || reviewSubmitting || withdrawalSubmitting"
         @click="loadDetail"
       >
         刷新
@@ -83,6 +84,71 @@
         :error="withdrawalConfirmation.error"
         @confirm="confirmProjectExpenseWithdrawal"
         @cancel="cancelProjectExpenseWithdrawal"
+      />
+
+      <t-card
+        v-if="projectExpenseExecutionEnabled"
+        class="section-card"
+        title="实付办理"
+        :bordered="true"
+      >
+        <div class="execution-form">
+          <MoneyInput
+            v-model="executionForm.amountYuan"
+            label="实付金额"
+            required
+          />
+          <label class="execution-field">
+            <span>实付时间 <b aria-hidden="true">*</b></span>
+            <t-date-picker
+              v-model="executionForm.paidAt"
+              enable-time-picker
+              need-confirm
+              format="YYYY-MM-DD HH:mm"
+              value-type="YYYY-MM-DD HH:mm:ss"
+              :disabled="executionSubmitting"
+            />
+          </label>
+          <div class="execution-field execution-field--wide">
+            <span>实付凭证 <b aria-hidden="true">*</b></span>
+            <t-upload
+              v-model="executionVoucherFiles"
+              theme="file-input"
+              :auto-upload="false"
+              :max="1"
+              :accept="CORE_ARCHIVE_UPLOAD_POLICY.acceptAttribute"
+              :size-limit="coreArchiveUploadSizeLimit"
+              :disabled="executionSubmitting"
+              placeholder="选择实付凭证文件"
+            />
+            <small>{{ executionVoucherFileSummary }}</small>
+          </div>
+        </div>
+        <div class="execution-actions">
+          <t-button
+            theme="primary"
+            :loading="executionSubmitting"
+            :disabled="executionSubmitting"
+            @click="requestProjectExpenseExecution"
+          >
+            确认登记实付
+          </t-button>
+        </div>
+      </t-card>
+
+      <SensitiveActionDialog
+        v-if="projectExpenseExecutionActionEnabled() && executionConfirmation.visible"
+        :key="`project-expense-execution-${executionConfirmation.dialogGeneration}`"
+        v-model="executionConfirmation.visible"
+        title="确认登记项目支出实付？"
+        description="提交后将在同一业务链中记录实付金额、付款时间、凭证和经办人，并更新项目资金余额。"
+        confirm-text="确认登记实付"
+        confirm-theme="primary"
+        require-password
+        :loading="executionSubmitting"
+        :error="executionConfirmation.error"
+        @confirm="confirmProjectExpenseExecution"
+        @cancel="cancelProjectExpenseExecution"
       />
 
       <t-card
@@ -191,6 +257,7 @@
 </template>
 
 <script setup lang="ts">
+import type { UploadFile } from "tdesign-vue-next";
 import {
   computed,
   onBeforeUnmount,
@@ -206,33 +273,78 @@ import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import BusinessDraftAction, {
   type BusinessDraftActionRequest
 } from "../../components/BusinessDraftAction.vue";
+import MoneyInput from "../../components/MoneyInput.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
+import { CORE_ARCHIVE_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
+import { buildFileUploadSummary } from "../../components/file-upload-summary.config";
 import {
+  createProjectExpenseExecutionRecordAttemptState,
   executeProjectExpenseApprovalReviewAction,
   executeProjectExpenseWithdrawalAction,
   fetchProjectExpenseApprovalDetail,
   prepareProjectExpenseApprovalReviewAction,
   prepareProjectExpenseWithdrawalAction,
+  recordProjectExpenseExecutionWithUpload,
   voidProjectExpenseRequest,
   type PrepareProjectExpenseApprovalReviewActionResult,
   type PrepareProjectExpenseWithdrawalActionResult,
   type ProjectExpenseApprovalReviewActionContext,
   type ProjectExpenseApprovalReviewActionDecision,
   type ProjectExpenseApprovalLifecycleDetailReadModel,
+  type ProjectExpenseExecutionRecordAttemptState,
   type ProjectExpenseWithdrawalActionContext
 } from "../../api/core-flow-read.api";
-import { centsTextToYuanText } from "../../lib/money";
+import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import { projectExpenseApprovedAmountCents } from "./project-expense-approval.config";
+
+interface ProjectExpenseExecutionSelection {
+  ownerScope: string;
+  routeGeneration: number;
+  detailEpoch: number;
+  dialogGeneration: number;
+  capabilityGeneration: number;
+  projectId: string;
+  expenseRequestId: string;
+  expectedExpenseUpdatedAt: string;
+  amountCents: string;
+  paidAt: string;
+  idempotencyKey: string;
+  file: File;
+  fileName: string;
+  attemptState: ProjectExpenseExecutionRecordAttemptState;
+}
 
 const route = useRoute();
 const detail = ref<ProjectExpenseApprovalLifecycleDetailReadModel | null>(null);
 const projectExpenseWithdrawalCapability =
   shallowRef<ProjectExpenseApprovalLifecycleDetailReadModel | null>(null);
+let projectExpenseCapabilityGeneration = 0;
 const loading = ref(false);
 const errorMessage = ref("");
 const actionMessage = ref("");
 const actionTone = ref<"success" | "error">("success");
+let executionDialogGeneration = 0;
+let executionOperationSequence = 0;
+let executionBusyOwnerId = 0;
+let executionComponentActive = true;
+let executionDialogReady = false;
+let executionSelection:
+  | Readonly<ProjectExpenseExecutionSelection>
+  | null = null;
+let executionOperationPromise: Promise<unknown> | null = null;
+const executionOwnerScope = globalThis.crypto.randomUUID();
+const executionSubmitting = ref(false);
+const executionVoucherFiles = ref<UploadFile[]>([]);
+const executionConfirmation = reactive({
+  visible: false,
+  error: "",
+  dialogGeneration: -1
+});
+const executionForm = reactive({
+  amountYuan: "",
+  paidAt: toDatetimePickerValue(new Date())
+});
 let reviewDialogGeneration = 0;
 let reviewOperationSequence = 0;
 let reviewBusyOwnerId = 0;
@@ -277,6 +389,24 @@ const form = reactive({
   approvedAmountYuan: "",
   selfReviewReason: ""
 });
+
+const selectedExecutionVoucherFile = computed(() => {
+  const rawFile = executionVoucherFiles.value[0]?.raw;
+  return rawFile instanceof File ? rawFile : null;
+});
+const coreArchiveUploadSizeLimit = {
+  size: CORE_ARCHIVE_UPLOAD_POLICY.limitBytes,
+  unit: "B" as const,
+  message: `文件大小不能超过 ${CORE_ARCHIVE_UPLOAD_POLICY.limitText.replace("不超过 ", "")}`
+};
+const executionVoucherFileSummary = computed(() =>
+  buildFileUploadSummary(
+    selectedExecutionVoucherFile.value,
+    executionSubmitting.value,
+    CORE_ARCHIVE_UPLOAD_POLICY.acceptText,
+    CORE_ARCHIVE_UPLOAD_POLICY.limitText
+  )
+);
 
 const expenseActionSubject = computed(() => ({
   businessCode: detail.value?.code ?? "—",
@@ -349,6 +479,15 @@ function projectExpenseWithdrawalActionEnabled(key: "withdraw") {
   );
 }
 
+function projectExpenseExecutionActionEnabled() {
+  return Boolean(
+    projectExpenseWithdrawalCapability.value?.availableActions.some(
+      (action) =>
+        action.key === "record_execution" && action.enabled
+    )
+  );
+}
+
 const withdrawalEnabled = computed(() => {
   const capability = projectExpenseWithdrawalCapability.value;
   const coordinates = capability?.withdrawalContext;
@@ -383,9 +522,42 @@ const withdrawalEnabled = computed(() => {
 
 const nonWithdrawalLifecycleActions = computed(() =>
   detail.value?.availableActions.filter(
-    (action) => action.key !== "withdraw" && action.key !== "review_approval"
+    (action) =>
+      action.key !== "withdraw" &&
+      action.key !== "review_approval" &&
+      action.key !== "record_execution"
   ) ?? []
 );
+
+const projectExpenseExecutionEnabled = computed(() => {
+  const capability = projectExpenseWithdrawalCapability.value;
+  const executionContext = capability?.executionContext;
+  const currentDetail = detail.value;
+  const { projectId, expenseRequestId } = routeIds();
+  const enabledActionCount =
+    capability?.availableActions.filter(
+      (action) =>
+        action.key === "record_execution" && action.enabled
+    ).length ?? 0;
+  if (
+    !capability ||
+    !executionContext ||
+    capability.projectId !== projectId ||
+    capability.id !== expenseRequestId ||
+    currentDetail?.projectId !== capability.projectId ||
+    currentDetail.id !== capability.id ||
+    typeof capability.lifecycleUpdatedAt !== "string" ||
+    !capability.lifecycleUpdatedAt ||
+    executionContext.expectedExpenseUpdatedAt !==
+      capability.lifecycleUpdatedAt
+  ) {
+    return false;
+  }
+  return (
+    enabledActionCount === 1 &&
+    projectExpenseExecutionActionEnabled()
+  );
+});
 
 function routeIds() {
   return {
@@ -409,6 +581,8 @@ async function loadDetail(): Promise<boolean> {
   detailEpoch += 1;
   invalidateProjectExpenseReviewDialog(true);
   invalidateProjectExpenseWithdrawalDialog(true);
+  invalidateProjectExpenseExecutionDialog(true);
+  projectExpenseCapabilityGeneration += 1;
   projectExpenseWithdrawalCapability.value = null;
   if (!projectId || !expenseRequestId) {
     detail.value = null;
@@ -435,6 +609,7 @@ async function loadDetail(): Promise<boolean> {
       return false;
     }
     const viewDetail = structuredClone(serverDetail);
+    projectExpenseCapabilityGeneration += 1;
     projectExpenseWithdrawalCapability.value = serverDetail;
     detail.value = viewDetail;
     return true;
@@ -449,6 +624,7 @@ async function loadDetail(): Promise<boolean> {
     ) {
       return false;
     }
+    projectExpenseCapabilityGeneration += 1;
     projectExpenseWithdrawalCapability.value = null;
     detail.value = null;
     errorMessage.value = error instanceof Error ? error.message : "项目支出审批详情读取失败";
@@ -477,6 +653,7 @@ function detailLoadIsCurrent(
   return (
     withdrawalComponentActive &&
     reviewComponentActive &&
+    executionComponentActive &&
     requestId === detailLoadRequestId &&
     routeGeneration === detailRouteGeneration &&
     currentRoute.projectId === projectId &&
@@ -494,6 +671,14 @@ function clearProjectExpenseRouteContext() {
   withdrawalBusyOwnerId = 0;
   withdrawalSubmitting.value = false;
   invalidateProjectExpenseWithdrawalDialog(true);
+  executionBusyOwnerId = 0;
+  executionSubmitting.value = false;
+  executionOperationPromise = null;
+  invalidateProjectExpenseExecutionDialog(true);
+  executionVoucherFiles.value = [];
+  executionForm.amountYuan = "";
+  executionForm.paidAt = toDatetimePickerValue(new Date());
+  projectExpenseCapabilityGeneration += 1;
   projectExpenseWithdrawalCapability.value = null;
   detail.value = null;
   loading.value = false;
@@ -544,6 +729,15 @@ function invalidateProjectExpenseWithdrawalDialog(close: boolean) {
   if (close) withdrawalConfirmation.visible = false;
 }
 
+function invalidateProjectExpenseExecutionDialog(close: boolean) {
+  executionDialogGeneration += 1;
+  executionDialogReady = false;
+  executionSelection = null;
+  executionConfirmation.error = "";
+  executionConfirmation.dialogGeneration = -1;
+  if (close) executionConfirmation.visible = false;
+}
+
 function scheduleRouteDetailLoad() {
   const expectedGeneration = detailRouteGeneration;
   void Promise.resolve().then(() => {
@@ -555,6 +749,264 @@ function scheduleRouteDetailLoad() {
       void loadDetail();
     }
   });
+}
+
+function requestProjectExpenseExecution() {
+  const capability = projectExpenseWithdrawalCapability.value;
+  const executionContext = capability?.executionContext;
+  const { projectId, expenseRequestId } = routeIds();
+  try {
+    if (
+      !projectExpenseExecutionEnabled.value ||
+      !capability ||
+      !executionContext ||
+      capability.projectId !== projectId ||
+      capability.id !== expenseRequestId
+    ) {
+      throw new Error(
+        "项目支出实付资格或版本未读取，请刷新详情后重试"
+      );
+    }
+    if (executionBusyOwnerId !== 0 || executionSubmitting.value) {
+      throw new Error(
+        "当前项目支出实付正在提交，请等待本次操作完成"
+      );
+    }
+    const file = selectedExecutionVoucherFile.value;
+    if (!file) throw new Error("项目支出实付凭证不能为空");
+    const amountCents = parseExecutionYuanAmount(
+      executionForm.amountYuan
+    );
+    const paidAt = toExecutionIsoDatetime(
+      executionForm.paidAt
+    );
+    executionDialogGeneration += 1;
+    executionSelection = Object.freeze({
+      ownerScope: executionOwnerScope,
+      routeGeneration: detailRouteGeneration,
+      detailEpoch,
+      dialogGeneration: executionDialogGeneration,
+      capabilityGeneration: projectExpenseCapabilityGeneration,
+      projectId,
+      expenseRequestId,
+      expectedExpenseUpdatedAt:
+        executionContext.expectedExpenseUpdatedAt,
+      amountCents,
+      paidAt,
+      idempotencyKey: globalThis.crypto.randomUUID(),
+      file,
+      fileName: file.name,
+      attemptState:
+        createProjectExpenseExecutionRecordAttemptState()
+    });
+    executionDialogReady = true;
+    Object.assign(executionConfirmation, {
+      visible: true,
+      error: "",
+      dialogGeneration: executionDialogGeneration
+    });
+    actionMessage.value = "";
+  } catch (error) {
+    actionTone.value = "error";
+    actionMessage.value =
+      error instanceof Error
+        ? error.message
+        : "项目支出实付信息不完整";
+  }
+}
+
+function projectExpenseExecutionSelectionIsCurrent(
+  selection: Readonly<ProjectExpenseExecutionSelection>
+) {
+  const currentDetail = detail.value;
+  const currentRoute = routeIds();
+  return (
+    executionComponentActive &&
+    selection.ownerScope === executionOwnerScope &&
+    selection.routeGeneration === detailRouteGeneration &&
+    selection.detailEpoch === detailEpoch &&
+    selection.dialogGeneration === executionDialogGeneration &&
+    selection.projectId === currentRoute.projectId &&
+    selection.expenseRequestId === currentRoute.expenseRequestId &&
+    executionSelection === selection &&
+    executionDialogReady &&
+    executionConfirmation.visible &&
+    executionConfirmation.dialogGeneration ===
+      selection.dialogGeneration &&
+    selection.capabilityGeneration ===
+      projectExpenseCapabilityGeneration &&
+    currentDetail?.projectId === selection.projectId &&
+    currentDetail.id === selection.expenseRequestId
+  );
+}
+
+function confirmProjectExpenseExecution(values: {
+  reason: string;
+  password: string;
+}) {
+  if (executionOperationPromise) {
+    return executionOperationPromise;
+  }
+  const selection = executionSelection;
+  if (!selection || !executionDialogReady) {
+    executionConfirmation.error =
+      "项目支出实付上下文已失效，请重新打开确认窗口";
+    return Promise.resolve({ status: "not_started" });
+  }
+  if (executionBusyOwnerId !== 0) {
+    executionConfirmation.error =
+      "当前项目支出实付正在提交，请等待本次操作完成";
+    return Promise.resolve({ status: "not_started" });
+  }
+
+  const ownerId = ++executionOperationSequence;
+  executionBusyOwnerId = ownerId;
+  executionSubmitting.value = true;
+  actionMessage.value = "";
+  executionConfirmation.error = "";
+  const request = recordProjectExpenseExecutionWithUpload(
+    selection.projectId,
+    selection.expenseRequestId,
+    {
+      amountCents: selection.amountCents,
+      paidAt: selection.paidAt,
+      confirmationPassword: values.password,
+      expectedExpenseUpdatedAt:
+        selection.expectedExpenseUpdatedAt,
+      idempotencyKey: selection.idempotencyKey,
+      file: selection.file,
+      fileName: selection.fileName,
+      context: selection,
+      isCurrent: projectExpenseExecutionSelectionIsCurrent
+    },
+    selection.attemptState
+  );
+  let operation!: Promise<unknown>;
+  operation = request
+    .then((result) =>
+      completeProjectExpenseExecution(selection, result)
+    )
+    .catch((error) => {
+      if (projectExpenseExecutionSelectionIsCurrent(selection)) {
+        const reason =
+          error instanceof Error
+            ? error.message
+            : "项目支出实付登记失败";
+        actionTone.value = "error";
+        actionMessage.value =
+          `操作未完成：${reason}。已保留当前凭证与幂等请求，可直接重试。`;
+        executionConfirmation.error = reason;
+      }
+      return { status: "failed" as const };
+    })
+    .finally(() => {
+      if (executionBusyOwnerId === ownerId) {
+        executionBusyOwnerId = 0;
+        executionSubmitting.value = false;
+      }
+      if (executionOperationPromise === operation) {
+        executionOperationPromise = null;
+      }
+    });
+  executionOperationPromise = operation;
+  return operation;
+}
+
+async function completeProjectExpenseExecution(
+  selection: Readonly<ProjectExpenseExecutionSelection>,
+  response: unknown
+) {
+  if (!projectExpenseExecutionSelectionIsCurrent(selection)) {
+    return { status: "stale" as const };
+  }
+  const serverDetail = await fetchProjectExpenseApprovalDetail(
+    selection.projectId,
+    selection.expenseRequestId
+  );
+  if (!projectExpenseExecutionSelectionIsCurrent(selection)) {
+    return { status: "stale" as const };
+  }
+  const enabledActions = serverDetail.availableActions.filter(
+    (action) =>
+      action.key === "record_execution" && action.enabled
+  );
+  const contextMatches =
+    enabledActions.length === 1
+      ? serverDetail.executionContext
+          ?.expectedExpenseUpdatedAt ===
+        serverDetail.lifecycleUpdatedAt
+      : enabledActions.length === 0 &&
+        serverDetail.executionContext === null;
+  if (
+    serverDetail.projectId !== selection.projectId ||
+    serverDetail.id !== selection.expenseRequestId ||
+    typeof serverDetail.lifecycleUpdatedAt !== "string" ||
+    !serverDetail.lifecycleUpdatedAt ||
+    enabledActions.length > 1 ||
+    !contextMatches
+  ) {
+    throw new Error(
+      "项目支出实付后的权威详情不完整，请刷新后核对"
+    );
+  }
+  if (
+    serverDetail.lifecycleUpdatedAt ===
+    selection.expectedExpenseUpdatedAt
+  ) {
+    throw new Error(
+      "项目支出实付后的权威详情尚未反映本次写入，请直接重试"
+    );
+  }
+  projectExpenseCapabilityGeneration += 1;
+  projectExpenseWithdrawalCapability.value = serverDetail;
+  detail.value = structuredClone(serverDetail);
+  detailEpoch += 1;
+  executionVoucherFiles.value = [];
+  executionForm.amountYuan = "";
+  executionForm.paidAt = toDatetimePickerValue(new Date());
+  actionTone.value = "success";
+  actionMessage.value =
+    "项目支出实付已登记，权威详情已刷新。";
+  invalidateProjectExpenseExecutionDialog(true);
+  return { status: "completed" as const, response };
+}
+
+function cancelProjectExpenseExecution() {
+  if (executionBusyOwnerId !== 0) {
+    executionConfirmation.visible = true;
+    executionConfirmation.error =
+      "当前项目支出实付正在提交，请等待本次操作完成";
+    return;
+  }
+  invalidateProjectExpenseExecutionDialog(true);
+}
+
+function parseExecutionYuanAmount(raw: string) {
+  let amountCents: string;
+  try {
+    amountCents = yuanTextToCentsText(raw.trim());
+  } catch {
+    throw new Error("实付金额必须为正数，最多两位小数");
+  }
+  if (amountCents === "0") {
+    throw new Error("实付金额必须为正数，最多两位小数");
+  }
+  return amountCents;
+}
+
+function toExecutionIsoDatetime(raw: string) {
+  const value = raw.trim();
+  if (!value) throw new Error("请填写实付时间");
+  const parsed = new Date(value.replace(" ", "T"));
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("实付时间格式不正确");
+  }
+  return parsed.toISOString();
+}
+
+function toDatetimePickerValue(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 function requestProjectExpenseReview(
@@ -1151,6 +1603,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   reviewComponentActive = false;
   withdrawalComponentActive = false;
+  executionComponentActive = false;
   clearProjectExpenseRouteContext();
 });
 </script>
@@ -1214,6 +1667,31 @@ onBeforeUnmount(() => {
   grid-column: 1 / -1;
 }
 
+.execution-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--jg-space-md);
+  min-width: 0;
+}
+
+.execution-field {
+  display: grid;
+  gap: var(--jg-space-xs);
+  min-width: 0;
+  color: var(--jg-text-subtle);
+  font-size: var(--jg-font-meta);
+}
+
+.execution-field--wide {
+  grid-column: 1 / -1;
+}
+
+.execution-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--jg-space-md);
+}
+
 @container jg-page (max-width: 620px) {
   .page-head,
   .review-buttons {
@@ -1221,12 +1699,18 @@ onBeforeUnmount(() => {
     flex-direction: column;
   }
 
-  .summary-grid {
+  .summary-grid,
+  .execution-form {
     grid-template-columns: 1fr;
   }
 
-  .summary-wide {
+  .summary-wide,
+  .execution-field--wide {
     grid-column: auto;
+  }
+
+  .execution-actions {
+    display: grid;
   }
 }
 </style>

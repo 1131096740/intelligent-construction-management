@@ -58,7 +58,13 @@ function detailFixture(
       findFirst: jest.fn().mockResolvedValue({ id: "approval-instance-1" })
     },
     approvalActionLog: { findMany: jest.fn().mockResolvedValue([]) },
-    user: { findMany: jest.fn().mockResolvedValue([]) },
+    user: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: "reviewer-1",
+        isActive: true
+      }),
+      findMany: jest.fn().mockResolvedValue([])
+    },
     approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
     projectExpenseFinancingQuotaUsage: { findFirst: jest.fn().mockResolvedValue(null) },
     ...roleTables(actorRoleKey)
@@ -132,7 +138,13 @@ function reviewFixture({
       create: jest.fn()
     },
     approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
-    user: { findMany: jest.fn().mockResolvedValue([]) },
+    user: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: "reviewer-1",
+        isActive: true
+      }),
+      findMany: jest.fn().mockResolvedValue([])
+    },
     ...roleTables(actorRoleKey)
   };
   for (const result of queryResults) {

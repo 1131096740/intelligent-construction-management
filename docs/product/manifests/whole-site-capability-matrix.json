@@ -22,19 +22,19 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "ea2d84320985b772b6be097672405821f635f20c979c894c41e41b111b08b102",
+      "sha256": "434c337c181607e00feba9bfa5e9057e7807a395e7e3682c4dcb393026226923",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 14,
-        "exportedFunctionCount": 389,
-        "transportWrapperCount": 384,
-        "pureExportCount": 5,
-        "mainRequestBindingCount": 390,
+        "exportedFunctionCount": 391,
+        "transportWrapperCount": 385,
+        "pureExportCount": 6,
+        "mainRequestBindingCount": 393,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 390,
+        "requestEdgeCount": 393,
         "productionConsumerCount": 338,
-        "orphanWrapperCount": 46,
-        "testOnlyWrapperCount": 44,
+        "orphanWrapperCount": 47,
+        "testOnlyWrapperCount": 45,
         "unreferencedWrapperCount": 2,
         "duplicateNormalizedRouteGroupCount": 9,
         "authTransportExceptionCount": 5
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "f039e3517a1148b3b767d98039993dc99aef5d7d49ac818fcc4912fb83b60693",
+      "sha256": "7d341d70529526c115e985521f60e212b433856d7c10133ebb2ee2c98246e587",
       "status": "blocked",
       "summary": {
         "registeredActionCount": 42,
@@ -53,18 +53,18 @@
         "totalVueFileCount": 134,
         "parsedVueFileCount": 134,
         "reachableProductionModuleCount": 229,
-        "templateEventDirectiveCount": 913,
+        "templateEventDirectiveCount": 914,
         "propCallbackDirectiveCount": 10,
-        "coveredProductionMutationConsumerCount": 16,
+        "coveredProductionMutationConsumerCount": 17,
         "candidateProductionMutationConsumerCount": 38,
-        "acceptedProductionMutationConsumerCount": 16,
+        "acceptedProductionMutationConsumerCount": 17,
         "productionMutationConsumerPairCount": 274,
-        "blockerCount": 310
+        "blockerCount": 307
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "a5936ee225663b4f6f6af6d04e3322fef7ad694a939226af51a8e2fca8c7a1b0",
+      "sha256": "c8e8d1109da9990ad4230bc55cf8123c08a2cdadbf4b39a578db4906e922a1eb",
       "status": "blocked",
       "summary": {
         "routeCount": 395,
@@ -99,18 +99,18 @@
     "exitCandidateRouteCount": 23,
     "internalTaskRouteCount": 2,
     "unclassifiedRouteCount": 26,
-    "mainRequestBindingCount": 390,
+    "mainRequestBindingCount": 393,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
-    "orphanWrapperCount": 46,
+    "orphanWrapperCount": 47,
     "duplicateMutationRouteCount": 5,
     "registeredActionCount": 42,
-    "actionBindingCount": 51,
-    "acceptedActionBindingCount": 23,
+    "actionBindingCount": 53,
+    "acceptedActionBindingCount": 25,
     "unresolvedActionBindingCount": 28,
     "productionMutationConsumerPairCount": 274,
-    "coveredProductionMutationConsumerPairCount": 16,
-    "uncoveredProductionMutationConsumerPairCount": 258,
+    "coveredProductionMutationConsumerPairCount": 17,
+    "uncoveredProductionMutationConsumerPairCount": 257,
     "blockerCount": 367
   },
   "blockers": {
@@ -306,6 +306,11 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "recordProjectExpenseExecution",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "recordProjectOwnerContract",
         "classification": "test_only"
       },
@@ -407,6 +412,10 @@
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
             "wrapper": "recordProjectAffiliateCompanyContractWithUpload"
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "recordProjectExpenseExecutionWithUpload"
           },
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -1660,14 +1669,6 @@
         "consumer": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
         "normalizedKeys": [
           "POST /projects/:param/affiliate-settlement-facts"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectExpenseExecution",
-        "consumer": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/expense-requests/:param/executions"
         ]
       },
       {
@@ -2977,15 +2978,12 @@
       {
         "actionId": "project-expense.execution-local-status",
         "bindingIndex": 0,
-        "identity": "project-expense.execution-local-status\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectExpenseExecution\u0000POST\u0000POST /projects/:param/expense-requests/:param/executions\u00000",
+        "identity": "project-expense.execution-local-status\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectExpenseExecutionWithUpload\u0000GET\u0000GET /projects/:param/expense-requests/:param/approval-detail\u00000",
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectExpenseExecution",
-        "normalizedKey": "POST /projects/:param/expense-requests/:param/executions",
+        "wrapper": "recordProjectExpenseExecutionWithUpload",
+        "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
         "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
+          "binding_not_mutation"
         ]
       },
       {
@@ -6398,12 +6396,57 @@
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
           ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectExpenseExecutionWithUpload",
+          "method": "GET",
+          "path": "/projects/:param/expense-requests/:param/approval-detail",
+          "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
-      "actions": [],
+      "actions": [
+        {
+          "actionId": "project-expense.execution-local-status",
+          "bindingIndex": 0,
+          "identity": "project-expense.execution-local-status\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectExpenseExecutionWithUpload\u0000GET\u0000GET /projects/:param/expense-requests/:param/approval-detail\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "projectExpenseWithdrawalCapability.availableActions",
+            "key": "record_execution",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectExpenseExecutionWithUpload",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": false,
+          "blockerCodes": [
+            "binding_not_mutation"
+          ]
+        }
+      ],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": []
+      "blockerCodes": [
+        "ACTION_BINDING_UNRESOLVED"
+      ]
     },
     {
       "route": {
@@ -13737,6 +13780,20 @@
         },
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectExpenseExecutionWithUpload",
+          "method": "POST",
+          "path": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "uploadPrivateFile",
           "method": "POST",
           "path": "/files",
@@ -13822,6 +13879,32 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "project-expense.execution-local-status",
+          "bindingIndex": 1,
+          "identity": "project-expense.execution-local-status\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectExpenseExecutionWithUpload\u0000POST\u0000POST /files\u00001",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "projectExpenseWithdrawalCapability.availableActions",
+            "key": "record_execution",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectExpenseExecutionWithUpload",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -17009,8 +17092,20 @@
           "path": "/projects/:param/expense-requests/:param/executions",
           "normalizedKey": "POST /projects/:param/expense-requests/:param/executions",
           "bodyKind": "json",
+          "productionConsumers": [],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectExpenseExecutionWithUpload",
+          "method": "POST",
+          "path": "/projects/:param/expense-requests/:param/executions",
+          "normalizedKey": "POST /projects/:param/expense-requests/:param/executions",
+          "bodyKind": "json",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
@@ -17021,37 +17116,34 @@
       "actions": [
         {
           "actionId": "project-expense.execution-local-status",
-          "bindingIndex": 0,
-          "identity": "project-expense.execution-local-status\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectExpenseExecution\u0000POST\u0000POST /projects/:param/expense-requests/:param/executions\u00000",
+          "bindingIndex": 2,
+          "identity": "project-expense.execution-local-status\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectExpenseExecutionWithUpload\u0000POST\u0000POST /projects/:param/expense-requests/:param/executions\u00002",
           "usage": "page_action",
           "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
           "capability": {
-            "kind": "client_role_or_status",
-            "source": "canRecordExpenseExecution(selectedExpenseRow)",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "kind": "detail_action",
+            "source": "projectExpenseWithdrawalCapability.availableActions",
+            "key": "record_execution",
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "recordProjectExpenseExecution",
+          "wrapper": "recordProjectExpenseExecutionWithUpload",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "covered",
       "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED",
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {

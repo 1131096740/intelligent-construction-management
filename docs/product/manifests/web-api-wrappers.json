@@ -8,15 +8,15 @@
   },
   "summary": {
     "apiModuleCount": 14,
-    "exportedFunctionCount": 389,
-    "transportWrapperCount": 384,
-    "pureExportCount": 5,
-    "mainRequestBindingCount": 390,
+    "exportedFunctionCount": 391,
+    "transportWrapperCount": 385,
+    "pureExportCount": 6,
+    "mainRequestBindingCount": 393,
     "ticketFollowupCount": 2,
-    "requestEdgeCount": 390,
+    "requestEdgeCount": 393,
     "productionConsumerCount": 338,
-    "orphanWrapperCount": 46,
-    "testOnlyWrapperCount": 44,
+    "orphanWrapperCount": 47,
+    "testOnlyWrapperCount": 45,
     "unreferencedWrapperCount": 2,
     "duplicateNormalizedRouteGroupCount": 9,
     "authTransportExceptionCount": 5
@@ -4476,6 +4476,20 @@
       "unreachableConsumers": []
     },
     {
+      "name": "createProjectExpenseExecutionRecordAttemptState",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "pure",
+      "returnProvenance": "unverified",
+      "requests": [],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "createProjectExpenseRequest",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -4631,7 +4645,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 4271,
+          "sourceLine": 4576,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -4661,7 +4675,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 4255,
+          "sourceLine": 4560,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -4691,7 +4705,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 4255,
+          "sourceLine": 4560,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -4721,7 +4735,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3439,
+          "sourceLine": 3744,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -4750,7 +4764,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 4255,
+          "sourceLine": 4560,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -4840,7 +4854,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 4298,
+          "sourceLine": 4603,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -4869,7 +4883,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 4285,
+          "sourceLine": 4590,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -4898,7 +4912,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 4313,
+          "sourceLine": 4618,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -4927,7 +4941,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 4255,
+          "sourceLine": 4560,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -6854,8 +6868,73 @@
       "testConsumers": [
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
+      "productionConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "recordProjectExpenseExecutionWithUpload",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 45,
+          "method": "GET",
+          "path": "/projects/:param/expense-requests/:param/approval-detail",
+          "normalizedPath": "/projects/:param/expense-requests/:param/approval-detail",
+          "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "recordProjectExpenseExecutionWithUpload",
+              "executeProjectExpenseExecutionRecord",
+              "verifyProjectExpenseExecutionPreflight",
+              "fetchProjectExpenseApprovalDetail",
+              "readJson"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 81,
+          "method": "POST",
+          "path": "/files",
+          "normalizedPath": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "recordProjectExpenseExecutionWithUpload",
+              "executeProjectExpenseExecutionRecord",
+              "uploadPrivateFile",
+              "postForm"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 51,
+          "method": "POST",
+          "path": "/projects/:param/expense-requests/:param/executions",
+          "normalizedPath": "/projects/:param/expense-requests/:param/executions",
+          "normalizedKey": "POST /projects/:param/expense-requests/:param/executions",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordProjectExpenseExecutionWithUpload",
+              "executeProjectExpenseExecutionRecord",
+              "recordProjectExpenseExecution",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+        "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
       ],
       "unreachableConsumers": []
     },
@@ -11780,6 +11859,10 @@
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "prepareProjectExpenseWithdrawalAction"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectExpenseExecutionWithUpload"
         }
       ]
     },
@@ -11819,6 +11902,10 @@
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "recordProjectAffiliateCompanyContractWithUpload"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectExpenseExecutionWithUpload"
         },
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -12022,6 +12109,11 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "recordProjectExpenseExecution",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "recordProjectOwnerContract",
         "classification": "test_only"
       },
@@ -12123,6 +12215,10 @@
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
             "wrapper": "recordProjectAffiliateCompanyContractWithUpload"
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "recordProjectExpenseExecutionWithUpload"
           },
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",

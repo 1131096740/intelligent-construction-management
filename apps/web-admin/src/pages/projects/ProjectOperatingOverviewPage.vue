@@ -697,38 +697,6 @@
                   >
                 </label>
                 <label>
-                  <span>实付日期</span>
-                  <input
-                    v-model="expenseActionForm.executionPaidAt"
-                    type="date"
-                  >
-                </label>
-                <label>
-                  <span>实付金额(元)</span>
-                  <input
-                    v-model.trim="expenseActionForm.executionAmountYuan"
-                    inputmode="decimal"
-                    placeholder="0.00"
-                  >
-                </label>
-                <label>
-                  <span>实付凭证</span>
-                  <input
-                    ref="expenseExecutionVoucherInput"
-                    type="file"
-                    accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
-                    @change="selectExpenseExecutionVoucher"
-                  >
-                </label>
-                <label>
-                  <span>实付确认密码</span>
-                  <input
-                    v-model="expenseActionForm.executionPassword"
-                    type="password"
-                    autocomplete="current-password"
-                  >
-                </label>
-                <label>
                   <span>入账日期</span>
                   <input
                     v-model="expenseActionForm.financeOccurredAt"
@@ -766,7 +734,7 @@
               </div>
               <div class="expense-action-buttons">
                 <button
-                  v-if="['approval_pending', 'approved_pending_payment'].includes(selectedExpenseRow.status)"
+                  v-if="['approval_pending', 'approved_pending_payment', 'partially_paid'].includes(selectedExpenseRow.status)"
                   type="button"
                   class="secondary-button"
                   @click="openExpenseApprovalDetail(selectedExpenseRow)"
@@ -780,14 +748,6 @@
                   @click="submitExpensePurchaseExecution"
                 >
                   登记采购执行
-                </button>
-                <button
-                  v-if="canRecordExpenseExecution(selectedExpenseRow)"
-                  type="button"
-                  :disabled="expenseActionBusy !== ''"
-                  @click="submitExpenseExecution"
-                >
-                  登记实付
                 </button>
                 <button
                   v-if="canRecordExpenseFinance(selectedExpenseRow)"
@@ -883,7 +843,6 @@ import {
   fetchProjectExpenseRequests,
   fetchProjectOperatingOverview,
   fetchProjects,
-  recordProjectExpenseExecution,
   recordProjectExpenseFinance,
   recordProjectExpensePurchaseExecution,
   recordProjectUpstreamFundFact,
@@ -968,10 +927,6 @@ interface ProjectExpenseActionFormState {
   purchaseExecutedAt: string;
   purchaseExecutionNote: string;
   purchaseExecutionPassword: string;
-  executionAmountYuan: string;
-  executionPaidAt: string;
-  executionVoucherFile: File | null;
-  executionPassword: string;
   financeAmountYuan: string;
   financeOccurredAt: string;
   financePassword: string;
@@ -1022,7 +977,6 @@ const expenseAttachmentInput = ref<HTMLInputElement | null>(null);
 const expenseForm = ref<ProjectExpenseFormState>(createProjectExpenseForm());
 const selectedExpenseRow = ref<ProjectExpenseRow | null>(null);
 const expenseActionForm = ref<ProjectExpenseActionFormState>(createProjectExpenseActionForm());
-const expenseExecutionVoucherInput = ref<HTMLInputElement | null>(null);
 const expenseActionBusy = ref("");
 const expenseActionMessage = ref("");
 const expenseActionMessageTone = ref<"success" | "danger">("success");
@@ -1723,20 +1677,11 @@ function projectExpenseFormSnapshot(form: ProjectExpenseFormState) {
   });
 }
 
-function createProjectExpenseActionForm(row?: ProjectExpenseRow): ProjectExpenseActionFormState {
-  const remainingCents = row
-    ? BigInt(row.approvedAmountCents ?? row.requestedAmountCents) - BigInt(row.paidAmountCents)
-    : 0n;
-  const positiveRemainingCents = remainingCents > 0n ? remainingCents.toString() : "0";
+function createProjectExpenseActionForm(): ProjectExpenseActionFormState {
   return {
     purchaseExecutedAt: todayText(),
     purchaseExecutionNote: "",
     purchaseExecutionPassword: "",
-    executionAmountYuan:
-      positiveRemainingCents === "0" ? "" : centsToYuanInput(positiveRemainingCents),
-    executionPaidAt: todayText(),
-    executionVoucherFile: null,
-    executionPassword: "",
     financeAmountYuan: "",
     financeOccurredAt: todayText(),
     financePassword: "",
@@ -1756,18 +1701,10 @@ function selectExpenseAttachment(event: Event) {
   expenseForm.value.attachmentFile = input.files?.[0] ?? null;
 }
 
-function selectExpenseExecutionVoucher(event: Event) {
-  const input = event.target as HTMLInputElement;
-  expenseActionForm.value.executionVoucherFile = input.files?.[0] ?? null;
-}
-
 function selectExpenseRow(row: ProjectExpenseRow) {
   selectedExpenseRow.value = row;
-  expenseActionForm.value = createProjectExpenseActionForm(row);
+  expenseActionForm.value = createProjectExpenseActionForm();
   expenseActionMessage.value = "";
-  if (expenseExecutionVoucherInput.value) {
-    expenseExecutionVoucherInput.value.value = "";
-  }
 }
 
 function clearSelectedExpenseRow() {
@@ -1799,13 +1736,6 @@ function expenseStatusLabel(status: string) {
 
 function canRecordPurchaseExecution(row: ProjectExpenseRow) {
   return row.expenseType === "spot_purchase" && row.status === "approved_pending_payment" && !row.isPurchaseExecuted;
-}
-
-function canRecordExpenseExecution(row: ProjectExpenseRow) {
-  if (row.expenseType === "spot_purchase" && !row.isPurchaseExecuted) {
-    return false;
-  }
-  return ["approved_pending_payment", "partially_paid"].includes(row.status);
 }
 
 function canRecordExpenseFinance(row: ProjectExpenseRow) {
@@ -1873,10 +1803,7 @@ async function runExpenseAction(actionKey: string, action: (row: ProjectExpenseR
     await action(row);
     await loadOverview();
     if (selectedExpenseRow.value) {
-      expenseActionForm.value = createProjectExpenseActionForm(selectedExpenseRow.value);
-    }
-    if (expenseExecutionVoucherInput.value) {
-      expenseExecutionVoucherInput.value.value = "";
+      expenseActionForm.value = createProjectExpenseActionForm();
     }
     expenseActionMessageTone.value = "success";
     expenseActionMessage.value = "支出单处理完成，项目经营数据已刷新。";
@@ -1898,22 +1825,6 @@ async function submitExpensePurchaseExecution() {
       executedAt: requiredText(form.purchaseExecutedAt, "采购执行日期"),
       note: form.purchaseExecutionNote.trim() || undefined,
       confirmationPassword: requiredText(form.purchaseExecutionPassword, "采购执行确认密码")
-    });
-  });
-}
-
-async function submitExpenseExecution() {
-  await runExpenseAction("execution", async (row) => {
-    const form = expenseActionForm.value;
-    if (!form.executionVoucherFile) {
-      throw new Error("请上传实付凭证");
-    }
-    const voucher = await uploadPrivateFile(form.executionVoucherFile, form.executionVoucherFile.name);
-    await recordProjectExpenseExecution(selectedProjectId.value, row.id, {
-      amountCents: parseYuanToCents(form.executionAmountYuan, "实付金额"),
-      paidAt: requiredText(form.executionPaidAt, "实付日期"),
-      voucherFileId: voucher.id,
-      confirmationPassword: requiredText(form.executionPassword, "实付确认密码")
     });
   });
 }
@@ -1997,10 +1908,6 @@ function formatCents(value: string | null): string {
     return "暂无数据";
   }
   return `¥${centsTextToYuanText(value)}`;
-}
-
-function centsToYuanInput(value: string): string {
-  return centsTextToYuanText(value).replaceAll(",", "");
 }
 
 function upstreamFundStatusLabel(status: ProjectUpstreamFundFactReadModel["status"]) {

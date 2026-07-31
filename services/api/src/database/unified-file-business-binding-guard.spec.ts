@@ -78,6 +78,13 @@ const paymentExecutionBindingMigration = readFileSync(
   ),
   "utf8"
 );
+const projectExpenseExecutionBindingMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260728140000_project_expense_execution_idempotency/migration.sql"
+  ),
+  "utf8"
+);
 const schema = readFileSync(
   join(process.cwd(), "prisma/schema.prisma"),
   "utf8"
@@ -109,7 +116,9 @@ function migrationBindings(): Array<{
       binding: `${match[1]}.${match[2]}`,
       exclusive:
         match[3] === "TRUE" ||
-        `${match[1]}.${match[2]}` === "PaymentExecution.voucherFileId"
+        `${match[1]}.${match[2]}` === "PaymentExecution.voucherFileId" ||
+        `${match[1]}.${match[2]}` ===
+          "ProjectExpenseExecution.voucherFileId"
     })
   );
 }
@@ -160,6 +169,7 @@ describe("unified file business binding migration", () => {
       "ProjectAffiliateContractFact.evidenceFileId",
       "ProjectAffiliatePaymentFact.evidenceFileId",
       "ProjectAffiliateSettlementFact.evidenceFileId",
+      "ProjectExpenseExecution.voucherFileId",
       "SettlementRecoveryEntry.evidenceFileId",
       "SpotProcurementPaymentAttachment.fileId",
       "SpotProcurementPaymentExecution.voucherFileId",
@@ -179,6 +189,12 @@ describe("unified file business binding migration", () => {
       `WHEN "tableName" = 'PaymentExecution' AND "columnName" = 'voucherFileId' THEN TRUE`
     );
     expect(paymentExecutionBindingMigration).toContain(
+      `jg_enforce_exclusive_file_business_binding('voucherFileId', 'true')`
+    );
+    expect(projectExpenseExecutionBindingMigration).toContain(
+      `WHEN "tableName" = 'ProjectExpenseExecution' AND "columnName" = 'voucherFileId' THEN TRUE`
+    );
+    expect(projectExpenseExecutionBindingMigration).toContain(
       `jg_enforce_exclusive_file_business_binding('voucherFileId', 'true')`
     );
     expect(currentBindingMigration).toContain(

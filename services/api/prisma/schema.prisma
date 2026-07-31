@@ -1999,23 +1999,24 @@ model ProjectExpenseRequest {
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 
+  @@unique([id, projectId])
   @@index([projectId, status])
   @@index([attachmentFileId])
 }
 
 model ProjectExpenseExecution {
   id                      String   @id @default(uuid())
+  idempotencyKey          String   @unique
   projectExpenseRequestId String
   projectId               String
   amountCents             BigInt
   paidAt                  DateTime
   executedByUserId        String
-  voucherFileId           String
+  voucherFileId           String   @unique
   createdAt               DateTime @default(now())
 
   @@index([projectExpenseRequestId])
   @@index([projectId])
-  @@index([voucherFileId])
 }
 
 model ProjectExpenseFinancingQuotaUsage {
@@ -2632,6 +2633,7 @@ model ProjectFinancingQuota {
   createdAt                     DateTime  @default(now())
   updatedAt                     DateTime  @updatedAt
 
+  @@unique([id, projectId])
   @@index([projectId, validUntil])
   @@index([attachmentFileId])
   @@index([terminationSignatureFileId])

@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   GoneException,
+  HttpException,
   Injectable,
   NotFoundException,
   Optional
@@ -116,6 +117,17 @@ interface ExpenseLockRow {
   purchaseExecutedAt: Date | null;
   receiptConfirmedAt: Date | null;
   updatedAt: Date;
+}
+
+interface ProjectExpenseExecutionFactRow {
+  id: string;
+  idempotencyKey: string;
+  projectExpenseRequestId: string;
+  projectId: string;
+  amountCents: bigint;
+  paidAt: Date;
+  executedByUserId: string;
+  voucherFileId: string;
 }
 
 interface ApprovalInstanceLockRow {
@@ -417,6 +429,7 @@ export class ProjectExpenseService {
         requestedAmountCents: true,
         approvedAmountCents: true,
         paidAmountCents: true,
+        purchaseExecutedAt: true,
         applicantUserId: true,
         status: true,
         updatedAt: true
@@ -426,7 +439,7 @@ export class ProjectExpenseService {
       throw new NotFoundException("项目支出申请不存在");
     }
 
-    const [actorRoleKeys, instances] = await Promise.all([
+    const [actorRoleKeys, instances, executionRoleAccess] = await Promise.all([
       this.loadActorRoleKeys(this.prisma, actorUserId, projectId),
       expense.status === "approval_pending"
         ? this.prisma.approvalInstance.findMany({
@@ -447,7 +460,12 @@ export class ProjectExpenseService {
             updatedAt: true
           }
         })
-        : Promise.resolve([])
+        : Promise.resolve([]),
+      this.currentProjectExpenseFinanceStaffAccess(
+        this.prisma,
+        actorUserId,
+        projectId
+      )
     ]);
     const instance = instances.length === 1 ? instances[0]! : null;
     const nodes = (instance?.frozenNodes ?? []) as unknown as ProjectExpenseApprovalNode[];
@@ -456,9 +474,17 @@ export class ProjectExpenseService {
       ? this.resolveProjectExpenseReviewIdentity(currentNode, actorUserId, actorRoleKeys)
       : null;
     const isExpenseApplicant = expense.applicantUserId === actorUserId;
+    const canReadAsExpenseExecutor = canPerform(
+      "project_expense.execution",
+      actorRoleKeys
+    );
+    const canExecuteExpense =
+      executionRoleAccess.actorActive &&
+      executionRoleAccess.hasProjectFinanceRole;
     if (
       !isExpenseApplicant &&
       !canPerform("project_expense.approve", actorRoleKeys) &&
+      !canReadAsExpenseExecutor &&
       !reviewIdentity
     ) {
       throw new ForbiddenException("无权查看该项目支出审批详情");
@@ -506,6 +532,22 @@ export class ProjectExpenseService {
           }
         : null;
     const paidAmountCents = expense.paidAmountCents ?? 0n;
+    const approvedAmountCents = expense.approvedAmountCents;
+    const remainingAmountCents =
+      approvedAmountCents !== null && approvedAmountCents > paidAmountCents
+        ? approvedAmountCents - paidAmountCents
+        : 0n;
+    const executionEnabled =
+      canExecuteExpense &&
+      ["approved_pending_payment", "partially_paid"].includes(expense.status) &&
+      approvedAmountCents !== null &&
+      remainingAmountCents > 0n &&
+      (expense.expenseType !== "spot_purchase" ||
+        expense.purchaseExecutedAt instanceof Date) &&
+      expense.updatedAt instanceof Date;
+    const executionContext = executionEnabled
+      ? { expectedExpenseUpdatedAt: expense.updatedAt.toISOString() }
+      : null;
     const ended = ["withdrawn", "rejected", "voided"].includes(expense.status);
     const availableActions: DetailActionReadModel[] = [];
     const blockedReasons: string[] = [];
@@ -525,6 +567,18 @@ export class ProjectExpenseService {
               instance.updatedAt.toISOString()
           }
         : null;
+    if (executionEnabled) {
+      availableActions.push(
+        detailAction({
+          key: "record_execution",
+          label: "登记实付",
+          kind: "primary",
+          roleKeys: actorRoleKeys,
+          requiredAction: "project_expense.execution",
+          enabled: true
+        })
+      );
+    }
     if (expense.status === "approval_pending") {
       availableActions.push(detailAction({
         key: "review_approval",
@@ -601,6 +655,8 @@ export class ProjectExpenseService {
       requestedAmountCents: moneyCentsToApi(expense.requestedAmountCents),
       approvedAmountCents:
         expense.approvedAmountCents === null ? null : moneyCentsToApi(expense.approvedAmountCents),
+      paidAmountCents: moneyCentsToApi(paidAmountCents),
+      remainingAmountCents: moneyCentsToApi(remainingAmountCents),
       currentNodeName: currentNode?.name ?? null,
       canSetApprovedAmount: Boolean(
         reviewApprovalContext &&
@@ -630,7 +686,8 @@ export class ProjectExpenseService {
       availableActions,
       blockedReasons,
       withdrawalContext,
-      reviewApprovalContext
+      reviewApprovalContext,
+      executionContext
     };
   }
 
@@ -1243,7 +1300,25 @@ export class ProjectExpenseService {
     actorUserId: string,
     input: RecordProjectExpenseExecutionDto
   ) {
+    if (!this.files || !this.projectFunding) {
+      throw new Error(
+        "项目支出实付登记依赖服务暂不可用，请稍后重试或联系管理员"
+      );
+    }
     const amountCents = positiveMoneyCents(input.amountCents, "实付金额必须大于零");
+    const idempotencyKey = input.idempotencyKey?.trim().toLowerCase();
+    if (
+      !idempotencyKey ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
+        idempotencyKey
+      )
+    ) {
+      throw new BadRequestException("项目支出实付幂等键必须是 UUID");
+    }
+    const expectedExpenseUpdatedAt = new Date(input.expectedExpenseUpdatedAt);
+    if (Number.isNaN(expectedExpenseUpdatedAt.getTime())) {
+      throw new BadRequestException("预期项目支出版本格式不正确");
+    }
     const voucherFileId = requiredTrimmed(input.voucherFileId, "实付凭证必填");
     const paidAt = parseDate(input.paidAt, "实付日期无效");
     if (paidAt.getTime() > Date.now()) {
@@ -1254,107 +1329,278 @@ export class ProjectExpenseService {
       throw new Error("Auth service is required to confirm project expense execution");
     }
     await this.auth.confirmPassword(actorUserId, confirmationPassword);
-
-    const execution = await this.prisma.$transaction(async (tx) => {
-      if (this.projectFunding) {
-        await this.projectFunding.lockFundingContext(tx, projectId);
-      }
-      const request = await this.lockExpenseRequestForExecution(tx, projectId, expenseRequestId);
-      if (!request) {
-        throw new NotFoundException("项目支出申请不存在");
-      }
-      const existingExecution = this.projectFunding
-        ? await tx.projectExpenseExecution.findFirst({
-            where: { voucherFileId }
-          })
-        : null;
-      if (existingExecution) {
-        if (
-          existingExecution.projectExpenseRequestId !== request.id ||
-          existingExecution.projectId !== request.projectId ||
-          existingExecution.amountCents !== amountCents ||
-          existingExecution.paidAt.getTime() !== paidAt.getTime() ||
-          existingExecution.executedByUserId !== actorUserId
-        ) {
-          throw new BadRequestException("该项目支出付款凭证已绑定不同的实付事实");
-        }
-        await this.projectFunding!.allocateExecution(tx, {
-          projectId: request.projectId,
-          executionType: "project_expense_execution",
-          executionId: existingExecution.id,
-          businessType: "project_expense_request",
-          businessId: request.id,
-          amountCents,
-          occurredAt: paidAt,
-          actorUserId
-        });
-        return existingExecution;
-      }
-      if (!["approved_pending_payment", "partially_paid"].includes(request.status)) {
-        throw new BadRequestException("当前项目支出状态不可实付");
-      }
-      if (request.expenseType === "spot_purchase" && !request.purchaseExecutedAt) {
-        throw new BadRequestException("零星采购执行后才能登记实付");
-      }
-      const approvedAmountCents = request.approvedAmountCents ?? request.requestedAmountCents;
-      const remaining = approvedAmountCents - request.paidAmountCents;
-      if (amountCents > remaining) {
-        throw new BadRequestException(`实付金额超过剩余批准金额: ${remaining}`);
-      }
-      const voucherFile = await tx.fileObject.findUnique({
-        where: { id: voucherFileId },
-        select: { id: true, uploadedByUserId: true }
-      });
-      if (!voucherFile) {
-        throw new NotFoundException("项目支出实付凭证不存在");
-      }
-      if (voucherFile.uploadedByUserId !== actorUserId) {
-        throw new BadRequestException("项目支出实付凭证必须由登记人本人上传");
-      }
-      const newPaidAmountCents = request.paidAmountCents + amountCents;
-      const status = newPaidAmountCents >= approvedAmountCents ? "paid" : "partially_paid";
-      const created = await tx.projectExpenseExecution.create({
-        data: {
-          projectExpenseRequestId: request.id,
-          projectId: request.projectId,
-          amountCents,
-          paidAt,
-          executedByUserId: actorUserId,
-          voucherFileId
-        }
-      });
-      if (this.projectFunding) {
-        await this.projectFunding.allocateExecution(tx, {
-          projectId: request.projectId,
-          executionType: "project_expense_execution",
-          executionId: created.id,
-          businessType: "project_expense_request",
-          businessId: request.id,
-          amountCents,
-          occurredAt: paidAt,
-          actorUserId
-        });
-      }
-      await tx.projectExpenseRequest.update({
-        where: { id: request.id },
-        data: { paidAmountCents: newPaidAmountCents, status }
-      });
-      await this.audit.record(tx, {
-        actorUserId,
-        action: "project_expense.execution.record",
-        businessType: "project_expense_request",
-        businessId: request.id,
-        metadata: {
-          projectId,
-          executionId: created.id,
-          amountCents: moneyCentsToApi(amountCents),
-          voucherFileId
-        }
-      });
-      return created;
+    const fundingScope = await this.prisma.projectExpenseRequest.findFirst({
+      where: { id: expenseRequestId, projectId },
+      select: { id: true, projectId: true }
     });
+    if (!fundingScope) {
+      throw new NotFoundException("项目支出申请不存在");
+    }
+    const files = this.files;
+    const projectFunding = this.projectFunding;
 
-    return projectExpensePostResponseToApi(execution);
+    try {
+      const execution = await this.prisma.$transaction(
+        async (tx) => {
+          await projectFunding.lockFundingContext(tx, fundingScope.projectId);
+          const request = await this.lockExpenseRequestById(
+            tx,
+            projectId,
+            expenseRequestId
+          );
+          if (!request) {
+            throw new NotFoundException("项目支出申请不存在");
+          }
+          if (
+            fundingScope.id !== request.id ||
+            fundingScope.projectId !== request.projectId
+          ) {
+            throw new ConflictException(
+              "项目支出的项目资金范围已变化，请刷新后重试"
+            );
+          }
+          await this.assertCurrentProjectExpenseFinanceStaff(
+            tx,
+            actorUserId,
+            request.projectId
+          );
+
+          const executionClient = tx.projectExpenseExecution as unknown as {
+            findUnique(input: {
+              where: { idempotencyKey: string };
+            }): Promise<ProjectExpenseExecutionFactRow | null>;
+            create(input: {
+              data: Record<string, unknown>;
+            }): Promise<ProjectExpenseExecutionFactRow>;
+          };
+          const existingExecution = await executionClient.findUnique({
+            where: { idempotencyKey }
+          });
+          if (existingExecution) {
+            this.assertSameProjectExpenseExecutionFacts(existingExecution, {
+              idempotencyKey,
+              projectExpenseRequestId: request.id,
+              projectId: request.projectId,
+              amountCents,
+              paidAt,
+              actorUserId,
+              voucherFileId
+            });
+            await projectFunding.allocateExecution(tx, {
+              projectId: request.projectId,
+              executionType: "project_expense_execution",
+              executionId: existingExecution.id,
+              businessType: "project_expense_request",
+              businessId: request.id,
+              amountCents,
+              occurredAt: paidAt,
+              actorUserId
+            });
+            return existingExecution;
+          }
+
+          if (
+            request.updatedAt.getTime() !==
+            expectedExpenseUpdatedAt.getTime()
+          ) {
+            throw new ConflictException(
+              "项目支出申请已变化，请刷新后重试"
+            );
+          }
+          if (
+            !["approved_pending_payment", "partially_paid"].includes(
+              request.status
+            )
+          ) {
+            throw new BadRequestException("当前项目支出状态不可实付");
+          }
+          if (
+            request.expenseType === "spot_purchase" &&
+            !request.purchaseExecutedAt
+          ) {
+            throw new BadRequestException("零星采购执行后才能登记实付");
+          }
+          const approvedAmountCents = request.approvedAmountCents;
+          if (approvedAmountCents === null) {
+            throw new ConflictException(
+              "项目支出缺少批准金额，不能登记实付"
+            );
+          }
+          const remaining = approvedAmountCents - request.paidAmountCents;
+          if (remaining <= 0n || amountCents > remaining) {
+            throw new BadRequestException(
+              `实付金额超过剩余批准金额: ${remaining > 0n ? remaining : 0n}`
+            );
+          }
+
+          // FileObject 的共享 advisory/row lock 固定放在业务和资金锁之后，
+          // 与其他付款写路径保持同一顺序，避免交叉死锁。
+          const lockedVoucher = await files.assertFileHasNoBusinessBinding(
+            tx,
+            voucherFileId
+          );
+          if (lockedVoucher.uploadedByUserId !== actorUserId) {
+            throw new ForbiddenException(
+              "项目支出实付凭证必须由当前登记人上传"
+            );
+          }
+
+          const newPaidAmountCents = request.paidAmountCents + amountCents;
+          const status =
+            newPaidAmountCents >= approvedAmountCents
+              ? "paid"
+              : "partially_paid";
+          const created = await executionClient.create({
+            data: {
+              idempotencyKey,
+              projectExpenseRequestId: request.id,
+              projectId: request.projectId,
+              amountCents,
+              paidAt,
+              executedByUserId: actorUserId,
+              voucherFileId
+            }
+          });
+          const fundingAllocation = await projectFunding.allocateExecution(tx, {
+            projectId: request.projectId,
+            executionType: "project_expense_execution",
+            executionId: created.id,
+            businessType: "project_expense_request",
+            businessId: request.id,
+            amountCents,
+            occurredAt: paidAt,
+            actorUserId
+          });
+          await tx.projectExpenseRequest.update({
+            where: { id: request.id },
+            data: { paidAmountCents: newPaidAmountCents, status }
+          });
+          await this.audit.record(tx, {
+            actorUserId,
+            action: "project_expense.execution.record",
+            businessType: "project_expense_request",
+            businessId: request.id,
+            metadata: {
+              code: request.code,
+              projectId: request.projectId,
+              executionId: created.id,
+              amountCents: moneyCentsToApi(amountCents),
+              paidAt: paidAt.toISOString(),
+              voucherFileId,
+              idempotencyKey,
+              funding: {
+                kind: fundingAllocation.kind,
+                projectCashAmountCents: moneyCentsToApi(
+                  fundingAllocation.projectCashAmountCents
+                ),
+                financingQuotaAmountCents: moneyCentsToApi(
+                  fundingAllocation.financingQuotaAmountCents
+                ),
+                allocations: fundingAllocation.allocations.map(
+                  (allocation) => ({
+                    sourceType: allocation.sourceType,
+                    sourceId: allocation.sourceId,
+                    amountCents: moneyCentsToApi(allocation.amountCents)
+                  })
+                )
+              },
+              fromStatus: request.status,
+              toStatus: status
+            }
+          });
+          return created;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      );
+
+      return projectExpensePostResponseToApi(execution);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      const code = projectExpensePrismaErrorCode(error);
+      const serializationConflict =
+        code === "P2034" || projectExpenseRawSerializationConflict(error);
+      if (code === "P2002" || serializationConflict) {
+        const concurrentExecution =
+          await this.resolveConcurrentProjectExpenseExecution({
+            idempotencyKey,
+            projectExpenseRequestId: fundingScope.id,
+            projectId: fundingScope.projectId,
+            amountCents,
+            paidAt,
+            actorUserId,
+            voucherFileId
+          });
+        if (concurrentExecution) {
+          return projectExpensePostResponseToApi(concurrentExecution);
+        }
+        throw new ConflictException(
+          serializationConflict
+            ? "项目支出实付并发冲突，请刷新后重试"
+            : "项目支出实付唯一事实已变化，请刷新后重试"
+        );
+      }
+      throw error;
+    }
+  }
+
+  private projectExpenseExecutionFactsMatch(
+    existing: ProjectExpenseExecutionFactRow,
+    expected: {
+      idempotencyKey: string;
+      projectExpenseRequestId: string;
+      projectId: string;
+      amountCents: bigint;
+      paidAt: Date;
+      actorUserId: string;
+      voucherFileId: string;
+    }
+  ): boolean {
+    return (
+      existing.idempotencyKey === expected.idempotencyKey &&
+      existing.projectExpenseRequestId ===
+        expected.projectExpenseRequestId &&
+      existing.projectId === expected.projectId &&
+      existing.amountCents === expected.amountCents &&
+      existing.paidAt.getTime() === expected.paidAt.getTime() &&
+      existing.executedByUserId === expected.actorUserId &&
+      existing.voucherFileId === expected.voucherFileId
+    );
+  }
+
+  private assertSameProjectExpenseExecutionFacts(
+    existing: ProjectExpenseExecutionFactRow,
+    expected: Parameters<
+      ProjectExpenseService["projectExpenseExecutionFactsMatch"]
+    >[1]
+  ): void {
+    if (!this.projectExpenseExecutionFactsMatch(existing, expected)) {
+      throw new ConflictException(
+        "该项目支出实付幂等键已绑定不同的持久事实"
+      );
+    }
+  }
+
+  private async resolveConcurrentProjectExpenseExecution(input: {
+    idempotencyKey: string;
+    projectExpenseRequestId: string;
+    projectId: string;
+    amountCents: bigint;
+    paidAt: Date;
+    actorUserId: string;
+    voucherFileId: string;
+  }): Promise<ProjectExpenseExecutionFactRow | null> {
+    const executionClient = this.prisma.projectExpenseExecution as unknown as {
+      findUnique(args: {
+        where: { idempotencyKey: string };
+      }): Promise<ProjectExpenseExecutionFactRow | null>;
+    };
+    const existing = await executionClient.findUnique({
+      where: { idempotencyKey: input.idempotencyKey }
+    });
+    if (!existing || !this.projectExpenseExecutionFactsMatch(existing, input)) {
+      return null;
+    }
+    return existing;
   }
 
   async recordPurchaseExecution(
@@ -1956,12 +2202,83 @@ export class ProjectExpenseService {
     return moved;
   }
 
-  private async lockExpenseRequestForExecution(
+  private async assertCurrentProjectExpenseFinanceStaff(
     tx: Prisma.TransactionClient,
-    projectId: string,
-    expenseRequestId: string
-  ): Promise<ExpenseLockRow | null> {
-    return this.lockExpenseRequest(tx, projectId, expenseRequestId);
+    actorUserId: string,
+    projectId: string
+  ): Promise<void> {
+    const access = await this.currentProjectExpenseFinanceStaffAccess(
+      tx,
+      actorUserId,
+      projectId
+    );
+    if (!access.actorActive) {
+      throw new ForbiddenException(
+        "当前项目支出付款登记账号不存在或已停用"
+      );
+    }
+    if (!access.hasProjectFinanceRole) {
+      throw new ForbiddenException(
+        "只有当前项目财务人员可以登记项目支出实付"
+      );
+    }
+  }
+
+  private async currentProjectExpenseFinanceStaffAccess(
+    tx: {
+      user: {
+        findUnique(input: unknown): Promise<{
+          id: string;
+          isActive: boolean;
+        } | null>;
+      };
+      userPosition: {
+        findMany(input: unknown): Promise<Array<{ positionId: string }>>;
+      };
+      projectMember: {
+        findMany(input: unknown): Promise<Array<{ positionKey: string }>>;
+      };
+      position: {
+        findMany(input: unknown): Promise<Array<{ key: string }>>;
+      };
+    },
+    actorUserId: string,
+    projectId: string
+  ): Promise<{ actorActive: boolean; hasProjectFinanceRole: boolean }> {
+    const actor = await tx.user.findUnique({
+      where: { id: actorUserId },
+      select: { id: true, isActive: true }
+    });
+    if (!actor?.isActive) {
+      return { actorActive: false, hasProjectFinanceRole: false };
+    }
+
+    const [projectPositions, projectMembers] = await Promise.all([
+      tx.userPosition.findMany({
+        where: { userId: actorUserId, projectId },
+        select: { positionId: true }
+      }),
+      tx.projectMember.findMany({
+        where: { userId: actorUserId, projectId },
+        select: { positionKey: true }
+      })
+    ]);
+    const positionIds = [
+      ...new Set(projectPositions.map((row) => row.positionId))
+    ];
+    const positions = positionIds.length
+      ? await tx.position.findMany({
+          where: { id: { in: positionIds } },
+          select: { key: true }
+        })
+      : [];
+    return {
+      actorActive: true,
+      hasProjectFinanceRole:
+        projectMembers.some(
+          (row) => row.positionKey === "finance_staff"
+        ) || positions.some((row) => row.key === "finance_staff")
+    };
   }
 
   private async lockExpenseRequest(
@@ -2118,6 +2435,33 @@ function positiveMoneyCents(value: string, message: string): bigint {
   const cents = parseMoneyCentsInput(value, "金额", message);
   if (cents <= 0n) throw new BadRequestException(message);
   return cents;
+}
+
+function projectExpensePrismaErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object" || !("code" in error)) {
+    return undefined;
+  }
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+}
+
+function projectExpenseRawSerializationConflict(error: unknown): boolean {
+  if (
+    projectExpensePrismaErrorCode(error) !== "P2010" ||
+    !error ||
+    typeof error !== "object" ||
+    !("meta" in error)
+  ) {
+    return false;
+  }
+  const meta = (error as { meta?: unknown }).meta;
+  return (
+    meta !== null &&
+    meta !== undefined &&
+    typeof meta === "object" &&
+    "code" in meta &&
+    (meta as { code?: unknown }).code === "40001"
+  );
 }
 
 function parseDate(value: string | undefined, message: string) {

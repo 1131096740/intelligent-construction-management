@@ -68,6 +68,15 @@ const validExpenseReviewCoordinates = {
   expectedApprovalUpdatedAt: "2026-07-31T01:00:01.000Z"
 };
 
+const validExpenseExecutionBody = {
+  expectedExpenseUpdatedAt: "2026-07-31T02:00:00.000Z",
+  idempotencyKey: "a1111111-1111-4111-8111-111111111111",
+  amountCents: "30000",
+  paidAt: "2026-07-31T02:00:01.000Z",
+  voucherFileId: "file-1",
+  confirmationPassword: "current-password"
+};
+
 describe("ProjectExpenseController authorization wiring", () => {
   it("审批详情 GET 原样转发路径参数和登录用户且不使用粗粒度岗位装饰器", async () => {
     const expenses = { getApprovalDetail: jest.fn().mockResolvedValue({ id: "expense-1" }) };
@@ -115,6 +124,57 @@ describe("ProjectExpenseController authorization wiring", () => {
     await expect(
       validateExpenseBody("withdrawApproval", value)
     ).resolves.toEqual(value);
+  });
+
+  it("项目支出实付强制接收父记录 CAS 和稳定 UUIDv4 幂等键", async () => {
+    await expect(
+      validateExpenseBody("recordExecution", validExpenseExecutionBody)
+    ).resolves.toEqual(validExpenseExecutionBody);
+
+    for (const invalid of [
+      { ...validExpenseExecutionBody, expectedExpenseUpdatedAt: undefined },
+      { ...validExpenseExecutionBody, expectedExpenseUpdatedAt: "not-a-date" },
+      { ...validExpenseExecutionBody, idempotencyKey: undefined },
+      { ...validExpenseExecutionBody, idempotencyKey: "not-a-uuid" },
+      {
+        ...validExpenseExecutionBody,
+        idempotencyKey: "a1111111-1111-3111-8111-111111111111"
+      }
+    ]) {
+      const response = await getExpenseValidationResponse(
+        "recordExecution",
+        invalid
+      );
+      expect(response.errors).toEqual(
+        expect.arrayContaining([expect.any(String)])
+      );
+    }
+  });
+
+  it("项目支出实付控制器只转发一份已经校验的完整事实", async () => {
+    const expenses = {
+      recordExecution: jest.fn().mockResolvedValue({ id: "execution-1" })
+    };
+    const controller = new ProjectExpenseController(expenses as never);
+    const body = await validateExpenseBody(
+      "recordExecution",
+      validExpenseExecutionBody
+    );
+
+    await controller.recordExecution(
+      "project-1",
+      "expense-1",
+      { id: "cashier-1" } as never,
+      body as never
+    );
+
+    expect(expenses.recordExecution).toHaveBeenCalledTimes(1);
+    expect(expenses.recordExecution).toHaveBeenCalledWith(
+      "project-1",
+      "expense-1",
+      "cashier-1",
+      body
+    );
   });
 
   it.each([
@@ -323,12 +383,7 @@ describe("ProjectExpenseController authorization wiring", () => {
     ["voidRequest", { reason: "重复申请" }],
     [
       "recordExecution",
-      {
-        amountCents: "10000",
-        paidAt: "2026-07-11",
-        voucherFileId: "file-1",
-        confirmationPassword: "current-password"
-      }
+      validExpenseExecutionBody
     ],
     [
       "recordPurchaseExecution",

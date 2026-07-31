@@ -196,10 +196,15 @@ export interface ProjectExpenseApprovalDetailReadModel {
   reason: string;
   requestedAmountCents: MoneyCents;
   approvedAmountCents: MoneyCents | null;
+  paidAmountCents: MoneyCents;
+  remainingAmountCents: MoneyCents;
   currentNodeName: string | null;
   canSetApprovedAmount: boolean;
   reviewAction: DetailActionReadModel;
   approvalTimeline: ApprovalTimelineItemReadModel[];
+  executionContext: {
+    expectedExpenseUpdatedAt: string;
+  } | null;
 }
 
 export interface ContractDetailReadModel {

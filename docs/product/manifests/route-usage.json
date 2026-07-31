@@ -3140,6 +3140,16 @@
             "productionConsumers": [
               "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
             ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "recordProjectExpenseExecutionWithUpload",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/expense-requests/:param/approval-detail",
+            "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+            ]
           }
         ],
         "authStore": [],
@@ -9381,6 +9391,16 @@
           },
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "recordProjectExpenseExecutionWithUpload",
+            "method": "POST",
+            "normalizedPath": "/files",
+            "normalizedKey": "POST /files",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+            ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
             "wrapper": "uploadPrivateFile",
             "method": "POST",
             "normalizedPath": "/files",
@@ -12157,12 +12177,12 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "recordProjectExpenseExecution",
+            "wrapper": "recordProjectExpenseExecutionWithUpload",
             "method": "POST",
             "normalizedPath": "/projects/:param/expense-requests/:param/executions",
             "normalizedKey": "POST /projects/:param/expense-requests/:param/executions",
             "productionConsumers": [
-              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+              "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
             ]
           }
         ],

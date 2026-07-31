@@ -20,7 +20,7 @@ const {
 } = require("./money-bigint-runner-runtime.cjs");
 
 const DATABASE_NAME = "jiangkong_payment_execution_concurrency";
-const EXPECTED_MIGRATION_COUNT = 110;
+const EXPECTED_MIGRATION_COUNT = 111;
 const LATEST_MIGRATION =
   "20260728139000_payment_execution_idempotency";
 const PRE139_TEMPLATE_DATABASE =
@@ -206,7 +206,7 @@ async function preparePre139MigrationRoot(temporaryRoot) {
   );
   const entries = await readdir(migrationsRoot, { withFileTypes: true });
   for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name === LATEST_MIGRATION) continue;
+    if (!entry.isDirectory() || entry.name >= LATEST_MIGRATION) continue;
     await cp(
       path.join(migrationsRoot, entry.name),
       path.join(pre139Migrations, entry.name),

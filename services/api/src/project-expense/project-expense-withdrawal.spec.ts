@@ -94,6 +94,10 @@ function approvalDetailPrisma(
         )
     },
     user: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: "applicant-1",
+        isActive: true
+      }),
       findMany: jest.fn().mockResolvedValue([])
     },
     userPosition: {

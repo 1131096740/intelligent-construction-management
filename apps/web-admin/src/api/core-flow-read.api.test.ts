@@ -67,7 +67,9 @@ import {
   prepareProjectExpenseWithdrawalAction,
   voidProjectExpenseRequest,
   confirmProjectExpenseReceipt,
+  createProjectExpenseExecutionRecordAttemptState,
   recordProjectExpenseExecution,
+  recordProjectExpenseExecutionWithUpload,
   recordProjectExpenseFinance,
   recordProjectExpensePurchaseExecution,
   createContractDraft,
@@ -1099,7 +1101,9 @@ describe("core flow read API client", () => {
       amountCents: "80000",
       paidAt: "2026-07-02T10:00:00.000Z",
       voucherFileId: "file-voucher-1",
-      confirmationPassword: "current-password"
+      confirmationPassword: "current-password",
+      expectedExpenseUpdatedAt: "2026-07-02T09:59:00.000Z",
+      idempotencyKey: "2d74bb60-3c32-4c6a-93c9-a9baf7fe4572"
     });
     await recordProjectExpensePurchaseExecution("project-1", "expense-1", {
       executedAt: "2026-07-02T09:00:00.000Z",
@@ -1158,7 +1162,9 @@ describe("core flow read API client", () => {
         amountCents: "80000",
         paidAt: "2026-07-02T10:00:00.000Z",
         voucherFileId: "file-voucher-1",
-        confirmationPassword: "current-password"
+        confirmationPassword: "current-password",
+        expectedExpenseUpdatedAt: "2026-07-02T09:59:00.000Z",
+        idempotencyKey: "2d74bb60-3c32-4c6a-93c9-a9baf7fe4572"
       })
     );
     expect(fetchMock.mock.calls[3][1]?.body).toBe(
@@ -3147,6 +3153,275 @@ describe("core flow read API client", () => {
     });
   });
 
+  it("preflights, uploads and records one frozen project expense execution", async () => {
+    const idempotencyKey =
+      "2d74bb60-3c32-4c6a-93c9-a9baf7fe4572";
+    const expectedExpenseUpdatedAt =
+      "2026-07-31T08:00:00.000Z";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse(
+          projectExpenseExecutionDetail(
+            "project/1",
+            "expense/1",
+            expectedExpenseUpdatedAt
+          )
+        )
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ id: idempotencyKey })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ id: "expense-execution-1" })
+      );
+    const state =
+      createProjectExpenseExecutionRecordAttemptState();
+    const input = projectExpenseExecutionInput(
+      idempotencyKey.toUpperCase()
+    );
+
+    const request = recordProjectExpenseExecutionWithUpload(
+      "project/1",
+      "expense/1",
+      input,
+      state
+    );
+    input.amountCents = "1";
+    input.paidAt = "2099-01-01T00:00:00.000Z";
+    input.confirmationPassword = "changed-password";
+    const result = await request;
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/projects/project%2F1/expense-requests/expense%2F1/approval-detail",
+      "/api/files",
+      "/api/projects/project%2F1/expense-requests/expense%2F1/executions"
+    ]);
+    expect(
+      (fetchMock.mock.calls[1]?.[1]?.body as FormData).get(
+        "idempotencyKey"
+      )
+    ).toBe(idempotencyKey);
+    expect(
+      JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))
+    ).toEqual({
+      amountCents: "5000000",
+      paidAt: "2026-07-31T08:30:00.000Z",
+      voucherFileId: idempotencyKey,
+      confirmationPassword: " current-password ",
+      expectedExpenseUpdatedAt,
+      idempotencyKey
+    });
+    expect(result).toEqual({ id: "expense-execution-1" });
+  });
+
+  it("keeps a fulfilled project expense attempt without a second upload or POST", async () => {
+    const idempotencyKey =
+      "2d74bb60-3c32-4c6a-93c9-a9baf7fe4572";
+    const expectedExpenseUpdatedAt =
+      "2026-07-31T08:00:00.000Z";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse(
+          projectExpenseExecutionDetail(
+            "project-a",
+            "expense-a",
+            expectedExpenseUpdatedAt
+          )
+        )
+      )
+      .mockResolvedValueOnce(jsonResponse({ id: idempotencyKey }))
+      .mockResolvedValueOnce(
+        jsonResponse({ id: "expense-execution-1" })
+      );
+    const state =
+      createProjectExpenseExecutionRecordAttemptState();
+    const input = projectExpenseExecutionInput(idempotencyKey);
+
+    const first = await recordProjectExpenseExecutionWithUpload(
+      "project-a",
+      "expense-a",
+      input,
+      state
+    );
+    input.amountCents = "1";
+    input.confirmationPassword = "changed-password";
+    const replay = await recordProjectExpenseExecutionWithUpload(
+      "project-a",
+      "expense-a",
+      input,
+      state
+    );
+
+    expect(replay).toBe(first);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/projects/project-a/expense-requests/expense-a/approval-detail",
+      "/api/files",
+      "/api/projects/project-a/expense-requests/expense-a/executions"
+    ]);
+  });
+
+  it("stops project expense execution before upload when the fresh capability or CAS is stale", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse(
+        projectExpenseExecutionDetail(
+          "project-a",
+          "expense-a",
+          "2026-07-31T08:01:00.000Z"
+        )
+      )
+    );
+
+    await expect(
+      recordProjectExpenseExecutionWithUpload(
+        "project-a",
+        "expense-a",
+        projectExpenseExecutionInput(
+          "2d74bb60-3c32-4c6a-93c9-a9baf7fe4572"
+        ),
+        createProjectExpenseExecutionRecordAttemptState()
+      )
+    ).rejects.toThrow("项目支出执行资格或版本已变化");
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/projects/project-a/expense-requests/expense-a/approval-detail"
+    ]);
+  });
+
+  it("coalesces rapid project expense confirms and reuses the upload, UUID and frozen body after an ambiguous response", async () => {
+    const idempotencyKey =
+      "2d74bb60-3c32-4c6a-93c9-a9baf7fe4572";
+    const preflight = deferred<Response>();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockReturnValueOnce(preflight.promise)
+      .mockResolvedValueOnce(jsonResponse({ id: idempotencyKey }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "提交响应超时" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ id: "expense-execution-1" })
+      );
+    const state =
+      createProjectExpenseExecutionRecordAttemptState();
+    const input = projectExpenseExecutionInput(idempotencyKey);
+
+    const first = recordProjectExpenseExecutionWithUpload(
+      "project-a",
+      "expense-a",
+      input,
+      state
+    );
+    const duplicate = recordProjectExpenseExecutionWithUpload(
+      "project-a",
+      "expense-a",
+      input,
+      state
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    preflight.resolve(
+      jsonResponse(
+        projectExpenseExecutionDetail(
+          "project-a",
+          "expense-a",
+          "2026-07-31T08:00:00.000Z"
+        )
+      )
+    );
+    await expect(first).rejects.toThrow("提交响应超时");
+    await expect(duplicate).rejects.toThrow("提交响应超时");
+
+    input.amountCents = "1";
+    input.paidAt = "2099-01-01T00:00:00.000Z";
+    input.confirmationPassword = "changed-password";
+    await recordProjectExpenseExecutionWithUpload(
+      "project-a",
+      "expense-a",
+      input,
+      state
+    );
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/projects/project-a/expense-requests/expense-a/approval-detail",
+      "/api/files",
+      "/api/projects/project-a/expense-requests/expense-a/executions",
+      "/api/projects/project-a/expense-requests/expense-a/executions"
+    ]);
+    expect(fetchMock.mock.calls[3]?.[1]?.body).toBe(
+      fetchMock.mock.calls[2]?.[1]?.body
+    );
+  });
+
+  it("allows replacing only the project expense confirmation password after deterministic rejection", async () => {
+    const idempotencyKey =
+      "2d74bb60-3c32-4c6a-93c9-a9baf7fe4572";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse(
+          projectExpenseExecutionDetail(
+            "project-a",
+            "expense-a",
+            "2026-07-31T08:00:00.000Z"
+          )
+        )
+      )
+      .mockResolvedValueOnce(jsonResponse({ id: idempotencyKey }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ message: "当前密码不正确，请重新输入" }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ id: "expense-execution-1" })
+      );
+    const state =
+      createProjectExpenseExecutionRecordAttemptState();
+    const input = projectExpenseExecutionInput(idempotencyKey);
+    input.confirmationPassword = "wrong-password";
+
+    await expect(
+      recordProjectExpenseExecutionWithUpload(
+        "project-a",
+        "expense-a",
+        input,
+        state
+      )
+    ).rejects.toThrow("当前密码不正确");
+    input.amountCents = "1";
+    input.paidAt = "2099-01-01T00:00:00.000Z";
+    input.confirmationPassword = "correct-password";
+    await recordProjectExpenseExecutionWithUpload(
+      "project-a",
+      "expense-a",
+      input,
+      state
+    );
+
+    expect(
+      JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))
+    ).toMatchObject({
+      amountCents: "5000000",
+      paidAt: "2026-07-31T08:30:00.000Z",
+      confirmationPassword: "wrong-password"
+    });
+    expect(
+      JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body))
+    ).toMatchObject({
+      amountCents: "5000000",
+      paidAt: "2026-07-31T08:30:00.000Z",
+      confirmationPassword: "correct-password"
+    });
+  });
+
   it("rejects reuse of an affiliate-company contract record attempt for another project", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
@@ -3686,6 +3961,53 @@ function paymentExecutionInput(idempotencyKey: string) {
     }),
     fileName: "付款凭证.pdf",
     context: "payment-a",
+    isCurrent: () => true
+  };
+}
+
+function projectExpenseExecutionDetail(
+  projectId: string,
+  expenseRequestId: string,
+  expectedExpenseUpdatedAt: string,
+  actionEnabled = true
+) {
+  return {
+    id: expenseRequestId,
+    projectId,
+    lifecycleUpdatedAt: expectedExpenseUpdatedAt,
+    executionContext: actionEnabled
+      ? { expectedExpenseUpdatedAt }
+      : null,
+    availableActions: actionEnabled
+      ? [
+          {
+            key: "record_execution",
+            label: "登记项目支出实付",
+            kind: "primary",
+            enabled: true,
+            disabledReason: null,
+            requiredRoles: ["finance_staff"]
+          }
+        ]
+      : []
+  };
+}
+
+function projectExpenseExecutionInput(
+  idempotencyKey: string
+) {
+  return {
+    amountCents: "5000000",
+    paidAt: "2026-07-31T08:30:00.000Z",
+    confirmationPassword: " current-password ",
+    expectedExpenseUpdatedAt:
+      "2026-07-31T08:00:00.000Z",
+    idempotencyKey,
+    file: Object.assign(new Blob(["voucher"]), {
+      name: "项目支出实付凭证.pdf"
+    }),
+    fileName: "项目支出实付凭证.pdf",
+    context: "expense-a",
     isCurrent: () => true
   };
 }

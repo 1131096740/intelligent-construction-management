@@ -86,4 +86,16 @@ describe("project expense approval interaction", () => {
     expect(detailPageSource).not.toContain("canWithdrawProjectExpense");
     expect(detailPageSource).not.toContain("canVoidProjectExpense");
   });
+
+  it("binds project expense execution to the raw detail capability and governed upload helper", () => {
+    expect(detailPageSource).toContain("record_execution");
+    expect(detailPageSource).toContain("executionContext");
+    expect(detailPageSource).toContain("recordProjectExpenseExecutionWithUpload");
+    expect(detailPageSource).toContain("createProjectExpenseExecutionRecordAttemptState");
+    expect(detailPageSource).toContain('@confirm="confirmProjectExpenseExecution"');
+    expect(detailPageSource).toContain("<t-upload");
+    expect(detailPageSource).toContain("CORE_ARCHIVE_UPLOAD_POLICY");
+    expect(detailPageSource).not.toContain("recordProjectExpenseExecution(");
+    expect(detailPageSource).not.toContain("fetch(");
+  });
 });

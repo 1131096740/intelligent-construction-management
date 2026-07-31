@@ -1761,6 +1761,47 @@ export interface RecordProjectExpenseExecutionPayload {
   paidAt: string;
   voucherFileId: string;
   confirmationPassword: string;
+  expectedExpenseUpdatedAt: string;
+  idempotencyKey: string;
+}
+
+export interface ProjectExpenseExecutionContext {
+  expectedExpenseUpdatedAt: string;
+}
+
+export interface RecordProjectExpenseExecutionWithUploadInput<TContext> {
+  amountCents: string;
+  paidAt: string;
+  confirmationPassword: string;
+  expectedExpenseUpdatedAt: string;
+  idempotencyKey: string;
+  file: Blob;
+  fileName: string;
+  context: TContext;
+  isCurrent: (context: TContext) => boolean;
+}
+
+export interface ProjectExpenseExecutionRecordSubmission {
+  projectId: string;
+  expenseRequestId: string;
+  amountCents: string;
+  paidAt: string;
+  confirmationPassword: string;
+  expectedExpenseUpdatedAt: string;
+  idempotencyKey: string;
+  file: Blob;
+  fileName: string;
+  isCurrent: () => boolean;
+}
+
+export interface ProjectExpenseExecutionRecordAttemptState {
+  submission: ProjectExpenseExecutionRecordSubmission | null;
+  confirmationPasswordRejected: boolean;
+  preflightVerified: boolean;
+  preflightPromise: Promise<ProjectExpenseApprovalLifecycleDetailReadModel> | null;
+  uploadedFileId: string | null;
+  uploadPromise: Promise<PrivateFileReadModel> | null;
+  requestPromise: Promise<unknown> | null;
 }
 
 export interface RecordProjectExpensePurchaseExecutionPayload {
@@ -2210,6 +2251,7 @@ export type ProjectExpenseApprovalLifecycleDetailReadModel =
     blockedReasons: string[];
     reviewApprovalContext: ProjectExpenseReviewApprovalCoordinates | null;
     withdrawalContext: ProjectExpenseWithdrawalCoordinates | null;
+    executionContext: ProjectExpenseExecutionContext | null;
   };
 
 export interface ProjectExpenseReviewApprovalCoordinates {
@@ -2720,7 +2762,7 @@ export function recordProjectExpenseExecution(
   body: RecordProjectExpenseExecutionPayload
 ) {
   return postJson<unknown>(
-    `/projects/${projectId}/expense-requests/${expenseRequestId}/executions`,
+    `/projects/${encodeURIComponent(projectId)}/expense-requests/${encodeURIComponent(expenseRequestId)}/executions`,
     body
   );
 }
@@ -3226,6 +3268,269 @@ function assertPaymentExecutionCurrent(
 }
 
 function requiredPaymentExecutionText(
+  value: string,
+  label: string,
+  trim = true
+) {
+  const normalized = trim ? value.trim() : value;
+  if (!normalized.trim()) throw new Error(`请填写${label}`);
+  return normalized;
+}
+
+export function createProjectExpenseExecutionRecordAttemptState(): ProjectExpenseExecutionRecordAttemptState {
+  return {
+    submission: null,
+    confirmationPasswordRejected: false,
+    preflightVerified: false,
+    preflightPromise: null,
+    uploadedFileId: null,
+    uploadPromise: null,
+    requestPromise: null
+  };
+}
+
+export function recordProjectExpenseExecutionWithUpload<TContext>(
+  projectId: string,
+  expenseRequestId: string,
+  input: RecordProjectExpenseExecutionWithUploadInput<TContext>,
+  state: ProjectExpenseExecutionRecordAttemptState
+) {
+  if (state.requestPromise) return state.requestPromise;
+  let submission: ProjectExpenseExecutionRecordSubmission;
+  try {
+    const existingSubmission = state.submission;
+    submission =
+      existingSubmission && state.confirmationPasswordRejected
+        ? Object.freeze({
+            ...existingSubmission,
+            confirmationPassword: requiredProjectExpenseExecutionText(
+              input.confirmationPassword,
+              "当前密码",
+              false
+            )
+          })
+        : existingSubmission ??
+          normalizeProjectExpenseExecutionRecord(
+            projectId,
+            expenseRequestId,
+            input
+          );
+    if (
+      submission.projectId !== projectId.trim() ||
+      submission.expenseRequestId !== expenseRequestId.trim()
+    ) {
+      throw new Error(
+        "项目支出实付重试单据已变化，请重新打开确认窗口"
+      );
+    }
+    state.submission = submission;
+    state.confirmationPasswordRejected = false;
+  } catch (error) {
+    return Promise.reject(error);
+  }
+
+  const request = executeProjectExpenseExecutionRecord(
+    submission,
+    state
+  );
+  state.requestPromise = request;
+  void request.catch(() => {
+    if (state.requestPromise === request) {
+      state.requestPromise = null;
+    }
+  });
+  return request;
+}
+
+function normalizeProjectExpenseExecutionRecord<TContext>(
+  projectId: string,
+  expenseRequestId: string,
+  input: RecordProjectExpenseExecutionWithUploadInput<TContext>
+): ProjectExpenseExecutionRecordSubmission {
+  if (!input.isCurrent(input.context)) {
+    throw new Error(
+      "项目支出实付上下文已失效，请重新读取当前单据"
+    );
+  }
+  if (!(input.file instanceof Blob)) {
+    throw new Error("项目支出实付凭证不能为空");
+  }
+  const normalizedIdempotencyKey =
+    requiredProjectExpenseExecutionText(
+      input.idempotencyKey,
+      "项目支出实付幂等键"
+    ).toLowerCase();
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      normalizedIdempotencyKey
+    )
+  ) {
+    throw new Error("项目支出实付幂等键必须为 UUIDv4");
+  }
+  const amountCents = requiredProjectExpenseExecutionText(
+    input.amountCents,
+    "实付金额"
+  );
+  if (!/^[1-9]\d*$/u.test(amountCents)) {
+    throw new Error("实付金额必须为正整数分");
+  }
+  const paidAt = requiredProjectExpenseExecutionText(
+    input.paidAt,
+    "实付时间"
+  );
+  if (Number.isNaN(new Date(paidAt).getTime())) {
+    throw new Error("实付时间格式不正确");
+  }
+  return Object.freeze({
+    projectId: requiredProjectExpenseExecutionText(
+      projectId,
+      "项目编号"
+    ),
+    expenseRequestId: requiredProjectExpenseExecutionText(
+      expenseRequestId,
+      "项目支出编号"
+    ),
+    amountCents,
+    paidAt,
+    confirmationPassword: requiredProjectExpenseExecutionText(
+      input.confirmationPassword,
+      "当前密码",
+      false
+    ),
+    expectedExpenseUpdatedAt:
+      requiredProjectExpenseExecutionText(
+        input.expectedExpenseUpdatedAt,
+        "项目支出版本"
+      ),
+    idempotencyKey: normalizedIdempotencyKey,
+    file: input.file,
+    fileName: requiredProjectExpenseExecutionText(
+      input.fileName,
+      "项目支出实付凭证文件名"
+    ),
+    isCurrent: () => input.isCurrent(input.context)
+  });
+}
+
+async function executeProjectExpenseExecutionRecord(
+  submission: ProjectExpenseExecutionRecordSubmission,
+  state: ProjectExpenseExecutionRecordAttemptState
+): Promise<unknown> {
+  assertProjectExpenseExecutionCurrent(submission);
+  await verifyProjectExpenseExecutionPreflight(submission, state);
+  assertProjectExpenseExecutionCurrent(submission);
+
+  let fileId = state.uploadedFileId;
+  if (fileId === null) {
+    const upload =
+      state.uploadPromise ??
+      uploadPrivateFile(
+        submission.file,
+        submission.fileName,
+        submission.idempotencyKey
+      );
+    state.uploadPromise = upload;
+    try {
+      const uploaded = await upload;
+      assertProjectExpenseExecutionCurrent(submission);
+      if (uploaded.id !== submission.idempotencyKey) {
+        throw new Error(
+          "项目支出实付凭证上传幂等响应不一致，请刷新后重试"
+        );
+      }
+      fileId = uploaded.id;
+      state.uploadedFileId = uploaded.id;
+    } catch (error) {
+      if (state.uploadPromise === upload) {
+        state.uploadPromise = null;
+      }
+      throw error;
+    }
+  }
+  assertProjectExpenseExecutionCurrent(submission);
+
+  let response: unknown;
+  try {
+    response = await recordProjectExpenseExecution(
+      submission.projectId,
+      submission.expenseRequestId,
+      {
+        amountCents: submission.amountCents,
+        paidAt: submission.paidAt,
+        voucherFileId: fileId,
+        confirmationPassword: submission.confirmationPassword,
+        expectedExpenseUpdatedAt:
+          submission.expectedExpenseUpdatedAt,
+        idempotencyKey: submission.idempotencyKey
+      }
+    );
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.includes("当前密码不正确")
+    ) {
+      state.confirmationPasswordRejected = true;
+    }
+    throw error;
+  }
+  assertProjectExpenseExecutionCurrent(submission);
+  return response;
+}
+
+async function verifyProjectExpenseExecutionPreflight(
+  submission: ProjectExpenseExecutionRecordSubmission,
+  state: ProjectExpenseExecutionRecordAttemptState
+) {
+  if (state.preflightVerified) return;
+  const preflight =
+    state.preflightPromise ??
+    fetchProjectExpenseApprovalDetail(
+      submission.projectId,
+      submission.expenseRequestId
+    );
+  state.preflightPromise = preflight;
+  let detail: ProjectExpenseApprovalLifecycleDetailReadModel;
+  try {
+    detail = await preflight;
+  } catch (error) {
+    if (state.preflightPromise === preflight) {
+      state.preflightPromise = null;
+    }
+    throw error;
+  }
+  assertProjectExpenseExecutionCurrent(submission);
+  const enabledActions = detail.availableActions.filter(
+    (action) =>
+      action.key === "record_execution" && action.enabled
+  );
+  if (
+    detail.projectId !== submission.projectId ||
+    detail.id !== submission.expenseRequestId ||
+    enabledActions.length !== 1 ||
+    detail.lifecycleUpdatedAt !==
+      submission.expectedExpenseUpdatedAt ||
+    detail.executionContext?.expectedExpenseUpdatedAt !==
+      submission.expectedExpenseUpdatedAt
+  ) {
+    state.preflightPromise = null;
+    throw new Error(
+      "项目支出执行资格或版本已变化，请刷新详情后重试"
+    );
+  }
+  state.preflightVerified = true;
+}
+
+function assertProjectExpenseExecutionCurrent(
+  submission: ProjectExpenseExecutionRecordSubmission
+) {
+  if (!submission.isCurrent()) {
+    throw new Error(
+      "项目支出实付上下文已失效，请重新读取当前单据"
+    );
+  }
+}
+
+function requiredProjectExpenseExecutionText(
   value: string,
   label: string,
   trim = true

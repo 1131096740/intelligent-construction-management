@@ -17,13 +17,13 @@
     "totalVueFileCount": 134,
     "parsedVueFileCount": 134,
     "reachableProductionModuleCount": 229,
-    "templateEventDirectiveCount": 913,
+    "templateEventDirectiveCount": 914,
     "propCallbackDirectiveCount": 10,
-    "coveredProductionMutationConsumerCount": 16,
+    "coveredProductionMutationConsumerCount": 17,
     "candidateProductionMutationConsumerCount": 38,
-    "acceptedProductionMutationConsumerCount": 16,
+    "acceptedProductionMutationConsumerCount": 17,
     "productionMutationConsumerPairCount": 274,
-    "blockerCount": 310
+    "blockerCount": 307
   },
   "evidence": {
     "totalProductionModuleCount": 236,
@@ -1684,31 +1684,104 @@
       "id": "project-expense.execution-local-status",
       "usage": "page_action",
       "routePaths": [
-        "/项目经营"
+        "/项目支出/:projectId/:expenseRequestId"
       ],
       "ownerRoutePaths": [
-        "/项目经营"
+        "/项目支出/:projectId/:expenseRequestId"
       ],
-      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
       "trigger": {
-        "element": "button",
-        "event": "click",
-        "handler": "submitExpenseExecution",
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmProjectExpenseExecution",
         "kind": "event",
-        "sourceLine": 788,
-        "sourceColumn": 18
+        "sourceLine": 150,
+        "sourceColumn": 8
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "client_role_or_status",
-        "source": "canRecordExpenseExecution(selectedExpenseRow)",
-        "serverDerived": false,
-        "dominatesTrigger": false
+        "kind": "detail_action",
+        "source": "projectExpenseWithdrawalCapability.availableActions",
+        "key": "record_execution",
+        "serverDerived": true,
+        "dominatesTrigger": true
       },
       "bindings": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "recordProjectExpenseExecution",
+          "wrapper": "recordProjectExpenseExecutionWithUpload",
+          "method": "GET",
+          "path": "/projects/:param/expense-requests/:param/approval-detail",
+          "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/projects/:projectId/expense-requests/:expenseRequestId/approval-detail",
+            "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
+            "controller": "ProjectExpenseController",
+            "handler": "getApprovalDetail",
+            "sourceFile": "services/api/src/project-expense/project-expense.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmProjectExpenseExecution",
+              "recordProjectExpenseExecutionWithUpload"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectExpenseExecutionWithUpload",
+          "method": "POST",
+          "path": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files",
+            "normalizedKey": "POST /files",
+            "controller": "FileController",
+            "handler": "upload",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmProjectExpenseExecution",
+              "recordProjectExpenseExecutionWithUpload"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectExpenseExecutionWithUpload",
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/executions",
           "normalizedKey": "POST /projects/:param/expense-requests/:param/executions",
@@ -1728,13 +1801,16 @@
             "requiredProjectAction": "project_expense.execution"
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "submitExpenseExecution"
+              "confirmProjectExpenseExecution",
+              "recordProjectExpenseExecutionWithUpload"
             ]
           },
           "ticketFollowups": []
@@ -1756,7 +1832,7 @@
         "event": "click",
         "handler": "submitExpenseFinance",
         "kind": "event",
-        "sourceLine": 796,
+        "sourceLine": 756,
         "sourceColumn": 18
       },
       "semantic": "business_write",
@@ -1817,7 +1893,7 @@
         "event": "click",
         "handler": "submitExpenseReceiptConfirmation",
         "kind": "event",
-        "sourceLine": 804,
+        "sourceLine": 764,
         "sourceColumn": 18
       },
       "semantic": "business_write",
@@ -1878,7 +1954,7 @@
         "event": "confirm",
         "handler": "confirmProjectExpenseReviewApprove",
         "kind": "event",
-        "sourceLine": 164,
+        "sourceLine": 230,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -1943,7 +2019,7 @@
         "event": "confirm",
         "handler": "confirmProjectExpenseReviewReject",
         "kind": "event",
-        "sourceLine": 178,
+        "sourceLine": 244,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -2008,7 +2084,7 @@
         "event": "confirm",
         "handler": "confirmProjectExpenseWithdrawal",
         "kind": "event",
-        "sourceLine": 84,
+        "sourceLine": 85,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -3182,13 +3258,6 @@
       },
       {
         "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "project-expense.execution-local-status",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectExpenseExecution"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
         "actionId": "project-expense.finance-local-status",
         "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -3355,12 +3424,6 @@
         "actionId": "project-expense.create-local-role",
         "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
         "capabilitySource": "canCreateProjectExpense"
-      },
-      {
-        "code": "CLIENT_ROLE_OR_STATUS_GATE",
-        "actionId": "project-expense.execution-local-status",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "capabilitySource": "canRecordExpenseExecution(selectedExpenseRow)"
       },
       {
         "code": "CLIENT_ROLE_OR_STATUS_GATE",
@@ -4877,15 +4940,6 @@
         "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
         "normalizedKeys": [
           "POST /projects/:param/expense-requests/:param/attachment-download-ticket"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectExpenseExecution",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/expense-requests/:param/executions"
         ]
       },
       {
