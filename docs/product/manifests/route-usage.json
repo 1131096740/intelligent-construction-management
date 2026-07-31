@@ -3120,6 +3120,16 @@
             "productionConsumers": [
               "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
             ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "prepareProjectExpenseWithdrawalAction",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/expense-requests/:param/approval-detail",
+            "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+            ]
           }
         ],
         "authStore": [],
@@ -12057,7 +12067,7 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "withdrawProjectExpenseApproval",
+            "wrapper": "executeProjectExpenseWithdrawalAction",
             "method": "POST",
             "normalizedPath": "/projects/:param/expense-requests/:param/approval-withdrawal",
             "normalizedKey": "POST /projects/:param/expense-requests/:param/approval-withdrawal",

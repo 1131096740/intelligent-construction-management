@@ -8,6 +8,7 @@ import { ProjectExpenseController } from "./project-expense.controller";
 type ExpenseBodyMethod =
   | "create"
   | "reviewApproval"
+  | "withdrawApproval"
   | "createAttachmentDownloadTicket"
   | "createApprovalPdfDownloadTicket"
   | "voidRequest"
@@ -92,6 +93,66 @@ describe("ProjectExpenseController authorization wiring", () => {
 
     await expect(validateExpenseBody("reviewApproval", value)).resolves.toEqual(value);
   });
+
+  it("项目支出撤回强制保留业务单和审批实例四坐标", async () => {
+    const value = {
+      expectedExpenseUpdatedAt:
+        "2026-07-31T01:00:00.000Z",
+      expectedApprovalInstanceId: "approval-instance-1",
+      expectedNodeIndex: 1,
+      expectedApprovalUpdatedAt:
+        "2026-07-31T01:00:01.000Z"
+    };
+
+    await expect(
+      validateExpenseBody("withdrawApproval", value)
+    ).resolves.toEqual(value);
+  });
+
+  it.each([
+    [
+      "missing expense version",
+      {
+        expectedApprovalInstanceId: "approval-instance-1",
+        expectedNodeIndex: 1,
+        expectedApprovalUpdatedAt:
+          "2026-07-31T01:00:01.000Z"
+      }
+    ],
+    [
+      "invalid approval node",
+      {
+        expectedExpenseUpdatedAt:
+          "2026-07-31T01:00:00.000Z",
+        expectedApprovalInstanceId: "approval-instance-1",
+        expectedNodeIndex: -1,
+        expectedApprovalUpdatedAt:
+          "2026-07-31T01:00:01.000Z"
+      }
+    ],
+    [
+      "invalid approval version",
+      {
+        expectedExpenseUpdatedAt:
+          "2026-07-31T01:00:00.000Z",
+        expectedApprovalInstanceId: "approval-instance-1",
+        expectedNodeIndex: 1,
+        expectedApprovalUpdatedAt: "not-a-date"
+      }
+    ]
+  ])(
+    "rejects withdrawal body with %s",
+    async (_name, value) => {
+      const response = await getExpenseValidationResponse(
+        "withdrawApproval",
+        value
+      );
+
+      expect(response.errors).toEqual(
+        expect.arrayContaining([expect.any(String)])
+      );
+    }
+  );
 
   it("按 Unicode code point 校验项目支出自审字段边界", async () => {
     const boundary = "❤️".repeat(250);

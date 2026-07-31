@@ -420,6 +420,312 @@ test("项目支出作废成功后刷新详情并移除重复动作", async ({ pa
   await expect(page.getByRole("button", { name: "作废支出单" })).toHaveCount(0);
 });
 
+test("P0 项目支出撤回以 fresh GET 四坐标提交且双击只产生一次 POST", async ({
+  browserName,
+  page
+}, testInfo) => {
+  await installSession(page);
+  await page.setViewportSize(
+    browserName === "webkit"
+      ? { width: 390, height: 844 }
+      : { width: 1366, height: 768 }
+  );
+  const browserErrors: string[] = [];
+  const pageErrors: string[] = [];
+  const requestOrder: string[] = [];
+  const withdrawalBodies: Record<string, unknown>[] = [];
+  let withdrawn = false;
+  let releaseWithdrawalPost!: () => void;
+  const withdrawalPostGate = new Promise<void>((resolve) => {
+    releaseWithdrawalPost = resolve;
+  });
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      browserErrors.push(message.text());
+    }
+  });
+  page.on("pageerror", (error) => {
+    pageErrors.push(error.message);
+  });
+  const detail = () => ({
+    id: "expense-withdraw",
+    projectId: "project-1",
+    code: "ZC-WITHDRAW-001",
+    title: "ZC-WITHDRAW-001 · 项目临时支出",
+    status: withdrawn ? "withdrawn" : "approval_pending",
+    statusLabel: withdrawn ? "已撤回" : "审批中",
+    expenseTypeLabel: "报销",
+    expenseSubtypeLabel: "报销",
+    paymentSubject: "项目临时支出",
+    reason: "现场临时费用",
+    requestedAmountCents: "120000",
+    approvedAmountCents: null,
+    currentNodeName: withdrawn ? null : "财务审核",
+    lifecycleKind: "formal_record",
+    ledgerView: withdrawn ? "ended" : "formal_ledger",
+    lifecycleUpdatedAt: "2026-07-31T09:00:00.000Z",
+    hasPersistentDraft: false,
+    withdrawalContext: withdrawn
+      ? null
+      : {
+          expectedExpenseUpdatedAt:
+            "2026-07-31T09:00:00.000Z",
+          expectedApprovalInstanceId:
+            "approval-expense-withdraw",
+          expectedNodeIndex: 1,
+          expectedApprovalUpdatedAt:
+            "2026-07-31T09:00:01.000Z"
+        },
+    availableActions: withdrawn
+      ? []
+      : [{
+          key: "withdraw",
+          label: "撤回项目支出申请",
+          kind: "danger",
+          enabled: true,
+          disabledReason: null
+        }],
+    blockedReasons: withdrawn
+      ? ["项目支出申请已结束，只能查看历史记录"]
+      : [],
+    canSetApprovedAmount: false,
+    reviewAction: {
+      key: "review",
+      label: "审批",
+      kind: "primary",
+      enabled: false,
+      disabledReason: withdrawn
+        ? "当前项目支出状态不可审批"
+        : "申请人不能审批自己发起的业务",
+      requiresSelfReviewConfirmation: false
+    },
+    approvalTimeline: []
+  });
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-withdraw/approval-detail",
+    (route) => {
+      requestOrder.push("GET");
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail())
+      });
+    }
+  );
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-withdraw/approval-withdrawal",
+    async (route) => {
+      requestOrder.push("POST");
+      withdrawalBodies.push(
+        route.request().postDataJSON() as Record<string, unknown>
+      );
+      await withdrawalPostGate;
+      withdrawn = true;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ id: "expense-withdraw", status: "withdrawn" })
+      });
+    }
+  );
+
+  await login(page);
+  await page.goto("/项目支出/project-1/expense-withdraw");
+  await expect(
+    page.getByRole("heading", { name: "项目支出审批详情" })
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "撤回项目支出申请" })
+    .click();
+  const dialog = page
+    .locator(".t-dialog")
+    .filter({ hasText: "撤回项目支出申请" });
+  await expect(dialog).toBeVisible();
+  const confirm = dialog.getByRole("button", {
+    name: "确认撤回",
+    exact: true
+  });
+  await expect(confirm).toBeVisible();
+  await expect(confirm).toBeEnabled();
+  await page.waitForTimeout(300);
+  await page.screenshot({
+    path: path.join(
+      testInfo.outputDir,
+      `project-expense-withdraw-${browserName}-${browserName === "webkit" ? "390x844" : "1366x768"}.png`
+    ),
+    fullPage: false
+  });
+  await confirm.evaluate((element) => {
+    (element as HTMLButtonElement).click();
+    (element as HTMLButtonElement).click();
+  });
+  await expect.poll(() => withdrawalBodies).toHaveLength(1);
+  await expect(dialog.locator(".t-dialog__close")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  releaseWithdrawalPost();
+
+  await expect(page.getByText("已撤回", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "撤回项目支出申请" })
+  ).toHaveCount(0);
+  await expect.poll(() => requestOrder).toEqual([
+    "GET",
+    "GET",
+    "POST",
+    "GET"
+  ]);
+  expect(withdrawalBodies).toEqual([{
+    expectedExpenseUpdatedAt: "2026-07-31T09:00:00.000Z",
+    expectedApprovalInstanceId: "approval-expense-withdraw",
+    expectedNodeIndex: 1,
+    expectedApprovalUpdatedAt: "2026-07-31T09:00:01.000Z"
+  }]);
+  await expect(
+    page.locator(
+      "vite-error-overlay, #webpack-dev-server-client-overlay"
+    )
+  ).toHaveCount(0);
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalScrollers(page);
+  if (browserName === "webkit") {
+    expect(
+      await page.evaluate(() => ({
+        height: window.innerHeight,
+        userAgent: navigator.userAgent,
+        width: window.innerWidth
+      }))
+    ).toEqual(expect.objectContaining({
+      height: 844,
+      width: 390,
+      userAgent: expect.not.stringContaining("Chrome/")
+    }));
+  }
+  expect(browserErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
+test("P0 项目支出 A 路由迟到响应不能覆盖 B 详情", async ({
+  browserName,
+  page
+}) => {
+  test.skip(browserName !== "chromium");
+  await installSession(page);
+  let releaseExpenseA!: () => void;
+  const expenseAGate = new Promise<void>((resolve) => {
+    releaseExpenseA = resolve;
+  });
+  let markExpenseAStarted!: () => void;
+  const expenseAStarted = new Promise<void>((resolve) => {
+    markExpenseAStarted = resolve;
+  });
+  const detail = (id: "expense-A" | "expense-B") => ({
+    id,
+    projectId: "project-1",
+    code: id === "expense-A" ? "ZC-LATE-A" : "ZC-CURRENT-B",
+    title:
+      id === "expense-A"
+        ? "ZC-LATE-A · 迟到支出"
+        : "ZC-CURRENT-B · 当前支出",
+    status: "approval_pending",
+    statusLabel: "审批中",
+    expenseTypeLabel: "报销",
+    expenseSubtypeLabel: "报销",
+    paymentSubject:
+      id === "expense-A" ? "迟到支出" : "当前支出",
+    reason: "路由归属验收",
+    requestedAmountCents: "10000",
+    approvedAmountCents: null,
+    currentNodeName: "财务审核",
+    lifecycleKind: "formal_record",
+    ledgerView: "formal_ledger",
+    lifecycleUpdatedAt: "2026-07-31T09:10:00.000Z",
+    hasPersistentDraft: false,
+    withdrawalContext:
+      id === "expense-A"
+        ? {
+            expectedExpenseUpdatedAt:
+              "2026-07-31T09:10:00.000Z",
+            expectedApprovalInstanceId: "approval-expense-A",
+            expectedNodeIndex: 1,
+            expectedApprovalUpdatedAt:
+              "2026-07-31T09:10:01.000Z"
+          }
+        : null,
+    availableActions:
+      id === "expense-A"
+        ? [{
+            key: "withdraw",
+            label: "撤回迟到支出",
+            kind: "danger",
+            enabled: true,
+            disabledReason: null
+          }]
+        : [],
+    blockedReasons:
+      id === "expense-B"
+        ? ["当前账号不具备撤回权限"]
+        : [],
+    canSetApprovedAmount: false,
+    reviewAction: {
+      key: "review",
+      label: "审批",
+      kind: "primary",
+      enabled: false,
+      disabledReason: "当前岗位无权审批此节点",
+      requiresSelfReviewConfirmation: false
+    },
+    approvalTimeline: []
+  });
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-A/approval-detail",
+    async (route) => {
+      markExpenseAStarted();
+      await expenseAGate;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail("expense-A"))
+      });
+    }
+  );
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-B/approval-detail",
+    (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail("expense-B"))
+      })
+  );
+
+  await login(page);
+  await page.goto("/项目支出/project-1/expense-A");
+  await expect(
+    page.getByRole("heading", { name: "项目支出审批详情" })
+  ).toBeVisible();
+  await expenseAStarted;
+  await page.evaluate(() => {
+    window.history.pushState(
+      {},
+      "",
+      "/项目支出/project-1/expense-B"
+    );
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(
+    page.getByText("ZC-CURRENT-B", { exact: true })
+  ).toBeVisible();
+  releaseExpenseA();
+  await page.waitForTimeout(100);
+
+  await expect(
+    page.getByText("ZC-CURRENT-B", { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByText("ZC-LATE-A", { exact: true })
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "撤回迟到支出" })
+  ).toHaveCount(0);
+});
+
 test("合同工作台丢弃未保存修改后直接删除服务端草稿", async ({ page }) => {
   await installSession(page);
   let saveCalls = 0;

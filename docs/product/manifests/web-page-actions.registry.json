@@ -635,21 +635,20 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
       "trigger": {
-        "element": "business-draft-action",
-        "event": "execute",
-        "handler": "executeLifecycleAction",
-        "variant": "withdraw"
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmProjectExpenseWithdrawal"
       },
       "semantic": "business_write",
       "capability": {
         "kind": "detail_action",
-        "source": "detail.availableActions",
+        "source": "projectExpenseWithdrawalCapability.availableActions",
         "key": "withdraw"
       },
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "name": "withdrawProjectExpenseApproval"
+          "name": "executeProjectExpenseWithdrawalAction"
         }
       ]
     },

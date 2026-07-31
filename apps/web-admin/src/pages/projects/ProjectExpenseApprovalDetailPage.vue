@@ -48,19 +48,42 @@
       </t-card>
 
       <t-card
-        v-if="detail.availableActions.length || detail.blockedReasons.length"
+        v-if="withdrawalEnabled || nonWithdrawalLifecycleActions.length || detail.blockedReasons.length"
         class="section-card"
         title="申请处理"
         :bordered="true"
       >
+        <t-button
+          v-if="withdrawalEnabled"
+          theme="danger"
+          variant="outline"
+          :disabled="withdrawalSubmitting"
+          @click="openProjectExpenseWithdrawal"
+        >
+          撤回项目支出申请
+        </t-button>
         <BusinessDraftAction
-          :actions="detail.availableActions"
+          :actions="nonWithdrawalLifecycleActions"
           :subject="expenseActionSubject"
           :blocked-reasons="detail.blockedReasons"
           :execute="executeLifecycleAction"
           @completed="loadDetail"
         />
       </t-card>
+
+      <SensitiveActionDialog
+        v-if="projectExpenseWithdrawalActionEnabled('withdraw') && withdrawalConfirmation.visible"
+        :key="`project-expense-withdraw-${withdrawalDialogGeneration}`"
+        v-model="withdrawalConfirmation.visible"
+        title="撤回项目支出申请"
+        description="撤回后本轮审批结束，申请进入已撤回历史记录；已有审批、金额与审计历史会完整保留。"
+        confirm-text="确认撤回"
+        confirm-theme="danger"
+        :loading="withdrawalSubmitting"
+        :error="withdrawalConfirmation.error"
+        @confirm="confirmProjectExpenseWithdrawal"
+        @cancel="cancelProjectExpenseWithdrawal"
+      />
 
       <t-card
         class="section-card"
@@ -130,7 +153,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  shallowRef,
+  watch
+} from "vue";
 import { useRoute } from "vue-router";
 import ApprovalSelfReviewFields from "../../components/ApprovalSelfReviewFields.vue";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
@@ -138,13 +169,17 @@ import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import BusinessDraftAction, {
   type BusinessDraftActionRequest
 } from "../../components/BusinessDraftAction.vue";
+import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
 import {
+  executeProjectExpenseWithdrawalAction,
   fetchProjectExpenseApprovalDetail,
+  prepareProjectExpenseWithdrawalAction,
   reviewProjectExpenseApproval,
   voidProjectExpenseRequest,
-  withdrawProjectExpenseApproval,
-  type ProjectExpenseApprovalLifecycleDetailReadModel
+  type PrepareProjectExpenseWithdrawalActionResult,
+  type ProjectExpenseApprovalLifecycleDetailReadModel,
+  type ProjectExpenseWithdrawalActionContext
 } from "../../api/core-flow-read.api";
 import { centsTextToYuanText } from "../../lib/money";
 import { confirmSensitiveAction } from "../confirm-sensitive-action";
@@ -156,11 +191,33 @@ import {
 
 const route = useRoute();
 const detail = ref<ProjectExpenseApprovalLifecycleDetailReadModel | null>(null);
+const projectExpenseWithdrawalCapability =
+  shallowRef<ProjectExpenseApprovalLifecycleDetailReadModel | null>(null);
 const loading = ref(false);
 const errorMessage = ref("");
 const busy = ref<"" | "approve" | "reject">("");
 const actionMessage = ref("");
 const actionTone = ref<"success" | "error">("success");
+const withdrawalDialogGeneration = ref(0);
+let detailRouteGeneration = 0;
+let detailLoadRequestId = 0;
+let detailEpoch = 0;
+let withdrawalOperationSequence = 0;
+let withdrawalBusyOwnerId = 0;
+let withdrawalComponentActive = true;
+const withdrawalOwnerScope = globalThis.crypto.randomUUID();
+const withdrawalSubmitting = ref(false);
+const withdrawalConfirmation = reactive({
+  visible: false,
+  error: "",
+  dialogGeneration: -1,
+  projectId: "",
+  expenseRequestId: "",
+  expectedExpenseUpdatedAt: "",
+  expectedApprovalInstanceId: "",
+  expectedNodeIndex: -1,
+  expectedApprovalUpdatedAt: ""
+});
 const form = reactive({
   comment: "",
   approvedAmountYuan: "",
@@ -175,39 +232,413 @@ const expenseActionSubject = computed(() => ({
   impactScope: "撤回或作废后保留审批、金额与审计历史，不会删除业务记录。"
 }));
 
+function projectExpenseWithdrawalActionEnabled(key: "withdraw") {
+  return Boolean(
+    projectExpenseWithdrawalCapability.value?.availableActions.some(
+      (action) => action.key === key && action.enabled
+    )
+  );
+}
+
+const withdrawalEnabled = computed(() => {
+  const capability = projectExpenseWithdrawalCapability.value;
+  const coordinates = capability?.withdrawalContext;
+  const currentDetail = detail.value;
+  const { projectId, expenseRequestId } = routeIds();
+  const enabledActionCount =
+    projectExpenseWithdrawalCapability.value?.availableActions.filter(
+      (action) => action.key === "withdraw" && action.enabled
+    ).length ?? 0;
+  if (
+    !capability ||
+    !coordinates ||
+    capability.projectId !== projectId ||
+    capability.id !== expenseRequestId ||
+    currentDetail?.projectId !== capability.projectId ||
+    currentDetail.id !== capability.id ||
+    typeof capability.lifecycleUpdatedAt !== "string" ||
+    !capability.lifecycleUpdatedAt ||
+    coordinates.expectedExpenseUpdatedAt !== capability.lifecycleUpdatedAt ||
+    !coordinates.expectedApprovalInstanceId ||
+    !Number.isInteger(coordinates.expectedNodeIndex) ||
+    coordinates.expectedNodeIndex < 0 ||
+    !coordinates.expectedApprovalUpdatedAt
+  ) {
+    return false;
+  }
+  return (
+    enabledActionCount === 1 &&
+    projectExpenseWithdrawalActionEnabled("withdraw")
+  );
+});
+
+const nonWithdrawalLifecycleActions = computed(() =>
+  detail.value?.availableActions.filter((action) => action.key !== "withdraw") ?? []
+);
+
 function routeIds() {
   return {
-    projectId: String(route.params.projectId ?? ""),
-    expenseRequestId: String(route.params.expenseRequestId ?? "")
+    projectId: routeParam(route.params.projectId),
+    expenseRequestId: routeParam(route.params.expenseRequestId)
   };
+}
+
+function routeParam(value: string | string[] | undefined) {
+  return (Array.isArray(value) ? value[0] ?? "" : value ?? "").trim();
 }
 
 function formatCents(value: string) {
   return `¥${centsTextToYuanText(value)}`;
 }
 
-async function loadDetail() {
+async function loadDetail(): Promise<boolean> {
+  const { projectId, expenseRequestId } = routeIds();
+  const routeGeneration = detailRouteGeneration;
+  const requestId = ++detailLoadRequestId;
+  detailEpoch += 1;
+  invalidateProjectExpenseWithdrawalDialog(true);
+  projectExpenseWithdrawalCapability.value = null;
+  if (!projectId || !expenseRequestId) {
+    detail.value = null;
+    errorMessage.value = "项目支出审批路由参数缺失";
+    return false;
+  }
   loading.value = true;
   errorMessage.value = "";
   try {
-    const { projectId, expenseRequestId } = routeIds();
-    detail.value = await fetchProjectExpenseApprovalDetail(projectId, expenseRequestId);
+    const serverDetail = await fetchProjectExpenseApprovalDetail(
+      projectId,
+      expenseRequestId
+    );
+    if (
+      !detailLoadIsCurrent(
+        requestId,
+        routeGeneration,
+        projectId,
+        expenseRequestId
+      ) ||
+      serverDetail.projectId !== projectId ||
+      serverDetail.id !== expenseRequestId
+    ) {
+      return false;
+    }
+    const viewDetail = structuredClone(serverDetail);
+    projectExpenseWithdrawalCapability.value = serverDetail;
+    detail.value = viewDetail;
+    return true;
   } catch (error) {
+    if (
+      !detailLoadIsCurrent(
+        requestId,
+        routeGeneration,
+        projectId,
+        expenseRequestId
+      )
+    ) {
+      return false;
+    }
+    projectExpenseWithdrawalCapability.value = null;
     detail.value = null;
     errorMessage.value = error instanceof Error ? error.message : "项目支出审批详情读取失败";
+    return false;
   } finally {
-    loading.value = false;
+    if (
+      detailLoadIsCurrent(
+        requestId,
+        routeGeneration,
+        projectId,
+        expenseRequestId
+      )
+    ) {
+      loading.value = false;
+    }
   }
+}
+
+function detailLoadIsCurrent(
+  requestId: number,
+  routeGeneration: number,
+  projectId: string,
+  expenseRequestId: string
+) {
+  const currentRoute = routeIds();
+  return (
+    withdrawalComponentActive &&
+    requestId === detailLoadRequestId &&
+    routeGeneration === detailRouteGeneration &&
+    currentRoute.projectId === projectId &&
+    currentRoute.expenseRequestId === expenseRequestId
+  );
+}
+
+function clearProjectExpenseRouteContext() {
+  detailRouteGeneration += 1;
+  detailLoadRequestId += 1;
+  detailEpoch += 1;
+  withdrawalBusyOwnerId = 0;
+  withdrawalSubmitting.value = false;
+  invalidateProjectExpenseWithdrawalDialog(true);
+  projectExpenseWithdrawalCapability.value = null;
+  detail.value = null;
+  loading.value = false;
+  busy.value = "";
+  errorMessage.value = "";
+  actionMessage.value = "";
+}
+
+function clearProjectExpenseWithdrawalConfirmation() {
+  Object.assign(withdrawalConfirmation, {
+    error: "",
+    dialogGeneration: -1,
+    projectId: "",
+    expenseRequestId: "",
+    expectedExpenseUpdatedAt: "",
+    expectedApprovalInstanceId: "",
+    expectedNodeIndex: -1,
+    expectedApprovalUpdatedAt: ""
+  });
+}
+
+function invalidateProjectExpenseWithdrawalDialog(close: boolean) {
+  withdrawalDialogGeneration.value += 1;
+  clearProjectExpenseWithdrawalConfirmation();
+  if (close) withdrawalConfirmation.visible = false;
+}
+
+function scheduleRouteDetailLoad() {
+  const expectedGeneration = detailRouteGeneration;
+  void Promise.resolve().then(() => {
+    if (
+      withdrawalComponentActive &&
+      expectedGeneration === detailRouteGeneration
+    ) {
+      void loadDetail();
+    }
+  });
+}
+
+function openProjectExpenseWithdrawal() {
+  const capability = projectExpenseWithdrawalCapability.value;
+  const coordinates = capability?.withdrawalContext;
+  const { projectId, expenseRequestId } = routeIds();
+  if (
+    !withdrawalEnabled.value ||
+    !capability ||
+    !coordinates ||
+    capability.projectId !== projectId ||
+    capability.id !== expenseRequestId ||
+    withdrawalBusyOwnerId !== 0
+  ) {
+    return;
+  }
+  withdrawalDialogGeneration.value += 1;
+  Object.assign(withdrawalConfirmation, {
+    visible: true,
+    error: "",
+    dialogGeneration: withdrawalDialogGeneration.value,
+    projectId,
+    expenseRequestId,
+    expectedExpenseUpdatedAt: coordinates.expectedExpenseUpdatedAt,
+    expectedApprovalInstanceId: coordinates.expectedApprovalInstanceId,
+    expectedNodeIndex: coordinates.expectedNodeIndex,
+    expectedApprovalUpdatedAt: coordinates.expectedApprovalUpdatedAt
+  });
+}
+
+function cancelProjectExpenseWithdrawal() {
+  if (withdrawalBusyOwnerId !== 0) return;
+  invalidateProjectExpenseWithdrawalDialog(true);
+}
+
+function withdrawalCapabilityMatches(
+  context: ProjectExpenseWithdrawalActionContext
+) {
+  const capability = projectExpenseWithdrawalCapability.value;
+  const coordinates = capability?.withdrawalContext;
+  const currentDetail = detail.value;
+  const enabledActions = capability?.availableActions.filter(
+    (action) => action.key === "withdraw" && action.enabled
+  );
+  return (
+    capability?.projectId === context.projectId &&
+    capability.id === context.expenseRequestId &&
+    currentDetail?.projectId === context.projectId &&
+    currentDetail.id === context.expenseRequestId &&
+    capability.lifecycleUpdatedAt === context.expectedExpenseUpdatedAt &&
+    enabledActions?.length === 1 &&
+    coordinates?.expectedExpenseUpdatedAt ===
+      context.expectedExpenseUpdatedAt &&
+    coordinates.expectedApprovalInstanceId ===
+      context.expectedApprovalInstanceId &&
+    coordinates.expectedNodeIndex === context.expectedNodeIndex &&
+    coordinates.expectedApprovalUpdatedAt ===
+      context.expectedApprovalUpdatedAt
+  );
+}
+
+function withdrawalSelectionMatches(
+  context: ProjectExpenseWithdrawalActionContext
+) {
+  return (
+    withdrawalConfirmation.visible &&
+    withdrawalConfirmation.dialogGeneration === context.dialogGeneration &&
+    withdrawalConfirmation.projectId === context.projectId &&
+    withdrawalConfirmation.expenseRequestId === context.expenseRequestId &&
+    withdrawalConfirmation.expectedExpenseUpdatedAt ===
+      context.expectedExpenseUpdatedAt &&
+    withdrawalConfirmation.expectedApprovalInstanceId ===
+      context.expectedApprovalInstanceId &&
+    withdrawalConfirmation.expectedNodeIndex === context.expectedNodeIndex &&
+    withdrawalConfirmation.expectedApprovalUpdatedAt ===
+      context.expectedApprovalUpdatedAt
+  );
+}
+
+function withdrawalContextIsCurrent(
+  context: ProjectExpenseWithdrawalActionContext
+) {
+  const currentRoute = routeIds();
+  return (
+    withdrawalComponentActive &&
+    context.ownerScope === withdrawalOwnerScope &&
+    context.routeGeneration === detailRouteGeneration &&
+    context.detailEpoch === detailEpoch &&
+    context.dialogGeneration === withdrawalDialogGeneration.value &&
+    context.operationId === withdrawalBusyOwnerId &&
+    context.projectId === currentRoute.projectId &&
+    context.expenseRequestId === currentRoute.expenseRequestId &&
+    withdrawalSelectionMatches(context) &&
+    withdrawalCapabilityMatches(context)
+  );
+}
+
+function captureProjectExpenseWithdrawalContext(
+  action: "withdraw"
+): ProjectExpenseWithdrawalActionContext | null {
+  const coordinates = withdrawalConfirmation;
+  const { projectId, expenseRequestId } = routeIds();
+  if (
+    action !== "withdraw" ||
+    withdrawalBusyOwnerId !== 0 ||
+    !withdrawalConfirmation.visible ||
+    coordinates.dialogGeneration !== withdrawalDialogGeneration.value ||
+    !withdrawalEnabled.value ||
+    coordinates.projectId !== projectId ||
+    coordinates.expenseRequestId !== expenseRequestId ||
+    !coordinates.expectedExpenseUpdatedAt ||
+    !coordinates.expectedApprovalInstanceId ||
+    !Number.isInteger(coordinates.expectedNodeIndex) ||
+    coordinates.expectedNodeIndex < 0 ||
+    !coordinates.expectedApprovalUpdatedAt
+  ) {
+    withdrawalConfirmation.error =
+      "撤回上下文已失效，请重新打开确认。";
+    return null;
+  }
+  const context = Object.freeze({
+    action,
+    ownerScope: withdrawalOwnerScope,
+    routeGeneration: detailRouteGeneration,
+    detailEpoch,
+    dialogGeneration: coordinates.dialogGeneration,
+    operationId: ++withdrawalOperationSequence,
+    projectId,
+    expenseRequestId,
+    expectedExpenseUpdatedAt: coordinates.expectedExpenseUpdatedAt,
+    expectedApprovalInstanceId: coordinates.expectedApprovalInstanceId,
+    expectedNodeIndex: coordinates.expectedNodeIndex,
+    expectedApprovalUpdatedAt: coordinates.expectedApprovalUpdatedAt
+  });
+  withdrawalBusyOwnerId = context.operationId;
+  withdrawalSubmitting.value = true;
+  withdrawalConfirmation.error = "";
+  return context;
+}
+
+function sameWithdrawalContext(
+  left: ProjectExpenseWithdrawalActionContext,
+  right: ProjectExpenseWithdrawalActionContext
+) {
+  return (
+    left.action === right.action &&
+    left.ownerScope === right.ownerScope &&
+    left.routeGeneration === right.routeGeneration &&
+    left.detailEpoch === right.detailEpoch &&
+    left.dialogGeneration === right.dialogGeneration &&
+    left.operationId === right.operationId &&
+    left.projectId === right.projectId &&
+    left.expenseRequestId === right.expenseRequestId &&
+    left.expectedExpenseUpdatedAt === right.expectedExpenseUpdatedAt &&
+    left.expectedApprovalInstanceId === right.expectedApprovalInstanceId &&
+    left.expectedNodeIndex === right.expectedNodeIndex &&
+    left.expectedApprovalUpdatedAt === right.expectedApprovalUpdatedAt
+  );
+}
+
+function preparedWithdrawalIsCurrent(
+  context: ProjectExpenseWithdrawalActionContext,
+  prepared: PrepareProjectExpenseWithdrawalActionResult
+) {
+  return (
+    prepared.status === "ready" &&
+    sameWithdrawalContext(context, prepared.context) &&
+    withdrawalContextIsCurrent(context)
+  );
+}
+
+async function completeProjectExpenseWithdrawal(
+  context: ProjectExpenseWithdrawalActionContext
+) {
+  if (!withdrawalContextIsCurrent(context)) return;
+  withdrawalConfirmation.visible = false;
+  withdrawalConfirmation.error = "";
+  actionTone.value = "success";
+  actionMessage.value = "项目支出申请已撤回，审批历史已保留。";
+  await loadDetail();
+}
+
+function failProjectExpenseWithdrawal(
+  context: ProjectExpenseWithdrawalActionContext,
+  error: unknown
+) {
+  if (!withdrawalContextIsCurrent(context)) return;
+  const reason =
+    error instanceof Error ? error.message : "项目支出申请撤回失败";
+  actionTone.value = "error";
+  actionMessage.value = reason;
+  withdrawalConfirmation.error = reason;
+}
+
+function finishProjectExpenseWithdrawal(
+  context: ProjectExpenseWithdrawalActionContext
+) {
+  if (
+    context.ownerScope === withdrawalOwnerScope &&
+    context.operationId === withdrawalBusyOwnerId
+  ) {
+    withdrawalBusyOwnerId = 0;
+    withdrawalSubmitting.value = false;
+  }
+}
+
+function confirmProjectExpenseWithdrawal() {
+  return executeProjectExpenseWithdrawalAction({
+    action: "withdraw",
+    capture: captureProjectExpenseWithdrawalContext,
+    preflight: (context) =>
+      prepareProjectExpenseWithdrawalAction({
+        ...context,
+        isCurrent: withdrawalContextIsCurrent
+      }),
+    current: preparedWithdrawalIsCurrent,
+    complete: completeProjectExpenseWithdrawal,
+    fail: failProjectExpenseWithdrawal,
+    finish: finishProjectExpenseWithdrawal
+  });
 }
 
 async function executeLifecycleAction(request: BusinessDraftActionRequest) {
   const { projectId, expenseRequestId } = routeIds();
-  if (request.action === "withdraw") {
-    await withdrawProjectExpenseApproval(projectId, expenseRequestId);
-    actionTone.value = "success";
-    actionMessage.value = "项目支出申请已撤回，审批历史已保留。";
-    return;
-  }
   if (request.action === "void") {
     await voidProjectExpenseRequest(projectId, expenseRequestId, {
       reason: request.reason
@@ -282,7 +713,23 @@ async function submitReview(decision: "approve" | "reject") {
   }
 }
 
-onMounted(loadDetail);
+watch(
+  () => [routeIds().projectId, routeIds().expenseRequestId] as const,
+  () => {
+    clearProjectExpenseRouteContext();
+    scheduleRouteDetailLoad();
+  },
+  { flush: "sync" }
+);
+
+onMounted(() => {
+  void loadDetail();
+});
+
+onBeforeUnmount(() => {
+  withdrawalComponentActive = false;
+  clearProjectExpenseRouteContext();
+});
 </script>
 
 <style scoped>

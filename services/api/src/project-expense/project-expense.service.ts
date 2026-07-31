@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   GoneException,
   Injectable,
@@ -36,6 +37,7 @@ import type { RecordProjectExpenseExecutionDto } from "./dto/record-project-expe
 import type { RecordProjectExpenseFinanceRecordDto } from "./dto/record-project-expense-finance-record.dto";
 import type { RecordProjectExpensePurchaseExecutionDto } from "./dto/record-project-expense-purchase-execution.dto";
 import type { ReviewProjectExpenseApprovalDto } from "./dto/review-project-expense-approval.dto";
+import type { WithdrawProjectExpenseApprovalDto } from "./dto/withdraw-project-expense-approval.dto";
 
 interface ProjectExpenseApprovalNode {
   name: string;
@@ -53,7 +55,15 @@ type ProjectExpenseApprovalLifecycleReadModel = ProjectExpenseApprovalDetailRead
   hasPersistentDraft: false;
   availableActions: DetailActionReadModel[];
   blockedReasons: string[];
+  withdrawalContext: ProjectExpenseWithdrawalContext | null;
 };
+
+export interface ProjectExpenseWithdrawalContext {
+  expectedExpenseUpdatedAt: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+  expectedApprovalUpdatedAt: string;
+}
 
 interface ProjectExpenseLedgerQuery {
   view?: ProjectExpenseLedgerView;
@@ -84,6 +94,7 @@ interface ExpenseLockRow {
   applicantUserId: string;
   purchaseExecutedAt: Date | null;
   receiptConfirmedAt: Date | null;
+  updatedAt: Date;
 }
 
 interface ApprovalInstanceLockRow {
@@ -92,6 +103,7 @@ interface ApprovalInstanceLockRow {
   currentNodeIndex: number;
   frozenNodes: Prisma.JsonValue;
   applicantUserId: string;
+  updatedAt: Date;
 }
 
 const PROJECT_EXPENSE_APPROVAL_NODES = [
@@ -399,24 +411,37 @@ export class ProjectExpenseService {
       throw new ForbiddenException("无权查看该项目支出审批详情");
     }
 
-    const instance = expense.status === "approval_pending"
-      ? await this.prisma.approvalInstance.findFirst({
+    const instances = expense.status === "approval_pending"
+      ? await this.prisma.approvalInstance.findMany({
           where: {
             businessType: "project_expense_request",
             businessId: expense.id,
             flowType: "project_expense.approve",
             status: "in_progress"
           },
-          orderBy: { createdAt: "desc" },
+          orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+          take: 2,
           select: {
             id: true,
             status: true,
             currentNodeIndex: true,
             frozenNodes: true,
-            applicantUserId: true
+            applicantUserId: true,
+            updatedAt: true
           }
         })
-      : null;
+      : [];
+    const instance = instances.length === 1 ? instances[0]! : null;
+    const usedFinancingUsage =
+      expense.status === "approval_pending" && isExpenseApplicant
+        ? await this.prisma.projectExpenseFinancingQuotaUsage.findFirst({
+            where: {
+              projectExpenseRequestId: expense.id,
+              status: "used"
+            },
+            select: { id: true }
+          })
+        : null;
     const nodes = (instance?.frozenNodes ?? []) as unknown as ProjectExpenseApprovalNode[];
     const currentNode = instance ? nodes[instance.currentNodeIndex] ?? null : null;
     const approvedRoleKey = currentNode?.roleKeys.find((role) => actorRoleKeys.includes(role)) ?? null;
@@ -438,12 +463,28 @@ export class ProjectExpenseService {
     const ended = ["withdrawn", "rejected", "voided"].includes(expense.status);
     const availableActions: DetailActionReadModel[] = [];
     const blockedReasons: string[] = [];
+    const withdrawalContext =
+      expense.status === "approval_pending" &&
+      isExpenseApplicant &&
+      instance?.applicantUserId === actorUserId &&
+      !usedFinancingUsage &&
+      expense.updatedAt instanceof Date &&
+      instance.updatedAt instanceof Date
+        ? {
+            expectedExpenseUpdatedAt:
+              expense.updatedAt.toISOString(),
+            expectedApprovalInstanceId: instance.id,
+            expectedNodeIndex: instance.currentNodeIndex,
+            expectedApprovalUpdatedAt:
+              instance.updatedAt.toISOString()
+          }
+        : null;
     if (ended) {
       blockedReasons.push("项目支出申请已结束，只能查看历史记录");
     } else if (paidAmountCents > 0n || ["partially_paid", "paid"].includes(expense.status)) {
       blockedReasons.push("已有实付记录，不能删除或普通作废");
     } else if (expense.status === "approval_pending") {
-      if (isExpenseApplicant) {
+      if (withdrawalContext) {
         availableActions.push(detailAction({
           key: "withdraw",
           label: "撤回项目支出申请",
@@ -452,6 +493,10 @@ export class ProjectExpenseService {
           skipRoleCheck: true,
           enabled: true
         }));
+      } else if (isExpenseApplicant && usedFinancingUsage) {
+        blockedReasons.push(
+          "已有实付资金占用的项目支出不能撤回"
+        );
       }
       if (canPerform("project_expense.void", actorRoleKeys)) {
         availableActions.push(detailAction({
@@ -521,7 +566,8 @@ export class ProjectExpenseService {
       lifecycleUpdatedAt: expense.updatedAt instanceof Date ? expense.updatedAt.toISOString() : null,
       hasPersistentDraft: false,
       availableActions,
-      blockedReasons
+      blockedReasons,
+      withdrawalContext
     };
   }
 
@@ -867,18 +913,88 @@ export class ProjectExpenseService {
     return reviewed;
   }
 
-  async withdrawApproval(projectId: string, expenseRequestId: string, actorUserId: string) {
+  async withdrawApproval(
+    projectId: string,
+    expenseRequestId: string,
+    actorUserId: string,
+    input: WithdrawProjectExpenseApprovalDto
+  ) {
+    const expectedExpenseUpdatedAt = new Date(
+      input.expectedExpenseUpdatedAt
+    );
+    const expectedApprovalUpdatedAt = new Date(
+      input.expectedApprovalUpdatedAt
+    );
+    if (
+      Number.isNaN(expectedExpenseUpdatedAt.getTime()) ||
+      Number.isNaN(expectedApprovalUpdatedAt.getTime()) ||
+      !Number.isInteger(input.expectedNodeIndex) ||
+      input.expectedNodeIndex < 0 ||
+      !input.expectedApprovalInstanceId?.trim()
+    ) {
+      throw new BadRequestException(
+        "项目支出撤回坐标格式不正确"
+      );
+    }
+    const expectedApprovalInstanceId =
+      input.expectedApprovalInstanceId.trim();
     return this.prisma.$transaction(async (tx) => {
-      const request = await this.lockExpenseRequest(tx, projectId, expenseRequestId);
+      const request = await this.lockExpenseRequestById(
+        tx,
+        projectId,
+        expenseRequestId
+      );
       if (!request) {
         throw new NotFoundException("项目支出申请不存在");
+      }
+      if (request.applicantUserId !== actorUserId) {
+        throw new BadRequestException(
+          "只有项目支出申请人可以撤回"
+        );
       }
       if (request.status !== "approval_pending") {
         throw new BadRequestException("当前项目支出状态不可撤回");
       }
-      const instance = await this.lockApprovalInstance(tx, request.id);
-      if (!instance || instance.applicantUserId !== actorUserId) {
-        throw new BadRequestException("只有项目支出申请人可以撤回");
+      if (request.paidAmountCents > 0n) {
+        throw new BadRequestException(
+          "已有实付的项目支出不能撤回"
+        );
+      }
+      const instances = await this.lockApprovalInstances(
+        tx,
+        request.id
+      );
+      if (instances.length !== 1) {
+        throw new ConflictException(
+          "项目支出审批实例已变化，请刷新后重试"
+        );
+      }
+      const instance = instances[0]!;
+      if (instance.applicantUserId !== actorUserId) {
+        throw new ConflictException(
+          "项目支出申请人与审批实例不一致，请刷新后重试"
+        );
+      }
+      if (
+        request.updatedAt.getTime() !==
+          expectedExpenseUpdatedAt.getTime() ||
+        instance.id !== expectedApprovalInstanceId ||
+        instance.currentNodeIndex !== input.expectedNodeIndex ||
+        instance.updatedAt.getTime() !==
+          expectedApprovalUpdatedAt.getTime()
+      ) {
+        throw new ConflictException(
+          "项目支出或审批坐标已变化，请刷新后重试"
+        );
+      }
+      const financingUsage = await this.financingUsageTotals(
+        tx,
+        request.id
+      );
+      if (financingUsage.used > 0n) {
+        throw new BadRequestException(
+          "已有实付资金占用的项目支出不能撤回"
+        );
       }
       const updated = await tx.projectExpenseRequest.update({
         where: { id: request.id },
@@ -902,7 +1018,15 @@ export class ProjectExpenseService {
         action: "project_expense.approval.withdraw",
         businessType: "project_expense_request",
         businessId: request.id,
-        metadata: { projectId }
+        metadata: {
+          projectId,
+          expectedExpenseUpdatedAt:
+            expectedExpenseUpdatedAt.toISOString(),
+          expectedApprovalInstanceId,
+          expectedNodeIndex: input.expectedNodeIndex,
+          expectedApprovalUpdatedAt:
+            expectedApprovalUpdatedAt.toISOString()
+        }
       });
       return updated;
     });
@@ -1600,10 +1724,38 @@ export class ProjectExpenseService {
         "paidAmountCents",
         "applicantUserId",
         "purchaseExecutedAt",
-        "receiptConfirmedAt"
+        "receiptConfirmedAt",
+        "updatedAt"
       FROM "ProjectExpenseRequest"
       WHERE "projectId" = ${projectId} AND ("id" = ${expenseRequestId} OR "code" = ${expenseRequestId})
       LIMIT 1
+      FOR UPDATE
+    `);
+    return rows[0] ?? null;
+  }
+
+  private async lockExpenseRequestById(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    expenseRequestId: string
+  ): Promise<ExpenseLockRow | null> {
+    const rows = await tx.$queryRaw<Array<ExpenseLockRow>>(Prisma.sql`
+      SELECT
+        "id",
+        "projectId",
+        "code",
+        "expenseType",
+        "status",
+        "requestedAmountCents",
+        "approvedAmountCents",
+        "paidAmountCents",
+        "applicantUserId",
+        "purchaseExecutedAt",
+        "receiptConfirmedAt",
+        "updatedAt"
+      FROM "ProjectExpenseRequest"
+      WHERE "projectId" = ${projectId}
+        AND "id" = ${expenseRequestId}
       FOR UPDATE
     `);
     return rows[0] ?? null;
@@ -1620,7 +1772,8 @@ export class ProjectExpenseService {
         "status",
         "currentNodeIndex",
         "frozenNodes",
-        "applicantUserId"
+        "applicantUserId",
+        "updatedAt"
       FROM "ApprovalInstance"
       WHERE "businessType" = 'project_expense_request'
         AND "businessId" = ${expenseRequestId}
@@ -1630,6 +1783,28 @@ export class ProjectExpenseService {
       FOR UPDATE
     `);
     return rows[0] ?? null;
+  }
+
+  private async lockApprovalInstances(
+    tx: Prisma.TransactionClient,
+    expenseRequestId: string
+  ): Promise<ApprovalInstanceLockRow[]> {
+    return tx.$queryRaw<Array<ApprovalInstanceLockRow>>(Prisma.sql`
+      SELECT
+        "id",
+        "status",
+        "currentNodeIndex",
+        "frozenNodes",
+        "applicantUserId",
+        "updatedAt"
+      FROM "ApprovalInstance"
+      WHERE "businessType" = 'project_expense_request'
+        AND "businessId" = ${expenseRequestId}
+        AND "flowType" = 'project_expense.approve'
+        AND "status" = 'in_progress'
+      ORDER BY "id"
+      FOR UPDATE
+    `);
   }
 
   private async loadActorRoleKeys(

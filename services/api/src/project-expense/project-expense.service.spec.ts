@@ -98,12 +98,16 @@ describe("ProjectExpenseService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1"
+        }),
+        findMany: jest.fn().mockResolvedValue([{
           id: "approval-instance-1",
           status: "in_progress",
           currentNodeIndex: 0,
           frozenNodes: [currentNode],
-          applicantUserId: instanceApplicantUserId
-        })
+          applicantUserId: instanceApplicantUserId,
+          updatedAt: new Date("2026-07-20T08:00:01.000Z")
+        }])
       },
       approvalActionLog: {
         findMany: jest.fn().mockResolvedValue([
@@ -116,6 +120,9 @@ describe("ProjectExpenseService", () => {
             createdAt: new Date("2026-07-11T08:00:00.000Z")
           }
         ])
+      },
+      projectExpenseFinancingQuotaUsage: {
+        findFirst: jest.fn().mockResolvedValue(null)
       },
       user: { findMany: jest.fn().mockResolvedValue([{ id: "previous-reviewer", name: "王经理" }]) },
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
@@ -147,7 +154,7 @@ describe("ProjectExpenseService", () => {
         approvalTimeline: [expect.objectContaining({ actorName: "王经理", nodeName: "上一节点" })]
       })
     );
-    expect(prisma.approvalInstance.findFirst).toHaveBeenCalledWith(
+    expect(prisma.approvalInstance.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ businessType: "project_expense_request", businessId: "expense-1" })
       })
@@ -156,7 +163,7 @@ describe("ProjectExpenseService", () => {
 
   it("非最终审批节点不允许填写批准金额", async () => {
     const { service, prisma, actorUserId } = approvalDetailFixture();
-    prisma.approvalInstance.findFirst.mockResolvedValue({
+    prisma.approvalInstance.findMany.mockResolvedValue([{
       id: "approval-instance-1",
       status: "in_progress",
       currentNodeIndex: 0,
@@ -164,8 +171,9 @@ describe("ProjectExpenseService", () => {
         { name: "财务部", mode: "any", roleKeys: ["finance_director"] },
         { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
       ],
-      applicantUserId: "applicant-1"
-    });
+      applicantUserId: "applicant-1",
+      updatedAt: new Date("2026-07-20T08:00:01.000Z")
+    }]);
 
     const detail = await service.getApprovalDetail("project-1", "expense-1", actorUserId);
 
@@ -347,7 +355,7 @@ describe("ProjectExpenseService", () => {
       actorUserId: "applicant-1",
       status: "rejected"
     });
-    prisma.approvalInstance.findFirst.mockResolvedValue(null);
+    prisma.approvalInstance.findMany.mockResolvedValue([]);
 
     const detail = await service.getApprovalDetail("project-1", "expense-1", "applicant-1");
 

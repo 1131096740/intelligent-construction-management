@@ -1,5 +1,12 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { sensitiveActionConfirmationError } from "./sensitive-action-dialog.config";
+
+const dialogSource = readFileSync(
+  fileURLToPath(new URL("./SensitiveActionDialog.vue", import.meta.url)),
+  "utf8"
+);
 
 describe("sensitive action dialog configuration", () => {
   it("requires the configured reason and current password", () => {
@@ -30,5 +37,12 @@ describe("sensitive action dialog configuration", () => {
         password: "Current@2026"
       })
     ).toBe("");
+  });
+
+  it("removes every user-controlled close path while a sensitive write is loading", () => {
+    expect(dialogSource).toContain(':close-btn="!loading"');
+    expect(dialogSource).toContain(':close-on-overlay-click="false"');
+    expect(dialogSource).toContain(':close-on-esc-keydown="!loading"');
+    expect(dialogSource).toContain("if (props.loading) return;");
   });
 });

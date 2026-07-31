@@ -59,12 +59,30 @@ describe("project expense approval interaction", () => {
     }
   );
 
-  it("renders only server-projected withdrawal and void actions through the shared sensitive action", () => {
-    expect(detailPageSource).toContain("<BusinessDraftAction");
-    expect(detailPageSource).toContain(':actions="detail.availableActions"');
+  it("isolates the server-authorized withdrawal from the independent void action", () => {
+    expect(detailPageSource.match(/<BusinessDraftAction\b/g)).toHaveLength(1);
+    expect(detailPageSource).toContain("<SensitiveActionDialog");
+    expect(detailPageSource).toContain(
+      '@confirm="confirmProjectExpenseWithdrawal"'
+    );
+    expect(detailPageSource).toContain(
+      "projectExpenseWithdrawalActionEnabled('withdraw')"
+    );
+    expect(detailPageSource).toContain(
+      "撤回后本轮审批结束，申请进入已撤回历史记录"
+    );
+    expect(detailPageSource).not.toContain("撤回后申请回到可修改状态");
+    expect(detailPageSource).toContain(
+      ':actions="nonWithdrawalLifecycleActions"'
+    );
     expect(detailPageSource).toContain(':blocked-reasons="detail.blockedReasons"');
-    expect(detailPageSource).toContain("withdrawProjectExpenseApproval");
+    expect(detailPageSource).toContain("shallowRef");
+    expect(detailPageSource).toContain("structuredClone(serverDetail)");
+    expect(detailPageSource).toContain("prepareProjectExpenseWithdrawalAction");
+    expect(detailPageSource).toContain("executeProjectExpenseWithdrawalAction");
+    expect(detailPageSource).toContain('action: "withdraw"');
     expect(detailPageSource).toContain("voidProjectExpenseRequest");
+    expect(detailPageSource).not.toContain("withdrawProjectExpenseApproval");
     expect(detailPageSource).not.toContain("canWithdrawProjectExpense");
     expect(detailPageSource).not.toContain("canVoidProjectExpense");
   });

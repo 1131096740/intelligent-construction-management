@@ -17,13 +17,13 @@
     "totalVueFileCount": 134,
     "parsedVueFileCount": 134,
     "reachableProductionModuleCount": 229,
-    "templateEventDirectiveCount": 906,
+    "templateEventDirectiveCount": 909,
     "propCallbackDirectiveCount": 10,
-    "coveredProductionMutationConsumerCount": 14,
+    "coveredProductionMutationConsumerCount": 15,
     "candidateProductionMutationConsumerCount": 38,
-    "acceptedProductionMutationConsumerCount": 14,
+    "acceptedProductionMutationConsumerCount": 15,
     "productionMutationConsumerPairCount": 274,
-    "blockerCount": 318
+    "blockerCount": 315
   },
   "evidence": {
     "totalProductionModuleCount": 236,
@@ -1879,7 +1879,7 @@
         "handler": "submitReview",
         "variant": "approve",
         "kind": "event",
-        "sourceLine": 99,
+        "sourceLine": 122,
         "sourceColumn": 14
       },
       "semantic": "business_write",
@@ -1942,7 +1942,7 @@
         "handler": "submitReview",
         "variant": "reject",
         "kind": "event",
-        "sourceLine": 108,
+        "sourceLine": 131,
         "sourceColumn": 14
       },
       "semantic": "business_write",
@@ -2000,26 +2000,25 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
       "trigger": {
-        "element": "business-draft-action",
-        "event": "execute",
-        "handler": "executeLifecycleAction",
-        "variant": "withdraw",
-        "kind": "prop_callback",
-        "sourceLine": 60,
-        "sourceColumn": 10
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmProjectExpenseWithdrawal",
+        "kind": "event",
+        "sourceLine": 84,
+        "sourceColumn": 8
       },
       "semantic": "business_write",
       "capability": {
         "kind": "detail_action",
-        "source": "detail.availableActions",
+        "source": "projectExpenseWithdrawalCapability.availableActions",
         "key": "withdraw",
-        "serverDerived": false,
-        "dominatesTrigger": false
+        "serverDerived": true,
+        "dominatesTrigger": true
       },
       "bindings": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "withdrawProjectExpenseApproval",
+          "wrapper": "executeProjectExpenseWithdrawalAction",
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/approval-withdrawal",
           "normalizedKey": "POST /projects/:param/expense-requests/:param/approval-withdrawal",
@@ -2041,11 +2040,14 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "executeLifecycleAction"
+              "confirmProjectExpenseWithdrawal",
+              "executeProjectExpenseWithdrawalAction"
             ]
           },
           "ticketFollowups": []
@@ -3211,13 +3213,6 @@
       },
       {
         "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "project-expense.withdraw",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "withdrawProjectExpenseApproval"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
         "actionId": "settlement-draft.save-local-gate",
         "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
         "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
@@ -3312,12 +3307,6 @@
       {
         "code": "WRITE_WITHOUT_SERVER_CAPABILITY",
         "actionId": "project-expense.review-reject",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
-        "reason": "capability_not_dominating"
-      },
-      {
-        "code": "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED",
-        "actionId": "project-expense.withdraw",
         "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
         "reason": "capability_not_dominating"
       },
@@ -4865,15 +4854,6 @@
         "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
         "normalizedKeys": [
           "POST /projects/:param/expense-requests/:param/voiding"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "withdrawProjectExpenseApproval",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/expense-requests/:param/approval-withdrawal"
         ]
       },
       {

@@ -61,8 +61,9 @@ import {
   reviewProjectFinancingQuota,
   terminateProjectFinancingQuota,
   createProjectExpenseRequest,
+  executeProjectExpenseWithdrawalAction,
+  prepareProjectExpenseWithdrawalAction,
   reviewProjectExpenseApproval,
-  withdrawProjectExpenseApproval,
   voidProjectExpenseRequest,
   confirmProjectExpenseReceipt,
   recordProjectExpenseExecution,
@@ -1094,7 +1095,6 @@ describe("core flow read API client", () => {
       approvedAmountCents: "80000",
       comment: "同意"
     });
-    await withdrawProjectExpenseApproval("project-1", "expense-1");
     await voidProjectExpenseRequest("project-1", "expense-1", {
       reason: "重复提交"
     });
@@ -1130,7 +1130,6 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/projects/project-1/expense-requests",
       "/api/projects/project-1/expense-requests/expense-1/approval",
-      "/api/projects/project-1/expense-requests/expense-1/approval-withdrawal",
       "/api/projects/project-1/expense-requests/expense-1/voiding",
       "/api/projects/project-1/expense-requests/expense-1/executions",
       "/api/projects/project-1/expense-requests/expense-1/purchase-execution",
@@ -1164,8 +1163,8 @@ describe("core flow read API client", () => {
         comment: "同意"
       })
     );
-    expect(fetchMock.mock.calls[3][1]?.body).toBe(JSON.stringify({ reason: "重复提交" }));
-    expect(fetchMock.mock.calls[4][1]?.body).toBe(
+    expect(fetchMock.mock.calls[2][1]?.body).toBe(JSON.stringify({ reason: "重复提交" }));
+    expect(fetchMock.mock.calls[3][1]?.body).toBe(
       JSON.stringify({
         amountCents: "80000",
         paidAt: "2026-07-02T10:00:00.000Z",
@@ -1173,33 +1172,33 @@ describe("core flow read API client", () => {
         confirmationPassword: "current-password"
       })
     );
-    expect(fetchMock.mock.calls[5][1]?.body).toBe(
+    expect(fetchMock.mock.calls[4][1]?.body).toBe(
       JSON.stringify({
         executedAt: "2026-07-02T09:00:00.000Z",
         note: "已采购",
         confirmationPassword: "current-password"
       })
     );
-    expect(fetchMock.mock.calls[6][1]?.body).toBe(
+    expect(fetchMock.mock.calls[5][1]?.body).toBe(
       JSON.stringify({
         amountCents: "80000",
         occurredAt: "2026-07-02T11:00:00.000Z",
         confirmationPassword: "current-password"
       })
     );
-    expect(fetchMock.mock.calls[7][1]?.body).toBe(
+    expect(fetchMock.mock.calls[6][1]?.body).toBe(
       JSON.stringify({
         confirmationPassword: "current-password",
         note: "数量无误"
       })
     );
-    expect(fetchMock.mock.calls[8][1]?.body).toBe(
+    expect(fetchMock.mock.calls[7][1]?.body).toBe(
       JSON.stringify({
         confirmationPassword: "current-password",
         downloadReason: "报销附件复核"
       })
     );
-    expect(fetchMock.mock.calls[9][1]?.body).toBe(
+    expect(fetchMock.mock.calls[8][1]?.body).toBe(
       JSON.stringify({
         confirmationPassword: "current-password",
         downloadReason: "审批单复核"
@@ -1246,6 +1245,118 @@ describe("core flow read API client", () => {
         confirmationPassword: " current-password "
       })
     );
+  });
+
+  it("freezes project expense withdrawal coordinates behind a fresh GET and one encoded POST", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(projectExpenseWithdrawalDetail()))
+      .mockResolvedValueOnce(jsonResponse({ id: "expense/a", status: "withdrawn" }));
+    const input = projectExpenseWithdrawalActionInput();
+    const prepared = await prepareProjectExpenseWithdrawalAction(input);
+
+    input.expectedExpenseUpdatedAt = "2026-07-31T09:00:00.000Z";
+    input.expectedApprovalInstanceId = "forged-instance";
+    const complete = vi.fn();
+    const fail = vi.fn();
+    const finish = vi.fn();
+    await expect(
+      executeProjectExpenseWithdrawalAction({
+        action: "withdraw",
+        capture: () => prepared.context,
+        preflight: async () => prepared,
+        current: () => true,
+        complete,
+        fail,
+        finish
+      })
+    ).resolves.toEqual(expect.objectContaining({ status: "completed" }));
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project%2Fa/expense-requests/expense%2Fa/approval-detail",
+      "/api/projects/project%2Fa/expense-requests/expense%2Fa/approval-withdrawal"
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe("POST");
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(
+      JSON.stringify({
+        expectedExpenseUpdatedAt: "2026-07-31T00:00:00.000Z",
+        expectedApprovalInstanceId: "approval-expense-a",
+        expectedNodeIndex: 1,
+        expectedApprovalUpdatedAt: "2026-07-31T00:05:00.000Z"
+      })
+    );
+    expect(complete).toHaveBeenCalledOnce();
+    expect(fail).not.toHaveBeenCalled();
+    expect(finish).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["missing action", projectExpenseWithdrawalDetail({ availableActions: [] })],
+    [
+      "disabled action",
+      projectExpenseWithdrawalDetail({
+        availableActions: [{
+          key: "withdraw",
+          label: "撤回项目支出申请",
+          kind: "danger",
+          enabled: false,
+          disabledReason: "当前不可撤回"
+        }]
+      })
+    ],
+    [
+      "duplicate action",
+      projectExpenseWithdrawalDetail({
+        availableActions: [
+          projectExpenseWithdrawAction(),
+          projectExpenseWithdrawAction()
+        ]
+      })
+    ],
+    ["project drift", projectExpenseWithdrawalDetail({ projectId: "project-b" })],
+    ["expense drift", projectExpenseWithdrawalDetail({ expenseRequestId: "expense-b" })],
+    [
+      "expense version drift",
+      projectExpenseWithdrawalDetail({
+        expectedExpenseUpdatedAt: "2026-07-31T09:00:00.000Z"
+      })
+    ],
+    [
+      "approval instance drift",
+      projectExpenseWithdrawalDetail({
+        expectedApprovalInstanceId: "approval-expense-b"
+      })
+    ],
+    ["node drift", projectExpenseWithdrawalDetail({ expectedNodeIndex: 2 })],
+    [
+      "approval version drift",
+      projectExpenseWithdrawalDetail({
+        expectedApprovalUpdatedAt: "2026-07-31T09:05:00.000Z"
+      })
+    ],
+    ["missing context", projectExpenseWithdrawalDetail({ withdrawalContext: null })]
+  ])("refuses a %s project expense withdrawal preflight before POST", async (_label, detail) => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(detail));
+
+    await expect(
+      prepareProjectExpenseWithdrawalAction(projectExpenseWithdrawalActionInput())
+    ).rejects.toThrow("项目支出撤回资格或坐标已变化");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops a stale project expense withdrawal after fresh GET and before POST", async () => {
+    let current = true;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      current = false;
+      return jsonResponse(projectExpenseWithdrawalDetail());
+    });
+
+    await expect(
+      prepareProjectExpenseWithdrawalAction(
+        projectExpenseWithdrawalActionInput({ isCurrent: () => current })
+      )
+    ).resolves.toEqual(expect.objectContaining({ status: "stale" }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("creates contract drafts through the backend", async () => {
@@ -3169,6 +3280,87 @@ describe("core flow read API client", () => {
     );
   });
 });
+
+function projectExpenseWithdrawAction() {
+  return {
+    key: "withdraw",
+    label: "撤回项目支出申请",
+    kind: "danger",
+    enabled: true,
+    disabledReason: null
+  };
+}
+
+function projectExpenseWithdrawalDetail(
+  overrides: {
+    projectId?: string;
+    expenseRequestId?: string;
+    expectedExpenseUpdatedAt?: string;
+    expectedApprovalInstanceId?: string;
+    expectedNodeIndex?: number;
+    expectedApprovalUpdatedAt?: string;
+    withdrawalContext?: null;
+    availableActions?: Array<Record<string, unknown>>;
+  } = {}
+) {
+  const expectedExpenseUpdatedAt =
+    overrides.expectedExpenseUpdatedAt ?? "2026-07-31T00:00:00.000Z";
+  return {
+    id: overrides.expenseRequestId ?? "expense/a",
+    projectId: overrides.projectId ?? "project/a",
+    lifecycleUpdatedAt: expectedExpenseUpdatedAt,
+    withdrawalContext:
+      overrides.withdrawalContext === null
+        ? null
+        : {
+            expectedExpenseUpdatedAt,
+            expectedApprovalInstanceId:
+              overrides.expectedApprovalInstanceId ??
+              "approval-expense-a",
+            expectedNodeIndex: overrides.expectedNodeIndex ?? 1,
+            expectedApprovalUpdatedAt:
+              overrides.expectedApprovalUpdatedAt ??
+              "2026-07-31T00:05:00.000Z"
+          },
+    availableActions:
+      overrides.availableActions ?? [projectExpenseWithdrawAction()]
+  };
+}
+
+function projectExpenseWithdrawalActionInput(
+  overrides: Partial<{
+    action: "withdraw";
+    ownerScope: string;
+    routeGeneration: number;
+    detailEpoch: number;
+    dialogGeneration: number;
+    operationId: number;
+    projectId: string;
+    expenseRequestId: string;
+    expectedExpenseUpdatedAt: string;
+    expectedApprovalInstanceId: string;
+    expectedNodeIndex: number;
+    expectedApprovalUpdatedAt: string;
+    isCurrent: (context: unknown) => boolean;
+  }> = {}
+) {
+  return {
+    action: "withdraw" as const,
+    ownerScope: "project-expense-withdraw-owner",
+    routeGeneration: 1,
+    detailEpoch: 2,
+    dialogGeneration: 3,
+    operationId: 4,
+    projectId: "project/a",
+    expenseRequestId: "expense/a",
+    expectedExpenseUpdatedAt: "2026-07-31T00:00:00.000Z",
+    expectedApprovalInstanceId: "approval-expense-a",
+    expectedNodeIndex: 1,
+    expectedApprovalUpdatedAt: "2026-07-31T00:05:00.000Z",
+    isCurrent: () => true,
+    ...overrides
+  };
+}
 
 function paymentReviewDetail(
   overrides: {

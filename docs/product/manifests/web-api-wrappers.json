@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 14,
-    "exportedFunctionCount": 387,
-    "transportWrapperCount": 382,
+    "exportedFunctionCount": 388,
+    "transportWrapperCount": 383,
     "pureExportCount": 5,
-    "mainRequestBindingCount": 388,
+    "mainRequestBindingCount": 389,
     "ticketFollowupCount": 2,
-    "requestEdgeCount": 388,
-    "productionConsumerCount": 336,
+    "requestEdgeCount": 389,
+    "productionConsumerCount": 337,
     "orphanWrapperCount": 46,
     "testOnlyWrapperCount": 44,
     "unreferencedWrapperCount": 2,
@@ -4631,7 +4631,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3791,
+          "sourceLine": 4005,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -4661,7 +4661,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3775,
+          "sourceLine": 3989,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -4691,7 +4691,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3775,
+          "sourceLine": 3989,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -4721,7 +4721,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2959,
+          "sourceLine": 3173,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -4750,7 +4750,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3775,
+          "sourceLine": 3989,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -4840,7 +4840,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3818,
+          "sourceLine": 4032,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -4869,7 +4869,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3805,
+          "sourceLine": 4019,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -4898,7 +4898,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3833,
+          "sourceLine": 4047,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -4927,7 +4927,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3775,
+          "sourceLine": 3989,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -4976,6 +4976,36 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "executeProjectExpenseWithdrawalAction",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 51,
+          "method": "POST",
+          "path": "/projects/:param/expense-requests/:param/approval-withdrawal",
+          "normalizedPath": "/projects/:param/expense-requests/:param/approval-withdrawal",
+          "normalizedKey": "POST /projects/:param/expense-requests/:param/approval-withdrawal",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "executeProjectExpenseWithdrawalAction",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
       ],
       "unreachableConsumers": []
     },
@@ -6294,6 +6324,37 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "prepareProjectExpenseWithdrawalAction",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 45,
+          "method": "GET",
+          "path": "/projects/:param/expense-requests/:param/approval-detail",
+          "normalizedPath": "/projects/:param/expense-requests/:param/approval-detail",
+          "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "prepareProjectExpenseWithdrawalAction",
+              "fetchProjectExpenseApprovalDetail",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
       ],
       "unreachableConsumers": []
     },
@@ -8173,36 +8234,6 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
-      ],
-      "unreachableConsumers": []
-    },
-    {
-      "name": "withdrawProjectExpenseApproval",
-      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 51,
-          "method": "POST",
-          "path": "/projects/:param/expense-requests/:param/approval-withdrawal",
-          "normalizedPath": "/projects/:param/expense-requests/:param/approval-withdrawal",
-          "normalizedKey": "POST /projects/:param/expense-requests/:param/approval-withdrawal",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "withdrawProjectExpenseApproval",
-              "postJson"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/core-flow-read.api.test.ts"
-      ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
       ],
       "unreachableConsumers": []
     },

@@ -2204,7 +2204,83 @@ export type ProjectExpenseApprovalLifecycleDetailReadModel =
     hasPersistentDraft: false;
     availableActions: DetailActionReadModel[];
     blockedReasons: string[];
+    withdrawalContext: ProjectExpenseWithdrawalCoordinates | null;
   };
+
+export interface ProjectExpenseWithdrawalCoordinates {
+  expectedExpenseUpdatedAt: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+  expectedApprovalUpdatedAt: string;
+}
+
+export interface ProjectExpenseWithdrawalActionContext
+  extends ProjectExpenseWithdrawalCoordinates {
+  action: "withdraw";
+  ownerScope: string;
+  routeGeneration: number;
+  detailEpoch: number;
+  dialogGeneration: number;
+  operationId: number;
+  projectId: string;
+  expenseRequestId: string;
+}
+
+export interface PrepareProjectExpenseWithdrawalActionInput
+  extends ProjectExpenseWithdrawalActionContext {
+  isCurrent: (context: ProjectExpenseWithdrawalActionContext) => boolean;
+}
+
+export type PrepareProjectExpenseWithdrawalActionResult =
+  | {
+      status: "ready";
+      context: ProjectExpenseWithdrawalActionContext;
+      preflight: ProjectExpenseApprovalLifecycleDetailReadModel;
+    }
+  | {
+      status: "stale";
+      context: ProjectExpenseWithdrawalActionContext;
+    };
+
+export interface ExecuteProjectExpenseWithdrawalActionInput {
+  action: "withdraw";
+  capture: (
+    action: "withdraw"
+  ) => ProjectExpenseWithdrawalActionContext | null;
+  preflight: (
+    context: ProjectExpenseWithdrawalActionContext
+  ) => Promise<PrepareProjectExpenseWithdrawalActionResult>;
+  current: (
+    context: ProjectExpenseWithdrawalActionContext,
+    prepared: PrepareProjectExpenseWithdrawalActionResult
+  ) => boolean;
+  complete: (
+    context: ProjectExpenseWithdrawalActionContext,
+    response: unknown
+  ) => void | Promise<void>;
+  fail: (
+    context: ProjectExpenseWithdrawalActionContext,
+    error: unknown
+  ) => void | Promise<void>;
+  finish: (context: ProjectExpenseWithdrawalActionContext) => void;
+}
+
+export type ExecuteProjectExpenseWithdrawalActionResult =
+  | { status: "not_started" }
+  | {
+      status: "stale";
+      context: ProjectExpenseWithdrawalActionContext;
+    }
+  | {
+      status: "completed";
+      context: ProjectExpenseWithdrawalActionContext;
+      response: unknown;
+    }
+  | {
+      status: "failed";
+      context: ProjectExpenseWithdrawalActionContext;
+      error: unknown;
+    };
 
 export function reviewProjectExpenseApproval(
   projectId: string,
@@ -2217,10 +2293,148 @@ export function reviewProjectExpenseApproval(
   );
 }
 
-export function withdrawProjectExpenseApproval(projectId: string, expenseRequestId: string) {
-  return postJson<unknown>(
-    `/projects/${projectId}/expense-requests/${expenseRequestId}/approval-withdrawal`
+export async function prepareProjectExpenseWithdrawalAction(
+  input: PrepareProjectExpenseWithdrawalActionInput
+): Promise<PrepareProjectExpenseWithdrawalActionResult> {
+  const context = normalizeProjectExpenseWithdrawalAction(input);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  const preflight = await fetchProjectExpenseApprovalDetail(
+    context.projectId,
+    context.expenseRequestId
   );
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+  assertProjectExpenseWithdrawalPreflight(context, preflight);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  return { status: "ready", context, preflight };
+}
+
+export async function executeProjectExpenseWithdrawalAction(
+  input: ExecuteProjectExpenseWithdrawalActionInput
+): Promise<ExecuteProjectExpenseWithdrawalActionResult> {
+  const context = input.capture(input.action);
+  if (!context) return { status: "not_started" };
+
+  try {
+    const prepared = await input.preflight(context);
+    if (!input.current(context, prepared)) {
+      return { status: "stale", context };
+    }
+    const response = await postJson<unknown>(
+      `/projects/${encodeURIComponent(context.projectId)}/expense-requests/${encodeURIComponent(context.expenseRequestId)}/approval-withdrawal`,
+      projectExpenseWithdrawalPayload(context)
+    );
+    if (!input.current(context, prepared)) {
+      return { status: "stale", context };
+    }
+    await input.complete(context, response);
+    return { status: "completed", context, response };
+  } catch (error) {
+    await input.fail(context, error);
+    return { status: "failed", context, error };
+  } finally {
+    input.finish(context);
+  }
+}
+
+function projectExpenseWithdrawalPayload(
+  context: ProjectExpenseWithdrawalActionContext
+): ProjectExpenseWithdrawalCoordinates {
+  if (context.action !== "withdraw") {
+    throw new Error("项目支出撤回上下文无效，请重新读取当前申请");
+  }
+  return {
+    expectedExpenseUpdatedAt: context.expectedExpenseUpdatedAt,
+    expectedApprovalInstanceId: context.expectedApprovalInstanceId,
+    expectedNodeIndex: context.expectedNodeIndex,
+    expectedApprovalUpdatedAt: context.expectedApprovalUpdatedAt
+  };
+}
+
+function normalizeProjectExpenseWithdrawalAction(
+  input: PrepareProjectExpenseWithdrawalActionInput
+): ProjectExpenseWithdrawalActionContext {
+  const ownerScope = input.ownerScope.trim();
+  const projectId = input.projectId.trim();
+  const expenseRequestId = input.expenseRequestId.trim();
+  const expectedExpenseUpdatedAt =
+    input.expectedExpenseUpdatedAt.trim();
+  const expectedApprovalInstanceId =
+    input.expectedApprovalInstanceId.trim();
+  const expectedApprovalUpdatedAt =
+    input.expectedApprovalUpdatedAt.trim();
+  if (
+    input.action !== "withdraw" ||
+    !ownerScope ||
+    !projectId ||
+    !expenseRequestId ||
+    !expectedExpenseUpdatedAt ||
+    !expectedApprovalInstanceId ||
+    !expectedApprovalUpdatedAt ||
+    Number.isNaN(new Date(expectedExpenseUpdatedAt).getTime()) ||
+    Number.isNaN(new Date(expectedApprovalUpdatedAt).getTime()) ||
+    !Number.isInteger(input.routeGeneration) ||
+    input.routeGeneration < 0 ||
+    !Number.isInteger(input.detailEpoch) ||
+    input.detailEpoch < 0 ||
+    !Number.isInteger(input.dialogGeneration) ||
+    input.dialogGeneration < 0 ||
+    !Number.isInteger(input.operationId) ||
+    input.operationId < 1 ||
+    !Number.isInteger(input.expectedNodeIndex) ||
+    input.expectedNodeIndex < 0
+  ) {
+    throw new Error("项目支出撤回上下文无效，请重新读取当前申请");
+  }
+
+  return Object.freeze({
+    action: "withdraw",
+    ownerScope,
+    routeGeneration: input.routeGeneration,
+    detailEpoch: input.detailEpoch,
+    dialogGeneration: input.dialogGeneration,
+    operationId: input.operationId,
+    projectId,
+    expenseRequestId,
+    expectedExpenseUpdatedAt,
+    expectedApprovalInstanceId,
+    expectedNodeIndex: input.expectedNodeIndex,
+    expectedApprovalUpdatedAt
+  });
+}
+
+function assertProjectExpenseWithdrawalPreflight(
+  context: ProjectExpenseWithdrawalActionContext,
+  preflight: ProjectExpenseApprovalLifecycleDetailReadModel
+) {
+  const enabledWithdrawActions = preflight.availableActions.filter(
+    (action) => action.key === "withdraw" && action.enabled
+  );
+  const coordinates = preflight.withdrawalContext;
+  if (
+    preflight.projectId !== context.projectId ||
+    preflight.id !== context.expenseRequestId ||
+    preflight.lifecycleUpdatedAt !== context.expectedExpenseUpdatedAt ||
+    enabledWithdrawActions.length !== 1 ||
+    coordinates?.expectedExpenseUpdatedAt !==
+      context.expectedExpenseUpdatedAt ||
+    coordinates.expectedApprovalInstanceId !==
+      context.expectedApprovalInstanceId ||
+    coordinates.expectedNodeIndex !== context.expectedNodeIndex ||
+    coordinates.expectedApprovalUpdatedAt !==
+      context.expectedApprovalUpdatedAt
+  ) {
+    throw new Error(
+      "项目支出撤回资格或坐标已变化，请重新读取当前申请"
+    );
+  }
 }
 
 export function voidProjectExpenseRequest(

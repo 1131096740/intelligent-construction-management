@@ -11,6 +11,7 @@ import { RecordProjectExpenseFinanceRecordDto } from "./dto/record-project-expen
 import { RecordProjectExpensePurchaseExecutionDto } from "./dto/record-project-expense-purchase-execution.dto";
 import { ReviewProjectExpenseApprovalDto } from "./dto/review-project-expense-approval.dto";
 import { VoidProjectExpenseRequestDto } from "./dto/void-project-expense-request.dto";
+import { WithdrawProjectExpenseApprovalDto } from "./dto/withdraw-project-expense-approval.dto";
 import { ProjectExpenseService } from "./project-expense.service";
 
 const FUNDS_OVERVIEW_POSITIONS = [
@@ -75,9 +76,15 @@ export class ProjectExpenseController {
   withdrawApproval(
     @Param("projectId") projectId: string,
     @Param("expenseRequestId") expenseRequestId: string,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: WithdrawProjectExpenseApprovalDto
   ) {
-    return this.expenses.withdrawApproval(projectId, expenseRequestId, user.id);
+    return this.expenses.withdrawApproval(
+      projectId,
+      expenseRequestId,
+      user.id,
+      body
+    );
   }
 
   @Post(":expenseRequestId/attachment-download-ticket")

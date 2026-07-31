@@ -22,17 +22,17 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "87cea9929c2147382a747525c6742c7bd5dc1ae2aa7676420ab4296ad65f403d",
+      "sha256": "875d4652672b565ca9f77be604f2670e1778611a7d32026086adcd380ea2fb53",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 14,
-        "exportedFunctionCount": 387,
-        "transportWrapperCount": 382,
+        "exportedFunctionCount": 388,
+        "transportWrapperCount": 383,
         "pureExportCount": 5,
-        "mainRequestBindingCount": 388,
+        "mainRequestBindingCount": 389,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 388,
-        "productionConsumerCount": 336,
+        "requestEdgeCount": 389,
+        "productionConsumerCount": 337,
         "orphanWrapperCount": 46,
         "testOnlyWrapperCount": 44,
         "unreferencedWrapperCount": 2,
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "baf7cf41e4fcb38100f8805c5c5f3f5008aab2f519915b11e946225ebd59e203",
+      "sha256": "da3adfbe27935c6dbd0bd9b830677a75b3d96a8fce10e07eac1c33ab7d1fb0b5",
       "status": "blocked",
       "summary": {
         "registeredActionCount": 42,
@@ -53,18 +53,18 @@
         "totalVueFileCount": 134,
         "parsedVueFileCount": 134,
         "reachableProductionModuleCount": 229,
-        "templateEventDirectiveCount": 906,
+        "templateEventDirectiveCount": 909,
         "propCallbackDirectiveCount": 10,
-        "coveredProductionMutationConsumerCount": 14,
+        "coveredProductionMutationConsumerCount": 15,
         "candidateProductionMutationConsumerCount": 38,
-        "acceptedProductionMutationConsumerCount": 14,
+        "acceptedProductionMutationConsumerCount": 15,
         "productionMutationConsumerPairCount": 274,
-        "blockerCount": 318
+        "blockerCount": 315
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "5f586a7770a0f6b86648339b65893ef1c296f2bddc7067903e0f9aea003e4e7d",
+      "sha256": "ca8538a7306c8892b589200e541e4ee935ecab1a636389775477f5365cb49125",
       "status": "blocked",
       "summary": {
         "routeCount": 395,
@@ -99,19 +99,19 @@
     "exitCandidateRouteCount": 23,
     "internalTaskRouteCount": 2,
     "unclassifiedRouteCount": 26,
-    "mainRequestBindingCount": 388,
+    "mainRequestBindingCount": 389,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 46,
     "duplicateMutationRouteCount": 5,
     "registeredActionCount": 42,
     "actionBindingCount": 51,
-    "acceptedActionBindingCount": 20,
-    "unresolvedActionBindingCount": 31,
+    "acceptedActionBindingCount": 21,
+    "unresolvedActionBindingCount": 30,
     "productionMutationConsumerPairCount": 274,
-    "coveredProductionMutationConsumerPairCount": 14,
-    "uncoveredProductionMutationConsumerPairCount": 260,
-    "blockerCount": 372
+    "coveredProductionMutationConsumerPairCount": 15,
+    "uncoveredProductionMutationConsumerPairCount": 259,
+    "blockerCount": 370
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -2160,14 +2160,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "withdrawProjectExpenseApproval",
-        "consumer": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/expense-requests/:param/approval-withdrawal"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "withdrawSettlementApproval",
         "consumer": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
         "normalizedKeys": [
@@ -3053,20 +3045,6 @@
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "reviewProjectExpenseApproval",
         "normalizedKey": "POST /projects/:param/expense-requests/:param/approval",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
-        ]
-      },
-      {
-        "actionId": "project-expense.withdraw",
-        "bindingIndex": 0,
-        "identity": "project-expense.withdraw\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000withdrawProjectExpenseApproval\u0000POST\u0000POST /projects/:param/expense-requests/:param/approval-withdrawal\u00000",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "withdrawProjectExpenseApproval",
-        "normalizedKey": "POST /projects/:param/expense-requests/:param/approval-withdrawal",
         "reasonCodes": [
           "causal_unverified",
           "no_accepted_consumer",
@@ -6418,6 +6396,20 @@
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "fetchProjectExpenseApprovalDetail",
+          "method": "GET",
+          "path": "/projects/:param/expense-requests/:param/approval-detail",
+          "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "prepareProjectExpenseWithdrawalAction",
           "method": "GET",
           "path": "/projects/:param/expense-requests/:param/approval-detail",
           "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
@@ -16829,7 +16821,7 @@
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "withdrawProjectExpenseApproval",
+          "wrapper": "executeProjectExpenseWithdrawalAction",
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/approval-withdrawal",
           "normalizedKey": "POST /projects/:param/expense-requests/:param/approval-withdrawal",
@@ -16847,38 +16839,32 @@
         {
           "actionId": "project-expense.withdraw",
           "bindingIndex": 0,
-          "identity": "project-expense.withdraw\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000withdrawProjectExpenseApproval\u0000POST\u0000POST /projects/:param/expense-requests/:param/approval-withdrawal\u00000",
+          "identity": "project-expense.withdraw\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000executeProjectExpenseWithdrawalAction\u0000POST\u0000POST /projects/:param/expense-requests/:param/approval-withdrawal\u00000",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
           "capability": {
             "kind": "detail_action",
-            "source": "detail.availableActions",
+            "source": "projectExpenseWithdrawalCapability.availableActions",
             "key": "withdraw",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "withdrawProjectExpenseApproval",
+          "wrapper": "executeProjectExpenseWithdrawalAction",
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED",
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {

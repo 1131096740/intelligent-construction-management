@@ -69,6 +69,7 @@ function confirm() {
   <t-dialog
     v-model:visible="visible"
     :header="title"
+    :close-btn="!loading"
     :close-on-overlay-click="false"
     :close-on-esc-keydown="!loading"
     width="520px"

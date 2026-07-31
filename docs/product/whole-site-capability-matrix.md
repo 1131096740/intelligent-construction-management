@@ -7,9 +7,9 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `159b19c1737a577a2def4147ca101cd20901195e12d0560d64d7e19eb59c27d2` |
-| webApiWrappers | blocked | `87cea9929c2147382a747525c6742c7bd5dc1ae2aa7676420ab4296ad65f403d` |
-| webPageActions | blocked | `baf7cf41e4fcb38100f8805c5c5f3f5008aab2f519915b11e946225ebd59e203` |
-| routeUsage | blocked | `5f586a7770a0f6b86648339b65893ef1c296f2bddc7067903e0f9aea003e4e7d` |
+| webApiWrappers | blocked | `875d4652672b565ca9f77be604f2670e1778611a7d32026086adcd380ea2fb53` |
+| webPageActions | blocked | `da3adfbe27935c6dbd0bd9b830677a75b3d96a8fce10e07eac1c33ab7d1fb0b5` |
+| routeUsage | blocked | `ca8538a7306c8892b589200e541e4ee935ecab1a636389775477f5365cb49125` |
 
 ## 汇总
 
@@ -21,19 +21,19 @@
 | exitCandidateRouteCount | 23 |
 | internalTaskRouteCount | 2 |
 | unclassifiedRouteCount | 26 |
-| mainRequestBindingCount | 388 |
+| mainRequestBindingCount | 389 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 46 |
 | duplicateMutationRouteCount | 5 |
 | registeredActionCount | 42 |
 | actionBindingCount | 51 |
-| acceptedActionBindingCount | 20 |
-| unresolvedActionBindingCount | 31 |
+| acceptedActionBindingCount | 21 |
+| unresolvedActionBindingCount | 30 |
 | productionMutationConsumerPairCount | 274 |
-| coveredProductionMutationConsumerPairCount | 14 |
-| uncoveredProductionMutationConsumerPairCount | 260 |
-| blockerCount | 372 |
+| coveredProductionMutationConsumerPairCount | 15 |
+| uncoveredProductionMutationConsumerPairCount | 259 |
+| blockerCount | 370 |
 
 ## 路由矩阵
 
@@ -110,7 +110,7 @@
 | GET | /projects/:projectId/contract-takeovers/import-template | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadContractTakeoverImportTemplate | — | not_applicable | — |
 | GET | /projects/:projectId/contract-takeovers/ledger-export | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadContractTakeoverLedgerExport | — | not_applicable | — |
 | GET | /projects/:projectId/contract-takeovers | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#listContractTakeovers | — | not_applicable | — |
-| GET | /projects/:projectId/expense-requests/:expenseRequestId/approval-detail | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseApprovalDetail | — | not_applicable | — |
+| GET | /projects/:projectId/expense-requests/:expenseRequestId/approval-detail | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseApprovalDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareProjectExpenseWithdrawalAction | — | not_applicable | — |
 | GET | /projects/:projectId/expense-requests | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseRequests | — | not_applicable | — |
 | GET | /projects/:projectId/operating-funds-overview | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectOperatingOverview | — | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts/:draftId/final-preparation | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementFinalPreparation | — | not_applicable | — |
@@ -332,7 +332,7 @@
 | POST | /projects/:projectId/contract-takeovers/imports/preview | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#previewContractTakeoverExcelImport | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /projects/:projectId/contract-takeovers | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createContractTakeover | contract-takeover.create-local-role | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /projects/:projectId/expense-requests/:expenseRequestId/approval-pdf-download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadProjectExpenseApprovalPdf | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/expense-requests/:expenseRequestId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#withdrawProjectExpenseApproval | project-expense.withdraw | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
+| POST | /projects/:projectId/expense-requests/:expenseRequestId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeProjectExpenseWithdrawalAction | project-expense.withdraw | covered | — |
 | POST | /projects/:projectId/expense-requests/:expenseRequestId/approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewProjectExpenseApproval | project-expense.review-approve<br>project-expense.review-reject | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /projects/:projectId/expense-requests/:expenseRequestId/attachment-download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadProjectExpenseAttachment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /projects/:projectId/expense-requests/:expenseRequestId/executions | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseExecution | project-expense.execution-local-status | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
@@ -681,7 +681,6 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#withdrawContractTakeoverContractSideConfirmation → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#withdrawContractTakeoverFinanceSideConfirmation → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#withdrawPaymentApproval → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#withdrawProjectExpenseApproval → apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#withdrawSettlementApproval → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
 - apps/web-admin/src/api/expense-claim.api.ts#adjustExpenseClaimPaymentSubject → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
 - apps/web-admin/src/api/expense-claim.api.ts#appendExpenseClaimAttachment → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
@@ -781,7 +780,6 @@
 - project-expense.receipt-confirm-local-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - project-expense.review-approve#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - project-expense.review-reject#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- project-expense.withdraw#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - settlement-draft.abandon-application#0 — binding_not_mutation
 - settlement-draft.delete-pristine#0 — binding_not_mutation
 - settlement-draft.save-local-gate#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
