@@ -27,6 +27,7 @@ vi.mock("vue", async (importOriginal) => {
   const original = await importOriginal<typeof import("vue")>();
   return {
     ...original,
+    onBeforeUnmount: () => undefined,
     onMounted: () => undefined,
     useSSRContext: () => ({ modules: new Set<string>() })
   };

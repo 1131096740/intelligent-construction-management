@@ -11,6 +11,8 @@ import {
   fetchSpotProcurementApplicationTextSuggestions,
   createSpotProcurementPaymentDraft,
   createSpotProcurementVersion,
+  executeSpotProcurementReviewAction,
+  prepareSpotProcurementReviewAction,
   fetchSpotProcurementCapabilities,
   fetchSpotProcurementDetail,
   fetchSpotProcurementPaymentDetail,
@@ -39,6 +41,7 @@ import {
   withdrawSpotProcurement,
   withdrawSpotProcurementPayment,
   type CreateSpotProcurementDraftPayload,
+  type PrepareSpotProcurementReviewActionInput,
   type RecordSpotProcurementPaymentExecutionPayload,
   type ReviewSpotProcurementA5PaymentPayload
 } from "./spot-procurement.api";
@@ -50,6 +53,7 @@ const mockApiFetch = vi.mocked(apiFetch);
 describe("spot procurement API client", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockApiFetch.mockReset();
     mockApiFetch.mockImplementation(async () => jsonResponse({ id: "ok" }));
   });
 
@@ -263,7 +267,10 @@ describe("spot procurement API client", () => {
     await submitSpotProcurement("procurement/1");
     await reviewSpotProcurement("procurement/1", {
       decision: "approve",
-      comment: "同意"
+      comment: "同意",
+      expectedVersionId: "version-1",
+      expectedApprovalInstanceId: "approval-1",
+      expectedNodeIndex: 0
     });
     await withdrawSpotProcurement("procurement/1");
     await voidSpotProcurement("procurement/1", { reason: "现场取消需求" });
@@ -305,12 +312,196 @@ describe("spot procurement API client", () => {
       5,
       "/spot-procurements/procurement%2F1/approval",
       expect.objectContaining({
-        body: JSON.stringify({ decision: "approve", comment: "同意" })
+        body: JSON.stringify({
+          decision: "approve",
+          comment: "同意",
+          expectedVersionId: "version-1",
+          expectedApprovalInstanceId: "approval-1",
+          expectedNodeIndex: 0
+        })
       })
     );
     expect(mockApiFetch.mock.calls[3]?.[1]?.body).toBe("{}");
     expect(mockApiFetch.mock.calls[5]?.[1]?.body).toBe("{}");
     expect(mockApiFetch.mock.calls[7]?.[1]?.body).toBe("{}");
+  });
+
+  it.each([
+    ["missing action", reviewDetail({ availableActions: [] })],
+    [
+      "disabled action",
+      reviewDetail({
+        availableActions: [
+          {
+            key: "review_approval",
+            label: "审批",
+            kind: "primary",
+            enabled: false,
+            disabledReason: "当前不可审批",
+            requiredRoles: []
+          }
+        ]
+      })
+    ],
+    [
+      "missing approval coordinates",
+      reviewDetail({ reviewApprovalContext: null })
+    ],
+    [
+      "procurement drift",
+      reviewDetail({ procurementId: "procurement-b" })
+    ],
+    [
+      "version drift",
+      reviewDetail({ expectedVersionId: "version-b" })
+    ],
+    [
+      "approval drift",
+      reviewDetail({ expectedApprovalInstanceId: "approval-b" })
+    ],
+    [
+      "node drift",
+      reviewDetail({ expectedNodeIndex: 2 })
+    ]
+  ])(
+    "refuses a %s review preflight before the approval POST",
+    async (_label, preflight) => {
+      mockApiFetch.mockResolvedValueOnce(jsonResponse(preflight));
+
+      await expect(
+        prepareSpotProcurementReviewAction(
+          reviewActionInput({ decision: "approve" })
+        )
+      ).rejects.toThrow();
+
+      expect(mockApiFetch).toHaveBeenCalledTimes(1);
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        "/spot-procurements/procurement-a"
+      );
+    }
+  );
+
+  it("freezes the trimmed reject comment while performing only the fresh GET", async () => {
+    const preflight = deferred<Response>();
+    mockApiFetch.mockReturnValueOnce(preflight.promise);
+    const input = reviewActionInput({
+      decision: "reject",
+      comment: "  报价依据不足  "
+    });
+
+    const request = prepareSpotProcurementReviewAction(input);
+    input.comment = "被调用方随后篡改";
+    preflight.resolve(jsonResponse(reviewDetail()));
+    await expect(request).resolves.toEqual(
+      expect.objectContaining({
+        status: "ready",
+        context: expect.objectContaining({
+          decision: "reject",
+          comment: "报价依据不足",
+          expectedVersionId: "version-a",
+          expectedApprovalInstanceId: "approval-a",
+          expectedNodeIndex: 1
+        })
+      })
+    );
+
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/spot-procurements/procurement-a"
+    );
+  });
+
+  it("prepares approve before the POST-only orchestration without borrowing a comment", async () => {
+    mockApiFetch.mockResolvedValueOnce(jsonResponse(reviewDetail()));
+
+    const prepared = await prepareSpotProcurementReviewAction(
+      reviewActionInput({
+        decision: "approve",
+        comment: "该字段不得进入通过 DTO"
+      })
+    );
+    expect(prepared).toEqual(
+      expect.objectContaining({
+        status: "ready",
+        context: expect.not.objectContaining({
+          comment: expect.anything()
+        })
+      })
+    );
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+
+    if (prepared.status !== "ready") {
+      throw new Error("approve preflight did not become ready");
+    }
+    mockApiFetch.mockClear();
+    const complete = vi.fn();
+    const fail = vi.fn();
+    const finish = vi.fn();
+    await expect(
+      executeSpotProcurementReviewAction({
+        decision: "approve",
+        capture: () => prepared.context,
+        preflight: async () => prepared,
+        current: () => true,
+        complete,
+        fail,
+        finish
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        status: "completed",
+        context: prepared.context
+      })
+    );
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/spot-procurements/procurement-a/approval",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          decision: "approve",
+          expectedVersionId: "version-a",
+          expectedApprovalInstanceId: "approval-a",
+          expectedNodeIndex: 1
+        })
+      })
+    );
+    expect(complete).toHaveBeenCalledOnce();
+    expect(fail).not.toHaveBeenCalled();
+    expect(finish).toHaveBeenCalledWith(prepared.context);
+  });
+
+  it("does not POST when the owning page becomes stale while fresh detail is loading", async () => {
+    const preflight = deferred<Response>();
+    let current = true;
+    mockApiFetch.mockReturnValueOnce(preflight.promise);
+    const input = reviewActionInput({
+      decision: "approve",
+      isCurrent: () => current
+    });
+    const complete = vi.fn();
+    const fail = vi.fn();
+    const finish = vi.fn();
+    const request = executeSpotProcurementReviewAction({
+      decision: "approve",
+      capture: () => input,
+      preflight: () => prepareSpotProcurementReviewAction(input),
+      current: (_context, prepared) => prepared.status === "ready",
+      complete,
+      fail,
+      finish
+    });
+
+    current = false;
+    preflight.resolve(jsonResponse(reviewDetail()));
+
+    await expect(request).resolves.toEqual(
+      expect.objectContaining({ status: "stale" })
+    );
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+    expect(complete).not.toHaveBeenCalled();
+    expect(fail).not.toHaveBeenCalled();
+    expect(finish).toHaveBeenCalledWith(input);
   });
 
   it("connects A5 payment facts, payer controls and review safeguards", async () => {
@@ -430,4 +621,76 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json" }
   });
+}
+
+function reviewDetail(
+  overrides: {
+    procurementId?: string;
+    expectedVersionId?: string;
+    expectedApprovalInstanceId?: string;
+    expectedNodeIndex?: number;
+    reviewApprovalContext?: null;
+    availableActions?: Array<Record<string, unknown>>;
+  } = {}
+) {
+  return {
+    procurement: {
+      id: overrides.procurementId ?? "procurement-a"
+    },
+    currentVersion: {
+      id: overrides.expectedVersionId ?? "version-a"
+    },
+    reviewApprovalContext:
+      overrides.reviewApprovalContext === null
+        ? null
+        : {
+            expectedVersionId:
+              overrides.expectedVersionId ?? "version-a",
+            expectedApprovalInstanceId:
+              overrides.expectedApprovalInstanceId ?? "approval-a",
+            expectedNodeIndex: overrides.expectedNodeIndex ?? 1
+          },
+    availableActions:
+      overrides.availableActions ??
+      [
+        {
+          key: "review_approval",
+          label: "审批",
+          kind: "primary",
+          enabled: true,
+          disabledReason: null,
+          requiredRoles: []
+        }
+      ]
+  };
+}
+
+function reviewActionInput(
+  overrides: Partial<PrepareSpotProcurementReviewActionInput> = {}
+): PrepareSpotProcurementReviewActionInput {
+  return {
+    ownerScope: "page-a",
+    routeGeneration: 2,
+    detailEpoch: 3,
+    dialogGeneration: 4,
+    operationId: 5,
+    procurementId: "procurement-a",
+    expectedVersionId: "version-a",
+    expectedApprovalInstanceId: "approval-a",
+    expectedNodeIndex: 1,
+    decision: "approve",
+    comment: "",
+    isCurrent: () => true,
+    ...overrides
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((accept, decline) => {
+    resolve = accept;
+    reject = decline;
+  });
+  return { promise, reject, resolve };
 }

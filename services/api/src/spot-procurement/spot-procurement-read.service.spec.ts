@@ -126,6 +126,7 @@ function buildFixture() {
   const payments = [paymentRow()];
   const approval = {
     id: "approval-1",
+    flowType: "spot_procurement.approve",
     businessType: "spot_procurement_version",
     businessId: "version-1",
     status: "approved",
@@ -404,6 +405,170 @@ function buildFixture() {
 }
 
 describe("SpotProcurementReadService", () => {
+  it("exposes frozen review coordinates only to the legal non-applicant reviewer", async () => {
+    const fixture = buildFixture();
+    fixture.prisma.spotProcurement.findUnique.mockResolvedValue(
+      procurementRow({
+        status: "approval_pending",
+        applicantUserId: "applicant-1"
+      })
+    );
+    fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([
+      versionRow({
+        status: "approval_pending",
+        submittedAt: now,
+        approvedAt: null
+      })
+    ]);
+    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([]);
+    fixture.prisma.spotProcurementPaymentExecution.findMany.mockResolvedValue([]);
+    fixture.prisma.approvalInstance.findMany.mockResolvedValue([
+      {
+        id: "approval-1",
+        flowType: "spot_procurement.approve",
+        businessType: "spot_procurement_version",
+        businessId: "version-1",
+        status: "approval_pending",
+        currentNodeIndex: 0,
+        frozenNodes: [
+          {
+            name: "物资主管审批",
+            mode: "any",
+            roleKeys: ["material_director"]
+          }
+        ],
+        applicantUserId: "applicant-1",
+        createdAt: now,
+        updatedAt: now
+      }
+    ]);
+    fixture.visibility.effectiveRoleKeys.mockResolvedValue([
+      "material_director"
+    ]);
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const reviewer = await service.getProcurement(
+      "procurement-1",
+      "material-director-1"
+    );
+    expect(reviewer.reviewApprovalContext).toEqual({
+      expectedVersionId: "version-1",
+      expectedApprovalInstanceId: "approval-1",
+      expectedNodeIndex: 0
+    });
+    expect(
+      reviewer.availableActions.find(
+        (action) => action.key === "review_approval"
+      )
+    ).toMatchObject({ enabled: true });
+
+    fixture.visibility.effectiveRoleKeys.mockResolvedValue(["employee"]);
+    const observer = await service.getProcurement(
+      "procurement-1",
+      "observer-1"
+    );
+    expect(observer.reviewApprovalContext).toBeNull();
+    expect(observer.approval).not.toHaveProperty("approvalInstanceId");
+    expect(observer.approval).not.toHaveProperty("currentNodeIndex");
+
+    fixture.visibility.effectiveRoleKeys.mockResolvedValue([
+      "material_director"
+    ]);
+    const applicant = await service.getProcurement(
+      "procurement-1",
+      "applicant-1"
+    );
+    expect(applicant.reviewApprovalContext).toBeNull();
+  });
+
+  it("fails the review capability closed when the current version has duplicate pending approvals", async () => {
+    const fixture = buildFixture();
+    fixture.prisma.spotProcurement.findUnique.mockResolvedValue(
+      procurementRow({
+        status: "approval_pending",
+        applicantUserId: "applicant-1"
+      })
+    );
+    fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([
+      versionRow({
+        status: "approval_pending",
+        submittedAt: now,
+        approvedAt: null
+      })
+    ]);
+    fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([]);
+    fixture.prisma.spotProcurementPaymentExecution.findMany.mockResolvedValue([]);
+    fixture.prisma.approvalInstance.findMany.mockResolvedValue([
+      {
+        id: "approval-2",
+        flowType: "spot_procurement.approve",
+        businessType: "spot_procurement_version",
+        businessId: "version-1",
+        status: "approval_pending",
+        currentNodeIndex: 0,
+        frozenNodes: [
+          {
+            name: "物资主管审批",
+            mode: "any",
+            roleKeys: ["material_director"]
+          }
+        ],
+        applicantUserId: "applicant-1",
+        createdAt: new Date("2026-07-17T09:00:00.000Z"),
+        updatedAt: new Date("2026-07-17T09:00:00.000Z")
+      },
+      {
+        id: "approval-1",
+        flowType: "spot_procurement.approve",
+        businessType: "spot_procurement_version",
+        businessId: "version-1",
+        status: "approval_pending",
+        currentNodeIndex: 0,
+        frozenNodes: [
+          {
+            name: "物资主管审批",
+            mode: "any",
+            roleKeys: ["material_director"]
+          }
+        ],
+        applicantUserId: "applicant-1",
+        createdAt: now,
+        updatedAt: now
+      }
+    ]);
+    fixture.visibility.effectiveRoleKeys.mockResolvedValue([
+      "material_director"
+    ]);
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const detail = await service.getProcurement(
+      "procurement-1",
+      "material-director-1"
+    );
+
+    expect(
+      detail.availableActions.find(
+        (action) => action.key === "review_approval"
+      )
+    ).toMatchObject({
+      enabled: false,
+      disabledReason: "当前采购存在多个待审批实例，请联系管理员处理"
+    });
+    expect(detail.reviewApprovalContext).toBeNull();
+    expect(JSON.stringify(detail)).not.toContain("approval-2");
+    expect(JSON.stringify(detail)).not.toContain("approval-1");
+  });
+
   it("returns historical three-place decimal text unchanged without applying new-write validation", async () => {
     const fixture = buildFixture();
     fixture.prisma.spotProcurementLine.findMany.mockResolvedValue([

@@ -10,11 +10,17 @@ const {
   SpotProcurementBalanceService
 } = require("../dist/spot-procurement/spot-procurement-balance.service");
 const {
+  SpotProcurementApplicationService
+} = require("../dist/spot-procurement/spot-procurement-application.service");
+const {
   SpotProcurementClosureService
 } = require("../dist/spot-procurement/spot-procurement-closure.service");
 const {
   InvoiceLedgerService
 } = require("../dist/invoice-ledger/invoice-ledger.service");
+const {
+  ProjectFundingAvailabilityService
+} = require("../dist/project-funding/project-funding-availability.service");
 const {
   SpotProcurementPaymentService
 } = require("../dist/spot-procurement/spot-procurement-payment.service");
@@ -39,6 +45,8 @@ const CASH_SHORT_PROJECT_ID = "concurrency-cash-short-project";
 const HANDLER_USER_ID = "concurrency-material-staff";
 const MATERIAL_DIRECTOR_USER_ID =
   "concurrency-material-director";
+const APPLICATION_REVIEWER_USER_ID =
+  "concurrency-application-reviewer";
 const FINANCE_USER_ID = "concurrency-finance-staff";
 const FINANCE_DIRECTOR_USER_ID =
   "concurrency-finance-director";
@@ -54,6 +62,7 @@ const ACTIVE_PAYMENT_STATUSES = new Set([
 
 const clientA = new PrismaClient();
 const clientB = new PrismaClient();
+const observerClient = new PrismaClient();
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -378,6 +387,7 @@ function servicesFor(prisma) {
   const balances = new SpotProcurementBalanceService(prisma, audit);
   const closure = new SpotProcurementClosureService(audit);
   const pilot = new SpotProcurementPilotService();
+  const projectFunding = new ProjectFundingAvailabilityService();
   const payment = new SpotProcurementPaymentService(
     prisma,
     audit,
@@ -394,7 +404,8 @@ function servicesFor(prisma) {
     {
       tryRefreshLatestForBusiness: async () => undefined
     },
-    closure
+    closure,
+    projectFunding
   );
   const receipt = new SpotProcurementReceiptService(
     prisma,
@@ -635,6 +646,9 @@ async function createPaymentDraft(prisma, input) {
 }
 
 async function createExecutionVoucher(fileId) {
+  const contentSha256 = createHash("sha256")
+    .update(fileId)
+    .digest("hex");
   return clientA.fileObject.create({
     data: {
       id: fileId,
@@ -644,7 +658,8 @@ async function createExecutionVoucher(fileId) {
       mimeType: "application/pdf",
       sizeBytes: 1,
       uploadedByUserId: FINANCE_USER_ID,
-      storageStatus: "active"
+      storageStatus: "active",
+      contentSha256
     }
   });
 }
@@ -1008,21 +1023,72 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-async function waitForBlockedQueries(prisma, queryNeedle, expectedCount) {
+async function waitForBlockedQueries(
+  prisma,
+  queryNeedle,
+  expectedCount,
+  rootBlockerPid
+) {
+  let bestSnapshot = [];
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const rows = await prisma.$queryRaw`
-      SELECT COUNT(*)::int AS "count"
+      SELECT
+        pid::int AS "pid",
+        wait_event_type AS "waitEventType",
+        query,
+        pg_blocking_pids(pid) AS "blockingPids"
       FROM pg_stat_activity
       WHERE datname = current_database()
         AND pid <> pg_backend_pid()
-        AND wait_event_type = 'Lock'
-        AND query LIKE ${`%${queryNeedle}%`}
     `;
-    if ((rows[0]?.count ?? 0) >= expectedCount) return;
+    const sessionByPid = new Map(
+      rows.map((row) => [Number(row.pid), row])
+    );
+    const reachesRootBlocker = (originPid) => {
+      const pending = [originPid];
+      const visited = new Set();
+      while (pending.length) {
+        const pid = pending.pop();
+        if (pid === rootBlockerPid) return true;
+        if (visited.has(pid)) continue;
+        visited.add(pid);
+        const blockers = sessionByPid.get(pid)?.blockingPids;
+        if (Array.isArray(blockers)) {
+          pending.push(...blockers.map(Number));
+        }
+      }
+      return false;
+    };
+    const chainedWaiters = rows.filter(
+      (row) =>
+        row.waitEventType === "Lock" &&
+        reachesRootBlocker(Number(row.pid))
+    );
+    const snapshot = rows
+      .filter((row) => row.waitEventType === "Lock")
+      .map((row) => ({
+        pid: Number(row.pid),
+        blockingPids: Array.isArray(row.blockingPids)
+          ? row.blockingPids.map(Number)
+          : [],
+        reachesRootBlocker: reachesRootBlocker(Number(row.pid)),
+        query: String(row.query).replace(/\s+/gu, " ").slice(0, 180)
+      }));
+    if (snapshot.length > bestSnapshot.length) {
+      bestSnapshot = snapshot;
+    }
+    if (
+      chainedWaiters.length >= expectedCount &&
+      chainedWaiters.some((row) =>
+        String(row.query).includes(queryNeedle)
+      )
+    ) {
+      return;
+    }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(
-    `未观察到 ${expectedCount} 个等待 ${queryNeedle} 行锁的真实 PostgreSQL 会话`
+    `未观察到 ${expectedCount} 个经 pg_blocking_pids 直接或传递追溯到 backend ${rootBlockerPid}、且至少一个等待 ${queryNeedle} 目标锁的真实 PostgreSQL 会话；最接近快照 ${JSON.stringify(bestSnapshot)}`
   );
 }
 
@@ -1035,23 +1101,365 @@ async function runBehindDatabaseLock({
 }) {
   const acquired = deferred();
   const release = deferred();
+  const blockerBackendPid = deferred();
   const blocker = blockerClient.$transaction(
     async (tx) => {
       await acquireLock(tx);
+      const rows = await tx.$queryRaw(
+        Prisma.sql`SELECT pg_backend_pid()::int AS "pid"`
+      );
+      blockerBackendPid.resolve(Number(rows[0]?.pid));
       acquired.resolve();
       await release.promise;
     },
     { timeout: 15_000, maxWait: 10_000 }
   );
   await acquired.promise;
+  const rootBlockerPid = await blockerBackendPid.promise;
+  assert(
+    Number.isInteger(rootBlockerPid),
+    "真实 PostgreSQL 外置 blocker 必须具备 backend PID"
+  );
   const resultsPromise = Promise.allSettled(start());
+  let blockingEvidenceError = null;
   try {
-    await waitForBlockedQueries(observerClient, queryNeedle, 2);
+    await waitForBlockedQueries(
+      observerClient,
+      queryNeedle,
+      2,
+      rootBlockerPid
+    );
+  } catch (error) {
+    blockingEvidenceError = error;
   } finally {
     release.resolve();
     await blocker;
   }
-  return resultsPromise;
+  const results = await resultsPromise;
+  if (blockingEvidenceError) {
+    throw new Error(
+      `${errorText(blockingEvidenceError)}；并发操作结果 ${results
+        .map((result) =>
+          result.status === "fulfilled"
+            ? "fulfilled"
+            : `rejected:${errorText(result.reason)}`
+        )
+        .join("/")}`
+    );
+  }
+  return results;
+}
+
+async function verifyApplicationReviewCoordinateConcurrency() {
+  const procurementId = "spot-application-review-coordinate-race";
+  const versionId = `${procurementId}-v1`;
+  const approvalInstanceId = `${procurementId}-approval`;
+  const submittedAt = new Date();
+  await clientA.$transaction(async (tx) => {
+    await tx.user.create({
+      data: {
+        id: APPLICATION_REVIEWER_USER_ID,
+        name: "并发验收双角色审批人",
+        isActive: true,
+        mustChangePassword: false
+      }
+    });
+    await tx.projectMember.createMany({
+      data: [
+        {
+          projectId: PROJECT_ID,
+          userId: APPLICATION_REVIEWER_USER_ID,
+          positionKey: "material_director"
+        },
+        {
+          projectId: PROJECT_ID,
+          userId: APPLICATION_REVIEWER_USER_ID,
+          positionKey: "project_manager"
+        }
+      ]
+    });
+    await tx.spotProcurement.create({
+      data: {
+        id: procurementId,
+        projectId: PROJECT_ID,
+        code: "LXCG-CONC-REVIEW-COORDINATE",
+        applicantUserId: HANDLER_USER_ID,
+        handlerUserId: HANDLER_USER_ID,
+        status: "approval_pending"
+      }
+    });
+    await tx.spotProcurementVersion.create({
+      data: {
+        id: versionId,
+        procurementId,
+        versionNo: 1,
+        status: "approval_pending",
+        reason: "应用审批坐标并发验收",
+        handlerUserId: HANDLER_USER_ID,
+        applicationDepartmentSnapshot: "物资部",
+        applicationNameSnapshot: "并发验收申请人",
+        purchaserNameSnapshot: "并发验收采购人",
+        purchaserDepartmentNameSnapshot: "物资部",
+        requestedArrivalAt: submittedAt,
+        submittedAt,
+        createdByUserId: HANDLER_USER_ID
+      }
+    });
+    await tx.spotProcurement.update({
+      where: { id: procurementId },
+      data: { currentVersionId: versionId }
+    });
+    await tx.approvalInstance.create({
+      data: {
+        id: approvalInstanceId,
+        flowType: "spot_procurement.approve",
+        businessType: "spot_procurement_version",
+        businessId: versionId,
+        status: "approval_pending",
+        currentNodeIndex: 0,
+        frozenNodes: [
+          {
+            name: "物资主管审批",
+            mode: "any",
+            roleKeys: ["material_director"]
+          },
+          {
+            name: "项目经理审批",
+            mode: "any",
+            roleKeys: ["project_manager"]
+          }
+        ],
+        applicantUserId: HANDLER_USER_ID
+      }
+    });
+  });
+
+  const initialApproval = await clientA.approvalInstance.findUnique({
+    where: { id: approvalInstanceId },
+    select: { currentNodeIndex: true }
+  });
+  assert(
+    initialApproval?.currentNodeIndex === 0,
+    "应用审批坐标并发验收必须从第 0 节点开始"
+  );
+
+  const firstReviewBackendPid = deferred();
+  const secondReviewBackendPid = deferred();
+  const firstReviewAuditEntered = deferred();
+  const releaseFirstReviewAudit = deferred();
+  const createReviewPrisma = (client, backendPid) => ({
+    $transaction: (operation, options) =>
+      client.$transaction(
+        async (tx) => {
+          const rows = await tx.$queryRaw(
+            Prisma.sql`SELECT pg_backend_pid()::int AS "pid"`
+          );
+          backendPid.resolve(Number(rows[0]?.pid));
+          return operation(tx);
+        },
+        {
+          ...(options ?? {}),
+          maxWait: 10_000,
+          timeout: 15_000
+        }
+      )
+  });
+  const persistedAudit = new AuditService();
+  let pausedFirstReviewAudit = false;
+  const firstAudit = {
+    record: async (tx, input) => {
+      await persistedAudit.record(tx, input);
+      if (
+        input.action === "spot_procurement.approval.approve" &&
+        !pausedFirstReviewAudit
+      ) {
+        pausedFirstReviewAudit = true;
+        firstReviewAuditEntered.resolve(undefined);
+        await releaseFirstReviewAudit.promise;
+      }
+    }
+  };
+  const approvalForms = {
+    tryRefreshLatestForBusiness: async () => undefined
+  };
+  const firstService = new SpotProcurementApplicationService(
+    createReviewPrisma(clientA, firstReviewBackendPid),
+    firstAudit,
+    new SpotProcurementPilotService(),
+    approvalForms
+  );
+  const secondService = new SpotProcurementApplicationService(
+    createReviewPrisma(clientB, secondReviewBackendPid),
+    new AuditService(),
+    new SpotProcurementPilotService(),
+    approvalForms
+  );
+  const coordinates = {
+    decision: "approve",
+    expectedVersionId: versionId,
+    expectedApprovalInstanceId: approvalInstanceId,
+    expectedNodeIndex: 0
+  };
+
+  const firstRequest = firstService.review(
+    procurementId,
+    APPLICATION_REVIEWER_USER_ID,
+    coordinates
+  );
+  await firstReviewAuditEntered.promise;
+  const firstReviewBackendPidValue =
+    await firstReviewBackendPid.promise;
+  const secondRequest = secondService.review(
+    procurementId,
+    APPLICATION_REVIEWER_USER_ID,
+    coordinates
+  );
+  const secondReviewBackendPidValue =
+    await secondReviewBackendPid.promise;
+  assert(
+    Number.isInteger(firstReviewBackendPidValue) &&
+      Number.isInteger(secondReviewBackendPidValue) &&
+      firstReviewBackendPidValue !== secondReviewBackendPidValue,
+    "应用审批坐标并发验收必须捕获两个不同的 PostgreSQL backend PID"
+  );
+
+  let directBlockObserved = false;
+  let directBlockObservationError = null;
+  try {
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const sessions = await observerClient.$queryRaw(
+        Prisma.sql`
+          SELECT
+            pid::int AS "pid",
+            state,
+            wait_event_type AS "waitEventType",
+            pg_blocking_pids(pid) AS "blockingPids"
+          FROM pg_stat_activity
+          WHERE pid IN (
+            ${firstReviewBackendPidValue},
+            ${secondReviewBackendPidValue}
+          )
+        `
+      );
+      const firstSession = sessions.find(
+        (session) =>
+          Number(session.pid) === firstReviewBackendPidValue
+      );
+      const secondSession = sessions.find(
+        (session) =>
+          Number(session.pid) === secondReviewBackendPidValue
+      );
+      const blockers = Array.isArray(secondSession?.blockingPids)
+        ? secondSession.blockingPids.map(Number)
+        : [];
+      if (
+        firstSession &&
+        secondSession?.waitEventType === "Lock" &&
+        blockers.includes(firstReviewBackendPidValue)
+      ) {
+        directBlockObserved = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  } catch (error) {
+    directBlockObservationError = error;
+  } finally {
+    releaseFirstReviewAudit.resolve(undefined);
+  }
+  const results = await Promise.allSettled([
+    firstRequest,
+    secondRequest
+  ]);
+  if (directBlockObservationError) {
+    throw directBlockObservationError;
+  }
+  assert(
+    directBlockObserved,
+    "第二笔应用审批必须由第一笔事务的 backend PID 直接阻塞"
+  );
+  assert(
+    results[0].status === "fulfilled",
+    `第一笔应用审批必须成功，实际 ${
+      results[0].status === "rejected"
+        ? errorText(results[0].reason)
+        : results[0].status
+    }`
+  );
+  assert(
+    results[1].status === "rejected" &&
+      typeof results[1].reason?.getStatus === "function" &&
+      results[1].reason.getStatus() === 409,
+    `第二笔旧坐标审批必须严格返回 409，实际 ${
+      results[1].status === "rejected"
+        ? errorText(results[1].reason)
+        : results[1].status
+    }`
+  );
+
+  const [
+    approval,
+    procurement,
+    version,
+    actionCount,
+    auditCount,
+    paymentCount,
+    receiptCount
+  ] = await Promise.all([
+    clientA.approvalInstance.findUnique({
+      where: { id: approvalInstanceId }
+    }),
+    clientA.spotProcurement.findUnique({
+      where: { id: procurementId },
+      select: { status: true }
+    }),
+    clientA.spotProcurementVersion.findUnique({
+      where: { id: versionId },
+      select: { status: true }
+    }),
+    clientA.approvalActionLog.count({
+      where: {
+        approvalInstanceId,
+        action: "approve",
+        actorUserId: APPLICATION_REVIEWER_USER_ID
+      }
+    }),
+    clientA.auditLog.count({
+      where: {
+        action: "spot_procurement.approval.approve",
+        businessType: "spot_procurement_version",
+        businessId: versionId,
+        actorUserId: APPLICATION_REVIEWER_USER_ID
+      }
+    }),
+    clientA.spotProcurementPayment.count({
+      where: { procurementId }
+    }),
+    clientA.spotProcurementReceipt.count({
+      where: { procurementId }
+    })
+  ]);
+  assert(
+    approval?.status === "approval_pending" &&
+      approval.currentNodeIndex === 1,
+    "相同旧坐标并发审批后只能从节点 0 前进到节点 1"
+  );
+  assert(
+    procurement?.status === "approval_pending" &&
+      version?.status === "approval_pending",
+    "非末节点审批后采购根与版本必须继续保持审批中"
+  );
+  assert(
+    actionCount === 1 && auditCount === 1,
+    `相同旧坐标并发审批只能保留一条 ActionLog/Audit，实际 ${actionCount}/${auditCount}`
+  );
+  assert(
+    paymentCount === 0 && receiptCount === 0,
+    `非末节点并发审批不得生成付款或收货草稿，实际 ${paymentCount}/${receiptCount}`
+  );
+  console.log(
+    "ok spot application review coordinates: direct backend block, node 0->1, stale replay strict 409, one action/audit, zero payment/receipt"
+  );
 }
 
 async function verifyCumulativeCapacityCompetition(servicesA, servicesB) {
@@ -1799,7 +2207,11 @@ async function createLegacyOwnerContractBinding(
       paymentTermsSummary: "并发验收",
       retentionSummary: "并发验收",
       fileId,
-      recordedByUserId: FINANCE_USER_ID
+      recordedByUserId: FINANCE_USER_ID,
+      status: "pending_confirm",
+      fileContentSha256Snapshot: createHash("sha256")
+        .update(fileId)
+        .digest("hex")
     }
   });
 }
@@ -1834,10 +2246,15 @@ async function runHeldFileBindingRace({
 }) {
   const acquired = deferred();
   const release = deferred();
+  const blockerBackendPid = deferred();
   const firstPromise = clientA.$transaction(
     async (tx) => {
       try {
         const result = await firstWrite(tx);
+        const rows = await tx.$queryRaw(
+          Prisma.sql`SELECT pg_backend_pid()::int AS "pid"`
+        );
+        blockerBackendPid.resolve(Number(rows[0]?.pid));
         acquired.resolve();
         await release.promise;
         return result;
@@ -1849,6 +2266,11 @@ async function runHeldFileBindingRace({
     { timeout: 15_000, maxWait: 10_000 }
   );
   await acquired.promise;
+  const rootBlockerPid = await blockerBackendPid.promise;
+  assert(
+    Number.isInteger(rootBlockerPid),
+    "文件绑定竞争 blocker 必须具备真实 PostgreSQL backend PID"
+  );
   // PrismaPromise is lazy until it is awaited/then'ed. Assimilate it through
   // a native Promise so the second statement really starts before observing
   // pg_stat_activity.
@@ -1857,7 +2279,8 @@ async function runHeldFileBindingRace({
     await waitForBlockedQueries(
       clientB,
       blockedQueryNeedle,
-      1
+      1,
+      rootBlockerPid
     );
   } finally {
     release.resolve();
@@ -2234,7 +2657,7 @@ async function verifyExecutionCashShortageZeroWrite(servicesA) {
     );
   assert(
     error?.message ===
-      "项目现金不足，当前最多可实际支付 0 分",
+      "项目可用资金不足，当前最多可实际支付 0 分",
     `现金不足必须固定中文阻断，实际 ${errorText(error)}`
   );
   const after = await readExecutionFacts([payment.id]);
@@ -3014,7 +3437,10 @@ async function verifyReceiptCrossColumnFileCompetition() {
       retentionSummary: "验收专用",
       fileId: "spot-receipt-restricted-owner-contract",
       recordedByUserId: HANDLER_USER_ID,
-      status: "effective"
+      status: "pending_confirm",
+      fileContentSha256Snapshot: hash(
+        buffers.get("spot-receipt-restricted-owner-contract")
+      )
     }
   });
 
@@ -3873,11 +4299,16 @@ async function verifyInvoiceLedgerConcurrency(
 
 async function main() {
   assertLocalRuntime();
-  await Promise.all([clientA.$connect(), clientB.$connect()]);
+  await Promise.all([
+    clientA.$connect(),
+    clientB.$connect(),
+    observerClient.$connect()
+  ]);
   await assertRealFormSchemaPrerequisites(clientA);
   const servicesA = servicesFor(clientA);
   const servicesB = servicesFor(clientB);
   await seedVerificationFacts();
+  await verifyApplicationReviewCoordinateConcurrency();
   await verifyCumulativeCapacityCompetition(servicesA, servicesB);
   await verifyBalanceCompetitionAndRelease(servicesA, servicesB);
   await verifyMismatchedReservationReleaseFailsClosed(servicesA);
@@ -3925,7 +4356,8 @@ if (require.main === module) {
     .finally(async () => {
       await Promise.allSettled([
         clientA.$disconnect(),
-        clientB.$disconnect()
+        clientB.$disconnect(),
+        observerClient.$disconnect()
       ]);
     });
 }

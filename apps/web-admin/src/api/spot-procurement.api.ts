@@ -79,6 +79,12 @@ export interface SpotProcurementApprovalSummary {
   currentRoleKeys: RoleKey[];
 }
 
+export interface SpotProcurementReviewApprovalContext {
+  expectedVersionId: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+}
+
 export interface SpotProcurementFutureUnavailableReadModel {
   available: false;
   status: "not_available";
@@ -535,6 +541,9 @@ export interface SpotProcurementDetailReadModel {
   };
   applicationPdf: SpotProcurementApprovalPdfReadModel;
   availableActions: DetailActionReadModel[];
+  reviewApprovalContext:
+    | SpotProcurementReviewApprovalContext
+    | null;
   primaryAction: string | null;
   disabledReasons: string[];
   abnormalTermination?: {
@@ -812,13 +821,93 @@ export interface CreateSpotProcurementVersionPayload extends SpotProcurementDraf
   changeReason: string;
 }
 
-export interface ReviewSpotProcurementPayload {
+export interface SpotProcurementReviewDecisionPayload {
   decision: SpotProcurementReviewDecision;
   comment?: string;
 }
 
+export interface ReviewSpotProcurementPayload
+  extends SpotProcurementReviewDecisionPayload {
+  expectedVersionId: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+}
+
+export type SpotProcurementReviewActionDecision = "approve" | "reject";
+
+export interface SpotProcurementReviewActionContext {
+  ownerScope: string;
+  routeGeneration: number;
+  detailEpoch: number;
+  dialogGeneration: number;
+  operationId: number;
+  procurementId: string;
+  expectedVersionId: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+  decision: SpotProcurementReviewActionDecision;
+  comment?: string;
+}
+
+export interface PrepareSpotProcurementReviewActionInput
+  extends SpotProcurementReviewActionContext {
+  isCurrent: (context: SpotProcurementReviewActionContext) => boolean;
+}
+
+export type PrepareSpotProcurementReviewActionResult =
+  | {
+      status: "ready";
+      context: SpotProcurementReviewActionContext;
+      preflight: SpotProcurementDetailReadModel;
+    }
+  | {
+      status: "stale";
+      context: SpotProcurementReviewActionContext;
+    };
+
+export interface ExecuteSpotProcurementReviewActionInput {
+  decision: SpotProcurementReviewActionDecision;
+  capture: (
+    decision: SpotProcurementReviewActionDecision
+  ) => SpotProcurementReviewActionContext | null;
+  preflight: (
+    context: SpotProcurementReviewActionContext
+  ) => Promise<PrepareSpotProcurementReviewActionResult>;
+  current: (
+    context: SpotProcurementReviewActionContext,
+    prepared: PrepareSpotProcurementReviewActionResult
+  ) => boolean;
+  complete: (
+    context: SpotProcurementReviewActionContext,
+    response: SpotProcurementWriteReadModel
+  ) => void | Promise<void>;
+  fail: (
+    context: SpotProcurementReviewActionContext,
+    error: unknown
+  ) => void | Promise<void>;
+  finish: (context: SpotProcurementReviewActionContext) => void;
+}
+
+export type ExecuteSpotProcurementReviewActionResult =
+  | {
+      status: "not_started";
+    }
+  | {
+      status: "stale";
+      context: SpotProcurementReviewActionContext;
+    }
+  | {
+      status: "completed";
+      context: SpotProcurementReviewActionContext;
+      response: SpotProcurementWriteReadModel;
+    }
+  | {
+      status: "failed";
+      context: SpotProcurementReviewActionContext;
+    };
+
 export interface ReviewSpotProcurementPaymentPayload
-  extends ReviewSpotProcurementPayload {
+  extends SpotProcurementReviewDecisionPayload {
   adjustedSupplierBalanceAmountCents?: string;
   selfReviewReason?: string;
   confirmationPassword?: string;
@@ -1226,6 +1315,142 @@ export function reviewSpotProcurement(
     `/spot-procurements/${encodeURIComponent(procurementId)}/approval`,
     body
   );
+}
+
+export async function prepareSpotProcurementReviewAction(
+  input: PrepareSpotProcurementReviewActionInput
+): Promise<PrepareSpotProcurementReviewActionResult> {
+  const context = normalizeSpotProcurementReviewAction(input);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  const preflight = await fetchSpotProcurementDetail(context.procurementId);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+  assertSpotProcurementReviewPreflight(context, preflight);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  return { status: "ready", context, preflight };
+}
+
+export async function executeSpotProcurementReviewAction(
+  input: ExecuteSpotProcurementReviewActionInput
+): Promise<ExecuteSpotProcurementReviewActionResult> {
+  const context = input.capture(input.decision);
+  if (!context) return { status: "not_started" };
+
+  try {
+    const prepared = await input.preflight(context);
+    if (!input.current(context, prepared)) {
+      return { status: "stale", context };
+    }
+    const response = await reviewSpotProcurement(
+      context.procurementId,
+      reviewSpotProcurementActionPayload(context, input.decision)
+    );
+    await input.complete(context, response);
+    return { status: "completed", context, response };
+  } catch (error) {
+    await input.fail(context, error);
+    return { status: "failed", context };
+  } finally {
+    input.finish(context);
+  }
+}
+
+function reviewSpotProcurementActionPayload(
+  context: SpotProcurementReviewActionContext,
+  decision: SpotProcurementReviewActionDecision
+): ReviewSpotProcurementPayload {
+  if (
+    context.decision !== decision ||
+    (decision === "reject" && !context.comment)
+  ) {
+    throw new Error(
+      "零星采购审批上下文无效，请重新读取当前采购后再操作"
+    );
+  }
+  return {
+    decision,
+    ...(decision === "reject" ? { comment: context.comment } : {}),
+    expectedVersionId: context.expectedVersionId,
+    expectedApprovalInstanceId: context.expectedApprovalInstanceId,
+    expectedNodeIndex: context.expectedNodeIndex
+  };
+}
+
+function normalizeSpotProcurementReviewAction(
+  input: PrepareSpotProcurementReviewActionInput
+): SpotProcurementReviewActionContext {
+  const ownerScope = input.ownerScope.trim();
+  const procurementId = input.procurementId.trim();
+  const expectedVersionId = input.expectedVersionId.trim();
+  const expectedApprovalInstanceId =
+    input.expectedApprovalInstanceId.trim();
+  const comment =
+    input.decision === "reject" ? input.comment?.trim() ?? "" : undefined;
+  if (
+    !ownerScope ||
+    !procurementId ||
+    !expectedVersionId ||
+    !expectedApprovalInstanceId ||
+    !Number.isInteger(input.routeGeneration) ||
+    input.routeGeneration < 0 ||
+    !Number.isInteger(input.detailEpoch) ||
+    input.detailEpoch < 0 ||
+    !Number.isInteger(input.dialogGeneration) ||
+    input.dialogGeneration < 0 ||
+    !Number.isInteger(input.operationId) ||
+    input.operationId < 1 ||
+    !Number.isInteger(input.expectedNodeIndex) ||
+    input.expectedNodeIndex < 0 ||
+    (input.decision !== "approve" && input.decision !== "reject") ||
+    (input.decision === "reject" && !comment)
+  ) {
+    throw new Error(
+      "零星采购审批上下文无效，请重新读取当前采购后再操作"
+    );
+  }
+  return Object.freeze({
+    ownerScope,
+    routeGeneration: input.routeGeneration,
+    detailEpoch: input.detailEpoch,
+    dialogGeneration: input.dialogGeneration,
+    operationId: input.operationId,
+    procurementId,
+    expectedVersionId,
+    expectedApprovalInstanceId,
+    expectedNodeIndex: input.expectedNodeIndex,
+    decision: input.decision,
+    ...(input.decision === "reject" ? { comment } : {})
+  });
+}
+
+function assertSpotProcurementReviewPreflight(
+  context: SpotProcurementReviewActionContext,
+  preflight: SpotProcurementDetailReadModel
+) {
+  const enabledReviewActions = preflight.availableActions.filter(
+    (action) => action.key === "review_approval" && action.enabled
+  );
+  const coordinates = preflight.reviewApprovalContext;
+  if (
+    preflight.procurement.id !== context.procurementId ||
+    preflight.currentVersion.id !== context.expectedVersionId ||
+    enabledReviewActions.length !== 1 ||
+    coordinates?.expectedVersionId !== context.expectedVersionId ||
+    coordinates.expectedApprovalInstanceId !==
+      context.expectedApprovalInstanceId ||
+    coordinates.expectedNodeIndex !== context.expectedNodeIndex
+  ) {
+    throw new Error(
+      "零星采购审批资格或审批坐标已变化，请重新读取当前采购"
+    );
+  }
 }
 
 export function withdrawSpotProcurement(procurementId: string) {

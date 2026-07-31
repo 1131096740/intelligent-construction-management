@@ -1,13 +1,22 @@
 <script setup lang="ts">
 import type { BusinessSummaryTone } from "../../components/business-status-summary.config";
 import type { UploadFile } from "tdesign-vue-next";
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch
+} from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   abandonSpotProcurementDraft,
   confirmSpotProcurementAbnormalTermination,
   createSpotProcurementVersion,
+  executeSpotProcurementReviewAction,
   fetchSpotProcurementDetail,
+  prepareSpotProcurementReviewAction,
   requestSpotProcurementAbnormalTermination,
   reviewSpotProcurement,
   recreateSpotProcurementPaymentDraft,
@@ -15,6 +24,9 @@ import {
   updateSpotProcurementDraft,
   voidSpotProcurement,
   withdrawSpotProcurement,
+  type PrepareSpotProcurementReviewActionResult,
+  type SpotProcurementReviewActionContext,
+  type SpotProcurementReviewActionDecision,
   type SpotProcurementDetailReadModel
 } from "../../api/spot-procurement.api";
 import { downloadApprovalForm, uploadPrivateFile } from "../../api/core-flow-read.api";
@@ -86,7 +98,15 @@ const confirmation = reactive({
   confirmTheme: "primary" as "primary" | "danger",
   requireReason: false,
   requirePassword: false,
-  reasonLabel: "操作原因"
+  reasonLabel: "操作原因",
+  error: ""
+});
+const reviewConfirmation = reactive({
+  dialogGeneration: -1,
+  procurementId: "",
+  expectedVersionId: "",
+  expectedApprovalInstanceId: "",
+  expectedNodeIndex: -1
 });
 const abnormalTerminationRequestVisible = ref(false);
 const abnormalTerminationRequestError = ref("");
@@ -97,6 +117,12 @@ const abnormalTerminationConfirmProcurementId = ref("");
 let detailRouteGeneration = 0;
 let detailLoadRequestId = 0;
 let submitOperationId = 0;
+let detailEpoch = 0;
+let reviewDialogGeneration = 0;
+let reviewOperationSequence = 0;
+let reviewBusyOwnerId = 0;
+let reviewComponentActive = true;
+const reviewOwnerScope = globalThis.crypto.randomUUID();
 
 type AbnormalTerminationActionContext = {
   procurementId: string;
@@ -107,6 +133,10 @@ type SubmitActionContext = {
   routeGeneration: number;
   operationId: number;
 };
+type ReviewConfirmationKind =
+  | "review_approve"
+  | "review_reject"
+  | "review_return";
 
 const quotationSizeLimit = {
   size: SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.limitBytes,
@@ -126,6 +156,31 @@ const submitApprovalAction = computed(() =>
         (action) => action.key === "submit_approval"
       ) ?? null
     : null
+);
+function reviewApprovalActionEnabled(key: "review_approval") {
+  return Boolean(
+    spotProcurementCapability.value?.availableActions.some(
+      (action) => action.key === key && action.enabled
+    )
+  );
+}
+const reviewApprovalEnabled = computed(() =>
+  spotProcurementCapability.value?.procurement.id ===
+    procurementId.value &&
+  spotProcurementCapability.value.currentVersion.id ===
+    spotProcurementCapability.value.reviewApprovalContext
+      ?.expectedVersionId &&
+  Boolean(
+    spotProcurementCapability.value.reviewApprovalContext
+      ?.expectedApprovalInstanceId
+  ) &&
+  Number.isInteger(
+    spotProcurementCapability.value.reviewApprovalContext
+      ?.expectedNodeIndex
+  ) &&
+  (spotProcurementCapability.value.reviewApprovalContext
+    ?.expectedNodeIndex ?? -1) >= 0 &&
+  reviewApprovalActionEnabled("review_approval")
 );
 const linkedPayment = computed(() => {
   const paymentId = detail.value?.procurement.payment?.paymentId;
@@ -249,11 +304,38 @@ function openLinkedPayment() {
   void router.push(paymentDetailUrl(linkedPayment.value.id));
 }
 
+function reviewKind(kind: ActionKind): kind is ReviewConfirmationKind {
+  return (
+    kind === "review_approve" ||
+    kind === "review_reject" ||
+    kind === "review_return"
+  );
+}
+
+function clearReviewConfirmation() {
+  reviewConfirmation.dialogGeneration = -1;
+  reviewConfirmation.procurementId = "";
+  reviewConfirmation.expectedVersionId = "";
+  reviewConfirmation.expectedApprovalInstanceId = "";
+  reviewConfirmation.expectedNodeIndex = -1;
+}
+
+function invalidateReviewDialog(close: boolean) {
+  reviewDialogGeneration += 1;
+  clearReviewConfirmation();
+  if (close && reviewKind(confirmation.kind)) {
+    confirmation.visible = false;
+    confirmation.error = "";
+  }
+}
+
 async function loadDetail() {
   const expectedProcurementId = procurementId.value;
   const generation = detailRouteGeneration;
   const requestId = ++detailLoadRequestId;
   if (!expectedProcurementId) return;
+  detailEpoch += 1;
+  invalidateReviewDialog(true);
   spotProcurementCapability.value = null;
   loading.value = true;
   loadError.value = "";
@@ -467,9 +549,36 @@ async function recreatePaymentDraft() {
 function openConfirmation(kind: ActionKind) {
   const current = detail.value;
   if (!current) return;
+  if (reviewKind(kind)) {
+    const coordinates =
+      spotProcurementCapability.value?.reviewApprovalContext;
+    if (
+      !reviewApprovalEnabled.value ||
+      spotProcurementCapability.value?.procurement.id !==
+        current.procurement.id ||
+      !coordinates
+    ) {
+      return;
+    }
+    reviewDialogGeneration += 1;
+    reviewConfirmation.dialogGeneration = reviewDialogGeneration;
+    reviewConfirmation.procurementId =
+      spotProcurementCapability.value.procurement.id;
+    reviewConfirmation.expectedVersionId =
+      coordinates.expectedVersionId;
+    reviewConfirmation.expectedApprovalInstanceId =
+      coordinates.expectedApprovalInstanceId;
+    reviewConfirmation.expectedNodeIndex =
+      coordinates.expectedNodeIndex;
+  } else {
+    invalidateReviewDialog(false);
+  }
   const configurations: Record<
     ActionKind,
-    Omit<typeof confirmation, "visible" | "kind" | "procurementId">
+    Omit<
+      typeof confirmation,
+      "visible" | "kind" | "procurementId" | "error"
+    >
   > = {
     review_approve: {
       title: "确认通过采购审批",
@@ -529,7 +638,210 @@ function openConfirmation(kind: ActionKind) {
   Object.assign(confirmation, configurations[kind], {
     visible: true,
     kind,
-    procurementId: current.procurement.id
+    procurementId: current.procurement.id,
+    error: ""
+  });
+}
+
+function reviewCapabilityMatches(
+  context: SpotProcurementReviewActionContext
+) {
+  const coordinates =
+    spotProcurementCapability.value?.reviewApprovalContext;
+  return (
+    spotProcurementCapability.value?.procurement.id ===
+      context.procurementId &&
+    spotProcurementCapability.value.currentVersion.id ===
+      context.expectedVersionId &&
+    spotProcurementCapability.value.availableActions.some(
+      (action) =>
+        action.key === "review_approval" && action.enabled
+    ) &&
+    coordinates?.expectedVersionId === context.expectedVersionId &&
+    coordinates.expectedApprovalInstanceId ===
+      context.expectedApprovalInstanceId &&
+    coordinates.expectedNodeIndex === context.expectedNodeIndex
+  );
+}
+
+function reviewSelectionMatches(
+  context: SpotProcurementReviewActionContext
+) {
+  const expectedKind =
+    context.decision === "approve" ? "review_approve" : "review_reject";
+  return (
+    confirmation.visible &&
+    confirmation.kind === expectedKind &&
+    confirmation.procurementId === context.procurementId &&
+    reviewConfirmation.dialogGeneration === context.dialogGeneration &&
+    reviewConfirmation.procurementId === context.procurementId &&
+    reviewConfirmation.expectedVersionId === context.expectedVersionId &&
+    reviewConfirmation.expectedApprovalInstanceId ===
+      context.expectedApprovalInstanceId &&
+    reviewConfirmation.expectedNodeIndex === context.expectedNodeIndex
+  );
+}
+
+function reviewContextIsCurrent(
+  context: SpotProcurementReviewActionContext
+) {
+  return (
+    reviewComponentActive &&
+    context.ownerScope === reviewOwnerScope &&
+    context.routeGeneration === detailRouteGeneration &&
+    context.detailEpoch === detailEpoch &&
+    context.dialogGeneration === reviewDialogGeneration &&
+    context.procurementId === procurementId.value &&
+    reviewBusyOwnerId === context.operationId &&
+    reviewSelectionMatches(context) &&
+    reviewCapabilityMatches(context)
+  );
+}
+
+function captureReviewContext(
+  decision: SpotProcurementReviewActionDecision,
+  reason: string
+): SpotProcurementReviewActionContext | null {
+  const coordinates = reviewConfirmation;
+  const expectedKind =
+    decision === "approve" ? "review_approve" : "review_reject";
+  const comment = decision === "reject" ? reason.trim() : undefined;
+  if (
+    confirmation.kind !== expectedKind ||
+    !confirmation.visible ||
+    coordinates.dialogGeneration !== reviewDialogGeneration ||
+    !coordinates.procurementId ||
+    !coordinates.expectedVersionId ||
+    !coordinates.expectedApprovalInstanceId ||
+    !Number.isInteger(coordinates.expectedNodeIndex) ||
+    coordinates.expectedNodeIndex < 0 ||
+    (decision === "reject" && !comment)
+  ) {
+    confirmation.error =
+      decision === "reject" && !comment
+        ? "请填写驳回原因"
+        : "审批上下文已失效，请重新打开审批确认";
+    return null;
+  }
+  if (actionBusy.value || reviewBusyOwnerId !== 0) {
+    confirmation.error = "当前审批正在提交，请等待本次操作完成";
+    return null;
+  }
+  const context = Object.freeze({
+    ownerScope: reviewOwnerScope,
+    routeGeneration: detailRouteGeneration,
+    detailEpoch,
+    dialogGeneration: coordinates.dialogGeneration,
+    operationId: ++reviewOperationSequence,
+    procurementId: coordinates.procurementId,
+    expectedVersionId: coordinates.expectedVersionId,
+    expectedApprovalInstanceId:
+      coordinates.expectedApprovalInstanceId,
+    expectedNodeIndex: coordinates.expectedNodeIndex,
+    decision,
+    ...(decision === "reject" ? { comment } : {})
+  });
+  reviewBusyOwnerId = context.operationId;
+  actionBusy.value = true;
+  confirmation.error = "";
+  return context;
+}
+
+function sameReviewContext(
+  left: SpotProcurementReviewActionContext,
+  right: SpotProcurementReviewActionContext
+) {
+  return (
+    left.ownerScope === right.ownerScope &&
+    left.routeGeneration === right.routeGeneration &&
+    left.detailEpoch === right.detailEpoch &&
+    left.dialogGeneration === right.dialogGeneration &&
+    left.operationId === right.operationId &&
+    left.procurementId === right.procurementId &&
+    left.expectedVersionId === right.expectedVersionId &&
+    left.expectedApprovalInstanceId ===
+      right.expectedApprovalInstanceId &&
+    left.expectedNodeIndex === right.expectedNodeIndex &&
+    left.decision === right.decision &&
+    left.comment === right.comment
+  );
+}
+
+function preparedReviewIsCurrent(
+  context: SpotProcurementReviewActionContext,
+  result: PrepareSpotProcurementReviewActionResult
+) {
+  return (
+    result.status === "ready" &&
+    sameReviewContext(context, result.context) &&
+    reviewContextIsCurrent(context)
+  );
+}
+
+function completeReview(context: SpotProcurementReviewActionContext) {
+  if (!reviewContextIsCurrent(context)) return;
+  confirmation.visible = false;
+  confirmation.error = "";
+  showSuccess(
+    context.decision === "approve"
+      ? "采购审批已通过。"
+      : "采购申请已驳回。"
+  );
+  return loadDetail();
+}
+
+function failReview(
+  context: SpotProcurementReviewActionContext,
+  error: unknown
+) {
+  if (!reviewContextIsCurrent(context)) return;
+  confirmation.error =
+    error instanceof Error ? error.message : "采购审批操作失败";
+}
+
+function finishReview(context: SpotProcurementReviewActionContext) {
+  if (reviewBusyOwnerId !== context.operationId) return;
+  reviewBusyOwnerId = 0;
+  actionBusy.value = false;
+}
+
+function confirmReviewApprove(values: {
+  reason: string;
+  password: string;
+}) {
+  return executeSpotProcurementReviewAction({
+    decision: "approve",
+    capture: () => captureReviewContext("approve", values.reason),
+    preflight: (context) =>
+      prepareSpotProcurementReviewAction({
+        ...context,
+        decision: "approve",
+        isCurrent: reviewContextIsCurrent
+      }),
+    current: preparedReviewIsCurrent,
+    complete: completeReview,
+    fail: failReview,
+    finish: finishReview
+  });
+}
+
+function confirmReviewReject(values: {
+  reason: string;
+  password: string;
+}) {
+  return executeSpotProcurementReviewAction({
+    decision: "reject",
+    capture: () => captureReviewContext("reject", values.reason),
+    preflight: (context) =>
+      prepareSpotProcurementReviewAction({
+        ...context,
+        decision: "reject",
+        isCurrent: reviewContextIsCurrent
+      }),
+    current: preparedReviewIsCurrent,
+    complete: completeReview,
+    fail: failReview,
+    finish: finishReview
   });
 }
 
@@ -546,14 +858,23 @@ async function confirmAction(values: { reason: string; password: string }) {
   }
   actionBusy.value = true;
   try {
-    if (confirmation.kind === "review_approve") {
-      await reviewSpotProcurement(current.procurement.id, { decision: "approve" });
-      showSuccess("采购审批已通过。");
-    } else if (confirmation.kind === "review_reject") {
-      await reviewSpotProcurement(current.procurement.id, { decision: "reject", comment: values.reason });
-      showSuccess("采购申请已驳回。");
-    } else if (confirmation.kind === "review_return") {
-      await reviewSpotProcurement(current.procurement.id, { decision: "return_to_applicant", comment: values.reason });
+    if (confirmation.kind === "review_return") {
+      const comment = values.reason.trim();
+      if (
+        !comment ||
+        reviewConfirmation.procurementId !== current.procurement.id ||
+        reviewConfirmation.dialogGeneration !== reviewDialogGeneration
+      ) {
+        throw new Error("审批上下文已失效，请重新打开审批确认");
+      }
+      await reviewSpotProcurement(current.procurement.id, {
+        decision: "return_to_applicant",
+        comment,
+        expectedVersionId: reviewConfirmation.expectedVersionId,
+        expectedApprovalInstanceId:
+          reviewConfirmation.expectedApprovalInstanceId,
+        expectedNodeIndex: reviewConfirmation.expectedNodeIndex
+      });
       showSuccess("采购申请已退回，并已生成新的修改草稿。");
     } else if (confirmation.kind === "withdraw") {
       await withdrawSpotProcurement(current.procurement.id);
@@ -818,6 +1139,9 @@ function clearDetailRouteContext() {
   detailRouteGeneration += 1;
   detailLoadRequestId += 1;
   submitOperationId += 1;
+  detailEpoch += 1;
+  invalidateReviewDialog(true);
+  reviewBusyOwnerId = 0;
   spotProcurementCapability.value = null;
   detail.value = null;
   loading.value = false;
@@ -826,6 +1150,7 @@ function clearDetailRouteContext() {
   actionMessage.value = "";
   confirmation.visible = false;
   confirmation.procurementId = "";
+  confirmation.error = "";
   abnormalTerminationRequestVisible.value = false;
   abnormalTerminationRequestError.value = "";
   abnormalTerminationRequestProcurementId.value = "";
@@ -839,6 +1164,10 @@ watch(procurementId, () => {
   void loadDetail();
 });
 onMounted(() => void loadDetail());
+onBeforeUnmount(() => {
+  reviewComponentActive = false;
+  clearDetailRouteContext();
+});
 </script>
 
 <template>
@@ -1017,7 +1346,7 @@ onMounted(() => void loadDetail());
           >
             {{ submitApprovalAction.label }}
           </t-button>
-          <template v-if="actionEnabled('review_approval')">
+          <template v-if="reviewApprovalActionEnabled('review_approval')">
             <t-button
               theme="primary"
               @click="openConfirmation('review_approve')"
@@ -1255,6 +1584,7 @@ onMounted(() => void loadDetail());
     </t-dialog>
 
     <SensitiveActionDialog
+      v-if="reviewApprovalActionEnabled('review_approval') && confirmation.kind === 'review_approve'"
       v-model="confirmation.visible"
       :title="confirmation.title"
       :description="confirmation.description"
@@ -1264,6 +1594,35 @@ onMounted(() => void loadDetail());
       :require-password="confirmation.requirePassword"
       :reason-label="confirmation.reasonLabel"
       :loading="actionBusy"
+      :error="confirmation.error"
+      @confirm="confirmReviewApprove"
+    />
+    <SensitiveActionDialog
+      v-if="reviewApprovalActionEnabled('review_approval') && confirmation.kind === 'review_reject'"
+      v-model="confirmation.visible"
+      :title="confirmation.title"
+      :description="confirmation.description"
+      :confirm-text="confirmation.confirmText"
+      :confirm-theme="confirmation.confirmTheme"
+      :require-reason="confirmation.requireReason"
+      :require-password="confirmation.requirePassword"
+      :reason-label="confirmation.reasonLabel"
+      :loading="actionBusy"
+      :error="confirmation.error"
+      @confirm="confirmReviewReject"
+    />
+    <SensitiveActionDialog
+      v-if="confirmation.kind !== 'review_approve' && confirmation.kind !== 'review_reject'"
+      v-model="confirmation.visible"
+      :title="confirmation.title"
+      :description="confirmation.description"
+      :confirm-text="confirmation.confirmText"
+      :confirm-theme="confirmation.confirmTheme"
+      :require-reason="confirmation.requireReason"
+      :require-password="confirmation.requirePassword"
+      :reason-label="confirmation.reasonLabel"
+      :loading="actionBusy"
+      :error="confirmation.error"
       @confirm="confirmAction"
     />
     <SensitiveActionDialog

@@ -37,7 +37,55 @@ describe("spot procurement PostgreSQL concurrency runner cleanup", () => {
     expect(verifier).toContain("SpotProcurementPaymentAttachment");
     expect(verifier).toContain("SpotProcurementPaymentExecutionVoucher");
     expect(verifier).toContain("SpotProcurementPaymentInvoice");
+    expect(verifier).toContain("ProjectFundingAvailabilityService");
+    expect(verifier).toContain(
+      "const projectFunding = new ProjectFundingAvailabilityService()"
+    );
+    expect(verifier).toContain("closure,\n    projectFunding");
     expect(verifier).not.toContain("jg_efb_spot_payment_attachment");
+  });
+
+  it("proves stale spot-procurement review coordinates lose after a direct PostgreSQL row-lock wait", () => {
+    const verifier = readFileSync(
+      join(process.cwd(), "prisma/verify-spot-procurement-concurrency.cjs"),
+      "utf8"
+    );
+    const proofStart = verifier.indexOf(
+      "async function verifyApplicationReviewCoordinateConcurrency"
+    );
+    const proofEnd = verifier.indexOf(
+      "\nasync function ",
+      proofStart + 1
+    );
+    const proof = verifier.slice(
+      proofStart,
+      proofEnd === -1 ? verifier.length : proofEnd
+    );
+
+    expect(proofStart).toBeGreaterThanOrEqual(0);
+    expect(verifier).toContain("SpotProcurementApplicationService");
+    expect(verifier).toContain(
+      "await verifyApplicationReviewCoordinateConcurrency()"
+    );
+    expect(verifier).toContain("observerClient.$connect()");
+    expect(verifier).toContain("observerClient.$disconnect()");
+    expect(proof).toContain("new SpotProcurementApplicationService");
+    expect(proof).toContain("expectedVersionId");
+    expect(proof).toContain("expectedApprovalInstanceId");
+    expect(proof).toContain("expectedNodeIndex");
+    expect(proof).toContain("firstReviewAuditEntered");
+    expect(proof).toContain("firstReviewBackendPid");
+    expect(proof).toContain("secondReviewBackendPid");
+    expect(proof).toContain("pg_backend_pid()");
+    expect(proof).toContain("pg_blocking_pids");
+    expect(proof).toContain('results[0].status === "fulfilled"');
+    expect(proof).toContain('results[1].status === "rejected"');
+    expect(proof).toContain("getStatus() === 409");
+    expect(proof).toContain("currentNodeIndex === 1");
+    expect(proof).toContain("approvalActionLog.count");
+    expect(proof).toContain("auditLog.count");
+    expect(proof).toContain("spotProcurementPayment.count");
+    expect(proof).toContain("spotProcurementReceipt.count");
   });
 
   it("removes the unique container name even when docker run has not settled", async () => {

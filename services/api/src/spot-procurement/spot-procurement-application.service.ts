@@ -463,6 +463,13 @@ export class SpotProcurementApplicationService {
           actorRoleKeys: actorRoles,
           approvedRoleKey
         });
+        if (
+          input.expectedVersionId !== version.id ||
+          input.expectedApprovalInstanceId !== approval.id ||
+          input.expectedNodeIndex !== approval.currentNodeIndex
+        ) {
+          throw new ConflictException("采购审批坐标已变化，请刷新页面后重试");
+        }
         const comment = optionalText(input.comment);
         if (input.decision !== "approve" && !comment) {
           throw new BadRequestException("驳回或退回采购申请时必须填写审批意见");
@@ -1745,9 +1752,12 @@ export class SpotProcurementApplicationService {
         AND "businessId" = ${versionId}
         AND "flowType" = 'spot_procurement.approve'
         AND "status" = ${status}
-      LIMIT 1 FOR UPDATE
+      ORDER BY "updatedAt" DESC, "id" DESC
+      FOR UPDATE
     `);
-    if (!rows[0]) throw new ConflictException("当前采购审批实例不存在或状态已变化");
+    if (rows.length !== 1) {
+      throw new ConflictException("当前采购审批实例不存在、重复或状态已变化");
+    }
     return rows[0];
   }
 

@@ -2003,6 +2003,162 @@ test("does not record a delayed refund upload after switching from receipt A to 
   await expect.poll(() => refundWrites).toBe(0);
 });
 
+test("posts frozen spot procurement review coordinates after a fresh preflight", async ({ page }, testInfo) => {
+  const consoleErrors: string[] = [];
+  const pageErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await mockLogin(page, {
+    id: "material-director-1",
+    name: "物资主管甲",
+    roleKeys: ["material_director"]
+  });
+  const requests: Array<{
+    procurementId: string;
+    method: string;
+    body?: unknown;
+  }> = [];
+
+  await page.route("**/api/spot-procurements/procurement-review-**", async (route) => {
+    const request = route.request();
+    const pathName = new URL(request.url()).pathname;
+    const segments = pathName.split("/").filter(Boolean);
+    const procurementId = segments.at(-1) === "approval"
+      ? segments.at(-2) ?? ""
+      : segments.at(-1) ?? "";
+    requests.push({
+      procurementId,
+      method: request.method(),
+      ...(request.method() === "POST" ? { body: request.postDataJSON() } : {})
+    });
+    if (request.method() === "POST") {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ id: procurementId, status: "approval_pending" })
+      });
+    }
+
+    const base = procurementDetail();
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...base,
+        procurement: {
+          ...base.procurement,
+          id: procurementId,
+          code: procurementId.endsWith("reject")
+            ? "LXCG-REVIEW-REJECT"
+            : "LXCG-REVIEW-APPROVE",
+          status: "approval_pending",
+          statusLabel: "审批中"
+        },
+        currentVersion: {
+          ...base.currentVersion,
+          id: `version-${procurementId}`,
+          status: "approval_pending",
+          statusLabel: "审批中"
+        },
+        approval: {
+          status: "approval_pending",
+          statusLabel: "审批中",
+          currentNodeName: "物资部主管审批",
+          currentRoleKeys: ["material_director"]
+        },
+        availableActions: [{
+          key: "review_approval",
+          label: "办理审批",
+          kind: "primary",
+          enabled: true,
+          disabledReason: null
+        }],
+        reviewApprovalContext: {
+          expectedVersionId: `version-${procurementId}`,
+          expectedApprovalInstanceId: `approval-${procurementId}`,
+          expectedNodeIndex: 0
+        },
+        primaryAction: "review_approval"
+      })
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
+
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto("/零星采购/procurement-review-approve");
+  expect(decodeURIComponent(new URL(page.url()).pathname)).toBe(
+    "/零星采购/procurement-review-approve"
+  );
+  await expect(page.locator("#main-content")).not.toBeEmpty();
+  await expect(
+    page.locator("vite-error-overlay, #webpack-dev-server-client-overlay")
+  ).toHaveCount(0);
+  await page.getByText("审批与动作", { exact: true }).click();
+  await page.getByRole("button", { name: "审批通过", exact: true }).click();
+  const approveDialog = page.locator(".t-dialog").filter({ hasText: "确认通过采购审批" });
+  await expect(approveDialog).toBeVisible();
+  await page.screenshot({
+    path: path.join(testInfo.outputDir, "spot-procurement-review-approve-1366x768.png"),
+    fullPage: true
+  });
+  await approveDialog.getByRole("button", { name: "确认通过", exact: true }).click();
+  await expect(page.getByText("采购审批已通过。", { exact: true })).toBeVisible();
+  await expect.poll(() => requests
+    .filter((request) => request.procurementId === "procurement-review-approve")
+    .map((request) => request.method)
+  ).toEqual(["GET", "GET", "POST", "GET"]);
+  expect(requests.find((request) =>
+    request.procurementId === "procurement-review-approve" &&
+    request.method === "POST"
+  )?.body).toEqual({
+    decision: "approve",
+    expectedVersionId: "version-procurement-review-approve",
+    expectedApprovalInstanceId: "approval-procurement-review-approve",
+    expectedNodeIndex: 0
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/零星采购/procurement-review-reject");
+  expect(decodeURIComponent(new URL(page.url()).pathname)).toBe(
+    "/零星采购/procurement-review-reject"
+  );
+  await expect(page.locator("#main-content")).not.toBeEmpty();
+  await page.getByText("审批与动作", { exact: true }).click();
+  await page.getByRole("button", { name: "驳回", exact: true }).click();
+  const rejectDialog = page.locator(".t-dialog").filter({ hasText: "驳回采购申请" });
+  await expect(rejectDialog).toBeVisible();
+  await rejectDialog.getByPlaceholder("说明本次操作原因").fill("预算依据需要补充");
+  await page.screenshot({
+    path: path.join(testInfo.outputDir, "spot-procurement-review-reject-390x844.png"),
+    fullPage: true
+  });
+  await rejectDialog.getByRole("button", { name: "确认驳回", exact: true }).click();
+  await expect(page.getByText("采购申请已驳回。", { exact: true })).toBeVisible();
+  await expect.poll(() => requests
+    .filter((request) => request.procurementId === "procurement-review-reject")
+    .map((request) => request.method)
+  ).toEqual(["GET", "GET", "POST", "GET"]);
+  expect(requests.find((request) =>
+    request.procurementId === "procurement-review-reject" &&
+    request.method === "POST"
+  )?.body).toEqual({
+    decision: "reject",
+    comment: "预算依据需要补充",
+    expectedVersionId: "version-procurement-review-reject",
+    expectedApprovalInstanceId: "approval-procurement-review-reject",
+    expectedNodeIndex: 0
+  });
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalScrollers(page);
+  expect(consoleErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
 test("executes server-owned procurement, A5 payment and receipt draft lifecycle actions", async ({ page }) => {
   await mockLogin(page);
   const requests: Array<{ path: string; body: unknown }> = [];

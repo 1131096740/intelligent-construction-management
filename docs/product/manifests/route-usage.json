@@ -4324,6 +4324,16 @@
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
             ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+            "wrapper": "prepareSpotProcurementReviewAction",
+            "method": "GET",
+            "normalizedPath": "/spot-procurements/:param",
+            "normalizedKey": "GET /spot-procurements/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+            ]
           }
         ],
         "authStore": [],
@@ -14649,6 +14659,16 @@
       "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
         "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+            "wrapper": "executeSpotProcurementReviewAction",
+            "method": "POST",
+            "normalizedPath": "/spot-procurements/:param/approval",
+            "normalizedKey": "POST /spot-procurements/:param/approval",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+            ]
+          },
           {
             "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
             "wrapper": "reviewSpotProcurement",

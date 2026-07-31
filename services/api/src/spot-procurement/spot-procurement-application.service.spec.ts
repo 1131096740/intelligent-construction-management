@@ -366,7 +366,10 @@ describe("SpotProcurementApplicationService real-form application", () => {
       ]);
 
     const result = await service.review("procurement-1", "manager-1", {
-      decision: "approve"
+      decision: "approve",
+      expectedVersionId: "version-1",
+      expectedApprovalInstanceId: "approval-1",
+      expectedNodeIndex: 0
     });
 
     expect(tx.spotProcurementPayment.create).toHaveBeenCalledWith({
@@ -400,6 +403,294 @@ describe("SpotProcurementApplicationService real-form application", () => {
       })
     });
     expect(result).toMatchObject({ status: "approved_in_progress" });
+  });
+
+  it("rejects a row-lock-serialized duplicate review before it crosses into the actor's next role", async () => {
+    const { service, tx, audit } = context();
+    tx.projectMember.findMany.mockResolvedValue([
+      { positionKey: "material_director" },
+      { positionKey: "project_manager" }
+    ]);
+    const frozenNodes = [
+      {
+        name: "物资主管审批",
+        mode: "any",
+        roleKeys: ["material_director"]
+      },
+      {
+        name: "项目经理审批",
+        mode: "any",
+        roleKeys: ["project_manager"]
+      }
+    ];
+    tx.$queryRaw
+      .mockResolvedValueOnce([procurement("approval_pending")])
+      .mockResolvedValueOnce([version("approval_pending")])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          frozenNodes,
+          applicantUserId: "applicant-1"
+        }
+      ])
+      .mockResolvedValueOnce([procurement("approval_pending")])
+      .mockResolvedValueOnce([version("approval_pending")])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 1,
+          frozenNodes: [
+            { ...frozenNodes[0], approvedRoleKeys: ["material_director"] },
+            frozenNodes[1]
+          ],
+          applicantUserId: "applicant-1"
+        }
+      ]);
+    const frozenRequest = {
+      decision: "approve" as const,
+      expectedVersionId: "version-1",
+      expectedApprovalInstanceId: "approval-1",
+      expectedNodeIndex: 0
+    };
+
+    await expect(
+      service.review("procurement-1", "dual-role-1", frozenRequest)
+    ).resolves.toMatchObject({ status: "approval_pending" });
+    await expect(
+      service.review("procurement-1", "dual-role-1", frozenRequest)
+    ).rejects.toMatchObject({
+      status: 409
+    });
+
+    expect(tx.approvalActionLog.create).toHaveBeenCalledTimes(1);
+    expect(tx.approvalInstance.update).toHaveBeenCalledTimes(1);
+    expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [
+      "version",
+      {
+        decision: "approve",
+        expectedVersionId: "version-stale",
+        expectedApprovalInstanceId: "approval-1",
+        expectedNodeIndex: 0
+      }
+    ],
+    [
+      "approval instance",
+      {
+        decision: "reject",
+        comment: "资料不完整",
+        expectedVersionId: "version-1",
+        expectedApprovalInstanceId: "approval-stale",
+        expectedNodeIndex: 0
+      }
+    ],
+    [
+      "approval node",
+      {
+        decision: "approve",
+        expectedVersionId: "version-1",
+        expectedApprovalInstanceId: "approval-1",
+        expectedNodeIndex: 1
+      }
+    ]
+  ])("rejects a stale expected %s with zero writes", async (_label, coordinates) => {
+    const { service, tx, audit, approvalForms } = context("project_manager");
+    tx.$queryRaw
+      .mockResolvedValueOnce([procurement("approval_pending")])
+      .mockResolvedValueOnce([version("approval_pending")])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "项目经理审批",
+              mode: "any",
+              roleKeys: ["project_manager"]
+            }
+          ],
+          applicantUserId: "applicant-1"
+        }
+      ]);
+
+    await expect(
+      service.review("procurement-1", "manager-1", coordinates as never)
+    ).rejects.toMatchObject({
+      status: 409
+    });
+
+    const approvalLockSql = tx.$queryRaw.mock.calls[2]?.[0] as {
+      strings?: readonly string[];
+    };
+    const approvalLockText = approvalLockSql.strings?.join(" ") ?? "";
+    expect(approvalLockText).toContain(
+      'ORDER BY "updatedAt" DESC, "id" DESC'
+    );
+    expect(approvalLockText).toContain("FOR UPDATE");
+    expect(approvalLockText).not.toContain("LIMIT 1");
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurement.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurement.updateMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurementReceipt.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurementReceiptRevision.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(approvalForms.tryRefreshLatestForBusiness).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "non-node reviewer with wrong coordinates",
+      "finance_director",
+      "finance-director-1",
+      "applicant-1",
+      {
+        expectedVersionId: "version-stale",
+        expectedApprovalInstanceId: "approval-stale",
+        expectedNodeIndex: 9
+      }
+    ],
+    [
+      "non-node reviewer with correctly guessed coordinates",
+      "finance_director",
+      "finance-director-1",
+      "applicant-1",
+      {
+        expectedVersionId: "version-1",
+        expectedApprovalInstanceId: "approval-1",
+        expectedNodeIndex: 0
+      }
+    ],
+    [
+      "ordinary self-reviewer with wrong coordinates",
+      "project_manager",
+      "manager-1",
+      "manager-1",
+      {
+        expectedVersionId: "version-stale",
+        expectedApprovalInstanceId: "approval-stale",
+        expectedNodeIndex: 9
+      }
+    ],
+    [
+      "ordinary self-reviewer with correctly guessed coordinates",
+      "project_manager",
+      "manager-1",
+      "manager-1",
+      {
+        expectedVersionId: "version-1",
+        expectedApprovalInstanceId: "approval-1",
+        expectedNodeIndex: 0
+      }
+    ]
+  ])(
+    "returns the same 403 with zero writes for %s",
+    async (_label, roleKey, actorUserId, applicantUserId, coordinates) => {
+      const { service, tx, audit, approvalForms } = context(roleKey);
+      tx.$queryRaw
+        .mockResolvedValueOnce([procurement("approval_pending")])
+        .mockResolvedValueOnce([version("approval_pending")])
+        .mockResolvedValueOnce([
+          {
+            id: "approval-1",
+            status: "approval_pending",
+            currentNodeIndex: 0,
+            frozenNodes: [
+              {
+                name: "项目经理审批",
+                mode: "any",
+                roleKeys: ["project_manager"]
+              }
+            ],
+            applicantUserId
+          }
+        ]);
+
+      await expect(
+        service.review("procurement-1", actorUserId, {
+          decision: "approve",
+          ...coordinates
+        } as never)
+      ).rejects.toMatchObject({
+        status: 403
+      });
+
+      expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+      expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+      expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+      expect(tx.spotProcurementVersion.updateMany).not.toHaveBeenCalled();
+      expect(tx.spotProcurement.update).not.toHaveBeenCalled();
+      expect(tx.spotProcurement.updateMany).not.toHaveBeenCalled();
+      expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
+      expect(tx.spotProcurementReceipt.create).not.toHaveBeenCalled();
+      expect(tx.spotProcurementReceiptRevision.create).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(approvalForms.tryRefreshLatestForBusiness).not.toHaveBeenCalled();
+    }
+  );
+
+  it("fails closed with zero writes when the current version has two pending approval instances", async () => {
+    const { service, tx, audit, approvalForms } = context("project_manager");
+    const frozenNodes = [
+      {
+        name: "项目经理审批",
+        mode: "any",
+        roleKeys: ["project_manager"]
+      }
+    ];
+    tx.$queryRaw
+      .mockResolvedValueOnce([procurement("approval_pending")])
+      .mockResolvedValueOnce([version("approval_pending")])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-2",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          frozenNodes,
+          applicantUserId: "applicant-1"
+        },
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          frozenNodes,
+          applicantUserId: "applicant-1"
+        }
+      ]);
+
+    await expect(
+      service.review("procurement-1", "manager-1", {
+        decision: "approve",
+        expectedVersionId: "version-1",
+        expectedApprovalInstanceId: "approval-2",
+        expectedNodeIndex: 0
+      })
+    ).rejects.toMatchObject({
+      status: 409
+    });
+
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurement.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurement.updateMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurementReceipt.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurementReceiptRevision.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(approvalForms.tryRefreshLatestForBusiness).not.toHaveBeenCalled();
   });
 
   it("refuses a normal procurement version change after any real payment", async () => {

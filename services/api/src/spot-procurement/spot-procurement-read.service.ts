@@ -692,7 +692,17 @@ export class SpotProcurementReadService {
       approvalInstances,
       SPOT_PROCUREMENT_BUSINESS_TYPES.application
     );
-    const currentApproval = approvalByBusinessId.get(currentVersion.id) ?? null;
+    const currentPendingApprovals = approvalInstances.filter(
+      (approval) =>
+        approval.businessType === SPOT_PROCUREMENT_BUSINESS_TYPES.application &&
+        approval.businessId === currentVersion.id &&
+        approval.flowType === "spot_procurement.approve" &&
+        approval.status === "approval_pending"
+    );
+    const currentApproval =
+      currentPendingApprovals.length === 1
+        ? currentPendingApprovals[0]
+        : approvalByBusinessId.get(currentVersion.id) ?? null;
     const roleKeys = await this.projectVisibility.effectiveRoleKeys(
       actorUserId,
       procurement.projectId
@@ -730,6 +740,7 @@ export class SpotProcurementReadService {
       procurement,
       currentVersion,
       currentApproval,
+      currentPendingApprovalCount: currentPendingApprovals.length,
       roleKeys,
       actorUserId,
       activePayments: allPayments.filter((payment) =>
@@ -751,6 +762,17 @@ export class SpotProcurementReadService {
       hasActualPayment: Boolean(actualPayment),
       pilotEnabled: this.pilot.isEnabled(procurement.projectId)
     });
+    const canReviewCurrentApproval = availableActions.some(
+      (action) => action.key === "review_approval" && action.enabled
+    );
+    const reviewApprovalContext =
+      canReviewCurrentApproval && currentApproval
+        ? {
+            expectedVersionId: currentVersion.id,
+            expectedApprovalInstanceId: currentApproval.id,
+            expectedNodeIndex: currentApproval.currentNodeIndex
+          }
+        : null;
     const invoiceCoverageByProcurementId =
       !usesRealProcurementForm && this.invoiceLedger
       ? await this.invoiceLedger.coverageForProcurementIds([
@@ -842,6 +864,7 @@ export class SpotProcurementReadService {
         ];
       }),
       approval: approvalSummary(currentApproval),
+      reviewApprovalContext,
       approvalTimeline: currentApprovalTimeline,
       payments: paymentRows,
       paymentSummary: usesRealProcurementForm
@@ -2579,6 +2602,7 @@ export class SpotProcurementReadService {
     procurement: SpotProcurement;
     currentVersion: SpotProcurementVersion;
     currentApproval: ApprovalInstance | null;
+    currentPendingApprovalCount: number;
     roleKeys: RoleKey[];
     actorUserId: string;
     activePayments: SpotProcurementPayment[];
@@ -2616,6 +2640,7 @@ export class SpotProcurementReadService {
       PROCUREMENT_CREATE_ROLES.has(role)
     );
     const reviewAccess =
+      input.currentPendingApprovalCount === 1 &&
       input.currentApproval?.status === "approval_pending"
         ? approvalReviewAccessOnFrozenNode(
             input.currentApproval.frozenNodes,
@@ -2738,9 +2763,12 @@ export class SpotProcurementReadService {
         requiredAction: "spot_procurement.approve",
         skipRoleCheck: true,
         enabled: canReview,
-        disabledReason: reviewAccess?.canAct
-          ? "申请人不能审批自己发起的采购"
-          : "当前账号不是本审批节点处理人"
+        disabledReason:
+          input.currentPendingApprovalCount > 1
+            ? "当前采购存在多个待审批实例，请联系管理员处理"
+            : reviewAccess?.canAct
+              ? "申请人不能审批自己发起的采购"
+              : "当前账号不是本审批节点处理人"
       }),
       detailAction({
         key: "withdraw_approval",
