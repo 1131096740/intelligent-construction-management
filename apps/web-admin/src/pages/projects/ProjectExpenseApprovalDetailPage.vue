@@ -8,7 +8,7 @@
       <t-button
         variant="outline"
         :loading="loading"
-        :disabled="executionSubmitting || financeSubmitting || reviewSubmitting || withdrawalSubmitting"
+        :disabled="executionSubmitting || financeSubmitting || receiptSubmitting || reviewSubmitting || withdrawalSubmitting"
         @click="loadDetail"
       >
         刷新
@@ -44,6 +44,7 @@
           <div><span>累计实付</span><strong>{{ formatCents(detail.paidAmountCents) }}</strong></div>
           <div><span>已入账金额</span><strong>{{ formatCents(detail.financeRecordedAmountCents) }}</strong></div>
           <div><span>待入账金额</span><strong>{{ formatCents(detail.financeRemainingAmountCents) }}</strong></div>
+          <div><span>收货状态</span><strong>{{ detail.receiptConfirmedAt ? `已确认 · ${formatDateTime(detail.receiptConfirmedAt)}` : "待确认" }}</strong></div>
           <div><span>当前节点</span><strong>{{ detail.currentNodeName ?? "流程已结束" }}</strong></div>
           <div class="summary-wide">
             <span>付款事由</span><strong>{{ detail.reason }}</strong>
@@ -206,6 +207,49 @@
       />
 
       <t-card
+        v-if="projectExpenseReceiptEnabled"
+        class="section-card"
+        title="历史项目支出收货确认"
+        :bordered="true"
+      >
+        <t-alert
+          theme="warning"
+          message="本入口仅办理冻结的历史零星采购存量，不替代正式零采的照片、水印和主管复核；请仅在数量、质量和现场交付已核对无误后确认。"
+        />
+        <t-textarea
+          v-model="receiptForm.note"
+          class="receipt-note"
+          placeholder="收货备注（选填）"
+          :disabled="receiptSubmitting"
+        />
+        <div class="execution-actions">
+          <t-button
+            theme="primary"
+            :loading="receiptSubmitting"
+            :disabled="receiptSubmitting"
+            @click="requestProjectExpenseReceiptConfirmation"
+          >
+            确认收货
+          </t-button>
+        </div>
+      </t-card>
+
+      <SensitiveActionDialog
+        v-if="projectExpenseReceiptActionEnabled() && receiptConfirmation.visible"
+        :key="`project-expense-receipt-${receiptConfirmation.dialogGeneration}`"
+        v-model="receiptConfirmation.visible"
+        title="确认历史项目支出已收货？"
+        description="此入口仅办理历史存量；确认后将固化本次收货事实、经办人和备注，并写入审计历史。"
+        confirm-text="确认收货"
+        confirm-theme="primary"
+        require-password
+        :loading="receiptSubmitting"
+        :error="receiptConfirmation.error"
+        @confirm="confirmProjectExpenseReceipt"
+        @cancel="cancelProjectExpenseReceiptConfirmation"
+      />
+
+      <t-card
         class="section-card"
         title="审批办理"
         :bordered="true"
@@ -335,6 +379,8 @@ import { buildFileUploadSummary } from "../../components/file-upload-summary.con
 import {
   createProjectExpenseExecutionRecordAttemptState,
   createProjectExpenseFinanceRecordAttemptState,
+  createProjectExpenseReceiptConfirmationAttemptState,
+  confirmProjectExpenseReceiptWithPreflight,
   executeProjectExpenseApprovalReviewAction,
   executeProjectExpenseWithdrawalAction,
   fetchProjectExpenseApprovalDetail,
@@ -342,6 +388,8 @@ import {
   prepareProjectExpenseWithdrawalAction,
   projectExpenseFinanceCompletionIsAuthoritative,
   projectExpenseFinanceFailureDisposition,
+  projectExpenseReceiptCompletionIsAuthoritative,
+  projectExpenseReceiptFailureDisposition,
   recordProjectExpenseFinanceWithPreflight,
   recordProjectExpenseExecutionWithUpload,
   voidProjectExpenseRequest,
@@ -353,6 +401,8 @@ import {
   type ProjectExpenseExecutionRecordAttemptState,
   type ProjectExpenseFinanceRecordAttemptState,
   type ProjectExpenseFinanceRecordReadModel,
+  type ProjectExpenseReceiptConfirmationAttemptState,
+  type ProjectExpenseReceiptConfirmationReadModel,
   type ProjectExpenseWithdrawalActionContext
 } from "../../api/core-flow-read.api";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
@@ -391,6 +441,21 @@ interface ProjectExpenseFinanceSelection {
   occurredAt: string;
   idempotencyKey: string;
   attemptState: ProjectExpenseFinanceRecordAttemptState;
+}
+
+interface ProjectExpenseReceiptSelection {
+  ownerScope: string;
+  routeGeneration: number;
+  detailEpoch: number;
+  dialogGeneration: number;
+  capabilityGeneration: number;
+  operationOwnerId: number;
+  projectId: string;
+  expenseRequestId: string;
+  expectedExpenseUpdatedAt: string;
+  note: string;
+  idempotencyKey: string;
+  attemptState: ProjectExpenseReceiptConfirmationAttemptState;
 }
 
 const route = useRoute();
@@ -442,6 +507,25 @@ const financeConfirmation = reactive({
 const financeForm = reactive({
   amountYuan: "",
   occurredAt: toDatetimePickerValue(new Date())
+});
+let receiptDialogGeneration = 0;
+let receiptOperationSequence = 0;
+let receiptBusyOwnerId = 0;
+let receiptComponentActive = true;
+let receiptDialogReady = false;
+let receiptSelection:
+  | Readonly<ProjectExpenseReceiptSelection>
+  | null = null;
+let receiptOperationPromise: Promise<unknown> | null = null;
+const receiptOwnerScope = globalThis.crypto.randomUUID();
+const receiptSubmitting = ref(false);
+const receiptConfirmation = reactive({
+  visible: false,
+  error: "",
+  dialogGeneration: -1
+});
+const receiptForm = reactive({
+  note: ""
 });
 let reviewDialogGeneration = 0;
 let reviewOperationSequence = 0;
@@ -595,6 +679,15 @@ function projectExpenseFinanceActionEnabled() {
   );
 }
 
+function projectExpenseReceiptActionEnabled() {
+  return Boolean(
+    projectExpenseWithdrawalCapability.value?.availableActions.some(
+      (action) =>
+        action.key === "confirm_receipt" && action.enabled
+    )
+  );
+}
+
 const withdrawalEnabled = computed(() => {
   const capability = projectExpenseWithdrawalCapability.value;
   const coordinates = capability?.withdrawalContext;
@@ -633,7 +726,8 @@ const nonWithdrawalLifecycleActions = computed(() =>
       action.key !== "withdraw" &&
       action.key !== "review_approval" &&
       action.key !== "record_execution" &&
-      action.key !== "record_finance"
+      action.key !== "record_finance" &&
+      action.key !== "confirm_receipt"
   ) ?? []
 );
 
@@ -697,6 +791,38 @@ const projectExpenseFinanceEnabled = computed(() => {
   );
 });
 
+const projectExpenseReceiptEnabled = computed(() => {
+  const capability = projectExpenseWithdrawalCapability.value;
+  const receiptContext = capability?.receiptContext;
+  const currentDetail = detail.value;
+  const { projectId, expenseRequestId } = routeIds();
+  const enabledActionCount =
+    capability?.availableActions.filter(
+      (action) =>
+        action.key === "confirm_receipt" && action.enabled
+    ).length ?? 0;
+  if (
+    !capability ||
+    !receiptContext ||
+    capability.projectId !== projectId ||
+    capability.id !== expenseRequestId ||
+    currentDetail?.projectId !== capability.projectId ||
+    currentDetail.id !== capability.id ||
+    typeof capability.lifecycleUpdatedAt !== "string" ||
+    !capability.lifecycleUpdatedAt ||
+    receiptContext.expectedExpenseUpdatedAt !==
+      capability.lifecycleUpdatedAt ||
+    capability.receiptConfirmedAt !== null ||
+    capability.receiptConfirmationIdempotencyKey !== null
+  ) {
+    return false;
+  }
+  return (
+    enabledActionCount === 1 &&
+    projectExpenseReceiptActionEnabled()
+  );
+});
+
 function routeIds() {
   return {
     projectId: routeParam(route.params.projectId),
@@ -721,6 +847,7 @@ async function loadDetail(): Promise<boolean> {
   invalidateProjectExpenseWithdrawalDialog(true);
   invalidateProjectExpenseExecutionDialog(true);
   invalidateProjectExpenseFinanceDialog(true);
+  invalidateProjectExpenseReceiptDialog(true);
   projectExpenseCapabilityGeneration += 1;
   projectExpenseWithdrawalCapability.value = null;
   if (!projectId || !expenseRequestId) {
@@ -794,6 +921,7 @@ function detailLoadIsCurrent(
     reviewComponentActive &&
     executionComponentActive &&
     financeComponentActive &&
+    receiptComponentActive &&
     requestId === detailLoadRequestId &&
     routeGeneration === detailRouteGeneration &&
     currentRoute.projectId === projectId &&
@@ -824,6 +952,11 @@ function clearProjectExpenseRouteContext() {
   invalidateProjectExpenseFinanceDialog(true);
   financeForm.amountYuan = "";
   financeForm.occurredAt = toDatetimePickerValue(new Date());
+  receiptBusyOwnerId = 0;
+  receiptSubmitting.value = false;
+  receiptOperationPromise = null;
+  invalidateProjectExpenseReceiptDialog(true);
+  receiptForm.note = "";
   projectExpenseCapabilityGeneration += 1;
   projectExpenseWithdrawalCapability.value = null;
   detail.value = null;
@@ -893,6 +1026,15 @@ function invalidateProjectExpenseFinanceDialog(close: boolean) {
   if (close) financeConfirmation.visible = false;
 }
 
+function invalidateProjectExpenseReceiptDialog(close: boolean) {
+  receiptDialogGeneration += 1;
+  receiptDialogReady = false;
+  receiptSelection = null;
+  receiptConfirmation.error = "";
+  receiptConfirmation.dialogGeneration = -1;
+  if (close) receiptConfirmation.visible = false;
+}
+
 function scheduleRouteDetailLoad() {
   const expectedGeneration = detailRouteGeneration;
   void Promise.resolve().then(() => {
@@ -901,6 +1043,7 @@ function scheduleRouteDetailLoad() {
       reviewComponentActive &&
       executionComponentActive &&
       financeComponentActive &&
+      receiptComponentActive &&
       expectedGeneration === detailRouteGeneration
     ) {
       void loadDetail();
@@ -1357,6 +1500,242 @@ function cancelProjectExpenseFinance() {
     return;
   }
   invalidateProjectExpenseFinanceDialog(true);
+}
+
+function requestProjectExpenseReceiptConfirmation() {
+  const capability = projectExpenseWithdrawalCapability.value;
+  const receiptContext = capability?.receiptContext;
+  const { projectId, expenseRequestId } = routeIds();
+  try {
+    if (
+      !projectExpenseReceiptEnabled.value ||
+      !capability ||
+      !receiptContext ||
+      capability.projectId !== projectId ||
+      capability.id !== expenseRequestId
+    ) {
+      throw new Error(
+        "项目支出收货确认资格或版本未读取，请刷新详情后重试"
+      );
+    }
+    if (receiptBusyOwnerId !== 0 || receiptSubmitting.value) {
+      throw new Error(
+        "当前项目支出收货确认正在提交，请等待本次操作完成"
+      );
+    }
+    const note = receiptForm.note.trim();
+    receiptDialogGeneration += 1;
+    receiptSelection = Object.freeze({
+      ownerScope: receiptOwnerScope,
+      routeGeneration: detailRouteGeneration,
+      detailEpoch,
+      dialogGeneration: receiptDialogGeneration,
+      capabilityGeneration: projectExpenseCapabilityGeneration,
+      operationOwnerId: ++receiptOperationSequence,
+      projectId,
+      expenseRequestId,
+      expectedExpenseUpdatedAt:
+        receiptContext.expectedExpenseUpdatedAt,
+      note,
+      idempotencyKey: globalThis.crypto.randomUUID(),
+      attemptState:
+        createProjectExpenseReceiptConfirmationAttemptState()
+    });
+    receiptDialogReady = true;
+    Object.assign(receiptConfirmation, {
+      visible: true,
+      error: "",
+      dialogGeneration: receiptDialogGeneration
+    });
+    actionMessage.value = "";
+  } catch (error) {
+    actionTone.value = "error";
+    actionMessage.value =
+      error instanceof Error
+        ? error.message
+        : "项目支出收货确认信息不完整";
+  }
+}
+
+function projectExpenseReceiptRequestIsCurrent(
+  selection: Readonly<ProjectExpenseReceiptSelection>
+) {
+  const currentRoute = routeIds();
+  return (
+    receiptComponentActive &&
+    selection.ownerScope === receiptOwnerScope &&
+    selection.routeGeneration === detailRouteGeneration &&
+    selection.detailEpoch === detailEpoch &&
+    selection.dialogGeneration === receiptDialogGeneration &&
+    selection.capabilityGeneration ===
+      projectExpenseCapabilityGeneration &&
+    selection.operationOwnerId === receiptBusyOwnerId &&
+    selection.projectId === currentRoute.projectId &&
+    selection.expenseRequestId === currentRoute.expenseRequestId &&
+    receiptSelection === selection &&
+    receiptDialogReady &&
+    receiptConfirmation.visible &&
+    receiptConfirmation.dialogGeneration ===
+      selection.dialogGeneration
+  );
+}
+
+function projectExpenseReceiptSelectionIsCurrent(
+  selection: Readonly<ProjectExpenseReceiptSelection>
+) {
+  if (!projectExpenseReceiptRequestIsCurrent(selection)) {
+    return false;
+  }
+  const capability = projectExpenseWithdrawalCapability.value;
+  const receiptContext = capability?.receiptContext;
+  const currentDetail = detail.value;
+  const enabledActions = capability?.availableActions.filter(
+    (action) =>
+      action.key === "confirm_receipt" && action.enabled
+  );
+  return (
+    capability?.projectId === selection.projectId &&
+    capability.id === selection.expenseRequestId &&
+    currentDetail?.projectId === selection.projectId &&
+    currentDetail.id === selection.expenseRequestId &&
+    capability.lifecycleUpdatedAt ===
+      selection.expectedExpenseUpdatedAt &&
+    receiptContext?.expectedExpenseUpdatedAt ===
+      selection.expectedExpenseUpdatedAt &&
+    capability.receiptConfirmedAt === null &&
+    capability.receiptConfirmationIdempotencyKey === null &&
+    enabledActions?.length === 1
+  );
+}
+
+function confirmProjectExpenseReceipt(values: {
+  reason: string;
+  password: string;
+}) {
+  if (receiptOperationPromise) {
+    return receiptOperationPromise;
+  }
+  const selection = receiptSelection;
+  if (!selection || !receiptDialogReady) {
+    receiptConfirmation.error =
+      "项目支出收货确认上下文已失效，请重新打开确认窗口";
+    return Promise.resolve({ status: "not_started" });
+  }
+  if (receiptBusyOwnerId !== 0) {
+    receiptConfirmation.error =
+      "当前项目支出收货确认正在提交，请等待本次操作完成";
+    return Promise.resolve({ status: "not_started" });
+  }
+
+  const ownerId = selection.operationOwnerId;
+  receiptBusyOwnerId = ownerId;
+  receiptSubmitting.value = true;
+  actionMessage.value = "";
+  receiptConfirmation.error = "";
+  const request = confirmProjectExpenseReceiptWithPreflight(
+    selection.projectId,
+    selection.expenseRequestId,
+    {
+      confirmationPassword: values.password,
+      note: selection.note,
+      expectedExpenseUpdatedAt:
+        selection.expectedExpenseUpdatedAt,
+      idempotencyKey: selection.idempotencyKey,
+      context: selection,
+      isCurrent: projectExpenseReceiptRequestIsCurrent
+    },
+    selection.attemptState
+  );
+  let operation!: Promise<unknown>;
+  operation = request
+    .then((result) =>
+      completeProjectExpenseReceiptConfirmation(
+        selection,
+        result
+      )
+    )
+    .catch(async (error) => {
+      if (projectExpenseReceiptSelectionIsCurrent(selection)) {
+        const reason =
+          error instanceof Error
+            ? error.message
+            : "项目支出收货确认失败";
+        const disposition =
+          projectExpenseReceiptFailureDisposition(error);
+        actionTone.value = "error";
+        if (disposition === "restart") {
+          actionMessage.value =
+            `操作未完成：${reason}。权威状态可能已变化，已刷新，请重新确认。`;
+          invalidateProjectExpenseReceiptDialog(true);
+          await loadDetail();
+        } else {
+          actionMessage.value =
+            disposition === "password_only"
+              ? `操作未完成：${reason}。请更正当前密码后重试，收货事实保持不变。`
+              : `操作结果尚不明确：${reason}。已保留同一收货事实与幂等请求，可直接重试。`;
+          receiptConfirmation.error = reason;
+        }
+      }
+      return { status: "failed" as const };
+    })
+    .finally(() => {
+      if (receiptBusyOwnerId === ownerId) {
+        receiptBusyOwnerId = 0;
+        receiptSubmitting.value = false;
+      }
+      if (receiptOperationPromise === operation) {
+        receiptOperationPromise = null;
+      }
+    });
+  receiptOperationPromise = operation;
+  return operation;
+}
+
+async function completeProjectExpenseReceiptConfirmation(
+  selection: Readonly<ProjectExpenseReceiptSelection>,
+  response: ProjectExpenseReceiptConfirmationReadModel
+) {
+  if (!projectExpenseReceiptSelectionIsCurrent(selection)) {
+    return { status: "stale" as const };
+  }
+  const serverDetail = await fetchProjectExpenseApprovalDetail(
+    selection.projectId,
+    selection.expenseRequestId
+  );
+  if (!projectExpenseReceiptSelectionIsCurrent(selection)) {
+    return { status: "stale" as const };
+  }
+  if (
+    !projectExpenseReceiptCompletionIsAuthoritative(
+      structuredClone(serverDetail),
+      selection,
+      response
+    )
+  ) {
+    throw new Error(
+      "项目支出收货确认后的权威详情不完整，请刷新后核对"
+    );
+  }
+  projectExpenseCapabilityGeneration += 1;
+  projectExpenseWithdrawalCapability.value = serverDetail;
+  detail.value = structuredClone(serverDetail);
+  detailEpoch += 1;
+  receiptForm.note = "";
+  actionTone.value = "success";
+  actionMessage.value =
+    "项目支出收货已确认，权威详情已刷新。";
+  invalidateProjectExpenseReceiptDialog(true);
+  return { status: "completed" as const, response };
+}
+
+function cancelProjectExpenseReceiptConfirmation() {
+  if (receiptBusyOwnerId !== 0) {
+    receiptConfirmation.visible = true;
+    receiptConfirmation.error =
+      "当前项目支出收货确认正在提交，请等待本次操作完成";
+    return;
+  }
+  invalidateProjectExpenseReceiptDialog(true);
 }
 
 function parseFinanceYuanAmount(raw: string) {
@@ -2006,6 +2385,7 @@ onBeforeUnmount(() => {
   withdrawalComponentActive = false;
   executionComponentActive = false;
   financeComponentActive = false;
+  receiptComponentActive = false;
   clearProjectExpenseRouteContext();
 });
 </script>
@@ -2091,6 +2471,10 @@ onBeforeUnmount(() => {
 .execution-actions {
   display: flex;
   justify-content: flex-end;
+  margin-top: var(--jg-space-md);
+}
+
+.receipt-note {
   margin-top: var(--jg-space-md);
 }
 

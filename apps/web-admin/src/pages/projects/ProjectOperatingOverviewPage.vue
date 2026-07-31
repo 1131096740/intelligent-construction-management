@@ -696,18 +696,6 @@
                     autocomplete="current-password"
                   >
                 </label>
-                <label>
-                  <span>收货确认备注</span>
-                  <input v-model.trim="expenseActionForm.receiptConfirmationNote">
-                </label>
-                <label>
-                  <span>收货确认密码</span>
-                  <input
-                    v-model="expenseActionForm.receiptConfirmationPassword"
-                    type="password"
-                    autocomplete="current-password"
-                  >
-                </label>
               </div>
               <div class="expense-action-buttons">
                 <button
@@ -725,14 +713,6 @@
                   @click="submitExpensePurchaseExecution"
                 >
                   登记采购执行
-                </button>
-                <button
-                  v-if="canConfirmExpenseReceipt(selectedExpenseRow)"
-                  type="button"
-                  :disabled="expenseActionBusy !== ''"
-                  @click="submitExpenseReceiptConfirmation"
-                >
-                  确认收货
                 </button>
                 <button
                   v-if="selectedExpenseRow.hasAttachment"
@@ -804,7 +784,6 @@ import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
   confirmProjectUpstreamFundFact,
-  confirmProjectExpenseReceipt,
   createProject,
   createProjectExpenseRequest,
   downloadProjectExpenseApprovalPdf,
@@ -895,8 +874,6 @@ interface ProjectExpenseActionFormState {
   purchaseExecutedAt: string;
   purchaseExecutionNote: string;
   purchaseExecutionPassword: string;
-  receiptConfirmationNote: string;
-  receiptConfirmationPassword: string;
   downloadPassword: string;
 }
 
@@ -1647,8 +1624,6 @@ function createProjectExpenseActionForm(): ProjectExpenseActionFormState {
     purchaseExecutedAt: todayText(),
     purchaseExecutionNote: "",
     purchaseExecutionPassword: "",
-    receiptConfirmationNote: "",
-    receiptConfirmationPassword: "",
     downloadPassword: ""
   };
 }
@@ -1698,15 +1673,6 @@ function expenseStatusLabel(status: string) {
 
 function canRecordPurchaseExecution(row: ProjectExpenseRow) {
   return row.expenseType === "spot_purchase" && row.status === "approved_pending_payment" && !row.isPurchaseExecuted;
-}
-
-function canConfirmExpenseReceipt(row: ProjectExpenseRow) {
-  return (
-    row.expenseType === "spot_purchase" &&
-    row.status === "paid" &&
-    row.isPurchaseExecuted &&
-    !row.isReceiptConfirmed
-  );
 }
 
 function todayText(): string {
@@ -1783,16 +1749,6 @@ async function submitExpensePurchaseExecution() {
       executedAt: requiredText(form.purchaseExecutedAt, "采购执行日期"),
       note: form.purchaseExecutionNote.trim() || undefined,
       confirmationPassword: requiredText(form.purchaseExecutionPassword, "采购执行确认密码")
-    });
-  });
-}
-
-async function submitExpenseReceiptConfirmation() {
-  await runExpenseAction("receipt-confirmation", async (row) => {
-    const form = expenseActionForm.value;
-    await confirmProjectExpenseReceipt(selectedProjectId.value, row.id, {
-      confirmationPassword: requiredText(form.receiptConfirmationPassword, "收货确认密码"),
-      note: form.receiptConfirmationNote.trim() || undefined
     });
   });
 }

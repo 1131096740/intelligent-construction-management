@@ -22,16 +22,16 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "25e516a928ff193dfd4d443660088e1691e142f7e9c3e0ee37494183a4be5f2e",
+      "sha256": "af305574215b5cbc59f631c02d04e1900e5b03772409b017bbd644036047a0eb",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 14,
-        "exportedFunctionCount": 395,
+        "exportedFunctionCount": 398,
         "transportWrapperCount": 386,
-        "pureExportCount": 9,
-        "mainRequestBindingCount": 395,
+        "pureExportCount": 12,
+        "mainRequestBindingCount": 396,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 395,
+        "requestEdgeCount": 396,
         "productionConsumerCount": 338,
         "orphanWrapperCount": 48,
         "testOnlyWrapperCount": 46,
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "d12555f0a830b84b0c132f64169a1dd13b0f257b86e994a3809968eba9612634",
+      "sha256": "2fb2b2ffae1e81837fa21a80a47d3cfdb45a569a9c0b026df390b56d03062278",
       "status": "blocked",
       "summary": {
         "registeredActionCount": 42,
@@ -53,18 +53,18 @@
         "totalVueFileCount": 134,
         "parsedVueFileCount": 134,
         "reachableProductionModuleCount": 229,
-        "templateEventDirectiveCount": 916,
+        "templateEventDirectiveCount": 918,
         "propCallbackDirectiveCount": 10,
-        "coveredProductionMutationConsumerCount": 18,
+        "coveredProductionMutationConsumerCount": 19,
         "candidateProductionMutationConsumerCount": 38,
-        "acceptedProductionMutationConsumerCount": 18,
+        "acceptedProductionMutationConsumerCount": 19,
         "productionMutationConsumerPairCount": 274,
-        "blockerCount": 304
+        "blockerCount": 301
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "b9feaeb11a9b9408528df82962da419b993adffd147fc4408e4f3a81e9b4030d",
+      "sha256": "51627284a66652574b8268633f10a87c3721c2df39172725617d0232acff9cb1",
       "status": "blocked",
       "summary": {
         "routeCount": 395,
@@ -99,19 +99,19 @@
     "exitCandidateRouteCount": 23,
     "internalTaskRouteCount": 2,
     "unclassifiedRouteCount": 26,
-    "mainRequestBindingCount": 395,
+    "mainRequestBindingCount": 396,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 48,
     "duplicateMutationRouteCount": 5,
     "registeredActionCount": 42,
-    "actionBindingCount": 54,
-    "acceptedActionBindingCount": 26,
+    "actionBindingCount": 55,
+    "acceptedActionBindingCount": 27,
     "unresolvedActionBindingCount": 28,
     "productionMutationConsumerPairCount": 274,
-    "coveredProductionMutationConsumerPairCount": 18,
-    "uncoveredProductionMutationConsumerPairCount": 256,
-    "blockerCount": 367
+    "coveredProductionMutationConsumerPairCount": 19,
+    "uncoveredProductionMutationConsumerPairCount": 255,
+    "blockerCount": 366
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -1346,14 +1346,6 @@
         "consumer": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
         "normalizedKeys": [
           "POST /projects/:param/affiliate-settlement-facts/:param/confirmation"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmProjectExpenseReceipt",
-        "consumer": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/expense-requests/:param/receipt-confirmation"
         ]
       },
       {
@@ -2997,15 +2989,12 @@
       {
         "actionId": "project-expense.receipt-confirm-local-status",
         "bindingIndex": 0,
-        "identity": "project-expense.receipt-confirm-local-status\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000confirmProjectExpenseReceipt\u0000POST\u0000POST /projects/:param/expense-requests/:param/receipt-confirmation\u00000",
+        "identity": "project-expense.receipt-confirm-local-status\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000confirmProjectExpenseReceiptWithPreflight\u0000GET\u0000GET /projects/:param/expense-requests/:param/approval-detail\u00000",
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmProjectExpenseReceipt",
-        "normalizedKey": "POST /projects/:param/expense-requests/:param/receipt-confirmation",
+        "wrapper": "confirmProjectExpenseReceiptWithPreflight",
+        "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
         "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
+          "binding_not_mutation"
         ]
       },
       {
@@ -6351,6 +6340,20 @@
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmProjectExpenseReceiptWithPreflight",
+          "method": "GET",
+          "path": "/projects/:param/expense-requests/:param/approval-detail",
+          "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/pages/projects/project-expense-receipt-action.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "fetchProjectExpenseApprovalDetail",
           "method": "GET",
           "path": "/projects/:param/expense-requests/:param/approval-detail",
@@ -6466,6 +6469,34 @@
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "recordProjectExpenseFinanceWithPreflight",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": false,
+          "blockerCodes": [
+            "binding_not_mutation"
+          ]
+        },
+        {
+          "actionId": "project-expense.receipt-confirm-local-status",
+          "bindingIndex": 0,
+          "identity": "project-expense.receipt-confirm-local-status\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000confirmProjectExpenseReceiptWithPreflight\u0000GET\u0000GET /projects/:param/expense-requests/:param/approval-detail\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "projectExpenseWithdrawalCapability.availableActions",
+            "key": "confirm_receipt",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmProjectExpenseReceiptWithPreflight",
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
           ],
@@ -17330,16 +17361,16 @@
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "confirmProjectExpenseReceipt",
+          "wrapper": "confirmProjectExpenseReceiptWithPreflight",
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/receipt-confirmation",
           "normalizedKey": "POST /projects/:param/expense-requests/:param/receipt-confirmation",
           "bodyKind": "json",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
           ],
           "testConsumers": [
-            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+            "apps/web-admin/src/pages/projects/project-expense-receipt-action.test.ts"
           ]
         }
       ],
@@ -17347,38 +17378,33 @@
       "actions": [
         {
           "actionId": "project-expense.receipt-confirm-local-status",
-          "bindingIndex": 0,
-          "identity": "project-expense.receipt-confirm-local-status\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000confirmProjectExpenseReceipt\u0000POST\u0000POST /projects/:param/expense-requests/:param/receipt-confirmation\u00000",
+          "bindingIndex": 1,
+          "identity": "project-expense.receipt-confirm-local-status\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000confirmProjectExpenseReceiptWithPreflight\u0000POST\u0000POST /projects/:param/expense-requests/:param/receipt-confirmation\u00001",
           "usage": "page_action",
           "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
           "capability": {
-            "kind": "client_role_or_status",
-            "source": "canConfirmExpenseReceipt(selectedExpenseRow)",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "kind": "detail_action",
+            "source": "projectExpenseWithdrawalCapability.availableActions",
+            "key": "confirm_receipt",
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "confirmProjectExpenseReceipt",
+          "wrapper": "confirmProjectExpenseReceiptWithPreflight",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED",
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {

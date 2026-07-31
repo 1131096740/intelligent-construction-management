@@ -113,6 +113,10 @@ describe("ProjectExpenseService", () => {
     financeRecordedAmounts = [],
     expenseType = "reimbursement",
     purchaseExecutedAt = null,
+    receiptConfirmedAt = null,
+    receiptConfirmedByUserId = null,
+    receiptConfirmationIdempotencyKey = null,
+    receiptConfirmationNote = null,
     currentNode = { name: "财务部", mode: "any", roleKeys: ["finance_director"] }
   }: {
     actorRoleKeys?: readonly string[];
@@ -126,6 +130,10 @@ describe("ProjectExpenseService", () => {
     financeRecordedAmounts?: readonly bigint[];
     expenseType?: string;
     purchaseExecutedAt?: Date | null;
+    receiptConfirmedAt?: Date | null;
+    receiptConfirmedByUserId?: string | null;
+    receiptConfirmationIdempotencyKey?: string | null;
+    receiptConfirmationNote?: string | null;
     currentNode?: { name: string; mode: "any"; roleKeys: string[] };
   } = {}) {
     const prisma = {
@@ -142,6 +150,10 @@ describe("ProjectExpenseService", () => {
           approvedAmountCents,
           paidAmountCents,
           purchaseExecutedAt,
+          receiptConfirmedAt,
+          receiptConfirmedByUserId,
+          receiptConfirmationIdempotencyKey,
+          receiptConfirmationNote,
           applicantUserId,
           status,
           updatedAt: new Date("2026-07-20T08:00:00.000Z")
@@ -322,6 +334,36 @@ describe("ProjectExpenseService", () => {
       expect.objectContaining({ key: "void", enabled: true, requiresComment: true })
     ]);
     expect(detail.blockedReasons).toEqual([]);
+  });
+
+  it("已确认收货且尚未付款时详情不再发布普通作废", async () => {
+    const { service } = approvalDetailFixture({
+      actorRoleKeys: ["project_manager"],
+      applicantUserId: "applicant-1",
+      actorUserId: "manager-1",
+      expenseType: "spot_purchase",
+      status: "approved_pending_payment",
+      paidAmountCents: 0n,
+      purchaseExecutedAt: new Date("2026-07-20T07:00:00.000Z"),
+      receiptConfirmedAt: new Date("2026-07-20T08:30:00.000Z"),
+      receiptConfirmedByUserId: "applicant-1",
+      receiptConfirmationIdempotencyKey:
+        "7b5e5a60-4f7c-46b7-8f57-6ebd71573af4",
+      receiptConfirmationNote: "数量无误"
+    });
+
+    const detail = await service.getApprovalDetail(
+      "project-1",
+      "expense-1",
+      "manager-1"
+    );
+
+    expect(
+      detail.availableActions.some((action) => action.key === "void")
+    ).toBe(false);
+    expect(detail.blockedReasons).toEqual([
+      "已确认收货，不能普通作废"
+    ]);
   });
 
   it.each([
@@ -655,6 +697,104 @@ describe("ProjectExpenseService", () => {
     ).toBe(false);
   });
 
+  it.each([
+    "approved_pending_payment",
+    "partially_paid",
+    "paid",
+    "payment_blocked"
+  ] as const)(
+    "历史零星采购申请人在 %s 发布唯一 confirm_receipt 和父记录 CAS",
+    async (status) => {
+      const { service } = approvalDetailFixture({
+        actorRoleKeys: ["material_staff"],
+        applicantUserId: "material-1",
+        actorUserId: "material-1",
+        status,
+        approvedAmountCents: 50_000n,
+        paidAmountCents: status === "approved_pending_payment" ? 0n : 20_000n,
+        expenseType: "spot_purchase",
+        purchaseExecutedAt: new Date("2026-07-20T07:00:00.000Z")
+      });
+
+      const detail = await service.getApprovalDetail(
+        "project-1",
+        "expense-1",
+        "material-1"
+      );
+
+      expect(detail.receiptConfirmedAt).toBeNull();
+      expect(detail.receiptConfirmationIdempotencyKey).toBeNull();
+      expect(detail.receiptContext).toEqual({
+        expectedExpenseUpdatedAt: "2026-07-20T08:00:00.000Z"
+      });
+      expect(
+        detail.availableActions.filter(
+          (action) => action.key === "confirm_receipt"
+        )
+      ).toEqual([
+        expect.objectContaining({
+          key: "confirm_receipt",
+          enabled: true,
+          requiredAction: "project_expense.receipt_confirm",
+          requiresPassword: true
+        })
+      ]);
+    }
+  );
+
+  it.each([
+    [
+      "non applicant",
+      {
+        applicantUserId: "other-1",
+        actorRoleKeys: ["project_manager"]
+      }
+    ],
+    ["inactive actor", { actorActive: false }],
+    ["wrong current-project role", { actorRoleKeys: ["finance_staff"] }],
+    ["unexecuted purchase", { purchaseExecutedAt: null }],
+    ["wrong type", { expenseType: "reimbursement" }],
+    ["terminal status", { status: "voided" }],
+    [
+      "already confirmed",
+      {
+        receiptConfirmedAt: new Date("2026-07-20T08:30:00.000Z"),
+        receiptConfirmedByUserId: "material-1",
+        receiptConfirmationIdempotencyKey:
+          "7b5e5a60-4f7c-46b7-8f57-6ebd71573af4",
+        receiptConfirmationNote: "数量无误"
+      }
+    ]
+  ] as const)(
+    "历史零星采购收货 capability 失败关闭: %s",
+    async (_label, overrides) => {
+      const { service } = approvalDetailFixture({
+        actorRoleKeys: ["material_staff"],
+        applicantUserId: "material-1",
+        actorUserId: "material-1",
+        status: "approved_pending_payment",
+        approvedAmountCents: 50_000n,
+        paidAmountCents: 0n,
+        expenseType: "spot_purchase",
+        purchaseExecutedAt: new Date("2026-07-20T07:00:00.000Z"),
+        ...overrides
+      });
+
+      const detail = await service.getApprovalDetail(
+        "project-1",
+        "expense-1",
+        "material-1"
+      );
+
+      expect(detail.receiptContext).toBeNull();
+      expect(
+        detail.availableActions.some(
+          (action) => action.key === "confirm_receipt"
+        )
+      ).toBe(false);
+    }
+  );
+
   it("申请人无审批岗位仍可读非审批中详情且动作安全禁用", async () => {
     const { service, prisma } = approvalDetailFixture({
       actorRoleKeys: [],
@@ -934,6 +1074,65 @@ describe("ProjectExpenseService", () => {
       hasPersistentDraft: false,
       availableActions: [],
       blockedReasons: ["已有实付记录，不能删除或普通作废"]
+    });
+  });
+
+  it("does not publish ordinary void for a receipt-confirmed ledger row", async () => {
+    const now = new Date("2026-07-31T03:00:00.000Z");
+    const prisma = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1" })
+      },
+      projectExpenseRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "expense-received",
+            code: "CG-2026-RECEIVED",
+            expenseType: "spot_purchase",
+            expenseSubtype: "spot_material_purchase",
+            paymentSubject: "历史零星材料",
+            reason: "已收货待付款",
+            requestedAmountCents: 10_000n,
+            approvedAmountCents: 10_000n,
+            paidAmountCents: 0n,
+            paymentMethod: "bank_transfer",
+            counterpartyName: null,
+            attachmentFileId: null,
+            purchaseExecutedAt: new Date(
+              "2026-07-31T02:00:00.000Z"
+            ),
+            receiptConfirmedAt: new Date(
+              "2026-07-31T02:30:00.000Z"
+            ),
+            applicantUserId: "applicant-1",
+            status: "approved_pending_payment",
+            createdAt: now,
+            updatedAt: now
+          }
+        ])
+      },
+      pdfDocument: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      ...roleTables("project_manager")
+    };
+    const service = new ProjectExpenseService(
+      prisma as never,
+      audit as never,
+      auth as never
+    );
+
+    const result = await service.list(
+      "project-1",
+      "applicant-1",
+      { view: "formal_ledger" }
+    );
+
+    expect(result.rows[0]).toMatchObject({
+      id: "expense-received",
+      isReceiptConfirmed: true,
+      availableActions: [],
+      blockedReasons: ["已确认收货，不能普通作废"]
     });
   });
 
@@ -2232,6 +2431,53 @@ describe("ProjectExpenseService", () => {
         comment: "重复提交"
       }
     });
+  });
+
+  it("rejects ordinary void after a receipt fact before changing lifecycle state", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          id: "expense-1",
+          projectId: "project-1",
+          code: "CG-2026-005",
+          expenseType: "spot_purchase",
+          status: "approved_pending_payment",
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 0n,
+          applicantUserId: "material-1",
+          purchaseExecutedAt: new Date("2026-07-20T07:00:00.000Z"),
+          receiptConfirmedByUserId: "material-1",
+          receiptConfirmedAt: new Date("2026-07-20T08:30:00.000Z"),
+          receiptConfirmationIdempotencyKey:
+            "7b5e5a60-4f7c-46b7-8f57-6ebd71573af4",
+          receiptConfirmationNote: "数量无误",
+          updatedAt: new Date("2026-07-20T08:30:00.000Z")
+        }
+      ]),
+      projectExpenseRequest: { update: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(
+        async (callback: (client: typeof tx) => unknown) =>
+          callback(tx)
+      )
+    };
+    const service = new ProjectExpenseService(
+      prisma as never,
+      audit as never,
+      auth as never
+    );
+
+    await expect(
+      service.voidRequest(
+        "project-1",
+        "expense-1",
+        "project-manager-1",
+        "重复提交"
+      )
+    ).rejects.toThrow("已确认收货的项目支出不能普通作废");
+    expect(tx.projectExpenseRequest.update).not.toHaveBeenCalled();
   });
 
   it("records spot purchase execution before payment", async () => {
@@ -3632,90 +3878,6 @@ describe("ProjectExpenseService", () => {
     );
 
     expect(tx.financeRecord.create).not.toHaveBeenCalled();
-  });
-
-  it("confirms spot purchase receipt by the applicant after finance record", async () => {
-    const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([
-        {
-          id: "expense-1",
-          projectId: "project-1",
-          code: "CG-2026-005",
-          expenseType: "spot_purchase",
-          status: "paid",
-          requestedAmountCents: 9_007_199_254_740_993n,
-          approvedAmountCents: 9_007_199_254_740_993n,
-          paidAmountCents: 9_007_199_254_740_993n,
-          applicantUserId: "material-1",
-          purchaseExecutedAt: new Date("2026-07-02T00:00:00.000Z"),
-          receiptConfirmedAt: null
-        }
-      ]),
-      financeRecord: {
-        findMany: jest.fn().mockResolvedValue([{ amountCents: 9_007_199_254_740_993n }])
-      },
-      projectExpenseRequest: {
-        update: jest.fn().mockResolvedValue({ id: "expense-1", receiptConfirmedAt: new Date() })
-      },
-      auditLog: { create: jest.fn() }
-    };
-    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
-    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
-
-    await service.confirmPurchaseReceipt("project-1", "expense-1", "material-1", {
-      confirmationPassword: "current-password",
-      note: "数量无误"
-    });
-
-    expect(auth.confirmPassword).toHaveBeenCalledWith("material-1", "current-password");
-    expect(tx.financeRecord.findMany).toHaveBeenCalledWith({
-      where: { projectExpenseRequestId: "expense-1", direction: "outflow" },
-      select: { amountCents: true }
-    });
-    expect(tx.projectExpenseRequest.update).toHaveBeenCalledWith({
-      where: { id: "expense-1" },
-      data: {
-        receiptConfirmedByUserId: "material-1",
-        receiptConfirmedAt: expect.any(Date),
-        receiptConfirmationNote: "数量无误"
-      }
-    });
-  });
-
-  it("rejects spot purchase receipt confirmation by non-applicant", async () => {
-    const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([
-        {
-          id: "expense-1",
-          projectId: "project-1",
-          code: "CG-2026-006",
-          expenseType: "spot_purchase",
-          status: "paid",
-          requestedAmountCents: 50_000n,
-          approvedAmountCents: 50_000n,
-          paidAmountCents: 50_000n,
-          applicantUserId: "material-1",
-          purchaseExecutedAt: new Date("2026-07-02T00:00:00.000Z"),
-          receiptConfirmedAt: null
-        }
-      ]),
-      financeRecord: {
-        findMany: jest.fn()
-      },
-      projectExpenseRequest: {
-        update: jest.fn()
-      }
-    };
-    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
-    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
-
-    await expect(
-      service.confirmPurchaseReceipt("project-1", "expense-1", "other-user", {
-        confirmationPassword: "current-password"
-      })
-    ).rejects.toThrow("只有零星采购发起人可以确认收货");
-    expect(tx.financeRecord.findMany).not.toHaveBeenCalled();
-    expect(tx.projectExpenseRequest.update).not.toHaveBeenCalled();
   });
 
   it("generates a finance archive PDF when finance records cover paid reimbursement", async () => {

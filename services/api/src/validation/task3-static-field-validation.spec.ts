@@ -138,7 +138,17 @@ describe("Task 3 DTO static field validation coverage", () => {
   it("keeps every required text failure mutually exclusive and preserves valid text", async () => {
     const groups = groupsWithRule("staticRequiredText");
     // Adding or removing a governed required field must update this explicit coverage contract.
-    expect(groups).toHaveLength(51);
+    expect(groups).toHaveLength(52);
+    expect(
+      groups
+        .filter((group) => group.dtoType === ConfirmProjectExpenseReceiptDto)
+        .map((group) => group.propertyName)
+    ).toEqual(
+      expect.arrayContaining([
+        "expectedExpenseUpdatedAt",
+        "confirmationPassword"
+      ])
+    );
     expect(
       groups
         .filter(

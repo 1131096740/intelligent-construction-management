@@ -77,6 +77,13 @@ const validExpenseExecutionBody = {
   confirmationPassword: "current-password"
 };
 
+const validExpenseReceiptBody = {
+  expectedExpenseUpdatedAt: "2026-07-31T03:00:00.000Z",
+  idempotencyKey: "7b5e5a60-4f7c-46b7-8f57-6ebd71573af4",
+  confirmationPassword: "current-password",
+  note: "数量无误"
+};
+
 describe("ProjectExpenseController authorization wiring", () => {
   it("审批详情 GET 原样转发路径参数和登录用户且不使用粗粒度岗位装饰器", async () => {
     const expenses = { getApprovalDetail: jest.fn().mockResolvedValue({ id: "expense-1" }) };
@@ -175,6 +182,34 @@ describe("ProjectExpenseController authorization wiring", () => {
       "cashier-1",
       body
     );
+  });
+
+  it("历史零星采购收货确认强制接收父记录 CAS 和稳定 UUIDv4 幂等键", async () => {
+    await expect(
+      validateExpenseBody(
+        "confirmPurchaseReceipt",
+        validExpenseReceiptBody
+      )
+    ).resolves.toEqual(validExpenseReceiptBody);
+
+    for (const invalid of [
+      { ...validExpenseReceiptBody, expectedExpenseUpdatedAt: undefined },
+      { ...validExpenseReceiptBody, expectedExpenseUpdatedAt: "not-a-date" },
+      { ...validExpenseReceiptBody, idempotencyKey: undefined },
+      { ...validExpenseReceiptBody, idempotencyKey: "not-a-uuid" },
+      {
+        ...validExpenseReceiptBody,
+        idempotencyKey: "7b5e5a60-4f7c-36b7-8f57-6ebd71573af4"
+      }
+    ]) {
+      const response = await getExpenseValidationResponse(
+        "confirmPurchaseReceipt",
+        invalid
+      );
+      expect(response.errors).toEqual(
+        expect.arrayContaining([expect.any(String)])
+      );
+    }
   });
 
   it.each([
@@ -401,7 +436,7 @@ describe("ProjectExpenseController authorization wiring", () => {
         confirmationPassword: "current-password"
       }
     ],
-    ["confirmPurchaseReceipt", { confirmationPassword: "current-password", note: "数量无误" }]
+    ["confirmPurchaseReceipt", validExpenseReceiptBody]
   ] as const)("accepts a valid %s body through its runtime DTO", async (method, value) => {
     const result = await validateExpenseBody(method, value);
 
@@ -510,7 +545,14 @@ describe("ProjectExpenseController authorization wiring", () => {
     ["recordExecution", { amountCents: "100", paidAt: "bad", voucherFileId: "", confirmationPassword: "" }],
     ["recordPurchaseExecution", { executedAt: "bad", confirmationPassword: "" }],
     ["recordFinance", { amountCents: "100", occurredAt: "bad", confirmationPassword: "" }],
-    ["confirmPurchaseReceipt", { confirmationPassword: "" }],
+    [
+      "confirmPurchaseReceipt",
+      {
+        expectedExpenseUpdatedAt: "bad",
+        idempotencyKey: "not-a-uuid",
+        confirmationPassword: ""
+      }
+    ],
     ["voidRequest", { reason: "" }]
   ] as const)("rejects invalid required fields for %s", async (method, value) => {
     const response = await getExpenseValidationResponse(method, value);
@@ -547,7 +589,7 @@ describe("ProjectExpenseController authorization wiring", () => {
       { decision: "approve", ...validExpenseReviewCoordinates, comment: null }
     ],
     ["recordPurchaseExecution", { executedAt: "2026-07-11", confirmationPassword: "pwd", note: null }],
-    ["confirmPurchaseReceipt", { confirmationPassword: "pwd", note: null }]
+    ["confirmPurchaseReceipt", { ...validExpenseReceiptBody, note: null }]
   ] as const)("rejects explicit null for optional text in %s", async (method, value) => {
     const response = await getExpenseValidationResponse(method, value);
 
@@ -719,7 +761,7 @@ describe("ProjectExpenseController authorization wiring", () => {
   it("forwards receipt confirmation requests with the authenticated user id", async () => {
     const expenses = { confirmPurchaseReceipt: jest.fn() };
     const controller = new ProjectExpenseController(expenses as never);
-    const body = { confirmationPassword: "current-password", note: "数量无误" };
+    const body = validExpenseReceiptBody;
 
     await controller.confirmPurchaseReceipt(
       "project-1",

@@ -200,6 +200,10 @@ export interface ProjectExpenseApprovalDetailReadModel {
   remainingAmountCents: MoneyCents;
   financeRecordedAmountCents: MoneyCents;
   financeRemainingAmountCents: MoneyCents;
+  receiptConfirmedAt: string | null;
+  receiptConfirmedByUserId: string | null;
+  receiptConfirmationIdempotencyKey: string | null;
+  receiptConfirmationNote: string | null;
   currentNodeName: string | null;
   canSetApprovedAmount: boolean;
   reviewAction: DetailActionReadModel;
@@ -208,6 +212,9 @@ export interface ProjectExpenseApprovalDetailReadModel {
     expectedExpenseUpdatedAt: string;
   } | null;
   financeContext: {
+    expectedExpenseUpdatedAt: string;
+  } | null;
+  receiptContext: {
     expectedExpenseUpdatedAt: string;
   } | null;
 }

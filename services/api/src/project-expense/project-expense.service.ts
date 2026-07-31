@@ -116,7 +116,20 @@ interface ExpenseLockRow {
   paidAmountCents: bigint;
   applicantUserId: string;
   purchaseExecutedAt: Date | null;
+  receiptConfirmedByUserId: string | null;
   receiptConfirmedAt: Date | null;
+  receiptConfirmationIdempotencyKey: string | null;
+  receiptConfirmationNote: string | null;
+  updatedAt: Date;
+}
+
+interface ProjectExpenseReceiptFactRow {
+  id: string;
+  projectId: string;
+  receiptConfirmedByUserId: string | null;
+  receiptConfirmedAt: Date | null;
+  receiptConfirmationIdempotencyKey: string | null;
+  receiptConfirmationNote: string | null;
   updatedAt: Date;
 }
 
@@ -177,6 +190,13 @@ const REIMBURSEMENT_APPROVAL_NODES = [
   { name: "财务总监", mode: "any", roleKeys: ["finance_director"] },
   { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
 ] satisfies ProjectExpenseApprovalNode[];
+
+const PROJECT_EXPENSE_RECEIPT_CONFIRMABLE_STATUSES = new Set([
+  "approved_pending_payment",
+  "partially_paid",
+  "paid",
+  "payment_blocked"
+]);
 
 const SPOT_PURCHASE_APPROVAL_NODES = [
   { name: "物资部主管", mode: "any", roleKeys: ["material_director"] },
@@ -315,6 +335,7 @@ export class ProjectExpenseService {
     const mappedRows = rows.map(({ attachmentFileId, applicantUserId, ...row }) => {
       const ended = ["withdrawn", "rejected", "voided"].includes(row.status);
       const paid = row.paidAmountCents > 0n || row.status === "paid";
+      const receiptConfirmed = row.receiptConfirmedAt instanceof Date;
       const availableActions: string[] = [];
       if (row.status === "approval_pending" && applicantUserId === actorUserId) {
         availableActions.push("withdraw");
@@ -322,6 +343,7 @@ export class ProjectExpenseService {
       if (
         ["approval_pending", "approved_pending_payment"].includes(row.status) &&
         !paid &&
+        !receiptConfirmed &&
         canPerform("project_expense.void", roleKeys)
       ) {
         availableActions.push("void");
@@ -335,16 +357,18 @@ export class ProjectExpenseService {
         hasAttachment: Boolean(attachmentFileId),
         hasApprovalPdf: pdfBusinessIds.has(row.id),
         isPurchaseExecuted: Boolean(row.purchaseExecutedAt),
-        isReceiptConfirmed: Boolean(row.receiptConfirmedAt),
+        isReceiptConfirmed: receiptConfirmed,
         purchaseExecutedAt: row.purchaseExecutedAt?.toISOString() ?? null,
         receiptConfirmedAt: row.receiptConfirmedAt?.toISOString() ?? null,
         lifecycleKind: "formal_record" as const,
         ledgerView: ended ? ("ended" as const) : ("formal_ledger" as const),
         hasPersistentDraft: false,
         availableActions,
-        blockedReasons: paid
-          ? ["已有实付记录，不能删除或普通作废"]
-          : [],
+        blockedReasons: receiptConfirmed
+          ? ["已确认收货，不能普通作废"]
+          : paid
+            ? ["已有实付记录，不能删除或普通作废"]
+            : [],
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString()
       };
@@ -444,6 +468,10 @@ export class ProjectExpenseService {
         approvedAmountCents: true,
         paidAmountCents: true,
         purchaseExecutedAt: true,
+        receiptConfirmedByUserId: true,
+        receiptConfirmedAt: true,
+        receiptConfirmationIdempotencyKey: true,
+        receiptConfirmationNote: true,
         applicantUserId: true,
         status: true,
         updatedAt: true
@@ -595,6 +623,20 @@ export class ProjectExpenseService {
     const financeContext = financeEnabled
       ? { expectedExpenseUpdatedAt: expense.updatedAt.toISOString() }
       : null;
+    const receiptEnabled =
+      expense.expenseType === "spot_purchase" &&
+      isExpenseApplicant &&
+      financeRoleAccess.actorActive &&
+      financeRoleAccess.canConfirmReceipt &&
+      expense.purchaseExecutedAt instanceof Date &&
+      !(expense.receiptConfirmedAt instanceof Date) &&
+      PROJECT_EXPENSE_RECEIPT_CONFIRMABLE_STATUSES.has(
+        expense.status
+      ) &&
+      expense.updatedAt instanceof Date;
+    const receiptContext = receiptEnabled
+      ? { expectedExpenseUpdatedAt: expense.updatedAt.toISOString() }
+      : null;
     const ended = ["withdrawn", "rejected", "voided"].includes(expense.status);
     const availableActions: DetailActionReadModel[] = [];
     const blockedReasons: string[] = [];
@@ -640,6 +682,20 @@ export class ProjectExpenseService {
         })
       );
     }
+    if (receiptEnabled) {
+      availableActions.push(
+        detailAction({
+          key: "confirm_receipt",
+          label: "历史收货确认",
+          kind: "primary",
+          roleKeys: actorRoleKeys,
+          requiredAction: "project_expense.receipt_confirm",
+          enabled: true,
+          requiresPassword: true,
+          skipRoleCheck: true
+        })
+      );
+    }
     if (expense.status === "approval_pending") {
       availableActions.push(detailAction({
         key: "review_approval",
@@ -655,6 +711,8 @@ export class ProjectExpenseService {
     }
     if (ended) {
       blockedReasons.push("项目支出申请已结束，只能查看历史记录");
+    } else if (expense.receiptConfirmedAt instanceof Date) {
+      blockedReasons.push("已确认收货，不能普通作废");
     } else if (paidAmountCents > 0n || ["partially_paid", "paid"].includes(expense.status)) {
       blockedReasons.push("已有实付记录，不能删除或普通作废");
     } else if (expense.status === "approval_pending") {
@@ -724,6 +782,14 @@ export class ProjectExpenseService {
       financeRemainingAmountCents: moneyCentsToApi(
         financeRemainingAmountCents
       ),
+      receiptConfirmedAt:
+        expense.receiptConfirmedAt?.toISOString() ?? null,
+      receiptConfirmedByUserId:
+        expense.receiptConfirmedByUserId ?? null,
+      receiptConfirmationIdempotencyKey:
+        expense.receiptConfirmationIdempotencyKey ?? null,
+      receiptConfirmationNote:
+        expense.receiptConfirmationNote ?? null,
       currentNodeName: currentNode?.name ?? null,
       canSetApprovedAmount: Boolean(
         reviewApprovalContext &&
@@ -755,7 +821,8 @@ export class ProjectExpenseService {
       withdrawalContext,
       reviewApprovalContext,
       executionContext,
-      financeContext
+      financeContext,
+      receiptContext
     };
   }
 
@@ -1319,6 +1386,9 @@ export class ProjectExpenseService {
       const request = await this.lockExpenseRequest(tx, projectId, expenseRequestId);
       if (!request) {
         throw new NotFoundException("项目支出申请不存在");
+      }
+      if (request.receiptConfirmedAt) {
+        throw new BadRequestException("已确认收货的项目支出不能普通作废");
       }
       if (request.paidAmountCents > 0) {
         throw new BadRequestException("已有实付的项目支出不能作废");
@@ -2096,6 +2166,26 @@ export class ProjectExpenseService {
     actorUserId: string,
     input: ConfirmProjectExpenseReceiptDto
   ) {
+    const idempotencyKey = input.idempotencyKey?.trim().toLowerCase();
+    if (
+      !idempotencyKey ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
+        idempotencyKey
+      )
+    ) {
+      throw new BadRequestException(
+        "收货确认幂等键必须是 UUID"
+      );
+    }
+    const expectedExpenseUpdatedAt = new Date(
+      input.expectedExpenseUpdatedAt
+    );
+    if (Number.isNaN(expectedExpenseUpdatedAt.getTime())) {
+      throw new BadRequestException(
+        "预期项目支出版本格式不正确"
+      );
+    }
+    const note = trimmedOrNull(input.note);
     const confirmationPassword = requiredTrimmed(
       input.confirmationPassword,
       "收货确认需要当前登录密码确认"
@@ -2105,61 +2195,251 @@ export class ProjectExpenseService {
     }
     await this.auth.confirmPassword(actorUserId, confirmationPassword);
 
-    return this.prisma.$transaction(async (tx) => {
-      const request = await this.lockExpenseRequest(tx, projectId, expenseRequestId);
-      if (!request) {
-        throw new NotFoundException("项目支出申请不存在");
-      }
-      if (request.expenseType !== "spot_purchase") {
-        throw new BadRequestException("只有零星采购申请可以确认收货");
-      }
-      if (request.applicantUserId !== actorUserId) {
-        throw new BadRequestException("只有零星采购发起人可以确认收货");
-      }
-      if (!request.purchaseExecutedAt) {
-        throw new BadRequestException("零星采购执行后才能确认收货");
-      }
-      if (request.receiptConfirmedAt) {
-        throw new BadRequestException("零星采购已确认收货");
-      }
-      if (request.status !== "paid") {
-        throw new BadRequestException("零星采购实付完成后才能确认收货");
-      }
-      const financeRecords = await tx.financeRecord.findMany({
-        where: { projectExpenseRequestId: request.id, direction: "outflow" },
-        select: { amountCents: true }
-      });
-      const financeRecordedAmountCents = sumDbMoneyToBigInt(
-        financeRecords.map((record) => record.amountCents),
-        "财务入账金额"
-      );
-      const paidAmountCents = dbMoneyToBigInt(request.paidAmountCents, "项目支出实付金额");
-      if (paidAmountCents <= 0n || financeRecordedAmountCents < paidAmountCents) {
-        throw new BadRequestException("零星采购财务入账完成后才能确认收货");
-      }
-
-      const confirmedAt = new Date();
-      const updated = await tx.projectExpenseRequest.update({
-        where: { id: request.id },
-        data: {
-          receiptConfirmedByUserId: actorUserId,
-          receiptConfirmedAt: confirmedAt,
-          receiptConfirmationNote: trimmedOrNull(input.note)
-        }
-      });
-      await this.audit.record(tx, {
-        actorUserId,
-        action: "project_expense.receipt.confirm",
-        businessType: "project_expense_request",
-        businessId: request.id,
-        metadata: {
-          projectId,
-          confirmedAt: confirmedAt.toISOString(),
-          financeRecordedAmountCents: financeRecordedAmountCents.toString()
-        }
-      });
-      return updated;
+    const scope = await this.prisma.projectExpenseRequest.findFirst({
+      where: { id: expenseRequestId, projectId },
+      select: { id: true, projectId: true }
     });
+    if (!scope) {
+      throw new NotFoundException("项目支出申请不存在");
+    }
+
+    try {
+      const receipt = await this.prisma.$transaction(
+        async (tx) => {
+          const request = await this.lockExpenseRequestById(
+            tx,
+            projectId,
+            expenseRequestId
+          );
+          if (!request) {
+            throw new NotFoundException("项目支出申请不存在");
+          }
+          if (
+            request.id !== scope.id ||
+            request.projectId !== scope.projectId
+          ) {
+            throw new ConflictException(
+              "项目支出收货确认范围已变化，请刷新后重试"
+            );
+          }
+          await this.assertCurrentProjectExpenseReceiptConfirmer(
+            tx,
+            actorUserId,
+            request.projectId
+          );
+          if (request.applicantUserId !== actorUserId) {
+            throw new ForbiddenException(
+              "只有零星采购发起人可以确认收货"
+            );
+          }
+
+          if (
+            request.receiptConfirmationIdempotencyKey ===
+            idempotencyKey
+          ) {
+            this.assertSameProjectExpenseReceiptFacts(request, {
+              idempotencyKey,
+              projectExpenseRequestId: request.id,
+              projectId: request.projectId,
+              actorUserId,
+              note
+            });
+            return request;
+          }
+          if (request.receiptConfirmedAt) {
+            throw new ConflictException(
+              "零星采购已由另一收货事实确认"
+            );
+          }
+          if (
+            request.updatedAt.getTime() !==
+            expectedExpenseUpdatedAt.getTime()
+          ) {
+            throw new ConflictException(
+              "项目支出申请已变化，请刷新后重试"
+            );
+          }
+          if (request.expenseType !== "spot_purchase") {
+            throw new BadRequestException(
+              "只有历史零星采购申请可以确认收货"
+            );
+          }
+          if (!request.purchaseExecutedAt) {
+            throw new BadRequestException(
+              "零星采购执行后才能确认收货"
+            );
+          }
+          if (
+            !PROJECT_EXPENSE_RECEIPT_CONFIRMABLE_STATUSES.has(
+              request.status
+            )
+          ) {
+            throw new BadRequestException(
+              "当前项目支出状态不可确认收货"
+            );
+          }
+
+          const confirmedAt = new Date();
+          const updated =
+            await tx.projectExpenseRequest.update({
+              where: { id: request.id },
+              data: {
+                receiptConfirmedByUserId: actorUserId,
+                receiptConfirmedAt: confirmedAt,
+                receiptConfirmationIdempotencyKey:
+                  idempotencyKey,
+                receiptConfirmationNote: note
+              }
+            });
+          await this.audit.record(tx, {
+            actorUserId,
+            action: "project_expense.receipt.confirm",
+            businessType: "project_expense_request",
+            businessId: request.id,
+            metadata: {
+              code: request.code,
+              projectId: request.projectId,
+              idempotencyKey,
+              confirmedByUserId: actorUserId,
+              confirmedAt: confirmedAt.toISOString(),
+              note,
+              statusAtConfirmation: request.status,
+              paymentCompleted: request.status === "paid",
+              expectedExpenseUpdatedAt:
+                expectedExpenseUpdatedAt.toISOString()
+            }
+          });
+          return updated;
+        },
+        {
+          isolationLevel:
+            Prisma.TransactionIsolationLevel.Serializable
+        }
+      );
+      return this.projectExpenseReceiptResponse(receipt);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      const code = projectExpensePrismaErrorCode(error);
+      const serializationConflict =
+        code === "P2034" ||
+        projectExpenseRawSerializationConflict(error);
+      if (code === "P2002" || serializationConflict) {
+        const concurrentReceipt =
+          await this.resolveConcurrentProjectExpenseReceipt({
+            idempotencyKey,
+            projectExpenseRequestId: scope.id,
+            projectId: scope.projectId,
+            actorUserId,
+            note
+          });
+        if (concurrentReceipt) {
+          return this.projectExpenseReceiptResponse(
+            concurrentReceipt
+          );
+        }
+        throw new ConflictException(
+          serializationConflict
+            ? "项目支出收货确认并发冲突，请刷新后重试"
+            : "收货确认幂等键已绑定其他持久事实"
+        );
+      }
+      throw error;
+    }
+  }
+
+  private projectExpenseReceiptFactsMatch(
+    existing: ProjectExpenseReceiptFactRow,
+    expected: {
+      idempotencyKey: string;
+      projectExpenseRequestId: string;
+      projectId: string;
+      actorUserId: string;
+      note: string | null;
+    }
+  ): boolean {
+    return (
+      existing.id === expected.projectExpenseRequestId &&
+      existing.projectId === expected.projectId &&
+      existing.receiptConfirmationIdempotencyKey ===
+        expected.idempotencyKey &&
+      existing.receiptConfirmedByUserId === expected.actorUserId &&
+      existing.receiptConfirmationNote === expected.note &&
+      existing.receiptConfirmedAt instanceof Date
+    );
+  }
+
+  private assertSameProjectExpenseReceiptFacts(
+    existing: ProjectExpenseReceiptFactRow,
+    expected: Parameters<
+      ProjectExpenseService["projectExpenseReceiptFactsMatch"]
+    >[1]
+  ): void {
+    if (!this.projectExpenseReceiptFactsMatch(existing, expected)) {
+      throw new ConflictException(
+        "该收货确认幂等键已绑定不同的持久事实"
+      );
+    }
+  }
+
+  private async resolveConcurrentProjectExpenseReceipt(
+    input: Parameters<
+      ProjectExpenseService["projectExpenseReceiptFactsMatch"]
+    >[1]
+  ): Promise<ProjectExpenseReceiptFactRow | null> {
+    const receiptClient =
+      this.prisma.projectExpenseRequest as unknown as {
+        findFirst(args: {
+          where: {
+            receiptConfirmationIdempotencyKey: string;
+          };
+          select: Record<string, boolean>;
+        }): Promise<ProjectExpenseReceiptFactRow | null>;
+      };
+    const existing = await receiptClient.findFirst({
+      where: {
+        receiptConfirmationIdempotencyKey: input.idempotencyKey
+      },
+      select: {
+        id: true,
+        projectId: true,
+        receiptConfirmedByUserId: true,
+        receiptConfirmedAt: true,
+        receiptConfirmationIdempotencyKey: true,
+        receiptConfirmationNote: true,
+        updatedAt: true
+      }
+    });
+    if (
+      !existing ||
+      !this.projectExpenseReceiptFactsMatch(existing, input)
+    ) {
+      return null;
+    }
+    return existing;
+  }
+
+  private projectExpenseReceiptResponse(
+    receipt: ProjectExpenseReceiptFactRow
+  ) {
+    if (
+      !receipt.receiptConfirmationIdempotencyKey ||
+      !receipt.receiptConfirmedByUserId ||
+      !(receipt.receiptConfirmedAt instanceof Date)
+    ) {
+      throw new ConflictException(
+        "收货确认持久事实不完整，请联系管理员核对"
+      );
+    }
+    return {
+      projectId: receipt.projectId,
+      expenseRequestId: receipt.id,
+      idempotencyKey:
+        receipt.receiptConfirmationIdempotencyKey,
+      confirmedByUserId: receipt.receiptConfirmedByUserId,
+      confirmedAt: receipt.receiptConfirmedAt.toISOString(),
+      note: receipt.receiptConfirmationNote,
+      updatedAt: receipt.updatedAt.toISOString()
+    };
   }
 
   private async ensureApprovalPdfArchive(expenseRequestId: string, actorUserId: string) {
@@ -2611,6 +2891,28 @@ export class ProjectExpenseService {
     }
   }
 
+  private async assertCurrentProjectExpenseReceiptConfirmer(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    projectId: string
+  ): Promise<void> {
+    const access = await this.currentProjectExpenseFinanceRoleAccess(
+      tx,
+      actorUserId,
+      projectId
+    );
+    if (!access.actorActive) {
+      throw new ForbiddenException(
+        "当前收货确认账号不存在或已停用"
+      );
+    }
+    if (!access.canConfirmReceipt) {
+      throw new ForbiddenException(
+        "当前账号在本项目无权确认收货"
+      );
+    }
+  }
+
   private async currentProjectExpenseFinanceRoleAccess(
     tx: {
       user: {
@@ -2635,6 +2937,7 @@ export class ProjectExpenseService {
     actorActive: boolean;
     canRecordExecution: boolean;
     canRecordFinance: boolean;
+    canConfirmReceipt: boolean;
   }> {
     const actor = await tx.user.findUnique({
       where: { id: actorUserId },
@@ -2644,7 +2947,8 @@ export class ProjectExpenseService {
       return {
         actorActive: false,
         canRecordExecution: false,
-        canRecordFinance: false
+        canRecordFinance: false,
+        canConfirmReceipt: false
       };
     }
 
@@ -2676,7 +2980,11 @@ export class ProjectExpenseService {
       canRecordExecution: projectRoleKeys.has("finance_staff"),
       canRecordFinance:
         projectRoleKeys.has("finance_staff") ||
-        projectRoleKeys.has("finance_director")
+        projectRoleKeys.has("finance_director"),
+      canConfirmReceipt:
+        projectRoleKeys.has("employee") ||
+        projectRoleKeys.has("material_staff") ||
+        projectRoleKeys.has("project_manager")
     };
   }
 
@@ -2697,7 +3005,10 @@ export class ProjectExpenseService {
         "paidAmountCents",
         "applicantUserId",
         "purchaseExecutedAt",
+        "receiptConfirmedByUserId",
         "receiptConfirmedAt",
+        "receiptConfirmationIdempotencyKey",
+        "receiptConfirmationNote",
         "updatedAt"
       FROM "ProjectExpenseRequest"
       WHERE "projectId" = ${projectId} AND ("id" = ${expenseRequestId} OR "code" = ${expenseRequestId})
@@ -2724,7 +3035,10 @@ export class ProjectExpenseService {
         "paidAmountCents",
         "applicantUserId",
         "purchaseExecutedAt",
+        "receiptConfirmedByUserId",
         "receiptConfirmedAt",
+        "receiptConfirmationIdempotencyKey",
+        "receiptConfirmationNote",
         "updatedAt"
       FROM "ProjectExpenseRequest"
       WHERE "projectId" = ${projectId}

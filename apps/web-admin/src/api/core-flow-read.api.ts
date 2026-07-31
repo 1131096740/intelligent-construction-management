@@ -1903,6 +1903,56 @@ export interface ProjectExpenseFinanceCompletionBaseline {
 export interface ConfirmProjectExpenseReceiptPayload {
   confirmationPassword: string;
   note?: string;
+  expectedExpenseUpdatedAt: string;
+  idempotencyKey: string;
+}
+
+export interface ProjectExpenseReceiptConfirmationReadModel {
+  projectId: string;
+  expenseRequestId: string;
+  idempotencyKey: string;
+  confirmedByUserId: string;
+  confirmedAt: string;
+  note: string | null;
+  updatedAt: string;
+}
+
+export interface ConfirmProjectExpenseReceiptWithPreflightInput<TContext> {
+  confirmationPassword: string;
+  note?: string;
+  expectedExpenseUpdatedAt: string;
+  idempotencyKey: string;
+  context: TContext;
+  isCurrent: (context: TContext) => boolean;
+}
+
+export interface ProjectExpenseReceiptConfirmationSubmission {
+  projectId: string;
+  expenseRequestId: string;
+  confirmationPassword: string;
+  note?: string;
+  expectedExpenseUpdatedAt: string;
+  idempotencyKey: string;
+  isCurrent: () => boolean;
+}
+
+export interface ProjectExpenseReceiptConfirmationAttemptState {
+  submission: ProjectExpenseReceiptConfirmationSubmission | null;
+  confirmationPasswordRejected: boolean;
+  preflightVerified: boolean;
+  preflightPromise:
+    | Promise<ProjectExpenseApprovalLifecycleDetailReadModel>
+    | null;
+  requestPromise:
+    | Promise<ProjectExpenseReceiptConfirmationReadModel>
+    | null;
+}
+
+export interface ProjectExpenseReceiptCompletionBaseline {
+  projectId: string;
+  expenseRequestId: string;
+  expectedExpenseUpdatedAt: string;
+  idempotencyKey: string;
 }
 
 export interface ProjectExpenseRequestListReadModel {
@@ -2874,13 +2924,13 @@ export function recordProjectExpenseFinance(
   );
 }
 
-export function confirmProjectExpenseReceipt(
+function confirmProjectExpenseReceipt(
   projectId: string,
   expenseRequestId: string,
   body: ConfirmProjectExpenseReceiptPayload
 ) {
-  return postJson<unknown>(
-    `/projects/${projectId}/expense-requests/${expenseRequestId}/receipt-confirmation`,
+  return postJson<ProjectExpenseReceiptConfirmationReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/expense-requests/${encodeURIComponent(expenseRequestId)}/receipt-confirmation`,
     body
   );
 }
@@ -3994,6 +4044,337 @@ function assertProjectExpenseFinanceCurrent(
 }
 
 function requiredProjectExpenseFinanceText(
+  value: string,
+  label: string,
+  trim = true
+) {
+  const normalized = trim ? value.trim() : value;
+  if (!normalized.trim()) throw new Error(`请填写${label}`);
+  return normalized;
+}
+
+export type ProjectExpenseReceiptFailureDisposition =
+  | "same_fact"
+  | "password_only"
+  | "restart";
+
+export function projectExpenseReceiptFailureDisposition(
+  error: unknown
+): ProjectExpenseReceiptFailureDisposition {
+  if (
+    error instanceof Error &&
+    error.message.includes("当前密码不正确")
+  ) {
+    return "password_only";
+  }
+  if (
+    error instanceof CoreFlowApiError &&
+    error.status >= 500
+  ) {
+    return "same_fact";
+  }
+  if (
+    error instanceof Error &&
+    /网络连接失败|网络请求失败|Failed to fetch|fetch failed|NetworkError|Load failed|ECONNREFUSED/iu.test(
+      error.message
+    )
+  ) {
+    return "same_fact";
+  }
+  return "restart";
+}
+
+export function createProjectExpenseReceiptConfirmationAttemptState(): ProjectExpenseReceiptConfirmationAttemptState {
+  return {
+    submission: null,
+    confirmationPasswordRejected: false,
+    preflightVerified: false,
+    preflightPromise: null,
+    requestPromise: null
+  };
+}
+
+export function confirmProjectExpenseReceiptWithPreflight<TContext>(
+  projectId: string,
+  expenseRequestId: string,
+  input: ConfirmProjectExpenseReceiptWithPreflightInput<TContext>,
+  state: ProjectExpenseReceiptConfirmationAttemptState
+) {
+  if (state.requestPromise) return state.requestPromise;
+  let submission: ProjectExpenseReceiptConfirmationSubmission;
+  try {
+    const existingSubmission = state.submission;
+    submission =
+      existingSubmission && state.confirmationPasswordRejected
+        ? Object.freeze({
+            ...existingSubmission,
+            confirmationPassword:
+              requiredProjectExpenseReceiptText(
+                input.confirmationPassword,
+                "当前密码",
+                false
+              )
+          })
+        : existingSubmission ??
+          normalizeProjectExpenseReceiptConfirmation(
+            projectId,
+            expenseRequestId,
+            input
+          );
+    if (
+      submission.projectId !== projectId.trim() ||
+      submission.expenseRequestId !==
+        expenseRequestId.trim()
+    ) {
+      throw new Error(
+        "项目支出收货确认重试单据已变化，请重新打开确认窗口"
+      );
+    }
+    state.submission = submission;
+    state.confirmationPasswordRejected = false;
+  } catch (error) {
+    return Promise.reject(error);
+  }
+
+  const request = executeProjectExpenseReceiptConfirmation(
+    submission,
+    state
+  );
+  state.requestPromise = request;
+  void request.catch((error) => {
+    const disposition =
+      projectExpenseReceiptFailureDisposition(error);
+    if (disposition === "password_only") {
+      state.confirmationPasswordRejected = true;
+    } else if (disposition === "restart") {
+      state.submission = null;
+      state.confirmationPasswordRejected = false;
+      state.preflightVerified = false;
+      state.preflightPromise = null;
+    }
+    if (state.requestPromise === request) {
+      state.requestPromise = null;
+    }
+  });
+  return request;
+}
+
+function normalizeProjectExpenseReceiptConfirmation<TContext>(
+  projectId: string,
+  expenseRequestId: string,
+  input: ConfirmProjectExpenseReceiptWithPreflightInput<TContext>
+): ProjectExpenseReceiptConfirmationSubmission {
+  if (!input.isCurrent(input.context)) {
+    throw new Error(
+      "项目支出收货确认上下文已失效，请重新读取当前单据"
+    );
+  }
+  const idempotencyKey =
+    requiredProjectExpenseReceiptText(
+      input.idempotencyKey,
+      "项目支出收货确认幂等键"
+    ).toLowerCase();
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      idempotencyKey
+    )
+  ) {
+    throw new Error(
+      "项目支出收货确认幂等键必须为 UUIDv4"
+    );
+  }
+  const expectedExpenseUpdatedAt =
+    requiredProjectExpenseReceiptText(
+      input.expectedExpenseUpdatedAt,
+      "项目支出版本"
+    );
+  if (
+    Number.isNaN(
+      new Date(expectedExpenseUpdatedAt).getTime()
+    )
+  ) {
+    throw new Error("项目支出版本格式不正确");
+  }
+  const normalizedNote = input.note?.trim();
+  return Object.freeze({
+    projectId: requiredProjectExpenseReceiptText(
+      projectId,
+      "项目编号"
+    ),
+    expenseRequestId:
+      requiredProjectExpenseReceiptText(
+        expenseRequestId,
+        "项目支出编号"
+      ),
+    confirmationPassword:
+      requiredProjectExpenseReceiptText(
+        input.confirmationPassword,
+        "当前密码",
+        false
+      ),
+    ...(normalizedNote ? { note: normalizedNote } : {}),
+    expectedExpenseUpdatedAt,
+    idempotencyKey,
+    isCurrent: () => input.isCurrent(input.context)
+  });
+}
+
+async function executeProjectExpenseReceiptConfirmation(
+  submission: ProjectExpenseReceiptConfirmationSubmission,
+  state: ProjectExpenseReceiptConfirmationAttemptState
+): Promise<ProjectExpenseReceiptConfirmationReadModel> {
+  assertProjectExpenseReceiptCurrent(submission);
+  await verifyProjectExpenseReceiptPreflight(
+    submission,
+    state
+  );
+  assertProjectExpenseReceiptCurrent(submission);
+  const response = await confirmProjectExpenseReceipt(
+    submission.projectId,
+    submission.expenseRequestId,
+    {
+      confirmationPassword:
+        submission.confirmationPassword,
+      ...(submission.note
+        ? { note: submission.note }
+        : {}),
+      expectedExpenseUpdatedAt:
+        submission.expectedExpenseUpdatedAt,
+      idempotencyKey: submission.idempotencyKey
+    }
+  );
+  assertProjectExpenseReceiptCurrent(submission);
+  assertProjectExpenseReceiptConfirmationResponse(
+    response,
+    submission
+  );
+  return response;
+}
+
+function assertProjectExpenseReceiptConfirmationResponse(
+  response: ProjectExpenseReceiptConfirmationReadModel,
+  submission: ProjectExpenseReceiptConfirmationSubmission
+) {
+  const confirmedAt = new Date(response?.confirmedAt).getTime();
+  const updatedAt = new Date(response?.updatedAt).getTime();
+  const expectedUpdatedAt = new Date(
+    submission.expectedExpenseUpdatedAt
+  ).getTime();
+  if (
+    !response ||
+    response.projectId !== submission.projectId ||
+    response.expenseRequestId !==
+      submission.expenseRequestId ||
+    response.idempotencyKey !== submission.idempotencyKey ||
+    typeof response.confirmedByUserId !== "string" ||
+    !response.confirmedByUserId.trim() ||
+    Number.isNaN(confirmedAt) ||
+    Number.isNaN(updatedAt) ||
+    updatedAt <= expectedUpdatedAt ||
+    confirmedAt > updatedAt ||
+    response.note !== (submission.note ?? null)
+  ) {
+    throw new Error(
+      "项目支出收货确认响应与本次持久事实不一致，请刷新后核对"
+    );
+  }
+}
+
+export function projectExpenseReceiptCompletionIsAuthoritative(
+  detail: ProjectExpenseApprovalLifecycleDetailReadModel,
+  baseline: ProjectExpenseReceiptCompletionBaseline,
+  response: ProjectExpenseReceiptConfirmationReadModel
+) {
+  const enabledActions = detail.availableActions.filter(
+    (action) =>
+      action.key === "confirm_receipt" && action.enabled
+  );
+  const lifecycleUpdatedAt = new Date(
+    detail.lifecycleUpdatedAt ?? ""
+  ).getTime();
+  const responseUpdatedAt = new Date(
+    response.updatedAt
+  ).getTime();
+  return (
+    detail.projectId === baseline.projectId &&
+    detail.id === baseline.expenseRequestId &&
+    response.projectId === baseline.projectId &&
+    response.expenseRequestId === baseline.expenseRequestId &&
+    response.idempotencyKey === baseline.idempotencyKey &&
+    typeof detail.lifecycleUpdatedAt === "string" &&
+    !Number.isNaN(lifecycleUpdatedAt) &&
+    !Number.isNaN(responseUpdatedAt) &&
+    lifecycleUpdatedAt >= responseUpdatedAt &&
+    detail.lifecycleUpdatedAt !==
+      baseline.expectedExpenseUpdatedAt &&
+    typeof detail.receiptConfirmedAt === "string" &&
+    detail.receiptConfirmedAt === response.confirmedAt &&
+    detail.receiptConfirmedByUserId ===
+      response.confirmedByUserId &&
+    detail.receiptConfirmationNote === response.note &&
+    detail.receiptConfirmationIdempotencyKey ===
+      baseline.idempotencyKey &&
+    enabledActions.length === 0 &&
+    detail.receiptContext === null
+  );
+}
+
+async function verifyProjectExpenseReceiptPreflight(
+  submission: ProjectExpenseReceiptConfirmationSubmission,
+  state: ProjectExpenseReceiptConfirmationAttemptState
+) {
+  if (state.preflightVerified) return;
+  const preflight =
+    state.preflightPromise ??
+    fetchProjectExpenseApprovalDetail(
+      submission.projectId,
+      submission.expenseRequestId
+    );
+  state.preflightPromise = preflight;
+  let detail: ProjectExpenseApprovalLifecycleDetailReadModel;
+  try {
+    detail = await preflight;
+  } catch (error) {
+    if (state.preflightPromise === preflight) {
+      state.preflightPromise = null;
+    }
+    throw error;
+  }
+  assertProjectExpenseReceiptCurrent(submission);
+  const enabledActions = detail.availableActions.filter(
+    (action) =>
+      action.key === "confirm_receipt" && action.enabled
+  );
+  if (
+    detail.projectId !== submission.projectId ||
+    detail.id !== submission.expenseRequestId ||
+    enabledActions.length !== 1 ||
+    detail.lifecycleUpdatedAt !==
+      submission.expectedExpenseUpdatedAt ||
+    detail.receiptContext?.expectedExpenseUpdatedAt !==
+      submission.expectedExpenseUpdatedAt ||
+    detail.receiptConfirmedAt !== null ||
+    detail.receiptConfirmationIdempotencyKey !== null
+  ) {
+    state.preflightPromise = null;
+    throw new Error(
+      "项目支出收货确认资格或版本已变化，请刷新详情后重试"
+    );
+  }
+  state.preflightVerified = true;
+}
+
+function assertProjectExpenseReceiptCurrent(
+  submission: ProjectExpenseReceiptConfirmationSubmission
+) {
+  if (!submission.isCurrent()) {
+    throw new Error(
+      "项目支出收货确认上下文已失效，请重新读取当前单据"
+    );
+  }
+}
+
+function requiredProjectExpenseReceiptText(
   value: string,
   label: string,
   trim = true

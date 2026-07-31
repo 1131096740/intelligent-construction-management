@@ -34,6 +34,10 @@ function financeDetail(
     remainingAmountCents: "0",
     financeRecordedAmountCents: "20000",
     financeRemainingAmountCents: "30000",
+    receiptConfirmedAt: null,
+    receiptConfirmedByUserId: null,
+    receiptConfirmationIdempotencyKey: null,
+    receiptConfirmationNote: null,
     currentNodeName: null,
     canSetApprovedAmount: false,
     reviewAction: {
@@ -46,6 +50,7 @@ function financeDetail(
     approvalTimeline: [],
     executionContext: null,
     financeContext: { expectedExpenseUpdatedAt },
+    receiptContext: null,
     lifecycleUpdatedAt: expectedExpenseUpdatedAt,
     hasPersistentDraft: false,
     availableActions: [

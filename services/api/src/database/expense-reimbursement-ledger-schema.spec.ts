@@ -26,15 +26,19 @@ const loanDisbursementMigration = readFileSync(
 
 const model = (name: string) =>
   schema.match(new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`, "u"))?.[1] ?? "";
+const normalizedModel = (name: string) =>
+  model(name).replace(/[ \t]+/gu, " ");
 
 describe("expense reimbursement ledger foundation schema", () => {
   it("keeps the new domain separate from the legacy project expense request", () => {
-    expect(model("ExpenseClaim")).toContain("claimType                 String");
-    expect(model("ExpenseClaim")).toContain("applicantUserId           String?");
-    expect(model("ExpenseClaim")).toContain("factWitnessUserId         String?");
-    expect(model("ExpenseClaimLine")).toContain("expenseCategory  String");
-    expect(model("EmployeeProjectLoanAccount")).toContain("scopeKey                  String");
-    expect(model("EmployeeProjectLoanEntry")).toContain("balanceDeltaCents    BigInt");
+    expect(normalizedModel("ExpenseClaim")).toContain("claimType String");
+    expect(normalizedModel("ExpenseClaim")).toContain("applicantUserId String?");
+    expect(normalizedModel("ExpenseClaim")).toContain("factWitnessUserId String?");
+    expect(normalizedModel("ExpenseClaimLine")).toContain("expenseCategory String");
+    expect(normalizedModel("EmployeeProjectLoanAccount")).toContain("scopeKey String");
+    expect(normalizedModel("EmployeeProjectLoanEntry")).toContain(
+      "balanceDeltaCents BigInt"
+    );
     expect(migration).toContain('CREATE TABLE "ExpenseClaim"');
     expect(migration).toContain("旧 ProjectExpenseRequest 不读取、不回填");
     expect(migration).not.toContain('CREATE TABLE "ProjectExpenseRequest"');
@@ -69,10 +73,16 @@ describe("expense reimbursement ledger foundation schema", () => {
   });
 
   it("requires a voucher-backed actual disbursement before a loan ledger balance can increase", () => {
-    expect(model("ExpenseClaim")).toContain("fundedAmountCents         BigInt");
-    expect(model("ExpenseClaim")).toContain("paymentSubjectCompanyEntityId String?");
-    expect(model("EmployeeProjectLoanEntry")).toContain("voucherFileId        String?");
-    expect(model("EmployeeProjectLoanEntry")).toContain("paymentMethod        String?");
+    expect(normalizedModel("ExpenseClaim")).toContain("fundedAmountCents BigInt");
+    expect(normalizedModel("ExpenseClaim")).toContain(
+      "paymentSubjectCompanyEntityId String?"
+    );
+    expect(normalizedModel("EmployeeProjectLoanEntry")).toContain(
+      "voucherFileId String?"
+    );
+    expect(normalizedModel("EmployeeProjectLoanEntry")).toContain(
+      "paymentMethod String?"
+    );
     expect(loanDisbursementMigration).toContain('ADD COLUMN "fundedAmountCents" BIGINT NOT NULL DEFAULT 0');
     expect(loanDisbursementMigration).toContain("approved_pending_disbursement");
     expect(loanDisbursementMigration).toContain("partially_disbursed");

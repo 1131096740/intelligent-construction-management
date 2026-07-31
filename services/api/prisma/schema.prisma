@@ -8,21 +8,21 @@ datasource db {
 }
 
 model User {
-  id                 String    @id @default(uuid())
-  phone              String?   @unique
-  name               String
-  departmentId       String?
-  wxOpenid           String?   @unique
-  passwordHash       String?
-  mustChangePassword Boolean   @default(true)
-  lastLoginAt        DateTime?
-  isActive           Boolean   @default(true)
+  id                           String                        @id @default(uuid())
+  phone                        String?                       @unique
+  name                         String
+  departmentId                 String?
+  wxOpenid                     String?                       @unique
+  passwordHash                 String?
+  mustChangePassword           Boolean                       @default(true)
+  lastLoginAt                  DateTime?
+  isActive                     Boolean                       @default(true)
   // 旧上传签名只用于历史单据预览与回退；新审批从不可变 Canvas 版本取快照。
-  signatureFileId    String?
+  signatureFileId              String?
   handwrittenSignatureVersions HandwrittenSignatureVersion[]
   handwrittenSignatureHandoffs HandwrittenSignatureHandoff[]
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  createdAt                    DateTime                      @default(now())
+  updatedAt                    DateTime                      @updatedAt
 
   @@index([departmentId])
 }
@@ -43,14 +43,14 @@ model HandwrittenSignatureVersion {
 
 // 电脑端仅持有一次性链接；手机必须以同一账号完成签名，令牌本身不包含签名内容。
 model HandwrittenSignatureHandoff {
-  id                 String   @id @default(uuid())
+  id                 String    @id @default(uuid())
   ownerUserId        String
-  tokenHash          String   @unique
+  tokenHash          String    @unique
   expiresAt          DateTime
   invalidatedAt      DateTime?
   completedAt        DateTime?
   signatureVersionId String?
-  createdAt          DateTime @default(now())
+  createdAt          DateTime  @default(now())
 
   ownerUser User @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
 
@@ -302,10 +302,10 @@ model ContractDraftAttachment {
   id                String   @id @default(uuid())
   contractVersionId String
   slotKey           String
-  fileId             String
-  displayOrder       Int
-  createdByUserId    String
-  createdAt          DateTime @default(now())
+  fileId            String
+  displayOrder      Int
+  createdByUserId   String
+  createdAt         DateTime @default(now())
 
   @@unique([contractVersionId, slotKey, displayOrder])
   @@unique([contractVersionId, slotKey, fileId])
@@ -465,36 +465,36 @@ model ContractTakeoverBatch {
 }
 
 model ContractTakeoverCorrection {
-  id                    String    @id @default(uuid())
-  projectId             String
-  takeoverId            String
-  schemaVersion         Int       @default(1)
-  correctionType        String
-  correctionScope       String?
-  correctionOperation   String?
-  status                String    @default("confirmed")
-  targetRevision        Int?
-  targetBalanceRevision Int?
-  deltaSnapshot         Json?
+  id                        String    @id @default(uuid())
+  projectId                 String
+  takeoverId                String
+  schemaVersion             Int       @default(1)
+  correctionType            String
+  correctionScope           String?
+  correctionOperation       String?
+  status                    String    @default("confirmed")
+  targetRevision            Int?
+  targetBalanceRevision     Int?
+  deltaSnapshot             Json?
   targetHistoricalPaymentId String?
-  targetAllocationId    String?
-  targetBalanceEntryId  String?
-  applicationIdempotencyKey String? @unique
-  targetCompanyEntityId String?
-  beforeSnapshot        Json
-  afterSnapshot         Json
-  reason                String
-  responsibleUserId     String
-  attachmentFileId      String
-  createdByUserId       String
-  submittedByUserId     String?
-  submittedAt           DateTime?
-  reviewedByUserId      String?
-  reviewedAt            DateTime?
-  reviewComment         String?
-  appliedByUserId       String?
-  appliedAt             DateTime?
-  createdAt             DateTime  @default(now())
+  targetAllocationId        String?
+  targetBalanceEntryId      String?
+  applicationIdempotencyKey String?   @unique
+  targetCompanyEntityId     String?
+  beforeSnapshot            Json
+  afterSnapshot             Json
+  reason                    String
+  responsibleUserId         String
+  attachmentFileId          String
+  createdByUserId           String
+  submittedByUserId         String?
+  submittedAt               DateTime?
+  reviewedByUserId          String?
+  reviewedAt                DateTime?
+  reviewComment             String?
+  appliedByUserId           String?
+  appliedAt                 DateTime?
+  createdAt                 DateTime  @default(now())
 
   @@index([projectId, takeoverId, createdAt])
   @@index([takeoverId])
@@ -1010,7 +1010,7 @@ model SettlementRecoveryBalance {
   projectId              String
   contractId             String
   originalAmountCents    BigInt
-  resolvedAmountCents    BigInt    @default(0)
+  resolvedAmountCents    BigInt   @default(0)
   outstandingAmountCents BigInt
   status                 String   @default("open")
   revision               Int      @default(1)
@@ -1022,18 +1022,18 @@ model SettlementRecoveryBalance {
 }
 
 model SettlementRecoveryEntry {
-  id                   String   @id @default(uuid())
-  balanceId            String
-  entryType            String
-  amountCents          BigInt
-  occurredAt           DateTime @db.Date
-  relatedPaymentId     String?
-  evidenceFileId       String
-  reason               String
-  recordedByUserId     String
-  idempotencyKey       String   @unique
-  reversalOfEntryId    String?  @unique
-  createdAt            DateTime @default(now())
+  id                String   @id @default(uuid())
+  balanceId         String
+  entryType         String
+  amountCents       BigInt
+  occurredAt        DateTime @db.Date
+  relatedPaymentId  String?
+  evidenceFileId    String
+  reason            String
+  recordedByUserId  String
+  idempotencyKey    String   @unique
+  reversalOfEntryId String?  @unique
+  createdAt         DateTime @default(now())
 
   @@index([balanceId, createdAt])
   @@index([relatedPaymentId])
@@ -1140,29 +1140,29 @@ model SettlementArchiveFile {
 }
 
 model PaymentRequest {
-  id                    String             @id @default(uuid())
-  projectId             String
-  settlementId          String?
-  sourceType            String             @default("settlement")
-  contractId            String
-  contractVersionId     String
-  paymentTermsVersionId String
-  paymentTermsStageId   String?
-  code                  String             @unique
-  status                String
-  requestedAmountCents  BigInt
-  approvedAmountCents   BigInt?
-  paidAmountCents       BigInt             @default(0)
-  paymentMatter         String?
+  id                           String             @id @default(uuid())
+  projectId                    String
+  settlementId                 String?
+  sourceType                   String             @default("settlement")
+  contractId                   String
+  contractVersionId            String
+  paymentTermsVersionId        String
+  paymentTermsStageId          String?
+  code                         String             @unique
+  status                       String
+  requestedAmountCents         BigInt
+  approvedAmountCents          BigInt?
+  paidAmountCents              BigInt             @default(0)
+  paymentMatter                String?
   amountCalculationExplanation String?
-  paymentSubjectType    String             @default("our_company")
-  dueDate               DateTime?
-  abandonedAt           DateTime?
-  abandonedByUserId     String?
-  abandonReason         String?
-  createdAt             DateTime           @default(now())
-  updatedAt             DateTime           @updatedAt
-  paymentTermsStage     PaymentTermsStage? @relation("PaymentRequestFrozenStage", fields: [paymentTermsStageId, paymentTermsVersionId], references: [id, paymentTermsVersionId], onDelete: Restrict, onUpdate: Restrict)
+  paymentSubjectType           String             @default("our_company")
+  dueDate                      DateTime?
+  abandonedAt                  DateTime?
+  abandonedByUserId            String?
+  abandonReason                String?
+  createdAt                    DateTime           @default(now())
+  updatedAt                    DateTime           @updatedAt
+  paymentTermsStage            PaymentTermsStage? @relation("PaymentRequestFrozenStage", fields: [paymentTermsStageId, paymentTermsVersionId], references: [id, paymentTermsVersionId], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([paymentTermsStageId], map: "PaymentRequest_paymentTermsStageId_idx")
   @@index([status, updatedAt])
@@ -1969,36 +1969,37 @@ model FinanceRecord {
 }
 
 model ProjectExpenseRequest {
-  id                       String    @id @default(uuid())
-  projectId                String
-  code                     String    @unique
-  expenseType              String
-  expenseSubtype           String
-  paymentSubject           String
-  reason                   String
-  requestedAmountCents     BigInt
-  approvedAmountCents      BigInt?
-  paidAmountCents          BigInt    @default(0)
-  paymentMethod            String
-  counterpartyName         String?
-  counterpartyAccountName  String?
-  counterpartyBankName     String?
-  counterpartyBankAccount  String?
-  handlerUserId            String
-  applicantUserId          String
-  attachmentFileId         String?
-  purchaseExecutedByUserId String?
-  purchaseExecutedAt       DateTime?
-  purchaseExecutionNote    String?
-  receiptConfirmedByUserId String?
-  receiptConfirmedAt       DateTime?
-  receiptConfirmationNote  String?
-  status                   String
-  voidedAt                 DateTime?
-  voidedByUserId           String?
-  voidReason               String?
-  createdAt                DateTime  @default(now())
-  updatedAt                DateTime  @updatedAt
+  id                                String    @id @default(uuid())
+  projectId                         String
+  code                              String    @unique
+  expenseType                       String
+  expenseSubtype                    String
+  paymentSubject                    String
+  reason                            String
+  requestedAmountCents              BigInt
+  approvedAmountCents               BigInt?
+  paidAmountCents                   BigInt    @default(0)
+  paymentMethod                     String
+  counterpartyName                  String?
+  counterpartyAccountName           String?
+  counterpartyBankName              String?
+  counterpartyBankAccount           String?
+  handlerUserId                     String
+  applicantUserId                   String
+  attachmentFileId                  String?
+  purchaseExecutedByUserId          String?
+  purchaseExecutedAt                DateTime?
+  purchaseExecutionNote             String?
+  receiptConfirmedByUserId          String?
+  receiptConfirmedAt                DateTime?
+  receiptConfirmationIdempotencyKey String?   @unique
+  receiptConfirmationNote           String?
+  status                            String
+  voidedAt                          DateTime?
+  voidedByUserId                    String?
+  voidReason                        String?
+  createdAt                         DateTime  @default(now())
+  updatedAt                         DateTime  @updatedAt
 
   @@unique([id, projectId])
   @@index([projectId, status])
@@ -2038,48 +2039,48 @@ model ProjectExpenseFinancingQuotaUsage {
 // 新费用与报销域与旧 ProjectExpenseRequest 严格隔离。旧表继续只读承载历史
 // 项目支出事实；新报销、借款、冲销和还款只写入以下账本模型。
 model ExpenseClaim {
-  id                        String    @id @default(uuid())
-  code                      String    @unique
-  claimType                 String
-  incidentalExpenseCategory String?
-  status                    String
-  companyEntityId           String
-  companyEntityNameSnapshot String
-  projectId                 String?
-  factWitnessUserId         String?
-  factWitnessNameSnapshot   String?
-  applicantUserId           String?
-  applicantNameSnapshot     String
-  applicantPhoneSnapshot    String?
-  handledByUserId           String
-  handledByNameSnapshot     String
-  proxyReason               String?
-  reason                    String
-  requestedAmountCents      BigInt
-  loanOffsetAmountCents     BigInt    @default(0)
-  companyPayableAmountCents BigInt    @default(0)
-  fundedAmountCents         BigInt    @default(0)
-  paymentSubject            String?
-  paymentSubjectCompanyEntityId String?
-  paymentSubjectNameSnapshot    String?
-  paymentSubjectAdjustmentReason String?
-  paymentSubjectAdjustedAt       DateTime?
-  paymentSubjectAdjustedByUserId String?
+  id                              String    @id @default(uuid())
+  code                            String    @unique
+  claimType                       String
+  incidentalExpenseCategory       String?
+  status                          String
+  companyEntityId                 String
+  companyEntityNameSnapshot       String
+  projectId                       String?
+  factWitnessUserId               String?
+  factWitnessNameSnapshot         String?
+  applicantUserId                 String?
+  applicantNameSnapshot           String
+  applicantPhoneSnapshot          String?
+  handledByUserId                 String
+  handledByNameSnapshot           String
+  proxyReason                     String?
+  reason                          String
+  requestedAmountCents            BigInt
+  loanOffsetAmountCents           BigInt    @default(0)
+  companyPayableAmountCents       BigInt    @default(0)
+  fundedAmountCents               BigInt    @default(0)
+  paymentSubject                  String?
+  paymentSubjectCompanyEntityId   String?
+  paymentSubjectNameSnapshot      String?
+  paymentSubjectAdjustmentReason  String?
+  paymentSubjectAdjustedAt        DateTime?
+  paymentSubjectAdjustedByUserId  String?
   paymentSubjectAdjustedByRoleKey String?
-  paymentMethod             String?
-  payeeNameSnapshot         String?
-  payeeAccountNameSnapshot  String?
-  payeeBankNameSnapshot     String?
-  payeeBankAccountSnapshot  String?
-  loanExpectedClearanceAt   DateTime?
-  approvalInstanceId        String?   @unique
-  submittedAt               DateTime?
-  approvedAt                DateTime?
-  voidedAt                  DateTime?
-  voidedByUserId            String?
-  voidReason                String?
-  createdAt                 DateTime  @default(now())
-  updatedAt                 DateTime  @updatedAt
+  paymentMethod                   String?
+  payeeNameSnapshot               String?
+  payeeAccountNameSnapshot        String?
+  payeeBankNameSnapshot           String?
+  payeeBankAccountSnapshot        String?
+  loanExpectedClearanceAt         DateTime?
+  approvalInstanceId              String?   @unique
+  submittedAt                     DateTime?
+  approvedAt                      DateTime?
+  voidedAt                        DateTime?
+  voidedByUserId                  String?
+  voidReason                      String?
+  createdAt                       DateTime  @default(now())
+  updatedAt                       DateTime  @updatedAt
 
   @@index([claimType, status, updatedAt])
   @@index([projectId, status])
@@ -2235,61 +2236,61 @@ model EmployeeLoanRepayment {
 }
 
 model ProjectReceipt {
-  id               String    @id @default(uuid())
-  projectId        String
-  receivedAt       DateTime
-  amountCents      BigInt
-  payerName        String
-  sourceType       String
+  id                              String    @id @default(uuid())
+  projectId                       String
+  receivedAt                      DateTime
+  amountCents                     BigInt
+  payerName                       String
+  sourceType                      String
   affiliateAssignmentId           String?
   affiliateBusinessPartyVersionId String?
   affiliateNameSnapshot           String?
-  description      String?
-  voucherFileId    String
-  recordedByUserId String
-  voidedAt         DateTime?
-  voidedByUserId   String?
-  voidReason       String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  description                     String?
+  voucherFileId                   String
+  recordedByUserId                String
+  voidedAt                        DateTime?
+  voidedByUserId                  String?
+  voidReason                      String?
+  createdAt                       DateTime  @default(now())
+  updatedAt                       DateTime  @updatedAt
 
   @@index([projectId, receivedAt])
   @@index([voucherFileId])
 }
 
 model ProjectUpstreamFundFact {
-  id                               String    @id @default(uuid())
-  projectId                        String
-  factType                         String
-  entryKind                        String    @default("original")
-  adjustsFactId                    String?
-  effectDirection                  String    @default("increase")
-  occurredAt                       DateTime
-  amountCents                      BigInt
-  counterpartyName                 String
-  basisType                        String
-  deductionCategory                String?
-  upstreamSettlementId             String?
-  affiliateAssignmentId            String
-  affiliateBusinessPartyVersionId  String
-  affiliateNameSnapshot            String
-  description                      String?
-  evidenceFileId                   String?
-  documentVersion                  Int       @default(1)
-  fileContentSha256Snapshot        String?
-  idempotencyKey                   String    @unique
-  requestFingerprint               String
-  recordedByUserId                 String
-  recordedByRoleKey                String
-  status                           String    @default("pending_confirm")
-  confirmedByUserId                String?
-  confirmedAt                      DateTime?
-  confirmationActionId             String?   @unique
-  confirmationSignatureVersionId   String?
-  confirmationSignatureFileId      String?
-  confirmationSignatureSha256      String?
-  createdAt                        DateTime  @default(now())
-  updatedAt                        DateTime  @updatedAt
+  id                              String    @id @default(uuid())
+  projectId                       String
+  factType                        String
+  entryKind                       String    @default("original")
+  adjustsFactId                   String?
+  effectDirection                 String    @default("increase")
+  occurredAt                      DateTime
+  amountCents                     BigInt
+  counterpartyName                String
+  basisType                       String
+  deductionCategory               String?
+  upstreamSettlementId            String?
+  affiliateAssignmentId           String
+  affiliateBusinessPartyVersionId String
+  affiliateNameSnapshot           String
+  description                     String?
+  evidenceFileId                  String?
+  documentVersion                 Int       @default(1)
+  fileContentSha256Snapshot       String?
+  idempotencyKey                  String    @unique
+  requestFingerprint              String
+  recordedByUserId                String
+  recordedByRoleKey               String
+  status                          String    @default("pending_confirm")
+  confirmedByUserId               String?
+  confirmedAt                     DateTime?
+  confirmationActionId            String?   @unique
+  confirmationSignatureVersionId  String?
+  confirmationSignatureFileId     String?
+  confirmationSignatureSha256     String?
+  createdAt                       DateTime  @default(now())
+  updatedAt                       DateTime  @updatedAt
 
   @@index([projectId, factType, status, occurredAt])
   @@index([adjustsFactId])
@@ -2298,42 +2299,42 @@ model ProjectUpstreamFundFact {
 }
 
 model ProjectAffiliateContractFact {
-  id                               String    @id @default(uuid())
-  ledgerId                         String
-  projectId                        String
-  entryKind                        String    @default("original")
-  adjustsFactId                    String?
-  effectDirection                  String    @default("increase")
-  contractType                     String
-  externalContractReference        String
-  counterpartyName                 String
-  signedAt                         DateTime
-  amountNature                     String
-  amountCents                      BigInt?
-  advanceAllowed                   Boolean   @default(false)
-  advanceLimitCents                BigInt?
-  advanceTermsSummary              String?
-  affiliateAssignmentId            String
-  affiliateBusinessPartyVersionId  String
-  affiliateNameSnapshot            String
-  basisType                        String
-  description                      String?
-  evidenceFileId                   String?
-  documentVersion                  Int       @default(1)
-  fileContentSha256Snapshot        String?
-  idempotencyKey                   String    @unique
-  requestFingerprint               String
-  recordedByUserId                 String
-  recordedByRoleKey                String
-  status                           String    @default("pending_confirm")
-  confirmedByUserId                String?
-  confirmedAt                      DateTime?
-  confirmationActionId             String?   @unique
-  confirmationSignatureVersionId   String?
-  confirmationSignatureFileId      String?
-  confirmationSignatureSha256      String?
-  createdAt                        DateTime  @default(now())
-  updatedAt                        DateTime  @updatedAt
+  id                              String    @id @default(uuid())
+  ledgerId                        String
+  projectId                       String
+  entryKind                       String    @default("original")
+  adjustsFactId                   String?
+  effectDirection                 String    @default("increase")
+  contractType                    String
+  externalContractReference       String
+  counterpartyName                String
+  signedAt                        DateTime
+  amountNature                    String
+  amountCents                     BigInt?
+  advanceAllowed                  Boolean   @default(false)
+  advanceLimitCents               BigInt?
+  advanceTermsSummary             String?
+  affiliateAssignmentId           String
+  affiliateBusinessPartyVersionId String
+  affiliateNameSnapshot           String
+  basisType                       String
+  description                     String?
+  evidenceFileId                  String?
+  documentVersion                 Int       @default(1)
+  fileContentSha256Snapshot       String?
+  idempotencyKey                  String    @unique
+  requestFingerprint              String
+  recordedByUserId                String
+  recordedByRoleKey               String
+  status                          String    @default("pending_confirm")
+  confirmedByUserId               String?
+  confirmedAt                     DateTime?
+  confirmationActionId            String?   @unique
+  confirmationSignatureVersionId  String?
+  confirmationSignatureFileId     String?
+  confirmationSignatureSha256     String?
+  createdAt                       DateTime  @default(now())
+  updatedAt                       DateTime  @updatedAt
 
   @@index([projectId, ledgerId, status])
   @@index([adjustsFactId])
@@ -2342,38 +2343,38 @@ model ProjectAffiliateContractFact {
 }
 
 model ProjectAffiliateSettlementFact {
-  id                               String    @id @default(uuid())
-  ledgerId                         String
-  projectId                        String
-  contractLedgerId                 String
-  entryKind                        String    @default("original")
-  adjustsFactId                    String?
-  effectDirection                  String    @default("increase")
-  counterpartyName                 String
-  settledAt                        DateTime
-  periodLabel                      String
-  amountCents                      BigInt
-  affiliateAssignmentId            String
-  affiliateBusinessPartyVersionId  String
-  affiliateNameSnapshot            String
-  basisType                        String
-  description                      String?
-  evidenceFileId                   String?
-  documentVersion                  Int       @default(1)
-  fileContentSha256Snapshot        String?
-  idempotencyKey                   String    @unique
-  requestFingerprint               String
-  recordedByUserId                 String
-  recordedByRoleKey                String
-  status                           String    @default("pending_confirm")
-  confirmedByUserId                String?
-  confirmedAt                      DateTime?
-  confirmationActionId             String?   @unique
-  confirmationSignatureVersionId   String?
-  confirmationSignatureFileId      String?
-  confirmationSignatureSha256      String?
-  createdAt                        DateTime  @default(now())
-  updatedAt                        DateTime  @updatedAt
+  id                              String    @id @default(uuid())
+  ledgerId                        String
+  projectId                       String
+  contractLedgerId                String
+  entryKind                       String    @default("original")
+  adjustsFactId                   String?
+  effectDirection                 String    @default("increase")
+  counterpartyName                String
+  settledAt                       DateTime
+  periodLabel                     String
+  amountCents                     BigInt
+  affiliateAssignmentId           String
+  affiliateBusinessPartyVersionId String
+  affiliateNameSnapshot           String
+  basisType                       String
+  description                     String?
+  evidenceFileId                  String?
+  documentVersion                 Int       @default(1)
+  fileContentSha256Snapshot       String?
+  idempotencyKey                  String    @unique
+  requestFingerprint              String
+  recordedByUserId                String
+  recordedByRoleKey               String
+  status                          String    @default("pending_confirm")
+  confirmedByUserId               String?
+  confirmedAt                     DateTime?
+  confirmationActionId            String?   @unique
+  confirmationSignatureVersionId  String?
+  confirmationSignatureFileId     String?
+  confirmationSignatureSha256     String?
+  createdAt                       DateTime  @default(now())
+  updatedAt                       DateTime  @updatedAt
 
   @@index([projectId, ledgerId, status])
   @@index([contractLedgerId])
@@ -2382,40 +2383,40 @@ model ProjectAffiliateSettlementFact {
 }
 
 model ProjectAffiliatePaymentFact {
-  id                               String    @id @default(uuid())
-  ledgerId                         String
-  projectId                        String
-  contractLedgerId                 String
-  settlementLedgerId               String?
-  entryKind                        String    @default("original")
-  adjustsFactId                    String?
-  effectDirection                  String    @default("increase")
-  counterpartyName                 String
-  paidAt                           DateTime
-  amountCents                      BigInt
-  paymentKind                      String
-  externalPaymentReference         String?
-  affiliateAssignmentId            String
-  affiliateBusinessPartyVersionId  String
-  affiliateNameSnapshot            String
-  basisType                        String
-  description                      String?
-  evidenceFileId                   String?
-  documentVersion                  Int       @default(1)
-  fileContentSha256Snapshot        String?
-  idempotencyKey                   String    @unique
-  requestFingerprint               String
-  recordedByUserId                 String
-  recordedByRoleKey                String
-  status                           String    @default("pending_confirm")
-  confirmedByUserId                String?
-  confirmedAt                      DateTime?
-  confirmationActionId             String?   @unique
-  confirmationSignatureVersionId   String?
-  confirmationSignatureFileId      String?
-  confirmationSignatureSha256      String?
-  createdAt                        DateTime  @default(now())
-  updatedAt                        DateTime  @updatedAt
+  id                              String    @id @default(uuid())
+  ledgerId                        String
+  projectId                       String
+  contractLedgerId                String
+  settlementLedgerId              String?
+  entryKind                       String    @default("original")
+  adjustsFactId                   String?
+  effectDirection                 String    @default("increase")
+  counterpartyName                String
+  paidAt                          DateTime
+  amountCents                     BigInt
+  paymentKind                     String
+  externalPaymentReference        String?
+  affiliateAssignmentId           String
+  affiliateBusinessPartyVersionId String
+  affiliateNameSnapshot           String
+  basisType                       String
+  description                     String?
+  evidenceFileId                  String?
+  documentVersion                 Int       @default(1)
+  fileContentSha256Snapshot       String?
+  idempotencyKey                  String    @unique
+  requestFingerprint              String
+  recordedByUserId                String
+  recordedByRoleKey               String
+  status                          String    @default("pending_confirm")
+  confirmedByUserId               String?
+  confirmedAt                     DateTime?
+  confirmationActionId            String?   @unique
+  confirmationSignatureVersionId  String?
+  confirmationSignatureFileId     String?
+  confirmationSignatureSha256     String?
+  createdAt                       DateTime  @default(now())
+  updatedAt                       DateTime  @updatedAt
 
   @@index([projectId, ledgerId, status])
   @@index([contractLedgerId])
@@ -2426,18 +2427,18 @@ model ProjectAffiliatePaymentFact {
 }
 
 model ProjectAffiliateBusinessEvidence {
-  id                         String    @id @default(uuid())
-  projectId                  String
-  businessType               String
-  businessFactId             String
-  fileId                     String    @unique
-  documentVersion            Int       @default(1)
-  fileContentSha256Snapshot  String
-  description                String
-  idempotencyKey             String    @unique
-  recordedByUserId           String
-  recordedByRoleKey          String
-  createdAt                  DateTime  @default(now())
+  id                        String   @id @default(uuid())
+  projectId                 String
+  businessType              String
+  businessFactId            String
+  fileId                    String   @unique
+  documentVersion           Int      @default(1)
+  fileContentSha256Snapshot String
+  description               String
+  idempotencyKey            String   @unique
+  recordedByUserId          String
+  recordedByRoleKey         String
+  createdAt                 DateTime @default(now())
 
   @@index([projectId, businessType, businessFactId])
 }
@@ -2484,27 +2485,27 @@ model ProjectAffiliateCompanyContract {
 }
 
 model ProjectProxyPayment {
-  id                    String    @id @default(uuid())
-  projectId             String
-  paidAt                DateTime
-  amountCents           BigInt
-  generalContractorName String
-  paidTargetName        String
-  paymentType           String
-  paymentSubjectType    String    @default("affiliate")
-  affiliateAssignmentId String?
+  id                              String    @id @default(uuid())
+  projectId                       String
+  paidAt                          DateTime
+  amountCents                     BigInt
+  generalContractorName           String
+  paidTargetName                  String
+  paymentType                     String
+  paymentSubjectType              String    @default("affiliate")
+  affiliateAssignmentId           String?
   affiliateBusinessPartyVersionId String?
-  affiliateNameSnapshot String?
-  description           String?
-  voucherFileId         String
-  recordedByUserId      String
-  contractId            String?
-  settlementId          String?
-  voidedAt              DateTime?
-  voidedByUserId        String?
-  voidReason            String?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  affiliateNameSnapshot           String?
+  description                     String?
+  voucherFileId                   String
+  recordedByUserId                String
+  contractId                      String?
+  settlementId                    String?
+  voidedAt                        DateTime?
+  voidedByUserId                  String?
+  voidReason                      String?
+  createdAt                       DateTime  @default(now())
+  updatedAt                       DateTime  @updatedAt
 
   @@index([projectId, paidAt])
   @@index([contractId])
@@ -2513,33 +2514,33 @@ model ProjectProxyPayment {
 }
 
 model ProjectUpstreamSettlement {
-  id                  String    @id @default(uuid())
-  projectId           String
-  settledAt           DateTime
-  reportedAmountCents BigInt
-  approvedAmountCents BigInt
-  approvingPartyName  String
-  periodLabel         String
-  isFinal             Boolean   @default(false)
+  id                              String    @id @default(uuid())
+  projectId                       String
+  settledAt                       DateTime
+  reportedAmountCents             BigInt
+  approvedAmountCents             BigInt
+  approvingPartyName              String
+  periodLabel                     String
+  isFinal                         Boolean   @default(false)
   affiliateAssignmentId           String?
   affiliateBusinessPartyVersionId String?
   affiliateNameSnapshot           String?
-  description         String?
-  voucherFileId       String
+  description                     String?
+  voucherFileId                   String
   documentVersion                 Int       @default(1)
   fileContentSha256Snapshot       String?
-  recordedByUserId    String
-  status              String    @default("pending_confirm")
-  confirmedByUserId                String?
-  confirmedAt                      DateTime?
+  recordedByUserId                String
+  status                          String    @default("pending_confirm")
+  confirmedByUserId               String?
+  confirmedAt                     DateTime?
   confirmationSignatureVersionId  String?
   confirmationSignatureFileId     String?
   confirmationSignatureSha256     String?
-  voidedAt            DateTime?
-  voidedByUserId      String?
-  voidReason          String?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  voidedAt                        DateTime?
+  voidedByUserId                  String?
+  voidReason                      String?
+  createdAt                       DateTime  @default(now())
+  updatedAt                       DateTime  @updatedAt
 
   @@index([projectId, settledAt])
   @@index([voucherFileId])
@@ -2547,33 +2548,33 @@ model ProjectUpstreamSettlement {
 }
 
 model ProjectOwnerContract {
-  id                  String    @id @default(uuid())
-  projectId           String
-  ownerName           String
-  contractName        String
-  contractCode        String
-  signedAt            DateTime
-  amountCents         BigInt
-  taxRateBps          Int
-  pricingMethod       String
-  paymentTermsSummary String
-  retentionSummary    String
-  affiliateAssignmentId             String?
-  affiliateBusinessPartyVersionId   String?
-  affiliateNameSnapshot             String?
-  affiliateCreditCodeSnapshot       String?
-  fileId              String
-  documentVersion     Int       @default(1)
-  fileContentSha256Snapshot String?
-  recordedByUserId    String
-  confirmedByUserId   String?
-  confirmedAt         DateTime?
-  status              String    @default("pending_confirm")
-  voidedAt            DateTime?
-  voidedByUserId      String?
-  voidReason          String?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  id                              String    @id @default(uuid())
+  projectId                       String
+  ownerName                       String
+  contractName                    String
+  contractCode                    String
+  signedAt                        DateTime
+  amountCents                     BigInt
+  taxRateBps                      Int
+  pricingMethod                   String
+  paymentTermsSummary             String
+  retentionSummary                String
+  affiliateAssignmentId           String?
+  affiliateBusinessPartyVersionId String?
+  affiliateNameSnapshot           String?
+  affiliateCreditCodeSnapshot     String?
+  fileId                          String
+  documentVersion                 Int       @default(1)
+  fileContentSha256Snapshot       String?
+  recordedByUserId                String
+  confirmedByUserId               String?
+  confirmedAt                     DateTime?
+  status                          String    @default("pending_confirm")
+  voidedAt                        DateTime?
+  voidedByUserId                  String?
+  voidReason                      String?
+  createdAt                       DateTime  @default(now())
+  updatedAt                       DateTime  @updatedAt
 
   @@index([projectId, signedAt])
   @@index([fileId])
@@ -2716,18 +2717,18 @@ model ApprovalInstance {
 }
 
 model ApprovalActionLog {
-  id                      String   @id @default(uuid())
-  approvalInstanceId      String
-  action                  String
-  actorUserId             String
-  comment                 String?
-  metadata                Json?
-  approvedRoleKey         String?
-  signatureFileIdSnapshot String?
-  signatureSha256Snapshot String?
+  id                         String   @id @default(uuid())
+  approvalInstanceId         String
+  action                     String
+  actorUserId                String
+  comment                    String?
+  metadata                   Json?
+  approvedRoleKey            String?
+  signatureFileIdSnapshot    String?
+  signatureSha256Snapshot    String?
   signatureVersionIdSnapshot String?
-  representedUserId       String?
-  createdAt               DateTime @default(now())
+  representedUserId          String?
+  createdAt                  DateTime @default(now())
 }
 
 model ApprovalDelegation {

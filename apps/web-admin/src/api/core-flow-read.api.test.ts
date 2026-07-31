@@ -66,7 +66,6 @@ import {
   prepareProjectExpenseApprovalReviewAction,
   prepareProjectExpenseWithdrawalAction,
   voidProjectExpenseRequest,
-  confirmProjectExpenseReceipt,
   createProjectExpenseExecutionRecordAttemptState,
   recordProjectExpenseExecution,
   recordProjectExpenseExecutionWithUpload,
@@ -1117,10 +1116,6 @@ describe("core flow read API client", () => {
       expectedExpenseUpdatedAt: "2026-07-02T10:59:00.000Z",
       idempotencyKey: "7b21c94f-4f2b-4d15-8b77-c4f145526dcb"
     });
-    await confirmProjectExpenseReceipt("project-1", "expense-1", {
-      confirmationPassword: "current-password",
-      note: "数量无误"
-    });
     await downloadProjectExpenseAttachment("project-1", "expense-1", {
       confirmationPassword: "current-password",
       downloadReason: "报销附件复核"
@@ -1136,7 +1131,6 @@ describe("core flow read API client", () => {
       "/api/projects/project-1/expense-requests/expense-1/executions",
       "/api/projects/project-1/expense-requests/expense-1/purchase-execution",
       "/api/projects/project-1/expense-requests/expense-1/finance-records",
-      "/api/projects/project-1/expense-requests/expense-1/receipt-confirmation",
       "/api/projects/project-1/expense-requests/expense-1/attachment-download-ticket",
       "/api/projects/project-1/expense-requests/expense-1/approval-pdf-download-ticket"
     ]);
@@ -1188,16 +1182,10 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls[5][1]?.body).toBe(
       JSON.stringify({
         confirmationPassword: "current-password",
-        note: "数量无误"
-      })
-    );
-    expect(fetchMock.mock.calls[6][1]?.body).toBe(
-      JSON.stringify({
-        confirmationPassword: "current-password",
         downloadReason: "报销附件复核"
       })
     );
-    expect(fetchMock.mock.calls[7][1]?.body).toBe(
+    expect(fetchMock.mock.calls[6][1]?.body).toBe(
       JSON.stringify({
         confirmationPassword: "current-password",
         downloadReason: "审批单复核"

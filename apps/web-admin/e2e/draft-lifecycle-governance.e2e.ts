@@ -1778,3 +1778,241 @@ test("P0 项目支出财务入账在 Chromium 桌面与 WebKit 390 只提交一�
   expect(browserErrors).toEqual([]);
   expect(pageErrors).toEqual([]);
 });
+
+test("P0 项目支出收货在 Chromium 1366 与 WebKit 390 只提交一个 CAS 事实", async ({
+  browserName,
+  page
+}, testInfo) => {
+  test.setTimeout(60_000);
+  await installSession(page);
+  await page.setViewportSize(
+    browserName === "webkit"
+      ? { width: 390, height: 844 }
+      : { width: 1366, height: 768 }
+  );
+  const browserErrors: string[] = [];
+  const pageErrors: string[] = [];
+  const requestOrder: string[] = [];
+  const receiptBodies: Record<string, unknown>[] = [];
+  let confirmed = false;
+  let confirmedIdempotencyKey: string | null = null;
+  let releaseReceiptPost!: () => void;
+  const receiptPostGate = new Promise<void>((resolve) => {
+    releaseReceiptPost = resolve;
+  });
+  page.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => {
+    pageErrors.push(error.message);
+  });
+
+  const initialUpdatedAt = "2026-08-01T04:00:00.000Z";
+  const completedUpdatedAt = "2026-08-01T04:00:02.000Z";
+  const detail = () => ({
+    id: "expense-receipt",
+    projectId: "project-1",
+    code: "CG-RECEIPT-001",
+    title: "CG-RECEIPT-001 · 零星采购收货",
+    status: "paid",
+    statusLabel: "已付清",
+    expenseTypeLabel: "零星采购",
+    expenseSubtypeLabel: "零星材料采购",
+    paymentSubject: "现场零星材料",
+    reason: "现场急用材料",
+    requestedAmountCents: "50000",
+    approvedAmountCents: "50000",
+    paidAmountCents: "50000",
+    remainingAmountCents: "0",
+    financeRecordedAmountCents: "50000",
+    financeRemainingAmountCents: "0",
+    receiptConfirmedAt: confirmed
+      ? "2026-08-01T04:00:01.000Z"
+      : null,
+    receiptConfirmedByUserId: confirmed
+      ? "draft-governance-user"
+      : null,
+    receiptConfirmationIdempotencyKey:
+      confirmedIdempotencyKey,
+    receiptConfirmationNote: confirmed
+      ? "数量、质量与现场交付无误"
+      : null,
+    currentNodeName: null,
+    lifecycleKind: "formal_record",
+    ledgerView: "formal_ledger",
+    lifecycleUpdatedAt: confirmed
+      ? completedUpdatedAt
+      : initialUpdatedAt,
+    hasPersistentDraft: false,
+    withdrawalContext: null,
+    reviewApprovalContext: null,
+    executionContext: null,
+    financeContext: null,
+    receiptContext: confirmed
+      ? null
+      : { expectedExpenseUpdatedAt: initialUpdatedAt },
+    availableActions: confirmed
+      ? []
+      : [{
+          key: "confirm_receipt",
+          label: "确认收货",
+          kind: "primary",
+          enabled: true,
+          disabledReason: null,
+          requiredAction: "project_expense.receipt_confirm",
+          requiresPassword: true
+        }],
+    blockedReasons: confirmed ? ["零星采购已确认收货"] : [],
+    canSetApprovedAmount: false,
+    reviewAction: {
+      key: "review",
+      label: "审批",
+      kind: "primary",
+      enabled: false,
+      disabledReason: "当前项目支出状态不可审批",
+      requiresSelfReviewConfirmation: false
+    },
+    approvalTimeline: []
+  });
+
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-receipt/approval-detail",
+    (route) => {
+      requestOrder.push("GET /approval-detail");
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail())
+      });
+    }
+  );
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-receipt/receipt-confirmation",
+    async (route) => {
+      requestOrder.push("POST /receipt-confirmation");
+      const body =
+        route.request().postDataJSON() as Record<string, unknown>;
+      receiptBodies.push(body);
+      await receiptPostGate;
+      confirmed = true;
+      confirmedIdempotencyKey = String(body.idempotencyKey);
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          projectId: "project-1",
+          expenseRequestId: "expense-receipt",
+          idempotencyKey: body.idempotencyKey,
+          confirmedByUserId: "draft-governance-user",
+          confirmedAt: "2026-08-01T04:00:01.000Z",
+          note: body.note,
+          updatedAt: completedUpdatedAt
+        })
+      });
+    }
+  );
+
+  await login(page);
+  await page.goto("/项目支出/project-1/expense-receipt");
+  await expect(
+    page.getByRole("heading", { name: "项目支出审批详情" })
+  ).toBeVisible();
+  const receiptCard = page
+    .locator(".section-card")
+    .filter({
+      has: page.getByRole("button", {
+        name: "确认收货",
+        exact: true
+      })
+    });
+  await expect(receiptCard).toBeVisible();
+  await receiptCard
+    .locator("textarea")
+    .fill("数量、质量与现场交付无误");
+  await receiptCard
+    .getByRole("button", { name: "确认收货", exact: true })
+    .click();
+
+  const dialog = page
+    .locator(".t-dialog")
+    .filter({ hasText: "确认历史项目支出已收货？" });
+  await expect(dialog).toBeVisible();
+  await dialog
+    .getByPlaceholder("用于确认当前操作者身份")
+    .fill("Draft@2026");
+  await page.screenshot({
+    path: path.join(
+      testInfo.outputDir,
+      `project-expense-receipt-${browserName}-${browserName === "webkit" ? "390x844" : "1366x768"}.png`
+    ),
+    fullPage: false
+  });
+  const confirm = dialog.getByRole("button", {
+    name: "确认收货",
+    exact: true
+  });
+  await confirm.evaluate((element) => {
+    (element as HTMLButtonElement).click();
+    (element as HTMLButtonElement).click();
+  });
+  await expect.poll(() => receiptBodies).toHaveLength(1);
+  await expect(
+    page.getByRole("button", { name: "刷新", exact: true })
+  ).toBeDisabled();
+  await expect(
+    dialog.getByRole("button", { name: "取消", exact: true })
+  ).toBeDisabled();
+  await expect(dialog.locator(".t-dialog__close")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  releaseReceiptPost();
+
+  await expect(
+    page.getByText(
+      "项目支出收货已确认，权威详情已刷新。",
+      { exact: true }
+    )
+  ).toBeVisible();
+  await expect(
+    page
+      .locator(".summary-grid > div")
+      .filter({ hasText: "收货状态" })
+  ).toContainText("已确认");
+  await expect(receiptCard).toHaveCount(0);
+  await expect.poll(() => requestOrder).toEqual([
+    "GET /approval-detail",
+    "GET /approval-detail",
+    "POST /receipt-confirmation",
+    "GET /approval-detail"
+  ]);
+  expect(receiptBodies).toHaveLength(1);
+  expect(receiptBodies[0]?.idempotencyKey).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u
+  );
+  expect(receiptBodies).toEqual([{
+    confirmationPassword: "Draft@2026",
+    note: "数量、质量与现场交付无误",
+    expectedExpenseUpdatedAt: initialUpdatedAt,
+    idempotencyKey: receiptBodies[0]?.idempotencyKey
+  }]);
+  await expect(
+    page.locator(
+      "vite-error-overlay, #webpack-dev-server-client-overlay"
+    )
+  ).toHaveCount(0);
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalScrollers(page);
+  if (browserName === "webkit") {
+    expect(
+      await page.evaluate(() => ({
+        height: window.innerHeight,
+        userAgent: navigator.userAgent,
+        width: window.innerWidth
+      }))
+    ).toEqual(expect.objectContaining({
+      height: 844,
+      width: 390,
+      userAgent: expect.not.stringContaining("Chrome/")
+    }));
+  }
+  expect(browserErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});

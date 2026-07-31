@@ -17,13 +17,13 @@
     "totalVueFileCount": 134,
     "parsedVueFileCount": 134,
     "reachableProductionModuleCount": 229,
-    "templateEventDirectiveCount": 916,
+    "templateEventDirectiveCount": 918,
     "propCallbackDirectiveCount": 10,
-    "coveredProductionMutationConsumerCount": 18,
+    "coveredProductionMutationConsumerCount": 19,
     "candidateProductionMutationConsumerCount": 38,
-    "acceptedProductionMutationConsumerCount": 18,
+    "acceptedProductionMutationConsumerCount": 19,
     "productionMutationConsumerPairCount": 274,
-    "blockerCount": 304
+    "blockerCount": 301
   },
   "evidence": {
     "totalProductionModuleCount": 236,
@@ -1695,7 +1695,7 @@
         "event": "confirm",
         "handler": "confirmProjectExpenseExecution",
         "kind": "event",
-        "sourceLine": 153,
+        "sourceLine": 154,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -1832,7 +1832,7 @@
         "event": "confirm",
         "handler": "confirmProjectExpenseFinance",
         "kind": "event",
-        "sourceLine": 204,
+        "sourceLine": 205,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -1922,31 +1922,68 @@
       "id": "project-expense.receipt-confirm-local-status",
       "usage": "page_action",
       "routePaths": [
-        "/项目经营"
+        "/项目支出/:projectId/:expenseRequestId"
       ],
       "ownerRoutePaths": [
-        "/项目经营"
+        "/项目支出/:projectId/:expenseRequestId"
       ],
-      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
       "trigger": {
-        "element": "button",
-        "event": "click",
-        "handler": "submitExpenseReceiptConfirmation",
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmProjectExpenseReceipt",
         "kind": "event",
-        "sourceLine": 733,
-        "sourceColumn": 18
+        "sourceLine": 248,
+        "sourceColumn": 8
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "client_role_or_status",
-        "source": "canConfirmExpenseReceipt(selectedExpenseRow)",
-        "serverDerived": false,
-        "dominatesTrigger": false
+        "kind": "detail_action",
+        "source": "projectExpenseWithdrawalCapability.availableActions",
+        "key": "confirm_receipt",
+        "serverDerived": true,
+        "dominatesTrigger": true
       },
       "bindings": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "confirmProjectExpenseReceipt",
+          "wrapper": "confirmProjectExpenseReceiptWithPreflight",
+          "method": "GET",
+          "path": "/projects/:param/expense-requests/:param/approval-detail",
+          "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/projects/:projectId/expense-requests/:expenseRequestId/approval-detail",
+            "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
+            "controller": "ProjectExpenseController",
+            "handler": "getApprovalDetail",
+            "sourceFile": "services/api/src/project-expense/project-expense.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmProjectExpenseReceipt",
+              "confirmProjectExpenseReceiptWithPreflight"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmProjectExpenseReceiptWithPreflight",
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/receipt-confirmation",
           "normalizedKey": "POST /projects/:param/expense-requests/:param/receipt-confirmation",
@@ -1966,13 +2003,16 @@
             "requiredProjectAction": "project_expense.receipt_confirm"
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "submitExpenseReceiptConfirmation"
+              "confirmProjectExpenseReceipt",
+              "confirmProjectExpenseReceiptWithPreflight"
             ]
           },
           "ticketFollowups": []
@@ -1994,7 +2034,7 @@
         "event": "confirm",
         "handler": "confirmProjectExpenseReviewApprove",
         "kind": "event",
-        "sourceLine": 284,
+        "sourceLine": 328,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -2059,7 +2099,7 @@
         "event": "confirm",
         "handler": "confirmProjectExpenseReviewReject",
         "kind": "event",
-        "sourceLine": 298,
+        "sourceLine": 342,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -2124,7 +2164,7 @@
         "event": "confirm",
         "handler": "confirmProjectExpenseWithdrawal",
         "kind": "event",
-        "sourceLine": 88,
+        "sourceLine": 89,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -3298,13 +3338,6 @@
       },
       {
         "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "project-expense.receipt-confirm-local-status",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmProjectExpenseReceipt"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
         "actionId": "settlement-draft.save-local-gate",
         "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
         "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
@@ -3457,12 +3490,6 @@
         "actionId": "project-expense.create-local-role",
         "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
         "capabilitySource": "canCreateProjectExpense"
-      },
-      {
-        "code": "CLIENT_ROLE_OR_STATUS_GATE",
-        "actionId": "project-expense.receipt-confirm-local-status",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "capabilitySource": "canConfirmExpenseReceipt(selectedExpenseRow)"
       }
     ],
     "uncoveredMutationWrappers": [
@@ -4913,15 +4940,6 @@
         "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
         "normalizedKeys": [
           "POST /projects/:param/expense-requests/:param/voiding"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmProjectExpenseReceipt",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/expense-requests/:param/receipt-confirmation"
         ]
       },
       {
