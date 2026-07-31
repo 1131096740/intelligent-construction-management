@@ -415,6 +415,13 @@ describe("ContractService change draft version lineage", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ id: "contract-1" }])
         .mockResolvedValueOnce([version])
+        .mockResolvedValueOnce([{
+          hasSignedFormalFile: false,
+          hasActiveSealTask: false,
+          hasArchiveFile: false,
+          hasSettlement: false,
+          hasPaymentRequest: false
+        }])
         .mockResolvedValueOnce([base, version]),
       contract: {
         findUnique: jest.fn().mockResolvedValue({
@@ -565,6 +572,13 @@ describe("ContractService change draft version lineage", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ id: "contract-1" }])
         .mockResolvedValueOnce([candidate])
+        .mockResolvedValueOnce([{
+          hasSignedFormalFile: false,
+          hasActiveSealTask: false,
+          hasArchiveFile: false,
+          hasSettlement: false,
+          hasPaymentRequest: false
+        }])
         .mockResolvedValueOnce([root, previous, candidate]),
       contract: { findUnique: jest.fn().mockResolvedValue({
         id: "contract-1", projectId: "project-1", ownerUserId: "owner-1", voidedAt: null

@@ -91,6 +91,28 @@ function billFixture(options: { rows?: Array<Record<string, unknown>> } = {}) {
   const imports: Array<Record<string, unknown>> = [];
 
   const tx = {
+    $queryRaw: jest.fn(async (query: { strings?: readonly string[] }) => {
+      const sql = query.strings?.join(" ") ?? "";
+      if (sql.includes('FROM "ContractBill"')) {
+        return [{ id: bill.id }];
+      }
+      if (sql.includes("FOR UPDATE OF cv")) {
+        return [{ ...version }];
+      }
+      if (sql.includes("FOR UPDATE OF c")) {
+        return [{ ...contract }];
+      }
+      if (sql.includes('FROM "ContractFormalFile"')) {
+        return [{
+          hasSignedFormalFile: false,
+          hasActiveSealTask: false,
+          hasArchiveFile: false,
+          hasSettlement: false,
+          hasPaymentRequest: false
+        }];
+      }
+      throw new Error(`unexpected test SQL: ${sql}`);
+    }),
     contractBill: {
       findUnique: jest.fn().mockImplementation(() => Promise.resolve({ ...bill })),
       findMany: jest.fn().mockImplementation(() => Promise.resolve([{ ...bill }])),

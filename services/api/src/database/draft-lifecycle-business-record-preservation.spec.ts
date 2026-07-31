@@ -35,7 +35,47 @@ function lifecycleMethods(filePath: string) {
   visit(sourceFile);
   return methods.map((method) => ({
     name: (method.name as ts.Identifier).text,
-    source: method.getText(sourceFile)
+    source: method.getText(sourceFile),
+    destructiveCalls: destructiveCalls(method, sourceFile)
+  }));
+}
+
+function destructiveCalls(method: ts.MethodDeclaration, sourceFile: ts.SourceFile) {
+  const calls: ts.CallExpression[] = [];
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      (node.expression.name.text === "delete" ||
+        node.expression.name.text === "deleteMany")
+    ) {
+      calls.push(node);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(method);
+  return calls.map((call) => ({
+    source: call.getText(sourceFile),
+    isScopedContractDraftEditLeaseCleanup:
+      ts.isPropertyAccessExpression(call.expression) &&
+      call.expression.name.text === "deleteMany" &&
+      ts.isPropertyAccessExpression(call.expression.expression) &&
+      call.expression.expression.name.text === "contractDraftEditLease" &&
+      ts.isIdentifier(call.expression.expression.expression) &&
+      call.expression.expression.expression.text === "tx" &&
+      call.arguments.length === 1 &&
+      ts.isObjectLiteralExpression(call.arguments[0]) &&
+      call.arguments[0].properties.some((property) =>
+        ts.isPropertyAssignment(property) &&
+        ts.isIdentifier(property.name) &&
+        property.name.text === "where" &&
+        ts.isObjectLiteralExpression(property.initializer) &&
+        property.initializer.properties.some((whereProperty) =>
+          ts.isPropertyAssignment(whereProperty) &&
+          ts.isIdentifier(whereProperty.name) &&
+          whereProperty.name.text === "contractVersionId"
+        )
+      )
   }));
 }
 
@@ -43,7 +83,18 @@ describe("draft lifecycle preserves business records", () => {
   it.each(SERVICE_FILES)("never physically deletes business facts in %s", (relativePath) => {
     const filePath = resolve(__dirname, relativePath);
     for (const method of lifecycleMethods(filePath)) {
-      expect(`${method.name}\n${method.source}`).not.toMatch(/\.(delete|deleteMany)\s*\(/u);
+      for (const call of method.destructiveCalls) {
+        expect({
+          method: method.name,
+          call: call.source,
+          reason:
+            "lifecycle methods may only delete the current ContractDraftEditLease technical lock",
+          isScopedContractDraftEditLeaseCleanup:
+            call.isScopedContractDraftEditLeaseCleanup
+        }).toEqual(expect.objectContaining({
+          isScopedContractDraftEditLeaseCleanup: true
+        }));
+      }
       expect(`${method.name}\n${method.source}`).not.toMatch(/\bDELETE\s+FROM\b/iu);
       expect(`${method.name}\n${method.source}`).not.toMatch(/\bTRUNCATE\b/iu);
     }

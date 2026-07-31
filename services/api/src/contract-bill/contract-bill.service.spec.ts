@@ -59,6 +59,28 @@ describe("ContractBillService", () => {
     const rows = [...(options.rows ?? [])];
     const bills = [bill, ...(options.otherBills ?? [])];
     const tx = {
+      $queryRaw: jest.fn(async (query: { strings?: readonly string[] }) => {
+        const sql = query.strings?.join(" ") ?? "";
+        if (sql.includes('FROM "ContractBill"')) {
+          return [{ id: bill.id }];
+        }
+        if (sql.includes("FOR UPDATE OF cv")) {
+          return [{ ...version }];
+        }
+        if (sql.includes("FOR UPDATE OF c")) {
+          return [{ ...contract }];
+        }
+        if (sql.includes('FROM "ContractFormalFile"')) {
+          return [{
+            hasSignedFormalFile: false,
+            hasActiveSealTask: false,
+            hasArchiveFile: false,
+            hasSettlement: false,
+            hasPaymentRequest: false
+          }];
+        }
+        throw new Error(`unexpected test SQL: ${sql}`);
+      }),
       contractBill: {
         findUnique: jest.fn().mockImplementation(() => Promise.resolve({ ...bill })),
         findMany: jest.fn().mockImplementation(() => Promise.resolve(bills.map((row) => ({ ...row })))),
@@ -137,8 +159,7 @@ describe("ContractBillService", () => {
       contractGeneratedDocument: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
-      auditLog: { create: jest.fn(), findFirst: jest.fn().mockResolvedValue(null) },
-      $queryRaw: jest.fn()
+      auditLog: { create: jest.fn(), findFirst: jest.fn().mockResolvedValue(null) }
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
